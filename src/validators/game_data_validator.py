@@ -1,0 +1,81 @@
+"""
+Validation helpers for parsed game detail payloads.
+"""
+from __future__ import annotations
+
+from typing import Dict, Any, List, Tuple
+
+
+def validate_game_data(game_data: Dict[str, Any]) -> Tuple[bool, List[str]]:
+    """
+    Validate parsed game data prior to persistence.
+
+    Returns:
+        (is_valid, errors)
+    """
+    errors: List[str] = []
+
+    if not game_data.get("game_id"):
+        errors.append("Missing game_id")
+
+    if not game_data.get("game_date"):
+        errors.append("Missing game_date")
+
+    teams = game_data.get("teams") or {}
+    home = teams.get("home") or {}
+    away = teams.get("away") or {}
+
+    if not home.get("code"):
+        errors.append("Missing home team code")
+    if not away.get("code"):
+        errors.append("Missing away team code")
+
+    _validate_score_totals(home, "home", errors)
+    _validate_score_totals(away, "away", errors)
+
+    hitters = game_data.get("hitters") or {}
+    pitchers = game_data.get("pitchers") or {}
+
+    for side in ("home", "away"):
+        if not hitters.get(side):
+            errors.append(f"No hitter rows for {side}")
+        if not pitchers.get(side):
+            errors.append(f"No pitcher rows for {side}")
+
+    _validate_runs_match_scores(game_data, errors)
+
+    return (len(errors) == 0, errors)
+
+
+def _validate_score_totals(team: Dict[str, Any], label: str, errors: List[str]) -> None:
+    score = team.get("score")
+    line_score = team.get("line_score")
+    if score is None or not line_score:
+        return
+    try:
+        computed = sum(int(value or 0) for value in line_score)
+    except ValueError:
+        return
+    if score != computed:
+        errors.append(f"{label} line score ({computed}) != total score ({score})")
+
+
+def _validate_runs_match_scores(game_data: Dict[str, Any], errors: List[str]) -> None:
+    teams = game_data.get("teams") or {}
+    hitters = game_data.get("hitters") or {}
+    for side in ("home", "away"):
+        team = teams.get(side) or {}
+        if team.get("score") is None:
+            continue
+        total_runs = 0
+        for entry in hitters.get(side, []):
+            stats = entry.get("stats") or {}
+            total_runs += int(stats.get("runs") or 0)
+        if total_runs != team["score"]:
+            errors.append(
+                f"{side} hitter runs ({total_runs}) != team score ({team['score']})"
+            )
+
+
+__all__ = ["validate_game_data"]
+
