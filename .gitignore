@@ -14,8 +14,7 @@ __pycache__/
 pw-browsers/
 
 # Local data and logs
-/data/
-/logs/
+
 .env
 .env.*
 
