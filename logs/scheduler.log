@@ -1,0 +1,1976 @@
+2025-10-14 08:35:00,563 - apscheduler.scheduler - INFO - Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2025-10-14 08:35:00,563 - __main__ - INFO - Registered job: crawl_games_regular (Daily 03:00 KST)
+2025-10-14 08:35:00,564 - apscheduler.scheduler - INFO - Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2025-10-14 08:35:00,564 - __main__ - INFO - Registered job: crawl_futures_profile (Weekly Sunday 05:00 KST)
+2025-10-14 08:35:00,565 - __main__ - INFO - Scheduler started successfully
+2025-10-14 08:35:00,567 - apscheduler.scheduler - INFO - Added job "Daily Regular Season Games Crawl" to job store "default"
+2025-10-14 08:35:00,568 - apscheduler.scheduler - INFO - Added job "Weekly Futures Profile Sync" to job store "default"
+2025-10-14 08:35:00,569 - apscheduler.scheduler - INFO - Scheduler started
+2025-10-14 08:35:54,708 - apscheduler.scheduler - INFO - Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2025-10-14 08:35:54,709 - __main__ - INFO - Registered job: crawl_games_regular (Daily 03:00 KST)
+2025-10-14 08:35:54,709 - apscheduler.scheduler - INFO - Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2025-10-14 08:35:54,710 - __main__ - INFO - Registered job: crawl_futures_profile (Weekly Sunday 05:00 KST)
+2025-10-14 08:35:54,710 - __main__ - INFO - Scheduler started successfully
+2025-10-14 08:35:54,714 - apscheduler.scheduler - INFO - Added job "Daily Regular Season Games Crawl" to job store "default"
+2025-10-14 08:35:54,715 - apscheduler.scheduler - INFO - Added job "Weekly Futures Profile Sync" to job store "default"
+2025-10-14 08:35:54,715 - apscheduler.scheduler - INFO - Scheduler started
+2025-10-14 08:38:03,720 - apscheduler.scheduler - INFO - Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2025-10-14 08:38:03,720 - __main__ - INFO - Registered job: crawl_games_regular (Daily 03:00 KST)
+2025-10-14 08:38:03,721 - apscheduler.scheduler - INFO - Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2025-10-14 08:38:03,722 - __main__ - INFO - Registered job: crawl_futures_profile (Weekly Sunday 05:00 KST)
+2025-10-14 08:38:03,724 - __main__ - INFO - Scheduler started successfully
+2025-10-14 08:38:03,726 - apscheduler.scheduler - INFO - Added job "Daily Regular Season Games Crawl" to job store "default"
+2025-10-14 08:38:03,727 - apscheduler.scheduler - INFO - Added job "Weekly Futures Profile Sync" to job store "default"
+2025-10-14 08:38:03,727 - apscheduler.scheduler - INFO - Scheduler started
+2025-10-14 08:53:26,391 - apscheduler.scheduler - INFO - Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2025-10-14 08:53:26,391 - __main__ - INFO - Registered job: crawl_games_regular (Daily 03:00 KST)
+2025-10-14 08:53:26,392 - apscheduler.scheduler - INFO - Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2025-10-14 08:53:26,392 - __main__ - INFO - Registered job: crawl_futures_profile (Weekly Sunday 05:00 KST)
+2025-10-14 08:53:26,393 - __main__ - INFO - Scheduler started successfully
+2025-10-14 08:53:26,395 - apscheduler.scheduler - INFO - Added job "Daily Regular Season Games Crawl" to job store "default"
+2025-10-14 08:53:26,396 - apscheduler.scheduler - INFO - Added job "Weekly Futures Profile Sync" to job store "default"
+2025-10-14 08:53:26,396 - apscheduler.scheduler - INFO - Scheduler started
+2025-10-14 08:54:31,347 - apscheduler.scheduler - INFO - Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2025-10-14 08:54:31,348 - __main__ - INFO - Registered job: crawl_games_regular (Daily 03:00 KST)
+2025-10-14 08:54:31,349 - apscheduler.scheduler - INFO - Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2025-10-14 08:54:31,349 - __main__ - INFO - Registered job: crawl_futures_profile (Weekly Sunday 05:00 KST)
+2025-10-14 08:54:31,349 - __main__ - INFO - Performing one-time startup crawl (schedules + game details)
+2025-10-14 08:54:31,350 - __main__ - INFO - === Starting Daily Games Crawl ===
+2025-10-14 08:54:31,350 - __main__ - INFO - Step 1: Updating schedule for 20251013
+2025-10-14 08:54:35,094 - __main__ - ERROR - Daily games crawl failed: (sqlite3.OperationalError) disk I/O error
+[SQL: INSERT INTO game_schedules (game_id, season_year, season_type, game_date, home_team_code, away_team_code, game_status, doubleheader_no, crawl_status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP) ON CONFLICT (game_id) DO UPDATE SET home_team_code = excluded.home_team_code, away_team_code = excluded.away_team_code, game_status = excluded.game_status, doubleheader_no = excluded.doubleheader_no, crawl_status = excluded.crawl_status, updated_at = ?]
+[parameters: ('20251001NCLG0', 2025, 'regular', '2025-10-01', 'LG', 'NC', 'scheduled', 0, 'pending', '2025-10-14 08:54:35.078275')]
+(Background on this error at: https://sqlalche.me/e/20/e3q8)
+Traceback (most recent call last):
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/engine/base.py", line 1967, in _exec_single_context
+    self.dialect.do_execute(
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/engine/default.py", line 951, in do_execute
+    cursor.execute(statement, parameters)
+sqlite3.OperationalError: disk I/O error
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/app/scheduler.py", line 58, in crawl_daily_games
+    crawl_schedule_main([
+  File "/app/src/cli/crawl_schedule.py", line 55, in main
+    asyncio.run(crawl_schedule(args))
+  File "/usr/lib/python3.10/asyncio/runners.py", line 44, in run
+    return loop.run_until_complete(main)
+  File "/usr/lib/python3.10/asyncio/base_events.py", line 649, in run_until_complete
+    return future.result()
+  File "/app/src/cli/crawl_schedule.py", line 19, in crawl_schedule
+    repo.save_schedules(games)
+  File "/app/src/repositories/game_repository.py", line 109, in save_schedules
+    self._upsert_schedule(session, schedule)
+  File "/app/src/repositories/game_repository.py", line 166, in _upsert_schedule
+    session.execute(stmt)
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/orm/session.py", line 2351, in execute
+    return self._execute_internal(
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/orm/session.py", line 2249, in _execute_internal
+    result: Result[Any] = compile_state_cls.orm_execute_statement(
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/orm/bulk_persistence.py", line 1306, in orm_execute_statement
+    result = conn.execute(
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/engine/base.py", line 1419, in execute
+    return meth(
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/sql/elements.py", line 526, in _execute_on_connection
+    return connection._execute_clauseelement(
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/engine/base.py", line 1641, in _execute_clauseelement
+    ret = self._execute_context(
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/engine/base.py", line 1846, in _execute_context
+    return self._exec_single_context(
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/engine/base.py", line 1986, in _exec_single_context
+    self._handle_dbapi_exception(
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/engine/base.py", line 2355, in _handle_dbapi_exception
+    raise sqlalchemy_exception.with_traceback(exc_info[2]) from e
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/engine/base.py", line 1967, in _exec_single_context
+    self.dialect.do_execute(
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/engine/default.py", line 951, in do_execute
+    cursor.execute(statement, parameters)
+sqlalchemy.exc.OperationalError: (sqlite3.OperationalError) disk I/O error
+[SQL: INSERT INTO game_schedules (game_id, season_year, season_type, game_date, home_team_code, away_team_code, game_status, doubleheader_no, crawl_status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP) ON CONFLICT (game_id) DO UPDATE SET home_team_code = excluded.home_team_code, away_team_code = excluded.away_team_code, game_status = excluded.game_status, doubleheader_no = excluded.doubleheader_no, crawl_status = excluded.crawl_status, updated_at = ?]
+[parameters: ('20251001NCLG0', 2025, 'regular', '2025-10-01', 'LG', 'NC', 'scheduled', 0, 'pending', '2025-10-14 08:54:35.078275')]
+(Background on this error at: https://sqlalche.me/e/20/e3q8)
+2025-10-14 08:55:35,155 - __main__ - INFO - === Starting Daily Games Crawl ===
+2025-10-14 08:55:35,156 - __main__ - INFO - Step 1: Updating schedule for 20251013
+2025-10-14 08:55:38,840 - __main__ - ERROR - Daily games crawl failed: (sqlite3.OperationalError) disk I/O error
+[SQL: INSERT INTO game_schedules (game_id, season_year, season_type, game_date, home_team_code, away_team_code, game_status, doubleheader_no, crawl_status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP) ON CONFLICT (game_id) DO UPDATE SET home_team_code = excluded.home_team_code, away_team_code = excluded.away_team_code, game_status = excluded.game_status, doubleheader_no = excluded.doubleheader_no, crawl_status = excluded.crawl_status, updated_at = ?]
+[parameters: ('20251001NCLG0', 2025, 'regular', '2025-10-01', 'LG', 'NC', 'scheduled', 0, 'pending', '2025-10-14 08:55:38.834870')]
+(Background on this error at: https://sqlalche.me/e/20/e3q8)
+Traceback (most recent call last):
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/engine/base.py", line 1967, in _exec_single_context
+    self.dialect.do_execute(
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/engine/default.py", line 951, in do_execute
+    cursor.execute(statement, parameters)
+sqlite3.OperationalError: disk I/O error
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/app/scheduler.py", line 58, in crawl_daily_games
+    crawl_schedule_main([
+  File "/app/src/cli/crawl_schedule.py", line 55, in main
+    asyncio.run(crawl_schedule(args))
+  File "/usr/lib/python3.10/asyncio/runners.py", line 44, in run
+    return loop.run_until_complete(main)
+  File "/usr/lib/python3.10/asyncio/base_events.py", line 649, in run_until_complete
+    return future.result()
+  File "/app/src/cli/crawl_schedule.py", line 19, in crawl_schedule
+    repo.save_schedules(games)
+  File "/app/src/repositories/game_repository.py", line 109, in save_schedules
+    self._upsert_schedule(session, schedule)
+  File "/app/src/repositories/game_repository.py", line 166, in _upsert_schedule
+    session.execute(stmt)
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/orm/session.py", line 2351, in execute
+    return self._execute_internal(
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/orm/session.py", line 2249, in _execute_internal
+    result: Result[Any] = compile_state_cls.orm_execute_statement(
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/orm/bulk_persistence.py", line 1306, in orm_execute_statement
+    result = conn.execute(
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/engine/base.py", line 1419, in execute
+    return meth(
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/sql/elements.py", line 526, in _execute_on_connection
+    return connection._execute_clauseelement(
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/engine/base.py", line 1641, in _execute_clauseelement
+    ret = self._execute_context(
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/engine/base.py", line 1846, in _execute_context
+    return self._exec_single_context(
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/engine/base.py", line 1986, in _exec_single_context
+    self._handle_dbapi_exception(
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/engine/base.py", line 2355, in _handle_dbapi_exception
+    raise sqlalchemy_exception.with_traceback(exc_info[2]) from e
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/engine/base.py", line 1967, in _exec_single_context
+    self.dialect.do_execute(
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/engine/default.py", line 951, in do_execute
+    cursor.execute(statement, parameters)
+sqlalchemy.exc.OperationalError: (sqlite3.OperationalError) disk I/O error
+[SQL: INSERT INTO game_schedules (game_id, season_year, season_type, game_date, home_team_code, away_team_code, game_status, doubleheader_no, crawl_status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP) ON CONFLICT (game_id) DO UPDATE SET home_team_code = excluded.home_team_code, away_team_code = excluded.away_team_code, game_status = excluded.game_status, doubleheader_no = excluded.doubleheader_no, crawl_status = excluded.crawl_status, updated_at = ?]
+[parameters: ('20251001NCLG0', 2025, 'regular', '2025-10-01', 'LG', 'NC', 'scheduled', 0, 'pending', '2025-10-14 08:55:38.834870')]
+(Background on this error at: https://sqlalche.me/e/20/e3q8)
+2025-10-14 08:56:38,897 - __main__ - INFO - === Starting Daily Games Crawl ===
+2025-10-14 08:56:38,898 - __main__ - INFO - Step 1: Updating schedule for 20251013
+2025-10-14 08:56:42,339 - __main__ - ERROR - Daily games crawl failed: (sqlite3.OperationalError) disk I/O error
+[SQL: INSERT INTO game_schedules (game_id, season_year, season_type, game_date, home_team_code, away_team_code, game_status, doubleheader_no, crawl_status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP) ON CONFLICT (game_id) DO UPDATE SET home_team_code = excluded.home_team_code, away_team_code = excluded.away_team_code, game_status = excluded.game_status, doubleheader_no = excluded.doubleheader_no, crawl_status = excluded.crawl_status, updated_at = ?]
+[parameters: ('20251001NCLG0', 2025, 'regular', '2025-10-01', 'LG', 'NC', 'scheduled', 0, 'pending', '2025-10-14 08:56:42.335182')]
+(Background on this error at: https://sqlalche.me/e/20/e3q8)
+Traceback (most recent call last):
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/engine/base.py", line 1967, in _exec_single_context
+    self.dialect.do_execute(
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/engine/default.py", line 951, in do_execute
+    cursor.execute(statement, parameters)
+sqlite3.OperationalError: disk I/O error
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/app/scheduler.py", line 58, in crawl_daily_games
+    crawl_schedule_main([
+  File "/app/src/cli/crawl_schedule.py", line 55, in main
+    asyncio.run(crawl_schedule(args))
+  File "/usr/lib/python3.10/asyncio/runners.py", line 44, in run
+    return loop.run_until_complete(main)
+  File "/usr/lib/python3.10/asyncio/base_events.py", line 649, in run_until_complete
+    return future.result()
+  File "/app/src/cli/crawl_schedule.py", line 19, in crawl_schedule
+    repo.save_schedules(games)
+  File "/app/src/repositories/game_repository.py", line 109, in save_schedules
+    self._upsert_schedule(session, schedule)
+  File "/app/src/repositories/game_repository.py", line 166, in _upsert_schedule
+    session.execute(stmt)
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/orm/session.py", line 2351, in execute
+    return self._execute_internal(
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/orm/session.py", line 2249, in _execute_internal
+    result: Result[Any] = compile_state_cls.orm_execute_statement(
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/orm/bulk_persistence.py", line 1306, in orm_execute_statement
+    result = conn.execute(
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/engine/base.py", line 1419, in execute
+    return meth(
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/sql/elements.py", line 526, in _execute_on_connection
+    return connection._execute_clauseelement(
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/engine/base.py", line 1641, in _execute_clauseelement
+    ret = self._execute_context(
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/engine/base.py", line 1846, in _execute_context
+    return self._exec_single_context(
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/engine/base.py", line 1986, in _exec_single_context
+    self._handle_dbapi_exception(
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/engine/base.py", line 2355, in _handle_dbapi_exception
+    raise sqlalchemy_exception.with_traceback(exc_info[2]) from e
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/engine/base.py", line 1967, in _exec_single_context
+    self.dialect.do_execute(
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/engine/default.py", line 951, in do_execute
+    cursor.execute(statement, parameters)
+sqlalchemy.exc.OperationalError: (sqlite3.OperationalError) disk I/O error
+[SQL: INSERT INTO game_schedules (game_id, season_year, season_type, game_date, home_team_code, away_team_code, game_status, doubleheader_no, crawl_status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP) ON CONFLICT (game_id) DO UPDATE SET home_team_code = excluded.home_team_code, away_team_code = excluded.away_team_code, game_status = excluded.game_status, doubleheader_no = excluded.doubleheader_no, crawl_status = excluded.crawl_status, updated_at = ?]
+[parameters: ('20251001NCLG0', 2025, 'regular', '2025-10-01', 'LG', 'NC', 'scheduled', 0, 'pending', '2025-10-14 08:56:42.335182')]
+(Background on this error at: https://sqlalche.me/e/20/e3q8)
+2025-10-14 08:56:42,339 - __main__ - ERROR - Startup crawl failed; scheduler will continue with cron jobs
+Traceback (most recent call last):
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/engine/base.py", line 1967, in _exec_single_context
+    self.dialect.do_execute(
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/engine/default.py", line 951, in do_execute
+    cursor.execute(statement, parameters)
+sqlite3.OperationalError: disk I/O error
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/usr/local/lib/python3.10/dist-packages/tenacity/__init__.py", line 480, in __call__
+    result = fn(*args, **kwargs)
+  File "/app/scheduler.py", line 58, in crawl_daily_games
+    crawl_schedule_main([
+  File "/app/src/cli/crawl_schedule.py", line 55, in main
+    asyncio.run(crawl_schedule(args))
+  File "/usr/lib/python3.10/asyncio/runners.py", line 44, in run
+    return loop.run_until_complete(main)
+  File "/usr/lib/python3.10/asyncio/base_events.py", line 649, in run_until_complete
+    return future.result()
+  File "/app/src/cli/crawl_schedule.py", line 19, in crawl_schedule
+    repo.save_schedules(games)
+  File "/app/src/repositories/game_repository.py", line 109, in save_schedules
+    self._upsert_schedule(session, schedule)
+  File "/app/src/repositories/game_repository.py", line 166, in _upsert_schedule
+    session.execute(stmt)
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/orm/session.py", line 2351, in execute
+    return self._execute_internal(
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/orm/session.py", line 2249, in _execute_internal
+    result: Result[Any] = compile_state_cls.orm_execute_statement(
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/orm/bulk_persistence.py", line 1306, in orm_execute_statement
+    result = conn.execute(
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/engine/base.py", line 1419, in execute
+    return meth(
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/sql/elements.py", line 526, in _execute_on_connection
+    return connection._execute_clauseelement(
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/engine/base.py", line 1641, in _execute_clauseelement
+    ret = self._execute_context(
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/engine/base.py", line 1846, in _execute_context
+    return self._exec_single_context(
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/engine/base.py", line 1986, in _exec_single_context
+    self._handle_dbapi_exception(
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/engine/base.py", line 2355, in _handle_dbapi_exception
+    raise sqlalchemy_exception.with_traceback(exc_info[2]) from e
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/engine/base.py", line 1967, in _exec_single_context
+    self.dialect.do_execute(
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/engine/default.py", line 951, in do_execute
+    cursor.execute(statement, parameters)
+sqlalchemy.exc.OperationalError: (sqlite3.OperationalError) disk I/O error
+[SQL: INSERT INTO game_schedules (game_id, season_year, season_type, game_date, home_team_code, away_team_code, game_status, doubleheader_no, crawl_status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP) ON CONFLICT (game_id) DO UPDATE SET home_team_code = excluded.home_team_code, away_team_code = excluded.away_team_code, game_status = excluded.game_status, doubleheader_no = excluded.doubleheader_no, crawl_status = excluded.crawl_status, updated_at = ?]
+[parameters: ('20251001NCLG0', 2025, 'regular', '2025-10-01', 'LG', 'NC', 'scheduled', 0, 'pending', '2025-10-14 08:56:42.335182')]
+(Background on this error at: https://sqlalche.me/e/20/e3q8)
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/app/scheduler.py", line 133, in main
+    crawl_daily_games()
+  File "/usr/local/lib/python3.10/dist-packages/tenacity/__init__.py", line 338, in wrapped_f
+    return copy(f, *args, **kw)
+  File "/usr/local/lib/python3.10/dist-packages/tenacity/__init__.py", line 477, in __call__
+    do = self.iter(retry_state=retry_state)
+  File "/usr/local/lib/python3.10/dist-packages/tenacity/__init__.py", line 378, in iter
+    result = action(retry_state)
+  File "/usr/local/lib/python3.10/dist-packages/tenacity/__init__.py", line 421, in exc_check
+    raise retry_exc from fut.exception()
+tenacity.RetryError: RetryError[<Future at 0x7e7aecc13940 state=finished raised OperationalError>]
+2025-10-14 08:56:42,342 - __main__ - INFO - Scheduler started successfully
+2025-10-14 08:56:42,343 - apscheduler.scheduler - INFO - Added job "Daily Regular Season Games Crawl" to job store "default"
+2025-10-14 08:56:42,343 - apscheduler.scheduler - INFO - Added job "Weekly Futures Profile Sync" to job store "default"
+2025-10-14 08:56:42,343 - apscheduler.scheduler - INFO - Scheduler started
+2025-10-14 08:56:59,434 - apscheduler.scheduler - INFO - Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2025-10-14 08:56:59,435 - __main__ - INFO - Registered job: crawl_games_regular (Daily 03:00 KST)
+2025-10-14 08:56:59,435 - apscheduler.scheduler - INFO - Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2025-10-14 08:56:59,436 - __main__ - INFO - Registered job: crawl_futures_profile (Weekly Sunday 05:00 KST)
+2025-10-14 08:56:59,436 - __main__ - INFO - Performing one-time startup crawl (schedules + game details)
+2025-10-14 08:56:59,437 - __main__ - INFO - === Starting Daily Games Crawl ===
+2025-10-14 08:56:59,437 - __main__ - INFO - Step 1: Updating schedule for 20251013
+2025-10-14 08:57:03,280 - __main__ - ERROR - Daily games crawl failed: (sqlite3.OperationalError) disk I/O error
+[SQL: INSERT INTO game_schedules (game_id, season_year, season_type, game_date, home_team_code, away_team_code, game_status, doubleheader_no, crawl_status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP) ON CONFLICT (game_id) DO UPDATE SET home_team_code = excluded.home_team_code, away_team_code = excluded.away_team_code, game_status = excluded.game_status, doubleheader_no = excluded.doubleheader_no, crawl_status = excluded.crawl_status, updated_at = ?]
+[parameters: ('20251001NCLG0', 2025, 'regular', '2025-10-01', 'LG', 'NC', 'scheduled', 0, 'pending', '2025-10-14 08:57:03.266859')]
+(Background on this error at: https://sqlalche.me/e/20/e3q8)
+Traceback (most recent call last):
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/engine/base.py", line 1967, in _exec_single_context
+    self.dialect.do_execute(
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/engine/default.py", line 951, in do_execute
+    cursor.execute(statement, parameters)
+sqlite3.OperationalError: disk I/O error
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/app/scheduler.py", line 58, in crawl_daily_games
+    crawl_schedule_main([
+  File "/app/src/cli/crawl_schedule.py", line 55, in main
+    asyncio.run(crawl_schedule(args))
+  File "/usr/lib/python3.10/asyncio/runners.py", line 44, in run
+    return loop.run_until_complete(main)
+  File "/usr/lib/python3.10/asyncio/base_events.py", line 649, in run_until_complete
+    return future.result()
+  File "/app/src/cli/crawl_schedule.py", line 19, in crawl_schedule
+    repo.save_schedules(games)
+  File "/app/src/repositories/game_repository.py", line 109, in save_schedules
+    self._upsert_schedule(session, schedule)
+  File "/app/src/repositories/game_repository.py", line 166, in _upsert_schedule
+    session.execute(stmt)
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/orm/session.py", line 2351, in execute
+    return self._execute_internal(
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/orm/session.py", line 2249, in _execute_internal
+    result: Result[Any] = compile_state_cls.orm_execute_statement(
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/orm/bulk_persistence.py", line 1306, in orm_execute_statement
+    result = conn.execute(
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/engine/base.py", line 1419, in execute
+    return meth(
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/sql/elements.py", line 526, in _execute_on_connection
+    return connection._execute_clauseelement(
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/engine/base.py", line 1641, in _execute_clauseelement
+    ret = self._execute_context(
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/engine/base.py", line 1846, in _execute_context
+    return self._exec_single_context(
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/engine/base.py", line 1986, in _exec_single_context
+    self._handle_dbapi_exception(
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/engine/base.py", line 2355, in _handle_dbapi_exception
+    raise sqlalchemy_exception.with_traceback(exc_info[2]) from e
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/engine/base.py", line 1967, in _exec_single_context
+    self.dialect.do_execute(
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/engine/default.py", line 951, in do_execute
+    cursor.execute(statement, parameters)
+sqlalchemy.exc.OperationalError: (sqlite3.OperationalError) disk I/O error
+[SQL: INSERT INTO game_schedules (game_id, season_year, season_type, game_date, home_team_code, away_team_code, game_status, doubleheader_no, crawl_status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP) ON CONFLICT (game_id) DO UPDATE SET home_team_code = excluded.home_team_code, away_team_code = excluded.away_team_code, game_status = excluded.game_status, doubleheader_no = excluded.doubleheader_no, crawl_status = excluded.crawl_status, updated_at = ?]
+[parameters: ('20251001NCLG0', 2025, 'regular', '2025-10-01', 'LG', 'NC', 'scheduled', 0, 'pending', '2025-10-14 08:57:03.266859')]
+(Background on this error at: https://sqlalche.me/e/20/e3q8)
+2025-10-14 08:58:03,338 - __main__ - INFO - === Starting Daily Games Crawl ===
+2025-10-14 08:58:03,338 - __main__ - INFO - Step 1: Updating schedule for 20251013
+2025-10-14 08:58:06,835 - __main__ - ERROR - Daily games crawl failed: (sqlite3.OperationalError) disk I/O error
+[SQL: INSERT INTO game_schedules (game_id, season_year, season_type, game_date, home_team_code, away_team_code, game_status, doubleheader_no, crawl_status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP) ON CONFLICT (game_id) DO UPDATE SET home_team_code = excluded.home_team_code, away_team_code = excluded.away_team_code, game_status = excluded.game_status, doubleheader_no = excluded.doubleheader_no, crawl_status = excluded.crawl_status, updated_at = ?]
+[parameters: ('20251001NCLG0', 2025, 'regular', '2025-10-01', 'LG', 'NC', 'scheduled', 0, 'pending', '2025-10-14 08:58:06.829061')]
+(Background on this error at: https://sqlalche.me/e/20/e3q8)
+Traceback (most recent call last):
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/engine/base.py", line 1967, in _exec_single_context
+    self.dialect.do_execute(
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/engine/default.py", line 951, in do_execute
+    cursor.execute(statement, parameters)
+sqlite3.OperationalError: disk I/O error
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/app/scheduler.py", line 58, in crawl_daily_games
+    crawl_schedule_main([
+  File "/app/src/cli/crawl_schedule.py", line 55, in main
+    asyncio.run(crawl_schedule(args))
+  File "/usr/lib/python3.10/asyncio/runners.py", line 44, in run
+    return loop.run_until_complete(main)
+  File "/usr/lib/python3.10/asyncio/base_events.py", line 649, in run_until_complete
+    return future.result()
+  File "/app/src/cli/crawl_schedule.py", line 19, in crawl_schedule
+    repo.save_schedules(games)
+  File "/app/src/repositories/game_repository.py", line 109, in save_schedules
+    self._upsert_schedule(session, schedule)
+  File "/app/src/repositories/game_repository.py", line 166, in _upsert_schedule
+    session.execute(stmt)
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/orm/session.py", line 2351, in execute
+    return self._execute_internal(
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/orm/session.py", line 2249, in _execute_internal
+    result: Result[Any] = compile_state_cls.orm_execute_statement(
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/orm/bulk_persistence.py", line 1306, in orm_execute_statement
+    result = conn.execute(
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/engine/base.py", line 1419, in execute
+    return meth(
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/sql/elements.py", line 526, in _execute_on_connection
+    return connection._execute_clauseelement(
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/engine/base.py", line 1641, in _execute_clauseelement
+    ret = self._execute_context(
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/engine/base.py", line 1846, in _execute_context
+    return self._exec_single_context(
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/engine/base.py", line 1986, in _exec_single_context
+    self._handle_dbapi_exception(
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/engine/base.py", line 2355, in _handle_dbapi_exception
+    raise sqlalchemy_exception.with_traceback(exc_info[2]) from e
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/engine/base.py", line 1967, in _exec_single_context
+    self.dialect.do_execute(
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/engine/default.py", line 951, in do_execute
+    cursor.execute(statement, parameters)
+sqlalchemy.exc.OperationalError: (sqlite3.OperationalError) disk I/O error
+[SQL: INSERT INTO game_schedules (game_id, season_year, season_type, game_date, home_team_code, away_team_code, game_status, doubleheader_no, crawl_status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP) ON CONFLICT (game_id) DO UPDATE SET home_team_code = excluded.home_team_code, away_team_code = excluded.away_team_code, game_status = excluded.game_status, doubleheader_no = excluded.doubleheader_no, crawl_status = excluded.crawl_status, updated_at = ?]
+[parameters: ('20251001NCLG0', 2025, 'regular', '2025-10-01', 'LG', 'NC', 'scheduled', 0, 'pending', '2025-10-14 08:58:06.829061')]
+(Background on this error at: https://sqlalche.me/e/20/e3q8)
+2025-10-14 08:59:06,891 - __main__ - INFO - === Starting Daily Games Crawl ===
+2025-10-14 08:59:06,892 - __main__ - INFO - Step 1: Updating schedule for 20251013
+2025-10-14 08:59:10,390 - __main__ - ERROR - Daily games crawl failed: (sqlite3.OperationalError) disk I/O error
+[SQL: INSERT INTO game_schedules (game_id, season_year, season_type, game_date, home_team_code, away_team_code, game_status, doubleheader_no, crawl_status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP) ON CONFLICT (game_id) DO UPDATE SET home_team_code = excluded.home_team_code, away_team_code = excluded.away_team_code, game_status = excluded.game_status, doubleheader_no = excluded.doubleheader_no, crawl_status = excluded.crawl_status, updated_at = ?]
+[parameters: ('20251001NCLG0', 2025, 'regular', '2025-10-01', 'LG', 'NC', 'scheduled', 0, 'pending', '2025-10-14 08:59:10.384058')]
+(Background on this error at: https://sqlalche.me/e/20/e3q8)
+Traceback (most recent call last):
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/engine/base.py", line 1967, in _exec_single_context
+    self.dialect.do_execute(
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/engine/default.py", line 951, in do_execute
+    cursor.execute(statement, parameters)
+sqlite3.OperationalError: disk I/O error
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/app/scheduler.py", line 58, in crawl_daily_games
+    crawl_schedule_main([
+  File "/app/src/cli/crawl_schedule.py", line 55, in main
+    asyncio.run(crawl_schedule(args))
+  File "/usr/lib/python3.10/asyncio/runners.py", line 44, in run
+    return loop.run_until_complete(main)
+  File "/usr/lib/python3.10/asyncio/base_events.py", line 649, in run_until_complete
+    return future.result()
+  File "/app/src/cli/crawl_schedule.py", line 19, in crawl_schedule
+    repo.save_schedules(games)
+  File "/app/src/repositories/game_repository.py", line 109, in save_schedules
+    self._upsert_schedule(session, schedule)
+  File "/app/src/repositories/game_repository.py", line 166, in _upsert_schedule
+    session.execute(stmt)
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/orm/session.py", line 2351, in execute
+    return self._execute_internal(
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/orm/session.py", line 2249, in _execute_internal
+    result: Result[Any] = compile_state_cls.orm_execute_statement(
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/orm/bulk_persistence.py", line 1306, in orm_execute_statement
+    result = conn.execute(
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/engine/base.py", line 1419, in execute
+    return meth(
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/sql/elements.py", line 526, in _execute_on_connection
+    return connection._execute_clauseelement(
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/engine/base.py", line 1641, in _execute_clauseelement
+    ret = self._execute_context(
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/engine/base.py", line 1846, in _execute_context
+    return self._exec_single_context(
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/engine/base.py", line 1986, in _exec_single_context
+    self._handle_dbapi_exception(
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/engine/base.py", line 2355, in _handle_dbapi_exception
+    raise sqlalchemy_exception.with_traceback(exc_info[2]) from e
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/engine/base.py", line 1967, in _exec_single_context
+    self.dialect.do_execute(
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/engine/default.py", line 951, in do_execute
+    cursor.execute(statement, parameters)
+sqlalchemy.exc.OperationalError: (sqlite3.OperationalError) disk I/O error
+[SQL: INSERT INTO game_schedules (game_id, season_year, season_type, game_date, home_team_code, away_team_code, game_status, doubleheader_no, crawl_status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP) ON CONFLICT (game_id) DO UPDATE SET home_team_code = excluded.home_team_code, away_team_code = excluded.away_team_code, game_status = excluded.game_status, doubleheader_no = excluded.doubleheader_no, crawl_status = excluded.crawl_status, updated_at = ?]
+[parameters: ('20251001NCLG0', 2025, 'regular', '2025-10-01', 'LG', 'NC', 'scheduled', 0, 'pending', '2025-10-14 08:59:10.384058')]
+(Background on this error at: https://sqlalche.me/e/20/e3q8)
+2025-10-14 08:59:10,392 - __main__ - ERROR - Startup crawl failed; scheduler will continue with cron jobs
+Traceback (most recent call last):
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/engine/base.py", line 1967, in _exec_single_context
+    self.dialect.do_execute(
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/engine/default.py", line 951, in do_execute
+    cursor.execute(statement, parameters)
+sqlite3.OperationalError: disk I/O error
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/usr/local/lib/python3.10/dist-packages/tenacity/__init__.py", line 480, in __call__
+    result = fn(*args, **kwargs)
+  File "/app/scheduler.py", line 58, in crawl_daily_games
+    crawl_schedule_main([
+  File "/app/src/cli/crawl_schedule.py", line 55, in main
+    asyncio.run(crawl_schedule(args))
+  File "/usr/lib/python3.10/asyncio/runners.py", line 44, in run
+    return loop.run_until_complete(main)
+  File "/usr/lib/python3.10/asyncio/base_events.py", line 649, in run_until_complete
+    return future.result()
+  File "/app/src/cli/crawl_schedule.py", line 19, in crawl_schedule
+    repo.save_schedules(games)
+  File "/app/src/repositories/game_repository.py", line 109, in save_schedules
+    self._upsert_schedule(session, schedule)
+  File "/app/src/repositories/game_repository.py", line 166, in _upsert_schedule
+    session.execute(stmt)
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/orm/session.py", line 2351, in execute
+    return self._execute_internal(
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/orm/session.py", line 2249, in _execute_internal
+    result: Result[Any] = compile_state_cls.orm_execute_statement(
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/orm/bulk_persistence.py", line 1306, in orm_execute_statement
+    result = conn.execute(
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/engine/base.py", line 1419, in execute
+    return meth(
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/sql/elements.py", line 526, in _execute_on_connection
+    return connection._execute_clauseelement(
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/engine/base.py", line 1641, in _execute_clauseelement
+    ret = self._execute_context(
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/engine/base.py", line 1846, in _execute_context
+    return self._exec_single_context(
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/engine/base.py", line 1986, in _exec_single_context
+    self._handle_dbapi_exception(
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/engine/base.py", line 2355, in _handle_dbapi_exception
+    raise sqlalchemy_exception.with_traceback(exc_info[2]) from e
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/engine/base.py", line 1967, in _exec_single_context
+    self.dialect.do_execute(
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/engine/default.py", line 951, in do_execute
+    cursor.execute(statement, parameters)
+sqlalchemy.exc.OperationalError: (sqlite3.OperationalError) disk I/O error
+[SQL: INSERT INTO game_schedules (game_id, season_year, season_type, game_date, home_team_code, away_team_code, game_status, doubleheader_no, crawl_status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP) ON CONFLICT (game_id) DO UPDATE SET home_team_code = excluded.home_team_code, away_team_code = excluded.away_team_code, game_status = excluded.game_status, doubleheader_no = excluded.doubleheader_no, crawl_status = excluded.crawl_status, updated_at = ?]
+[parameters: ('20251001NCLG0', 2025, 'regular', '2025-10-01', 'LG', 'NC', 'scheduled', 0, 'pending', '2025-10-14 08:59:10.384058')]
+(Background on this error at: https://sqlalche.me/e/20/e3q8)
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/app/scheduler.py", line 133, in main
+    crawl_daily_games()
+  File "/usr/local/lib/python3.10/dist-packages/tenacity/__init__.py", line 338, in wrapped_f
+    return copy(f, *args, **kw)
+  File "/usr/local/lib/python3.10/dist-packages/tenacity/__init__.py", line 477, in __call__
+    do = self.iter(retry_state=retry_state)
+  File "/usr/local/lib/python3.10/dist-packages/tenacity/__init__.py", line 378, in iter
+    result = action(retry_state)
+  File "/usr/local/lib/python3.10/dist-packages/tenacity/__init__.py", line 421, in exc_check
+    raise retry_exc from fut.exception()
+tenacity.RetryError: RetryError[<Future at 0x7ab3958daf20 state=finished raised OperationalError>]
+2025-10-14 08:59:10,393 - __main__ - INFO - Scheduler started successfully
+2025-10-14 08:59:10,396 - apscheduler.scheduler - INFO - Added job "Daily Regular Season Games Crawl" to job store "default"
+2025-10-14 08:59:10,397 - apscheduler.scheduler - INFO - Added job "Weekly Futures Profile Sync" to job store "default"
+2025-10-14 08:59:10,399 - apscheduler.scheduler - INFO - Scheduler started
+2025-10-14 08:59:59,045 - apscheduler.scheduler - INFO - Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2025-10-14 08:59:59,045 - __main__ - INFO - Registered job: crawl_games_regular (Daily 03:00 KST)
+2025-10-14 08:59:59,046 - apscheduler.scheduler - INFO - Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2025-10-14 08:59:59,046 - __main__ - INFO - Registered job: crawl_futures_profile (Weekly Sunday 05:00 KST)
+2025-10-14 08:59:59,047 - __main__ - INFO - Performing one-time startup crawl (schedules + game details)
+2025-10-14 08:59:59,047 - __main__ - INFO - === Starting Daily Games Crawl ===
+2025-10-14 08:59:59,048 - __main__ - INFO - Step 1: Updating schedule for 20251013
+2025-10-14 09:00:02,726 - __main__ - ERROR - Daily games crawl failed: (sqlite3.OperationalError) disk I/O error
+[SQL: INSERT INTO game_schedules (game_id, season_year, season_type, game_date, home_team_code, away_team_code, game_status, doubleheader_no, crawl_status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP) ON CONFLICT (game_id) DO UPDATE SET home_team_code = excluded.home_team_code, away_team_code = excluded.away_team_code, game_status = excluded.game_status, doubleheader_no = excluded.doubleheader_no, crawl_status = excluded.crawl_status, updated_at = ?]
+[parameters: ('20251001NCLG0', 2025, 'regular', '2025-10-01', 'LG', 'NC', 'scheduled', 0, 'pending', '2025-10-14 09:00:02.715497')]
+(Background on this error at: https://sqlalche.me/e/20/e3q8)
+Traceback (most recent call last):
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/engine/base.py", line 1967, in _exec_single_context
+    self.dialect.do_execute(
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/engine/default.py", line 951, in do_execute
+    cursor.execute(statement, parameters)
+sqlite3.OperationalError: disk I/O error
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/app/scheduler.py", line 58, in crawl_daily_games
+    crawl_schedule_main([
+  File "/app/src/cli/crawl_schedule.py", line 55, in main
+    asyncio.run(crawl_schedule(args))
+  File "/usr/lib/python3.10/asyncio/runners.py", line 44, in run
+    return loop.run_until_complete(main)
+  File "/usr/lib/python3.10/asyncio/base_events.py", line 649, in run_until_complete
+    return future.result()
+  File "/app/src/cli/crawl_schedule.py", line 19, in crawl_schedule
+    repo.save_schedules(games)
+  File "/app/src/repositories/game_repository.py", line 109, in save_schedules
+    self._upsert_schedule(session, schedule)
+  File "/app/src/repositories/game_repository.py", line 166, in _upsert_schedule
+    session.execute(stmt)
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/orm/session.py", line 2351, in execute
+    return self._execute_internal(
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/orm/session.py", line 2249, in _execute_internal
+    result: Result[Any] = compile_state_cls.orm_execute_statement(
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/orm/bulk_persistence.py", line 1306, in orm_execute_statement
+    result = conn.execute(
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/engine/base.py", line 1419, in execute
+    return meth(
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/sql/elements.py", line 526, in _execute_on_connection
+    return connection._execute_clauseelement(
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/engine/base.py", line 1641, in _execute_clauseelement
+    ret = self._execute_context(
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/engine/base.py", line 1846, in _execute_context
+    return self._exec_single_context(
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/engine/base.py", line 1986, in _exec_single_context
+    self._handle_dbapi_exception(
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/engine/base.py", line 2355, in _handle_dbapi_exception
+    raise sqlalchemy_exception.with_traceback(exc_info[2]) from e
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/engine/base.py", line 1967, in _exec_single_context
+    self.dialect.do_execute(
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/engine/default.py", line 951, in do_execute
+    cursor.execute(statement, parameters)
+sqlalchemy.exc.OperationalError: (sqlite3.OperationalError) disk I/O error
+[SQL: INSERT INTO game_schedules (game_id, season_year, season_type, game_date, home_team_code, away_team_code, game_status, doubleheader_no, crawl_status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP) ON CONFLICT (game_id) DO UPDATE SET home_team_code = excluded.home_team_code, away_team_code = excluded.away_team_code, game_status = excluded.game_status, doubleheader_no = excluded.doubleheader_no, crawl_status = excluded.crawl_status, updated_at = ?]
+[parameters: ('20251001NCLG0', 2025, 'regular', '2025-10-01', 'LG', 'NC', 'scheduled', 0, 'pending', '2025-10-14 09:00:02.715497')]
+(Background on this error at: https://sqlalche.me/e/20/e3q8)
+2025-10-14 09:01:02,786 - __main__ - INFO - === Starting Daily Games Crawl ===
+2025-10-14 09:01:02,787 - __main__ - INFO - Step 1: Updating schedule for 20251013
+2025-10-14 09:01:06,297 - __main__ - ERROR - Daily games crawl failed: (sqlite3.OperationalError) disk I/O error
+[SQL: INSERT INTO game_schedules (game_id, season_year, season_type, game_date, home_team_code, away_team_code, game_status, doubleheader_no, crawl_status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP) ON CONFLICT (game_id) DO UPDATE SET home_team_code = excluded.home_team_code, away_team_code = excluded.away_team_code, game_status = excluded.game_status, doubleheader_no = excluded.doubleheader_no, crawl_status = excluded.crawl_status, updated_at = ?]
+[parameters: ('20251001NCLG0', 2025, 'regular', '2025-10-01', 'LG', 'NC', 'scheduled', 0, 'pending', '2025-10-14 09:01:06.290806')]
+(Background on this error at: https://sqlalche.me/e/20/e3q8)
+Traceback (most recent call last):
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/engine/base.py", line 1967, in _exec_single_context
+    self.dialect.do_execute(
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/engine/default.py", line 951, in do_execute
+    cursor.execute(statement, parameters)
+sqlite3.OperationalError: disk I/O error
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/app/scheduler.py", line 58, in crawl_daily_games
+    crawl_schedule_main([
+  File "/app/src/cli/crawl_schedule.py", line 55, in main
+    asyncio.run(crawl_schedule(args))
+  File "/usr/lib/python3.10/asyncio/runners.py", line 44, in run
+    return loop.run_until_complete(main)
+  File "/usr/lib/python3.10/asyncio/base_events.py", line 649, in run_until_complete
+    return future.result()
+  File "/app/src/cli/crawl_schedule.py", line 19, in crawl_schedule
+    repo.save_schedules(games)
+  File "/app/src/repositories/game_repository.py", line 109, in save_schedules
+    self._upsert_schedule(session, schedule)
+  File "/app/src/repositories/game_repository.py", line 166, in _upsert_schedule
+    session.execute(stmt)
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/orm/session.py", line 2351, in execute
+    return self._execute_internal(
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/orm/session.py", line 2249, in _execute_internal
+    result: Result[Any] = compile_state_cls.orm_execute_statement(
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/orm/bulk_persistence.py", line 1306, in orm_execute_statement
+    result = conn.execute(
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/engine/base.py", line 1419, in execute
+    return meth(
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/sql/elements.py", line 526, in _execute_on_connection
+    return connection._execute_clauseelement(
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/engine/base.py", line 1641, in _execute_clauseelement
+    ret = self._execute_context(
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/engine/base.py", line 1846, in _execute_context
+    return self._exec_single_context(
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/engine/base.py", line 1986, in _exec_single_context
+    self._handle_dbapi_exception(
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/engine/base.py", line 2355, in _handle_dbapi_exception
+    raise sqlalchemy_exception.with_traceback(exc_info[2]) from e
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/engine/base.py", line 1967, in _exec_single_context
+    self.dialect.do_execute(
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/engine/default.py", line 951, in do_execute
+    cursor.execute(statement, parameters)
+sqlalchemy.exc.OperationalError: (sqlite3.OperationalError) disk I/O error
+[SQL: INSERT INTO game_schedules (game_id, season_year, season_type, game_date, home_team_code, away_team_code, game_status, doubleheader_no, crawl_status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP) ON CONFLICT (game_id) DO UPDATE SET home_team_code = excluded.home_team_code, away_team_code = excluded.away_team_code, game_status = excluded.game_status, doubleheader_no = excluded.doubleheader_no, crawl_status = excluded.crawl_status, updated_at = ?]
+[parameters: ('20251001NCLG0', 2025, 'regular', '2025-10-01', 'LG', 'NC', 'scheduled', 0, 'pending', '2025-10-14 09:01:06.290806')]
+(Background on this error at: https://sqlalche.me/e/20/e3q8)
+2025-10-14 09:02:06,353 - __main__ - INFO - === Starting Daily Games Crawl ===
+2025-10-14 09:02:06,354 - __main__ - INFO - Step 1: Updating schedule for 20251013
+2025-10-14 09:02:09,936 - __main__ - ERROR - Daily games crawl failed: (sqlite3.OperationalError) disk I/O error
+[SQL: INSERT INTO game_schedules (game_id, season_year, season_type, game_date, home_team_code, away_team_code, game_status, doubleheader_no, crawl_status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP) ON CONFLICT (game_id) DO UPDATE SET home_team_code = excluded.home_team_code, away_team_code = excluded.away_team_code, game_status = excluded.game_status, doubleheader_no = excluded.doubleheader_no, crawl_status = excluded.crawl_status, updated_at = ?]
+[parameters: ('20251001NCLG0', 2025, 'regular', '2025-10-01', 'LG', 'NC', 'scheduled', 0, 'pending', '2025-10-14 09:02:09.931320')]
+(Background on this error at: https://sqlalche.me/e/20/e3q8)
+Traceback (most recent call last):
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/engine/base.py", line 1967, in _exec_single_context
+    self.dialect.do_execute(
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/engine/default.py", line 951, in do_execute
+    cursor.execute(statement, parameters)
+sqlite3.OperationalError: disk I/O error
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/app/scheduler.py", line 58, in crawl_daily_games
+    crawl_schedule_main([
+  File "/app/src/cli/crawl_schedule.py", line 55, in main
+    asyncio.run(crawl_schedule(args))
+  File "/usr/lib/python3.10/asyncio/runners.py", line 44, in run
+    return loop.run_until_complete(main)
+  File "/usr/lib/python3.10/asyncio/base_events.py", line 649, in run_until_complete
+    return future.result()
+  File "/app/src/cli/crawl_schedule.py", line 19, in crawl_schedule
+    repo.save_schedules(games)
+  File "/app/src/repositories/game_repository.py", line 109, in save_schedules
+    self._upsert_schedule(session, schedule)
+  File "/app/src/repositories/game_repository.py", line 166, in _upsert_schedule
+    session.execute(stmt)
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/orm/session.py", line 2351, in execute
+    return self._execute_internal(
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/orm/session.py", line 2249, in _execute_internal
+    result: Result[Any] = compile_state_cls.orm_execute_statement(
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/orm/bulk_persistence.py", line 1306, in orm_execute_statement
+    result = conn.execute(
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/engine/base.py", line 1419, in execute
+    return meth(
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/sql/elements.py", line 526, in _execute_on_connection
+    return connection._execute_clauseelement(
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/engine/base.py", line 1641, in _execute_clauseelement
+    ret = self._execute_context(
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/engine/base.py", line 1846, in _execute_context
+    return self._exec_single_context(
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/engine/base.py", line 1986, in _exec_single_context
+    self._handle_dbapi_exception(
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/engine/base.py", line 2355, in _handle_dbapi_exception
+    raise sqlalchemy_exception.with_traceback(exc_info[2]) from e
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/engine/base.py", line 1967, in _exec_single_context
+    self.dialect.do_execute(
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/engine/default.py", line 951, in do_execute
+    cursor.execute(statement, parameters)
+sqlalchemy.exc.OperationalError: (sqlite3.OperationalError) disk I/O error
+[SQL: INSERT INTO game_schedules (game_id, season_year, season_type, game_date, home_team_code, away_team_code, game_status, doubleheader_no, crawl_status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP) ON CONFLICT (game_id) DO UPDATE SET home_team_code = excluded.home_team_code, away_team_code = excluded.away_team_code, game_status = excluded.game_status, doubleheader_no = excluded.doubleheader_no, crawl_status = excluded.crawl_status, updated_at = ?]
+[parameters: ('20251001NCLG0', 2025, 'regular', '2025-10-01', 'LG', 'NC', 'scheduled', 0, 'pending', '2025-10-14 09:02:09.931320')]
+(Background on this error at: https://sqlalche.me/e/20/e3q8)
+2025-10-14 09:02:09,937 - __main__ - ERROR - Startup crawl failed; scheduler will continue with cron jobs
+Traceback (most recent call last):
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/engine/base.py", line 1967, in _exec_single_context
+    self.dialect.do_execute(
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/engine/default.py", line 951, in do_execute
+    cursor.execute(statement, parameters)
+sqlite3.OperationalError: disk I/O error
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/usr/local/lib/python3.10/dist-packages/tenacity/__init__.py", line 480, in __call__
+    result = fn(*args, **kwargs)
+  File "/app/scheduler.py", line 58, in crawl_daily_games
+    crawl_schedule_main([
+  File "/app/src/cli/crawl_schedule.py", line 55, in main
+    asyncio.run(crawl_schedule(args))
+  File "/usr/lib/python3.10/asyncio/runners.py", line 44, in run
+    return loop.run_until_complete(main)
+  File "/usr/lib/python3.10/asyncio/base_events.py", line 649, in run_until_complete
+    return future.result()
+  File "/app/src/cli/crawl_schedule.py", line 19, in crawl_schedule
+    repo.save_schedules(games)
+  File "/app/src/repositories/game_repository.py", line 109, in save_schedules
+    self._upsert_schedule(session, schedule)
+  File "/app/src/repositories/game_repository.py", line 166, in _upsert_schedule
+    session.execute(stmt)
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/orm/session.py", line 2351, in execute
+    return self._execute_internal(
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/orm/session.py", line 2249, in _execute_internal
+    result: Result[Any] = compile_state_cls.orm_execute_statement(
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/orm/bulk_persistence.py", line 1306, in orm_execute_statement
+    result = conn.execute(
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/engine/base.py", line 1419, in execute
+    return meth(
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/sql/elements.py", line 526, in _execute_on_connection
+    return connection._execute_clauseelement(
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/engine/base.py", line 1641, in _execute_clauseelement
+    ret = self._execute_context(
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/engine/base.py", line 1846, in _execute_context
+    return self._exec_single_context(
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/engine/base.py", line 1986, in _exec_single_context
+    self._handle_dbapi_exception(
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/engine/base.py", line 2355, in _handle_dbapi_exception
+    raise sqlalchemy_exception.with_traceback(exc_info[2]) from e
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/engine/base.py", line 1967, in _exec_single_context
+    self.dialect.do_execute(
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/engine/default.py", line 951, in do_execute
+    cursor.execute(statement, parameters)
+sqlalchemy.exc.OperationalError: (sqlite3.OperationalError) disk I/O error
+[SQL: INSERT INTO game_schedules (game_id, season_year, season_type, game_date, home_team_code, away_team_code, game_status, doubleheader_no, crawl_status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP) ON CONFLICT (game_id) DO UPDATE SET home_team_code = excluded.home_team_code, away_team_code = excluded.away_team_code, game_status = excluded.game_status, doubleheader_no = excluded.doubleheader_no, crawl_status = excluded.crawl_status, updated_at = ?]
+[parameters: ('20251001NCLG0', 2025, 'regular', '2025-10-01', 'LG', 'NC', 'scheduled', 0, 'pending', '2025-10-14 09:02:09.931320')]
+(Background on this error at: https://sqlalche.me/e/20/e3q8)
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/app/scheduler.py", line 133, in main
+    crawl_daily_games()
+  File "/usr/local/lib/python3.10/dist-packages/tenacity/__init__.py", line 338, in wrapped_f
+    return copy(f, *args, **kw)
+  File "/usr/local/lib/python3.10/dist-packages/tenacity/__init__.py", line 477, in __call__
+    do = self.iter(retry_state=retry_state)
+  File "/usr/local/lib/python3.10/dist-packages/tenacity/__init__.py", line 378, in iter
+    result = action(retry_state)
+  File "/usr/local/lib/python3.10/dist-packages/tenacity/__init__.py", line 421, in exc_check
+    raise retry_exc from fut.exception()
+tenacity.RetryError: RetryError[<Future at 0x7f54183e6bc0 state=finished raised OperationalError>]
+2025-10-14 09:02:09,937 - __main__ - INFO - Scheduler started successfully
+2025-10-14 09:02:09,939 - apscheduler.scheduler - INFO - Added job "Daily Regular Season Games Crawl" to job store "default"
+2025-10-14 09:02:09,939 - apscheduler.scheduler - INFO - Added job "Weekly Futures Profile Sync" to job store "default"
+2025-10-14 09:02:09,939 - apscheduler.scheduler - INFO - Scheduler started
+2025-10-14 09:03:56,059 - apscheduler.scheduler - INFO - Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2025-10-14 09:03:56,059 - __main__ - INFO - Registered job: crawl_games_regular (Daily 03:00 KST)
+2025-10-14 09:03:56,060 - apscheduler.scheduler - INFO - Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2025-10-14 09:03:56,060 - __main__ - INFO - Registered job: crawl_futures_profile (Weekly Sunday 05:00 KST)
+2025-10-14 09:03:56,061 - __main__ - INFO - Performing one-time startup crawl (schedules + game details)
+2025-10-14 09:03:56,061 - __main__ - INFO - === Starting Daily Games Crawl ===
+2025-10-14 09:03:56,062 - __main__ - INFO - Step 1: Updating schedule for 20251013
+2025-10-14 09:04:00,347 - __main__ - ERROR - Daily games crawl failed: (mysql.connector.errors.DatabaseError) 2003 (HY000): Can't connect to MySQL server on 'host.docker.internal:3306' (111)
+(Background on this error at: https://sqlalche.me/e/20/4xp6)
+Traceback (most recent call last):
+  File "/usr/local/lib/python3.10/dist-packages/mysql/connector/connection_cext.py", line 354, in _open_connection
+    self._cmysql.connect(**cnx_kwargs)
+_mysql_connector.MySQLInterfaceError: Can't connect to MySQL server on 'host.docker.internal:3306' (111)
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/engine/base.py", line 143, in __init__
+    self._dbapi_connection = engine.raw_connection()
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/engine/base.py", line 3301, in raw_connection
+    return self.pool.connect()
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/pool/base.py", line 447, in connect
+    return _ConnectionFairy._checkout(self)
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/pool/base.py", line 1264, in _checkout
+    fairy = _ConnectionRecord.checkout(pool)
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/pool/base.py", line 711, in checkout
+    rec = pool._do_get()
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/pool/impl.py", line 177, in _do_get
+    with util.safe_reraise():
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/util/langhelpers.py", line 224, in __exit__
+    raise exc_value.with_traceback(exc_tb)
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/pool/impl.py", line 175, in _do_get
+    return self._create_connection()
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/pool/base.py", line 388, in _create_connection
+    return _ConnectionRecord(self)
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/pool/base.py", line 673, in __init__
+    self.__connect()
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/pool/base.py", line 899, in __connect
+    with util.safe_reraise():
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/util/langhelpers.py", line 224, in __exit__
+    raise exc_value.with_traceback(exc_tb)
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/pool/base.py", line 895, in __connect
+    self.dbapi_connection = connection = pool._invoke_creator(self)
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/engine/create.py", line 661, in connect
+    return dialect.connect(*cargs, **cparams)
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/engine/default.py", line 629, in connect
+    return self.loaded_dbapi.connect(*cargs, **cparams)  # type: ignore[no-any-return]  # NOQA: E501
+  File "/usr/local/lib/python3.10/dist-packages/mysql/connector/pooling.py", line 322, in connect
+    return CMySQLConnection(*args, **kwargs)
+  File "/usr/local/lib/python3.10/dist-packages/mysql/connector/connection_cext.py", line 142, in __init__
+    self.connect(**kwargs)
+  File "/usr/local/lib/python3.10/dist-packages/mysql/connector/abstracts.py", line 1604, in connect
+    self._open_connection()
+  File "/usr/local/lib/python3.10/dist-packages/mysql/connector/connection_cext.py", line 360, in _open_connection
+    raise get_mysql_exception(
+mysql.connector.errors.DatabaseError: 2003 (HY000): Can't connect to MySQL server on 'host.docker.internal:3306' (111)
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/app/scheduler.py", line 58, in crawl_daily_games
+    crawl_schedule_main([
+  File "/app/src/cli/crawl_schedule.py", line 55, in main
+    asyncio.run(crawl_schedule(args))
+  File "/usr/lib/python3.10/asyncio/runners.py", line 44, in run
+    return loop.run_until_complete(main)
+  File "/usr/lib/python3.10/asyncio/base_events.py", line 649, in run_until_complete
+    return future.result()
+  File "/app/src/cli/crawl_schedule.py", line 19, in crawl_schedule
+    repo.save_schedules(games)
+  File "/app/src/repositories/game_repository.py", line 109, in save_schedules
+    self._upsert_schedule(session, schedule)
+  File "/app/src/repositories/game_repository.py", line 166, in _upsert_schedule
+    session.execute(stmt)
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/orm/session.py", line 2351, in execute
+    return self._execute_internal(
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/orm/session.py", line 2239, in _execute_internal
+    conn = self._connection_for_bind(bind)
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/orm/session.py", line 2108, in _connection_for_bind
+    return trans._connection_for_bind(engine, execution_options)
+  File "<string>", line 2, in _connection_for_bind
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/orm/state_changes.py", line 137, in _go
+    ret_value = fn(self, *arg, **kw)
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/orm/session.py", line 1187, in _connection_for_bind
+    conn = bind.connect()
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/engine/base.py", line 3277, in connect
+    return self._connection_cls(self)
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/engine/base.py", line 145, in __init__
+    Connection._handle_dbapi_exception_noconnection(
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/engine/base.py", line 2440, in _handle_dbapi_exception_noconnection
+    raise sqlalchemy_exception.with_traceback(exc_info[2]) from e
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/engine/base.py", line 143, in __init__
+    self._dbapi_connection = engine.raw_connection()
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/engine/base.py", line 3301, in raw_connection
+    return self.pool.connect()
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/pool/base.py", line 447, in connect
+    return _ConnectionFairy._checkout(self)
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/pool/base.py", line 1264, in _checkout
+    fairy = _ConnectionRecord.checkout(pool)
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/pool/base.py", line 711, in checkout
+    rec = pool._do_get()
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/pool/impl.py", line 177, in _do_get
+    with util.safe_reraise():
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/util/langhelpers.py", line 224, in __exit__
+    raise exc_value.with_traceback(exc_tb)
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/pool/impl.py", line 175, in _do_get
+    return self._create_connection()
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/pool/base.py", line 388, in _create_connection
+    return _ConnectionRecord(self)
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/pool/base.py", line 673, in __init__
+    self.__connect()
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/pool/base.py", line 899, in __connect
+    with util.safe_reraise():
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/util/langhelpers.py", line 224, in __exit__
+    raise exc_value.with_traceback(exc_tb)
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/pool/base.py", line 895, in __connect
+    self.dbapi_connection = connection = pool._invoke_creator(self)
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/engine/create.py", line 661, in connect
+    return dialect.connect(*cargs, **cparams)
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/engine/default.py", line 629, in connect
+    return self.loaded_dbapi.connect(*cargs, **cparams)  # type: ignore[no-any-return]  # NOQA: E501
+  File "/usr/local/lib/python3.10/dist-packages/mysql/connector/pooling.py", line 322, in connect
+    return CMySQLConnection(*args, **kwargs)
+  File "/usr/local/lib/python3.10/dist-packages/mysql/connector/connection_cext.py", line 142, in __init__
+    self.connect(**kwargs)
+  File "/usr/local/lib/python3.10/dist-packages/mysql/connector/abstracts.py", line 1604, in connect
+    self._open_connection()
+  File "/usr/local/lib/python3.10/dist-packages/mysql/connector/connection_cext.py", line 360, in _open_connection
+    raise get_mysql_exception(
+sqlalchemy.exc.DatabaseError: (mysql.connector.errors.DatabaseError) 2003 (HY000): Can't connect to MySQL server on 'host.docker.internal:3306' (111)
+(Background on this error at: https://sqlalche.me/e/20/4xp6)
+2025-10-14 09:05:00,385 - __main__ - INFO - === Starting Daily Games Crawl ===
+2025-10-14 09:05:00,387 - __main__ - INFO - Step 1: Updating schedule for 20251013
+2025-10-14 09:05:03,920 - __main__ - ERROR - Daily games crawl failed: (mysql.connector.errors.DatabaseError) 2003 (HY000): Can't connect to MySQL server on 'host.docker.internal:3306' (111)
+(Background on this error at: https://sqlalche.me/e/20/4xp6)
+Traceback (most recent call last):
+  File "/usr/local/lib/python3.10/dist-packages/mysql/connector/connection_cext.py", line 354, in _open_connection
+    self._cmysql.connect(**cnx_kwargs)
+_mysql_connector.MySQLInterfaceError: Can't connect to MySQL server on 'host.docker.internal:3306' (111)
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/engine/base.py", line 143, in __init__
+    self._dbapi_connection = engine.raw_connection()
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/engine/base.py", line 3301, in raw_connection
+    return self.pool.connect()
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/pool/base.py", line 447, in connect
+    return _ConnectionFairy._checkout(self)
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/pool/base.py", line 1264, in _checkout
+    fairy = _ConnectionRecord.checkout(pool)
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/pool/base.py", line 711, in checkout
+    rec = pool._do_get()
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/pool/impl.py", line 177, in _do_get
+    with util.safe_reraise():
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/util/langhelpers.py", line 224, in __exit__
+    raise exc_value.with_traceback(exc_tb)
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/pool/impl.py", line 175, in _do_get
+    return self._create_connection()
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/pool/base.py", line 388, in _create_connection
+    return _ConnectionRecord(self)
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/pool/base.py", line 673, in __init__
+    self.__connect()
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/pool/base.py", line 899, in __connect
+    with util.safe_reraise():
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/util/langhelpers.py", line 224, in __exit__
+    raise exc_value.with_traceback(exc_tb)
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/pool/base.py", line 895, in __connect
+    self.dbapi_connection = connection = pool._invoke_creator(self)
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/engine/create.py", line 661, in connect
+    return dialect.connect(*cargs, **cparams)
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/engine/default.py", line 629, in connect
+    return self.loaded_dbapi.connect(*cargs, **cparams)  # type: ignore[no-any-return]  # NOQA: E501
+  File "/usr/local/lib/python3.10/dist-packages/mysql/connector/pooling.py", line 322, in connect
+    return CMySQLConnection(*args, **kwargs)
+  File "/usr/local/lib/python3.10/dist-packages/mysql/connector/connection_cext.py", line 142, in __init__
+    self.connect(**kwargs)
+  File "/usr/local/lib/python3.10/dist-packages/mysql/connector/abstracts.py", line 1604, in connect
+    self._open_connection()
+  File "/usr/local/lib/python3.10/dist-packages/mysql/connector/connection_cext.py", line 360, in _open_connection
+    raise get_mysql_exception(
+mysql.connector.errors.DatabaseError: 2003 (HY000): Can't connect to MySQL server on 'host.docker.internal:3306' (111)
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/app/scheduler.py", line 58, in crawl_daily_games
+    crawl_schedule_main([
+  File "/app/src/cli/crawl_schedule.py", line 55, in main
+    asyncio.run(crawl_schedule(args))
+  File "/usr/lib/python3.10/asyncio/runners.py", line 44, in run
+    return loop.run_until_complete(main)
+  File "/usr/lib/python3.10/asyncio/base_events.py", line 649, in run_until_complete
+    return future.result()
+  File "/app/src/cli/crawl_schedule.py", line 19, in crawl_schedule
+    repo.save_schedules(games)
+  File "/app/src/repositories/game_repository.py", line 109, in save_schedules
+    self._upsert_schedule(session, schedule)
+  File "/app/src/repositories/game_repository.py", line 166, in _upsert_schedule
+    session.execute(stmt)
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/orm/session.py", line 2351, in execute
+    return self._execute_internal(
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/orm/session.py", line 2239, in _execute_internal
+    conn = self._connection_for_bind(bind)
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/orm/session.py", line 2108, in _connection_for_bind
+    return trans._connection_for_bind(engine, execution_options)
+  File "<string>", line 2, in _connection_for_bind
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/orm/state_changes.py", line 137, in _go
+    ret_value = fn(self, *arg, **kw)
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/orm/session.py", line 1187, in _connection_for_bind
+    conn = bind.connect()
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/engine/base.py", line 3277, in connect
+    return self._connection_cls(self)
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/engine/base.py", line 145, in __init__
+    Connection._handle_dbapi_exception_noconnection(
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/engine/base.py", line 2440, in _handle_dbapi_exception_noconnection
+    raise sqlalchemy_exception.with_traceback(exc_info[2]) from e
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/engine/base.py", line 143, in __init__
+    self._dbapi_connection = engine.raw_connection()
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/engine/base.py", line 3301, in raw_connection
+    return self.pool.connect()
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/pool/base.py", line 447, in connect
+    return _ConnectionFairy._checkout(self)
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/pool/base.py", line 1264, in _checkout
+    fairy = _ConnectionRecord.checkout(pool)
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/pool/base.py", line 711, in checkout
+    rec = pool._do_get()
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/pool/impl.py", line 177, in _do_get
+    with util.safe_reraise():
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/util/langhelpers.py", line 224, in __exit__
+    raise exc_value.with_traceback(exc_tb)
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/pool/impl.py", line 175, in _do_get
+    return self._create_connection()
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/pool/base.py", line 388, in _create_connection
+    return _ConnectionRecord(self)
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/pool/base.py", line 673, in __init__
+    self.__connect()
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/pool/base.py", line 899, in __connect
+    with util.safe_reraise():
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/util/langhelpers.py", line 224, in __exit__
+    raise exc_value.with_traceback(exc_tb)
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/pool/base.py", line 895, in __connect
+    self.dbapi_connection = connection = pool._invoke_creator(self)
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/engine/create.py", line 661, in connect
+    return dialect.connect(*cargs, **cparams)
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/engine/default.py", line 629, in connect
+    return self.loaded_dbapi.connect(*cargs, **cparams)  # type: ignore[no-any-return]  # NOQA: E501
+  File "/usr/local/lib/python3.10/dist-packages/mysql/connector/pooling.py", line 322, in connect
+    return CMySQLConnection(*args, **kwargs)
+  File "/usr/local/lib/python3.10/dist-packages/mysql/connector/connection_cext.py", line 142, in __init__
+    self.connect(**kwargs)
+  File "/usr/local/lib/python3.10/dist-packages/mysql/connector/abstracts.py", line 1604, in connect
+    self._open_connection()
+  File "/usr/local/lib/python3.10/dist-packages/mysql/connector/connection_cext.py", line 360, in _open_connection
+    raise get_mysql_exception(
+sqlalchemy.exc.DatabaseError: (mysql.connector.errors.DatabaseError) 2003 (HY000): Can't connect to MySQL server on 'host.docker.internal:3306' (111)
+(Background on this error at: https://sqlalche.me/e/20/4xp6)
+2025-10-14 09:06:03,928 - __main__ - INFO - === Starting Daily Games Crawl ===
+2025-10-14 09:06:03,929 - __main__ - INFO - Step 1: Updating schedule for 20251013
+2025-10-14 09:06:07,582 - __main__ - ERROR - Daily games crawl failed: (mysql.connector.errors.DatabaseError) 2003 (HY000): Can't connect to MySQL server on 'host.docker.internal:3306' (111)
+(Background on this error at: https://sqlalche.me/e/20/4xp6)
+Traceback (most recent call last):
+  File "/usr/local/lib/python3.10/dist-packages/mysql/connector/connection_cext.py", line 354, in _open_connection
+    self._cmysql.connect(**cnx_kwargs)
+_mysql_connector.MySQLInterfaceError: Can't connect to MySQL server on 'host.docker.internal:3306' (111)
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/engine/base.py", line 143, in __init__
+    self._dbapi_connection = engine.raw_connection()
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/engine/base.py", line 3301, in raw_connection
+    return self.pool.connect()
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/pool/base.py", line 447, in connect
+    return _ConnectionFairy._checkout(self)
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/pool/base.py", line 1264, in _checkout
+    fairy = _ConnectionRecord.checkout(pool)
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/pool/base.py", line 711, in checkout
+    rec = pool._do_get()
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/pool/impl.py", line 177, in _do_get
+    with util.safe_reraise():
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/util/langhelpers.py", line 224, in __exit__
+    raise exc_value.with_traceback(exc_tb)
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/pool/impl.py", line 175, in _do_get
+    return self._create_connection()
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/pool/base.py", line 388, in _create_connection
+    return _ConnectionRecord(self)
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/pool/base.py", line 673, in __init__
+    self.__connect()
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/pool/base.py", line 899, in __connect
+    with util.safe_reraise():
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/util/langhelpers.py", line 224, in __exit__
+    raise exc_value.with_traceback(exc_tb)
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/pool/base.py", line 895, in __connect
+    self.dbapi_connection = connection = pool._invoke_creator(self)
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/engine/create.py", line 661, in connect
+    return dialect.connect(*cargs, **cparams)
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/engine/default.py", line 629, in connect
+    return self.loaded_dbapi.connect(*cargs, **cparams)  # type: ignore[no-any-return]  # NOQA: E501
+  File "/usr/local/lib/python3.10/dist-packages/mysql/connector/pooling.py", line 322, in connect
+    return CMySQLConnection(*args, **kwargs)
+  File "/usr/local/lib/python3.10/dist-packages/mysql/connector/connection_cext.py", line 142, in __init__
+    self.connect(**kwargs)
+  File "/usr/local/lib/python3.10/dist-packages/mysql/connector/abstracts.py", line 1604, in connect
+    self._open_connection()
+  File "/usr/local/lib/python3.10/dist-packages/mysql/connector/connection_cext.py", line 360, in _open_connection
+    raise get_mysql_exception(
+mysql.connector.errors.DatabaseError: 2003 (HY000): Can't connect to MySQL server on 'host.docker.internal:3306' (111)
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/app/scheduler.py", line 58, in crawl_daily_games
+    crawl_schedule_main([
+  File "/app/src/cli/crawl_schedule.py", line 55, in main
+    asyncio.run(crawl_schedule(args))
+  File "/usr/lib/python3.10/asyncio/runners.py", line 44, in run
+    return loop.run_until_complete(main)
+  File "/usr/lib/python3.10/asyncio/base_events.py", line 649, in run_until_complete
+    return future.result()
+  File "/app/src/cli/crawl_schedule.py", line 19, in crawl_schedule
+    repo.save_schedules(games)
+  File "/app/src/repositories/game_repository.py", line 109, in save_schedules
+    self._upsert_schedule(session, schedule)
+  File "/app/src/repositories/game_repository.py", line 166, in _upsert_schedule
+    session.execute(stmt)
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/orm/session.py", line 2351, in execute
+    return self._execute_internal(
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/orm/session.py", line 2239, in _execute_internal
+    conn = self._connection_for_bind(bind)
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/orm/session.py", line 2108, in _connection_for_bind
+    return trans._connection_for_bind(engine, execution_options)
+  File "<string>", line 2, in _connection_for_bind
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/orm/state_changes.py", line 137, in _go
+    ret_value = fn(self, *arg, **kw)
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/orm/session.py", line 1187, in _connection_for_bind
+    conn = bind.connect()
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/engine/base.py", line 3277, in connect
+    return self._connection_cls(self)
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/engine/base.py", line 145, in __init__
+    Connection._handle_dbapi_exception_noconnection(
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/engine/base.py", line 2440, in _handle_dbapi_exception_noconnection
+    raise sqlalchemy_exception.with_traceback(exc_info[2]) from e
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/engine/base.py", line 143, in __init__
+    self._dbapi_connection = engine.raw_connection()
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/engine/base.py", line 3301, in raw_connection
+    return self.pool.connect()
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/pool/base.py", line 447, in connect
+    return _ConnectionFairy._checkout(self)
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/pool/base.py", line 1264, in _checkout
+    fairy = _ConnectionRecord.checkout(pool)
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/pool/base.py", line 711, in checkout
+    rec = pool._do_get()
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/pool/impl.py", line 177, in _do_get
+    with util.safe_reraise():
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/util/langhelpers.py", line 224, in __exit__
+    raise exc_value.with_traceback(exc_tb)
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/pool/impl.py", line 175, in _do_get
+    return self._create_connection()
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/pool/base.py", line 388, in _create_connection
+    return _ConnectionRecord(self)
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/pool/base.py", line 673, in __init__
+    self.__connect()
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/pool/base.py", line 899, in __connect
+    with util.safe_reraise():
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/util/langhelpers.py", line 224, in __exit__
+    raise exc_value.with_traceback(exc_tb)
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/pool/base.py", line 895, in __connect
+    self.dbapi_connection = connection = pool._invoke_creator(self)
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/engine/create.py", line 661, in connect
+    return dialect.connect(*cargs, **cparams)
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/engine/default.py", line 629, in connect
+    return self.loaded_dbapi.connect(*cargs, **cparams)  # type: ignore[no-any-return]  # NOQA: E501
+  File "/usr/local/lib/python3.10/dist-packages/mysql/connector/pooling.py", line 322, in connect
+    return CMySQLConnection(*args, **kwargs)
+  File "/usr/local/lib/python3.10/dist-packages/mysql/connector/connection_cext.py", line 142, in __init__
+    self.connect(**kwargs)
+  File "/usr/local/lib/python3.10/dist-packages/mysql/connector/abstracts.py", line 1604, in connect
+    self._open_connection()
+  File "/usr/local/lib/python3.10/dist-packages/mysql/connector/connection_cext.py", line 360, in _open_connection
+    raise get_mysql_exception(
+sqlalchemy.exc.DatabaseError: (mysql.connector.errors.DatabaseError) 2003 (HY000): Can't connect to MySQL server on 'host.docker.internal:3306' (111)
+(Background on this error at: https://sqlalche.me/e/20/4xp6)
+2025-10-14 09:06:07,583 - __main__ - ERROR - Startup crawl failed; scheduler will continue with cron jobs
+Traceback (most recent call last):
+  File "/usr/local/lib/python3.10/dist-packages/mysql/connector/connection_cext.py", line 354, in _open_connection
+    self._cmysql.connect(**cnx_kwargs)
+_mysql_connector.MySQLInterfaceError: Can't connect to MySQL server on 'host.docker.internal:3306' (111)
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/engine/base.py", line 143, in __init__
+    self._dbapi_connection = engine.raw_connection()
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/engine/base.py", line 3301, in raw_connection
+    return self.pool.connect()
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/pool/base.py", line 447, in connect
+    return _ConnectionFairy._checkout(self)
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/pool/base.py", line 1264, in _checkout
+    fairy = _ConnectionRecord.checkout(pool)
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/pool/base.py", line 711, in checkout
+    rec = pool._do_get()
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/pool/impl.py", line 177, in _do_get
+    with util.safe_reraise():
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/util/langhelpers.py", line 224, in __exit__
+    raise exc_value.with_traceback(exc_tb)
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/pool/impl.py", line 175, in _do_get
+    return self._create_connection()
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/pool/base.py", line 388, in _create_connection
+    return _ConnectionRecord(self)
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/pool/base.py", line 673, in __init__
+    self.__connect()
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/pool/base.py", line 899, in __connect
+    with util.safe_reraise():
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/util/langhelpers.py", line 224, in __exit__
+    raise exc_value.with_traceback(exc_tb)
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/pool/base.py", line 895, in __connect
+    self.dbapi_connection = connection = pool._invoke_creator(self)
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/engine/create.py", line 661, in connect
+    return dialect.connect(*cargs, **cparams)
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/engine/default.py", line 629, in connect
+    return self.loaded_dbapi.connect(*cargs, **cparams)  # type: ignore[no-any-return]  # NOQA: E501
+  File "/usr/local/lib/python3.10/dist-packages/mysql/connector/pooling.py", line 322, in connect
+    return CMySQLConnection(*args, **kwargs)
+  File "/usr/local/lib/python3.10/dist-packages/mysql/connector/connection_cext.py", line 142, in __init__
+    self.connect(**kwargs)
+  File "/usr/local/lib/python3.10/dist-packages/mysql/connector/abstracts.py", line 1604, in connect
+    self._open_connection()
+  File "/usr/local/lib/python3.10/dist-packages/mysql/connector/connection_cext.py", line 360, in _open_connection
+    raise get_mysql_exception(
+mysql.connector.errors.DatabaseError: 2003 (HY000): Can't connect to MySQL server on 'host.docker.internal:3306' (111)
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/usr/local/lib/python3.10/dist-packages/tenacity/__init__.py", line 480, in __call__
+    result = fn(*args, **kwargs)
+  File "/app/scheduler.py", line 58, in crawl_daily_games
+    crawl_schedule_main([
+  File "/app/src/cli/crawl_schedule.py", line 55, in main
+    asyncio.run(crawl_schedule(args))
+  File "/usr/lib/python3.10/asyncio/runners.py", line 44, in run
+    return loop.run_until_complete(main)
+  File "/usr/lib/python3.10/asyncio/base_events.py", line 649, in run_until_complete
+    return future.result()
+  File "/app/src/cli/crawl_schedule.py", line 19, in crawl_schedule
+    repo.save_schedules(games)
+  File "/app/src/repositories/game_repository.py", line 109, in save_schedules
+    self._upsert_schedule(session, schedule)
+  File "/app/src/repositories/game_repository.py", line 166, in _upsert_schedule
+    session.execute(stmt)
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/orm/session.py", line 2351, in execute
+    return self._execute_internal(
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/orm/session.py", line 2239, in _execute_internal
+    conn = self._connection_for_bind(bind)
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/orm/session.py", line 2108, in _connection_for_bind
+    return trans._connection_for_bind(engine, execution_options)
+  File "<string>", line 2, in _connection_for_bind
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/orm/state_changes.py", line 137, in _go
+    ret_value = fn(self, *arg, **kw)
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/orm/session.py", line 1187, in _connection_for_bind
+    conn = bind.connect()
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/engine/base.py", line 3277, in connect
+    return self._connection_cls(self)
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/engine/base.py", line 145, in __init__
+    Connection._handle_dbapi_exception_noconnection(
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/engine/base.py", line 2440, in _handle_dbapi_exception_noconnection
+    raise sqlalchemy_exception.with_traceback(exc_info[2]) from e
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/engine/base.py", line 143, in __init__
+    self._dbapi_connection = engine.raw_connection()
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/engine/base.py", line 3301, in raw_connection
+    return self.pool.connect()
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/pool/base.py", line 447, in connect
+    return _ConnectionFairy._checkout(self)
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/pool/base.py", line 1264, in _checkout
+    fairy = _ConnectionRecord.checkout(pool)
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/pool/base.py", line 711, in checkout
+    rec = pool._do_get()
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/pool/impl.py", line 177, in _do_get
+    with util.safe_reraise():
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/util/langhelpers.py", line 224, in __exit__
+    raise exc_value.with_traceback(exc_tb)
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/pool/impl.py", line 175, in _do_get
+    return self._create_connection()
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/pool/base.py", line 388, in _create_connection
+    return _ConnectionRecord(self)
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/pool/base.py", line 673, in __init__
+    self.__connect()
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/pool/base.py", line 899, in __connect
+    with util.safe_reraise():
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/util/langhelpers.py", line 224, in __exit__
+    raise exc_value.with_traceback(exc_tb)
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/pool/base.py", line 895, in __connect
+    self.dbapi_connection = connection = pool._invoke_creator(self)
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/engine/create.py", line 661, in connect
+    return dialect.connect(*cargs, **cparams)
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/engine/default.py", line 629, in connect
+    return self.loaded_dbapi.connect(*cargs, **cparams)  # type: ignore[no-any-return]  # NOQA: E501
+  File "/usr/local/lib/python3.10/dist-packages/mysql/connector/pooling.py", line 322, in connect
+    return CMySQLConnection(*args, **kwargs)
+  File "/usr/local/lib/python3.10/dist-packages/mysql/connector/connection_cext.py", line 142, in __init__
+    self.connect(**kwargs)
+  File "/usr/local/lib/python3.10/dist-packages/mysql/connector/abstracts.py", line 1604, in connect
+    self._open_connection()
+  File "/usr/local/lib/python3.10/dist-packages/mysql/connector/connection_cext.py", line 360, in _open_connection
+    raise get_mysql_exception(
+sqlalchemy.exc.DatabaseError: (mysql.connector.errors.DatabaseError) 2003 (HY000): Can't connect to MySQL server on 'host.docker.internal:3306' (111)
+(Background on this error at: https://sqlalche.me/e/20/4xp6)
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/app/scheduler.py", line 133, in main
+    crawl_daily_games()
+  File "/usr/local/lib/python3.10/dist-packages/tenacity/__init__.py", line 338, in wrapped_f
+    return copy(f, *args, **kw)
+  File "/usr/local/lib/python3.10/dist-packages/tenacity/__init__.py", line 477, in __call__
+    do = self.iter(retry_state=retry_state)
+  File "/usr/local/lib/python3.10/dist-packages/tenacity/__init__.py", line 378, in iter
+    result = action(retry_state)
+  File "/usr/local/lib/python3.10/dist-packages/tenacity/__init__.py", line 421, in exc_check
+    raise retry_exc from fut.exception()
+tenacity.RetryError: RetryError[<Future at 0x76f51573dc00 state=finished raised DatabaseError>]
+2025-10-14 09:06:07,584 - __main__ - INFO - Scheduler started successfully
+2025-10-14 09:06:07,585 - apscheduler.scheduler - INFO - Added job "Daily Regular Season Games Crawl" to job store "default"
+2025-10-14 09:06:07,586 - apscheduler.scheduler - INFO - Added job "Weekly Futures Profile Sync" to job store "default"
+2025-10-14 09:06:07,586 - apscheduler.scheduler - INFO - Scheduler started
+2025-10-14 09:12:29,770 - apscheduler.scheduler - INFO - Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2025-10-14 09:12:29,770 - __main__ - INFO - Registered job: crawl_games_regular (Daily 03:00 KST)
+2025-10-14 09:12:29,771 - apscheduler.scheduler - INFO - Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2025-10-14 09:12:29,771 - __main__ - INFO - Registered job: crawl_futures_profile (Weekly Sunday 05:00 KST)
+2025-10-14 09:12:29,771 - __main__ - INFO - Performing one-time startup crawl (schedules + game details)
+2025-10-14 09:12:29,772 - __main__ - INFO - === Starting Daily Games Crawl ===
+2025-10-14 09:12:29,772 - __main__ - INFO - Step 1: Updating schedule for 20251013
+2025-10-14 09:12:33,703 - __main__ - ERROR - Daily games crawl failed: (mysql.connector.errors.ProgrammingError) 1044 (42000): Access denied for user 'kbo_user'@'%' to database 'kbo_2025'
+(Background on this error at: https://sqlalche.me/e/20/f405)
+Traceback (most recent call last):
+  File "/usr/local/lib/python3.10/dist-packages/mysql/connector/connection_cext.py", line 354, in _open_connection
+    self._cmysql.connect(**cnx_kwargs)
+_mysql_connector.MySQLInterfaceError: Access denied for user 'kbo_user'@'%' to database 'kbo_2025'
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/engine/base.py", line 143, in __init__
+    self._dbapi_connection = engine.raw_connection()
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/engine/base.py", line 3301, in raw_connection
+    return self.pool.connect()
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/pool/base.py", line 447, in connect
+    return _ConnectionFairy._checkout(self)
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/pool/base.py", line 1264, in _checkout
+    fairy = _ConnectionRecord.checkout(pool)
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/pool/base.py", line 711, in checkout
+    rec = pool._do_get()
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/pool/impl.py", line 177, in _do_get
+    with util.safe_reraise():
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/util/langhelpers.py", line 224, in __exit__
+    raise exc_value.with_traceback(exc_tb)
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/pool/impl.py", line 175, in _do_get
+    return self._create_connection()
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/pool/base.py", line 388, in _create_connection
+    return _ConnectionRecord(self)
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/pool/base.py", line 673, in __init__
+    self.__connect()
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/pool/base.py", line 899, in __connect
+    with util.safe_reraise():
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/util/langhelpers.py", line 224, in __exit__
+    raise exc_value.with_traceback(exc_tb)
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/pool/base.py", line 895, in __connect
+    self.dbapi_connection = connection = pool._invoke_creator(self)
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/engine/create.py", line 661, in connect
+    return dialect.connect(*cargs, **cparams)
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/engine/default.py", line 629, in connect
+    return self.loaded_dbapi.connect(*cargs, **cparams)  # type: ignore[no-any-return]  # NOQA: E501
+  File "/usr/local/lib/python3.10/dist-packages/mysql/connector/pooling.py", line 322, in connect
+    return CMySQLConnection(*args, **kwargs)
+  File "/usr/local/lib/python3.10/dist-packages/mysql/connector/connection_cext.py", line 142, in __init__
+    self.connect(**kwargs)
+  File "/usr/local/lib/python3.10/dist-packages/mysql/connector/abstracts.py", line 1604, in connect
+    self._open_connection()
+  File "/usr/local/lib/python3.10/dist-packages/mysql/connector/connection_cext.py", line 360, in _open_connection
+    raise get_mysql_exception(
+mysql.connector.errors.ProgrammingError: 1044 (42000): Access denied for user 'kbo_user'@'%' to database 'kbo_2025'
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/app/scheduler.py", line 58, in crawl_daily_games
+    crawl_schedule_main([
+  File "/app/src/cli/crawl_schedule.py", line 55, in main
+    asyncio.run(crawl_schedule(args))
+  File "/usr/lib/python3.10/asyncio/runners.py", line 44, in run
+    return loop.run_until_complete(main)
+  File "/usr/lib/python3.10/asyncio/base_events.py", line 649, in run_until_complete
+    return future.result()
+  File "/app/src/cli/crawl_schedule.py", line 19, in crawl_schedule
+    repo.save_schedules(games)
+  File "/app/src/repositories/game_repository.py", line 109, in save_schedules
+    self._upsert_schedule(session, schedule)
+  File "/app/src/repositories/game_repository.py", line 166, in _upsert_schedule
+    session.execute(stmt)
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/orm/session.py", line 2351, in execute
+    return self._execute_internal(
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/orm/session.py", line 2239, in _execute_internal
+    conn = self._connection_for_bind(bind)
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/orm/session.py", line 2108, in _connection_for_bind
+    return trans._connection_for_bind(engine, execution_options)
+  File "<string>", line 2, in _connection_for_bind
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/orm/state_changes.py", line 137, in _go
+    ret_value = fn(self, *arg, **kw)
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/orm/session.py", line 1187, in _connection_for_bind
+    conn = bind.connect()
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/engine/base.py", line 3277, in connect
+    return self._connection_cls(self)
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/engine/base.py", line 145, in __init__
+    Connection._handle_dbapi_exception_noconnection(
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/engine/base.py", line 2440, in _handle_dbapi_exception_noconnection
+    raise sqlalchemy_exception.with_traceback(exc_info[2]) from e
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/engine/base.py", line 143, in __init__
+    self._dbapi_connection = engine.raw_connection()
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/engine/base.py", line 3301, in raw_connection
+    return self.pool.connect()
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/pool/base.py", line 447, in connect
+    return _ConnectionFairy._checkout(self)
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/pool/base.py", line 1264, in _checkout
+    fairy = _ConnectionRecord.checkout(pool)
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/pool/base.py", line 711, in checkout
+    rec = pool._do_get()
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/pool/impl.py", line 177, in _do_get
+    with util.safe_reraise():
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/util/langhelpers.py", line 224, in __exit__
+    raise exc_value.with_traceback(exc_tb)
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/pool/impl.py", line 175, in _do_get
+    return self._create_connection()
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/pool/base.py", line 388, in _create_connection
+    return _ConnectionRecord(self)
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/pool/base.py", line 673, in __init__
+    self.__connect()
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/pool/base.py", line 899, in __connect
+    with util.safe_reraise():
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/util/langhelpers.py", line 224, in __exit__
+    raise exc_value.with_traceback(exc_tb)
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/pool/base.py", line 895, in __connect
+    self.dbapi_connection = connection = pool._invoke_creator(self)
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/engine/create.py", line 661, in connect
+    return dialect.connect(*cargs, **cparams)
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/engine/default.py", line 629, in connect
+    return self.loaded_dbapi.connect(*cargs, **cparams)  # type: ignore[no-any-return]  # NOQA: E501
+  File "/usr/local/lib/python3.10/dist-packages/mysql/connector/pooling.py", line 322, in connect
+    return CMySQLConnection(*args, **kwargs)
+  File "/usr/local/lib/python3.10/dist-packages/mysql/connector/connection_cext.py", line 142, in __init__
+    self.connect(**kwargs)
+  File "/usr/local/lib/python3.10/dist-packages/mysql/connector/abstracts.py", line 1604, in connect
+    self._open_connection()
+  File "/usr/local/lib/python3.10/dist-packages/mysql/connector/connection_cext.py", line 360, in _open_connection
+    raise get_mysql_exception(
+sqlalchemy.exc.ProgrammingError: (mysql.connector.errors.ProgrammingError) 1044 (42000): Access denied for user 'kbo_user'@'%' to database 'kbo_2025'
+(Background on this error at: https://sqlalche.me/e/20/f405)
+2025-10-14 09:13:33,763 - __main__ - INFO - === Starting Daily Games Crawl ===
+2025-10-14 09:13:33,765 - __main__ - INFO - Step 1: Updating schedule for 20251013
+2025-10-14 09:13:37,489 - __main__ - ERROR - Daily games crawl failed: (mysql.connector.errors.ProgrammingError) 1044 (42000): Access denied for user 'kbo_user'@'%' to database 'kbo_2025'
+(Background on this error at: https://sqlalche.me/e/20/f405)
+Traceback (most recent call last):
+  File "/usr/local/lib/python3.10/dist-packages/mysql/connector/connection_cext.py", line 354, in _open_connection
+    self._cmysql.connect(**cnx_kwargs)
+_mysql_connector.MySQLInterfaceError: Access denied for user 'kbo_user'@'%' to database 'kbo_2025'
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/engine/base.py", line 143, in __init__
+    self._dbapi_connection = engine.raw_connection()
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/engine/base.py", line 3301, in raw_connection
+    return self.pool.connect()
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/pool/base.py", line 447, in connect
+    return _ConnectionFairy._checkout(self)
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/pool/base.py", line 1264, in _checkout
+    fairy = _ConnectionRecord.checkout(pool)
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/pool/base.py", line 711, in checkout
+    rec = pool._do_get()
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/pool/impl.py", line 177, in _do_get
+    with util.safe_reraise():
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/util/langhelpers.py", line 224, in __exit__
+    raise exc_value.with_traceback(exc_tb)
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/pool/impl.py", line 175, in _do_get
+    return self._create_connection()
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/pool/base.py", line 388, in _create_connection
+    return _ConnectionRecord(self)
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/pool/base.py", line 673, in __init__
+    self.__connect()
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/pool/base.py", line 899, in __connect
+    with util.safe_reraise():
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/util/langhelpers.py", line 224, in __exit__
+    raise exc_value.with_traceback(exc_tb)
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/pool/base.py", line 895, in __connect
+    self.dbapi_connection = connection = pool._invoke_creator(self)
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/engine/create.py", line 661, in connect
+    return dialect.connect(*cargs, **cparams)
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/engine/default.py", line 629, in connect
+    return self.loaded_dbapi.connect(*cargs, **cparams)  # type: ignore[no-any-return]  # NOQA: E501
+  File "/usr/local/lib/python3.10/dist-packages/mysql/connector/pooling.py", line 322, in connect
+    return CMySQLConnection(*args, **kwargs)
+  File "/usr/local/lib/python3.10/dist-packages/mysql/connector/connection_cext.py", line 142, in __init__
+    self.connect(**kwargs)
+  File "/usr/local/lib/python3.10/dist-packages/mysql/connector/abstracts.py", line 1604, in connect
+    self._open_connection()
+  File "/usr/local/lib/python3.10/dist-packages/mysql/connector/connection_cext.py", line 360, in _open_connection
+    raise get_mysql_exception(
+mysql.connector.errors.ProgrammingError: 1044 (42000): Access denied for user 'kbo_user'@'%' to database 'kbo_2025'
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/app/scheduler.py", line 58, in crawl_daily_games
+    crawl_schedule_main([
+  File "/app/src/cli/crawl_schedule.py", line 55, in main
+    asyncio.run(crawl_schedule(args))
+  File "/usr/lib/python3.10/asyncio/runners.py", line 44, in run
+    return loop.run_until_complete(main)
+  File "/usr/lib/python3.10/asyncio/base_events.py", line 649, in run_until_complete
+    return future.result()
+  File "/app/src/cli/crawl_schedule.py", line 19, in crawl_schedule
+    repo.save_schedules(games)
+  File "/app/src/repositories/game_repository.py", line 109, in save_schedules
+    self._upsert_schedule(session, schedule)
+  File "/app/src/repositories/game_repository.py", line 166, in _upsert_schedule
+    session.execute(stmt)
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/orm/session.py", line 2351, in execute
+    return self._execute_internal(
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/orm/session.py", line 2239, in _execute_internal
+    conn = self._connection_for_bind(bind)
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/orm/session.py", line 2108, in _connection_for_bind
+    return trans._connection_for_bind(engine, execution_options)
+  File "<string>", line 2, in _connection_for_bind
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/orm/state_changes.py", line 137, in _go
+    ret_value = fn(self, *arg, **kw)
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/orm/session.py", line 1187, in _connection_for_bind
+    conn = bind.connect()
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/engine/base.py", line 3277, in connect
+    return self._connection_cls(self)
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/engine/base.py", line 145, in __init__
+    Connection._handle_dbapi_exception_noconnection(
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/engine/base.py", line 2440, in _handle_dbapi_exception_noconnection
+    raise sqlalchemy_exception.with_traceback(exc_info[2]) from e
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/engine/base.py", line 143, in __init__
+    self._dbapi_connection = engine.raw_connection()
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/engine/base.py", line 3301, in raw_connection
+    return self.pool.connect()
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/pool/base.py", line 447, in connect
+    return _ConnectionFairy._checkout(self)
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/pool/base.py", line 1264, in _checkout
+    fairy = _ConnectionRecord.checkout(pool)
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/pool/base.py", line 711, in checkout
+    rec = pool._do_get()
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/pool/impl.py", line 177, in _do_get
+    with util.safe_reraise():
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/util/langhelpers.py", line 224, in __exit__
+    raise exc_value.with_traceback(exc_tb)
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/pool/impl.py", line 175, in _do_get
+    return self._create_connection()
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/pool/base.py", line 388, in _create_connection
+    return _ConnectionRecord(self)
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/pool/base.py", line 673, in __init__
+    self.__connect()
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/pool/base.py", line 899, in __connect
+    with util.safe_reraise():
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/util/langhelpers.py", line 224, in __exit__
+    raise exc_value.with_traceback(exc_tb)
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/pool/base.py", line 895, in __connect
+    self.dbapi_connection = connection = pool._invoke_creator(self)
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/engine/create.py", line 661, in connect
+    return dialect.connect(*cargs, **cparams)
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/engine/default.py", line 629, in connect
+    return self.loaded_dbapi.connect(*cargs, **cparams)  # type: ignore[no-any-return]  # NOQA: E501
+  File "/usr/local/lib/python3.10/dist-packages/mysql/connector/pooling.py", line 322, in connect
+    return CMySQLConnection(*args, **kwargs)
+  File "/usr/local/lib/python3.10/dist-packages/mysql/connector/connection_cext.py", line 142, in __init__
+    self.connect(**kwargs)
+  File "/usr/local/lib/python3.10/dist-packages/mysql/connector/abstracts.py", line 1604, in connect
+    self._open_connection()
+  File "/usr/local/lib/python3.10/dist-packages/mysql/connector/connection_cext.py", line 360, in _open_connection
+    raise get_mysql_exception(
+sqlalchemy.exc.ProgrammingError: (mysql.connector.errors.ProgrammingError) 1044 (42000): Access denied for user 'kbo_user'@'%' to database 'kbo_2025'
+(Background on this error at: https://sqlalche.me/e/20/f405)
+2025-10-14 09:14:37,544 - __main__ - INFO - === Starting Daily Games Crawl ===
+2025-10-14 09:14:37,545 - __main__ - INFO - Step 1: Updating schedule for 20251013
+2025-10-14 09:14:41,168 - __main__ - ERROR - Daily games crawl failed: (mysql.connector.errors.ProgrammingError) 1044 (42000): Access denied for user 'kbo_user'@'%' to database 'kbo_2025'
+(Background on this error at: https://sqlalche.me/e/20/f405)
+Traceback (most recent call last):
+  File "/usr/local/lib/python3.10/dist-packages/mysql/connector/connection_cext.py", line 354, in _open_connection
+    self._cmysql.connect(**cnx_kwargs)
+_mysql_connector.MySQLInterfaceError: Access denied for user 'kbo_user'@'%' to database 'kbo_2025'
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/engine/base.py", line 143, in __init__
+    self._dbapi_connection = engine.raw_connection()
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/engine/base.py", line 3301, in raw_connection
+    return self.pool.connect()
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/pool/base.py", line 447, in connect
+    return _ConnectionFairy._checkout(self)
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/pool/base.py", line 1264, in _checkout
+    fairy = _ConnectionRecord.checkout(pool)
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/pool/base.py", line 711, in checkout
+    rec = pool._do_get()
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/pool/impl.py", line 177, in _do_get
+    with util.safe_reraise():
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/util/langhelpers.py", line 224, in __exit__
+    raise exc_value.with_traceback(exc_tb)
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/pool/impl.py", line 175, in _do_get
+    return self._create_connection()
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/pool/base.py", line 388, in _create_connection
+    return _ConnectionRecord(self)
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/pool/base.py", line 673, in __init__
+    self.__connect()
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/pool/base.py", line 899, in __connect
+    with util.safe_reraise():
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/util/langhelpers.py", line 224, in __exit__
+    raise exc_value.with_traceback(exc_tb)
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/pool/base.py", line 895, in __connect
+    self.dbapi_connection = connection = pool._invoke_creator(self)
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/engine/create.py", line 661, in connect
+    return dialect.connect(*cargs, **cparams)
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/engine/default.py", line 629, in connect
+    return self.loaded_dbapi.connect(*cargs, **cparams)  # type: ignore[no-any-return]  # NOQA: E501
+  File "/usr/local/lib/python3.10/dist-packages/mysql/connector/pooling.py", line 322, in connect
+    return CMySQLConnection(*args, **kwargs)
+  File "/usr/local/lib/python3.10/dist-packages/mysql/connector/connection_cext.py", line 142, in __init__
+    self.connect(**kwargs)
+  File "/usr/local/lib/python3.10/dist-packages/mysql/connector/abstracts.py", line 1604, in connect
+    self._open_connection()
+  File "/usr/local/lib/python3.10/dist-packages/mysql/connector/connection_cext.py", line 360, in _open_connection
+    raise get_mysql_exception(
+mysql.connector.errors.ProgrammingError: 1044 (42000): Access denied for user 'kbo_user'@'%' to database 'kbo_2025'
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/app/scheduler.py", line 58, in crawl_daily_games
+    crawl_schedule_main([
+  File "/app/src/cli/crawl_schedule.py", line 55, in main
+    asyncio.run(crawl_schedule(args))
+  File "/usr/lib/python3.10/asyncio/runners.py", line 44, in run
+    return loop.run_until_complete(main)
+  File "/usr/lib/python3.10/asyncio/base_events.py", line 649, in run_until_complete
+    return future.result()
+  File "/app/src/cli/crawl_schedule.py", line 19, in crawl_schedule
+    repo.save_schedules(games)
+  File "/app/src/repositories/game_repository.py", line 109, in save_schedules
+    self._upsert_schedule(session, schedule)
+  File "/app/src/repositories/game_repository.py", line 166, in _upsert_schedule
+    session.execute(stmt)
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/orm/session.py", line 2351, in execute
+    return self._execute_internal(
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/orm/session.py", line 2239, in _execute_internal
+    conn = self._connection_for_bind(bind)
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/orm/session.py", line 2108, in _connection_for_bind
+    return trans._connection_for_bind(engine, execution_options)
+  File "<string>", line 2, in _connection_for_bind
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/orm/state_changes.py", line 137, in _go
+    ret_value = fn(self, *arg, **kw)
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/orm/session.py", line 1187, in _connection_for_bind
+    conn = bind.connect()
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/engine/base.py", line 3277, in connect
+    return self._connection_cls(self)
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/engine/base.py", line 145, in __init__
+    Connection._handle_dbapi_exception_noconnection(
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/engine/base.py", line 2440, in _handle_dbapi_exception_noconnection
+    raise sqlalchemy_exception.with_traceback(exc_info[2]) from e
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/engine/base.py", line 143, in __init__
+    self._dbapi_connection = engine.raw_connection()
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/engine/base.py", line 3301, in raw_connection
+    return self.pool.connect()
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/pool/base.py", line 447, in connect
+    return _ConnectionFairy._checkout(self)
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/pool/base.py", line 1264, in _checkout
+    fairy = _ConnectionRecord.checkout(pool)
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/pool/base.py", line 711, in checkout
+    rec = pool._do_get()
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/pool/impl.py", line 177, in _do_get
+    with util.safe_reraise():
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/util/langhelpers.py", line 224, in __exit__
+    raise exc_value.with_traceback(exc_tb)
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/pool/impl.py", line 175, in _do_get
+    return self._create_connection()
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/pool/base.py", line 388, in _create_connection
+    return _ConnectionRecord(self)
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/pool/base.py", line 673, in __init__
+    self.__connect()
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/pool/base.py", line 899, in __connect
+    with util.safe_reraise():
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/util/langhelpers.py", line 224, in __exit__
+    raise exc_value.with_traceback(exc_tb)
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/pool/base.py", line 895, in __connect
+    self.dbapi_connection = connection = pool._invoke_creator(self)
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/engine/create.py", line 661, in connect
+    return dialect.connect(*cargs, **cparams)
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/engine/default.py", line 629, in connect
+    return self.loaded_dbapi.connect(*cargs, **cparams)  # type: ignore[no-any-return]  # NOQA: E501
+  File "/usr/local/lib/python3.10/dist-packages/mysql/connector/pooling.py", line 322, in connect
+    return CMySQLConnection(*args, **kwargs)
+  File "/usr/local/lib/python3.10/dist-packages/mysql/connector/connection_cext.py", line 142, in __init__
+    self.connect(**kwargs)
+  File "/usr/local/lib/python3.10/dist-packages/mysql/connector/abstracts.py", line 1604, in connect
+    self._open_connection()
+  File "/usr/local/lib/python3.10/dist-packages/mysql/connector/connection_cext.py", line 360, in _open_connection
+    raise get_mysql_exception(
+sqlalchemy.exc.ProgrammingError: (mysql.connector.errors.ProgrammingError) 1044 (42000): Access denied for user 'kbo_user'@'%' to database 'kbo_2025'
+(Background on this error at: https://sqlalche.me/e/20/f405)
+2025-10-14 09:14:41,169 - __main__ - ERROR - Startup crawl failed; scheduler will continue with cron jobs
+Traceback (most recent call last):
+  File "/usr/local/lib/python3.10/dist-packages/mysql/connector/connection_cext.py", line 354, in _open_connection
+    self._cmysql.connect(**cnx_kwargs)
+_mysql_connector.MySQLInterfaceError: Access denied for user 'kbo_user'@'%' to database 'kbo_2025'
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/engine/base.py", line 143, in __init__
+    self._dbapi_connection = engine.raw_connection()
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/engine/base.py", line 3301, in raw_connection
+    return self.pool.connect()
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/pool/base.py", line 447, in connect
+    return _ConnectionFairy._checkout(self)
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/pool/base.py", line 1264, in _checkout
+    fairy = _ConnectionRecord.checkout(pool)
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/pool/base.py", line 711, in checkout
+    rec = pool._do_get()
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/pool/impl.py", line 177, in _do_get
+    with util.safe_reraise():
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/util/langhelpers.py", line 224, in __exit__
+    raise exc_value.with_traceback(exc_tb)
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/pool/impl.py", line 175, in _do_get
+    return self._create_connection()
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/pool/base.py", line 388, in _create_connection
+    return _ConnectionRecord(self)
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/pool/base.py", line 673, in __init__
+    self.__connect()
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/pool/base.py", line 899, in __connect
+    with util.safe_reraise():
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/util/langhelpers.py", line 224, in __exit__
+    raise exc_value.with_traceback(exc_tb)
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/pool/base.py", line 895, in __connect
+    self.dbapi_connection = connection = pool._invoke_creator(self)
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/engine/create.py", line 661, in connect
+    return dialect.connect(*cargs, **cparams)
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/engine/default.py", line 629, in connect
+    return self.loaded_dbapi.connect(*cargs, **cparams)  # type: ignore[no-any-return]  # NOQA: E501
+  File "/usr/local/lib/python3.10/dist-packages/mysql/connector/pooling.py", line 322, in connect
+    return CMySQLConnection(*args, **kwargs)
+  File "/usr/local/lib/python3.10/dist-packages/mysql/connector/connection_cext.py", line 142, in __init__
+    self.connect(**kwargs)
+  File "/usr/local/lib/python3.10/dist-packages/mysql/connector/abstracts.py", line 1604, in connect
+    self._open_connection()
+  File "/usr/local/lib/python3.10/dist-packages/mysql/connector/connection_cext.py", line 360, in _open_connection
+    raise get_mysql_exception(
+mysql.connector.errors.ProgrammingError: 1044 (42000): Access denied for user 'kbo_user'@'%' to database 'kbo_2025'
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/usr/local/lib/python3.10/dist-packages/tenacity/__init__.py", line 480, in __call__
+    result = fn(*args, **kwargs)
+  File "/app/scheduler.py", line 58, in crawl_daily_games
+    crawl_schedule_main([
+  File "/app/src/cli/crawl_schedule.py", line 55, in main
+    asyncio.run(crawl_schedule(args))
+  File "/usr/lib/python3.10/asyncio/runners.py", line 44, in run
+    return loop.run_until_complete(main)
+  File "/usr/lib/python3.10/asyncio/base_events.py", line 649, in run_until_complete
+    return future.result()
+  File "/app/src/cli/crawl_schedule.py", line 19, in crawl_schedule
+    repo.save_schedules(games)
+  File "/app/src/repositories/game_repository.py", line 109, in save_schedules
+    self._upsert_schedule(session, schedule)
+  File "/app/src/repositories/game_repository.py", line 166, in _upsert_schedule
+    session.execute(stmt)
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/orm/session.py", line 2351, in execute
+    return self._execute_internal(
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/orm/session.py", line 2239, in _execute_internal
+    conn = self._connection_for_bind(bind)
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/orm/session.py", line 2108, in _connection_for_bind
+    return trans._connection_for_bind(engine, execution_options)
+  File "<string>", line 2, in _connection_for_bind
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/orm/state_changes.py", line 137, in _go
+    ret_value = fn(self, *arg, **kw)
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/orm/session.py", line 1187, in _connection_for_bind
+    conn = bind.connect()
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/engine/base.py", line 3277, in connect
+    return self._connection_cls(self)
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/engine/base.py", line 145, in __init__
+    Connection._handle_dbapi_exception_noconnection(
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/engine/base.py", line 2440, in _handle_dbapi_exception_noconnection
+    raise sqlalchemy_exception.with_traceback(exc_info[2]) from e
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/engine/base.py", line 143, in __init__
+    self._dbapi_connection = engine.raw_connection()
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/engine/base.py", line 3301, in raw_connection
+    return self.pool.connect()
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/pool/base.py", line 447, in connect
+    return _ConnectionFairy._checkout(self)
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/pool/base.py", line 1264, in _checkout
+    fairy = _ConnectionRecord.checkout(pool)
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/pool/base.py", line 711, in checkout
+    rec = pool._do_get()
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/pool/impl.py", line 177, in _do_get
+    with util.safe_reraise():
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/util/langhelpers.py", line 224, in __exit__
+    raise exc_value.with_traceback(exc_tb)
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/pool/impl.py", line 175, in _do_get
+    return self._create_connection()
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/pool/base.py", line 388, in _create_connection
+    return _ConnectionRecord(self)
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/pool/base.py", line 673, in __init__
+    self.__connect()
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/pool/base.py", line 899, in __connect
+    with util.safe_reraise():
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/util/langhelpers.py", line 224, in __exit__
+    raise exc_value.with_traceback(exc_tb)
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/pool/base.py", line 895, in __connect
+    self.dbapi_connection = connection = pool._invoke_creator(self)
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/engine/create.py", line 661, in connect
+    return dialect.connect(*cargs, **cparams)
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/engine/default.py", line 629, in connect
+    return self.loaded_dbapi.connect(*cargs, **cparams)  # type: ignore[no-any-return]  # NOQA: E501
+  File "/usr/local/lib/python3.10/dist-packages/mysql/connector/pooling.py", line 322, in connect
+    return CMySQLConnection(*args, **kwargs)
+  File "/usr/local/lib/python3.10/dist-packages/mysql/connector/connection_cext.py", line 142, in __init__
+    self.connect(**kwargs)
+  File "/usr/local/lib/python3.10/dist-packages/mysql/connector/abstracts.py", line 1604, in connect
+    self._open_connection()
+  File "/usr/local/lib/python3.10/dist-packages/mysql/connector/connection_cext.py", line 360, in _open_connection
+    raise get_mysql_exception(
+sqlalchemy.exc.ProgrammingError: (mysql.connector.errors.ProgrammingError) 1044 (42000): Access denied for user 'kbo_user'@'%' to database 'kbo_2025'
+(Background on this error at: https://sqlalche.me/e/20/f405)
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/app/scheduler.py", line 133, in main
+    crawl_daily_games()
+  File "/usr/local/lib/python3.10/dist-packages/tenacity/__init__.py", line 338, in wrapped_f
+    return copy(f, *args, **kw)
+  File "/usr/local/lib/python3.10/dist-packages/tenacity/__init__.py", line 477, in __call__
+    do = self.iter(retry_state=retry_state)
+  File "/usr/local/lib/python3.10/dist-packages/tenacity/__init__.py", line 378, in iter
+    result = action(retry_state)
+  File "/usr/local/lib/python3.10/dist-packages/tenacity/__init__.py", line 421, in exc_check
+    raise retry_exc from fut.exception()
+tenacity.RetryError: RetryError[<Future at 0x7dd69c76dbd0 state=finished raised ProgrammingError>]
+2025-10-14 09:14:41,171 - __main__ - INFO - Scheduler started successfully
+2025-10-14 09:14:41,173 - apscheduler.scheduler - INFO - Added job "Daily Regular Season Games Crawl" to job store "default"
+2025-10-14 09:14:41,174 - apscheduler.scheduler - INFO - Added job "Weekly Futures Profile Sync" to job store "default"
+2025-10-14 09:14:41,174 - apscheduler.scheduler - INFO - Scheduler started
+2025-10-14 09:20:05,913 - apscheduler.scheduler - INFO - Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2025-10-14 09:20:05,914 - __main__ - INFO - Registered job: crawl_games_regular (Daily 03:00 KST)
+2025-10-14 09:20:05,914 - apscheduler.scheduler - INFO - Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2025-10-14 09:20:05,915 - __main__ - INFO - Registered job: crawl_futures_profile (Weekly Sunday 05:00 KST)
+2025-10-14 09:20:05,915 - __main__ - INFO - Performing one-time startup crawl (schedules + game details)
+2025-10-14 09:20:05,915 - __main__ - INFO - === Starting Daily Games Crawl ===
+2025-10-14 09:20:05,916 - __main__ - INFO - Step 1: Updating schedule for 20251013
+2025-10-14 09:20:10,120 - __main__ - ERROR - Daily games crawl failed: (mysql.connector.errors.ProgrammingError) 1146 (42S02): Table 'kbo_analytics.game_schedules' doesn't exist
+[SQL: INSERT INTO game_schedules (game_id, season_year, season_type, game_date, home_team_code, away_team_code, game_status, doubleheader_no, crawl_status, created_at, updated_at) VALUES (%(game_id)s, %(season_year)s, %(season_type)s, %(game_date)s, %(home_team_code)s, %(away_team_code)s, %(game_status)s, %(doubleheader_no)s, %(crawl_status)s, now(), now()) AS new ON DUPLICATE KEY UPDATE home_team_code = new.home_team_code, away_team_code = new.away_team_code, game_status = new.game_status, doubleheader_no = new.doubleheader_no, crawl_status = new.crawl_status, updated_at = %(param_1)s]
+[parameters: {'game_id': '20251001NCLG0', 'season_year': 2025, 'season_type': 'regular', 'game_date': datetime.date(2025, 10, 1), 'home_team_code': 'LG', 'away_team_code': 'NC', 'game_status': 'scheduled', 'doubleheader_no': 0, 'crawl_status': 'pending', 'param_1': datetime.datetime(2025, 10, 14, 9, 20, 10, 48471)}]
+(Background on this error at: https://sqlalche.me/e/20/f405)
+Traceback (most recent call last):
+  File "/usr/local/lib/python3.10/dist-packages/mysql/connector/connection_cext.py", line 772, in cmd_query
+    self._cmysql.query(
+_mysql_connector.MySQLInterfaceError: Table 'kbo_analytics.game_schedules' doesn't exist
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/engine/base.py", line 1967, in _exec_single_context
+    self.dialect.do_execute(
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/engine/default.py", line 951, in do_execute
+    cursor.execute(statement, parameters)
+  File "/usr/local/lib/python3.10/dist-packages/mysql/connector/cursor_cext.py", line 353, in execute
+    self._connection.cmd_query(
+  File "/usr/local/lib/python3.10/dist-packages/mysql/connector/opentelemetry/context_propagation.py", line 97, in wrapper
+    return method(cnx, *args, **kwargs)
+  File "/usr/local/lib/python3.10/dist-packages/mysql/connector/connection_cext.py", line 781, in cmd_query
+    raise get_mysql_exception(
+mysql.connector.errors.ProgrammingError: 1146 (42S02): Table 'kbo_analytics.game_schedules' doesn't exist
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/app/scheduler.py", line 58, in crawl_daily_games
+    crawl_schedule_main([
+  File "/app/src/cli/crawl_schedule.py", line 55, in main
+    asyncio.run(crawl_schedule(args))
+  File "/usr/lib/python3.10/asyncio/runners.py", line 44, in run
+    return loop.run_until_complete(main)
+  File "/usr/lib/python3.10/asyncio/base_events.py", line 649, in run_until_complete
+    return future.result()
+  File "/app/src/cli/crawl_schedule.py", line 19, in crawl_schedule
+    repo.save_schedules(games)
+  File "/app/src/repositories/game_repository.py", line 109, in save_schedules
+    self._upsert_schedule(session, schedule)
+  File "/app/src/repositories/game_repository.py", line 166, in _upsert_schedule
+    session.execute(stmt)
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/orm/session.py", line 2351, in execute
+    return self._execute_internal(
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/orm/session.py", line 2249, in _execute_internal
+    result: Result[Any] = compile_state_cls.orm_execute_statement(
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/orm/bulk_persistence.py", line 1306, in orm_execute_statement
+    result = conn.execute(
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/engine/base.py", line 1419, in execute
+    return meth(
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/sql/elements.py", line 526, in _execute_on_connection
+    return connection._execute_clauseelement(
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/engine/base.py", line 1641, in _execute_clauseelement
+    ret = self._execute_context(
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/engine/base.py", line 1846, in _execute_context
+    return self._exec_single_context(
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/engine/base.py", line 1986, in _exec_single_context
+    self._handle_dbapi_exception(
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/engine/base.py", line 2355, in _handle_dbapi_exception
+    raise sqlalchemy_exception.with_traceback(exc_info[2]) from e
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/engine/base.py", line 1967, in _exec_single_context
+    self.dialect.do_execute(
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/engine/default.py", line 951, in do_execute
+    cursor.execute(statement, parameters)
+  File "/usr/local/lib/python3.10/dist-packages/mysql/connector/cursor_cext.py", line 353, in execute
+    self._connection.cmd_query(
+  File "/usr/local/lib/python3.10/dist-packages/mysql/connector/opentelemetry/context_propagation.py", line 97, in wrapper
+    return method(cnx, *args, **kwargs)
+  File "/usr/local/lib/python3.10/dist-packages/mysql/connector/connection_cext.py", line 781, in cmd_query
+    raise get_mysql_exception(
+sqlalchemy.exc.ProgrammingError: (mysql.connector.errors.ProgrammingError) 1146 (42S02): Table 'kbo_analytics.game_schedules' doesn't exist
+[SQL: INSERT INTO game_schedules (game_id, season_year, season_type, game_date, home_team_code, away_team_code, game_status, doubleheader_no, crawl_status, created_at, updated_at) VALUES (%(game_id)s, %(season_year)s, %(season_type)s, %(game_date)s, %(home_team_code)s, %(away_team_code)s, %(game_status)s, %(doubleheader_no)s, %(crawl_status)s, now(), now()) AS new ON DUPLICATE KEY UPDATE home_team_code = new.home_team_code, away_team_code = new.away_team_code, game_status = new.game_status, doubleheader_no = new.doubleheader_no, crawl_status = new.crawl_status, updated_at = %(param_1)s]
+[parameters: {'game_id': '20251001NCLG0', 'season_year': 2025, 'season_type': 'regular', 'game_date': datetime.date(2025, 10, 1), 'home_team_code': 'LG', 'away_team_code': 'NC', 'game_status': 'scheduled', 'doubleheader_no': 0, 'crawl_status': 'pending', 'param_1': datetime.datetime(2025, 10, 14, 9, 20, 10, 48471)}]
+(Background on this error at: https://sqlalche.me/e/20/f405)
+2025-10-14 09:21:10,183 - __main__ - INFO - === Starting Daily Games Crawl ===
+2025-10-14 09:21:10,185 - __main__ - INFO - Step 1: Updating schedule for 20251013
+2025-10-14 09:21:13,846 - __main__ - ERROR - Daily games crawl failed: (mysql.connector.errors.ProgrammingError) 1146 (42S02): Table 'kbo_analytics.game_schedules' doesn't exist
+[SQL: INSERT INTO game_schedules (game_id, season_year, season_type, game_date, home_team_code, away_team_code, game_status, doubleheader_no, crawl_status, created_at, updated_at) VALUES (%(game_id)s, %(season_year)s, %(season_type)s, %(game_date)s, %(home_team_code)s, %(away_team_code)s, %(game_status)s, %(doubleheader_no)s, %(crawl_status)s, now(), now()) AS new ON DUPLICATE KEY UPDATE home_team_code = new.home_team_code, away_team_code = new.away_team_code, game_status = new.game_status, doubleheader_no = new.doubleheader_no, crawl_status = new.crawl_status, updated_at = %(param_1)s]
+[parameters: {'game_id': '20251001NCLG0', 'season_year': 2025, 'season_type': 'regular', 'game_date': datetime.date(2025, 10, 1), 'home_team_code': 'LG', 'away_team_code': 'NC', 'game_status': 'scheduled', 'doubleheader_no': 0, 'crawl_status': 'pending', 'param_1': datetime.datetime(2025, 10, 14, 9, 21, 13, 835212)}]
+(Background on this error at: https://sqlalche.me/e/20/f405)
+Traceback (most recent call last):
+  File "/usr/local/lib/python3.10/dist-packages/mysql/connector/connection_cext.py", line 772, in cmd_query
+    self._cmysql.query(
+_mysql_connector.MySQLInterfaceError: Table 'kbo_analytics.game_schedules' doesn't exist
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/engine/base.py", line 1967, in _exec_single_context
+    self.dialect.do_execute(
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/engine/default.py", line 951, in do_execute
+    cursor.execute(statement, parameters)
+  File "/usr/local/lib/python3.10/dist-packages/mysql/connector/cursor_cext.py", line 353, in execute
+    self._connection.cmd_query(
+  File "/usr/local/lib/python3.10/dist-packages/mysql/connector/opentelemetry/context_propagation.py", line 97, in wrapper
+    return method(cnx, *args, **kwargs)
+  File "/usr/local/lib/python3.10/dist-packages/mysql/connector/connection_cext.py", line 781, in cmd_query
+    raise get_mysql_exception(
+mysql.connector.errors.ProgrammingError: 1146 (42S02): Table 'kbo_analytics.game_schedules' doesn't exist
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/app/scheduler.py", line 58, in crawl_daily_games
+    crawl_schedule_main([
+  File "/app/src/cli/crawl_schedule.py", line 55, in main
+    asyncio.run(crawl_schedule(args))
+  File "/usr/lib/python3.10/asyncio/runners.py", line 44, in run
+    return loop.run_until_complete(main)
+  File "/usr/lib/python3.10/asyncio/base_events.py", line 649, in run_until_complete
+    return future.result()
+  File "/app/src/cli/crawl_schedule.py", line 19, in crawl_schedule
+    repo.save_schedules(games)
+  File "/app/src/repositories/game_repository.py", line 109, in save_schedules
+    self._upsert_schedule(session, schedule)
+  File "/app/src/repositories/game_repository.py", line 166, in _upsert_schedule
+    session.execute(stmt)
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/orm/session.py", line 2351, in execute
+    return self._execute_internal(
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/orm/session.py", line 2249, in _execute_internal
+    result: Result[Any] = compile_state_cls.orm_execute_statement(
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/orm/bulk_persistence.py", line 1306, in orm_execute_statement
+    result = conn.execute(
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/engine/base.py", line 1419, in execute
+    return meth(
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/sql/elements.py", line 526, in _execute_on_connection
+    return connection._execute_clauseelement(
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/engine/base.py", line 1641, in _execute_clauseelement
+    ret = self._execute_context(
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/engine/base.py", line 1846, in _execute_context
+    return self._exec_single_context(
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/engine/base.py", line 1986, in _exec_single_context
+    self._handle_dbapi_exception(
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/engine/base.py", line 2355, in _handle_dbapi_exception
+    raise sqlalchemy_exception.with_traceback(exc_info[2]) from e
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/engine/base.py", line 1967, in _exec_single_context
+    self.dialect.do_execute(
+  File "/usr/local/lib/python3.10/dist-packages/sqlalchemy/engine/default.py", line 951, in do_execute
+    cursor.execute(statement, parameters)
+  File "/usr/local/lib/python3.10/dist-packages/mysql/connector/cursor_cext.py", line 353, in execute
+    self._connection.cmd_query(
+  File "/usr/local/lib/python3.10/dist-packages/mysql/connector/opentelemetry/context_propagation.py", line 97, in wrapper
+    return method(cnx, *args, **kwargs)
+  File "/usr/local/lib/python3.10/dist-packages/mysql/connector/connection_cext.py", line 781, in cmd_query
+    raise get_mysql_exception(
+sqlalchemy.exc.ProgrammingError: (mysql.connector.errors.ProgrammingError) 1146 (42S02): Table 'kbo_analytics.game_schedules' doesn't exist
+[SQL: INSERT INTO game_schedules (game_id, season_year, season_type, game_date, home_team_code, away_team_code, game_status, doubleheader_no, crawl_status, created_at, updated_at) VALUES (%(game_id)s, %(season_year)s, %(season_type)s, %(game_date)s, %(home_team_code)s, %(away_team_code)s, %(game_status)s, %(doubleheader_no)s, %(crawl_status)s, now(), now()) AS new ON DUPLICATE KEY UPDATE home_team_code = new.home_team_code, away_team_code = new.away_team_code, game_status = new.game_status, doubleheader_no = new.doubleheader_no, crawl_status = new.crawl_status, updated_at = %(param_1)s]
+[parameters: {'game_id': '20251001NCLG0', 'season_year': 2025, 'season_type': 'regular', 'game_date': datetime.date(2025, 10, 1), 'home_team_code': 'LG', 'away_team_code': 'NC', 'game_status': 'scheduled', 'doubleheader_no': 0, 'crawl_status': 'pending', 'param_1': datetime.datetime(2025, 10, 14, 9, 21, 13, 835212)}]
+(Background on this error at: https://sqlalche.me/e/20/f405)

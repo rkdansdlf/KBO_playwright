@@ -5,6 +5,7 @@ import asyncio
 from typing import Any, Dict, Optional, List
 
 from playwright.async_api import async_playwright, Page
+from bs4 import BeautifulSoup
 
 
 class FuturesProfileCrawler:
@@ -18,7 +19,8 @@ class FuturesProfileCrawler:
         """Fetch futures profile data (tables + profile text) for a player."""
         async with async_playwright() as p:
             browser = await p.chromium.launch(headless=True)
-            page = await browser.new_page()
+            context = await browser.new_context(locale='ko-KR')
+            page = await context.new_page()
             profile_text: Optional[str] = None
             tables: List[Dict[str, Any]] = []
 
@@ -105,44 +107,88 @@ class FuturesProfileCrawler:
                     continue
 
         if not futures_clicked:
-            existing = await page.query_selector(
-                "div#cphContents_cphContents_cphContents_udpPlayerFutures table,"
-                " div#cphContents_cphContents_cphContents_udpFuturesRecord table"
-            )
+            existing = await page.query_selector("table#tblHitterRecord, table#tblPitcherRecord")
             if not existing:
                 return []
 
         await asyncio.sleep(self.request_delay)
 
-        table_selector = (
-            "div#cphContents_cphContents_cphContents_udpPlayerFutures table,"
-            " div#cphContents_cphContents_cphContents_udpFuturesRecord table"
-        )
-        script = """
-        (tables) => tables.map(table => {
-            const headers = Array.from(table.querySelectorAll('thead th')).map(th => th.innerText.trim());
-            let rows = Array.from(table.querySelectorAll('tbody tr')).map(tr =>
-                Array.from(tr.querySelectorAll('th,td')).map(td => td.innerText.trim())
-            );
-            if (rows.length === 0) {
-                const rawRows = Array.from(table.querySelectorAll('tr'));
-                rows = rawRows.map(tr => Array.from(tr.querySelectorAll('th,td')).map(td => td.innerText.trim()));
-            }
-            const caption = table.querySelector('caption')?.innerText.trim() || null;
-            return { caption, headers, rows };
-        })
-        """
-        try:
-            tables = await page.eval_on_selector_all(table_selector, script)
-        except Exception:
-            tables = []
+        # Get HTML content and parse with BeautifulSoup for proper encoding
+        html_content = await page.content()
+        soup = BeautifulSoup(html_content, 'lxml')
+
+        tables = []
+
+        # Look for specific Futures tables by ID and mark their type
+        hitter_table = soup.find('table', id='tblHitterRecord')
+        if hitter_table:
+            table_data = self._parse_table_with_bs4(hitter_table)
+            if table_data:
+                table_data['_table_type'] = 'HITTER'  # Add explicit type marker
+                tables.append(table_data)
+
+        pitcher_table = soup.find('table', id='tblPitcherRecord')
+        if pitcher_table:
+            table_data = self._parse_table_with_bs4(pitcher_table)
+            if table_data:
+                table_data['_table_type'] = 'PITCHER'  # Add explicit type marker
+                tables.append(table_data)
+
+        # If no tables found by ID, try other methods
         if not tables:
-            try:
-                tables = await page.eval_on_selector_all("table", script)
-            except Exception:
-                tables = []
+            futures_divs = soup.find_all('div', id=lambda x: x and 'Futures' in x if x else False)
+            for div in futures_divs:
+                for table_elem in div.find_all('table'):
+                    table_data = self._parse_table_with_bs4(table_elem)
+                    if table_data:
+                        tables.append(table_data)
 
         return tables
+
+    def _parse_table_with_bs4(self, table_elem) -> Optional[Dict[str, Any]]:
+        """Parse a table element using BeautifulSoup for proper Korean encoding."""
+        try:
+            # Extract caption
+            caption_elem = table_elem.find('caption')
+            caption = caption_elem.get_text(strip=True) if caption_elem else None
+
+            # Extract summary attribute
+            summary = table_elem.get('summary', '')
+
+            # Extract headers
+            headers = []
+            thead = table_elem.find('thead')
+            if thead:
+                header_row = thead.find('tr')
+                if header_row:
+                    headers = [th.get_text(strip=True) for th in header_row.find_all(['th', 'td'])]
+
+            # Extract rows
+            rows = []
+            tbody = table_elem.find('tbody')
+            row_container = tbody if tbody else table_elem
+
+            for tr in row_container.find_all('tr'):
+                cells = [cell.get_text(strip=True) for cell in tr.find_all(['th', 'td'])]
+                if cells and any(cell for cell in cells):  # Skip empty rows
+                    rows.append(cells)
+
+            # If no explicit headers, first row might be headers
+            if not headers and rows:
+                headers = rows[0]
+                rows = rows[1:]
+
+            if headers or rows:
+                return {
+                    'caption': caption,
+                    'summary': summary,
+                    'headers': headers,
+                    'rows': rows
+                }
+        except Exception:
+            pass
+
+        return None
 
 
 async def main():

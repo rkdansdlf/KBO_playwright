@@ -254,3 +254,45 @@ class PlayerGamePitching(Base, TimestampMixin):
     bb_per_nine: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     kbb: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     extras: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSON, nullable=True)
+
+
+class GamePlayByPlay(Base, TimestampMixin):
+    """Play-by-play events from RELAY section"""
+    __tablename__ = "game_play_by_play"
+    __table_args__ = (
+        Index("idx_pbp_game", "game_id"),
+        Index("idx_pbp_inning", "game_id", "inning", "half"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    game_id: Mapped[str] = mapped_column(String(20), ForeignKey("games.game_id"), nullable=False)
+
+    # Inning info
+    inning: Mapped[int] = mapped_column(Integer, nullable=False)
+    half: Mapped[str] = mapped_column(Enum("top", "bottom", name="inning_half"), nullable=False)
+    play_seq: Mapped[int] = mapped_column(Integer, nullable=False)  # Sequence within inning
+
+    # Play details
+    event_type: Mapped[str] = mapped_column(
+        String(32),
+        nullable=False,
+        default="unknown"
+    )  # batting, pitching_change, steal, walk, strikeout, hit, home_run, etc.
+
+    description: Mapped[str] = mapped_column(Text, nullable=False)  # Full play text
+
+    # Player involvement
+    batter_name: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    pitcher_name: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+
+    # Result
+    result: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)  # K, BB, H, HR, etc.
+
+    # Game state after play
+    outs_after: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+
+    # Store full event data as JSON for flexibility
+    raw_data: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSON, nullable=True)
+
+    def __repr__(self):
+        return f"<GamePlayByPlay(game_id='{self.game_id}', {self.inning}{self.half[0]}, seq={self.play_seq})>"

@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
-from typing import Iterable, List
+from typing import Sequence, List
 
 from src.crawlers.schedule_crawler import ScheduleCrawler
 from src.repositories.game_repository import GameRepository
@@ -13,7 +13,7 @@ async def crawl_schedule(args: argparse.Namespace) -> None:
     months = parse_months(args.months)
     crawler = ScheduleCrawler(request_delay=args.delay)
     games = await crawler.crawl_season(args.year, months)
-    print(f"📅 Total games discovered: {len(games)}")
+    print(f"[SCHEDULE] Total games discovered: {len(games)}")
 
     repo = GameRepository()
     repo.save_schedules(games)
@@ -49,7 +49,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def main(argv: Iterable[str] | None = None) -> None:
+def main(argv: Sequence[str] | None = None) -> None:
     parser = build_arg_parser()
     args = parser.parse_args(argv)
     asyncio.run(crawl_schedule(args))

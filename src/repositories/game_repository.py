@@ -109,10 +109,10 @@ class GameRepository:
                     self._upsert_schedule(session, schedule)
                     saved += 1
                 session.commit()
-                print(f"✅ Saved {saved} schedules to database")
+                print(f"[SUCCESS] Saved {saved} schedules to database")
             except Exception as e:
                 session.rollback()
-                print(f"❌ Error saving schedules: {e}")
+                print(f"[ERROR] Error saving schedules: {e}")
                 raise
         return saved
 
@@ -180,7 +180,7 @@ class GameRepository:
                 valid, validation_errors = validate_game_data(game_data)
                 if not valid:
                     error_msg = "; ".join(validation_errors)
-                    print(f"❌ Validation failed for {game_data['game_id']}: {error_msg}")
+                    print(f"[VALIDATION_FAILED] Validation failed for {game_data['game_id']}: {error_msg}")
                     self.update_crawl_status(game_data['game_id'], 'failed', error_msg)
                     return False
 
@@ -191,13 +191,13 @@ class GameRepository:
                 self._save_player_stats(session, game_data)
 
                 session.commit()
-                print(f"✅ Saved game detail: {game_data['game_id']}")
+                print(f"[SUCCESS] Saved game detail: {game_data['game_id']}")
                 self.update_crawl_status(game_data['game_id'], 'crawled')
                 return True
             except Exception as e:
                 session.rollback()
                 error_msg = str(e)
-                print(f"❌ Error saving game detail: {error_msg}")
+                print(f"[ERROR] Error saving game detail: {error_msg}")
                 import traceback
                 traceback.print_exc()
                 self.update_crawl_status(game_data['game_id'], 'failed', error_msg)
@@ -435,7 +435,7 @@ class GameRepository:
                 session.commit()
             except Exception as exc:  # pragma: no cover - logging path
                 session.rollback()
-                print(f"❌ Error updating crawl status for {game_id}: {exc}")
+                print(f"[ERROR] Error updating crawl status for {game_id}: {exc}")
 
     # ------------------------------------------------------------------
     # Reporting helpers

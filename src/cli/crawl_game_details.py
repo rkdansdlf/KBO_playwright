@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
-from typing import Iterable, List
+from typing import Sequence, List
 
 from src.crawlers.game_detail_crawler import GameDetailCrawler
 from src.repositories.game_repository import GameRepository
@@ -46,7 +46,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def main(argv: Iterable[str] | None = None) -> None:
+def main(argv: Sequence[str] | None = None) -> None:
     parser = build_arg_parser()
     args = parser.parse_args(argv)
     asyncio.run(crawl_game_details(args))

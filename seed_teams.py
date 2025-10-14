@@ -4,6 +4,7 @@ Based on Docs/schema/KBO_teams_schema.md
 """
 from src.db.engine import SessionLocal
 from src.models.team import Franchise, TeamIdentity, FranchiseEvent, Ballpark, HomeBallparkAssignment
+from src.utils.safe_print import safe_print as print
 
 
 def seed_franchises(session):

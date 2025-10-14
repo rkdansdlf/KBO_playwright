@@ -6,6 +6,7 @@ import asyncio
 import time
 from typing import List, Dict
 from playwright.async_api import async_playwright, Page
+from src.utils.safe_print import safe_print as print
 
 
 class PlayerListCrawler:
