@@ -86,10 +86,18 @@ def _select_tables(tables: List[Dict[str, Any]]) -> Tuple[List[Dict[str, str]], 
     for table in tables:
         headers, dict_rows = _table_to_dicts(table)
         header_set = set(headers)
+
+        # Priority: Check for explicit table type marker (for Futures crawler)
+        if table.get("_table_type") == "HITTER":
+            base_rows.extend(dict_rows)
+            continue
+
+        # Fallback: keyword matching
         if {"타수", "안타"} & header_set:
             base_rows.extend(dict_rows)
         elif {"출루율", "장타율", "OPS"} & header_set:
             adv_rows.extend(dict_rows)
+
     return base_rows, adv_rows
 
 

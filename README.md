@@ -115,12 +115,20 @@ python -m src.crawlers.game_detail_crawler
 
 ### Configuration
 
-Create `.env` file for configuration:
+Create `.env` (see `.env.example`) for configuration:
 
 ```env
 DATABASE_URL=sqlite:///./data/kbo_dev.db
+# or MySQL (requires mysql-connector-python)
+# DATABASE_URL=mysql+mysqlconnector://user:pass@host:3306/kbo
 REQUEST_DELAY=1.5
 MAX_RETRIES=3
+```
+
+Verify DB connectivity:
+
+```bash
+python -m src.cli.db_healthcheck
 ```
 
 ## Next Steps

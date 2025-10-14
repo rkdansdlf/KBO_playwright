@@ -11,6 +11,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./data/kbo_dev.db")
+DISABLE_SQLITE_WAL = os.getenv("DISABLE_SQLITE_WAL", "0") == "1"
 
 
 def _is_sqlite(url: str) -> bool:
@@ -37,11 +38,20 @@ def get_engine():
         # Enable SQLite optimizations
         @event.listens_for(engine, "connect")
         def _sqlite_pragmas(dbapi_con, _):
-            cursor = dbapi_con.cursor()
-            cursor.execute("PRAGMA foreign_keys = ON;")  # Enable foreign keys
-            cursor.execute("PRAGMA journal_mode = WAL;")  # Write-Ahead Logging
-            cursor.execute("PRAGMA synchronous = NORMAL;")  # Balance safety/speed
-            cursor.close()
+            try:
+                cursor = dbapi_con.cursor()
+                cursor.execute("PRAGMA foreign_keys = ON;")  # Enable foreign keys
+                if not DISABLE_SQLITE_WAL:
+                    cursor.execute("PRAGMA journal_mode = WAL;")  # Write-Ahead Logging
+                cursor.execute("PRAGMA synchronous = NORMAL;")  # Balance safety/speed
+                cursor.close()
+            except Exception:
+                # Avoid failing connection if PRAGMA not supported on FS
+                try:
+                    cursor.close()
+                except Exception:
+                    pass
+                return
 
         return engine
     else:
