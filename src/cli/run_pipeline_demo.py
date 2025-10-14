@@ -4,7 +4,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 from pathlib import Path
-from typing import Iterable, Optional
+from typing import Sequence, Optional
 
 from src.parsers.schedule_parser import parse_schedule_html
 from src.parsers.game_detail_parser import parse_game_detail_html
@@ -90,7 +90,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def main(argv: Iterable[str] | None = None) -> None:
+def main(argv: Sequence[str] | None = None) -> None:
     parser = build_arg_parser()
     args = parser.parse_args(argv)
 

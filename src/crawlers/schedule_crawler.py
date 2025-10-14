@@ -69,7 +69,7 @@ class ScheduleCrawler:
 
     async def _crawl_month(self, page: Page, year: int, month: int) -> List[Dict]:
         url = f"{self.base_url}?year={year}&month={month}&seriesId=0"
-        print(f"📡 Fetching: {url}")
+        print(f"[FETCH] Fetching: {url}")
 
         await page.goto(url, wait_until="networkidle", timeout=30000)
         await asyncio.sleep(self.request_delay)
@@ -114,7 +114,7 @@ class ScheduleCrawler:
                 })
 
             except Exception as e:
-                print(f"⚠️  Error extracting game: {e}")
+                print(f"[WARN] Error extracting game: {e}")
                 continue
 
         # Remove duplicates based on game_id

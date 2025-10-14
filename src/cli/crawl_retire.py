@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
-from typing import Iterable, Set
+from typing import Sequence, Set
 
 from src.crawlers.retire import RetiredPlayerListingCrawler, RetiredPlayerDetailCrawler
 from src.parsers.player_profile_parser import parse_profile, PlayerProfileParsed
@@ -114,7 +114,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def main(argv: Iterable[str] | None = None) -> None:
+def main(argv: Sequence[str] | None = None) -> None:
     parser = build_arg_parser()
     args = parser.parse_args(argv)
     asyncio.run(crawl_retired_players(args))
