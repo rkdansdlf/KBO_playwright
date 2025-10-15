@@ -21,7 +21,7 @@ from src.crawlers.game_detail_crawler import GameDetailCrawler
 
 
 async def step1_collect_player_list(season_year: int = 2024):
-    """Step 1: Collect all players (hitters and pitchers)"""
+    """1단계: KBO 리그의 모든 선수(타자, 투수) 목록을 수집합니다."""
     print("\n" + "=" * 60)
     print("STEP 1: Collect Player List")
     print("=" * 60)

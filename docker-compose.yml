@@ -1,60 +1,18 @@
-version: '3.8'
+version: "3.9"
 
 services:
-  scheduler:
+  crawler:
     build: .
-    container_name: kbo_scheduler
-    restart: unless-stopped
-    volumes:
-      - ./data:/app/data
-      - ./logs:/app/logs
-      - ./.env:/app/.env:ro
+    env_file:
+      - .env
     environment:
-      - TZ=Asia/Seoul
-      - PYTHONUNBUFFERED=1
-    command: python scheduler.py
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "3"
-
-  # Optional: One-time manual crawl services
-  crawl_schedule:
-    build: .
-    container_name: kbo_crawl_schedule
-    profiles:
-      - manual
+      DATABASE_URL: ${DATABASE_URL:-sqlite:///./data/kbo_dev.db}
+      TARGET_DATABASE_URL: ${TARGET_DATABASE_URL:-}
+      SOURCE_DATABASE_URL: ${SOURCE_DATABASE_URL:-sqlite:///./data/kbo_dev.db}
+      RUN_INIT_DB: ${RUN_INIT_DB:-0}
+      RUN_SYNC_SUPABASE: ${RUN_SYNC_SUPABASE:-0}
+      SYNC_TRUNCATE: ${SYNC_TRUNCATE:-0}
     volumes:
+      - ./tests/fixtures:/app/tests/fixtures:ro
       - ./data:/app/data
-      - ./logs:/app/logs
-      - ./.env:/app/.env:ro
-    environment:
-      - TZ=Asia/Seoul
-    command: python -m src.cli.crawl_schedule --season-year 2025 --season-type regular
-
-  crawl_futures:
-    build: .
-    container_name: kbo_crawl_futures
-    profiles:
-      - manual
-    volumes:
-      - ./data:/app/data
-      - ./logs:/app/logs
-      - ./.env:/app/.env:ro
-    environment:
-      - TZ=Asia/Seoul
-    command: python -m src.cli.crawl_futures --season 2025 --concurrency 2 --delay 2.0
-
-  check_data:
-    build: .
-    container_name: kbo_check_data
-    profiles:
-      - manual
-    volumes:
-      - ./data:/app/data
-      - ./logs:/app/logs
-      - ./.env:/app/.env:ro
-    environment:
-      - TZ=Asia/Seoul
-    command: python -m src.cli.check_data_status
+    command: ["python", "-m", "src.cli.run_pipeline_demo", "--help"]

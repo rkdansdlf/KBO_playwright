@@ -10,7 +10,13 @@ from src.utils.safe_print import safe_print as print
 
 
 class PlayerListCrawler:
-    """Crawls KBO player lists by team"""
+    """KBO 공식 기록실에서 특정 시즌의 모든 타자와 투수 목록을 크롤링하는 클래스.
+    
+    주요 기능:
+    - 지정된 시즌의 타자 및 투수 순위 페이지에 접근합니다.
+    - 각 페이지의 선수 표에서 선수 이름, 팀, 고유 ID(playerId) 등의 기본 정보를 추출합니다.
+    - 모든 선수 정보를 수집하여 딕셔너리 형태로 반환합니다.
+    """
 
     def __init__(self, request_delay: float = 1.5):
         self.base_url = "https://www.koreabaseball.com/Record/Player/HitterBasic/Basic1.aspx"
@@ -33,13 +39,13 @@ class PlayerListCrawler:
 
     async def crawl_all_players(self, season_year: int = 2024) -> Dict[str, List[Dict]]:
         """
-        Crawl all players (hitters and pitchers) for all teams
+        지정된 시즌의 모든 타자와 투수 정보를 크롤링하는 메인 메서드.
 
         Args:
-            season_year: Season year
+            season_year: 크롤링할 시즌 연도 (기본값: 2024)
 
         Returns:
-            Dictionary with 'hitters' and 'pitchers' lists
+            타자(hitters)와 투수(pitchers) 목록이 담긴 딕셔너리.
         """
         print(f"\n🔍 Crawling all players for {season_year} season...")
 
@@ -48,6 +54,7 @@ class PlayerListCrawler:
             page = await browser.new_page()
 
             try:
+                # 타자와 투수 정보를 순차적으로 크롤링합니다.
                 all_hitters = await self._crawl_hitters(page, season_year)
                 all_pitchers = await self._crawl_pitchers(page, season_year)
 
@@ -64,7 +71,7 @@ class PlayerListCrawler:
                 await browser.close()
 
     async def _crawl_hitters(self, page: Page, season_year: int) -> List[Dict]:
-        """Crawl all hitters"""
+        """모든 타자 목록을 크롤링합니다."""
         print(f"\n📊 Crawling hitters...")
         url = f"{self.base_url}?gyear={season_year}"
 
@@ -77,7 +84,7 @@ class PlayerListCrawler:
         return hitters
 
     async def _crawl_pitchers(self, page: Page, season_year: int) -> List[Dict]:
-        """Crawl all pitchers"""
+        """모든 투수 목록을 크롤링합니다."""
         print(f"\n📊 Crawling pitchers...")
         url = f"{self.pitcher_url}?gyear={season_year}"
 
@@ -90,20 +97,28 @@ class PlayerListCrawler:
         return pitchers
 
     async def _extract_player_table(self, page: Page, player_type: str) -> List[Dict]:
-        """Extract player information from table"""
+        """페이지 내의 선수 정보 테이블에서 데이터를 추출합니다.
+
+        Args:
+            page: Playwright의 Page 객체.
+            player_type: 선수 유형 ('hitter' 또는 'pitcher').
+
+        Returns:
+            추출된 선수 정보 딕셔너리의 리스트.
+        """
         players = []
 
         try:
-            # Find the main data table
-            # KBO uses different class names: tData01, tData02, etc.
-            # More reliable: use div.record_result table or summary attribute
+            # 선수 정보가 담긴 메인 테이블을 찾습니다.
+            # KBO 사이트는 `tData01`, `tData02` 등 여러 클래스 이름을 사용하므로,
+            # `div.record_result table`과 같이 더 신뢰성 있는 선택자를 사용합니다.
             tables = await page.query_selector_all('div.record_result table, table[summary*="선수"], table[class*="tData"]')
 
             if not tables:
                 print(f"⚠️  No tables found for {player_type}")
                 return players
 
-            # Usually the main table is the first one
+            # 일반적으로 첫 번째 테이블이 메인 선수 목록입니다.
             main_table = tables[0]
             rows = await main_table.query_selector_all('tbody tr')
 
@@ -113,7 +128,7 @@ class PlayerListCrawler:
                     if len(cells) < 3:
                         continue
 
-                    # Extract player link to get player ID
+                    # 선수 프로필 링크에서 고유 ID(playerId)를 추출합니다.
                     player_link = await row.query_selector('a[href*="playerId"]')
                     player_id = None
                     if player_link:
@@ -121,18 +136,18 @@ class PlayerListCrawler:
                         if href and 'playerId=' in href:
                             player_id = href.split('playerId=')[1].split('&')[0]
 
-                    # Extract cell values
+                    # 각 셀의 텍스트 값을 추출합니다.
                     cell_values = []
                     for cell in cells:
                         text = await cell.inner_text()
                         cell_values.append(text.strip())
 
-                    # Skip if no name
+                    # 선수 이름이 없는 행은 건너뜁니다.
                     if not cell_values or len(cell_values) < 2:
                         continue
 
-                    # Basic player info structure
-                    # Column order: [순위, 선수명, 팀, ...]
+                    # 추출된 정보를 바탕으로 선수 딕셔너리를 생성합니다.
+                    # 컬럼 순서: [순위, 선수명, 팀, ...]
                     player = {
                         'player_id': player_id,
                         'player_name': cell_values[1] if len(cell_values) > 1 else '',
