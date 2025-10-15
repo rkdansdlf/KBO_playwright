@@ -8,7 +8,7 @@ from src.utils.safe_print import safe_print as print
 
 
 def seed_franchises(session):
-    """Insert franchise data"""
+    """Insert franchise data (idempotent)"""
     franchises_data = [
         {'key': 'SAMSUNG', 'canonical_name': '삼성 라이온즈', 'status': 'ACTIVE', 'notes': None},
         {'key': 'LOTTE', 'canonical_name': '롯데 자이언츠', 'status': 'ACTIVE', 'notes': None},
@@ -23,16 +23,23 @@ def seed_franchises(session):
         {'key': 'SSANG', 'canonical_name': '쌍방울 레이더스', 'status': 'DISSOLVED', 'notes': '1999년 해체'},
     ]
 
+    inserted = 0
+    skipped = 0
     for data in franchises_data:
-        franchise = Franchise(**data)
-        session.add(franchise)
+        existing = session.query(Franchise).filter_by(key=data['key']).first()
+        if not existing:
+            franchise = Franchise(**data)
+            session.add(franchise)
+            inserted += 1
+        else:
+            skipped += 1
 
     session.commit()
-    print(f"✅ Inserted {len(franchises_data)} franchises")
+    print(f"✅ Franchises: {inserted} inserted, {skipped} skipped")
 
 
 def seed_team_identities(session):
-    """Insert team identity (branding) data"""
+    """Insert team identity (branding) data (idempotent)"""
     # Get franchise IDs
     franchises = {f.key: f.id for f in session.query(Franchise).all()}
 
@@ -71,16 +78,26 @@ def seed_team_identities(session):
         {'franchise_id': franchises['SSANG'], 'name_kor': '쌍방울 레이더스', 'short_code': 'SSANG', 'city_kor': None, 'start_season': None, 'end_season': 1999, 'is_current': 0},
     ]
 
+    inserted = 0
+    skipped = 0
     for data in identities_data:
-        identity = TeamIdentity(**data)
-        session.add(identity)
+        existing = session.query(TeamIdentity).filter_by(
+            franchise_id=data['franchise_id'],
+            name_kor=data['name_kor']
+        ).first()
+        if not existing:
+            identity = TeamIdentity(**data)
+            session.add(identity)
+            inserted += 1
+        else:
+            skipped += 1
 
     session.commit()
-    print(f"✅ Inserted {len(identities_data)} team identities")
+    print(f"✅ Team Identities: {inserted} inserted, {skipped} skipped")
 
 
 def seed_ballparks(session):
-    """Insert ballpark data"""
+    """Insert ballpark data (idempotent)"""
     ballparks_data = [
         {'name_kor': '인천SSG랜더스필드', 'city_kor': '인천'},
         {'name_kor': '수원KT위즈파크', 'city_kor': '수원'},
@@ -93,16 +110,23 @@ def seed_ballparks(session):
         {'name_kor': '문학야구장', 'city_kor': '인천'},  # 인천SSG랜더스필드의 구명칭
     ]
 
+    inserted = 0
+    skipped = 0
     for data in ballparks_data:
-        ballpark = Ballpark(**data)
-        session.add(ballpark)
+        existing = session.query(Ballpark).filter_by(name_kor=data['name_kor']).first()
+        if not existing:
+            ballpark = Ballpark(**data)
+            session.add(ballpark)
+            inserted += 1
+        else:
+            skipped += 1
 
     session.commit()
-    print(f"✅ Inserted {len(ballparks_data)} ballparks")
+    print(f"✅ Ballparks: {inserted} inserted, {skipped} skipped")
 
 
 def seed_ballpark_assignments(session):
-    """Insert home ballpark assignments"""
+    """Insert home ballpark assignments (idempotent)"""
     # Get IDs
     franchises = {f.key: f.id for f in session.query(Franchise).all()}
     ballparks = {b.name_kor: b.id for b in session.query(Ballpark).all()}
@@ -117,20 +141,31 @@ def seed_ballpark_assignments(session):
         {'franchise_id': franchises['KIA'], 'ballpark_id': ballparks['광주기아챔피언스필드'], 'start_season': None, 'end_season': None, 'is_primary': 1},
     ]
 
+    inserted = 0
+    skipped = 0
     for data in assignments_data:
         # Handle NULL start_season for primary key
         start = data['start_season'] if data['start_season'] is not None else -1
-        assignment = HomeBallparkAssignment(
+        existing = session.query(HomeBallparkAssignment).filter_by(
             franchise_id=data['franchise_id'],
             ballpark_id=data['ballpark_id'],
-            start_season=start,
-            end_season=data['end_season'],
-            is_primary=data['is_primary']
-        )
-        session.add(assignment)
+            start_season=start
+        ).first()
+        if not existing:
+            assignment = HomeBallparkAssignment(
+                franchise_id=data['franchise_id'],
+                ballpark_id=data['ballpark_id'],
+                start_season=start,
+                end_season=data['end_season'],
+                is_primary=data['is_primary']
+            )
+            session.add(assignment)
+            inserted += 1
+        else:
+            skipped += 1
 
     session.commit()
-    print(f"✅ Inserted {len(assignments_data)} ballpark assignments")
+    print(f"✅ Ballpark Assignments: {inserted} inserted, {skipped} skipped")
 
 
 def main():

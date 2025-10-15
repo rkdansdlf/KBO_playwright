@@ -12,7 +12,14 @@ from src.utils.team_codes import team_code_from_game_id_segment
 
 
 class ScheduleCrawler:
-    """Crawls KBO game schedule to extract game IDs"""
+    """KBO 공식 사이트의 월별 경기 일정 페이지에서 경기 정보를 크롤링하는 클래스.
+
+    주요 기능:
+    - 특정 연도와 월에 해당하는 경기 일정 페이지에 접근합니다.
+    - 페이지 내의 모든 경기 링크를 분석하여 고유 ID(gameId)를 추출합니다.
+    - gameId를 바탕으로 경기 날짜, 홈/어웨이 팀 코드 등의 상세 정보를 파싱합니다.
+    - 수집된 경기 정보 리스트를 반환합니다.
+    """
 
     def __init__(self, request_delay: float = 1.5):
         self.base_url = "https://www.koreabaseball.com/Schedule/Schedule.aspx"
@@ -20,14 +27,14 @@ class ScheduleCrawler:
 
     async def crawl_schedule(self, year: int, month: int) -> List[Dict]:
         """
-        Crawl schedule for a specific year and month
+        지정된 연도와 월의 경기 일정을 크롤링하는 메인 메서드.
 
         Args:
-            year: Season year (e.g., 2025)
-            month: Month (1-12)
+            year: 시즌 연도 (예: 2024)
+            month: 월 (1-12)
 
         Returns:
-            List of game dictionaries with game_id, date, teams
+            경기 정보 딕셔너리가 담긴 리스트.
         """
         print(f"🔍 Crawling schedule for {year}-{month:02d}...")
 
@@ -47,11 +54,11 @@ class ScheduleCrawler:
 
     async def crawl_season(self, year: int, months: Optional[List[int]] = None) -> List[Dict]:
         """
-        Crawl schedule across multiple months for a given season.
+        주어진 시즌의 여러 달에 걸쳐 경기 일정을 크롤링합니다.
 
         Args:
-            year: Season year
-            months: Optional list of months (defaults to March-October)
+            year: 시즌 연도
+            months: 크롤링할 월 목록 (기본값: 3월-10월)
         """
         months = months or list(range(3, 11))
         all_games: List[Dict] = []
@@ -68,6 +75,7 @@ class ScheduleCrawler:
                 await browser.close()
 
     async def _crawl_month(self, page: Page, year: int, month: int) -> List[Dict]:
+        """특정 월의 경기 일정 페이지에 접속하여 게임 정보를 추출합니다."""
         url = f"{self.base_url}?year={year}&month={month}&seriesId=0"
         print(f"[FETCH] Fetching: {url}")
 
@@ -77,10 +85,13 @@ class ScheduleCrawler:
         return await self._extract_games(page, year, month)
 
     async def _extract_games(self, page: Page, year: int, month: int) -> List[Dict]:
-        """Extract game information from the schedule page"""
+        """페이지에서 경기 관련 데이터를 추출합니다.
+
+        `gameId`가 포함된 모든 링크를 찾아, 각 링크에서 경기 ID, 날짜, 팀 정보 등을 파싱합니다.
+        """
         games = []
 
-        # Find all game links with gameId parameter
+        # `gameId` 파라미터가 포함된 모든 경기 링크를 찾습니다.
         game_links = await page.query_selector_all('a[href*="gameId="]')
 
         for link in game_links:
@@ -89,14 +100,15 @@ class ScheduleCrawler:
                 if not href or 'gameId=' not in href:
                     continue
 
-                # Extract game_id from URL
+                # URL에서 game_id를 추출합니다.
                 game_id = self._extract_game_id(href)
                 if not game_id:
                     continue
 
-                # Extract date from game_id (format: YYYYMMDD...)
+                # game_id 형식(YYYYMMDD...)을 바탕으로 날짜를 추출합니다.
                 game_date = game_id[:8]
 
+                # game_id에서 홈/어웨이 팀 코드를 추출합니다.
                 away_segment = game_id[8:10] if len(game_id) >= 10 else None
                 home_segment = game_id[10:12] if len(game_id) >= 12 else None
 
@@ -104,12 +116,12 @@ class ScheduleCrawler:
                     'game_id': game_id,
                     'game_date': game_date,
                     'season_year': year,
-                    'season_type': 'regular',
+                    'season_type': 'regular', # 시즌 유형 (정규, 포스트시즌 등)
                     'away_team_code': team_code_from_game_id_segment(away_segment),
                     'home_team_code': team_code_from_game_id_segment(home_segment),
-                    'doubleheader_no': int(game_id[-1]) if game_id[-1].isdigit() else 0,
-                    'game_status': 'scheduled',
-                    'crawl_status': 'pending',
+                    'doubleheader_no': int(game_id[-1]) if game_id[-1].isdigit() else 0, # 더블헤더 여부
+                    'game_status': 'scheduled', # 경기 상태 (예정, 종료 등)
+                    'crawl_status': 'pending', # 크롤링 상태
                     'url': f"https://www.koreabaseball.com{href}" if href.startswith('/') else href
                 })
 
@@ -117,12 +129,12 @@ class ScheduleCrawler:
                 print(f"[WARN] Error extracting game: {e}")
                 continue
 
-        # Remove duplicates based on game_id
+        # game_id를 기준으로 중복된 경기 정보를 제거합니다.
         unique_games = {g['game_id']: g for g in games}
         return list(unique_games.values())
 
     def _extract_game_id(self, href: str) -> str:
-        """Extract game_id from URL"""
+        """URL(href)에서 game_id를 안전하게 추출합니다."""
         try:
             if 'gameId=' in href:
                 game_id = href.split('gameId=')[1].split('&')[0]

@@ -47,6 +47,7 @@ class TeamIdentity(Base, TimestampMixin):
     name_eng: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
     short_code: Mapped[Optional[str]] = mapped_column(String(8), nullable=True)
     city_kor: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)
+    city_eng: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)  # Added for Supabase compatibility
     start_season: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     end_season: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     is_current: Mapped[bool] = mapped_column(Integer, nullable=False, default=0)
@@ -95,7 +96,9 @@ class Ballpark(Base, TimestampMixin):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     name_kor: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
+    name_eng: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)  # Added for Supabase compatibility
     city_kor: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)
+    city_eng: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)  # Added for Supabase compatibility
     opened_year: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     closed_year: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     is_dome: Mapped[Optional[bool]] = mapped_column(Integer, nullable=True)

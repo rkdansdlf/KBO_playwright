@@ -9,7 +9,9 @@ from playwright.async_api import async_playwright, Page
 
 
 class PlayerProfileCrawler:
-    """Crawls detailed player profile information"""
+    """선수 고유 ID(player_id)를 사용하여 KBO 공식 사이트에서
+    선수의 상세 프로필 정보(기본 정보, 신체 정보, 경력 등)를 크롤링하는 클래스.
+    """
 
     def __init__(self, request_delay: float = 1.5):
         self.base_url = "https://www.koreabaseball.com/Record/Player/HitterDetail/Basic.aspx"
@@ -17,13 +19,13 @@ class PlayerProfileCrawler:
 
     async def crawl_player_profile(self, player_id: str) -> Optional[Dict]:
         """
-        Crawl player profile for given player ID
+        주어진 선수 ID에 대한 프로필 정보를 크롤링하는 메인 메서드.
 
         Args:
-            player_id: KBO player ID
+            player_id: KBO 선수 고유 ID
 
         Returns:
-            Dictionary containing player profile data
+            선수 프로필 데이터가 담긴 딕셔너리. 오류 발생 시 None을 반환.
         """
         print(f"\n🔍 Crawling profile for player ID: {player_id}")
 
@@ -42,13 +44,14 @@ class PlayerProfileCrawler:
                 await browser.close()
 
     async def _fetch_profile(self, page: Page, player_id: str) -> Dict:
-        """Fetch player profile page and extract data"""
+        """선수 프로필 페이지에 접속하여 데이터를 추출하는 내부 메서드."""
         url = f"{self.base_url}?playerId={player_id}"
         print(f"📡 Fetching: {url}")
 
         await page.goto(url, wait_until="networkidle", timeout=30000)
         await asyncio.sleep(self.request_delay)
 
+        # 각 섹션(기본, 신체, 경력)에서 정보를 추출하여 종합합니다.
         profile = {
             'player_id': player_id,
             'basic_info': await self._extract_basic_info(page),
@@ -59,7 +62,7 @@ class PlayerProfileCrawler:
         return profile
 
     async def _extract_basic_info(self, page: Page) -> Dict:
-        """Extract basic player information (name, team, position, etc.)"""
+        """선수의 기본 정보(이름, 팀, 등번호, 포지션, 생년월일)를 추출합니다."""
         info = {
             'name': None,
             'team': None,
@@ -69,15 +72,14 @@ class PlayerProfileCrawler:
         }
 
         try:
-            # Look for player info section
-            # KBO typically uses div.player-info or similar
+            # 선수 정보 영역을 선택합니다.
             info_area = await page.query_selector('.player-info, .playerInfo, #cphContents_cphContents_cphContents_playerProfile')
 
             if info_area:
                 text = await info_area.inner_text()
                 lines = text.split('\n')
 
-                # Parse player info from text
+                # 텍스트를 파싱하여 필요한 정보를 추출합니다.
                 for line in lines:
                     line = line.strip()
                     if '이름' in line or '선수명' in line:
@@ -99,7 +101,7 @@ class PlayerProfileCrawler:
         return info
 
     async def _extract_physical_info(self, page: Page) -> Dict:
-        """Extract physical information (height, weight, bat/throw)"""
+        """선수의 신체 정보(키, 몸무게, 투타유형)를 추출합니다."""
         info = {
             'height': None,
             'weight': None,
@@ -108,7 +110,7 @@ class PlayerProfileCrawler:
         }
 
         try:
-            # Physical info is usually in the same area as basic info
+            # 신체 정보는 보통 기본 정보와 같은 영역에 있습니다.
             info_area = await page.query_selector('.player-info, .playerInfo, #cphContents_cphContents_cphContents_playerProfile')
 
             if info_area:
@@ -122,7 +124,7 @@ class PlayerProfileCrawler:
                     elif '체중' in line or '몸무게' in line or 'Weight' in line:
                         info['weight'] = line.split(':')[-1].strip() if ':' in line else None
                     elif '투타' in line:
-                        # Format: "투타: 우투우타" or "좌투좌타"
+                        # "투타: 우투우타" 또는 "좌투좌타" 형식의 데이터를 파싱합니다.
                         value = line.split(':')[-1].strip() if ':' in line else None
                         if value:
                             if '투' in value and '타' in value:
@@ -138,7 +140,7 @@ class PlayerProfileCrawler:
         return info
 
     async def _extract_career_info(self, page: Page) -> Dict:
-        """Extract career information (debut, draft, etc.)"""
+        """선수의 경력 정보(데뷔, 드래프트 정보 등)를 추출합니다."""
         info = {
             'debut_year': None,
             'draft_year': None,
@@ -147,7 +149,7 @@ class PlayerProfileCrawler:
         }
 
         try:
-            # Career info section
+            # 경력 정보 영역을 선택합니다.
             career_area = await page.query_selector('.career-info, .careerInfo, #cphContents_cphContents_cphContents_playerProfile')
 
             if career_area:

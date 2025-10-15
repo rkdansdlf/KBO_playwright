@@ -1,145 +1,128 @@
 # KBO Playwright Crawler
 
-Korean Baseball Organization (KBO) data collection system using Playwright.
+Korean Baseball Organization (KBO) data collection system using Playwright, with support for Docker, Supabase, and multiple database backends.
 
 ## Features
 
-- **2-Track Pipeline**: Separate crawling strategies for Regular Season (game-based) and Futures League (profile-based)
-- **Automated Scheduling**: APScheduler for daily/weekly data collection
-- **Idempotent UPSERT**: Safe to re-run without data duplication
-- **Production-Ready Architecture**: Full database schema and Airflow DAG implementation
+- **2-Track Pipeline**: Separate crawling for Regular Season (game-based) and Futures League (profile-based).
+- **Flexible Database Support**: Works with SQLite, PostgreSQL, and MySQL.
+- **Dockerized Environment**: Easy setup and deployment with Docker and Docker Compose.
+- **Supabase Sync**: CLI tool to synchronize local data with a remote Supabase Postgres database.
+- **Automated Scheduling**: APScheduler for daily/weekly data collection.
+- **Idempotent Storage**: Safe to re-run crawlers without data duplication thanks to UPSERT logic.
 
 ## Quick Start
 
-### 1. Installation
+### 1. Environment Setup
 
 ```bash
-# Install dependencies
+# 1. Install Python dependencies
 pip install -r requirements.txt
 
-# Install Playwright browser
+# 2. Install Playwright browser binaries
 playwright install chromium
+
+# 3. Set up environment variables
+cp .env.example .env
+
+# 4. (Optional) Edit .env to configure your database
+# Default is SQLite: DATABASE_URL=sqlite:///./data/kbo_dev.db
 ```
 
-### 2. Run POC Test
+### 2. Initialize Database
 
-Test the basic crawling functionality:
+Create the database schema from the defined models.
 
 ```bash
-# Activate virtual environment (if using venv)
-source venv/bin/activate
+python -m src.db.engine
+```
 
-# Run POC test
-python poc_test.py
+### 3. Run a Test Crawl
+
+Execute the initial data collection script to test the full pipeline.
+
+```bash
+# This script runs the main crawling steps in order
+python init_data_collection.py
 ```
 
 This will:
-- Crawl the schedule for October 2024
-- Extract game IDs
-- Crawl detailed data for one game
-- Save results to `data/` directory as JSON files
-
-### 3. Project Structure
-
-```
-KBO_playwright/
-├── src/
-│   ├── crawlers/          # Crawler implementations
-│   │   ├── schedule_crawler.py
-│   │   └── game_detail_crawler.py
-│   └── utils/             # Utility functions
-├── data/                  # Output data directory
-├── logs/                  # Log files
-├── Docs/                  # Detailed documentation
-│   ├── projectOverviewGuid.md
-│   ├── URL_REFERENCE.md
-│   ├── SCHEDULER_README.md
-│   └── schema/
-│       └── KBOseasonGamePipeLine.md  # Complete architecture
-├── requirements.txt
-├── poc_test.py           # POC test script
-└── CLAUDE.md             # Claude Code guidance
-
-```
-
-## Documentation
-
-See [Docs/](Docs/) folder for comprehensive documentation:
-
-- **[CLAUDE.md](CLAUDE.md)** - Quick reference for development
-- **[Docs/projectOverviewGuid.md](Docs/projectOverviewGuid.md)** - Operational runbook
-- **[Docs/schema/KBOseasonGamePipeLine.md](Docs/schema/KBOseasonGamePipeLine.md)** - Complete production architecture
-- **[Docs/URL_REFERENCE.md](Docs/URL_REFERENCE.md)** - URL patterns and CSS selectors
-- **[Docs/CRAWLING_LIMITATIONS.md](Docs/CRAWLING_LIMITATIONS.md)** - Known issues and workarounds
-
-## Key Concepts
-
-### Two-Track Pipeline
-
-1. **Track A: Regular Season (Game-Based)**
-   - Daily crawling at 03:00 KST
-   - BoxScore, Lineup, Play-by-Play data
-   - Nightly aggregation to season stats
-
-2. **Track B: Futures League (Profile-Based)**
-   - Weekly crawling (Sunday 05:00 KST)
-   - Season-cumulative stats from player profiles
-   - Lower frequency due to data stability
-
-### Data Flow
-
-```
-Collect → Parse → Validate → Save (UPSERT)
-```
-
-All operations follow this 4-stage process for data quality and idempotency.
-
-## Web Scraping Etiquette
-
-- **Rate Limiting**: 1-2 second delay between requests
-- **Execution Window**: 02:00-05:00 KST (low traffic)
-- **Exponential Backoff**: Automatic retry with increasing delays
-- **Respect robots.txt**: Check before crawling new paths
+- Crawl player lists, profiles, and game schedules.
+- Save the results to the configured database.
 
 ## Development
 
 ### Running Individual Crawlers
 
-```bash
-# Schedule crawler
-python -m src.crawlers.schedule_crawler
-
-# Game detail crawler
-python -m src.crawlers.game_detail_crawler
-```
-
-### Configuration
-
-Create `.env` (see `.env.example`) for configuration:
-
-```env
-DATABASE_URL=sqlite:///./data/kbo_dev.db
-# or MySQL (requires mysql-connector-python)
-# DATABASE_URL=mysql+mysqlconnector://user:pass@host:3306/kbo
-REQUEST_DELAY=1.5
-MAX_RETRIES=3
-```
-
-Verify DB connectivity:
+You can run specific parts of the crawling pipeline using the CLI scripts.
 
 ```bash
+# Crawl game details for a specific date
+python -m src.cli.crawl_game_details --date 20241015
+
+# Crawl Futures League stats
+python -m src.cli.crawl_futures
+
+# Crawl retired player data
+python -m src.cli.crawl_retire --years 2023
+```
+
+### Database Operations
+
+```bash
+# Check database connection
 python -m src.cli.db_healthcheck
+
+# Sync local SQLite data to a remote Postgres/Supabase DB
+# Ensure TARGET_DATABASE_URL is set in your .env file
+python -m src.cli.sync_supabase --truncate
 ```
 
-## Next Steps
+### Docker Deployment
 
-After POC validation:
+The project is fully containerized for easy deployment.
 
-1. **Database Layer**: Implement SQLAlchemy models and repositories
-2. **Data Validation**: Add Pydantic schemas and validation rules
-3. **Scheduler**: Set up APScheduler for automated runs
-4. **Production Pipeline**: Deploy Airflow DAGs (see Docs/schema/)
+```bash
+# Build and run the scheduler service in the background
+docker-compose build
+docker-compose up -d scheduler
+
+# View the scheduler logs
+docker-compose logs -f scheduler
+
+# Stop the services
+docker-compose down
+```
+
+## Project Structure
+
+```
+KBO_playwright/
+├── src/
+│   ├── cli/               # Command-line interface scripts
+│   ├── crawlers/          # Playwright crawler implementations
+│   ├── db/                # Database engine and session management
+│   ├── models/            # SQLAlchemy ORM models
+│   ├── parsers/           # HTML/JSON parsing logic
+│   └── repositories/      # Data storage logic (UPSERTs)
+├── data/                  # Default directory for SQLite DB
+├── Docs/                  # Detailed project documentation
+├── docker-compose.yml     # Docker service definitions
+├── Dockerfile             # Docker container setup
+├── requirements.txt       # Python dependencies
+├── scheduler.py           # APScheduler job definitions
+└── CLAUDE.md              # AI assistant guidance
+```
+
+## Documentation
+
+See the [Docs/](Docs/) folder for comprehensive documentation:
+
+- **[CLAUDE.md](CLAUDE.md)**: Quick reference for development with AI assistants.
+- **[Docs/projectOverviewGuid.md](Docs/projectOverviewGuid.md)**: Operational runbook and procedures.
+- **[Docs/URL_REFERENCE.md](Docs/URL_REFERENCE.md)**: Canonical URL patterns and CSS selectors.
+- **[Docs/CRAWLING_LIMITATIONS.md](Docs/CRAWLING_LIMITATIONS.md)**: Known data issues and workarounds.
 
 ## License
 
-This project is for educational and research purposes. Please respect KBO's terms of service and robots.txt.
+This project is for educational and research purposes. Please respect KBO's terms of service.
