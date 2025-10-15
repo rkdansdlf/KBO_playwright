@@ -1,5 +1,8 @@
 """
-Data status check script - Verify schedule and player data integrity.
+데이터 무결성 및 상태 점검 스크립트.
+
+데이터베이스에 저장된 경기 일정, 선수, 퓨처스리그 데이터 등의 상태를 확인하고,
+예상 수치와 비교하여 잠재적인 문제를 경고합니다.
 """
 from __future__ import annotations
 
@@ -15,14 +18,14 @@ from src.utils.safe_print import safe_print as print
 
 
 def check_schedules(session) -> dict:
-    """Check game_schedules table."""
+    """`game_schedules` 테이블의 데이터 현황을 점검합니다."""
     print("\n=== Game Schedules ===")
 
-    # Total count
+    # 전체 일정 수
     total = session.execute(select(func.count(GameSchedule.schedule_id))).scalar()
     print(f"Total schedules: {total}")
 
-    # By season type
+    # 시즌 유형(정규, 프리시즌 등)별 집계
     stmt = select(
         GameSchedule.season_type,
         func.count(GameSchedule.schedule_id)
@@ -35,7 +38,7 @@ def check_schedules(session) -> dict:
         type_counts[season_type] = count
         print(f"  {season_type}: {count}")
 
-    # By season year
+    # 연도별 집계
     stmt = select(
         GameSchedule.season_year,
         func.count(GameSchedule.schedule_id)
@@ -46,7 +49,7 @@ def check_schedules(session) -> dict:
     for year, count in results:
         print(f"  {year}: {count}")
 
-    # Date range validation
+    # 데이터의 날짜 범위 확인
     from sqlalchemy import func as sql_func
     stmt = select(
         sql_func.min(GameSchedule.game_date),
@@ -56,7 +59,7 @@ def check_schedules(session) -> dict:
     if min_date and max_date:
         print(f"\nDate range: {min_date} to {max_date}")
 
-    # Expected counts validation (2025 season)
+    # 예상 데이터 수와 비교하여 검증 (2025 시즌 기준)
     warnings = []
     expected = {
         "preseason": 42,    # Based on Progress.md
@@ -80,14 +83,14 @@ def check_schedules(session) -> dict:
 
 
 def check_players(session) -> dict:
-    """Check players table."""
+    """`players` 테이블의 데이터 현황을 점검합니다."""
     print("\n=== Players ===")
 
-    # Total players
+    # 전체 선수 수
     total = session.execute(select(func.count(Player.id))).scalar()
     print(f"Total players: {total}")
 
-    # By status
+    # 선수 상태(현역, 은퇴 등)별 집계
     stmt = select(
         Player.status,
         func.count(Player.id)
@@ -103,17 +106,17 @@ def check_players(session) -> dict:
 
 
 def check_futures_data(session) -> dict:
-    """Check Futures league data."""
+    """퓨처스리그 관련 데이터(타자/투수 기록) 현황을 점검합니다."""
     print("\n=== Futures League Data ===")
 
-    # Batting records
+    # 퓨처스리그 타자 기록 수
     batting_stmt = select(func.count(PlayerSeasonBatting.id)).where(
         PlayerSeasonBatting.league == "FUTURES"
     )
     batting_count = session.execute(batting_stmt).scalar()
     print(f"Batting records: {batting_count}")
 
-    # By season
+    # 시즌별 타자 기록 집계
     stmt = select(
         PlayerSeasonBatting.season,
         func.count(PlayerSeasonBatting.id)
@@ -127,7 +130,7 @@ def check_futures_data(session) -> dict:
         for season, count in results:
             print(f"  {season}: {count}")
 
-    # Pitching records
+    # 퓨처스리그 투수 기록 수
     pitching_stmt = select(func.count(PlayerSeasonPitching.id)).where(
         PlayerSeasonPitching.league == "FUTURES"
     )
@@ -141,10 +144,9 @@ def check_futures_data(session) -> dict:
 
 
 def check_game_data(session) -> dict:
-    """Check game-level player stats."""
+    """개별 경기 내 선수들의 기록 데이터 현황을 점검합니다."""
     print("\n=== Game-Level Stats ===")
 
-    # Try to import game-level models if they exist
     try:
         from src.models.game import PlayerGameBatting, PlayerGamePitching
 
@@ -167,7 +169,7 @@ def check_game_data(session) -> dict:
 
 
 def main(argv: Sequence[str] | None = None) -> None:
-    """Run data checks."""
+    """데이터 점검 스크립트의 메인 실행 함수."""
     parser = argparse.ArgumentParser(
         description="Check KBO database status and data integrity"
     )
@@ -190,7 +192,7 @@ def main(argv: Sequence[str] | None = None) -> None:
         futures_stats = check_futures_data(session)
         game_stats = check_game_data(session)
 
-    # Summary
+    # 최종 요약 출력
     print(f"\n{'='*60}")
     print(" Summary")
     print(f"{'='*60}")
@@ -201,15 +203,13 @@ def main(argv: Sequence[str] | None = None) -> None:
     print(f"  Game batting: {game_stats['batting']}")
     print(f"  Game pitching: {game_stats['pitching']}")
 
-    # Warnings
+    # 경고 목록 취합 및 출력
     all_warnings = []
 
-    # Schedule warnings
     if schedule_stats['total'] == 0:
         all_warnings.append("No schedules found")
     all_warnings.extend(schedule_stats.get('warnings', []))
 
-    # Data warnings
     if futures_stats['batting'] == 0:
         all_warnings.append("No Futures batting data found")
 

@@ -19,50 +19,51 @@ def _is_sqlite(url: str) -> bool:
     return url.startswith("sqlite:")
 
 
-def get_engine():
-    """
-    Create database engine with appropriate settings for SQLite or MySQL
+# Shared engine factory -----------------------------------------------------
 
-    Returns:
-        SQLAlchemy Engine instance
-    """
-    if _is_sqlite(DATABASE_URL):
-        # SQLite-specific configuration
+def create_engine_for_url(url: str, *, disable_sqlite_wal: bool = False):
+    """Create SQLAlchemy engine for the given URL."""
+    if _is_sqlite(url):
         engine = create_engine(
-            DATABASE_URL,
+            url,
             connect_args={"check_same_thread": False},
             pool_pre_ping=True,
-            echo=False  # Set to True for SQL debugging
+            echo=False,
         )
 
-        # Enable SQLite optimizations
         @event.listens_for(engine, "connect")
-        def _sqlite_pragmas(dbapi_con, _):
+        def _sqlite_pragmas(dbapi_con, _):  # pragma: no cover - driver specific
             try:
                 cursor = dbapi_con.cursor()
-                cursor.execute("PRAGMA foreign_keys = ON;")  # Enable foreign keys
-                if not DISABLE_SQLITE_WAL:
-                    cursor.execute("PRAGMA journal_mode = WAL;")  # Write-Ahead Logging
-                cursor.execute("PRAGMA synchronous = NORMAL;")  # Balance safety/speed
+                cursor.execute("PRAGMA foreign_keys = ON;")
+                if not disable_sqlite_wal:
+                    cursor.execute("PRAGMA journal_mode = WAL;")
+                cursor.execute("PRAGMA synchronous = NORMAL;")
                 cursor.close()
             except Exception:
-                # Avoid failing connection if PRAGMA not supported on FS
                 try:
                     cursor.close()
                 except Exception:
                     pass
-                return
 
         return engine
-    else:
-        # MySQL-specific configuration
-        return create_engine(
-            DATABASE_URL,
-            pool_pre_ping=True,
-            pool_size=10,
-            max_overflow=20,
-            echo=False
-        )
+
+    # MySQL / Postgres / other SQLAlchemy-supported URLs
+    return create_engine(
+        url,
+        pool_pre_ping=True,
+        pool_size=10,
+        max_overflow=20,
+        echo=False,
+    )
+
+
+def get_engine():
+    """Return the primary engine based on `DATABASE_URL`."""
+    return create_engine_for_url(
+        DATABASE_URL,
+        disable_sqlite_wal=DISABLE_SQLITE_WAL,
+    )
 
 
 # Global engine and session factory

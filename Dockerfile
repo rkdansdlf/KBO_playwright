@@ -1,18 +1,42 @@
-FROM mcr.microsoft.com/playwright/python:v1.49.0-jammy
+FROM python:3.10-slim
+
+ENV PYTHONUNBUFFERED=1 \
+    PLAYWRIGHT_BROWSERS_PATH=/pw-browsers
 
 WORKDIR /app
 
-# Copy requirements first for better caching
-COPY requirements.txt .
+# System dependencies (Playwright + PostgreSQL clients)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    postgresql-client \
+    build-essential \
+    curl \
+    wget \
+    gnupg \
+    unzip \
+    fonts-liberation \
+    libnss3 \
+    libatk1.0-0 \
+    libatk-bridge2.0-0 \
+    libdrm2 \
+    libxkbcommon0 \
+    libxcomposite1 \
+    libxdamage1 \
+    libxfixes3 \
+    libxrandr2 \
+    libgbm1 \
+    libpango-1.0-0 \
+    libcairo2 \
+    libasound2 \
+    && rm -rf /var/lib/apt/lists/*
 
-# Install Python dependencies (playwright is already in base image)
-RUN pip install --no-cache-dir -r requirements.txt
+COPY requirements.txt ./
+RUN pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir -r requirements.txt
 
-# Copy application code
+# Optional: install Playwright browsers (comment out if not crawling)
+RUN python -m playwright install chromium
+
 COPY . .
 
-# Create logs/data directories
-RUN mkdir -p logs data
-
-# Default command (can be overridden in docker-compose)
-CMD ["python", "scheduler.py"]
+ENTRYPOINT ["bash", "docker/entrypoint.sh"]
+CMD ["python", "-m", "src.cli.run_pipeline_demo", "--help"]

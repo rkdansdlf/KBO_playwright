@@ -1,9 +1,11 @@
 """
-Database healthcheck CLI.
+데이터베이스 상태를 점검하는 CLI 스크립트.
 
-Prints current DATABASE_URL, dialect, connectivity, and basic table stats.
+환경 변수에 설정된 `DATABASE_URL`을 사용하여 데이터베이스에 연결하고,
+연결 성공 여부, 테이블 목록, 주요 테이블의 레코드 수를 출력하여
+데이터베이스의 현재 상태를 빠르게 진단할 수 있도록 돕습니다.
 
-Usage:
+사용법:
   python -m src.cli.db_healthcheck
 """
 from __future__ import annotations
@@ -19,6 +21,7 @@ from src.utils.safe_print import safe_print as print
 
 
 def main(argv: List[str] | None = None) -> None:
+    """데이터베이스 상태 점검을 수행하는 메인 함수."""
     url = os.getenv("DATABASE_URL", DATABASE_URL)
     dialect = Engine.url.get_backend_name()
 
@@ -26,7 +29,7 @@ def main(argv: List[str] | None = None) -> None:
     print(f"URL: {url}")
     print(f"Dialect: {dialect}")
 
-    # Check connectivity
+    # 1. 데이터베이스 연결 테스트
     try:
         with Engine.connect() as conn:
             conn.execute(text("SELECT 1"))
@@ -35,19 +38,19 @@ def main(argv: List[str] | None = None) -> None:
         print(f"Connectivity: FAILED -> {e}")
         return
 
-    # Introspect tables
+    # 2. 테이블 목록 조회
     try:
         insp = inspect(Engine)
         tables = insp.get_table_names()
         print(f"Tables: {len(tables)} found")
         if tables:
-            # Show up to 10 table names
+            # 최대 10개의 테이블 이름 출력
             for t in tables[:10]:
                 print(f"  - {t}")
     except Exception as e:
         print(f"Introspection failed: {e}")
 
-    # Basic counts for common tables if they exist
+    # 3. 주요 테이블의 레코드 수 집계
     for table in [
         "players",
         "teams",
@@ -63,7 +66,7 @@ def main(argv: List[str] | None = None) -> None:
                 count = result.scalar_one()
                 print(f"{table}: {count}")
         except Exception:
-            # Table may not exist; skip quietly
+            # 테이블이 존재하지 않으면 조용히 넘어감
             continue
 
     print("\nHealthcheck complete.\n")
