@@ -67,15 +67,6 @@ FOR EACH ROW BEGIN
   UPDATE player_identities SET updated_at=CURRENT_TIMESTAMP WHERE id=OLD.id;
 END;
 
--- 외부 코드 매핑(멀티 소스)
-CREATE TABLE player_codes (
-  player_id   INTEGER NOT NULL REFERENCES players(id) ON DELETE CASCADE,
-  source      TEXT NOT NULL,          -- 'KBO','STATIZ','WIKI', 등
-  code        TEXT NOT NULL,
-  created_at  TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  PRIMARY KEY (player_id, source)
-);
-
 -- 소속 이력(팀/브랜딩/등번호/포지션)
 -- franchises/team_identities 테이블(이전 답변)과 연결
 CREATE TABLE player_stints (
@@ -104,10 +95,9 @@ END;
 ```
 
 > 포인트
->
+> 
 > * **player_identities**로 개명/표기 변경을 자연스럽게 추적.
 > * **player_stints**는 프랜차이즈·브랜딩을 모두 연결할 수 있어 **LG/두산 공동 홈**·브랜딩 교체 등에도 유연.
-> * **player_codes**로 KBO 내외부 식별자 동기화가 쉬움.
 
 ---
 
@@ -181,7 +171,6 @@ CREATE TABLE player_game_fielding (
 );
 CREATE INDEX idx_pgf_player ON player_game_fielding(player_id);
 ```
-
 > 포인트
 >
 > * **IP_outs**(정수)로 이닝 소수점 문제(예: 5.2이닝) 없이 안전 계산.
