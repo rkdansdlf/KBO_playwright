@@ -56,7 +56,7 @@ class GameSchedule(Base, TimestampMixin):
 
     # Crawl status
     crawl_status: Mapped[str] = mapped_column(
-        Enum("pending", "ready", "crawled", "failed", "skipped", name="crawl_status"),
+        Enum("pending", "ready", "crawled", "parsed", "saved", "failed", "skipped", "completed", name="crawl_status"),
         nullable=False,
         default="pending"
     )

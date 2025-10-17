@@ -177,10 +177,17 @@ class GameRepository:
         """
         with SessionLocal() as session:
             try:
-                valid, validation_errors = validate_game_data(game_data)
+                valid, validation_errors, validation_warnings = validate_game_data(game_data)
+
+                # Log warnings (non-blocking)
+                if validation_warnings:
+                    warning_msg = "; ".join(validation_warnings)
+                    print(f"[WARNING] Data quality issues for {game_data['game_id']}: {warning_msg}")
+
+                # Block save only on critical errors
                 if not valid:
                     error_msg = "; ".join(validation_errors)
-                    print(f"[VALIDATION_FAILED] Validation failed for {game_data['game_id']}: {error_msg}")
+                    print(f"[VALIDATION_FAILED] Critical validation failed for {game_data['game_id']}: {error_msg}")
                     self.update_crawl_status(game_data['game_id'], 'failed', error_msg)
                     return False
 

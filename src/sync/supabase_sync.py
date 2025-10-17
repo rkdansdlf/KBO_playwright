@@ -9,8 +9,8 @@ from sqlalchemy.orm import sessionmaker, Session
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from src.models.team import Franchise, TeamIdentity, Ballpark, HomeBallparkAssignment
-from src.models.game import GameSchedule, Game, GameLineup, PlayerGameStats
-from src.models.player import Player, PlayerIdentity, PlayerCode, PlayerStint
+from src.models.game import GameSchedule, Game, GameLineup, PlayerGameBatting, PlayerGamePitching
+from src.models.player import Player, PlayerIdentity, PlayerStint, PlayerBasic
 from src.utils.safe_print import safe_print as print
 
 
@@ -227,11 +227,7 @@ class SupabaseSync:
                 'postpone_reason': schedule.postpone_reason,
                 'doubleheader_no': schedule.doubleheader_no,
                 'series_id': schedule.series_id,
-                'series_name': schedule.series_name,
                 'crawl_status': schedule.crawl_status,
-                'crawl_attempts': schedule.crawl_attempts,
-                'last_crawl_at': schedule.last_crawl_at,
-                'crawl_error': schedule.crawl_error,
             }
 
             stmt = pg_insert(GameSchedule).values(**data)
@@ -340,35 +336,6 @@ class SupabaseSync:
         print(f"✅ Synced {synced} player identities to Supabase")
         return synced
 
-    def sync_player_codes(self) -> int:
-        """Sync player codes from SQLite to Supabase"""
-        player_mapping = self._get_player_id_mapping()
-        codes = self.sqlite_session.query(PlayerCode).all()
-        synced = 0
-
-        for code in codes:
-            supabase_player_id = player_mapping.get(code.player_id)
-            if not supabase_player_id:
-                continue
-
-            data = {
-                'player_id': supabase_player_id,
-                'source': code.source,
-                'code': code.code,
-            }
-
-            stmt = pg_insert(PlayerCode).values(**data)
-            stmt = stmt.on_conflict_do_update(
-                index_elements=['player_id', 'source'],
-                set_={'code': stmt.excluded.code, 'updated_at': text('CURRENT_TIMESTAMP')}
-            )
-
-            self.supabase_session.execute(stmt)
-            synced += 1
-
-        self.supabase_session.commit()
-        print(f"✅ Synced {synced} player codes to Supabase")
-        return synced
 
     def _get_player_id_mapping(self) -> Dict[int, int]:
         """Get SQLite player_id → Supabase player_id mapping"""
@@ -395,12 +362,219 @@ class SupabaseSync:
         }
         return results
 
+    def sync_player_basic(self, limit: int = None) -> int:
+        """Sync player_basic data from SQLite to Supabase"""
+        query = self.sqlite_session.query(PlayerBasic)
+        if limit:
+            query = query.limit(limit)
+
+        players = query.all()
+        synced = 0
+
+        for player in players:
+            data = {
+                'player_id': player.player_id,
+                'name': player.name,
+                'uniform_no': player.uniform_no,
+                'team': player.team,
+                'position': player.position,
+                'birth_date': player.birth_date,
+                'birth_date_date': player.birth_date_date,
+                'height_cm': player.height_cm,
+                'weight_kg': player.weight_kg,
+                'career': player.career,
+            }
+
+            stmt = pg_insert(PlayerBasic).values(**data)
+            update_dict = {k: stmt.excluded[k] for k in data.keys() if k != 'player_id'}
+            stmt = stmt.on_conflict_do_update(
+                index_elements=['player_id'],
+                set_=update_dict
+            )
+
+            self.supabase_session.execute(stmt)
+            synced += 1
+
+        self.supabase_session.commit()
+        print(f"✅ Synced {synced} player_basic records to Supabase")
+        return synced
+
     def sync_all_player_data(self) -> Dict[str, int]:
         """Sync all player-related data"""
         results = {
             'players': self.sync_players(),
             'player_identities': self.sync_player_identities(),
-            'player_codes': self.sync_player_codes(),
+        }
+        return results
+
+    def sync_games(self, limit: int = None) -> int:
+        """Sync game detail data from SQLite to Supabase"""
+        query = self.sqlite_session.query(Game)
+        if limit:
+            query = query.limit(limit)
+
+        games = query.all()
+        synced = 0
+
+        for game in games:
+            data = {
+                'game_id': game.game_id,
+                'game_date': game.game_date,
+                'home_team_code': game.home_team_code,
+                'away_team_code': game.away_team_code,
+                'started_at': game.started_at,
+                'ended_at': game.ended_at,
+                'duration_min': game.duration_min,
+                'attendance': game.attendance,
+                'weather': game.weather,
+                'stadium': game.stadium,
+                'home_score': game.home_score,
+                'away_score': game.away_score,
+            }
+
+            stmt = pg_insert(Game).values(**data)
+            update_dict = {k: v for k, v in data.items() if k != 'game_id'}
+            update_dict['updated_at'] = text('CURRENT_TIMESTAMP')
+            stmt = stmt.on_conflict_do_update(
+                index_elements=['game_id'],
+                set_=update_dict
+            )
+
+            self.supabase_session.execute(stmt)
+            synced += 1
+
+        self.supabase_session.commit()
+        print(f"✅ Synced {synced} games to Supabase")
+        return synced
+
+    def sync_player_game_batting(self, limit: int = None) -> int:
+        """Sync player game batting stats from SQLite to Supabase"""
+        query = self.sqlite_session.query(PlayerGameBatting)
+        if limit:
+            query = query.limit(limit)
+
+        batting_stats = query.all()
+        synced = 0
+
+        for stat in batting_stats:
+            data = {
+                'game_id': stat.game_id,
+                'player_id': stat.player_id,
+                'player_name': stat.player_name,
+                'team_side': stat.team_side,
+                'team_code': stat.team_code,
+                'batting_order': stat.batting_order,
+                'appearance_seq': stat.appearance_seq,
+                'position': stat.position,
+                'is_starter': bool(stat.is_starter) if stat.is_starter is not None else False,
+                'source': stat.source,
+                'plate_appearances': stat.plate_appearances,
+                'at_bats': stat.at_bats,
+                'runs': stat.runs,
+                'hits': stat.hits,
+                'doubles': stat.doubles,
+                'triples': stat.triples,
+                'home_runs': stat.home_runs,
+                'rbi': stat.rbi,
+                'walks': stat.walks,
+                'intentional_walks': stat.intentional_walks,
+                'hbp': stat.hbp,
+                'strikeouts': stat.strikeouts,
+                'stolen_bases': stat.stolen_bases,
+                'caught_stealing': stat.caught_stealing,
+                'sacrifice_hits': stat.sacrifice_hits,
+                'sacrifice_flies': stat.sacrifice_flies,
+                'gdp': stat.gdp,
+                'avg': stat.avg,
+                'obp': stat.obp,
+                'slg': stat.slg,
+                'ops': stat.ops,
+                'iso': stat.iso,
+                'babip': stat.babip,
+                'extras': stat.extras,
+            }
+
+            stmt = pg_insert(PlayerGameBatting).values(**data)
+            update_dict = {k: v for k, v in data.items() if k not in ['game_id', 'player_id']}
+            update_dict['updated_at'] = text('CURRENT_TIMESTAMP')
+            stmt = stmt.on_conflict_do_update(
+                index_elements=['game_id', 'player_id'],
+                set_=update_dict
+            )
+
+            self.supabase_session.execute(stmt)
+            synced += 1
+
+        self.supabase_session.commit()
+        print(f"✅ Synced {synced} player game batting stats to Supabase")
+        return synced
+
+    def sync_player_game_pitching(self, limit: int = None) -> int:
+        """Sync player game pitching stats from SQLite to Supabase"""
+        query = self.sqlite_session.query(PlayerGamePitching)
+        if limit:
+            query = query.limit(limit)
+
+        pitching_stats = query.all()
+        synced = 0
+
+        for stat in pitching_stats:
+            data = {
+                'game_id': stat.game_id,
+                'player_id': stat.player_id,
+                'player_name': stat.player_name,
+                'team_side': stat.team_side,
+                'team_code': stat.team_code,
+                'is_starting': bool(stat.is_starting) if stat.is_starting is not None else False,
+                'appearance_seq': stat.appearance_seq,
+                'source': stat.source,
+                'innings_outs': stat.innings_outs,
+                'hits_allowed': stat.hits_allowed,
+                'runs_allowed': stat.runs_allowed,
+                'earned_runs': stat.earned_runs,
+                'home_runs_allowed': stat.home_runs_allowed,
+                'walks_allowed': stat.walks_allowed,
+                'strikeouts': stat.strikeouts,
+                'hit_batters': stat.hit_batters,
+                'wild_pitches': stat.wild_pitches,
+                'balks': stat.balks,
+                'wins': stat.wins,
+                'losses': stat.losses,
+                'saves': stat.saves,
+                'holds': stat.holds,
+                'decision': stat.decision,
+                'batters_faced': stat.batters_faced,
+                'era': stat.era,
+                'whip': stat.whip,
+                'fip': stat.fip,
+                'k_per_nine': stat.k_per_nine,
+                'bb_per_nine': stat.bb_per_nine,
+                'kbb': stat.kbb,
+                'extras': stat.extras,
+            }
+
+            stmt = pg_insert(PlayerGamePitching).values(**data)
+            update_dict = {k: v for k, v in data.items() if k not in ['game_id', 'player_id']}
+            update_dict['updated_at'] = text('CURRENT_TIMESTAMP')
+            stmt = stmt.on_conflict_do_update(
+                index_elements=['game_id', 'player_id'],
+                set_=update_dict
+            )
+
+            self.supabase_session.execute(stmt)
+            synced += 1
+
+        self.supabase_session.commit()
+        print(f"✅ Synced {synced} player game pitching stats to Supabase")
+        return synced
+
+    def sync_all_game_data(self, limit: int = None) -> Dict[str, int]:
+        """Sync all game-related data"""
+        results = {
+            'game_schedules': self.sync_game_schedules(limit=limit),
+            'games': self.sync_games(limit=limit),
+            'player_game_batting': self.sync_player_game_batting(limit=limit),
+            'player_game_pitching': self.sync_player_game_pitching(limit=limit),
         }
         return results
 
@@ -442,6 +616,10 @@ def main():
             print("\n👥 Syncing player data...")
             player_results = sync.sync_all_player_data()
 
+            # Sync game data
+            print("\n🎮 Syncing game data...")
+            game_results = sync.sync_all_game_data()
+
             print("\n" + "=" * 50)
             print("📈 Sync Summary")
             print("=" * 50)
@@ -450,6 +628,9 @@ def main():
                 print(f"  {table}: {count} records")
             print("\nPlayer Data:")
             for table, count in player_results.items():
+                print(f"  {table}: {count} records")
+            print("\nGame Data:")
+            for table, count in game_results.items():
                 print(f"  {table}: {count} records")
 
             sync.close()
