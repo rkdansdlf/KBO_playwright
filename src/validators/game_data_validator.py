@@ -6,15 +6,19 @@ from __future__ import annotations
 from typing import Dict, Any, List, Tuple
 
 
-def validate_game_data(game_data: Dict[str, Any]) -> Tuple[bool, List[str]]:
+def validate_game_data(game_data: Dict[str, Any]) -> Tuple[bool, List[str], List[str]]:
     """
     Validate parsed game data prior to persistence.
 
     Returns:
-        (is_valid, errors)
+        (is_valid, errors, warnings)
+        - errors: Critical issues that prevent saving
+        - warnings: Non-critical issues that should be logged
     """
     errors: List[str] = []
+    warnings: List[str] = []
 
+    # Critical validations (will block save)
     if not game_data.get("game_id"):
         errors.append("Missing game_id")
 
@@ -30,9 +34,6 @@ def validate_game_data(game_data: Dict[str, Any]) -> Tuple[bool, List[str]]:
     if not away.get("code"):
         errors.append("Missing away team code")
 
-    _validate_score_totals(home, "home", errors)
-    _validate_score_totals(away, "away", errors)
-
     hitters = game_data.get("hitters") or {}
     pitchers = game_data.get("pitchers") or {}
 
@@ -42,9 +43,12 @@ def validate_game_data(game_data: Dict[str, Any]) -> Tuple[bool, List[str]]:
         if not pitchers.get(side):
             errors.append(f"No pitcher rows for {side}")
 
-    _validate_runs_match_scores(game_data, errors)
+    # Non-critical validations (warnings only)
+    _validate_score_totals(home, "home", warnings)
+    _validate_score_totals(away, "away", warnings)
+    _validate_runs_match_scores(game_data, warnings)
 
-    return (len(errors) == 0, errors)
+    return (len(errors) == 0, errors, warnings)
 
 
 def _validate_score_totals(team: Dict[str, Any], label: str, errors: List[str]) -> None:

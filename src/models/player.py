@@ -1,14 +1,67 @@
 """
 Player-related ORM models
 Aligns with Docs/schema/playerProfileSchemaGuide.md design
+
+PlayerBasic: Simple table from player search crawler (Docs/PLAYERID_CRAWLING.md)
+Player: Complex relational model for detailed player data
 """
 from __future__ import annotations
 
 from typing import Optional, Dict, Any
+from datetime import date as date_type
 from sqlalchemy import Integer, String, Text, Boolean, ForeignKey, Date, UniqueConstraint, Index, JSON, Float
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .base import Base, TimestampMixin
+
+
+class PlayerBasic(Base):
+    """
+    Simple player table populated from player search crawler.
+    Source: https://www.koreabaseball.com/Player/Search.aspx
+
+    This table contains basic player information from the search page:
+    - player_id: KBO's unique player identifier
+    - name: Player name in Korean
+    - uniform_no: Current uniform number
+    - team: Current team
+    - position: Primary position
+    - birth_date: Birth date (original string format)
+    - birth_date_date: Parsed birth date
+    - height_cm/weight_kg: Physical stats
+    - career: School/origin (출신교)
+
+    Design rationale: Keep original string values for verification,
+    add parsed columns for querying.
+    """
+    __tablename__ = "player_basic"
+
+    player_id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=False, comment="KBO player ID")
+    name: Mapped[str] = mapped_column(String(100), nullable=False, comment="Player name (Korean)")
+    uniform_no: Mapped[Optional[str]] = mapped_column(String(10), nullable=True, comment="Current uniform number")
+    team: Mapped[Optional[str]] = mapped_column(String(50), nullable=True, comment="Current team")
+    position: Mapped[Optional[str]] = mapped_column(String(50), nullable=True, comment="Primary position")
+
+    # Birth date: keep original string + parsed date
+    birth_date: Mapped[Optional[str]] = mapped_column(String(20), nullable=True, comment="Birth date (original string)")
+    birth_date_date: Mapped[Optional[date_type]] = mapped_column(Date, nullable=True, comment="Parsed birth date")
+
+    # Physical stats
+    height_cm: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, comment="Height in cm")
+    weight_kg: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, comment="Weight in kg")
+
+    # Career/origin
+    career: Mapped[Optional[str]] = mapped_column(String(200), nullable=True, comment="School/origin (출신교)")
+
+    __table_args__ = (
+        Index("idx_player_basic_name", "name"),
+        Index("idx_player_basic_team", "team"),
+        Index("idx_player_basic_position", "position"),
+        Index("idx_player_basic_team_pos", "team", "position"),
+    )
+
+    def __repr__(self) -> str:
+        return f"<PlayerBasic(player_id={self.player_id}, name='{self.name}', team='{self.team}')>"
 
 
 class Player(Base, TimestampMixin):
@@ -33,10 +86,6 @@ class Player(Base, TimestampMixin):
     notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
     identities: Mapped[list["PlayerIdentity"]] = relationship(
-        back_populates="player",
-        cascade="all, delete-orphan",
-    )
-    codes: Mapped[list["PlayerCode"]] = relationship(
         back_populates="player",
         cascade="all, delete-orphan",
     )
@@ -75,21 +124,6 @@ class PlayerIdentity(Base, TimestampMixin):
 
     def __repr__(self) -> str:
         return f"<PlayerIdentity(player_id={self.player_id}, name='{self.name_kor}')>"
-
-
-class PlayerCode(Base, TimestampMixin):
-    """
-    Mapping external codes to player IDs (KBO, STATIZ, etc.)
-    """
-
-    __tablename__ = "player_codes"
-
-    player_id: Mapped[int] = mapped_column(
-        Integer, ForeignKey("players.id", ondelete="CASCADE"), primary_key=True
-    )
-    source: Mapped[str] = mapped_column(String(16), primary_key=True)
-    code: Mapped[str] = mapped_column(String(64), nullable=False)
-    player: Mapped["Player"] = relationship(back_populates="codes")
 
 
 class PlayerStint(Base, TimestampMixin):

@@ -2,7 +2,7 @@
 Collect detailed player and game data using collected IDs
 
 This script:
-1. Reads player_ids from database (player_codes table)
+1. Reads player_ids from database (player_basic table)
 2. Reads game_ids from database (game_schedules table)
 3. Crawls detailed data for each ID
 4. Saves to database
@@ -19,7 +19,7 @@ from typing import List, Dict
 from datetime import datetime
 
 from src.db.engine import SessionLocal
-from src.models.player import Player, PlayerCode
+from src.models.player import Player, PlayerBasic
 from src.models.game import GameSchedule
 from src.crawlers.player_profile_crawler import PlayerProfileCrawler
 from src.crawlers.game_detail_crawler import GameDetailCrawler
@@ -40,45 +40,45 @@ async def collect_player_profiles(limit: int = 10):
 
     with SessionLocal() as session:
         # Get player IDs from database
-        player_codes = session.query(PlayerCode).filter_by(source='KBO').limit(limit).all()
+        players = session.query(PlayerBasic).limit(limit).all()
 
-        if not player_codes:
-            print("⚠️  No player codes found in database")
+        if not players:
+            print("⚠️  No players found in database")
             return
 
-        print(f"📊 Found {len(player_codes)} players to crawl")
+        print(f"📊 Found {len(players)} players to crawl")
 
     # Crawl profiles
     crawler = PlayerProfileCrawler(request_delay=2.0)
     success_count = 0
     error_count = 0
 
-    for i, player_code in enumerate(player_codes, 1):
-        print(f"\n[{i}/{len(player_codes)}] Processing player: {player_code.code}")
+    for i, player in enumerate(players, 1):
+        print(f"\n[{i}/{len(players)}] Processing player: {player.player_id}")
 
         try:
-            profile = await crawler.crawl_player_profile(player_code.code)
+            profile = await crawler.crawl_player_profile(player.player_id)
 
             if profile:
                 # TODO: Save profile data to database
                 # For now, just log success
-                print(f"✅ Successfully crawled profile for {player_code.code}")
+                print(f"✅ Successfully crawled profile for {player.player_id}")
                 success_count += 1
             else:
-                print(f"⚠️  No profile data for {player_code.code}")
+                print(f"⚠️  No profile data for {player.player_id}")
                 error_count += 1
 
             # Rate limiting
             await asyncio.sleep(1.5)
 
         except Exception as e:
-            print(f"❌ Error processing {player_code.code}: {e}")
+            print(f"❌ Error processing {player.player_id}: {e}")
             error_count += 1
 
     print(f"\n📈 Player Profile Collection Summary:")
     print(f"   - Success: {success_count}")
     print(f"   - Errors: {error_count}")
-    print(f"   - Total: {len(player_codes)}")
+    print(f"   - Total: {len(players)}")
 
 
 async def collect_game_details(limit: int = 5):
