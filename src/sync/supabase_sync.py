@@ -3,15 +3,24 @@ Sync validated data from SQLite to Supabase (PostgreSQL)
 Dual-repository pattern: SQLite (dev/validation) → Supabase (production)
 """
 import os
+import json
 from typing import List, Dict, Any
-from sqlalchemy import create_engine, text
+from sqlalchemy import create_engine, text, select, MetaData, Table
 from sqlalchemy.orm import sessionmaker, Session
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
-from src.models.team import Franchise, TeamIdentity, Ballpark, HomeBallparkAssignment
-from src.models.game import GameSchedule, Game, GameLineup, PlayerGameBatting, PlayerGamePitching
-from src.models.player import Player, PlayerIdentity, PlayerStint, PlayerBasic
-from src.utils.safe_print import safe_print as print
+# 현재 사용 가능한 모델들만 import
+from src.models.player import PlayerSeasonBatting, PlayerSeasonPitching
+
+
+LEAGUE_NAME_TO_CODE = {
+    "REGULAR": 0,
+    "EXHIBITION": 1,
+    "WILDCARD": 2,
+    "SEMI_PLAYOFF": 3,
+    "PLAYOFF": 4,
+    "KOREAN_SERIES": 5,
+}
 
 
 class SupabaseSync:
@@ -52,118 +61,319 @@ class SupabaseSync:
             print(f"❌ Supabase connection failed: {e}")
             return False
 
-    def sync_franchises(self) -> int:
-        """Sync franchises from SQLite to Supabase"""
-        franchises = self.sqlite_session.query(Franchise).all()
+    def sync_pitcher_data(self) -> int:
+        """새로운 player_season_pitching 테이블의 투수 데이터를 Supabase로 동기화"""
+        pitcher_data = self.sqlite_session.query(PlayerSeasonPitching).all()
+        
+        if not pitcher_data:
+            print("ℹ️ 동기화할 투수 데이터가 없습니다.")
+            return 0
+        
         synced = 0
-
-        for franchise in franchises:
-            data = {
-                'key': franchise.key,
-                'canonical_name': franchise.canonical_name,
-                'first_season': franchise.first_season,
-                'last_season': franchise.last_season,
-                'status': franchise.status,
-                'notes': franchise.notes,
+        
+        for data in pitcher_data:
+            # UPSERT 쿼리 직접 실행 (PostgreSQL)
+            upsert_sql = text("""
+                INSERT INTO player_season_pitching (
+                    player_id, season, league, level, source, team_code,
+                    games, games_started, wins, losses, saves, holds,
+                    innings_pitched, innings_outs, hits_allowed, runs_allowed,
+                    earned_runs, home_runs_allowed, walks_allowed, intentional_walks,
+                    hit_batters, strikeouts, wild_pitches, balks,
+                    era, whip, fip, k_per_nine, bb_per_nine, kbb,
+                    complete_games, shutouts, quality_starts, blown_saves,
+                    tbf, np, avg_against, doubles_allowed, triples_allowed,
+                    sacrifices_allowed, sacrifice_flies_allowed, extra_stats,
+                    created_at, updated_at
+                ) VALUES (
+                    :player_id, :season, :league, :level, :source, :team_code,
+                    :games, :games_started, :wins, :losses, :saves, :holds,
+                    :innings_pitched, :innings_outs, :hits_allowed, :runs_allowed,
+                    :earned_runs, :home_runs_allowed, :walks_allowed, :intentional_walks,
+                    :hit_batters, :strikeouts, :wild_pitches, :balks,
+                    :era, :whip, :fip, :k_per_nine, :bb_per_nine, :kbb,
+                    :complete_games, :shutouts, :quality_starts, :blown_saves,
+                    :tbf, :np, :avg_against, :doubles_allowed, :triples_allowed,
+                    :sacrifices_allowed, :sacrifice_flies_allowed, :extra_stats,
+                    NOW(), NOW()
+                )
+                ON CONFLICT (player_id, season, league, level) DO UPDATE SET
+                    source = EXCLUDED.source,
+                    team_code = EXCLUDED.team_code,
+                    games = EXCLUDED.games,
+                    games_started = EXCLUDED.games_started,
+                    wins = EXCLUDED.wins,
+                    losses = EXCLUDED.losses,
+                    saves = EXCLUDED.saves,
+                    holds = EXCLUDED.holds,
+                    innings_pitched = EXCLUDED.innings_pitched,
+                    innings_outs = EXCLUDED.innings_outs,
+                    hits_allowed = EXCLUDED.hits_allowed,
+                    runs_allowed = EXCLUDED.runs_allowed,
+                    earned_runs = EXCLUDED.earned_runs,
+                    home_runs_allowed = EXCLUDED.home_runs_allowed,
+                    walks_allowed = EXCLUDED.walks_allowed,
+                    intentional_walks = EXCLUDED.intentional_walks,
+                    hit_batters = EXCLUDED.hit_batters,
+                    strikeouts = EXCLUDED.strikeouts,
+                    wild_pitches = EXCLUDED.wild_pitches,
+                    balks = EXCLUDED.balks,
+                    era = EXCLUDED.era,
+                    whip = EXCLUDED.whip,
+                    fip = EXCLUDED.fip,
+                    k_per_nine = EXCLUDED.k_per_nine,
+                    bb_per_nine = EXCLUDED.bb_per_nine,
+                    kbb = EXCLUDED.kbb,
+                    complete_games = EXCLUDED.complete_games,
+                    shutouts = EXCLUDED.shutouts,
+                    quality_starts = EXCLUDED.quality_starts,
+                    blown_saves = EXCLUDED.blown_saves,
+                    tbf = EXCLUDED.tbf,
+                    np = EXCLUDED.np,
+                    avg_against = EXCLUDED.avg_against,
+                    doubles_allowed = EXCLUDED.doubles_allowed,
+                    triples_allowed = EXCLUDED.triples_allowed,
+                    sacrifices_allowed = EXCLUDED.sacrifices_allowed,
+                    sacrifice_flies_allowed = EXCLUDED.sacrifice_flies_allowed,
+                    extra_stats = EXCLUDED.extra_stats,
+                    updated_at = NOW()
+            """)
+            
+            # 데이터 준비
+            params = {
+                'player_id': data.player_id,
+                'season': data.season,
+                'league': data.league,
+                'level': data.level,
+                'source': data.source,
+                'team_code': data.team_code,
+                'games': data.games,
+                'games_started': data.games_started,
+                'wins': data.wins,
+                'losses': data.losses,
+                'saves': data.saves,
+                'holds': data.holds,
+                'innings_pitched': data.innings_pitched,
+                'innings_outs': data.innings_outs,
+                'hits_allowed': data.hits_allowed,
+                'runs_allowed': data.runs_allowed,
+                'earned_runs': data.earned_runs,
+                'home_runs_allowed': data.home_runs_allowed,
+                'walks_allowed': data.walks_allowed,
+                'intentional_walks': data.intentional_walks,
+                'hit_batters': data.hit_batters,
+                'strikeouts': data.strikeouts,
+                'wild_pitches': data.wild_pitches,
+                'balks': data.balks,
+                'era': data.era,
+                'whip': data.whip,
+                'fip': data.fip,
+                'k_per_nine': data.k_per_nine,
+                'bb_per_nine': data.bb_per_nine,
+                'kbb': data.kbb,
+                'complete_games': data.complete_games,
+                'shutouts': data.shutouts,
+                'quality_starts': data.quality_starts,
+                'blown_saves': data.blown_saves,
+                'tbf': data.tbf,
+                'np': data.np,
+                'avg_against': data.avg_against,
+                'doubles_allowed': data.doubles_allowed,
+                'triples_allowed': data.triples_allowed,
+                'sacrifices_allowed': data.sacrifices_allowed,
+                'sacrifice_flies_allowed': data.sacrifice_flies_allowed,
+                'extra_stats': json.dumps(data.extra_stats) if data.extra_stats else None
             }
-
-            # PostgreSQL UPSERT
-            stmt = pg_insert(Franchise).values(**data)
-            stmt = stmt.on_conflict_do_update(
-                index_elements=['key'],
-                set_={
-                    'canonical_name': stmt.excluded.canonical_name,
-                    'first_season': stmt.excluded.first_season,
-                    'last_season': stmt.excluded.last_season,
-                    'status': stmt.excluded.status,
-                    'notes': stmt.excluded.notes,
-                    'updated_at': text('CURRENT_TIMESTAMP')
-                }
-            )
-
-            self.supabase_session.execute(stmt)
+            
+            # UPSERT 실행
+            self.supabase_session.execute(upsert_sql, params)
             synced += 1
-
+            
+            if synced % 10 == 0:
+                print(f"   📝 {synced}건 동기화 중...")
+        
         self.supabase_session.commit()
-        print(f"✅ Synced {synced} franchises to Supabase")
+        print(f"✅ Supabase 투수 데이터 동기화 완료: {synced}건")
         return synced
 
-    def sync_team_identities(self) -> int:
-        """Sync team identities from SQLite to Supabase"""
-        # First, get franchise ID mappings (SQLite ID → Supabase ID)
-        franchise_mapping = self._get_franchise_id_mapping()
-
-        identities = self.sqlite_session.query(TeamIdentity).all()
+    def sync_batting_data(self) -> int:
+        """타자 데이터를 Supabase로 동기화"""
+        batting_data = self.sqlite_session.query(PlayerSeasonBatting).all()
+        
+        if not batting_data:
+            print("ℹ️ 동기화할 타자 데이터가 없습니다.")
+            return 0
+        
         synced = 0
-
-        for identity in identities:
-            # Map SQLite franchise_id to Supabase franchise_id
-            supabase_franchise_id = franchise_mapping.get(identity.franchise_id)
-            if not supabase_franchise_id:
-                print(f"⚠️  Skipping identity {identity.name_kor}: franchise_id {identity.franchise_id} not found in Supabase")
-                continue
-
-            data = {
-                'franchise_id': supabase_franchise_id,
-                'name_kor': identity.name_kor,
-                'name_eng': identity.name_eng,
-                'short_code': identity.short_code,
-                'city_kor': identity.city_kor,
-                'city_eng': identity.city_eng,
-                'start_season': identity.start_season,
-                'end_season': identity.end_season,
-                'is_current': identity.is_current,
-                'notes': identity.notes,
+        
+        for data in batting_data:
+            # UPSERT 쿼리 직접 실행 (PostgreSQL)
+            upsert_sql = text("""
+                INSERT INTO player_season_batting (
+                    player_id, season, league, level, source, team_code,
+                    games, plate_appearances, at_bats, runs, hits, doubles,
+                    triples, home_runs, rbi, walks, intentional_walks, hbp,
+                    strikeouts, stolen_bases, caught_stealing, sacrifice_hits,
+                    sacrifice_flies, gdp, avg, obp, slg, ops, iso, babip,
+                    extra_stats, created_at, updated_at
+                ) VALUES (
+                    :player_id, :season, :league, :level, :source, :team_code,
+                    :games, :plate_appearances, :at_bats, :runs, :hits, :doubles,
+                    :triples, :home_runs, :rbi, :walks, :intentional_walks, :hbp,
+                    :strikeouts, :stolen_bases, :caught_stealing, :sacrifice_hits,
+                    :sacrifice_flies, :gdp, :avg, :obp, :slg, :ops, :iso, :babip,
+                    :extra_stats, NOW(), NOW()
+                )
+                ON CONFLICT (player_id, season, league, level) DO UPDATE SET
+                    source = EXCLUDED.source,
+                    team_code = EXCLUDED.team_code,
+                    games = EXCLUDED.games,
+                    plate_appearances = EXCLUDED.plate_appearances,
+                    at_bats = EXCLUDED.at_bats,
+                    runs = EXCLUDED.runs,
+                    hits = EXCLUDED.hits,
+                    doubles = EXCLUDED.doubles,
+                    triples = EXCLUDED.triples,
+                    home_runs = EXCLUDED.home_runs,
+                    rbi = EXCLUDED.rbi,
+                    walks = EXCLUDED.walks,
+                    intentional_walks = EXCLUDED.intentional_walks,
+                    hbp = EXCLUDED.hbp,
+                    strikeouts = EXCLUDED.strikeouts,
+                    stolen_bases = EXCLUDED.stolen_bases,
+                    caught_stealing = EXCLUDED.caught_stealing,
+                    sacrifice_hits = EXCLUDED.sacrifice_hits,
+                    sacrifice_flies = EXCLUDED.sacrifice_flies,
+                    gdp = EXCLUDED.gdp,
+                    avg = EXCLUDED.avg,
+                    obp = EXCLUDED.obp,
+                    slg = EXCLUDED.slg,
+                    ops = EXCLUDED.ops,
+                    iso = EXCLUDED.iso,
+                    babip = EXCLUDED.babip,
+                    extra_stats = EXCLUDED.extra_stats,
+                    updated_at = NOW()
+            """)
+            
+            # 데이터 준비
+            params = {
+                'player_id': data.player_id,
+                'season': data.season,
+                'league': data.league,
+                'level': data.level,
+                'source': data.source,
+                'team_code': data.team_id,  # team_id를 team_code로 매핑
+                'games': data.games,
+                'plate_appearances': data.plate_appearances,
+                'at_bats': data.at_bats,
+                'runs': data.runs,
+                'hits': data.hits,
+                'doubles': data.doubles,
+                'triples': data.triples,
+                'home_runs': data.home_runs,
+                'rbi': data.rbi,
+                'walks': data.walks,
+                'intentional_walks': data.intentional_walks,
+                'hbp': data.hbp,
+                'strikeouts': data.strikeouts,
+                'stolen_bases': data.stolen_bases,
+                'caught_stealing': data.caught_stealing,
+                'sacrifice_hits': data.sacrifice_hits,
+                'sacrifice_flies': data.sacrifice_flies,
+                'gdp': data.gdp,
+                'avg': data.avg,
+                'obp': data.obp,
+                'slg': data.slg,
+                'ops': data.ops,
+                'iso': data.iso,
+                'babip': data.babip,
+                'extra_stats': json.dumps(data.extra_stats) if data.extra_stats else None
             }
-
-            # PostgreSQL UPSERT
-            stmt = pg_insert(TeamIdentity).values(**data)
-            update_dict = {k: v for k, v in data.items() if k not in ['franchise_id', 'name_kor', 'start_season']}
-            update_dict['updated_at'] = text('CURRENT_TIMESTAMP')
-            stmt = stmt.on_conflict_do_update(
-                index_elements=['franchise_id', 'name_kor', 'start_season'],
-                set_=update_dict
-            )
-
-            self.supabase_session.execute(stmt)
+            
+            # UPSERT 실행
+            self.supabase_session.execute(upsert_sql, params)
             synced += 1
-
+            
+            if synced % 10 == 0:
+                print(f"   📝 {synced}건 동기화 중...")
+        
         self.supabase_session.commit()
-        print(f"✅ Synced {synced} team identities to Supabase")
+        print(f"✅ Supabase 타자 데이터 동기화 완료: {synced}건")
         return synced
 
-    def sync_ballparks(self) -> int:
-        """Sync ballparks from SQLite to Supabase"""
-        ballparks = self.sqlite_session.query(Ballpark).all()
-        synced = 0
+    def verify_pitcher_sync(self, expected_count: int):
+        """투수 데이터 동기화 결과 검증"""
+        try:
+            result = self.supabase_session.execute(text("""
+                SELECT COUNT(*) as count 
+                FROM player_season_pitching 
+            """))
+            
+            actual_count = result.fetchone()[0]
+            print(f"🔍 Supabase 투수 데이터 확인: {actual_count}건 (예상: {expected_count}건)")
+            
+            if actual_count >= expected_count:
+                print("✅ 투수 데이터 동기화 검증 성공!")
+            else:
+                print("⚠️ 동기화된 투수 데이터 수가 예상보다 적습니다.")
+                
+        except Exception as e:
+            print(f"⚠️ 투수 데이터 동기화 검증 실패: {e}")
 
-        for ballpark in ballparks:
-            data = {
-                'name_kor': ballpark.name_kor,
-                'name_eng': ballpark.name_eng,
-                'city_kor': ballpark.city_kor,
-                'city_eng': ballpark.city_eng,
-                'opened_year': ballpark.opened_year,
-                'closed_year': ballpark.closed_year,
-                'capacity': ballpark.capacity,
-                'notes': ballpark.notes,
-            }
+    def verify_batting_sync(self, expected_count: int):
+        """타자 데이터 동기화 결과 검증"""
+        try:
+            result = self.supabase_session.execute(text("""
+                SELECT COUNT(*) as count 
+                FROM player_season_batting 
+            """))
+            
+            actual_count = result.fetchone()[0]
+            print(f"🔍 Supabase 타자 데이터 확인: {actual_count}건 (예상: {expected_count}건)")
+            
+            if actual_count >= expected_count:
+                print("✅ 타자 데이터 동기화 검증 성공!")
+            else:
+                print("⚠️ 동기화된 타자 데이터 수가 예상보다 적습니다.")
+                
+        except Exception as e:
+            print(f"⚠️ 타자 데이터 동기화 검증 실패: {e}")
 
-            stmt = pg_insert(Ballpark).values(**data)
-            update_dict = {k: v for k, v in data.items() if k != 'name_kor'}
-            update_dict['updated_at'] = text('CURRENT_TIMESTAMP')
-            stmt = stmt.on_conflict_do_update(
-                index_elements=['name_kor'],
-                set_=update_dict
-            )
+    def show_supabase_data_sample(self):
+        """Supabase의 데이터 샘플 표시"""
+        try:
+            # 투수 데이터 샘플
+            pitcher_result = self.supabase_session.execute(text("""
+                SELECT player_id, season, games, wins, losses, era, innings_pitched
+                FROM player_season_pitching 
+                LIMIT 3
+            """))
+            
+            pitcher_rows = pitcher_result.fetchall()
+            if pitcher_rows:
+                print("\n📊 Supabase 투수 데이터 샘플:")
+                for i, row in enumerate(pitcher_rows):
+                    print(f"  {i+1}. player_id: {row[0]}, season: {row[1]}")
+                    print(f"     게임수: {row[2]}, 승패: {row[3]}-{row[4]}, ERA: {row[5]}, 이닝: {row[6]}")
+            
+            # 타자 데이터 샘플
+            batting_result = self.supabase_session.execute(text("""
+                SELECT player_id, season, games, avg, hits, home_runs
+                FROM player_season_batting 
+                LIMIT 3
+            """))
+            
+            batting_rows = batting_result.fetchall()
+            if batting_rows:
+                print("\n🏏 Supabase 타자 데이터 샘플:")
+                for i, row in enumerate(batting_rows):
+                    print(f"  {i+1}. player_id: {row[0]}, season: {row[1]}")
+                    print(f"     게임수: {row[2]}, 타율: {row[3]}, 안타: {row[4]}, 홈런: {row[5]}")
+                    
+        except Exception as e:
+            print(f"⚠️ Supabase 데이터 조회 실패: {e}")
 
-            self.supabase_session.execute(stmt)
-            synced += 1
-
-        self.supabase_session.commit()
-        print(f"✅ Synced {synced} ballparks to Supabase")
-        return synced
-
+    
     def sync_ballpark_assignments(self) -> int:
         """Sync ballpark assignments from SQLite to Supabase"""
         franchise_mapping = self._get_franchise_id_mapping()
@@ -352,13 +562,11 @@ class SupabaseSync:
 
         return mapping
 
-    def sync_all_team_data(self) -> Dict[str, int]:
-        """Sync all team-related data"""
+    def sync_all_batting_data(self) -> Dict[str, int]:
+        """모든 타격 관련 데이터 동기화 (타자 + 투수)"""
         results = {
-            'franchises': self.sync_franchises(),
-            'team_identities': self.sync_team_identities(),
-            'ballparks': self.sync_ballparks(),
-            'ballpark_assignments': self.sync_ballpark_assignments(),
+            'pitcher_data': self.sync_pitcher_data(),
+            'batting_data': self.sync_batting_data(),
         }
         return results
 
@@ -399,11 +607,210 @@ class SupabaseSync:
         print(f"✅ Synced {synced} player_basic records to Supabase")
         return synced
 
+    def sync_player_season_batting(self, limit: int = None) -> int:
+        """Sync player_season_batting data from SQLite to Supabase"""
+        query = self.sqlite_session.query(PlayerSeasonBatting)
+        if limit:
+            query = query.limit(limit)
+
+        batting_stats = query.all()
+        synced = 0
+
+        for stat in batting_stats:
+            data = {
+                'player_id': stat.player_id,
+                'season': stat.season,
+                'league': stat.league,
+                'level': stat.level,
+                'source': stat.source,
+                'team_code': stat.team_code,
+                'games': stat.games,
+                'plate_appearances': stat.plate_appearances,
+                'at_bats': stat.at_bats,
+                'runs': stat.runs,
+                'hits': stat.hits,
+                'doubles': stat.doubles,
+                'triples': stat.triples,
+                'home_runs': stat.home_runs,
+                'rbi': stat.rbi,
+                'walks': stat.walks,
+                'intentional_walks': stat.intentional_walks,
+                'hbp': stat.hbp,
+                'strikeouts': stat.strikeouts,
+                'stolen_bases': stat.stolen_bases,
+                'caught_stealing': stat.caught_stealing,
+                'sacrifice_hits': stat.sacrifice_hits,
+                'sacrifice_flies': stat.sacrifice_flies,
+                'gdp': stat.gdp,
+                'avg': stat.avg,
+                'obp': stat.obp,
+                'slg': stat.slg,
+                'ops': stat.ops,
+                'iso': stat.iso,
+                'babip': stat.babip,
+                'extra_stats': stat.extra_stats,
+            }
+
+            stmt = pg_insert(PlayerSeasonBatting).values(**data)
+            update_dict = {k: stmt.excluded[k] for k in data.keys() if k not in ['player_id', 'season', 'league', 'level']}
+            stmt = stmt.on_conflict_do_update(
+                index_elements=['player_id', 'season', 'league', 'level'],
+                set_=update_dict
+            )
+
+            self.supabase_session.execute(stmt)
+            synced += 1
+
+        self.supabase_session.commit()
+        print(f"✅ Synced {synced} player_season_batting records to Supabase")
+        return synced
+
+    def sync_player_season_pitching(self, limit: int = None) -> int:
+        """Sync raw pitching stats to Supabase with player/team/season mapping."""
+        fetch_sql = text(
+            f"""
+            SELECT *
+            FROM {RAW_PITCHING_TABLE}
+            { 'LIMIT :limit' if limit else '' }
+            """
+        )
+
+        params = {"limit": limit} if limit else {}
+        rows = self.sqlite_session.execute(fetch_sql, params).mappings().all()
+        if not rows:
+            print("ℹ️  No pitcher records found in raw table")
+            return 0
+
+        kbo_ids = {row["kbo_player_id"] for row in rows if row["kbo_player_id"] is not None}
+        if not kbo_ids:
+            print("ℹ️  Raw pitcher rows have no KBO IDs; skipping")
+            return 0
+
+        metadata = MetaData()
+        player_basic_table = Table('player_basic', metadata, autoload_with=self.supabase_engine)
+        teams_table = Table('teams', metadata, autoload_with=self.supabase_engine)
+        try:
+            seasons_table = Table('kbo_seasons', metadata, autoload_with=self.supabase_engine)
+        except Exception:
+            seasons_table = Table('kbo_seasons_meta', metadata, autoload_with=self.supabase_engine)
+        pitching_table = Table('player_season_pitching', metadata, autoload_with=self.supabase_engine)
+
+        player_rows = self.supabase_session.execute(
+            select(player_basic_table.c.player_id).where(player_basic_table.c.player_id.in_(list(kbo_ids)))
+        ).all()
+        player_map = {row.player_id: row.player_id for row in player_rows}
+
+        team_rows = self.supabase_session.execute(select(teams_table.c.team_id)).all()
+        team_set = {row.team_id for row in team_rows}
+
+        season_rows = self.supabase_session.execute(
+            select(seasons_table.c.season_id, seasons_table.c.season_year, seasons_table.c.league_type_code)
+        ).all()
+        season_map = {
+            (row.season_year, row.league_type_code): row.season_id
+            for row in season_rows
+        }
+
+        synced = 0
+
+        for row in rows:
+            kbo_id = row["kbo_player_id"]
+            target_id = player_map.get(kbo_id)
+            if not target_id:
+                print(f"⚠️  Supabase player not found for KBO ID {kbo_id}; skipping")
+                continue
+
+            raw_extra = row["extra_stats"]
+            extra_stats = raw_extra
+            if isinstance(raw_extra, str):
+                try:
+                    extra_stats = json.loads(raw_extra)
+                except Exception:
+                    extra_stats = raw_extra
+
+            league_code = LEAGUE_NAME_TO_CODE.get(row["league"], 0)
+            season_id = season_map.get((row["season"], league_code))
+            if not season_id:
+                print(f"⚠️  Season not found for year={row['season']} league_code={league_code}; skipping")
+                continue
+
+            team_id = row["team_code"]
+            if team_id and team_id not in team_set:
+                print(f"⚠️  Team {team_id} not found in teams table; skipping")
+                continue
+
+            metrics = extra_stats.get("metrics", {}) if isinstance(extra_stats, dict) else {}
+            innings_outs = row["innings_outs"]
+            ip_value = None
+            if innings_outs is not None:
+                ip_value = round(innings_outs / 3.0, 2)
+            elif isinstance(metrics, dict):
+                ip_value = metrics.get("innings_pitched")
+
+            extra_stats_value = raw_extra
+            if isinstance(extra_stats, (dict, list)):
+                extra_stats_value = json.dumps(extra_stats, ensure_ascii=False)
+
+            data = {
+                'season_id': season_id,
+                'player_id': target_id,
+                'team_id': team_id,
+                'games': row['games'],
+                'wins': row['wins'],
+                'losses': row['losses'],
+                'saves': row['saves'],
+                'holds': row['holds'],
+                'ip': ip_value,
+                'hits': row['hits_allowed'],
+                'home_runs': row['home_runs_allowed'],
+                'walks': row['walks_allowed'],
+                'hbp': row['hit_batters'],
+                'strikeouts': row['strikeouts'],
+                'runs': row['runs_allowed'],
+                'earned_runs': row['earned_runs'],
+                'whip': row['whip'],
+                'complete_games': metrics.get('complete_games'),
+                'shutouts': metrics.get('shutouts'),
+                'quality_starts': metrics.get('quality_starts'),
+                'blown_saves': metrics.get('blown_saves'),
+                'tbf': metrics.get('tbf'),
+                'np': metrics.get('np'),
+                'avg_against': metrics.get('avg_against'),
+                'doubles_allowed': metrics.get('doubles_allowed'),
+                'triples_allowed': metrics.get('triples_allowed'),
+                'sacrifices': metrics.get('sacrifices_allowed'),
+                'sacrifice_flies': metrics.get('sacrifice_flies_allowed'),
+                'intentional_walks': row['intentional_walks'],
+                'wild_pitches': row['wild_pitches'],
+                'balks': row['balks'],
+                'extra_stats': extra_stats_value,
+            }
+
+            data = {
+                k: v for k, v in data.items() if v is not None
+            }
+
+            stmt = pg_insert(pitching_table).values(**data)
+            update_dict = {k: stmt.excluded[k] for k in data.keys() if k not in ['season_id', 'player_id']}
+            stmt = stmt.on_conflict_do_update(
+                index_elements=['season_id', 'player_id'],
+                set_=update_dict
+            )
+
+            self.supabase_session.execute(stmt)
+            synced += 1
+
+        self.supabase_session.commit()
+        print(f"✅ Synced {synced} player_season_pitching records to Supabase")
+        return synced
+
     def sync_all_player_data(self) -> Dict[str, int]:
         """Sync all player-related data"""
         results = {
             'players': self.sync_players(),
             'player_identities': self.sync_player_identities(),
+            'player_season_batting': self.sync_player_season_batting(),
+            'player_season_pitching': self.sync_player_season_pitching(),
         }
         return results
 
@@ -585,7 +992,7 @@ class SupabaseSync:
 
 
 def main():
-    """Test sync functionality"""
+    """타자 및 투수 데이터 Supabase 동기화"""
     from src.db.engine import SessionLocal
 
     # Get Supabase URL from environment
@@ -597,7 +1004,7 @@ def main():
         return
 
     print("\n" + "🔄" * 30)
-    print("Supabase Sync Test")
+    print("KBO 데이터 Supabase 동기화")
     print("🔄" * 30 + "\n")
 
     with SessionLocal() as sqlite_session:
@@ -608,30 +1015,49 @@ def main():
             if not sync.test_connection():
                 return
 
-            # Sync team data
-            print("\n📦 Syncing team data...")
-            team_results = sync.sync_all_team_data()
+            # SQLite 데이터 현황 확인
+            batting_count = sqlite_session.query(PlayerSeasonBatting).count()
+            pitching_count = sqlite_session.query(PlayerSeasonPitching).count()
+            
+            print(f"📊 SQLite 데이터 현황:")
+            print(f"   타자 데이터: {batting_count}건")
+            print(f"   투수 데이터: {pitching_count}건")
 
-            # Sync player data
-            print("\n👥 Syncing player data...")
-            player_results = sync.sync_all_player_data()
+            if batting_count == 0 and pitching_count == 0:
+                print("⚠️ 동기화할 데이터가 없습니다.")
+                print("📌 먼저 크롤러를 실행하세요:")
+                print("   ./venv/bin/python3 -m src.crawlers.player_batting_all_series_crawler --year 2025 --series regular --save")
+                print("   ./venv/bin/python3 -m src.crawlers.player_pitching_all_series_crawler --year 2025 --series regular --save")
+                return
 
-            # Sync game data
-            print("\n🎮 Syncing game data...")
-            game_results = sync.sync_all_game_data()
+            total_synced = 0
+
+            # 타자 데이터 동기화
+            if batting_count > 0:
+                print("\n🏏 타자 데이터 동기화 중...")
+                batting_synced = sync.sync_batting_data()
+                sync.verify_batting_sync(batting_synced)
+                total_synced += batting_synced
+
+            # 투수 데이터 동기화
+            if pitching_count > 0:
+                print("\n⚾ 투수 데이터 동기화 중...")
+                pitching_synced = sync.sync_pitcher_data()
+                sync.verify_pitcher_sync(pitching_synced)
+                total_synced += pitching_synced
+
+            # Supabase 데이터 샘플 표시
+            sync.show_supabase_data_sample()
 
             print("\n" + "=" * 50)
-            print("📈 Sync Summary")
+            print("📈 동기화 완료")
             print("=" * 50)
-            print("\nTeam Data:")
-            for table, count in team_results.items():
-                print(f"  {table}: {count} records")
-            print("\nPlayer Data:")
-            for table, count in player_results.items():
-                print(f"  {table}: {count} records")
-            print("\nGame Data:")
-            for table, count in game_results.items():
-                print(f"  {table}: {count} records")
+            print(f"총 동기화된 데이터: {total_synced}건")
+            if batting_count > 0:
+                print(f"  - 타자 데이터: {batting_count}건")
+            if pitching_count > 0:
+                print(f"  - 투수 데이터: {pitching_count}건")
+            print("\n🎉 Supabase에서 데이터를 확인할 수 있습니다!")
 
             sync.close()
 

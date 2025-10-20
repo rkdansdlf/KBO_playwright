@@ -1,0 +1,7 @@
+team_id,team_name,team_short_name,city,founded_year,stadium_name
+team_id,VARCHAR(10),PRIMARY KEY,구단 고유 ID
+team_name,VARCHAR(50),NOT NULL,구단 정식 명칭
+team_short_name,VARCHAR(20),NOT NULL,구단 약칭
+city,VARCHAR(30),NOT NULL,연고 도시
+founded_year,INT,,창단 연도
+stadium_name,VARCHAR(50),,홈 구장 명칭

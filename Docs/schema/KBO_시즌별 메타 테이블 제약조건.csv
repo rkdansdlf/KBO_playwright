@@ -1,0 +1,7 @@
+필드명,설명,데이터 타입,제약 조건,비고
+season_id,"PK, 기본 키",INT,PRIMARY KEY,선수 기록 테이블의 FK로 사용됨
+season_year,시즌 연도,INT,NOT NULL,예: 2024
+league_type_code,시즌 종류 코드,INT,NOT NULL,"정규시즌: 0, 시범경기: 1, 와일드카드: 2, 준플레이오프: 3, 플레이오프: 4, 한국시리즈: 5"
+league_type_name,시즌 종류 이름,VARCHAR,NOT NULL,"예: '정규시즌', '준플레이오프'"
+start_date,시즌 시작일,DATE,NULLABLE,
+end_date,시즌 종료일,DATE,NULLABLE,

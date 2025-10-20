@@ -66,6 +66,19 @@ def get_engine():
     )
 
 
+def get_database_type() -> str:
+    """Return database type from current DATABASE_URL"""
+    url = DATABASE_URL.lower()
+    if url.startswith("sqlite:"):
+        return "sqlite"
+    elif url.startswith("mysql:"):
+        return "mysql"
+    elif url.startswith("postgresql:"):
+        return "postgresql"
+    else:
+        return "unknown"
+
+
 # Global engine and session factory
 Engine = get_engine()
 SessionLocal = sessionmaker(
@@ -100,9 +113,10 @@ def init_db():
     """Initialize database (create all tables)"""
     from src.models.base import Base
     # Import all models to register them with Base
-    from src.models import game  # noqa: F401
+
     from src.models import team  # noqa: F401
     from src.models import player  # noqa: F401
+    from src.models import season  # noqa: F401
 
     Base.metadata.create_all(bind=Engine)
     print(f"✅ Database initialized: {DATABASE_URL}")
