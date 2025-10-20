@@ -1,0 +1,14 @@
+필드명,데이터 타입,제약 조건,설명
+stadium_id,VARCHAR(30),PRIMARY KEY,구장 고유 식별 코드 (예: JAMSIL)
+stadium_name,VARCHAR(50),NOT NULL,구장 정식 명칭
+city,VARCHAR(30),NOT NULL,연고 도시
+open_year,INT,NOT NULL,개장 연도
+capacity,INT,NOT NULL,최대 수용 인원
+seating_capacity,INT,NOT NULL,좌석 수
+left_fence_m,DOUBLE PRECISION,NOT NULL,좌우 펜스 거리 (m)
+center_fence_m,DOUBLE PRECISION,NOT NULL,중앙 펜스 거리 (m)
+fence_height_m,DOUBLE PRECISION,NULLABLE,펜스 높이 (m)
+turf_type,VARCHAR(20),NOT NULL,잔디 유형 (천연/인조)
+bullpen_type,VARCHAR(50),NULLABLE,불펜 유형 (분리형/폐쇄형 등)
+homerun_park_factor,DOUBLE PRECISION,NULLABLE,홈런 파크 팩터
+notes,TEXT,NULLABLE,"특이사항 (ex. 돔구장, 리모델링)"
