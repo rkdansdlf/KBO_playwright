@@ -4,7 +4,8 @@
       "Bash(python -m src.cli.crawl_schedule:*)",
       "Bash(python:*)",
       "Bash(D:projectplaywrightkbo.venvScriptspython.exe -m src.cli.crawl_futures --season 2025 --limit 5 --concurrency 2 --delay 2)",
-      "Bash(\"D:\\project\\playwrightkbo\\.venv\\Scripts\\python.exe\" debug_futures.py)"
+      "Bash(\"D:\\project\\playwrightkbo\\.venv\\Scripts\\python.exe\" debug_futures.py)",
+      "Bash(./venv/bin/python3:*)"
     ],
     "deny": [],
     "ask": []

@@ -1,0 +1,97 @@
+"""
+KBO 투수 기록 저장 (외래키 제약조건 우회)
+기존 Sync 패턴을 활용하기 위해 타자 Repository 사용
+"""
+from typing import List, Dict, Any
+from sqlalchemy.orm import Session
+from sqlalchemy import text
+
+from src.db.engine import SessionLocal
+from src.repositories.player_season_batting_repository import PlayerSeasonBattingRepository
+
+
+def save_pitching_stats_to_sqlite(pitching_stats: List[Dict[str, Any]]) -> int:
+    """
+    투수 기록을 SQLite에 저장 (외래키 제약조건 임시 비활성화)
+    이후 supabase_sync.py로 Supabase 동기화 예정
+    """
+    if not pitching_stats:
+        return 0
+
+    # 투수 데이터를 타자 테이블 호환 형태로 변환
+    batting_compatible_data = []
+    
+    for stats in pitching_stats:
+        # 투수 스탯을 타자 필드로 매핑
+        converted = {
+            'player_id': stats.get('player_id'),
+            'season': stats.get('season'),
+            'league': stats.get('league', 'REGULAR'),
+            'level': stats.get('level', 'KBO1'),
+            'source': f"PITCHER_{stats.get('source', 'CRAWLER')}",  # 투수임을 명시
+            'team_code': stats.get('team_code'),
+            # 투수 주요 스탯을 타자 필드에 매핑
+            'games': stats.get('games'),
+            'plate_appearances': stats.get('innings_pitched'),  # 이닝 → PA
+            'at_bats': stats.get('hits_allowed'),  # 피안타 → AB
+            'runs': stats.get('runs_allowed'),  # 실점 → R
+            'hits': stats.get('strikeouts'),  # 삼진 → H
+            'home_runs': stats.get('home_runs_allowed'),  # 피홈런 → HR
+            'walks': stats.get('walks_allowed'),  # 볼넷 → BB
+            'intentional_walks': stats.get('intentional_walks'),  # IBB
+            'hbp': stats.get('hit_batters'),  # 사구 → HBP
+            'strikeouts': stats.get('wild_pitches'),  # 폭투 → SO
+            'extra_stats': _create_pitcher_extra_stats(stats),  # 투수 전용 스탯
+        }
+        
+        # None 값 제거
+        converted = {k: v for k, v in converted.items() if v is not None}
+        batting_compatible_data.append(converted)
+
+    # 외래키 제약조건 임시 비활성화하여 저장
+    with SessionLocal() as session:
+        try:
+            # SQLite 외래키 제약조건 비활성화
+            session.execute(text("PRAGMA foreign_keys = OFF"))
+            session.commit()
+            
+            # 기존 타자 Repository 사용
+            repo = PlayerSeasonBattingRepository()
+            saved_count = repo.upsert_batting_stats(batting_compatible_data)
+            
+            # 외래키 제약조건 다시 활성화
+            session.execute(text("PRAGMA foreign_keys = ON"))
+            session.commit()
+            
+            return saved_count
+            
+        except Exception as e:
+            # 오류 발생 시 외래키 제약조건 복구
+            session.execute(text("PRAGMA foreign_keys = ON"))
+            session.commit()
+            raise e
+
+
+def _create_pitcher_extra_stats(stats: Dict[str, Any]) -> Dict[str, Any]:
+    """투수 전용 extra_stats 생성"""
+    extra_stats = stats.get('extra_stats', {}).copy() if stats.get('extra_stats') else {}
+    
+    # 투수 고유 스탯들을 extra_stats에 저장
+    pitcher_stats = {
+        'pitcher_data': {
+            'wins': stats.get('wins'),
+            'losses': stats.get('losses'),
+            'saves': stats.get('saves'),
+            'holds': stats.get('holds'),
+            'earned_runs': stats.get('earned_runs'),
+            'era': stats.get('era'),
+            'whip': stats.get('whip'),
+            'balks': stats.get('balks'),
+            'innings_outs': stats.get('innings_outs')
+        }
+    }
+    
+    # 기존 extra_stats와 병합
+    extra_stats.update(pitcher_stats)
+    
+    return extra_stats

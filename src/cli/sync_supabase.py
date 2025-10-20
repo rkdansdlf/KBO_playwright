@@ -17,49 +17,17 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from src.db.engine import create_engine_for_url
 from src.models.base import Base
-from src.models.team import (
-    Franchise,
-    TeamIdentity,
-    FranchiseEvent,
-    Ballpark,
-    HomeBallparkAssignment,
-)
+
 from src.models.player import (
-    Player,
-    PlayerIdentity,
-    PlayerCode,
-    PlayerStint,
     PlayerSeasonBatting,
     PlayerSeasonPitching,
 )
-from src.models.game import (
-    GameSchedule,
-    Game,
-    GameLineup,
-    PlayerGameStats,
-    PlayerGameBatting,
-    PlayerGamePitching,
-)
+
 
 # 외래 키 제약 조건을 고려한 모델 처리 순서
 MODEL_ORDER: List[Type] = [
-    Franchise,
-    TeamIdentity,
-    FranchiseEvent,
-    Ballpark,
-    HomeBallparkAssignment,
-    Player,
-    PlayerIdentity,
-    PlayerCode,
-    PlayerStint,
     PlayerSeasonBatting,
     PlayerSeasonPitching,
-    GameSchedule,
-    Game,
-    GameLineup,
-    PlayerGameStats,
-    PlayerGameBatting,
-    PlayerGamePitching,
 ]
 
 
