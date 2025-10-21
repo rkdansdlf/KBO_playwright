@@ -10,6 +10,8 @@ import sys
 from datetime import datetime
 from typing import List
 
+from src.utils.series_validation import filter_series_for_year, is_series_available
+
 
 def get_year_range_validation(start_year: int, end_year: int) -> tuple:
     """연도 범위 유효성 검증"""
@@ -163,10 +165,16 @@ def crawl_historical_data(start_year: int = 1982, end_year: int = None,
     }
     
     total_years = len(range(start_year, end_year + 1))
-    total_tasks = total_years * len(series_list) * 2  # 년도 × 시리즈 × (타자+투수)
-    results['total_tasks'] = total_tasks
     
-    print(f"\n🎯 총 작업 수: {total_tasks}개 (년도 {total_years}개 × 시리즈 {len(series_list)}개 × 타자/투수)")
+    # 실제 크롤링 가능한 작업 수 계산 (연도별 시리즈 필터링 고려)
+    actual_total_tasks = 0
+    for year in range(start_year, end_year + 1):
+        available_series = filter_series_for_year(year, series_list)
+        actual_total_tasks += len(available_series) * 2  # 타자 + 투수
+    
+    results['total_tasks'] = actual_total_tasks
+    
+    print(f"\n🎯 총 작업 수: {actual_total_tasks}개 (연도별 가능한 시리즈 × 타자/투수)")
     print("\n" + "=" * 50)
     
     # 년도별 크롤링
@@ -180,8 +188,12 @@ def crawl_historical_data(start_year: int = 1982, end_year: int = None,
         year_success = 0
         year_total = len(series_list) * 2
         
+        # 해당 연도에 존재하는 시리즈만 필터링
+        available_series = filter_series_for_year(year, series_list)
+        year_total = len(available_series) * 2
+        
         # 시리즈별 크롤링
-        for series in series_list:
+        for series in available_series:
             print(f"  📊 {series} 시리즈:")
             
             # 타자 데이터 크롤링
