@@ -81,13 +81,20 @@ def parse_innings(value: Optional[str]) -> Optional[float]:
         return None
 
 
-def parse_legacy_pitching_table(page: Page, year: int) -> List[Dict]:
+def parse_legacy_pitching_table(page: Page, year: int, series_key: str = 'regular') -> List[Dict]:
     """
     2001년 이전 단순 투수 테이블 구조 파싱
     기본 컬럼: 순위, 선수명, 팀명, ERA, G, GS, W, L, SV, HLD, IP, H, HR, BB, SO, R, ER
     """
     players_data = []
     team_mapping = get_team_mapping_for_year(year)
+    
+    # 시리즈별 league 매핑
+    series_to_league = {
+        'regular': 'REGULAR',
+        'exhibition': 'EXHIBITION', 
+        'korean_series': 'KOREAN_SERIES'
+    }
 
     try:
         table = page.query_selector("table")
@@ -154,7 +161,7 @@ def parse_legacy_pitching_table(page: Page, year: int) -> List[Dict]:
                 player_data = {
                     'player_id': player_id,
                     'season': year,
-                    'league': 'REGULAR',  # 기본값
+                    'league': series_to_league.get(series_key, 'REGULAR'),
                     'level': 'KBO1',
                     'source': 'LEGACY_CRAWLER',
                     'team_code': team_code,
@@ -278,7 +285,7 @@ def crawl_legacy_pitching_stats(year: int = 2000, series_key: str = 'regular',
                 print(f"📄 {page_num}페이지 수집 중...")
                 
                 # 현재 페이지 데이터 파싱
-                page_data = parse_legacy_pitching_table(page, year)
+                page_data = parse_legacy_pitching_table(page, year, series_key)
                 
                 if not page_data:
                     if page_num == 1:
