@@ -506,6 +506,59 @@ docker-compose logs -f scheduler
 
 ---
 
+## 📊 크롤링 전략 가이드
+
+### 연도별 권장 전략
+
+#### 1982-2001년 (레거시 모드)
+- **특징**: 단순 컬럼 구조
+- **타자**: 순위, 선수명, 팀명, AVG, G, PA, AB, H, 2B, 3B, HR, RBI, SB, CS, BB, HBP, SO, GDP, E
+- **투수**: 순위, 선수명, 팀명, ERA, G, GS, W, L, SV, HLD, IP, H, HR, BB, SO, R, ER
+- **명령어**: `legacy_batting_crawler.py`, `legacy_pitching_crawler.py`
+- **시리즈**: regular, korean_series, exhibition (2000-2001년에는 플레이오프 없음)
+
+#### 2002년-현재 (현대 모드)
+- **특징**: 복합 구조, 상세 통계
+- **타자**: 기본 + OPS, wOBA, WAR 등 세이버메트릭스
+- **투수**: 기본 + WHIP, FIP, K/9, BB/9 등 고급 통계
+- **명령어**: `player_batting_all_series_crawler.py`, `player_pitching_all_series_crawler.py`
+- **시리즈**: regular, korean_series, playoff, semi_playoff (2007+), wildcard (2015+), exhibition
+
+### 연도별 시리즈 존재 여부
+- **1982-1985**: regular, korean_series
+- **1986-1999**: regular, korean_series, exhibition  
+- **2000-2001**: regular, korean_series, exhibition (플레이오프 없음)
+- **2002-2006**: regular, korean_series, playoff, exhibition
+- **2007-2014**: regular, korean_series, playoff, semi_playoff, exhibition
+- **2015-현재**: regular, korean_series, playoff, semi_playoff, wildcard, exhibition
+
+### 시리즈별 우선순위
+1. **정규시즌** (`regular`): 가장 중요, 우선 크롤링 (1982+)
+2. **한국시리즈** (`korean_series`): 포스트시즌 최고 단계 (1982+)
+3. **플레이오프** (`playoff`): 준결승/결승 (2002+)
+4. **준플레이오프** (`semi_playoff`): 포스트시즌 1차전 (2007+)
+5. **와일드카드** (`wildcard`): 추가 진출전 (2015+)
+6. **시범경기** (`exhibition`): 참고용 데이터 (1986+)
+
+### 시리즈 검증 유틸리티
+```bash
+# 특정 연도에서 사용 가능한 시리즈 확인
+./venv/bin/python3 -c "
+from src.utils.series_validation import get_available_series_by_year
+print('2001년:', get_available_series_by_year(2001))
+print('2015년:', get_available_series_by_year(2015))
+"
+
+# 연도-시리즈 조합 유효성 검증
+./venv/bin/python3 -c "
+from src.utils.series_validation import validate_year_series_combination
+valid, msg = validate_year_series_combination(2001, 'playoff')
+print(f'2001년 플레이오프: {msg}')
+"
+```
+
+---
+
 ## 📝 마무리
 
 이 가이드는 KBO_playwright의 모든 크롤링 기능을 다룹니다. 추가 질문이나 문제가 있으면 프로젝트의 다른 문서들을 참고하세요:

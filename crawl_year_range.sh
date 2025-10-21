@@ -154,10 +154,34 @@ for year in $(seq $START_YEAR $END_YEAR); do
     echo ""
     echo "📅 ${year}년 크롤링 중..."
     
+    # 해당 연도에 존재하는 시리즈 확인
+    available_series_output=$($PYTHON -c "
+from src.utils.series_validation import filter_series_for_year
+available = filter_series_for_year($year, ['${series_list[*]}'])
+print(' '.join(available))
+" 2>/dev/null)
+    
+    if [ -n "$available_series_output" ]; then
+        read -a available_series_array <<< "$available_series_output"
+    else
+        available_series_array=("${series_list[@]}")  # 폴백
+    fi
+    
     # 시리즈별 크롤링
-    for series in "${series_list[@]}"; do
+    for series in "${available_series_array[@]}"; do
+        # 연도별 크롤러 선택
+        if [ $year -le 2001 ]; then
+            # 레거시 크롤러 사용
+            batting_crawler="src.crawlers.legacy_batting_crawler"
+            pitching_crawler="src.crawlers.legacy_pitching_crawler"
+        else
+            # 현대 크롤러 사용
+            batting_crawler="src.crawlers.player_batting_all_series_crawler"
+            pitching_crawler="src.crawlers.player_pitching_all_series_crawler"
+        fi
+        
         # 타자 크롤링
-        batting_output=$($PYTHON -m src.crawlers.player_batting_all_series_crawler \
+        batting_output=$($PYTHON -m $batting_crawler \
             --year $year \
             --series $series \
             --save \
@@ -177,7 +201,7 @@ for year in $(seq $START_YEAR $END_YEAR); do
         show_progress
         
         # 투수 크롤링
-        pitching_output=$($PYTHON -m src.crawlers.player_pitching_all_series_crawler \
+        pitching_output=$($PYTHON -m $pitching_crawler \
             --year $year \
             --series $series \
             --save \
