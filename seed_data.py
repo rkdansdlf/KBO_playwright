@@ -34,6 +34,25 @@ DEFAULT_TEAMS = [
     {"team_id": "SSG", "team_name": "SSG 랜더스", "team_short_name": "SSG", "city": "인천", "founded_year": 2021, "stadium_name": "인천SSG랜더스필드"},
     {"team_id": "NC", "team_name": "NC 다이노스", "team_short_name": "NC", "city": "창원", "founded_year": 2011, "stadium_name": "창원NC파크"},
     {"team_id": "KT", "team_name": "kt wiz", "team_short_name": "kt", "city": "수원", "founded_year": 2013, "stadium_name": "수원 kt wiz 파크"},
+    {"team_id": "EA", "team_name": "나눔 올스타", "team_short_name": "나눔", "city": "KBO", "founded_year": 1982, "stadium_name": "-"},
+    {"team_id": "WE", "team_name": "드림 올스타", "team_short_name": "드림", "city": "KBO", "founded_year": 1982, "stadium_name": "-"},
+    # National Teams
+    {"team_id": "KR", "team_name": "대한민국", "team_short_name": "한국", "city": "Seoul", "founded_year": None, "stadium_name": None},
+    {"team_id": "JP", "team_name": "Japan", "team_short_name": "일본", "city": "Tokyo", "founded_year": None, "stadium_name": None},
+    {"team_id": "TW", "team_name": "Taiwan", "team_short_name": "대만", "city": "Taipei", "founded_year": None, "stadium_name": None},
+    {"team_id": "CU", "team_name": "Cuba", "team_short_name": "쿠바", "city": "Havana", "founded_year": None, "stadium_name": None},
+    {"team_id": "AU", "team_name": "Australia", "team_short_name": "호주", "city": "Canberra", "founded_year": None, "stadium_name": None},
+    {"team_id": "DOM", "team_name": "Dominican Rep.", "team_short_name": "도미니카", "city": "Santo Domingo", "founded_year": None, "stadium_name": None},
+    {"team_id": "PA", "team_name": "Panama", "team_short_name": "파나마", "city": "Panama City", "founded_year": None, "stadium_name": None},
+    {"team_id": "NL", "team_name": "Netherlands", "team_short_name": "네덜란드", "city": "Amsterdam", "founded_year": None, "stadium_name": None},
+    {"team_id": "US", "team_name": "USA", "team_short_name": "미국", "city": "Washington, D.C.", "founded_year": None, "stadium_name": None},
+    {"team_id": "VE", "team_name": "Venezuela", "team_short_name": "베네수엘라", "city": "Caracas", "founded_year": None, "stadium_name": None},
+    {"team_id": "MX", "team_name": "Mexico", "team_short_name": "멕시코", "city": "Mexico City", "founded_year": None, "stadium_name": None},
+    {"team_id": "PR", "team_name": "Puerto Rico", "team_short_name": "푸에르토리코", "city": "San Juan", "founded_year": None, "stadium_name": None},
+    {"team_id": "CN", "team_name": "China", "team_short_name": "중국", "city": "Beijing", "founded_year": None, "stadium_name": None},
+    {"team_id": "CA", "team_name": "Canada", "team_short_name": "캐나다", "city": "Ottawa", "founded_year": None, "stadium_name": None},
+    {"team_id": "IT", "team_name": "Italy", "team_short_name": "이탈리아", "city": "Rome", "founded_year": None, "stadium_name": None},
+    {"team_id": "CZ", "team_name": "Czechia", "team_short_name": "체코", "city": "Prague", "founded_year": None, "stadium_name": None},
 ]
 
 
