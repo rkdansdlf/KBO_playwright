@@ -27,3 +27,11 @@ pw-browsers/
 # Fixtures saved locally (HTML/JSON)
 tests/fixtures/**/*.html
 tests/fixtures/**/*.json
+
+# Supabase
+supabase/
+supabase.db
+
+*.log
+
+!migrations/supabase/
