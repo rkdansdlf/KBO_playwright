@@ -187,8 +187,8 @@ CREATE TABLE IF NOT EXISTS public.game_events (
 CREATE INDEX IF NOT EXISTS idx_game_events_inning ON public.game_events (game_id, inning, inning_half);
 
 -- 8. game_summary 인덱스
-CREATE INDEX IF NOT EXISTS idx_game_summary_category
-ON public.game_summary (game_id, category);
+CREATE INDEX IF NOT EXISTS idx_game_summary_summary_type
+ON public.game_summary (game_id, summary_type);
 
 -- 9. RLS (열람/쓰기 모두 허용)
 ALTER TABLE public.game_metadata ENABLE ROW LEVEL SECURITY;

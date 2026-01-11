@@ -25,25 +25,26 @@ class ScheduleCrawler:
         self.base_url = "https://www.koreabaseball.com/Schedule/Schedule.aspx"
         self.request_delay = request_delay
 
-    async def crawl_schedule(self, year: int, month: int) -> List[Dict]:
+    async def crawl_schedule(self, year: int, month: int, series_id: str = None) -> List[Dict]:
         """
         지정된 연도와 월의 경기 일정을 크롤링하는 메인 메서드.
 
         Args:
             year: 시즌 연도 (예: 2024)
             month: 월 (1-12)
+            series_id: 시리즈 ID (옵션)
 
         Returns:
             경기 정보 딕셔너리가 담긴 리스트.
         """
-        print(f"🔍 Crawling schedule for {year}-{month:02d}...")
+        print(f"🔍 Crawling schedule for {year}-{month:02d} (Series: {series_id})...")
 
         async with async_playwright() as p:
             browser = await p.chromium.launch(headless=True)
             page = await browser.new_page()
 
             try:
-                games = await self._crawl_month(page, year, month)
+                games = await self._crawl_month(page, year, month, series_id=series_id)
                 print(f"✅ Found {len(games)} games")
                 return games
             except Exception as e:
@@ -74,14 +75,49 @@ class ScheduleCrawler:
             finally:
                 await browser.close()
 
-    async def _crawl_month(self, page: Page, year: int, month: int) -> List[Dict]:
+
+    async def _crawl_month(self, page: Page, year: int, month: int, series_id: str = None) -> List[Dict]:
         """특정 월의 경기 일정 페이지에 접속하여 게임 정보를 추출합니다."""
-        url = f"{self.base_url}?year={year}&month={month}&seriesId=0"
-        print(f"[FETCH] Fetching: {url}")
+        # 기본 페이지로 이동 (파라미터 없이)
+        if page.url != self.base_url:
+            await page.goto(self.base_url, wait_until="networkidle", timeout=30000)
+        
+        print(f"[NAV] Selecting Year: {year}, Month: {month}, Series: {series_id}")
 
-        await page.goto(url, wait_until="networkidle", timeout=30000)
+        # 1. 연도 선택
+        await page.select_option('#ddlYear', str(year))
+        await asyncio.sleep(0.5)
+
+        # 2. 월 선택 
+        # (월 선택 -> 포스트백)
+        await page.select_option('#ddlMonth', f"{month:02d}")
+        try:
+            await page.wait_for_timeout(500)
+            await page.wait_for_load_state("networkidle", timeout=5000)
+        except:
+            pass
+            
+        # 3. 리그(Series) 선택 (옵션이 있는 경우에만)
+        # series_id가 제공되면 선택. (예: "0,9,6" for Regular, "1" for Exhibition)
+        if series_id:
+            try:
+                # 해당 값이 옵션에 있는지 확인
+                option_exists = await page.eval_on_selector(f'#ddlSeries option[value="{series_id}"]', 'e => !!e')
+                if option_exists:
+                    await page.select_option('#ddlSeries', series_id)
+                    # 시리즈 선택 -> 포스트백
+                    try:
+                        await page.wait_for_timeout(500)
+                        await page.wait_for_load_state("networkidle", timeout=5000)
+                    except:
+                        pass
+                else:
+                    print(f"[WARN] Series option '{series_id}' not found for {year}-{month:02d}. Skipping series selection.")
+            except Exception as e:
+                print(f"[WARN] Error selecting series {series_id}: {e}")
+
         await asyncio.sleep(self.request_delay)
-
+        
         return await self._extract_games(page, year, month)
 
     async def _extract_games(self, page: Page, year: int, month: int) -> List[Dict]:

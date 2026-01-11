@@ -64,10 +64,22 @@ def iter_team_history() -> Iterable[TeamHistoryEntry]:
 @lru_cache(maxsize=None)
 def resolve_team_code_for_season(raw_code: str, season_year: int) -> Optional[str]:
     raw = raw_code.upper()
+    # 1. Find the franchise this brand belongs to
+    franchise_id = None
     for entry in _TEAM_HISTORY:
-        if entry.team_code.upper() != raw:
-            continue
-        end_season = entry.end_season or season_year
-        if entry.start_season <= season_year <= end_season:
-            return FRANCHISE_CANONICAL_CODE.get(entry.franchise_id)
+        if entry.team_code.upper() == raw:
+            franchise_id = entry.franchise_id
+            break
+
+    if franchise_id is None:
+        # Fallback for common mis-mappings or direct canonical codes not in history table
+        return None
+
+    # 2. Find the brand used by THIS franchise during the given year
+    for entry in _TEAM_HISTORY:
+        if entry.franchise_id == franchise_id:
+            end_season = entry.end_season or season_year  # None means active
+            if entry.start_season <= season_year <= end_season:
+                return entry.team_code.upper()
+    
     return None

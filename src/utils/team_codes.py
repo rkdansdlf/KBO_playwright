@@ -54,6 +54,47 @@ TEAM_NAME_TO_CODE = {
     # Dissolved franchises
     "쌍방울": "SSANG",
     "쌍방울 레이더스": "SSANG",
+    # Special Teams (All-Star Games)
+    # Special Teams (All-Star Games)
+    "나눔": "EA",
+    "드림": "WE",
+    "동군": "EA",
+    "서군": "WE",
+    # National Teams (International)
+    "대한민국": "KR",
+    "한국": "KR",
+    "일본": "JP",
+    "대만": "TW",
+    "쿠바": "CU",
+    "호주": "AU",
+    "도미니카": "DO", # Note: DO was also Doosan Bears segment but typically Bears is OB. However, Doosan Bears is OB/DO.
+                  # Let's verify if "DO" is already used for Doosan. 
+                  # Looking at TEAM_NAME_TO_CODE -> "Doosan Bears" is "OB".
+                  # GAME_ID_SEGMENT_TO_CODE -> "DO" maps to "OB".
+                  # For national codes, ISO-2 "DO" is Dominican Republic.
+                  # Using "DOM" might be safer but ISO2 is standard. 
+                  # Since "DO" maps to "OB" in game segment, we should be careful.
+                  # BUT, resolve_team_code uses TEAM_NAME_TO_CODE. 
+                  # "두산" -> "OB". "도미니카" -> "DO".
+                  # As long as there is no overlap in *names* mapping to same code, we are fine.
+                  # Wait, "DO" code is used in `game` table?
+                  # In `database`, we used "OB" for Doosan usually?
+                  # repair_game_teams.py: [20250404OBLT0] Away: OB -> DO.
+                  # Ah! I changed Doosan to use "DO" in 2025 repair!
+                  # So "DO" is Doosan Bears!
+                  # I CANNOT use "DO" for Dominican Republic.
+                  # I will use "DOM" for Dominican Republic to avoid collision.
+    "도미니카공화국": "DOM",
+    "파나마": "PA",
+    "네덜란드": "NL",
+    "미국": "US",
+    "베네수엘라": "VE",
+    "멕시코": "MX",
+    "푸에르토리코": "PR",
+    "중국": "CN",
+    "캐나다": "CA",
+    "이탈리아": "IT",
+    "체코": "CZ",
 }
 
 
@@ -88,6 +129,9 @@ GAME_ID_SEGMENT_TO_CODE = {
     "BE": "HH",
     "SL": "SSG",
     "MBC": "LG",
+    # All-Star Game segments
+    "EA": "EA",
+    "WE": "WE",
 }
 
 
