@@ -225,3 +225,27 @@ class PlayerSeasonPitching(Base, TimestampMixin):
     
     # Additional metadata
     extra_stats: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSON, nullable=True)
+
+
+class PlayerMovement(Base, TimestampMixin):
+    """
+    Records player status changes (Trade, FA, Waiver, etc.).
+    Source: https://www.koreabaseball.com/Player/Trade.aspx
+    """
+    __tablename__ = "player_movements"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    date: Mapped[Date] = mapped_column(Date, nullable=False, comment="Event date")
+    section: Mapped[str] = mapped_column(String(50), nullable=False, comment="Movement type (e.g. Trade)")
+    team_code: Mapped[str] = mapped_column(String(20), nullable=False, comment="Related team")
+    player_name: Mapped[str] = mapped_column(String(100), nullable=False, comment="Player name (with position info)")
+    remarks: Mapped[Optional[str]] = mapped_column(Text, nullable=True, comment="Detailed remarks")
+
+    __table_args__ = (
+        UniqueConstraint("date", "team_code", "player_name", "section", name="uq_player_movement"),
+        Index("idx_player_movement_date", "date"),
+        Index("idx_player_movement_player", "player_name"),
+    )
+
+    def __repr__(self) -> str:
+        return f"<PlayerMovement(date={self.date}, section='{self.section}', player='{self.player_name}')>"
