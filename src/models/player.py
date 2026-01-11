@@ -52,6 +52,9 @@ class PlayerBasic(Base):
 
     # Career/origin
     career: Mapped[Optional[str]] = mapped_column(String(200), nullable=True, comment="School/origin (출신교)")
+    status: Mapped[Optional[str]] = mapped_column(String(16), nullable=True, comment="active|retired|staff")
+    staff_role: Mapped[Optional[str]] = mapped_column(String(32), nullable=True, comment="manager|coach|trainer")
+    status_source: Mapped[Optional[str]] = mapped_column(String(16), nullable=True, comment="heuristic|profile")
 
     __table_args__ = (
         Index("idx_player_basic_name", "name"),
@@ -119,7 +122,7 @@ class PlayerSeasonBatting(Base, TimestampMixin):
     league: Mapped[str] = mapped_column(String(16), nullable=False, default="REGULAR")
     level: Mapped[str] = mapped_column(String(16), nullable=False, default="KBO1")
     source: Mapped[str] = mapped_column(String(16), nullable=False, default="ROLLUP")
-    team_id: Mapped[Optional[str]] = mapped_column(String(10), ForeignKey("teams.team_id"), nullable=True)
+    team_code: Mapped[Optional[str]] = mapped_column(String(10), ForeignKey("teams.team_id"), nullable=True)
     games: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     plate_appearances: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     at_bats: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)

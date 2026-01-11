@@ -73,6 +73,15 @@ python -m src.cli.crawl_retire --years 2023
 # Check database connection
 python -m src.cli.db_healthcheck
 
+# Seed tables (teams + seasons). CSV rows with schema headers are skipped
+# automatically; if the CSV lacks data, a built-in 22-team fallback list
+# is merged so team FKs stay valid without manual SQL.
+python seed_data.py
+
+# NOTE: teams is treated as a semi-static reference table. Supabase still has
+# legacy tables (e.g., team_history) referencing it, so `sync_supabase.py`
+# always UPSERTs teams and never truncates that table.
+
 # Sync local SQLite data to a remote Postgres/Supabase DB
 # Ensure TARGET_DATABASE_URL is set in your .env file
 python -m src.cli.sync_supabase --truncate
@@ -104,15 +113,48 @@ KBO_playwright/
 │   ├── db/                # Database engine and session management
 │   ├── models/            # SQLAlchemy ORM models
 │   ├── parsers/           # HTML/JSON parsing logic
-│   └── repositories/      # Data storage logic (UPSERTs)
+│   ├── repositories/      # Data storage logic (UPSERTs)
+│   ├── sync/              # Data synchronization utilities
+│   └── utils/             # Helper utilities
+├── scripts/
+│   ├── crawling/          # Historical data crawling scripts
+│   ├── supabase/          # Supabase sync and maintenance scripts
+│   └── maintenance/       # Database validation and repair scripts
 ├── data/                  # Default directory for SQLite DB
 ├── Docs/                  # Detailed project documentation
+├── migrations/            # Database migration scripts
+│   └── supabase/          # Supabase-specific migrations
 ├── docker-compose.yml     # Docker service definitions
 ├── Dockerfile             # Docker container setup
 ├── requirements.txt       # Python dependencies
-├── scheduler.py           # APScheduler job definitions
+├── scheduler.py           # APScheduler job definitions (production)
+├── init_db.py             # Database initialization
+├── seed_data.py           # Initial data seeding
+├── init_data_collection.py # Initial data collection workflow
 └── CLAUDE.md              # AI assistant guidance
 ```
+
+## Scripts
+
+The `scripts/` directory contains utility scripts for maintenance and operations:
+
+### Crawling Scripts (`scripts/crawling/`)
+- `crawl_all_historical.py` - Crawl historical game data
+- `recrawl_legacy_years.py` - Re-crawl specific historical seasons
+- `collect_detailed_data.py` - Collect detailed player profiles and game data
+
+### Supabase Scripts (`scripts/supabase/`)
+- `sync_player_basic_first.py` - Initial sync of player basic data
+- `check_supabase_data.py` - Verify Supabase data integrity
+- `fix_supabase_constraints.py` - Fix foreign key constraints
+- `test_supabase_sync.py` - Test Supabase synchronization
+
+### Maintenance Scripts (`scripts/maintenance/`)
+- `fix_player_names.py` - Re-crawl and fix player names
+- `verify_sqlite_data.py` - Verify local SQLite data quality
+- `reset_sqlite.py` - Reset local database
+- `check_missing_teams.py` - Find missing team data
+- `check_missing_supabase_teams.py` - Compare SQLite vs Supabase `teams` table IDs
 
 ## Documentation
 

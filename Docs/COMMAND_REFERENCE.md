@@ -332,6 +332,11 @@ rm data/kbo_dev.db*
 ./venv/bin/python3 init_db.py
 ./venv/bin/python3 seed_teams.py
 
+# 팀/시즌 데이터만 빠졌을 경우
+# CSV에 스키마 행만 있어도 `seed_data.py`는 자동으로 무시하고
+# 22개 기본 팀 리스트를 병합해 FK 무결성을 유지합니다.
+./venv/bin/python3 seed_data.py
+
 # 외래키 제약조건 확인
 ./venv/bin/python3 -c "
 from src.db.engine import SessionLocal

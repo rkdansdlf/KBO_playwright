@@ -1,0 +1,50 @@
+Traceback (most recent call last):
+  File "/Users/mac/project/KBO_playwright/fix_player_names.py", line 103, in main
+  File "/Users/mac/project/KBO_playwright/venv/lib/python3.10/site-packages/sqlalchemy/orm/session.py", line 2351, in execute
+    return self._execute_internal(
+  File "/Users/mac/project/KBO_playwright/venv/lib/python3.10/site-packages/sqlalchemy/orm/session.py", line 2147, in _execute_internal
+    statement = coercions.expect(roles.StatementRole, statement)
+  File "/Users/mac/project/KBO_playwright/venv/lib/python3.10/site-packages/sqlalchemy/sql/coercions.py", line 395, in expect
+    resolved = impl._literal_coercion(
+  File "/Users/mac/project/KBO_playwright/venv/lib/python3.10/site-packages/sqlalchemy/sql/coercions.py", line 621, in _literal_coercion
+    return self._text_coercion(element, argname, **kw)
+  File "/Users/mac/project/KBO_playwright/venv/lib/python3.10/site-packages/sqlalchemy/sql/coercions.py", line 614, in _text_coercion
+    return _no_text_coercion(element, argname)
+  File "/Users/mac/project/KBO_playwright/venv/lib/python3.10/site-packages/sqlalchemy/sql/coercions.py", line 584, in _no_text_coercion
+    raise exc_cls(
+sqlalchemy.exc.ArgumentError: Textual SQL expression 'SELECT COUNT(*) FROM play...' should be explicitly declared as text('SELECT COUNT(*) FROM play...')
+======================================================================
+🔧 FIX PLAYER NAMES - Re-crawl from KBO Website
+======================================================================
+
+📦 Initializing database...
+✅ Database initialized: sqlite:///./data/kbo_dev.db
+
+🕷️  Crawling players from KBO website...
+
+✅ Crawled 5125 players
+
+🔍 Validating player names...
+   ✅ Valid: 5125
+   ❌ Invalid: 0
+
+📋 Sample (first 10 valid players):
+   - 가내영 (ID: 90312, ##, KIA/투수)
+   - 가뇽 (ID: 50640, ##, KIA/투수)
+   - 가득염 (ID: 92501, ##, SK/투수)
+   - 가라비토 (ID: 55460, #60, 삼성/투수)
+   - 가르시아 (ID: 52125, ##, LG/내야수)
+   - 가르시아 (ID: 68103, ##, LG/내야수)
+   - 가르시아 (ID: 70441, ##, 삼성/투수)
+   - 가르시아 (ID: 72736, ##, 한화/내야수)
+   - 가르시아 (ID: 78595, ##, 한화/외야수)
+   - 가빌리오 (ID: 51833, ##, SSG/투수)
+
+🔄 Converting to database format...
+
+💾 Saving 5125 players to SQLite...
+✅ Saved 5125 players to SQLite
+
+🔍 Verifying database...
+   Total players in database: 5125
+❌ Error saving to database: Textual SQL expression 'SELECT COUNT(*) FROM play...' should be explicitly declared as text('SELECT COUNT(*) FROM play...')

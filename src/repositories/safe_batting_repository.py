@@ -45,7 +45,7 @@ def save_batting_stats_safe(payloads: List[Dict[str, Any]]) -> int:
                     'league': payload.get('league'),
                     'level': payload.get('level', 'KBO1'),
                     'source': payload.get('source', 'CRAWLER'),
-                    'team_id': payload.get('team_code'),  # team_code를 team_id로 매핑
+                    'team_code': payload.get('team_code'),
                     
                     # 타자 통계
                     'games': payload.get('games'),

@@ -11,6 +11,31 @@ from src.db.engine import SessionLocal, Engine
 from src.models.team import Team
 from src.models.season import KboSeason
 
+DEFAULT_TEAMS = [
+    {"team_id": "SS", "team_name": "삼성 라이온즈", "team_short_name": "삼성", "city": "대구", "founded_year": 1982, "stadium_name": "대구 삼성 라이온즈 파크"},
+    {"team_id": "LT", "team_name": "롯데 자이언츠", "team_short_name": "롯데", "city": "부산", "founded_year": 1982, "stadium_name": "부산 사직 야구장"},
+    {"team_id": "MBC", "team_name": "MBC 청룡", "team_short_name": "MBC", "city": "서울", "founded_year": 1982, "stadium_name": "잠실야구장"},
+    {"team_id": "LG", "team_name": "LG 트윈스", "team_short_name": "LG", "city": "서울", "founded_year": 1990, "stadium_name": "잠실야구장"},
+    {"team_id": "OB", "team_name": "OB 베어스", "team_short_name": "OB", "city": "서울", "founded_year": 1982, "stadium_name": "잠실야구장"},
+    {"team_id": "DO", "team_name": "두산 베어스", "team_short_name": "두산", "city": "서울", "founded_year": 1996, "stadium_name": "잠실야구장"},
+    {"team_id": "HT", "team_name": "해태 타이거즈", "team_short_name": "해태", "city": "광주", "founded_year": 1982, "stadium_name": "광주 무등경기장 야구장"},
+    {"team_id": "KIA", "team_name": "KIA 타이거즈", "team_short_name": "KIA", "city": "광주", "founded_year": 2001, "stadium_name": "광주-기아 챔피언스 필드"},
+    {"team_id": "SM", "team_name": "삼미 슈퍼스타즈", "team_short_name": "삼미", "city": "인천", "founded_year": 1982, "stadium_name": "인천공설운동장 야구장"},
+    {"team_id": "CB", "team_name": "청보 핀토스", "team_short_name": "청보", "city": "인천", "founded_year": 1985, "stadium_name": "인천공설운동장 야구장"},
+    {"team_id": "TP", "team_name": "태평양 돌핀스", "team_short_name": "태평양", "city": "인천", "founded_year": 1988, "stadium_name": "인천공설운동장 야구장"},
+    {"team_id": "HU", "team_name": "현대 유니콘스", "team_short_name": "현대", "city": "수원", "founded_year": 1996, "stadium_name": "수원야구장"},
+    {"team_id": "WO", "team_name": "우리 히어로즈", "team_short_name": "우리", "city": "서울", "founded_year": 2008, "stadium_name": "목동야구장"},
+    {"team_id": "NX", "team_name": "넥센 히어로즈", "team_short_name": "넥센", "city": "서울", "founded_year": 2010, "stadium_name": "고척스카이돔"},
+    {"team_id": "KI", "team_name": "키움 히어로즈", "team_short_name": "키움", "city": "서울", "founded_year": 2019, "stadium_name": "고척스카이돔"},
+    {"team_id": "BE", "team_name": "빙그레 이글스", "team_short_name": "빙그레", "city": "대전", "founded_year": 1986, "stadium_name": "대전한밭야구장"},
+    {"team_id": "HH", "team_name": "한화 이글스", "team_short_name": "한화", "city": "대전", "founded_year": 1993, "stadium_name": "대전 한화생명 이글스 파크"},
+    {"team_id": "SL", "team_name": "쌍방울 레이더스", "team_short_name": "쌍방울", "city": "전주", "founded_year": 1990, "stadium_name": "전주야구장"},
+    {"team_id": "SK", "team_name": "SK 와이번스", "team_short_name": "SK", "city": "인천", "founded_year": 2000, "stadium_name": "인천문학야구장"},
+    {"team_id": "SSG", "team_name": "SSG 랜더스", "team_short_name": "SSG", "city": "인천", "founded_year": 2021, "stadium_name": "인천SSG랜더스필드"},
+    {"team_id": "NC", "team_name": "NC 다이노스", "team_short_name": "NC", "city": "창원", "founded_year": 2011, "stadium_name": "창원NC파크"},
+    {"team_id": "KT", "team_name": "kt wiz", "team_short_name": "kt", "city": "수원", "founded_year": 2013, "stadium_name": "수원 kt wiz 파크"},
+]
+
 
 def get_project_root() -> Path:
     """Get the project root directory."""
@@ -37,30 +62,60 @@ def to_date_or_none(value: str, fmt: str = "%Y-%m-%d") -> Optional[datetime.date
         return None
 
 
+INVALID_TOKENS = {"team_id", "team_name", "team_short_name", "city", "founded_year", "stadium_name"}
+
+
+def _is_valid_team_row(row: dict) -> bool:
+    team_id = (row.get("team_id") or "").strip()
+    team_name = (row.get("team_name") or "").strip()
+    if not team_id or not team_name:
+        return False
+    lowered = team_id.lower()
+    if lowered in INVALID_TOKENS or "varchar" in lowered:
+        return False
+    lowered_name = team_name.lower()
+    if lowered_name in INVALID_TOKENS or "varchar" in lowered_name:
+        return False
+    return True
+
+
+def _seed_default_teams(session: Session):
+    print("   ℹ️  Falling back to built-in team seed list.")
+    for team_data in DEFAULT_TEAMS:
+        session.merge(Team(**team_data))
+    session.commit()
+    print(f"✅ Upserted {len(DEFAULT_TEAMS)} default teams.")
+
+
 def seed_teams(session: Session, csv_path: Union[str, Path]):
     """Seed the teams table from a CSV file."""
     print(f"\n🌱 Seeding teams from {csv_path}...")
-    with open(csv_path, "r", encoding="utf-8") as f:
-        reader = csv.DictReader(f)
-        teams_to_upsert = []
-        for row in reader:
-            team = Team(
-                team_id=row["team_id"],
-                team_name=row["team_name"],
-                team_short_name=row["team_short_name"],
-                city=row["city"],
-                founded_year=to_int_or_none(row["founded_year"]),
-                stadium_name=row["stadium_name"],
-            )
-            # Use merge to perform an UPSERT operation
-            session.merge(team)
-            teams_to_upsert.append(team)
-    
+    teams_to_upsert = []
+    csv_path = Path(csv_path)
+
+    if csv_path.exists():
+        with open(csv_path, "r", encoding="utf-8") as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                if not _is_valid_team_row(row):
+                    continue
+                team = Team(
+                    team_id=row["team_id"].strip(),
+                    team_name=row["team_name"].strip(),
+                    team_short_name=row["team_short_name"].strip(),
+                    city=row["city"].strip(),
+                    founded_year=to_int_or_none(row.get("founded_year")),
+                    stadium_name=(row.get("stadium_name") or "").strip() or None,
+                )
+                session.merge(team)
+                teams_to_upsert.append(team)
+
     if teams_to_upsert:
         session.commit()
-        print(f"✅ Upserted {len(teams_to_upsert)} teams.")
+        print(f"✅ Upserted {len(teams_to_upsert)} teams from CSV.")
     else:
-        print("✅ No teams data found in CSV.")
+        print("⚠️  No valid teams in CSV; using default seed data.")
+        _seed_default_teams(session)
 
 
 def seed_kbo_seasons(session: Session, csv_path: Union[str, Path]):
