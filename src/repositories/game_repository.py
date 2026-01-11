@@ -23,6 +23,39 @@ from src.models.game import (
 from src.utils.safe_print import safe_print as print
 
 
+def save_schedule_game(game_data: Dict[str, Any]) -> bool:
+    """Persist basic game info from schedule crawler."""
+    game_id = game_data.get("game_id")
+    if not game_id:
+        return False
+
+    game_date_str = str(game_data.get("game_date", "")).replace("-", "")
+    try:
+        game_date = datetime.strptime(game_date_str, "%Y%m%d").date()
+    except Exception:
+        return False
+
+    with SessionLocal() as session:
+        try:
+            game = session.query(Game).filter(Game.game_id == game_id).one_or_none()
+            if not game:
+                game = Game(game_id=game_id)
+                session.add(game)
+            
+            game.game_date = game_date
+            game.home_team = game_data.get("home_team_code")
+            game.away_team = game_data.get("away_team_code")
+            game.season_id = game_data.get("season_year")
+            
+            # Note: Scores and other details are not available in basic schedule crawl
+            session.commit()
+            return True
+        except Exception as exc:
+            session.rollback()
+            print(f"[ERROR] DB Error (Schedule): {exc}")
+            return False
+
+
 def save_game_detail(game_data: Dict[str, Any]) -> bool:
     """Persist full game snapshot including box score + player stats."""
     if not game_data:

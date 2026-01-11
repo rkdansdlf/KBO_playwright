@@ -20,6 +20,8 @@ from src.models.base import Base
 
 from src.models.player import PlayerSeasonBatting, PlayerSeasonPitching
 from src.models.team import Team
+from src.sync.supabase_sync import SupabaseSync
+from src.db.engine import SessionLocal
 
 
 # 외래 키 제약 조건을 고려한 모델 처리 순서
@@ -101,6 +103,16 @@ def build_arg_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="데이터 삽입 전 대상 테이블의 모든 데이터를 삭제합니다.",
     )
+    parser.add_argument(
+        "--teams",
+        action="store_true",
+        help="프랜차이즈 및 팀 정보를 동기화합니다.",
+    )
+    parser.add_argument(
+        "--game-details",
+        action="store_true",
+        help="경기 상세 데이터(박스스코어, 라인업, PBP 등)를 동기화합니다.",
+    )
     return parser
 
 
@@ -113,7 +125,23 @@ def main(argv: Iterable[str] | None = None) -> None:
     if not args.target_url:
         raise SystemExit("TARGET_DATABASE_URL must be provided via flag or environment variable")
 
-    sync_databases(args.source_url, args.target_url, truncate=args.truncate)
+    if args.game_details:
+        print("🚀 Syncing Game Details using specialized SupabaseSync...")
+        with SessionLocal() as session:
+            syncer = SupabaseSync(args.target_url, session)
+            syncer.sync_game_details()
+            print("✅ Game Details Sync Finished")
+            
+    elif args.teams:
+        print("🚀 Syncing Franchises & Teams using specialized SupabaseSync...")
+        with SessionLocal() as session:
+            syncer = SupabaseSync(args.target_url, session)
+            syncer.sync_franchises()
+            syncer.sync_teams()
+            print("✅ Team Data Sync Finished")
+        
+    else:
+        sync_databases(args.source_url, args.target_url, truncate=args.truncate)
 
 
 if __name__ == "__main__":  # pragma: no cover

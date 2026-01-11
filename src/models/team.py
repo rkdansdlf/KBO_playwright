@@ -23,6 +23,9 @@ class Team(Base, TimestampMixin):
     city: Mapped[str] = mapped_column(String(30), nullable=False, comment="연고 도시")
     founded_year: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, comment="창단 연도")
     stadium_name: Mapped[Optional[str]] = mapped_column(String(50), nullable=True, comment="홈 구장 명칭")
+    franchise_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, comment="Franchise ID")
+
+    # franchise: Mapped["Franchise"] = relationship(back_populates="teams")
 
     def __repr__(self) -> str:
         return f"<Team(team_id='{self.team_id}', name='{self.team_name}')>"

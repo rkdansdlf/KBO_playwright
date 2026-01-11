@@ -5,13 +5,22 @@ Dual-repository pattern: SQLite (dev/validation) → Supabase (production)
 import os
 import json
 from typing import List, Dict, Any
-from sqlalchemy import create_engine, text, select, MetaData, Table
+from sqlalchemy import create_engine, text, select, MetaData, Table, column, table
 from sqlalchemy.orm import sessionmaker, Session
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 # 현재 사용 가능한 모델들만 import
 from src.models.player import PlayerSeasonBatting, PlayerSeasonPitching, PlayerBasic
 from src.models.crawl import CrawlRun
+from src.models.game import (
+    Game,
+    GameMetadata,
+    GameInningScore,
+    GameLineup,
+    GameBattingStat,
+    GamePitchingStat,
+    GameEvent
+)
 
 
 LEAGUE_NAME_TO_CODE = {
@@ -375,6 +384,131 @@ class SupabaseSync:
             print(f"⚠️ Supabase 데이터 조회 실패: {e}")
 
     
+
+    def sync_franchises(self) -> int:
+        """Sync franchises from hardcoded list to Supabase"""
+        from src.models.franchise import Franchise
+        # Hardcoded list from team_history mostly or migration
+        # Actually, let's use the code I put in the migration as source of truth for now, 
+        # OR better, since I can't easily parse SQL, I will define the list here again.
+        
+        franchise_data = [
+            {'name': '삼성 라이온즈', 'original_code': 'SS', 'current_code': 'SS'},
+            {'name': '롯데 자이언츠', 'original_code': 'LT', 'current_code': 'LT'},
+            {'name': 'LG 트윈스', 'original_code': 'LG', 'current_code': 'LG'},
+            {'name': '두산 베어스', 'original_code': 'OB', 'current_code': 'OB'},
+            {'name': 'KIA 타이거즈', 'original_code': 'HT', 'current_code': 'KIA'},
+            {'name': '키움 히어로즈', 'original_code': 'WO', 'current_code': 'WO'},
+            {'name': '한화 이글스', 'original_code': 'HH', 'current_code': 'HH'},
+            {'name': 'SSG 랜더스', 'original_code': 'SK', 'current_code': 'SSG'},
+            {'name': 'NC 다이노스', 'original_code': 'NC', 'current_code': 'NC'},
+            {'name': 'KT 위즈', 'original_code': 'KT', 'current_code': 'KT'},
+        ]
+        
+        synced = 0
+        for data in franchise_data:
+            stmt = pg_insert(Franchise).values(**data)
+            update_dict = {k: v for k, v in data.items() if k != 'original_code'}
+            update_dict['updated_at'] = text('CURRENT_TIMESTAMP')
+            
+            stmt = stmt.on_conflict_do_update(
+                index_elements=['original_code'],
+                set_=update_dict
+            )
+            self.supabase_session.execute(stmt)
+            synced += 1
+            
+        self.supabase_session.commit()
+        print(f"✅ Synced {synced} franchises to Supabase")
+        return synced
+
+    def sync_teams(self) -> int:
+        """Sync teams from SQLite to Supabase"""
+        from src.models.franchise import Franchise
+        teams = self.sqlite_session.query(table("teams", column("team_id"), column("team_name"), column("team_short_name"), column("city"), column("founded_year"), column("stadium_name"))).all()
+        # Note: SQLite teams table might not have franchise_id yet unless we migrated it too. 
+        # But wait, I added franchise_id to the MODEL code, but I didn't migrate the SQLite DB schema.
+        # Ideally, I should infer franchise_id from team_id mapping if it's missing in SQLite.
+        
+        # Helper mapping for team_id -> original_code
+        # This logic mirrors what I did in team_history.py roughly.
+        team_to_franchise_code = {
+            'SS': 'SS', 'LT': 'LT', 'LG': 'LG', 'MBC': 'LG',
+            'OB': 'OB', 'DO': 'OB',
+            'HT': 'HT', 'KIA': 'HT',
+            'WO': 'WO', 'NX': 'WO', 'KI': 'WO', 'HU': 'WO', 'CB': 'WO', 'TP': 'WO', 'SM': 'WO', # Heroes lineage is complex, simplifying to WO for technical ID mostly
+            'HH': 'HH', 'BE': 'HH',
+            'SK': 'SK', 'SSG': 'SK',
+            'NC': 'NC', 'KT': 'KT',
+            # Early history mapping might be tricky, but let's do best effort
+        }
+        # Refined Heroes lineage for 'original_code' (Technical Segment):
+        # Actually, Modern/Hyundai/Pacific/Chungbo/Sammi is a mess. 
+        # But for Supabase 'franchise' table I defined 'WO' as Heroes. 
+        # Let's map 'NX', 'KI', 'WO' to 'WO'.
+        # 'HU', 'TP', 'CB', 'SM' -> effectively dissolved or acquired. 
+        # Migration SQL only had 10 active franchises.
+        # I will map only what I can matching the 10 franchises.
+
+        # Retrieve franchise IDs from Supabase to map
+        sup_franchises = self.supabase_session.query(Franchise).all()
+        code_to_id = {f.original_code: f.id for f in sup_franchises}
+        
+        synced = 0
+        for team in teams:
+            # Determine franchise_id
+            fid = None
+            # 1. Try direct map from local DB if it existed (it usually returns None from tuple if column missing in DB but present in query? No, it will error if I query column that doesn't exist)
+            # Safe query:
+            # Since I haven't migrated local SQLite, I shouldn't query franchise_id column from SQLite yet.
+            
+            # Logic: Map team.team_id to franchise code
+            tid = team.team_id
+            f_code = None
+            
+            if tid in ['SS']: f_code = 'SS'
+            elif tid in ['LT']: f_code = 'LT'
+            elif tid in ['LG', 'MBC']: f_code = 'LG'
+            elif tid in ['OB', 'DO']: f_code = 'OB'
+            elif tid in ['HT', 'KIA']: f_code = 'HT'
+            elif tid in ['WO', 'NX', 'KI']: f_code = 'WO'
+            elif tid in ['HH', 'BE']: f_code = 'HH'
+            elif tid in ['SK', 'SSG', 'SL']: f_code = 'SK' # SL (Ssangbangwool) -> SK (bought) -> SSG. 
+            elif tid == 'NC': f_code = 'NC'
+            elif tid == 'KT': f_code = 'KT'
+            
+            if f_code and f_code in code_to_id:
+                fid = code_to_id[f_code]
+
+            data = {
+                'team_id': team.team_id,
+                'team_name': team.team_name,
+                'team_short_name': team.team_short_name,
+                'city': team.city,
+                'founded_year': team.founded_year,
+                'stadium_name': team.stadium_name,
+                'franchise_id': fid
+            }
+
+            stmt = pg_insert(table("teams", column("team_id"))).values(**data) # This 'table' user generic need actual Table object or model
+            # Let's use the Model class, but careful about imports
+            from src.models.team import Team
+            stmt = pg_insert(Team).values(**data)
+            
+            update_dict = {k: v for k, v in data.items() if k != 'team_id'}
+            update_dict['updated_at'] = text('CURRENT_TIMESTAMP')
+            stmt = stmt.on_conflict_do_update(
+                index_elements=['team_id'],
+                set_=update_dict
+            )
+
+            self.supabase_session.execute(stmt)
+            synced += 1
+
+        self.supabase_session.commit()
+        print(f"✅ Synced {synced} teams to Supabase")
+        return synced
+
     def sync_ballpark_assignments(self) -> int:
         """Sync ballpark assignments from SQLite to Supabase"""
         franchise_mapping = self._get_franchise_id_mapping()
@@ -798,6 +932,7 @@ class SupabaseSync:
                 'walks': row['walks_allowed'],
                 'hbp': row['hit_batters'],
                 'strikeouts': row['strikeouts'],
+
                 'runs': row['runs_allowed'],
                 'earned_runs': row['earned_runs'],
                 'whip': row['whip'],
@@ -855,25 +990,43 @@ class SupabaseSync:
         games = query.all()
         synced = 0
 
+        # Define a lightweight table object to avoid Model schema mismatches (e.g. missing created_at)
+        game_table = table("game",
+            column("game_id"),
+            column("game_date"),
+            column("home_team"),
+            column("away_team"),
+            column("stadium"),
+            column("home_score"),
+            column("away_score"),
+            column("winning_team"),
+            column("winning_score"),
+            column("season_id"),
+            column("home_pitcher"),
+            column("away_pitcher")
+        )
+
         for game in games:
             data = {
                 'game_id': game.game_id,
                 'game_date': game.game_date,
-                'home_team_code': game.home_team_code,
-                'away_team_code': game.away_team_code,
-                'started_at': game.started_at,
-                'ended_at': game.ended_at,
-                'duration_min': game.duration_min,
-                'attendance': game.attendance,
-                'weather': game.weather,
+                'home_team': game.home_team,
+                'away_team': game.away_team,
                 'stadium': game.stadium,
                 'home_score': game.home_score,
                 'away_score': game.away_score,
+                'winning_team': game.winning_team,
+                'winning_score': game.winning_score,
+                'season_id': game.season_id,
+                'home_pitcher': game.home_pitcher,
+                'away_pitcher': game.away_pitcher,
             }
 
-            stmt = pg_insert(Game).values(**data)
-            update_dict = {k: v for k, v in data.items() if k != 'game_id'}
-            update_dict['updated_at'] = text('CURRENT_TIMESTAMP')
+            stmt = pg_insert(game_table).values(**data)
+            update_dict = {k: stmt.excluded[k] for k in data.keys() if k != 'game_id'}
+            # Note: We are ignoring updated_at for now to avoid invalid column errors.
+            # If the column exists, it won't be updated, which is acceptable for now.
+            
             stmt = stmt.on_conflict_do_update(
                 index_elements=['game_id'],
                 set_=update_dict
@@ -1016,6 +1169,105 @@ class SupabaseSync:
             'player_game_pitching': self.sync_player_game_pitching(limit=limit),
         }
         return results
+
+    def sync_game_details(self, days: int = None) -> Dict[str, int]:
+        """Sync all game detail tables to Supabase"""
+        results = {}
+        
+        # 0. Sync Parent Games first (Required for Foreign Keys)
+        print("⚾ Syncing Parent Game Records...")
+        results['games'] = self.sync_games()
+
+        # 1. Game Metadata
+        results['metadata'] = self._sync_simple_table(
+            GameMetadata, 
+            ['game_id'], 
+            exclude_cols=['created_at']
+        )
+
+        # 2. Inning Scores
+        results['inning_scores'] = self._sync_simple_table(
+            GameInningScore,
+            ['game_id', 'team_side', 'inning'],
+            exclude_cols=['id', 'created_at']
+        )
+
+        # 3. Lineups
+        results['lineups'] = self._sync_simple_table(
+            GameLineup,
+            ['game_id', 'team_side', 'appearance_seq'],
+             exclude_cols=['id', 'created_at']
+        )
+
+        # 4. Batting Stats
+        results['batting_stats'] = self._sync_simple_table(
+            GameBattingStat,
+            ['game_id', 'player_id', 'appearance_seq'],
+            exclude_cols=['id', 'created_at']
+        )
+
+        # 5. Pitching Stats
+        results['pitching_stats'] = self._sync_simple_table(
+            GamePitchingStat,
+            ['game_id', 'player_id', 'appearance_seq'],
+            exclude_cols=['id', 'created_at']
+        )
+
+        # 6. Game Events (PBP)
+        # Events can be large, so we might want to batch them carefully, 
+        # but _sync_simple_table handles basic batching.
+        results['events'] = self._sync_simple_table(
+            GameEvent,
+            ['game_id', 'event_seq'],
+            exclude_cols=['id', 'created_at']
+        )
+        
+        print(f"✅ Game Details Sync Summary: {results}")
+        return results
+
+    def _sync_simple_table(self, model, conflict_keys: List[str], exclude_cols: List[str] = None) -> int:
+        """Generic sync parameter for simple tables"""
+        if exclude_cols is None:
+            exclude_cols = []
+            
+        rows = self.sqlite_session.query(model).all()
+        if not rows:
+            print(f"ℹ️  No records for {model.__tablename__}")
+            return 0
+            
+        synced = 0
+        table_name = model.__tablename__
+        columns = [c.key for c in model.__table__.columns if c.key not in exclude_cols and c.key not in ('created_at', 'updated_at')]
+        
+        # Build SQL dynamically
+        col_str = ", ".join(columns)
+        val_str = ", ".join([f":{c}" for c in columns])
+        update_set = ", ".join([f"{c} = EXCLUDED.{c}" for c in columns if c not in conflict_keys])
+        
+        upsert_sql = text(f"""
+            INSERT INTO {table_name} ({col_str}, updated_at)
+            VALUES ({val_str}, NOW())
+            ON CONFLICT ({", ".join(conflict_keys)}) 
+            DO UPDATE SET {update_set}, updated_at = NOW()
+        """)
+        
+        for row in rows:
+            data = {c: getattr(row, c) for c in columns}
+            # Handle JSON serialization if needed (sqlalchemy might handle it, but being safe)
+            for k, v in data.items():
+                if isinstance(v, (dict, list)):
+                    data[k] = json.dumps(v, ensure_ascii=False)
+            
+            try:
+                self.supabase_session.execute(upsert_sql, data)
+                synced += 1
+            except Exception as e:
+                self.supabase_session.rollback()
+                print(f"❌ Error syncing {table_name} row: {e}")
+                
+        self.supabase_session.commit()
+        print(f"✅ Synced {synced} rows to {table_name}")
+        return synced
 
     def close(self):
         """Close Supabase session"""
