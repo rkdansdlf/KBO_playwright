@@ -70,9 +70,10 @@ PITCHER_FLOAT_KEYS = {"era", "whip", "fip", "k_per_nine", "bb_per_nine", "kbb"}
 class GameDetailCrawler:
     """Crawl KBO GameCenter review pages and return structured box score data."""
 
-    def __init__(self, request_delay: float = 1.5):
+    def __init__(self, request_delay: float = 1.5, resolver: Optional[Any] = None):
         self.base_url = "https://www.koreabaseball.com/Schedule/GameCenter/Main.aspx"
         self.request_delay = request_delay
+        self.resolver = resolver
 
     async def crawl_game(self, game_id: str, game_date: str) -> Optional[Dict[str, Any]]:
         result = await self.crawl_games([{"game_id": game_id, "game_date": game_date}])
@@ -113,20 +114,24 @@ class GameDetailCrawler:
         season_year = self._parse_season_year(game_date)
         team_info = await self._extract_team_info(page, game_id, season_year)
         metadata = await self._extract_metadata(page)
+        
+        # New: Extract Game Summary
+        game_summary = await self._extract_game_summary(page)
 
         hitters = {
-            'away': await self._extract_hitters(page, 'away', team_info['away']['code']),
-            'home': await self._extract_hitters(page, 'home', team_info['home']['code']),
+            'away': await self._extract_hitters(page, 'away', team_info['away']['code'], season_year),
+            'home': await self._extract_hitters(page, 'home', team_info['home']['code'], season_year),
         }
         pitchers = {
-            'away': await self._extract_pitchers(page, 'away', team_info['away']['code']),
-            'home': await self._extract_pitchers(page, 'home', team_info['home']['code']),
+            'away': await self._extract_pitchers(page, 'away', team_info['away']['code'], season_year),
+            'home': await self._extract_pitchers(page, 'home', team_info['home']['code'], season_year),
         }
 
         game_data = {
             'game_id': game_id,
             'game_date': game_date,
             'metadata': metadata,
+            'summary': game_summary, # Add to payload
             'teams': team_info,
             'home_team_code': team_info['home']['code'],
             'away_team_code': team_info['away']['code'],
@@ -251,7 +256,7 @@ class GameDetailCrawler:
 
         return {'away': away_info, 'home': home_info}
 
-    async def _extract_hitters(self, page: Page, team_side: str, team_code: Optional[str]) -> List[Dict[str, Any]]:
+    async def _extract_hitters(self, page: Page, team_side: str, team_code: Optional[str], season_year: Optional[int]) -> List[Dict[str, Any]]:
         selectors = ['#tblAwayHitter1', '#tblAwayHitter3'] if team_side == 'away' else ['#tblHomeHitter1', '#tblHomeHitter3']
         tables = []
         for selector in selectors:
@@ -281,8 +286,16 @@ class GameDetailCrawler:
             position = self._parse_position(row['cells'])
             is_starter = batting_order is not None and batting_order <= 9
 
+            player_id = row['playerId']
+            if not player_id and self.resolver and team_code and season_year:
+                player_id = self.resolver.resolve_id(player_name, team_code, season_year)
+                # If resolved, ensure it's a string as crawler usually expects string IDs?
+                # DB stores as int in models (PlayerBasic.player_id is int).
+                # But here we pass it through.
+                # Let's keep it as is (int or str), DB layer handles type.
+
             payload = {
-                'player_id': row['playerId'],
+                'player_id': player_id,
                 'player_name': player_name,
                 'team_code': team_code,
                 'team_side': team_side,
@@ -297,7 +310,7 @@ class GameDetailCrawler:
 
         return results
 
-    async def _extract_pitchers(self, page: Page, team_side: str, team_code: Optional[str]) -> List[Dict[str, Any]]:
+    async def _extract_pitchers(self, page: Page, team_side: str, team_code: Optional[str], season_year: Optional[int]) -> List[Dict[str, Any]]:
         selector = '#tblAwayPitcher' if team_side == 'away' else '#tblHomePitcher'
         rows = await self._extract_table_rows(page, selector)
         results: List[Dict[str, Any]] = []
@@ -319,8 +332,12 @@ class GameDetailCrawler:
             if decision:
                 stats['decision'] = decision
 
+            player_id = row['playerId']
+            if not player_id and self.resolver and team_code and season_year:
+                player_id = self.resolver.resolve_id(player_name, team_code, season_year)
+
             payload = {
-                'player_id': row['playerId'],
+                'player_id': player_id,
                 'player_name': player_name,
                 'team_code': team_code,
                 'team_side': team_side,
@@ -342,6 +359,16 @@ class GameDetailCrawler:
             const table = document.querySelector(sel);
             if (!table) return [];
             const headers = Array.from(table.querySelectorAll('thead th')).map(th => th.innerText.trim());
+            
+            // Find '선수명' index
+            let nameIndex = -1;
+            for (let i = 0; i < headers.length; i++) {
+                if (headers[i] === '선수명') {
+                    nameIndex = i;
+                    break;
+                }
+            }
+            
             return Array.from(table.querySelectorAll('tbody tr')).map((tr, index) => {
                 const cells = Array.from(tr.querySelectorAll('th,td'));
                 const values = {};
@@ -362,14 +389,61 @@ class GameDetailCrawler:
                         playerId = null;
                     }
                 }
-                if (!playerName && cells.length > 0) {
-                    playerName = cells[0].innerText.trim();
+                
+                // Fallback: Use name column if link not found
+                if (!playerName) {
+                    if (nameIndex !== -1 && cells.length > nameIndex) {
+                         playerName = cells[nameIndex].innerText.trim();
+                    } else if (cells.length > 0) {
+                         // Very weak fallback, might be '1' or 'Pos'
+                         // Try to find a cell that looks like a name (not number, len > 1) if nameIndex failed?
+                         // But for now let's rely on nameIndex as it should exist.
+                         // If nameIndex is -1, maybe it is the first cell?
+                         // Let's check headers.
+                         // If we are here, likely headers had "선수명" or we are doomed.
+                         // Keep existing fallback just in case but ideally we rely on nameIndex.
+                         playerName = cells[0].innerText.trim();
+                    }
                 }
+                
                 return { index, cells: values, playerId, playerName };
             });
         }
         """
 
+        return await page.evaluate(script, selector)
+
+    async def _extract_game_summary(self, page: Page) -> List[Dict[str, str]]:
+        """Extracts game summary details from #tblEtc (Winning hit, HR, Errors, Umpires, etc.)"""
+        selector = "#tblEtc"
+        if not await page.query_selector(selector):
+            return []
+
+        script = """
+        (sel) => {
+            const table = document.querySelector(sel);
+            if (!table) return [];
+            
+            const results = [];
+            const rows = table.querySelectorAll('tbody tr');
+            
+            rows.forEach(tr => {
+                const th = tr.querySelector('th');
+                const td = tr.querySelector('td');
+                if (th && td) {
+                    const category = th.innerText.trim();
+                    const content = td.innerText.trim();
+                    if (content && content !== '없음') {
+                         results.push({
+                             'summary_type': category, 
+                             'detail_text': content
+                         });
+                    }
+                }
+            });
+            return results;
+        }
+        """
         return await page.evaluate(script, selector)
 
     def _populate_hitter_stats(self, stats: Dict[str, Any], extras: Dict[str, Any], cells: Dict[str, str]) -> None:

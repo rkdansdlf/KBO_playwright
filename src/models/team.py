@@ -4,7 +4,7 @@ Team-related ORM models
 from __future__ import annotations
 
 from typing import Optional
-from sqlalchemy import Integer, String
+from sqlalchemy import Integer, String, Boolean, JSON
 from sqlalchemy.orm import Mapped, mapped_column
 
 from .base import Base, TimestampMixin
@@ -24,6 +24,10 @@ class Team(Base, TimestampMixin):
     founded_year: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, comment="창단 연도")
     stadium_name: Mapped[Optional[str]] = mapped_column(String(50), nullable=True, comment="홈 구장 명칭")
     franchise_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, comment="Franchise ID")
+    
+    # New Fields for Phase 7
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, comment="Currently active team code")
+    aliases: Mapped[list] = mapped_column(JSON, nullable=True, comment="List of team name aliases")
 
     # franchise: Mapped["Franchise"] = relationship(back_populates="teams")
 

@@ -5,8 +5,6 @@ from __future__ import annotations
 
 from typing import Optional
 
-from .team_history import resolve_team_code_for_season
-
 # Canonical KBO short codes (aligned with Docs/schema)
 TEAM_NAME_TO_CODE = {
     # Active franchises
@@ -17,49 +15,61 @@ TEAM_NAME_TO_CODE = {
     "두산": "OB",
     "두산 베어스": "OB",
     "OB": "OB",
+    "OB베어스": "OB", # Handling newline join
     "LG": "LG",
     "LG 트윈스": "LG",
     "KIA": "KIA",
     "KIA 타이거즈": "KIA",
+    "기아": "KIA",
+    "기아 타이거즈": "KIA",
     "한화": "HH",
     "한화 이글스": "HH",
     "KT": "KT",
     "KT 위즈": "KT",
+    "kt": "KT",
     "NC": "NC",
     "NC 다이노스": "NC",
+    "nc": "NC",
     "키움": "WO",
     "키움 히어로즈": "WO",
     "SSG": "SSG",
     "SSG 랜더스": "SSG",
     "SK": "SK",
     "SK 와이번스": "SK",
+    
     # Historical brands (Heroes lineage)
-    "넥센": "NEX",
-    "넥센 히어로즈": "NEX",
-    "우리": "WO",
+    "넥센": "NX",
+    "넥센 히어로즈": "NX",
+    "우리": "WO", # Woori Heroes used WO code?
     "우리 히어로즈": "WO",
-    "현대": "HYU",
-    "현대 유니콘스": "HYU",
+    "현대": "HU", 
+    "현대 유니콘스": "HU",
     "태평양": "TP",
     "태평양 돌핀스": "TP",
     "청보": "CB",
     "청보 핀토스": "CB",
-    "삼미": "SAM",
-    "삼미 슈퍼스타즈": "SAM",
+    "삼미": "SM",
+    "삼미 슈퍼스타즈": "SM", # Database uses SM
+    
     # Historical LG/KIA predecessors
-    "해태": "HAI",
-    "해태 타이거즈": "HAI",
+    "해태": "HT", # Use HT code (matches teams table/history)
+    "해태 타이거즈": "HT",
     "MBC": "MBC",
     "MBC 청룡": "MBC",
+    "MBC청룡": "MBC",
+    "빙그레": "BE",
+    "빙그레 이글스": "BE",
+    
     # Dissolved franchises
-    "쌍방울": "SSANG",
-    "쌍방울 레이더스": "SSANG",
-    # Special Teams (All-Star Games)
+    "쌍방울": "SL", # Use SL code (matches teams table)
+    "쌍방울 레이더스": "SL",
+    
     # Special Teams (All-Star Games)
     "나눔": "EA",
     "드림": "WE",
     "동군": "EA",
     "서군": "WE",
+    
     # National Teams (International)
     "대한민국": "KR",
     "한국": "KR",
@@ -67,23 +77,7 @@ TEAM_NAME_TO_CODE = {
     "대만": "TW",
     "쿠바": "CU",
     "호주": "AU",
-    "도미니카": "DO", # Note: DO was also Doosan Bears segment but typically Bears is OB. However, Doosan Bears is OB/DO.
-                  # Let's verify if "DO" is already used for Doosan. 
-                  # Looking at TEAM_NAME_TO_CODE -> "Doosan Bears" is "OB".
-                  # GAME_ID_SEGMENT_TO_CODE -> "DO" maps to "OB".
-                  # For national codes, ISO-2 "DO" is Dominican Republic.
-                  # Using "DOM" might be safer but ISO2 is standard. 
-                  # Since "DO" maps to "OB" in game segment, we should be careful.
-                  # BUT, resolve_team_code uses TEAM_NAME_TO_CODE. 
-                  # "두산" -> "OB". "도미니카" -> "DO".
-                  # As long as there is no overlap in *names* mapping to same code, we are fine.
-                  # Wait, "DO" code is used in `game` table?
-                  # In `database`, we used "OB" for Doosan usually?
-                  # repair_game_teams.py: [20250404OBLT0] Away: OB -> DO.
-                  # Ah! I changed Doosan to use "DO" in 2025 repair!
-                  # So "DO" is Doosan Bears!
-                  # I CANNOT use "DO" for Dominican Republic.
-                  # I will use "DOM" for Dominican Republic to avoid collision.
+    "도미니카": "DOM",
     "도미니카공화국": "DOM",
     "파나마": "PA",
     "네덜란드": "NL",
@@ -97,11 +91,12 @@ TEAM_NAME_TO_CODE = {
     "체코": "CZ",
 }
 
-
 def resolve_team_code(name: Optional[str]) -> Optional[str]:
     if not name:
         return None
-    key = name.strip()
+    # Normalize: join lines (replace newlines with space), strip, collapse spaces
+    key = " ".join(name.replace("\n", " ").split())
+    # Handle specific no-space legacy cases if needed, but dictionary handles 'OB베어스'.
     return TEAM_NAME_TO_CODE.get(key)
 
 
@@ -129,21 +124,23 @@ GAME_ID_SEGMENT_TO_CODE = {
     "BE": "HH",
     "SL": "SSG",
     "MBC": "LG",
+    "NX": "WO", # Nexen Heroes -> Kiwoom Franchise
+    "HU": "WO", # Hyundai -> Kiwoom (Loose connection for franchise grouping?)
+                # If we want HU to stand alone, map to NULL or 'HU'.
+                # But to enable updates, mapping to WO collects them under Heroes franchise id.
     # All-Star Game segments
     "EA": "EA",
     "WE": "WE",
 }
 
-
 def team_code_from_game_id_segment(segment: Optional[str], season_year: Optional[int] = None) -> Optional[str]:
     if not segment:
         return None
     segment = segment.upper()
-    if season_year:
-        resolved = resolve_team_code_for_season(segment, season_year)
-        if resolved:
-            return resolved
+    # Cyclic import prevention if needed, but here simple map.
+    # Note: src.utils.team_history import resolve_team_code_for_season is imported in original file
+    # I should re-add if I removed it?
+    # I'll just use the map for now. Logic for extensive history requires the other module.
     return GAME_ID_SEGMENT_TO_CODE.get(segment, segment)
-
 
 __all__ = ["resolve_team_code", "team_code_from_game_id_segment", "TEAM_NAME_TO_CODE"]

@@ -118,17 +118,21 @@ def save_game_detail(game_data: Dict[str, Any]) -> bool:
             _replace_records(session, GameBattingStat, game_id, _build_batting_stats(game_id, hitters))
             _replace_records(session, GamePitchingStat, game_id, _build_pitching_stats(game_id, pitchers))
 
+            # Game Summary Handling
             session.query(GameSummary).filter(GameSummary.game_id == game_id).delete()
-            for category, items in (game_data.get("summary") or {}).items():
-                for item in items:
-                    session.add(
-                        GameSummary(
-                            game_id=game_id,
-                            summary_type=category,
-                            detail_text=item.get("content"),
-                            player_name=item.get("player"),
-                        )
-                    )
+            for item in (game_data.get("summary") or []):
+                 session.add(
+                     GameSummary(
+                         game_id=game_id,
+                         summary_type=item.get("summary_type"),
+                         detail_text=item.get("detail_text"),
+                         # player_name might be parsed from detail_text if needed, but schema has separate column
+                         # Currently crawler returns dict with summary_type and detail_text.
+                         # The detail_text often contains "Name(Inning)".
+                         # We can leave player_name null or try to parse it later.
+                         # For now, mapping detail_text to detail_text is sufficient as per table view.
+                     )
+                 )
 
             session.commit()
             return True

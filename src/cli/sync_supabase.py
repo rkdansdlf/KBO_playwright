@@ -138,6 +138,7 @@ def main(argv: Iterable[str] | None = None) -> None:
             syncer = SupabaseSync(args.target_url, session)
             syncer.sync_franchises()
             syncer.sync_teams()
+            syncer.sync_team_history()
             print("✅ Team Data Sync Finished")
         
     else:
