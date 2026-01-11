@@ -1,0 +1,14 @@
+컬럼 이름 (Column Name),데이터 타입 (Data Type),설명 (Description)
+id,serial,자동 증가하는 기본 키 (PK)
+game_id,character varying(20),경기 고유 ID (Unique)
+game_date,date,경기 날짜
+stadium,character varying(50),경기장
+home_team,character varying(20),홈 팀
+away_team,character varying(20),원정 팀
+away_score,integer,원정 팀 점수
+home_score,integer,홈 팀 점수
+away_pitcher,character varying(30),원정 팀 선발 투수
+home_pitcher,character varying(30),홈 팀 선발 투수
+winning_team,character varying(20),승리 팀
+winning_score,integer,승리 팀 점수
+season_id,integer,시즌 ID

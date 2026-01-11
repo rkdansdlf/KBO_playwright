@@ -5,6 +5,8 @@ from __future__ import annotations
 
 from typing import Optional
 
+from .team_history import resolve_team_code_for_season
+
 # Canonical KBO short codes (aligned with Docs/schema)
 TEAM_NAME_TO_CODE = {
     # Active franchises
@@ -68,26 +70,36 @@ GAME_ID_SEGMENT_TO_CODE = {
     "SS": "SS",
     "NC": "NC",
     "OB": "OB",
+    "DO": "OB",
     "HH": "HH",
     "LT": "LOT",
     "SK": "SSG",
+    "SSG": "SSG",
     "WO": "WO",
+    "KI": "WO",
     "HT": "KIA",
-    "KI": "KIA",
+    "KIA": "KIA",
     "SA": "SS",   # legacy 삼성
     "AN": "HH",   # legacy 한화
-    "HH": "HH",
-    "HY": "HYU",
-    "TP": "TP",
-    "CB": "CB",
-    "SM": "SAM",
+    "HY": "WO",
+    "TP": "WO",
+    "CB": "WO",
+    "SM": "WO",
+    "BE": "HH",
+    "SL": "SSG",
+    "MBC": "LG",
 }
 
 
-def team_code_from_game_id_segment(segment: Optional[str]) -> Optional[str]:
+def team_code_from_game_id_segment(segment: Optional[str], season_year: Optional[int] = None) -> Optional[str]:
     if not segment:
         return None
-    return GAME_ID_SEGMENT_TO_CODE.get(segment.upper())
+    segment = segment.upper()
+    if season_year:
+        resolved = resolve_team_code_for_season(segment, season_year)
+        if resolved:
+            return resolved
+    return GAME_ID_SEGMENT_TO_CODE.get(segment, segment)
 
 
 __all__ = ["resolve_team_code", "team_code_from_game_id_segment", "TEAM_NAME_TO_CODE"]

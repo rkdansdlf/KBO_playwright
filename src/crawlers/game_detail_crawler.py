@@ -110,7 +110,8 @@ class GameDetailCrawler:
 
         await self._wait_for_boxscore(page)
 
-        team_info = await self._extract_team_info(page, game_id)
+        season_year = self._parse_season_year(game_date)
+        team_info = await self._extract_team_info(page, game_id, season_year)
         metadata = await self._extract_metadata(page)
 
         hitters = {
@@ -184,7 +185,7 @@ class GameDetailCrawler:
 
         return metadata
 
-    async def _extract_team_info(self, page: Page, game_id: str) -> Dict[str, Dict[str, Any]]:
+    async def _extract_team_info(self, page: Page, game_id: str, season_year: Optional[int]) -> Dict[str, Dict[str, Any]]:
         script = """
         () => {
             const tables = Array.from(document.querySelectorAll('table'));
@@ -219,7 +220,7 @@ class GameDetailCrawler:
             home_segment = game_id[10:12] if len(game_id) >= 12 else None
             away_info = {
                 'name': away_segment,
-                'code': team_code_from_game_id_segment(away_segment),
+                'code': team_code_from_game_id_segment(away_segment, season_year),
                 'score': None,
                 'hits': None,
                 'errors': None,
@@ -227,7 +228,7 @@ class GameDetailCrawler:
             }
             home_info = {
                 'name': home_segment,
-                'code': team_code_from_game_id_segment(home_segment),
+                'code': team_code_from_game_id_segment(home_segment, season_year),
                 'score': None,
                 'hits': None,
                 'errors': None,
@@ -243,10 +244,10 @@ class GameDetailCrawler:
 
         if not away_info.get('code'):
             segment = game_id[8:10] if len(game_id) >= 10 else None
-            away_info['code'] = team_code_from_game_id_segment(segment)
+            away_info['code'] = team_code_from_game_id_segment(segment, season_year)
         if not home_info.get('code'):
             segment = game_id[10:12] if len(game_id) >= 12 else None
-            home_info['code'] = team_code_from_game_id_segment(segment)
+            home_info['code'] = team_code_from_game_id_segment(segment, season_year)
 
         return {'away': away_info, 'home': home_info}
 
@@ -513,6 +514,16 @@ class GameDetailCrawler:
             return hours * 60 + minutes
         except ValueError:
             return None
+
+    @staticmethod
+    def _parse_season_year(game_date: str) -> Optional[int]:
+        digits = ''.join(ch for ch in str(game_date) if ch.isdigit())
+        if len(digits) >= 4:
+            try:
+                return int(digits[:4])
+            except ValueError:
+                return None
+        return None
 
 
 async def main():  # pragma: no cover

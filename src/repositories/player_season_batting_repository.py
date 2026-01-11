@@ -56,7 +56,7 @@ class PlayerSeasonBattingRepository:
             'league': stats_data.get('league', 'REGULAR'),
             'level': stats_data.get('level', 'KBO1'),
             'source': stats_data.get('source', 'CRAWLER'),
-            'team_id': stats_data.get('team_code'),
+            'team_code': stats_data.get('team_code'),
             'games': stats_data.get('games'),
             'plate_appearances': stats_data.get('plate_appearances'),
             'at_bats': stats_data.get('at_bats'),

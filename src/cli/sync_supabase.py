@@ -18,14 +18,13 @@ from sqlalchemy.orm import Session, sessionmaker
 from src.db.engine import create_engine_for_url
 from src.models.base import Base
 
-from src.models.player import (
-    PlayerSeasonBatting,
-    PlayerSeasonPitching,
-)
+from src.models.player import PlayerSeasonBatting, PlayerSeasonPitching
+from src.models.team import Team
 
 
 # 외래 키 제약 조건을 고려한 모델 처리 순서
 MODEL_ORDER: List[Type] = [
+    Team,
     PlayerSeasonBatting,
     PlayerSeasonPitching,
 ]
@@ -56,8 +55,14 @@ def sync_databases(source_url: str, target_url: str, truncate: bool = False) -> 
 
             # --truncate 옵션이 주어지면 대상 테이블의 데이터를 삭제합니다.
             if truncate:
-                dst.execute(delete(model))
-                dst.commit()
+                if model is Team:
+                    # NOTE: teams is a semi-static reference table. Do NOT truncate because
+                    # Supabase still has legacy tables (e.g., team_history) with FK references.
+                    # Always rely on UPSERT behavior for teams.
+                    print("   ⚠️  Skipping truncate for teams (reference table with legacy FKs)")
+                else:
+                    dst.execute(delete(model))
+                    dst.commit()
 
             print(f"🚚 Syncing {model.__name__} ({total} rows)…")
             batch_size = 500
@@ -113,5 +118,3 @@ def main(argv: Iterable[str] | None = None) -> None:
 
 if __name__ == "__main__":  # pragma: no cover
     main()
-
-

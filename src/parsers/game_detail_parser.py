@@ -19,7 +19,8 @@ def parse_game_detail_html(html: str, game_id: str, game_date: str) -> Dict[str,
     hitter_tables = _extract_hitter_tables(dataframes)
     pitcher_tables = _extract_pitcher_tables(dataframes)
 
-    teams = _build_team_info(scoreboard_df, game_id)
+    season_year = _season_year_from_game(game_date)
+    teams = _build_team_info(scoreboard_df, game_id, season_year)
     hitters = _build_hitter_payload(hitter_tables, teams)
     pitchers = _build_pitcher_payload(pitcher_tables, teams)
 
@@ -63,10 +64,10 @@ def _extract_pitcher_tables(tables: List[pd.DataFrame]) -> List[pd.DataFrame]:
     return pitchers
 
 
-def _build_team_info(scoreboard: Optional[pd.DataFrame], game_id: str) -> Dict[str, Dict[str, Any]]:
+def _build_team_info(scoreboard: Optional[pd.DataFrame], game_id: str, season_year: Optional[int]) -> Dict[str, Dict[str, Any]]:
     away_info = {
         "name": None,
-        "code": team_code_from_game_id_segment(game_id[8:10] if len(game_id) >= 10 else None),
+        "code": team_code_from_game_id_segment(game_id[8:10] if len(game_id) >= 10 else None, season_year),
         "score": None,
         "hits": None,
         "errors": None,
@@ -74,7 +75,7 @@ def _build_team_info(scoreboard: Optional[pd.DataFrame], game_id: str) -> Dict[s
     }
     home_info = {
         "name": None,
-        "code": team_code_from_game_id_segment(game_id[10:12] if len(game_id) >= 12 else None),
+        "code": team_code_from_game_id_segment(game_id[10:12] if len(game_id) >= 12 else None, season_year),
         "score": None,
         "hits": None,
         "errors": None,
@@ -270,6 +271,16 @@ def _safe_float(value: Any) -> Optional[float]:
         return float(str(value).replace(",", "").strip())
     except ValueError:
         return None
+
+
+def _season_year_from_game(game_date: str) -> Optional[int]:
+    digits = ''.join(ch for ch in str(game_date) if ch.isdigit())
+    if len(digits) >= 4:
+        try:
+            return int(digits[:4])
+        except ValueError:
+            return None
+    return None
 
 
 def _parse_innings_to_outs(text: Optional[str]) -> Optional[int]:

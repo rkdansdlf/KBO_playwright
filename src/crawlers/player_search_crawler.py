@@ -14,6 +14,8 @@ from typing import List, Optional, Set
 from urllib.parse import urlparse, parse_qs
 
 from playwright.async_api import Locator, Page, async_playwright
+from src.utils.player_classification import classify_player, PlayerCategory
+from src.services.player_status_confirmer import PlayerStatusConfirmer
 
 # URL and selectors
 SEARCH_URL = "https://www.koreabaseball.com/Player/Search.aspx"
@@ -674,6 +676,15 @@ def parse_birth_date(raw: Optional[str]) -> Optional[date_type]:
 
 def player_row_to_dict(row: PlayerRow) -> dict:
     """Convert PlayerRow to dictionary for database storage"""
+    category = classify_player({"team": row.team, "position": row.position})
+    status = "active"
+    staff_role = None
+    if category == PlayerCategory.RETIRED:
+        status = "retired"
+    elif category in (PlayerCategory.MANAGER, PlayerCategory.COACH, PlayerCategory.STAFF):
+        status = "staff"
+        staff_role = category.value.lower()
+
     return {
         "player_id": row.player_id,
         "name": row.name,
@@ -685,6 +696,9 @@ def player_row_to_dict(row: PlayerRow) -> dict:
         "height_cm": row.height_cm,
         "weight_kg": row.weight_kg,
         "career": row.career,
+        "status": status,
+        "staff_role": staff_role,
+        "status_source": "heuristic",
     }
 
 
@@ -742,7 +756,11 @@ async def main():
         from src.repositories.player_basic_repository import PlayerBasicRepository
 
         print("\n🔄 Processing player data...")
-        player_dicts = [player_row_to_dict(p) for p in players]
+    player_dicts = [player_row_to_dict(p) for p in players]
+    confirmer = PlayerStatusConfirmer()
+    confirm_stats = await confirmer.confirm_entries([entry for entry in player_dicts if entry.get("status") in {"retired", "staff"}])
+    if confirm_stats.get("confirmed"):
+        print(f"\n🔎 Profile-confirmed statuses: {confirm_stats['confirmed']} (attempted {confirm_stats['attempted']})")
         parsed_dates = sum(1 for p in player_dicts if p['birth_date_date'] is not None)
         print(f"   - Parsed birth dates: {parsed_dates}/{len(player_dicts)}")
 

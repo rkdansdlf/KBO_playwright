@@ -86,6 +86,12 @@ SUPABASE_DB_URL=postgresql://postgres.zyofzvnkputevakepbdm:[YOUR_PASSWORD]@aws-0
 3. Copy and paste the entire SQL script
 4. Click "Run" to execute
 5. Repeat for `migrations/supabase/002_create_game_tables.sql`
+6. Apply `migrations/supabase/003_add_team_timestamps.sql` to add the
+   `created_at` / `updated_at` columns required by the SQLite ORM models
+7. Apply `migrations/supabase/004_add_player_basic_status.sql` so player_basic
+   exposes status/staff_role/status_source columns for sync
+8. Apply `migrations/supabase/005_create_crawl_runs.sql` if you want to store
+   crawl summaries in Supabase alongside SQLite
 
 ### 3.2 Option B: Using psql CLI
 
@@ -100,6 +106,15 @@ psql "postgresql://postgres.xxx:[PASSWORD]@xxx.pooler.supabase.com:5432/postgres
 
 psql "postgresql://postgres.xxx:[PASSWORD]@xxx.pooler.supabase.com:5432/postgres" \
   -f migrations/supabase/002_create_game_tables.sql
+
+psql "postgresql://postgres.xxx:[PASSWORD]@xxx.pooler.supabase.com:5432/postgres" \
+  -f migrations/supabase/003_add_team_timestamps.sql
+
+psql "postgresql://postgres.xxx:[PASSWORD]@xxx.pooler.supabase.com:5432/postgres" \
+  -f migrations/supabase/004_add_player_basic_status.sql
+
+psql "postgresql://postgres.xxx:[PASSWORD]@xxx.pooler.supabase.com:5432/postgres" \
+  -f migrations/supabase/005_create_crawl_runs.sql
 ```
 
 ### 3.3 Verify Schema Creation
@@ -278,6 +293,15 @@ for item in items:
 # Use bulk operations
 session.bulk_insert_mappings(Model, items)
 ```
+
+## Pending Schema Alignment
+
+- Supabase’s `teams` table (created via the early SQL migration) currently lacks
+  the `created_at` / `updated_at` columns that exist on SQLite. Until a migration
+  adds them with `DEFAULT now()`, `src/cli/sync_supabase.py` skips truncating or
+  writing to `teams` to avoid errors. Plan to run a lightweight SQL migration on
+  Supabase to add those columns, then remove the skip logic so teams stay in
+  sync automatically.
 
 ## Next Steps
 
