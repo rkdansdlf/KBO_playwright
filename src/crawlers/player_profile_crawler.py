@@ -7,6 +7,8 @@ import time
 from typing import Dict, Optional
 from playwright.async_api import async_playwright, Page
 
+from src.utils.status_parser import parse_status_from_text
+
 
 class PlayerProfileCrawler:
     """선수 고유 ID(player_id)를 사용하여 KBO 공식 사이트에서
@@ -56,8 +58,19 @@ class PlayerProfileCrawler:
             'player_id': player_id,
             'basic_info': await self._extract_basic_info(page),
             'physical_info': await self._extract_physical_info(page),
-            'career_info': await self._extract_career_info(page)
+            'career_info': await self._extract_career_info(page),
+            'status': None,
+            'staff_role': None,
+            'status_source': None,
         }
+
+        body_text = await page.inner_text("body")
+        parsed = parse_status_from_text(body_text)
+        if parsed:
+            status, staff_role = parsed
+            profile['status'] = status
+            profile['staff_role'] = staff_role
+            profile['status_source'] = "profile"
 
         return profile
 

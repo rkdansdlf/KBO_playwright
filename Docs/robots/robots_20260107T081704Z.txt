@@ -1,0 +1,5 @@
+User-agent: *
+Disallow: /Common/
+Disallow: /Help/
+Disallow: /Member/
+Disallow: /ws/

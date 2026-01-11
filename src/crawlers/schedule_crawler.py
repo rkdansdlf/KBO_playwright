@@ -117,8 +117,8 @@ class ScheduleCrawler:
                     'game_date': game_date,
                     'season_year': year,
                     'season_type': 'regular', # 시즌 유형 (정규, 포스트시즌 등)
-                    'away_team_code': team_code_from_game_id_segment(away_segment),
-                    'home_team_code': team_code_from_game_id_segment(home_segment),
+                    'away_team_code': team_code_from_game_id_segment(away_segment, year),
+                    'home_team_code': team_code_from_game_id_segment(home_segment, year),
                     'doubleheader_no': int(game_id[-1]) if game_id[-1].isdigit() else 0, # 더블헤더 여부
                     'game_status': 'scheduled', # 경기 상태 (예정, 종료 등)
                     'crawl_status': 'pending', # 크롤링 상태

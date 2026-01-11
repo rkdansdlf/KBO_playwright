@@ -29,6 +29,7 @@ class PlayerBasicRepository:
                 - birth_date, birth_date_date (optional)
                 - height_cm, weight_kg (optional)
                 - career (optional)
+                - status, staff_role, status_source (optional)
 
         Returns:
             Number of players upserted
@@ -60,6 +61,9 @@ class PlayerBasicRepository:
             'height_cm': player_data.get('height_cm'),
             'weight_kg': player_data.get('weight_kg'),
             'career': player_data.get('career'),
+            'status': player_data.get('status'),
+            'staff_role': player_data.get('staff_role'),
+            'status_source': player_data.get('status_source'),
         }
 
         if self.dialect == "sqlite":
@@ -87,6 +91,29 @@ class PlayerBasicRepository:
             if limit:
                 query = query.limit(limit)
             return list(query.all())
+
+    def update_statuses(self, updates: List[Dict[str, Any]]) -> int:
+        """Update status/staff_role/status_source for existing players."""
+        if not updates:
+            return 0
+        with SessionLocal() as session:
+            try:
+                for entry in updates:
+                    player_id = entry.get("player_id")
+                    if not player_id:
+                        continue
+                    session.query(PlayerBasic).filter_by(player_id=player_id).update(
+                        {
+                            "status": entry.get("status"),
+                            "staff_role": entry.get("staff_role"),
+                            "status_source": entry.get("status_source"),
+                        }
+                    )
+                session.commit()
+                return len(updates)
+            except Exception:
+                session.rollback()
+                raise
 
     def get_by_id(self, player_id: int) -> PlayerBasic | None:
         """Get player by ID"""

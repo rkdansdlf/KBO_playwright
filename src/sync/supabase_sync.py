@@ -10,7 +10,8 @@ from sqlalchemy.orm import sessionmaker, Session
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 # 현재 사용 가능한 모델들만 import
-from src.models.player import PlayerSeasonBatting, PlayerSeasonPitching
+from src.models.player import PlayerSeasonBatting, PlayerSeasonPitching, PlayerBasic
+from src.models.crawl import CrawlRun
 
 
 LEAGUE_NAME_TO_CODE = {
@@ -262,7 +263,7 @@ class SupabaseSync:
                 'league': data.league,
                 'level': data.level,
                 'source': data.source,
-                'team_code': data.team_id,  # team_id를 team_code로 매핑
+                'team_code': data.team_code,
                 'games': data.games,
                 'plate_appearances': data.plate_appearances,
                 'at_bats': data.at_bats,
@@ -570,6 +571,34 @@ class SupabaseSync:
         }
         return results
 
+    def sync_crawl_runs(self) -> int:
+        query = self.sqlite_session.query(CrawlRun)
+        runs = query.all()
+        if not runs:
+            return 0
+        synced = 0
+        for run in runs:
+            data = {
+                'id': run.id,
+                'label': run.label,
+                'started_at': run.started_at,
+                'finished_at': run.finished_at,
+                'active_count': run.active_count,
+                'retired_count': run.retired_count,
+                'staff_count': run.staff_count,
+                'confirmed_profiles': run.confirmed_profiles,
+                'heuristic_only': run.heuristic_only,
+                'created_at': run.created_at,
+            }
+            stmt = pg_insert(CrawlRun).values(**data)
+            update_dict = {k: stmt.excluded[k] for k in data.keys() if k != 'id'}
+            stmt = stmt.on_conflict_do_update(index_elements=['id'], set_=update_dict)
+            self.supabase_session.execute(stmt)
+            synced += 1
+        self.supabase_session.commit()
+        print(f"✅ Synced {synced} crawl run records to Supabase")
+        return synced
+
     def sync_player_basic(self, limit: int = None) -> int:
         """Sync player_basic data from SQLite to Supabase"""
         query = self.sqlite_session.query(PlayerBasic)
@@ -591,6 +620,9 @@ class SupabaseSync:
                 'height_cm': player.height_cm,
                 'weight_kg': player.weight_kg,
                 'career': player.career,
+                'status': player.status,
+                'staff_role': player.staff_role,
+                'status_source': player.status_source,
             }
 
             stmt = pg_insert(PlayerBasic).values(**data)

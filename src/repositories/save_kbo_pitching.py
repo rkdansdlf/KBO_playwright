@@ -27,7 +27,7 @@ def save_pitching_stats(pitching_stats: List[Dict[str, Any]]) -> int:
                     'league': stats_data.get('league', 'REGULAR'),
                     'level': stats_data.get('level', 'KBO1'),
                     'source': f"PITCHER_{stats_data.get('source', 'CRAWLER')}",  # 투수임을 구분
-                    'team_id': stats_data.get('team_code'),
+                    'team_code': stats_data.get('team_code'),
                     # 투수 스탯을 타자 필드에 매핑
                     'games': stats_data.get('games'),
                     'plate_appearances': stats_data.get('innings_pitched'),  # 이닝을 PA에 저장
@@ -64,19 +64,19 @@ def _upsert_pitching_data(session: Session, data: Dict[str, Any]):
     # SQLite UPSERT 구문
     upsert_sql = """
     INSERT INTO player_season_batting (
-        player_id, season, league, level, source, team_id,
+        player_id, season, league, level, source, team_code,
         games, plate_appearances, at_bats, runs, hits, home_runs,
         walks, intentional_walks, hbp, strikeouts, extra_stats,
         created_at, updated_at
     ) VALUES (
-        :player_id, :season, :league, :level, :source, :team_id,
+        :player_id, :season, :league, :level, :source, :team_code,
         :games, :plate_appearances, :at_bats, :runs, :hits, :home_runs,
         :walks, :intentional_walks, :hbp, :strikeouts, :extra_stats,
         CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
     )
     ON CONFLICT (player_id, season, league, level) DO UPDATE SET
         source = excluded.source,
-        team_id = excluded.team_id,
+        team_code = excluded.team_code,
         games = excluded.games,
         plate_appearances = excluded.plate_appearances,
         at_bats = excluded.at_bats,
