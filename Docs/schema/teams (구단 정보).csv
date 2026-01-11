@@ -1,4 +1,4 @@
-team_id,team_name,team_short_name,city,founded_year,stadium_name
+컬럼 이름,데이터 타입,제약 조건,설명
 team_id,VARCHAR(10),PRIMARY KEY,구단 고유 ID
 team_name,VARCHAR(50),NOT NULL,구단 정식 명칭
 team_short_name,VARCHAR(20),NOT NULL,구단 약칭
