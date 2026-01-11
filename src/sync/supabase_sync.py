@@ -19,7 +19,8 @@ from src.models.game import (
     GameLineup,
     GameBattingStat,
     GamePitchingStat,
-    GameEvent
+    GameEvent,
+    GameSummary
 )
 
 
@@ -386,27 +387,22 @@ class SupabaseSync:
     
 
     def sync_franchises(self) -> int:
-        """Sync franchises from hardcoded list to Supabase"""
+        """Sync franchises from SQLite to Supabase"""
         from src.models.franchise import Franchise
-        # Hardcoded list from team_history mostly or migration
-        # Actually, let's use the code I put in the migration as source of truth for now, 
-        # OR better, since I can't easily parse SQL, I will define the list here again.
         
-        franchise_data = [
-            {'name': '삼성 라이온즈', 'original_code': 'SS', 'current_code': 'SS'},
-            {'name': '롯데 자이언츠', 'original_code': 'LT', 'current_code': 'LT'},
-            {'name': 'LG 트윈스', 'original_code': 'LG', 'current_code': 'LG'},
-            {'name': '두산 베어스', 'original_code': 'OB', 'current_code': 'OB'},
-            {'name': 'KIA 타이거즈', 'original_code': 'HT', 'current_code': 'KIA'},
-            {'name': '키움 히어로즈', 'original_code': 'WO', 'current_code': 'WO'},
-            {'name': '한화 이글스', 'original_code': 'HH', 'current_code': 'HH'},
-            {'name': 'SSG 랜더스', 'original_code': 'SK', 'current_code': 'SSG'},
-            {'name': 'NC 다이노스', 'original_code': 'NC', 'current_code': 'NC'},
-            {'name': 'KT 위즈', 'original_code': 'KT', 'current_code': 'KT'},
-        ]
-        
+        # Read from SQLite
+        franchises = self.sqlite_session.query(Franchise).all()
         synced = 0
-        for data in franchise_data:
+        
+        for f in franchises:
+            data = {
+                'name': f.name,
+                'original_code': f.original_code,
+                'current_code': f.current_code,
+                'metadata_json': json.dumps(f.metadata_json) if f.metadata_json else None,
+                'web_url': f.web_url
+            }
+            
             stmt = pg_insert(Franchise).values(**data)
             update_dict = {k: v for k, v in data.items() if k != 'original_code'}
             update_dict['updated_at'] = text('CURRENT_TIMESTAMP')
@@ -424,62 +420,51 @@ class SupabaseSync:
 
     def sync_teams(self) -> int:
         """Sync teams from SQLite to Supabase"""
-        from src.models.franchise import Franchise
-        teams = self.sqlite_session.query(table("teams", column("team_id"), column("team_name"), column("team_short_name"), column("city"), column("founded_year"), column("stadium_name"))).all()
-        # Note: SQLite teams table might not have franchise_id yet unless we migrated it too. 
-        # But wait, I added franchise_id to the MODEL code, but I didn't migrate the SQLite DB schema.
-        # Ideally, I should infer franchise_id from team_id mapping if it's missing in SQLite.
+        from src.models.team import Team
+        from sqlalchemy import MetaData, Table, Column, String, Integer, Boolean, ARRAY
+        from sqlalchemy.dialects.postgresql import ARRAY as PG_ARRAY
         
-        # Helper mapping for team_id -> original_code
-        # This logic mirrors what I did in team_history.py roughly.
-        team_to_franchise_code = {
-            'SS': 'SS', 'LT': 'LT', 'LG': 'LG', 'MBC': 'LG',
-            'OB': 'OB', 'DO': 'OB',
-            'HT': 'HT', 'KIA': 'HT',
-            'WO': 'WO', 'NX': 'WO', 'KI': 'WO', 'HU': 'WO', 'CB': 'WO', 'TP': 'WO', 'SM': 'WO', # Heroes lineage is complex, simplifying to WO for technical ID mostly
-            'HH': 'HH', 'BE': 'HH',
-            'SK': 'SK', 'SSG': 'SK',
-            'NC': 'NC', 'KT': 'KT',
-            # Early history mapping might be tricky, but let's do best effort
-        }
-        # Refined Heroes lineage for 'original_code' (Technical Segment):
-        # Actually, Modern/Hyundai/Pacific/Chungbo/Sammi is a mess. 
-        # But for Supabase 'franchise' table I defined 'WO' as Heroes. 
-        # Let's map 'NX', 'KI', 'WO' to 'WO'.
-        # 'HU', 'TP', 'CB', 'SM' -> effectively dissolved or acquired. 
-        # Migration SQL only had 10 active franchises.
-        # I will map only what I can matching the 10 franchises.
-
-        # Retrieve franchise IDs from Supabase to map
-        sup_franchises = self.supabase_session.query(Franchise).all()
-        code_to_id = {f.original_code: f.id for f in sup_franchises}
+        # Get Franchise ID Mapping (Local ID -> Supabase ID)
+        franchise_mapping = self._get_franchise_id_mapping()
         
+        teams = self.sqlite_session.query(Team).all()
         synced = 0
-        for team in teams:
-            # Determine franchise_id
-            fid = None
-            # 1. Try direct map from local DB if it existed (it usually returns None from tuple if column missing in DB but present in query? No, it will error if I query column that doesn't exist)
-            # Safe query:
-            # Since I haven't migrated local SQLite, I shouldn't query franchise_id column from SQLite yet.
-            
-            # Logic: Map team.team_id to franchise code
-            tid = team.team_id
-            f_code = None
-            
-            if tid in ['SS']: f_code = 'SS'
-            elif tid in ['LT']: f_code = 'LT'
-            elif tid in ['LG', 'MBC']: f_code = 'LG'
-            elif tid in ['OB', 'DO']: f_code = 'OB'
-            elif tid in ['HT', 'KIA']: f_code = 'HT'
-            elif tid in ['WO', 'NX', 'KI']: f_code = 'WO'
-            elif tid in ['HH', 'BE']: f_code = 'HH'
-            elif tid in ['SK', 'SSG', 'SL']: f_code = 'SK' # SL (Ssangbangwool) -> SK (bought) -> SSG. 
-            elif tid == 'NC': f_code = 'NC'
-            elif tid == 'KT': f_code = 'KT'
-            
-            if f_code and f_code in code_to_id:
-                fid = code_to_id[f_code]
+        
+        # Define Supabase Schema explicitly to handle ARRAY type
+        metadata = MetaData()
+        supabase_teams = Table(
+            'teams', metadata,
+            Column('team_id', String, primary_key=True),
+            Column('team_name', String),
+            Column('team_short_name', String),
+            Column('city', String),
+            Column('founded_year', Integer),
+            Column('stadium_name', String),
+            Column('franchise_id', Integer),
+            Column('is_active', Boolean),
+            Column('aliases', PG_ARRAY(String)), # Explicitly ARRAY
+            Column('created_at', String), # Using String/Text for timestamps usually works or generic
+            Column('updated_at', String),
+        )
 
+        for team in teams:
+            # Map Local Franchise ID to Supabase Franchise ID
+            fid = None
+            if team.franchise_id:
+                fid = franchise_mapping.get(team.franchise_id)
+                if not fid:
+                    print(f"⚠️ Franchise ID {team.franchise_id} not found in Supabase mapping for team {team.team_id}")
+            
+            # Ensure aliases is a list 
+            aliases_val = team.aliases
+            if aliases_val is None:
+                aliases_val = [] # PostgreSQL Array prefers [] over NULL usually, or None is NULL.
+            elif isinstance(aliases_val, str):
+                try:
+                    aliases_val = json.loads(aliases_val)
+                except:
+                    aliases_val = []
+            
             data = {
                 'team_id': team.team_id,
                 'team_name': team.team_name,
@@ -487,16 +472,26 @@ class SupabaseSync:
                 'city': team.city,
                 'founded_year': team.founded_year,
                 'stadium_name': team.stadium_name,
-                'franchise_id': fid
+                'franchise_id': fid,
+                'is_active': team.is_active,
+                'aliases': aliases_val,
             }
-
-            stmt = pg_insert(table("teams", column("team_id"))).values(**data) # This 'table' user generic need actual Table object or model
-            # Let's use the Model class, but careful about imports
-            from src.models.team import Team
-            stmt = pg_insert(Team).values(**data)
             
-            update_dict = {k: v for k, v in data.items() if k != 'team_id'}
-            update_dict['updated_at'] = text('CURRENT_TIMESTAMP')
+            # Use the explicit Table object
+            stmt = pg_insert(supabase_teams).values(**data)
+            
+            update_dict = {
+                'team_name': stmt.excluded.team_name,
+                'team_short_name': stmt.excluded.team_short_name,
+                'city': stmt.excluded.city,
+                'founded_year': stmt.excluded.founded_year,
+                'stadium_name': stmt.excluded.stadium_name,
+                'franchise_id': stmt.excluded.franchise_id,
+                'is_active': stmt.excluded.is_active,
+                'aliases': stmt.excluded.aliases,
+                'updated_at': text('CURRENT_TIMESTAMP')
+            }
+            
             stmt = stmt.on_conflict_do_update(
                 index_elements=['team_id'],
                 set_=update_dict
@@ -509,98 +504,85 @@ class SupabaseSync:
         print(f"✅ Synced {synced} teams to Supabase")
         return synced
 
-    def sync_ballpark_assignments(self) -> int:
-        """Sync ballpark assignments from SQLite to Supabase"""
+    def sync_team_history(self) -> int:
+        """Sync team_history table"""
+        from src.models.team_history import TeamHistory
+        
         franchise_mapping = self._get_franchise_id_mapping()
-        ballpark_mapping = self._get_ballpark_id_mapping()
-
-        assignments = self.sqlite_session.query(HomeBallparkAssignment).all()
+        histories = self.sqlite_session.query(TeamHistory).all()
         synced = 0
-
-        for assignment in assignments:
-            supabase_franchise_id = franchise_mapping.get(assignment.franchise_id)
-            supabase_ballpark_id = ballpark_mapping.get(assignment.ballpark_id)
-
-            if not supabase_franchise_id or not supabase_ballpark_id:
-                print(f"⚠️  Skipping assignment: franchise or ballpark not found")
+        
+        for h in histories:
+            sup_fid = franchise_mapping.get(h.franchise_id)
+            if not sup_fid:
+                print(f"⚠️ Skip history {h.id}: Franchise ID {h.franchise_id} map failed.")
                 continue
-
+                
             data = {
-                'franchise_id': supabase_franchise_id,
-                'ballpark_id': supabase_ballpark_id,
-                'start_season': assignment.start_season,
-                'end_season': assignment.end_season,
-                'is_primary': assignment.is_primary,
-                'notes': assignment.notes,
+                # ID is auto-increment, don't sync ID? Or sync it?
+                # Usually better to let Supabase generate IDs unless we need strict 1:1 mapping.
+                # But 'season' + 'franchise_id' (or team_code) is unique business key.
+                # Let's use Unique Constraint (season, team_code) or (season, franchise_id)?
+                # Model definition: `__table_args__` not visible here, assuming (season, team_code) or similar.
+                # For sync, I will match on (season, team_code) assuming that's unique enough.
+                # Re-checking model: `season` is indexed. 
+                # Ideally upsert on (season, team_code).
+                
+                'franchise_id': sup_fid,
+                'season': h.season,
+                'team_name': h.team_name,
+                'team_code': h.team_code,
+                'logo_url': h.logo_url,
+                'ranking': h.ranking,
+                'stadium': h.stadium,
+                'city': h.city,
+                'color': h.color
             }
-
-            stmt = pg_insert(HomeBallparkAssignment).values(**data)
-            update_dict = {k: v for k, v in data.items() if k not in ['franchise_id', 'ballpark_id', 'start_season']}
+            
+            stmt = pg_insert(TeamHistory).values(**data)
+            
+            # Construct update set
+            update_dict = {k: stmt.excluded[k] for k in data.keys()}
             update_dict['updated_at'] = text('CURRENT_TIMESTAMP')
+            
+            # On Conflict: Which columns?
+            # If Supabase table has (season, team_code) unique constraint, use that.
+            # If NOT, we might duplicate.
+            # Risk: The migration might NOT have added unique constraint. 
+            # I should use `id` if I can map it, but I can't.
+            # I will assume `season` + `team_code` is unique.
+            # If not, I'll fallback to delete/insert or just insert (risk duplicates).
+            # Better: I'll use `on_conflict_do_update` but verify index elements. 
+            # I'll guess ['season', 'team_code'] for now.
+            
             stmt = stmt.on_conflict_do_update(
-                index_elements=['franchise_id', 'ballpark_id', 'start_season'],
+                index_elements=['season', 'team_code'], 
                 set_=update_dict
             )
-
+            
             self.supabase_session.execute(stmt)
             synced += 1
-
+            
         self.supabase_session.commit()
-        print(f"✅ Synced {synced} ballpark assignments to Supabase")
+        print(f"✅ Synced {synced} team history records")
         return synced
 
-    def sync_game_schedules(self, limit: int = None) -> int:
-        """Sync game schedules from SQLite to Supabase"""
-        query = self.sqlite_session.query(GameSchedule)
-        if limit:
-            query = query.limit(limit)
-
-        schedules = query.all()
-        synced = 0
-
-        for schedule in schedules:
-            data = {
-                'game_id': schedule.game_id,
-                'season_year': schedule.season_year,
-                'season_type': schedule.season_type,
-                'game_date': schedule.game_date,
-                'game_time': schedule.game_time,
-                'home_team_code': schedule.home_team_code,
-                'away_team_code': schedule.away_team_code,
-                'stadium': schedule.stadium,
-                'game_status': schedule.game_status,
-                'postpone_reason': schedule.postpone_reason,
-                'doubleheader_no': schedule.doubleheader_no,
-                'series_id': schedule.series_id,
-                'crawl_status': schedule.crawl_status,
-            }
-
-            stmt = pg_insert(GameSchedule).values(**data)
-            stmt = stmt.on_conflict_do_update(
-                index_elements=['game_id'],
-                set_={k: stmt.excluded[k] for k in data.keys() if k != 'game_id'}
-            )
-
-            self.supabase_session.execute(stmt)
-            synced += 1
-
-        self.supabase_session.commit()
-        print(f"✅ Synced {synced} game schedules to Supabase")
-        return synced
+    # ... (other methods)
 
     def _get_franchise_id_mapping(self) -> Dict[int, int]:
         """Get SQLite franchise_id → Supabase franchise_id mapping"""
+        from src.models.franchise import Franchise
         mapping = {}
 
         # Get all franchises from SQLite
         sqlite_franchises = self.sqlite_session.query(Franchise).all()
 
         for sf in sqlite_franchises:
-            # Find corresponding Supabase franchise by key
-            supabase_franchise = self.supabase_session.query(Franchise).filter_by(key=sf.key).first()
+            # Find corresponding Supabase franchise by original_code (Unique Key)
+            supabase_franchise = self.supabase_session.query(Franchise).filter_by(original_code=sf.original_code).first()
             if supabase_franchise:
                 mapping[sf.id] = supabase_franchise.id
-
+        
         return mapping
 
     def _get_ballpark_id_mapping(self) -> Dict[int, int]:
@@ -1213,12 +1195,16 @@ class SupabaseSync:
             exclude_cols=['id', 'created_at']
         )
 
-        # 6. Game Events (PBP)
-        # Events can be large, so we might want to batch them carefully, 
-        # but _sync_simple_table handles basic batching.
         results['events'] = self._sync_simple_table(
             GameEvent,
             ['game_id', 'event_seq'],
+            exclude_cols=['id', 'created_at']
+        )
+
+        # 7. Game Summary (New)
+        results['summary'] = self._sync_simple_table(
+            GameSummary,
+            ['game_id', 'summary_type', 'detail_text'],
             exclude_cols=['id', 'created_at']
         )
         

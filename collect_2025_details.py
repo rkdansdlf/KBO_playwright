@@ -10,7 +10,12 @@ from src.repositories.game_repository import save_game_detail, save_relay_data
 
 async def collect_2025_details():
     session = SessionLocal()
-    detail_crawler = GameDetailCrawler(request_delay=1.0)
+    
+    # Initialize Resolver
+    from src.services.player_id_resolver import PlayerIdResolver
+    resolver = PlayerIdResolver(session)
+    
+    detail_crawler = GameDetailCrawler(request_delay=1.0, resolver=resolver)
     relay_crawler = RelayCrawler(request_delay=1.0)
     
     try:
