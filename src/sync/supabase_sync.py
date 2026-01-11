@@ -386,6 +386,55 @@ class SupabaseSync:
 
     
 
+    def sync_daily_rosters(self) -> int:
+        """Sync team_daily_roster from SQLite to Supabase"""
+        from src.models.team import TeamDailyRoster
+        
+        # Check if table exists (SQLite)
+        try:
+            rosters = self.sqlite_session.query(TeamDailyRoster).all()
+        except Exception:
+            print("⚠️ team_daily_roster table likely doesn't exist in local DB yet.")
+            return 0
+            
+        synced = 0
+        if not rosters:
+            print("ℹ️ No daily roster data to sync.")
+            return 0
+            
+        for r in rosters:
+            data = {
+                'roster_date': r.roster_date,
+                'team_code': r.team_code,
+                'player_id': r.player_id,
+                'player_name': r.player_name,
+                'position': r.position,
+                'back_number': r.back_number
+            }
+            
+            stmt = pg_insert(TeamDailyRoster).values(**data)
+            
+            # Update fields on conflict
+            update_dict = {
+                'player_name': stmt.excluded.player_name,
+                'position': stmt.excluded.position,
+                'back_number': stmt.excluded.back_number,
+                'updated_at': text('CURRENT_TIMESTAMP')
+            }
+            
+            # Constraint name 'uq_team_daily_roster' maps to (roster_date, team_code, player_id)
+            stmt = stmt.on_conflict_do_update(
+                constraint='uq_team_daily_roster',
+                set_=update_dict
+            )
+            
+            self.supabase_session.execute(stmt)
+            synced += 1
+            
+        self.supabase_session.commit()
+        print(f"✅ Synced {synced} daily roster records to Supabase")
+        return synced
+
     def sync_franchises(self) -> int:
         """Sync franchises from SQLite to Supabase"""
         from src.models.franchise import Franchise
@@ -1339,3 +1388,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+

@@ -113,6 +113,11 @@ def build_arg_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="경기 상세 데이터(박스스코어, 라인업, PBP 등)를 동기화합니다.",
     )
+    parser.add_argument(
+        "--daily-roster",
+        action="store_true",
+        help="일별 1군 등록 현황(Daily Roster)을 동기화합니다.",
+    )
     return parser
 
 
@@ -131,6 +136,13 @@ def main(argv: Iterable[str] | None = None) -> None:
             syncer = SupabaseSync(args.target_url, session)
             syncer.sync_game_details()
             print("✅ Game Details Sync Finished")
+
+    elif args.daily_roster:
+        print("🚀 Syncing Daily Rosters using specialized SupabaseSync...")
+        with SessionLocal() as session:
+            syncer = SupabaseSync(args.target_url, session)
+            syncer.sync_daily_rosters()
+            print("✅ Daily Roster Sync Finished")
             
     elif args.teams:
         print("🚀 Syncing Franchises & Teams using specialized SupabaseSync...")
