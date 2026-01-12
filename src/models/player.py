@@ -94,7 +94,27 @@ class Player(Base, TimestampMixin):
         return f"<Player(id={self.id}, status={self.status})>"
 
 
+class PlayerIdentity(Base, TimestampMixin):
+    """
+    Player naming/identity history.
+    Tracks name changes or variations (e.g. Korean name, English name).
+    """
 
+    __tablename__ = "player_identities"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    player_id: Mapped[int] = mapped_column(Integer, ForeignKey("players.id"), nullable=False)
+    name_kor: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    name_eng: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    start_date: Mapped[Optional[Date]] = mapped_column(Date, nullable=True)
+    end_date: Mapped[Optional[Date]] = mapped_column(Date, nullable=True)
+    is_primary: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
+    __table_args__ = (
+        Index("idx_player_identity_player", "player_id"),
+        Index("idx_player_identity_name", "name_kor"),
+    )
 
 
 class PlayerSeasonBatting(Base, TimestampMixin):

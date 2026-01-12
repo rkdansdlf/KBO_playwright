@@ -20,13 +20,14 @@ class DailyRosterCrawler:
         self.base_url = "https://www.koreabaseball.com/Player/Register.aspx"
         self.request_delay = request_delay
 
-    async def crawl_date_range(self, start_date: str, end_date: str) -> List[Dict[str, Any]]:
+    async def crawl_date_range(self, start_date: str, end_date: str, save_callback=None) -> List[Dict[str, Any]]:
         """Crawl roster for a range of dates (format: YYYY-MM-DD)."""
         s_date = datetime.strptime(start_date, "%Y-%m-%d").date()
         e_date = datetime.strptime(end_date, "%Y-%m-%d").date()
         
         results = []
         async with async_playwright() as p:
+            # Launch with slightly higher timeout context if needed
             browser = await p.chromium.launch(headless=True)
             page = await browser.new_page()
             
@@ -41,6 +42,16 @@ class DailyRosterCrawler:
             for d in dates:
                 roster = await self._crawl_date(page, d)
                 if roster:
+                    if save_callback:
+                        # Call callback (synchronously if it's not async)
+                        try:
+                            if asyncio.iscoroutinefunction(save_callback):
+                                await save_callback(roster)
+                            else:
+                                save_callback(roster)
+                        except Exception as e:
+                           print(f"⚠️ Callback error: {e}")
+                    
                     results.extend(roster)
                 
             await browser.close()

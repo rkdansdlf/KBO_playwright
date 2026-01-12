@@ -8,6 +8,7 @@ from typing import List, Dict, Any
 from sqlalchemy import create_engine, text, select, MetaData, Table, column, table
 from sqlalchemy.orm import sessionmaker, Session
 from sqlalchemy.dialects.postgresql import insert as pg_insert
+from datetime import datetime
 
 # 현재 사용 가능한 모델들만 import
 from src.models.player import PlayerSeasonBatting, PlayerSeasonPitching, PlayerBasic
@@ -402,36 +403,48 @@ class SupabaseSync:
             print("ℹ️ No daily roster data to sync.")
             return 0
             
-        for r in rosters:
-            data = {
-                'roster_date': r.roster_date,
-                'team_code': r.team_code,
-                'player_id': r.player_id,
-                'player_name': r.player_name,
-                'position': r.position,
-                'back_number': r.back_number
-            }
+        print(f"INFO: Found {len(rosters)} rosters to sync. Batching...")
+        
+        batch_size = 1000
+        for i in range(0, len(rosters), batch_size):
+            batch = rosters[i:i+batch_size]
+            values_list = []
             
-            stmt = pg_insert(TeamDailyRoster).values(**data)
+            for r in batch:
+                data = {
+                    'roster_date': r.roster_date,
+                    'team_code': r.team_code,
+                    'player_id': r.player_id,
+                    'player_name': r.player_name,
+                    'position': r.position,
+                    'back_number': r.back_number,
+                    'created_at': datetime.now(),
+                    'updated_at': datetime.now()
+                }
+                values_list.append(data)
+                
+            if not values_list:
+                continue
+                
+            # Construct ON CONFLICT statement
+            stmt = pg_insert(TeamDailyRoster).values(values_list)
             
-            # Update fields on conflict
             update_dict = {
                 'player_name': stmt.excluded.player_name,
                 'position': stmt.excluded.position,
                 'back_number': stmt.excluded.back_number,
-                'updated_at': text('CURRENT_TIMESTAMP')
+                'updated_at': stmt.excluded.updated_at
             }
             
-            # Constraint name 'uq_team_daily_roster' maps to (roster_date, team_code, player_id)
             stmt = stmt.on_conflict_do_update(
                 constraint='uq_team_daily_roster',
                 set_=update_dict
             )
             
             self.supabase_session.execute(stmt)
-            synced += 1
-            
-        self.supabase_session.commit()
+            self.supabase_session.commit() # Commit each batch
+            synced += len(values_list)
+            print(f"   Synced batch {i // batch_size + 1} ({len(values_list)} records)")
         print(f"✅ Synced {synced} daily roster records to Supabase")
         return synced
 
@@ -804,6 +817,45 @@ class SupabaseSync:
         print(f"✅ Synced {synced} player_basic records to Supabase")
         return synced
 
+    def sync_player_movements(self) -> int:
+        """Sync player_movements from SQLite to Supabase"""
+        from src.models.player import PlayerMovement
+        
+        movements = self.sqlite_session.query(PlayerMovement).all()
+        synced = 0
+        
+        if not movements:
+            print("ℹ️ No player movement data to sync.")
+            return 0
+            
+        for m in movements:
+            data = {
+                'date': m.date,
+                'section': m.section,
+                'team_code': m.team_code,
+                'player_name': m.player_name,
+                'remarks': m.remarks
+            }
+            
+            stmt = pg_insert(PlayerMovement).values(**data)
+            
+            update_dict = {
+                'remarks': stmt.excluded.remarks,
+                'updated_at': text('CURRENT_TIMESTAMP')
+            }
+            
+            stmt = stmt.on_conflict_do_update(
+                constraint='uq_player_movement',
+                set_=update_dict
+            )
+            
+            self.supabase_session.execute(stmt)
+            synced += 1
+            
+        self.supabase_session.commit()
+        print(f"✅ Synced {synced} player movement records to Supabase")
+        return synced
+
     def sync_player_season_batting(self, limit: int = None) -> int:
         """Sync player_season_batting data from SQLite to Supabase"""
         query = self.sqlite_session.query(PlayerSeasonBatting)
@@ -1013,15 +1065,10 @@ class SupabaseSync:
         return results
 
     def sync_games(self, limit: int = None) -> int:
-        """Sync game detail data from SQLite to Supabase"""
-        query = self.sqlite_session.query(Game)
-        if limit:
-            query = query.limit(limit)
-
-        games = query.all()
-        synced = 0
-
-        # Define a lightweight table object to avoid Model schema mismatches (e.g. missing created_at)
+        """Sync game detail data from SQLite to Supabase using Batched UPSERT"""
+        from src.models.game import Game
+        
+        # Define explicit table object to avoid column mismatches (like missing created_at in Supabase)
         game_table = table("game",
             column("game_id"),
             column("game_date"),
@@ -1037,36 +1084,68 @@ class SupabaseSync:
             column("away_pitcher")
         )
 
-        for game in games:
-            data = {
-                'game_id': game.game_id,
-                'game_date': game.game_date,
-                'home_team': game.home_team,
-                'away_team': game.away_team,
-                'stadium': game.stadium,
-                'home_score': game.home_score,
-                'away_score': game.away_score,
-                'winning_team': game.winning_team,
-                'winning_score': game.winning_score,
-                'season_id': game.season_id,
-                'home_pitcher': game.home_pitcher,
-                'away_pitcher': game.away_pitcher,
-            }
+        query = self.sqlite_session.query(Game)
+        if limit:
+            query = query.limit(limit)
 
-            stmt = pg_insert(game_table).values(**data)
-            update_dict = {k: stmt.excluded[k] for k in data.keys() if k != 'game_id'}
-            # Note: We are ignoring updated_at for now to avoid invalid column errors.
-            # If the column exists, it won't be updated, which is acceptable for now.
+        total_count = query.count()
+        if total_count == 0:
+            return 0
             
-            stmt = stmt.on_conflict_do_update(
-                index_elements=['game_id'],
-                set_=update_dict
-            )
+        print(f"🚚 Syncing game table ({total_count} rows) in batches...")
+        
+        synced = 0
+        batch_size = 500
+        
+        # Define Columns for Update (excluding PK)
+        update_columns = ["game_date", "home_team", "away_team", "stadium", 
+                          "home_score", "away_score", "winning_team", "winning_score", 
+                          "season_id", "home_pitcher", "away_pitcher"]
 
-            self.supabase_session.execute(stmt)
-            synced += 1
+        for offset in range(0, total_count, batch_size):
+            games = query.offset(offset).limit(batch_size).all()
+            values_list = []
+            
+            for g in games:
+                data = {
+                    'game_id': g.game_id,
+                    'game_date': g.game_date,
+                    'home_team': g.home_team,
+                    'away_team': g.away_team,
+                    'stadium': g.stadium,
+                    'home_score': g.home_score,
+                    'away_score': g.away_score,
+                    'winning_team': g.winning_team,
+                    'winning_score': g.winning_score,
+                    'season_id': g.season_id,
+                    'home_pitcher': g.home_pitcher,
+                    'away_pitcher': g.away_pitcher,
+                }
+                values_list.append(data)
+                
+            if not values_list:
+                continue
+                
+            try:
+                stmt = pg_insert(game_table).values(values_list)
+                update_dict = {k: stmt.excluded[k] for k in update_columns}
+                
+                # Check if updated_at exists? For now, omit it to be safe as per user report of 'nothing changing'
+                # If we omit it, the rows ARE updated but the timestamp remains old if it exists. 
+                # This is better than failing completely.
+                
+                stmt = stmt.on_conflict_do_update(
+                    index_elements=['game_id'],
+                    set_=update_dict
+                )
+                
+                self.supabase_session.execute(stmt)
+                self.supabase_session.commit()
+                synced += len(values_list)
+            except Exception as e:
+                self.supabase_session.rollback()
+                print(f"❌ Error syncing games batch at offset {offset}: {e}")
 
-        self.supabase_session.commit()
         print(f"✅ Synced {synced} games to Supabase")
         return synced
 
@@ -1261,47 +1340,60 @@ class SupabaseSync:
         return results
 
     def _sync_simple_table(self, model, conflict_keys: List[str], exclude_cols: List[str] = None) -> int:
-        """Generic sync parameter for simple tables"""
+        """Generic sync parameter for simple tables using Batched UPSERT"""
         if exclude_cols is None:
             exclude_cols = []
             
-        rows = self.sqlite_session.query(model).all()
-        if not rows:
+        # Get columns to sync
+        columns = [c.key for c in model.__table__.columns if c.key not in exclude_cols and c.key not in ('created_at', 'updated_at')]
+        
+        # Query total count
+        total_count = self.sqlite_session.query(model).count()
+        if total_count == 0:
             print(f"ℹ️  No records for {model.__tablename__}")
             return 0
             
+        print(f"🚚 Syncing {model.__tablename__} ({total_count} rows) in batches...")
+        
         synced = 0
-        table_name = model.__tablename__
-        columns = [c.key for c in model.__table__.columns if c.key not in exclude_cols and c.key not in ('created_at', 'updated_at')]
+        batch_size = 1000
         
-        # Build SQL dynamically
-        col_str = ", ".join(columns)
-        val_str = ", ".join([f":{c}" for c in columns])
-        update_set = ", ".join([f"{c} = EXCLUDED.{c}" for c in columns if c not in conflict_keys])
-        
-        upsert_sql = text(f"""
-            INSERT INTO {table_name} ({col_str}, updated_at)
-            VALUES ({val_str}, NOW())
-            ON CONFLICT ({", ".join(conflict_keys)}) 
-            DO UPDATE SET {update_set}, updated_at = NOW()
-        """)
-        
-        for row in rows:
-            data = {c: getattr(row, c) for c in columns}
-            # Handle JSON serialization if needed (sqlalchemy might handle it, but being safe)
-            for k, v in data.items():
-                if isinstance(v, (dict, list)):
-                    data[k] = json.dumps(v, ensure_ascii=False)
+        for offset in range(0, total_count, batch_size):
+            rows = self.sqlite_session.query(model).offset(offset).limit(batch_size).all()
+            values_list = []
             
+            for row in rows:
+                data = {c: getattr(row, c) for c in columns}
+                # Handle JSON serialization
+                for k, v in data.items():
+                    if isinstance(v, (dict, list)):
+                        data[k] = v # pg_insert handles dict automatically if column is JSONB
+                data['updated_at'] = datetime.now()
+                values_list.append(data)
+                
+            if not values_list:
+                continue
+                
             try:
-                self.supabase_session.execute(upsert_sql, data)
-                synced += 1
+                stmt = pg_insert(model).values(values_list)
+                update_dict = {c: stmt.excluded[c] for c in columns if c not in conflict_keys}
+                update_dict['updated_at'] = stmt.excluded.updated_at
+                
+                stmt = stmt.on_conflict_do_update(
+                    index_elements=conflict_keys,
+                    set_=update_dict
+                )
+                
+                self.supabase_session.execute(stmt)
+                self.supabase_session.commit()
+                synced += len(values_list)
+                if synced % 5000 == 0 or synced == total_count:
+                    print(f"   Synced {synced}/{total_count} rows...")
             except Exception as e:
                 self.supabase_session.rollback()
-                print(f"❌ Error syncing {table_name} row: {e}")
-                
-        self.supabase_session.commit()
-        print(f"✅ Synced {synced} rows to {table_name}")
+                print(f"❌ Error syncing {model.__tablename__} batch at offset {offset}: {e}")
+                # Fallback to one-by-one for this batch if needed? No, let's keep it simple for now.
+
         return synced
 
     def close(self):

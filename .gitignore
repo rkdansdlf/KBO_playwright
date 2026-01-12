@@ -35,3 +35,7 @@ supabase.db
 *.log
 
 !migrations/supabase/
+data/kbo_dev.db-wal
+data/kbo_dev.db-shm
+data/kbo_dev.db
+/data
