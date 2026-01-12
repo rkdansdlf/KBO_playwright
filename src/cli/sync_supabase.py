@@ -18,7 +18,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from src.db.engine import create_engine_for_url
 from src.models.base import Base
 
-from src.models.player import PlayerSeasonBatting, PlayerSeasonPitching
+from src.models.player import PlayerSeasonBatting, PlayerSeasonPitching, PlayerBasic
 from src.models.team import Team
 from src.sync.supabase_sync import SupabaseSync
 from src.db.engine import SessionLocal
@@ -26,7 +26,8 @@ from src.db.engine import SessionLocal
 
 # 외래 키 제약 조건을 고려한 모델 처리 순서
 MODEL_ORDER: List[Type] = [
-    Team,
+    # Team,  # Handled by specialized --teams sync due to JSON vs TEXT[] type mismatch
+    PlayerBasic,
     PlayerSeasonBatting,
     PlayerSeasonPitching,
 ]
@@ -118,6 +119,11 @@ def build_arg_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="일별 1군 등록 현황(Daily Roster)을 동기화합니다.",
     )
+    parser.add_argument(
+        "--player-movements",
+        action="store_true",
+        help="선수 이동 현황(Trade, FA 등)을 동기화합니다.",
+    )
     return parser
 
 
@@ -141,8 +147,15 @@ def main(argv: Iterable[str] | None = None) -> None:
         print("🚀 Syncing Daily Rosters using specialized SupabaseSync...")
         with SessionLocal() as session:
             syncer = SupabaseSync(args.target_url, session)
-            syncer.sync_daily_rosters()
+            synced = syncer.sync_daily_rosters()
             print("✅ Daily Roster Sync Finished")
+
+    elif args.player_movements:
+        print("🚀 Syncing Player Movements using specialized SupabaseSync...")
+        with SessionLocal() as session:
+            syncer = SupabaseSync(args.target_url, session)
+            syncer.sync_player_movements()
+            print("✅ Player Movement Sync Finished")
             
     elif args.teams:
         print("🚀 Syncing Franchises & Teams using specialized SupabaseSync...")

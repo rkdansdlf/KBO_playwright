@@ -144,3 +144,40 @@ class PlayerRepository:
                 session.add(record)
 
             session.commit()
+
+    # ------------------------------------------------------------------
+    # Player Movements
+    # ------------------------------------------------------------------
+    def save_player_movements(self, movements: List[Dict[str, Any]]) -> int:
+        from src.models.player import PlayerMovement
+        
+        saved_count = 0
+        with SessionLocal() as session:
+            for item in movements:
+                # Convert date string to object if needed
+                d_val = item['date']
+                if isinstance(d_val, str):
+                    d_val = datetime.strptime(d_val, "%Y-%m-%d").date()
+
+                stmt = select(PlayerMovement).where(
+                    PlayerMovement.date == d_val,
+                    PlayerMovement.team_code == item['team_code'],
+                    PlayerMovement.player_name == item['player_name'],
+                    PlayerMovement.section == item['section']
+                )
+                existing = session.execute(stmt).scalar_one_or_none()
+                
+                if existing:
+                    existing.remarks = item.get('remarks')
+                else:
+                    new_rec = PlayerMovement(
+                        date=d_val,
+                        section=item['section'],
+                        team_code=item['team_code'],
+                        player_name=item['player_name'],
+                        remarks=item.get('remarks')
+                    )
+                    session.add(new_rec)
+                saved_count += 1
+            session.commit()
+        return saved_count

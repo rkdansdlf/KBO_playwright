@@ -90,6 +90,15 @@ def save_game_detail(game_data: Dict[str, Any]) -> bool:
             game.home_score = home_info.get("score")
             game.away_score = away_info.get("score")
             game.winning_team, game.winning_score = _resolve_winner(home_info, away_info)
+            
+            # Update Starting Pitchers
+            home_pitcher_data = next((p for p in pitchers.get("home", []) if p.get("is_starting")), None)
+            away_pitcher_data = next((p for p in pitchers.get("away", []) if p.get("is_starting")), None)
+            if home_pitcher_data:
+                game.home_pitcher = home_pitcher_data.get("player_name")
+            if away_pitcher_data:
+                game.away_pitcher = away_pitcher_data.get("player_name")
+
             season_id = game_data.get("season_id")
             if season_id:
                 game.season_id = season_id
@@ -258,9 +267,24 @@ def _build_lineups(game_id: str, hitters: Dict[str, List[Dict[str, Any]]]) -> Li
                     position=entry.get("position"),
                     is_starter=bool(entry.get("is_starter")),
                     appearance_seq=entry.get("appearance_seq") or len(records) + 1,
+                    notes=_format_notes(entry.get("extras")),
                 )
             )
     return records
+
+def _format_notes(extras: Optional[Dict[str, Any]]) -> Optional[str]:
+    if not extras:
+        return None
+    # Filter out columns we already map elsewhere
+    ignore_keys = {'COL_0', 'COL_1', '선수명', 'PlayerName', 'playerName'}
+    cleaned = {k: v for k, v in extras.items() if k not in ignore_keys}
+    if not cleaned:
+        return None
+    # If only one item, just return the value string
+    if len(cleaned) == 1:
+        val = list(cleaned.values())[0]
+        return str(val)
+    return str(cleaned)
 
 
 def _build_batting_stats(game_id: str, hitters: Dict[str, List[Dict[str, Any]]]) -> List[GameBattingStat]:
@@ -305,7 +329,7 @@ def _build_batting_stats(game_id: str, hitters: Dict[str, List[Dict[str, Any]]])
                     ops=_stat_float(stats, "ops"),
                     iso=_stat_float(stats, "iso"),
                     babip=_stat_float(stats, "babip"),
-                    extra_stats=entry.get("extras"),
+                    extra_stats=_clean_extras(entry.get("extras")),
                 )
             )
     return records
@@ -352,7 +376,7 @@ def _build_pitching_stats(game_id: str, pitchers: Dict[str, List[Dict[str, Any]]
                     k_per_nine=_stat_float(stats, "k_per_nine"),
                     bb_per_nine=_stat_float(stats, "bb_per_nine"),
                     kbb=_stat_float(stats, "kbb"),
-                    extra_stats=entry.get("extras"),
+                    extra_stats=_clean_extras(entry.get("extras")),
                 )
             )
     return records
@@ -422,3 +446,10 @@ def _resolve_winner(home: Dict[str, Any], away: Dict[str, Any]) -> tuple[str | N
     if away_score > home_score:
         return away.get("code"), away_score
     return None, home_score
+
+def _clean_extras(extras: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+    if not extras:
+        return None
+    ignore_keys = {'COL_0', 'COL_1', '선수명', 'PlayerName', 'playerName'}
+    cleaned = {k: v for k, v in extras.items() if k not in ignore_keys}
+    return cleaned if cleaned else None

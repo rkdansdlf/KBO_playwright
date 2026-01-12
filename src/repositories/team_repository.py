@@ -13,33 +13,46 @@ class TeamRepository:
 
     def save_daily_rosters(self, rosters: List[Dict[str, Any]]) -> int:
         """
-        Save daily roster records.
-        Uses deletion of same (date, team, player) conflict or ignore?
-        Better: UPSERT or Ignore.
-        Since it's a snapshot, if we run it again for same date/team, we might have same data.
-        If data changed? (Unlikely for same date).
-        
-        We will use Merge or Upsert logic.
-        Since we have UniqueConstraint(roster_date, team_code, player_id), we can check existence or just merge.
-        Bulk insert with ignore might be faster for large sets.
-        Merging individual objects:
+        Save daily roster records with UPSERT logic.
         """
-        count = 0
+        from sqlalchemy import select
+        
+        # Deduplicate input list by unique key (date, team, player)
+        # to prevent IntegrityError if the list contains duplicates
+        unique_rosters = {}
         for r in rosters:
-            # Check existing? 
-            # Or use merge.
-            # Roster object
-            roster = TeamDailyRoster(
-                roster_date=r['roster_date'],
-                team_code=r['team_code'],
-                player_id=r['player_id'],
-                player_name=r['player_name'],
-                position=r['position'],
-                back_number=r['back_number']
-            )
+            key = (r['roster_date'], r['team_code'], r['player_id'])
+            # If duplicate, keep the last one (arbitrary decision, or first?)
+            unique_rosters[key] = r
             
-            # Merge is safest
-            self.session.merge(roster)
+        count = 0
+        for r in unique_rosters.values():
+            # Check existing by Unique Constraint keys
+            stmt = select(TeamDailyRoster).where(
+                TeamDailyRoster.roster_date == r['roster_date'],
+                TeamDailyRoster.team_code == r['team_code'],
+                TeamDailyRoster.player_id == r['player_id']
+            )
+            existing = self.session.execute(stmt).scalar_one_or_none()
+            
+            if existing:
+                # Update fields
+                existing.player_name = r['player_name']
+                existing.position = r['position']
+                existing.back_number = r['back_number']
+                existing.updated_at = text('CURRENT_TIMESTAMP')
+            else:
+                # Create new
+                new_roster = TeamDailyRoster(
+                    roster_date=r['roster_date'],
+                    team_code=r['team_code'],
+                    player_id=r['player_id'],
+                    player_name=r['player_name'],
+                    position=r['position'],
+                    back_number=r['back_number']
+                )
+                self.session.add(new_roster)
+            
             count += 1
             
         self.session.commit()

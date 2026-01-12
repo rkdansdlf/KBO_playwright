@@ -194,17 +194,38 @@ class GameDetailCrawler:
         script = """
         () => {
             const tables = Array.from(document.querySelectorAll('table'));
+            let teamTable, inningTable, totalTable;
+            
             for (const table of tables) {
-                const headers = Array.from(table.querySelectorAll('thead th')).map(th => th.innerText.trim());
-                if (!headers.length) continue;
-                const upper = headers.map(h => h.toUpperCase());
-                if (!(upper.includes('R') && upper.includes('H'))) continue;
-                const rows = Array.from(table.querySelectorAll('tbody tr')).map(tr =>
-                    Array.from(tr.querySelectorAll('th,td')).map(td => td.innerText.trim())
-                );
-                if (rows.length >= 2) {
-                    return { headers, rows };
+                const headers = Array.from(table.querySelectorAll('thead th')).map(th => th.innerText.trim().toUpperCase());
+                
+                if (!teamTable && (headers.includes('TEAM') || headers.includes('팀') || (headers.length === 2 && headers[1] === 'TEAM'))) teamTable = table;
+                // Only identify as inning table if we haven't found one, and it looks like 1, 2, 3...
+                if (!inningTable && headers.includes('1') && headers.includes('2') && headers.includes('3')) inningTable = table;
+                if (!totalTable && headers.includes('R') && headers.includes('H')) totalTable = table;
+            }
+            
+            if (!teamTable || !inningTable || !totalTable) return null;
+            
+            const getRows = (t) => Array.from(t.querySelectorAll('tbody tr')).map(tr => 
+                Array.from(tr.querySelectorAll('td')).map(td => td.innerText.trim())
+            );
+            
+            const teamRows = getRows(teamTable);
+            const inningRows = getRows(inningTable);
+            const totalRows = getRows(totalTable); // [R, H, E, B]
+            
+            if (teamRows.length >= 2 && inningRows.length >= 2 && totalRows.length >= 2) {
+                const headers = ["TEAM", ...Array.from({length: inningRows[0].length}, (_,k)=>String(k+1)), "R", "H", "E"];
+                const rows = [];
+                for (let i=0; i<2; i++) {
+                    const teamName = teamRows[i][0] || "Unknown";
+                    const innings = inningRows[i];
+                    // totalRows has R, H, E, B. We need R, H, E for Python parser (last 3).
+                    const totals = totalRows[i].slice(0, 3); 
+                    rows.push([teamName, ...innings, ...totals]);
                 }
+                return { headers, rows };
             }
             return null;
         }
@@ -213,6 +234,11 @@ class GameDetailCrawler:
         result = await page.evaluate(script)
         away_info: Dict[str, Any]
         home_info: Dict[str, Any]
+
+        if result:
+            print(f"DEBUG_JS_RESULT: {result}")
+        else:
+            print("DEBUG_JS_RESULT: None (No matching table found)")
 
         if result and len(result['rows']) >= 2:
             headers = result['headers']
@@ -253,6 +279,13 @@ class GameDetailCrawler:
         if not home_info.get('code'):
             segment = game_id[10:12] if len(game_id) >= 12 else None
             home_info['code'] = team_code_from_game_id_segment(segment, season_year)
+
+        # Enforce SK -> SSG mapping for years >= 2021
+        if season_year and season_year >= 2021:
+            if away_info.get('code') == 'SK':
+                away_info['code'] = 'SSG'
+            if home_info.get('code') == 'SK':
+                home_info['code'] = 'SSG'
 
         return {'away': away_info, 'home': home_info}
 
@@ -511,15 +544,15 @@ class GameDetailCrawler:
         }
 
     def _parse_batting_order(self, cells: Dict[str, str]) -> Optional[int]:
-        for key in ('타순', 'NO', 'No', '순', '타순(교체)'):
+        for key in ('타순', 'NO', 'No', '순', '타순(교체)', 'COL_0'):
             if key in cells:
                 value = re.search(r"\d+", cells[key])
                 if value:
                     return int(value.group())
         return None
-
+        
     def _parse_position(self, cells: Dict[str, str]) -> Optional[str]:
-        for key in ('POS', '포지션', '수비위치'):
+        for key in ('POS', '포지션', '수비위치', 'COL_1'):
             if key in cells:
                 return cells[key] or None
         return None

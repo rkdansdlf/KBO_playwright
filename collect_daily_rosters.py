@@ -19,13 +19,15 @@ async def collect(start_date: str, end_date: str):
     
     print(f"🚀 Starting Roster Collection: {start_date} ~ {end_date}")
     
+    # Define callback for incremental saving
+    def save_chunk(roster_data):
+        if roster_data:
+            count = repo.save_daily_rosters(roster_data)
+            print(f"   Saved {count} records.", flush=True)
+            
     try:
-        data = await crawler.crawl_date_range(start_date, end_date)
-        if data:
-            count = repo.save_daily_rosters(data)
-            print(f"✅ Saved {count} roster records to local DB.")
-        else:
-            print("⚠️ No data found.")
+        data = await crawler.crawl_date_range(start_date, end_date, save_callback=save_chunk)
+        print(f"✅ Roster Collection Finished. Total records processed: {len(data)}")
     except Exception as e:
         print(f"❌ Error: {e}")
     finally:
