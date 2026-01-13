@@ -23,6 +23,16 @@ from src.models.game import (
 from src.utils.safe_print import safe_print as print
 
 
+def get_games_by_date(target_date: str) -> List[Game]:
+    """Retrieve Game objects for a specific date (YYYYMMDD)."""
+    try:
+        dt = datetime.strptime(target_date, "%Y%m%d").date()
+    except ValueError:
+        return []
+    
+    with SessionLocal() as session:
+        return session.query(Game).filter(Game.game_date == dt).all()
+
 def save_schedule_game(game_data: Dict[str, Any]) -> bool:
     """Persist basic game info from schedule crawler."""
     game_id = game_data.get("game_id")

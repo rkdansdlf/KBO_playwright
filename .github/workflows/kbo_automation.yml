@@ -1,0 +1,64 @@
+name: KBO Data Automation
+
+on:
+  schedule:
+    # Daily Closing: 02:00 KST = 17:00 UTC
+    - cron: '0 17 * * *'
+    
+    # Live Watcher: Every 15 mins during game time (18:30 - ~23:30 KST = 09:30 - 14:30 UTC)
+    # Tue-Fri + Weekends (Let's just run every day for simplicity)
+    - cron: '*/15 9-14 * * *'
+  
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: 'Execution Mode (closing/live)'
+        required: true
+        default: 'closing'
+      date:
+        description: 'Target Date (YYYYMMDD) for closing'
+        required: false
+
+jobs:
+  run-automation:
+    runs-on: ubuntu-latest
+    
+    env:
+      SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+      
+    steps:
+    - name: Checkout Code
+      uses: actions/checkout@v3
+
+    - name: Set up Python 3.10
+      uses: actions/setup-python@v4
+      with:
+        python-version: "3.10"
+        cache: 'pip'
+
+    - name: Install Dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        playwright install chromium
+
+    - name: Determine Mode
+      id: mode
+      run: |
+        # Default logic based on trigger
+        if [ "${{ github.event_name }}" == "schedule" ]; then
+          current_hour=$(date -u +%H)
+          if [ "$current_hour" -eq 17 ]; then
+             echo "MODE=closing" >> $GITHUB_OUTPUT
+          else
+             echo "MODE=live" >> $GITHUB_OUTPUT
+          fi
+        else
+          # Manual Trigger
+          echo "MODE=${{ github.event.inputs.mode }}" >> $GITHUB_OUTPUT
+        fi
+
+    - name: Run Daily Batch
+      run: |
+        echo "Running in ${{ steps.mode.outputs.MODE }} mode"
+        python -m src.cli.daily_batch --mode ${{ steps.mode.outputs.MODE }} ${{ github.event.inputs.date && format('--date {0}', github.event.inputs.date) || '' }}
