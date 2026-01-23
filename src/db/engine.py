@@ -33,6 +33,33 @@ def create_engine_for_url(url: str, *, disable_sqlite_wal: bool = False):
 Engine = create_engine_for_url(DATABASE_URL, disable_sqlite_wal=DISABLE_SQLITE_WAL)
 SessionLocal = sessionmaker(bind=Engine, autoflush=False, autocommit=False, expire_on_commit=False)
 
+from contextlib import contextmanager
+
+@contextmanager
+def get_db_session():
+    session = SessionLocal()
+    try:
+        yield session
+        session.commit()
+    except Exception:
+        session.rollback()
+        raise
+    finally:
+        session.close()
+
+
+def get_database_type() -> str:
+    """Return the database type based on DATABASE_URL."""
+    if DATABASE_URL.startswith("sqlite:"):
+        return "sqlite"
+    elif DATABASE_URL.startswith("mysql"):
+        return "mysql"
+    elif DATABASE_URL.startswith("postgresql"):
+        return "postgresql"
+    else:
+        return "unknown"
+
+
 def _ensure_player_batting_team_code_column():
     """Rename player_season_batting.team_id -> team_code for legacy SQLite DBs."""
     if not _is_sqlite(DATABASE_URL):
@@ -262,7 +289,7 @@ def _migrate_game_summary_table(conn):
 
 def init_db():
     from src.models.base import Base
-    from src.models import team, player, season, game, team_stats, rankings, crawl
+    from src.models import team, player, season, game, team_stats, rankings, crawl, award, kbo_embedding
     Base.metadata.create_all(bind=Engine)
     _ensure_player_batting_team_code_column()
     _ensure_player_basic_status_columns()

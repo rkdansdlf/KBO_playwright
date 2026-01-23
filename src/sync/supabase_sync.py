@@ -5,13 +5,15 @@ Dual-repository pattern: SQLite (dev/validation) → Supabase (production)
 import os
 import json
 from typing import List, Dict, Any
-from sqlalchemy import create_engine, text, select, MetaData, Table, column, table
+from pathlib import Path
+from sqlalchemy import create_engine, text, select, MetaData, Table, column, table, tuple_
 from sqlalchemy.orm import sessionmaker, Session
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from datetime import datetime
 
 # 현재 사용 가능한 모델들만 import
 from src.models.player import PlayerSeasonBatting, PlayerSeasonPitching, PlayerBasic
+from src.models.award import Award
 from src.models.crawl import CrawlRun
 from src.models.game import (
     Game,
@@ -21,8 +23,10 @@ from src.models.game import (
     GameBattingStat,
     GamePitchingStat,
     GameEvent,
-    GameSummary
+    GameSummary,
+    BoxScore
 )
+from src.models.kbo_embedding import KBOEmbedding
 
 
 LEAGUE_NAME_TO_CODE = {
@@ -75,84 +79,21 @@ class SupabaseSync:
 
     def sync_pitcher_data(self) -> int:
         """새로운 player_season_pitching 테이블의 투수 데이터를 Supabase로 동기화"""
-        pitcher_data = self.sqlite_session.query(PlayerSeasonPitching).all()
+        query = self.sqlite_session.query(PlayerSeasonPitching)
+        total = query.count()
         
-        if not pitcher_data:
+        if total == 0:
             print("ℹ️ 동기화할 투수 데이터가 없습니다.")
             return 0
         
         synced = 0
-        
-        for data in pitcher_data:
-            # UPSERT 쿼리 직접 실행 (PostgreSQL)
-            upsert_sql = text("""
-                INSERT INTO player_season_pitching (
-                    player_id, season, league, level, source, team_code,
-                    games, games_started, wins, losses, saves, holds,
-                    innings_pitched, innings_outs, hits_allowed, runs_allowed,
-                    earned_runs, home_runs_allowed, walks_allowed, intentional_walks,
-                    hit_batters, strikeouts, wild_pitches, balks,
-                    era, whip, fip, k_per_nine, bb_per_nine, kbb,
-                    complete_games, shutouts, quality_starts, blown_saves,
-                    tbf, np, avg_against, doubles_allowed, triples_allowed,
-                    sacrifices_allowed, sacrifice_flies_allowed, extra_stats,
-                    created_at, updated_at
-                ) VALUES (
-                    :player_id, :season, :league, :level, :source, :team_code,
-                    :games, :games_started, :wins, :losses, :saves, :holds,
-                    :innings_pitched, :innings_outs, :hits_allowed, :runs_allowed,
-                    :earned_runs, :home_runs_allowed, :walks_allowed, :intentional_walks,
-                    :hit_batters, :strikeouts, :wild_pitches, :balks,
-                    :era, :whip, :fip, :k_per_nine, :bb_per_nine, :kbb,
-                    :complete_games, :shutouts, :quality_starts, :blown_saves,
-                    :tbf, :np, :avg_against, :doubles_allowed, :triples_allowed,
-                    :sacrifices_allowed, :sacrifice_flies_allowed, :extra_stats,
-                    NOW(), NOW()
-                )
-                ON CONFLICT (player_id, season, league, level) DO UPDATE SET
-                    source = EXCLUDED.source,
-                    team_code = EXCLUDED.team_code,
-                    games = EXCLUDED.games,
-                    games_started = EXCLUDED.games_started,
-                    wins = EXCLUDED.wins,
-                    losses = EXCLUDED.losses,
-                    saves = EXCLUDED.saves,
-                    holds = EXCLUDED.holds,
-                    innings_pitched = EXCLUDED.innings_pitched,
-                    innings_outs = EXCLUDED.innings_outs,
-                    hits_allowed = EXCLUDED.hits_allowed,
-                    runs_allowed = EXCLUDED.runs_allowed,
-                    earned_runs = EXCLUDED.earned_runs,
-                    home_runs_allowed = EXCLUDED.home_runs_allowed,
-                    walks_allowed = EXCLUDED.walks_allowed,
-                    intentional_walks = EXCLUDED.intentional_walks,
-                    hit_batters = EXCLUDED.hit_batters,
-                    strikeouts = EXCLUDED.strikeouts,
-                    wild_pitches = EXCLUDED.wild_pitches,
-                    balks = EXCLUDED.balks,
-                    era = EXCLUDED.era,
-                    whip = EXCLUDED.whip,
-                    fip = EXCLUDED.fip,
-                    k_per_nine = EXCLUDED.k_per_nine,
-                    bb_per_nine = EXCLUDED.bb_per_nine,
-                    kbb = EXCLUDED.kbb,
-                    complete_games = EXCLUDED.complete_games,
-                    shutouts = EXCLUDED.shutouts,
-                    quality_starts = EXCLUDED.quality_starts,
-                    blown_saves = EXCLUDED.blown_saves,
-                    tbf = EXCLUDED.tbf,
-                    np = EXCLUDED.np,
-                    avg_against = EXCLUDED.avg_against,
-                    doubles_allowed = EXCLUDED.doubles_allowed,
-                    triples_allowed = EXCLUDED.triples_allowed,
-                    sacrifices_allowed = EXCLUDED.sacrifices_allowed,
-                    sacrifice_flies_allowed = EXCLUDED.sacrifice_flies_allowed,
-                    extra_stats = EXCLUDED.extra_stats,
-                    updated_at = NOW()
-            """)
-            
-            # 데이터 준비
-            params = {
+        batch_size = 500
+        values_list = []
+        batch_now = None
+        for data in query.yield_per(batch_size):
+            if not values_list:
+                batch_now = datetime.now()
+            values_list.append({
                 'player_id': data.player_id,
                 'season': data.season,
                 'league': data.league,
@@ -194,81 +135,44 @@ class SupabaseSync:
                 'triples_allowed': data.triples_allowed,
                 'sacrifices_allowed': data.sacrifices_allowed,
                 'sacrifice_flies_allowed': data.sacrifice_flies_allowed,
-                'extra_stats': json.dumps(data.extra_stats) if data.extra_stats else None
-            }
-            
-            # UPSERT 실행
-            self.supabase_session.execute(upsert_sql, params)
-            synced += 1
-            
-            if synced % 10 == 0:
-                print(f"   📝 {synced}건 동기화 중...")
-        
-        self.supabase_session.commit()
+                'extra_stats': json.dumps(data.extra_stats) if data.extra_stats else None,
+                'created_at': batch_now,
+                'updated_at': batch_now,
+            })
+
+            if len(values_list) >= batch_size:
+                self._upsert_pitching_batch(values_list)
+                synced += len(values_list)
+                values_list = []
+                batch_now = None
+                if synced % 1000 == 0 or synced == total:
+                    print(f"   📝 {synced}/{total}건 동기화 중...")
+
+        if values_list:
+            self._upsert_pitching_batch(values_list)
+            synced += len(values_list)
+            print(f"   📝 {synced}/{total}건 동기화 중...")
+
         print(f"✅ Supabase 투수 데이터 동기화 완료: {synced}건")
         return synced
 
     def sync_batting_data(self) -> int:
         """타자 데이터를 Supabase로 동기화"""
-        batting_data = self.sqlite_session.query(PlayerSeasonBatting).all()
+        query = self.sqlite_session.query(PlayerSeasonBatting)
+        total = query.count()
         
-        if not batting_data:
+        if total == 0:
             print("ℹ️ 동기화할 타자 데이터가 없습니다.")
             return 0
         
         synced = 0
-        
-        for data in batting_data:
-            # UPSERT 쿼리 직접 실행 (PostgreSQL)
-            upsert_sql = text("""
-                INSERT INTO player_season_batting (
-                    player_id, season, league, level, source, team_code,
-                    games, plate_appearances, at_bats, runs, hits, doubles,
-                    triples, home_runs, rbi, walks, intentional_walks, hbp,
-                    strikeouts, stolen_bases, caught_stealing, sacrifice_hits,
-                    sacrifice_flies, gdp, avg, obp, slg, ops, iso, babip,
-                    extra_stats, created_at, updated_at
-                ) VALUES (
-                    :player_id, :season, :league, :level, :source, :team_code,
-                    :games, :plate_appearances, :at_bats, :runs, :hits, :doubles,
-                    :triples, :home_runs, :rbi, :walks, :intentional_walks, :hbp,
-                    :strikeouts, :stolen_bases, :caught_stealing, :sacrifice_hits,
-                    :sacrifice_flies, :gdp, :avg, :obp, :slg, :ops, :iso, :babip,
-                    :extra_stats, NOW(), NOW()
-                )
-                ON CONFLICT (player_id, season, league, level) DO UPDATE SET
-                    source = EXCLUDED.source,
-                    team_code = EXCLUDED.team_code,
-                    games = EXCLUDED.games,
-                    plate_appearances = EXCLUDED.plate_appearances,
-                    at_bats = EXCLUDED.at_bats,
-                    runs = EXCLUDED.runs,
-                    hits = EXCLUDED.hits,
-                    doubles = EXCLUDED.doubles,
-                    triples = EXCLUDED.triples,
-                    home_runs = EXCLUDED.home_runs,
-                    rbi = EXCLUDED.rbi,
-                    walks = EXCLUDED.walks,
-                    intentional_walks = EXCLUDED.intentional_walks,
-                    hbp = EXCLUDED.hbp,
-                    strikeouts = EXCLUDED.strikeouts,
-                    stolen_bases = EXCLUDED.stolen_bases,
-                    caught_stealing = EXCLUDED.caught_stealing,
-                    sacrifice_hits = EXCLUDED.sacrifice_hits,
-                    sacrifice_flies = EXCLUDED.sacrifice_flies,
-                    gdp = EXCLUDED.gdp,
-                    avg = EXCLUDED.avg,
-                    obp = EXCLUDED.obp,
-                    slg = EXCLUDED.slg,
-                    ops = EXCLUDED.ops,
-                    iso = EXCLUDED.iso,
-                    babip = EXCLUDED.babip,
-                    extra_stats = EXCLUDED.extra_stats,
-                    updated_at = NOW()
-            """)
-            
-            # 데이터 준비
-            params = {
+        batch_size = 500
+        values_list = []
+        batch_now = None
+        for data in query.yield_per(batch_size):
+            if not values_list:
+                batch_now = datetime.now()
+            values_list.append({
                 'player_id': data.player_id,
                 'season': data.season,
                 'league': data.league,
@@ -299,19 +203,137 @@ class SupabaseSync:
                 'ops': data.ops,
                 'iso': data.iso,
                 'babip': data.babip,
-                'extra_stats': json.dumps(data.extra_stats) if data.extra_stats else None
-            }
-            
-            # UPSERT 실행
-            self.supabase_session.execute(upsert_sql, params)
-            synced += 1
-            
-            if synced % 10 == 0:
-                print(f"   📝 {synced}건 동기화 중...")
-        
-        self.supabase_session.commit()
+                'extra_stats': json.dumps(data.extra_stats) if data.extra_stats else None,
+                'created_at': batch_now,
+                'updated_at': batch_now,
+            })
+
+            if len(values_list) >= batch_size:
+                self._upsert_batting_batch(values_list)
+                synced += len(values_list)
+                values_list = []
+                batch_now = None
+                if synced % 1000 == 0 or synced == total:
+                    print(f"   📝 {synced}/{total}건 동기화 중...")
+
+        if values_list:
+            self._upsert_batting_batch(values_list)
+            synced += len(values_list)
+            print(f"   📝 {synced}/{total}건 동기화 중...")
+
         print(f"✅ Supabase 타자 데이터 동기화 완료: {synced}건")
         return synced
+
+    def _bulk_copy_upsert(self, table_name: str, records: List[Dict[str, Any]], unique_cols: List[str]):
+        """
+        Perform bulk UPSERT using Postgres COPY + Temp Table.
+        Significantly faster than INSERT VALUES for large datasets.
+        """
+        if not records:
+            return
+
+        import csv
+        import io
+        
+        # Ensure we have a raw connection for COPY
+        connection = self.supabase_engine.raw_connection()
+        cursor = connection.cursor()
+
+        try:
+            # 1. Prepare Data
+            # Use 'NULL' string for None values to avoid ambiguity with empty strings
+            keys = list(records[0].keys())
+            processed_records = []
+            for r in records:
+                row = {}
+                for k in keys:
+                    val = r.get(k)
+                    # Handle specific types if needed, but CSV writer handles most
+                    # For None, we want a specific NULL marker
+                    if val is None:
+                        row[k] = None # DictWriter handles None as empty string by default
+                    else:
+                        row[k] = val
+                processed_records.append(row)
+
+            output = io.StringIO()
+            # Use NULL marker for CSV
+            writer = csv.DictWriter(output, fieldnames=keys, delimiter='\t', quoting=csv.QUOTE_MINIMAL)
+            # We don't write header
+            # To handle None -> \N or custom NULL, we assume empty string in CSV = NULL 
+            # if we configure COPY that way. 
+            # But empty string might be valid value for text columns.
+            # Let's use a distinct NULL string if possible or rely on standard CSV NULL handling.
+            # Actually, DictWriter writes '' for None. 
+            # So we set COPY WITH NULL '' (empty string matches null).
+            writer.writerows(processed_records)
+            output.seek(0)
+            
+            # 2. Create Temp Table matching target schema
+            # Use a random suffix to avoid collision if parallel (though sync is usually serial)
+            import random
+            suffix = random.randint(1000, 9999)
+            temp_table = f"temp_{table_name}_{int(datetime.now().timestamp())}_{suffix}"
+            
+            # Create temp table (structure only)
+            cursor.execute(f"CREATE TEMP TABLE {temp_table} (LIKE {table_name} INCLUDING DEFAULTS)")
+            
+            # 3. COPY data to Temp Table
+            # Note: We use CSV format, delimiter tab, NULL as empty string
+            columns_str = ", ".join(keys)
+            cursor.copy_expert(
+                f"COPY {temp_table} ({columns_str}) FROM STDIN WITH (FORMAT CSV, DELIMITER '\t', NULL '')", 
+                output
+            )
+            
+            # 4. UPSERT from Temp Table to Target Table
+            update_cols = [k for k in keys if k not in unique_cols and k != 'created_at']
+            
+            if not update_cols:
+                conflict_action = "DO NOTHING"
+            else:
+                set_clause = ", ".join([f"{k} = EXCLUDED.{k}" for k in update_cols])
+                # unique_cols usually form the conflict target
+                conflict_target = ", ".join(unique_cols)
+                conflict_action = f"ON CONFLICT ({conflict_target}) DO UPDATE SET {set_clause}"
+
+            cols_list = ", ".join(keys)
+            insert_sql = f"""
+                INSERT INTO {table_name} ({cols_list})
+                SELECT {cols_list} FROM {temp_table}
+                {conflict_action}
+            """
+            cursor.execute(insert_sql)
+            
+            # 5. Cleanup
+            cursor.execute(f"DROP TABLE {temp_table}")
+            connection.commit()
+            
+        except Exception as e:
+            connection.rollback()
+            print(f"❌ Batch COPY Error: {e}")
+            raise e
+        finally:
+            cursor.close()
+            connection.close()
+
+    def _upsert_pitching_batch(self, values_list: List[Dict[str, Any]]) -> None:
+        # Use COPY for bulk upsert
+        # Unique keys for PlayerSeasonPitching: player_id, season, league, level
+        self._bulk_copy_upsert(
+            "player_season_pitching", 
+            values_list, 
+            unique_cols=["player_id", "season", "league", "level"]
+        )
+
+    def _upsert_batting_batch(self, values_list: List[Dict[str, Any]]) -> None:
+        # Use COPY for bulk upsert
+        # Unique keys for PlayerSeasonBatting: player_id, season, league, level
+        self._bulk_copy_upsert(
+            "player_season_batting", 
+            values_list, 
+            unique_cols=["player_id", "season", "league", "level"]
+        )
 
     def verify_pitcher_sync(self, expected_count: int):
         """투수 데이터 동기화 결과 검증"""
@@ -725,6 +747,59 @@ class SupabaseSync:
         print(f"✅ Synced {synced} player identities to Supabase")
         return synced
 
+    def sync_embeddings(self) -> int:
+        """Sync embeddings from SQLite to Supabase"""
+        from src.models.kbo_embedding import KBOEmbedding
+        
+        # Read from SQLite
+        embeddings = self.sqlite_session.query(KBOEmbedding).all()
+        synced = 0
+        
+        print(f"INFO: Found {len(embeddings)} embeddings to sync.")
+        
+        batch_size = 500
+        for i in range(0, len(embeddings), batch_size):
+            batch = embeddings[i:i+batch_size]
+            values_list = []
+            
+            for em in batch:
+                data = {
+                    'table_name': em.table_name,
+                    'record_id': em.record_id,
+                    'content': em.content,
+                    'vector_data': em.vector_data, # Hopefully maps to vector type or JSON
+                    'metadata_json': em.metadata_json,
+                    'created_at': datetime.now(),
+                    'updated_at': datetime.now()
+                }
+                values_list.append(data)
+            
+            if not values_list:
+                continue
+                
+            stmt = pg_insert(KBOEmbedding).values(values_list)
+            
+            update_dict = {
+                'content': stmt.excluded.content,
+                'vector_data': stmt.excluded.vector_data,
+                'metadata_json': stmt.excluded.metadata_json,
+                'updated_at': stmt.excluded.updated_at
+            }
+            
+            # Use unique constraint on (table_name, record_id)
+            stmt = stmt.on_conflict_do_update(
+                constraint='uq_embedding_source',
+                set_=update_dict
+            )
+            
+            self.supabase_session.execute(stmt)
+            self.supabase_session.commit()
+            synced += len(values_list)
+            print(f"   Synced batch {i // batch_size + 1} ({len(values_list)} records)")
+            
+        print(f"✅ Synced {synced} embeddings to Supabase")
+        return synced
+
 
     def _get_player_id_mapping(self) -> Dict[int, int]:
         """Get SQLite player_id → Supabase player_id mapping"""
@@ -1084,28 +1159,47 @@ class SupabaseSync:
             column("away_pitcher")
         )
 
-        query = self.sqlite_session.query(Game)
-        if limit:
-            query = query.limit(limit)
-
-        total_count = query.count()
+        base_query = self.sqlite_session.query(Game).order_by(Game.game_id)
+        total_count = base_query.count()
         if total_count == 0:
             return 0
-            
+
+        if limit:
+            total_count = min(total_count, limit)
         print(f"🚚 Syncing game table ({total_count} rows) in batches...")
-        
+
         synced = 0
         batch_size = 500
-        
-        # Define Columns for Update (excluding PK)
-        update_columns = ["game_date", "home_team", "away_team", "stadium", 
-                          "home_score", "away_score", "winning_team", "winning_score", 
-                          "season_id", "home_pitcher", "away_pitcher"]
+        update_columns = [
+            "game_date",
+            "home_team",
+            "away_team",
+            "stadium",
+            "home_score",
+            "away_score",
+            "winning_team",
+            "winning_score",
+            "season_id",
+            "home_pitcher",
+            "away_pitcher",
+        ]
 
-        for offset in range(0, total_count, batch_size):
-            games = query.offset(offset).limit(batch_size).all()
+        last_game_id = None
+        remaining = total_count
+
+        while True:
+            query = base_query
+            if last_game_id:
+                query = query.filter(Game.game_id > last_game_id)
+            if limit:
+                query = query.limit(min(batch_size, remaining))
+            else:
+                query = query.limit(batch_size)
+            games = query.all()
+            if not games:
+                break
+
             values_list = []
-            
             for g in games:
                 data = {
                     'game_id': g.game_id,
@@ -1122,29 +1216,25 @@ class SupabaseSync:
                     'away_pitcher': g.away_pitcher,
                 }
                 values_list.append(data)
-                
-            if not values_list:
-                continue
-                
+
             try:
                 stmt = pg_insert(game_table).values(values_list)
                 update_dict = {k: stmt.excluded[k] for k in update_columns}
-                
-                # Check if updated_at exists? For now, omit it to be safe as per user report of 'nothing changing'
-                # If we omit it, the rows ARE updated but the timestamp remains old if it exists. 
-                # This is better than failing completely.
-                
                 stmt = stmt.on_conflict_do_update(
                     index_elements=['game_id'],
                     set_=update_dict
                 )
-                
                 self.supabase_session.execute(stmt)
                 self.supabase_session.commit()
                 synced += len(values_list)
+                last_game_id = games[-1].game_id
+                if limit:
+                    remaining -= len(values_list)
+                    if remaining <= 0:
+                        break
             except Exception as e:
                 self.supabase_session.rollback()
-                print(f"❌ Error syncing games batch at offset {offset}: {e}")
+                print(f"❌ Error syncing games batch after {last_game_id}: {e}")
 
         print(f"✅ Synced {synced} games to Supabase")
         return synced
@@ -1332,7 +1422,14 @@ class SupabaseSync:
         # 7. Game Summary (New)
         results['summary'] = self._sync_simple_table(
             GameSummary,
-            ['game_id', 'summary_type', 'detail_text'],
+            ['game_id', 'summary_type', 'player_name', 'detail_text'],
+            exclude_cols=['id', 'created_at']
+        )
+
+        # 8. Box Score (New)
+        results['box_score'] = self._sync_simple_table(
+            BoxScore,
+            ['game_id'],
             exclude_cols=['id', 'created_at']
         )
         
@@ -1347,7 +1444,6 @@ class SupabaseSync:
         # Get columns to sync
         columns = [c.key for c in model.__table__.columns if c.key not in exclude_cols and c.key not in ('created_at', 'updated_at')]
         
-        # Query total count
         total_count = self.sqlite_session.query(model).count()
         if total_count == 0:
             print(f"ℹ️  No records for {model.__tablename__}")
@@ -1357,33 +1453,72 @@ class SupabaseSync:
         
         synced = 0
         batch_size = 1000
-        
-        for offset in range(0, total_count, batch_size):
-            rows = self.sqlite_session.query(model).offset(offset).limit(batch_size).all()
+        pk_cols = list(model.__table__.primary_key.columns)
+        use_keyset = bool(pk_cols)
+
+        if not use_keyset:
+            for offset in range(0, total_count, batch_size):
+                rows = self.sqlite_session.query(model).offset(offset).limit(batch_size).all()
+                if not rows:
+                    break
+                values_list = []
+                for row in rows:
+                    data = {c: getattr(row, c) for c in columns}
+                    for k, v in data.items():
+                        if isinstance(v, (dict, list)):
+                            data[k] = v
+                    data['updated_at'] = datetime.now()
+                    values_list.append(data)
+
+                try:
+                    stmt = pg_insert(model).values(values_list)
+                    update_dict = {c: stmt.excluded[c] for c in columns if c not in conflict_keys}
+                    update_dict['updated_at'] = stmt.excluded.updated_at
+                    stmt = stmt.on_conflict_do_update(
+                        index_elements=conflict_keys,
+                        set_=update_dict
+                    )
+                    self.supabase_session.execute(stmt)
+                    self.supabase_session.commit()
+                    synced += len(values_list)
+                    if synced % 5000 == 0 or synced == total_count:
+                        print(f"   Synced {synced}/{total_count} rows...")
+                except Exception as e:
+                    self.supabase_session.rollback()
+                    print(f"❌ Error syncing {model.__tablename__} batch at offset {offset}: {e}")
+            return synced
+
+        last_key = None
+        while True:
+            query = self.sqlite_session.query(model).order_by(*pk_cols)
+            if last_key is not None:
+                if len(pk_cols) == 1:
+                    query = query.filter(pk_cols[0] > last_key)
+                else:
+                    query = query.filter(tuple_(*pk_cols) > last_key)
+            rows = query.limit(batch_size).all()
+            if not rows:
+                break
+
             values_list = []
-            
             for row in rows:
                 data = {c: getattr(row, c) for c in columns}
-                # Handle JSON serialization
                 for k, v in data.items():
                     if isinstance(v, (dict, list)):
-                        data[k] = v # pg_insert handles dict automatically if column is JSONB
+                        data[k] = v
                 data['updated_at'] = datetime.now()
                 values_list.append(data)
-                
-            if not values_list:
-                continue
-                
+
             try:
                 stmt = pg_insert(model).values(values_list)
                 update_dict = {c: stmt.excluded[c] for c in columns if c not in conflict_keys}
                 update_dict['updated_at'] = stmt.excluded.updated_at
-                
+
                 stmt = stmt.on_conflict_do_update(
                     index_elements=conflict_keys,
                     set_=update_dict
                 )
-                
+
                 self.supabase_session.execute(stmt)
                 self.supabase_session.commit()
                 synced += len(values_list)
@@ -1391,12 +1526,63 @@ class SupabaseSync:
                     print(f"   Synced {synced}/{total_count} rows...")
             except Exception as e:
                 self.supabase_session.rollback()
-                print(f"❌ Error syncing {model.__tablename__} batch at offset {offset}: {e}")
-                # Fallback to one-by-one for this batch if needed? No, let's keep it simple for now.
+                print(f"❌ Error syncing {model.__tablename__} batch at {synced}: {e}")
+
+            if len(pk_cols) == 1:
+                last_key = getattr(rows[-1], pk_cols[0].key)
+            else:
+                last_key = tuple(getattr(rows[-1], col.key) for col in pk_cols)
 
         return synced
 
+
+    def sync_awards(self) -> int:
+        """Sync awards from SQLite to Supabase"""
+        # Ensure table exists
+        try:
+            migration_path = Path("migrations/supabase/019_create_awards.sql")
+            if migration_path.exists():
+                sql = migration_path.read_text()
+                self.supabase_session.execute(text(sql))
+                self.supabase_session.commit()
+                print("✅ Applied awards migration")
+        except Exception as e:
+            print(f"⚠️ Failed to apply migration: {e}")
+            self.supabase_session.rollback()
+
+        awards = self.sqlite_session.query(Award).all()
+        synced = 0
+        if not awards:
+            print("ℹ️ No awards data to sync.")
+            return 0
+
+        for award in awards:
+            data = {
+                'year': award.year,
+                'award_type': award.award_type,
+                'category': award.category,
+                'player_name': award.player_name,
+                'team_name': award.team_name,
+                'created_at': datetime.now(),
+                'updated_at': datetime.now()
+            }
+            stmt = pg_insert(Award).values(**data)
+            update_dict = {
+                'updated_at': stmt.excluded.updated_at
+            }
+            stmt = stmt.on_conflict_do_update(
+                constraint='uq_award_record',
+                set_=update_dict
+            )
+            self.supabase_session.execute(stmt)
+            synced += 1
+
+        self.supabase_session.commit()
+        print(f"✅ Synced {synced} awards to Supabase")
+        return synced
+
     def close(self):
+
         """Close Supabase session"""
         self.supabase_session.close()
         self.supabase_engine.dispose()
@@ -1480,4 +1666,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

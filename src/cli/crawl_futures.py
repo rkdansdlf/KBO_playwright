@@ -19,6 +19,7 @@ from src.repositories.player_repository import PlayerRepository
 from src.repositories.save_futures_batting import save_futures_batting
 from src.parsers.player_profile_parser import PlayerProfileParsed
 from src.utils.safe_print import safe_print as print
+from src.utils.playwright_pool import AsyncPlaywrightPool
 
 
 async def gather_active_player_ids(season_year: int, delay: float) -> Set[str]:
@@ -42,6 +43,7 @@ async def process_player(
     player_id: str,
     repository: PlayerRepository,
     delay: float,
+    pool,
 ) -> tuple[str, int]:
     """
     단일 선수의 퓨처스리그 기록을 크롤링하고 데이터베이스에 저장합니다.
@@ -53,7 +55,7 @@ async def process_player(
     profile_url = f"https://www.koreabaseball.com/Futures/Player/HitterTotal.aspx?playerId={player_id}"
 
     # 데이터 크롤링 및 파싱
-    rows = await fetch_and_parse_futures_batting(player_id, profile_url)
+    rows = await fetch_and_parse_futures_batting(player_id, profile_url, pool=pool)
 
     if not rows:
         return (player_id, 0)
@@ -101,6 +103,10 @@ async def crawl_futures(args: argparse.Namespace) -> None:
     print(f"Processing {len(player_ids)} players...\n")
 
     repository = PlayerRepository()
+    pool = AsyncPlaywrightPool(
+        max_pages=args.concurrency,
+        context_kwargs={"locale": "ko-KR"},
+    )
     semaphore = asyncio.Semaphore(args.concurrency)  # 동시 요청 수 제어
 
     results = []
@@ -109,7 +115,7 @@ async def crawl_futures(args: argparse.Namespace) -> None:
     async def runner(pid: str):
         async with semaphore:
             try:
-                result = await process_player(pid, repository, args.delay)
+                result = await process_player(pid, repository, args.delay, pool)
                 results.append(result)
 
                 player_id, saved = result
@@ -122,7 +128,8 @@ async def crawl_futures(args: argparse.Namespace) -> None:
                 errors.append((pid, str(exc)))
                 print(f"[ERROR] {pid}: {exc}")
 
-    await asyncio.gather(*(runner(pid) for pid in sorted(player_ids)))
+    async with pool:
+        await asyncio.gather(*(runner(pid) for pid in sorted(player_ids)))
 
     # 3단계: 결과 요약
     print(f"\n=== Summary ===")

@@ -13,6 +13,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(
 
 from playwright.sync_api import sync_playwright, Page
 from src.repositories.save_kbo_batting import save_kbo_batting_batch
+from src.utils.playwright_blocking import install_sync_resource_blocking
 
 def safe_parse_number(value_str: str, data_type: type) -> Optional[Union[int, float]]:
     """안전한 숫자 파싱 (0값 보존)"""
@@ -260,6 +261,7 @@ def main():
     with sync_playwright() as playwright:
         browser = playwright.chromium.launch(headless=False)
         page = browser.new_page()
+        install_sync_resource_blocking(page)
         
         try:
             # BB 헤더 Basic2 데이터 수집

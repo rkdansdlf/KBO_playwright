@@ -21,5 +21,10 @@ tenacity>=8.2.0
 # Testing
 pytest>=7.4.0
 
+# AI / Embeddings
+openai>=1.12.0
+numpy>=1.26.0
+tiktoken>=0.6.0  # Recommended for token counting
+
 # 설치 후 반드시 실행:
 # playwright install chromium

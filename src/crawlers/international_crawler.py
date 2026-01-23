@@ -5,6 +5,8 @@ from datetime import datetime
 from typing import List, Dict, Optional
 from playwright.async_api import async_playwright, Page, Locator
 
+from src.utils.playwright_blocking import install_async_resource_blocking
+
 from src.utils.team_codes import team_code_from_game_id_segment, resolve_team_code
 from src.models.game import Game
 
@@ -18,13 +20,18 @@ class InternationalScheduleCrawler:
         self.browser = None
         self.page = None
         self.playwright = None
+        self.context = None
 
     async def start_browser(self):
         self.playwright = await async_playwright().start()
         self.browser = await self.playwright.chromium.launch(headless=True)
-        self.page = await self.browser.new_page()
+        self.context = await self.browser.new_context()
+        await install_async_resource_blocking(self.context)
+        self.page = await self.context.new_page()
 
     async def close(self):
+        if self.context:
+            await self.context.close()
         if self.browser:
             await self.browser.close()
         if self.playwright:
@@ -143,4 +150,3 @@ class InternationalScheduleCrawler:
             "dh": 0,
             "series_id": 90, # Custom International ID
         }
-

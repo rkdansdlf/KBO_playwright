@@ -9,32 +9,39 @@ import asyncio
 from typing import Dict, List, Any, Optional
 from datetime import datetime, date
 
-from playwright.async_api import async_playwright, Page, TimeoutError
+from playwright.async_api import Page, TimeoutError
 
 from src.utils.safe_print import safe_print as print
+from src.utils.playwright_pool import AsyncPlaywrightPool
 
 class PlayerMovementCrawler:
     """Crawl player status changes (Trade, FA, Waiver, etc.)."""
 
-    def __init__(self, request_delay: float = 1.0):
+    def __init__(self, request_delay: float = 1.0, pool: Optional[AsyncPlaywrightPool] = None):
         self.base_url = "https://www.koreabaseball.com/Player/Trade.aspx"
         self.request_delay = request_delay
+        self.pool = pool
 
     async def crawl_years(self, start_year: int, end_year: int) -> List[Dict[str, Any]]:
         """Crawl data for a range of years."""
         results = []
-        async with async_playwright() as p:
-            browser = await p.chromium.launch(headless=True)
-            page = await browser.new_page()
-            
-            # Initial load
-            await page.goto(self.base_url, wait_until="networkidle")
-            
-            for year in range(start_year, end_year + 1):
-                year_data = await self._crawl_year(page, year)
-                results.extend(year_data)
-                
-            await browser.close()
+        pool = self.pool or AsyncPlaywrightPool(max_pages=1)
+        owns_pool = self.pool is None
+        await pool.start()
+        try:
+            page = await pool.acquire()
+            try:
+                # Initial load
+                await page.goto(self.base_url, wait_until="networkidle")
+
+                for year in range(start_year, end_year + 1):
+                    year_data = await self._crawl_year(page, year)
+                    results.extend(year_data)
+            finally:
+                await pool.release(page)
+        finally:
+            if owns_pool:
+                await pool.close()
         return results
 
     async def _crawl_year(self, page: Page, year: int) -> List[Dict[str, Any]]:

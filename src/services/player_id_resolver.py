@@ -17,6 +17,34 @@ class PlayerIdResolver:
         self.session = session
         self._cache = {}
 
+    def preload_season_index(self, season: int) -> None:
+        """
+        Preload all player mappings for a given season into cache to avoid N+1 queries.
+        """
+        print(f"🔄 Preloading player index for season {season}...")
+        
+        # 1. Batters
+        stmt = select(PlayerBasic.name, PlayerSeasonBatting.team_code, PlayerSeasonBatting.player_id)\
+            .join(PlayerBasic, PlayerSeasonBatting.player_id == PlayerBasic.player_id)\
+            .where(PlayerSeasonBatting.season == season)
+        
+        batters = self.session.execute(stmt).fetchall()
+        for name, team, pid in batters:
+            key = f"{name}_{team}_{season}"
+            self._cache[key] = pid
+            
+        # 2. Pitchers 
+        stmt = select(PlayerBasic.name, PlayerSeasonPitching.team_code, PlayerSeasonPitching.player_id)\
+            .join(PlayerBasic, PlayerSeasonPitching.player_id == PlayerBasic.player_id)\
+            .where(PlayerSeasonPitching.season == season)
+            
+        pitchers = self.session.execute(stmt).fetchall()
+        for name, team, pid in pitchers:
+            key = f"{name}_{team}_{season}"
+            self._cache[key] = pid
+            
+        print(f"✅ Preloaded {len(batters) + len(pitchers)} mappings.")
+
     def resolve_id(self, player_name: str, team_code: str, season: int) -> Optional[int]:
         """
         Resolve player_id by Name, Team, and Season.

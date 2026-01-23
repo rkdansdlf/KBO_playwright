@@ -27,7 +27,7 @@ async def run_pipeline(args: argparse.Namespace):
 
     detail_crawler = GameDetailCrawler(request_delay=args.delay)
     inputs = [{"game_id": g["game_id"], "game_date": g["game_date"]} for g in games]
-    details = await detail_crawler.crawl_games(inputs)
+    details = await detail_crawler.crawl_games(inputs, concurrency=args.concurrency)
 
     relay_crawler = RelayCrawler(request_delay=args.delay)
     success_count = 0
@@ -64,6 +64,7 @@ def main(argv: Sequence[str] | None = None) -> None:
     parser.add_argument("--limit", type=int, help="Limit number of games for testing")
     parser.add_argument("--relay", action="store_true", help="Include Play-by-Play data")
     parser.add_argument("--delay", type=float, default=1.0, help="Request delay")
+    parser.add_argument("--concurrency", type=int, default=None, help="Max concurrent games")
     args = parser.parse_args(argv)
     asyncio.run(run_pipeline(args))
 

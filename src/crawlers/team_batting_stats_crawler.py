@@ -13,6 +13,7 @@ from playwright.sync_api import sync_playwright, Page
 from src.repositories.team_stats_repository import TeamSeasonBattingRepository
 from src.utils.team_mapping import get_team_mapping_for_year
 from src.utils.request_policy import RequestPolicy
+from src.utils.playwright_blocking import install_sync_resource_blocking
 
 TEAM_BATTING_URLS = [
     "https://www.koreabaseball.com/Record/Team/Hitter/Basic.aspx",
@@ -104,6 +105,7 @@ class TeamBattingStatsCrawler:
         with sync_playwright() as p:
             browser = p.chromium.launch(headless=headless)
             context = browser.new_context(**self.policy.build_context_kwargs(locale="ko-KR"))
+            install_sync_resource_blocking(context)
             page = context.new_page()
             for url in TEAM_BATTING_URLS:
                 try:
