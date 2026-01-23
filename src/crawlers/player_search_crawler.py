@@ -13,7 +13,9 @@ from datetime import datetime, date as date_type
 from typing import List, Optional, Set
 from urllib.parse import urlparse, parse_qs
 
-from playwright.async_api import Locator, Page, async_playwright
+from playwright.async_api import Locator, Page
+
+from src.utils.playwright_pool import AsyncPlaywrightPool
 from src.utils.player_classification import classify_player, PlayerCategory
 from src.services.player_status_confirmer import PlayerStatusConfirmer
 
@@ -145,60 +147,59 @@ async def _collect_page_rows(page: Page) -> List[PlayerRow]:
     5 = 체격 (키/몸무게)
     6 = 출신교
     """
-    rows = page.locator(TABLE_ROWS)
-    count = await rows.count()
     results: List[PlayerRow] = []
 
-    for i in range(count):
-        r = rows.nth(i)
-        tds = r.locator("td")
-        tdc = await tds.count()
+    payload = await page.evaluate(
+        """
+        (rowsSelector) => {
+            const rows = Array.from(document.querySelectorAll(rowsSelector));
+            return rows.map((row) => {
+                const cells = Array.from(row.querySelectorAll('td')).map(td => td.innerText.trim());
+                const link = row.querySelector('td:nth-child(2) a');
+                return {
+                    cells,
+                    linkText: link ? link.innerText.trim() : null,
+                    linkHref: link ? link.getAttribute('href') : null,
+                };
+            });
+        }
+        """,
+        TABLE_ROWS,
+    )
 
-        if tdc < 7:
+    for row in payload or []:
+        cells = row.get("cells") or []
+        if len(cells) < 7:
             continue
 
-        # Column 0: Uniform number
-        uniform_no = (await tds.nth(0).inner_text()).strip() or None
-
-        # Column 1: Player name + link
-        name_el = tds.nth(1).locator("a")
-        href = await name_el.get_attribute("href")
-        name = (await name_el.inner_text()).strip()
+        uniform_no = cells[0] or None
+        name = row.get("linkText") or (cells[1] if len(cells) > 1 else None)
+        href = row.get("linkHref")
         player_id = _extract_player_id(href)
-
-        if player_id is None:
+        if player_id is None or not name:
             continue
 
-        # Column 2: Team
-        team = (await tds.nth(2).inner_text()).strip() or None
+        team = cells[2] if len(cells) > 2 else None
+        position = cells[3] if len(cells) > 3 else None
+        birth = cells[4] if len(cells) > 4 else None
+        body = cells[5] if len(cells) > 5 else ""
+        career = cells[6] if len(cells) > 6 else None
 
-        # Column 3: Position
-        position = (await tds.nth(3).inner_text()).strip() or None
-
-        # Column 4: Birth date
-        birth = (await tds.nth(4).inner_text()).strip() or None
-
-        # Column 5: Body (height/weight)
-        body = (await tds.nth(5).inner_text()).strip() or ""
-
-        # Column 6: Career (school/origin)
-        career = (await tds.nth(6).inner_text()).strip() or None
-
-        # Parse height and weight
         h, w = _parse_height_weight(body)
 
-        # Normalize "-" to None
-        results.append(PlayerRow(
-            player_id=player_id,
-            uniform_no=uniform_no if uniform_no != "-" else None,
-            name=name,
-            team=team if team != "-" else None,
-            position=position if position != "-" else None,
-            birth_date=birth if birth and birth != "-" else None,
-            height_cm=h,
-            weight_kg=w,
-            career=career if career != "-" else None
-        ))
+        results.append(
+            PlayerRow(
+                player_id=player_id,
+                uniform_no=uniform_no if uniform_no != "-" else None,
+                name=name,
+                team=team if team != "-" else None,
+                position=position if position != "-" else None,
+                birth_date=birth if birth and birth != "-" else None,
+                height_cm=h,
+                weight_kg=w,
+                career=career if career != "-" else None,
+            )
+        )
 
     return results
 
@@ -546,6 +547,7 @@ async def crawl_all_players(
     headless: bool = False,
     slow_mo=200,
     request_delay: float = REQUEST_DELAY_SEC,
+    pool: Optional[AsyncPlaywrightPool] = None,
 ) -> List[PlayerRow]:
     """
     Crawl all players from KBO search page, traversing all initial filters and pagination.
@@ -558,11 +560,11 @@ async def crawl_all_players(
     Returns:
         List of PlayerRow objects
     """
-    async with async_playwright() as p:
-        browser = await p.chromium.launch(headless=headless)
-        ctx = await browser.new_context()
-        page = await ctx.new_page()
-
+    active_pool = pool or AsyncPlaywrightPool(max_pages=1, headless=headless)
+    owns_pool = pool is None
+    await active_pool.start()
+    try:
+        page = await active_pool.acquire()
         try:
             # 1. Navigate to search page
             await page.goto(SEARCH_URL, wait_until="domcontentloaded")
@@ -626,10 +628,11 @@ async def crawl_all_players(
                     index += 1
 
             return all_rows
-
         finally:
-            await ctx.close()
-            await browser.close()
+            await active_pool.release(page)
+    finally:
+        if owns_pool:
+            await active_pool.close()
 
 
 def parse_birth_date(raw: Optional[str]) -> Optional[date_type]:

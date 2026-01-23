@@ -6,7 +6,7 @@ import asyncio
 import re
 from typing import List, Dict, Optional
 from bs4 import BeautifulSoup
-from playwright.async_api import async_playwright
+from src.utils.playwright_pool import AsyncPlaywrightPool
 
 FUTURES_KEYS = [
     "season", "AVG", "G", "AB", "R", "H", "2B", "3B", "HR", "RBI", "SB", "BB", "HBP", "SO", "SLG", "OBP"
@@ -165,7 +165,11 @@ def _pick_futures_table(soup: BeautifulSoup):
     return None
 
 
-async def fetch_and_parse_futures_batting(player_id: str, profile_url: str) -> List[Dict]:
+async def fetch_and_parse_futures_batting(
+    player_id: str,
+    profile_url: str,
+    pool: Optional[AsyncPlaywrightPool] = None,
+) -> List[Dict]:
     """
     Fetch Futures batting stats from player profile page.
 
@@ -176,11 +180,11 @@ async def fetch_and_parse_futures_batting(player_id: str, profile_url: str) -> L
     Returns:
         List of dicts, each representing one season's stats
     """
-    async with async_playwright() as p:
-        br = await p.chromium.launch(headless=True)
-        context = await br.new_context(locale='ko-KR')
-        page = await context.new_page()
-
+    active_pool = pool or AsyncPlaywrightPool(max_pages=1, context_kwargs={"locale": "ko-KR"})
+    owns_pool = pool is None
+    await active_pool.start()
+    try:
+        page = await active_pool.acquire()
         try:
             await page.goto(profile_url, wait_until="networkidle", timeout=30000)
             await asyncio.sleep(1)  # Extra wait for dynamic content
@@ -196,7 +200,10 @@ async def fetch_and_parse_futures_batting(player_id: str, profile_url: str) -> L
 
             html = await page.content()
         finally:
-            await br.close()
+            await active_pool.release(page)
+    finally:
+        if owns_pool:
+            await active_pool.close()
 
     soup = BeautifulSoup(html, "lxml")
     table = _pick_futures_table(soup)

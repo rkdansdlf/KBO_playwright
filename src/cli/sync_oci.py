@@ -1,0 +1,203 @@
+"""로컬 SQLite 데이터베이스의 데이터를 원격 OCI/Postgres 데이터베이스와 동기화하는 스크립트.
+
+이 스크립트는 SQLAlchemy를 사용하여 두 데이터베이스 간의 데이터 이관을 수행합니다.
+테이블 간의 외래 키 제약 조건을 고려하여 정의된 `MODEL_ORDER` 순서에 따라 데이터를
+안전하게 복사합니다. `--truncate` 옵션을 사용하면 대상 테이블의 데이터를 삭제한 후
+새로 삽입할 수 있습니다.
+"""
+from __future__ import annotations
+
+import argparse
+import os
+from typing import Iterable, List, Type
+
+from dotenv import load_dotenv
+from sqlalchemy import delete
+from sqlalchemy.orm import Session, sessionmaker
+
+from src.db.engine import create_engine_for_url
+from src.models.base import Base
+
+from src.models.player import PlayerSeasonBatting, PlayerSeasonPitching, PlayerBasic
+from src.models.team import Team
+from src.sync.oci_sync import OCISync
+from src.db.engine import SessionLocal
+
+
+# 외래 키 제약 조건을 고려한 모델 처리 순서
+MODEL_ORDER: List[Type] = [
+    # Team,  # Handled by specialized --teams sync due to JSON vs TEXT[] type mismatch
+    PlayerBasic,
+    PlayerSeasonBatting,
+    PlayerSeasonPitching,
+]
+
+
+def clone_row(instance: object, model: Type) -> object:
+    """SQLAlchemy 모델 인스턴스를 복제합니다."""
+    data = {col.key: getattr(instance, col.key) for col in model.__table__.columns}
+    return model(**data)
+
+
+def sync_databases(source_url: str, target_url: str, truncate: bool = False) -> None:
+    """원본 데이터베이스에서 대상 데이터베이스로 데이터를 동기화합니다."""
+    source_engine = create_engine_for_url(source_url, disable_sqlite_wal=True)
+    target_engine = create_engine_for_url(target_url, disable_sqlite_wal=True)
+
+    # 대상 데이터베이스에 테이블이 없으면 생성합니다.
+    try:
+        Base.metadata.create_all(bind=target_engine)
+    except Exception as e:
+        print(f"⚠️ Table creation failed (might already exist or schema issue): {e}")
+
+    SourceSession = sessionmaker(bind=source_engine, autoflush=False, autocommit=False)
+    TargetSession = sessionmaker(bind=target_engine, autoflush=False, autocommit=False)
+
+    with SourceSession() as src, TargetSession() as dst:
+        for model in MODEL_ORDER:
+            total = src.query(model).count()
+            if total == 0:
+                continue
+
+            # --truncate 옵션이 주어지면 대상 테이블의 데이터를 삭제합니다.
+            if truncate:
+                if model is Team:
+                    # NOTE: teams is a semi-static reference table. Do NOT truncate because
+                    # Supabase still has legacy tables (e.g., team_history) with FK references.
+                    # Always rely on UPSERT behavior for teams.
+                    print("   ⚠️  Skipping truncate for teams (reference table with legacy FKs)")
+                else:
+                    dst.execute(delete(model))
+                    dst.commit()
+
+            print(f"🚚 Syncing {model.__name__} ({total} rows)…")
+            batch_size = 500
+            offset = 0
+            pk_columns = list(model.__table__.primary_key.columns)
+            while offset < total:
+                query = src.query(model)
+                if pk_columns:
+                    query = query.order_by(*pk_columns)
+                rows = query.offset(offset).limit(batch_size).all()
+                clones = [clone_row(row, model) for row in rows]
+                for clone in clones:
+                    dst.merge(clone) # UPSERT 로직 수행
+                dst.commit()
+                offset += len(rows)
+        print("✅ Sync complete")
+
+
+def build_arg_parser() -> argparse.ArgumentParser:
+    """CLI 인자 파서를 생성합니다."""
+    parser = argparse.ArgumentParser(description="Sync local SQLite data to OCI/Postgres")
+    parser.add_argument(
+        "--source-url",
+        type=str,
+        default=os.getenv("SOURCE_DATABASE_URL", "sqlite:///./data/kbo_dev.db"),
+        help="원본 데이터베이스 URL (기본값: 로컬 SQLite)",
+    )
+    parser.add_argument(
+        "--target-url",
+        type=str,
+        default=os.getenv("OCI_DB_URL") or os.getenv("TARGET_DATABASE_URL"),
+        help="대상 데이터베이스 URL (OCI/Postgres)",
+    )
+    parser.add_argument(
+        "--truncate",
+        action="store_true",
+        help="데이터 삽입 전 대상 테이블의 모든 데이터를 삭제합니다.",
+    )
+    parser.add_argument(
+        "--teams",
+        action="store_true",
+        help="프랜차이즈 및 팀 정보를 동기화합니다.",
+    )
+    parser.add_argument(
+        "--game-details",
+        action="store_true",
+        help="경기 상세 데이터(박스스코어, 라인업, PBP 등)를 동기화합니다.",
+    )
+    parser.add_argument(
+        "--daily-roster",
+        action="store_true",
+        help="일별 1군 등록 현황(Daily Roster)을 동기화합니다.",
+    )
+    parser.add_argument(
+        "--player-movements",
+        action="store_true",
+        help="선수 이동 현황(Trade, FA 등)을 동기화합니다.",
+    )
+    parser.add_argument(
+        "--awards",
+        action="store_true",
+        help="수상 내역(Awards)을 동기화합니다.",
+    )
+    parser.add_argument(
+        "--embeddings",
+        action="store_true",
+        help="임베딩 데이터(Embeddings)를 동기화합니다.",
+    )
+    return parser
+
+
+def main(argv: Iterable[str] | None = None) -> None:
+    """스크립트의 메인 실행 함수."""
+    load_dotenv()
+    parser = build_arg_parser()
+    args = parser.parse_args(argv)
+
+    if not args.target_url:
+        raise SystemExit("TARGET_DATABASE_URL must be provided via flag or environment variable")
+
+    if args.game_details:
+        print("🚀 Syncing Game Details using specialized OCISync...")
+        with SessionLocal() as session:
+            syncer = OCISync(args.target_url, session)
+            syncer.sync_game_details()
+            print("✅ Game Details Sync Finished")
+
+    elif args.daily_roster:
+        print("🚀 Syncing Daily Rosters using specialized OCISync...")
+        with SessionLocal() as session:
+            syncer = OCISync(args.target_url, session)
+            synced = syncer.sync_daily_rosters()
+            print("✅ Daily Roster Sync Finished")
+
+    elif args.player_movements:
+        print("🚀 Syncing Player Movements using specialized OCISync...")
+        with SessionLocal() as session:
+            syncer = OCISync(args.target_url, session)
+            syncer.sync_player_movements()
+            print("✅ Player Movement Sync Finished")
+            
+    elif args.teams:
+        print("🚀 Syncing Franchises & Teams using specialized OCISync...")
+        with SessionLocal() as session:
+            syncer = OCISync(args.target_url, session)
+            syncer.sync_franchises()
+            syncer.sync_teams()
+            syncer.sync_team_history()
+            syncer.sync_team_history()
+            print("✅ Team Data Sync Finished")
+
+    elif args.awards:
+        print("🚀 Syncing Awards using specialized OCISync...")
+        with SessionLocal() as session:
+            syncer = OCISync(args.target_url, session)
+            syncer.sync_awards()
+            print("✅ Awards Sync Finished")
+
+    elif args.embeddings:
+        print("🚀 Syncing Embeddings using specialized OCISync...")
+        with SessionLocal() as session:
+            syncer = OCISync(args.target_url, session)
+            syncer.sync_embeddings()
+            print("✅ Embeddings Sync Finished")
+
+        
+    else:
+        sync_databases(args.source_url, args.target_url, truncate=args.truncate)
+
+
+if __name__ == "__main__":  # pragma: no cover
+    main()

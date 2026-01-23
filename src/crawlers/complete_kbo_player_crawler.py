@@ -17,6 +17,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(
 from playwright.sync_api import sync_playwright, Page
 from src.repositories.save_futures_batting import save_futures_batting_stats
 from src.db.engine import create_engine_for_url
+from src.utils.playwright_blocking import install_sync_resource_blocking
 
 def safe_parse_number(value_str: str, data_type: type, allow_zero: bool = True) -> Optional[Union[int, float]]:
     """안전한 숫자 파싱 (0값 보존)"""
@@ -553,6 +554,7 @@ def main():
     with sync_playwright() as playwright:
         browser = playwright.chromium.launch(headless=False)
         page = browser.new_page()
+        install_sync_resource_blocking(page)
         
         try:
             total_saved = 0

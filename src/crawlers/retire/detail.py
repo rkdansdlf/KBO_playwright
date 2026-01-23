@@ -6,7 +6,9 @@ from __future__ import annotations
 import asyncio
 from typing import Any, Dict, List, Optional
 
-from playwright.async_api import async_playwright, Page
+from playwright.async_api import Page
+
+from src.utils.playwright_pool import AsyncPlaywrightPool
 
 
 class RetiredPlayerDetailCrawler:
@@ -15,21 +17,27 @@ class RetiredPlayerDetailCrawler:
     hitter_url = "https://www.koreabaseball.com/Record/Retire/Hitter.aspx"
     pitcher_url = "https://www.koreabaseball.com/Record/Retire/Pitcher.aspx"
 
-    def __init__(self, request_delay: float = 1.5):
+    def __init__(self, request_delay: float = 1.5, pool: Optional[AsyncPlaywrightPool] = None):
         self.request_delay = request_delay
+        self.pool = pool
 
     async def fetch_player(self, player_id: str) -> Dict[str, Any]:
         """
         Fetch hitter & pitcher pages for the given player ID.
         """
-        async with async_playwright() as p:
-            browser = await p.chromium.launch(headless=True)
-            page = await browser.new_page()
+        pool = self.pool or AsyncPlaywrightPool(max_pages=1)
+        owns_pool = self.pool is None
+        await pool.start()
+        try:
+            page = await pool.acquire()
             try:
                 hitter_payload = await self._fetch_page(page, self.hitter_url, player_id)
                 pitcher_payload = await self._fetch_page(page, self.pitcher_url, player_id)
             finally:
-                await browser.close()
+                await pool.release(page)
+        finally:
+            if owns_pool:
+                await pool.close()
 
         return {
             "player_id": player_id,
@@ -103,4 +111,3 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
-

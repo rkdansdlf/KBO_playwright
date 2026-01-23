@@ -12,6 +12,7 @@ sys.path.append(str(Path(__file__).parent.parent))
 from config.browser_config import get_browser_config
 import time
 from datetime import datetime
+from src.utils.playwright_blocking import install_sync_resource_blocking
 
 
 def crawl_all_fielding_stats(year=2025):
@@ -44,6 +45,7 @@ def crawl_all_fielding_stats(year=2025):
         browser_config = get_browser_config()
         browser = playwright.chromium.launch(**browser_config)
         page = browser.new_page()
+        install_sync_resource_blocking(page)
 
         # 포지션별 수비 랭킹 페이지
         url = 'https://www.koreabaseball.com/Record/Player/Defense/Basic.aspx'

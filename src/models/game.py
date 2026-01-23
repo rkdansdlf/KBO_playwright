@@ -52,6 +52,7 @@ class GameSummary(Base, TimestampMixin):
     id = Column(Integer, primary_key=True, autoincrement=True)
     game_id = Column(String(20), ForeignKey("game.game_id"), nullable=False)
     summary_type = Column(String(50))
+    player_id = Column(Integer, ForeignKey("player_basic.player_id"), nullable=True)
     player_name = Column(String(50))
     detail_text = Column(Text)
 

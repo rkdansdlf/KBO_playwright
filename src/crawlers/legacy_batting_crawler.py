@@ -12,6 +12,7 @@ from playwright.sync_api import sync_playwright, Page
 
 from src.repositories.safe_batting_repository import save_batting_stats_safe
 from src.utils.team_mapping import get_team_code, get_team_mapping_for_year
+from src.utils.playwright_blocking import install_sync_resource_blocking
 
 
 def get_series_mapping() -> Dict[str, Dict[str, str]]:
@@ -210,6 +211,7 @@ def crawl_legacy_batting_stats(year: int = 2000, series_key: str = 'regular',
         browser = playwright.chromium.launch(headless=headless)
         page = browser.new_page()
         page.set_default_timeout(30000)
+        install_sync_resource_blocking(page)
 
         try:
             # 타자 기록 페이지로 이동

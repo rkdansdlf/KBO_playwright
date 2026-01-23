@@ -4,26 +4,28 @@ from __future__ import annotations
 import asyncio
 from typing import Any, Dict, Optional, List
 
-from playwright.async_api import async_playwright, Page
+from playwright.async_api import Page
 from bs4 import BeautifulSoup
 
+from src.utils.playwright_pool import AsyncPlaywrightPool
 
 class FuturesProfileCrawler:
     hitter_profile_url = "https://www.koreabaseball.com/Futures/Player/HitterDetail.aspx"
     pitcher_profile_url = "https://www.koreabaseball.com/Futures/Player/PitcherDetail.aspx"
 
-    def __init__(self, request_delay: float = 1.5) -> None:
+    def __init__(self, request_delay: float = 1.5, pool: Optional[AsyncPlaywrightPool] = None) -> None:
         self.request_delay = request_delay
+        self.pool = pool
 
     async def fetch_player_futures(self, player_id: str) -> Dict[str, Any]:
         """Fetch futures profile data (tables + profile text) for a player."""
-        async with async_playwright() as p:
-            browser = await p.chromium.launch(headless=True)
-            context = await browser.new_context(locale='ko-KR')
-            page = await context.new_page()
+        pool = self.pool or AsyncPlaywrightPool(max_pages=1, context_kwargs={"locale": "ko-KR"})
+        owns_pool = self.pool is None
+        await pool.start()
+        try:
+            page = await pool.acquire()
             profile_text: Optional[str] = None
             tables: List[Dict[str, Any]] = []
-
             try:
                 payload = await self._scrape_profile(page, self.hitter_profile_url, player_id)
                 if payload:
@@ -35,7 +37,10 @@ class FuturesProfileCrawler:
                     profile_text = payload.get("profile_text") or profile_text
                     tables.extend(payload.get("tables", []))
             finally:
-                await browser.close()
+                await pool.release(page)
+        finally:
+            if owns_pool:
+                await pool.close()
 
         return {
             "player_id": player_id,

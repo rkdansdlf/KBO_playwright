@@ -11,6 +11,7 @@ sys.path.append(str(Path(__file__).parent.parent))
 from config.browser_config import get_browser_config
 import time
 from datetime import datetime
+from src.utils.playwright_blocking import install_sync_resource_blocking
 
 
 def crawl_baserunning_stats(year=2025, max_retries=3, timeout=60000):
@@ -32,6 +33,7 @@ def crawl_baserunning_stats(year=2025, max_retries=3, timeout=60000):
         browser = playwright.chromium.launch(**browser_config)
         page = browser.new_page()
         page.set_default_timeout(timeout)
+        install_sync_resource_blocking(page)
 
         url = 'https://www.koreabaseball.com/Record/Player/Runner/Basic.aspx'
 

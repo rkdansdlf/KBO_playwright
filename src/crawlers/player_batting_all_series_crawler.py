@@ -11,6 +11,8 @@ Usage:
     python -m src.crawlers.player_batting_all_series_crawler --year 2025 --series exhibition --save
 """
 import argparse
+import os
+import re
 import time
 from datetime import datetime
 from typing import Dict, List, Optional
@@ -19,6 +21,7 @@ from playwright.sync_api import sync_playwright, Page
 
 from src.repositories.safe_batting_repository import save_batting_stats_safe
 from src.utils.team_mapping import get_team_code, get_team_mapping_for_year
+from src.utils.playwright_blocking import install_sync_resource_blocking
 
 
 def get_team_code_mapping() -> Dict[str, str]:
@@ -102,199 +105,261 @@ def safe_parse_number(value_str: str, data_type: type, allow_zero: bool = True) 
         return None
 
 
-def parse_batting_stats_table(page: Page, series_key: str, year: int = 2025) -> List[Dict]:
+def _extract_rows_fast(page: Page, table_selector: str = "table") -> Optional[List[Dict[str, object]]]:
+    try:
+        payload = page.evaluate(
+            """
+            (selector) => {
+                const table = document.querySelector(selector);
+                if (!table) return null;
+                const body = table.tBodies && table.tBodies.length ? table.tBodies[0] : table;
+                const rows = Array.from(body.querySelectorAll('tr'));
+                return rows.map((row) => {
+                    const cells = Array.from(row.querySelectorAll('td')).map(td => (td.innerText || '').trim());
+                    const link = row.querySelector('td:nth-child(2) a');
+                    return {
+                        cells,
+                        linkText: link ? (link.innerText || '').trim() : null,
+                        linkHref: link ? link.getAttribute('href') : null,
+                    };
+                });
+            }
+            """,
+            table_selector,
+        )
+        return payload or []
+    except Exception:
+        return None
+
+
+def _extract_player_id_from_href(href: Optional[str]) -> Optional[int]:
+    if not href:
+        return None
+    match = re.search(r"playerId=(\d+)", href)
+    return int(match.group(1)) if match else None
+
+
+def _is_basic2_headers(headers: List[str]) -> bool:
+    basic2_indicators = ["BB", "볼넷", "IBB", "HBP", "SLG", "OBP", "OPS"]
+    combined = "".join(headers)
+    return any(indicator in combined for indicator in basic2_indicators)
+
+
+def _build_batting_data(
+    cells: List[str],
+    player_id: int,
+    player_name: str,
+    team_code: str,
+    series_key: str,
+    is_basic2: bool,
+) -> Dict:
+    def cell(idx: int) -> Optional[str]:
+        return cells[idx] if len(cells) > idx else None
+
+    if series_key == "regular":
+        if is_basic2:
+            return {
+                "player_id": player_id,
+                "player_name": player_name,
+                "team_code": team_code,
+                "avg": safe_parse_number(cell(3), float),
+                "walks": safe_parse_number(cell(4), int),
+                "intentional_walks": safe_parse_number(cell(5), int),
+                "hbp": safe_parse_number(cell(6), int),
+                "strikeouts": safe_parse_number(cell(7), int),
+                "gdp": safe_parse_number(cell(8), int),
+                "slg": safe_parse_number(cell(9), float),
+                "obp": safe_parse_number(cell(10), float),
+                "ops": safe_parse_number(cell(11), float),
+                "extra_stats": {
+                    "multi_hits": safe_parse_number(cell(12), int),
+                    "risp_avg": safe_parse_number(cell(13), float),
+                    "pinch_hit_avg": safe_parse_number(cell(14), float),
+                },
+            }
+        return {
+            "player_id": player_id,
+            "player_name": player_name,
+            "team_code": team_code,
+            "avg": safe_parse_number(cell(3), float),
+            "games": safe_parse_number(cell(4), int),
+            "plate_appearances": safe_parse_number(cell(5), int),
+            "at_bats": safe_parse_number(cell(6), int),
+            "runs": safe_parse_number(cell(7), int),
+            "hits": safe_parse_number(cell(8), int),
+            "doubles": safe_parse_number(cell(9), int),
+            "triples": safe_parse_number(cell(10), int),
+            "home_runs": safe_parse_number(cell(11), int),
+            "total_bases": safe_parse_number(cell(12), int),
+            "rbi": safe_parse_number(cell(13), int),
+            "sacrifice_hits": safe_parse_number(cell(14), int),
+            "sacrifice_flies": safe_parse_number(cell(15), int),
+        }
+
+    return {
+        "player_id": player_id,
+        "player_name": player_name,
+        "team_code": team_code,
+        "avg": safe_parse_number(cell(3), float),
+        "games": safe_parse_number(cell(4), int),
+        "plate_appearances": safe_parse_number(cell(5), int),
+        "at_bats": safe_parse_number(cell(6), int),
+        "hits": safe_parse_number(cell(7), int),
+        "doubles": safe_parse_number(cell(8), int),
+        "triples": safe_parse_number(cell(9), int),
+        "home_runs": safe_parse_number(cell(10), int),
+        "rbi": safe_parse_number(cell(11), int),
+        "stolen_bases": safe_parse_number(cell(12), int),
+        "caught_stealing": safe_parse_number(cell(13), int),
+        "walks": safe_parse_number(cell(14), int),
+        "hbp": safe_parse_number(cell(15), int),
+        "strikeouts": safe_parse_number(cell(16), int),
+        "gdp": safe_parse_number(cell(17), int),
+        "extra_stats": {"errors": safe_parse_number(cell(18), int)},
+    }
+
+
+def _parse_batting_stats_table_fast(page: Page, series_key: str, year: int = 2025) -> List[Dict]:
     """
-    현재 페이지의 타자 기록 테이블 파싱
-    
-    Args:
-        page: Playwright Page 객체
-        series_key: 시리즈 키 (regular, exhibition, etc.)
-        year: 크롤링 대상 년도 (팀 매핑용)
-    
-    Returns:
-        선수별 타격 기록 리스트
+    Parse batting table using JS extraction for reduced RPC.
     """
-    players_data = []
-    # 동적 팀 매핑 사용 (년도별 역대 팀 고려)
     team_mapping = get_team_mapping_for_year(year)
 
+    extraction_script = """
+    () => {
+        const rows = document.querySelectorAll('table tbody tr');
+        if (rows.length === 0) return null;
+
+        const headers = Array.from(document.querySelectorAll('table thead th')).map(th => th.innerText.trim());
+        const basic2_indicators = ['BB', '볼넷', 'IBB', 'HBP', 'SLG', 'OBP', 'OPS'];
+        const is_basic2 = basic2_indicators.some(ind => headers.join('').includes(ind));
+
+        const results = [];
+        rows.forEach(row => {
+            const cells = Array.from(row.querySelectorAll('td'));
+            if (cells.length < 10) return;
+
+            const nameLink = cells[1].querySelector('a');
+            if (!nameLink) return;
+
+            const playerName = nameLink.innerText.trim();
+            const href = nameLink.getAttribute('href');
+            const idMatch = href ? href.match(/playerId=(\d+)/) : null;
+            if (!idMatch) return;
+            const playerId = parseInt(idMatch[1], 10);
+
+            const teamName = cells[2].innerText.trim();
+            results.push({
+                player_id: playerId,
+                player_name: playerName,
+                team_name: teamName,
+                raw_cells: cells.map(c => c.innerText.trim()),
+            });
+        });
+        return { is_basic2, results };
+    }
+    """
+
     try:
-        # 테이블 찾기
+        js_result = page.evaluate(extraction_script)
+        if not js_result or not isinstance(js_result, dict) or not js_result.get("results"):
+            return []
+
+        extracted_rows = js_result["results"]
+        is_basic2 = js_result.get("is_basic2", False)
+
+        players_data = []
+        for row in extracted_rows:
+            player_id = row["player_id"]
+            player_name = row["player_name"]
+            team_name = row["team_name"]
+            cells = row["raw_cells"]
+
+            team_code = get_team_code(team_name, year)
+            if not team_code:
+                team_code = team_mapping.get(team_name, team_name)
+
+            batting_data = _build_batting_data(
+                cells=cells,
+                player_id=player_id,
+                player_name=player_name,
+                team_code=team_code,
+                series_key=series_key,
+                is_basic2=is_basic2,
+            )
+            players_data.append(batting_data)
+
+        return players_data
+    except Exception as exc:
+        print(f"❌ 테이블 파싱 오류 (JS): {exc}")
+        return []
+
+
+def _parse_batting_stats_table_legacy(page: Page, series_key: str, year: int = 2025) -> List[Dict]:
+    team_mapping = get_team_mapping_for_year(year)
+    try:
         table = page.query_selector("table")
         if not table:
-            print("⚠️ 기록 테이블을 찾을 수 없습니다.")
-            return players_data
+            return []
 
-        # 테이블 구조 확인
-        tbody = table.query_selector("tbody")
-        if tbody:
-            rows = tbody.query_selector_all("tr")
-        else:
-            rows = table.query_selector_all("tr")
-        
-        if len(rows) == 0:
-            print("⚠️ 테이블에 데이터 행이 없습니다.")
-            return players_data
-
-        print(f"🔍 {len(rows)}개 행 발견")
-
-        # 테이블 헤더 구조 확인 (디버깅)
         thead = table.query_selector("thead")
-        table_type = "Basic1"
-        if thead and series_key == 'regular':
+        headers = []
+        if thead:
             header_cells = thead.query_selector_all("th")
             headers = [cell.inner_text().strip() for cell in header_cells]
-            print(f"🔍 테이블 헤더: {headers}")
-            # Basic2 특징적인 헤더들이 있는지 확인
-            basic2_indicators = ['BB', '볼넷', 'IBB', 'HBP', 'SLG', 'OBP', 'OPS']
-            is_basic2_page = any(indicator in ''.join(headers) for indicator in basic2_indicators)
-            table_type = "Basic2" if is_basic2_page else "Basic1"
-            print(f"🔍 페이지 타입: {table_type}")
+        is_basic2 = _is_basic2_headers(headers) if headers else False
 
-        # 첫 번째 행의 컬럼 구조 확인 (디버깅)
-        if len(rows) > 0:
-            first_row_cells = rows[0].query_selector_all("td")
-            print(f"🔍 컬럼 수: {len(first_row_cells)}개")
-            print("🔍 첫 번째 행 각 셀 내용:")
-            for i, cell in enumerate(first_row_cells):
-                content = cell.inner_text().strip()
-                print(f"   [{i}]: '{content}'")
+        tbody = table.query_selector("tbody")
+        rows = tbody.query_selector_all("tr") if tbody else table.query_selector_all("tr")
+        if not rows:
+            return []
 
-        for row_idx, row in enumerate(rows):
-            cells = row.query_selector_all("td")
-            
-            if len(cells) < 10:  # 최소 필드 수 확인
+        players_data = []
+        for row in rows:
+            cell_nodes = row.query_selector_all("td")
+            if len(cell_nodes) < 10:
                 continue
 
-            try:
-                # 선수명과 선수 ID 추출
-                name_cell = cells[1]  # 선수명
-                name_link = name_cell.query_selector("a")
-                
-                if not name_link:
-                    continue
-                
-                player_name = name_link.inner_text().strip()
-                href = name_link.get_attribute("href")
-                
-                # href에서 playerId 추출
-                import re
-                player_id_match = re.search(r'playerId=(\d+)', href)
-                if not player_id_match:
-                    continue
-                
-                player_id = int(player_id_match.group(1))
-                
-                # 팀명 추출 및 동적 매핑
-                team_name = cells[2].inner_text().strip()
-                team_code = get_team_code(team_name, year)
-                if not team_code:
-                    # 정적 매핑 폴백
-                    team_code = team_mapping.get(team_name, team_name)
-                    print(f"⚠️ {year}년 '{team_name}' 팀 매핑 실패, 폴백: {team_code}")
-
-                # 시리즈별 컬럼 구조에 따른 데이터 추출
-                if series_key == 'regular':
-                    # 정규시즌: 헤더 분석하여 Basic1 vs Basic2 구분
-                    # Basic1 실제 구조 (순위,선수명,팀명,AVG,G,PA,AB,R,H,2B,3B,HR,TB,RBI,SAC,SF)
-                    # Basic2 실제 구조 (순위,선수명,팀명,AVG,BB,IBB,HBP,SO,GDP,SLG,OBP,OPS,MH,RISP,PH-BA)
-                    
-                    # 테이블 헤더로 Basic1/Basic2 구분
-                    thead = table.query_selector("thead")
-                    is_basic2 = False
-                    if thead:
-                        header_cells = thead.query_selector_all("th")
-                        headers = [cell.inner_text().strip() for cell in header_cells]
-                        # Basic2 특징적인 헤더들이 있는지 확인
-                        basic2_indicators = ['BB', '볼넷', 'IBB', 'HBP', 'SLG', 'OBP', 'OPS']
-                        is_basic2 = any(indicator in ''.join(headers) for indicator in basic2_indicators)
-                    
-                    if is_basic2:
-                        # Basic2 구조 처리 (순위,선수명,팀명,AVG,BB,IBB,HBP,SO,GDP,SLG,OBP,OPS,MH,RISP,PH-BA)
-                        batting_data = {
-                            'player_id': player_id,
-                            'player_name': player_name,
-                            'team_code': team_code,
-                            'avg': safe_parse_number(cells[3].inner_text(), float),  # [3]: AVG
-                            'walks': safe_parse_number(cells[4].inner_text(), int),  # [4]: BB
-                            'intentional_walks': safe_parse_number(cells[5].inner_text(), int),  # [5]: IBB
-                            'hbp': safe_parse_number(cells[6].inner_text(), int),  # [6]: HBP
-                            'strikeouts': safe_parse_number(cells[7].inner_text(), int),  # [7]: SO
-                            'gdp': safe_parse_number(cells[8].inner_text(), int),  # [8]: GDP
-                            'slg': safe_parse_number(cells[9].inner_text(), float),  # [9]: SLG
-                            'obp': safe_parse_number(cells[10].inner_text(), float),  # [10]: OBP
-                            'ops': safe_parse_number(cells[11].inner_text(), float),  # [11]: OPS
-                            'extra_stats': {
-                                'multi_hits': safe_parse_number(cells[12].inner_text(), int) if len(cells) > 12 else None,  # [12]: MH
-                                'risp_avg': safe_parse_number(cells[13].inner_text(), float) if len(cells) > 13 else None,  # [13]: RISP
-                                'pinch_hit_avg': safe_parse_number(cells[14].inner_text(), float) if len(cells) > 14 else None  # [14]: PH-BA
-                            }
-                        }
-                    else:
-                        # Basic1 구조 처리 (순위,선수명,팀명,AVG,G,PA,AB,R,H,2B,3B,HR,TB,RBI,SAC,SF)
-                        batting_data = {
-                            'player_id': player_id,
-                            'player_name': player_name,
-                            'team_code': team_code,
-                            'avg': safe_parse_number(cells[3].inner_text(), float),  # [3]: AVG
-                            'games': safe_parse_number(cells[4].inner_text(), int),  # [4]: G
-                            'plate_appearances': safe_parse_number(cells[5].inner_text(), int),  # [5]: PA
-                            'at_bats': safe_parse_number(cells[6].inner_text(), int),  # [6]: AB
-                            'runs': safe_parse_number(cells[7].inner_text(), int),  # [7]: R
-                            'hits': safe_parse_number(cells[8].inner_text(), int),  # [8]: H
-                            'doubles': safe_parse_number(cells[9].inner_text(), int),  # [9]: 2B
-                            'triples': safe_parse_number(cells[10].inner_text(), int),  # [10]: 3B
-                            'home_runs': safe_parse_number(cells[11].inner_text(), int),  # [11]: HR
-                            'total_bases': safe_parse_number(cells[12].inner_text(), int),  # [12]: TB
-                            'rbi': safe_parse_number(cells[13].inner_text(), int),  # [13]: RBI
-                            'sacrifice_hits': safe_parse_number(cells[14].inner_text(), int),  # [14]: SAC
-                            'sacrifice_flies': safe_parse_number(cells[15].inner_text(), int),  # [15]: SF
-                        }
-                else:
-                    # 기타 시리즈: 실제 구조 (순위,선수명,팀명,AVG,G,PA,AB,H,2B,3B,HR,RBI,SB,CS,BB,HBP,SO,GDP,E)
-                    batting_data = {
-                        'player_id': player_id,
-                        'player_name': player_name,
-                        'team_code': team_code,
-                        'avg': safe_parse_number(cells[3].inner_text(), float),  # [3]: AVG
-                        'games': safe_parse_number(cells[4].inner_text(), int),  # [4]: G
-                        'plate_appearances': safe_parse_number(cells[5].inner_text(), int),  # [5]: PA
-                        'at_bats': safe_parse_number(cells[6].inner_text(), int),  # [6]: AB
-                        'hits': safe_parse_number(cells[7].inner_text(), int),  # [7]: H
-                        'doubles': safe_parse_number(cells[8].inner_text(), int),  # [8]: 2B
-                        'triples': safe_parse_number(cells[9].inner_text(), int),  # [9]: 3B
-                        'home_runs': safe_parse_number(cells[10].inner_text(), int),  # [10]: HR
-                        'rbi': safe_parse_number(cells[11].inner_text(), int),  # [11]: RBI
-                        'stolen_bases': safe_parse_number(cells[12].inner_text(), int),  # [12]: SB
-                        'caught_stealing': safe_parse_number(cells[13].inner_text(), int),  # [13]: CS
-                        'walks': safe_parse_number(cells[14].inner_text(), int),  # [14]: BB
-                        'hbp': safe_parse_number(cells[15].inner_text(), int),  # [15]: HBP
-                        'strikeouts': safe_parse_number(cells[16].inner_text(), int),  # [16]: SO
-                        'gdp': safe_parse_number(cells[17].inner_text(), int),  # [17]: GDP
-                        # [18]: E(실책) - extra_stats에 저장
-                        'extra_stats': {
-                            'errors': safe_parse_number(cells[18].inner_text(), int) if len(cells) > 18 else None
-                        }
-                    }
-
-                players_data.append(batting_data)
-                
-                if row_idx < 3:  # 처음 3개 행만 출력 (디버깅)
-                    if series_key == 'regular':
-                        page_type = "Basic2" if is_basic2 else "Basic1"
-                        key_stat = batting_data.get('walks', batting_data.get('home_runs', 'N/A'))
-                        print(f"   ✅ {player_name} ({team_name}) - [{page_type}] AVG: {batting_data['avg']}, Key: {key_stat}")
-                    else:
-                        print(f"   ✅ {player_name} ({team_name}) - AVG: {batting_data['avg']}, HR: {batting_data.get('home_runs', 'N/A')}")
-                
-            except (ValueError, AttributeError) as e:
-                print(f"⚠️ 행 파싱 오류: {e}")
+            cells = [cell.inner_text().strip() for cell in cell_nodes]
+            name_link = cell_nodes[1].query_selector("a")
+            href = name_link.get_attribute("href") if name_link else None
+            player_id = _extract_player_id_from_href(href)
+            if not player_id:
                 continue
 
-    except Exception as e:
-        print(f"❌ 테이블 파싱 오류: {e}")
+            player_name = name_link.inner_text().strip() if name_link else (cells[1] if len(cells) > 1 else "")
+            team_name = cells[2] if len(cells) > 2 else ""
+            team_code = get_team_code(team_name, year)
+            if not team_code:
+                team_code = team_mapping.get(team_name, team_name)
 
-    return players_data
+            batting_data = _build_batting_data(
+                cells=cells,
+                player_id=player_id,
+                player_name=player_name,
+                team_code=team_code,
+                series_key=series_key,
+                is_basic2=is_basic2,
+            )
+            players_data.append(batting_data)
+
+        return players_data
+    except Exception as exc:
+        print(f"❌ 테이블 파싱 오류 (Legacy): {exc}")
+        return []
+
+
+def parse_batting_stats_table(
+    page: Page,
+    series_key: str,
+    year: int = 2025,
+    use_fast: Optional[bool] = None,
+) -> List[Dict]:
+    if use_fast is None:
+        use_fast = os.getenv("KBO_FAST_PARSE", "1") != "0"
+    if use_fast:
+        return _parse_batting_stats_table_fast(page, series_key, year)
+    return _parse_batting_stats_table_legacy(page, series_key, year)
 
 
 def go_to_next_page(page: Page, current_page_num: int) -> bool:
@@ -360,25 +425,10 @@ def crawl_basic2_with_headers(page: Page, year: int, series_info: dict) -> Dict[
     
     접근 순서: 타자 -> 정규시즌 선택 -> 연도 선택 -> "다음" 링크 클릭하여 Basic2 접근
     """
-    # 클릭할 헤더들과 정렬 코드 정의 (실제 페이지에서 확인된 코드)
-    headers_to_click = [
-        ('BB', 'BB_CN', '볼넷'),
-        ('IBB', 'IB_CN', '고의사구'),
-        ('HBP', 'HP_CN', '사구'),
-        ('SO', 'KK_CN', '삼진'),
-        ('GDP', 'GD_CN', '병살타'),
-        ('SLG', 'SLG_RT', '장타율'),
-        ('OBP', 'OBP_RT', '출루율'),
-        ('OPS', 'OPS_RT', 'OPS'),
-        ('MH', 'MH_HITTER_CN', '멀티히트'),
-        ('RISP', 'SP_HRA_RT', '득점권타율'),
-        ('PH-BA', 'PH_HRA_RT', '대타타율')
-    ]
-    
+    # Refactored: 헤더별 클릭 대신 전체 페이지 순회로 변경
     all_player_data = {}
     
     try:
-        # 올바른 접근 순서: Basic1에서 시작하여 "다음" 링크로 Basic2 접근
         print(f"   🔍 Basic2 접근을 위해 Basic1에서 시작...")
         
         # 1. Basic1 페이지로 이동
@@ -412,20 +462,12 @@ def crawl_basic2_with_headers(page: Page, year: int, series_info: dict) -> Dict[
             next_link_selector = 'a[href="/Record/Player/HitterBasic/Basic2.aspx"]'
             next_link = page.query_selector(next_link_selector)
             
+            # fallback find
             if not next_link:
-                # 다른 가능한 셀렉터들 시도
-                possible_selectors = [
-                    'a.next',
-                    'a[class*="next"]',
-                    'a[href*="Basic2"]',
-                    'a:has-text("다음")'
-                ]
-                
-                for selector in possible_selectors:
-                    next_link = page.query_selector(selector)
-                    if next_link:
-                        print(f"   🔍 다음 링크 발견: {selector}")
-                        break
+                possible_selectors = ['a.next', 'a[href*="Basic2"]', 'a:has-text("다음")']
+                for sel in possible_selectors:
+                    next_link = page.query_selector(sel)
+                    if next_link: break
             
             if next_link:
                 print(f"   🔗 'Basic2' 다음 링크 클릭...")
@@ -433,88 +475,48 @@ def crawl_basic2_with_headers(page: Page, year: int, series_info: dict) -> Dict[
                 page.wait_for_load_state('networkidle', timeout=30000)
                 time.sleep(3)
                 
-                current_url = page.url
-                print(f"   ✅ Basic2 페이지 접속: {current_url}")
-                
-                # Basic2 페이지 확인
-                if "Basic2" not in current_url:
-                    print(f"   ⚠️ Basic2 접근 실패, 현재 URL: {current_url}")
+                if "Basic2" not in page.url:
+                    print(f"   ⚠️ Basic2 접근 실패, 현재 URL: {page.url}")
                     return {}
-                    
             else:
                 print(f"   ❌ Basic2로 이동하는 '다음' 링크를 찾을 수 없습니다.")
-                # 사용 가능한 링크들 디버깅
-                all_links = page.query_selector_all("a")
-                print(f"   🔍 사용 가능한 링크들:")
-                for i, link in enumerate(all_links[:20]):  # 처음 20개만
-                    href = link.get_attribute("href") or ""
-                    text = link.inner_text().strip()
-                    class_name = link.get_attribute("class") or ""
-                    if "Basic" in href or "다음" in text or "next" in class_name:
-                        print(f"      [{i}] href: '{href}', text: '{text}', class: '{class_name}'")
                 return {}
                 
         except Exception as e:
             print(f"   ⚠️ Basic2 접근 중 오류: {e}")
             return {}
         
-        print(f"   🔍 Basic2 헤더별 데이터 수집 시작...")
+        print(f"   🔍 Basic2 전체 페이지 순회 시작...")
         
-        # 각 헤더별로 데이터 수집
-        for header_name, sort_code, description in headers_to_click:
-            print(f"   📊 {description}({header_name}) 헤더 클릭...")
+        # 5. Basic2 페이지 전체 순회
+        page_num = 1
+        while True:
+            # 현재 페이지 데이터 파싱 using parse_batting_stats_table
+            # This function automatically detects Basic2 headers via is_basic2 logic
+            current_page_data = parse_batting_stats_table(page, "regular", year)
             
-            try:
-                # 헤더 클릭 (정렬 변경)
-                header_link = f'a[href="javascript:sort(\'{sort_code}\');"]'
-                header_element = page.query_selector(header_link)
-                
-                if header_element:
-                    header_element.click()
-                    page.wait_for_load_state('networkidle', timeout=30000)
-                    time.sleep(2)
-                    
-                    # 현재 정렬 기준으로 데이터 파싱 (첫 페이지만)
-                    page_data = parse_basic2_header_data(page, header_name, description, year)
-                    
-                    # 데이터 병합
-                    for player_id, player_data in page_data.items():
-                        if player_id not in all_player_data:
-                            all_player_data[player_id] = player_data
-                        else:
-                            # 기존 데이터 업데이트 (None이 아닌 값만)
-                            for key, value in player_data.items():
-                                if value is not None and key not in ['player_id', 'player_name', 'team_code']:
-                                    if key == 'extra_stats':
-                                        # extra_stats 딕셔너리 병합
-                                        if 'extra_stats' not in all_player_data[player_id]:
-                                            all_player_data[player_id]['extra_stats'] = {}
-                                        for stat_key, stat_value in value.items():
-                                            if stat_value is not None:
-                                                all_player_data[player_id]['extra_stats'][stat_key] = stat_value
-                                    else:
-                                        all_player_data[player_id][key] = value
-                    
-                    print(f"      ✅ {description} 기준 {len(page_data)}명 데이터 수집")
-                    
+            for player_stat in current_page_data:
+                pid = player_stat['player_id']
+                # Basic2 data keys mapping
+                # parse_batting_stats_table returns structured dict with keys like 'walks', 'ops' etc.
+                if pid not in all_player_data:
+                    all_player_data[pid] = player_stat
                 else:
-                    print(f"      ⚠️ {header_name} 헤더 버튼을 찾을 수 없습니다.")
-                    
-                    # 사용 가능한 정렬 링크들 디버깅
-                    print(f"      🔍 사용 가능한 정렬 링크들:")
-                    sort_links = page.query_selector_all('a[href*="javascript:sort"]')
-                    for i, link in enumerate(sort_links[:15]):  # 처음 15개만
-                        href = link.get_attribute("href") or ""
-                        text = link.inner_text().strip()
-                        print(f"         [{i}] '{text}' -> '{href}'")
-                    
-            except Exception as e:
-                print(f"      ❌ {header_name} 헤더 처리 중 오류: {e}")
-            
-            # 서버 부하 방지
+                    # Merge if needed, but usually we just want the Basic2 specific fields
+                    # However, parse_batting_stats_table returns full record for that view.
+                    # Since we are iterating full list, we just take it.
+                    # Note: The caller might merge this with Basic1 data.
+                    all_player_data[pid].update(player_stat)
+
+            print(f"      ✅ {page_num}페이지: {len(current_page_data)}명 수집")
+
+            # 다음 페이지 이동
+            if not go_to_next_page(page, page_num):
+                break
+            page_num += 1
             time.sleep(1)
-        
-        print(f"   ✅ Basic2 헤더별 데이터 수집 완료: {len(all_player_data)}명")
+
+        print(f"   ✅ Basic2 전체 수집 완료: {len(all_player_data)}명")
         
     except Exception as e:
         print(f"   ❌ Basic2 크롤링 중 오류: {e}")
@@ -522,7 +524,12 @@ def crawl_basic2_with_headers(page: Page, year: int, series_info: dict) -> Dict[
     return all_player_data
 
 
-def parse_basic2_header_data(page: Page, current_header: str, description: str, year: int = 2025) -> Dict[int, Dict]:
+def _parse_basic2_header_data_legacy(
+    page: Page,
+    current_header: str,
+    description: str,
+    year: int = 2025,
+) -> Dict[int, Dict]:
     """
     Basic2 페이지에서 특정 헤더 클릭 후 데이터 파싱
     각 헤더 클릭시 해당 기준으로 정렬된 선수 데이터를 수집
@@ -575,13 +582,9 @@ def parse_basic2_header_data(page: Page, current_header: str, description: str, 
                 
                 player_name = name_link.inner_text().strip()
                 href = name_link.get_attribute("href")
-                
-                import re
-                player_id_match = re.search(r'playerId=(\d+)', href)
-                if not player_id_match:
+                player_id = _extract_player_id_from_href(href)
+                if not player_id:
                     continue
-                
-                player_id = int(player_id_match.group(1))
                 
                 # 팀명 추출 및 동적 매핑
                 team_name = cells[2].inner_text().strip()
@@ -655,6 +658,99 @@ def parse_basic2_header_data(page: Page, current_header: str, description: str, 
     return players_data
 
 
+def _parse_basic2_header_data_fast(
+    page: Page,
+    current_header: str,
+    description: str,
+    year: int = 2025,
+) -> Dict[int, Dict]:
+    players_data: Dict[int, Dict] = {}
+    team_mapping = get_team_mapping_for_year(year)
+
+    rows_data = _extract_rows_fast(page)
+    if not rows_data:
+        return players_data
+
+    thead = page.query_selector("thead")
+    if thead:
+        header_cells = thead.query_selector_all("th")
+        headers = [cell.inner_text().strip() for cell in header_cells]
+        print(f"      🔍 {description} 기준 테이블 헤더: {headers}")
+
+    if rows_data:
+        first_row = rows_data[0]
+        cells = first_row.get("cells") or []
+        print(f"      🔍 {description} 기준 첫 행 데이터 ({len(cells)}개 컬럼):")
+        for idx, value in enumerate(cells[:10]):
+            print(f"         [{idx}]: '{value}'")
+
+    for row in rows_data:
+        cells = row.get("cells") or []
+        if len(cells) < 5:
+            continue
+
+        href = row.get("linkHref")
+        player_id = _extract_player_id_from_href(href)
+        if not player_id:
+            continue
+
+        player_name = (row.get("linkText") or (cells[1] if len(cells) > 1 else "")).strip()
+        team_name = cells[2] if len(cells) > 2 else ""
+        team_code = get_team_code(team_name, year)
+        if not team_code:
+            team_code = team_mapping.get(team_name, team_name)
+
+        batting_data = {
+            "player_id": player_id,
+            "player_name": player_name,
+            "team_code": team_code,
+        }
+
+        if current_header == "BB" and len(cells) > 4:
+            batting_data["walks"] = safe_parse_number(cells[4].strip(), int)
+        elif current_header == "IBB" and len(cells) > 5:
+            batting_data["intentional_walks"] = safe_parse_number(cells[5].strip(), int)
+        elif current_header == "HBP" and len(cells) > 6:
+            batting_data["hbp"] = safe_parse_number(cells[6].strip(), int)
+        elif current_header == "SO" and len(cells) > 7:
+            batting_data["strikeouts"] = safe_parse_number(cells[7].strip(), int)
+        elif current_header == "GDP" and len(cells) > 8:
+            batting_data["gdp"] = safe_parse_number(cells[8].strip(), int)
+        elif current_header == "SLG" and len(cells) > 9:
+            batting_data["slg"] = safe_parse_number(cells[9].strip(), float)
+        elif current_header == "OBP" and len(cells) > 10:
+            batting_data["obp"] = safe_parse_number(cells[10].strip(), float)
+        elif current_header == "OPS" and len(cells) > 11:
+            batting_data["ops"] = safe_parse_number(cells[11].strip(), float)
+        elif current_header == "MH" and len(cells) > 12:
+            batting_data.setdefault("extra_stats", {})
+            batting_data["extra_stats"]["multi_hits"] = safe_parse_number(cells[12].strip(), int)
+        elif current_header == "RISP" and len(cells) > 13:
+            batting_data.setdefault("extra_stats", {})
+            batting_data["extra_stats"]["risp_avg"] = safe_parse_number(cells[13].strip(), float)
+        elif current_header == "PH-BA" and len(cells) > 14:
+            batting_data.setdefault("extra_stats", {})
+            batting_data["extra_stats"]["pinch_hit_avg"] = safe_parse_number(cells[14].strip(), float)
+
+        players_data[player_id] = batting_data
+
+    return players_data
+
+
+def parse_basic2_header_data(
+    page: Page,
+    current_header: str,
+    description: str,
+    year: int = 2025,
+    use_fast: Optional[bool] = None,
+) -> Dict[int, Dict]:
+    if use_fast is None:
+        use_fast = os.getenv("KBO_FAST_PARSE", "1") != "0"
+    if use_fast:
+        return _parse_basic2_header_data_fast(page, current_header, description, year)
+    return _parse_basic2_header_data_legacy(page, current_header, description, year)
+
+
 
 
 def crawl_series_batting_stats(year: int = 2025, series_key: str = 'regular', 
@@ -685,6 +781,7 @@ def crawl_series_batting_stats(year: int = 2025, series_key: str = 'regular',
         browser = playwright.chromium.launch(headless=headless)
         page = browser.new_page()
         page.set_default_timeout(30000)
+        install_sync_resource_blocking(page)
 
         try:
             print(f"\n📊 {year}년 {series_info['name']} 타자 기록 수집 시작")

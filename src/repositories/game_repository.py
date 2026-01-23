@@ -20,6 +20,8 @@ from src.models.game import (
     GamePitchingStat,
     GameEvent,
 )
+import re
+from src.services.player_id_resolver import PlayerIdResolver
 from src.utils.safe_print import safe_print as print
 
 
@@ -138,20 +140,46 @@ def save_game_detail(game_data: Dict[str, Any]) -> bool:
             _replace_records(session, GamePitchingStat, game_id, _build_pitching_stats(game_id, pitchers))
 
             # Game Summary Handling
-            session.query(GameSummary).filter(GameSummary.game_id == game_id).delete()
+            resolver = PlayerIdResolver(session)
+            summary_rows = []
+            
+            # Map for quick name lookup for this game
+            participant_map = {} # name -> id
+            for side in ("away", "home"):
+                for p in hitters.get(side, []) + pitchers.get(side, []):
+                    if p.get("player_name") and p.get("player_id"):
+                        participant_map[p["player_name"]] = _normalize_player_id(p["player_id"])
+
             for item in (game_data.get("summary") or []):
-                 session.add(
-                     GameSummary(
-                         game_id=game_id,
-                         summary_type=item.get("summary_type"),
-                         detail_text=item.get("detail_text"),
-                         # player_name might be parsed from detail_text if needed, but schema has separate column
-                         # Currently crawler returns dict with summary_type and detail_text.
-                         # The detail_text often contains "Name(Inning)".
-                         # We can leave player_name null or try to parse it later.
-                         # For now, mapping detail_text to detail_text is sufficient as per table view.
-                     )
-                 )
+                summary_type = item.get("summary_type")
+                detail_text = item.get("detail_text")
+                
+                # Extract individual player entries if possible
+                entries = _extract_players_from_text(summary_type, detail_text)
+                
+                if not entries:
+                    # Fallback or category without specific players (like weather potentially)
+                    summary_rows.append({
+                        "game_id": game_id,
+                        "summary_type": summary_type,
+                        "player_name": None,
+                        "player_id": None,
+                        "detail_text": detail_text,
+                    })
+                else:
+                    for p_name, p_detail in entries:
+                        p_id = participant_map.get(p_name)
+                        if not p_id and summary_type != "심판":
+                             p_id = resolver.resolve_id(p_name, None, game_date.year) # Try global resolve if not in participant list
+                        
+                        summary_rows.append({
+                            "game_id": game_id,
+                            "summary_type": summary_type,
+                            "player_name": p_name,
+                            "player_id": p_id,
+                            "detail_text": p_detail or detail_text,
+                        })
+            _replace_records(session, GameSummary, game_id, summary_rows)
 
             session.commit()
             return True
@@ -232,121 +260,121 @@ def _upsert_metadata(session, game_id: str, metadata: Dict[str, Any]) -> None:
     meta.source_payload = metadata or None
 
 
-def _replace_records(session, model, game_id: str, rows: Iterable[Any]) -> None:
+def _replace_records(session, model, game_id: str, mappings: List[Dict[str, Any]]) -> None:
     session.query(model).filter(model.game_id == game_id).delete()
-    objects = list(rows)
-    if objects:
-        session.add_all(objects)
+    if mappings:
+        now = datetime.utcnow()
+        has_created_at = "created_at" in model.__table__.columns
+        has_updated_at = "updated_at" in model.__table__.columns
+        if has_created_at or has_updated_at:
+            for mapping in mappings:
+                if has_created_at and not mapping.get("created_at"):
+                    mapping["created_at"] = now
+                if has_updated_at and not mapping.get("updated_at"):
+                    mapping["updated_at"] = now
+        session.execute(model.__table__.insert(), mappings)
 
 
-def _build_inning_scores(game_id: str, teams: Dict[str, Any]) -> List[GameInningScore]:
-    records: List[GameInningScore] = []
+def _build_inning_scores(game_id: str, teams: Dict[str, Any]) -> List[Dict[str, Any]]:
+    records = []
     for side in ("away", "home"):
         team_info = teams.get(side, {}) or {}
         line_score = team_info.get("line_score") or []
         team_code = team_info.get("code")
         for idx, runs in enumerate(line_score, start=1):
-            records.append(
-                GameInningScore(
-                    game_id=game_id,
-                    team_side=side,
-                    team_code=team_code,
-                    inning=idx,
-                    runs=runs if runs is not None else 0,
-                    is_extra=idx > 9,
-                )
-            )
+            records.append({
+                "game_id": game_id,
+                "team_side": side,
+                "team_code": team_code,
+                "inning": idx,
+                "runs": runs if runs is not None else 0,
+                "is_extra": idx > 9,
+            })
     return records
 
 
-def _build_lineups(game_id: str, hitters: Dict[str, List[Dict[str, Any]]]) -> List[GameLineup]:
-    records: List[GameLineup] = []
+def _build_lineups(game_id: str, hitters: Dict[str, List[Dict[str, Any]]]) -> List[Dict[str, Any]]:
+    records = []
     for side, entries in hitters.items():
         for entry in entries:
             player_name = entry.get("player_name")
             if not player_name:
                 continue
-            records.append(
-                GameLineup(
-                    game_id=game_id,
-                    team_side=side,
-                    team_code=entry.get("team_code"),
-                    player_id=_normalize_player_id(entry.get("player_id")),
-                    player_name=player_name,
-                    batting_order=entry.get("batting_order"),
-                    position=entry.get("position"),
-                    is_starter=bool(entry.get("is_starter")),
-                    appearance_seq=entry.get("appearance_seq") or len(records) + 1,
-                    notes=_format_notes(entry.get("extras")),
-                )
-            )
+            records.append({
+                "game_id": game_id,
+                "team_side": side,
+                "team_code": entry.get("team_code"),
+                "player_id": _normalize_player_id(entry.get("player_id")),
+                "player_name": player_name,
+                "batting_order": entry.get("batting_order"),
+                "position": entry.get("position"),
+                "is_starter": bool(entry.get("is_starter")),
+                "appearance_seq": entry.get("appearance_seq") or len(records) + 1,
+                "notes": _format_notes(entry.get("extras")),
+            })
     return records
+
 
 def _format_notes(extras: Optional[Dict[str, Any]]) -> Optional[str]:
     if not extras:
         return None
-    # Filter out columns we already map elsewhere
-    ignore_keys = {'COL_0', 'COL_1', '선수명', 'PlayerName', 'playerName'}
+    ignore_keys = {"COL_0", "COL_1", "선수명", "PlayerName", "playerName"}
     cleaned = {k: v for k, v in extras.items() if k not in ignore_keys}
     if not cleaned:
         return None
-    # If only one item, just return the value string
     if len(cleaned) == 1:
-        val = list(cleaned.values())[0]
-        return str(val)
+        return str(next(iter(cleaned.values())))
     return str(cleaned)
 
 
-def _build_batting_stats(game_id: str, hitters: Dict[str, List[Dict[str, Any]]]) -> List[GameBattingStat]:
-    records: List[GameBattingStat] = []
+def _build_batting_stats(game_id: str, hitters: Dict[str, List[Dict[str, Any]]]) -> List[Dict[str, Any]]:
+    records = []
     for side, entries in hitters.items():
         for entry in entries:
             player_name = entry.get("player_name")
             stats = entry.get("stats") or {}
             if not player_name:
                 continue
-            records.append(
-                GameBattingStat(
-                    game_id=game_id,
-                    team_side=side,
-                    team_code=entry.get("team_code"),
-                    player_id=_normalize_player_id(entry.get("player_id")),
-                    player_name=player_name,
-                    batting_order=entry.get("batting_order"),
-                    is_starter=bool(entry.get("is_starter")),
-                    appearance_seq=entry.get("appearance_seq") or len(records) + 1,
-                    position=entry.get("position"),
-                    plate_appearances=_stat_int(stats, "plate_appearances"),
-                    at_bats=_stat_int(stats, "at_bats"),
-                    runs=_stat_int(stats, "runs"),
-                    hits=_stat_int(stats, "hits"),
-                    doubles=_stat_int(stats, "doubles"),
-                    triples=_stat_int(stats, "triples"),
-                    home_runs=_stat_int(stats, "home_runs"),
-                    rbi=_stat_int(stats, "rbi"),
-                    walks=_stat_int(stats, "walks"),
-                    intentional_walks=_stat_int(stats, "intentional_walks"),
-                    hbp=_stat_int(stats, "hbp"),
-                    strikeouts=_stat_int(stats, "strikeouts"),
-                    stolen_bases=_stat_int(stats, "stolen_bases"),
-                    caught_stealing=_stat_int(stats, "caught_stealing"),
-                    sacrifice_hits=_stat_int(stats, "sacrifice_hits"),
-                    sacrifice_flies=_stat_int(stats, "sacrifice_flies"),
-                    gdp=_stat_int(stats, "gdp"),
-                    avg=_stat_float(stats, "avg"),
-                    obp=_stat_float(stats, "obp"),
-                    slg=_stat_float(stats, "slg"),
-                    ops=_stat_float(stats, "ops"),
-                    iso=_stat_float(stats, "iso"),
-                    babip=_stat_float(stats, "babip"),
-                    extra_stats=_clean_extras(entry.get("extras")),
-                )
-            )
+            records.append({
+                "game_id": game_id,
+                "team_side": side,
+                "team_code": entry.get("team_code"),
+                "player_id": _normalize_player_id(entry.get("player_id")),
+                "player_name": player_name,
+                "batting_order": entry.get("batting_order"),
+                "is_starter": bool(entry.get("is_starter")),
+                "appearance_seq": entry.get("appearance_seq") or len(records) + 1,
+                "position": entry.get("position"),
+                "plate_appearances": _stat_int(stats, "plate_appearances"),
+                "at_bats": _stat_int(stats, "at_bats"),
+                "runs": _stat_int(stats, "runs"),
+                "hits": _stat_int(stats, "hits"),
+                "doubles": _stat_int(stats, "doubles"),
+                "triples": _stat_int(stats, "triples"),
+                "home_runs": _stat_int(stats, "home_runs"),
+                "rbi": _stat_int(stats, "rbi"),
+                "walks": _stat_int(stats, "walks"),
+                "intentional_walks": _stat_int(stats, "intentional_walks"),
+                "hbp": _stat_int(stats, "hbp"),
+                "strikeouts": _stat_int(stats, "strikeouts"),
+                "stolen_bases": _stat_int(stats, "stolen_bases"),
+                "caught_stealing": _stat_int(stats, "caught_stealing"),
+                "sacrifice_hits": _stat_int(stats, "sacrifice_hits"),
+                "sacrifice_flies": _stat_int(stats, "sacrifice_flies"),
+                "gdp": _stat_int(stats, "gdp"),
+                "avg": _stat_float(stats, "avg"),
+                "obp": _stat_float(stats, "obp"),
+                "slg": _stat_float(stats, "slg"),
+                "ops": _stat_float(stats, "ops"),
+                "iso": _stat_float(stats, "iso"),
+                "babip": _stat_float(stats, "babip"),
+                "extra_stats": _clean_extras(entry.get("extras")),
+            })
     return records
 
 
-def _build_pitching_stats(game_id: str, pitchers: Dict[str, List[Dict[str, Any]]]) -> List[GamePitchingStat]:
-    records: List[GamePitchingStat] = []
+def _build_pitching_stats(game_id: str, pitchers: Dict[str, List[Dict[str, Any]]]) -> List[Dict[str, Any]]:
+    records = []
     for side, entries in pitchers.items():
         for entry in entries:
             player_name = entry.get("player_name")
@@ -354,41 +382,39 @@ def _build_pitching_stats(game_id: str, pitchers: Dict[str, List[Dict[str, Any]]
             if not player_name:
                 continue
             innings_outs = stats.get("innings_outs")
-            records.append(
-                GamePitchingStat(
-                    game_id=game_id,
-                    team_side=side,
-                    team_code=entry.get("team_code"),
-                    player_id=_normalize_player_id(entry.get("player_id")),
-                    player_name=player_name,
-                    is_starting=bool(entry.get("is_starting")),
-                    appearance_seq=entry.get("appearance_seq") or len(records) + 1,
-                    innings_outs=innings_outs,
-                    innings_pitched=_outs_to_decimal(innings_outs),
-                    batters_faced=_stat_int(stats, "batters_faced"),
-                    pitches=_stat_int(stats, "pitches"),
-                    hits_allowed=_stat_int(stats, "hits_allowed"),
-                    runs_allowed=_stat_int(stats, "runs_allowed"),
-                    earned_runs=_stat_int(stats, "earned_runs"),
-                    home_runs_allowed=_stat_int(stats, "home_runs_allowed"),
-                    walks_allowed=_stat_int(stats, "walks_allowed"),
-                    strikeouts=_stat_int(stats, "strikeouts"),
-                    hit_batters=_stat_int(stats, "hit_batters"),
-                    wild_pitches=_stat_int(stats, "wild_pitches"),
-                    balks=_stat_int(stats, "balks"),
-                    wins=_stat_int(stats, "wins"),
-                    losses=_stat_int(stats, "losses"),
-                    saves=_stat_int(stats, "saves"),
-                    holds=_stat_int(stats, "holds"),
-                    decision=stats.get("decision"),
-                    era=_stat_float(stats, "era"),
-                    whip=_stat_float(stats, "whip"),
-                    k_per_nine=_stat_float(stats, "k_per_nine"),
-                    bb_per_nine=_stat_float(stats, "bb_per_nine"),
-                    kbb=_stat_float(stats, "kbb"),
-                    extra_stats=_clean_extras(entry.get("extras")),
-                )
-            )
+            records.append({
+                "game_id": game_id,
+                "team_side": side,
+                "team_code": entry.get("team_code"),
+                "player_id": _normalize_player_id(entry.get("player_id")),
+                "player_name": player_name,
+                "is_starting": bool(entry.get("is_starting")),
+                "appearance_seq": entry.get("appearance_seq") or len(records) + 1,
+                "innings_outs": innings_outs,
+                "innings_pitched": _outs_to_decimal(innings_outs),
+                "batters_faced": _stat_int(stats, "batters_faced"),
+                "pitches": _stat_int(stats, "pitches"),
+                "hits_allowed": _stat_int(stats, "hits_allowed"),
+                "runs_allowed": _stat_int(stats, "runs_allowed"),
+                "earned_runs": _stat_int(stats, "earned_runs"),
+                "home_runs_allowed": _stat_int(stats, "home_runs_allowed"),
+                "walks_allowed": _stat_int(stats, "walks_allowed"),
+                "strikeouts": _stat_int(stats, "strikeouts"),
+                "hit_batters": _stat_int(stats, "hit_batters"),
+                "wild_pitches": _stat_int(stats, "wild_pitches"),
+                "balks": _stat_int(stats, "balks"),
+                "wins": _stat_int(stats, "wins"),
+                "losses": _stat_int(stats, "losses"),
+                "saves": _stat_int(stats, "saves"),
+                "holds": _stat_int(stats, "holds"),
+                "decision": stats.get("decision"),
+                "era": _stat_float(stats, "era"),
+                "whip": _stat_float(stats, "whip"),
+                "k_per_nine": _stat_float(stats, "k_per_nine"),
+                "bb_per_nine": _stat_float(stats, "bb_per_nine"),
+                "kbb": _stat_float(stats, "kbb"),
+                "extra_stats": _clean_extras(entry.get("extras")),
+            })
     return records
 
 
@@ -456,6 +482,52 @@ def _resolve_winner(home: Dict[str, Any], away: Dict[str, Any]) -> tuple[str | N
     if away_score > home_score:
         return away.get("code"), away_score
     return None, home_score
+
+def _extract_players_from_text(category: str, text: str) -> List[tuple[str, str | None]]:
+    """
+    Extract (player_name, detail) from summary text blocks.
+    Example: '강민호1호(2회1점 쿠에바스) 로하스1호(4회1점 코너)' 
+             -> [('강민호', '강민호1호(...)'), ('로하스', '로하스1호(...)')]
+    """
+    if not text or text == "없음":
+        return []
+
+    if category == "심판":
+        return [(name.strip(), None) for name in text.split() if name.strip()]
+
+    # Pattern: Name[Count]호?(Inning/Detail)
+    # Matches '강민호(3회)', '김지찬2(5회)', '강민호1호(2회)'
+    # Parentheses content included in detail
+    entries = []
+    
+    # regex matches: Name(OptionalCount)(Optional '호')(ParenthesesContent)
+    # Group 1: Name, Group 2: Parentheses content (including parentheses)
+    pattern = r"([가-힣]{2,5})(?:\d*(?:호)?)(\([^\)]+\))"
+    matches = re.finditer(pattern, text)
+    
+    last_end = 0
+    found_any = False
+    for m in matches:
+        found_any = True
+        name = m.group(1)
+        detail = m.group(0) # Include the whole match as detail
+        entries.append((name, detail))
+    
+    if not found_any:
+        # Fallback for simple name lists without parentheses (like possibly '폭투: 반즈') 
+        # or if it's just 'Name'
+        if ":" in text:
+            parts = text.split(":", 1)
+            name = parts[0].strip()
+            if 2 <= len(name) <= 5:
+                return [(name, text)]
+        
+        # Check if it's a single name
+        if 2 <= len(text.strip()) <= 5 and " " not in text.strip():
+             return [(text.strip(), None)]
+
+    return entries
+
 
 def _clean_extras(extras: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
     if not extras:

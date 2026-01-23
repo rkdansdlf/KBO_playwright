@@ -6,6 +6,7 @@ from typing import List, Dict, Any
 from sqlalchemy.orm import Session
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.dialects.postgresql import insert as pg_insert
+from sqlalchemy.dialects.mysql import insert as mysql_insert
 
 from src.db.engine import SessionLocal, Engine
 from src.models.player import PlayerBasic
@@ -39,10 +40,39 @@ class PlayerBasicRepository:
 
         with SessionLocal() as session:
             try:
-                for player_data in players:
-                    self._upsert_one(session, player_data)
+                payload = [self._build_payload(player_data) for player_data in players]
+                unique_payload = {}
+                for row in payload:
+                    player_id = row.get("player_id")
+                    if player_id is None:
+                        continue
+                    unique_payload[player_id] = row
+                rows = list(unique_payload.values())
+                if not rows:
+                    return 0
+
+                if self.dialect == "sqlite":
+                    stmt = sqlite_insert(PlayerBasic).values(rows)
+                    update_dict = {k: stmt.excluded[k] for k in rows[0].keys() if k != "player_id"}
+                    stmt = stmt.on_conflict_do_update(
+                        index_elements=["player_id"],
+                        set_=update_dict,
+                    )
+                elif self.dialect == "mysql":
+                    stmt = mysql_insert(PlayerBasic).values(rows)
+                    update_dict = {k: stmt.inserted[k] for k in rows[0].keys() if k != "player_id"}
+                    stmt = stmt.on_duplicate_key_update(update_dict)
+                else:  # PostgreSQL
+                    stmt = pg_insert(PlayerBasic).values(rows)
+                    update_dict = {k: stmt.excluded[k] for k in rows[0].keys() if k != "player_id"}
+                    stmt = stmt.on_conflict_do_update(
+                        index_elements=["player_id"],
+                        set_=update_dict,
+                    )
+
+                session.execute(stmt)
                 session.commit()
-                return len(players)
+                return len(rows)
             except Exception as e:
                 session.rollback()
                 print(f"[ERROR] Error upserting players: {e}")
@@ -50,7 +80,32 @@ class PlayerBasicRepository:
 
     def _upsert_one(self, session: Session, player_data: Dict[str, Any]):
         """UPSERT single player (SQLite/PostgreSQL compatible)"""
-        data = {
+        data = self._build_payload(player_data)
+
+        if self.dialect == "sqlite":
+            stmt = sqlite_insert(PlayerBasic).values(**data)
+            # Update all columns except player_id on conflict
+            update_dict = {k: v for k, v in data.items() if k != 'player_id'}
+            stmt = stmt.on_conflict_do_update(
+                index_elements=['player_id'],
+                set_=update_dict
+            )
+        elif self.dialect == "mysql":
+            stmt = mysql_insert(PlayerBasic).values(**data)
+            update_dict = {k: stmt.inserted[k] for k in data.keys() if k != 'player_id'}
+            stmt = stmt.on_duplicate_key_update(update_dict)
+        else:  # PostgreSQL
+            stmt = pg_insert(PlayerBasic).values(**data)
+            update_dict = {k: stmt.excluded[k] for k in data.keys() if k != 'player_id'}
+            stmt = stmt.on_conflict_do_update(
+                index_elements=['player_id'],
+                set_=update_dict
+            )
+
+        session.execute(stmt)
+
+    def _build_payload(self, player_data: Dict[str, Any]) -> Dict[str, Any]:
+        return {
             'player_id': player_data['player_id'],
             'name': player_data['name'],
             'uniform_no': player_data.get('uniform_no'),
@@ -65,24 +120,6 @@ class PlayerBasicRepository:
             'staff_role': player_data.get('staff_role'),
             'status_source': player_data.get('status_source'),
         }
-
-        if self.dialect == "sqlite":
-            stmt = sqlite_insert(PlayerBasic).values(**data)
-            # Update all columns except player_id on conflict
-            update_dict = {k: v for k, v in data.items() if k != 'player_id'}
-            stmt = stmt.on_conflict_do_update(
-                index_elements=['player_id'],
-                set_=update_dict
-            )
-        else:  # PostgreSQL
-            stmt = pg_insert(PlayerBasic).values(**data)
-            update_dict = {k: stmt.excluded[k] for k in data.keys() if k != 'player_id'}
-            stmt = stmt.on_conflict_do_update(
-                index_elements=['player_id'],
-                set_=update_dict
-            )
-
-        session.execute(stmt)
 
     def get_all(self, limit: int = None) -> List[PlayerBasic]:
         """Get all players (optionally limited)"""
