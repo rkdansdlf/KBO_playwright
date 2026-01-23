@@ -8,17 +8,19 @@ import asyncio
 from typing import Dict, List, Optional, Any
 from datetime import datetime, date
 
-from playwright.async_api import async_playwright, Page
+from playwright.async_api import Page
 
 from src.utils.team_codes import resolve_team_code
 from src.utils.safe_print import safe_print as print
+from src.utils.playwright_pool import AsyncPlaywrightPool
 
 class DailyRosterCrawler:
     """Crawl daily roster changes."""
 
-    def __init__(self, request_delay: float = 1.0):
+    def __init__(self, request_delay: float = 1.0, pool: Optional[AsyncPlaywrightPool] = None):
         self.base_url = "https://www.koreabaseball.com/Player/Register.aspx"
         self.request_delay = request_delay
+        self.pool = pool
 
     async def crawl_date_range(self, start_date: str, end_date: str, save_callback=None) -> List[Dict[str, Any]]:
         """Crawl roster for a range of dates (format: YYYY-MM-DD)."""
@@ -26,35 +28,39 @@ class DailyRosterCrawler:
         e_date = datetime.strptime(end_date, "%Y-%m-%d").date()
         
         results = []
-        async with async_playwright() as p:
-            # Launch with slightly higher timeout context if needed
-            browser = await p.chromium.launch(headless=True)
-            page = await browser.new_page()
-            
-            # Initial load
-            await page.goto(self.base_url, wait_until="networkidle")
-            
-            # Create a date range list
-            from datetime import timedelta
-            delta = e_date - s_date
-            dates = [s_date + timedelta(days=i) for i in range(delta.days + 1)]
-            
-            for d in dates:
-                roster = await self._crawl_date(page, d)
-                if roster:
-                    if save_callback:
-                        # Call callback (synchronously if it's not async)
-                        try:
-                            if asyncio.iscoroutinefunction(save_callback):
-                                await save_callback(roster)
-                            else:
-                                save_callback(roster)
-                        except Exception as e:
-                           print(f"⚠️ Callback error: {e}")
-                    
-                    results.extend(roster)
-                
-            await browser.close()
+        pool = self.pool or AsyncPlaywrightPool(max_pages=1)
+        owns_pool = self.pool is None
+        await pool.start()
+        try:
+            page = await pool.acquire()
+            try:
+                # Initial load
+                await page.goto(self.base_url, wait_until="networkidle")
+
+                # Create a date range list
+                from datetime import timedelta
+                delta = e_date - s_date
+                dates = [s_date + timedelta(days=i) for i in range(delta.days + 1)]
+
+                for d in dates:
+                    roster = await self._crawl_date(page, d)
+                    if roster:
+                        if save_callback:
+                            # Call callback (synchronously if it's not async)
+                            try:
+                                if asyncio.iscoroutinefunction(save_callback):
+                                    await save_callback(roster)
+                                else:
+                                    save_callback(roster)
+                            except Exception as e:
+                                print(f"⚠️ Callback error: {e}")
+
+                        results.extend(roster)
+            finally:
+                await pool.release(page)
+        finally:
+            if owns_pool:
+                await pool.close()
         return results
 
     async def _crawl_date(self, page: Page, target_date: date) -> List[Dict[str, Any]]:

@@ -14,7 +14,7 @@ from src.db.engine import SessionLocal
 from src.models.game import Game
 from src.utils.safe_print import safe_print as print
 
-async def collect_games(year: int, month: Optional[int] = None, force: bool = False):
+async def collect_games(year: int, month: Optional[int] = None, force: bool = False, concurrency: Optional[int] = None):
     """
     Collects game details and relay data for a given year/month.
     Iterates through games in the database for that period.
@@ -47,37 +47,33 @@ async def collect_games(year: int, month: Optional[int] = None, force: bool = Fa
         detail_crawler = GameDetailCrawler(request_delay=1.0, resolver=resolver)
         relay_crawler = RelayCrawler(request_delay=1.0)
         
+        inputs = [
+            {
+                "game_id": game.game_id,
+                "game_date": game.game_date.strftime("%Y%m%d"),
+            }
+            for game in games
+        ]
+
+        detail_payloads = await detail_crawler.crawl_games(inputs, concurrency=concurrency)
         success_count = 0
-        
-        for idx, game in enumerate(games, 1):
-            print(f"[{idx}/{len(games)}] Processing {game.game_id} ({game.game_date})...")
-            
-            # 1. Game Detail (Box Score)
-            try:
-                # We pass game_date string YYYYMMDD
-                date_str = game.game_date.strftime("%Y%m%d")
-                detail_data = await detail_crawler.crawl_game(game.game_id, date_str)
-                if detail_data:
-                    saved = save_game_detail(detail_data)
-                    if saved:
-                        print(f"   ✅ Details saved")
-                    else:
-                        print(f"   ⚠️ Details save failed")
-                else:
-                    print(f"   ❌ No detail data found")
-            except Exception as e:
-                print(f"   ❌ Error crawling details: {e}")
+
+        for idx, detail_data in enumerate(detail_payloads, 1):
+            game_id = detail_data.get("game_id")
+            game_date = detail_data.get("game_date")
+            print(f"[{idx}/{len(detail_payloads)}] Saving {game_id} ({game_date})...")
+            saved = save_game_detail(detail_data)
+            if saved:
+                print("   ✅ Details saved")
+            else:
+                print("   ⚠️ Details save failed")
 
             # 2. Relay (Play-by-play) - Temporarily Disabled due to Selector timeouts
-            # try:
-            #     date_str = game.game_date.strftime("%Y%m%d")
-            #     relay_data = await relay_crawler.crawl_game_relay(game.game_id, date_str)
-            #     ...
             print(f"   ⚠️ Relay crawler disabled (selector issue)")
 
             success_count += 1
             if idx % 10 == 0:
-                print(f"⏸️  Pausing briefly...")
+                print("⏸️  Pausing briefly...")
                 await asyncio.sleep(2)
                 
     finally:
@@ -87,9 +83,10 @@ def main():
     parser = argparse.ArgumentParser(description="Collect Game Details & Relay")
     parser.add_argument("--year", type=int, required=True, help="Target Year (e.g. 2024)")
     parser.add_argument("--month", type=int, help="Target Month (Optional)")
+    parser.add_argument("--concurrency", type=int, default=None, help="Max concurrent game detail crawls")
     args = parser.parse_args()
     
-    asyncio.run(collect_games(args.year, args.month))
+    asyncio.run(collect_games(args.year, args.month, concurrency=args.concurrency))
 
 if __name__ == "__main__":
     main()

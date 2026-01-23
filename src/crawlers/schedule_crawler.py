@@ -6,9 +6,10 @@ import asyncio
 import time
 from datetime import datetime
 from typing import List, Dict, Optional
-from playwright.async_api import async_playwright, Page
+from playwright.async_api import Page
 
 from src.utils.team_codes import team_code_from_game_id_segment
+from src.utils.playwright_pool import AsyncPlaywrightPool
 
 
 class ScheduleCrawler:
@@ -21,9 +22,10 @@ class ScheduleCrawler:
     - 수집된 경기 정보 리스트를 반환합니다.
     """
 
-    def __init__(self, request_delay: float = 1.5):
+    def __init__(self, request_delay: float = 1.5, pool: Optional[AsyncPlaywrightPool] = None):
         self.base_url = "https://www.koreabaseball.com/Schedule/Schedule.aspx"
         self.request_delay = request_delay
+        self.pool = pool
 
     async def crawl_schedule(self, year: int, month: int, series_id: str = None) -> List[Dict]:
         """
@@ -39,10 +41,11 @@ class ScheduleCrawler:
         """
         print(f"🔍 Crawling schedule for {year}-{month:02d} (Series: {series_id})...")
 
-        async with async_playwright() as p:
-            browser = await p.chromium.launch(headless=True)
-            page = await browser.new_page()
-
+        pool = self.pool or AsyncPlaywrightPool(max_pages=1)
+        owns_pool = self.pool is None
+        await pool.start()
+        try:
+            page = await pool.acquire()
             try:
                 games = await self._crawl_month(page, year, month, series_id=series_id)
                 print(f"✅ Found {len(games)} games")
@@ -51,7 +54,10 @@ class ScheduleCrawler:
                 print(f"❌ Error crawling schedule: {e}")
                 return []
             finally:
-                await browser.close()
+                await pool.release(page)
+        finally:
+            if owns_pool:
+                await pool.close()
 
     async def crawl_season(self, year: int, months: Optional[List[int]] = None) -> List[Dict]:
         """
@@ -64,16 +70,21 @@ class ScheduleCrawler:
         months = months or list(range(3, 11))
         all_games: List[Dict] = []
 
-        async with async_playwright() as p:
-            browser = await p.chromium.launch(headless=True)
-            page = await browser.new_page()
+        pool = self.pool or AsyncPlaywrightPool(max_pages=1)
+        owns_pool = self.pool is None
+        await pool.start()
+        try:
+            page = await pool.acquire()
             try:
                 for month in months:
                     month_games = await self._crawl_month(page, year, month)
                     all_games.extend(month_games)
                 return all_games
             finally:
-                await browser.close()
+                await pool.release(page)
+        finally:
+            if owns_pool:
+                await pool.close()
 
 
     async def _crawl_month(self, page: Page, year: int, month: int, series_id: str = None) -> List[Dict]:
@@ -121,53 +132,79 @@ class ScheduleCrawler:
         return await self._extract_games(page, year, month)
 
     async def _extract_games(self, page: Page, year: int, month: int) -> List[Dict]:
-        """페이지에서 경기 관련 데이터를 추출합니다.
+        """페이지에서 경기 관련 데이터를 추출합니다. (JS Fast Path)
 
         `gameId`가 포함된 모든 링크를 찾아, 각 링크에서 경기 ID, 날짜, 팀 정보 등을 파싱합니다.
         """
-        games = []
+        
+        # JS를 사용하여 모든 게임 정보를 한 번에 추출
+        extraction_script = """
+        (year) => {
+            const links = document.querySelectorAll('a[href*="gameId="]');
+            const results = [];
+            const seenIds = new Set();
 
-        # `gameId` 파라미터가 포함된 모든 경기 링크를 찾습니다.
-        game_links = await page.query_selector_all('a[href*="gameId="]')
+            links.forEach(link => {
+                const href = link.getAttribute('href');
+                if (!href) return;
+                
+                // Extract gameId from href
+                const match = href.match(/gameId=([^&]+)/);
+                if (!match) return;
+                
+                const gameId = match[1];
+                if (seenIds.has(gameId)) return;
+                seenIds.add(gameId);
+                
+                // Parse date and teams from gameId
+                // Format: YYYYMMDD...
+                const gameDate = gameId.substring(0, 8);
+                const awaySegment = gameId.length >= 10 ? gameId.substring(8, 10) : "";
+                const homeSegment = gameId.length >= 12 ? gameId.substring(10, 12) : "";
+                const doubleHeader = (!isNaN(parseInt(gameId.slice(-1)))) ? parseInt(gameId.slice(-1)) : 0;
 
-        for link in game_links:
-            try:
-                href = await link.get_attribute('href')
-                if not href or 'gameId=' not in href:
-                    continue
+                results.push({
+                    game_id: gameId,
+                    game_date: gameDate,
+                    season_year: year,
+                    season_type: 'regular',
+                    away_segment: awaySegment,
+                    home_segment: homeSegment,
+                    doubleheader_no: doubleHeader,
+                    game_status: 'scheduled',
+                    crawl_status: 'pending',
+                    url_suffix: href
+                });
+            });
+            return results;
+        }
+        """
 
-                # URL에서 game_id를 추출합니다.
-                game_id = self._extract_game_id(href)
-                if not game_id:
-                    continue
+        try:
+            raw_games = await page.evaluate(extraction_script, year)
+            games = []
 
-                # game_id 형식(YYYYMMDD...)을 바탕으로 날짜를 추출합니다.
-                game_date = game_id[:8]
-
-                # game_id에서 홈/어웨이 팀 코드를 추출합니다.
-                away_segment = game_id[8:10] if len(game_id) >= 10 else None
-                home_segment = game_id[10:12] if len(game_id) >= 12 else None
-
+            for g in raw_games:
+                # Python-side processing for complex team codes if needed 
+                # (although team_code_from_game_id_segment is simple, keeping it consistent)
                 games.append({
-                    'game_id': game_id,
-                    'game_date': game_date,
-                    'season_year': year,
-                    'season_type': 'regular', # 시즌 유형 (정규, 포스트시즌 등)
-                    'away_team_code': team_code_from_game_id_segment(away_segment, year),
-                    'home_team_code': team_code_from_game_id_segment(home_segment, year),
-                    'doubleheader_no': int(game_id[-1]) if game_id[-1].isdigit() else 0, # 더블헤더 여부
-                    'game_status': 'scheduled', # 경기 상태 (예정, 종료 등)
-                    'crawl_status': 'pending', # 크롤링 상태
-                    'url': f"https://www.koreabaseball.com{href}" if href.startswith('/') else href
+                    'game_id': g['game_id'],
+                    'game_date': g['game_date'],
+                    'season_year': g['season_year'],
+                    'season_type': g['season_type'],
+                    'away_team_code': team_code_from_game_id_segment(g['away_segment'], year),
+                    'home_team_code': team_code_from_game_id_segment(g['home_segment'], year),
+                    'doubleheader_no': g['doubleheader_no'],
+                    'game_status': g['game_status'],
+                    'crawl_status': g['crawl_status'],
+                    'url': f"https://www.koreabaseball.com{g['url_suffix']}" if g['url_suffix'].startswith('/') else g['url_suffix']
                 })
+            
+            return games
 
-            except Exception as e:
-                print(f"[WARN] Error extracting game: {e}")
-                continue
-
-        # game_id를 기준으로 중복된 경기 정보를 제거합니다.
-        unique_games = {g['game_id']: g for g in games}
-        return list(unique_games.values())
+        except Exception as e:
+            print(f"[WARN] Error extracting game (JS): {e}")
+            return []
 
     def _extract_game_id(self, href: str) -> str:
         """URL(href)에서 game_id를 안전하게 추출합니다."""

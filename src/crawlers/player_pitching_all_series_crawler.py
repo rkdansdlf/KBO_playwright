@@ -27,6 +27,7 @@ from playwright.sync_api import sync_playwright, Page, TimeoutError as Playwrigh
 
 from src.repositories.player_season_pitching_repository import save_pitching_stats_to_db
 from src.utils.team_mapping import get_team_code, get_team_mapping_for_year
+from src.utils.playwright_blocking import install_sync_resource_blocking
 
 
 def get_team_code_mapping() -> Dict[str, str]:
@@ -195,6 +196,33 @@ def extract_player_id(href: Optional[str]) -> Optional[int]:
         return None
     match = re.search(r"playerId=(\d+)", href)
     return int(match.group(1)) if match else None
+
+
+def _extract_rows_fast(page: Page, table_selector: str = "table.tData01.tt") -> Optional[List[Dict[str, object]]]:
+    try:
+        payload = page.evaluate(
+            """
+            (selector) => {
+                const table = document.querySelector(selector);
+                if (!table) return null;
+                const body = table.tBodies && table.tBodies.length ? table.tBodies[0] : table;
+                const rows = Array.from(body.querySelectorAll('tr'));
+                return rows.map((row) => {
+                    const cells = Array.from(row.querySelectorAll('td')).map(td => (td.innerText || '').trim());
+                    const link = row.querySelector('a');
+                    return {
+                        cells,
+                        linkText: link ? (link.innerText || '').trim() : null,
+                        linkHref: link ? link.getAttribute('href') : null,
+                    };
+                });
+            }
+            """,
+            table_selector,
+        )
+        return payload or []
+    except Exception:
+        return None
 
 
 def wait_for_table(page: Page, timeout: int = 30000) -> None:
@@ -382,6 +410,7 @@ def parse_basic1_page(
     headers = [normalize_header(th.inner_text()) for th in page.query_selector_all("table.tData01.tt thead th")]
     header_index = {name: idx for idx, name in enumerate(headers)}
     team_mapping = get_team_mapping_for_year(season)
+    use_fast = os.getenv("KBO_FAST_PARSE", "1") != "0"
 
     core_headers = ["선수명", "팀명", "IP", "G", "ERA"]
     missing_core = [h for h in core_headers if h not in header_index]
@@ -390,101 +419,145 @@ def parse_basic1_page(
         print("   헤더 목록:", headers)
         return 0
 
-    rows = page.query_selector_all("table.tData01.tt tbody tr")
+    rows_data = _extract_rows_fast(page) if use_fast else None
+    rows = rows_data if rows_data is not None else page.query_selector_all("table.tData01.tt tbody tr")
     processed = 0
 
     for row in rows:
-        cells = row.query_selector_all("td")
-        if len(cells) < len(headers):
-            continue
+        if rows_data is not None:
+            cells = row.get("cells") or []
+            if len(cells) < len(headers):
+                continue
+    """
+    Basic1 Page Parsing with JS Fast Path
+    """
+    
+    # JavaScript Payload Extraction
+    extraction_script = """
+    () => {
+        const rows = document.querySelectorAll('table.tData01.tt tbody tr');
+        if (rows.length === 0) return [];
+        
+        const headers = Array.from(document.querySelectorAll('table.tData01.tt thead th')).map(th => th.innerText.trim());
+        const headerIndex = {};
+        headers.forEach((h, i) => headerIndex[h] = i);
+        
+        const results = [];
+        
+        rows.forEach(row => {
+            const cells = Array.from(row.querySelectorAll('td'));
+            if (cells.length < headers.length) return;
+            
+            // Player Info (Assuming "선수명" is present)
+            let nameIndex = headerIndex["선수명"];
+            if (nameIndex === undefined) return;
+            
+            const nameCell = cells[nameIndex];
+            const link = nameCell.querySelector('a');
+            if (!link) return; // Should have link
+            
+            const href = link.getAttribute('href');
+            const idMatch = href.match(/playerId=(\\d+)/);
+            if (!idMatch) return;
+            
+            const player_id = parseInt(idMatch[1]);
+            const player_name = link.innerText.trim();
+            const team_name = cells[headerIndex["팀명"]].innerText.trim();
+            
+            // Extract raw text for mapping in Python
+            const raw = {};
+            for (const [key, idx] of Object.entries(headerIndex)) {
+                raw[key] = cells[idx].innerText.trim();
+            }
+            
+            results.push({ player_id, player_name, team_name, raw });
+        });
+        return results;
+    }
+    """
 
-        name_cell = cells[header_index["선수명"]]
-        link = name_cell.query_selector("a")
-        player_id = extract_player_id(link.get_attribute("href") if link else None)
-        if not player_id:
-            continue
+    try:
+        extracted_rows = page.evaluate(extraction_script)
+        team_mapping = get_team_mapping_for_year(season)
+        processed = 0
 
-        if max_players and player_id not in pitchers and len(pitchers) >= max_players:
-            continue
+        for row in extracted_rows:
+            player_id = row['player_id']
+            
+            if max_players and player_id not in pitchers and len(pitchers) >= max_players:
+                continue
+            
+            player_name = row['player_name']
+            team_name = row['team_name']
+            raw = row['raw']
+            
+            # Map Team Code
+            team_code = get_team_code(team_name, season)
+            if not team_code:
+                team_code = team_mapping.get(team_name, team_name)
 
-        player_name = link.inner_text().strip() if link else name_cell.inner_text().strip()
-        team_name = cells[header_index["팀명"]].inner_text().strip()
-        team_code = get_team_code(team_name, season)
-        if not team_code:
-            # 정적 매핑 폴백
-            team_code = team_mapping.get(team_name, team_name)
-            print(f"⚠️ {season}년 '{team_name}' 팀 매핑 실패, 폴백: {team_code}")
+            stats = pitchers.get(player_id)
+            if not stats:
+                stats = PitcherStats(
+                    player_id=player_id,
+                    season=season,
+                    league=league,
+                )
+                pitchers[player_id] = stats
+            
+            stats.player_name = player_name
+            stats.team_name = team_name
+            stats.team_code = team_code
+            
+            # Helper to get raw value safely
+            def get_val(key): return raw.get(key)
 
-        stats = pitchers.get(player_id)
-        if not stats:
-            stats = PitcherStats(
-                player_id=player_id,
-                season=season,
-                league=league,
-            )
-            pitchers[player_id] = stats
+            stats.games = safe_int(get_val("G")) if "G" in raw else stats.games
+            stats.wins = safe_int(get_val("W")) if "W" in raw else stats.wins
+            stats.losses = safe_int(get_val("L")) if "L" in raw else stats.losses
+            stats.saves = safe_int(get_val("SV")) if "SV" in raw else stats.saves
+            stats.holds = safe_int(get_val("HLD")) if "HLD" in raw else stats.holds
+            
+            if "IP" in raw:
+                ip_value, outs_value = parse_innings(get_val("IP"))
+                stats.innings_pitched = ip_value
+                stats.innings_outs = outs_value
 
-        stats.player_name = player_name
-        stats.team_name = team_name
-        stats.team_code = team_code
+            stats.hits_allowed = safe_int(get_val("H")) if "H" in raw else stats.hits_allowed
+            stats.home_runs_allowed = safe_int(get_val("HR")) if "HR" in raw else stats.home_runs_allowed
+            stats.walks_allowed = safe_int(get_val("BB")) if "BB" in raw else stats.walks_allowed
+            stats.hit_batters = safe_int(get_val("HBP")) if "HBP" in raw else stats.hit_batters
+            stats.strikeouts = safe_int(get_val("SO")) if "SO" in raw else stats.strikeouts
+            stats.runs_allowed = safe_int(get_val("R")) if "R" in raw else stats.runs_allowed
+            stats.earned_runs = safe_int(get_val("ER")) if "ER" in raw else stats.earned_runs
+            stats.era = safe_float(get_val("ERA")) if "ERA" in raw else stats.era
+            stats.whip = safe_float(get_val("WHIP")) if "WHIP" in raw else stats.whip
 
-        if "G" in header_index:
-            stats.games = safe_int(cells[header_index["G"]].inner_text())
-        if "W" in header_index:
-            stats.wins = safe_int(cells[header_index["W"]].inner_text())
-        if "L" in header_index:
-            stats.losses = safe_int(cells[header_index["L"]].inner_text())
-        if "SV" in header_index:
-            stats.saves = safe_int(cells[header_index["SV"]].inner_text())
-        if "HLD" in header_index:
-            stats.holds = safe_int(cells[header_index["HLD"]].inner_text())
-        if "IP" in header_index:
-            ip_value, outs_value = parse_innings(cells[header_index["IP"]].inner_text())
-            stats.innings_pitched = ip_value
-            stats.innings_outs = outs_value
-        if "H" in header_index:
-            stats.hits_allowed = safe_int(cells[header_index["H"]].inner_text())
-        if "HR" in header_index:
-            stats.home_runs_allowed = safe_int(cells[header_index["HR"]].inner_text())
-        if "BB" in header_index:
-            stats.walks_allowed = safe_int(cells[header_index["BB"]].inner_text())
-        if "HBP" in header_index:
-            stats.hit_batters = safe_int(cells[header_index["HBP"]].inner_text())
-        if "SO" in header_index:
-            stats.strikeouts = safe_int(cells[header_index["SO"]].inner_text())
-        if "R" in header_index:
-            stats.runs_allowed = safe_int(cells[header_index["R"]].inner_text())
-        if "ER" in header_index:
-            stats.earned_runs = safe_int(cells[header_index["ER"]].inner_text())
-        if "ERA" in header_index:
-            stats.era = safe_float(cells[header_index["ERA"]].inner_text())
-        if "WHIP" in header_index:
-            stats.whip = safe_float(cells[header_index["WHIP"]].inner_text())
-
-        metrics = stats.extra_stats.setdefault("metrics", {})
-
-        def record_metric(header: str, key: str, caster=safe_int):
-            if header in header_index:
-                value = caster(cells[header_index[header]].inner_text())
-                if value is not None:
-                    metrics[key] = value
-
-        record_metric("CG", "complete_games")
-        record_metric("SHO", "shutouts")
-        record_metric("TBF", "tbf")
-        rank_value = safe_int(cells[header_index.get("순위", 0)].inner_text()) if "순위" in header_index else None
-        win_pct = safe_float(cells[header_index["WPCT"]].inner_text()) if "WPCT" in header_index else None
-
-        rankings = stats.extra_stats.setdefault("rankings", {})
-        rankings["basic1"] = rank_value
-        if stats.era is not None:
-            metrics["era"] = stats.era
-        if win_pct is not None:
-            metrics["win_pct"] = win_pct
-
-        processed += 1
-
-    return processed
+            # Extra metrics
+            metrics = stats.extra_stats.setdefault("metrics", {})
+            
+            for header, key in [
+                ("CG", "complete_games"), ("SHO", "shutouts"), ("TBF", "tbf"),
+            ]:
+                if header in raw:
+                    val = safe_int(get_val(header))
+                    if val is not None: metrics[key] = val
+            
+            rank_value = safe_int(get_val("순위")) if "순위" in raw else None
+            win_pct = safe_float(get_val("WPCT")) if "WPCT" in raw else None
+            
+            rankings = stats.extra_stats.setdefault("rankings", {})
+            rankings["basic1"] = rank_value
+            if stats.era is not None: metrics["era"] = stats.era
+            if win_pct is not None: metrics["win_pct"] = win_pct
+            
+            processed += 1
+            
+        return processed
+        
+    except Exception as e:
+        print(f"❌ Basic1 파싱 오류 (JS): {e}")
+        return 0
 
 
 def parse_basic2_page(
@@ -498,24 +571,46 @@ def parse_basic2_page(
     headers = [normalize_header(th.inner_text()) for th in page.query_selector_all("table.tData01.tt thead th")]
     header_index = {name: idx for idx, name in enumerate(headers)}
     team_mapping = get_team_mapping_for_year(season)
+    use_fast = os.getenv("KBO_FAST_PARSE", "1") != "0"
 
     # Basic2 헤더는 정규시즌과 포스트시즌에서 다를 수 있음
     if "선수명" not in header_index or "팀명" not in header_index:
         print("⚠️  Basic2 테이블 헤더 파싱 실패")
         return 0
 
-    rows = page.query_selector_all("table.tData01.tt tbody tr")
+    rows_data = _extract_rows_fast(page) if use_fast else None
+    rows = rows_data if rows_data is not None else page.query_selector_all("table.tData01.tt tbody tr")
     processed = 0
 
     for row in rows:
-        cells = row.query_selector_all("td")
-        if len(cells) < len(headers):
-            continue
+        if rows_data is not None:
+            cells = row.get("cells") or []
+            if len(cells) < len(headers):
+                continue
+            link_href = row.get("linkHref")
+            player_id = extract_player_id(link_href)
+            if not player_id:
+                continue
 
-        link = cells[header_index["선수명"]].query_selector("a")
-        player_id = extract_player_id(link.get_attribute("href") if link else None)
-        if not player_id:
-            continue
+            def cell_text(idx: int) -> Optional[str]:
+                return cells[idx] if len(cells) > idx else None
+
+            player_name = (row.get("linkText") or cell_text(header_index["선수명"]) or "").strip()
+            team_name = (cell_text(header_index["팀명"]) or "").strip()
+        else:
+            cells = row.query_selector_all("td")
+            if len(cells) < len(headers):
+                continue
+
+            def cell_text(idx: int) -> Optional[str]:
+                return cells[idx].inner_text() if len(cells) > idx else None
+
+            link = cells[header_index["선수명"]].query_selector("a")
+            player_id = extract_player_id(link.get_attribute("href") if link else None)
+            if not player_id:
+                continue
+            player_name = link.inner_text().strip() if link else cells[header_index["선수명"]].inner_text().strip()
+            team_name = cells[header_index["팀명"]].inner_text().strip()
 
         if max_players and player_id not in pitchers and len(pitchers) >= max_players:
             continue
@@ -524,8 +619,7 @@ def parse_basic2_page(
         if not stats:
             stats = PitcherStats(player_id=player_id, season=season, league=league)
             pitchers[player_id] = stats
-            stats.player_name = link.inner_text().strip() if link else cells[header_index["선수명"]].inner_text().strip()
-            team_name = cells[header_index["팀명"]].inner_text().strip()
+            stats.player_name = player_name
             stats.team_name = team_name
             team_code = get_team_code(team_name, season)
             if not team_code:
@@ -538,7 +632,7 @@ def parse_basic2_page(
 
         def set_metric(header_name: str, key: str, caster):
             if header_name in header_index:
-                value = caster(cells[header_index[header_name]].inner_text())
+                value = caster(cell_text(header_index[header_name]))
                 if value is not None:
                     metrics[key] = value
 
@@ -555,20 +649,20 @@ def parse_basic2_page(
         set_metric("SF", "sacrifice_flies_allowed", safe_int)
 
         if "IBB" in header_index:
-            val = safe_int(cells[header_index["IBB"]].inner_text())
+            val = safe_int(cell_text(header_index["IBB"]))
             if val is not None:
                 stats.intentional_walks = val
         if "WP" in header_index:
-            val = safe_int(cells[header_index["WP"]].inner_text())
+            val = safe_int(cell_text(header_index["WP"]))
             if val is not None:
                 stats.wild_pitches = val
         if "BK" in header_index:
-            val = safe_int(cells[header_index["BK"]].inner_text())
+            val = safe_int(cell_text(header_index["BK"]))
             if val is not None:
                 stats.balks = val
 
         # 랭킹 기록
-        rank_val = safe_int(cells[header_index.get("순위", 0)].inner_text()) if "순위" in header_index else None
+        rank_val = safe_int(cell_text(header_index.get("순위", 0))) if "순위" in header_index else None
         if rank_val is not None:
             rankings = stats.extra_stats.setdefault("rankings", {})
             rankings[sort_key] = rank_val
@@ -621,6 +715,7 @@ def crawl_pitcher_series(
         browser = playwright.chromium.launch(headless=headless)
         page = browser.new_page()
         page.set_default_timeout(60000)
+        install_sync_resource_blocking(page)
 
         # Step 1: Basic1 - 시리즈별 정렬 후 전체 페이지 수집
         if not setup_pitcher_page(page, BASIC1_URL, year, series_info["value"]):

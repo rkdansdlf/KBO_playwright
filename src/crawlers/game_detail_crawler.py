@@ -2,13 +2,15 @@
 from __future__ import annotations
 
 import asyncio
+import os
 import re
 from typing import Dict, List, Optional, Any
 from urllib.parse import urljoin, urlparse, parse_qs
 
-from playwright.async_api import async_playwright, Page
+from playwright.async_api import Page
 
 from src.utils.team_codes import resolve_team_code, team_code_from_game_id_segment
+from src.utils.playwright_pool import AsyncPlaywrightPool
 
 
 HITTER_HEADER_MAP = {
@@ -70,46 +72,83 @@ PITCHER_FLOAT_KEYS = {"era", "whip", "fip", "k_per_nine", "bb_per_nine", "kbb"}
 class GameDetailCrawler:
     """Crawl KBO GameCenter review pages and return structured box score data."""
 
-    def __init__(self, request_delay: float = 1.5, resolver: Optional[Any] = None):
+    def __init__(
+        self,
+        request_delay: float = 1.5,
+        resolver: Optional[Any] = None,
+        pool: Optional[AsyncPlaywrightPool] = None,
+    ):
         self.base_url = "https://www.koreabaseball.com/Schedule/GameCenter/Main.aspx"
         self.request_delay = request_delay
         self.resolver = resolver
+        self.pool = pool
 
     async def crawl_game(self, game_id: str, game_date: str) -> Optional[Dict[str, Any]]:
         result = await self.crawl_games([{"game_id": game_id, "game_date": game_date}])
         return result[0] if result else None
 
-    async def crawl_games(self, games: List[Dict[str, str]]) -> List[Dict[str, Any]]:
+    async def crawl_games(
+        self,
+        games: List[Dict[str, str]],
+        concurrency: Optional[int] = None,
+    ) -> List[Dict[str, Any]]:
         if not games:
             return []
 
-        async with async_playwright() as p:
-            browser = await p.chromium.launch(headless=True)
-            page = await browser.new_page()
+        max_concurrency = concurrency or int(os.getenv("KBO_GAME_DETAIL_CONCURRENCY", "3"))
+        max_concurrency = max(1, min(max_concurrency, len(games)))
 
-            results: List[Dict[str, Any]] = []
-            try:
-                for entry in games:
-                    game_id = entry["game_id"]
-                    game_date = entry["game_date"]
-                    try:
-                        payload = await self._crawl_single(page, game_id, game_date)
-                        if payload:
-                            results.append(payload)
-                    except Exception as exc:  # pragma: no cover - resilience path
-                        print(f"❌ Error crawling {game_id}: {exc}")
-                return results
-            finally:
-                await browser.close()
+        pool = self.pool or AsyncPlaywrightPool(max_pages=max_concurrency)
+        owns_pool = self.pool is None
+        if self.pool:
+            max_concurrency = min(max_concurrency, self.pool.max_pages)
+
+        results: List[Optional[Dict[str, Any]]] = [None] * len(games)
+        await pool.start()
+        try:
+            queue: asyncio.Queue[Optional[tuple[int, Dict[str, str]]]] = asyncio.Queue()
+            for idx, entry in enumerate(games):
+                queue.put_nowait((idx, entry))
+            for _ in range(max_concurrency):
+                queue.put_nowait(None)
+
+            async def worker() -> None:
+                page = await pool.acquire()
+                try:
+                    while True:
+                        item = await queue.get()
+                        if item is None:
+                            queue.task_done()
+                            break
+                        idx, entry = item
+                        game_id = entry["game_id"]
+                        game_date = entry["game_date"]
+                        try:
+                            payload = await self._crawl_single(page, game_id, game_date)
+                            results[idx] = payload
+                        except Exception as exc:  # pragma: no cover - resilience path
+                            print(f"❌ Error crawling {game_id}: {exc}")
+                        finally:
+                            queue.task_done()
+                finally:
+                    await pool.release(page)
+
+            workers = [asyncio.create_task(worker()) for _ in range(max_concurrency)]
+            await queue.join()
+            await asyncio.gather(*workers, return_exceptions=True)
+        finally:
+            if owns_pool:
+                await pool.close()
+
+        return [payload for payload in results if payload]
 
     async def _crawl_single(self, page: Page, game_id: str, game_date: str) -> Optional[Dict[str, Any]]:
         url = f"{self.base_url}?gameId={game_id}&gameDate={game_date}&section=REVIEW"
         print(f"📡 Fetching BoxScore: {url}")
 
-        await page.goto(url, wait_until="networkidle", timeout=30000)
-        await asyncio.sleep(self.request_delay)
-
+        await page.goto(url, wait_until="domcontentloaded", timeout=30000)
         await self._wait_for_boxscore(page)
+        await asyncio.sleep(self.request_delay)
 
         season_year = self._parse_season_year(game_date)
         team_info = await self._extract_team_info(page, game_id, season_year)

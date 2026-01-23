@@ -3,19 +3,28 @@ from __future__ import annotations
 import asyncio
 from typing import Dict, List, Optional
 
-from playwright.async_api import async_playwright, Page
+from playwright.async_api import Page
 
 from src.utils.status_parser import parse_status_from_text
+from src.utils.playwright_pool import AsyncPlaywrightPool
 
 
 class PlayerStatusConfirmer:
     """Confirm suspicious player statuses via profile pages."""
 
-    def __init__(self, *, request_delay: float = 1.5, max_confirmations: int = 200, headless: bool = True):
+    def __init__(
+        self,
+        *,
+        request_delay: float = 1.5,
+        max_confirmations: int = 200,
+        headless: bool = True,
+        pool: Optional[AsyncPlaywrightPool] = None,
+    ):
         self.base_url = "https://www.koreabaseball.com/Record/Player/HitterDetail/Basic.aspx"
         self.request_delay = request_delay
         self.max_confirmations = max_confirmations
         self.headless = headless
+        self.pool = pool
 
     async def confirm_entries(self, entries: List[Dict[str, object]]) -> Dict[str, int]:
         """Mutates entries in-place when profile confirmation succeeds."""
@@ -25,9 +34,11 @@ class PlayerStatusConfirmer:
         if not suspects:
             return {"attempted": 0, "confirmed": 0}
 
-        async with async_playwright() as p:
-            browser = await p.chromium.launch(headless=self.headless)
-            page = await browser.new_page()
+        pool = self.pool or AsyncPlaywrightPool(max_pages=1, headless=self.headless)
+        owns_pool = self.pool is None
+        await pool.start()
+        try:
+            page = await pool.acquire()
             try:
                 for entry in suspects:
                     if attempts >= self.max_confirmations:
@@ -41,7 +52,10 @@ class PlayerStatusConfirmer:
                         entry.update(result)
                         confirmed += 1
             finally:
-                await browser.close()
+                await pool.release(page)
+        finally:
+            if owns_pool:
+                await pool.close()
         return {"attempted": attempts, "confirmed": confirmed}
 
     async def _confirm_single(self, page: Page, player_id: str) -> Optional[Dict[str, str]]:

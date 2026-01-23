@@ -124,6 +124,21 @@ def build_arg_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="선수 이동 현황(Trade, FA 등)을 동기화합니다.",
     )
+    parser.add_argument(
+        "--awards",
+        action="store_true",
+        help="수상 내역(Awards)을 동기화합니다.",
+    )
+    parser.add_argument(
+        "--crawl-runs",
+        action="store_true",
+        help="크롤링 실행 기록(Crawl Runs)을 동기화합니다.",
+    )
+    parser.add_argument(
+        "--embeddings",
+        action="store_true",
+        help="임베딩 데이터(Embeddings)를 동기화합니다.",
+    )
     return parser
 
 
@@ -164,7 +179,30 @@ def main(argv: Iterable[str] | None = None) -> None:
             syncer.sync_franchises()
             syncer.sync_teams()
             syncer.sync_team_history()
+            syncer.sync_team_history()
             print("✅ Team Data Sync Finished")
+
+    elif args.awards:
+        print("🚀 Syncing Awards using specialized SupabaseSync...")
+        with SessionLocal() as session:
+            syncer = SupabaseSync(args.target_url, session)
+            syncer.sync_awards()
+            print("✅ Awards Sync Finished")
+
+    elif args.crawl_runs:
+        print("🚀 Syncing Crawl Runs using specialized SupabaseSync...")
+        with SessionLocal() as session:
+            syncer = SupabaseSync(args.target_url, session)
+            syncer.sync_crawl_runs()
+            print("✅ Crawl Runs Sync Finished")
+
+    elif args.embeddings:
+        print("🚀 Syncing Embeddings using specialized SupabaseSync...")
+        with SessionLocal() as session:
+            syncer = SupabaseSync(args.target_url, session)
+            syncer.sync_embeddings()
+            print("✅ Embeddings Sync Finished")
+
         
     else:
         sync_databases(args.source_url, args.target_url, truncate=args.truncate)
