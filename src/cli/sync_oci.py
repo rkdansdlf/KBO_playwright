@@ -132,11 +132,6 @@ def build_arg_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="수상 내역(Awards)을 동기화합니다.",
     )
-    parser.add_argument(
-        "--embeddings",
-        action="store_true",
-        help="임베딩 데이터(Embeddings)를 동기화합니다.",
-    )
     return parser
 
 
@@ -187,12 +182,6 @@ def main(argv: Iterable[str] | None = None) -> None:
             syncer.sync_awards()
             print("✅ Awards Sync Finished")
 
-    elif args.embeddings:
-        print("🚀 Syncing Embeddings using specialized OCISync...")
-        with SessionLocal() as session:
-            syncer = OCISync(args.target_url, session)
-            syncer.sync_embeddings()
-            print("✅ Embeddings Sync Finished")
 
         
     else:
