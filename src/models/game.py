@@ -36,7 +36,6 @@ class Game(Base, TimestampMixin):
     
     # Relationships
     summary = relationship("GameSummary", back_populates="game")
-    box_score = relationship("BoxScore", back_populates="game", uselist=False)
     plays = relationship("GamePlayByPlay", back_populates="game")
     metadata_entry = relationship("GameMetadata", back_populates="game", uselist=False)
     innings = relationship("GameInningScore", back_populates="game")
@@ -58,32 +57,6 @@ class GameSummary(Base, TimestampMixin):
 
     game = relationship("Game", back_populates="summary")
 
-class BoxScore(Base, TimestampMixin):
-    """Team-level line score (inning by inning) and totals"""
-    __tablename__ = "box_score"
-
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    game_id = Column(String(20), ForeignKey("game.game_id"), nullable=False, unique=True)
-    
-    # Away Inning Scores
-    away_1 = Column(Integer); away_2 = Column(Integer); away_3 = Column(Integer)
-    away_4 = Column(Integer); away_5 = Column(Integer); away_6 = Column(Integer)
-    away_7 = Column(Integer); away_8 = Column(Integer); away_9 = Column(Integer)
-    away_10 = Column(Integer); away_11 = Column(Integer); away_12 = Column(Integer)
-    away_13 = Column(Integer); away_14 = Column(Integer); away_15 = Column(Integer)
-    
-    # Home Inning Scores
-    home_1 = Column(Integer); home_2 = Column(Integer); home_3 = Column(Integer)
-    home_4 = Column(Integer); home_5 = Column(Integer); home_6 = Column(Integer)
-    home_7 = Column(Integer); home_8 = Column(Integer); home_9 = Column(Integer)
-    home_10 = Column(Integer); home_11 = Column(Integer); home_12 = Column(Integer)
-    home_13 = Column(Integer); home_14 = Column(Integer); home_15 = Column(Integer)
-    
-    # Totals (Runs, Hits, Errors, Balls)
-    away_r = Column(Integer); away_h = Column(Integer); away_e = Column(Integer)
-    home_r = Column(Integer); home_h = Column(Integer); home_e = Column(Integer)
-
-    game = relationship("Game", back_populates="box_score")
 
 class GamePlayByPlay(Base, TimestampMixin):
     """Detailed event logs (play-by-play)"""
@@ -270,6 +243,16 @@ class GameEvent(Base, TimestampMixin):
     rbi = Column(Integer)
     bases_before = Column(String(3))
     bases_after = Column(String(3))
+    
+    # WPA & State Columns
+    wpa = Column(Float)
+    win_expectancy_before = Column(Float)
+    win_expectancy_after = Column(Float)
+    score_diff = Column(Integer) # Home - Away
+    base_state = Column(Integer) # Bitmask
+    home_score = Column(Integer)
+    away_score = Column(Integer)
+
     extra_json = Column(JSON)
 
     game = relationship("Game", back_populates="events")

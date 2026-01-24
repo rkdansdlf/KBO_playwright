@@ -727,58 +727,6 @@ class OCISync:
         print(f"✅ Synced {synced} player identities to OCI")
         return synced
 
-    def sync_embeddings(self) -> int:
-        """Sync embeddings from SQLite to OCI"""
-        from src.models.kbo_embedding import KBOEmbedding
-        
-        # Read from SQLite
-        embeddings = self.sqlite_session.query(KBOEmbedding).all()
-        synced = 0
-        
-        print(f"INFO: Found {len(embeddings)} embeddings to sync.")
-        
-        batch_size = 500
-        for i in range(0, len(embeddings), batch_size):
-            batch = embeddings[i:i+batch_size]
-            values_list = []
-            
-            for em in batch:
-                data = {
-                    'table_name': em.table_name,
-                    'record_id': em.record_id,
-                    'content': em.content,
-                    'vector_data': em.vector_data, # Hopefully maps to vector type or JSON
-                    'metadata_json': em.metadata_json,
-                    'created_at': datetime.now(),
-                    'updated_at': datetime.now()
-                }
-                values_list.append(data)
-            
-            if not values_list:
-                continue
-                
-            stmt = pg_insert(KBOEmbedding).values(values_list)
-            
-            update_dict = {
-                'content': stmt.excluded.content,
-                'vector_data': stmt.excluded.vector_data,
-                'metadata_json': stmt.excluded.metadata_json,
-                'updated_at': stmt.excluded.updated_at
-            }
-            
-            # Use unique constraint on (table_name, record_id)
-            stmt = stmt.on_conflict_do_update(
-                constraint='uq_embedding_source',
-                set_=update_dict
-            )
-            
-            self.target_session.execute(stmt)
-            self.target_session.commit()
-            synced += len(values_list)
-            print(f"   Synced batch {i // batch_size + 1} ({len(values_list)} records)")
-            
-        print(f"✅ Synced {synced} embeddings to OCI")
-        return synced
 
 
     def _get_player_id_mapping(self) -> Dict[int, int]:

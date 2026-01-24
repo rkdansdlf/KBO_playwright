@@ -9,6 +9,8 @@ from playwright.async_api import Page, TimeoutError
 from src.utils.safe_print import safe_print as print
 from src.utils.request_policy import RequestPolicy
 from src.utils.playwright_pool import AsyncPlaywrightPool
+from src.services.wpa_calculator import WPACalculator
+from src.utils.text_parser import KBOTextParser
 
 class RelayCrawler:
     def __init__(
@@ -21,6 +23,7 @@ class RelayCrawler:
         self.policy = policy or RequestPolicy(min_delay=request_delay, max_delay=request_delay + 0.5)
         self.pool = pool
         self._context_kwargs = self.policy.build_context_kwargs(locale='ko-KR')
+        self.wpa_calc = WPACalculator()
 
     async def crawl_live_game(self, game_id: str) -> Optional[Dict[str, Any]]:
         """
@@ -138,15 +141,102 @@ class RelayCrawler:
 
         try:
             raw_data = await page.evaluate(extraction_script)
-            events = []
-            sequence = 1
+            # State Tracking
+            current_outs = 0
+            current_runners = 0
+            home_score = 0
+            away_score = 0
+            
+            # WPA Calculation needs: Inning, Bottom?, Outs, Runners, ScoreDiff
+            # We track these sequentially.
             
             for idx, item in enumerate(raw_data):
                 # We still use Python for the regex/parsing logic to be safe and reuse existing logic if possible.
                 # Re-using _parse_inning_header logic
                 info = self._parse_inning_header(item['full_text'], idx)
+                inning = info['inning']
+                is_bottom = (info['half'] == 'bottom')
+                
+                # Reset outs/runners on new inning half (heuristic check)
+                # But careful, idx is flat list of blocks. If block is new inning, reset.
+                # Check if this block header implies new inning/half.
+                if idx > 0:
+                    prev_info = self._parse_inning_header(raw_data[idx-1]['full_text'], idx-1)
+                    if prev_info != info:
+                        current_outs = 0
+                        current_runners = 0
                 
                 for p_text in item['plays']:
+                    # 1. Determine State BEFORE event
+                    outs_before = current_outs
+                    runners_before = current_runners
+                    score_diff_before = home_score - away_score
+                    
+                    # 2. Parse Event for State Changes
+                    # Try to find explicit state in text (e.g. "1사 2루") to correct drift
+                    # Parser logic needed here. For now, rely on heuristic updates or basic parser.
+                    # Note: p_text often contains "1사 1,2루에서 xxx 안타" -> "1사 1,2루" is BEFORE state.
+                    
+                    parsed_outs = KBOTextParser.parse_outs(p_text)
+                    parsed_runners = KBOTextParser.parse_runners(p_text)
+                    
+                    # If text has explicit state, use it as 'before' (trust source over tracking if divergent)
+                    # But actually "1사 2루에서" means Before state. "1사 2루가 됨" means After state.
+                    # KBO texts are usually "Name: Result" without full context in one line.
+                    # But the 'full_text' block header might have context.
+                    # Let's trust tracked state but sync if 0 outs/runners at start of inning.
+                    
+                    # 3. Determine Result / Update State
+                    runs_scored = KBOTextParser.parse_score_change(p_text)
+                    
+                    # Update Score
+                    if is_bottom:
+                        home_score += runs_scored
+                    else:
+                        away_score += runs_scored
+                        
+                    # Update Outs/Runners (Naive simulation)
+                    # This is HARD without sophisticated NLP.
+                    # For MVP: We will calculate WPA based on "Before" state derived from
+                    # heuristics or just use 0.5 if unknown.
+                    # BETTER: Use WPA Calculator's internal logic if we had RE24 state transition map.
+                    #
+                    # Compromise: Parse 'Outs' and 'Runners' from the text if present to set "After" state?
+                    # Or assume text like "삼진 아웃" increments out.
+                    
+                    if "삼진" in p_text or "범타" in p_text or "땅볼" in p_text or "플라이" in p_text or "아웃" in p_text:
+                         if "병살" in p_text:
+                             current_outs += 2
+                         elif "삼중살" in p_text:
+                             current_outs += 3
+                         else:
+                             current_outs += 1
+                    
+                    # Cap outs
+                    current_outs = min(current_outs, 3)
+                    
+                    # Bases: Complex. "안타" -> assume +1 base? "2루타" -> +2?
+                    # Without full engine, base state validty is low.
+                    # Let's try to grab 'runners_after' from next line?
+                    # No, we only have current line.
+                    
+                    outs_after = current_outs
+                    runners_after = 0 # Placeholder: Hard to track without deep parsing.
+                    score_diff_after = home_score - away_score
+                    
+                    # 4. Calculate WPA
+                    # Calculate WinProb Before
+                    wp_before = self.wpa_calc.get_win_probability(
+                        inning, is_bottom, outs_before, runners_before, score_diff_before
+                    )
+                    
+                    # Calculate WinProb After
+                    wp_after = self.wpa_calc.get_win_probability(
+                        inning, is_bottom, outs_after, runners_after, score_diff_after
+                    )
+                    
+                    wpa = round(wp_after - wp_before if is_bottom else wp_before - wp_after, 4)
+
                     event = {
                         'event_seq': sequence,
                         'inning': info['inning'],
@@ -155,7 +245,15 @@ class RelayCrawler:
                         'event_type': 'unknown',
                         'batter': None,
                         'pitcher': None,
-                        'result': None
+                        'result': None,
+                        # New Fields
+                        'wpa': wpa,
+                        'win_expectancy_before': wp_before,
+                        'win_expectancy_after': wp_after,
+                        'score_diff': score_diff_before, # Store 'Before' diff usually?
+                        'home_score': home_score,
+                        'away_score': away_score,
+                        'base_state': runners_before
                     }
                     
                     # Basic parsing logic (kept in Python for consistency/easier debugging)
