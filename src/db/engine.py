@@ -102,7 +102,6 @@ def _ensure_game_core_tables():
     try:
         with Engine.begin() as conn:
             _migrate_game_table(conn)
-            _migrate_box_score_table(conn)
             _migrate_game_summary_table(conn)
     except Exception as exc:
         print(f"[WARN] Could not align game tables: {exc}")
@@ -188,65 +187,6 @@ def _migrate_game_table(conn):
     conn.exec_driver_sql("PRAGMA foreign_keys=ON;")
 
 
-def _migrate_box_score_table(conn):
-    info_rows = conn.exec_driver_sql("PRAGMA table_info(box_score);").fetchall()
-    column_names = {row[1] for row in info_rows}
-    removed_cols = {"stadium", "crowd", "start_time", "end_time", "game_time", "away_b", "home_b"}
-    needs_migration = bool(column_names & removed_cols)
-    if not needs_migration:
-        return
-
-    conn.exec_driver_sql("PRAGMA foreign_keys=OFF;")
-    conn.exec_driver_sql("ALTER TABLE box_score RENAME TO box_score_old;")
-    conn.exec_driver_sql(
-        """
-        CREATE TABLE box_score (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            game_id VARCHAR(20) NOT NULL UNIQUE,
-            away_1 INTEGER, away_2 INTEGER, away_3 INTEGER, away_4 INTEGER, away_5 INTEGER,
-            away_6 INTEGER, away_7 INTEGER, away_8 INTEGER, away_9 INTEGER, away_10 INTEGER,
-            away_11 INTEGER, away_12 INTEGER, away_13 INTEGER, away_14 INTEGER, away_15 INTEGER,
-            home_1 INTEGER, home_2 INTEGER, home_3 INTEGER, home_4 INTEGER, home_5 INTEGER,
-            home_6 INTEGER, home_7 INTEGER, home_8 INTEGER, home_9 INTEGER, home_10 INTEGER,
-            home_11 INTEGER, home_12 INTEGER, home_13 INTEGER, home_14 INTEGER, home_15 INTEGER,
-            away_r INTEGER, away_h INTEGER, away_e INTEGER,
-            home_r INTEGER, home_h INTEGER, home_e INTEGER,
-            created_at DATETIME NOT NULL,
-            updated_at DATETIME NOT NULL,
-            FOREIGN KEY(game_id) REFERENCES game(game_id)
-        );
-        """
-    )
-    conn.exec_driver_sql(
-        """
-        INSERT INTO box_score (
-            game_id,
-            away_1, away_2, away_3, away_4, away_5,
-            away_6, away_7, away_8, away_9, away_10,
-            away_11, away_12, away_13, away_14, away_15,
-            home_1, home_2, home_3, home_4, home_5,
-            home_6, home_7, home_8, home_9, home_10,
-            home_11, home_12, home_13, home_14, home_15,
-            away_r, away_h, away_e,
-            home_r, home_h, home_e,
-            created_at, updated_at
-        )
-        SELECT
-            game_id,
-            away_1, away_2, away_3, away_4, away_5,
-            away_6, away_7, away_8, away_9, away_10,
-            away_11, away_12, away_13, away_14, away_15,
-            home_1, home_2, home_3, home_4, home_5,
-            home_6, home_7, home_8, home_9, home_10,
-            home_11, home_12, home_13, home_14, home_15,
-            away_r, away_h, away_e,
-            home_r, home_h, home_e,
-            created_at, updated_at
-        FROM box_score_old;
-        """
-    )
-    conn.exec_driver_sql("DROP TABLE box_score_old;")
-    conn.exec_driver_sql("PRAGMA foreign_keys=ON;")
 
 
 def _migrate_game_summary_table(conn):
@@ -289,7 +229,7 @@ def _migrate_game_summary_table(conn):
 
 def init_db():
     from src.models.base import Base
-    from src.models import team, player, season, game, team_stats, rankings, crawl, award, kbo_embedding
+    from src.models import team, player, season, game, team_stats, rankings, crawl, award
     Base.metadata.create_all(bind=Engine)
     _ensure_player_batting_team_code_column()
     _ensure_player_basic_status_columns()

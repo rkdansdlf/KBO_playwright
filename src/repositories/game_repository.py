@@ -10,7 +10,6 @@ from typing import Dict, Any, List, Iterable
 from src.db.engine import SessionLocal
 from src.models.game import (
     Game,
-    BoxScore,
     GameSummary,
     GamePlayByPlay,
     GameMetadata,
@@ -115,24 +114,6 @@ def save_game_detail(game_data: Dict[str, Any]) -> bool:
             if season_id:
                 game.season_id = season_id
 
-            box = session.query(BoxScore).filter(BoxScore.game_id == game_id).one_or_none()
-            if not box:
-                box = BoxScore(game_id=game_id)
-                session.add(box)
-
-            away_line = away_info.get("line_score") or []
-            home_line = home_info.get("line_score") or []
-            for i in range(1, 16):
-                setattr(box, f"away_{i}", away_line[i - 1] if len(away_line) >= i else None)
-                setattr(box, f"home_{i}", home_line[i - 1] if len(home_line) >= i else None)
-
-            box.away_r = away_info.get("score")
-            box.away_h = away_info.get("hits")
-            box.away_e = away_info.get("errors")
-            box.home_r = home_info.get("score")
-            box.home_h = home_info.get("hits")
-            box.home_e = home_info.get("errors")
-
             _upsert_metadata(session, game_id, metadata)
             _replace_records(session, GameInningScore, game_id, _build_inning_scores(game_id, teams))
             _replace_records(session, GameLineup, game_id, _build_lineups(game_id, hitters))
@@ -232,6 +213,14 @@ def save_relay_data(game_id: str, events: List[Dict[str, Any]]) -> int:
                         bases_before=event.get("bases_before"),
                         bases_after=event.get("bases_after"),
                         extra_json=event.get("extra_json"),
+                        # New WPA columns
+                        wpa=event.get("wpa"),
+                        win_expectancy_before=event.get("win_expectancy_before"),
+                        win_expectancy_after=event.get("win_expectancy_after"),
+                        score_diff=event.get("score_diff"),
+                        base_state=event.get("base_state"),
+                        home_score=event.get("home_score"),
+                        away_score=event.get("away_score"),
                     )
                 )
 
