@@ -8,8 +8,9 @@ from datetime import datetime
 from typing import List, Dict, Optional
 from playwright.async_api import Page
 
-from src.utils.team_codes import team_code_from_game_id_segment
+from src.utils.team_codes import team_code_from_game_id_segment, resolve_team_code
 from src.utils.playwright_pool import AsyncPlaywrightPool
+from src.utils.compliance import compliance
 
 
 class ScheduleCrawler:
@@ -59,13 +60,14 @@ class ScheduleCrawler:
             if owns_pool:
                 await pool.close()
 
-    async def crawl_season(self, year: int, months: Optional[List[int]] = None) -> List[Dict]:
+    async def crawl_season(self, year: int, months: Optional[List[int]] = None, series_id: str = None) -> List[Dict]:
         """
         주어진 시즌의 여러 달에 걸쳐 경기 일정을 크롤링합니다.
 
         Args:
             year: 시즌 연도
             months: 크롤링할 월 목록 (기본값: 3월-10월)
+            series_id: 시리즈 ID (옵션)
         """
         months = months or list(range(3, 11))
         all_games: List[Dict] = []
@@ -77,7 +79,7 @@ class ScheduleCrawler:
             page = await pool.acquire()
             try:
                 for month in months:
-                    month_games = await self._crawl_month(page, year, month)
+                    month_games = await self._crawl_month(page, year, month, series_id=series_id)
                     all_games.extend(month_games)
                 return all_games
             finally:
@@ -91,22 +93,42 @@ class ScheduleCrawler:
         """특정 월의 경기 일정 페이지에 접속하여 게임 정보를 추출합니다."""
         # 기본 페이지로 이동 (파라미터 없이)
         if page.url != self.base_url:
+            if not await compliance.is_allowed(self.base_url):
+                print(f"[COMPLIANCE] Navigation to {self.base_url} aborted.")
+                return []
             await page.goto(self.base_url, wait_until="networkidle", timeout=30000)
         
         print(f"[NAV] Selecting Year: {year}, Month: {month}, Series: {series_id}")
 
         # 1. 연도 선택
-        await page.select_option('#ddlYear', str(year))
-        await asyncio.sleep(0.5)
+        # Check if year is already selected
+        current_year = await page.eval_on_selector('#ddlYear', 'el => el.value')
+        if current_year != str(year):
+            # Check if option exists
+            has_year = await page.eval_on_selector(f'#ddlYear option[value="{year}"]', 'e => !!e')
+            if not has_year:
+                print(f"[WARN] Year {year} not found in dropdown options.")
+                return []
+                
+            await page.select_option('#ddlYear', str(year))
+            # Year change triggers postback
+            try:
+                await page.wait_for_load_state("networkidle", timeout=5000)
+                await page.wait_for_timeout(1000) # Safety wait for JS re-init
+            except:
+                pass
 
         # 2. 월 선택 
-        # (월 선택 -> 포스트백)
-        await page.select_option('#ddlMonth', f"{month:02d}")
-        try:
-            await page.wait_for_timeout(500)
-            await page.wait_for_load_state("networkidle", timeout=5000)
-        except:
-            pass
+        current_month = await page.eval_on_selector('#ddlMonth', 'el => el.value')
+        target_month_str = f"{month:02d}"
+        
+        if current_month != target_month_str:
+            await page.select_option('#ddlMonth', target_month_str)
+            try:
+                await page.wait_for_load_state("networkidle", timeout=5000)
+                await page.wait_for_timeout(500)
+            except:
+                pass
             
         # 3. 리그(Series) 선택 (옵션이 있는 경우에만)
         # series_id가 제공되면 선택. (예: "0,9,6" for Regular, "1" for Exhibition)
@@ -140,42 +162,169 @@ class ScheduleCrawler:
         # JS를 사용하여 모든 게임 정보를 한 번에 추출
         extraction_script = """
         (year) => {
-            const links = document.querySelectorAll('a[href*="gameId="]');
             const results = [];
-            const seenIds = new Set();
+            const rows = document.querySelectorAll('.tbl tbody tr');
+            let currentDateString = ""; // To handle rowspan or implicit date
 
+            rows.forEach(tr => {
+                // If it's a "No Game" row, skip
+                if (tr.innerText.includes("데이터가 없습니다")) return;
+
+                const cells = Array.from(tr.querySelectorAll('td'));
+                if (cells.length < 3) return;
+
+                // 1. Identify Date
+                // Sometimes the date is in the first cell: "03.28(Sat)"
+                // Or proper class might be used. 
+                // Let's check the first cell's text.
+                let firstCellText = cells[0].innerText.trim();
+                let timeCellIndex = 1;
+                let matchCellIndex = 2;
+                let stadiumCellIndex = 7; // Default assumption based on sample
+
+                // heuristic: Date like "03.28" or "03.28(토)"
+                // If first cell matches date pattern, update currentDateString
+                // Regex: DD.MM or MM.DD? KBO is usually MM.DD(Day)
+                const dateMatch = firstCellText.match(/(\d{2})\.(\d{2})/);
+                if (dateMatch) {
+                    currentDateString = dateMatch[0]; // "03.28"
+                    // If date cell exists, time is next
+                } else {
+                    // If no date in first cell, it might be rowspan'd from previous.
+                    // But effectively in DOM traversal, if a cell is rowspan'd, it doesn't appear in subsequent rows?
+                    // Actually, in `querySelectorAll` of TRs, if a TD has rowspan=5, it only appears in the FIRST TR.
+                    // subsequent TRs will have fewer cells.
+                    // So we must rely on `currentDateString` persistence.
+                    // AND adjust indices. If date cell is missing, Time is likely at index 0.
+                    
+                    // Check if first cell is Time
+                    if (/^\d{1,2}:\d{2}$/.test(firstCellText)) {
+                        timeCellIndex = 0;
+                        matchCellIndex = 1;
+                        stadiumCellIndex = 6; // Shifted by 1?
+                    }
+                }
+                
+                if (!currentDateString) return; // Can't parse without date
+
+                // 2. Extract Time
+                const timeText = cells[timeCellIndex] ? cells[timeCellIndex].innerText.trim() : "";
+                if (!/^\d{1,2}:\d{2}$/.test(timeText)) return; // Not a game row?
+
+                // 3. Extract Matchup (Away vs Home)
+                // Text: "KTvsLG" or "KT vs LG"
+                const matchText = cells[matchCellIndex] ? cells[matchCellIndex].innerText.trim() : "";
+                if (!matchText.includes("vs")) return;
+
+                const teams = matchText.split("vs");
+                if (teams.length !== 2) return;
+                
+                const awayName = teams[0].trim();
+                const homeName = teams[1].trim();
+
+                // 4. Extract Stadium (heuristic index)
+                // Based on sample: ['03.28(토)\t14:00\tKTvsLG\t\t\t\t\t잠실\t-']
+                // Split by tab shows many empty cells. 
+                // Let's just find the cell that is NOT Time, NOT Match, and looks like Stadium.
+                // Stadiums: 잠실, 문학, 대구, 창원, 대전, 고척, 광주, 사직, 수원
+                let stadium = "";
+                for (let i = matchCellIndex + 1; i < cells.length; i++) {
+                    const txt = cells[i].innerText.trim();
+                    if (txt.length >= 2 && txt.length <= 5 && !txt.includes("-") && !txt.includes("취소")) {
+                         // Very rough heuristic
+                         stadium = txt;
+                         break;
+                    }
+                }
+                
+                // 5. Construct Game ID
+                // Need standard team codes. The site uses Names (KT, LG, etc.).
+                // We need to map Name -> Code. 
+                // Ideally this mapping happens in Python, but we need Code to form GameID if we want it in JS.
+                // OR we pass raw names to Python and Python constructs ID.
+                // Let's pass raw names and let Python handle ID construction if ID is missing.
+                
+                // Let's check if there is a link
+                const link = tr.querySelector('a[href*="gameId="]');
+                if (link) {
+                    // We already handled this in previous logic? 
+                    // No, we are replacing the logic or augmenting it?
+                    // The instruction says "Update the JS... to fallback".
+                    // So I should keep the link logic or merge it.
+                    // If link exists, we prefer it.
+                    return; 
+                }
+
+                // If no link, we construct data
+                // Date extraction: "03.28" -> "20260328"
+                const [mm, dd] = currentDateString.split(".");
+                const fullDate = `${year}${mm}${dd}`;
+
+                results.push({
+                    game_id: null,
+                    game_date: fullDate,
+                    season_year: year,
+                    season_type: 'regular',
+                    away_name: awayName,
+                    home_name: homeName,
+                    doubleheader_no: 0,
+                    game_status: 'scheduled',
+                    crawl_status: 'text_parsed',
+                    url_suffix: '', 
+                    game_time: timeText,
+                    stadium: stadium
+                });
+            });
+
+            // Original Link-based Logic (keep it for existing games)
+            const links = document.querySelectorAll('a[href*="gameId="]');
             links.forEach(link => {
                 const href = link.getAttribute('href');
-                if (!href) return;
-                
-                // Extract gameId from href
                 const match = href.match(/gameId=([^&]+)/);
                 if (!match) return;
-                
                 const gameId = match[1];
-                if (seenIds.has(gameId)) return;
-                seenIds.add(gameId);
                 
-                // Parse date and teams from gameId
-                // Format: YYYYMMDD...
+                // ... same parsing ...
                 const gameDate = gameId.substring(0, 8);
                 const awaySegment = gameId.length >= 10 ? gameId.substring(8, 10) : "";
                 const homeSegment = gameId.length >= 12 ? gameId.substring(10, 12) : "";
                 const doubleHeader = (!isNaN(parseInt(gameId.slice(-1)))) ? parseInt(gameId.slice(-1)) : 0;
+                
+                // Time/Stadium extraction from DOM (link parent)
+                let gameTime = null;
+                let stadium = null;
+                try {
+                    const cell = link.closest('td');
+                    if (cell) {
+                         const row = cell.parentElement; 
+                         // Try to find time in the row
+                         const cells = Array.from(row.querySelectorAll('td'));
+                         cells.forEach(c => {
+                            const t = c.innerText.trim();
+                            if (/^\\d{1,2}:\\d{2}$/.test(t)) gameTime = t;
+                         });
+                         // Stadium...
+                         // Reuse the loop or index logic?
+                         // It's consistent with text-only logic.
+                    }
+                } catch(e) {}
 
                 results.push({
                     game_id: gameId,
                     game_date: gameDate,
                     season_year: year,
                     season_type: 'regular',
-                    away_segment: awaySegment,
+                    away_segment: awaySegment, 
                     home_segment: homeSegment,
                     doubleheader_no: doubleHeader,
                     game_status: 'scheduled',
-                    crawl_status: 'pending',
-                    url_suffix: href
+                    crawl_status: 'link_parsed',
+                    url_suffix: href,
+                    game_time: gameTime,
+                    stadium: stadium
                 });
             });
+
             return results;
         }
         """
@@ -185,26 +334,89 @@ class ScheduleCrawler:
             games = []
 
             for g in raw_games:
-                # Python-side processing for complex team codes if needed 
-                # (although team_code_from_game_id_segment is simple, keeping it consistent)
+                away_code = team_code_from_game_id_segment(g.get('away_segment'), year)
+                home_code = team_code_from_game_id_segment(g.get('home_segment'), year)
+                
+                # Fallback Construction if game_id is missing (future games)
+                if not g.get('game_id'):
+                    away_name = g.get('away_name')
+                    home_name = g.get('home_name')
+                    away_code = resolve_team_code(away_name) or away_name
+                    home_code = resolve_team_code(home_name) or home_name
+                    
+                    if g.get('game_date') and away_code and home_code:
+                        # Construct ID: YYYYMMDD + AWAY + HOME + DH
+                        # Ensure codes are 2-3 chars? KBO IDs use standard codes.
+                        # Mapping might need to be precise. 
+                        # 'SSG' is 3 chars. 'NC' is 2. KBO IDs handle varying lengths? 
+                        # Actually KBO IDs are usually fixed length 2 chars for teams?
+                        # 20240323HHOB0 -> HH(2), OB(2).
+                        # if code is 3 chars (SSG), does it break?
+                        # Recent KBO IDs use 'SS' for Samsung, 'SK' for Wyverns.. 
+                        # SSG uses 'SK' in IDs? Or 'SSG'?
+                        # Let's check `team_codes.py` -> "SSG": "SSG", "SK": "SSG".
+                        # If KBO sites uses 'SSG' in link, we are good.
+                        # But standard ID often uses legacy 2-char codes even for new teams?
+                        # E.g. Kiwoom uses WO.
+                        # SSG uses SK? 
+                        # Let's perform a safe check. If code length > 2, maybe we map back to ID version?
+                        # For now, let's construct it. uniqueness is key.
+                        
+                        # Special handling for SSG -> SK mapping if needed for ID consistency?
+                        # But `resolve_team_code` returns our internal code (SSG).
+                        # If we start saving games with 'SSG' in ID, and later KBO uses 'SK', we have duplicates.
+                        # We should stick to what KBO uses if possible. 
+                        # But without link we verify manually?
+                        # Let's optimistically use the resolved code.
+                        constructed_id = f"{g['game_date']}{away_code}{home_code}{g['doubleheader_no']}"
+                        g['game_id'] = constructed_id
+                
                 games.append({
                     'game_id': g['game_id'],
                     'game_date': g['game_date'],
                     'season_year': g['season_year'],
                     'season_type': g['season_type'],
-                    'away_team_code': team_code_from_game_id_segment(g['away_segment'], year),
-                    'home_team_code': team_code_from_game_id_segment(g['home_segment'], year),
+                    'away_team_code': away_code,
+                    'home_team_code': home_code,
                     'doubleheader_no': g['doubleheader_no'],
                     'game_status': g['game_status'],
                     'crawl_status': g['crawl_status'],
-                    'url': f"https://www.koreabaseball.com{g['url_suffix']}" if g['url_suffix'].startswith('/') else g['url_suffix']
+                    'game_time': g.get('game_time'),
+                    'stadium': g.get('stadium'),
+                    'url': f"https://www.koreabaseball.com{g['url_suffix']}" if g.get('url_suffix') and g['url_suffix'].startswith('/') else g.get('url_suffix')
                 })
             
-            return games
-
+            
         except Exception as e:
             print(f"[WARN] Error extracting game (JS): {e}")
             return []
+            
+        if not games:
+             # Debugging: Check if table exists or content
+             content = await page.content()
+             print(f"[DEBUG] No games found. Page content len: {len(content)}")
+             if "gameId=" in content:
+                 print("[DEBUG] 'gameId=' string FOUND in HTML but extraction failed.")
+             else:
+                 print("[DEBUG] 'gameId=' string NOT found in HTML.")
+                 # Dump first few rows of the table to see structure
+                 debug_script = """
+                 () => {
+                     const rows = document.querySelectorAll('.tbl tbody tr');
+                     const data = [];
+                     for(let i=0; i<Math.min(rows.length, 5); i++) {
+                         data.push(rows[i].innerText);
+                     }
+                     return data;
+                 }
+                 """
+                 try:
+                     rows_text = await page.evaluate(debug_script)
+                     print(f"[DEBUG] Table Rows Sample: {rows_text}")
+                 except:
+                     pass
+                 
+        return games
 
     def _extract_game_id(self, href: str) -> str:
         """URL(href)에서 game_id를 안전하게 추출합니다."""

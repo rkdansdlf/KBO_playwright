@@ -1,0 +1,13 @@
+column_name,type,is_primary_key,foreign_key
+id,INTEGER,True,
+franchise_id,INTEGER,False,team_franchises(id)
+season,INTEGER,False,
+team_name,VARCHAR(50),False,
+team_code,VARCHAR(10),False,teams(team_id)
+logo_url,VARCHAR(255),False,
+ranking,INTEGER,False,
+stadium,VARCHAR(50),False,
+city,VARCHAR(30),False,
+color,VARCHAR(50),False,
+created_at,DATETIME,False,
+updated_at,DATETIME,False,

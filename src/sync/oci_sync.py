@@ -453,29 +453,14 @@ class OCISync:
     def sync_franchises(self) -> int:
         """Sync franchises from SQLite to OCI"""
         from src.models.franchise import Franchise
+        from src.cli.sync_oci import clone_row
         
-        # Read from SQLite
         franchises = self.sqlite_session.query(Franchise).all()
         synced = 0
         
         for f in franchises:
-            data = {
-                'name': f.name,
-                'original_code': f.original_code,
-                'current_code': f.current_code,
-                'metadata_json': json.dumps(f.metadata_json) if f.metadata_json else None,
-                'web_url': f.web_url
-            }
-            
-            stmt = pg_insert(Franchise).values(**data)
-            update_dict = {k: v for k, v in data.items() if k != 'original_code'}
-            update_dict['updated_at'] = text('CURRENT_TIMESTAMP')
-            
-            stmt = stmt.on_conflict_do_update(
-                index_elements=['original_code'],
-                set_=update_dict
-            )
-            self.target_session.execute(stmt)
+            clone = clone_row(f, Franchise)
+            self.target_session.merge(clone)
             synced += 1
             
         self.target_session.commit()
@@ -485,8 +470,7 @@ class OCISync:
     def sync_teams(self) -> int:
         """Sync teams from SQLite to OCI"""
         from src.models.team import Team
-        from sqlalchemy import MetaData, Table, Column, String, Integer, Boolean, ARRAY
-        from sqlalchemy.dialects.postgresql import ARRAY as PG_ARRAY
+        from src.cli.sync_oci import clone_row
         
         # Get Franchise ID Mapping (Local ID -> OCI ID)
         franchise_mapping = self._get_franchise_id_mapping()
@@ -494,74 +478,25 @@ class OCISync:
         teams = self.sqlite_session.query(Team).all()
         synced = 0
         
-        # Define OCI Schema explicitly to handle ARRAY type
-        metadata = MetaData()
-        supabase_teams = Table(
-            'teams', metadata,
-            Column('team_id', String, primary_key=True),
-            Column('team_name', String),
-            Column('team_short_name', String),
-            Column('city', String),
-            Column('founded_year', Integer),
-            Column('stadium_name', String),
-            Column('franchise_id', Integer),
-            Column('is_active', Boolean),
-            Column('aliases', PG_ARRAY(String)), # Explicitly ARRAY
-            Column('created_at', String), # Using String/Text for timestamps usually works or generic
-            Column('updated_at', String),
-        )
-
         for team in teams:
             # Map Local Franchise ID to OCI Franchise ID
             fid = None
             if team.franchise_id:
                 fid = franchise_mapping.get(team.franchise_id)
-                if not fid:
-                    print(f"⚠️ Franchise ID {team.franchise_id} not found in OCI mapping for team {team.team_id}")
-            
-            # Ensure aliases is a list 
-            aliases_val = team.aliases
-            if aliases_val is None:
-                aliases_val = [] # PostgreSQL Array prefers [] over NULL usually, or None is NULL.
-            elif isinstance(aliases_val, str):
-                try:
-                    aliases_val = json.loads(aliases_val)
-                except:
-                    aliases_val = []
-            
-            data = {
-                'team_id': team.team_id,
-                'team_name': team.team_name,
-                'team_short_name': team.team_short_name,
-                'city': team.city,
-                'founded_year': team.founded_year,
-                'stadium_name': team.stadium_name,
-                'franchise_id': fid,
-                'is_active': team.is_active,
-                'aliases': aliases_val,
-            }
-            
-            # Use the explicit Table object
-            stmt = pg_insert(supabase_teams).values(**data)
-            
-            update_dict = {
-                'team_name': stmt.excluded.team_name,
-                'team_short_name': stmt.excluded.team_short_name,
-                'city': stmt.excluded.city,
-                'founded_year': stmt.excluded.founded_year,
-                'stadium_name': stmt.excluded.stadium_name,
-                'franchise_id': stmt.excluded.franchise_id,
-                'is_active': stmt.excluded.is_active,
-                'aliases': stmt.excluded.aliases,
-                'updated_at': text('CURRENT_TIMESTAMP')
-            }
-            
-            stmt = stmt.on_conflict_do_update(
-                index_elements=['team_id'],
-                set_=update_dict
-            )
 
-            self.target_session.execute(stmt)
+            clone = clone_row(team, Team)
+            clone.franchise_id = fid
+            
+            # Ensure aliases is a list for merge to handle it as PG ARRAY
+            if clone.aliases is None:
+                clone.aliases = []
+            elif isinstance(clone.aliases, str):
+                try:
+                    clone.aliases = json.loads(clone.aliases)
+                except:
+                    clone.aliases = [clone.aliases]
+
+            self.target_session.merge(clone)
             synced += 1
 
         self.target_session.commit()
@@ -571,6 +506,7 @@ class OCISync:
     def sync_team_history(self) -> int:
         """Sync team_history table"""
         from src.models.team_history import TeamHistory
+        from src.cli.sync_oci import clone_row
         
         franchise_mapping = self._get_franchise_id_mapping()
         histories = self.sqlite_session.query(TeamHistory).all()
@@ -579,56 +515,15 @@ class OCISync:
         for h in histories:
             sup_fid = franchise_mapping.get(h.franchise_id)
             if not sup_fid:
-                print(f"⚠️ Skip history {h.id}: Franchise ID {h.franchise_id} map failed.")
                 continue
                 
-            data = {
-                # ID is auto-increment, don't sync ID? Or sync it?
-                # Usually better to let OCI generate IDs unless we need strict 1:1 mapping.
-                # But 'season' + 'franchise_id' (or team_code) is unique business key.
-                # Let's use Unique Constraint (season, team_code) or (season, franchise_id)?
-                # Model definition: `__table_args__` not visible here, assuming (season, team_code) or similar.
-                # For sync, I will match on (season, team_code) assuming that's unique enough.
-                # Re-checking model: `season` is indexed. 
-                # Ideally upsert on (season, team_code).
-                
-                'franchise_id': sup_fid,
-                'season': h.season,
-                'team_name': h.team_name,
-                'team_code': h.team_code,
-                'logo_url': h.logo_url,
-                'ranking': h.ranking,
-                'stadium': h.stadium,
-                'city': h.city,
-                'color': h.color
-            }
-            
-            stmt = pg_insert(TeamHistory).values(**data)
-            
-            # Construct update set
-            update_dict = {k: stmt.excluded[k] for k in data.keys()}
-            update_dict['updated_at'] = text('CURRENT_TIMESTAMP')
-            
-            # On Conflict: Which columns?
-            # If OCI table has (season, team_code) unique constraint, use that.
-            # If NOT, we might duplicate.
-            # Risk: The migration might NOT have added unique constraint. 
-            # I should use `id` if I can map it, but I can't.
-            # I will assume `season` + `team_code` is unique.
-            # If not, I'll fallback to delete/insert or just insert (risk duplicates).
-            # Better: I'll use `on_conflict_do_update` but verify index elements. 
-            # I'll guess ['season', 'team_code'] for now.
-            
-            stmt = stmt.on_conflict_do_update(
-                index_elements=['season', 'team_code'], 
-                set_=update_dict
-            )
-            
-            self.target_session.execute(stmt)
+            clone = clone_row(h, TeamHistory)
+            clone.franchise_id = sup_fid
+            self.target_session.merge(clone)
             synced += 1
             
         self.target_session.commit()
-        print(f"✅ Synced {synced} team history records")
+        print(f"✅ Synced {synced} team history records to OCI")
         return synced
 
     # ... (other methods)
@@ -1067,90 +962,18 @@ class OCISync:
         }
         return results
 
-    def sync_games(self, limit: int = None) -> int:
-        """Sync game detail data from SQLite to OCI using Batched UPSERT"""
+    def sync_games(self, limit: int = None, filters: List = None) -> int:
+        """Sync game detail data from SQLite to OCI using Batched UPSERT or COPY"""
         from src.models.game import Game
         
-        # Define explicit table object to avoid column mismatches (like missing created_at in OCI)
-        game_table = table("game",
-            column("game_id"),
-            column("game_date"),
-            column("home_team"),
-            column("away_team"),
-            column("stadium"),
-            column("home_score"),
-            column("away_score"),
-            column("winning_team"),
-            column("winning_score"),
-            column("season_id"),
-            column("home_pitcher"),
-            column("away_pitcher")
+        # Use generic sync which handles column changes and bulk operations better
+        # Exclude created_at/updated_at because OCI game table doesn't have them
+        return self._sync_simple_table(
+            Game, 
+            ['game_id'], 
+            exclude_cols=['created_at', 'updated_at'],
+            filters=filters
         )
-
-        query = self.sqlite_session.query(Game)
-        if limit:
-            query = query.limit(limit)
-
-        total_count = query.count()
-        if total_count == 0:
-            return 0
-            
-        print(f"🚚 Syncing game table ({total_count} rows) in batches...")
-        
-        synced = 0
-        batch_size = 500
-        
-        # Define Columns for Update (excluding PK)
-        update_columns = ["game_date", "home_team", "away_team", "stadium", 
-                          "home_score", "away_score", "winning_team", "winning_score", 
-                          "season_id", "home_pitcher", "away_pitcher"]
-
-        for offset in range(0, total_count, batch_size):
-            games = query.offset(offset).limit(batch_size).all()
-            values_list = []
-            
-            for g in games:
-                data = {
-                    'game_id': g.game_id,
-                    'game_date': g.game_date,
-                    'home_team': g.home_team,
-                    'away_team': g.away_team,
-                    'stadium': g.stadium,
-                    'home_score': g.home_score,
-                    'away_score': g.away_score,
-                    'winning_team': g.winning_team,
-                    'winning_score': g.winning_score,
-                    'season_id': g.season_id,
-                    'home_pitcher': g.home_pitcher,
-                    'away_pitcher': g.away_pitcher,
-                }
-                values_list.append(data)
-                
-            if not values_list:
-                continue
-                
-            try:
-                stmt = pg_insert(game_table).values(values_list)
-                update_dict = {k: stmt.excluded[k] for k in update_columns}
-                
-                # Check if updated_at exists? For now, omit it to be safe as per user report of 'nothing changing'
-                # If we omit it, the rows ARE updated but the timestamp remains old if it exists. 
-                # This is better than failing completely.
-                
-                stmt = stmt.on_conflict_do_update(
-                    index_elements=['game_id'],
-                    set_=update_dict
-                )
-                
-                self.target_session.execute(stmt)
-                self.target_session.commit()
-                synced += len(values_list)
-            except Exception as e:
-                self.target_session.rollback()
-                print(f"❌ Error syncing games batch at offset {offset}: {e}")
-
-        print(f"✅ Synced {synced} games to OCI")
-        return synced
 
     def sync_player_game_batting(self, limit: int = None) -> int:
         """Sync player game batting stats from SQLite to OCI"""
@@ -1283,122 +1106,262 @@ class OCISync:
         }
         return results
 
-    def sync_game_details(self, days: int = None) -> Dict[str, int]:
+    def sync_game_details(self, days: int = None, year: int = None) -> Dict[str, int]:
         """Sync all game detail tables to OCI"""
         results = {}
+        from src.models.game import Game, GameMetadata, GameInningScore, GameLineup, GameBattingStat, GamePitchingStat, GameEvent, GameSummary
         
         # 0. Sync Parent Games first (Required for Foreign Keys)
         print("⚾ Syncing Parent Game Records...")
-        results['games'] = self.sync_games()
+        filters = []
+        if days:
+            from datetime import datetime, timedelta
+            since_date = (datetime.now() - timedelta(days=days)).date()
+            filters.append(Game.game_date >= since_date)
+        if year:
+            filters.append(Game.game_id.like(f"{year}%"))
+            
+        results['games'] = self.sync_games(filters=filters if filters else None)
+
+        # Build filters for child tables (they often use game_id instead of game_date)
+        child_filters = []
+        if year:
+            child_filters.append(text(f"game_id LIKE '{year}%'"))
+        elif days:
+            # For 'days', we should probably join with Game or use a subquery for game_id
+            # Simplest: Get valid game_ids first
+            game_ids = [g.game_id for g in self.sqlite_session.query(Game.game_id).filter(*filters).all()]
+            if game_ids:
+                child_filters.append(text(f"game_id IN ({','.join([f'{gid}' for gid in game_ids])})"))
+            else:
+                print("ℹ️ No games found for the specified period.")
+                return results
 
         # 1. Game Metadata
         results['metadata'] = self._sync_simple_table(
             GameMetadata, 
             ['game_id'], 
-            exclude_cols=['created_at']
+            exclude_cols=['created_at'],
+            filters=child_filters if child_filters else None
         )
 
         # 2. Inning Scores
         results['inning_scores'] = self._sync_simple_table(
             GameInningScore,
             ['game_id', 'team_side', 'inning'],
-            exclude_cols=['id', 'created_at']
+            exclude_cols=['created_at', 'id'],
+            filters=child_filters if child_filters else None
         )
 
         # 3. Lineups
         results['lineups'] = self._sync_simple_table(
             GameLineup,
             ['game_id', 'team_side', 'appearance_seq'],
-             exclude_cols=['id', 'created_at']
+             exclude_cols=['created_at', 'id'],
+             filters=child_filters if child_filters else None
         )
 
         # 4. Batting Stats
         results['batting_stats'] = self._sync_simple_table(
             GameBattingStat,
             ['game_id', 'player_id', 'appearance_seq'],
-            exclude_cols=['id', 'created_at']
+            exclude_cols=['created_at', 'id'],
+            filters=child_filters if child_filters else None
         )
 
         # 5. Pitching Stats
         results['pitching_stats'] = self._sync_simple_table(
             GamePitchingStat,
             ['game_id', 'player_id', 'appearance_seq'],
-            exclude_cols=['id', 'created_at']
+            exclude_cols=['created_at', 'id'],
+            filters=child_filters if child_filters else None
         )
 
         results['events'] = self._sync_simple_table(
             GameEvent,
             ['game_id', 'event_seq'],
-            exclude_cols=['id', 'created_at']
+            exclude_cols=['created_at', 'id'],
+            filters=child_filters if child_filters else None
         )
 
-        # 7. Game Summary (New)
+        # 7. Game Summary
         results['summary'] = self._sync_simple_table(
             GameSummary,
-            ['game_id', 'summary_type', 'detail_text'],
-            exclude_cols=['id', 'created_at']
+            ['game_id', 'summary_type', 'player_name', 'detail_text'],
+            exclude_cols=['created_at', 'id'],
+            filters=child_filters if child_filters else None
         )
         
         print(f"✅ Game Details Sync Summary: {results}")
         return results
 
-    def _sync_simple_table(self, model, conflict_keys: List[str], exclude_cols: List[str] = None) -> int:
-        """Generic sync parameter for simple tables using Batched UPSERT"""
+    def sync_specific_game(self, game_id: str) -> Dict[str, int]:
+        """Sync all related data for a single game_id"""
+        # We need Game model for filtering
+        from src.models.game import Game, GameMetadata, GameInningScore, GameLineup, GameBattingStat, GamePitchingStat, GameEvent, GameSummary
+        
+        results = {}
+        filters = [Game.game_id == game_id]
+
+        # Sync Game record
+        results['game'] = self._sync_simple_table(Game, ['game_id'], exclude_cols=['created_at', 'updated_at'], filters=filters)
+        
+        # Sync children
+        results['metadata'] = self._sync_simple_table(GameMetadata, ['game_id'], exclude_cols=['created_at'], filters=[GameMetadata.game_id == game_id])
+        results['inning_scores'] = self._sync_simple_table(GameInningScore, ['game_id', 'team_side', 'inning'], exclude_cols=['created_at'], filters=[GameInningScore.game_id == game_id])
+        results['lineups'] = self._sync_simple_table(GameLineup, ['game_id', 'team_side', 'appearance_seq'], exclude_cols=['created_at'], filters=[GameLineup.game_id == game_id])
+        results['batting_stats'] = self._sync_simple_table(GameBattingStat, ['game_id', 'player_id', 'appearance_seq'], exclude_cols=['created_at'], filters=[GameBattingStat.game_id == game_id])
+        results['pitching_stats'] = self._sync_simple_table(GamePitchingStat, ['game_id', 'player_id', 'appearance_seq'], exclude_cols=['created_at'], filters=[GamePitchingStat.game_id == game_id])
+        results['events'] = self._sync_simple_table(GameEvent, ['game_id', 'event_seq'], exclude_cols=['created_at'], filters=[GameEvent.game_id == game_id])
+        results['summary'] = self._sync_simple_table(GameSummary, ['game_id', 'summary_type', 'detail_text'], exclude_cols=['created_at'], filters=[GameSummary.game_id == game_id])
+        
+        return results
+
+    def _sync_simple_table(self, model, conflict_keys: List[str], exclude_cols: List[str] = None, filters: List = None) -> int: # Refactored
+        """Generic sync parameter for simple tables using Batched UPSERT or COPY"""
         if exclude_cols is None:
             exclude_cols = []
             
-        # Get columns to sync
         columns = [c.key for c in model.__table__.columns if c.key not in exclude_cols and c.key not in ('created_at', 'updated_at')]
         
-        # Query total count
-        total_count = self.sqlite_session.query(model).count()
+        query = self.sqlite_session.query(model)
+        if filters:
+            query = query.filter(*filters)
+            
+        total_count = query.count()
         if total_count == 0:
             print(f"ℹ️  No records for {model.__tablename__}")
             return 0
             
-        print(f"🚚 Syncing {model.__tablename__} ({total_count} rows) in batches...")
+        print(f"🚚 Syncing {model.__tablename__} ({total_count} rows)...")
         
+        # Always use Bulk COPY Upsert to be safe from schema mismatches (e.g. created_at/updated_at missing on OCI)
+        batch_size = 10000
         synced = 0
-        batch_size = 1000
-        
         for offset in range(0, total_count, batch_size):
-            rows = self.sqlite_session.query(model).offset(offset).limit(batch_size).all()
-            values_list = []
-            
+            rows = query.offset(offset).limit(batch_size).all()
+            records = []
             for row in rows:
-                data = {c: getattr(row, c) for c in columns}
-                # Handle JSON serialization
+                data = {c: getattr(row, c) for c in columns if hasattr(row, c)}
+                # Handle JSON/Dict serialization for COPY
                 for k, v in data.items():
                     if isinstance(v, (dict, list)):
-                        data[k] = v # pg_insert handles dict automatically if column is JSONB
-                data['updated_at'] = datetime.now()
-                values_list.append(data)
-                
-            if not values_list:
-                continue
-                
-            try:
-                stmt = pg_insert(model).values(values_list)
-                update_dict = {c: stmt.excluded[c] for c in columns if c not in conflict_keys}
-                update_dict['updated_at'] = stmt.excluded.updated_at
-                
-                stmt = stmt.on_conflict_do_update(
-                    index_elements=conflict_keys,
-                    set_=update_dict
-                )
-                
-                self.target_session.execute(stmt)
-                self.target_session.commit()
-                synced += len(values_list)
-                if synced % 5000 == 0 or synced == total_count:
-                    print(f"   Synced {synced}/{total_count} rows...")
-            except Exception as e:
-                self.target_session.rollback()
-                print(f"❌ Error syncing {model.__tablename__} batch at offset {offset}: {e}")
-                # Fallback to one-by-one for this batch if needed? No, let's keep it simple for now.
+                        data[k] = json.dumps(v, ensure_ascii=False)
+                records.append(data)
+            
+            # Deduplicate records to avoid postgres error
+            if conflict_keys:
+                seen = set()
+                deduped_records = []
+                for r in records:
+                    key = tuple(r.get(k) for k in conflict_keys)
+                    if key not in seen:
+                        seen.add(key)
+                        deduped_records.append(r)
+                records = deduped_records
 
+            self._bulk_copy_upsert(
+                model.__tablename__, 
+                records, 
+                conflict_keys, 
+                update_timestamp=('updated_at' not in exclude_cols)
+            )
+            synced += len(records)
+            print(f"   Synced {synced}/{total_count} rows via COPY...")
+            
         return synced
 
+
+    def sync_crawl_runs(self) -> int:
+        """Sync crawl runs from SQLite to OCI"""
+        from src.models.crawl import CrawlRun
+        from src.cli.sync_oci import clone_row
+        
+        runs = self.sqlite_session.query(CrawlRun).all()
+        if not runs:
+            return 0
+            
+        synced = 0
+        for run in runs:
+            clone = clone_row(run, CrawlRun)
+            self.target_session.merge(clone)
+            synced += 1
+            if synced % 100 == 0:
+                self.target_session.commit()
+                
+        self.target_session.commit()
+        print(f"✅ Synced {synced} crawl run records to OCI")
+        return synced
+
+    def _bulk_copy_upsert(self, table_name: str, records: List[Dict[str, Any]], unique_cols: List[str], update_timestamp: bool = True):
+        """
+        Perform bulk UPSERT using Postgres COPY + Temp Table.
+        Significantly faster than INSERT VALUES for large datasets.
+        """
+        if not records:
+            return
+
+        import csv
+        import io
+        import random
+        from datetime import datetime
+        
+        # Ensure we have a raw connection for COPY
+        connection = self.oci_engine.raw_connection()
+        cursor = connection.cursor()
+
+        try:
+            # 1. Prepare Data
+            keys = list(records[0].keys())
+            output = io.StringIO()
+            # Use NULL marker for CSV (empty string will be NULL)
+            writer = csv.DictWriter(output, fieldnames=keys, delimiter='\t', quoting=csv.QUOTE_MINIMAL)
+            writer.writerows(records)
+            output.seek(0)
+            
+            # 2. Create Temp Table matching target schema
+            suffix = random.randint(1000, 9999)
+            temp_table = f"temp_{table_name}_{int(datetime.now().timestamp())}_{suffix}"
+            cursor.execute(f"CREATE TEMP TABLE {temp_table} (LIKE {table_name} INCLUDING DEFAULTS)")
+            
+            # 3. COPY data to Temp Table
+            columns_str = ", ".join([f'"{k}"' for k in keys])
+            cursor.copy_expert(
+                f"COPY {temp_table} ({columns_str}) FROM STDIN WITH (FORMAT CSV, DELIMITER '\t', NULL '')", 
+                output
+            )
+            
+            # 4. UPSERT from Temp Table to Target Table
+            update_cols = [k for k in keys if k not in unique_cols and k not in ('created_at', 'updated_at', 'id')]
+            
+            if not update_cols:
+                conflict_action = "DO NOTHING"
+            else:
+                set_clause = ", ".join([f'"{k}" = EXCLUDED."{k}"' for k in update_cols])
+                if update_timestamp:
+                    set_clause += ', "updated_at" = CURRENT_TIMESTAMP'
+                conflict_target = ", ".join([f'"{k}"' for k in unique_cols])
+                conflict_action = f"ON CONFLICT ({conflict_target}) DO UPDATE SET {set_clause}"
+
+            cols_list = ", ".join([f'"{k}"' for k in keys])
+            insert_sql = f"""
+                INSERT INTO {table_name} ({cols_list})
+                SELECT {cols_list} FROM {temp_table}
+                {conflict_action}
+            """
+            cursor.execute(insert_sql)
+            
+            # 5. Cleanup
+            cursor.execute(f"DROP TABLE {temp_table}")
+            connection.commit()
+            
+        except Exception as e:
+            connection.rollback()
+            print(f"❌ Batch COPY Error on {table_name}: {e}")
+            raise e
+        finally:
+            cursor.close()
+            connection.close()
 
     def sync_awards(self) -> int:
         """Sync awards from SQLite to OCI"""

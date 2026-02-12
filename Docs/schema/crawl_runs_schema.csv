@@ -1,0 +1,11 @@
+column_name,type,is_primary_key,foreign_key
+id,INTEGER,True,
+label,VARCHAR(128),False,
+started_at,DATETIME,False,
+finished_at,DATETIME,False,
+active_count,INTEGER,False,
+retired_count,INTEGER,False,
+staff_count,INTEGER,False,
+confirmed_profiles,INTEGER,False,
+heuristic_only,INTEGER,False,
+created_at,DATETIME,False,

@@ -27,7 +27,10 @@ class Team(Base, TimestampMixin):
     
     # New Fields for Phase 7
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, comment="Currently active team code")
-    aliases: Mapped[list] = mapped_column(JSON, nullable=True, comment="List of team name aliases")
+    
+    # Use ARRAY for Postgres compatibility, JSON for others (like SQLite)
+    from sqlalchemy.dialects.postgresql import ARRAY as PG_ARRAY
+    aliases: Mapped[list] = mapped_column(JSON().with_variant(PG_ARRAY(String), "postgresql"), nullable=True, comment="List of team name aliases")
 
     # franchise: Mapped["Franchise"] = relationship(back_populates="teams")
 
@@ -58,3 +61,24 @@ class TeamDailyRoster(Base, TimestampMixin):
 
     def __repr__(self) -> str:
         return f"<Roster({self.roster_date}, {self.team_code}, {self.player_name})>"
+
+
+class TeamCodeMap(Base, TimestampMixin):
+    """
+    Canonical mapping of team codes by season.
+    Bridging legacy codes, external codes, and franchise IDs.
+    """
+    __tablename__ = "team_code_map"
+    __table_args__ = (
+        UniqueConstraint("season", "curr_code", name="uq_team_code_map"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    franchise_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+    season: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+    curr_code: Mapped[str] = mapped_column(String(10), nullable=False, comment="The code used in that season (e.g. SK)")
+    canonical_code: Mapped[str] = mapped_column(String(10), nullable=False, comment="Modern canonical code (e.g. SSG)")
+    is_canonical: Mapped[bool] = mapped_column(Boolean, default=False, comment="Is this the modern canonical code?")
+    
+    def __repr__(self) -> str:
+        return f"<TeamCodeMap(season={self.season}, code='{self.curr_code}', franchise={self.franchise_id})>"

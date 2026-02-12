@@ -1,0 +1,9 @@
+column_name,type,is_primary_key,foreign_key
+id,INTEGER,True,
+name,VARCHAR(50),False,
+original_code,VARCHAR(10),False,
+current_code,VARCHAR(10),False,
+metadata_json,JSON,False,
+web_url,VARCHAR(255),False,
+created_at,DATETIME,False,
+updated_at,DATETIME,False,

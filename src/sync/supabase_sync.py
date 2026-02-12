@@ -1089,6 +1089,26 @@ class SupabaseSync:
         """Sync game detail data from SQLite to Supabase using Batched UPSERT"""
         from src.models.game import Game
         
+        # Load Season Mapping for Supabase compatibility
+        metadata = MetaData()
+        try:
+            seasons_table = Table('kbo_seasons', metadata, autoload_with=self.supabase_engine)
+        except Exception:
+            try:
+                seasons_table = Table('kbo_seasons_meta', metadata, autoload_with=self.supabase_engine)
+            except Exception:
+                seasons_table = None
+        
+        season_map = {}
+        if seasons_table is not None:
+            season_rows = self.supabase_session.execute(
+                select(seasons_table.c.season_id, seasons_table.c.season_year, seasons_table.c.league_type_code)
+            ).all()
+            season_map = {
+                (row.season_year, row.league_type_code): row.season_id
+                for row in season_rows
+            }
+
         # Define explicit table object to avoid column mismatches (like missing created_at in Supabase)
         game_table = table("game",
             column("game_id"),
@@ -1102,7 +1122,10 @@ class SupabaseSync:
             column("winning_score"),
             column("season_id"),
             column("home_pitcher"),
-            column("away_pitcher")
+            column("away_pitcher"),
+            column("home_franchise_id"),
+            column("away_franchise_id"),
+            column("winning_franchise_id")
         )
 
         base_query = self.sqlite_session.query(Game).order_by(Game.game_id)
@@ -1115,7 +1138,7 @@ class SupabaseSync:
         print(f"🚚 Syncing game table ({total_count} rows) in batches...")
 
         synced = 0
-        batch_size = 500
+        batch_size = 100  # Smaller batch for more reliable execution
         update_columns = [
             "game_date",
             "home_team",
@@ -1128,6 +1151,9 @@ class SupabaseSync:
             "season_id",
             "home_pitcher",
             "away_pitcher",
+            "home_franchise_id",
+            "away_franchise_id",
+            "winning_franchise_id",
         ]
 
         last_game_id = None
@@ -1147,6 +1173,18 @@ class SupabaseSync:
 
             values_list = []
             for g in games:
+                # Resolve season_id for Supabase
+                local_sid = g.season_id
+                target_sid = local_sid
+                if local_sid and season_map:
+                    if local_sid < 10000:
+                        # If simple year (e.g. 2026), assume Regular Season (0)
+                        target_sid = season_map.get((local_sid, 0), local_sid)
+                    else:
+                        year = local_sid // 10
+                        ltype = local_sid % 10
+                        target_sid = season_map.get((year, ltype), local_sid)
+                
                 data = {
                     'game_id': g.game_id,
                     'game_date': g.game_date,
@@ -1157,9 +1195,12 @@ class SupabaseSync:
                     'away_score': g.away_score,
                     'winning_team': g.winning_team,
                     'winning_score': g.winning_score,
-                    'season_id': g.season_id,
+                    'season_id': target_sid,
                     'home_pitcher': g.home_pitcher,
                     'away_pitcher': g.away_pitcher,
+                    'home_franchise_id': g.home_franchise_id,
+                    'away_franchise_id': g.away_franchise_id,
+                    'winning_franchise_id': g.winning_franchise_id,
                 }
                 values_list.append(data)
 
@@ -1181,6 +1222,26 @@ class SupabaseSync:
             except Exception as e:
                 self.supabase_session.rollback()
                 print(f"❌ Error syncing games batch after {last_game_id}: {e}")
+                
+                # Try individual inserts as fallback if batch fails
+                print("   ⚠️ Retrying batch individually...")
+                for val in values_list:
+                    try:
+                        single_stmt = pg_insert(game_table).values(val)
+                        single_update = {k: single_stmt.excluded[k] for k in update_columns}
+                        single_stmt = single_stmt.on_conflict_do_update(
+                            index_elements=['game_id'],
+                            set_=single_update
+                        )
+                        self.supabase_session.execute(single_stmt)
+                        self.supabase_session.commit()
+                        synced += 1
+                        last_game_id = val['game_id']
+                    except Exception as single_e:
+                        self.supabase_session.rollback()
+                        print(f"   ❌ Critical error on game {val.get('game_id')}: {single_e}")
+                        # Update last_game_id even on failure to avoid infinite loop
+                        last_game_id = val['game_id']
 
         print(f"✅ Synced {synced} games to Supabase")
         return synced
@@ -1439,6 +1500,9 @@ class SupabaseSync:
             rows = query.limit(batch_size).all()
             if not rows:
                 break
+            
+            first_pk = getattr(rows[0], pk_cols[0].key) if len(pk_cols) == 1 else "composite"
+            # print(f"   Batch start PK: {first_pk}")
 
             values_list = []
             for row in rows:

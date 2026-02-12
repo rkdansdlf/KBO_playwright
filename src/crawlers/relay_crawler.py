@@ -11,6 +11,7 @@ from src.utils.request_policy import RequestPolicy
 from src.utils.playwright_pool import AsyncPlaywrightPool
 from src.services.wpa_calculator import WPACalculator
 from src.utils.text_parser import KBOTextParser
+from src.utils.compliance import compliance
 
 class RelayCrawler:
     def __init__(
@@ -41,6 +42,10 @@ class RelayCrawler:
                 url = f"{self.base_url}?gameId={game_id}&gameDate={game_date}"
 
                 print(f"[FETCH] Checking Live Status: {url}")
+                if not await compliance.is_allowed(url):
+                    print(f"[COMPLIANCE] Navigation to {url} aborted.")
+                    return None
+                await self.policy.delay_async(host="www.koreabaseball.com")
                 await page.goto(url, wait_until="networkidle", timeout=30000)
 
                 # 2. Check Game Status from Top Bar (.game-list-n)

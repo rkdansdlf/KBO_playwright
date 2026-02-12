@@ -1,9 +1,0 @@
-컬럼명 (Column Name),데이터 타입 (Data Type),Null 허용 (Nullable),제약조건/기본값 (Constraint/Default),설명 (Description)
-season_id,serial,NOT NULL,PRIMARY KEY,시즌 정보의 고유 식별자 (자동 증가)
-season_year,integer,NOT NULL,,시즌이 진행된 연도 (예: 2024)
-league_type_code,integer,NOT NULL,,"리그 유형 코드 (예: 정규 시즌, 포스트 시즌)"
-league_type_name,character varying(50),NOT NULL,,"리그 유형 이름 (예: '정규시즌', '포스트시즌')"
-start_date,date,NULL,,시즌 시작일
-end_date,date,NULL,,시즌 종료일
-created_at,timestamp with time zone,NULL,now(),레코드 생성 시점
-updated_at,timestamp with time zone,NULL,now(),레코드 최종 수정 시점

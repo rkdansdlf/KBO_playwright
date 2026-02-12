@@ -9,11 +9,15 @@ import random
 import time
 from typing import Callable, Iterable, Any, Dict, List, Optional
 
+from src.utils.throttle import throttle
+
 DEFAULT_USER_AGENTS = [
-    "Mozilla/5.0 (Macintosh; Intel Mac OS X 13_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0.0.0 Safari/537.36",
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
-    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0.0.0 Safari/537.36",
-    "Mozilla/5.0 (Macintosh; Intel Mac OS X 13_6_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.6 Safari/605.1.15",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 14_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Safari/605.1.15",
+    "Mozilla/5.0 (iPhone; CPU iPhone OS 17_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.6 Mobile/15E148 Safari/604.1",
+    "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Mobile Safari/537.36",
 ]
 
 
@@ -63,11 +67,13 @@ class RequestPolicy:
     def _random_delay(self) -> float:
         return random.uniform(self.min_delay, self.max_delay)
 
-    def delay(self):
-        time.sleep(self._random_delay())
+    def delay(self, host: str = "koreabaseball.com"):
+        throttle.default_delay = self.min_delay # Dynamic adjustment based on policy
+        throttle.wait_sync(host)
 
-    async def delay_async(self):
-        await asyncio.sleep(self._random_delay())
+    async def delay_async(self, host: str = "koreabaseball.com"):
+        throttle.default_delay = self.min_delay
+        await throttle.wait(host)
 
     def run_with_retry(self, func: Callable, *args, **kwargs):
         last_exc = None

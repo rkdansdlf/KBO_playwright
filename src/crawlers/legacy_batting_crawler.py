@@ -99,8 +99,10 @@ def parse_legacy_batting_table(page: Page, year: int, series_key: str = 'regular
                 continue
 
             try:
-                # 컬럼 인덱스 (순위, 선수명, 팀명, AVG, G, PA, AB, H, 2B, 3B, HR, RBI, SB, CS, BB, HBP, SO, GDP, E)
-                if len(cells) < 19:  # 최소 19개 컬럼 필요
+                # 컬럼 인덱스 확인 (가변적일 수 있음)
+                # 기본 예상: 순위, 선수명, 팀명, AVG, G, PA, AB, H, 2B, 3B, HR, RBI, SB, CS, BB, HBP, SO, GDP, E (19개)
+                # 만약 컬럼이 더 적거나 많으면 헤더 기반 매핑이 좋지만, 여기서는 최소 필수 컬럼만 체크하도록 완화
+                if len(cells) < 10:  # 최소 선수명/팀명/주요기록은 있어야 함
                     continue
 
                 # 선수명과 ID 추출
@@ -241,47 +243,77 @@ def crawl_legacy_batting_stats(year: int = 2000, series_key: str = 'regular',
                 print(f"❌ 시리즈 선택 실패: {e}")
                 return []
 
-            # 3. 데이터 수집 (페이지네이션)
-            page_num = 1
-            while True:
-                print(f"📄 {page_num}페이지 수집 중...")
+            # 3. Get all team options for the year
+            team_selector = 'select[name*="ddlTeam"]'
+            team_options = page.evaluate(f'''() => {{
+                const select = document.querySelector('{team_selector}');
+                if (!select) return [];
+                return Array.from(select.options)
+                    .map(opt => ({{value: opt.value, text: opt.text}}))
+                    .filter(opt => opt.value !== "");
+            }}''')
+            
+            print(f"📡 Found {len(team_options)} teams for {year}. Iterating...")
+
+            for team_opt in team_options:
+                team_val = team_opt['value']
+                team_txt = team_opt['text']
+                print(f"⚾ Processing Team: {team_txt} ({team_val})")
                 
-                # 현재 페이지 데이터 파싱
-                page_data = parse_legacy_batting_table(page, year, series_key)
-                
-                if not page_data:
-                    if page_num == 1:
-                        print(f"⚠️ {series_info['name']}에서 데이터를 찾을 수 없습니다.")
-                    break
-
-                all_players_data.extend(page_data)
-                print(f"   ✅ {page_num}페이지에서 {len(page_data)}명 수집 (누적: {len(all_players_data)}명)")
-
-                if limit and len(all_players_data) >= limit:
-                    all_players_data = all_players_data[:limit]
-                    print(f"   🎯 수집 제한에 도달했습니다.")
-                    break
-
-                # 다음 페이지로 이동
                 try:
-                    # 단순 페이지네이션 (2001년 이전은 복잡한 페이지네이션이 없을 가능성)
-                    next_page = page_num + 1
-                    if next_page <= 5:  # 5페이지 내
-                        next_button = page.query_selector(f'a[href*="btnNo{next_page}"]')
-                    else:
-                        next_button = page.query_selector('a[href*="btnNext"]')
-                    
-                    if not next_button:
-                        print(f"   📄 마지막 페이지에 도달했습니다.")
-                        break
-                    
-                    next_button.click()
+                    page.select_option(team_selector, value=team_val)
                     page.wait_for_load_state('networkidle')
                     page.wait_for_timeout(1000)
-                    page_num += 1
-                    
                 except Exception as e:
-                    print(f"   📄 페이지 이동 실패: {e}")
+                    print(f"❌ Team selection failed for {team_txt}: {e}")
+                    continue
+
+                # 4. Data 수집 (페이지네이션)
+                page_num = 1
+                while True:
+                    print(f"📄 {team_txt} - {page_num}페이지 수집 중...")
+                    
+                    # 현재 페이지 데이터 파싱
+                    page_data = parse_legacy_batting_table(page, year, series_key)
+                    
+                    if not page_data:
+                        break
+
+                    all_players_data.extend(page_data)
+                    print(f"   ✅ {page_num}페이지에서 {len(page_data)}명 수집 (누적: {len(all_players_data)}명)")
+
+                    if limit and len(all_players_data) >= limit:
+                        all_players_data = all_players_data[:limit]
+                        print(f"   🎯 수집 제한에 도달했습니다.")
+                        break
+
+                    # 다음 페이지로 이동
+                    try:
+                        next_page = page_num + 1
+                        next_button = page.query_selector(f'a[id$="btnNo{next_page}"]')
+                        if not next_button:
+                            paging_links = page.query_selector_all(".paging a")
+                            for link in paging_links:
+                                if link.inner_text().strip() == str(next_page):
+                                    next_button = link
+                                    break
+                        
+                        if not next_button:
+                            next_button = page.query_selector('a[id$="btnNext"], a[href*="btnNext"]')
+                        
+                        if not next_button:
+                            break
+                        
+                        next_button.click()
+                        page.wait_for_load_state('networkidle')
+                        page.wait_for_timeout(1000)
+                        page_num += 1
+                        
+                    except Exception as e:
+                        print(f"   📄 페이지 이동 실패: {e}")
+                        break
+                
+                if limit and len(all_players_data) >= limit:
                     break
 
         except Exception as e:

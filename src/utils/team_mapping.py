@@ -6,6 +6,7 @@ import os
 from typing import Dict, Optional, List, Tuple
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker
+from src.utils.team_codes import resolve_team_code
 
 
 class TeamMapper:
@@ -25,22 +26,22 @@ class TeamMapper:
             'KT': 'KT',
             '삼성': 'SS',
             '롯데': 'LT',
-            '두산': 'OB',
-            'KIA': 'HT',
+            '두산': 'DB',
+            'KIA': 'KIA',
             '한화': 'HH',
-            '키움': 'WO',
-            'SSG': 'SK',
+            '키움': 'KH',
+            'SSG': 'SSG',
             # 추가 변형들
             'LG트윈스': 'LG',
             'NC다이노스': 'NC',
             'KT위즈': 'KT',
             '삼성라이온즈': 'SS',
             '롯데자이언츠': 'LT',
-            '두산베어스': 'OB',
-            'KIA타이거즈': 'HT',
+            '두산베어스': 'DB',
+            'KIA타이거즈': 'KIA',
             '한화이글스': 'HH',
-            '키움히어로즈': 'WO',
-            'SSG랜더스': 'SK',
+            '키움히어로즈': 'KH',
+            'SSG랜더스': 'SSG',
         }
     
     def load_supabase_mapping(self) -> bool:
@@ -71,6 +72,19 @@ class TeamMapper:
             
             # 가능한 컬럼명으로 쿼리 시도
             possible_queries = [
+                # 컬럼명 패턴 0 (KBO_playwright 표준)
+                """
+                SELECT 
+                    team_name,
+                    team_code,
+                    season,
+                    season as end_year,
+                    team_name as franchise_name
+                FROM team_history 
+                WHERE team_name IS NOT NULL 
+                AND team_code IS NOT NULL
+                ORDER BY season
+                """,
                 # 컬럼명 패턴 1
                 """
                 SELECT 
@@ -97,7 +111,7 @@ class TeamMapper:
                 AND code IS NOT NULL
                 ORDER BY start_year
                 """,
-                # 컬럼명 패턴 3 (실제 Supabase 구조)
+                # 컬럼명 패턴 3 (실제 Supabase 일부 구조)
                 """
                 SELECT 
                     team_name,
@@ -144,8 +158,11 @@ class TeamMapper:
             for row in results:
                 team_name = row[0]
                 team_code = row[1]
-                start_year = row[2]
-                end_year = row[3] or 9999  # NULL이면 현재까지
+                try:
+                    start_year = int(row[2])
+                    end_year = int(row[3]) if row[3] is not None else 9999
+                except (ValueError, TypeError):
+                    continue
                 franchise = row[4]
                 
                 # 기본 매핑
@@ -183,11 +200,21 @@ class TeamMapper:
         
         team_name = team_name.strip()
         
-        # 1. 년도별 매핑 우선 확인
+        # 1. 년도별 매핑 우선 확인 (Supabase 등의 외부 소스)
         if year and self._supabase_loaded and year in self.year_specific_mapping:
             year_mapping = self.year_specific_mapping[year]
             if team_name in year_mapping:
+                # [REFINED] If we have a year, ensure it follows historical resolution
+                # to avoid Supabase legacy overrides for modern years or vice versa.
+                canonical_code = resolve_team_code(team_name, year)
+                if canonical_code:
+                    return canonical_code
                 return year_mapping[team_name]
+        
+        # 1.5 Standard Resolution via team_codes (Superior to static/fuzzy)
+        resolved = resolve_team_code(team_name, year)
+        if resolved:
+            return resolved
         
         # 2. Supabase 매핑 확인
         if self._supabase_loaded and team_name in self.supabase_mapping:
@@ -205,26 +232,26 @@ class TeamMapper:
         # 역대 팀명 변화 패턴
         historical_patterns = {
             # OB 계열
-            'OB': 'OB', 'OB베어스': 'OB', '두산': 'OB', '두산베어스': 'OB',
+            'OB': 'OB', 'OB베어스': 'OB', '두산': 'DB', '두산베어스': 'DB',
             # 삼성 계열  
             '삼성': 'SS', '삼성라이온즈': 'SS',
             # LG 계열
-            'LG': 'LG', 'LG트윈스': 'LG', 'MBC': 'LG', 'MBC청룡': 'LG',
+            'LG': 'LG', 'LG트윈스': 'LG', 'MBC': 'MBC', 'MBC청룡': 'MBC',
             # 롯데 계열
             '롯데': 'LT', '롯데자이언츠': 'LT',
             # 한화 계열
-            '한화': 'HH', '한화이글스': 'HH', '빙그레': 'HH', '빙그레이글스': 'HH',
+            '한화': 'HH', '한화이글스': 'HH', '빙그레': 'BE', '빙그레이글스': 'BE',
             # 해태/KIA 계열
-            '해태': 'HT', '해태타이거즈': 'HT', 'KIA': 'HT', 'KIA타이거즈': 'HT',
+            '해태': 'HT', '해태타이거즈': 'HT', 'KIA': 'KIA', 'KIA타이거즈': 'KIA',
             # 현대/키움 계열
-            '현대': 'WO', '현대유니콘스': 'WO', '키움': 'WO', '키움히어로즈': 'WO', '넥센': 'WO', '넥센히어로즈': 'WO',
+            '현대': 'HU', '현대유니콘스': 'HU', '키움': 'KH', '키움히어로즈': 'KH', '넥센': 'NX', '넥센히어로즈': 'NX',
             # SK/SSG 계열
-            'SK': 'SK', 'SK와이번스': 'SK', 'SSG': 'SK', 'SSG랜더스': 'SK',
+            'SK': 'SK', 'SK와이번스': 'SK', 'SSG': 'SSG', 'SSG랜더스': 'SSG',
             # 기타 초창기 팀들
             '청보': 'CB', '청보핀토스': 'CB',
             '삼미': 'SM', '삼미슈퍼스타즈': 'SM',
-            '태평양': 'PC', '태평양돌핀스': 'PC',
-            '쌍방울': 'SW', '쌍방울레이더스': 'SW',
+            '태평양': 'TP', '태평양돌핀스': 'TP',
+            '쌍방울': 'SL', '쌍방울레이더스': 'SL',
             'NC': 'NC', 'NC다이노스': 'NC',
             'KT': 'KT', 'KT위즈': 'KT',
         }
@@ -251,14 +278,14 @@ class TeamMapper:
                     return 'CB'
             elif year <= 1995:  # 90년대
                 if '빙그레' in team_name:
-                    return 'HH'
+                    return 'BE'
                 elif '태평양' in team_name:
-                    return 'PC'
+                    return 'TP'
             elif year <= 2000:  # 90년대 후반
                 if '현대' in team_name:
-                    return 'WO'
+                    return 'HU'
                 elif '쌍방울' in team_name:
-                    return 'SW'
+                    return 'SL'
         
         return None
     
@@ -275,10 +302,10 @@ class TeamMapper:
             return False
         
         # 현재 유효한 팀 코드들
-        valid_codes = {'LG', 'NC', 'KT', 'SS', 'LT', 'OB', 'HT', 'HH', 'WO', 'SK'}
+        valid_codes = {'LG', 'NC', 'KT', 'SS', 'LT', 'DB', 'KIA', 'HH', 'KH', 'SSG'}
         
         # 역대 팀 코드들 (해체된 팀 포함)
-        historical_codes = {'CB', 'SM', 'PC', 'SW'}
+        historical_codes = {'CB', 'SM', 'TP', 'SL', 'OB', 'HT', 'WO', 'SK', 'NX', 'HU', 'MBC', 'BE'}
         
         return team_code in valid_codes or team_code in historical_codes
 
