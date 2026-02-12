@@ -1,0 +1,11 @@
+column_name,type,is_primary_key,foreign_key
+id,INTEGER,True,
+player_id,INTEGER,False,players(id)
+name_kor,VARCHAR(100),False,
+name_eng,VARCHAR(100),False,
+start_date,DATE,False,
+end_date,DATE,False,
+is_primary,BOOLEAN,False,
+notes,TEXT,False,
+created_at,DATETIME,False,
+updated_at,DATETIME,False,

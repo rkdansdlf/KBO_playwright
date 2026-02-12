@@ -3,24 +3,20 @@ Repository for saving game details, box scores, and normalized relay data.
 """
 from __future__ import annotations
 
+import os
 from datetime import datetime
 from decimal import Decimal
-from typing import Dict, Any, List, Iterable
+from typing import Dict, Any, List, Iterable, Optional
 
 from src.db.engine import SessionLocal
 from src.models.game import (
-    Game,
-    GameSummary,
-    GamePlayByPlay,
-    GameMetadata,
-    GameInningScore,
-    GameLineup,
-    GameBattingStat,
-    GamePitchingStat,
-    GameEvent,
+    Game, GameMetadata, GameInningScore, GameLineup,
+    GameBattingStat, GamePitchingStat, GamePlayByPlay, GameEvent,
+    GameSummary
 )
 import re
 from src.services.player_id_resolver import PlayerIdResolver
+from src.utils.player_positions import get_primary_position
 from src.utils.safe_print import safe_print as print
 
 
@@ -59,6 +55,15 @@ def save_schedule_game(game_data: Dict[str, Any]) -> bool:
             game.season_id = game_data.get("season_year")
             
             # Note: Scores and other details are not available in basic schedule crawl
+            
+            # Save Metadata (Time/Stadium)
+            meta_payload = {
+                "start_time": game_data.get("game_time"),
+                "stadium": game_data.get("stadium")
+            }
+            if meta_payload["start_time"] or meta_payload["stadium"]:
+                _upsert_metadata(session, game_id, meta_payload)
+
             session.commit()
             return True
         except Exception as exc:
@@ -88,8 +93,9 @@ def save_game_detail(game_data: Dict[str, Any]) -> bool:
         try:
             game = session.query(Game).filter(Game.game_id == game_id).one_or_none()
             if not game:
-                game = Game(game_id=game_id)
+                game = Game(game_id=game_id, game_date=game_date)
                 session.add(game)
+                session.flush()  # Ensure game_id exists before child inserts
 
             away_info = teams.get("away", {})
             home_info = teams.get("home", {})
@@ -163,6 +169,7 @@ def save_game_detail(game_data: Dict[str, Any]) -> bool:
             _replace_records(session, GameSummary, game_id, summary_rows)
 
             session.commit()
+            _auto_sync_to_oci(game_id)
             return True
         except Exception as exc:
             session.rollback()
@@ -226,6 +233,7 @@ def save_relay_data(game_id: str, events: List[Dict[str, Any]]) -> int:
 
             session.add_all(pbp_rows + event_rows)
             session.commit()
+            _auto_sync_to_oci(game_id)
             return len(events)
         except Exception as exc:
             session.rollback()
@@ -295,8 +303,10 @@ def _build_lineups(game_id: str, hitters: Dict[str, List[Dict[str, Any]]]) -> Li
                 "team_code": entry.get("team_code"),
                 "player_id": _normalize_player_id(entry.get("player_id")),
                 "player_name": player_name,
+                "uniform_no": entry.get("uniform_no"),
                 "batting_order": entry.get("batting_order"),
                 "position": entry.get("position"),
+                "standard_position": get_primary_position(entry.get("position")).value,
                 "is_starter": bool(entry.get("is_starter")),
                 "appearance_seq": entry.get("appearance_seq") or len(records) + 1,
                 "notes": _format_notes(entry.get("extras")),
@@ -330,10 +340,12 @@ def _build_batting_stats(game_id: str, hitters: Dict[str, List[Dict[str, Any]]])
                 "team_code": entry.get("team_code"),
                 "player_id": _normalize_player_id(entry.get("player_id")),
                 "player_name": player_name,
+                "uniform_no": entry.get("uniform_no"),
                 "batting_order": entry.get("batting_order"),
                 "is_starter": bool(entry.get("is_starter")),
                 "appearance_seq": entry.get("appearance_seq") or len(records) + 1,
                 "position": entry.get("position"),
+                "standard_position": get_primary_position(entry.get("position")).value,
                 "plate_appearances": _stat_int(stats, "plate_appearances"),
                 "at_bats": _stat_int(stats, "at_bats"),
                 "runs": _stat_int(stats, "runs"),
@@ -377,8 +389,10 @@ def _build_pitching_stats(game_id: str, pitchers: Dict[str, List[Dict[str, Any]]
                 "team_code": entry.get("team_code"),
                 "player_id": _normalize_player_id(entry.get("player_id")),
                 "player_name": player_name,
+                "uniform_no": entry.get("uniform_no"),
                 "is_starting": bool(entry.get("is_starting")),
                 "appearance_seq": entry.get("appearance_seq") or len(records) + 1,
+                "standard_position": "P",
                 "innings_outs": innings_outs,
                 "innings_pitched": _outs_to_decimal(innings_outs),
                 "batters_faced": _stat_int(stats, "batters_faced"),
@@ -524,3 +538,19 @@ def _clean_extras(extras: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
     ignore_keys = {'COL_0', 'COL_1', '선수명', 'PlayerName', 'playerName'}
     cleaned = {k: v for k, v in extras.items() if k not in ignore_keys}
     return cleaned if cleaned else None
+
+def _auto_sync_to_oci(game_id: str):
+    """Helper to trigger OCI synchronization if enabled."""
+    if os.getenv("AUTO_SYNC_OCI") == "true":
+        try:
+            from src.sync.oci_sync import OCISync
+            oci_url = os.getenv("OCI_DB_URL")
+            if oci_url:
+                # Use a fresh session to read the committed data
+                with SessionLocal() as sync_session:
+                    syncer = OCISync(oci_url, sync_session)
+                    syncer.sync_specific_game(game_id)
+                    syncer.close()
+                print(f" ✨ Auto-synced {game_id} to OCI")
+        except Exception as e:
+            print(f" ⚠️ Auto-sync OCI failed: {e}")

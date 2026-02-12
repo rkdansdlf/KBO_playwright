@@ -118,6 +118,11 @@ def build_arg_parser() -> argparse.ArgumentParser:
         help="경기 상세 데이터(박스스코어, 라인업, PBP 등)를 동기화합니다.",
     )
     parser.add_argument(
+        "--days",
+        type=int,
+        help="최근 N일간의 경기 데이터만 동기화합니다.",
+    )
+    parser.add_argument(
         "--daily-roster",
         action="store_true",
         help="일별 1군 등록 현황(Daily Roster)을 동기화합니다.",
@@ -131,6 +136,16 @@ def build_arg_parser() -> argparse.ArgumentParser:
         "--awards",
         action="store_true",
         help="수상 내역(Awards)을 동기화합니다.",
+    )
+    parser.add_argument(
+        "--crawl-runs",
+        action="store_true",
+        help="크롤링 실행 기록(Crawl Runs)을 동기화합니다.",
+    )
+    parser.add_argument(
+        "--year",
+        type=int,
+        help="특정 연도의 데이터를 동기화합니다. (e.g., 2018)",
     )
     return parser
 
@@ -148,7 +163,7 @@ def main(argv: Iterable[str] | None = None) -> None:
         print("🚀 Syncing Game Details using specialized OCISync...")
         with SessionLocal() as session:
             syncer = OCISync(args.target_url, session)
-            syncer.sync_game_details()
+            syncer.sync_game_details(days=args.days, year=args.year)
             print("✅ Game Details Sync Finished")
 
     elif args.daily_roster:
@@ -181,6 +196,13 @@ def main(argv: Iterable[str] | None = None) -> None:
             syncer = OCISync(args.target_url, session)
             syncer.sync_awards()
             print("✅ Awards Sync Finished")
+
+    elif args.crawl_runs:
+        print("🚀 Syncing Crawl Runs using specialized OCISync...")
+        with SessionLocal() as session:
+            syncer = OCISync(args.target_url, session)
+            syncer.sync_crawl_runs()
+            print("✅ Crawl Runs Sync Finished")
 
 
         

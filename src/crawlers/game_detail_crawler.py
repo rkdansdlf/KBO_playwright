@@ -143,6 +143,24 @@ class GameDetailCrawler:
         return [payload for payload in results if payload]
 
     async def _crawl_single(self, page: Page, game_id: str, game_date: str) -> Optional[Dict[str, Any]]:
+        # 1. Fetch Lineup to get Roster Map (Player Name -> ID, Uniform)
+        lineup_url = f"{self.base_url}?gameId={game_id}&gameDate={game_date}&section=LINEUP"
+        print(f"📡 Fetching Lineup: {lineup_url}")
+        
+        roster_map = {}
+        try:
+            await page.goto(lineup_url, wait_until="domcontentloaded", timeout=30000)
+            # Wait for lineup to ensure it's loaded (some async loading might happen)
+            # We assume if domcontentloaded is done, we can try extracting. 
+            # If KBO loads lineup via AJAX, we might need a wait.
+            # Let's try waiting for a known element, or just a small sleep if unsure.
+            await asyncio.sleep(0.5) 
+            roster_map = await self._extract_roster_from_lineup(page)
+            print(f"   ✅ Extracted {len(roster_map)} players from Lineup")
+        except Exception as e:
+            print(f"⚠️  Error fetching lineup for {game_id}: {e}")
+
+        # 2. Fetch Review (Box Score)
         url = f"{self.base_url}?gameId={game_id}&gameDate={game_date}&section=REVIEW"
         print(f"📡 Fetching BoxScore: {url}")
 
@@ -158,12 +176,12 @@ class GameDetailCrawler:
         game_summary = await self._extract_game_summary(page)
 
         hitters = {
-            'away': await self._extract_hitters(page, 'away', team_info['away']['code'], season_year),
-            'home': await self._extract_hitters(page, 'home', team_info['home']['code'], season_year),
+            'away': await self._extract_hitters(page, 'away', team_info['away']['code'], season_year, roster_map),
+            'home': await self._extract_hitters(page, 'home', team_info['home']['code'], season_year, roster_map),
         }
         pitchers = {
-            'away': await self._extract_pitchers(page, 'away', team_info['away']['code'], season_year),
-            'home': await self._extract_pitchers(page, 'home', team_info['home']['code'], season_year),
+            'away': await self._extract_pitchers(page, 'away', team_info['away']['code'], season_year, roster_map),
+            'home': await self._extract_pitchers(page, 'home', team_info['home']['code'], season_year, roster_map),
         }
 
         game_data = {
@@ -282,8 +300,8 @@ class GameDetailCrawler:
         if result and len(result['rows']) >= 2:
             headers = result['headers']
             rows = result['rows']
-            away_info = self._parse_scoreboard_row(headers, rows[0])
-            home_info = self._parse_scoreboard_row(headers, rows[1])
+            away_info = self._parse_scoreboard_row(headers, rows[0], season_year)
+            home_info = self._parse_scoreboard_row(headers, rows[1], season_year)
         else:
             # Fallback to gameId decoding
             away_segment = game_id[8:10] if len(game_id) >= 10 else None
@@ -308,7 +326,7 @@ class GameDetailCrawler:
         # Ensure codes resolve via team names if available
         for info in (away_info, home_info):
             if info.get('name'):
-                resolved = resolve_team_code(info['name'])
+                resolved = resolve_team_code(info['name'], season_year)
                 if resolved:
                     info['code'] = resolved
 
@@ -319,16 +337,9 @@ class GameDetailCrawler:
             segment = game_id[10:12] if len(game_id) >= 12 else None
             home_info['code'] = team_code_from_game_id_segment(segment, season_year)
 
-        # Enforce SK -> SSG mapping for years >= 2021
-        if season_year and season_year >= 2021:
-            if away_info.get('code') == 'SK':
-                away_info['code'] = 'SSG'
-            if home_info.get('code') == 'SK':
-                home_info['code'] = 'SSG'
-
         return {'away': away_info, 'home': home_info}
 
-    async def _extract_hitters(self, page: Page, team_side: str, team_code: Optional[str], season_year: Optional[int]) -> List[Dict[str, Any]]:
+    async def _extract_hitters(self, page: Page, team_side: str, team_code: Optional[str], season_year: Optional[int], roster_map: Optional[Dict[str, List[Dict[str, Any]]]] = None) -> List[Dict[str, Any]]:
         selectors = ['#tblAwayHitter1', '#tblAwayHitter3'] if team_side == 'away' else ['#tblHomeHitter1', '#tblHomeHitter3']
         tables = []
         for selector in selectors:
@@ -338,7 +349,16 @@ class GameDetailCrawler:
 
         base_rows = tables[0] if tables else []
         extra_rows = tables[1] if len(tables) > 1 else []
-        extra_map = {row['playerName']: row for row in extra_rows if row['playerName']}
+        
+        # KEY FIX: Legacy tables (e.g. 2018) might not have player name in the extra table (Table 3).
+        # In that case, we must merge by INDEX, assuming 1:1 correspondence.
+        # Modern tables (Table 2 in some views) might have names.
+        # We check if extra_rows have names.
+        extra_has_names = any(r.get('playerName') for r in extra_rows)
+        
+        extra_map = {}
+        if extra_has_names:
+            extra_map = {row['playerName']: row for row in extra_rows if row['playerName']}
 
         results: List[Dict[str, Any]] = []
         for idx, row in enumerate(base_rows, start=1):
@@ -350,17 +370,45 @@ class GameDetailCrawler:
             extras = {}
             self._populate_hitter_stats(stats, extras, row['cells'])
 
-            extra_row = extra_map.get(player_name)
+            # Merge Strategy: Name-based OR Index-based
+            if extra_has_names:
+                extra_row = extra_map.get(player_name)
+            else:
+                base_idx = idx - 1 # idx starts at 1
+                if base_idx < len(extra_rows):
+                    extra_row = extra_rows[base_idx]
+                else:
+                    extra_row = None
+
             if extra_row:
-                self._populate_hitter_stats(stats, extras, extra_row['cells'])
+                 self._populate_hitter_stats(stats, extras, extra_row['cells'])
 
             batting_order = self._parse_batting_order(row['cells'])
             position = self._parse_position(row['cells'])
             is_starter = batting_order is not None and batting_order <= 9
 
             player_id = row['playerId']
+            uniform_no = row.get('uniformNo')
+            
+            # Optimization: Check roster_map if ID is missing
+            if not player_id and roster_map and player_name in roster_map:
+                candidates = roster_map[player_name]
+                if len(candidates) == 1:
+                    player_id = candidates[0]['id']
+                    # Use roster uniform if available and row uniform is missing
+                    if not uniform_no:
+                        uniform_no = candidates[0]['uniform']
+                elif len(candidates) > 1:
+                    # Ambiguity! If we have uniform_no in row, use it to match
+                    if uniform_no:
+                        for c in candidates:
+                            if c['uniform'] == str(uniform_no):
+                                player_id = c['id']
+                                break
+                    # If still ambiguous, we might fall back to resolver or heuristics
+            
             if not player_id and self.resolver and team_code and season_year:
-                player_id = self.resolver.resolve_id(player_name, team_code, season_year)
+                player_id = self.resolver.resolve_id(player_name, team_code, season_year, uniform_no=uniform_no)
                 # If resolved, ensure it's a string as crawler usually expects string IDs?
                 # DB stores as int in models (PlayerBasic.player_id is int).
                 # But here we pass it through.
@@ -369,6 +417,7 @@ class GameDetailCrawler:
             payload = {
                 'player_id': player_id,
                 'player_name': player_name,
+                'uniform_no': uniform_no,
                 'team_code': team_code,
                 'team_side': team_side,
                 'batting_order': batting_order,
@@ -382,7 +431,7 @@ class GameDetailCrawler:
 
         return results
 
-    async def _extract_pitchers(self, page: Page, team_side: str, team_code: Optional[str], season_year: Optional[int]) -> List[Dict[str, Any]]:
+    async def _extract_pitchers(self, page: Page, team_side: str, team_code: Optional[str], season_year: Optional[int], roster_map: Optional[Dict[str, List[Dict[str, Any]]]] = None) -> List[Dict[str, Any]]:
         selector = '#tblAwayPitcher' if team_side == 'away' else '#tblHomePitcher'
         rows = await self._extract_table_rows(page, selector)
         results: List[Dict[str, Any]] = []
@@ -405,12 +454,34 @@ class GameDetailCrawler:
                 stats['decision'] = decision
 
             player_id = row['playerId']
+            uniform_no = row.get('uniformNo')
+            
+            # Optimization: Check roster_map if ID is missing
+            if not player_id and roster_map and player_name in roster_map:
+                candidates = roster_map[player_name]
+                if len(candidates) == 1:
+                    player_id = candidates[0]['id']
+                    if not uniform_no:
+                        uniform_no = candidates[0]['uniform']
+                elif len(candidates) > 1:
+                    if uniform_no:
+                        for c in candidates:
+                            if c['uniform'] == str(uniform_no):
+                                player_id = c['id']
+                                break
+                    else:
+                        # Ambiguous case: Multiple candidates, no uniform in table.
+                        # We'll let the resolver handle it or pick the first one?
+                        # Using resolver is safer as it might have DB knowledge.
+                        pass
+
             if not player_id and self.resolver and team_code and season_year:
-                player_id = self.resolver.resolve_id(player_name, team_code, season_year)
+                player_id = self.resolver.resolve_id(player_name, team_code, season_year, uniform_no=uniform_no)
 
             payload = {
                 'player_id': player_id,
                 'player_name': player_name,
+                'uniform_no': uniform_no,
                 'team_code': team_code,
                 'team_side': team_side,
                 'is_starting': idx == 1,
@@ -451,6 +522,19 @@ class GameDetailCrawler:
                 const link = tr.querySelector('a[href*="playerId="]');
                 let playerId = null;
                 let playerName = null;
+                let uniformNo = null;
+
+                // Try to find uniform number in the first cell or a cell with specific header
+                // Usually '타순' or 'NO' column contains the number for starters,
+                // but we can also check for a cell that is purely numeric and not batting order.
+                // In KBO box score, the first column is often the number/order.
+                if (cells.length > 0) {
+                    const firstVal = cells[0].innerText.trim();
+                    if (/^\d+$/.test(firstVal)) {
+                        uniformNo = firstVal;
+                    }
+                }
+
                 if (link) {
                     playerName = link.innerText.trim();
                     const href = link.getAttribute('href');
@@ -463,22 +547,11 @@ class GameDetailCrawler:
                 }
                 
                 // Fallback: Use name column if link not found
-                if (!playerName) {
-                    if (nameIndex !== -1 && cells.length > nameIndex) {
-                         playerName = cells[nameIndex].innerText.trim();
-                    } else if (cells.length > 0) {
-                         // Very weak fallback, might be '1' or 'Pos'
-                         // Try to find a cell that looks like a name (not number, len > 1) if nameIndex failed?
-                         // But for now let's rely on nameIndex as it should exist.
-                         // If nameIndex is -1, maybe it is the first cell?
-                         // Let's check headers.
-                         // If we are here, likely headers had "선수명" or we are doomed.
-                         // Keep existing fallback just in case but ideally we rely on nameIndex.
-                         playerName = cells[0].innerText.trim();
-                    }
+                if (!playerName && nameIndex !== -1 && cells.length > nameIndex) {
+                    playerName = cells[nameIndex].innerText.trim();
                 }
                 
-                return { index, cells: values, playerId, playerName };
+                return { index, cells: values, playerId, playerName, uniformNo };
             });
         }
         """
@@ -552,7 +625,7 @@ class GameDetailCrawler:
             else:
                 stats[key] = self._safe_int(value)
 
-    def _parse_scoreboard_row(self, headers: List[str], row: List[str]) -> Dict[str, Any]:
+    def _parse_scoreboard_row(self, headers: List[str], row: List[str], season_year: Optional[int] = None) -> Dict[str, Any]:
         if not row:
             return {
                 'name': None,
@@ -575,7 +648,7 @@ class GameDetailCrawler:
 
         return {
             'name': name,
-            'code': resolve_team_code(name),
+            'code': resolve_team_code(name, season_year),
             'line_score': line_numeric,
             'score': score,
             'hits': hits,
@@ -671,12 +744,96 @@ class GameDetailCrawler:
                 return None
         return None
 
+    async def _extract_roster_from_lineup(self, page: Page) -> Dict[str, List[Dict[str, Any]]]:
+        """
+        Extracts a map of {PlayerName: [{id, uniform_no}, ...]} from the LINEUP page.
+        Used to resolve player IDs when the Review page boxscore lacks links (legacy games).
+        """
+        script = """
+        () => {
+            const map = {};
+            const addToMap = (name, id, uniform) => {
+                const cleanName = name.trim();
+                if (!cleanName) return;
+                
+                if (!map[cleanName]) {
+                    map[cleanName] = [];
+                }
+                
+                // Avoid duplicates
+                const exists = map[cleanName].some(p => p.id === id);
+                if (!exists) {
+                    map[cleanName].push({id, uniform});
+                }
+            };
+
+            // Find all anchor tags that look like player links
+            // Pattern: Player/PlayerDetail.aspx?playerId=... or p_id=...
+            const links = document.querySelectorAll('a[href*="Player/PlayerDetail"]');
+            
+            links.forEach(a => {
+                const name = a.innerText.trim();
+                const href = a.getAttribute('href');
+                if (!href) return;
+                
+                const idMatch = href.match(/playerId=(\\d+)/) || href.match(/p_id=(\\d+)/);
+                if (name && idMatch) {
+                    let uniform = null;
+                    
+                    // strategy 1: Check nearby lists or text for "No.XX"
+                    const parentLi = a.closest('li');
+                    if (parentLi) {
+                        const text = parentLi.innerText;
+                        const uniMatch = text.match(/No\\.(\\d+)/);
+                        if (uniMatch) uniform = uniMatch[1];
+                    }
+                    
+                    // strategy 2: Check previous sibling or parent structure (table columns)
+                    // (Simplification: just take what we found)
+                    
+                    addToMap(name, idMatch[1], uniform);
+                }
+            });
+            return map;
+        }
+        """
+        try:
+            return await page.evaluate(script)
+        except Exception as e:
+            print(f"⚠️ Error executing roster extraction script: {e}")
+            return {}
+
 
 async def main():  # pragma: no cover
-    crawler = GameDetailCrawler()
-    sample = await crawler.crawl_game("20251013SKSS0", "20251013")
-    print(sample)
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--game_id", help="KBO Game ID (e.g., 20251013SKSS0)")
+    parser.add_argument("--date", help="Game Date (YYYYMMDD)")
+    parser.add_argument("--save", action="store_true", help="Save to local database")
+    args = parser.parse_args()
 
+    if not args.game_id:
+        print("Usage: python3 -m src.crawlers.game_detail_crawler --game_id <ID> [--date <YYYYMMDD>] [--save]")
+        return
+
+    game_id = args.game_id
+    game_date = args.date or game_id[:8]
+    
+    print(f"🚀 Starting crawl for game {game_id} ({game_date})...")
+    crawler = GameDetailCrawler()
+    game_data = await crawler.crawl_game(game_id, game_date)
+    if game_data and args.save:
+        from src.repositories.game_repository import save_game_detail
+        success = save_game_detail(game_data)
+        if success:
+            print(f"✅ Successfully saved and triggered sync for {game_id}")
+        else:
+            print(f"❌ Failed to save {game_id}")
+    elif not game_data:
+        print(f"❌ Failed to crawl {game_id}")
+    else:
+        print(game_data)
 
 if __name__ == "__main__":  # pragma: no cover
+    import asyncio
     asyncio.run(main())

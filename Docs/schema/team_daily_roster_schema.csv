@@ -1,0 +1,10 @@
+column_name,type,is_primary_key,foreign_key
+id,INTEGER,True,
+roster_date,DATE,False,
+team_code,VARCHAR(10),False,
+player_id,INTEGER,False,
+player_name,VARCHAR(50),False,
+position,VARCHAR(20),False,
+back_number,VARCHAR(10),False,
+created_at,DATETIME,False,
+updated_at,DATETIME,False,

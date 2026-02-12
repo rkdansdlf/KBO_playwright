@@ -1,0 +1,9 @@
+column_name,type,is_primary_key,foreign_key
+season_id,INTEGER,True,
+season_year,INTEGER,False,
+league_type_code,INTEGER,False,
+league_type_name,VARCHAR(50),False,
+start_date,DATE,False,
+end_date,DATE,False,
+created_at,DATETIME,False,
+updated_at,DATETIME,False,

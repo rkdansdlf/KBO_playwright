@@ -20,24 +20,13 @@ from typing import Dict, List, Optional
 from playwright.sync_api import sync_playwright, Page
 
 from src.repositories.safe_batting_repository import save_batting_stats_safe
-from src.utils.team_mapping import get_team_code, get_team_mapping_for_year
+from src.utils.team_codes import resolve_team_code
 from src.utils.playwright_blocking import install_sync_resource_blocking
+from src.utils.request_policy import RequestPolicy
+from src.utils.compliance import compliance
 
 
-def get_team_code_mapping() -> Dict[str, str]:
-    """팀명 → 팀 코드 매핑 (하위 호환성을 위해 유지)"""
-    return {
-        'LG': 'LG',
-        'NC': 'NC', 
-        'KT': 'KT',
-        '삼성': 'SS',
-        '롯데': 'LT',
-        '두산': 'OB',
-        'KIA': 'HT',
-        '한화': 'HH',
-        '키움': 'WO',
-        'SSG': 'SK'
-    }
+
 
 
 def get_series_mapping() -> Dict[str, Dict[str, str]]:
@@ -275,9 +264,7 @@ def _parse_batting_stats_table_fast(page: Page, series_key: str, year: int = 202
             team_name = row["team_name"]
             cells = row["raw_cells"]
 
-            team_code = get_team_code(team_name, year)
-            if not team_code:
-                team_code = team_mapping.get(team_name, team_name)
+            team_code = resolve_team_code(team_name, year) or team_name
 
             batting_data = _build_batting_data(
                 cells=cells,
@@ -329,9 +316,7 @@ def _parse_batting_stats_table_legacy(page: Page, series_key: str, year: int = 2
 
             player_name = name_link.inner_text().strip() if name_link else (cells[1] if len(cells) > 1 else "")
             team_name = cells[2] if len(cells) > 2 else ""
-            team_code = get_team_code(team_name, year)
-            if not team_code:
-                team_code = team_mapping.get(team_name, team_name)
+            team_code = resolve_team_code(team_name, year) or team_name
 
             batting_data = _build_batting_data(
                 cells=cells,
@@ -777,9 +762,13 @@ def crawl_series_batting_stats(year: int = 2025, series_key: str = 'regular',
     series_info = series_mapping[series_key]
     all_players_data = []
     
+    policy = RequestPolicy()
+    
     with sync_playwright() as playwright:
         browser = playwright.chromium.launch(headless=headless)
-        page = browser.new_page()
+        # Apply UA rotation via context
+        context = browser.new_context(**policy.build_context_kwargs(locale='ko-KR'))
+        page = context.new_page()
         page.set_default_timeout(30000)
         install_sync_resource_blocking(page)
 
@@ -789,6 +778,10 @@ def crawl_series_batting_stats(year: int = 2025, series_key: str = 'regular',
 
             # 페이지로 이동 (Basic1 사용)
             url = "https://www.koreabaseball.com/Record/Player/HitterBasic/Basic1.aspx"
+            if not compliance.is_allowed_sync(url):
+                print(f"[COMPLIANCE] Navigation to {url} aborted.")
+                return []
+            policy.delay(host="www.koreabaseball.com")
             page.goto(url, wait_until='load', timeout=30000)
             page.wait_for_load_state('networkidle', timeout=30000)
             time.sleep(2)

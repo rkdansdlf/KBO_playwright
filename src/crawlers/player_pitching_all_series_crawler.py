@@ -26,24 +26,13 @@ from typing import Dict, List, Optional, Tuple
 from playwright.sync_api import sync_playwright, Page, TimeoutError as PlaywrightTimeout
 
 from src.repositories.player_season_pitching_repository import save_pitching_stats_to_db
-from src.utils.team_mapping import get_team_code, get_team_mapping_for_year
+from src.utils.team_codes import resolve_team_code
 from src.utils.playwright_blocking import install_sync_resource_blocking
+from src.utils.request_policy import RequestPolicy
+from src.utils.compliance import compliance
 
 
-def get_team_code_mapping() -> Dict[str, str]:
-    """팀명 → 팀 코드 매핑"""
-    return {
-        'LG': 'LG',
-        'NC': 'NC', 
-        'KT': 'KT',
-        '삼성': 'SS',
-        '롯데': 'LT',
-        '두산': 'OB',
-        'KIA': 'HT',
-        '한화': 'HH',
-        '키움': 'WO',
-        'SSG': 'SK'
-    }
+
 
 # ---------------------------------------------------------------------------
 # Constants & configuration
@@ -492,9 +481,7 @@ def parse_basic1_page(
             raw = row['raw']
             
             # Map Team Code
-            team_code = get_team_code(team_name, season)
-            if not team_code:
-                team_code = team_mapping.get(team_name, team_name)
+            team_code = resolve_team_code(team_name, season) or team_name
 
             stats = pitchers.get(player_id)
             if not stats:
@@ -621,11 +608,7 @@ def parse_basic2_page(
             pitchers[player_id] = stats
             stats.player_name = player_name
             stats.team_name = team_name
-            team_code = get_team_code(team_name, season)
-            if not team_code:
-                # 정적 매핑 폴백
-                team_code = team_mapping.get(team_name, team_name)
-                print(f"⚠️ {season}년 '{team_name}' 팀 매핑 실패, 폴백: {team_code}")
+            team_code = resolve_team_code(team_name, season) or team_name
             stats.team_code = team_code
 
         metrics = stats.extra_stats.setdefault("metrics", {})
@@ -676,7 +659,14 @@ def parse_basic2_page(
 # Crawling logic
 # ---------------------------------------------------------------------------
 
-def setup_pitcher_page(page: Page, url: str, year: int, series_value: str) -> bool:
+def setup_pitcher_page(page: Page, url: str, year: int, series_value: str, policy: Optional[RequestPolicy] = None) -> bool:
+    if policy:
+        policy.delay(host="www.koreabaseball.com")
+    
+    if not compliance.is_allowed_sync(url):
+        print(f"[COMPLIANCE] Navigation to {url} aborted.")
+        return False
+
     page.goto(url, wait_until="load", timeout=60000)
     page.wait_for_load_state("networkidle", timeout=60000)
     page.wait_for_timeout(1000)
@@ -709,16 +699,18 @@ def crawl_pitcher_series(
     league_name = series_info.get("league", "REGULAR")
     print(f"\n📊 {year}년 {series_info['name']} 수집 시작")
 
-    pitchers: Dict[int, PitcherStats] = {}
+    policy = RequestPolicy()
 
     with sync_playwright() as playwright:
         browser = playwright.chromium.launch(headless=headless)
-        page = browser.new_page()
+        # Apply UA rotation via context
+        context = browser.new_context(**policy.build_context_kwargs(locale='ko-KR'))
+        page = context.new_page()
         page.set_default_timeout(60000)
         install_sync_resource_blocking(page)
 
         # Step 1: Basic1 - 시리즈별 정렬 후 전체 페이지 수집
-        if not setup_pitcher_page(page, BASIC1_URL, year, series_info["value"]):
+        if not setup_pitcher_page(page, BASIC1_URL, year, series_info["value"], policy=policy):
             print("❌ Basic1 페이지 설정 실패")
             browser.close()
             return []
@@ -757,7 +749,7 @@ def crawl_pitcher_series(
 
         # Step 2: Basic2 (정규시즌만 실행)
         if series_key == "regular":
-            if not setup_pitcher_page(page, BASIC2_URL, year, series_info["value"]):
+            if not setup_pitcher_page(page, BASIC2_URL, year, series_info["value"], policy=policy):
                 print("⚠️  Basic2 페이지 설정 실패. 추가 지표 없이 종료합니다.")
                 browser.close()
                 return list(pitchers.values()) if not limit else list(pitchers.values())[:limit]

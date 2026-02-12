@@ -143,6 +143,8 @@ class PlayerSeasonBatting(Base, TimestampMixin):
     level: Mapped[str] = mapped_column(String(16), nullable=False, default="KBO1")
     source: Mapped[str] = mapped_column(String(16), nullable=False, default="ROLLUP")
     team_code: Mapped[Optional[str]] = mapped_column(String(10), ForeignKey("teams.team_id"), nullable=True)
+    franchise_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, comment="Canonical franchise ID")
+    canonical_team_code: Mapped[Optional[str]] = mapped_column(String(10), nullable=True, comment="Modern canonical team code")
     games: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     plate_appearances: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     at_bats: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
@@ -197,6 +199,8 @@ class PlayerSeasonPitching(Base, TimestampMixin):
     level: Mapped[str] = mapped_column(String(16), nullable=False, default="KBO1")
     source: Mapped[str] = mapped_column(String(16), nullable=False, default="CRAWLER")
     team_code: Mapped[Optional[str]] = mapped_column(String(8), nullable=True)
+    franchise_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, comment="Canonical franchise ID")
+    canonical_team_code: Mapped[Optional[str]] = mapped_column(String(10), nullable=True, comment="Modern canonical team code")
     
     # Basic pitching stats
     games: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)

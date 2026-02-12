@@ -1,0 +1,9 @@
+column_name,type,is_primary_key,foreign_key
+id,INTEGER,True,
+date,DATE,False,
+section,VARCHAR(50),False,
+team_code,VARCHAR(20),False,
+player_name,VARCHAR(100),False,
+remarks,TEXT,False,
+created_at,DATETIME,False,
+updated_at,DATETIME,False,

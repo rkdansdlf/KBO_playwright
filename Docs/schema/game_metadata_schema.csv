@@ -1,0 +1,12 @@
+column_name,type,is_primary_key,foreign_key
+game_id,VARCHAR(20),True,game(game_id)
+stadium_code,VARCHAR(30),False,
+stadium_name,VARCHAR(64),False,
+attendance,INTEGER,False,
+start_time,TIME,False,
+end_time,TIME,False,
+game_time_minutes,INTEGER,False,
+weather,VARCHAR(32),False,
+source_payload,JSON,False,
+created_at,DATETIME,False,
+updated_at,DATETIME,False,

@@ -29,10 +29,22 @@ def validate_game_data(game_data: Dict[str, Any]) -> Tuple[bool, List[str], List
     home = teams.get("home") or {}
     away = teams.get("away") or {}
 
-    if not home.get("code"):
+    home_code = home.get("code")
+    away_code = away.get("code")
+
+    if not home_code:
         errors.append("Missing home team code")
-    if not away.get("code"):
+    if not away_code:
         errors.append("Missing away team code")
+
+    # Team code standardization check
+    from src.utils.team_codes import STANDARD_TEAM_CODES
+    for side, code in [("home", home_code), ("away", away_code)]:
+        if code and code not in STANDARD_TEAM_CODES:
+            # Check if it's a known international code (warnings only)
+            # For now, following user request to enforce standard 10
+            errors.append(f"Invalid {side} team code: '{code}'. Must be one of {sorted(list(STANDARD_TEAM_CODES))}")
+
 
     hitters = game_data.get("hitters") or {}
     pitchers = game_data.get("pitchers") or {}

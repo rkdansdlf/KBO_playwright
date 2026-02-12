@@ -1,0 +1,9 @@
+column_name,type,is_primary_key,foreign_key
+id,INTEGER,True,
+year,INTEGER,False,
+award_type,VARCHAR(50),False,
+category,VARCHAR(50),False,
+player_name,VARCHAR(100),False,
+team_name,VARCHAR(50),False,
+created_at,DATETIME,False,
+updated_at,DATETIME,False,
