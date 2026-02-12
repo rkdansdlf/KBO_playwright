@@ -1,0 +1,9 @@
+column_name,type,is_primary_key,foreign_key
+id,INTEGER,True,
+game_id,VARCHAR(20),False,game(game_id)
+summary_type,VARCHAR(50),False,
+player_name,VARCHAR(50),False,
+detail_text,TEXT,False,
+created_at,DATETIME,False,
+updated_at,DATETIME,False,
+player_id,INTEGER,False,player_basic(player_id)

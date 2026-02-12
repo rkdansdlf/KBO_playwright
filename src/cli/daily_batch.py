@@ -17,8 +17,9 @@ from src.crawlers.schedule_crawler import ScheduleCrawler
 from src.crawlers.game_detail_crawler import GameDetailCrawler
 from src.crawlers.daily_roster_crawler import DailyRosterCrawler
 from src.crawlers.relay_crawler import RelayCrawler
-from src.cli.sync_supabase import main as sync_supabase_main
-from src.repositories.game_repository import get_games_by_date, save_game_detail, save_relay_data
+from src.cli.sync_oci import main as sync_oci_main
+from dateutil.relativedelta import relativedelta
+from src.repositories.game_repository import get_games_by_date, save_game_detail, save_relay_data, save_schedule_game
 from src.repositories.team_repository import TeamRepository
 from src.db.engine import SessionLocal
 
@@ -32,6 +33,40 @@ logging.basicConfig(
     ]
 )
 logger = logging.getLogger("DailyBatch")
+
+async def run_startup():
+    """
+    Startup Routine (Runs on Docker container start)
+    1. Update Schedule for Upcoming 3 Months (Current + 2)
+    2. Sync basic metadata if needed (optional)
+    """
+    logger.info("=== Starting Startup Routine ===")
+    
+    # Crawl Schedule for Current + Next 2 Months (Total 3 months coverage)
+    now = datetime.datetime.now()
+    targets = []
+    for i in range(3):
+        d = now + relativedelta(months=i)
+        targets.append((d.year, d.month))
+
+    logger.info(f"Step 1: Updating Schedule for {targets}")
+    
+    sch_crawler = ScheduleCrawler()
+    
+    total_saved = 0
+    for year, month in targets:
+        try:
+            games = await sch_crawler.crawl_schedule(year, month)
+            logger.info(f"   Crawled {year}-{month:02d}: Found {len(games)} games")
+            for game in games:
+                if save_schedule_game(game):
+                    total_saved += 1
+        except Exception as e:
+            logger.error(f"   Failed to crawl schedule for {year}-{month:02d}: {e}")
+
+    logger.info(f"Schedule update complete. Total games upserted: {total_saved}")
+    logger.info("=== Startup Routine Finished ===")
+
 
 async def run_closing(target_date: str = None):
     """
@@ -82,12 +117,12 @@ async def run_closing(target_date: str = None):
     except Exception as e:
         logger.error(f"Game Detail collection failed: {e}")
 
-    # 3. Supabase Sync
-    logger.info("Step 3: Syncing to Supabase")
+    # 3. OCI Sync
+    logger.info("Step 3: Syncing to OCI")
     try:
         # Run sync as subprocess to avoid global state issues
         process = await asyncio.create_subprocess_exec(
-            "python", "-m", "src.cli.sync_supabase",
+            "python", "-m", "src.cli.sync_oci",
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE
         )
@@ -97,7 +132,7 @@ async def run_closing(target_date: str = None):
         else:
             logger.error(f"Sync Failed: \n{stderr.decode()}")
     except Exception as e:
-        logger.error(f"Supabase Sync failed: {e}")
+        logger.error(f"OCI Sync failed: {e}")
 
     logger.info("=== Daily Closing Finished ===")
 
@@ -146,7 +181,7 @@ async def run_live_watcher():
 
 def main():
     parser = argparse.ArgumentParser(description="KBO Daily Automation Batch")
-    parser.add_argument("--mode", choices=["closing", "live"], required=True, help="Execution mode")
+    parser.add_argument("--mode", choices=["closing", "live", "startup"], required=True, help="Execution mode")
     parser.add_argument("--date", type=str, help="Target date (YYYYMMDD) for closing mode. Defaults to yesterday.")
     
     args = parser.parse_args()
@@ -155,6 +190,8 @@ def main():
         asyncio.run(run_closing(args.date))
     elif args.mode == "live":
         asyncio.run(run_live_watcher())
+    elif args.mode == "startup":
+        asyncio.run(run_startup())
 
 if __name__ == "__main__":
     main()

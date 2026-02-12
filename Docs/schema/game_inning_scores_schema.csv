@@ -1,0 +1,10 @@
+column_name,type,is_primary_key,foreign_key
+id,INTEGER,True,
+game_id,VARCHAR(20),False,game(game_id)
+team_side,VARCHAR(5),False,
+team_code,VARCHAR(10),False,
+inning,INTEGER,False,
+runs,INTEGER,False,
+is_extra,BOOLEAN,False,
+created_at,DATETIME,False,
+updated_at,DATETIME,False,

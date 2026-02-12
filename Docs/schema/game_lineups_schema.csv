@@ -1,0 +1,15 @@
+column_name,type,is_primary_key,foreign_key
+id,INTEGER,True,
+game_id,VARCHAR(20),False,game(game_id)
+team_side,VARCHAR(5),False,
+team_code,VARCHAR(10),False,
+player_id,INTEGER,False,
+player_name,VARCHAR(64),False,
+batting_order,INTEGER,False,
+position,VARCHAR(8),False,
+is_starter,BOOLEAN,False,
+appearance_seq,INTEGER,False,
+notes,VARCHAR(64),False,
+created_at,DATETIME,False,
+updated_at,DATETIME,False,
+uniform_no,VARCHAR(10),False,

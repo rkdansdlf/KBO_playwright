@@ -1,0 +1,12 @@
+column_name,type,is_primary_key,foreign_key
+id,INTEGER,True,
+game_id,VARCHAR(20),False,game(game_id)
+inning,INTEGER,False,
+inning_half,VARCHAR(10),False,
+pitcher_name,VARCHAR(50),False,
+batter_name,VARCHAR(50),False,
+play_description,VARCHAR(1000),False,
+event_type,VARCHAR(50),False,
+result,VARCHAR(100),False,
+created_at,DATETIME,False,
+updated_at,DATETIME,False,

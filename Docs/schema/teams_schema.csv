@@ -1,0 +1,12 @@
+column_name,type,is_primary_key,foreign_key
+team_id,VARCHAR(10),True,
+team_name,VARCHAR(50),False,
+team_short_name,VARCHAR(20),False,
+city,VARCHAR(30),False,
+founded_year,INTEGER,False,
+stadium_name,VARCHAR(50),False,
+created_at,DATETIME,False,
+updated_at,DATETIME,False,
+franchise_id,INTEGER,False,
+is_active,BOOLEAN,False,
+aliases,JSON,False,

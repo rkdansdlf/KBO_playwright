@@ -1,6 +1,0 @@
-컬럼 이름 (Column Name),데이터 타입 (Data Type),설명 (Description)
-id,serial,자동 증가하는 기본 키 (PK)
-game_id,character varying(20),경기 고유 ID (앞선 game 테이블의 game_id 참조)
-summary_type,character varying(50),"요약 정보의 유형 (예: Home Run, Save, MVP)"
-player_name,character varying(50),해당 요약의 주체인 선수 이름
-detail_text,text,상세 내용 및 설명

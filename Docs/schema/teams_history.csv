@@ -1,9 +1,0 @@
-필드명,데이터 타입,제약 조건,설명
-id,INT,PRIMARY KEY,구단 명칭 변경 기록별 고유 ID (CSV의 id)
-franchise_id,INT,NOT NULL,프랜차이즈 그룹 ID (FK 참조 가능)
-team_name,VARCHAR(50),NOT NULL,"구단 명칭 (한글, CSV의 name_kor)"
-team_code,VARCHAR(10),NOT NULL,"기록에 사용되는 팀 코드 (예: SS, LG)"
-city,VARCHAR(30),NULLABLE,"연고 도시 (한글, CSV의 city_kor)"
-start_season,INT,NOT NULL,해당 명칭/코드 사용 시작 연도
-end_season,INT,NULLABLE,해당 명칭/코드 사용 종료 연도 (현재 팀은 NULL)
-is_current,INT,NOT NULL,"현재 사용 여부 (1: 현재, 0: 과거)"
