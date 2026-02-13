@@ -27,6 +27,7 @@ from playwright.sync_api import sync_playwright, Page, TimeoutError as Playwrigh
 
 from src.repositories.player_season_pitching_repository import save_pitching_stats_to_db
 from src.utils.team_codes import resolve_team_code
+from src.utils.team_mapping import get_team_mapping_for_year
 from src.utils.playwright_blocking import install_sync_resource_blocking
 from src.utils.request_policy import RequestPolicy
 from src.utils.compliance import compliance
@@ -284,26 +285,44 @@ def go_to_next_page(page: Page, current_page: int) -> bool:
 
 
 def apply_sort(page: Page, header_label: str, sort_code: Optional[str] = None) -> bool:
-    if sort_code:
-        selector = f"a[href=\"javascript:sort('{sort_code}');\"]"
-        anchor = page.query_selector(selector)
-        if anchor:
-            anchor.click()
-            page.wait_for_load_state("networkidle", timeout=60000)
-            page.wait_for_timeout(800)
-            return True
+    try:
+        if sort_code:
+            # Use JS execution for robustness against DOM changes
+            # Check if 'sort' function exists
+            has_sort_fn = page.evaluate("typeof sort === 'function'")
+            if has_sort_fn:
+                print(f"   ⚡ JS sort('{sort_code}') 실행")
+                page.evaluate(f"sort('{sort_code}')")
+                page.wait_for_load_state("networkidle", timeout=60000)
+                page.wait_for_timeout(1000)
+                return True
+            
+            # Fallback to selector
+            selector = f"a[href=\"javascript:sort('{sort_code}');\"]"
+            anchor = page.query_selector(selector)
+            if anchor:
+                anchor.click()
+                page.wait_for_load_state("networkidle", timeout=60000)
+                page.wait_for_timeout(800)
+                return True
 
-    anchors = page.query_selector_all("table.tData01.tt thead a")
-    for anchor in anchors:
-        label = normalize_header(anchor.inner_text())
-        if label == header_label:
-            anchor.click()
-            page.wait_for_load_state("networkidle", timeout=60000)
-            page.wait_for_timeout(800)
-            return True
+        anchors = page.query_selector_all("table.tData01.tt thead a")
+        for anchor in anchors:
+            # Re-check attachment
+            if not anchor.is_visible(): continue
+            
+            label = normalize_header(anchor.inner_text())
+            if label == header_label:
+                anchor.click()
+                page.wait_for_load_state("networkidle", timeout=60000)
+                page.wait_for_timeout(800)
+                return True
 
-    print(f"⚠️  '{header_label}' 정렬 링크를 찾지 못했습니다.")
-    return False
+        print(f"⚠️  '{header_label}' 정렬 링크를 찾지 못했습니다.")
+        return False
+    except Exception as e:
+        print(f"⚠️ 정렬 적용 실패: {e}")
+        return False
 
 
 # ---------------------------------------------------------------------------
@@ -691,14 +710,16 @@ def crawl_pitcher_series(
     limit: Optional[int] = None,
     headless: bool = True,
     save_to_db: bool = False,
+    by_team: bool = False,
 ) -> List[PitcherStats]:
     if series_key not in SERIES_MAPPING:
         raise ValueError(f"지원하지 않는 시리즈 키: {series_key}")
 
     series_info = SERIES_MAPPING[series_key]
     league_name = series_info.get("league", "REGULAR")
-    print(f"\n📊 {year}년 {series_info['name']} 수집 시작")
+    print(f"\n📊 {year}년 {series_info['name']} 수집 시작 (by_team={by_team})")
 
+    pitchers: Dict[int, PitcherStats] = {}
     policy = RequestPolicy()
 
     with sync_playwright() as playwright:
@@ -715,40 +736,80 @@ def crawl_pitcher_series(
             browser.close()
             return []
 
-        primary_sort = PRIMARY_SORT_CONFIG.get(
-            series_key, PRIMARY_SORT_CONFIG["default"]
-        )
-        apply_sort(
-            page,
-            header_label=primary_sort["label"],
-            sort_code=primary_sort["sort_code"],
-        )
+        # 팀별 순회 로직
+        team_options = []
+        if by_team:
+            try:
+                team_selector = 'select[name="ctl00$ctl00$ctl00$cphContents$cphContents$cphContents$ddlTeam$ddlTeam"]'
+                # Check if selector exists (it should)
+                if page.query_selector(team_selector):
+                    options = page.eval_on_selector_all(f'{team_selector} option', 'options => options.map(o => ({text: o.innerText, value: o.value}))')
+                    team_options = [opt for opt in options if opt['value']] # Empty value is "Team Selection"
+                    print(f"ℹ️ 팀별 순회 모드: {len(team_options)}개 팀 발견")
+                else:
+                    print("⚠️ 팀 선택 드롭다운을 찾을 수 없습니다. 전체 모드로 진행.")
+            except Exception as e:
+                print(f"⚠️ 팀 목록 추출 실패, 전체 모드로 진행: {e}")
+                team_options = []
 
-        wait_for_table(page)
+        iteration_targets = team_options if team_options else [{'value': '', 'text': '전체'}]
 
-        page_number = 1
-        while True:
-            parsed = parse_basic1_page(
-                page,
-                season=year,
-                league=league_name,
-                pitchers=pitchers,
-                max_players=limit,
+        for tm in iteration_targets:
+            if team_options:
+                print(f"🔍 팀 선택: {tm['text']} ({tm['value']})")
+                try:
+                    page.select_option('select[name="ctl00$ctl00$ctl00$cphContents$cphContents$cphContents$ddlTeam$ddlTeam"]', tm['value'])
+                    page.wait_for_load_state('networkidle', timeout=60000)
+                    time.sleep(1)
+                except Exception as e:
+                    print(f"⚠️ 팀 선택 실패 ({tm['text']}): {e}")
+                    continue
+
+            # 정렬 적용 (팀 선택 후 리셋될 수 있으므로 다시 적용)
+            primary_sort = PRIMARY_SORT_CONFIG.get(
+                series_key, PRIMARY_SORT_CONFIG["default"]
             )
-            print(f"   ▶ Basic1 {page_number}페이지: {parsed}명 처리 (누적 {len(pitchers)}명)")
+            # 팀별 조회시는 굳이 정렬 안해도 되지만, 일관성을 위해 시도
+            apply_sort(
+                page,
+                header_label=primary_sort["label"],
+                sort_code=primary_sort["sort_code"],
+            )
 
+            wait_for_table(page)
+
+            page_number = 1
+            while True:
+                parsed = parse_basic1_page(
+                    page,
+                    season=year,
+                    league=league_name,
+                    pitchers=pitchers,
+                    max_players=limit,
+                )
+                print(f"   ▶ Basic1 {page_number}페이지: {parsed}명 처리 (누적 {len(pitchers)}명)")
+
+                if limit and len(pitchers) >= limit:
+                    print("   🎯 수집 제한에 도달했습니다.")
+                    break
+
+                if not go_to_next_page(page, page_number):
+                    break
+                page_number += 1
+            
             if limit and len(pitchers) >= limit:
-                print("   🎯 수집 제한에 도달했습니다.")
                 break
-
-            if not go_to_next_page(page, page_number):
-                break
-            page_number += 1
 
         print(f"✅ Basic1 수집 완료: 총 {len(pitchers)}명")
 
-        # Step 2: Basic2 (정규시즌만 실행)
-        if series_key == "regular":
+        # Step 2: Basic2 (정규시즌만 실행, by_team 여부와 상관없이 '전체'에서 시도하거나 무시)
+        # by_team일 때 Basic2를 팀별로 돌면 너무 오래 걸림.
+        # 일단 Basic2는 '전체' 모드에서만 돌리거나, by_team일 때는 스킵하는게 나을 수도 있음.
+        # 하지만 상세 스탯이 필요하다면 돌려야 함.
+        # 여기서는 by_team일 때 Basic2는 스킵하도록 함 (ID 확보 우선).
+        # 추후 필요시 Basic2 팀별 순회 추가.
+        
+        if series_key == "regular" and not by_team:
             if not setup_pitcher_page(page, BASIC2_URL, year, series_info["value"], policy=policy):
                 print("⚠️  Basic2 페이지 설정 실패. 추가 지표 없이 종료합니다.")
                 browser.close()
@@ -778,6 +839,8 @@ def crawl_pitcher_series(
                     page_number += 1
 
                 print(f"   ✅ Basic2 {display_name} 정렬 처리: {total_processed}행")
+        elif by_team:
+            print("ℹ️ 팀별 순회 모드에서는 Basic2(상세 지표) 수집을 건너뜁니다.")
 
         browser.close()
 
@@ -821,6 +884,7 @@ def parse_arguments() -> argparse.Namespace:
         action="store_true",
         help="DB에 저장",
     )
+    parser.add_argument("--by-team", action="store_true", help="팀별로 순회하여 모든 선수(비규정타석 포함) 수집")
     return parser.parse_args()
 
 
@@ -835,6 +899,7 @@ def main():
             limit=args.limit,
             headless=args.headless,
             save_to_db=args.save,
+            by_team=args.by_team,
         )
     else:
         # 모든 시리즈 크롤링 (타자 크롤러와 동일한 패턴)
@@ -848,6 +913,7 @@ def main():
                 limit=args.limit,
                 headless=args.headless,
                 save_to_db=args.save,  # 각 시리즈별로 저장
+                by_team=args.by_team,
             )
             all_data[series_key] = series_data
             time.sleep(3)

@@ -7,6 +7,7 @@ import re
 from typing import Dict, List, Optional, Any
 from urllib.parse import urljoin, urlparse, parse_qs
 
+from datetime import datetime
 from playwright.async_api import Page
 
 from src.utils.team_codes import resolve_team_code, team_code_from_game_id_segment
@@ -143,29 +144,18 @@ class GameDetailCrawler:
         return [payload for payload in results if payload]
 
     async def _crawl_single(self, page: Page, game_id: str, game_date: str) -> Optional[Dict[str, Any]]:
-        # 1. Fetch Lineup to get Roster Map (Player Name -> ID, Uniform)
-        lineup_url = f"{self.base_url}?gameId={game_id}&gameDate={game_date}&section=LINEUP"
-        print(f"📡 Fetching Lineup: {lineup_url}")
-        
         roster_map = {}
-        try:
-            await page.goto(lineup_url, wait_until="domcontentloaded", timeout=30000)
-            # Wait for lineup to ensure it's loaded (some async loading might happen)
-            # We assume if domcontentloaded is done, we can try extracting. 
-            # If KBO loads lineup via AJAX, we might need a wait.
-            # Let's try waiting for a known element, or just a small sleep if unsure.
-            await asyncio.sleep(0.5) 
-            roster_map = await self._extract_roster_from_lineup(page)
-            print(f"   ✅ Extracted {len(roster_map)} players from Lineup")
-        except Exception as e:
-            print(f"⚠️  Error fetching lineup for {game_id}: {e}")
 
-        # 2. Fetch Review (Box Score)
-        url = f"{self.base_url}?gameId={game_id}&gameDate={game_date}&section=REVIEW"
-        print(f"📡 Fetching BoxScore: {url}")
-
-        await page.goto(url, wait_until="domcontentloaded", timeout=30000)
-        await self._wait_for_boxscore(page)
+        # 1. Navigate directly to REVIEW section with full URL params.
+        #    This is the reliable approach — window.setGameDetail() requires
+        #    the game card <li> to have class 'on' and doesn't accept a gameId
+        #    argument, so JS-based navigation doesn't work.
+        review_url = f"{self.base_url}?gameDate={game_date}&gameId={game_id}&section=REVIEW"
+        print(f"📡 Navigating to REVIEW: {review_url}")
+        await page.goto(review_url, wait_until="networkidle", timeout=30000)
+        await asyncio.sleep(2)
+        if not await self._wait_for_boxscore(page):
+            return None
         await asyncio.sleep(self.request_delay)
 
         season_year = self._parse_season_year(game_date)
@@ -198,8 +188,33 @@ class GameDetailCrawler:
 
         return game_data
 
-    async def _wait_for_boxscore(self, page: Page) -> None:
-        await page.wait_for_selector('#tblAwayHitter1, #tblHomeHitter1', timeout=10000)
+    async def _wait_for_boxscore(self, page: Page) -> bool:
+        """Wait for box score elements to be visible with fast-fail for cancelled games"""
+        try:
+            # Check for the cancellation badge first or simultaneously
+            # 'staus' (typo in KBO site) is used for the cancelled badge in 2010 review page
+            # '.game-status.cancel' is used in other areas
+            # We can use a shorter timeout for the 'cancel' check but better to race
+            await page.wait_for_selector('#tblAwayHitter1, #tblHomeHitter1, .staus, .game-status.cancel', timeout=15000)
+            
+            # After it returns, check if it was a cancel badge
+            cancel_el = await page.query_selector('.staus, .game-status.cancel')
+            if cancel_el:
+                txt = await cancel_el.inner_text()
+                if "취소" in txt:
+                    print(f"ℹ️ Game {page.url} is marked as CANCELLED (경기취소)")
+                    return False # Indicate cancelled
+            
+            return True # Found boxscore
+        except Exception as e:
+            # Check if it was a timeout but maybe we missed the cancel badge?
+            print(f"⚠️  Timeout waiting for boxscore selectors. Page URL: {page.url}")
+            # Diagnostic screenshot
+            debug_path = f"data/error_{datetime.now().strftime('%H%M%S')}.png"
+            os.makedirs('data', exist_ok=True)
+            await page.screenshot(path=debug_path)
+            print(f"📸 Debug screenshot saved to: {debug_path}")
+            return False
 
     async def _extract_metadata(self, page: Page) -> Dict[str, Any]:
         metadata = {
@@ -212,7 +227,20 @@ class GameDetailCrawler:
         }
 
         try:
-            info_area = await page.query_selector('.box-score-area, .game-info, .score-board')
+            # 1. Try explicit ID selectors (common in older years)
+            stadium_el = await page.query_selector('#txtStadium')
+            if stadium_el:
+                metadata['stadium'] = (await stadium_el.inner_text()).replace('구장 :', '').strip()
+            
+            crowd_el = await page.query_selector('#txtCrowd')
+            if crowd_el:
+                try:
+                    val = (await crowd_el.inner_text()).replace('관중 :', '').replace(',', '').strip()
+                    metadata['attendance'] = int(val)
+                except: pass
+
+            # 2. Try generic area search
+            info_area = await page.query_selector('.box-score-area, .game-info, .score-board, .record-etc')
             if not info_area:
                 return metadata
 
@@ -254,10 +282,12 @@ class GameDetailCrawler:
             let teamTable, inningTable, totalTable;
             
             for (const table of tables) {
-                const headers = Array.from(table.querySelectorAll('thead th')).map(th => th.innerText.trim().toUpperCase());
+                const headers = Array.from(table.querySelectorAll('thead th')).map(th => th.innerText.replace(/\u00a0/g, ' ').trim().toUpperCase());
                 
-                if (!teamTable && (headers.includes('TEAM') || headers.includes('팀') || (headers.length === 2 && headers[1] === 'TEAM'))) teamTable = table;
-                // Only identify as inning table if we haven't found one, and it looks like 1, 2, 3...
+                if (!teamTable && (headers.some(h => h.includes('TEAM')) || headers.includes('팀'))) {
+                    // Make sure it's not a stats table or something else
+                    if (headers.length <= 4) teamTable = table;
+                }
                 if (!inningTable && headers.includes('1') && headers.includes('2') && headers.includes('3')) inningTable = table;
                 if (!totalTable && headers.includes('R') && headers.includes('H')) totalTable = table;
             }
@@ -265,12 +295,21 @@ class GameDetailCrawler:
             if (!teamTable || !inningTable || !totalTable) return null;
             
             const getRows = (t) => Array.from(t.querySelectorAll('tbody tr')).map(tr => 
-                Array.from(tr.querySelectorAll('td')).map(td => td.innerText.trim())
+                Array.from(tr.querySelectorAll('td')).map(td => {
+                    const img = td.querySelector('img');
+                    if (img && img.alt) return img.alt;
+                    if (img && img.src && img.src.includes('team')) {
+                        // Extract from src like .../SS.png
+                        const match = img.src.match(/\/([A-Z]{2})\.png/i);
+                        if (match) return match[1];
+                    }
+                    return td.innerText.replace(/\u00a0/g, ' ').trim();
+                })
             );
             
             const teamRows = getRows(teamTable);
             const inningRows = getRows(inningTable);
-            const totalRows = getRows(totalTable); // [R, H, E, B]
+            const totalRows = getRows(totalTable);
             
             if (teamRows.length >= 2 && inningRows.length >= 2 && totalRows.length >= 2) {
                 const headers = ["TEAM", ...Array.from({length: inningRows[0].length}, (_,k)=>String(k+1)), "R", "H", "E"];
@@ -278,7 +317,6 @@ class GameDetailCrawler:
                 for (let i=0; i<2; i++) {
                     const teamName = teamRows[i][0] || "Unknown";
                     const innings = inningRows[i];
-                    // totalRows has R, H, E, B. We need R, H, E for Python parser (last 3).
                     const totals = totalRows[i].slice(0, 3); 
                     rows.push([teamName, ...innings, ...totals]);
                 }
@@ -291,11 +329,6 @@ class GameDetailCrawler:
         result = await page.evaluate(script)
         away_info: Dict[str, Any]
         home_info: Dict[str, Any]
-
-        if result:
-            print(f"DEBUG_JS_RESULT: {result}")
-        else:
-            print("DEBUG_JS_RESULT: None (No matching table found)")
 
         if result and len(result['rows']) >= 2:
             headers = result['headers']
@@ -519,15 +552,12 @@ class GameDetailCrawler:
                     const header = headers[i] || `COL_${i}`;
                     values[header] = cells[i].innerText.trim();
                 }
-                const link = tr.querySelector('a[href*="playerId="]');
+                const link = tr.querySelector('a[href*="playerId="], a[href*="p_id="]');
                 let playerId = null;
                 let playerName = null;
                 let uniformNo = null;
 
                 // Try to find uniform number in the first cell or a cell with specific header
-                // Usually '타순' or 'NO' column contains the number for starters,
-                // but we can also check for a cell that is purely numeric and not batting order.
-                // In KBO box score, the first column is often the number/order.
                 if (cells.length > 0) {
                     const firstVal = cells[0].innerText.trim();
                     if (/^\d+$/.test(firstVal)) {
@@ -540,7 +570,7 @@ class GameDetailCrawler:
                     const href = link.getAttribute('href');
                     try {
                         const url = new URL(href, window.location.origin);
-                        playerId = url.searchParams.get('playerId');
+                        playerId = url.searchParams.get('playerId') || url.searchParams.get('p_id');
                     } catch (e) {
                         playerId = null;
                     }
@@ -768,15 +798,14 @@ class GameDetailCrawler:
             };
 
             // Find all anchor tags that look like player links
-            // Pattern: Player/PlayerDetail.aspx?playerId=... or p_id=...
-            const links = document.querySelectorAll('a[href*="Player/PlayerDetail"]');
+            const links = document.querySelectorAll('a[href*="Player/PlayerDetail"], a[href*="playerId="], a[href*="p_id="]');
             
             links.forEach(a => {
                 const name = a.innerText.trim();
                 const href = a.getAttribute('href');
                 if (!href) return;
                 
-                const idMatch = href.match(/playerId=(\\d+)/) || href.match(/p_id=(\\d+)/);
+                const idMatch = href.match(/playerId=(\d+)/) || href.match(/p_id=(\d+)/) || href.match(/id=(\d+)/);
                 if (name && idMatch) {
                     let uniform = null;
                     
@@ -784,7 +813,7 @@ class GameDetailCrawler:
                     const parentLi = a.closest('li');
                     if (parentLi) {
                         const text = parentLi.innerText;
-                        const uniMatch = text.match(/No\\.(\\d+)/);
+                        const uniMatch = text.match(/No\.(\d+)/);
                         if (uniMatch) uniform = uniMatch[1];
                     }
                     

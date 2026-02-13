@@ -131,7 +131,6 @@ class ScheduleCrawler:
                 pass
             
         # 3. 리그(Series) 선택 (옵션이 있는 경우에만)
-        # series_id가 제공되면 선택. (예: "0,9,6" for Regular, "1" for Exhibition)
         if series_id:
             try:
                 # 해당 값이 옵션에 있는지 확인
@@ -337,40 +336,33 @@ class ScheduleCrawler:
                 away_code = team_code_from_game_id_segment(g.get('away_segment'), year)
                 home_code = team_code_from_game_id_segment(g.get('home_segment'), year)
                 
-                # Fallback Construction if game_id is missing (future games)
+                # Fallback Construction if game_id is missing (future games or link not found)
                 if not g.get('game_id'):
                     away_name = g.get('away_name')
                     home_name = g.get('home_name')
                     away_code = resolve_team_code(away_name) or away_name
                     home_code = resolve_team_code(home_name) or home_name
                     
-                    if g.get('game_date') and away_code and home_code:
+                    # KBO Website uses LEGACY codes in Game IDs.
+                    # We must map our canonical codes (KH, DB, SSG, KIA) to KBO legacy (WO, OB, SK, HT).
+                    KBO_LEGACY_CODES = {
+                        "KH": "WO",  # Kiwoom -> Woori
+                        "DB": "OB",  # Doosan -> OB
+                        "SSG": "SK", # SSG -> SK (Wyverns)
+                        "KIA": "HT", # KIA -> Haitai
+                        # Others usually match: LG, LT, NC, HH, KT, SS
+                    }
+                    
+                    kbo_away_code = KBO_LEGACY_CODES.get(away_code, away_code)
+                    kbo_home_code = KBO_LEGACY_CODES.get(home_code, home_code)
+
+                    if g.get('game_date') and kbo_away_code and kbo_home_code:
                         # Construct ID: YYYYMMDD + AWAY + HOME + DH
-                        # Ensure codes are 2-3 chars? KBO IDs use standard codes.
-                        # Mapping might need to be precise. 
-                        # 'SSG' is 3 chars. 'NC' is 2. KBO IDs handle varying lengths? 
-                        # Actually KBO IDs are usually fixed length 2 chars for teams?
-                        # 20240323HHOB0 -> HH(2), OB(2).
-                        # if code is 3 chars (SSG), does it break?
-                        # Recent KBO IDs use 'SS' for Samsung, 'SK' for Wyverns.. 
-                        # SSG uses 'SK' in IDs? Or 'SSG'?
-                        # Let's check `team_codes.py` -> "SSG": "SSG", "SK": "SSG".
-                        # If KBO sites uses 'SSG' in link, we are good.
-                        # But standard ID often uses legacy 2-char codes even for new teams?
-                        # E.g. Kiwoom uses WO.
-                        # SSG uses SK? 
-                        # Let's perform a safe check. If code length > 2, maybe we map back to ID version?
-                        # For now, let's construct it. uniqueness is key.
+                        # Doubleheader logic: If DH exists, use it. Default 0.
+                        dh = g.get('doubleheader_no', 0)
                         
-                        # Special handling for SSG -> SK mapping if needed for ID consistency?
-                        # But `resolve_team_code` returns our internal code (SSG).
-                        # If we start saving games with 'SSG' in ID, and later KBO uses 'SK', we have duplicates.
-                        # We should stick to what KBO uses if possible. 
-                        # But without link we verify manually?
-                        # Let's optimistically use the resolved code.
-                        constructed_id = f"{g['game_date']}{away_code}{home_code}{g['doubleheader_no']}"
-                        g['game_id'] = constructed_id
-                
+                        constructed_id = f"{g['game_date']}{kbo_away_code}{kbo_home_code}{dh}"
+                        g['game_id'] = constructed_id                
                 games.append({
                     'game_id': g['game_id'],
                     'game_date': g['game_date'],
