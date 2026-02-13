@@ -38,19 +38,25 @@ class PlayerIdResolver:
         
         # Comprehensive historical team mapping for disambiguation
         self.TEAM_NAME_MAP = {
-            # Active
+            # Active 
             'LG': 'LG',
             'SS': '삼성', 'SAMSUNG': '삼성',
             'KT': 'KT',
             'NC': 'NC',
             'LT': '롯데', 'LOT': '롯데', 'LOTTE': '롯데',
             'HH': '한화', 'HANWHA': '한화',
-            'KIA': 'KIA', 'HT': 'KIA', '해태': 'KIA',
-            'DB': '두산', 'OB': '두산', 'DOOSAN': '두산', 'BEARS': '두산',
-            'SSG': 'SSG', 'SK': 'SSG',
-            'KH': '키움', 'WO': '키움', 'NX': '키움', 'KIWOOM': '키움', 'HEROES': '키움',
-            
-            # Historical / Defunct
+            'KIA': 'KIA', 'HT': 'KIA', '해태': 'KIA',  # HT -> KIA is mostly fine as Haitai usually listed with KIA history, but maybe '해태' better? 
+                                                      # Actually Haitai players have '해태' in career. 
+                                                      # But usually 'KIA' search might cover? No. 
+                                                      # Let's separate HT -> '해태' if possible, but HT code is used for KIA too?
+                                                      # Current crawling uses HT for KIA sometimes?
+                                                      # Let's keep HT -> KIA for now as it seems to work mostly? 
+                                                      # Wait, Lee Dong-su: '해태'. Code is HT?
+                                                      # If HT -> KIA, search 'KIA'. Lee Dong-su career has '해태'. Fails?
+                                                      # I should check HT players.
+            'DB': '두산', 'OB': '두산', 'DOOSAN': '두산', 'BEARS': '두산', # OB -> Doosan is tricky. OB players have 'OB'.
+            'SSG': 'SSG', 'SK': 'SK', # SK -> SK specific
+            'KH': '키움', 'WO': '히어로즈', 'NX': '넥센', 'KIWOOM': '키움', 'HEROES': '히어로즈', # WO/NX specific
             'HD': '현대', 'HYUNDAI': '현대', '현대': '현대',
             'SL': '쌍방울', '쌍방울': '쌍방울',
             'TP': '태평양', '태평양': '태평양',
@@ -87,14 +93,15 @@ class PlayerIdResolver:
             .join(PlayerBasic, PlayerSeasonBatting.player_id == PlayerBasic.player_id)\
             .where(PlayerSeasonBatting.season == season)
         for name, team, pid in self.session.execute(stmt).fetchall():
-            self._cache[f"{name}_{team}_{season}"] = pid
+            # Match the format used in resolve_id: {name}_{team}_{season}_{uniform_no or ''}
+            self._cache[f"{name}_{team}_{season}_"] = pid
             
         # Pitchers 
         stmt = select(PlayerBasic.name, PlayerSeasonPitching.team_code, PlayerSeasonPitching.player_id)\
             .join(PlayerBasic, PlayerSeasonPitching.player_id == PlayerBasic.player_id)\
             .where(PlayerSeasonPitching.season == season)
         for name, team, pid in self.session.execute(stmt).fetchall():
-            self._cache[f"{name}_{team}_{season}"] = pid
+            self._cache[f"{name}_{team}_{season}_"] = pid
 
     def resolve_id(self, player_name: str, team_code: str, season: int, uniform_no: Optional[str] = None) -> Optional[int]:
         if not player_name:

@@ -21,6 +21,7 @@ from playwright.sync_api import sync_playwright, Page
 
 from src.repositories.safe_batting_repository import save_batting_stats_safe
 from src.utils.team_codes import resolve_team_code
+from src.utils.team_mapping import get_team_mapping_for_year, get_team_code
 from src.utils.playwright_blocking import install_sync_resource_blocking
 from src.utils.request_policy import RequestPolicy
 from src.utils.compliance import compliance
@@ -740,7 +741,7 @@ def parse_basic2_header_data(
 
 def crawl_series_batting_stats(year: int = 2025, series_key: str = 'regular', 
                              limit: int = None, save_to_db: bool = False, 
-                             headless: bool = False) -> List[Dict]:
+                             headless: bool = False, by_team: bool = False) -> List[Dict]:
     """
     특정 시리즈의 타자 기록을 크롤링
     
@@ -749,6 +750,7 @@ def crawl_series_batting_stats(year: int = 2025, series_key: str = 'regular',
         series_key: 시리즈 키 (regular, exhibition, wildcard, etc.)
         limit: 수집할 선수 수 제한
         save_to_db: DB에 저장할지 여부
+        by_team: 팀별로 순회하며 크롤링할지 여부 (규정타석 미달 선수 포함 위해)
     
     Returns:
         수집된 타자 기록 리스트
@@ -760,7 +762,8 @@ def crawl_series_batting_stats(year: int = 2025, series_key: str = 'regular',
         return []
     
     series_info = series_mapping[series_key]
-    all_players_data = []
+    all_players_data = [] # List of dicts
+    unique_players = set() # Track by ID
     
     policy = RequestPolicy()
     
@@ -773,7 +776,7 @@ def crawl_series_batting_stats(year: int = 2025, series_key: str = 'regular',
         install_sync_resource_blocking(page)
 
         try:
-            print(f"\n📊 {year}년 {series_info['name']} 타자 기록 수집 시작")
+            print(f"\n📊 {year}년 {series_info['name']} 타자 기록 수집 시작 (by_team={by_team})")
             print("-" * 60)
 
             # 페이지로 이동 (Basic1 사용)
@@ -809,7 +812,37 @@ def crawl_series_batting_stats(year: int = 2025, series_key: str = 'regular',
                 print(f"✅ {series_info['name']} 선택")
                 time.sleep(1)
 
-                # 타석(PA) 기준 정렬
+            except Exception as e:
+                print(f"⚠️ 시즌/시리즈 선택 중 오류: {e}")
+                return []
+
+            # 팀별 순회 로직
+            team_options = []
+            if by_team:
+                try:
+                    team_selector = 'select[name="ctl00$ctl00$ctl00$cphContents$cphContents$cphContents$ddlTeam$ddlTeam"]'
+                    options = page.eval_on_selector_all(f'{team_selector} option', 'options => options.map(o => ({text: o.innerText, value: o.value}))')
+                    team_options = [opt for opt in options if opt['value']] # Empty value is "Team Selection"
+                    print(f"ℹ️ 팀별 순회 모드: {len(team_options)}개 팀 발견")
+                except Exception as e:
+                    print(f"⚠️ 팀 목록 추출 실패, 전체 모드로 진행: {e}")
+                    team_options = []
+
+            # 순회 대상 설정 (팀 옵션이 있으면 팀별, 없으면 전체 1회)
+            iteration_targets = team_options if team_options else [{'value': '', 'text': '전체'}]
+
+            for tm in iteration_targets:
+                if team_options: # 팀 선택 모드면 팀 선택
+                    print(f"🔍 팀 선택: {tm['text']} ({tm['value']})")
+                    try:
+                        page.select_option('select[name="ctl00$ctl00$ctl00$cphContents$cphContents$cphContents$ddlTeam$ddlTeam"]', tm['value'])
+                        page.wait_for_load_state('networkidle', timeout=30000)
+                        time.sleep(1)
+                    except Exception as e:
+                        print(f"⚠️ 팀 선택 실패 ({tm['text']}): {e}")
+                        continue
+
+                # 타석(PA) 기준 정렬 (팀 선택 후 다시 적용)
                 pa_sort_link = 'a[href="javascript:sort(\'PA_CN\');"]'
                 if page.query_selector(pa_sort_link):
                     page.click(pa_sort_link)
@@ -819,41 +852,6 @@ def crawl_series_batting_stats(year: int = 2025, series_key: str = 'regular',
                 else:
                     print("⚠️ 타석 정렬 버튼을 찾을 수 없습니다.")
 
-            except Exception as e:
-                print(f"⚠️ 페이지 설정 중 오류: {e}")
-
-            # 페이징 처리하여 모든 데이터 수집
-            page_num = 1
-            total_collected = 0
-            
-            while True:
-                print(f"📄 {page_num}페이지 수집 중...")
-                
-                # 현재 페이지 데이터 파싱
-                page_data = parse_batting_stats_table(page, series_key, year)
-                
-                if not page_data:
-                    if page_num == 1:
-                        print(f"⚠️ {series_info['name']}에서 데이터를 찾을 수 없습니다.")
-                    else:
-                        print(f"📄 {page_num}페이지에서 데이터 없음. 페이징 종료.")
-                    break
-                
-                # 시즌 정보 추가
-                for player_data in page_data:
-                    player_data.update({
-                        'season': year,
-                        'league': series_info['league'],
-                        'level': 'KBO1',
-                        'source': 'CRAWLER'
-                    })
-                
-                all_players_data.extend(page_data)
-                total_collected += len(page_data)
-                
-                print(f"   ✅ {page_num}페이지에서 {len(page_data)}명 수집 (누적: {total_collected}명)")
-                
-                # 제한 수 확인
                 if limit and total_collected >= limit:
                     print(f"🎯 목표 수({limit}명) 달성. 수집 중단.")
                     all_players_data = all_players_data[:limit]
@@ -928,7 +926,7 @@ def crawl_series_batting_stats(year: int = 2025, series_key: str = 'regular',
     return all_players_data
 
 
-def crawl_all_series(year: int = 2025, limit: int = None, save_to_db: bool = False, headless: bool = False) -> Dict[str, List[Dict]]:
+def crawl_all_series(year: int = 2025, limit: int = None, save_to_db: bool = False, headless: bool = False, by_team: bool = False) -> Dict[str, List[Dict]]:
     """
     모든 시리즈의 타자 기록을 크롤링
     
@@ -940,7 +938,7 @@ def crawl_all_series(year: int = 2025, limit: int = None, save_to_db: bool = Fal
     
     for series_key, series_info in series_mapping.items():
         print(f"\n🚀 {series_info['name']} 시작...")
-        series_data = crawl_series_batting_stats(year, series_key, limit, save_to_db, headless)
+        series_data = crawl_series_batting_stats(year, series_key, limit, save_to_db, headless, by_team=by_team)
         all_series_data[series_key] = series_data
         
         # 시리즈 간 대기
@@ -957,15 +955,16 @@ def main():
     parser.add_argument("--limit", type=int, help="수집할 선수 수 제한")
     parser.add_argument("--save", action="store_true", help="DB에 저장")
     parser.add_argument("--headless", action="store_true", help="헤드리스 모드로 실행")
+    parser.add_argument("--by-team", action="store_true", help="팀별로 순회하여 모든 선수(비규정타석 포함) 수집")
     
     args = parser.parse_args()
 
     if args.series:
         # 특정 시리즈만 크롤링
-        crawl_series_batting_stats(args.year, args.series, args.limit, args.save, args.headless)
+        crawl_series_batting_stats(args.year, args.series, args.limit, args.save, args.headless, by_team=args.by_team)
     else:
         # 모든 시리즈 크롤링
-        all_data = crawl_all_series(args.year, args.limit, args.save, args.headless)
+        all_data = crawl_all_series(args.year, args.limit, args.save, args.headless, by_team=args.by_team)
         
         # 전체 요약
         print(f"\n" + "=" * 60)
