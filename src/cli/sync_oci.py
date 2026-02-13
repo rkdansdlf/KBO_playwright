@@ -19,6 +19,7 @@ from src.db.engine import create_engine_for_url
 from src.models.base import Base
 
 from src.models.player import PlayerSeasonBatting, PlayerSeasonPitching, PlayerBasic
+from src.models.season import KboSeason
 from src.models.team import Team
 from src.sync.oci_sync import OCISync
 from src.db.engine import SessionLocal
@@ -27,6 +28,7 @@ from src.db.engine import SessionLocal
 # 외래 키 제약 조건을 고려한 모델 처리 순서
 MODEL_ORDER: List[Type] = [
     # Team,  # Handled by specialized --teams sync due to JSON vs TEXT[] type mismatch
+    KboSeason,
     PlayerBasic,
     PlayerSeasonBatting,
     PlayerSeasonPitching,

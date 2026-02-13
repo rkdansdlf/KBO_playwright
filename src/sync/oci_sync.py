@@ -4,7 +4,7 @@ Dual-repository pattern: SQLite (dev/validation) → OCI (production)
 """
 import os
 import json
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional, Callable, Type
 from pathlib import Path
 from sqlalchemy import create_engine, text, select, MetaData, Table, column, table
 from sqlalchemy.orm import sessionmaker, Session
@@ -966,13 +966,27 @@ class OCISync:
         """Sync game detail data from SQLite to OCI using Batched UPSERT or COPY"""
         from src.models.game import Game
         
+        # Load season map for mapping SQLite season_id (year) to OCI season_id (int)
+        season_map = self._get_season_map()
+        
+        def transform(data):
+            # If season_id looks like a year (e.g. > 1900), map it
+            raw_sid = data.get('season_id')
+            if raw_sid and raw_sid > 1900:
+                # Default to Regular season (type 0) for these legacy years
+                key = (raw_sid, 0)
+                if key in season_map:
+                    data['season_id'] = season_map[key]
+            return data
+
         # Use generic sync which handles column changes and bulk operations better
         # Exclude created_at/updated_at because OCI game table doesn't have them
         return self._sync_simple_table(
             Game, 
             ['game_id'], 
             exclude_cols=['created_at', 'updated_at'],
-            filters=filters
+            filters=filters,
+            transform_fn=transform
         )
 
     def sync_player_game_batting(self, limit: int = None) -> int:
@@ -1106,6 +1120,29 @@ class OCISync:
         }
         return results
 
+    def _purge_game_detail_children_for_year(self, year: int) -> None:
+        """
+        Delete year-scoped child detail rows on OCI before re-sync.
+        This prevents stale duplicates when mutable fields (e.g. player_id) change.
+        """
+        pattern = f"{year}%"
+        child_tables = [
+            "game_metadata",
+            "game_inning_scores",
+            "game_lineups",
+            "game_batting_stats",
+            "game_pitching_stats",
+            "game_events",
+            "game_summary",
+        ]
+        for table_name in child_tables:
+            self.target_session.execute(
+                text(f"DELETE FROM {table_name} WHERE game_id LIKE :pattern"),
+                {"pattern": pattern},
+            )
+        self.target_session.commit()
+        print(f"🧹 Purged OCI child game-detail rows for year {year}")
+
     def sync_game_details(self, days: int = None, year: int = None) -> Dict[str, int]:
         """Sync all game detail tables to OCI"""
         results = {}
@@ -1136,6 +1173,10 @@ class OCISync:
             else:
                 print("ℹ️ No games found for the specified period.")
                 return results
+
+        if year:
+            # Remove existing year-scoped child rows first to avoid stale/null duplicates.
+            self._purge_game_detail_children_for_year(year)
 
         # 1. Game Metadata
         results['metadata'] = self._sync_simple_table(
@@ -1217,7 +1258,14 @@ class OCISync:
         
         return results
 
-    def _sync_simple_table(self, model, conflict_keys: List[str], exclude_cols: List[str] = None, filters: List = None) -> int: # Refactored
+    def _sync_simple_table(
+        self, 
+        model: Type, 
+        conflict_keys: List[str], 
+        exclude_cols: List[str] = None, 
+        filters: List = None,
+        transform_fn: Optional[Callable] = None
+    ) -> int:
         """Generic sync parameter for simple tables using Batched UPSERT or COPY"""
         if exclude_cols is None:
             exclude_cols = []
@@ -1243,6 +1291,11 @@ class OCISync:
             records = []
             for row in rows:
                 data = {c: getattr(row, c) for c in columns if hasattr(row, c)}
+                
+                # Apply transformation if provided
+                if transform_fn:
+                    data = transform_fn(data)
+
                 # Handle JSON/Dict serialization for COPY
                 for k, v in data.items():
                     if isinstance(v, (dict, list)):
@@ -1292,6 +1345,22 @@ class OCISync:
         self.target_session.commit()
         print(f"✅ Synced {synced} crawl run records to OCI")
         return synced
+
+    def _get_season_map(self) -> Dict[tuple, int]:
+        """Fetch OCI season mapping (year, league_type_code) -> season_id"""
+        metadata = MetaData()
+        try:
+            seasons_table = Table('kbo_seasons', metadata, autoload_with=self.oci_engine)
+        except:
+            try:
+                seasons_table = Table('kbo_seasons_meta', metadata, autoload_with=self.oci_engine)
+            except:
+                seasons_table = Table('seasons', metadata, autoload_with=self.oci_engine)
+            
+        rows = self.target_session.execute(
+            select(seasons_table.c.season_id, seasons_table.c.season_year, seasons_table.c.league_type_code)
+        ).all()
+        return {(row.season_year, row.league_type_code): row.season_id for row in rows}
 
     def _bulk_copy_upsert(self, table_name: str, records: List[Dict[str, Any]], unique_cols: List[str], update_timestamp: bool = True):
         """
@@ -1493,4 +1562,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
