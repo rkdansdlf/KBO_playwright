@@ -57,8 +57,11 @@ This will:
 You can run specific parts of the crawling pipeline using the CLI scripts.
 
 ```bash
-# Crawl game details for a specific date
-python -m src.cli.crawl_game_details --date 20241015
+# Operational daily entrypoint (recommended)
+python -m src.cli.run_daily_update --date 20251015
+
+# Crawl and persist monthly schedule
+python -m src.cli.crawl_schedule --year 2025 --months 10
 
 # Crawl Futures League stats
 python -m src.cli.crawl_futures
@@ -119,7 +122,8 @@ KBO_playwright/
 ├── scripts/
 │   ├── crawling/          # Historical data crawling scripts
 │   ├── supabase/          # Supabase sync and maintenance scripts
-│   └── maintenance/       # Database validation and repair scripts
+│   ├── maintenance/       # Database validation and repair scripts
+│   └── scheduler.py       # APScheduler job definitions (production)
 ├── data/                  # Default directory for SQLite DB
 ├── Docs/                  # Detailed project documentation
 ├── migrations/            # Database migration scripts
@@ -127,7 +131,6 @@ KBO_playwright/
 ├── docker-compose.yml     # Docker service definitions
 ├── Dockerfile             # Docker container setup
 ├── requirements.txt       # Python dependencies
-├── scheduler.py           # APScheduler job definitions (production)
 ├── init_db.py             # Database initialization
 ├── seed_data.py           # Initial data seeding
 ├── init_data_collection.py # Initial data collection workflow

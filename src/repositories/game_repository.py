@@ -4,9 +4,11 @@ Repository for saving game details, box scores, and normalized relay data.
 from __future__ import annotations
 
 import os
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 from typing import Dict, Any, List, Iterable, Optional
+
+from sqlalchemy import text
 
 from src.db.engine import SessionLocal
 from src.models.game import (
@@ -18,6 +20,74 @@ import re
 from src.services.player_id_resolver import PlayerIdResolver
 from src.utils.player_positions import get_primary_position
 from src.utils.safe_print import safe_print as print
+
+GAME_STATUS_COMPLETED = "COMPLETED"
+GAME_STATUS_SCHEDULED = "SCHEDULED"
+GAME_STATUS_CANCELLED = "CANCELLED"
+GAME_STATUS_POSTPONED = "POSTPONED"
+GAME_STATUS_UNRESOLVED = "UNRESOLVED_MISSING"
+
+SEASON_TYPE_TO_LEAGUE_CODE = {
+    "regular": 0,
+    "exhibition": 1,
+    "wildcard": 2,
+    "semi_playoff": 3,
+    "semi-playoff": 3,
+    "playoff": 4,
+    "korean_series": 5,
+}
+
+
+def _coerce_int(value: Any) -> Optional[int]:
+    if value in (None, ""):
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _resolve_league_type_code(season_type: Any) -> int:
+    as_int = _coerce_int(season_type)
+    if as_int is not None:
+        return as_int
+    key = str(season_type or "regular").strip().lower()
+    return SEASON_TYPE_TO_LEAGUE_CODE.get(key, 0)
+
+
+def _resolve_schedule_season_id(session, game_data: Dict[str, Any], existing_season_id: Optional[int]) -> Optional[int]:
+    explicit = _coerce_int(game_data.get("season_id"))
+    if explicit is not None:
+        return explicit
+
+    season_year = _coerce_int(game_data.get("season_year"))
+    if season_year is None:
+        return existing_season_id
+
+    league_type_code = _resolve_league_type_code(game_data.get("season_type"))
+    mapped: Optional[int] = None
+    try:
+        mapped = _coerce_int(
+            session.execute(
+                text(
+                    """
+                    SELECT MIN(season_id)
+                    FROM kbo_seasons
+                    WHERE season_year = :season_year
+                      AND league_type_code = :league_type_code
+                    """
+                ),
+                {"season_year": season_year, "league_type_code": league_type_code},
+            ).scalar()
+        )
+    except Exception:
+        mapped = None
+
+    if mapped is not None:
+        return mapped
+    if existing_season_id is not None:
+        return existing_season_id
+    return season_year
 
 
 def get_games_by_date(target_date: str) -> List[Game]:
@@ -52,7 +122,20 @@ def save_schedule_game(game_data: Dict[str, Any]) -> bool:
             game.game_date = game_date
             game.home_team = game_data.get("home_team_code")
             game.away_team = game_data.get("away_team_code")
-            game.season_id = game_data.get("season_year")
+            resolved_season_id = _resolve_schedule_season_id(session, game_data, game.season_id)
+            if resolved_season_id is not None:
+                game.season_id = resolved_season_id
+
+            # Schedule crawl should keep already finalized statuses intact.
+            if game.home_score is not None and game.away_score is not None:
+                game.game_status = GAME_STATUS_COMPLETED
+            elif game.game_status not in {
+                GAME_STATUS_COMPLETED,
+                GAME_STATUS_CANCELLED,
+                GAME_STATUS_POSTPONED,
+                GAME_STATUS_UNRESOLVED,
+            }:
+                game.game_status = GAME_STATUS_SCHEDULED
             
             # Note: Scores and other details are not available in basic schedule crawl
             
@@ -107,6 +190,8 @@ def save_game_detail(game_data: Dict[str, Any]) -> bool:
             game.home_score = home_info.get("score")
             game.away_score = away_info.get("score")
             game.winning_team, game.winning_score = _resolve_winner(home_info, away_info)
+            if game.home_score is not None and game.away_score is not None:
+                game.game_status = GAME_STATUS_COMPLETED
             
             # Update Starting Pitchers
             home_pitcher_data = next((p for p in pitchers.get("home", []) if p.get("is_starting")), None)
@@ -177,6 +262,74 @@ def save_game_detail(game_data: Dict[str, Any]) -> bool:
             return False
 
 
+def update_game_status(game_id: str, status: str) -> bool:
+    """Update one game's status."""
+    if not game_id or not status:
+        return False
+    with SessionLocal() as session:
+        try:
+            game = session.query(Game).filter(Game.game_id == game_id).one_or_none()
+            if not game:
+                return False
+            game.game_status = status
+            session.commit()
+            return True
+        except Exception as exc:
+            session.rollback()
+            print(f"[ERROR] DB Error (Status): {exc}")
+            return False
+
+
+def refresh_game_status_for_date(target_date: str, today: Optional[date] = None) -> Dict[str, Any]:
+    """
+    Recompute game_status only for one target date (YYYYMMDD).
+    """
+    try:
+        dt = datetime.strptime(target_date, "%Y%m%d").date()
+    except ValueError:
+        return {"target_date": target_date, "total": 0, "updated": 0, "status_counts": {}}
+
+    today = today or date.today()
+    with SessionLocal() as session:
+        try:
+            games = session.query(Game).filter(Game.game_date == dt).all()
+            status_counts: Dict[str, int] = {}
+            updated = 0
+            for game in games:
+                has_metadata = _has_game_child_rows(session, GameMetadata, game.game_id)
+                has_inning = _has_game_child_rows(session, GameInningScore, game.game_id)
+                has_lineup = _has_game_child_rows(session, GameLineup, game.game_id)
+                has_batting = _has_game_child_rows(session, GameBattingStat, game.game_id)
+                has_pitching = _has_game_child_rows(session, GamePitchingStat, game.game_id)
+                next_status = _derive_game_status(
+                    game_date=game.game_date,
+                    home_score=game.home_score,
+                    away_score=game.away_score,
+                    current_status=game.game_status,
+                    has_metadata=has_metadata,
+                    has_inning_scores=has_inning,
+                    has_lineups=has_lineup,
+                    has_batting=has_batting,
+                    has_pitching=has_pitching,
+                    today=today,
+                )
+                status_counts[next_status] = status_counts.get(next_status, 0) + 1
+                if game.game_status != next_status:
+                    game.game_status = next_status
+                    updated += 1
+            session.commit()
+            return {
+                "target_date": target_date,
+                "total": len(games),
+                "updated": updated,
+                "status_counts": status_counts,
+            }
+        except Exception as exc:
+            session.rollback()
+            print(f"[ERROR] DB Error (Status Refresh): {exc}")
+            return {"target_date": target_date, "total": 0, "updated": 0, "status_counts": {}}
+
+
 def save_relay_data(game_id: str, events: List[Dict[str, Any]]) -> int:
     """Persist both legacy play_by_play and normalized game_events."""
     if not events:
@@ -239,6 +392,35 @@ def save_relay_data(game_id: str, events: List[Dict[str, Any]]) -> int:
             session.rollback()
             print(f"[ERROR] DB Error (Relay): {exc}")
             return 0
+
+
+def _has_game_child_rows(session, model, game_id: str) -> bool:
+    return session.query(model).filter(model.game_id == game_id).first() is not None
+
+
+def _derive_game_status(
+    *,
+    game_date: Optional[date],
+    home_score: Any,
+    away_score: Any,
+    current_status: Optional[str],
+    has_metadata: bool,
+    has_inning_scores: bool,
+    has_lineups: bool,
+    has_batting: bool,
+    has_pitching: bool,
+    today: date,
+) -> str:
+    if home_score is not None and away_score is not None:
+        return GAME_STATUS_COMPLETED
+    if game_date and game_date > today:
+        return GAME_STATUS_SCHEDULED
+    has_any_detail = has_inning_scores or has_lineups or has_batting or has_pitching
+    if current_status in {GAME_STATUS_CANCELLED, GAME_STATUS_POSTPONED} and not has_any_detail:
+        return current_status
+    if has_metadata and not has_any_detail:
+        return GAME_STATUS_CANCELLED
+    return GAME_STATUS_UNRESOLVED
 
 
 def _upsert_metadata(session, game_id: str, metadata: Dict[str, Any]) -> None:

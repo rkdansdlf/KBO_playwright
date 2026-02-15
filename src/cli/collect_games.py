@@ -5,7 +5,7 @@ Unified Game Data Collector (Details + Relay + Summary)
 import asyncio
 import argparse
 from typing import List, Optional
-from datetime import datetime, timedelta
+from datetime import date
 
 from src.crawlers.game_detail_crawler import GameDetailCrawler
 from src.crawlers.relay_crawler import RelayCrawler
@@ -14,6 +14,20 @@ from src.db.engine import SessionLocal
 from src.models.game import Game
 from src.utils.safe_print import safe_print as print
 
+
+def _build_game_id_range(year: int, month: Optional[int]) -> tuple[str, str]:
+    if month:
+        start = date(year, month, 1)
+        if month == 12:
+            end = date(year + 1, 1, 1)
+        else:
+            end = date(year, month + 1, 1)
+    else:
+        start = date(year, 1, 1)
+        end = date(year + 1, 1, 1)
+    return start.strftime("%Y%m%d"), end.strftime("%Y%m%d")
+
+
 async def collect_games(year: int, month: Optional[int] = None, force: bool = False, concurrency: Optional[int] = None):
     """
     Collects game details and relay data for a given year/month.
@@ -21,28 +35,16 @@ async def collect_games(year: int, month: Optional[int] = None, force: bool = Fa
     """
     session = SessionLocal()
     try:
-        query = session.query(Game).filter(Game.season_id >= year * 10, Game.season_id <= year * 10 + 5)
-        
-        if month:
-            # Filter by month (naive string check on game_id or proper date check)
-            # Game ID format: YYYYMMDD...
-            # A bit loose but effective for filtering ID
-            start_date_str = f"{year}{month:02d}01"
-            # Calculate end date of month roughly
-            if month == 12:
-                end_date_str = f"{year+1}0101"
-            else:
-                end_date_str = f"{year}{month+1:02d}01"
-            
-            # Using game_id prefix match
-            query = query.filter(Game.game_id >= start_date_str, Game.game_id < end_date_str)
-            
+        start_id, end_id = _build_game_id_range(year, month)
+        query = session.query(Game).filter(Game.game_id >= start_id, Game.game_id < end_id)
+
         games = query.all()
         print(f"🎯 Target: {len(games)} games for {year}" + (f"-{month}" if month else ""))
         
         # Initialize Resolver
         from src.services.player_id_resolver import PlayerIdResolver
         resolver = PlayerIdResolver(session)
+        resolver.preload_season_index(year)
         
         detail_crawler = GameDetailCrawler(request_delay=1.0, resolver=resolver)
         relay_crawler = RelayCrawler(request_delay=1.0)

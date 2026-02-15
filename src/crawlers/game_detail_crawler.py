@@ -83,8 +83,13 @@ class GameDetailCrawler:
         self.request_delay = request_delay
         self.resolver = resolver
         self.pool = pool
+        self._last_failure_reason: Dict[str, str] = {}
+
+    def get_last_failure_reason(self, game_id: str) -> Optional[str]:
+        return self._last_failure_reason.get(game_id)
 
     async def crawl_game(self, game_id: str, game_date: str) -> Optional[Dict[str, Any]]:
+        self._last_failure_reason.pop(game_id, None)
         result = await self.crawl_games([{"game_id": game_id, "game_date": game_date}])
         return result[0] if result else None
 
@@ -128,6 +133,7 @@ class GameDetailCrawler:
                             payload = await self._crawl_single(page, game_id, game_date)
                             results[idx] = payload
                         except Exception as exc:  # pragma: no cover - resilience path
+                            self._last_failure_reason[game_id] = "exception"
                             print(f"❌ Error crawling {game_id}: {exc}")
                         finally:
                             queue.task_done()
@@ -144,8 +150,6 @@ class GameDetailCrawler:
         return [payload for payload in results if payload]
 
     async def _crawl_single(self, page: Page, game_id: str, game_date: str) -> Optional[Dict[str, Any]]:
-        roster_map = {}
-
         # 1. Navigate directly to REVIEW section with full URL params.
         #    This is the reliable approach — window.setGameDetail() requires
         #    the game card <li> to have class 'on' and doesn't accept a gameId
@@ -154,10 +158,13 @@ class GameDetailCrawler:
         print(f"📡 Navigating to REVIEW: {review_url}")
         await page.goto(review_url, wait_until="networkidle", timeout=30000)
         await asyncio.sleep(2)
-        if not await self._wait_for_boxscore(page):
+        is_ready, failure_reason = await self._wait_for_boxscore(page)
+        if not is_ready:
+            self._last_failure_reason[game_id] = failure_reason
             return None
         await asyncio.sleep(self.request_delay)
 
+        roster_map = await self._load_roster_map_from_lineup(page, game_id, game_date, review_url)
         season_year = self._parse_season_year(game_date)
         team_info = await self._extract_team_info(page, game_id, season_year)
         metadata = await self._extract_metadata(page)
@@ -186,9 +193,11 @@ class GameDetailCrawler:
             'pitchers': pitchers,
         }
 
+        self._last_failure_reason.pop(game_id, None)
+        self._log_unresolved_player_ids(game_id, hitters, pitchers)
         return game_data
 
-    async def _wait_for_boxscore(self, page: Page) -> bool:
+    async def _wait_for_boxscore(self, page: Page) -> tuple[bool, str]:
         """Wait for box score elements to be visible with fast-fail for cancelled games"""
         try:
             # Check for the cancellation badge first or simultaneously
@@ -203,18 +212,24 @@ class GameDetailCrawler:
                 txt = await cancel_el.inner_text()
                 if "취소" in txt:
                     print(f"ℹ️ Game {page.url} is marked as CANCELLED (경기취소)")
-                    return False # Indicate cancelled
+                    return False, "cancelled"
             
-            return True # Found boxscore
-        except Exception as e:
+            return True, "ok"  # Found boxscore
+        except Exception:
             # Check if it was a timeout but maybe we missed the cancel badge?
             print(f"⚠️  Timeout waiting for boxscore selectors. Page URL: {page.url}")
+            try:
+                body_text = await page.inner_text("body")
+                if "취소" in body_text:
+                    return False, "cancelled"
+            except Exception:
+                pass
             # Diagnostic screenshot
             debug_path = f"data/error_{datetime.now().strftime('%H%M%S')}.png"
             os.makedirs('data', exist_ok=True)
             await page.screenshot(path=debug_path)
             print(f"📸 Debug screenshot saved to: {debug_path}")
-            return False
+            return False, "missing"
 
     async def _extract_metadata(self, page: Page) -> Dict[str, Any]:
         metadata = {
@@ -620,6 +635,58 @@ class GameDetailCrawler:
         }
         """
         return await page.evaluate(script, selector)
+
+    async def _load_roster_map_from_lineup(
+        self,
+        page: Page,
+        game_id: str,
+        game_date: str,
+        review_url: str,
+    ) -> Dict[str, List[Dict[str, Any]]]:
+        roster_map: Dict[str, List[Dict[str, Any]]] = {}
+        for section in ("ENTRY", "LINEUP"):
+            lineup_url = f"{self.base_url}?gameDate={game_date}&gameId={game_id}&section={section}"
+            try:
+                await page.goto(lineup_url, wait_until="networkidle", timeout=20000)
+                await asyncio.sleep(0.8)
+                roster_map = await self._extract_roster_from_lineup(page)
+                if roster_map:
+                    break
+            except Exception as exc:
+                print(f"⚠️  Failed lineup roster crawl for {game_id} ({section}): {exc}")
+
+        # Always return to REVIEW page for box score extraction.
+        try:
+            await page.goto(review_url, wait_until="networkidle", timeout=30000)
+            await asyncio.sleep(1)
+            await self._wait_for_boxscore(page)
+        except Exception as exc:
+            print(f"⚠️  Failed to return to review page for {game_id}: {exc}")
+        return roster_map
+
+    def _log_unresolved_player_ids(
+        self,
+        game_id: str,
+        hitters: Dict[str, List[Dict[str, Any]]],
+        pitchers: Dict[str, List[Dict[str, Any]]],
+    ) -> None:
+        unresolved = []
+        for team_side in ("away", "home"):
+            for row in hitters.get(team_side, []):
+                if row.get("player_name") and not row.get("player_id"):
+                    unresolved.append((row.get("player_name"), row.get("team_code"), row.get("uniform_no")))
+            for row in pitchers.get(team_side, []):
+                if row.get("player_name") and not row.get("player_id"):
+                    unresolved.append((row.get("player_name"), row.get("team_code"), row.get("uniform_no")))
+        if not unresolved:
+            return
+        print(f"⚠️  Unresolved player_id entries for {game_id}: {len(unresolved)}")
+        for name, team_code, uniform_no in unresolved:
+            print(
+                "   - "
+                f"name={name}, team_code={team_code or 'N/A'}, "
+                f"uniform_no={uniform_no or 'N/A'}"
+            )
 
     def _populate_hitter_stats(self, stats: Dict[str, Any], extras: Dict[str, Any], cells: Dict[str, str]) -> None:
         for header, value in cells.items():

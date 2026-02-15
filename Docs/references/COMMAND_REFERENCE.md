@@ -205,6 +205,18 @@ cp .env.example .env
     --concurrency 5
 ```
 
+### 운영 엔트리포인트 (신규 경기/선수 무결성)
+```bash
+# 운영 기준: 하루 단위 통합 업데이트
+./venv/bin/python3 -m src.cli.run_daily_update --date 20251015
+
+# 스케줄만 월 단위 반영
+./venv/bin/python3 -m src.cli.crawl_schedule --year 2025 --months 10
+
+# 수동 상세 수집(월 단위 대상 필터)
+./venv/bin/python3 -m src.cli.collect_games --year 2025 --month 10
+```
+
 ---
 
 ## 🤖 자동화 스크립트
@@ -265,7 +277,7 @@ cp .env.example .env
 ### 4. 스케줄러 (자동화)
 ```bash
 # 로컬 스케줄러 실행
-./venv/bin/python3 scheduler.py
+./venv/bin/python3 -m scripts.scheduler
 
 # Docker 스케줄러
 docker-compose up -d scheduler

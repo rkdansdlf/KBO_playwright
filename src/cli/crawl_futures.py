@@ -14,7 +14,7 @@ from typing import Sequence, Set
 from datetime import datetime
 
 from src.crawlers.player_list_crawler import PlayerListCrawler
-from src.crawlers.futures_batting import fetch_and_parse_futures_batting
+from src.crawlers.futures.futures_batting import fetch_and_parse_futures_batting
 from src.repositories.player_repository import PlayerRepository
 from src.repositories.save_futures_batting import save_futures_batting
 from src.parsers.player_profile_parser import PlayerProfileParsed
