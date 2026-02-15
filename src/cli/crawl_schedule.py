@@ -10,21 +10,27 @@ import asyncio
 from typing import Sequence, List
 
 from src.crawlers.schedule_crawler import ScheduleCrawler
-from src.repositories.game_repository import GameRepository
+from src.repositories.game_repository import save_schedule_game
 
 
 async def crawl_schedule(args: argparse.Namespace) -> None:
     """경기 일정 크롤링 및 저장 로직을 수행합니다."""
     months = parse_months(args.months)
     crawler = ScheduleCrawler(request_delay=args.delay)
-    
+
     # 지정된 연도와 월의 경기 정보를 크롤링합니다.
     games = await crawler.crawl_season(args.year, months)
     print(f"[SCHEDULE] Total games discovered: {len(games)}")
 
     # 수집된 경기 정보를 데이터베이스에 저장합니다.
-    repo = GameRepository()
-    repo.save_schedules(games)
+    saved = 0
+    failed = 0
+    for game in games:
+        if save_schedule_game(game):
+            saved += 1
+        else:
+            failed += 1
+    print(f"[SCHEDULE] Saved: {saved}, Failed: {failed}")
 
 
 def parse_months(months_arg: str | None) -> List[int]:
@@ -67,4 +73,3 @@ def main(argv: Sequence[str] | None = None) -> None:
 
 if __name__ == "__main__":  # pragma: no cover
     main()
-

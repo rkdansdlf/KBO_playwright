@@ -120,6 +120,11 @@ def build_arg_parser() -> argparse.ArgumentParser:
         help="경기 상세 데이터(박스스코어, 라인업, PBP 등)를 동기화합니다.",
     )
     parser.add_argument(
+        "--games-only",
+        action="store_true",
+        help="game 테이블만 경량 동기화합니다. --year와 함께 사용 가능합니다.",
+    )
+    parser.add_argument(
         "--days",
         type=int,
         help="최근 N일간의 경기 데이터만 동기화합니다.",
@@ -167,6 +172,16 @@ def main(argv: Iterable[str] | None = None) -> None:
             syncer = OCISync(args.target_url, session)
             syncer.sync_game_details(days=args.days, year=args.year)
             print("✅ Game Details Sync Finished")
+
+    elif args.games_only:
+        print("🚀 Syncing game table only using specialized OCISync...")
+        with SessionLocal() as session:
+            from src.models.game import Game
+
+            syncer = OCISync(args.target_url, session)
+            filters = [Game.game_id.like(f"{args.year}%")] if args.year else None
+            synced = syncer.sync_games(filters=filters)
+            print(f"✅ Game Table Sync Finished ({synced} rows)")
 
     elif args.daily_roster:
         print("🚀 Syncing Daily Rosters using specialized OCISync...")

@@ -2,24 +2,25 @@
 APScheduler-based automation for KBO data collection.
 
 Jobs:
-1. crawl_games_regular: Daily at 03:00 KST (collect previous day's games)
+1. crawl_games_regular: Daily at 03:00 KST (run run_daily_update for previous KST day)
 2. crawl_futures_profile: Weekly Sunday at 05:00 KST (sync all Futures stats)
 """
 from __future__ import annotations
 
-import asyncio
+import argparse
 import logging
 import os
 from datetime import datetime, timedelta
 from pathlib import Path
+from typing import Sequence
+from zoneinfo import ZoneInfo
 
 from apscheduler.schedulers.blocking import BlockingScheduler
 from apscheduler.triggers.cron import CronTrigger
 from tenacity import retry, stop_after_attempt, wait_exponential
 
-from src.cli.crawl_schedule import main as crawl_schedule_main
 from src.cli.crawl_futures import main as crawl_futures_main
-from src.cli.crawl_game_details import main as crawl_game_details_main
+from src.cli.run_daily_update import main as run_daily_update_main
 from src.utils.safe_print import safe_print as print
 
 # Configure logging
@@ -32,37 +33,31 @@ logging.basicConfig(
     ]
 )
 logger = logging.getLogger(__name__)
+KST = ZoneInfo("Asia/Seoul")
 
 # Ensure logs directory exists
 Path('logs').mkdir(exist_ok=True)
 
 
+def _previous_day_kst() -> str:
+    """Return yesterday in KST as YYYYMMDD."""
+    return (datetime.now(KST) - timedelta(days=1)).strftime('%Y%m%d')
+
+
 @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=60, max=300))
 def crawl_daily_games():
     """
-    Daily job: Crawl regular season schedule and game details.
+    Daily job: Run unified daily update entrypoint.
 
-    Runs at 03:00 KST daily to collect previous day's completed games.
+    Runs at 03:00 KST daily to collect previous KST day's schedule+details.
     Uses exponential backoff retry on failures (3 attempts max).
     """
     logger.info("=== Starting Daily Games Crawl ===")
 
     try:
-        # Get yesterday's date
-        yesterday = (datetime.now() - timedelta(days=1)).strftime('%Y%m%d')
-
-        # Step 1: Update schedule (in case of changes)
-        logger.info(f"Step 1: Updating schedule for {yesterday}")
-        current_year = datetime.now().year
-        month = (datetime.now() - timedelta(days=1)).month
-        crawl_schedule_main([
-            '--year', str(current_year),
-            '--months', str(month)
-        ])
-
-        # Step 2: Crawl game details for yesterday
-        logger.info(f"Step 2: Crawling game details for {yesterday}")
-        crawl_game_details_main(['--status', 'pending', '--limit', '20'])
+        target_date = _previous_day_kst()
+        logger.info("Running run_daily_update for target_date=%s", target_date)
+        run_daily_update_main(['--date', target_date])
 
         logger.info("=== Daily Games Crawl Completed Successfully ===")
 
@@ -99,8 +94,30 @@ def crawl_all_futures_profiles():
         raise  # Re-raise for tenacity retry
 
 
-def main():
+def build_arg_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(description="APScheduler for KBO daily/futures jobs")
+    parser.add_argument(
+        "--run-once",
+        action="store_true",
+        help="Run only one daily update job immediately and exit.",
+    )
+    parser.add_argument(
+        "--no-startup-run",
+        action="store_true",
+        help="Disable one-time startup run regardless of STARTUP_RUN env.",
+    )
+    return parser
+
+
+def main(argv: Sequence[str] | None = None):
     """Initialize and start the APScheduler."""
+    parser = build_arg_parser()
+    args = parser.parse_args(argv)
+
+    if args.run_once:
+        crawl_daily_games()
+        return
+
     scheduler = BlockingScheduler(timezone='Asia/Seoul')
 
     # Job 1: Daily regular season games (03:00 KST)
@@ -126,10 +143,10 @@ def main():
     logger.info("Registered job: crawl_futures_profile (Weekly Sunday 05:00 KST)")
 
     # Optional one-time startup backfill
-    startup_run = os.getenv('STARTUP_RUN', '1') == '1'
+    startup_run = os.getenv('STARTUP_RUN', '1') == '1' and not args.no_startup_run
     if startup_run:
         try:
-            logger.info("Performing one-time startup crawl (schedules + game details)")
+            logger.info("Performing one-time startup crawl (run_daily_update)")
             crawl_daily_games()
         except Exception:
             logger.exception("Startup crawl failed; scheduler will continue with cron jobs")

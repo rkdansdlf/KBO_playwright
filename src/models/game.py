@@ -33,6 +33,7 @@ class Game(Base, TimestampMixin):
     winning_team = Column(String(20))
     winning_score = Column(Integer)
     season_id = Column(Integer)
+    game_status = Column(String(32), nullable=True)
     
     # Canonical/Franchise IDs for stable analysis
     home_franchise_id = Column(Integer, nullable=True)

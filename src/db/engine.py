@@ -107,6 +107,20 @@ def _ensure_game_core_tables():
         print(f"[WARN] Could not align game tables: {exc}")
 
 
+def _ensure_game_status_column():
+    """Ensure game table has game_status column (SQLite)."""
+    if not _is_sqlite(DATABASE_URL):
+        return
+    try:
+        with Engine.begin() as conn:
+            info_rows = conn.exec_driver_sql("PRAGMA table_info(game);").fetchall()
+            column_names = {row[1] for row in info_rows}
+            if "game_status" not in column_names:
+                conn.exec_driver_sql("ALTER TABLE game ADD COLUMN game_status VARCHAR(32);")
+    except Exception as exc:
+        print(f"[WARN] Could not ensure game.game_status column: {exc}")
+
+
 def _migrate_game_table(conn):
     info_rows = conn.exec_driver_sql("PRAGMA table_info(game);").fetchall()
     column_names = {row[1] for row in info_rows}
@@ -135,6 +149,7 @@ def _migrate_game_table(conn):
     has_winning_team = "winning_team" in column_names
     has_winning_score = "winning_score" in column_names
     has_season_id = "season_id" in column_names
+    has_game_status = "game_status" in column_names
 
     conn.exec_driver_sql("PRAGMA foreign_keys=OFF;")
     conn.exec_driver_sql("ALTER TABLE game RENAME TO game_old;")
@@ -154,6 +169,7 @@ def _migrate_game_table(conn):
             winning_team VARCHAR(20),
             winning_score INTEGER,
             season_id INTEGER,
+            game_status VARCHAR(32),
             created_at DATETIME NOT NULL,
             updated_at DATETIME NOT NULL
         );
@@ -163,7 +179,7 @@ def _migrate_game_table(conn):
         INSERT INTO game (
             game_id, game_date, stadium, home_team, away_team,
             away_score, home_score, away_pitcher, home_pitcher,
-            winning_team, winning_score, season_id, created_at, updated_at
+            winning_team, winning_score, season_id, game_status, created_at, updated_at
         )
         SELECT
             game_id,
@@ -178,6 +194,7 @@ def _migrate_game_table(conn):
             {"winning_team" if has_winning_team else "NULL"},
             {"winning_score" if has_winning_score else "NULL"},
             {"season_id" if has_season_id else "NULL"},
+            {"game_status" if has_game_status else "NULL"},
             created_at,
             updated_at
         FROM game_old;
@@ -234,4 +251,5 @@ def init_db():
     _ensure_player_batting_team_code_column()
     _ensure_player_basic_status_columns()
     _ensure_game_core_tables()
+    _ensure_game_status_column()
     print(f"[DB] Database initialized: {DATABASE_URL}")
