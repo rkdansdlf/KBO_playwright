@@ -39,4 +39,6 @@ data/kbo_dev.db-wal
 data/kbo_dev.db-shm
 data/kbo_dev.db
 # /data
-/data
+/data/*
+!/data/game_status_overrides.csv
+!/data/player_id_overrides.csv
