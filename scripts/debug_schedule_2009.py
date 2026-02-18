@@ -2,7 +2,7 @@
 from playwright.sync_api import sync_playwright
 import time
 
-def debug_schedule_2010():
+def debug_schedule_2009():
     url = "https://www.koreabaseball.com/Schedule/Schedule.aspx"
     
     with sync_playwright() as p:
@@ -10,7 +10,7 @@ def debug_schedule_2010():
         page = browser.new_page()
         page.goto(url, wait_until="networkidle")
         
-        year = '2010'
+        year = '2009'
         print(f"📡 Checking Year {year}...")
         
         # Select Year
@@ -25,15 +25,11 @@ def debug_schedule_2010():
         page.select_option('#ddlMonth', '04')
         time.sleep(2)
         
-        # Default View Check
-        tbl = page.query_selector('.tbl-type06')
-        print(f"   Default View: {'Data Found' if tbl and '데이터가 없습니다' not in tbl.inner_text() else 'No Data'}")
-        
         # Try each series
         for opt in series_options:
             val = opt['value']
             txt = opt['text']
-            if not val: continue # Skip empty value
+            if not val: continue
             
             print(f"   👉 Selecting Series: {txt} ({val})")
             page.select_option('#ddlSeries', val)
@@ -45,11 +41,12 @@ def debug_schedule_2010():
                 # Print first game link
                 link = tbl.query_selector('a')
                 if link:
-                    print(f"      Sample Link: {link.get_attribute('href')}")
+                    href = link.get_attribute('href')
+                    print(f"      Sample Link: {href}")
             else:
                  print(f"      ❌ No Data for Series {val}")
 
         browser.close()
 
 if __name__ == "__main__":
-    debug_schedule_2010()
+    debug_schedule_2009()
