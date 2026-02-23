@@ -6,7 +6,7 @@ import os
 import json
 from typing import List, Dict, Any
 from pathlib import Path
-from sqlalchemy import create_engine, text, select, MetaData, Table, column, table, tuple_
+from sqlalchemy import create_engine, text, select, MetaData, Table, Column, String, Integer, Date, column, table, tuple_
 from sqlalchemy.orm import sessionmaker, Session
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from datetime import datetime
@@ -957,13 +957,13 @@ class SupabaseSync:
             return 0
 
         metadata = MetaData()
-        player_basic_table = Table('player_basic', metadata, autoload_with=self.supabase_engine)
-        teams_table = Table('teams', metadata, autoload_with=self.supabase_engine)
+        player_basic_table = Table('player_basic', metadata, schema='public', autoload_with=self.supabase_engine)
+        teams_table = Table('teams', metadata, schema='public', autoload_with=self.supabase_engine)
         try:
-            seasons_table = Table('kbo_seasons', metadata, autoload_with=self.supabase_engine)
+            seasons_table = Table('kbo_seasons', metadata, schema='public', autoload_with=self.supabase_engine)
         except Exception:
-            seasons_table = Table('kbo_seasons_meta', metadata, autoload_with=self.supabase_engine)
-        pitching_table = Table('player_season_pitching', metadata, autoload_with=self.supabase_engine)
+            seasons_table = Table('kbo_seasons_meta', metadata, schema='public', autoload_with=self.supabase_engine)
+        pitching_table = Table('player_season_pitching', metadata, schema='public', autoload_with=self.supabase_engine)
 
         player_rows = self.supabase_session.execute(
             select(player_basic_table.c.player_id).where(player_basic_table.c.player_id.in_(list(kbo_ids)))
@@ -1092,10 +1092,10 @@ class SupabaseSync:
         # Load Season Mapping for Supabase compatibility
         metadata = MetaData()
         try:
-            seasons_table = Table('kbo_seasons', metadata, autoload_with=self.supabase_engine)
+            seasons_table = Table('kbo_seasons', metadata, schema='public', autoload_with=self.supabase_engine)
         except Exception:
             try:
-                seasons_table = Table('kbo_seasons_meta', metadata, autoload_with=self.supabase_engine)
+                seasons_table = Table('kbo_seasons_meta', metadata, schema='public', autoload_with=self.supabase_engine)
             except Exception:
                 seasons_table = None
         
@@ -1109,23 +1109,24 @@ class SupabaseSync:
                 for row in season_rows
             }
 
-        # Define explicit table object to avoid column mismatches (like missing created_at in Supabase)
-        game_table = table("game",
-            column("game_id"),
-            column("game_date"),
-            column("home_team"),
-            column("away_team"),
-            column("stadium"),
-            column("home_score"),
-            column("away_score"),
-            column("winning_team"),
-            column("winning_score"),
-            column("season_id"),
-            column("home_pitcher"),
-            column("away_pitcher"),
-            column("home_franchise_id"),
-            column("away_franchise_id"),
-            column("winning_franchise_id")
+        # Define explicit table object with schema
+        game_table = Table("game", metadata,
+            Column("game_id", String, primary_key=True),
+            Column("game_date", Date),
+            Column("home_team", String),
+            Column("away_team", String),
+            Column("stadium", String),
+            Column("home_score", Integer),
+            Column("away_score", Integer),
+            Column("winning_team", String),
+            Column("winning_score", Integer),
+            Column("season_id", Integer),
+            Column("home_pitcher", String),
+            Column("away_pitcher", String),
+            Column("home_franchise_id", Integer),
+            Column("away_franchise_id", Integer),
+            Column("winning_franchise_id", Integer),
+            schema='public'
         )
 
         base_query = self.sqlite_session.query(Game).order_by(Game.game_id)
@@ -1377,67 +1378,74 @@ class SupabaseSync:
         }
         return results
 
-    def sync_game_details(self, days: int = None) -> Dict[str, int]:
+    def sync_game_details(self, limit: int = None) -> Dict[str, int]:
         """Sync all game detail tables to Supabase"""
         results = {}
         
         # 0. Sync Parent Games first (Required for Foreign Keys)
         print("⚾ Syncing Parent Game Records...")
-        results['games'] = self.sync_games()
+        results['games'] = self.sync_games(limit=limit)
 
         # 1. Game Metadata
         results['metadata'] = self._sync_simple_table(
             GameMetadata, 
             ['game_id'], 
-            exclude_cols=['created_at']
+            exclude_cols=['created_at'],
+            limit=limit
         )
 
         # 2. Inning Scores
         results['inning_scores'] = self._sync_simple_table(
             GameInningScore,
             ['game_id', 'team_side', 'inning'],
-            exclude_cols=['id', 'created_at']
+            exclude_cols=['id', 'created_at'],
+            limit=limit
         )
 
         # 3. Lineups
         results['lineups'] = self._sync_simple_table(
             GameLineup,
             ['game_id', 'team_side', 'appearance_seq'],
-             exclude_cols=['id', 'created_at']
+             exclude_cols=['id', 'created_at'],
+             limit=limit
         )
 
         # 4. Batting Stats
         results['batting_stats'] = self._sync_simple_table(
             GameBattingStat,
             ['game_id', 'player_id', 'appearance_seq'],
-            exclude_cols=['id', 'created_at']
+            exclude_cols=['id', 'created_at'],
+            limit=limit
         )
 
         # 5. Pitching Stats
         results['pitching_stats'] = self._sync_simple_table(
             GamePitchingStat,
             ['game_id', 'player_id', 'appearance_seq'],
-            exclude_cols=['id', 'created_at']
+            exclude_cols=['id', 'created_at'],
+            limit=limit
         )
 
         results['events'] = self._sync_simple_table(
             GameEvent,
             ['game_id', 'event_seq'],
-            exclude_cols=['id', 'created_at']
+            exclude_cols=['id', 'created_at'],
+            limit=limit
         )
 
         # 7. Game Summary (New)
         results['summary'] = self._sync_simple_table(
             GameSummary,
             ['game_id', 'summary_type', 'player_name', 'detail_text'], 
-            exclude_cols=['id', 'created_at']
+            exclude_cols=['id', 'created_at'],
+            limit=limit
         )
 
         
         print(f"✅ Game Details Sync Summary: {results}")
         return results
 
-    def _sync_simple_table(self, model, conflict_keys: List[str], exclude_cols: List[str] = None) -> int:
+    def _sync_simple_table(self, model, conflict_keys: List[str], exclude_cols: List[str] = None, limit: int = None) -> int:
         """Generic sync parameter for simple tables using Batched UPSERT"""
         if exclude_cols is None:
             exclude_cols = []
@@ -1457,9 +1465,13 @@ class SupabaseSync:
         pk_cols = list(model.__table__.primary_key.columns)
         use_keyset = bool(pk_cols)
 
+        if limit:
+            total_count = min(total_count, limit)
+            
         if not use_keyset:
             for offset in range(0, total_count, batch_size):
-                rows = self.sqlite_session.query(model).offset(offset).limit(batch_size).all()
+                query = self.sqlite_session.query(model)
+                rows = query.offset(offset).limit(min(batch_size, total_count - offset)).all()
                 if not rows:
                     break
                 values_list = []
@@ -1467,12 +1479,15 @@ class SupabaseSync:
                     data = {c: getattr(row, c) for c in columns}
                     for k, v in data.items():
                         if isinstance(v, (dict, list)):
-                            data[k] = v
+                            # Explicitly serialize JSON types for TEXT column compatibility (e.g. source_payload)
+                            data[k] = json.dumps(v, ensure_ascii=False)
                     data['updated_at'] = datetime.now()
                     values_list.append(data)
 
                 try:
-                    stmt = pg_insert(model).values(values_list)
+                    metadata = MetaData()
+                    target_table = Table(model.__tablename__, metadata, schema='public', autoload_with=self.supabase_engine)
+                    stmt = pg_insert(target_table).values(values_list)
                     update_dict = {c: stmt.excluded[c] for c in columns if c not in conflict_keys}
                     update_dict['updated_at'] = stmt.excluded.updated_at
                     stmt = stmt.on_conflict_do_update(
@@ -1490,14 +1505,15 @@ class SupabaseSync:
             return synced
 
         last_key = None
-        while True:
+        remaining = total_count
+        while remaining > 0:
             query = self.sqlite_session.query(model).order_by(*pk_cols)
             if last_key is not None:
                 if len(pk_cols) == 1:
                     query = query.filter(pk_cols[0] > last_key)
                 else:
                     query = query.filter(tuple_(*pk_cols) > last_key)
-            rows = query.limit(batch_size).all()
+            rows = query.limit(min(batch_size, remaining)).all()
             if not rows:
                 break
             
@@ -1509,12 +1525,15 @@ class SupabaseSync:
                 data = {c: getattr(row, c) for c in columns}
                 for k, v in data.items():
                     if isinstance(v, (dict, list)):
-                        data[k] = v
+                        # Explicitly serialize JSON types for TEXT column compatibility (e.g. source_payload)
+                        data[k] = json.dumps(v, ensure_ascii=False)
                 data['updated_at'] = datetime.now()
                 values_list.append(data)
 
             try:
-                stmt = pg_insert(model).values(values_list)
+                metadata = MetaData()
+                target_table = Table(model.__tablename__, metadata, schema='public', autoload_with=self.supabase_engine)
+                stmt = pg_insert(target_table).values(values_list)
                 update_dict = {c: stmt.excluded[c] for c in columns if c not in conflict_keys}
                 update_dict['updated_at'] = stmt.excluded.updated_at
 
@@ -1526,11 +1545,32 @@ class SupabaseSync:
                 self.supabase_session.execute(stmt)
                 self.supabase_session.commit()
                 synced += len(values_list)
+                remaining -= len(values_list)
                 if synced % 5000 == 0 or synced == total_count:
                     print(f"   Synced {synced}/{total_count} rows...")
             except Exception as e:
                 self.supabase_session.rollback()
                 print(f"❌ Error syncing {model.__tablename__} batch at {synced}: {e}")
+                print(f"   ⚠️ Retrying {len(values_list)} records individually to isolate error...")
+                for val in values_list:
+                    try:
+                        metadata = MetaData()
+                        target_table = Table(model.__tablename__, metadata, schema='public', autoload_with=self.supabase_engine)
+                        single_stmt = pg_insert(target_table).values(val)
+                        single_update = {c: single_stmt.excluded[c] for c in columns if c not in conflict_keys}
+                        single_update['updated_at'] = single_stmt.excluded.updated_at
+                        single_stmt = single_stmt.on_conflict_do_update(
+                            index_elements=conflict_keys,
+                            set_=single_update
+                        )
+                        self.supabase_session.execute(single_stmt)
+                        self.supabase_session.commit()
+                        synced += 1
+                    except Exception as single_e:
+                        self.supabase_session.rollback()
+                        print(f"   ❌ Critical error on {model.__tablename__} row: {single_e}")
+                        print(f"   ❌ Data: {val}")
+                        # Move on to next row
 
             if len(pk_cols) == 1:
                 last_key = getattr(rows[-1], pk_cols[0].key)

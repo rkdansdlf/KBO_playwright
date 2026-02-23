@@ -11,6 +11,16 @@ Korean Baseball Organization (KBO) data collection system using Playwright, with
 - **Automated Scheduling**: APScheduler for daily/weekly data collection.
 - **Idempotent Storage**: Safe to re-run crawlers without data duplication thanks to UPSERT logic.
 
+## Data Coverage & Limitations
+
+Based on thorough research of the KBO official website:
+
+- **2001 - Present**: Full data coverage. Both seasonal statistics and detailed game-level data (lineups, box scores, play-by-play) are available and integrated into the modern Game Center.
+- **1982 - 2000**: Partial coverage.
+    - **Seasonal Stats**: All historical seasonal statistics for hitters and pitchers are available and have been collected.
+    - **Game Details**: **NOT AVAILABLE**. The KBO website does not provide interactive box scores or detailed game logs for games prior to 2001. This data is absent from all modern navigation paths and URL patterns.
+- **Futures League**: Data coverage varies by season and player profile availability.
+
 ## Quick Start
 
 ### 1. Environment Setup
