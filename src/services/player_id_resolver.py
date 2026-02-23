@@ -115,6 +115,7 @@ class PlayerIdResolver:
             return self._cache[cache_key]
 
         # 1. Try Seasonal Data (Most accurate)
+        is_allstar = team_code in self.ALL_STAR_TEAMS
         for model in [PlayerSeasonBatting, PlayerSeasonPitching]:
             stmt = select(PlayerBasic.player_id).select_from(model).join(
                 PlayerBasic, model.player_id == PlayerBasic.player_id
@@ -122,15 +123,19 @@ class PlayerIdResolver:
                 PlayerBasic.name == player_name,
                 model.season == season
             )
-            if team_code and team_code not in self.ALL_STAR_TEAMS:
+            if not is_allstar and team_code:
                 stmt = stmt.where(model.team_code == team_code)
             if uniform_no:
                 stmt = stmt.where(PlayerBasic.uniform_no == str(uniform_no))
             
-            result = self.session.execute(stmt).first()
-            if result:
-                self._cache[cache_key] = result[0]
-                return result[0]
+            results = self.session.execute(stmt).fetchall()
+            if len(results) == 1:
+                pid = results[0][0]
+                self._cache[cache_key] = pid
+                return pid
+            elif len(results) > 1 and is_allstar:
+                # Multiple matches for all-star: can't disambiguate without more info
+                break
 
         # 2. Try PlayerBasic with Team/Career context
         kor_team_name = self.TEAM_NAME_MAP.get(team_code, '')
