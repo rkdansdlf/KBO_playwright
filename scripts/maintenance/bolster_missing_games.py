@@ -56,7 +56,9 @@ async def bolster_missing_games(year_start=2010, year_end=2024):
                     success_count += 1
                 else:
                     if data:
-                        print(f"⚪ Cancelled/No Data: {data['game_id']}")
+                        game_id = data['game_id']
+                        print(f"⚪ Cancelled/No Data: {game_id}")
+                        mark_game_as_cancelled(game_id)
                     cancelled_count += 1
         except Exception as e:
             print(f"❌ Batch error: {e}")
@@ -225,3 +227,17 @@ if __name__ == "__main__":
     args = parser.parse_args()
     
     asyncio.run(bolster_missing_games(args.start, args.end))
+
+def mark_game_as_cancelled(game_id):
+    """Mark the game as cancelled in the database."""
+    from src.models.game import Game
+    
+    with SessionLocal() as session:
+        try:
+            game = session.query(Game).filter_by(game_id=game_id).first()
+            if game:
+                game.game_status = 'CANCELLED'
+                session.commit()
+                # print(f"📝 DB updated: {game_id} -> CANCELLED")
+        except Exception as e:
+            print(f"❌ Failed to mark as cancelled {game_id}: {e}")

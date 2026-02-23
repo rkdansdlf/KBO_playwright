@@ -134,6 +134,11 @@ def build_arg_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="크롤링 실행 기록(Crawl Runs)을 동기화합니다.",
     )
+    parser.add_argument(
+        "--limit",
+        type=int,
+        help="동기화할 레코드 수의 상한선 (디버깅용)",
+    )
     return parser
 
 
@@ -147,10 +152,10 @@ def main(argv: Iterable[str] | None = None) -> None:
         raise SystemExit("TARGET_DATABASE_URL must be provided via flag or environment variable")
 
     if args.game_details:
-        print("🚀 Syncing Game Details using specialized SupabaseSync...")
+        print(f"🚀 Syncing Game Details (limit={args.limit}) using specialized SupabaseSync...")
         with SessionLocal() as session:
             syncer = SupabaseSync(args.target_url, session)
-            syncer.sync_game_details()
+            syncer.sync_game_details(limit=args.limit)
             print("✅ Game Details Sync Finished")
 
     elif args.daily_roster:
@@ -190,8 +195,6 @@ def main(argv: Iterable[str] | None = None) -> None:
             syncer = SupabaseSync(args.target_url, session)
             syncer.sync_crawl_runs()
             print("✅ Crawl Runs Sync Finished")
-
-
         
     else:
         sync_databases(args.source_url, args.target_url, truncate=args.truncate)
