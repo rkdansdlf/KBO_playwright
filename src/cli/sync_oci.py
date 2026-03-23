@@ -30,8 +30,7 @@ MODEL_ORDER: List[Type] = [
     # Team,  # Handled by specialized --teams sync due to JSON vs TEXT[] type mismatch
     KboSeason,
     PlayerBasic,
-    PlayerSeasonBatting,
-    PlayerSeasonPitching,
+    # PlayerSeasonBatting/Pitching removed from here to enforce Bulk COPY via --season-stats
 ]
 
 
@@ -65,7 +64,7 @@ def sync_databases(source_url: str, target_url: str, truncate: bool = False) -> 
             if truncate:
                 if model is Team:
                     # NOTE: teams is a semi-static reference table. Do NOT truncate because
-                    # Supabase still has legacy tables (e.g., team_history) with FK references.
+                    # OCI still has legacy tables (e.g., team_history) with FK references.
                     # Always rely on UPSERT behavior for teams.
                     print("   ⚠️  Skipping truncate for teams (reference table with legacy FKs)")
                 else:
@@ -130,6 +129,11 @@ def build_arg_parser() -> argparse.ArgumentParser:
         help="최근 N일간의 경기 데이터만 동기화합니다.",
     )
     parser.add_argument(
+        "--unsynced-only",
+        action="store_true",
+        help="OCI에 없거나 로컬 업데이트가 더 최근인 미동기화/수정된 데이터만 선별하여 동기화합니다.",
+    )
+    parser.add_argument(
         "--daily-roster",
         action="store_true",
         help="일별 1군 등록 현황(Daily Roster)을 동기화합니다.",
@@ -148,6 +152,11 @@ def build_arg_parser() -> argparse.ArgumentParser:
         "--crawl-runs",
         action="store_true",
         help="크롤링 실행 기록(Crawl Runs)을 동기화합니다.",
+    )
+    parser.add_argument(
+        "--season-stats",
+        action="store_true",
+        help="선수 시즌 누적 스탯(타자, 투수)을 고속 동기화합니다.",
     )
     parser.add_argument(
         "--year",
@@ -170,7 +179,7 @@ def main(argv: Iterable[str] | None = None) -> None:
         print("🚀 Syncing Game Details using specialized OCISync...")
         with SessionLocal() as session:
             syncer = OCISync(args.target_url, session)
-            syncer.sync_game_details(days=args.days, year=args.year)
+            syncer.sync_game_details(days=args.days, year=args.year, unsynced_only=args.unsynced_only)
             print("✅ Game Details Sync Finished")
 
     elif args.games_only:
@@ -220,6 +229,13 @@ def main(argv: Iterable[str] | None = None) -> None:
             syncer = OCISync(args.target_url, session)
             syncer.sync_crawl_runs()
             print("✅ Crawl Runs Sync Finished")
+
+    elif args.season_stats:
+        print("🚀 Syncing Season Stats using specialized OCISync...")
+        with SessionLocal() as session:
+            syncer = OCISync(args.target_url, session)
+            syncer.sync_all_batting_data()
+            print("✅ Season Stats Sync Finished")
 
 
         

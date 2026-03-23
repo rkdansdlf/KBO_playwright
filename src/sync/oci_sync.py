@@ -56,7 +56,7 @@ class OCISync:
             echo=False,
             pool_pre_ping=True,
             connect_args={
-                "connect_timeout": 10,
+                "connect_timeout": 60,
                 "application_name": "KBO_Crawler_Sync"
             }
         )
@@ -76,244 +76,20 @@ class OCISync:
             return False
 
     def sync_pitcher_data(self) -> int:
-        """새로운 player_season_pitching 테이블의 투수 데이터를 OCI로 동기화"""
-        pitcher_data = self.sqlite_session.query(PlayerSeasonPitching).all()
-        
-        if not pitcher_data:
-            print("ℹ️ 동기화할 투수 데이터가 없습니다.")
-            return 0
-        
-        synced = 0
-        
-        for data in pitcher_data:
-            # UPSERT 쿼리 직접 실행 (PostgreSQL)
-            upsert_sql = text("""
-                INSERT INTO player_season_pitching (
-                    player_id, season, league, level, source, team_code,
-                    games, games_started, wins, losses, saves, holds,
-                    innings_pitched, innings_outs, hits_allowed, runs_allowed,
-                    earned_runs, home_runs_allowed, walks_allowed, intentional_walks,
-                    hit_batters, strikeouts, wild_pitches, balks,
-                    era, whip, fip, k_per_nine, bb_per_nine, kbb,
-                    complete_games, shutouts, quality_starts, blown_saves,
-                    tbf, np, avg_against, doubles_allowed, triples_allowed,
-                    sacrifices_allowed, sacrifice_flies_allowed, extra_stats,
-                    created_at, updated_at
-                ) VALUES (
-                    :player_id, :season, :league, :level, :source, :team_code,
-                    :games, :games_started, :wins, :losses, :saves, :holds,
-                    :innings_pitched, :innings_outs, :hits_allowed, :runs_allowed,
-                    :earned_runs, :home_runs_allowed, :walks_allowed, :intentional_walks,
-                    :hit_batters, :strikeouts, :wild_pitches, :balks,
-                    :era, :whip, :fip, :k_per_nine, :bb_per_nine, :kbb,
-                    :complete_games, :shutouts, :quality_starts, :blown_saves,
-                    :tbf, :np, :avg_against, :doubles_allowed, :triples_allowed,
-                    :sacrifices_allowed, :sacrifice_flies_allowed, :extra_stats,
-                    NOW(), NOW()
-                )
-                ON CONFLICT (player_id, season, league, level) DO UPDATE SET
-                    source = EXCLUDED.source,
-                    team_code = EXCLUDED.team_code,
-                    games = EXCLUDED.games,
-                    games_started = EXCLUDED.games_started,
-                    wins = EXCLUDED.wins,
-                    losses = EXCLUDED.losses,
-                    saves = EXCLUDED.saves,
-                    holds = EXCLUDED.holds,
-                    innings_pitched = EXCLUDED.innings_pitched,
-                    innings_outs = EXCLUDED.innings_outs,
-                    hits_allowed = EXCLUDED.hits_allowed,
-                    runs_allowed = EXCLUDED.runs_allowed,
-                    earned_runs = EXCLUDED.earned_runs,
-                    home_runs_allowed = EXCLUDED.home_runs_allowed,
-                    walks_allowed = EXCLUDED.walks_allowed,
-                    intentional_walks = EXCLUDED.intentional_walks,
-                    hit_batters = EXCLUDED.hit_batters,
-                    strikeouts = EXCLUDED.strikeouts,
-                    wild_pitches = EXCLUDED.wild_pitches,
-                    balks = EXCLUDED.balks,
-                    era = EXCLUDED.era,
-                    whip = EXCLUDED.whip,
-                    fip = EXCLUDED.fip,
-                    k_per_nine = EXCLUDED.k_per_nine,
-                    bb_per_nine = EXCLUDED.bb_per_nine,
-                    kbb = EXCLUDED.kbb,
-                    complete_games = EXCLUDED.complete_games,
-                    shutouts = EXCLUDED.shutouts,
-                    quality_starts = EXCLUDED.quality_starts,
-                    blown_saves = EXCLUDED.blown_saves,
-                    tbf = EXCLUDED.tbf,
-                    np = EXCLUDED.np,
-                    avg_against = EXCLUDED.avg_against,
-                    doubles_allowed = EXCLUDED.doubles_allowed,
-                    triples_allowed = EXCLUDED.triples_allowed,
-                    sacrifices_allowed = EXCLUDED.sacrifices_allowed,
-                    sacrifice_flies_allowed = EXCLUDED.sacrifice_flies_allowed,
-                    extra_stats = EXCLUDED.extra_stats,
-                    updated_at = NOW()
-            """)
-            
-            # 데이터 준비
-            params = {
-                'player_id': data.player_id,
-                'season': data.season,
-                'league': data.league,
-                'level': data.level,
-                'source': data.source,
-                'team_code': data.team_code,
-                'games': data.games,
-                'games_started': data.games_started,
-                'wins': data.wins,
-                'losses': data.losses,
-                'saves': data.saves,
-                'holds': data.holds,
-                'innings_pitched': data.innings_pitched,
-                'innings_outs': data.innings_outs,
-                'hits_allowed': data.hits_allowed,
-                'runs_allowed': data.runs_allowed,
-                'earned_runs': data.earned_runs,
-                'home_runs_allowed': data.home_runs_allowed,
-                'walks_allowed': data.walks_allowed,
-                'intentional_walks': data.intentional_walks,
-                'hit_batters': data.hit_batters,
-                'strikeouts': data.strikeouts,
-                'wild_pitches': data.wild_pitches,
-                'balks': data.balks,
-                'era': data.era,
-                'whip': data.whip,
-                'fip': data.fip,
-                'k_per_nine': data.k_per_nine,
-                'bb_per_nine': data.bb_per_nine,
-                'kbb': data.kbb,
-                'complete_games': data.complete_games,
-                'shutouts': data.shutouts,
-                'quality_starts': data.quality_starts,
-                'blown_saves': data.blown_saves,
-                'tbf': data.tbf,
-                'np': data.np,
-                'avg_against': data.avg_against,
-                'doubles_allowed': data.doubles_allowed,
-                'triples_allowed': data.triples_allowed,
-                'sacrifices_allowed': data.sacrifices_allowed,
-                'sacrifice_flies_allowed': data.sacrifice_flies_allowed,
-                'extra_stats': json.dumps(data.extra_stats) if data.extra_stats else None
-            }
-            
-            # UPSERT 실행
-            self.target_session.execute(upsert_sql, params)
-            synced += 1
-            
-            if synced % 10 == 0:
-                print(f"   📝 {synced}건 동기화 중...")
-        
-        self.target_session.commit()
-        print(f"✅ OCI 투수 데이터 동기화 완료: {synced}건")
-        return synced
+        """새로운 player_season_pitching 테이블의 투수 데이터를 OCI로 동기화 (고속 Batch COPY)"""
+        return self._sync_simple_table(
+            PlayerSeasonPitching,
+            conflict_keys=['player_id', 'season', 'league', 'level'],
+            exclude_cols=['id', 'created_at']
+        )
 
     def sync_batting_data(self) -> int:
-        """타자 데이터를 OCI로 동기화"""
-        batting_data = self.sqlite_session.query(PlayerSeasonBatting).all()
-        
-        if not batting_data:
-            print("ℹ️ 동기화할 타자 데이터가 없습니다.")
-            return 0
-        
-        synced = 0
-        
-        for data in batting_data:
-            # UPSERT 쿼리 직접 실행 (PostgreSQL)
-            upsert_sql = text("""
-                INSERT INTO player_season_batting (
-                    player_id, season, league, level, source, team_code,
-                    games, plate_appearances, at_bats, runs, hits, doubles,
-                    triples, home_runs, rbi, walks, intentional_walks, hbp,
-                    strikeouts, stolen_bases, caught_stealing, sacrifice_hits,
-                    sacrifice_flies, gdp, avg, obp, slg, ops, iso, babip,
-                    extra_stats, created_at, updated_at
-                ) VALUES (
-                    :player_id, :season, :league, :level, :source, :team_code,
-                    :games, :plate_appearances, :at_bats, :runs, :hits, :doubles,
-                    :triples, :home_runs, :rbi, :walks, :intentional_walks, :hbp,
-                    :strikeouts, :stolen_bases, :caught_stealing, :sacrifice_hits,
-                    :sacrifice_flies, :gdp, :avg, :obp, :slg, :ops, :iso, :babip,
-                    :extra_stats, NOW(), NOW()
-                )
-                ON CONFLICT (player_id, season, league, level) DO UPDATE SET
-                    source = EXCLUDED.source,
-                    team_code = EXCLUDED.team_code,
-                    games = EXCLUDED.games,
-                    plate_appearances = EXCLUDED.plate_appearances,
-                    at_bats = EXCLUDED.at_bats,
-                    runs = EXCLUDED.runs,
-                    hits = EXCLUDED.hits,
-                    doubles = EXCLUDED.doubles,
-                    triples = EXCLUDED.triples,
-                    home_runs = EXCLUDED.home_runs,
-                    rbi = EXCLUDED.rbi,
-                    walks = EXCLUDED.walks,
-                    intentional_walks = EXCLUDED.intentional_walks,
-                    hbp = EXCLUDED.hbp,
-                    strikeouts = EXCLUDED.strikeouts,
-                    stolen_bases = EXCLUDED.stolen_bases,
-                    caught_stealing = EXCLUDED.caught_stealing,
-                    sacrifice_hits = EXCLUDED.sacrifice_hits,
-                    sacrifice_flies = EXCLUDED.sacrifice_flies,
-                    gdp = EXCLUDED.gdp,
-                    avg = EXCLUDED.avg,
-                    obp = EXCLUDED.obp,
-                    slg = EXCLUDED.slg,
-                    ops = EXCLUDED.ops,
-                    iso = EXCLUDED.iso,
-                    babip = EXCLUDED.babip,
-                    extra_stats = EXCLUDED.extra_stats,
-                    updated_at = NOW()
-            """)
-            
-            # 데이터 준비
-            params = {
-                'player_id': data.player_id,
-                'season': data.season,
-                'league': data.league,
-                'level': data.level,
-                'source': data.source,
-                'team_code': data.team_code,
-                'games': data.games,
-                'plate_appearances': data.plate_appearances,
-                'at_bats': data.at_bats,
-                'runs': data.runs,
-                'hits': data.hits,
-                'doubles': data.doubles,
-                'triples': data.triples,
-                'home_runs': data.home_runs,
-                'rbi': data.rbi,
-                'walks': data.walks,
-                'intentional_walks': data.intentional_walks,
-                'hbp': data.hbp,
-                'strikeouts': data.strikeouts,
-                'stolen_bases': data.stolen_bases,
-                'caught_stealing': data.caught_stealing,
-                'sacrifice_hits': data.sacrifice_hits,
-                'sacrifice_flies': data.sacrifice_flies,
-                'gdp': data.gdp,
-                'avg': data.avg,
-                'obp': data.obp,
-                'slg': data.slg,
-                'ops': data.ops,
-                'iso': data.iso,
-                'babip': data.babip,
-                'extra_stats': json.dumps(data.extra_stats) if data.extra_stats else None
-            }
-            
-            # UPSERT 실행
-            self.target_session.execute(upsert_sql, params)
-            synced += 1
-            
-            if synced % 10 == 0:
-                print(f"   📝 {synced}건 동기화 중...")
-        
-        self.target_session.commit()
-        print(f"✅ OCI 타자 데이터 동기화 완료: {synced}건")
-        return synced
+        """타자 데이터를 OCI로 동기화 (고속 Batch COPY)"""
+        return self._sync_simple_table(
+            PlayerSeasonBatting,
+            conflict_keys=['player_id', 'season', 'league', 'level'],
+            exclude_cols=['id', 'created_at']
+        )
 
     def verify_pitcher_sync(self, expected_count: int):
         """투수 데이터 동기화 결과 검증"""
@@ -979,12 +755,13 @@ class OCISync:
                     data['season_id'] = season_map[key]
             return data
 
-        # Use generic sync which handles column changes and bulk operations better
-        # Exclude created_at/updated_at because OCI game table doesn't have them
+        # Exclude columns that don't exist on OCI side
+        exclude_cols = ['created_at', 'updated_at', 'home_franchise_id', 'away_franchise_id', 'winning_franchise_id']
+        
         return self._sync_simple_table(
             Game, 
             ['game_id'], 
-            exclude_cols=['created_at', 'updated_at'],
+            exclude_cols=exclude_cols,
             filters=filters,
             transform_fn=transform
         )
@@ -1143,21 +920,58 @@ class OCISync:
         self.target_session.commit()
         print(f"🧹 Purged OCI child game-detail rows for year {year}")
 
-    def sync_game_details(self, days: int = None, year: int = None) -> Dict[str, int]:
+    def get_unsynced_or_modified_game_ids(self) -> List[str]:
+        """로컬 SQLite와 OCI 간의 차집합(누락되거나 상태가 변경된 게임) 계산"""
+        from src.models.game import Game
+        
+        # OCI에서 전체 game_id와 game_status를 가져옴
+        oci_games = {
+            row[0]: row[1] 
+            for row in self.target_session.execute(text("SELECT game_id, game_status FROM game")).fetchall()
+        }
+        
+        # SQLite에서 전체 게임 가져옴
+        local_games = self.sqlite_session.query(Game.game_id, Game.game_status).all()
+        
+        sync_ids = []
+        for l_id, l_status in local_games:
+            oci_status = oci_games.get(l_id)
+            if l_id not in oci_games:
+                # OCI에 없는 게임
+                sync_ids.append(l_id)
+            elif l_status != oci_status:
+                # 상태가 변경된 게임 (예: 경기 전 -> 종료)
+                sync_ids.append(l_id)
+                
+        return sync_ids
+
+    def sync_game_details(self, days: int = None, year: int = None, unsynced_only: bool = False) -> Dict[str, int]:
         """Sync all game detail tables to OCI"""
         results = {}
         from src.models.game import Game, GameMetadata, GameInningScore, GameLineup, GameBattingStat, GamePitchingStat, GameEvent, GameSummary
         
+        filters = []
+        target_game_ids = None
+
+        if unsynced_only:
+            print("🔍 식별 중: OCI에 없거나 로컬에서 최근에 갱신된 게임 데이터를 검사합니다...")
+            target_game_ids = self.get_unsynced_or_modified_game_ids()
+            if not target_game_ids:
+                print("🎉 모든 게임 데이터가 이미 최신 상태입니다. 동기화를 건너뜁니다.")
+                return results
+            print(f"🎯 총 {len(target_game_ids)}개의 변경/누락된 게임을 발견했습니다.")
+            # target_game_ids가 너무 길면 sqlite in_ 절 한도를 초과할 수 있지만, 부분 업데이트라 대개 수십 건 내외임.
+            filters.append(Game.game_id.in_(target_game_ids))
+        else:
+            if days:
+                from datetime import datetime, timedelta
+                since_date = (datetime.now() - timedelta(days=days)).date()
+                filters.append(Game.game_date >= since_date)
+            if year:
+                filters.append(Game.game_id.like(f"{year}%"))
+            
         # 0. Sync Parent Games first (Required for Foreign Keys)
         print("⚾ Syncing Parent Game Records...")
-        filters = []
-        if days:
-            from datetime import datetime, timedelta
-            since_date = (datetime.now() - timedelta(days=days)).date()
-            filters.append(Game.game_date >= since_date)
-        if year:
-            filters.append(Game.game_id.like(f"{year}%"))
-            
         results['games'] = self.sync_games(filters=filters if filters else None)
 
         # Build filters for child tables (they often use game_id instead of game_date)
@@ -1165,11 +979,10 @@ class OCISync:
         if year:
             child_filters.append(text(f"game_id LIKE '{year}%'"))
         elif days:
-            # For 'days', we should probably join with Game or use a subquery for game_id
-            # Simplest: Get valid game_ids first
             game_ids = [g.game_id for g in self.sqlite_session.query(Game.game_id).filter(*filters).all()]
             if game_ids:
-                child_filters.append(text(f"game_id IN ({','.join([f'{gid}' for gid in game_ids])})"))
+                quoted_ids = [f"'{gid}'" for gid in game_ids]
+                child_filters.append(text(f"game_id IN ({','.join(quoted_ids)})"))
             else:
                 print("ℹ️ No games found for the specified period.")
                 return results
@@ -1178,12 +991,17 @@ class OCISync:
             # Remove existing year-scoped child rows first to avoid stale/null duplicates.
             self._purge_game_detail_children_for_year(year)
 
+        def get_child_filters(model_cls):
+            if unsynced_only and target_game_ids:
+                return [model_cls.game_id.in_(target_game_ids)]
+            return child_filters if child_filters else None
+
         # 1. Game Metadata
         results['metadata'] = self._sync_simple_table(
             GameMetadata, 
             ['game_id'], 
             exclude_cols=['created_at'],
-            filters=child_filters if child_filters else None
+            filters=get_child_filters(GameMetadata)
         )
 
         # 2. Inning Scores
@@ -1191,7 +1009,7 @@ class OCISync:
             GameInningScore,
             ['game_id', 'team_side', 'inning'],
             exclude_cols=['created_at', 'id'],
-            filters=child_filters if child_filters else None
+            filters=get_child_filters(GameInningScore)
         )
 
         # 3. Lineups
@@ -1199,7 +1017,7 @@ class OCISync:
             GameLineup,
             ['game_id', 'team_side', 'appearance_seq'],
              exclude_cols=['created_at', 'id'],
-             filters=child_filters if child_filters else None
+             filters=get_child_filters(GameLineup)
         )
 
         # 4. Batting Stats
@@ -1207,7 +1025,7 @@ class OCISync:
             GameBattingStat,
             ['game_id', 'player_id', 'appearance_seq'],
             exclude_cols=['created_at', 'id'],
-            filters=child_filters if child_filters else None
+            filters=get_child_filters(GameBattingStat)
         )
 
         # 5. Pitching Stats
@@ -1215,14 +1033,14 @@ class OCISync:
             GamePitchingStat,
             ['game_id', 'player_id', 'appearance_seq'],
             exclude_cols=['created_at', 'id'],
-            filters=child_filters if child_filters else None
+            filters=get_child_filters(GamePitchingStat)
         )
 
         results['events'] = self._sync_simple_table(
             GameEvent,
             ['game_id', 'event_seq'],
             exclude_cols=['created_at', 'id'],
-            filters=child_filters if child_filters else None
+            filters=get_child_filters(GameEvent)
         )
 
         # 7. Game Summary
@@ -1230,7 +1048,7 @@ class OCISync:
             GameSummary,
             ['game_id', 'summary_type', 'player_name', 'detail_text'],
             exclude_cols=['created_at', 'id'],
-            filters=child_filters if child_filters else None
+            filters=get_child_filters(GameSummary)
         )
         
         print(f"✅ Game Details Sync Summary: {results}")
@@ -1347,20 +1165,23 @@ class OCISync:
         return synced
 
     def _get_season_map(self) -> Dict[tuple, int]:
-        """Fetch OCI season mapping (year, league_type_code) -> season_id"""
-        metadata = MetaData()
-        try:
-            seasons_table = Table('kbo_seasons', metadata, autoload_with=self.oci_engine)
-        except:
+        """Fetch OCI season mapping (year, league_type_code) -> season_id via raw SQL"""
+        # We try different table names just in case, but using raw SQL is faster than reflection
+        queries = [
+            "SELECT season_id, season_year, league_type_code FROM kbo_seasons",
+            "SELECT season_id, season_year, league_type_code FROM kbo_seasons_meta",
+            "SELECT season_id, season_year, league_type_code FROM seasons"
+        ]
+        
+        for q in queries:
             try:
-                seasons_table = Table('kbo_seasons_meta', metadata, autoload_with=self.oci_engine)
-            except:
-                seasons_table = Table('seasons', metadata, autoload_with=self.oci_engine)
-            
-        rows = self.target_session.execute(
-            select(seasons_table.c.season_id, seasons_table.c.season_year, seasons_table.c.league_type_code)
-        ).all()
-        return {(row.season_year, row.league_type_code): row.season_id for row in rows}
+                rows = self.target_session.execute(text(q)).all()
+                return {(row.season_year, row.league_type_code): row.season_id for row in rows}
+            except Exception:
+                continue
+        
+        print("⚠️ Warning: Could not fetch season map from OCI")
+        return {}
 
     def _bulk_copy_upsert(self, table_name: str, records: List[Dict[str, Any]], unique_cols: List[str], update_timestamp: bool = True):
         """

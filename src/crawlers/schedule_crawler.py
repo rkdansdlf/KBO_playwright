@@ -276,12 +276,15 @@ class ScheduleCrawler:
             });
 
             // Original Link-based Logic (keep it for existing games)
+            const linkSet = new Set();
             const links = document.querySelectorAll('a[href*="gameId="]');
             links.forEach(link => {
                 const href = link.getAttribute('href');
                 const match = href.match(/gameId=([^&]+)/);
                 if (!match) return;
                 const gameId = match[1];
+                if (linkSet.has(gameId)) return;
+                linkSet.add(gameId);
                 
                 // ... same parsing ...
                 const gameDate = gameId.substring(0, 8);

@@ -171,19 +171,22 @@ async def run_update(target_date: str, sync: bool = False, headless: bool = True
 
     print("\n✨ Local data update sequence finished.")
 
-    # 5. Sync to Supabase
+    # 5. Sync to OCI
     if sync:
-        print("\n☁️ Step 5: Synchronizing to Supabase...")
+        print("\n☁️ Step 5: Synchronizing to OCI...")
         try:
-            print("   🔗 Syncing Game Details...")
-            sync_main(["--game-details"])
+            print("   🔗 Syncing Unsynced/Modified Game Details (Delta Sync)...")
+            sync_main(["--game-details", "--unsynced-only"])
 
-            print("   🔗 Syncing Player Season Stats...")
+            print("   🔗 Syncing Player Season Stats (Batch COPY)...")
+            sync_main(["--season-stats"])
+            
+            print("   🔗 Syncing Basic Metadata (KboSeason, PlayerBasic)...")
             sync_main([])
 
-            print("   ✅ Supabase synchronization completed")
+            print("   ✅ OCI synchronization completed")
         except Exception as exc:
-            print(f"   ❌ Error during Supabase sync: {exc}")
+            print(f"   ❌ Error during OCI sync: {exc}")
 
     print(f"\n{'='*60}")
     print(f"🏁 Daily Update Finished for {target_date}")
@@ -200,7 +203,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--sync",
         action="store_true",
-        help="Whether to sync data to Supabase after local update.",
+        help="Whether to sync data to OCI after local update.",
     )
     parser.add_argument(
         "--headless",
