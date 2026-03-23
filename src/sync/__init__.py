@@ -1,4 +1,4 @@
-"""Supabase sync module"""
-from .supabase_sync import SupabaseSync
+"""OCI sync module"""
+from .oci_sync import OCISync
 
-__all__ = ['SupabaseSync']
+__all__ = ['OCISync']

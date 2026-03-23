@@ -177,13 +177,46 @@ class PlayerIdResolver:
             self._cache[cache_key] = pid
             return pid
             
-        # 5. Last resort: Try relaxed季節(season) resolution without uniform_no or strict team
+        # 5. Last resort: Try relaxed season resolution without uniform_no or strict team
         relaxed_id = self._resolve_relaxed(player_name, team_code, season)
         if relaxed_id:
             self._cache[cache_key] = relaxed_id
             return relaxed_id
 
+        # 6. Auto-register unknown player as a local profile
+        new_id = self.register_unknown_player(player_name, team_code, uniform_no)
+        if new_id:
+            self._cache[cache_key] = new_id
+            return new_id
+
         return None
+
+    def register_unknown_player(self, name: str, team_code: str, uniform_no: Optional[str]) -> Optional[int]:
+        print(f"   [NEW PLAYER ADDED] Auto-registering local profile for {name} ({team_code})")
+        # Generate a large fake ID (>900000)
+        stmt = select(PlayerBasic.player_id).order_by(PlayerBasic.player_id.desc()).limit(1)
+        max_id = self.session.execute(stmt).scalar()
+        if max_id is None or max_id < 900000:
+            new_id = 900000
+        else:
+            new_id = max_id + 1
+
+        try:
+            kor_team_name = self.TEAM_NAME_MAP.get(team_code, team_code)
+            new_player = PlayerBasic(
+                player_id=new_id,
+                name=name,
+                team=kor_team_name,
+                uniform_no=str(uniform_no) if uniform_no else None,
+                status="Unknown/Local"
+            )
+            self.session.add(new_player)
+            self.session.commit()
+            return new_id
+        except Exception as e:
+            self.session.rollback()
+            print(f"   ❌ Error auto-registering player: {e}")
+            return None
 
     def _resolve_relaxed(self, player_name: str, team_code: str, season: int) -> Optional[int]:
         """Relaxed matching: Name + Season match, ensuring exactly one candidate."""

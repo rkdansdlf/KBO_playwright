@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-This project is a Python-based data crawling and management system designed to collect KBO (Korean Baseball Organization) player statistics across various series and seasons. It leverages web scraping techniques to extract data from the KBO official website and stores it in a structured local SQLite database. The system also supports synchronization with a remote Supabase (PostgreSQL) database.
+This project is a Python-based data crawling and management system designed to collect KBO (Korean Baseball Organization) player statistics across various series and seasons. It leverages web scraping techniques to extract data from the KBO official website and stores it in a structured local SQLite database. The system also supports synchronization with a remote Oracle Cloud Infrastructure (OCI) PostgreSQL database.
 
 The core functionalities include:
 -   **Web Scraping:** Utilizing Playwright to navigate KBO record pages and extract player statistics.
@@ -10,7 +10,7 @@ The core functionalities include:
 -   **Data Persistence:** Storing structured data in a local SQLite database using SQLAlchemy ORM.
 -   **Database Schema Management:** Defining clear ORM models with Foreign Key constraints for data integrity.
 -   **Data Seeding:** Populating essential metadata tables (e.g., teams, seasons) from CSV files.
--   **Supabase Synchronization:** A dedicated CLI tool to sync local database changes to a remote Supabase instance.
+-   **OCI Synchronization:** A dedicated CLI tool to sync local database changes to a remote OCI PostgreSQL instance.
 
 ## Main Technologies
 
@@ -18,7 +18,7 @@ The core functionalities include:
 -   **Web Scraping:** Playwright
 -   **Database ORM:** SQLAlchemy
 -   **Local Database:** SQLite
--   **Remote Database (Sync):** Supabase (PostgreSQL)
+-   **Remote Database (Sync):** OCI (PostgreSQL)
 -   **Dependency Management:** `pip` with `requirements.txt`
 -   **CLI Argument Parsing:** `argparse`
 
@@ -81,18 +81,18 @@ venv/bin/python3 -m src.crawlers.player_pitching_all_series_crawler --year 2025 
 venv/bin/python3 -m src.crawlers.player_batting_all_series_crawler --year 2025 --series regular --save
 ```
 
-### 5. Syncing with Supabase
+### 5. Syncing with OCI (Oracle Cloud)
 
-Synchronize data from the local SQLite database to a remote Supabase (PostgreSQL) instance. Ensure your `TARGET_DATABASE_URL` or `SUPABASE_DB_URL` environment variable is set.
+Synchronize data from the local SQLite database to a remote OCI PostgreSQL instance. Ensure your `TARGET_DATABASE_URL` or `OCI_DB_URL` environment variable is set.
 
 ```bash
-# Example: Sync all tables to Supabase
+# Example: Sync all tables to OCI
 venv/bin/python3 -m src.cli.sync_supabase
 
-# Example: Sync only the 'player_season_pitching' table to Supabase
+# Example: Sync only the 'player_season_pitching' table to OCI
 venv/bin/python3 -m src.cli.sync_supabase --table player_season_pitching
 
-# Example: Sync all tables after truncating (clearing) them on Supabase
+# Example: Sync all tables after truncating (clearing) them on OCI
 venv/bin/python3 -m src.cli.sync_supabase --truncate
 ```
 

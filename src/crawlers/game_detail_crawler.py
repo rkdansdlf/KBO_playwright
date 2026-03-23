@@ -156,7 +156,14 @@ class GameDetailCrawler:
         #    argument, so JS-based navigation doesn't work.
         review_url = f"{self.base_url}?gameDate={game_date}&gameId={game_id}&section=REVIEW"
         print(f"📡 Navigating to REVIEW: {review_url}")
-        await page.goto(review_url, wait_until="networkidle", timeout=30000)
+        for attempt in range(3):
+            try:
+                await page.goto(review_url, wait_until="networkidle", timeout=30000)
+                break
+            except Exception as e:
+                print(f"⚠️  Timeout on {review_url}, retrying ({attempt+1}/3)...")
+                if attempt == 2: raise e
+                await asyncio.sleep(2)
         await asyncio.sleep(2)
         is_ready, failure_reason = await self._wait_for_boxscore(page)
         if not is_ready:
@@ -647,7 +654,13 @@ class GameDetailCrawler:
         for section in ("ENTRY", "LINEUP"):
             lineup_url = f"{self.base_url}?gameDate={game_date}&gameId={game_id}&section={section}"
             try:
-                await page.goto(lineup_url, wait_until="networkidle", timeout=20000)
+                for attempt in range(3):
+                    try:
+                        await page.goto(lineup_url, wait_until="networkidle", timeout=20000)
+                        break
+                    except Exception as e:
+                        if attempt == 2: raise e
+                        await asyncio.sleep(1)
                 await asyncio.sleep(0.8)
                 roster_map = await self._extract_roster_from_lineup(page)
                 if roster_map:
@@ -657,7 +670,13 @@ class GameDetailCrawler:
 
         # Always return to REVIEW page for box score extraction.
         try:
-            await page.goto(review_url, wait_until="networkidle", timeout=30000)
+            for attempt in range(3):
+                try:
+                    await page.goto(review_url, wait_until="networkidle", timeout=30000)
+                    break
+                except Exception as e:
+                    if attempt == 2: raise e
+                    await asyncio.sleep(1)
             await asyncio.sleep(1)
             await self._wait_for_boxscore(page)
         except Exception as exc:

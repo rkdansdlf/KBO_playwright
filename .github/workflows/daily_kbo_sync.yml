@@ -1,0 +1,40 @@
+name: Daily KBO Crawler & OCI Sync
+
+on:
+  schedule:
+    # Runs at 14:55 UTC which is 23:55 KST (Korean Standard Time) every day
+    - cron: '55 14 * * *'
+  workflow_dispatch:
+    # Allows manual trigger from the GitHub Actions UI
+
+jobs:
+  daily-sync:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.10
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          playwright install chromium
+
+      - name: Get current date in KST
+        id: date
+        run: |
+          # Calculate KST date strictly matching the 23:55 trigger timezone
+          echo "KST_DATE=$(TZ='Asia/Seoul' date +'%Y%m%d')" >> $GITHUB_ENV
+
+      - name: Run Daily Update & Sync
+        env:
+          OCI_DB_URL: ${{ secrets.OCI_DB_URL }}
+        run: |
+          # Executes the optimized smart delta sync pipeline using today's KST date
+          python -m src.cli.run_daily_update --date ${{ env.KST_DATE }} --sync
