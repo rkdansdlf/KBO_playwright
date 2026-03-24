@@ -13,10 +13,11 @@ class Base(DeclarativeBase):
 
 class TimestampMixin:
     """Mixin for created_at and updated_at timestamps"""
-    created_at = mapped_column(DateTime, default=func.now(), nullable=False)
+    created_at = mapped_column(DateTime, default=func.now(), server_default=func.now(), nullable=False)
     updated_at = mapped_column(
         DateTime,
         default=func.now(),
         onupdate=func.now(),
+        server_default=func.now(),
         nullable=False
     )

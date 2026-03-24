@@ -97,6 +97,7 @@ class GameDetailCrawler:
         self,
         games: List[Dict[str, str]],
         concurrency: Optional[int] = None,
+        lightweight: bool = False,
     ) -> List[Dict[str, Any]]:
         if not games:
             return []
@@ -130,7 +131,7 @@ class GameDetailCrawler:
                         game_id = entry["game_id"]
                         game_date = entry["game_date"]
                         try:
-                            payload = await self._crawl_single(page, game_id, game_date)
+                            payload = await self._crawl_single(page, game_id, game_date, lightweight)
                             results[idx] = payload
                         except Exception as exc:  # pragma: no cover - resilience path
                             self._last_failure_reason[game_id] = "exception"
@@ -149,7 +150,7 @@ class GameDetailCrawler:
 
         return [payload for payload in results if payload]
 
-    async def _crawl_single(self, page: Page, game_id: str, game_date: str) -> Optional[Dict[str, Any]]:
+    async def _crawl_single(self, page: Page, game_id: str, game_date: str, lightweight: bool = False) -> Optional[Dict[str, Any]]:
         # 1. Navigate directly to REVIEW section with full URL params.
         #    This is the reliable approach — window.setGameDetail() requires
         #    the game card <li> to have class 'on' and doesn't accept a gameId
@@ -179,14 +180,18 @@ class GameDetailCrawler:
         # New: Extract Game Summary
         game_summary = await self._extract_game_summary(page)
 
-        hitters = {
-            'away': await self._extract_hitters(page, 'away', team_info['away']['code'], season_year, roster_map),
-            'home': await self._extract_hitters(page, 'home', team_info['home']['code'], season_year, roster_map),
-        }
-        pitchers = {
-            'away': await self._extract_pitchers(page, 'away', team_info['away']['code'], season_year, roster_map),
-            'home': await self._extract_pitchers(page, 'home', team_info['home']['code'], season_year, roster_map),
-        }
+        if lightweight:
+            hitters = {'away': [], 'home': []}
+            pitchers = {'away': [], 'home': []}
+        else:
+            hitters = {
+                'away': await self._extract_hitters(page, 'away', team_info['away']['code'], season_year, roster_map),
+                'home': await self._extract_hitters(page, 'home', team_info['home']['code'], season_year, roster_map),
+            }
+            pitchers = {
+                'away': await self._extract_pitchers(page, 'away', team_info['away']['code'], season_year, roster_map),
+                'home': await self._extract_pitchers(page, 'home', team_info['home']['code'], season_year, roster_map),
+            }
 
         game_data = {
             'game_id': game_id,
@@ -201,7 +206,8 @@ class GameDetailCrawler:
         }
 
         self._last_failure_reason.pop(game_id, None)
-        self._log_unresolved_player_ids(game_id, hitters, pitchers)
+        if not lightweight:
+            self._log_unresolved_player_ids(game_id, hitters, pitchers)
         return game_data
 
     async def _wait_for_boxscore(self, page: Page) -> tuple[bool, str]:
