@@ -170,6 +170,13 @@ async def run_update(target_date: str, sync: bool = False, headless: bool = True
         print(f"   ❌ Error during stats update: {exc}")
 
     print("\n✨ Local data update sequence finished.")
+    
+    print("\n📈 Step 4.5: Mathematically computing Standings & Games Behind...")
+    import sys, subprocess
+    try:
+        subprocess.run([sys.executable, "-m", "src.cli.calculate_standings", "--year", str(year)], check=True)
+    except Exception as exc:
+        print(f"   ❌ Error calculating standings: {exc}")
 
     # 5. Sync to OCI
     if sync:
@@ -177,6 +184,9 @@ async def run_update(target_date: str, sync: bool = False, headless: bool = True
         try:
             print("   🔗 Syncing Unsynced/Modified Game Details (Delta Sync)...")
             sync_main(["--game-details", "--unsynced-only"])
+            
+            print("   🔗 Syncing Daily Standings...")
+            sync_main(["--standings", "--year", str(year)])
 
             print("   🔗 Syncing Player Season Stats (Batch COPY)...")
             sync_main(["--season-stats"])

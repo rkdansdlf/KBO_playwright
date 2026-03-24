@@ -32,6 +32,12 @@ jobs:
           # Calculate KST date strictly matching the 23:55 trigger timezone
           echo "KST_DATE=$(TZ='Asia/Seoul' date +'%Y%m%d')" >> $GITHUB_ENV
 
+      - name: Initialize Database & Seed Metadata
+        run: |
+          # Ensure SQLite schemas and static FK references (Teams/Seasons) exist
+          python -c "from src.db.engine import init_db; init_db()"
+          python scripts/maintenance/seed_data.py
+
       - name: Run Daily Update & Sync
         env:
           OCI_DB_URL: ${{ secrets.OCI_DB_URL }}

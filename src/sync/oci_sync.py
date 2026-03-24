@@ -1253,6 +1253,29 @@ class OCISync:
             cursor.close()
             connection.close()
 
+    def sync_standings(self, year: int = None, days: int = None) -> int:
+        """Sync calculated daily standings snapshots to OCI"""
+        from src.models.standings import TeamStandingsDaily
+        from src.models.base import Base
+        print("📁 Ensure Standings table exists on OCI...")
+        Base.metadata.create_all(self.oci_engine) # Ensure table exists
+        
+        filters = []
+        if year:
+            from sqlalchemy import extract
+            filters.append(extract('year', TeamStandingsDaily.standings_date) == year)
+        if days:
+            from datetime import datetime, timedelta
+            since_date = (datetime.now() - timedelta(days=days)).date()
+            filters.append(TeamStandingsDaily.standings_date >= since_date)
+            
+        return self._sync_simple_table(
+            TeamStandingsDaily,
+            ['standings_date', 'team_code'],
+            exclude_cols=['created_at', 'id'],
+            filters=filters
+        )
+
     def sync_awards(self) -> int:
         """Sync awards from SQLite to OCI"""
         # Ensure table exists

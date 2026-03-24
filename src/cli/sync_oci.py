@@ -163,6 +163,11 @@ def build_arg_parser() -> argparse.ArgumentParser:
         type=int,
         help="특정 연도의 데이터를 동기화합니다. (e.g., 2018)",
     )
+    parser.add_argument(
+        "--standings",
+        action="store_true",
+        help="일별 팀 순위(Standings) 스냅샷 테이블을 고속 동기화합니다.",
+    )
     return parser
 
 
@@ -210,11 +215,15 @@ def main(argv: Iterable[str] | None = None) -> None:
         print("🚀 Syncing Franchises & Teams using specialized OCISync...")
         with SessionLocal() as session:
             syncer = OCISync(args.target_url, session)
-            syncer.sync_franchises()
-            syncer.sync_teams()
-            syncer.sync_team_history()
-            syncer.sync_team_history()
-            print("✅ Team Data Sync Finished")
+            synced = syncer.sync_teams()
+            print(f"✅ Franchises & Teams Sync Finished")
+
+    elif args.standings:
+        print("🚀 Syncing Daily Standings using specialized OCISync...")
+        with SessionLocal() as session:
+            syncer = OCISync(args.target_url, session)
+            synced = syncer.sync_standings(days=args.days, year=args.year)
+            print(f"✅ Daily Standings Sync Finished ({synced} rows)")
 
     elif args.awards:
         print("🚀 Syncing Awards using specialized OCISync...")

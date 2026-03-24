@@ -246,7 +246,7 @@ def _migrate_game_summary_table(conn):
 
 def init_db():
     from src.models.base import Base
-    from src.models import team, player, season, game, team_stats, rankings, crawl, award
+    from src.models import team, player, season, game, team_stats, rankings, crawl, award, standings
     Base.metadata.create_all(bind=Engine)
     _ensure_player_batting_team_code_column()
     _ensure_player_basic_status_columns()
