@@ -1,9 +1,13 @@
 
 import csv
 import os
+import sys
 from pathlib import Path
 from typing import Optional, Union
 from datetime import datetime
+
+# Ensure project root is on sys.path when run as a script
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
 
 from sqlalchemy.orm import Session
 
@@ -57,8 +61,8 @@ DEFAULT_TEAMS = [
 
 
 def get_project_root() -> Path:
-    """Get the project root directory."""
-    return Path(__file__).parent.resolve()
+    """Get the project root directory (2 levels up from scripts/maintenance/)."""
+    return Path(__file__).resolve().parent.parent.parent
 
 
 def to_int_or_none(value: str) -> Optional[int]:
@@ -137,36 +141,71 @@ def seed_teams(session: Session, csv_path: Union[str, Path]):
         _seed_default_teams(session)
 
 
+LEAGUE_TYPES = [
+    (0, "정규시즌"),
+    (1, "시범경기"),
+    (3, "포스트시즌"),
+    (4, "올스타전"),
+    (5, "퓨처스리그"),
+    (7, "WBC"),
+    (9, "프리미어12"),
+]
+
+
+def _seed_default_seasons(session: Session):
+    """Programmatically seed KBO season entries (1982-2030) using INSERT OR IGNORE."""
+    from sqlalchemy import text
+    count = 0
+    for year in range(1982, 2031):
+        for code, name in LEAGUE_TYPES:
+            sid = (year - 1982) * len(LEAGUE_TYPES) + code + 1
+            session.execute(text(
+                "INSERT OR IGNORE INTO kbo_seasons "
+                "(season_id, season_year, league_type_code, league_type_name, created_at, updated_at) "
+                "VALUES (:sid, :year, :code, :name, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)"
+            ), {"sid": sid, "year": year, "code": code, "name": name})
+            count += 1
+    session.commit()
+    print(f"   ✅ Upserted {count} default season entries.")
+
+
 def seed_kbo_seasons(session: Session, csv_path: Union[str, Path]):
-    """Seed the kbo_seasons table from a CSV file."""
+    """Seed the kbo_seasons table from a CSV file, with programmatic fallback."""
     print(f"\n🌱 Seeding KBO seasons from {csv_path}...")
-    with open(csv_path, "r", encoding="utf-8") as f:
-        reader = csv.DictReader(f)
-        seasons_to_add = []
-        for row in reader:
-            season_id = to_int_or_none(row.get("season_id") or row.get("필드명"))
-            if not season_id:
-                continue
+    csv_path = Path(csv_path)
+    seasons_to_add = []
 
-            exists = session.query(KboSeason).filter_by(season_id=season_id).first()
-            if exists:
-                print(f"  - Skipping existing season: {season_id}")
-                continue
+    if csv_path.exists():
+        with open(csv_path, "r", encoding="utf-8") as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                season_id = to_int_or_none(row.get("season_id") or row.get("필드명"))
+                if not season_id:
+                    continue
 
-            season = KboSeason(
-                season_id=season_id,
-                season_year=to_int_or_none(row.get("season_year") or row.get("시즌 연도")),
-                league_type_code=to_int_or_none(row.get("league_type_code") or row.get("시즌 종류 코드")),
-                league_type_name=row.get("league_type_name") or row.get("시즌 종류 이름"),
-                start_date=to_date_or_none(row.get("start_date") or row.get("시즌 시작일")),
-                end_date=to_date_or_none(row.get("end_date") or row.get("시즌 종료일")),
-            )
-            seasons_to_add.append(season)
+                exists = session.query(KboSeason).filter_by(season_id=season_id).first()
+                if exists:
+                    continue
+
+                season = KboSeason(
+                    season_id=season_id,
+                    season_year=to_int_or_none(row.get("season_year") or row.get("시즌 연도")),
+                    league_type_code=to_int_or_none(row.get("league_type_code") or row.get("시즌 종류 코드")),
+                    league_type_name=row.get("league_type_name") or row.get("시즌 종류 이름"),
+                    start_date=to_date_or_none(row.get("start_date") or row.get("시즌 시작일")),
+                    end_date=to_date_or_none(row.get("end_date") or row.get("시즌 종료일")),
+                )
+                seasons_to_add.append(season)
+    else:
+        print(f"⚠️  Seasons CSV not found: {csv_path}. Generating defaults...")
+        _seed_default_seasons(session)
+        return
 
     if seasons_to_add:
-        session.add_all(seasons_to_add)
+        for s in seasons_to_add:
+            session.merge(s)
         session.commit()
-        print(f"✅ Added {len(seasons_to_add)} new seasons.")
+        print(f"✅ Upserted {len(seasons_to_add)} seasons.")
     else:
         print("✅ No new seasons to add.")
 
