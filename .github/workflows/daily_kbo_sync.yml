@@ -10,6 +10,8 @@ on:
 jobs:
   daily-sync:
     runs-on: ubuntu-latest
+    env:
+      PYTHONPATH: ${{ github.workspace }}
     
     steps:
       - name: Checkout Code
