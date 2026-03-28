@@ -90,67 +90,61 @@ class ScheduleCrawler:
 
 
     async def _crawl_month(self, page: Page, year: int, month: int, series_id: str = None) -> List[Dict]:
-        """특정 월의 경기 일정 페이지에 접속하여 게임 정보를 추출합니다."""
-        # 기본 페이지로 이동 (파라미터 없이)
+        """특정 월의 경기 일정 페이지에서 정보를 추출합니다.
+        series_id가 지정되지 않은 경우 전 시리즈(시범/정규/포스트)를 순회합니다.
+        """
         if page.url != self.base_url:
             if not await compliance.is_allowed(self.base_url):
                 print(f"[COMPLIANCE] Navigation to {self.base_url} aborted.")
                 return []
             await page.goto(self.base_url, wait_until="networkidle", timeout=30000)
         
-        print(f"[NAV] Selecting Year: {year}, Month: {month}, Series: {series_id}")
-
-        # 1. 연도 선택
-        # Check if year is already selected
-        current_year = await page.eval_on_selector('#ddlYear', 'el => el.value')
-        if current_year != str(year):
-            # Check if option exists
-            has_year = await page.eval_on_selector(f'#ddlYear option[value="{year}"]', 'e => !!e')
-            if not has_year:
-                print(f"[WARN] Year {year} not found in dropdown options.")
-                return []
-                
-            await page.select_option('#ddlYear', str(year))
-            # Year change triggers postback
-            try:
-                await page.wait_for_load_state("networkidle", timeout=5000)
-                await page.wait_for_timeout(1000) # Safety wait for JS re-init
-            except:
-                pass
-
-        # 2. 월 선택 
-        current_month = await page.eval_on_selector('#ddlMonth', 'el => el.value')
-        target_month_str = f"{month:02d}"
+        # 1. 연도 및 월 선택 (Postback 발생 가능)
+        await self._select_year_month(page, year, month)
         
-        if current_month != target_month_str:
-            await page.select_option('#ddlMonth', target_month_str)
+        # 2. 시리즈 목록 확인
+        all_series_options = await page.eval_on_selector_all(
+            '#ddlSeries option', 
+            'elements => elements.map(el => ({text: el.innerText, value: el.value}))'
+        )
+        
+        target_series = [series_id] if series_id else [opt['value'] for opt in all_series_options if opt['value']]
+        
+        all_games = []
+        seen_game_ids = set()
+        
+        for sid in target_series:
+            print(f"[NAV] Selecting Series: {sid} for {year}-{month:02d}")
             try:
+                await page.select_option('#ddlSeries', sid)
                 await page.wait_for_load_state("networkidle", timeout=5000)
                 await page.wait_for_timeout(500)
-            except:
-                pass
-            
-        # 3. 리그(Series) 선택 (옵션이 있는 경우에만)
-        if series_id:
-            try:
-                # 해당 값이 옵션에 있는지 확인
-                option_exists = await page.eval_on_selector(f'#ddlSeries option[value="{series_id}"]', 'e => !!e')
-                if option_exists:
-                    await page.select_option('#ddlSeries', series_id)
-                    # 시리즈 선택 -> 포스트백
-                    try:
-                        await page.wait_for_timeout(500)
-                        await page.wait_for_load_state("networkidle", timeout=5000)
-                    except:
-                        pass
-                else:
-                    print(f"[WARN] Series option '{series_id}' not found for {year}-{month:02d}. Skipping series selection.")
+                
+                month_games = await self._extract_games(page, year, month)
+                for g in month_games:
+                    gid = g.get('game_id')
+                    if gid and gid not in seen_game_ids:
+                        all_games.append(g)
+                        seen_game_ids.add(gid)
             except Exception as e:
-                print(f"[WARN] Error selecting series {series_id}: {e}")
+                print(f"[WARN] Error crawling series {sid}: {e}")
+                
+        return all_games
 
-        await asyncio.sleep(self.request_delay)
-        
-        return await self._extract_games(page, year, month)
+    async def _select_year_month(self, page: Page, year: int, month: int):
+        """연도와 월 드롭다운을 선택하고 페이지 갱신을 기다립니다."""
+        current_year = await page.eval_on_selector('#ddlYear', 'el => el.value')
+        if current_year != str(year):
+            await page.select_option('#ddlYear', str(year))
+            await page.wait_for_load_state("networkidle", timeout=5000)
+            await page.wait_for_timeout(500)
+            
+        current_month = await page.eval_on_selector('#ddlMonth', 'el => el.value')
+        target_month_str = f"{month:02d}"
+        if current_month != target_month_str:
+            await page.select_option('#ddlMonth', target_month_str)
+            await page.wait_for_load_state("networkidle", timeout=5000)
+            await page.wait_for_timeout(500)
 
     async def _extract_games(self, page: Page, year: int, month: int) -> List[Dict]:
         """페이지에서 경기 관련 데이터를 추출합니다. (JS Fast Path)
