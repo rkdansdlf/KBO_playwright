@@ -5,7 +5,11 @@ on:
     # Runs at 14:55 UTC which is 23:55 KST (Korean Standard Time) every day
     - cron: '55 14 * * *'
   workflow_dispatch:
-    # Allows manual trigger from the GitHub Actions UI
+    inputs:
+      target_date:
+        description: 'Target date to crawl (YYYYMMDD). Defaults to Today KST.'
+        required: false
+        default: ''
 
 jobs:
   daily-sync:
@@ -31,8 +35,11 @@ jobs:
       - name: Get current date in KST
         id: date
         run: |
-          # Calculate KST date strictly matching the 23:55 trigger timezone
-          echo "KST_DATE=$(TZ='Asia/Seoul' date +'%Y%m%d')" >> $GITHUB_ENV
+          if [ "${{ github.event.inputs.target_date }}" != "" ]; then
+            echo "KST_DATE=${{ github.event.inputs.target_date }}" >> $GITHUB_ENV
+          else
+            echo "KST_DATE=$(TZ='Asia/Seoul' date +'%Y%m%d')" >> $GITHUB_ENV
+          fi
 
       - name: Initialize Database & Seed Metadata
         run: |
