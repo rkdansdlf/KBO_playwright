@@ -415,30 +415,24 @@ def parse_basic1_page(
     pitchers: Dict[int, PitcherStats],
     max_players: Optional[int] = None,
 ) -> int:
+    # Wait for the table headers to be visible
+    try:
+        page.wait_for_selector("table.tData01.tt thead th", timeout=10000)
+    except PlaywrightTimeout:
+        print("   ⚠️  기록 테이블 헤더를 찾을 수 없습니다. (타임아웃)")
+        return 0
+
     headers = [normalize_header(th.inner_text()) for th in page.query_selector_all("table.tData01.tt thead th")]
     header_index = {name: idx for idx, name in enumerate(headers)}
-    team_mapping = get_team_mapping_for_year(season)
-    use_fast = os.getenv("KBO_FAST_PARSE", "1") != "0"
-
+    
     core_headers = ["선수명", "팀명", "IP", "G", "ERA"]
     missing_core = [h for h in core_headers if h not in header_index]
     if missing_core:
-        print(f"⚠️  Basic1 테이블 헤더에 필수 컬럼이 없습니다: {', '.join(missing_core)}")
-        print("   헤더 목록:", headers)
+        print(f"   ⚠️  Basic1 테이블 헤더에 필수 컬럼이 없습니다: {', '.join(missing_core)}")
+        print(f"   현재 헤더: {headers}")
         return 0
 
-    rows_data = _extract_rows_fast(page) if use_fast else None
-    rows = rows_data if rows_data is not None else page.query_selector_all("table.tData01.tt tbody tr")
-    processed = 0
-
-    for row in rows:
-        if rows_data is not None:
-            cells = row.get("cells") or []
-            if len(cells) < len(headers):
-                continue
-    """
-    Basic1 Page Parsing with JS Fast Path
-    """
+    # JavaScript Payload Extraction (Unified and robust)
     
     # JavaScript Payload Extraction
     extraction_script = """

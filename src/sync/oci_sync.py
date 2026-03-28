@@ -756,7 +756,9 @@ class OCISync:
             return data
 
         # Exclude columns that don't exist on OCI side
-        exclude_cols = ['created_at', 'updated_at', 'home_franchise_id', 'away_franchise_id', 'winning_franchise_id']
+        # We must exclude 'id' to avoid PK conflicts, as SQLite and OCI use different surrogate ID sequences.
+        # Business key for deduplication/upsert is 'game_id'.
+        exclude_cols = ['id', 'created_at', 'updated_at', 'home_franchise_id', 'away_franchise_id', 'winning_franchise_id']
         
         return self._sync_simple_table(
             Game, 
