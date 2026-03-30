@@ -10,12 +10,13 @@ This repository is a Playwright-based KBO data crawler with a two-track pipeline
 - `data/`, `logs/`: Local SQLite DB and runtime logs.
 
 ## Build, Test, and Development Commands
-- `pip install -r requirements.txt`: Install Python dependencies.
+- `python3 -m venv venv && source venv/bin/activate`: Create and activate virtual environment.
+- `pip3 install -r requirements.txt`: Install Python dependencies.
 - `playwright install chromium`: Install Playwright browser binaries.
-- `python -m src.cli.crawl_schedule --year 2025 --month 3`: Crawl schedule data.
-- `python -m src.cli.crawl_game_details --date 20241015` or `python -m src.cli.collect_games --year 2024 --month 10`: Collect game details.
-- `python -m src.cli.crawl_futures --season 2025 --concurrency 3`: Crawl Futures stats.
-- `python -m src.cli.sync_oci --truncate`: Sync local SQLite to OCI.
+- `python3 -m src.cli.crawl_schedule --year 2025 --month 3`: Crawl schedule data.
+- `python3 -m src.cli.crawl_game_details --date 20241015` or `python3 -m src.cli.collect_games --year 2024 --month 10`: Collect game details.
+- `python3 -m src.cli.crawl_futures --season 2025 --concurrency 3`: Crawl Futures stats.
+- `python3 -m src.cli.sync_oci --truncate`: Sync local SQLite to OCI.
 - `pytest`: Run the test suite.
 
 ## Coding Style & Naming Conventions

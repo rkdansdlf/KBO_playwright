@@ -3,8 +3,8 @@ Integrated KBO Data Collection Pipeline
 Collects player IDs and game IDs, then stores them in database
 
 Usage:
-    python crawl_and_save.py              # Default: Collect current season data
-    python crawl_and_save.py --season 2024 --year 2025 --months 3,4,5
+    python3 crawl_and_save.py              # Default: Collect current season data
+    python3 crawl_and_save.py --season 2024 --year 2025 --months 3,4,5
 """
 import asyncio
 import argparse
