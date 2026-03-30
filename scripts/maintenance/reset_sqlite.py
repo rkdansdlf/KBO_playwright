@@ -204,10 +204,10 @@ def main():
             print("  --tables T1 T2 : 특정 테이블만")
             print("  --force        : 확인 없이 실행")
             print("\n예시:")
-            print("  python reset_sqlite.py --all")
-            print("  python reset_sqlite.py --year 2025")
-            print("  python reset_sqlite.py --range 2020 2025")
-            print("  python reset_sqlite.py --all --tables player_season_batting")
+            print("  python3 reset_sqlite.py --all")
+            print("  python3 reset_sqlite.py --year 2025")
+            print("  python3 reset_sqlite.py --range 2020 2025")
+            print("  python3 reset_sqlite.py --all --tables player_season_batting")
             
     except KeyboardInterrupt:
         print("\n❌ 사용자가 중단했습니다.")

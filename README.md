@@ -44,7 +44,7 @@ cp .env.example .env
 Create the database schema from the defined models.
 
 ```bash
-python -m src.db.engine
+python3 -m src.db.engine
 ```
 
 ### 3. Run a Test Crawl
@@ -53,7 +53,7 @@ Execute the initial data collection script to test the full pipeline.
 
 ```bash
 # This script runs the main crawling steps in order
-python init_data_collection.py
+python3 init_data_collection.py
 ```
 
 This will:
@@ -68,28 +68,28 @@ You can run specific parts of the crawling pipeline using the CLI scripts.
 
 ```bash
 # Operational daily entrypoint (recommended)
-python -m src.cli.run_daily_update --date 20251015
+python3 -m src.cli.run_daily_update --date 20251015
 
 # Crawl and persist monthly schedule
-python -m src.cli.crawl_schedule --year 2025 --months 10
+python3 -m src.cli.crawl_schedule --year 2025 --months 10
 
 # Crawl Futures League stats
-python -m src.cli.crawl_futures
+python3 -m src.cli.crawl_futures
 
 # Crawl retired player data
-python -m src.cli.crawl_retire --years 2023
+python3 -m src.cli.crawl_retire --years 2023
 ```
 
 ### Database Operations
 
 ```bash
 # Check database connection
-python -m src.cli.db_healthcheck
+python3 -m src.cli.db_healthcheck
 
 # Seed tables (teams + seasons). CSV rows with schema headers are skipped
 # automatically; if the CSV lacks data, a built-in 22-team fallback list
 # is merged so team FKs stay valid without manual SQL.
-python seed_data.py
+python3 seed_data.py
 
 # NOTE: teams is treated as a semi-static reference table. Supabase still has
 # legacy tables (e.g., team_history) referencing it, so `sync_supabase.py`
@@ -97,7 +97,7 @@ python seed_data.py
 
 # Sync local SQLite data to a remote Postgres/Supabase DB
 # Ensure TARGET_DATABASE_URL is set in your .env file
-python -m src.cli.sync_supabase --truncate
+python3 -m src.cli.sync_supabase --truncate
 ```
 
 ### Docker Deployment
