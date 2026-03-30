@@ -142,7 +142,10 @@ def _build_batting_data(
     team_code: str,
     series_key: str,
     is_basic2: bool,
+    year: int = 2026,
 ) -> Dict:
+    series_map = get_series_mapping()
+    league_name = series_map.get(series_key, {}).get("league", "REGULAR")
     def cell(idx: int) -> Optional[str]:
         return cells[idx] if len(cells) > idx else None
 
@@ -152,6 +155,8 @@ def _build_batting_data(
                 "player_id": player_id,
                 "player_name": player_name,
                 "team_code": team_code,
+                "season": year,
+                "league": league_name,
                 "avg": safe_parse_number(cell(3), float),
                 "walks": safe_parse_number(cell(4), int),
                 "intentional_walks": safe_parse_number(cell(5), int),
@@ -171,6 +176,8 @@ def _build_batting_data(
             "player_id": player_id,
             "player_name": player_name,
             "team_code": team_code,
+            "season": year,
+            "league": league_name,
             "avg": safe_parse_number(cell(3), float),
             "games": safe_parse_number(cell(4), int),
             "plate_appearances": safe_parse_number(cell(5), int),
@@ -190,6 +197,8 @@ def _build_batting_data(
         "player_id": player_id,
         "player_name": player_name,
         "team_code": team_code,
+        "season": year,
+        "league": league_name,
         "avg": safe_parse_number(cell(3), float),
         "games": safe_parse_number(cell(4), int),
         "plate_appearances": safe_parse_number(cell(5), int),
@@ -217,7 +226,9 @@ def _parse_batting_stats_table_fast(page: Page, series_key: str, year: int = 202
 
     extraction_script = """
     () => {
-        const rows = document.querySelectorAll('table tbody tr');
+        const table = document.querySelector('table.tData01.tt');
+        if (!table) return null;
+        const rows = table.querySelectorAll('tbody tr');
         if (rows.length === 0) return null;
 
         const headers = Array.from(document.querySelectorAll('table thead th')).map(th => th.innerText.trim());
@@ -274,6 +285,7 @@ def _parse_batting_stats_table_fast(page: Page, series_key: str, year: int = 202
                 team_code=team_code,
                 series_key=series_key,
                 is_basic2=is_basic2,
+                year=year,
             )
             players_data.append(batting_data)
 
@@ -326,6 +338,7 @@ def _parse_batting_stats_table_legacy(page: Page, series_key: str, year: int = 2
                 team_code=team_code,
                 series_key=series_key,
                 is_basic2=is_basic2,
+                year=year,
             )
             players_data.append(batting_data)
 
@@ -456,8 +469,8 @@ def crawl_basic2_with_headers(page: Page, year: int, series_info: dict) -> Dict[
                     if next_link: break
             
             if next_link:
-                print(f"   🔗 'Basic2' 다음 링크 클릭...")
-                next_link.click()
+                print(f"   🔗 'Basic2' 다음 링크 클릭 (robust)...")
+                page.click(next_link_selector)
                 page.wait_for_load_state('networkidle', timeout=30000)
                 time.sleep(3)
                 
@@ -818,6 +831,7 @@ def crawl_series_batting_stats(year: int = 2025, series_key: str = 'regular',
 
             # 팀별 순회 로직
             team_options = []
+            page_num = 1
             if by_team:
                 try:
                     team_selector = 'select[name="ctl00$ctl00$ctl00$cphContents$cphContents$cphContents$ddlTeam$ddlTeam"]'
@@ -830,6 +844,7 @@ def crawl_series_batting_stats(year: int = 2025, series_key: str = 'regular',
 
             # 순회 대상 설정 (팀 옵션이 있으면 팀별, 없으면 전체 1회)
             iteration_targets = team_options if team_options else [{'value': '', 'text': '전체'}]
+            total_collected = 0
 
             for tm in iteration_targets:
                 if team_options: # 팀 선택 모드면 팀 선택
@@ -852,34 +867,35 @@ def crawl_series_batting_stats(year: int = 2025, series_key: str = 'regular',
                 else:
                     print("⚠️ 타석 정렬 버튼을 찾을 수 없습니다.")
 
-                if limit and total_collected >= limit:
-                    print(f"🎯 목표 수({limit}명) 달성. 수집 중단.")
-                    all_players_data = all_players_data[:limit]
-                    break
-                
-                # 페이징 구조 디버깅 (첫 번째 페이지에서만)
-                if page_num == 1:
-                    print("🔍 페이징 구조 디버깅:")
-                    # 페이징 관련 요소들 찾기
-                    pager_elements = page.query_selector_all("*[class*='pag'], *[id*='pag'], *[class*='Pag'], a[href*='Page'], a[onclick*='Page']")
-                    for i, elem in enumerate(pager_elements[:10]):  # 처음 10개만
-                        try:
-                            tag_name = elem.evaluate("el => el.tagName")
-                            class_name = elem.get_attribute("class") or ""
-                            href = elem.get_attribute("href") or ""
-                            onclick = elem.get_attribute("onclick") or ""
-                            text = elem.inner_text().strip() or ""
-                            print(f"   [{i}] {tag_name}: class='{class_name}', href='{href}', onclick='{onclick}', text='{text}'")
-                        except:
-                            pass
-                
-                # 다음 페이지로 이동
-                if not go_to_next_page(page, page_num):
-                    print(f"📄 마지막 페이지에 도달했습니다.")
-                    break
-                
-                page_num += 1
-                time.sleep(1)  # 서버 부하 방지
+                while True:
+                    # 현재 페이지 데이터 파싱
+                    current_page_data = parse_batting_stats_table(page, series_key, year)
+                    
+                    for player_stat in current_page_data:
+                        pid = player_stat['player_id']
+                        if pid not in unique_players:
+                            unique_players.add(pid)
+                            all_players_data.append(player_stat)
+                            total_collected += 1
+                        else:
+                            # 이미 존재하면 업데이트
+                            for i, p in enumerate(all_players_data):
+                                if p['player_id'] == pid:
+                                    all_players_data[i].update(player_stat)
+                                    break
+                    
+                    print(f"   ▶ {page_num}페이지: {len(current_page_data)}명 처리 (누적 {total_collected}명)")
+
+                    if limit and total_collected >= limit:
+                        print(f"🎯 목표 수({limit}명) 달성. 수집 중단.")
+                        break
+
+                    # 다음 페이지로 이동
+                    if not go_to_next_page(page, page_num):
+                        break
+                    
+                    page_num += 1
+                    time.sleep(1)
 
             # 정규시즌인 경우 Basic2 페이지에서 추가 데이터 수집
             if series_key == 'regular' and all_players_data:

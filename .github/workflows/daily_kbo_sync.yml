@@ -44,12 +44,12 @@ jobs:
       - name: Initialize Database & Seed Metadata
         run: |
           # Ensure SQLite schemas and static FK references (Teams/Seasons) exist
-          python -c "from src.db.engine import init_db; init_db()"
-          python scripts/maintenance/seed_data.py
+          python3 -c "from src.db.engine import init_db; init_db()"
+          python3 scripts/maintenance/seed_data.py
 
       - name: Run Daily Update & Sync
         env:
           OCI_DB_URL: ${{ secrets.OCI_DB_URL }}
         run: |
           # Executes the optimized smart delta sync pipeline using today's KST date
-          python -m src.cli.run_daily_update --date ${{ env.KST_DATE }} --sync
+          python3 -m src.cli.run_daily_update --date ${{ env.KST_DATE }} --sync

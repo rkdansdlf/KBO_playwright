@@ -417,12 +417,22 @@ def parse_basic1_page(
 ) -> int:
     # Wait for the table headers to be visible
     try:
-        page.wait_for_selector("table.tData01.tt thead th", timeout=10000)
+        page.wait_for_selector("table.tData01.tt thead th", timeout=15000)
     except PlaywrightTimeout:
         print("   ⚠️  기록 테이블 헤더를 찾을 수 없습니다. (타임아웃)")
         return 0
 
-    headers = [normalize_header(th.inner_text()) for th in page.query_selector_all("table.tData01.tt thead th")]
+    # Small stability delay to ensure AJAX completion if any
+    page.wait_for_timeout(1500)
+
+    # Use evaluate for atomic header extraction
+    headers = page.evaluate("""
+        () => {
+            const ths = document.querySelectorAll('table.tData01.tt thead th');
+            return Array.from(ths).map(th => th.innerText.trim());
+        }
+    """)
+    headers = [normalize_header(h) for h in headers]
     header_index = {name: idx for idx, name in enumerate(headers)}
     
     core_headers = ["선수명", "팀명", "IP", "G", "ERA"]
@@ -430,7 +440,19 @@ def parse_basic1_page(
     if missing_core:
         print(f"   ⚠️  Basic1 테이블 헤더에 필수 컬럼이 없습니다: {', '.join(missing_core)}")
         print(f"   현재 헤더: {headers}")
-        return 0
+        # If headers are still empty, try a more lenient selector
+        if not headers:
+            print("   🔍 Lenient header check (tData01)...")
+            headers = page.evaluate("""
+                () => Array.from(document.querySelectorAll('table.tData01 thead th')).map(th => th.innerText.trim())
+            """)
+            print(f"   Lenient headers: {headers}")
+            headers = [normalize_header(h) for h in headers]
+            header_index = {name: idx for idx, name in enumerate(headers)}
+            missing_core = [h for h in core_headers if h not in header_index]
+            if missing_core: return 0
+        else:
+            return 0
 
     # JavaScript Payload Extraction (Unified and robust)
     
@@ -690,9 +712,9 @@ def setup_pitcher_page(page: Page, url: str, year: int, series_value: str, polic
         page.select_option(season_selector, str(year))
         page.wait_for_timeout(300)
         page.select_option(series_selector, value=series_value)
-        page.wait_for_timeout(500)
+        page.wait_for_timeout(1500)
         page.wait_for_load_state("networkidle", timeout=60000)
-        page.wait_for_timeout(500)
+        page.wait_for_timeout(1000)
         return True
     except PlaywrightTimeout:
         return False

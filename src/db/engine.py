@@ -226,6 +226,7 @@ def _migrate_game_summary_table(conn):
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             game_id VARCHAR(20) NOT NULL,
             summary_type VARCHAR(50),
+            player_id INTEGER,
             player_name VARCHAR(50),
             detail_text TEXT,
             created_at DATETIME NOT NULL,
@@ -234,10 +235,11 @@ def _migrate_game_summary_table(conn):
         );
         """
     )
+    has_player_id = "player_id" in column_names
     conn.exec_driver_sql(
         f"""
-        INSERT INTO game_summary (id, game_id, summary_type, player_name, detail_text, created_at, updated_at)
-        SELECT id, game_id, {select_summary}, player_name, {select_detail}, created_at, updated_at
+        INSERT INTO game_summary (id, game_id, summary_type, player_id, player_name, detail_text, created_at, updated_at)
+        SELECT id, game_id, {select_summary}, {"player_id" if has_player_id else "NULL"}, player_name, {select_detail}, created_at, updated_at
         FROM game_summary_old;
         """
     )

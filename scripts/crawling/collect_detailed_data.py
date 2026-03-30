@@ -9,9 +9,9 @@ This script:
 5. Syncs to Supabase
 
 Usage:
-    python collect_detailed_data.py --players --limit 10
-    python collect_detailed_data.py --games --limit 5
-    python collect_detailed_data.py --all --limit 10
+    python3 collect_detailed_data.py --players --limit 10
+    python3 collect_detailed_data.py --games --limit 5
+    python3 collect_detailed_data.py --all --limit 10
 """
 import asyncio
 import argparse
