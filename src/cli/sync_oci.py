@@ -251,6 +251,13 @@ def main(argv: Iterable[str] | None = None) -> None:
     else:
         sync_databases(args.source_url, args.target_url, truncate=args.truncate)
 
+    print("\n🚀 Resetting Sequence Identifiers on Target DB...")
+    try:
+        from scripts.maintenance.reset_oci_sequences import reset_sequences
+        reset_sequences(args.target_url)
+    except Exception as e:
+        print(f"⚠️ Failed to call reset_sequences: {e}")
+
 
 if __name__ == "__main__":  # pragma: no cover
     main()

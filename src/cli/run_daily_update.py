@@ -142,6 +142,15 @@ async def run_update(target_date: str, sync: bool = False, headless: bool = True
         f"counts={status_result.get('status_counts', {})}"
     )
 
+    # 3.5. Post-game Context Generation (Review)
+    print("\n📝 Step 3.5: Generating Post-game Review Contexts (WPA)...")
+    import subprocess
+    try:
+        subprocess.run([sys.executable, "-m", "src.cli.daily_review_batch", "--date", target_date], check=True)
+        print("   ✅ Review context generation complete")
+    except Exception as exc:
+        print(f"   ❌ Error generating review context: {exc}")
+
     # 4. Cumulative Stats Update (Standard Seasonal Stats)
     print("\n📈 Step 4: Updating cumulative player stats (Current Season)...")
     try:
@@ -197,6 +206,15 @@ async def run_update(target_date: str, sync: bool = False, headless: bool = True
             print("   ✅ OCI synchronization completed")
         except Exception as exc:
             print(f"   ❌ Error during OCI sync: {exc}")
+
+    # 6. Pre-game Context Generation for Tomorrow
+    tomorrow_date = (datetime.strptime(target_date, "%Y%m%d") + timedelta(days=1)).strftime("%Y%m%d")
+    print(f"\n🔮 Step 6: Generating Pre-game Preview Contexts for tomorrow ({tomorrow_date})...")
+    try:
+        subprocess.run([sys.executable, "-m", "src.cli.daily_preview_batch", "--date", tomorrow_date], check=True)
+        print("   ✅ Preview context generation complete")
+    except Exception as exc:
+        print(f"   ❌ Error generating preview context: {exc}")
 
     print(f"\n{'='*60}")
     print(f"🏁 Daily Update Finished for {target_date}")
