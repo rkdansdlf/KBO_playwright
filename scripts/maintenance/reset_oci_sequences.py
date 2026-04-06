@@ -5,9 +5,10 @@ from sqlalchemy import text
 from src.db.engine import create_engine_for_url
 from dotenv import load_dotenv
 
-def reset_sequences():
-    load_dotenv()
-    target_url = os.getenv("OCI_DB_URL")
+def reset_sequences(target_url=None):
+    if not target_url:
+        load_dotenv()
+        target_url = os.getenv("OCI_DB_URL")
     if not target_url:
         print("❌ OCI_DB_URL not found")
         return
