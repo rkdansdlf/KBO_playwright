@@ -42,7 +42,7 @@ from src.utils.compliance import compliance
 BASIC1_URL = "https://www.koreabaseball.com/Record/Player/PitcherBasic/Basic1.aspx"
 BASIC2_URL = "https://www.koreabaseball.com/Record/Player/PitcherBasic/Basic2.aspx"
 
-BASIC1_SORT_CODE = "IP_CN"  # 'IP' (이닝) 헤더
+BASIC1_SORT_CODE = "G_CN"  # 'G' (경기) 헤더
 
 # 정규시즌 Basic2에서는 NP(투구수)만 수집
 BASIC2_SORT_SEQUENCE = [
@@ -83,8 +83,8 @@ SERIES_MAPPING: Dict[str, Dict[str, str]] = {
 }
 
 PRIMARY_SORT_CONFIG = {
-    "regular": {"label": "IP", "sort_code": "IP_CN"},
-    "default": {"label": "IP", "sort_code": "IP_CN"},
+    "regular": {"label": "G", "sort_code": "G_CN"},
+    "default": {"label": "G", "sort_code": "G_CN"},
 }
 
 # ---------------------------------------------------------------------------
