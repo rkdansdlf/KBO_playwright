@@ -9,6 +9,7 @@ from sqlalchemy import text, func, or_, and_, desc
 from datetime import datetime, date
 
 from src.models.game import Game, GameEvent, GameBattingStat, GamePitchingStat
+from src.models.player import PlayerSeasonPitching
 from src.models.season import KboSeason
 
 class ContextAggregator:
@@ -208,4 +209,31 @@ class ContextAggregator:
             "b_wins": b_wins,
             "draws": draws,
             "series_text": f"시리즈 성적: {a_wins}승 {b_wins}패 {draws}무"
+        }
+
+    def get_pitcher_season_stats(self, player_id: int, season_year: int) -> Optional[Dict[str, Any]]:
+        """선발 투수의 해당 시즌 성적 조회"""
+        if not player_id:
+            return None
+            
+        stats = self.session.query(PlayerSeasonPitching).filter(
+            PlayerSeasonPitching.player_id == player_id,
+            PlayerSeasonPitching.season == season_year,
+            PlayerSeasonPitching.league == 'REGULAR'
+        ).first()
+        
+        if not stats:
+            return None
+            
+        return {
+            "player_id": player_id,
+            "season": season_year,
+            "era": stats.era,
+            "wins": stats.wins,
+            "losses": stats.losses,
+            "saves": stats.saves,
+            "holds": stats.holds,
+            "games": stats.games,
+            "innings": stats.innings_pitched,
+            "summary_text": f"{stats.wins}승 {stats.losses}패 {stats.era}ERA"
         }
