@@ -149,9 +149,26 @@ class ContextAggregator:
 
         era = round((pitching.er * 27) / pitching.outs, 2) if pitching and pitching.outs else 0
 
+        # 불펜 평균자책점(ERA) 및 이닝당 출루허용률(WHIP) 계산
+        bullpen = self.session.query(
+            func.sum(GamePitchingStat.earned_runs).label('er'),
+            func.sum(GamePitchingStat.hits_allowed).label('hits'),
+            func.sum(GamePitchingStat.walks_allowed).label('walks'),
+            func.sum(GamePitchingStat.innings_outs).label('outs')
+        ).filter(
+            GamePitchingStat.game_id.in_(game_ids),
+            GamePitchingStat.team_code == team_code,
+            GamePitchingStat.is_starting == False
+        ).first()
+
+        bp_era = round((bullpen.er * 27) / bullpen.outs, 2) if bullpen and bullpen.outs else 0
+        bp_whip = round(((bullpen.hits or 0) + (bullpen.walks or 0)) * 3 / bullpen.outs, 2) if bullpen and bullpen.outs else 0
+
         return {
             "avg": avg,
             "era": era,
+            "bullpen_era": bp_era,
+            "bullpen_whip": bp_whip,
             "sample_games": len(game_ids)
         }
 

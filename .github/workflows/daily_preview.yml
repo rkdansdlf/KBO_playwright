@@ -1,0 +1,50 @@
+name: Daily Pre-game Preview Generator
+
+on:
+  schedule:
+    # Runs at 08:00 UTC which is 17:00 KST (Korean Standard Time) every day
+    # Typically 1~1.5 hours before evening games (18:30 KST) to fetch starting lineups
+    - cron: '0 8 * * *'
+  workflow_dispatch:
+    inputs:
+      target_date:
+        description: 'Target date to generate preview (YYYYMMDD). Defaults to Today KST.'
+        required: false
+        default: ''
+
+jobs:
+  generate-preview:
+    runs-on: ubuntu-latest
+    env:
+      PYTHONPATH: ${{ github.workspace }}
+    
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.10
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          playwright install chromium
+
+      - name: Get current date in KST
+        id: date
+        run: |
+          if [ "${{ github.event.inputs.target_date }}" != "" ]; then
+            echo "KST_DATE=${{ github.event.inputs.target_date }}" >> $GITHUB_ENV
+          else
+            echo "KST_DATE=$(TZ='Asia/Seoul' date +'%Y%m%d')" >> $GITHUB_ENV
+          fi
+
+      - name: Run Daily Preview Batch
+        env:
+          OCI_DB_URL: ${{ secrets.OCI_DB_URL }}
+        run: |
+          echo "Generating pre-game context for ${KST_DATE}..."
+          python3 -m src.cli.daily_preview_batch --date ${{ env.KST_DATE }}
