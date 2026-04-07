@@ -54,6 +54,14 @@ async def run_preview_batch(target_date: str):
                 if series_context:
                     preview['series_context'] = series_context
 
+            # Fetch Starting Pitcher Season Stats
+            away_starter_id = preview.get('away_starter_id')
+            home_starter_id = preview.get('home_starter_id')
+            if away_starter_id:
+                preview['away_starter_stats'] = agg.get_pitcher_season_stats(away_starter_id, season_year)
+            if home_starter_id:
+                preview['home_starter_stats'] = agg.get_pitcher_season_stats(home_starter_id, season_year)
+
             # Convert dict to JSON string for storage
             preview_json = json.dumps(preview, ensure_ascii=False)
             
