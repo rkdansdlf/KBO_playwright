@@ -9,7 +9,8 @@ import json
 from datetime import datetime
 
 from src.db.engine import SessionLocal
-from src.models.game import Game, GameSummary, PlayerBasic
+from src.models.game import Game, GameSummary
+from src.models.player import PlayerBasic
 from src.services.context_aggregator import ContextAggregator
 from src.utils.safe_print import safe_print as print
 

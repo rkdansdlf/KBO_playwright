@@ -67,14 +67,22 @@ class PreviewCrawler:
                 home_team_name = g.get('HOME_NM', '')
                 away_starter = g.get('T_PIT_P_NM', '').strip()
                 home_starter = g.get('B_PIT_P_NM', '').strip()
+                away_starter_id = g.get('T_PIT_P_ID')
+                home_starter_id = g.get('B_PIT_P_ID')
+                stadium = g.get('S_NM')
+                start_time = g.get('G_TM')
                 
                 preview_data = {
                     "game_id": game_id,
                     "game_date": game_date,
+                    "stadium": stadium,
+                    "start_time": start_time,
                     "away_team_name": away_team_name,
                     "home_team_name": home_team_name,
                     "away_starter": away_starter,
+                    "away_starter_id": away_starter_id,
                     "home_starter": home_starter,
+                    "home_starter_id": home_starter_id,
                     "away_lineup": [],
                     "home_lineup": []
                 }
