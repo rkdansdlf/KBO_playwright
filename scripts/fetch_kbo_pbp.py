@@ -19,6 +19,7 @@ from src.models.game import Game, GameEvent
 def main():
     parser = argparse.ArgumentParser(description="KBO Play-by-Play (game_events) Backfill Fetcher (BS4)")
     parser.add_argument("--season", type=int, help="Season year to fetch (e.g. 2024)")
+    parser.add_argument("--date", type=str, help="Target date to fetch (e.g. 20240924)")
     parser.add_argument("--limit", type=int, help="Limit maximum games to process")
     parser.add_argument("--game-ids", type=str, help="Specific Game IDs to fetch, comma separated (e.g. 20240323SSHH0)")
     parser.add_argument("--dry-run", action="store_true", help="Parse events but do not save to DB")
@@ -27,8 +28,8 @@ def main():
 
     args = parser.parse_args()
 
-    if not args.season and not args.game_ids:
-        print("[ERROR] Must provide --season or --game-ids")
+    if not args.season and not args.date and not args.game_ids:
+        print("[ERROR] Must provide --season, --date, or --game-ids")
         sys.exit(1)
 
     if args.force:
@@ -40,6 +41,17 @@ def main():
     with SessionLocal() as session:
         if args.game_ids:
             game_ids = [gid.strip() for gid in args.game_ids.split(",") if gid.strip()]
+        elif args.date:
+            from datetime import datetime
+            try:
+                target_dt = datetime.strptime(args.date, "%Y%m%d").date()
+                query = session.query(Game.game_id).filter(Game.game_date == target_dt)
+                query = query.filter(Game.game_status == 'COMPLETED')
+                results = query.all()
+                game_ids = [r[0] for r in results]
+            except ValueError:
+                print(f"[ERROR] Invalid date format: {args.date}. Use YYYYMMDD.")
+                sys.exit(1)
         else:
             query = session.query(Game.game_id).filter(Game.game_id.like(f"{args.season}%"))
             query = query.filter(Game.game_status == 'COMPLETED')

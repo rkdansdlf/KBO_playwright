@@ -142,9 +142,18 @@ async def run_update(target_date: str, sync: bool = False, headless: bool = True
         f"counts={status_result.get('status_counts', {})}"
     )
 
+    # 3.2. PBP (Play-by-play) Data Collection
+    print("\n📝 Step 3.2: Crawling Play-by-Play (PBP) events...")
+    import subprocess
+    try:
+        # Run the backfill fetcher for the target date to ensure events are collected
+        subprocess.run([sys.executable, "scripts/fetch_kbo_pbp.py", "--date", target_date], check=True)
+        print("   ✅ PBP collection complete")
+    except Exception as exc:
+        print(f"   ❌ Error generating PBP events: {exc}")
+
     # 3.5. Post-game Context Generation (Review)
     print("\n📝 Step 3.5: Generating Post-game Review Contexts (WPA)...")
-    import subprocess
     try:
         subprocess.run([sys.executable, "-m", "src.cli.daily_review_batch", "--date", target_date], check=True)
         print("   ✅ Review context generation complete")
@@ -181,7 +190,7 @@ async def run_update(target_date: str, sync: bool = False, headless: bool = True
     print("\n✨ Local data update sequence finished.")
     
     print("\n📈 Step 4.5: Mathematically computing Standings & Games Behind...")
-    import sys, subprocess
+    import subprocess
     try:
         subprocess.run([sys.executable, "-m", "src.cli.calculate_standings", "--year", str(year)], check=True)
     except Exception as exc:
