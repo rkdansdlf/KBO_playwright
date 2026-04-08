@@ -1048,7 +1048,7 @@ class OCISync:
         # 7. Game Summary
         results['summary'] = self._sync_simple_table(
             GameSummary,
-            ['game_id', 'summary_type', 'player_name', 'detail_text'],
+            ['game_id', 'summary_type', 'player_name'],
             exclude_cols=['created_at', 'id'],
             filters=get_child_filters(GameSummary)
         )
