@@ -168,6 +168,11 @@ def build_arg_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="일별 팀 순위(Standings) 스냅샷 테이블을 고속 동기화합니다.",
     )
+    parser.add_argument(
+        "--matchups",
+        action="store_true",
+        help="계산된 상대 전적(Matchup Splits) 테이블을 동기화합니다.",
+    )
     return parser
 
 
@@ -245,6 +250,13 @@ def main(argv: Iterable[str] | None = None) -> None:
             syncer = OCISync(args.target_url, session)
             syncer.sync_all_batting_data()
             print("✅ Season Stats Sync Finished")
+            
+    elif args.matchups:
+        print("🚀 Syncing Matchup Splits using specialized OCISync...")
+        with SessionLocal() as session:
+            syncer = OCISync(args.target_url, session)
+            syncer.sync_matchups(year=args.year)
+            print("✅ Matchup Splits Sync Finished")
 
 
         

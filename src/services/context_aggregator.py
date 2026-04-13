@@ -161,14 +161,16 @@ class ContextAggregator:
             GamePitchingStat.is_starting == False
         ).first()
 
-        bp_era = round((bullpen.er * 27) / bullpen.outs, 2) if bullpen and bullpen.outs else 0
-        bp_whip = round(((bullpen.hits or 0) + (bullpen.walks or 0)) * 3 / bullpen.outs, 2) if bullpen and bullpen.outs else 0
+        bp_era = round((bullpen.er * 27) / bullpen.outs, 2) if bullpen and bullpen.outs and bullpen.outs > 0 else None
+        bp_whip = round(((bullpen.hits or 0) + (bullpen.walks or 0)) * 3 / bullpen.outs, 2) if bullpen and bullpen.outs and bullpen.outs > 0 else None
+        bp_ip = round(bullpen.outs / 3.0, 1) if bullpen and bullpen.outs else 0
 
         return {
             "avg": avg,
             "era": era,
             "bullpen_era": bp_era,
             "bullpen_whip": bp_whip,
+            "bullpen_ip": bp_ip,
             "sample_games": len(game_ids)
         }
 

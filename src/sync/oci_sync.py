@@ -25,6 +25,7 @@ from src.models.game import (
     GameEvent,
     GameSummary
 )
+from src.models.matchup import BatterTeamSplit, PitcherTeamSplit, BatterStadiumSplit, BatterVsStarter
 
 
 LEAGUE_NAME_TO_CODE = {
@@ -1048,7 +1049,7 @@ class OCISync:
         # 7. Game Summary
         results['summary'] = self._sync_simple_table(
             GameSummary,
-            ['game_id', 'summary_type', 'player_name'],
+            ['game_id', 'summary_type', 'player_name', 'detail_text'],
             exclude_cols=['created_at', 'id'],
             filters=get_child_filters(GameSummary)
         )
@@ -1074,7 +1075,7 @@ class OCISync:
         results['batting_stats'] = self._sync_simple_table(GameBattingStat, ['game_id', 'player_id', 'appearance_seq'], exclude_cols=['created_at'], filters=[GameBattingStat.game_id == game_id])
         results['pitching_stats'] = self._sync_simple_table(GamePitchingStat, ['game_id', 'player_id', 'appearance_seq'], exclude_cols=['created_at'], filters=[GamePitchingStat.game_id == game_id])
         results['events'] = self._sync_simple_table(GameEvent, ['game_id', 'event_seq'], exclude_cols=['created_at'], filters=[GameEvent.game_id == game_id])
-        results['summary'] = self._sync_simple_table(GameSummary, ['game_id', 'summary_type', 'detail_text'], exclude_cols=['created_at'], filters=[GameSummary.game_id == game_id])
+        results['summary'] = self._sync_simple_table(GameSummary, ['game_id', 'summary_type', 'player_name', 'detail_text'], exclude_cols=['created_at', 'id'], filters=[GameSummary.game_id == game_id])
         
         return results
 
@@ -1322,6 +1323,50 @@ class OCISync:
         self.target_session.commit()
         print(f"✅ Synced {synced} awards to OCI")
         return synced
+
+    def sync_matchups(self, year: int = None) -> Dict[str, int]:
+        """Sync Matchup Split tables (Batter/Pitcher vs Team, Stadium, Starter) to OCI"""
+        from src.models.base import Base
+        print("📁 Ensuring matchup tables exist on OCI...")
+        Base.metadata.create_all(self.oci_engine)
+
+        results = {}
+        filters = [text(f"season_year = {year}")] if year else None
+
+        # 1. Batter Team Splits
+        results['batter_team'] = self._sync_simple_table(
+            BatterTeamSplit,
+            ['season_year', 'league_type_code', 'player_id', 'team_code', 'opponent_team_code'],
+            exclude_cols=['created_at', 'id'],
+            filters=filters
+        )
+
+        # 2. Pitcher Team Splits
+        results['pitcher_team'] = self._sync_simple_table(
+            PitcherTeamSplit,
+            ['season_year', 'league_type_code', 'player_id', 'team_code', 'opponent_team_code'],
+            exclude_cols=['created_at', 'id'],
+            filters=filters
+        )
+
+        # 3. Batter Stadium Splits
+        results['batter_stadium'] = self._sync_simple_table(
+            BatterStadiumSplit,
+            ['season_year', 'league_type_code', 'player_id', 'team_code', 'stadium_name'],
+            exclude_cols=['created_at', 'id'],
+            filters=filters
+        )
+
+        # 4. Batter vs Starter (Starter Heuristic)
+        results['batter_vs_starter'] = self._sync_simple_table(
+            BatterVsStarter,
+            ['season_year', 'league_type_code', 'player_id', 'pitcher_name'],
+            exclude_cols=['created_at', 'id'],
+            filters=filters
+        )
+
+        print(f"✅ Matchup Splits Sync Summary: {results}")
+        return results
 
     def close(self):
 

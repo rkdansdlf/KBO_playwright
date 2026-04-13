@@ -6,7 +6,9 @@ and saves it to GameSummary.
 import asyncio
 import argparse
 import json
+import os
 from datetime import datetime
+from contextlib import contextmanager
 
 from src.db.engine import SessionLocal
 from src.models.game import Game, GameSummary
@@ -14,12 +16,25 @@ from src.models.player import PlayerBasic
 from src.services.context_aggregator import ContextAggregator
 from src.utils.safe_print import safe_print as print
 
-async def run_review_batch(target_date: str):
+async def run_review_batch(target_date: str, custom_session=None):
     print(f"🚀 Starting Post-game Review Data Batch for {target_date}...")
     
     target_dt_obj = datetime.strptime(target_date, "%Y%m%d").date()
 
-    with SessionLocal() as session:
+    # Use custom session factory if provided, else use default SessionLocal
+    if custom_session:
+        # custom_session is a sessionmaker — call it to get a session, then wrap in contextmanager
+        @contextmanager
+        def session_ctx():
+            session = custom_session()
+            try:
+                yield session
+            finally:
+                session.close()
+    else:
+        session_ctx = SessionLocal
+
+    with session_ctx() as session:
         agg = ContextAggregator(session)
         
         # Find completed games for the date
@@ -82,4 +97,14 @@ if __name__ == "__main__":
     args = parser.parse_args()
     
     target = args.date if args.date else datetime.now().strftime("%Y%m%d")
-    asyncio.run(run_review_batch(target))
+
+    oci_url = os.getenv("OCI_DB_URL")
+    custom_session = None
+    if oci_url:
+        from sqlalchemy import create_engine
+        from sqlalchemy.orm import sessionmaker
+        engine = create_engine(oci_url)
+        custom_session = sessionmaker(bind=engine)
+        print(f"🔗 Using OCI Database for review generation.")
+
+    asyncio.run(run_review_batch(target, custom_session=custom_session))

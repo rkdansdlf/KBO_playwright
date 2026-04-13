@@ -2,6 +2,7 @@ import argparse
 import sys
 import os
 import time
+import asyncio
 from typing import List
 
 # Adjust sys.path to run from scripts/ folder easily
@@ -9,15 +10,15 @@ project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
-from src.crawlers.pbp_bs4_crawler import PBPBS4Crawler
+from src.crawlers.naver_relay_crawler import NaverRelayCrawler
 from src.repositories.game_repository import save_relay_data
 from src.utils.safe_print import safe_print as print
 
 from src.db.engine import SessionLocal
 from src.models.game import Game, GameEvent
 
-def main():
-    parser = argparse.ArgumentParser(description="KBO Play-by-Play (game_events) Backfill Fetcher (BS4)")
+async def run_fetcher():
+    parser = argparse.ArgumentParser(description="KBO Play-by-Play (game_events) Backfill Fetcher (Naver API)")
     parser.add_argument("--season", type=int, help="Season year to fetch (e.g. 2024)")
     parser.add_argument("--date", type=str, help="Target date to fetch (e.g. 20240924)")
     parser.add_argument("--limit", type=int, help="Limit maximum games to process")
@@ -78,21 +79,18 @@ def main():
     if args.dry_run:
         print("[WARN] Dry Run mode activated. No data will be saved.")
 
-    crawler = PBPBS4Crawler()
+    crawler = NaverRelayCrawler()
 
     # Sequential Processing with Delay
     for idx, gid in enumerate(game_ids, start=1):
         print(f"\n[PROGRESS] Processing {idx}/{len(game_ids)}: {gid}")
         
         try:
-            res = crawler.crawl_game_events(gid)
+            res = await crawler.crawl_game_events(gid)
             if res and res.get('events'):
                 events = res['events']
                 if args.dry_run:
                     print(f"[DRY-RUN] Extracted {len(events)} events for {gid}")
-                    # Optionally print the first event as a teaser
-                    if events:
-                         print(f"   Sample Event: {events[0]}")
                 else:
                     saved = save_relay_data(gid, events)
                     print(f"[SUCCESS] Saved {saved} events for {gid}")
@@ -104,9 +102,9 @@ def main():
 
         # Rate Limiting
         if idx < len(game_ids):
-            time.sleep(1.5)
+            await asyncio.sleep(1.0)
 
     print("\n[INFO] Backfill fetching completed.")
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(run_fetcher())

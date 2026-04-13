@@ -7,6 +7,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import os
+from src.cli.auto_healer import run_healer_async
 import sys
 from datetime import date, datetime, timedelta
 from typing import Optional, Sequence
@@ -61,6 +62,13 @@ async def run_update(target_date: str, sync: bool = False, headless: bool = True
 
     year = int(target_date[:4])
     month = int(target_date[4:6])
+
+    # 0. Run Auto-Healer to catch and fix past stuck schedules
+    print("\n🩺 Step 0: Running Auto-Healer Daemon...")
+    try:
+        await run_healer_async(dry_run=False)
+    except Exception as exc:
+        print(f"   ⚠️ Auto-Healer encountered an error (continuing anyway): {exc}")
 
     # 1. Schedule crawler and DB upsert
     print("\n📅 Step 1: Crawling + saving monthly schedule...")
@@ -195,6 +203,13 @@ async def run_update(target_date: str, sync: bool = False, headless: bool = True
         subprocess.run([sys.executable, "-m", "src.cli.calculate_standings", "--year", str(year)], check=True)
     except Exception as exc:
         print(f"   ❌ Error calculating standings: {exc}")
+
+    print("\n🧮 Step 4.6: Recalculating Matchup Splits (DB Native)...")
+    try:
+        subprocess.run([sys.executable, "-m", "src.cli.calculate_matchups", "--year", str(year)], check=True)
+        print("   ✅ Matchup splits recalculated successfully")
+    except Exception as exc:
+        print(f"   ❌ Error recalculating matchups: {exc}")
 
     # 5. Sync to OCI
     if sync:

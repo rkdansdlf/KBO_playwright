@@ -6,6 +6,8 @@ Designed to be run 1~2 hours before the games start via GitHub Actions.
 import asyncio
 import argparse
 import json
+import os
+from contextlib import contextmanager
 from datetime import datetime
 
 from src.crawlers.preview_crawler import PreviewCrawler
@@ -16,7 +18,7 @@ from src.services.context_aggregator import ContextAggregator
 from src.utils.team_codes import resolve_team_code
 from src.utils.safe_print import safe_print as print
 
-async def run_preview_batch(target_date: str):
+async def run_preview_batch(target_date: str, custom_session=None):
     print(f"🚀 Starting Preview Data Batch for {target_date}...")
     
     crawler = PreviewCrawler(request_delay=1.0)
@@ -30,7 +32,19 @@ async def run_preview_batch(target_date: str):
     target_dt_obj = datetime.strptime(target_date, "%Y%m%d").date()
     season_year = target_dt_obj.year
 
-    with SessionLocal() as session:
+    # Use custom session factory if provided, else use default SessionLocal
+    if custom_session:
+        @contextmanager
+        def session_ctx():
+            session = custom_session()
+            try:
+                yield session
+            finally:
+                session.close()
+    else:
+        session_ctx = SessionLocal
+
+    with session_ctx() as session:
         agg = ContextAggregator(session)
         for preview in previews:
             game_id = preview.get("game_id")
@@ -96,4 +110,14 @@ if __name__ == "__main__":
     args = parser.parse_args()
     
     target = args.date if args.date else datetime.now().strftime("%Y%m%d")
-    asyncio.run(run_preview_batch(target))
+    
+    oci_url = os.getenv("OCI_DB_URL")
+    custom_session = None
+    if oci_url:
+        from sqlalchemy import create_engine
+        from sqlalchemy.orm import sessionmaker
+        engine = create_engine(oci_url)
+        custom_session = sessionmaker(bind=engine)
+        print(f"🔗 Using OCI Database for preview generation.")
+
+    asyncio.run(run_preview_batch(target, custom_session=custom_session))

@@ -22,6 +22,7 @@ class AsyncPlaywrightPool:
         context_kwargs: Optional[Dict[str, Any]] = None,
         block_resources: bool = True,
         timeout_ms: Optional[int] = None,
+        requires_auth: bool = False,
     ) -> None:
         self.max_pages = max_pages
         self.headless = headless
@@ -29,6 +30,7 @@ class AsyncPlaywrightPool:
         self.context_kwargs = context_kwargs or {}
         self.block_resources = block_resources
         self.timeout_ms = timeout_ms
+        self.requires_auth = requires_auth
 
         self._playwright = None
         self._browser: Optional[Browser] = None
@@ -47,6 +49,22 @@ class AsyncPlaywrightPool:
     async def start(self) -> None:
         if self._started:
             return
+
+        from src.utils.kbo_auth import KboAuthenticator
+        
+        # Automated Authentication if required
+        if self.requires_auth:
+            if not KboAuthenticator.is_authenticated():
+                print("[POOL] Session missing. Triggering auto-login...")
+                auth = KboAuthenticator()
+                success = await auth.login(headless=self.headless)
+                if not success:
+                    print("[POOL] Warning: Auto-login failed. Proceeding without auth.")
+            
+            if KboAuthenticator.is_authenticated():
+                print("[POOL] Using saved session state.")
+                self.context_kwargs["storage_state"] = KboAuthenticator.get_auth_state_path()
+
         self._playwright = await async_playwright().start()
         browser_factory = getattr(self._playwright, self.browser_type)
         self._browser = await browser_factory.launch(headless=self.headless)
