@@ -26,22 +26,22 @@ class RelayCrawler:
         self._context_kwargs = self.policy.build_context_kwargs(locale='ko-KR')
         self.wpa_calc = WPACalculator()
 
-    async def crawl_live_game(self, game_id: str) -> Optional[Dict[str, Any]]:
+    async def crawl_game_relay(self, game_id: str) -> Optional[Dict[str, Any]]:
         """
-        Attempts to crawl Relay data for a specific game if it is LIVE.
-        Returns None if game is not live or relay tab is missing.
+        Attempts to crawl Relay data for a specific game (LIVE or COMPLETED).
+        Returns None if relay data is unavailable.
         """
-        pool = self.pool or AsyncPlaywrightPool(max_pages=1, context_kwargs=self._context_kwargs)
+        pool = self.pool or AsyncPlaywrightPool(max_pages=1, context_kwargs=self._context_kwargs, requires_auth=True)
         owns_pool = self.pool is None
         await pool.start()
         try:
             page = await pool.acquire()
             try:
-                # 1. Open Game Center Main with Game ID
+                # 1. Open Game Center Main with Game ID and force RELAY section
                 game_date = game_id[:8]
-                url = f"{self.base_url}?gameId={game_id}&gameDate={game_date}"
+                url = f"{self.base_url}?gameId={game_id}&gameDate={game_date}&section=RELAY"
 
-                print(f"[FETCH] Checking Live Status: {url}")
+                print(f"[FETCH] Accessing Relay: {url}")
                 if not await compliance.is_allowed(url):
                     print(f"[COMPLIANCE] Navigation to {url} aborted.")
                     return None
@@ -49,56 +49,48 @@ class RelayCrawler:
                 await page.goto(url, wait_until="networkidle", timeout=30000)
 
                 # 2. Check Game Status from Top Bar (.game-list-n)
-                # We need to find the LI element for our game_id
                 game_li = page.locator(f'.game-list-n > li[g_id="{game_id}"]')
 
                 if await game_li.count() == 0:
                     print(f"[WARN] Game {game_id} not found in Game Center list.")
+                    # Sometimes the list takes time to load or game is not present
+                    await page.wait_for_timeout(2000)
+                    game_li = page.locator(f'.game-list-n > li[g_id="{game_id}"]')
+
+                game_sc = "unknown"
+                if await game_li.count() > 0:
+                    game_sc = await game_li.get_attribute("game_sc")
+                    print(f"[INFO] Game Status Code (game_sc): {game_sc}")
+
+                # sc=1: Preview, sc=4: Cancel
+                if game_sc == "1" or game_sc == "4":
+                    print(f"[SKIP] Game status {game_sc} has no relay data.")
                     return None
 
-                game_sc = await game_li.get_attribute("game_sc")
-                print(f"[INFO] Game Status Code (game_sc): {game_sc}")
-
-                # sc=1: Preview, sc=2: Live, sc=3: End, sc=4: Cancel, sc=5: Suspended
-                if game_sc not in ["2", "5"]:
-                    print(f"[SKIP] Game is not LIVE (Status: {game_sc}). Skipping Relay.")
-                    return None
-
-                # 3. If Live, Relay Tab should be present.
-                # Ensure the game is 'active' (clicked). It should be by default due to URL param,
-                # but let's double check class 'on'.
-                is_on = "on" in (await game_li.get_attribute("class") or "")
-                if not is_on:
-                    await game_li.click()
-                    await asyncio.sleep(1)
-
-                # 4. Click Relay Tab
-                # Try finding "중계" tab.
-                # The selectors might be: li[section="RELAY"] or a:has-text("중계")
-                relay_tab = page.locator('ul.tab > li > a:text-is("중계")')
-
-                if await relay_tab.count() > 0 and await relay_tab.is_visible():
-                    print("[INFO] Found Relay Tab. Clicking...")
-                    await relay_tab.click()
+                # 3. Ensure RELAY content is loaded
+                # For archived games (sc=3), the tab might not be visible, but content might load via URL
+                try:
                     await page.wait_for_selector('.relay-bx, .relay-txt', timeout=10000)
-                    await asyncio.sleep(2) # Stabilize
-                else:
-                    print("[WARN] Relay Tab NOT found even though status is Live.")
-                    # fallback: try direct URL parameter just in case
+                    print("[INFO] Relay content markers found.")
+                except Exception:
+                    print(f"[WARN] No relay elements found for {game_id}. Redirection check...")
+                    if "Error.html" in page.url or "Login.aspx" in page.url:
+                         print(f"[ERROR] Access denied or redirected: {page.url}")
+                         return None
                     return None
 
-                # 5. Extract PBP Data
+                # 4. Extract PBP Data
                 print("[INFO] Extracting Relay Data...")
                 events = await self._extract_flat_events(page)
                 return {
                     'game_id': game_id,
                     'game_date': game_date,
-                    'status': 'live',
+                    'status': 'completed' if game_sc == "3" else 'live',
                     'events': events
                 }
 
             except Exception as e:
-                print(f"[ERROR] Live Relay crawl failed: {e}")
+                print(f"[ERROR] Relay crawl failed: {e}")
                 return None
             finally:
                 await pool.release(page)
@@ -112,33 +104,27 @@ class RelayCrawler:
         extraction_script = """
         () => {
             const results = [];
-            const containers = document.querySelectorAll('.relay-bx');
+            // Try multiple selectors for robustness
+            const containers = document.querySelectorAll('.relay-bx, .relay-txt, .sms-bx');
             let sequence = 1;
 
+            if (containers.length === 0) {
+                // Fallback: search for any div that might contain '회' and looks like a block
+                const allDivs = document.querySelectorAll('div');
+                // (Omitted for brevity, but could add more heuristics)
+            }
+
             containers.forEach((container, idx) => {
-                // Parse Header (Inning info)
-                // Typically just the text of the container before the inner text-boxes
-                // But structure is complex. Let's assume the first text node or header class.
-                // Looking at typical structure: 
-                // <div class="relay-bx">
-                //    <div class="inn-tit">...</div> or similar text?
-                //    Actual implementation used self._parse_inning_header(text). 
-                // Let's grab the full text to emulate, OR better:
-                // Extract inning from ".tit-b" or assume structure. 
-                // For safety, let's grab all text content to parse in JS or return raw.
-                
-                // Ideally we find .tit-b or similar for "1회초"
-                // Let's try to find text directly. 
                 const fullText = container.innerText;
-                
-                // Find play text elements
-                const playEls = container.querySelectorAll('.txt-box, .play-txt, p');
+                const playEls = container.querySelectorAll('.txt-box, .play-txt, p, span.txt');
                 const plays = Array.from(playEls).map(el => el.innerText.trim()).filter(t => t.length > 0);
                 
-                results.push({
-                    full_text: fullText,
-                    plays: plays
-                });
+                if (plays.length > 0) {
+                    results.push({
+                        full_text: fullText,
+                        plays: plays
+                    });
+                }
             });
             return results;
         }

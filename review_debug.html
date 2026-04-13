@@ -1,0 +1,493 @@
+<html><head></head><body><h5 class="sub-tit">리뷰</h5>
+<div class="box-score-area">
+	<div class="record-etc">                   
+		<span id="txtStadium"></span>
+		<span id="txtCrowd"></span>
+		<span id="txtStartTime"></span>
+		<span id="txtEndTime"></span>
+		<span id="txtRunTime"></span>
+	</div>
+	<div class="box-score-wrap">
+		<div class="tbl-box-score data1">
+			<table class="tbl" id="tblScordboard1">
+				<colgroup>
+					<col width="35%">
+					<col width="65%">
+				</colgroup>
+				<thead>
+					<tr>
+						<th>&nbsp;</th>
+						<th>TEAM</th>
+					</tr>
+				</thead>
+				<tbody>
+				</tbody>
+			</table>
+		</div>
+		<div class="tbl-box-score data2">
+			<table class="tbl" id="tblScordboard2">
+				<colgroup>
+					<col width="4%">
+					<col width="4%">
+					<col width="4%">
+					<col width="4%">
+					<col width="4%">
+					<col width="4%">
+					<col width="4%">
+					<col width="4%">
+					<col width="4%">
+					<col width="4%">
+					<col width="4%">
+					<col width="4%">
+					
+				</colgroup>
+				<thead>
+				</thead>
+				<tbody>
+				</tbody>
+			</table>
+		</div>
+		<div class="tbl-box-score data3">
+			<table class="tbl" id="tblScordboard3">
+				<colgroup>
+					<col width="4%">
+					<col width="4%">
+					<col width="4%">
+					<col width="4%">
+				</colgroup>
+				<thead>
+					<tr>
+						<th>R</th>
+						<th>H</th>
+						<th>E</th>
+						<th>B</th>
+					</tr>
+				</thead>
+				<tbody>
+				</tbody>
+			</table>
+		</div>
+	</div>
+</div>
+
+<div class="summary tbl-type02 mt30 mb30">
+	<table class="tbl" summary="경기기록 상세기록표 (결승타, 홈런, 3루타, 2루타, 실책, 도루, 도루자, 주루자, 견제사, 병살타, 포일, 심판)" id="tblEtc">
+		<caption>경기기록 상세기록표</caption>
+		<colgroup>
+			<col width="15%">
+			<col width="*">
+		</colgroup>
+		<tbody>
+		</tbody>
+	</table>
+</div>
+
+<div class="hitter-record-area">
+	<h6 class="tit-team" id="lblAwayHitter"></h6>					
+	<div class="hitter-record-wrap">
+		<div class="tbl-type03 data1 mb30">
+			<table class="tbl" id="tblAwayHitter1">
+				<colgroup>
+					<col width="20%">
+					<col width="30%">
+					<col width="50%;">
+				</colgroup>
+				<thead>
+					<tr>
+						<th>&nbsp;</th>
+						<th>&nbsp;</th>
+						<th>선수명</th>
+					</tr>
+				</thead>
+				<tbody>
+				</tbody>
+				<tfoot>
+				</tfoot>
+			</table>
+		</div>
+		<div class="tbl-type03 data2 mb30" id="tblAwayHitter2">
+			<table class="tbl">
+				<colgroup>
+					<col width="5%">
+					<col width="5%">
+					<col width="5%">
+					<col width="5%">
+					<col width="5%">
+					<col width="5%">
+					<col width="5%">
+					<col width="5%">
+					<col width="5%">
+					<col width="5%">
+					<col width="5%">
+					<col width="5%">
+				</colgroup>
+				<thead>
+					
+				</thead>
+				<tbody>
+				</tbody>
+				<tfoot>
+				</tfoot>
+			</table>
+		</div>
+		<div class="tbl-type03 data3 mb30">
+			<table class="tbl" id="tblAwayHitter3">
+				<colgroup>
+					<col width="20%">
+					<col width="20%">
+					<col width="20%">
+					<col width="20%">
+					<col width="20%">
+				</colgroup>
+				<thead>
+					<tr>
+						<th>타수</th>
+						<th>안타</th>
+						<th>타점</th>
+						<th>득점</th>
+						<th>타율</th>
+					</tr>
+				</thead>
+				<tbody>
+				</tbody>
+				<tfoot>
+				</tfoot>
+			</table>
+		</div>
+	</div>
+</div>
+
+<div class="hitter-record-area">
+	<h6 class="tit-team" id="lblHomeHitter"></h6>					
+	<div class="hitter-record-wrap">
+		<div class="tbl-type03 data1 mb30">
+			<table class="tbl" id="tblHomeHitter1">
+				<colgroup>
+					<col width="20%">
+					<col width="30%">
+					<col width="50%;">
+				</colgroup>
+				<thead>
+					<tr>
+						<th>&nbsp;</th>
+						<th>&nbsp;</th>
+						<th>선수명</th>
+					</tr>
+				</thead>
+				<tbody>
+				</tbody>
+				<tfoot>
+				</tfoot>
+			</table>
+		</div>
+		<div class="tbl-type03 data2 mb30" id="tblHomeHitter2">
+			<table class="tbl">
+				<colgroup>
+					<col width="5%">
+					<col width="5%">
+					<col width="5%">
+					<col width="5%">
+					<col width="5%">
+					<col width="5%">
+					<col width="5%">
+					<col width="5%">
+					<col width="5%">
+					<col width="5%">
+					<col width="5%">
+					<col width="5%">
+				</colgroup>
+				<thead>
+					
+				</thead>
+				<tbody>
+				</tbody>
+				<tfoot>
+				</tfoot>
+			</table>
+		</div>
+		<div class="tbl-type03 data3 mb30">
+			<table class="tbl" id="tblHomeHitter3">
+				<colgroup>
+					<col width="20%">
+					<col width="20%">
+					<col width="20%">
+					<col width="20%">
+					<col width="20%">
+				</colgroup>
+				<thead>
+					<tr>
+						<th>타수</th>
+						<th>안타</th>
+						<th>타점</th>
+						<th>득점</th>
+						<th>타율</th>
+					</tr>
+				</thead>
+				<tbody>
+				</tbody>
+				<tfoot>
+				</tfoot>
+			</table>
+		</div>
+	</div>	
+</div>
+
+<div class="pitcher-record-area">
+	<h6 class="tit-team" id="lblAwayPitcher"></h6>
+	<div class="tbl-type03 mb30" id="awayPitRecord">
+		<table class="tbl" id="tblAwayPitcher">
+			<colgroup>
+                <col style="width:70px"><col style="width:38px;"><col style="width:38px;"><col style="width:38px;"><col style="width:38px;"><col style="width:38px;"><col style="width:38px;"><col style="width:38px;"><col style="width:50px"><col style="width:38px;"><col style="width:50px"><col style="width:38px;"><col style="width:45px"><col style="width:38px"><col style="width:38px;"><col style="width:38px;"><col style="width:76px;">
+			</colgroup>
+			<thead>
+				<tr>
+					<th>선수명</th>
+					<th>등판</th>
+					<th>결과</th>
+					<th>승</th>
+					<th>패</th>
+					<th>세</th>
+					<th>이닝</th>
+					<th>타자</th>
+					<th>투구수</th>
+					<th>타수</th>
+					<th>피안타</th>
+					<th>홈런</th>
+					<th>4사구</th>
+					<th>삼진</th>
+					<th>실점</th>
+					<th>자책</th>
+					<th>평균자책점</th>
+				</tr>
+			</thead>
+			<tbody>
+			</tbody>
+			<tfoot>
+			</tfoot>
+		</table>
+	</div>
+</div>
+
+<div class="pitcher-record-area">
+	<h6 class="tit-team" id="lblHomePitcher"></h6>
+	<div class="tbl-type03 mb30" id="homePitRecord">
+		<table class="tbl" id="tblHomePitcher">
+			<colgroup>
+				<col style="width:70px;">
+				<col style="width:38px;">
+				<col style="width:38px;">
+				<col style="width:38px;">
+				<col style="width:38px;">
+				<col style="width:38px;">
+				<col style="width:38px;">
+				<col style="width:38px;">
+				<col style="width:50px;">
+				<col style="width:38px;">
+				<col style="width:50px;">
+				<col style="width:38px;">
+				<col style="width:45px;">
+				<col style="width:38px;">
+				<col style="width:38px;">
+				<col style="width:38px;">
+				<col style="width:76px;">
+			</colgroup>
+			<thead>
+				<tr>
+					<th>선수명</th>
+					<th>등판</th>
+					<th>결과</th>
+					<th>승</th>
+					<th>패</th>
+					<th>세</th>
+					<th>이닝</th>
+					<th>타자</th>
+					<th>투구수</th>
+					<th>타수</th>
+					<th>피안타</th>
+					<th>홈런</th>
+					<th>4사구</th>
+					<th>삼진</th>
+					<th>실점</th>
+					<th>자책</th>
+					<th>평균자책점</th>
+				</tr>
+			</thead>
+			<tbody>
+			</tbody>
+			<tfoot>
+			</tfoot>
+		</table>
+	</div>
+</div>
+
+<script type="text/javascript">
+    var realMaxInning = 12;
+    $(document).ready(function () {
+        getScoreTableGrid();        // 스코어보드
+        getBoxScoreTableGrid();     // 키플레이어
+
+        if (realMaxInning > 9) {
+            $(".tbl-scroll, .txt-over").mCustomScrollbar({
+                axis: "x",
+                theme: "minimal-dark"
+            });
+        }
+    });
+
+    // 스코어보드
+    function getScoreTableGrid() {
+        var gameId = $(".game-list-n > li.on").attr("g_id");
+        var leId = $(".game-list-n > li.on").attr("le_id");
+        var srId = $(".game-list-n > li.on").attr("sr_id");
+        var seasonId = $(".game-list-n > li.on").attr("season");
+
+        var request = $.ajax({
+            type: "post"
+            , url: "/ws/Schedule.asmx/GetScoreBoardScroll"
+            , dataType: "json"
+            , data: {
+                leId: leId
+                , srId: srId
+                , seasonId: seasonId
+                , gameId: gameId
+            }
+            , async: false
+        });
+
+		request.done(function (data) {
+            if (data.code == "100") {
+                $("#txtStadium").text(String.format("구장 : {0}", data.S_NM));
+                $("#txtCrowd").text(String.format("관중 : {0}", data.CROWD_CN));
+                $("#txtStartTime").text(String.format("개시 : {0}", data.START_TM));
+                $("#txtEndTime").text(String.format("종료 : {0}", data.END_TM));
+                $("#txtRunTime").text(String.format("경기시간 : {0}", data.USE_TM));
+
+                $("#tblScordboard1").S2iGridTable({
+                    rows: $.parseJSON(data.table1).rows
+                });
+
+                $("#tblScordboard2").S2iGridTable({
+                    header: $.parseJSON(data.table2).headers
+                    , rows: $.parseJSON(data.table2).rows
+                });
+
+                if (data.checkScroll == 1) {
+					$("#tblScordboard2").parent().addClass("tbl-scroll");
+
+                    if (data.SR_ID == 3 || data.SR_ID == 4 || data.SR_ID == 5 || data.SR_ID == 7) {
+                        $("#tblScordboard2").css("width", 30 * data.maxInning)
+					} else {
+						$("#tblScordboard2").css("width", 37.69 * data.maxInning)
+                    }
+                }
+
+                $("#tblScordboard3").S2iGridTable({
+                    rows: $.parseJSON(data.table3).rows
+                });
+
+                $("#lblAwayHitter").html(String.format("<span class='logo'><img src='{0}' alt='{1}' /></span>{1} 타자 기록", data.A_INITIAL_LK, data.FULL_AWAY_NM))
+                $("#lblHomeHitter").html(String.format("<span class='logo'><img src='{0}' alt='{1}' /></span>{1} 타자 기록", data.H_INITIAL_LK, data.FULL_HOME_NM))
+                $("#lblAwayPitcher").html(String.format("<span class='logo'><img src='{0}' alt='{1}'/></span>{1} 투수 기록", data.A_INITIAL_LK, data.FULL_AWAY_NM))
+                $("#lblHomePitcher").html(String.format("<span class='logo'><img src='{0}' alt='{1}' /></span>{1} 투수 기록", data.H_INITIAL_LK, data.FULL_HOME_NM))
+            }
+        });
+    }
+
+    // 박스스코어 (추후작업진행, 리그, 시리즈 request)
+    function getBoxScoreTableGrid() {
+        var gameId = $(".game-list-n > li.on").attr("g_id");
+        var leId = $(".game-list-n > li.on").attr("le_id");
+        var srId = $(".game-list-n > li.on").attr("sr_id");
+        var seasonId = $(".game-list-n > li.on").attr("season");
+
+        var request = $.ajax({
+            type: "post"
+            , url: "/ws/Schedule.asmx/GetBoxScoreScroll"
+            , dataType: "json"
+            , data: {
+                leId: leId
+                , srId: srId
+                , seasonId: seasonId
+                , gameId: gameId
+            }
+            , async: false
+        });
+
+		request.done(function (data) {
+            if (data.code == "100") {
+                $("#tblEtc").S2iGridTable(
+                {
+                    rows: $.parseJSON(data.tableEtc).rows
+                });
+                realMaxInning = data.realMaxInning;
+
+                // 타자기록
+                for (var i = 0; i < data.arrHitter.length; i++) {
+                    var tableId = (i == 0) ? "tblAwayHitter" : "tblHomeHitter";
+
+                    $(String.format("#{0}1", tableId)).S2iGridTable(
+                    {
+                        rows: $.parseJSON(data.arrHitter[i].table1).rows
+                        , tfoot: $.parseJSON(data.arrHitter[i].table1).tfoot
+                    });
+
+                    $(String.format("#{0}2", tableId)).parent().children("table.tbl").remove();
+                    $(String.format("#{0}2", tableId)).S2iMakeTable(
+                    {
+                        colgroup: $.parseJSON(data.arrHitter[i].table2).colgroup
+                        , header: $.parseJSON(data.arrHitter[i].table2).headers
+                    });
+
+                    $(String.format("#{0}2", tableId)).children("table").addClass("tbl");
+                    $(String.format("#{0}2", tableId)).children("table").S2iGridTable(
+                    {
+                       header: $.parseJSON(data.arrHitter[i].table2).headers
+                       , rows: $.parseJSON(data.arrHitter[i].table2).rows
+                       , tfoot: $.parseJSON(data.arrHitter[i].table2).tfoot
+                    });
+
+                    $(String.format("#{0}3", tableId)).S2iGridTable(
+                    {
+                       rows: $.parseJSON(data.arrHitter[i].table3).rows
+                       , tfoot: $.parseJSON(data.arrHitter[i].table3).tfoot
+                    });
+
+                    if (data.checkScrollT == 1 && i == 0) {
+						$(String.format("#{0}2", tableId)).addClass("txt-over");
+                        $(String.format("#{0}2 .tbl", tableId)).css("width", 41 * data.realMaxInning)
+                    }
+                    else if (data.checkScrollB == 1 && i == 1) {
+						$(String.format("#{0}2", tableId)).addClass("txt-over");
+                        $(String.format("#{0}2 .tbl", tableId)).css("width", 41 * data.realMaxInning)
+                    }
+
+                    if (data.checkScroll == 1) {
+                        $(String.format("#{0}2", tableId)).addClass("tbl-scroll");
+                    }
+                }
+
+                // 투수기록
+                for (var i = 0; i < data.arrPitcher.length; i++) {
+                    var tableId = (i == 0) ? "tblAwayPitcher" : "tblHomePitcher";
+
+                    $("#" + tableId).S2iGridTable(
+                    {
+                        header: $.parseJSON(data.arrPitcher[i].table).headers
+                        , rows: $.parseJSON(data.arrPitcher[i].table).rows
+                        , tfoot: $.parseJSON(data.arrPitcher[i].table).tfoot
+                    });
+                }
+                
+                // colgroup 맞추기(파이어폭스 에러)
+                var tdLength = $("#tblScordboard2 tr:eq(1) td").length;
+                var colGroupLength = $("#tblScordboard2 colgroup col").length;
+
+                if (colGroupLength < tdLength) {
+                    for (var i = 0; i < tdLength - colGroupLength; i++) {
+                        $("#tblScordboard2 colgroup").append("<col width='4%' />");
+                    }
+                }
+            }
+        });
+    }
+</script></body></html>
