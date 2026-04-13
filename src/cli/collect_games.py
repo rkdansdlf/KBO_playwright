@@ -70,8 +70,14 @@ async def collect_games(year: int, month: Optional[int] = None, force: bool = Fa
             else:
                 print("   ⚠️ Details save failed")
 
-            # 2. Relay (Play-by-play) - Temporarily Disabled due to Selector timeouts
-            print(f"   ⚠️ Relay crawler disabled (selector issue)")
+            # 2. Relay (Play-by-play)
+            relay_data = await relay_crawler.crawl_game_relay(game_id)
+            if relay_data and relay_data.get("events"):
+                from src.repositories.game_repository import save_relay_data
+                saved_events = save_relay_data(game_id, relay_data["events"])
+                print(f"   ✅ Relay saved ({saved_events} events)")
+            else:
+                print("   ℹ️  No relay data available or game not live")
 
             success_count += 1
             if idx % 10 == 0:

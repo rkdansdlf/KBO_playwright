@@ -5,6 +5,7 @@ Computes WPA transitions based on the events.
 """
 from __future__ import annotations
 import asyncio
+import os
 from typing import List, Dict, Any, Optional
 from playwright.async_api import Page
 from src.utils.safe_print import safe_print as print
@@ -35,51 +36,76 @@ class PBPCrawler:
         game_date = game_id[:8]
         url = f"{self.base_url}?gameDate={game_date}&gameId={game_id}"
 
-        pool = self.pool or AsyncPlaywrightPool(max_pages=1, context_kwargs=self._context_kwargs)
+        pool = self.pool or AsyncPlaywrightPool(max_pages=1, context_kwargs=self._context_kwargs, requires_auth=True)
         owns_pool = self.pool is None
 
         if owns_pool:
             await pool.start()
             
         try:
-            page = await pool.acquire()
-            try:
-                print(f"[FETCH] PBP Data: {url}")
-                if not await compliance.is_allowed(url):
-                    print(f"[COMPLIANCE] Navigation to {url} aborted.")
-                    return None
-                    
-                await self.policy.delay_async(host="www.koreabaseball.com")
-                await page.goto(url, wait_until="networkidle", timeout=30000)
-
-                # Wait for relay content to confirm it's loaded
+            async def do_crawl(retry_count=0):
                 try:
-                    await page.wait_for_selector('.relay-bx, .relay-txt', timeout=10000)
-                except Exception:
-                    # It might be empty if the game is cancelled or no PBP available
-                    print(f"[WARN] No relay elements found for {game_id}. Trying content check...")
-                    body = await page.content()
-                    if "경기 준비중" in body or "취소" in body:
-                        print(f"[INFO] Game {game_id} seems to have no relay data.")
-                        return None
-                
-                print("[INFO] Extracting Relay Data...")
-                events = await self._extract_flat_events(page)
-                
-                if not events:
-                    return None
-                    
-                return {
-                    'game_id': game_id,
-                    'game_date': game_date,
-                    'events': events
-                }
+                    page = await pool.acquire()
+                    try:
+                        print(f"[FETCH] PBP Data: {url}")
+                        if not await compliance.is_allowed(url):
+                            print(f"[COMPLIANCE] Navigation to {url} aborted.")
+                            return None
+                            
+                        await self.policy.delay_async(host="www.koreabaseball.com")
+                        await page.goto(url, wait_until="networkidle", timeout=30000)
 
-            except Exception as e:
-                print(f"[ERROR] PBP crawl failed for {game_id}: {e}")
-                return None
-            finally:
-                await pool.release(page)
+                        # Check for login redirect or Error page
+                        if "Error.html" in page.url or "Login.aspx" in page.url:
+                            print(f"[ERROR] Redirected to {page.url}. Session might be expired or login failed.")
+                            
+                            from src.utils.kbo_auth import KboAuthenticator
+                            if os.path.exists(KboAuthenticator.AUTH_STATE_PATH):
+                                os.remove(KboAuthenticator.AUTH_STATE_PATH)
+                                print("[AUTH] Deleted invalid session state file.")
+
+                            if retry_count == 0:
+                                print("[AUTH] Attempting one-time re-login and retry...")
+                                # Close current pool and re-start it to force new auth state
+                                await pool.close()
+                                await pool.start()
+                                return await do_crawl(retry_count=1)
+                            return None
+
+                        # Wait for relay content to confirm it's loaded
+                        try:
+                            await page.wait_for_selector('.relay-bx, .relay-txt', timeout=10000)
+                        except Exception:
+                            # It might be empty if the game is cancelled or no PBP available
+                            print(f"[WARN] No relay elements found for {game_id}. Trying content check...")
+                            body = await page.content()
+                            if "경기 준비중" in body or "취소" in body:
+                                print(f"[INFO] Game {game_id} seems to have no relay data.")
+                                return None
+                        
+                        print("[INFO] Extracting Relay Data...")
+                        events = await self._extract_flat_events(page)
+                        
+                        if not events:
+                            return None
+                            
+                        return {
+                            'game_id': game_id,
+                            'game_date': game_date,
+                            'events': events
+                        }
+
+                    except Exception as e:
+                        print(f"[ERROR] PBP crawl failed for {game_id}: {e}")
+                        return None
+                    finally:
+                        await pool.release(page)
+                except Exception as e:
+                    print(f"[ERROR] Pool error for {game_id}: {e}")
+                    return None
+
+            result = await do_crawl()
+            return result
         finally:
             if owns_pool:
                 await pool.close()

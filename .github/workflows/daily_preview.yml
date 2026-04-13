@@ -45,6 +45,8 @@ jobs:
       - name: Run Daily Preview Batch
         env:
           OCI_DB_URL: ${{ secrets.OCI_DB_URL }}
+          KBO_USER_ID: ${{ secrets.KBO_USER_ID }}
+          KBO_USER_PWD: ${{ secrets.KBO_USER_PWD }}
         run: |
           echo "Generating pre-game context for ${KST_DATE}..."
           python3 -m src.cli.daily_preview_batch --date ${{ env.KST_DATE }}
