@@ -18,6 +18,7 @@ from src.models.game import (
 )
 import re
 from src.services.player_id_resolver import PlayerIdResolver
+from src.sources.relay.base import event_has_minimum_state, event_to_pbp_row, normalize_pbp_row
 from src.utils.player_positions import get_primary_position
 from src.utils.safe_print import safe_print as print
 
@@ -330,33 +331,123 @@ def refresh_game_status_for_date(target_date: str, today: Optional[date] = None)
             return {"target_date": target_date, "total": 0, "updated": 0, "status_counts": {}}
 
 
-def save_relay_data(game_id: str, events: List[Dict[str, Any]]) -> int:
-    """Persist both legacy play_by_play and normalized game_events."""
-    if not events:
+def derive_play_by_play_rows_from_events(events: Iterable[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Deterministically project normalized game_events into lightweight play_by_play rows."""
+    return [event_to_pbp_row(event) for event in events]
+
+
+def backfill_game_play_by_play_from_existing_events(game_id: str) -> int:
+    """Regenerate game_play_by_play rows from stored game_events for one game."""
+    with SessionLocal() as session:
+        try:
+            _ensure_game_stub(session, game_id)
+            stored_events = (
+                session.query(GameEvent)
+                .filter(GameEvent.game_id == game_id)
+                .order_by(GameEvent.event_seq.asc())
+                .all()
+            )
+            if not stored_events:
+                return 0
+
+            pbp_mappings = derive_play_by_play_rows_from_events(
+                [
+                    {
+                        "inning": event.inning,
+                        "inning_half": event.inning_half,
+                        "pitcher_name": event.pitcher_name,
+                        "batter_name": event.batter_name,
+                        "description": event.description,
+                        "event_type": event.event_type,
+                        "result_code": event.result_code,
+                    }
+                    for event in stored_events
+                ]
+            )
+            session.query(GamePlayByPlay).filter(GamePlayByPlay.game_id == game_id).delete()
+            session.add_all(
+                [
+                    GamePlayByPlay(
+                        game_id=game_id,
+                        inning=row.get("inning"),
+                        inning_half=row.get("inning_half"),
+                        batter_name=row.get("batter_name"),
+                        pitcher_name=row.get("pitcher_name"),
+                        play_description=row.get("play_description"),
+                        event_type=row.get("event_type"),
+                        result=row.get("result"),
+                    )
+                    for row in pbp_mappings
+                ]
+            )
+            session.commit()
+            _auto_sync_to_oci(game_id)
+            return len(pbp_mappings)
+        except Exception as exc:
+            session.rollback()
+            print(f"[ERROR] DB Error (Derived Relay Backfill): {exc}")
+            return 0
+
+
+def save_relay_data(
+    game_id: str,
+    events: Optional[List[Dict[str, Any]]] = None,
+    raw_pbp_rows: Optional[List[Dict[str, Any]]] = None,
+    *,
+    source_name: Optional[str] = None,
+    notes: Optional[str] = None,
+    allow_derived_pbp: bool = True,
+) -> int:
+    """
+    Persist normalized relay data.
+
+    Rules:
+    - When normalized events have enough state, persist both game_events and game_play_by_play.
+    - When only lightweight play-by-play rows exist, persist game_play_by_play only.
+    - Never synthesize game_events if WPA/state coverage is insufficient.
+    """
+    events = list(events or [])
+    raw_pbp_rows = [normalize_pbp_row(row) for row in (raw_pbp_rows or [])]
+    if events and not raw_pbp_rows:
+        raw_pbp_rows = derive_play_by_play_rows_from_events(events)
+
+    valid_event_rows = events if events and all(event_has_minimum_state(event) for event in events) else []
+    if not valid_event_rows and not raw_pbp_rows:
         return 0
 
     with SessionLocal() as session:
         try:
-            session.query(GamePlayByPlay).filter(GamePlayByPlay.game_id == game_id).delete()
-            session.query(GameEvent).filter(GameEvent.game_id == game_id).delete()
+            _ensure_game_stub(session, game_id)
+            if raw_pbp_rows:
+                session.query(GamePlayByPlay).filter(GamePlayByPlay.game_id == game_id).delete()
+            if valid_event_rows:
+                session.query(GameEvent).filter(GameEvent.game_id == game_id).delete()
 
             pbp_rows = []
             event_rows = []
-            for idx, event in enumerate(events, start=1):
-                inning = event.get("inning")
-                half = event.get("inning_half")
+            for row in raw_pbp_rows:
                 pbp_rows.append(
                     GamePlayByPlay(
                         game_id=game_id,
-                        inning=inning,
-                        inning_half=half,
-                        batter_name=event.get("batter"),
-                        pitcher_name=event.get("pitcher"),
-                        play_description=event.get("description"),
-                        event_type=event.get("event_type"),
-                        result=event.get("result"),
+                        inning=row.get("inning"),
+                        inning_half=row.get("inning_half"),
+                        batter_name=row.get("batter_name"),
+                        pitcher_name=row.get("pitcher_name"),
+                        play_description=row.get("play_description"),
+                        event_type=row.get("event_type"),
+                        result=row.get("result"),
                     )
                 )
+            for idx, event in enumerate(valid_event_rows, start=1):
+                inning = event.get("inning")
+                half = event.get("inning_half")
+                batter_name = event.get("batter_name") or event.get("batter")
+                pitcher_name = event.get("pitcher_name") or event.get("pitcher")
+                extra_json = dict(event.get("extra_json") or {})
+                if source_name:
+                    extra_json.setdefault("relay_source", source_name)
+                if notes:
+                    extra_json.setdefault("relay_notes", notes)
                 event_rows.append(
                     GameEvent(
                         game_id=game_id,
@@ -364,16 +455,15 @@ def save_relay_data(game_id: str, events: List[Dict[str, Any]]) -> int:
                         inning=inning,
                         inning_half=half,
                         outs=event.get("outs"),
-                        batter_name=event.get("batter"),
-                        pitcher_name=event.get("pitcher"),
+                        batter_name=batter_name,
+                        pitcher_name=pitcher_name,
                         description=event.get("description"),
                         event_type=event.get("event_type"),
                         result_code=event.get("result_code") or event.get("result"),
                         rbi=event.get("rbi"),
                         bases_before=event.get("bases_before"),
                         bases_after=event.get("bases_after"),
-                        extra_json=event.get("extra_json"),
-                        # New WPA columns
+                        extra_json=extra_json or None,
                         wpa=event.get("wpa"),
                         win_expectancy_before=event.get("win_expectancy_before"),
                         win_expectancy_after=event.get("win_expectancy_after"),
@@ -384,10 +474,15 @@ def save_relay_data(game_id: str, events: List[Dict[str, Any]]) -> int:
                     )
                 )
 
-            session.add_all(pbp_rows + event_rows)
+            if pbp_rows:
+                session.add_all(pbp_rows)
+            if event_rows:
+                session.add_all(event_rows)
             session.commit()
             _auto_sync_to_oci(game_id)
-            return len(events)
+            if events and not valid_event_rows:
+                print(f"[WARN] Skipped game_events save for {game_id}: insufficient relay state")
+            return len(event_rows) if event_rows else len(pbp_rows)
         except Exception as exc:
             session.rollback()
             print(f"[ERROR] DB Error (Relay): {exc}")
@@ -396,6 +491,54 @@ def save_relay_data(game_id: str, events: List[Dict[str, Any]]) -> int:
 
 def _has_game_child_rows(session, model, game_id: str) -> bool:
     return session.query(model).filter(model.game_id == game_id).first() is not None
+
+
+def _ensure_game_stub(session, game_id: str) -> None:
+    existing = session.query(Game).filter(Game.game_id == game_id).one_or_none()
+    if existing:
+        return
+
+    try:
+        game_date = datetime.strptime(game_id[:8], "%Y%m%d").date()
+    except Exception:
+        game_date = datetime.now().date()
+
+    away_team = None
+    home_team = None
+    if len(game_id) >= 12:
+        away_team = game_id[8:10] or None
+        home_team = game_id[10:12] or None
+
+    season_id = None
+    try:
+        season_year = int(game_id[:4])
+    except Exception:
+        season_year = None
+    if season_year is not None:
+        season_id = _coerce_int(
+            session.execute(
+                text(
+                    """
+                    SELECT MIN(season_id)
+                    FROM kbo_seasons
+                    WHERE season_year = :season_year
+                      AND league_type_code = 0
+                    """
+                ),
+                {"season_year": season_year},
+            ).scalar()
+        )
+
+    session.add(
+        Game(
+            game_id=game_id,
+            game_date=game_date,
+            away_team=away_team,
+            home_team=home_team,
+            season_id=season_id,
+            game_status=GAME_STATUS_COMPLETED,
+        )
+    )
 
 
 def _derive_game_status(

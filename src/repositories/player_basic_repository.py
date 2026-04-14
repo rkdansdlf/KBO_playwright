@@ -119,6 +119,13 @@ class PlayerBasicRepository:
             'status': player_data.get('status'),
             'staff_role': player_data.get('staff_role'),
             'status_source': player_data.get('status_source'),
+            'photo_url': player_data.get('photo_url'),
+            'bats': player_data.get('bats'),
+            'throws': player_data.get('throws'),
+            'debut_year': player_data.get('debut_year'),
+            'salary_original': player_data.get('salary_original'),
+            'signing_bonus_original': player_data.get('signing_bonus_original'),
+            'draft_info': player_data.get('draft_info'),
         }
 
     def get_all(self, limit: int = None) -> List[PlayerBasic]:

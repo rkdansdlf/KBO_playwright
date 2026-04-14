@@ -6,14 +6,14 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 import src.repositories.game_repository as game_repository
-from src.models.base import Base
 from src.models.game import Game
 from src.models.season import KboSeason
 
 
 def _build_session_factory():
     engine = create_engine("sqlite:///:memory:")
-    Base.metadata.create_all(bind=engine)
+    Game.__table__.create(bind=engine)
+    KboSeason.__table__.create(bind=engine)
     return sessionmaker(bind=engine, autoflush=False, autocommit=False, expire_on_commit=False)
 
 

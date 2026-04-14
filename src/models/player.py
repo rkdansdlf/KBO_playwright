@@ -56,6 +56,15 @@ class PlayerBasic(Base):
     staff_role: Mapped[Optional[str]] = mapped_column(String(32), nullable=True, comment="manager|coach|trainer")
     status_source: Mapped[Optional[str]] = mapped_column(String(16), nullable=True, comment="heuristic|profile")
 
+    # Extended profile fields (from detail page)
+    photo_url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True, comment="KBO CDN profile image URL")
+    bats: Mapped[Optional[str]] = mapped_column(String(4), nullable=True, comment="Batting hand: R/L/S")
+    throws: Mapped[Optional[str]] = mapped_column(String(4), nullable=True, comment="Throwing hand: R/L")
+    debut_year: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, comment="Year of entry/debut")
+    salary_original: Mapped[Optional[str]] = mapped_column(String(50), nullable=True, comment="Salary as shown on KBO site (e.g. '1억 5천만원')")
+    signing_bonus_original: Mapped[Optional[str]] = mapped_column(String(50), nullable=True, comment="Signing bonus original string")
+    draft_info: Mapped[Optional[str]] = mapped_column(String(100), nullable=True, comment="Draft info string (e.g. '23 KT 2라운드 10순위')")
+
     __table_args__ = (
         Index("idx_player_basic_name", "name"),
         Index("idx_player_basic_team", "team"),
@@ -87,6 +96,12 @@ class Player(Base, TimestampMixin):
     retire_year: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="ACTIVE")
     notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
+    # Extended profile fields (relational mirror of PlayerBasic)
+    photo_url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    salary_original: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    signing_bonus_original: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    draft_info: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
 
 
 

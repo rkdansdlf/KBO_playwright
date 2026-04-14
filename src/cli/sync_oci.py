@@ -134,6 +134,11 @@ def build_arg_parser() -> argparse.ArgumentParser:
         help="OCI에 없거나 로컬 업데이트가 더 최근인 미동기화/수정된 데이터만 선별하여 동기화합니다.",
     )
     parser.add_argument(
+        "--player-basic",
+        action="store_true",
+        help="선수 기본 정보(Player Basic)를 동기화합니다.",
+    )
+    parser.add_argument(
         "--daily-roster",
         action="store_true",
         help="일별 1군 등록 현황(Daily Roster)을 동기화합니다.",
@@ -162,6 +167,11 @@ def build_arg_parser() -> argparse.ArgumentParser:
         "--year",
         type=int,
         help="특정 연도의 데이터를 동기화합니다. (e.g., 2018)",
+    )
+    parser.add_argument(
+        "--limit",
+        type=int,
+        help="동기화할 최대 행 수를 지정합니다.",
     )
     parser.add_argument(
         "--standings",
@@ -209,6 +219,13 @@ def main(argv: Iterable[str] | None = None) -> None:
             synced = syncer.sync_daily_rosters()
             print("✅ Daily Roster Sync Finished")
 
+    elif args.player_basic:
+        print(f"🚀 Syncing Player Basic using specialized OCISync (limit={args.limit})...")
+        with SessionLocal() as session:
+            syncer = OCISync(args.target_url, session)
+            synced = syncer.sync_player_basic(limit=args.limit)
+            print(f"✅ Player Basic Sync Finished ({synced} rows)")
+
     elif args.player_movements:
         print("🚀 Syncing Player Movements using specialized OCISync...")
         with SessionLocal() as session:
@@ -245,10 +262,13 @@ def main(argv: Iterable[str] | None = None) -> None:
             print("✅ Crawl Runs Sync Finished")
 
     elif args.season_stats:
-        print("🚀 Syncing Season Stats using specialized OCISync...")
+        print("🚀 Syncing Season Stats (Batting & Pitching) using specialized OCISync...")
         with SessionLocal() as session:
             syncer = OCISync(args.target_url, session)
-            syncer.sync_all_batting_data()
+            print("  - Syncing Batting stats...")
+            syncer.sync_player_season_batting()
+            print("  - Syncing Pitching stats...")
+            syncer.sync_player_season_pitching()
             print("✅ Season Stats Sync Finished")
             
     elif args.matchups:
