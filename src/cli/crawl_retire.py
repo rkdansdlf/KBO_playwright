@@ -59,6 +59,11 @@ async def process_player(
         parsed_profile = parse_profile(profile_text, is_active=False)
     else:
         parsed_profile = PlayerProfileParsed(is_active=False)
+    
+    # Add photo_url if captured
+    hitter_photo = hitter_payload.get("photo_url") if hitter_payload else None
+    pitcher_photo = pitcher_payload.get("photo_url") if pitcher_payload else None
+    parsed_profile.photo_url = hitter_photo or pitcher_photo
 
     # 선수 프로필 정보를 데이터베이스에 UPSERT합니다.
     player = await asyncio.to_thread(
@@ -88,12 +93,17 @@ async def process_player(
 async def crawl_retired_players(args: argparse.Namespace) -> None:
     """은퇴 선수 데이터 수집 파이프라인의 메인 로직."""
     # 1단계: 은퇴/비활동 선수 ID 목록을 결정합니다.
-    inactive_ids = await determine_inactive_ids(
-        start_year=args.start_year,
-        end_year=args.end_year,
-        active_year=args.active_year or args.end_year,
-        request_delay=args.delay,
-    )
+    if args.seed_file:
+        print(f"📂 Loading seed IDs from {args.seed_file}...")
+        with open(args.seed_file, "r") as f:
+            inactive_ids = {line.strip() for line in f if line.strip()}
+    else:
+        inactive_ids = await determine_inactive_ids(
+            start_year=args.start_year,
+            end_year=args.end_year,
+            active_year=args.active_year or args.end_year,
+            request_delay=args.delay,
+        )
 
     inactive_list = sorted(inactive_ids)
     if args.limit:
@@ -128,6 +138,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--concurrency", type=int, default=3, help="동시 요청 수")
     parser.add_argument("--delay", type=float, default=1.5, help="요청 간 지연 시간(초)")
     parser.add_argument("--limit", type=int, default=None, help="처리할 최대 선수 수 (디버깅용)")
+    parser.add_argument("--seed-file", type=str, help="식별된 선수 ID 목록 파일 (listing 생략)")
     return parser
 
 

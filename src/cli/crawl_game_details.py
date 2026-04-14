@@ -39,18 +39,12 @@ async def run_pipeline(args: argparse.Namespace):
             print(f"[DB] Saved Detail for Game {game_id}.")
             if args.relay:
                 print(f"[INFO] Fetching Relay for {game_id}...")
-                relay_data = await relay_crawler.crawl_game_relay(game_id, game_date)
-                if relay_data and 'innings' in relay_data:
-                    flat_events = []
-                    seq = 1
-                    for inning in relay_data['innings']:
-                        for play in inning.get('plays', []):
-                            play['inning'], play['inning_half'] = inning['inning'], inning['half']
-                            play['event_seq'] = seq
-                            seq += 1
-                            flat_events.append(play)
-                    pbp_count = save_relay_data(game_id, flat_events)
+                relay_data = await relay_crawler.crawl_game_relay(game_id)
+                if relay_data and 'events' in relay_data:
+                    pbp_count = save_relay_data(game_id, relay_data['events'])
                     print(f"[DB] Saved {pbp_count} PBP events for {game_id}.")
+                else:
+                    print(f"[WARN] No relay events found for {game_id}.")
             success_count += 1
         else:
             print(f"[ERROR] Failed to save Game {game_id}.")

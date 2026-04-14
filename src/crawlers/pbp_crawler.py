@@ -27,12 +27,14 @@ class PBPCrawler:
         self.pool = pool
         self._context_kwargs = self.policy.build_context_kwargs(locale='ko-KR')
         self.wpa_calc = WPACalculator()
+        self.last_failure_reason: str | None = None
 
     async def crawl_game_events(self, game_id: str) -> Optional[Dict[str, Any]]:
         """
         Loads the LiveTextView2 page for a specific game and extracts PBP data.
         Returns a dictionary with 'game_id', 'game_date', and a list of 'events' (GameEvent structs).
         """
+        self.last_failure_reason = None
         game_date = game_id[:8]
         url = f"{self.base_url}?gameDate={game_date}&gameId={game_id}"
 
@@ -53,11 +55,22 @@ class PBPCrawler:
                             return None
                             
                         await self.policy.delay_async(host="www.koreabaseball.com")
-                        await page.goto(url, wait_until="networkidle", timeout=30000)
+                        
+                        # Step 1: Warm up the session by visiting the main game center page
+                        # This allows Akamai scripts to run and set necessary cookies (_abck, etc.)
+                        parent_url = f"https://www.koreabaseball.com/Schedule/GameCenter/Main.aspx?gameId={game_id}&gameDate={game_date}&section=REVIEW"
+                        print(f"[AUTH] Warming up session on parent page: {parent_url}")
+                        await page.goto(parent_url, wait_until="networkidle", timeout=20000)
+                        await asyncio.sleep(2) # Allow some time for scripts to stabilize
+
+                        # Step 2: Navigate to the actual relay page with explicit Referer
+                        print(f"[FETCH] Navigating to Relay page with Referer: {url}")
+                        await page.goto(url, wait_until="networkidle", timeout=30000, referer=parent_url)
 
                         # Check for login redirect or Error page
                         if "Error.html" in page.url or "Login.aspx" in page.url:
                             print(f"[ERROR] Redirected to {page.url}. Session might be expired or login failed.")
+                            self.last_failure_reason = "auth_required"
                             
                             from src.utils.kbo_auth import KboAuthenticator
                             if os.path.exists(KboAuthenticator.AUTH_STATE_PATH):
@@ -81,12 +94,14 @@ class PBPCrawler:
                             body = await page.content()
                             if "경기 준비중" in body or "취소" in body:
                                 print(f"[INFO] Game {game_id} seems to have no relay data.")
+                                self.last_failure_reason = "empty"
                                 return None
                         
                         print("[INFO] Extracting Relay Data...")
                         events = await self._extract_flat_events(page)
                         
                         if not events:
+                            self.last_failure_reason = "empty"
                             return None
                             
                         return {
@@ -97,11 +112,13 @@ class PBPCrawler:
 
                     except Exception as e:
                         print(f"[ERROR] PBP crawl failed for {game_id}: {e}")
+                        self.last_failure_reason = "error"
                         return None
                     finally:
                         await pool.release(page)
                 except Exception as e:
                     print(f"[ERROR] Pool error for {game_id}: {e}")
+                    self.last_failure_reason = "error"
                     return None
 
             result = await do_crawl()

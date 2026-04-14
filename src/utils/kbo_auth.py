@@ -28,8 +28,20 @@ class KboAuthenticator:
         print(f"[AUTH] Attempting login for user: {self.user_id}...")
         
         async with async_playwright() as p:
-            browser = await p.chromium.launch(headless=headless)
-            context = await browser.new_context()
+            # Replicate stealth launch args
+            launch_args = ["--disable-blink-features=AutomationControlled"]
+            browser = await p.chromium.launch(headless=headless, args=launch_args)
+            
+            # Use realistic User-Agent
+            user_agent = (
+                "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36"
+            )
+            context = await browser.new_context(user_agent=user_agent)
+            
+            # Add basic stealth init script
+            await context.add_init_script("() => { Object.defineProperty(navigator, 'webdriver', { get: () => false }); }")
+            
             page = await context.new_page()
             
             try:
@@ -50,10 +62,15 @@ class KboAuthenticator:
                 if "로그아웃" in content:
                     print("[AUTH] Login successful! Warming up session...")
                     
-                    # Navigate to a GameCenter related page once to "activate" member cookies fully for that section
-                    # Using a generic GameCenter entry point
+                    # 1. Natural navigation to GameCenter
                     try:
-                        await page.goto("https://www.koreabaseball.com/Schedule/GameCenter/Main.aspx", wait_until="networkidle", timeout=10000)
+                        await page.goto("https://www.koreabaseball.com/Schedule/GameCenter/Main.aspx", wait_until="networkidle", timeout=15000)
+                        
+                        # 2. Mimic human behavior (Scroll)
+                        await page.evaluate("window.scrollTo(0, 500)")
+                        await asyncio.sleep(1)
+                        await page.evaluate("window.scrollTo(0, 0)")
+                        await asyncio.sleep(2) # Wait for Akamai to finalize _abck cookie
                     except Exception as e:
                         print(f"[AUTH] Session warm-up warning (ignoring): {e}")
 

@@ -20,6 +20,8 @@ from src.cli.sync_oci import main as sync_main
 from src.crawlers.game_detail_crawler import GameDetailCrawler
 from src.crawlers.player_batting_all_series_crawler import crawl_series_batting_stats
 from src.crawlers.player_pitching_all_series_crawler import crawl_pitcher_series
+from src.crawlers.player_movement_crawler import PlayerMovementCrawler
+from src.crawlers.daily_roster_crawler import DailyRosterCrawler
 from src.crawlers.schedule_crawler import ScheduleCrawler
 from src.db.engine import SessionLocal
 from src.repositories.game_repository import (
@@ -30,6 +32,8 @@ from src.repositories.game_repository import (
     save_schedule_game,
     update_game_status,
 )
+from src.repositories.player_repository import PlayerRepository
+from src.repositories.team_repository import TeamRepository
 from src.services.player_id_resolver import PlayerIdResolver
 from src.utils.safe_print import safe_print as print
 
@@ -194,6 +198,29 @@ async def run_update(target_date: str, sync: bool = False, headless: bool = True
         print(f"\n   ✅ Local cumulative stats for {year} regular season updated")
     except Exception as exc:
         print(f"   ❌ Error during stats update: {exc}")
+
+    # 4.2. Player Movements & Roster Snapshots
+    print("\n🔄 Step 4.2: Updating Player Movements & Roster Snapshots...")
+    try:
+        # 1. Player Movements (Trade, Injury, etc.)
+        m_crawler = PlayerMovementCrawler()
+        movements = await m_crawler.crawl_years(year, year)
+        if movements:
+            m_repo = PlayerRepository()
+            m_count = m_repo.save_player_movements(movements)
+            print(f"   ✅ Saved {m_count} player movements for {year}")
+
+        # 2. Daily Roster Snapshot (1st Team Entry/Exit)
+        r_target_date = datetime.strptime(target_date, "%Y%m%d").strftime("%Y-%m-%d")
+        r_crawler = DailyRosterCrawler()
+        rosters = await r_crawler.crawl_date_range(r_target_date, r_target_date)
+        if rosters:
+            with SessionLocal() as session:
+                r_repo = TeamRepository(session)
+                r_count = r_repo.save_daily_rosters(rosters)
+                print(f"   ✅ Saved {r_count} daily roster records for {r_target_date}")
+    except Exception as exc:
+        print(f"   ❌ Error updating player movements/rosters: {exc}")
 
     print("\n✨ Local data update sequence finished.")
     

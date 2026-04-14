@@ -21,7 +21,7 @@ class RetiredPlayerDetailCrawler:
         self.request_delay = request_delay
         self.pool = pool
 
-    async def fetch_player(self, player_id: str) -> Dict[str, Any]:
+    async def fetch_player(self, player_id: str, retries: int = 2) -> Dict[str, Any]:
         """
         Fetch hitter & pitcher pages for the given player ID.
         """
@@ -29,12 +29,24 @@ class RetiredPlayerDetailCrawler:
         owns_pool = self.pool is None
         await pool.start()
         try:
-            page = await pool.acquire()
-            try:
-                hitter_payload = await self._fetch_page(page, self.hitter_url, player_id)
-                pitcher_payload = await self._fetch_page(page, self.pitcher_url, player_id)
-            finally:
-                await pool.release(page)
+            for attempt in range(retries + 1):
+                try:
+                    page = await pool.acquire()
+                    try:
+                        hitter_payload = await self._fetch_page(page, self.hitter_url, player_id)
+                        pitcher_payload = await self._fetch_page(page, self.pitcher_url, player_id)
+                        return {
+                            "player_id": player_id,
+                            "hitter": hitter_payload,
+                            "pitcher": pitcher_payload,
+                        }
+                    finally:
+                        await pool.release(page)
+                except Exception as exc:
+                    if attempt == retries:
+                        raise exc
+                    print(f"⚠️ Retry {attempt + 1} for {player_id} due to: {exc}")
+                    await asyncio.sleep(2.0 * (attempt + 1))
         finally:
             if owns_pool:
                 await pool.close()
@@ -47,10 +59,11 @@ class RetiredPlayerDetailCrawler:
 
     async def _fetch_page(self, page: Page, base_url: str, player_id: str) -> Optional[Dict[str, Any]]:
         url = f"{base_url}?playerId={player_id}"
-        await page.goto(url, wait_until="networkidle", timeout=30000)
+        await page.goto(url, wait_until="domcontentloaded", timeout=60000)
         await asyncio.sleep(self.request_delay)
 
         profile_text = await self._extract_profile_text(page)
+        photo_url = await self._extract_photo_url(page)
         tables = await self._extract_tables(page)
 
         if not profile_text and not tables:
@@ -59,6 +72,7 @@ class RetiredPlayerDetailCrawler:
         return {
             "url": url,
             "profile_text": profile_text,
+            "photo_url": photo_url,
             "tables": tables,
         }
 
@@ -77,6 +91,24 @@ class RetiredPlayerDetailCrawler:
                 cleaned = text.strip()
                 if cleaned:
                     return cleaned
+        return None
+
+    async def _extract_photo_url(self, page: Page) -> Optional[str]:
+        # Retired pages often use different image structures
+        selector = "div.photo img"
+        element = await page.query_selector(selector)
+        if not element:
+            # Fallback for old/empty pages
+            element = await page.query_selector("#imgProgile")
+
+        if element:
+            src = await element.get_attribute("src")
+            if src and "/person/" in src:
+                if src.startswith("//"):
+                    return f"https:{src}"
+                if src.startswith("/"):
+                    return f"https://www.koreabaseball.com{src}"
+                return src
         return None
 
     async def _extract_tables(self, page: Page) -> List[Dict[str, Any]]:

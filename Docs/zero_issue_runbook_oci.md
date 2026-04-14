@@ -65,3 +65,21 @@ python3 /Users/mac/project/KBO_playwright/scripts/maintenance/quality_gate.py
   - `quality_gate_local_*.csv`
   - `quality_gate_oci_*.csv`
   - `quality_gate_missing_set_diff_*.csv`
+
+## Coach/WPA 복구 판단 기준
+- 현재 시즌 운영:
+  - 완료 경기의 `game_events`와 `wpa`가 이미 채워져 있고, 완료 경기 기준 missing WPA가 0이면 추가 복구는 불필요합니다.
+- 과거 시즌 또는 전체 히스토리 재구성:
+  - 최우선 복구 대상은 `game_events`입니다.
+  - 필요한 것은 메타/요약 테이블이 아니라 경기별 **raw event source**입니다.
+- 필수 복구 필드:
+  - `game_id`, `event_seq`, `inning`, `inning_half`, `outs`
+  - `batter_id`, `batter_name`, `pitcher_id`, `pitcher_name`
+  - `description`, `event_type`, `result_code`, `rbi`
+  - `bases_before`, `bases_after`, `base_state`, `home_score`, `away_score`, `score_diff`
+  - `wpa`, `win_expectancy_before`, `win_expectancy_after`, `extra_json`
+- 선택 복구 대상:
+  - `game_play_by_play`는 있으면 좋지만 현재 Coach WPA 리뷰 운영의 필수 조건은 아닙니다.
+- 대체 불가한 이유:
+  - Coach 승부처 문장과 선수별 WPA 통계는 `game_events`의 이벤트 행과 `game_events.wpa` 합계에 직접 의존합니다.
+  - `game_metadata.source_payload` 및 기타 메타/요약성 테이블만으로는 이벤트 단위 승부처 근거를 재생성할 수 없습니다.

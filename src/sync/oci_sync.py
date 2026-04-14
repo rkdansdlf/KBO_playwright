@@ -66,6 +66,10 @@ class OCISync:
         target_session_factory = sessionmaker(bind=self.oci_engine)
         self.target_session = target_session_factory()
 
+    @staticmethod
+    def _chunked(items: List[str], size: int) -> List[List[str]]:
+        return [items[idx: idx + size] for idx in range(0, len(items), size)]
+
     def test_connection(self) -> bool:
         """Test OCI connection"""
         try:
@@ -476,6 +480,13 @@ class OCISync:
                 'status': player.status,
                 'staff_role': player.staff_role,
                 'status_source': player.status_source,
+                'photo_url': player.photo_url,
+                'bats': player.bats,
+                'throws': player.throws,
+                'debut_year': player.debut_year,
+                'salary_original': player.salary_original,
+                'signing_bonus_original': player.signing_bonus_original,
+                'draft_info': player.draft_info,
             }
 
             stmt = pg_insert(PlayerBasic).values(**data)
@@ -912,6 +923,7 @@ class OCISync:
             "game_lineups",
             "game_batting_stats",
             "game_pitching_stats",
+            "game_play_by_play",
             "game_events",
             "game_summary",
         ]
@@ -951,7 +963,17 @@ class OCISync:
     def sync_game_details(self, days: int = None, year: int = None, unsynced_only: bool = False) -> Dict[str, int]:
         """Sync all game detail tables to OCI"""
         results = {}
-        from src.models.game import Game, GameMetadata, GameInningScore, GameLineup, GameBattingStat, GamePitchingStat, GameEvent, GameSummary
+        from src.models.game import (
+            Game,
+            GameMetadata,
+            GameInningScore,
+            GameLineup,
+            GameBattingStat,
+            GamePitchingStat,
+            GamePlayByPlay,
+            GameEvent,
+            GameSummary,
+        )
         
         filters = []
         target_game_ids = None
@@ -1039,6 +1061,10 @@ class OCISync:
             filters=get_child_filters(GamePitchingStat)
         )
 
+        results['play_by_play'] = self._sync_game_play_by_play(
+            filters=get_child_filters(GamePlayByPlay)
+        )
+
         results['events'] = self._sync_simple_table(
             GameEvent,
             ['game_id', 'event_seq'],
@@ -1060,7 +1086,17 @@ class OCISync:
     def sync_specific_game(self, game_id: str) -> Dict[str, int]:
         """Sync all related data for a single game_id"""
         # We need Game model for filtering
-        from src.models.game import Game, GameMetadata, GameInningScore, GameLineup, GameBattingStat, GamePitchingStat, GameEvent, GameSummary
+        from src.models.game import (
+            Game,
+            GameMetadata,
+            GameInningScore,
+            GameLineup,
+            GameBattingStat,
+            GamePitchingStat,
+            GamePlayByPlay,
+            GameEvent,
+            GameSummary,
+        )
         
         results = {}
         filters = [Game.game_id == game_id]
@@ -1074,10 +1110,52 @@ class OCISync:
         results['lineups'] = self._sync_simple_table(GameLineup, ['game_id', 'team_side', 'appearance_seq'], exclude_cols=['created_at'], filters=[GameLineup.game_id == game_id])
         results['batting_stats'] = self._sync_simple_table(GameBattingStat, ['game_id', 'player_id', 'appearance_seq'], exclude_cols=['created_at'], filters=[GameBattingStat.game_id == game_id])
         results['pitching_stats'] = self._sync_simple_table(GamePitchingStat, ['game_id', 'player_id', 'appearance_seq'], exclude_cols=['created_at'], filters=[GamePitchingStat.game_id == game_id])
+        results['play_by_play'] = self._sync_game_play_by_play(filters=[GamePlayByPlay.game_id == game_id])
         results['events'] = self._sync_simple_table(GameEvent, ['game_id', 'event_seq'], exclude_cols=['created_at'], filters=[GameEvent.game_id == game_id])
         results['summary'] = self._sync_simple_table(GameSummary, ['game_id', 'summary_type', 'player_name', 'detail_text'], exclude_cols=['created_at', 'id'], filters=[GameSummary.game_id == game_id])
         
         return results
+
+    def _sync_game_play_by_play(self, filters: List = None) -> int:
+        from src.models.game import GamePlayByPlay
+
+        query = self.sqlite_session.query(GamePlayByPlay)
+        if filters:
+            for filter_clause in filters:
+                query = query.filter(filter_clause)
+
+        rows = query.all()
+        game_ids = sorted({row.game_id for row in rows})
+        if not game_ids:
+            return 0
+
+        for batch in self._chunked(game_ids, 500):
+            self.target_session.query(GamePlayByPlay).filter(GamePlayByPlay.game_id.in_(batch)).delete(
+                synchronize_session=False
+            )
+
+        mappings = []
+        for row in rows:
+            mappings.append(
+                {
+                    "game_id": row.game_id,
+                    "inning": row.inning,
+                    "inning_half": row.inning_half,
+                    "pitcher_name": row.pitcher_name,
+                    "batter_name": row.batter_name,
+                    "play_description": row.play_description,
+                    "event_type": row.event_type,
+                    "result": row.result,
+                    "created_at": row.created_at,
+                    "updated_at": row.updated_at,
+                }
+            )
+
+        if mappings:
+            self.target_session.execute(GamePlayByPlay.__table__.insert(), mappings)
+        self.target_session.commit()
+        print(f"✅ Synced {len(mappings)} game_play_by_play rows to OCI")
+        return len(mappings)
 
     def _sync_simple_table(
         self, 

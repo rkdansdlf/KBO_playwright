@@ -337,8 +337,9 @@ class ScheduleCrawler:
                 if not g.get('game_id'):
                     away_name = g.get('away_name')
                     home_name = g.get('home_name')
-                    away_code = resolve_team_code(away_name) or away_name
-                    home_code = resolve_team_code(home_name) or home_name
+                    # Pass 'year' to ensure history-aware resolution
+                    away_code = resolve_team_code(away_name, year) or away_name
+                    home_code = resolve_team_code(home_name, year) or home_name
                     
                     # KBO Website uses LEGACY codes in Game IDs.
                     # We must map our canonical codes (KH, DB, SSG, KIA) to KBO legacy (WO, OB, SK, HT).
@@ -347,7 +348,12 @@ class ScheduleCrawler:
                         "DB": "OB",  # Doosan -> OB
                         "SSG": "SK", # SSG -> SK (Wyverns)
                         "KIA": "HT", # KIA -> Haitai
-                        # Others usually match: LG, LT, NC, HH, KT, SS
+                        "LT": "LT",
+                        "LG": "LG",
+                        "NC": "NC",
+                        "HH": "HH",
+                        "KT": "KT",
+                        "SS": "SS"
                     }
                     
                     kbo_away_code = KBO_LEGACY_CODES.get(away_code, away_code)
@@ -355,11 +361,10 @@ class ScheduleCrawler:
 
                     if g.get('game_date') and kbo_away_code and kbo_home_code:
                         # Construct ID: YYYYMMDD + AWAY + HOME + DH
-                        # Doubleheader logic: If DH exists, use it. Default 0.
                         dh = g.get('doubleheader_no', 0)
-                        
                         constructed_id = f"{g['game_date']}{kbo_away_code}{kbo_home_code}{dh}"
                         g['game_id'] = constructed_id                
+                
                 games.append({
                     'game_id': g['game_id'],
                     'game_date': g['game_date'],
