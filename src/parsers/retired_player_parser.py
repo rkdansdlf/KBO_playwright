@@ -123,7 +123,7 @@ def parse_retired_hitter_tables(
             "season": season,
             "league": league,
             "level": level,
-            "team_code": resolve_team_code(team_name),
+            "team_code": resolve_team_code(team_name, season_year=season),
             "extra_stats": {},
             "source": "PROFILE",
         }
@@ -185,7 +185,7 @@ def parse_retired_pitcher_table(
             "season": season,
             "league": league,
             "level": level,
-            "team_code": resolve_team_code(team_name),
+            "team_code": resolve_team_code(team_name, season_year=season),
             "extra_stats": {},
             "source": "PROFILE",
         }

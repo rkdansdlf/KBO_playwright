@@ -6,10 +6,11 @@ to provide rich context for LLM analysis.
 from __future__ import annotations
 from typing import List, Dict, Any, Optional
 from sqlalchemy import text, func, or_, and_, desc
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
 
 from src.models.game import Game, GameEvent, GameBattingStat, GamePitchingStat
-from src.models.player import PlayerSeasonPitching
+from src.models.player import PlayerSeasonPitching, PlayerMovement
+from src.models.team import TeamDailyRoster
 from src.models.season import KboSeason
 
 class ContextAggregator:
@@ -256,3 +257,52 @@ class ContextAggregator:
             "innings": stats.innings_pitched,
             "summary_text": f"{stats.wins}승 {stats.losses}패 {stats.era}ERA"
         }
+
+    def get_recent_player_movements(self, team_code: str, target_date: date, days: int = 7) -> List[Dict[str, Any]]:
+        """최근 N일간 해당 팀의 선수 이동 현황(부상, 트레이드 등) 조회"""
+        start_date = target_date - timedelta(days=days)
+        movements = self.session.query(PlayerMovement).filter(
+            PlayerMovement.team_code == team_code,
+            PlayerMovement.date >= start_date,
+            PlayerMovement.date <= target_date
+        ).order_by(desc(PlayerMovement.date)).all()
+        
+        results = []
+        for m in movements:
+            results.append({
+                "date": m.date.isoformat(),
+                "section": m.section,
+                "player": m.player_name,
+                "remarks": m.remarks
+            })
+        return results
+
+    def get_daily_roster_changes(self, team_code: str, target_date: date) -> Dict[str, List[str]]:
+        """해당 날짜의 1군 등록/말소 현황 비교 (어제와 비교)"""
+        prev_date = target_date - timedelta(days=1)
+        
+        curr_roster = self.session.query(TeamDailyRoster).filter(
+            TeamDailyRoster.team_code == team_code,
+            TeamDailyRoster.roster_date == target_date
+        ).all()
+        
+        prev_roster = self.session.query(TeamDailyRoster).filter(
+            TeamDailyRoster.team_code == team_code,
+            TeamDailyRoster.roster_date == prev_date
+        ).all()
+        
+        # 만약 전날 데이터가 없으면 '추가/삭제'를 판단할 수 없음
+        if not curr_roster or not prev_roster:
+            return {"added": [], "removed": []}
+            
+        curr_ids = {r.player_id: r.player_name for r in curr_roster}
+        prev_ids = {r.player_id: r.player_name for r in prev_roster}
+        
+        added = [name for pid, name in curr_ids.items() if pid not in prev_ids]
+        removed = [name for pid, name in prev_ids.items() if pid not in curr_ids]
+        
+        return {
+            "added": added,
+            "removed": removed
+        }
+

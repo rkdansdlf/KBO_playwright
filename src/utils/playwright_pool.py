@@ -67,8 +67,48 @@ class AsyncPlaywrightPool:
 
         self._playwright = await async_playwright().start()
         browser_factory = getattr(self._playwright, self.browser_type)
-        self._browser = await browser_factory.launch(headless=self.headless)
+        
+        # Add evasion arguments
+        launch_args = [
+            "--disable-blink-features=AutomationControlled",
+        ]
+        self._browser = await browser_factory.launch(headless=self.headless, args=launch_args)
+        
+        # Define realistic User-Agent if not provided
+        if "user_agent" not in self.context_kwargs:
+            self.context_kwargs["user_agent"] = (
+                "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36"
+            )
+
         self._context = await self._browser.new_context(**self.context_kwargs)
+        
+        # Inject Stealth Script
+        stealth_script = """
+        () => {
+            // 1. Mask navigator.webdriver
+            Object.defineProperty(navigator, 'webdriver', { get: () => false });
+
+            // 2. Mock chrome.runtime
+            window.chrome = { runtime: {} };
+
+            // 3. Fix navigator.languages
+            Object.defineProperty(navigator, 'languages', { get: () => ['ko-KR', 'ko', 'en-US', 'en'] });
+
+            // 4. Mock WebGL vendor/renderer for high-end look
+            const getParameter = WebGLRenderingContext.prototype.getParameter;
+            WebGLRenderingContext.prototype.getParameter = function(parameter) {
+                if (parameter === 37445) return 'Intel Inc.';
+                if (parameter === 37446) return 'Intel(R) Iris(TM) Plus Graphics 640';
+                return getParameter.apply(this, arguments);
+            };
+            
+            // 5. Hide direct automation clues
+            delete navigator.__proto__.webdriver;
+        }
+        """
+        await self._context.add_init_script(stealth_script)
+
         if self.block_resources:
             await install_async_resource_blocking(self._context)
 

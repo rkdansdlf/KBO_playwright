@@ -12,7 +12,7 @@ import pytz
 
 from src.crawlers.schedule_crawler import ScheduleCrawler
 from src.crawlers.game_detail_crawler import GameDetailCrawler
-from src.crawlers.relay_crawler import RelayCrawler
+from src.crawlers.naver_relay_crawler import NaverRelayCrawler
 from src.repositories.game_repository import save_game_detail, save_relay_data
 from src.sync.oci_sync import OCISync
 from src.utils.safe_print import safe_print as print
@@ -37,25 +37,25 @@ async def run_live_crawler_cycle() -> bool:
         
     live_game_ids = set()
     
-    # 라이브 진행중인 게임 식별 (Relay Crawler 활용)
-    relay_crawler = RelayCrawler(request_delay=0.1)
+    # 라이브 수집기 (안정적인 Naver API 활용)
+    relay_crawler = NaverRelayCrawler()
     detail_crawler = GameDetailCrawler(request_delay=0.1)
     
     for g in today_games:
         game_id = g["game_id"]
-        # RelayCrawler가 Live 상태가 아니면 None 반환함.
-        relay_data = await relay_crawler.crawl_live_game(game_id)
         
-        if relay_data and relay_data.get('status') == 'live':
+        # Naver API로부터 PBP 데이터 수집
+        relay_data = await relay_crawler.crawl_game_events(game_id)
+        
+        if relay_data and relay_data.get('events'):
             live_game_ids.add(game_id)
             
             # 이벤트 DB 저장
             flat_events = relay_data.get('events', [])
-            if flat_events:
-                save_relay_data(game_id, flat_events)
-                print(f"[LIVE] 📝 Saved {len(flat_events)} real-time PBP events for {game_id}")
+            save_relay_data(game_id, flat_events)
+            print(f"[LIVE] 📝 Synced {len(flat_events)} PBP events via Naver for {game_id}")
                 
-            # 라이트웨이트 스코어보드 추출
+            # 라이트웨이트 스코어보드 추출 (점수/상태 업데이트용)
             detail = await detail_crawler.crawl_game(game_id, today_str, lightweight=True)
             if detail:
                 save_game_detail(detail)

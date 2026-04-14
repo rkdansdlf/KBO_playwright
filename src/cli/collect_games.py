@@ -8,7 +8,7 @@ from typing import List, Optional
 from datetime import date
 
 from src.crawlers.game_detail_crawler import GameDetailCrawler
-from src.crawlers.relay_crawler import RelayCrawler
+from src.crawlers.naver_relay_crawler import NaverRelayCrawler
 from src.repositories.game_repository import save_game_detail, save_relay_data
 from src.db.engine import SessionLocal
 from src.models.game import Game
@@ -41,14 +41,13 @@ async def collect_games(year: int, month: Optional[int] = None, force: bool = Fa
         games = query.all()
         print(f"🎯 Target: {len(games)} games for {year}" + (f"-{month}" if month else ""))
         
-        # Initialize Resolver
         from src.services.player_id_resolver import PlayerIdResolver
         resolver = PlayerIdResolver(session)
         resolver.preload_season_index(year)
-        
+
         detail_crawler = GameDetailCrawler(request_delay=1.0, resolver=resolver)
-        relay_crawler = RelayCrawler(request_delay=1.0)
-        
+        relay_crawler = NaverRelayCrawler()
+
         inputs = [
             {
                 "game_id": game.game_id,
@@ -70,15 +69,14 @@ async def collect_games(year: int, month: Optional[int] = None, force: bool = Fa
             else:
                 print("   ⚠️ Details save failed")
 
-            # 2. Relay (Play-by-play)
-            relay_data = await relay_crawler.crawl_game_relay(game_id)
+            # 2. Relay (Play-by-play) via Naver API
+            relay_data = await relay_crawler.crawl_game_events(game_id)
             if relay_data and relay_data.get("events"):
                 from src.repositories.game_repository import save_relay_data
                 saved_events = save_relay_data(game_id, relay_data["events"])
                 print(f"   ✅ Relay saved ({saved_events} events)")
             else:
-                print("   ℹ️  No relay data available or game not live")
-
+                print("   ℹ️  No relay data available via Naver")
             success_count += 1
             if idx % 10 == 0:
                 print("⏸️  Pausing briefly...")

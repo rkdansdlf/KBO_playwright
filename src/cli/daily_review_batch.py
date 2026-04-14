@@ -1,6 +1,6 @@
 """
 Daily Review Batch Script
-Generates Post-game context (WPA Crucial Moments, Final Summary) 
+Generates post-game review context from game_events/WPA
 and saves it to GameSummary.
 """
 import asyncio
@@ -61,7 +61,10 @@ async def run_review_batch(target_date: str, custom_session=None):
             }
             
             if not review_data["crucial_moments"]:
-                print(f"  ⚠️ No WPA events found for {game_id}. (PBP might not be crawled yet)")
+                print(
+                    f"  ⚠️ No WPA-backed game_events found for {game_id}. "
+                    "Raw event crawl may be missing or incomplete."
+                )
             
             # Convert dict to JSON string
             review_json = json.dumps(review_data, ensure_ascii=False)

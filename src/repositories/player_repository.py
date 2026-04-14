@@ -71,6 +71,17 @@ class PlayerRepository:
             player.debut_year = profile.entry_year
         if profile.is_active is not None:
             player.status = "ACTIVE" if profile.is_active else "RETIRED"
+            
+        # New enriched fields
+        player.photo_url = profile.photo_url or player.photo_url
+        player.salary_original = profile.salary_original or player.salary_original
+        player.signing_bonus_original = profile.signing_bonus_original or player.signing_bonus_original
+        
+        # We can reconstruct draft_info or just store it if passed. 
+        # For retired players, it's often in the profile text and parsed into components.
+        if profile.draft_year:
+            # Reconstruct for consistency with PlayerBasic if needed, or just skip if we have components
+            pass
 
     def _upsert_identity(
         self, session: Session, player: Player, profile: PlayerProfileParsed

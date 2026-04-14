@@ -58,6 +58,8 @@ def main(argv: List[str] | None = None) -> None:
         "player_season_batting",
         "player_game_batting",
         "player_game_pitching",
+        "game_events",
+        "game_summary",
         "game_play_by_play",
     ]:
         try:
@@ -69,9 +71,12 @@ def main(argv: List[str] | None = None) -> None:
             # 테이블이 존재하지 않으면 조용히 넘어감
             continue
 
+    print("\nReview/WPA focus:")
+    print("  - game_events: required raw event source for Coach review and WPA summaries")
+    print("  - game_play_by_play: optional legacy text feed")
+
     print("\nHealthcheck complete.\n")
 
 
 if __name__ == "__main__":
     main()
-
