@@ -19,14 +19,26 @@ from src.models.game import (
 import re
 from src.services.player_id_resolver import PlayerIdResolver
 from src.sources.relay.base import event_has_minimum_state, event_to_pbp_row, normalize_pbp_row
+from src.utils.game_status import (
+    GAME_STATUS_CANCELLED,
+    GAME_STATUS_COMPLETED,
+    GAME_STATUS_DELAYED,
+    GAME_STATUS_DRAW,
+    GAME_STATUS_LIVE,
+    GAME_STATUS_POSTPONED,
+    GAME_STATUS_SCHEDULED,
+    GAME_STATUS_SUSPENDED,
+    GAME_STATUS_UNRESOLVED,
+    LIVE_GAME_STATUSES,
+    TERMINAL_GAME_STATUSES,
+    is_live_status,
+    is_terminal_status,
+    normalize_game_status,
+)
 from src.utils.player_positions import get_primary_position
 from src.utils.safe_print import safe_print as print
-
-GAME_STATUS_COMPLETED = "COMPLETED"
-GAME_STATUS_SCHEDULED = "SCHEDULED"
-GAME_STATUS_CANCELLED = "CANCELLED"
-GAME_STATUS_POSTPONED = "POSTPONED"
-GAME_STATUS_UNRESOLVED = "UNRESOLVED_MISSING"
+from src.utils.team_codes import resolve_team_code, team_code_from_game_id_segment
+from src.utils.team_history import FRANCHISE_CANONICAL_CODE, iter_team_history, resolve_team_code_for_season
 
 SEASON_TYPE_TO_LEAGUE_CODE = {
     "regular": 0,
@@ -126,15 +138,14 @@ def save_schedule_game(game_data: Dict[str, Any]) -> bool:
             resolved_season_id = _resolve_schedule_season_id(session, game_data, game.season_id)
             if resolved_season_id is not None:
                 game.season_id = resolved_season_id
+            _apply_game_team_identity(game, game_date.year)
 
             # Schedule crawl should keep already finalized statuses intact.
             if game.home_score is not None and game.away_score is not None:
-                game.game_status = GAME_STATUS_COMPLETED
+                game.game_status = _resolve_terminal_status(game.home_score, game.away_score)
             elif game.game_status not in {
-                GAME_STATUS_COMPLETED,
-                GAME_STATUS_CANCELLED,
-                GAME_STATUS_POSTPONED,
-                GAME_STATUS_UNRESOLVED,
+                *TERMINAL_GAME_STATUSES,
+                *LIVE_GAME_STATUSES,
             }:
                 game.game_status = GAME_STATUS_SCHEDULED
             
@@ -192,7 +203,7 @@ def save_game_detail(game_data: Dict[str, Any]) -> bool:
             game.away_score = away_info.get("score")
             game.winning_team, game.winning_score = _resolve_winner(home_info, away_info)
             if game.home_score is not None and game.away_score is not None:
-                game.game_status = GAME_STATUS_COMPLETED
+                game.game_status = _resolve_terminal_status(game.home_score, game.away_score)
             
             # Update Starting Pitchers
             home_pitcher_data = next((p for p in pitchers.get("home", []) if p.get("is_starting")), None)
@@ -205,12 +216,24 @@ def save_game_detail(game_data: Dict[str, Any]) -> bool:
             season_id = game_data.get("season_id")
             if season_id:
                 game.season_id = season_id
+            _apply_game_team_identity(game, game_date.year)
 
             _upsert_metadata(session, game_id, metadata)
-            _replace_records(session, GameInningScore, game_id, _build_inning_scores(game_id, teams))
-            _replace_records(session, GameLineup, game_id, _build_lineups(game_id, hitters))
-            _replace_records(session, GameBattingStat, game_id, _build_batting_stats(game_id, hitters))
-            _replace_records(session, GamePitchingStat, game_id, _build_pitching_stats(game_id, pitchers))
+            inning_rows = _build_inning_scores(game_id, teams, season_year=game_date.year)
+            if inning_rows:
+                _replace_records(session, GameInningScore, game_id, inning_rows)
+
+            lineup_rows = _build_lineups(game_id, hitters, season_year=game_date.year)
+            if lineup_rows:
+                _replace_records(session, GameLineup, game_id, lineup_rows)
+
+            batting_rows = _build_batting_stats(game_id, hitters, season_year=game_date.year)
+            if batting_rows:
+                _replace_records(session, GameBattingStat, game_id, batting_rows)
+
+            pitching_rows = _build_pitching_stats(game_id, pitchers, season_year=game_date.year)
+            if pitching_rows:
+                _replace_records(session, GamePitchingStat, game_id, pitching_rows)
 
             # Game Summary Handling
             resolver = PlayerIdResolver(session)
@@ -252,7 +275,8 @@ def save_game_detail(game_data: Dict[str, Any]) -> bool:
                             "player_id": p_id,
                             "detail_text": p_detail or detail_text,
                         })
-            _replace_records(session, GameSummary, game_id, summary_rows)
+            if summary_rows:
+                _replace_records(session, GameSummary, game_id, summary_rows)
 
             session.commit()
             _auto_sync_to_oci(game_id)
@@ -260,6 +284,193 @@ def save_game_detail(game_data: Dict[str, Any]) -> bool:
         except Exception as exc:
             session.rollback()
             print(f"[ERROR] DB Error (Detail): {exc}")
+            return False
+
+
+def save_game_snapshot(game_data: Dict[str, Any], *, status: Optional[str] = None) -> bool:
+    """Persist live/lightweight scoreboard data without touching full detail sections."""
+    if not game_data:
+        return False
+
+    game_id = game_data.get("game_id")
+    if not game_id:
+        return False
+
+    game_date_str = str(game_data.get("game_date", "")).replace("-", "") or game_id[:8]
+    try:
+        game_date = datetime.strptime(game_date_str, "%Y%m%d").date()
+    except Exception:
+        game_date = datetime.now().date()
+
+    metadata = game_data.get("metadata", {}) or {}
+    teams = game_data.get("teams", {}) or {}
+    pitchers = game_data.get("pitchers", {}) or {}
+
+    with SessionLocal() as session:
+        try:
+            game = session.query(Game).filter(Game.game_id == game_id).one_or_none()
+            if not game:
+                game = Game(game_id=game_id, game_date=game_date)
+                session.add(game)
+                session.flush()
+
+            away_info = teams.get("away", {}) or {}
+            home_info = teams.get("home", {}) or {}
+
+            game.game_date = game_date
+            game.stadium = metadata.get("stadium") or game.stadium
+            game.home_team = home_info.get("code") or game.home_team
+            game.away_team = away_info.get("code") or game.away_team
+            if home_info.get("score") is not None:
+                game.home_score = home_info.get("score")
+            if away_info.get("score") is not None:
+                game.away_score = away_info.get("score")
+
+            home_pitcher_data = next((p for p in pitchers.get("home", []) if p.get("is_starting")), None)
+            away_pitcher_data = next((p for p in pitchers.get("away", []) if p.get("is_starting")), None)
+            if home_pitcher_data and home_pitcher_data.get("player_name"):
+                game.home_pitcher = home_pitcher_data.get("player_name")
+            if away_pitcher_data and away_pitcher_data.get("player_name"):
+                game.away_pitcher = away_pitcher_data.get("player_name")
+
+            explicit_status = normalize_game_status(status)
+            if explicit_status:
+                if not is_terminal_status(game.game_status) or is_terminal_status(explicit_status):
+                    game.game_status = explicit_status
+
+            _apply_game_team_identity(game, game_date.year)
+            _upsert_metadata(session, game_id, metadata)
+
+            inning_rows = _build_inning_scores(game_id, teams, season_year=game_date.year)
+            if inning_rows:
+                _replace_records(session, GameInningScore, game_id, inning_rows)
+
+            if is_terminal_status(explicit_status) or (
+                explicit_status is None
+                and game.game_date < date.today()
+                and game.home_score is not None
+                and game.away_score is not None
+                and inning_rows
+            ):
+                game.winning_team, game.winning_score = _resolve_winner(
+                    {"code": game.home_team, "score": game.home_score},
+                    {"code": game.away_team, "score": game.away_score},
+                )
+                game.game_status = _resolve_terminal_status(game.home_score, game.away_score)
+
+            session.commit()
+            _auto_sync_to_oci(game_id)
+            return True
+        except Exception as exc:
+            session.rollback()
+            print(f"[ERROR] DB Error (Snapshot): {exc}")
+            return False
+
+
+def save_pregame_lineups(preview_data: Dict[str, Any]) -> bool:
+    """Persist pregame start time, announced starters, and published starting lineups."""
+    if not preview_data:
+        return False
+
+    game_id = preview_data.get("game_id")
+    game_date_str = str(preview_data.get("game_date", "")).replace("-", "") or str(game_id or "")[:8]
+    if not game_id or not game_date_str:
+        return False
+
+    try:
+        game_date = datetime.strptime(game_date_str, "%Y%m%d").date()
+    except Exception:
+        return False
+
+    season_year = game_date.year
+    away_code = resolve_team_code(preview_data.get("away_team_name"), season_year) or team_code_from_game_id_segment(
+        game_id[8:10] if len(game_id) >= 10 else None,
+        season_year,
+    )
+    home_code = resolve_team_code(preview_data.get("home_team_name"), season_year) or team_code_from_game_id_segment(
+        game_id[10:12] if len(game_id) >= 12 else None,
+        season_year,
+    )
+    preview_payload = {
+        "game_id": game_id,
+        "game_date": game_date_str,
+        "stadium": preview_data.get("stadium"),
+        "start_time": preview_data.get("start_time"),
+        "away_team_name": preview_data.get("away_team_name"),
+        "home_team_name": preview_data.get("home_team_name"),
+        "away_starter": preview_data.get("away_starter"),
+        "away_starter_id": preview_data.get("away_starter_id"),
+        "home_starter": preview_data.get("home_starter"),
+        "home_starter_id": preview_data.get("home_starter_id"),
+        "away_lineup": preview_data.get("away_lineup") or [],
+        "home_lineup": preview_data.get("home_lineup") or [],
+    }
+
+    with SessionLocal() as session:
+        try:
+            game = session.query(Game).filter(Game.game_id == game_id).one_or_none()
+            if not game:
+                game = Game(game_id=game_id, game_date=game_date)
+                session.add(game)
+                session.flush()
+
+            game.game_date = game_date
+            game.away_team = away_code or game.away_team
+            game.home_team = home_code or game.home_team
+            game.stadium = preview_data.get("stadium") or game.stadium
+            if preview_data.get("away_starter"):
+                game.away_pitcher = preview_data.get("away_starter")
+            if preview_data.get("home_starter"):
+                game.home_pitcher = preview_data.get("home_starter")
+            if not is_terminal_status(game.game_status) and not is_live_status(game.game_status):
+                game.game_status = GAME_STATUS_SCHEDULED
+            _apply_game_team_identity(game, season_year)
+
+            _upsert_metadata(
+                session,
+                game_id,
+                {
+                    "stadium": preview_data.get("stadium"),
+                    "start_time": preview_data.get("start_time"),
+                },
+            )
+
+            resolver = PlayerIdResolver(session)
+            away_rows = _build_pregame_lineup_rows(
+                game_id,
+                team_side="away",
+                team_code=away_code,
+                season_year=season_year,
+                lineup=preview_data.get("away_lineup") or [],
+                resolver=resolver,
+            )
+            home_rows = _build_pregame_lineup_rows(
+                game_id,
+                team_side="home",
+                team_code=home_code,
+                season_year=season_year,
+                lineup=preview_data.get("home_lineup") or [],
+                resolver=resolver,
+            )
+
+            if away_rows:
+                _replace_records_for_side(session, GameLineup, game_id, "away", away_rows)
+            if home_rows:
+                _replace_records_for_side(session, GameLineup, game_id, "home", home_rows)
+
+            _upsert_game_summary_entry(
+                session,
+                game_id=game_id,
+                summary_type="프리뷰",
+                detail_text=_json_dumps(preview_payload),
+            )
+
+            session.commit()
+            _auto_sync_to_oci(game_id)
+            return True
+        except Exception as exc:
+            session.rollback()
+            print(f"[ERROR] DB Error (Pregame): {exc}")
             return False
 
 
@@ -389,6 +600,50 @@ def backfill_game_play_by_play_from_existing_events(game_id: str) -> int:
             return 0
 
 
+def backfill_missing_game_stubs_for_relays(
+    *,
+    seasons: Optional[Iterable[int]] = None,
+    sync_to_oci: bool = False,
+) -> int:
+    """
+    Ensure a parent `game` row exists for any relay-bearing game_id.
+
+    This repairs local integrity when historical backfills inserted `game_events`
+    or `game_play_by_play` before the corresponding `game` row existed.
+    """
+    season_prefixes = {str(season) for season in (seasons or []) if season}
+
+    with SessionLocal() as session:
+        try:
+            event_ids = {row[0] for row in session.query(GameEvent.game_id).distinct().all()}
+            pbp_ids = {row[0] for row in session.query(GamePlayByPlay.game_id).distinct().all()}
+            candidate_ids = sorted(event_ids | pbp_ids)
+            if season_prefixes:
+                candidate_ids = [
+                    game_id for game_id in candidate_ids if any(game_id.startswith(prefix) for prefix in season_prefixes)
+                ]
+
+            existing_ids = {
+                row[0]
+                for row in session.query(Game.game_id).filter(Game.game_id.in_(candidate_ids)).all()
+            } if candidate_ids else set()
+
+            missing_ids = [game_id for game_id in candidate_ids if game_id not in existing_ids]
+            for game_id in missing_ids:
+                _ensure_game_stub(session, game_id)
+
+            session.commit()
+        except Exception as exc:
+            session.rollback()
+            print(f"[ERROR] DB Error (Game Stub Backfill): {exc}")
+            return 0
+
+    if sync_to_oci:
+        for game_id in missing_ids:
+            _auto_sync_to_oci(game_id)
+    return len(missing_ids)
+
+
 def save_relay_data(
     game_id: str,
     events: Optional[List[Dict[str, Any]]] = None,
@@ -515,19 +770,22 @@ def _ensure_game_stub(session, game_id: str) -> None:
     except Exception:
         season_year = None
     if season_year is not None:
-        season_id = _coerce_int(
-            session.execute(
-                text(
-                    """
-                    SELECT MIN(season_id)
-                    FROM kbo_seasons
-                    WHERE season_year = :season_year
-                      AND league_type_code = 0
-                    """
-                ),
-                {"season_year": season_year},
-            ).scalar()
-        )
+        try:
+            season_id = _coerce_int(
+                session.execute(
+                    text(
+                        """
+                        SELECT MIN(season_id)
+                        FROM kbo_seasons
+                        WHERE season_year = :season_year
+                          AND league_type_code = 0
+                        """
+                    ),
+                    {"season_year": season_year},
+                ).scalar()
+            )
+        except Exception:
+            season_id = None
 
     session.add(
         Game(
@@ -554,13 +812,17 @@ def _derive_game_status(
     has_pitching: bool,
     today: date,
 ) -> str:
-    if home_score is not None and away_score is not None:
-        return GAME_STATUS_COMPLETED
+    if home_score is not None and away_score is not None and (has_batting or has_pitching or (game_date and game_date < today and has_inning_scores)):
+        return _resolve_terminal_status(home_score, away_score)
     if game_date and game_date > today:
         return GAME_STATUS_SCHEDULED
     has_any_detail = has_inning_scores or has_lineups or has_batting or has_pitching
     if current_status in {GAME_STATUS_CANCELLED, GAME_STATUS_POSTPONED} and not has_any_detail:
         return current_status
+    if game_date == today and has_any_detail and current_status in LIVE_GAME_STATUSES:
+        return current_status
+    if game_date == today and has_any_detail:
+        return GAME_STATUS_LIVE
     if has_metadata and not has_any_detail:
         return GAME_STATUS_CANCELLED
     return GAME_STATUS_UNRESOLVED
@@ -572,14 +834,33 @@ def _upsert_metadata(session, game_id: str, metadata: Dict[str, Any]) -> None:
         meta = GameMetadata(game_id=game_id)
         session.add(meta)
 
-    meta.stadium_code = metadata.get("stadium_code")
-    meta.stadium_name = metadata.get("stadium")
-    meta.attendance = metadata.get("attendance")
-    meta.start_time = _safe_time(metadata.get("start_time"))
-    meta.end_time = _safe_time(metadata.get("end_time"))
-    meta.game_time_minutes = metadata.get("duration_minutes")
-    meta.weather = metadata.get("weather")
-    meta.source_payload = metadata or None
+    if metadata.get("stadium_code") not in (None, ""):
+        meta.stadium_code = metadata.get("stadium_code")
+    if metadata.get("stadium") not in (None, ""):
+        meta.stadium_name = metadata.get("stadium")
+    if metadata.get("attendance") not in (None, ""):
+        meta.attendance = metadata.get("attendance")
+
+    start_time = _safe_time(metadata.get("start_time"))
+    if start_time is not None:
+        meta.start_time = start_time
+
+    end_time = _safe_time(metadata.get("end_time"))
+    if end_time is not None:
+        meta.end_time = end_time
+
+    if metadata.get("duration_minutes") not in (None, ""):
+        meta.game_time_minutes = metadata.get("duration_minutes")
+    if metadata.get("weather") not in (None, ""):
+        meta.weather = metadata.get("weather")
+
+    if metadata:
+        existing_payload = meta.source_payload if isinstance(meta.source_payload, dict) else {}
+        merged_payload = dict(existing_payload)
+        for key, value in metadata.items():
+            if value not in (None, ""):
+                merged_payload[key] = value
+        meta.source_payload = merged_payload or None
 
 
 def _replace_records(session, model, game_id: str, mappings: List[Dict[str, Any]]) -> None:
@@ -597,7 +878,22 @@ def _replace_records(session, model, game_id: str, mappings: List[Dict[str, Any]
         session.execute(model.__table__.insert(), mappings)
 
 
-def _build_inning_scores(game_id: str, teams: Dict[str, Any]) -> List[Dict[str, Any]]:
+def _replace_records_for_side(session, model, game_id: str, team_side: str, mappings: List[Dict[str, Any]]) -> None:
+    session.query(model).filter(model.game_id == game_id, model.team_side == team_side).delete()
+    if mappings:
+        now = datetime.utcnow()
+        has_created_at = "created_at" in model.__table__.columns
+        has_updated_at = "updated_at" in model.__table__.columns
+        if has_created_at or has_updated_at:
+            for mapping in mappings:
+                if has_created_at and not mapping.get("created_at"):
+                    mapping["created_at"] = now
+                if has_updated_at and not mapping.get("updated_at"):
+                    mapping["updated_at"] = now
+        session.execute(model.__table__.insert(), mappings)
+
+
+def _build_inning_scores(game_id: str, teams: Dict[str, Any], *, season_year: Optional[int] = None) -> List[Dict[str, Any]]:
     records = []
     for side in ("away", "home"):
         team_info = teams.get(side, {}) or {}
@@ -612,10 +908,11 @@ def _build_inning_scores(game_id: str, teams: Dict[str, Any]) -> List[Dict[str, 
                 "runs": runs if runs is not None else 0,
                 "is_extra": idx > 9,
             })
+    _apply_team_identity_to_mappings(records, season_year)
     return records
 
 
-def _build_lineups(game_id: str, hitters: Dict[str, List[Dict[str, Any]]]) -> List[Dict[str, Any]]:
+def _build_lineups(game_id: str, hitters: Dict[str, List[Dict[str, Any]]], *, season_year: Optional[int] = None) -> List[Dict[str, Any]]:
     records = []
     for side, entries in hitters.items():
         for entry in entries:
@@ -636,6 +933,7 @@ def _build_lineups(game_id: str, hitters: Dict[str, List[Dict[str, Any]]]) -> Li
                 "appearance_seq": entry.get("appearance_seq") or len(records) + 1,
                 "notes": _format_notes(entry.get("extras")),
             })
+    _apply_team_identity_to_mappings(records, season_year)
     return records
 
 
@@ -651,7 +949,7 @@ def _format_notes(extras: Optional[Dict[str, Any]]) -> Optional[str]:
     return str(cleaned)
 
 
-def _build_batting_stats(game_id: str, hitters: Dict[str, List[Dict[str, Any]]]) -> List[Dict[str, Any]]:
+def _build_batting_stats(game_id: str, hitters: Dict[str, List[Dict[str, Any]]], *, season_year: Optional[int] = None) -> List[Dict[str, Any]]:
     records = []
     for side, entries in hitters.items():
         for entry in entries:
@@ -696,10 +994,11 @@ def _build_batting_stats(game_id: str, hitters: Dict[str, List[Dict[str, Any]]])
                 "babip": _stat_float(stats, "babip"),
                 "extra_stats": _clean_extras(entry.get("extras")),
             })
+    _apply_team_identity_to_mappings(records, season_year)
     return records
 
 
-def _build_pitching_stats(game_id: str, pitchers: Dict[str, List[Dict[str, Any]]]) -> List[Dict[str, Any]]:
+def _build_pitching_stats(game_id: str, pitchers: Dict[str, List[Dict[str, Any]]], *, season_year: Optional[int] = None) -> List[Dict[str, Any]]:
     records = []
     for side, entries in pitchers.items():
         for entry in entries:
@@ -743,6 +1042,7 @@ def _build_pitching_stats(game_id: str, pitchers: Dict[str, List[Dict[str, Any]]
                 "kbb": _stat_float(stats, "kbb"),
                 "extra_stats": _clean_extras(entry.get("extras")),
             })
+    _apply_team_identity_to_mappings(records, season_year)
     return records
 
 
@@ -810,6 +1110,120 @@ def _resolve_winner(home: Dict[str, Any], away: Dict[str, Any]) -> tuple[str | N
     if away_score > home_score:
         return away.get("code"), away_score
     return None, home_score
+
+
+def _resolve_terminal_status(home_score: Any, away_score: Any) -> str:
+    if home_score is not None and away_score is not None and home_score == away_score:
+        return GAME_STATUS_DRAW
+    return GAME_STATUS_COMPLETED
+
+
+def _apply_game_team_identity(game: Game, season_year: Optional[int]) -> None:
+    home_franchise_id, _, _ = _resolve_team_identity(game.home_team, season_year)
+    away_franchise_id, _, _ = _resolve_team_identity(game.away_team, season_year)
+    winning_franchise_id, _, _ = _resolve_team_identity(game.winning_team, season_year)
+    game.home_franchise_id = home_franchise_id
+    game.away_franchise_id = away_franchise_id
+    game.winning_franchise_id = winning_franchise_id
+
+
+def _apply_team_identity_to_mappings(mappings: List[Dict[str, Any]], season_year: Optional[int]) -> None:
+    for mapping in mappings:
+        team_code = mapping.get("team_code")
+        franchise_id, canonical_team_code, season_code = _resolve_team_identity(team_code, season_year)
+        mapping["team_code"] = season_code or team_code
+        mapping["franchise_id"] = franchise_id
+        mapping["canonical_team_code"] = canonical_team_code
+
+
+def _resolve_team_identity(team_code: Any, season_year: Optional[int]) -> tuple[Optional[int], Optional[str], Optional[str]]:
+    if not team_code:
+        return None, None, None
+    raw_code = str(team_code).strip().upper()
+    normalized_code = team_code_from_game_id_segment(raw_code, season_year) or raw_code
+    season_code = resolve_team_code_for_season(normalized_code, season_year) if season_year else normalized_code
+    season_code = season_code or normalized_code
+
+    franchise_id = None
+    for entry in iter_team_history():
+        if entry.team_code.upper() in {season_code, normalized_code, raw_code}:
+            franchise_id = entry.franchise_id
+            break
+    canonical_code = FRANCHISE_CANONICAL_CODE.get(franchise_id)
+    return franchise_id, canonical_code, season_code
+
+
+def _build_pregame_lineup_rows(
+    game_id: str,
+    *,
+    team_side: str,
+    team_code: Optional[str],
+    season_year: int,
+    lineup: List[Dict[str, Any]],
+    resolver: PlayerIdResolver,
+) -> List[Dict[str, Any]]:
+    rows: List[Dict[str, Any]] = []
+    for idx, entry in enumerate(lineup, start=1):
+        player_name = str(entry.get("player_name") or "").strip()
+        if not player_name:
+            continue
+        batting_order = _coerce_int(entry.get("batting_order")) or idx
+        position = entry.get("position")
+        player_id = resolver.resolve_id(player_name, team_code, season_year) if team_code else None
+        rows.append(
+            {
+                "game_id": game_id,
+                "team_side": team_side,
+                "team_code": team_code,
+                "player_id": _normalize_player_id(player_id),
+                "player_name": player_name,
+                "uniform_no": entry.get("uniform_no"),
+                "batting_order": batting_order,
+                "position": position,
+                "standard_position": get_primary_position(position).value,
+                "is_starter": True,
+                "appearance_seq": _coerce_int(entry.get("appearance_seq")) or batting_order,
+                "notes": None,
+            }
+        )
+    _apply_team_identity_to_mappings(rows, season_year)
+    return rows
+
+
+def _upsert_game_summary_entry(
+    session,
+    *,
+    game_id: str,
+    summary_type: str,
+    detail_text: str,
+    player_name: Optional[str] = None,
+    player_id: Optional[int] = None,
+) -> None:
+    existing = session.query(GameSummary).filter(
+        GameSummary.game_id == game_id,
+        GameSummary.summary_type == summary_type,
+        GameSummary.player_name == player_name,
+    ).one_or_none()
+    if existing:
+        existing.player_id = player_id
+        existing.detail_text = detail_text
+        return
+
+    session.add(
+        GameSummary(
+            game_id=game_id,
+            summary_type=summary_type,
+            player_name=player_name,
+            player_id=player_id,
+            detail_text=detail_text,
+        )
+    )
+
+
+def _json_dumps(payload: Dict[str, Any]) -> str:
+    import json
+
+    return json.dumps(payload, ensure_ascii=False)
 
 def _extract_players_from_text(category: str, text: str) -> List[tuple[str, str | None]]:
     """

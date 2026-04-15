@@ -1,18 +1,22 @@
-name: Daily KBO Crawler & OCI Sync
+name: KBO Postgame Finalize
 
 on:
   schedule:
-    # Runs at 14:55 UTC which is 23:55 KST (Korean Standard Time) every day
-    - cron: '55 14 * * *'
+    # Runs at 18:00 UTC which is 03:00 KST the next day.
+    - cron: '0 18 * * *'
   workflow_dispatch:
     inputs:
       target_date:
-        description: 'Target date to crawl (YYYYMMDD). Defaults to Today KST.'
+        description: 'Target date to finalize (YYYYMMDD). Defaults to previous day in KST.'
         required: false
         default: ''
 
+concurrency:
+  group: kbo-postgame-finalize
+  cancel-in-progress: false
+
 jobs:
-  daily-sync:
+  postgame-finalize:
     runs-on: ubuntu-latest
     env:
       PYTHONPATH: ${{ github.workspace }}
@@ -32,14 +36,16 @@ jobs:
           pip install -r requirements.txt
           playwright install chromium
 
-      - name: Get current date in KST
+      - name: Resolve target date in KST
         id: date
         run: |
           if [ "${{ github.event.inputs.target_date }}" != "" ]; then
-            echo "KST_DATE=${{ github.event.inputs.target_date }}" >> $GITHUB_ENV
+            KST_DATE="${{ github.event.inputs.target_date }}"
           else
-            echo "KST_DATE=$(TZ='Asia/Seoul' date +'%Y%m%d')" >> $GITHUB_ENV
+            KST_DATE="$(TZ='Asia/Seoul' date -d 'yesterday' +'%Y%m%d')"
           fi
+          echo "KST_DATE=${KST_DATE}" >> $GITHUB_ENV
+          echo "KST_YEAR=${KST_DATE:0:4}" >> $GITHUB_ENV
 
       - name: Initialize Database & Seed Metadata
         run: |
@@ -47,9 +53,15 @@ jobs:
           python3 -c "from src.db.engine import init_db; init_db()"
           python3 scripts/maintenance/seed_data.py
 
-      - name: Run Daily Update & Sync
+      - name: Hydrate Runtime Cache From OCI
         env:
           OCI_DB_URL: ${{ secrets.OCI_DB_URL }}
         run: |
-          # Executes the optimized smart delta sync pipeline using today's KST date
+          python3 -m src.cli.hydrate_runtime_from_oci --year "${{ env.KST_YEAR }}" --date "${{ env.KST_DATE }}"
+
+      - name: Run Postgame Finalize & Sync
+        env:
+          OCI_DB_URL: ${{ secrets.OCI_DB_URL }}
+          AUTO_SYNC_OCI: 'false'
+        run: |
           python3 -m src.cli.run_daily_update --date ${{ env.KST_DATE }} --sync

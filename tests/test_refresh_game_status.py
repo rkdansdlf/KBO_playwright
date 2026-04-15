@@ -3,6 +3,8 @@ from datetime import date
 from scripts.maintenance.refresh_game_status import (
     STATUS_CANCELLED,
     STATUS_COMPLETED,
+    STATUS_DRAW,
+    STATUS_LIVE,
     STATUS_POSTPONED,
     STATUS_SCHEDULED,
     STATUS_UNRESOLVED,
@@ -115,3 +117,33 @@ def test_past_game_is_never_scheduled():
         today=date(2026, 2, 14),
     )
     assert status != STATUS_SCHEDULED
+
+
+def test_live_when_today_has_partial_detail():
+    status = derive_game_status(
+        game_date=date(2026, 2, 14),
+        home_score=None,
+        away_score=None,
+        has_metadata=True,
+        has_inning_scores=True,
+        has_lineups=False,
+        has_batting=False,
+        has_pitching=False,
+        today=date(2026, 2, 14),
+    )
+    assert status == STATUS_LIVE
+
+
+def test_draw_when_terminal_scores_are_tied():
+    status = derive_game_status(
+        game_date=date(2025, 7, 1),
+        home_score=4,
+        away_score=4,
+        has_metadata=True,
+        has_inning_scores=True,
+        has_lineups=True,
+        has_batting=True,
+        has_pitching=True,
+        today=date(2026, 2, 14),
+    )
+    assert status == STATUS_DRAW

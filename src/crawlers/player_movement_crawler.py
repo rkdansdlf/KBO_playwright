@@ -9,7 +9,8 @@ import asyncio
 from typing import Dict, List, Any, Optional
 from datetime import datetime, date
 
-from playwright.async_api import Page, TimeoutError
+from tenacity import AsyncRetrying, stop_after_attempt, wait_exponential, retry_if_exception_type
+from playwright.async_api import Page, TimeoutError as PlaywrightTimeoutError
 
 from src.utils.safe_print import safe_print as print
 from src.utils.playwright_pool import AsyncPlaywrightPool
@@ -31,8 +32,14 @@ class PlayerMovementCrawler:
         try:
             page = await pool.acquire()
             try:
-                # Initial load
-                await page.goto(self.base_url, wait_until="networkidle")
+                # Initial load with Exponential Backoff
+                async for attempt in AsyncRetrying(
+                    stop=stop_after_attempt(3), 
+                    wait=wait_exponential(multiplier=1, min=2, max=10), 
+                    retry=retry_if_exception_type(PlaywrightTimeoutError)
+                ):
+                    with attempt:
+                        await page.goto(self.base_url, wait_until="networkidle", timeout=30000)
 
                 for year in range(start_year, end_year + 1):
                     year_data = await self._crawl_year(page, year)

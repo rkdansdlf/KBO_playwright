@@ -1,27 +1,25 @@
 """
 KBO Daily Data Update Orchestrator.
-Processes schedule, box score details, and cumulative season stats for one date.
+
+This entrypoint is the postgame finalize + daily reconciliation job.
 """
 from __future__ import annotations
 
 import argparse
 import asyncio
 import os
-from src.cli.auto_healer import run_healer_async
 import sys
 from datetime import date, datetime, timedelta
-from typing import Optional, Sequence
+from typing import Callable, Optional, Sequence
 from zoneinfo import ZoneInfo
 
-# Ensure project root is in path
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
-
+from src.cli.auto_healer import run_healer_async
 from src.cli.sync_oci import main as sync_main
+from src.crawlers.daily_roster_crawler import DailyRosterCrawler
 from src.crawlers.game_detail_crawler import GameDetailCrawler
 from src.crawlers.player_batting_all_series_crawler import crawl_series_batting_stats
-from src.crawlers.player_pitching_all_series_crawler import crawl_pitcher_series
 from src.crawlers.player_movement_crawler import PlayerMovementCrawler
-from src.crawlers.daily_roster_crawler import DailyRosterCrawler
+from src.crawlers.player_pitching_all_series_crawler import crawl_pitcher_series
 from src.crawlers.schedule_crawler import ScheduleCrawler
 from src.db.engine import SessionLocal
 from src.repositories.game_repository import (
@@ -35,6 +33,8 @@ from src.repositories.game_repository import (
 from src.repositories.player_repository import PlayerRepository
 from src.repositories.team_repository import TeamRepository
 from src.services.player_id_resolver import PlayerIdResolver
+from src.sync.oci_sync import OCISync
+from src.utils.refresh_manifest import write_refresh_manifest
 from src.utils.safe_print import safe_print as print
 
 KST = ZoneInfo("Asia/Seoul")
@@ -56,25 +56,37 @@ def _failure_status(target_date: str, failure_reason: Optional[str], today: date
     return None
 
 
-async def run_update(target_date: str, sync: bool = False, headless: bool = True, limit: int = None):
-    """
-    Main orchestration logic for daily updates.
-    """
-    print(f"\n{'='*60}")
-    print(f"🚀 KBO Daily Update Started for Date: {target_date}")
-    print(f"{'='*60}")
+def _run_python_step(argv: Sequence[str]) -> None:
+    import subprocess
+
+    subprocess.run([sys.executable, *argv], check=True)
+
+
+async def run_update(
+    target_date: str,
+    sync: bool = False,
+    headless: bool = True,
+    limit: int | None = None,
+    *,
+    step_runner: Optional[Callable[[Sequence[str]], None]] = None,
+    seed_tomorrow_preview: bool = False,
+):
+    """Main orchestration logic for postgame finalize and daily reconciliation."""
+    runner = step_runner or _run_python_step
+
+    print(f"\n{'=' * 60}")
+    print(f"🚀 KBO Daily Finalize Started for Date: {target_date}")
+    print(f"{'=' * 60}")
 
     year = int(target_date[:4])
     month = int(target_date[4:6])
 
-    # 0. Run Auto-Healer to catch and fix past stuck schedules
-    print("\n🩺 Step 0: Running Auto-Healer Daemon...")
+    print("\n🩺 Step 0: Running Auto-Healer...")
     try:
         await run_healer_async(dry_run=False)
     except Exception as exc:
         print(f"   ⚠️ Auto-Healer encountered an error (continuing anyway): {exc}")
 
-    # 1. Schedule crawler and DB upsert
     print("\n📅 Step 1: Crawling + saving monthly schedule...")
     s_crawler = ScheduleCrawler()
     schedule_games = await s_crawler.crawl_schedule(year, month)
@@ -90,20 +102,16 @@ async def run_update(target_date: str, sync: bool = False, headless: bool = True
         f"saved={schedule_saved} failed={schedule_failed}"
     )
 
-    # Filter for target date
     daily_games = [g for g in schedule_games if str(g.get("game_date", "")).replace("-", "") == target_date]
     if limit and len(daily_games) > limit:
         daily_games = daily_games[:limit]
         print(f"   [LIMIT] Restricted to first {limit} games")
     print(f"   ✅ Found {len(daily_games)} games for {target_date}")
 
-    if not daily_games:
-        print(f"   ℹ️ No games scheduled for {target_date}. Continuing with status/stats update...")
-
-    # 2. Game detail crawler with shared resolver
-    print("\n🎮 Step 2: Crawling game details (BoxScore)...")
+    print("\n🎮 Step 2: Crawling full postgame details...")
     today_kst = _today_kst()
     resolver_session = SessionLocal()
+    processed_game_ids: list[str] = []
     try:
         resolver = PlayerIdResolver(resolver_session)
         resolver.preload_season_index(year)
@@ -117,9 +125,9 @@ async def run_update(target_date: str, sync: bool = False, headless: bool = True
             try:
                 detail = await g_crawler.crawl_game(game_id, target_date)
                 if detail:
-                    save_success = save_game_detail(detail)
-                    if save_success:
+                    if save_game_detail(detail):
                         print(f"   ✅ Successfully saved {game_id}")
+                        processed_game_ids.append(game_id)
                         success_count += 1
                     else:
                         print(f"   ❌ Failed to save {game_id} to local DB")
@@ -144,7 +152,6 @@ async def run_update(target_date: str, sync: bool = False, headless: bool = True
     finally:
         resolver_session.close()
 
-    # 3. Game status post-process (target date only)
     print("\n🧭 Step 3: Refreshing game status for target date...")
     status_result = refresh_game_status_for_date(target_date, today=today_kst)
     print(
@@ -154,55 +161,48 @@ async def run_update(target_date: str, sync: bool = False, headless: bool = True
         f"counts={status_result.get('status_counts', {})}"
     )
 
-    # 3.2. PBP (Play-by-play) Data Collection
-    print("\n📝 Step 3.2: Crawling Play-by-Play (PBP) events...")
-    import subprocess
+    print("\n📝 Step 4: Relay recovery (events / PBP)...")
     try:
-        # Run the backfill fetcher for the target date to ensure events are collected
-        subprocess.run([sys.executable, "scripts/fetch_kbo_pbp.py", "--date", target_date], check=True)
-        print("   ✅ PBP collection complete")
+        runner(["scripts/fetch_kbo_pbp.py", "--date", target_date])
+        print("   ✅ Relay recovery complete")
     except Exception as exc:
-        print(f"   ❌ Error generating PBP events: {exc}")
+        print(f"   ❌ Error generating relay events: {exc}")
 
-    # 3.5. Post-game Context Generation (Review)
-    print("\n📝 Step 3.5: Generating Post-game Review Contexts (WPA)...")
+    print("\n📝 Step 5: Post-game review/WPA generation...")
     try:
-        subprocess.run([sys.executable, "-m", "src.cli.daily_review_batch", "--date", target_date], check=True)
+        review_args = ["-m", "src.cli.daily_review_batch", "--date", target_date]
+        review_args.append("--no-sync")
+        runner(review_args)
         print("   ✅ Review context generation complete")
     except Exception as exc:
         print(f"   ❌ Error generating review context: {exc}")
 
-    # 4. Cumulative Stats Update (Standard Seasonal Stats)
-    print("\n📈 Step 4: Updating cumulative player stats (Current Season)...")
+    print("\n📈 Step 6: Updating cumulative player stats...")
     try:
         print("   🏏 Updating Batting Stats...")
         await asyncio.to_thread(
             crawl_series_batting_stats,
             year=year,
-            series_key='regular',
+            series_key="regular",
             save_to_db=True,
             headless=headless,
             limit=limit,
         )
-
-        print("\n   ⚾ Updating Pitching Stats...")
+        print("   ⚾ Updating Pitching Stats...")
         await asyncio.to_thread(
             crawl_pitcher_series,
             year=year,
-            series_key='regular',
+            series_key="regular",
             save_to_db=True,
             headless=headless,
             limit=limit,
         )
-
-        print(f"\n   ✅ Local cumulative stats for {year} regular season updated")
+        print(f"   ✅ Local cumulative stats for {year} regular season updated")
     except Exception as exc:
         print(f"   ❌ Error during stats update: {exc}")
 
-    # 4.2. Player Movements & Roster Snapshots
-    print("\n🔄 Step 4.2: Updating Player Movements & Roster Snapshots...")
+    print("\n🔄 Step 7: Updating player movements and daily rosters...")
     try:
-        # 1. Player Movements (Trade, Injury, etc.)
         m_crawler = PlayerMovementCrawler()
         movements = await m_crawler.crawl_years(year, year)
         if movements:
@@ -210,7 +210,6 @@ async def run_update(target_date: str, sync: bool = False, headless: bool = True
             m_count = m_repo.save_player_movements(movements)
             print(f"   ✅ Saved {m_count} player movements for {year}")
 
-        # 2. Daily Roster Snapshot (1st Team Entry/Exit)
         r_target_date = datetime.strptime(target_date, "%Y%m%d").strftime("%Y-%m-%d")
         r_crawler = DailyRosterCrawler()
         rosters = await r_crawler.crawl_date_range(r_target_date, r_target_date)
@@ -222,58 +221,96 @@ async def run_update(target_date: str, sync: bool = False, headless: bool = True
     except Exception as exc:
         print(f"   ❌ Error updating player movements/rosters: {exc}")
 
-    print("\n✨ Local data update sequence finished.")
-    
-    print("\n📈 Step 4.5: Mathematically computing Standings & Games Behind...")
-    import subprocess
+    derived_refresh: list[str] = []
+
+    print("\n📊 Step 8: Rebuilding derived standings...")
     try:
-        subprocess.run([sys.executable, "-m", "src.cli.calculate_standings", "--year", str(year)], check=True)
+        runner(["-m", "src.cli.calculate_standings", "--year", str(year)])
+        derived_refresh.append("standings")
     except Exception as exc:
         print(f"   ❌ Error calculating standings: {exc}")
 
-    print("\n🧮 Step 4.6: Recalculating Matchup Splits (DB Native)...")
+    print("\n🧮 Step 9: Recalculating matchup splits...")
     try:
-        subprocess.run([sys.executable, "-m", "src.cli.calculate_matchups", "--year", str(year)], check=True)
+        runner(["-m", "src.cli.calculate_matchups", "--year", str(year)])
+        derived_refresh.append("matchups")
         print("   ✅ Matchup splits recalculated successfully")
     except Exception as exc:
         print(f"   ❌ Error recalculating matchups: {exc}")
 
-    # 5. Sync to OCI
-    if sync:
-        print("\n☁️ Step 5: Synchronizing to OCI...")
-        try:
-            print("   🔗 Syncing Unsynced/Modified Game Details (Delta Sync)...")
-            sync_main(["--game-details", "--unsynced-only"])
-            
-            print("   🔗 Syncing Daily Standings...")
-            sync_main(["--standings", "--year", str(year)])
-
-            print("   🔗 Syncing Player Season Stats (Batch COPY)...")
-            sync_main(["--season-stats"])
-            
-            print("   🔗 Syncing Basic Metadata (KboSeason, PlayerBasic)...")
-            sync_main([])
-
-            print("   ✅ OCI synchronization completed")
-        except Exception as exc:
-            print(f"   ❌ Error during OCI sync: {exc}")
-
-    # 6. Pre-game Context Generation for Tomorrow
-    tomorrow_date = (datetime.strptime(target_date, "%Y%m%d") + timedelta(days=1)).strftime("%Y%m%d")
-    print(f"\n🔮 Step 6: Generating Pre-game Preview Contexts for tomorrow ({tomorrow_date})...")
+    print("\n🏷️ Step 10: Recalculating stat rankings...")
     try:
-        subprocess.run([sys.executable, "-m", "src.cli.daily_preview_batch", "--date", tomorrow_date], check=True)
-        print("   ✅ Preview context generation complete")
+        runner(["-m", "src.cli.calculate_rankings", "--year", str(year)])
+        derived_refresh.append("stat_rankings")
+        print("   ✅ Stat rankings recalculated successfully")
     except Exception as exc:
-        print(f"   ❌ Error generating preview context: {exc}")
+        print(f"   ❌ Error recalculating stat rankings: {exc}")
 
-    print(f"\n{'='*60}")
-    print(f"🏁 Daily Update Finished for {target_date}")
-    print(f"{'='*60}\n")
+    candidate_sync_game_ids = sorted({game["game_id"] for game in daily_games} | set(processed_game_ids))
+
+    if sync:
+        print("\n🧪 Step 11: Freshness gate before OCI publish...")
+        runner(["-m", "src.cli.freshness_gate", "--date", target_date])
+        print("   ✅ Freshness gate passed")
+
+        print("\n☁️ Step 12: Synchronizing to OCI...")
+        oci_url = os.getenv("OCI_DB_URL")
+        if not oci_url:
+            raise RuntimeError("OCI_DB_URL is required when --sync is enabled")
+
+        with SessionLocal() as sync_session:
+            syncer = OCISync(oci_url, sync_session)
+            try:
+                for game_id in candidate_sync_game_ids:
+                    syncer.sync_specific_game(game_id)
+                syncer.sync_standings(year=year)
+                syncer.sync_matchups(year=year)
+                syncer.sync_stat_rankings(year=year)
+                syncer.sync_player_season_batting()
+                syncer.sync_player_season_pitching()
+                syncer.sync_player_movements()
+                syncer.sync_daily_rosters()
+                syncer.sync_players()
+                print("   ✅ OCI synchronization completed")
+            finally:
+                syncer.close()
+
+    if seed_tomorrow_preview:
+        tomorrow_date = (datetime.strptime(target_date, "%Y%m%d") + timedelta(days=1)).strftime("%Y%m%d")
+        print(f"\n🔮 Step 13: Seeding tomorrow preview contexts ({tomorrow_date})...")
+        try:
+            preview_args = ["-m", "src.cli.daily_preview_batch", "--date", tomorrow_date]
+            if not sync:
+                preview_args.append("--no-sync")
+            runner(preview_args)
+            print("   ✅ Tomorrow preview seed complete")
+        except Exception as exc:
+            print(f"   ❌ Error generating tomorrow preview seed: {exc}")
+
+    manifest_path = write_refresh_manifest(
+        phase="postgame_finalize",
+        target_date=target_date,
+        game_ids=processed_game_ids or [game["game_id"] for game in daily_games],
+        datasets=[
+            "game",
+            "game_metadata",
+            "game_inning_scores",
+            "game_lineups",
+            "game_events",
+            "game_summary",
+            "game_play_by_play",
+        ],
+        derived_refresh=derived_refresh,
+    )
+
+    print(f"\n{'=' * 60}")
+    print(f"🏁 Daily Finalize Finished for {target_date}")
+    print(f"📄 Refresh Manifest: {manifest_path}")
+    print(f"{'=' * 60}\n")
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="KBO Daily Data Update Orchestrator")
+    parser = argparse.ArgumentParser(description="KBO Daily Data Finalize Orchestrator")
     parser.add_argument(
         "--date",
         type=str,
@@ -301,6 +338,11 @@ def build_arg_parser() -> argparse.ArgumentParser:
         type=int,
         help="Limit number of games and players (for testing/debugging)",
     )
+    parser.add_argument(
+        "--seed-tomorrow-preview",
+        action="store_true",
+        help="Optionally seed tomorrow preview data after finalize.",
+    )
     return parser
 
 
@@ -315,7 +357,15 @@ def main(argv: Sequence[str] | None = None):
         print(f"❌ Invalid date format: {target_date}. Please use YYYYMMDD.")
         sys.exit(1)
 
-    asyncio.run(run_update(target_date, sync=args.sync, headless=args.headless, limit=args.limit))
+    asyncio.run(
+        run_update(
+            target_date,
+            sync=args.sync,
+            headless=args.headless,
+            limit=args.limit,
+            seed_tomorrow_preview=args.seed_tomorrow_preview,
+        )
+    )
 
 
 if __name__ == "__main__":

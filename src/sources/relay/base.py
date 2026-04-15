@@ -22,7 +22,7 @@ ALLOWED_MANIFEST_FORMATS = {
     "normalized_events_json",
 }
 
-SPECIAL_BUCKET_SOURCE_ORDER = ("kbo", "import", "manual")
+SPECIAL_BUCKET_SOURCE_ORDER = ("kbo", "naver", "import", "manual")
 REGULAR_BUCKET_SOURCE_ORDER = ("naver", "kbo", "import")
 
 
@@ -64,6 +64,8 @@ class NormalizedRelayResult:
 class RelaySourceAdapter(ABC):
     def __init__(self, source_name: str):
         self.source_name = source_name
+        self.supports_bucket_probe = True
+        self.cache_negative_probe = True
 
     @abstractmethod
     async def fetch_game(self, game_id: str) -> NormalizedRelayResult:
@@ -173,29 +175,42 @@ def default_source_order_for_bucket(bucket_id: str) -> list[str]:
     return list(SPECIAL_BUCKET_SOURCE_ORDER)
 
 
-def read_manifest_entries(manifest_path: str | Path) -> list[ManifestEntry]:
-    path = Path(manifest_path)
-    if not path.exists():
-        return []
+def _coerce_manifest_paths(manifest_path: str | Path | Iterable[str | Path]) -> list[Path]:
+    if isinstance(manifest_path, Path):
+        return [manifest_path]
+    if isinstance(manifest_path, str):
+        parts = [token.strip() for token in manifest_path.split(",") if token.strip()]
+        return [Path(part) for part in parts]
+    paths: list[Path] = []
+    for item in manifest_path:
+        if item is None:
+            continue
+        paths.extend(_coerce_manifest_paths(item))
+    return paths
 
+
+def read_manifest_entries(manifest_path: str | Path | Iterable[str | Path]) -> list[ManifestEntry]:
     entries: list[ManifestEntry] = []
-    with path.open("r", encoding="utf-8", newline="") as handle:
-        reader = csv.DictReader(handle)
-        for row in reader:
-            if not row:
-                continue
-            game_id = str(row.get("game_id") or "").strip()
-            source_type = str(row.get("source_type") or "").strip()
-            locator = str(row.get("locator") or "").strip()
-            manifest_format = str(row.get("format") or "").strip()
-            if not game_id or not source_type or not locator or not manifest_format:
-                continue
-            if source_type not in ALLOWED_SOURCE_TYPES:
-                raise ValueError(f"Unsupported manifest source_type: {source_type}")
-            if manifest_format not in ALLOWED_MANIFEST_FORMATS:
-                raise ValueError(f"Unsupported manifest format: {manifest_format}")
-            entries.append(
-                ManifestEntry(
+    seen: set[tuple[str, str, str, str, int, str | None]] = set()
+    for path in _coerce_manifest_paths(manifest_path):
+        if not path.exists():
+            continue
+        with path.open("r", encoding="utf-8", newline="") as handle:
+            reader = csv.DictReader(handle)
+            for row in reader:
+                if not row:
+                    continue
+                game_id = str(row.get("game_id") or "").strip()
+                source_type = str(row.get("source_type") or "").strip()
+                locator = str(row.get("locator") or "").strip()
+                manifest_format = str(row.get("format") or "").strip()
+                if not game_id or not source_type or not locator or not manifest_format:
+                    continue
+                if source_type not in ALLOWED_SOURCE_TYPES:
+                    raise ValueError(f"Unsupported manifest source_type: {source_type}")
+                if manifest_format not in ALLOWED_MANIFEST_FORMATS:
+                    raise ValueError(f"Unsupported manifest format: {manifest_format}")
+                entry = ManifestEntry(
                     game_id=game_id,
                     source_type=source_type,
                     locator=locator,
@@ -203,7 +218,18 @@ def read_manifest_entries(manifest_path: str | Path) -> list[ManifestEntry]:
                     priority=int(row.get("priority") or 100),
                     notes=(row.get("notes") or "").strip() or None,
                 )
-            )
+                key = (
+                    entry.game_id,
+                    entry.source_type,
+                    entry.locator,
+                    entry.format,
+                    entry.priority,
+                    entry.notes,
+                )
+                if key in seen:
+                    continue
+                seen.add(key)
+                entries.append(entry)
     return sorted(entries, key=lambda entry: (entry.game_id, entry.priority, entry.locator))
 
 
@@ -265,4 +291,3 @@ def upsert_capability_record(capability_path: str | Path, record: CapabilityReco
                     "notes": row.notes or "",
                 }
             )
-

@@ -88,9 +88,9 @@ class GameDetailCrawler:
     def get_last_failure_reason(self, game_id: str) -> Optional[str]:
         return self._last_failure_reason.get(game_id)
 
-    async def crawl_game(self, game_id: str, game_date: str) -> Optional[Dict[str, Any]]:
+    async def crawl_game(self, game_id: str, game_date: str, lightweight: bool = False) -> Optional[Dict[str, Any]]:
         self._last_failure_reason.pop(game_id, None)
-        result = await self.crawl_games([{"game_id": game_id, "game_date": game_date}])
+        result = await self.crawl_games([{"game_id": game_id, "game_date": game_date}], lightweight=lightweight)
         return result[0] if result else None
 
     async def crawl_games(
@@ -166,7 +166,7 @@ class GameDetailCrawler:
                 if attempt == 2: raise e
                 await asyncio.sleep(2)
         await asyncio.sleep(2)
-        is_ready, failure_reason = await self._wait_for_boxscore(page)
+        is_ready, failure_reason = await self._wait_for_boxscore(page, lightweight=lightweight)
         if not is_ready:
             self._last_failure_reason[game_id] = failure_reason
             return None
@@ -210,7 +210,7 @@ class GameDetailCrawler:
             self._log_unresolved_player_ids(game_id, hitters, pitchers)
         return game_data
 
-    async def _wait_for_boxscore(self, page: Page) -> tuple[bool, str]:
+    async def _wait_for_boxscore(self, page: Page, *, lightweight: bool = False) -> tuple[bool, str]:
         """Wait for box score elements to be visible with fast-fail for cancelled games"""
         try:
             # Check for the cancellation badge first or simultaneously
@@ -235,6 +235,8 @@ class GameDetailCrawler:
                 body_text = await page.inner_text("body")
                 if "취소" in body_text:
                     return False, "cancelled"
+                if lightweight and body_text:
+                    return True, "ok"
             except Exception:
                 pass
             # Diagnostic screenshot
