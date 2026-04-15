@@ -6,7 +6,7 @@ import os
 import json
 from typing import List, Dict, Any, Optional, Callable, Type
 from pathlib import Path
-from sqlalchemy import create_engine, text, select, MetaData, Table, column, table
+from sqlalchemy import bindparam, create_engine, text, select, MetaData, Table, column, table
 from sqlalchemy.orm import sessionmaker, Session
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from datetime import datetime
@@ -26,6 +26,7 @@ from src.models.game import (
     GameSummary
 )
 from src.models.matchup import BatterTeamSplit, PitcherTeamSplit, BatterStadiumSplit, BatterVsStarter
+from src.models.rankings import StatRanking
 
 
 LEAGUE_NAME_TO_CODE = {
@@ -36,6 +37,194 @@ LEAGUE_NAME_TO_CODE = {
     "PLAYOFF": 4,
     "KOREAN_SERIES": 5,
 }
+
+GAME_SIGNATURE_CHILD_TABLES = (
+    "game_metadata",
+    "game_inning_scores",
+    "game_lineups",
+    "game_events",
+    "game_summary",
+    "game_play_by_play",
+)
+
+
+def _serialize_scalar(value: Any) -> Any:
+    if value is None:
+        return None
+    if hasattr(value, "isoformat"):
+        return value.isoformat()
+    return value
+
+
+def _execute_signature_query(session_or_conn, sql: str, *, game_ids: List[str] | None = None):
+    stmt = text(sql)
+    params = {}
+    if game_ids is not None:
+        stmt = stmt.bindparams(bindparam("game_ids", expanding=True))
+        params["game_ids"] = list(game_ids)
+    return session_or_conn.execute(stmt, params)
+
+
+def load_game_sync_signatures(session_or_conn, *, game_ids: List[str] | None = None) -> Dict[str, Dict[str, Any]]:
+    filter_sql = "WHERE g.game_id IN :game_ids" if game_ids is not None else ""
+    game_rows = _execute_signature_query(
+        session_or_conn,
+        f"""
+        SELECT
+            g.game_id,
+            g.game_status,
+            g.home_score,
+            g.away_score,
+            g.home_pitcher,
+            g.away_pitcher,
+            g.home_team,
+            g.away_team,
+            g.updated_at
+        FROM game g
+        {filter_sql}
+        """,
+        game_ids=game_ids,
+    ).mappings().all()
+
+    signatures: Dict[str, Dict[str, Any]] = {}
+    for row in game_rows:
+        game_id = str(row["game_id"])
+        signatures[game_id] = {
+            "game": {
+                "game_status": row["game_status"],
+                "home_score": row["home_score"],
+                "away_score": row["away_score"],
+                "home_pitcher": row["home_pitcher"],
+                "away_pitcher": row["away_pitcher"],
+                "home_team": row["home_team"],
+                "away_team": row["away_team"],
+                "updated_at": _serialize_scalar(row["updated_at"]),
+            }
+        }
+        for table_name in GAME_SIGNATURE_CHILD_TABLES:
+            signatures[game_id][table_name] = {
+                "row_count": 0,
+                "max_updated_at": None,
+            }
+
+    if not signatures:
+        return signatures
+
+    child_game_ids = sorted(signatures.keys())
+    metadata_rows = _execute_signature_query(
+        session_or_conn,
+        """
+        SELECT
+            g.game_id,
+            COUNT(g.game_id) AS row_count,
+            MAX(g.updated_at) AS max_updated_at,
+            MAX(g.start_time) AS start_time
+        FROM game_metadata g
+        WHERE g.game_id IN :game_ids
+        GROUP BY g.game_id
+        """,
+        game_ids=child_game_ids,
+    ).mappings().all()
+    for row in metadata_rows:
+        signatures[str(row["game_id"])]["game_metadata"] = {
+            "row_count": int(row["row_count"] or 0),
+            "max_updated_at": _serialize_scalar(row["max_updated_at"]),
+            "start_time": _serialize_scalar(row["start_time"]),
+        }
+
+    for table_name in GAME_SIGNATURE_CHILD_TABLES:
+        if table_name == "game_metadata":
+            continue
+        rows = _execute_signature_query(
+            session_or_conn,
+            f"""
+            SELECT
+                t.game_id,
+                COUNT(*) AS row_count,
+                MAX(t.updated_at) AS max_updated_at
+            FROM {table_name} t
+            WHERE t.game_id IN :game_ids
+            GROUP BY t.game_id
+            """,
+            game_ids=child_game_ids,
+        ).mappings().all()
+        for row in rows:
+            signatures[str(row["game_id"])][table_name] = {
+                "row_count": int(row["row_count"] or 0),
+                "max_updated_at": _serialize_scalar(row["max_updated_at"]),
+            }
+
+    return signatures
+
+
+def detect_dirty_game_ids(local_session_or_conn, remote_session_or_conn, *, game_ids: List[str] | None = None) -> List[str]:
+    local_signatures = load_game_sync_signatures(local_session_or_conn, game_ids=game_ids)
+    remote_signatures = load_game_sync_signatures(remote_session_or_conn, game_ids=list(local_signatures.keys()))
+
+    dirty: List[str] = []
+    for game_id, local_signature in local_signatures.items():
+        remote_signature = remote_signatures.get(game_id)
+        if remote_signature is None:
+            dirty.append(game_id)
+            continue
+
+        local_game = local_signature["game"]
+        remote_game = remote_signature.get("game", {})
+        for key in ("game_status", "home_score", "away_score", "home_pitcher", "away_pitcher", "home_team", "away_team"):
+            if local_game.get(key) != remote_game.get(key):
+                dirty.append(game_id)
+                break
+        else:
+            if (
+                local_game.get("updated_at") is not None
+                and (
+                    remote_game.get("updated_at") is None
+                    or str(local_game.get("updated_at")) > str(remote_game.get("updated_at"))
+                )
+            ):
+                dirty.append(game_id)
+                continue
+
+        if dirty and dirty[-1] == game_id:
+            continue
+
+        metadata_local = local_signature.get("game_metadata", {})
+        metadata_remote = remote_signature.get("game_metadata", {})
+        if metadata_local.get("row_count") != metadata_remote.get("row_count"):
+            dirty.append(game_id)
+            continue
+        if metadata_local.get("start_time") != metadata_remote.get("start_time"):
+            dirty.append(game_id)
+            continue
+        if (
+            metadata_local.get("max_updated_at") is not None
+            and (
+                metadata_remote.get("max_updated_at") is None
+                or str(metadata_local.get("max_updated_at")) > str(metadata_remote.get("max_updated_at"))
+            )
+        ):
+            dirty.append(game_id)
+            continue
+
+        for table_name in GAME_SIGNATURE_CHILD_TABLES:
+            if table_name == "game_metadata":
+                continue
+            local_child = local_signature.get(table_name, {})
+            remote_child = remote_signature.get(table_name, {})
+            if local_child.get("row_count") != remote_child.get("row_count"):
+                dirty.append(game_id)
+                break
+            if (
+                local_child.get("max_updated_at") is not None
+                and (
+                    remote_child.get("max_updated_at") is None
+                    or str(local_child.get("max_updated_at")) > str(remote_child.get("max_updated_at"))
+                )
+            ):
+                dirty.append(game_id)
+                break
+
+    return dirty
 
 
 class OCISync:
@@ -339,11 +528,15 @@ class OCISync:
         return mapping
 
     def sync_players(self) -> int:
-        """Sync players from SQLite to OCI"""
+        """Sync master player records (players table) from SQLite to OCI"""
+        from src.models.player import Player
         players = self.sqlite_session.query(Player).all()
         synced = 0
 
+        print(f"🚚 Syncing Master Players ({len(players)} rows)...")
+
         for player in players:
+            # Map all relevant fields including the new photo_url and profile details
             data = {
                 'kbo_person_id': player.kbo_person_id,
                 'birth_date': player.birth_date,
@@ -357,11 +550,18 @@ class OCISync:
                 'retire_year': player.retire_year,
                 'status': player.status,
                 'notes': player.notes,
+                'photo_url': player.photo_url,
+                'salary_original': player.salary_original,
+                'signing_bonus_original': player.signing_bonus_original,
+                'draft_info': player.draft_info,
             }
 
             stmt = pg_insert(Player).values(**data)
+            
+            # Update all fields on conflict except kbo_person_id
             update_dict = {k: v for k, v in data.items() if k != 'kbo_person_id'}
             update_dict['updated_at'] = text('CURRENT_TIMESTAMP')
+            
             stmt = stmt.on_conflict_do_update(
                 index_elements=['kbo_person_id'],
                 set_=update_dict
@@ -369,6 +569,9 @@ class OCISync:
 
             self.target_session.execute(stmt)
             synced += 1
+            if synced % 500 == 0:
+                self.target_session.commit()
+                print(f"   Synced {synced} players...")
 
         self.target_session.commit()
         print(f"✅ Synced {synced} players to OCI")
@@ -516,7 +719,7 @@ class OCISync:
             
         for m in movements:
             data = {
-                'date': m.date,
+                'movement_date': m.movement_date,
                 'section': m.section,
                 'team_code': m.team_code,
                 'player_name': m.player_name,
@@ -583,7 +786,7 @@ class OCISync:
                 'ops': stat.ops,
                 'iso': stat.iso,
                 'babip': stat.babip,
-                'extra_stats': stat.extra_stats,
+                'extra_stats': stat.extra_stats if stat.extra_stats not in [None, 'null', 'None'] else None,
             }
 
             stmt = pg_insert(PlayerSeasonBatting).values(**data)
@@ -600,144 +803,150 @@ class OCISync:
         print(f"✅ Synced {synced} player_season_batting records to OCI")
         return synced
 
-    def sync_player_season_pitching(self, limit: int = None) -> int:
-        """Sync raw pitching stats to OCI with player/team/season mapping."""
-        fetch_sql = text(
-            f"""
-            SELECT *
-            FROM {RAW_PITCHING_TABLE}
-            { 'LIMIT :limit' if limit else '' }
-            """
-        )
+    def sync_player_season_batting(self, limit: int = None) -> int:
+        """Sync player_season_batting data from SQLite to OCI using bulk upsert"""
+        query = self.sqlite_session.query(PlayerSeasonBatting)
+        if limit:
+            query = query.limit(limit)
 
-        params = {"limit": limit} if limit else {}
-        rows = self.sqlite_session.execute(fetch_sql, params).mappings().all()
-        if not rows:
-            print("ℹ️  No pitcher records found in raw table")
-            return 0
-
-        kbo_ids = {row["kbo_player_id"] for row in rows if row["kbo_player_id"] is not None}
-        if not kbo_ids:
-            print("ℹ️  Raw pitcher rows have no KBO IDs; skipping")
-            return 0
-
-        metadata = MetaData()
-        player_basic_table = Table('player_basic', metadata, autoload_with=self.oci_engine)
-        teams_table = Table('teams', metadata, autoload_with=self.oci_engine)
-        try:
-            seasons_table = Table('kbo_seasons', metadata, autoload_with=self.oci_engine)
-        except Exception:
-            seasons_table = Table('kbo_seasons_meta', metadata, autoload_with=self.oci_engine)
-        pitching_table = Table('player_season_pitching', metadata, autoload_with=self.oci_engine)
-
-        player_rows = self.target_session.execute(
-            select(player_basic_table.c.player_id).where(player_basic_table.c.player_id.in_(list(kbo_ids)))
-        ).all()
-        player_map = {row.player_id: row.player_id for row in player_rows}
-
-        team_rows = self.target_session.execute(select(teams_table.c.team_id)).all()
-        team_set = {row.team_id for row in team_rows}
-
-        season_rows = self.target_session.execute(
-            select(seasons_table.c.season_id, seasons_table.c.season_year, seasons_table.c.league_type_code)
-        ).all()
-        season_map = {
-            (row.season_year, row.league_type_code): row.season_id
-            for row in season_rows
-        }
-
+        pitcher_stats = query.all()
+        total = len(pitcher_stats)
         synced = 0
+        chunk_size = 500
 
-        for row in rows:
-            kbo_id = row["kbo_player_id"]
-            target_id = player_map.get(kbo_id)
-            if not target_id:
-                print(f"⚠️  OCI player not found for KBO ID {kbo_id}; skipping")
-                continue
+        print(f"  - Starting bulk sync for {total} batting records...")
 
-            raw_extra = row["extra_stats"]
-            extra_stats = raw_extra
-            if isinstance(raw_extra, str):
-                try:
-                    extra_stats = json.loads(raw_extra)
-                except Exception:
-                    extra_stats = raw_extra
+        for i in range(0, total, chunk_size):
+            chunk = pitcher_stats[i:i + chunk_size]
+            data_list = []
+            for stat in chunk:
+                data_list.append({
+                    'player_id': stat.player_id,
+                    'season': stat.season,
+                    'league': stat.league,
+                    'level': stat.level,
+                    'source': stat.source,
+                    'team_code': stat.team_code,
+                    'franchise_id': stat.franchise_id,
+                    'canonical_team_code': stat.canonical_team_code,
+                    'games': stat.games,
+                    'at_bats': stat.at_bats,
+                    'runs': stat.runs,
+                    'hits': stat.hits,
+                    'doubles': stat.doubles,
+                    'triples': stat.triples,
+                    'home_runs': stat.home_runs,
+                    'rbi': stat.rbi,
+                    'walks': stat.walks,
+                    'intentional_walks': stat.intentional_walks,
+                    'hbp': stat.hbp,
+                    'strikeouts': stat.strikeouts,
+                    'stolen_bases': stat.stolen_bases,
+                    'caught_stealing': stat.caught_stealing,
+                    'sacrifice_hits': stat.sacrifice_hits,
+                    'sacrifice_flies': stat.sacrifice_flies,
+                    'gdp': stat.gdp,
+                    'avg': stat.avg,
+                    'obp': stat.obp,
+                    'slg': stat.slg,
+                    'ops': stat.ops,
+                    'iso': stat.iso,
+                    'babip': stat.babip,
+                    'extra_stats': stat.extra_stats if stat.extra_stats not in [None, 'null', 'None'] else None,
+                })
 
-            league_code = LEAGUE_NAME_TO_CODE.get(row["league"], 0)
-            season_id = season_map.get((row["season"], league_code))
-            if not season_id:
-                print(f"⚠️  Season not found for year={row['season']} league_code={league_code}; skipping")
-                continue
+            if data_list:
+                stmt = pg_insert(PlayerSeasonBatting).values(data_list)
+                update_cols = {k: stmt.excluded[k] for k in data_list[0].keys() if k not in ['player_id', 'season', 'league', 'level']}
+                stmt = stmt.on_conflict_do_update(
+                    index_elements=['player_id', 'season', 'league', 'level'],
+                    set_=update_cols
+                )
+                self.target_session.execute(stmt)
+                synced += len(data_list)
+                self.target_session.commit()
+                print(f"    ✅ Synced {synced}/{total} batting records...")
 
-            team_id = row["team_code"]
-            if team_id and team_id not in team_set:
-                print(f"⚠️  Team {team_id} not found in teams table; skipping")
-                continue
+        print(f"  ✅ Finished syncing {synced} player_season_batting records to OCI")
+        return synced
 
-            metrics = extra_stats.get("metrics", {}) if isinstance(extra_stats, dict) else {}
-            innings_outs = row["innings_outs"]
-            ip_value = None
-            if innings_outs is not None:
-                ip_value = round(innings_outs / 3.0, 2)
-            elif isinstance(metrics, dict):
-                ip_value = metrics.get("innings_pitched")
+    def sync_player_season_pitching(self, limit: int = None) -> int:
+        """Sync player_season_pitching data from SQLite to OCI using bulk upsert"""
+        query = self.sqlite_session.query(PlayerSeasonPitching)
+        if limit:
+            query = query.limit(limit)
 
-            extra_stats_value = raw_extra
-            if isinstance(extra_stats, (dict, list)):
-                extra_stats_value = json.dumps(extra_stats, ensure_ascii=False)
+        pitching_stats = query.all()
+        total = len(pitching_stats)
+        synced = 0
+        chunk_size = 500
 
-            data = {
-                'season_id': season_id,
-                'player_id': target_id,
-                'team_id': team_id,
-                'games': row['games'],
-                'wins': row['wins'],
-                'losses': row['losses'],
-                'saves': row['saves'],
-                'holds': row['holds'],
-                'ip': ip_value,
-                'hits': row['hits_allowed'],
-                'home_runs': row['home_runs_allowed'],
-                'walks': row['walks_allowed'],
-                'hbp': row['hit_batters'],
-                'strikeouts': row['strikeouts'],
+        print(f"  - Starting bulk sync for {total} pitching records...")
 
-                'runs': row['runs_allowed'],
-                'earned_runs': row['earned_runs'],
-                'whip': row['whip'],
-                'complete_games': metrics.get('complete_games'),
-                'shutouts': metrics.get('shutouts'),
-                'quality_starts': metrics.get('quality_starts'),
-                'blown_saves': metrics.get('blown_saves'),
-                'tbf': metrics.get('tbf'),
-                'np': metrics.get('np'),
-                'avg_against': metrics.get('avg_against'),
-                'doubles_allowed': metrics.get('doubles_allowed'),
-                'triples_allowed': metrics.get('triples_allowed'),
-                'sacrifices': metrics.get('sacrifices_allowed'),
-                'sacrifice_flies': metrics.get('sacrifice_flies_allowed'),
-                'intentional_walks': row['intentional_walks'],
-                'wild_pitches': row['wild_pitches'],
-                'balks': row['balks'],
-                'extra_stats': extra_stats_value,
-            }
+        for i in range(0, total, chunk_size):
+            chunk = pitching_stats[i:i + chunk_size]
+            data_list = []
+            for stat in chunk:
+                data_list.append({
+                    'player_id': stat.player_id,
+                    'season': stat.season,
+                    'league': stat.league,
+                    'level': stat.level,
+                    'source': stat.source,
+                    'team_code': stat.team_code,
+                    'franchise_id': stat.franchise_id,
+                    'canonical_team_code': stat.canonical_team_code,
+                    'games': stat.games,
+                    'games_started': stat.games_started,
+                    'wins': stat.wins,
+                    'losses': stat.losses,
+                    'saves': stat.saves,
+                    'holds': stat.holds,
+                    'innings_pitched': stat.innings_pitched,
+                    'innings_outs': stat.innings_outs,
+                    'hits_allowed': stat.hits_allowed,
+                    'runs_allowed': stat.runs_allowed,
+                    'earned_runs': stat.earned_runs,
+                    'home_runs_allowed': stat.home_runs_allowed,
+                    'walks_allowed': stat.walks_allowed,
+                    'intentional_walks': stat.intentional_walks,
+                    'hit_batters': stat.hit_batters,
+                    'strikeouts': stat.strikeouts,
+                    'wild_pitches': stat.wild_pitches,
+                    'balks': stat.balks,
+                    'era': stat.era,
+                    'whip': stat.whip,
+                    'fip': stat.fip,
+                    'k_per_nine': stat.k_per_nine,
+                    'bb_per_nine': stat.bb_per_nine,
+                    'kbb': stat.kbb,
+                    'complete_games': stat.complete_games,
+                    'shutouts': stat.shutouts,
+                    'quality_starts': stat.quality_starts,
+                    'blown_saves': stat.blown_saves,
+                    'tbf': stat.tbf,
+                    'np': stat.np,
+                    'avg_against': stat.avg_against,
+                    'doubles_allowed': stat.doubles_allowed,
+                    'triples_allowed': stat.triples_allowed,
+                    'sacrifices_allowed': stat.sacrifices_allowed,
+                    'sacrifice_flies_allowed': stat.sacrifice_flies_allowed,
+                    'extra_stats': stat.extra_stats if stat.extra_stats not in [None, 'null', 'None'] else None,
+                })
 
-            data = {
-                k: v for k, v in data.items() if v is not None
-            }
+            if data_list:
+                stmt = pg_insert(PlayerSeasonPitching).values(data_list)
+                update_cols = {k: stmt.excluded[k] for k in data_list[0].keys() if k not in ['player_id', 'season', 'league', 'level']}
+                stmt = stmt.on_conflict_do_update(
+                    index_elements=['player_id', 'season', 'league', 'level'],
+                    set_=update_cols
+                )
+                self.target_session.execute(stmt)
+                synced += len(data_list)
+                self.target_session.commit()
+                print(f"    ✅ Synced {synced}/{total} pitching records...")
 
-            stmt = pg_insert(pitching_table).values(**data)
-            update_dict = {k: stmt.excluded[k] for k in data.keys() if k not in ['season_id', 'player_id']}
-            stmt = stmt.on_conflict_do_update(
-                index_elements=['season_id', 'player_id'],
-                set_=update_dict
-            )
-
-            self.target_session.execute(stmt)
-            synced += 1
-
-        self.target_session.commit()
-        print(f"✅ Synced {synced} player_season_pitching records to OCI")
+        print(f"  ✅ Finished syncing {synced} player_season_pitching records to OCI")
         return synced
 
     def sync_all_player_data(self) -> Dict[str, int]:
@@ -936,29 +1145,8 @@ class OCISync:
         print(f"🧹 Purged OCI child game-detail rows for year {year}")
 
     def get_unsynced_or_modified_game_ids(self) -> List[str]:
-        """로컬 SQLite와 OCI 간의 차집합(누락되거나 상태가 변경된 게임) 계산"""
-        from src.models.game import Game
-        
-        # OCI에서 전체 game_id와 game_status를 가져옴
-        oci_games = {
-            row[0]: row[1] 
-            for row in self.target_session.execute(text("SELECT game_id, game_status FROM game")).fetchall()
-        }
-        
-        # SQLite에서 전체 게임 가져옴
-        local_games = self.sqlite_session.query(Game.game_id, Game.game_status).all()
-        
-        sync_ids = []
-        for l_id, l_status in local_games:
-            oci_status = oci_games.get(l_id)
-            if l_id not in oci_games:
-                # OCI에 없는 게임
-                sync_ids.append(l_id)
-            elif l_status != oci_status:
-                # 상태가 변경된 게임 (예: 경기 전 -> 종료)
-                sync_ids.append(l_id)
-                
-        return sync_ids
+        """Detect dirty game_ids by comparing game + child-table signatures across local/OCI."""
+        return detect_dirty_game_ids(self.sqlite_session, self.target_session)
 
     def sync_game_details(self, days: int = None, year: int = None, unsynced_only: bool = False) -> Dict[str, int]:
         """Sync all game detail tables to OCI"""
@@ -1445,6 +1633,16 @@ class OCISync:
 
         print(f"✅ Matchup Splits Sync Summary: {results}")
         return results
+
+    def sync_stat_rankings(self, year: int | None = None) -> int:
+        """Sync derived stat_rankings rows to OCI."""
+        filters = [StatRanking.season == year] if year else None
+        return self._sync_simple_table(
+            StatRanking,
+            ["season", "metric", "entity_id", "entity_type"],
+            exclude_cols=["created_at", "id"],
+            filters=filters,
+        )
 
     def close(self):
 

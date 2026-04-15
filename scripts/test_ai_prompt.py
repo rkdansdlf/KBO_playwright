@@ -16,6 +16,21 @@ def format_preview_prompt(data):
     away_m = data.get('away_metrics', {})
     home_m = data.get('home_metrics', {})
     
+    # New: Add Movements & Roster Changes
+    away_mv = data.get('away_movements', [])
+    home_mv = data.get('home_movements', [])
+    away_rc = data.get('away_roster_changes', {"added": [], "removed": []})
+    home_rc = data.get('home_roster_changes', {"added": [], "removed": []})
+    
+    def format_mv(mv_list):
+        if not mv_list: return "없음"
+        return ", ".join([f"{m['player']}({m['section']})" for m in mv_list[:3]])
+
+    def format_rc(rc_dict):
+        added = ", ".join(rc_dict.get('added', [])) or "없음"
+        removed = ", ".join(rc_dict.get('removed', [])) or "없음"
+        return f"등록: {added} / 말소: {removed}"
+
     prompt = f"""
 ### [경기 프리뷰 분석 데이터]
 1. 대진: {data.get('away_team_name')} vs {data.get('home_team_name')}
@@ -24,10 +39,16 @@ def format_preview_prompt(data):
    - {data.get('away_team_name')}: {away_l10.get('l10_text')} (현재 {away_l10.get('streak')})
    - {data.get('home_team_name')}: {home_l10.get('l10_text')} (현재 {home_l10.get('streak')})
 4. 팀별 주요 지표 (최근 10경기 평균):
-   - {data.get('away_team_name')}: 타율 {away_m.get('avg')}, 평균자책점 {away_m.get('era')}, 불펜ERA {away_m.get('bullpen_era')}
-   - {data.get('home_team_name')}: 타율 {home_m.get('avg')}, 평균자책점 {home_m.get('era')}, 불펜ERA {home_m.get('bullpen_era')}
+   - {data.get('away_team_name')}: 타율 {away_m.get('avg')}, ERA {away_m.get('era')}, 불펜ERA {away_m.get('bullpen_era')}
+   - {data.get('home_team_name')}: 타율 {home_m.get('avg')}, ERA {home_m.get('era')}, 불펜ERA {home_m.get('bullpen_era')}
+5. 주요 전력 변동 (최근 7일):
+   - {data.get('away_team_name')} 부상/이동: {format_mv(away_mv)}
+   - {data.get('home_team_name')} 부상/이동: {format_mv(home_mv)}
+   - {data.get('away_team_name')} 엔트리 변동: {format_rc(away_rc)}
+   - {data.get('home_team_name')} 엔트리 변동: {format_rc(home_rc)}
 
-위 데이터를 바탕으로 오늘의 관전 포인트 3가지를 전문적인 야구 해설가 톤으로 분석해줘.
+위 데이터를 바탕으로 오늘의 관전 포인트 3가지를 분석해줘. 
+특히 최근 부상자 명단에 오른 선수나 엔트리에서 말소된 주요 선수가 있을 경우, 해당 선수의 공백이 팀 전력 및 경기 양상에 미칠 영향을 해설위원의 시각에서 심도 있게 분석에 포함시켜줘.
 """
     return prompt
 
@@ -37,6 +58,14 @@ def format_review_prompt(data):
     moments = data.get('crucial_moments', [])
     if not moments: return "No crucial moments found for this game."
     
+    # New: Add Movements & Roster Changes to Review context
+    away_mv = data.get('away_movements', [])
+    home_mv = data.get('home_movements', [])
+    
+    def format_mv(mv_list):
+        if not mv_list: return "없음"
+        return ", ".join([f"{m['player']}({m['section']})" for m in mv_list[:3]])
+
     moments_text = ""
     for m in moments:
         moments_text += f"- [{m['inning']}] {m['description']} (WPA: {m['wpa']})\n"
@@ -46,9 +75,13 @@ def format_review_prompt(data):
 * 경기 결과: {data.get('final_score', '정보 없음')}
 * 핵심 승부처 (WPA 기여도 순):
 {moments_text}
+* 경기 전 주요 전력 공백 정보:
+  - {data.get('away_team_name')} 부상/이동: {format_mv(away_mv)}
+  - {data.get('home_team_name')} 부상/이동: {format_mv(home_mv)}
 
-위 승부처 리스트를 바탕으로 오늘 경기의 승리 요인과 패배 요인을 상세히 분석하는 기사를 작성해줘.
-특히 WPA 수치가 높은 결정적인 장면들을 강조해서 설명해줘.
+위 승부처 리스트와 경기 전 전력 상황을 바탕으로 분석 기사를 작성해줘. 
+특히 주요 부상 선수의 공백이 경기 결과에 어떤 영향을 미쳤는지(예: 대체 선수의 활약 여부 등)를 분석 포인트로 삼아줘.
+WPA 수치가 높은 결정적인 장면들을 중심으로 야구 전문 기자의 시각에서 서술해줘.
 """
     return prompt
 

@@ -139,6 +139,11 @@ def build_arg_parser() -> argparse.ArgumentParser:
         help="선수 기본 정보(Player Basic)를 동기화합니다.",
     )
     parser.add_argument(
+        "--players",
+        action="store_true",
+        help="마스터 선수 레코드(Players 테이블)를 동기화합니다. (사진, 상세 프로필 포함)",
+    )
+    parser.add_argument(
         "--daily-roster",
         action="store_true",
         help="일별 1군 등록 현황(Daily Roster)을 동기화합니다.",
@@ -183,6 +188,11 @@ def build_arg_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="계산된 상대 전적(Matchup Splits) 테이블을 동기화합니다.",
     )
+    parser.add_argument(
+        "--rankings",
+        action="store_true",
+        help="계산된 stat_rankings 테이블을 동기화합니다.",
+    )
     return parser
 
 
@@ -225,6 +235,13 @@ def main(argv: Iterable[str] | None = None) -> None:
             syncer = OCISync(args.target_url, session)
             synced = syncer.sync_player_basic(limit=args.limit)
             print(f"✅ Player Basic Sync Finished ({synced} rows)")
+
+    elif args.players:
+        print(f"🚀 Syncing Master Players using specialized OCISync...")
+        with SessionLocal() as session:
+            syncer = OCISync(args.target_url, session)
+            syncer.sync_players()
+            print(f"✅ Master Players Sync Finished")
 
     elif args.player_movements:
         print("🚀 Syncing Player Movements using specialized OCISync...")
@@ -277,6 +294,13 @@ def main(argv: Iterable[str] | None = None) -> None:
             syncer = OCISync(args.target_url, session)
             syncer.sync_matchups(year=args.year)
             print("✅ Matchup Splits Sync Finished")
+
+    elif args.rankings:
+        print("🚀 Syncing Stat Rankings using specialized OCISync...")
+        with SessionLocal() as session:
+            syncer = OCISync(args.target_url, session)
+            synced = syncer.sync_stat_rankings(year=args.year)
+            print(f"✅ Stat Rankings Sync Finished ({synced} rows)")
 
 
         

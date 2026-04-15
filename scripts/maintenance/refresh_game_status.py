@@ -26,12 +26,16 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from src.db.engine import SessionLocal
-
-STATUS_COMPLETED = "COMPLETED"
-STATUS_SCHEDULED = "SCHEDULED"
-STATUS_CANCELLED = "CANCELLED"
-STATUS_POSTPONED = "POSTPONED"
-STATUS_UNRESOLVED = "UNRESOLVED_MISSING"
+from src.utils.game_status import (
+    GAME_STATUS_CANCELLED as STATUS_CANCELLED,
+    GAME_STATUS_COMPLETED as STATUS_COMPLETED,
+    GAME_STATUS_DRAW as STATUS_DRAW,
+    GAME_STATUS_LIVE as STATUS_LIVE,
+    GAME_STATUS_POSTPONED as STATUS_POSTPONED,
+    GAME_STATUS_SCHEDULED as STATUS_SCHEDULED,
+    GAME_STATUS_UNRESOLVED as STATUS_UNRESOLVED,
+    LIVE_GAME_STATUSES,
+)
 MANUAL_STATUS_ALLOWED = {STATUS_CANCELLED, STATUS_POSTPONED}
 DEFAULT_OVERRIDES_CSV = PROJECT_ROOT / "data/game_status_overrides.csv"
 DEFAULT_EVIDENCE_CSV = PROJECT_ROOT / "data/game_status_schedule_evidence.csv"
@@ -59,13 +63,15 @@ def derive_game_status(
     today: date | None = None,
 ) -> str:
     today = today or date.today()
-    if home_score is not None and away_score is not None:
-        return STATUS_COMPLETED
+    if home_score is not None and away_score is not None and (has_batting or has_pitching or (game_date < today and has_inning_scores)):
+        return STATUS_DRAW if home_score == away_score else STATUS_COMPLETED
     if game_date > today:
         return STATUS_SCHEDULED
     if manual_status in MANUAL_STATUS_ALLOWED:
         return manual_status
     has_any_detail = has_inning_scores or has_lineups or has_batting or has_pitching
+    if game_date == today and has_any_detail and manual_status is None:
+        return STATUS_LIVE
     if has_metadata and not has_any_detail:
         return STATUS_CANCELLED
     return STATUS_UNRESOLVED
@@ -235,6 +241,8 @@ def refresh_game_statuses(
     summary_rows = [
         {"metric": "total_games", "count": len(games)},
         {"metric": "completed", "count": status_counts[STATUS_COMPLETED]},
+        {"metric": "draw", "count": status_counts[STATUS_DRAW]},
+        {"metric": "live", "count": status_counts[STATUS_LIVE]},
         {"metric": "scheduled", "count": status_counts[STATUS_SCHEDULED]},
         {"metric": "cancelled", "count": status_counts[STATUS_CANCELLED]},
         {"metric": "postponed", "count": status_counts[STATUS_POSTPONED]},

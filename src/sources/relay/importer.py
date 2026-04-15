@@ -29,6 +29,8 @@ class ImportRelayAdapter(RelaySourceAdapter):
         manifest_base_dir: str | Path | None = None,
     ):
         super().__init__(source_name)
+        self.supports_bucket_probe = False
+        self.cache_negative_probe = False
         self.manifest_entries = list(manifest_entries or [])
         self.allowed_source_types = allowed_source_types
         self.manifest_base_dir = Path(manifest_base_dir or ".")
@@ -197,4 +199,3 @@ class ImportRelayAdapter(RelaySourceAdapter):
                 )
             )
         return rows
-

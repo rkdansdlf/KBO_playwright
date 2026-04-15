@@ -12,25 +12,45 @@ from src.utils.playwright_pool import AsyncPlaywrightPool
 from src.utils.safe_print import safe_print as print
 
 # KBO profile page selectors (common across Hitter/Pitcher detail pages)
-_PROFILE_ID = "cphContents_cphContents_cphContents_playerProfile"
+_PROFILE_ID_REG = "cphContents_cphContents_cphContents_playerProfile"
+_PROFILE_ID_FUT = "cphContents_cphContents_cphContents_ucPlayerProfile"
+
 _EXTRACT_JS = f"""
 () => {{
-    const $ = (id) => {{
-        const el = document.getElementById(id);
+    const prefixes = ['{_PROFILE_ID_REG}', '{_PROFILE_ID_FUT}'];
+    let prefix = null;
+    let name = "";
+    
+    for (const p of prefixes) {{
+        const el = document.getElementById(p + "_lblName");
+        if (el) {{
+            prefix = p;
+            name = el.innerText.trim();
+            break;
+        }}
+    }}
+
+    if (!prefix) return {{ error: "NO_PROFILE_ELEMENT" }};
+
+    const getVal = (suffix) => {{
+        const el = document.getElementById(prefix + "_" + suffix);
         return el ? el.innerText.trim() : null;
     }};
-    const photoEl = document.getElementById('{_PROFILE_ID}_imgProgile') || document.querySelector('.photo img');
 
-    // Detect position/hand from profile text block
-    const infoEl = document.querySelector('.player-info, .playerInfo, #cphContents_cphContents_cphContents_playerProfile');
+    const photoEl = document.getElementById(prefix + "_imgProfile") || 
+                    document.getElementById(prefix + "_imgProgile") || 
+                    document.querySelector('.photo img');
+
+    const infoEl = document.querySelector('.player-info, .playerInfo, #' + prefix);
     const rawText = infoEl ? infoEl.innerText : document.body.innerText;
 
     return {{
+        name:         name,
         photo_url:    photoEl ? (photoEl.src || photoEl.getAttribute('src')) : null,
-        salary:       $('{_PROFILE_ID}_lblSalary'),
-        signing:      $('{_PROFILE_ID}_lblPayment'),
-        draft:        $('{_PROFILE_ID}_lblDraft'),
-        debut:        $('{_PROFILE_ID}_lblJoinInfo') || $('{_PROFILE_ID}_lblEntryYear') || $('{_PROFILE_ID}_lblDebutYear'),
+        salary:       getVal('lblSalary'),
+        signing:      getVal('lblPayment'),
+        draft:        getVal('lblDraft'),
+        debut:        getVal('lblJoinInfo') || getVal('lblEntryYear') || getVal('lblDebutYear'),
         raw_text:     rawText,
     }};
 }}
@@ -74,6 +94,9 @@ def _clean_photo_url(raw: Optional[str]) -> Optional[str]:
     """Return None for missing/default images."""
     if not raw or NO_IMAGE_SENTINEL in raw:
         return None
+    # Avoid local about:blank or data urls
+    if not raw.startswith("http") and not raw.startswith("//"):
+        return None
     # Ensure absolute URL
     if raw.startswith("//"):
         return "https:" + raw
@@ -88,16 +111,32 @@ class PlayerProfileCrawler:
 
     HITTER_URL = "https://www.koreabaseball.com/Record/Player/HitterDetail/Basic.aspx"
     PITCHER_URL = "https://www.koreabaseball.com/Record/Player/PitcherDetail/Basic.aspx"
+    FUTURES_HITTER_URL = "https://www.koreabaseball.com/Futures/Player/HitterDetail.aspx"
+    FUTURES_PITCHER_URL = "https://www.koreabaseball.com/Futures/Player/PitcherDetail.aspx"
 
-    def __init__(self, request_delay: float = 1.5, pool: Optional[AsyncPlaywrightPool] = None):
+    def __init__(self, request_delay: float = 1.2, pool: Optional[AsyncPlaywrightPool] = None):
         self.request_delay = request_delay
         self.pool = pool
 
-    def _select_url(self, player_id: str, position: Optional[str]) -> str:
-        if position and (position.strip() in PITCHER_POSITIONS or
-                         any(p in (position or "") for p in ["투수", "P"])):
-            return f"{self.PITCHER_URL}?playerId={player_id}"
-        return f"{self.HITTER_URL}?playerId={player_id}"
+    def _select_urls(self, player_id: str, position: Optional[str]) -> list[str]:
+        """순차적으로 시도할 URL 후보 목록을 반환"""
+        is_pitcher = position and (position.strip() in PITCHER_POSITIONS or
+                                   any(p in (position or "") for p in ["투수", "P"]))
+        
+        if is_pitcher:
+            return [
+                f"{self.PITCHER_URL}?playerId={player_id}",
+                f"{self.HITTER_URL}?playerId={player_id}",
+                f"{self.FUTURES_PITCHER_URL}?playerId={player_id}",
+                f"{self.FUTURES_HITTER_URL}?playerId={player_id}",
+            ]
+        else:
+            return [
+                f"{self.HITTER_URL}?playerId={player_id}",
+                f"{self.PITCHER_URL}?playerId={player_id}",
+                f"{self.FUTURES_HITTER_URL}?playerId={player_id}",
+                f"{self.FUTURES_PITCHER_URL}?playerId={player_id}",
+            ]
 
     async def crawl_player_profile(
         self,
@@ -128,53 +167,64 @@ class PlayerProfileCrawler:
 
     async def _fetch_profile(
         self, page: Page, player_id: str, position: Optional[str]
-    ) -> Dict:
-        url = self._select_url(player_id, position)
-        print(f"📡 Fetching profile [{player_id}]: {url}")
-
-        # domcontentloaded avoids networkidle timeout on KBO pages
-        await page.goto(url, wait_until="domcontentloaded", timeout=20000)
-        await page.wait_for_timeout(1500)
-        await page.wait_for_selector(f"#{_PROFILE_ID}_lblName", timeout=5000)
-
-        raw = await page.evaluate(_EXTRACT_JS)
-
-        # If hitter page shows no data (wrong type), try pitcher URL instead
-        if not raw.get("raw_text") or "선수명" not in (raw.get("raw_text") or ""):
-            fallback = (
-                f"{self.PITCHER_URL}?playerId={player_id}"
-                if "HitterDetail" in url
-                else f"{self.HITTER_URL}?playerId={player_id}"
-            )
-            await page.goto(fallback, wait_until="domcontentloaded", timeout=20000)
-            await page.wait_for_timeout(1500)
-            # Ensure the profile container is actually loaded
-            await page.wait_for_selector(f"#{_PROFILE_ID}_lblName", timeout=5000)
-            raw = await page.evaluate(_EXTRACT_JS)
+    ) -> Optional[Dict]:
+        urls = self._select_urls(player_id, position)
         
-        hands = _parse_hands(raw.get("raw_text") or "")
-
-        return {
-            "player_id": player_id,
-            "photo_url": _clean_photo_url(raw.get("photo_url")),
-            "bats": hands["bats"],
-            "throws": hands["throws"],
-            "debut_year": _parse_debut_year(raw.get("debut")),
-            "salary_original": (raw.get("salary") or "").strip() or None,
-            "signing_bonus_original": (raw.get("signing") or "").strip() or None,
-            "draft_info": (raw.get("draft") or "").strip() or None,
-        }
+        for url in urls:
+            print(f"📡 Attempting profile [{player_id}]: {url}")
+            try:
+                # domcontentloaded avoids networkidle timeout on KBO pages
+                await page.goto(url, wait_until="domcontentloaded", timeout=15000)
+                await page.wait_for_timeout(500)
+                
+                # Wait for name element to be attached to DOM
+                await page.wait_for_selector(f'[id$="lblName"]', state="attached", timeout=5000)
+                # Short grace period for visibility (some profiles are empty and stay hidden)
+                try:
+                    await page.wait_for_selector(f'[id$="lblName"]', state="visible", timeout=1000)
+                except:
+                    pass
+                
+                raw = await page.evaluate(_EXTRACT_JS)
+                
+                if raw.get("error"):
+                    continue
+                    
+                # If name is empty, this is a stub page. Try next URL if possible, 
+                # but usually stub means no data on any of them.
+                if not raw.get("name"):
+                    print(f"⚠️  Stub profile detected at {url}")
+                    continue
+                
+                # Success found data
+                hands = _parse_hands(raw.get("raw_text") or "")
+                return {
+                    "player_id": player_id,
+                    "photo_url": _clean_photo_url(raw.get("photo_url")),
+                    "bats": hands["bats"],
+                    "throws": hands["throws"],
+                    "debut_year": _parse_debut_year(raw.get("debut")),
+                    "salary_original": (raw.get("salary") or "").strip() or None,
+                    "signing_bonus_original": (raw.get("signing") or "").strip() or None,
+                    "draft_info": (raw.get("draft") or "").strip() or None,
+                }
+            except Exception as e:
+                print(f"   (Failed attempt at {url}: {e})")
+                continue
+        
+        return None
 
 
 async def main():
-    """Quick test for a known pitcher (임찬규 - LG, ID: 79171)"""
+    """Quick test for a known problematic ID (900076)"""
     crawler = PlayerProfileCrawler()
-    result = await crawler.crawl_player_profile("79171", position="투수")
+    result = await crawler.crawl_player_profile("900076")
     if result:
+        print("✅ Success:")
         for k, v in result.items():
             print(f"  {k}: {v}")
     else:
-        print("❌ No result")
+        print("❌ No result (Expected for stub/empty profiles)")
 
 if __name__ == "__main__":
     asyncio.run(main())

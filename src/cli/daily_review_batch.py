@@ -1,113 +1,132 @@
 """
 Daily Review Batch Script
-Generates post-game review context from game_events/WPA
-and saves it to GameSummary.
+Generates post-game review context from game_events/WPA and persists it locally.
 """
-import asyncio
+from __future__ import annotations
+
 import argparse
+import asyncio
 import json
 import os
 from datetime import datetime
-from contextlib import contextmanager
+from typing import List, Sequence
 
 from src.db.engine import SessionLocal
 from src.models.game import Game, GameSummary
-from src.models.player import PlayerBasic
 from src.services.context_aggregator import ContextAggregator
+from src.sync.oci_sync import OCISync
+from src.utils.game_status import COMPLETED_LIKE_GAME_STATUSES
+from src.utils.refresh_manifest import write_refresh_manifest
 from src.utils.safe_print import safe_print as print
+from src.utils.team_codes import team_code_from_game_id_segment
 
-async def run_review_batch(target_date: str, custom_session=None):
+
+async def run_review_batch(target_date: str, *, sync_to_oci: bool | None = None) -> List[str]:
     print(f"🚀 Starting Post-game Review Data Batch for {target_date}...")
-    
+
     target_dt_obj = datetime.strptime(target_date, "%Y%m%d").date()
+    saved_ids: List[str] = []
 
-    # Use custom session factory if provided, else use default SessionLocal
-    if custom_session:
-        # custom_session is a sessionmaker — call it to get a session, then wrap in contextmanager
-        @contextmanager
-        def session_ctx():
-            session = custom_session()
-            try:
-                yield session
-            finally:
-                session.close()
-    else:
-        session_ctx = SessionLocal
-
-    with session_ctx() as session:
+    with SessionLocal() as session:
         agg = ContextAggregator(session)
-        
-        # Find completed games for the date
         games = session.query(Game).filter(
             Game.game_date == target_dt_obj,
-            Game.game_status == 'COMPLETED'
+            Game.game_status.in_(tuple(COMPLETED_LIKE_GAME_STATUSES)),
         ).all()
-        
-        if not games:
-            print(f"ℹ️ No completed games found for {target_date}.")
-            return
 
-        saved_count = 0
+        if not games:
+            manifest_path = write_refresh_manifest(
+                phase="postgame_review",
+                target_date=target_date,
+                game_ids=[],
+                datasets=["game", "game_events", "game_summary"],
+            )
+            print(f"ℹ️ No completed games found for {target_date}. manifest={manifest_path}")
+            return []
+
+        season_year = target_dt_obj.year
         for game in games:
             game_id = game.game_id
-            
+            away_code = team_code_from_game_id_segment(game.away_team, season_year)
+            home_code = team_code_from_game_id_segment(game.home_team, season_year)
+
             print(f"📊 Generating review context for {game_id}...")
-            
             review_data = {
                 "game_id": game_id,
                 "game_date": target_date,
                 "final_score": f"{game.away_team} {game.away_score} : {game.home_score} {game.home_team}",
-                "crucial_moments": agg.get_crucial_moments(game_id, limit=5)
+                "crucial_moments": agg.get_crucial_moments(game_id, limit=5),
             }
-            
+            if away_code and home_code:
+                review_data["away_movements"] = agg.get_recent_player_movements(away_code, target_dt_obj)
+                review_data["home_movements"] = agg.get_recent_player_movements(home_code, target_dt_obj)
+                review_data["away_roster_changes"] = agg.get_daily_roster_changes(away_code, target_dt_obj)
+                review_data["home_roster_changes"] = agg.get_daily_roster_changes(home_code, target_dt_obj)
+
             if not review_data["crucial_moments"]:
                 print(
                     f"  ⚠️ No WPA-backed game_events found for {game_id}. "
                     "Raw event crawl may be missing or incomplete."
                 )
-            
-            # Convert dict to JSON string
+
             review_json = json.dumps(review_data, ensure_ascii=False)
-            
-            # Upsert into GameSummary
             existing = session.query(GameSummary).filter(
                 GameSummary.game_id == game_id,
-                GameSummary.summary_type == "리뷰_WPA"
+                GameSummary.summary_type == "리뷰_WPA",
             ).first()
-            
             if existing:
                 existing.detail_text = review_json
             else:
-                new_summary = GameSummary(
-                    game_id=game_id,
-                    summary_type="리뷰_WPA",
-                    detail_text=review_json
+                session.add(
+                    GameSummary(
+                        game_id=game_id,
+                        summary_type="리뷰_WPA",
+                        detail_text=review_json,
+                    )
                 )
-                session.add(new_summary)
-            
-            saved_count += 1
-            
+            saved_ids.append(game_id)
+
         try:
             session.commit()
-            print(f"✅ Successfully saved {saved_count} game review contexts to DB.")
-        except Exception as e:
+        except Exception as exc:
             session.rollback()
-            print(f"❌ Failed to save reviews to DB: {e}")
+            print(f"❌ Failed to save reviews to DB: {exc}")
+            raise
 
-if __name__ == "__main__":
+    should_sync = sync_to_oci if sync_to_oci is not None else bool(os.getenv("OCI_DB_URL"))
+    if should_sync and saved_ids:
+        oci_url = os.getenv("OCI_DB_URL")
+        if oci_url:
+            with SessionLocal() as sync_session:
+                syncer = OCISync(oci_url, sync_session)
+                try:
+                    for game_id in sorted(set(saved_ids)):
+                        syncer.sync_specific_game(game_id)
+                finally:
+                    syncer.close()
+
+    manifest_path = write_refresh_manifest(
+        phase="postgame_review",
+        target_date=target_date,
+        game_ids=saved_ids,
+        datasets=["game", "game_events", "game_summary"],
+    )
+    print(f"✅ Review batch finished. saved={len(saved_ids)} manifest={manifest_path}")
+    return saved_ids
+
+
+def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="KBO Daily Review Context Generator")
     parser.add_argument("--date", type=str, help="Target date (YYYYMMDD). Defaults to today.", default=None)
-    args = parser.parse_args()
-    
+    parser.add_argument("--no-sync", action="store_true", help="Skip explicit OCI sync after local writes")
+    args = parser.parse_args(argv)
+
     target = args.date if args.date else datetime.now().strftime("%Y%m%d")
+    asyncio.run(run_review_batch(target, sync_to_oci=not args.no_sync))
+    return 0
 
-    oci_url = os.getenv("OCI_DB_URL")
-    custom_session = None
-    if oci_url:
-        from sqlalchemy import create_engine
-        from sqlalchemy.orm import sessionmaker
-        engine = create_engine(oci_url)
-        custom_session = sessionmaker(bind=engine)
-        print(f"🔗 Using OCI Database for review generation.")
 
-    asyncio.run(run_review_batch(target, custom_session=custom_session))
+if __name__ == "__main__":
+    import sys
+
+    sys.exit(main())

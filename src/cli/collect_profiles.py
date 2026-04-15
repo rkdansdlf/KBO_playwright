@@ -44,43 +44,27 @@ async def collect_missing_profiles(limit: int = 100):
                 if not pid:
                     continue
 
-                print(f"[{idx}/{len(target_players)}] Crawling profile for {pid} (Name: {player.player_name or '?'})")
+                print(f"[{idx}/{len(target_players)}] Crawling profile for {pid}")
 
                 data = await crawler.crawl_player_profile(str(pid))
-                if data:
-                    # Map Crawler Dict -> PlayerProfileParsed
-                    basic = data.get('basic_info', {})
-                    phys = data.get('physical_info', {})
-                    career = data.get('career_info', {})
-
-                    parsed = PlayerProfileParsed(
-                        player_id=int(pid) if pid.isdigit() else None,
-                        player_name=basic.get('name'),
-                        back_number=int(basic['back_number']) if basic.get('back_number') and basic['back_number'].isdigit() else None,
-                        birth_date=basic.get('birth_date'), # Assuming format matches or needs parsing?
-                        position=basic.get('position'),
-                        height_cm=int(phys['height']) if phys.get('height') else None,
-                        weight_kg=int(phys['weight']) if phys.get('weight') else None,
-                        batting_hand=phys.get('bat_hand'),
-                        throwing_hand=phys.get('throw_hand'),
-                        entry_year=int(career['debut_year']) if career.get('debut_year') and career['debut_year'].isdigit() else None,
-                        # education_or_career_path is not easily mapped from summary text in crawler
-                    )
-
-                    # Normalize birth_date if needed (Crawler returns 1999년 01월 01일?)
-                    # Repository expects YYYY-MM-DD string or Date object.
-                    # Repository _apply_profile_fields parses YYYY-MM-DD.
-                    # Let's hope basic['birth_date'] is clean or fix it.
-                    if parsed.birth_date and '년' in parsed.birth_date:
-                        import re
-                        match = re.search(r"(\d{4})년\s*(\d{1,2})월\s*(\d{1,2})일", parsed.birth_date)
-                        if match:
-                            parsed.birth_date = f"{match.group(1)}-{int(match.group(2)):02d}-{int(match.group(3)):02d}"
+                if data and data.get('raw_text'):
+                    # Use the standardized parser to extract all fields from raw_text
+                    from src.parsers.player_profile_parser import parse_profile
+                    
+                    parsed = parse_profile(data['raw_text'])
+                    parsed.player_id = int(pid) if pid.isdigit() else None
+                    
+                    # Store original values from crawler as well if needed
+                    parsed.photo_url = data.get('photo_url')
+                    parsed.salary_original = data.get('salary_original')
+                    parsed.signing_bonus_original = data.get('signing_bonus_original')
+                    parsed.draft_info = data.get('draft_info')
 
                     repo.upsert_player_profile(str(pid), parsed)
+                    
                     print(f"   ✅ Saved profile for {parsed.player_name}")
                 else:
-                    print(f"   ❌ Crawl failed or no data")
+                    print(f"   ⚠️  Crawl skipped or no data (Stub/Retired) for {pid}")
 
                 if idx % 10 == 0:
                     await asyncio.sleep(1)

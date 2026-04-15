@@ -1,19 +1,22 @@
-name: Daily Pre-game Preview Generator
+name: KBO Pregame Refresh
 
 on:
   schedule:
-    # Runs at 08:00 UTC which is 17:00 KST (Korean Standard Time) every day
-    # Typically 1~1.5 hours before evening games (18:30 KST) to fetch starting lineups
-    - cron: '0 8 * * *'
+    # Every 15 minutes from 10:00 to 19:45 KST.
+    - cron: '*/15 1-10 * * *'
   workflow_dispatch:
     inputs:
       target_date:
-        description: 'Target date to generate preview (YYYYMMDD). Defaults to Today KST.'
+        description: 'Target date to refresh preview data (YYYYMMDD). Defaults to today in KST.'
         required: false
         default: ''
 
+concurrency:
+  group: kbo-pregame-refresh
+  cancel-in-progress: false
+
 jobs:
-  generate-preview:
+  pregame-refresh:
     runs-on: ubuntu-latest
     env:
       PYTHONPATH: ${{ github.workspace }}
@@ -37,16 +40,30 @@ jobs:
         id: date
         run: |
           if [ "${{ github.event.inputs.target_date }}" != "" ]; then
-            echo "KST_DATE=${{ github.event.inputs.target_date }}" >> $GITHUB_ENV
+            KST_DATE="${{ github.event.inputs.target_date }}"
           else
-            echo "KST_DATE=$(TZ='Asia/Seoul' date +'%Y%m%d')" >> $GITHUB_ENV
+            KST_DATE="$(TZ='Asia/Seoul' date +'%Y%m%d')"
           fi
+          echo "KST_DATE=${KST_DATE}" >> $GITHUB_ENV
+          echo "KST_YEAR=${KST_DATE:0:4}" >> $GITHUB_ENV
+
+      - name: Initialize Database & Seed Metadata
+        run: |
+          python3 -c "from src.db.engine import init_db; init_db()"
+          python3 scripts/maintenance/seed_data.py
+
+      - name: Hydrate Runtime Cache From OCI
+        env:
+          OCI_DB_URL: ${{ secrets.OCI_DB_URL }}
+        run: |
+          python3 -m src.cli.hydrate_runtime_from_oci --year "${{ env.KST_YEAR }}" --date "${{ env.KST_DATE }}"
 
       - name: Run Daily Preview Batch
         env:
           OCI_DB_URL: ${{ secrets.OCI_DB_URL }}
           KBO_USER_ID: ${{ secrets.KBO_USER_ID }}
           KBO_USER_PWD: ${{ secrets.KBO_USER_PWD }}
+          AUTO_SYNC_OCI: 'false'
         run: |
-          echo "Generating pre-game context for ${KST_DATE}..."
+          echo "Refreshing pregame context for ${KST_DATE}..."
           python3 -m src.cli.daily_preview_batch --date ${{ env.KST_DATE }}

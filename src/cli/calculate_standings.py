@@ -13,6 +13,7 @@ from src.db.engine import SessionLocal
 from src.models.game import Game
 from src.models.season import KboSeason
 from src.models.standings import TeamStandingsDaily
+from src.utils.game_status import COMPLETED_LIKE_GAME_STATUSES
 
 def calculate_games_behind(target_wins, target_losses, leader_wins, leader_losses):
     """승차 계산 공식: {(1위 승수 - 내 승수) + (내 패수 - 1위 패수)} / 2.0"""
@@ -28,7 +29,7 @@ class StandingsCalculator:
         ).filter(
             KboSeason.season_year == year,
             KboSeason.league_type_name.in_(["정규시즌", "Regular Season"]),
-            Game.game_status == "COMPLETED"
+            Game.game_status.in_(tuple(COMPLETED_LIKE_GAME_STATUSES))
         ).order_by(Game.game_date, Game.game_id).all()
         
         if not games:

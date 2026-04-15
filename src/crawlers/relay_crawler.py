@@ -4,18 +4,25 @@ Fetches play-by-play data from Naver Sports API instead of KBO website due to ac
 """
 from __future__ import annotations
 import httpx
-import json
-import os
 import asyncio
 import re
+from datetime import datetime, timedelta
 from typing import List, Dict, Any, Optional
-from datetime import datetime
 
 from src.services.wpa_calculator import WPACalculator
 from src.utils.safe_print import safe_print as print
 from src.utils.playwright_pool import AsyncPlaywrightPool
 
+
+KBO_TO_NAVER_TEAM_CODE = {
+    "PA": "PN",
+    "DB": "DO",
+}
+
+
 class RelayCrawler:
+    schedule_fallback_window_days = 7
+
     def __init__(self, request_delay: float = 1.0, policy=None, pool: AsyncPlaywrightPool | None = None):
         """
         pool and policy arguments are retained for backward compatibility with GameDetailCrawler but are unused.
@@ -27,6 +34,8 @@ class RelayCrawler:
             "Accept": "application/json, text/plain, */*",
             "Origin": "https://m.sports.naver.com"
         }
+        self.schedule_api_base_url = "https://api-gw.sports.naver.com/schedule/today-games"
+        self.last_resolved_naver_game_id: str | None = None
 
     async def crawl_game_events(self, game_id: str) -> Optional[Dict[str, Any]]:
         """Backward-compatible alias used by older CLI entrypoints."""
@@ -39,32 +48,139 @@ class RelayCrawler:
         year = kbo_game_id[:4]
         return f"{kbo_game_id}{year}"
 
+    def _schedule_query_context(self, kbo_game_id: str, query_date: str | None = None) -> dict[str, str]:
+        date = query_date or f"{kbo_game_id[:4]}-{kbo_game_id[4:6]}-{kbo_game_id[6:8]}"
+        if "20241110" <= kbo_game_id[:8] <= "20241124":
+            return {
+                "sectionId": "worldbaseball",
+                "categoryId": "premier12",
+                "seasonYear": kbo_game_id[:4],
+                "date": date,
+            }
+        return {
+            "sectionId": "kbaseball",
+            "categoryId": "kbo",
+            "seasonYear": kbo_game_id[:4],
+            "date": date,
+        }
+
+    def _naver_team_code(self, code: str) -> str:
+        return KBO_TO_NAVER_TEAM_CODE.get(str(code or "").strip(), str(code or "").strip())
+
+    def _schedule_query_dates(self, kbo_game_id: str) -> List[str]:
+        base_date = datetime.strptime(kbo_game_id[:8], "%Y%m%d").date()
+        query_dates = [base_date.isoformat()]
+        for offset in range(1, self.schedule_fallback_window_days + 1):
+            query_dates.append((base_date + timedelta(days=offset)).isoformat())
+            query_dates.append((base_date - timedelta(days=offset)).isoformat())
+        return query_dates
+
+    def _match_schedule_game(
+        self,
+        kbo_game_id: str,
+        games: List[Dict[str, Any]],
+        *,
+        allow_team_fallback: bool = True,
+    ) -> Optional[Dict[str, Any]]:
+        away_code = self._naver_team_code(kbo_game_id[8:10])
+        home_code = self._naver_team_code(kbo_game_id[10:12])
+        exact_suffix = f"{kbo_game_id[4:8]}{away_code}{home_code}0{kbo_game_id[:4]}"
+
+        for game in games:
+            game_id = str(game.get("gameId") or "").strip()
+            if game_id.endswith(exact_suffix):
+                return game
+
+        if not allow_team_fallback:
+            return None
+
+        for game in games:
+            if (
+                str(game.get("awayTeamCode") or "").strip() == away_code
+                and str(game.get("homeTeamCode") or "").strip() == home_code
+            ):
+                return game
+
+        suffix = f"{away_code}{home_code}0{kbo_game_id[:4]}"
+        for game in games:
+            game_id = str(game.get("gameId") or "").strip()
+            if game_id.endswith(suffix):
+                return game
+        return None
+
+    async def _resolve_naver_game_id(self, client: httpx.AsyncClient, kbo_game_id: str) -> Optional[str]:
+        query_dates = self._schedule_query_dates(kbo_game_id)
+        for index, query_date in enumerate(query_dates):
+            query = self._schedule_query_context(kbo_game_id, query_date=query_date)
+            response = await client.get(
+                self.schedule_api_base_url,
+                params=query,
+                headers=self.headers,
+                timeout=10.0,
+            )
+            if response.status_code != 200:
+                continue
+            payload = response.json()
+            games = list((payload.get("result") or {}).get("games") or [])
+            matched = self._match_schedule_game(
+                kbo_game_id,
+                games,
+                allow_team_fallback=(index == 0),
+            )
+            if matched:
+                return str(matched.get("gameId") or "").strip() or None
+        return None
+
+    async def _fetch_text_relays(
+        self,
+        client: httpx.AsyncClient,
+        naver_id: str,
+    ) -> List[Dict[str, Any]]:
+        all_text_relays: list[dict[str, Any]] = []
+        for inn in range(1, 16):
+            url = f"{self.api_base_url.format(game_id=naver_id)}?inning={inn}"
+            response = await client.get(
+                url,
+                headers={**self.headers, "Referer": f"https://m.sports.naver.com/game/{naver_id}/relay"},
+                timeout=10.0,
+            )
+            if response.status_code != 200:
+                break
+            data = response.json()
+            result = data.get("result") or {}
+            relay_data = result.get("textRelayData") or {}
+            text_relays = relay_data.get("textRelays") or []
+            if not text_relays:
+                if all_text_relays:
+                    break
+                continue
+            has_logs = any(len(tr.get("textOptions", [])) > 0 for tr in text_relays)
+            if not has_logs and all_text_relays:
+                break
+            all_text_relays.extend(text_relays)
+            await asyncio.sleep(0.05)
+        return all_text_relays
+
     async def crawl_game_relay(self, kbo_game_id: str) -> Optional[Dict[str, Any]]:
         """
         Fetch and parse ALL PBP events for a given KBO game ID by iterating innings.
         Supports both LIVE and COMPLETED games natively through the API.
         """
-        naver_id = self._map_to_naver_id(kbo_game_id)
-        all_text_relays = []
+        self.last_resolved_naver_game_id = None
+        direct_naver_id = self._map_to_naver_id(kbo_game_id)
         
         # print(f"[FETCH] Requesting PBP via Naver API for {naver_id}")
         
         try:
             async with httpx.AsyncClient() as client:
-                for inn in range(1, 16):
-                    url = f"{self.api_base_url.format(game_id=naver_id)}?inning={inn}"
-                    response = await client.get(url, headers={**self.headers, "Referer": f"https://m.sports.naver.com/game/{naver_id}/relay"}, timeout=10.0)
-                    if response.status_code != 200: break
-                    data = response.json()
-                    text_relays = data.get("result", {}).get("textRelayData", {}).get("textRelays", [])
-                    if not text_relays:
-                        if all_text_relays: break
-                        else: continue
-                    has_logs = any(len(tr.get("textOptions", [])) > 0 for tr in text_relays)
-                    if not has_logs and all_text_relays: break
-                    all_text_relays.extend(text_relays)
-                    # Respect rate limits even if API
-                    await asyncio.sleep(0.05)
+                naver_id = direct_naver_id
+                all_text_relays = await self._fetch_text_relays(client, naver_id)
+                if not all_text_relays:
+                    resolved_naver_id = await self._resolve_naver_game_id(client, kbo_game_id)
+                    if resolved_naver_id and resolved_naver_id != direct_naver_id:
+                        self.last_resolved_naver_game_id = resolved_naver_id
+                        all_text_relays = await self._fetch_text_relays(client, resolved_naver_id)
+                        naver_id = resolved_naver_id
 
             if not all_text_relays: return None
             
@@ -73,6 +189,7 @@ class RelayCrawler:
             # since game status is handled by GameDetailCrawler anyway.
             return {
                 "game_id": kbo_game_id, 
+                "naver_game_id": naver_id,
                 "game_date": kbo_game_id[:8], 
                 "status": "completed", # Assume completed or live, upstream handles the real status
                 "events": events
@@ -103,10 +220,11 @@ class RelayCrawler:
 
         for segment in sorted_segments:
             inning, half = segment["_parsed_inn"], ("top" if segment["_parsed_side"] == "AWAY" else "bottom")
-            logs = segment.get("textOptions", [])
+            logs = segment.get("textOptions") or []
             # In archived mode, logs are chronological. 
             for log in logs:
-                state = log.get("currentGameState", {})
+                state = log.get("currentGameState") or {}
+                batter_record = log.get("batterRecord") or {}
                 
                 # Naver fields are often strings
                 def to_int(val, default=0):
@@ -123,7 +241,7 @@ class RelayCrawler:
                 if to_int(state.get("base3")) > 0: base_state |= 4
                 
                 # Ensure description length fits DB column (usually text, but to be safe)
-                description = log.get("text", "")
+                description = str(log.get("text") or "")
                 
                 event = {
                     "event_seq": sequence,
@@ -131,7 +249,7 @@ class RelayCrawler:
                     "inning_half": half,
                     "description": description,
                     "event_type": self._detect_event_type(description),
-                    "batter_name": log.get("batterRecord", {}).get("name") or log.get("batterName"),
+                    "batter_name": batter_record.get("name") or log.get("batterName"),
                     "pitcher_name": log.get("pitcherName"),
                     "home_score": home_score,
                     "away_score": away_score,
