@@ -171,7 +171,7 @@ class PlayerRepository:
                     d_val = datetime.strptime(d_val, "%Y-%m-%d").date()
 
                 stmt = select(PlayerMovement).where(
-                    PlayerMovement.date == d_val,
+                    PlayerMovement.movement_date == d_val,
                     PlayerMovement.team_code == item['team_code'],
                     PlayerMovement.player_name == item['player_name'],
                     PlayerMovement.section == item['section']
@@ -182,7 +182,7 @@ class PlayerRepository:
                     existing.remarks = item.get('remarks')
                 else:
                     new_rec = PlayerMovement(
-                        date=d_val,
+                        movement_date=d_val,
                         section=item['section'],
                         team_code=item['team_code'],
                         player_name=item['player_name'],

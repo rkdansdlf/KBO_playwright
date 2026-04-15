@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable
@@ -21,10 +22,47 @@ class RelayRecoveryOrchestrator:
         *,
         capability_path: str | Path,
         sample_size: int = 3,
+        timeout_seconds: float = 30.0,
     ):
         self.adapters = adapters
         self.capability_path = Path(capability_path)
         self.sample_size = sample_size
+        self.timeout_seconds = timeout_seconds
+
+    @staticmethod
+    def _uses_bucket_probe(adapter: RelaySourceAdapter | None) -> bool:
+        return bool(adapter is not None and getattr(adapter, "supports_bucket_probe", True))
+
+    @staticmethod
+    def _can_skip_from_capability(
+        adapter: RelaySourceAdapter | None,
+        capability: CapabilityRecord | None,
+    ) -> bool:
+        if capability is None or capability.supported or adapter is None:
+            return False
+        return bool(
+            getattr(adapter, "supports_bucket_probe", True)
+            and getattr(adapter, "cache_negative_probe", True)
+        )
+
+    async def _fetch_with_timeout(
+        self,
+        adapter: RelaySourceAdapter,
+        game_id: str,
+    ) -> tuple[NormalizedRelayResult, str]:
+        try:
+            result = await asyncio.wait_for(adapter.fetch_game(game_id), timeout=self.timeout_seconds)
+            status = "success" if not result.is_empty else "miss"
+            return result, status
+        except asyncio.TimeoutError:
+            return (
+                NormalizedRelayResult(
+                    game_id=game_id,
+                    source_name=adapter.source_name,
+                    notes=f"timeout after {self.timeout_seconds:.1f}s",
+                ),
+                "timeout",
+            )
 
     def source_order_for_bucket(self, bucket_id: str, override: Iterable[str] | None = None) -> list[str]:
         if override:
@@ -46,23 +84,27 @@ class RelayRecoveryOrchestrator:
             return records
 
         for source_name in source_order:
+            adapter = self.adapters.get(source_name)
             cached = self.get_capability(bucket_id, source_name)
-            if cached is not None:
+            if cached is not None and (
+                cached.supported or self._can_skip_from_capability(adapter, cached)
+            ):
                 records[source_name] = cached
                 continue
 
-            adapter = self.adapters.get(source_name)
             if adapter is None:
+                continue
+            if not self._uses_bucket_probe(adapter):
                 continue
 
             misses = 0
             successes = 0
             last_notes: str | None = None
             for game_id in sample_ids:
-                result = await adapter.fetch_game(game_id)
+                result, status = await self._fetch_with_timeout(adapter, game_id)
                 if result.is_empty:
                     misses += 1
-                    last_notes = result.notes
+                    last_notes = result.notes or status
                 else:
                     successes += 1
                     last_notes = result.notes
@@ -76,7 +118,8 @@ class RelayRecoveryOrchestrator:
                 last_checked_at=datetime.now(timezone.utc).isoformat(),
                 notes=last_notes or ("probe_success" if successes else "three_sample_miss"),
             )
-            upsert_capability_record(self.capability_path, record)
+            if successes > 0 or getattr(adapter, "cache_negative_probe", True):
+                upsert_capability_record(self.capability_path, record)
             records[source_name] = record
         return records
 
@@ -88,8 +131,9 @@ class RelayRecoveryOrchestrator:
     ) -> tuple[NormalizedRelayResult, list[dict[str, Any]]]:
         attempts: list[dict[str, Any]] = []
         for source_name in source_order:
+            adapter = self.adapters.get(source_name)
             capability = self.get_capability(bucket_id, source_name)
-            if capability is not None and not capability.supported:
+            if self._can_skip_from_capability(adapter, capability):
                 attempts.append(
                     {
                         "game_id": game_id,
@@ -101,7 +145,6 @@ class RelayRecoveryOrchestrator:
                 )
                 continue
 
-            adapter = self.adapters.get(source_name)
             if adapter is None:
                 attempts.append(
                     {
@@ -114,13 +157,13 @@ class RelayRecoveryOrchestrator:
                 )
                 continue
 
-            result = await adapter.fetch_game(game_id)
+            result, status = await self._fetch_with_timeout(adapter, game_id)
             attempts.append(
                 {
                     "game_id": game_id,
                     "bucket_id": bucket_id,
                     "source_name": source_name,
-                    "status": "success" if not result.is_empty else "miss",
+                    "status": status,
                     "has_event_state": result.has_event_state,
                     "has_raw_pbp": result.has_raw_pbp,
                     "notes": result.notes,

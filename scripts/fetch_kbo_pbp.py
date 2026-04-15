@@ -30,6 +30,7 @@ from src.sources.relay import (
     read_manifest_entries,
 )
 from src.utils.safe_print import safe_print as print
+from src.utils.game_status import COMPLETED_LIKE_GAME_STATUSES
 
 
 DEFAULT_MANIFEST_PATH = Path(project_root) / "data" / "recovery" / "source_manifest.csv"
@@ -43,16 +44,49 @@ def _parse_source_order(value: str | None) -> list[str] | None:
     return tokens or None
 
 
+def _load_game_ids_from_file(path: str | None) -> list[str]:
+    if not path:
+        return []
+    file_path = Path(path)
+    if not file_path.exists():
+        print(f"[ERROR] Game ID file not found: {file_path}")
+        sys.exit(1)
+
+    game_ids: list[str] = []
+    seen: set[str] = set()
+    with file_path.open("r", encoding="utf-8", newline="") as handle:
+        for raw_line in handle:
+            line = raw_line.strip()
+            if not line or line.startswith("#"):
+                continue
+            token = line.split(",", 1)[0].strip()
+            if token.lower() == "game_id" or not token:
+                continue
+            if token in seen:
+                continue
+            seen.add(token)
+            game_ids.append(token)
+    return game_ids
+
+
 def _collect_target_games(args) -> list[dict[str, Any]]:
     with SessionLocal() as session:
+        requested_ids = []
+        if args.game_ids_file:
+            requested_ids.extend(_load_game_ids_from_file(args.game_ids_file))
         if args.game_ids:
-            requested_ids = [gid.strip() for gid in args.game_ids.split(",") if gid.strip()]
-            rows = (
+            requested_ids.extend(gid.strip() for gid in args.game_ids.split(",") if gid.strip())
+
+        if requested_ids:
+            requested_ids = list(dict.fromkeys(requested_ids))
+            found_rows = (
                 session.query(Game.game_id, KboSeason.league_type_name)
                 .outerjoin(KboSeason, KboSeason.season_id == Game.season_id)
                 .filter(Game.game_id.in_(requested_ids))
                 .all()
             )
+            row_map = {game_id: league_type_name for game_id, league_type_name in found_rows}
+            rows = [(game_id, row_map.get(game_id)) for game_id in requested_ids]
         elif args.date:
             try:
                 target_dt = datetime.strptime(args.date, "%Y%m%d").date()
@@ -62,14 +96,14 @@ def _collect_target_games(args) -> list[dict[str, Any]]:
             rows = (
                 session.query(Game.game_id, KboSeason.league_type_name)
                 .outerjoin(KboSeason, KboSeason.season_id == Game.season_id)
-                .filter(Game.game_date == target_dt, Game.game_status == "COMPLETED")
+                .filter(Game.game_date == target_dt, Game.game_status.in_(tuple(COMPLETED_LIKE_GAME_STATUSES)))
                 .all()
             )
         else:
             rows = (
                 session.query(Game.game_id, KboSeason.league_type_name)
                 .outerjoin(KboSeason, KboSeason.season_id == Game.season_id)
-                .filter(Game.game_id.like(f"{args.season}%"), Game.game_status == "COMPLETED")
+                .filter(Game.game_id.like(f"{args.season}%"), Game.game_status.in_(tuple(COMPLETED_LIKE_GAME_STATUSES)))
                 .all()
             )
 
@@ -150,6 +184,7 @@ async def run_fetcher():
     parser.add_argument("--date", type=str, help="Target date to fetch (e.g. 20240924)")
     parser.add_argument("--limit", type=int, help="Limit maximum games to process")
     parser.add_argument("--game-ids", type=str, help="Specific Game IDs to fetch, comma separated")
+    parser.add_argument("--game-ids-file", type=str, help="Path to a file containing Game IDs, one per line")
     parser.add_argument("--dry-run", action="store_true", help="Parse relay data but do not save to DB")
     parser.add_argument(
         "--missing-only",
@@ -159,8 +194,19 @@ async def run_fetcher():
     )
     parser.add_argument("--force", action="store_true", help="Overwrite existing relay data")
     parser.add_argument("--source-order", type=str, help="Comma separated source order override")
-    parser.add_argument("--import-manifest", type=str, default=str(DEFAULT_MANIFEST_PATH))
+    parser.add_argument(
+        "--import-manifest",
+        type=str,
+        default=str(DEFAULT_MANIFEST_PATH),
+        help="Manifest CSV path, or comma separated manifest CSV paths",
+    )
     parser.add_argument("--bucket", type=str, help="Force one bucket ID for all selected games")
+    parser.add_argument(
+        "--source-timeout",
+        type=float,
+        default=30.0,
+        help="Per-source timeout in seconds for probe/fetch attempts",
+    )
     parser.add_argument(
         "--allow-derived-pbp",
         action="store_true",
@@ -170,8 +216,8 @@ async def run_fetcher():
     parser.add_argument("--report-out", type=str, help="CSV report output path")
     args = parser.parse_args()
 
-    if not args.season and not args.date and not args.game_ids:
-        print("[ERROR] Must provide --season, --date, or --game-ids")
+    if not args.season and not args.date and not args.game_ids and not args.game_ids_file:
+        print("[ERROR] Must provide --season, --date, --game-ids, or --game-ids-file")
         sys.exit(1)
 
     if args.force:
@@ -203,7 +249,11 @@ async def run_fetcher():
             manifest_base_dir=manifest_dir,
         ),
     }
-    orchestrator = RelayRecoveryOrchestrator(adapters, capability_path=DEFAULT_CAPABILITY_PATH)
+    orchestrator = RelayRecoveryOrchestrator(
+        adapters,
+        capability_path=DEFAULT_CAPABILITY_PATH,
+        timeout_seconds=args.source_timeout,
+    )
 
     bucket_map: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for target in targets:

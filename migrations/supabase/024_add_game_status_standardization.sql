@@ -17,10 +17,15 @@ END $$;
 
 UPDATE public.game
 SET game_status = CASE
+    WHEN home_score IS NOT NULL AND away_score IS NOT NULL AND home_score = away_score THEN 'DRAW'
     WHEN home_score IS NOT NULL AND away_score IS NOT NULL THEN 'COMPLETED'
     WHEN game_date > CURRENT_DATE THEN 'SCHEDULED'
     WHEN game_status IS NULL THEN NULL
     WHEN UPPER(game_status) IN ('COMPLETED', 'PLAYED', 'FINAL', 'FINISHED', 'END') THEN 'COMPLETED'
+    WHEN UPPER(game_status) IN ('DRAW', 'TIE') THEN 'DRAW'
+    WHEN UPPER(game_status) IN ('LIVE', 'IN_PROGRESS', 'ONGOING') THEN 'LIVE'
+    WHEN UPPER(game_status) IN ('DELAYED') THEN 'DELAYED'
+    WHEN UPPER(game_status) IN ('SUSPENDED') THEN 'SUSPENDED'
     WHEN UPPER(game_status) IN ('SCHEDULED', 'SCHEDULE', 'PENDING') THEN 'SCHEDULED'
     WHEN UPPER(game_status) IN ('CANCELLED', 'CANCELED', 'RAINOUT') THEN 'CANCELLED'
     WHEN UPPER(game_status) IN ('POSTPONED', 'DELAYED', 'DEFERRED') THEN 'POSTPONED'
@@ -49,6 +54,9 @@ BEGIN
     CHECK (
         game_status IN (
             'SCHEDULED',
+            'LIVE',
+            'DELAYED',
+            'SUSPENDED',
             'COMPLETED',
             'CANCELLED',
             'POSTPONED',

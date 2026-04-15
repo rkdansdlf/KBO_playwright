@@ -130,6 +130,47 @@ def test_backfill_game_play_by_play_from_existing_events(monkeypatch):
         assert pbp.play_description == "타자A : 우중간 2루타"
 
 
+def test_backfill_missing_game_stubs_for_relays(monkeypatch):
+    SessionLocal = _build_session_factory()
+    monkeypatch.setattr(game_repository, "SessionLocal", SessionLocal)
+    monkeypatch.setattr(game_repository, "_auto_sync_to_oci", lambda game_id: None)
+
+    with SessionLocal() as session:
+        session.add(
+            GameEvent(
+                game_id="20250404LGSS0",
+                event_seq=1,
+                inning=1,
+                inning_half="top",
+                outs=0,
+                batter_name="타자A",
+                pitcher_name="투수B",
+                description="타자A : 좌전 안타",
+                event_type="batting",
+                result_code="안타",
+                bases_before="---",
+                bases_after="1--",
+                wpa=0.1,
+                win_expectancy_before=0.5,
+                win_expectancy_after=0.6,
+                score_diff=0,
+                base_state=0,
+                home_score=0,
+                away_score=0,
+            )
+        )
+        session.commit()
+
+    inserted = game_repository.backfill_missing_game_stubs_for_relays(seasons=[2025])
+    assert inserted == 1
+
+    with SessionLocal() as session:
+        game = session.query(Game).filter(Game.game_id == "20250404LGSS0").one()
+        assert game.game_status == "COMPLETED"
+        assert game.away_team == "LG"
+        assert game.home_team == "SS"
+
+
 def test_import_adapter_reads_normalized_events_json(tmp_path):
     payload_path = tmp_path / "events.json"
     payload_path.write_text(
@@ -175,6 +216,29 @@ def test_import_adapter_reads_normalized_events_json(tmp_path):
     assert len(result.events) == 1
     assert result.has_event_state is True
     assert result.notes == "test-note | archived"
+
+
+def test_read_manifest_entries_merges_multiple_files(tmp_path):
+    manifest_a = tmp_path / "manifest_a.csv"
+    manifest_b = tmp_path / "manifest_b.csv"
+    manifest_a.write_text(
+        "game_id,source_type,locator,format,priority,notes\n"
+        "20250404LGSS0,json_archive,a.json,normalized_events_json,1,first\n",
+        encoding="utf-8",
+    )
+    manifest_b.write_text(
+        "game_id,source_type,locator,format,priority,notes\n"
+        "20250404LGSS0,json_archive,a.json,normalized_events_json,1,first\n"
+        "20250405LGSS0,manual_text,b.txt,pbp_text,2,second\n",
+        encoding="utf-8",
+    )
+
+    entries = read_manifest_entries(f"{manifest_a},{manifest_b}")
+
+    assert [(entry.game_id, entry.locator) for entry in entries] == [
+        ("20250404LGSS0", "a.json"),
+        ("20250405LGSS0", "b.txt"),
+    ]
 
 
 def test_kbo_adapter_marks_auth_failure_as_unsupported():
@@ -230,3 +294,63 @@ def test_orchestrator_skips_cached_unsupported_source(tmp_path):
     assert success.calls == 2
     assert attempts[0]["status"] == "cached_unsupported"
     assert result.source_name == "manual"
+
+
+def test_orchestrator_times_out_slow_source(tmp_path):
+    class _SlowAdapter:
+        def __init__(self, name: str):
+            self.source_name = name
+            self.calls = 0
+
+        async def fetch_game(self, game_id: str):
+            self.calls += 1
+            await asyncio.sleep(0.05)
+            return NormalizedRelayResult(game_id=game_id, source_name=self.source_name, notes="late")
+
+    slow = _SlowAdapter("kbo")
+    orchestrator = RelayRecoveryOrchestrator(
+        {"kbo": slow},
+        capability_path=tmp_path / "source_capability.csv",
+        timeout_seconds=0.01,
+    )
+
+    records = asyncio.run(orchestrator.probe_bucket("2023_legacy", ["g1", "g2", "g3"], ["kbo"]))
+    result, attempts = asyncio.run(orchestrator.fetch_game("g4", "2023_legacy", ["kbo"]))
+
+    assert slow.calls == 3
+    assert records["kbo"].supported is False
+    assert "timeout" in (records["kbo"].notes or "")
+    assert result.is_empty is True
+    assert attempts[0]["status"] == "cached_unsupported"
+
+
+def test_orchestrator_does_not_negative_cache_dynamic_manifest_source(tmp_path):
+    class _ManifestBackedAdapter:
+        def __init__(self, name: str):
+            self.source_name = name
+            self.supports_bucket_probe = False
+            self.cache_negative_probe = False
+            self.calls = 0
+
+        async def fetch_game(self, game_id: str):
+            self.calls += 1
+            return NormalizedRelayResult(
+                game_id=game_id,
+                source_name=self.source_name,
+                raw_pbp_rows=[{"inning": 1, "inning_half": "top", "play_description": "수동 입력"}],
+                has_raw_pbp=True,
+            )
+
+    adapter = _ManifestBackedAdapter("manual")
+    orchestrator = RelayRecoveryOrchestrator(
+        {"manual": adapter},
+        capability_path=tmp_path / "source_capability.csv",
+    )
+
+    records = asyncio.run(orchestrator.probe_bucket("2024_postseason", ["g1"], ["manual"]))
+    result, attempts = asyncio.run(orchestrator.fetch_game("g2", "2024_postseason", ["manual"]))
+
+    assert records == {}
+    assert adapter.calls == 1
+    assert attempts[0]["status"] == "success"
+    assert result.has_raw_pbp is True

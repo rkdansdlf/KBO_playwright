@@ -12,6 +12,7 @@ from src.models.game import Game, GameEvent, GameBattingStat, GamePitchingStat
 from src.models.player import PlayerSeasonPitching, PlayerMovement
 from src.models.team import TeamDailyRoster
 from src.models.season import KboSeason
+from src.utils.game_status import COMPLETED_LIKE_GAME_STATUSES
 
 class ContextAggregator:
     def __init__(self, session):
@@ -21,7 +22,7 @@ class ContextAggregator:
         """최근 10경기 승패 및 연승/연패 흐름 계산"""
         games = self.session.query(Game).filter(
             or_(Game.home_team == team_code, Game.away_team == team_code),
-            Game.game_status == 'COMPLETED',
+            Game.game_status.in_(tuple(COMPLETED_LIKE_GAME_STATUSES)),
             Game.game_date < target_date
         ).order_by(desc(Game.game_date)).limit(10).all()
 
@@ -70,7 +71,7 @@ class ContextAggregator:
                 and_(Game.home_team == team_a, Game.away_team == team_b),
                 and_(Game.home_team == team_b, Game.away_team == team_a)
             ),
-            Game.game_status == 'COMPLETED',
+            Game.game_status.in_(tuple(COMPLETED_LIKE_GAME_STATUSES)),
             Game.game_date < target_date,
             func.substr(Game.game_id, 1, 4) == str(season_year)
         ).all()
@@ -121,7 +122,7 @@ class ContextAggregator:
         # 최근 경기들 ID 확보
         game_ids = [r[0] for r in self.session.query(Game.game_id).filter(
             or_(Game.home_team == team_code, Game.away_team == team_code),
-            Game.game_status == 'COMPLETED',
+            Game.game_status.in_(tuple(COMPLETED_LIKE_GAME_STATUSES)),
             Game.game_date < target_date
         ).order_by(desc(Game.game_date)).limit(limit_games).all()]
 
@@ -203,7 +204,7 @@ class ContextAggregator:
                 and_(Game.home_team == team_a, Game.away_team == team_b),
                 and_(Game.home_team == team_b, Game.away_team == team_a)
             ),
-            Game.game_status == 'COMPLETED',
+            Game.game_status.in_(tuple(COMPLETED_LIKE_GAME_STATUSES)),
             Game.game_date < target_date
         ).all()
 
@@ -258,27 +259,54 @@ class ContextAggregator:
             "summary_text": f"{stats.wins}승 {stats.losses}패 {stats.era}ERA"
         }
 
-    def get_recent_player_movements(self, team_code: str, target_date: date, days: int = 7) -> List[Dict[str, Any]]:
+    def get_recent_player_movements(self, team_code: str, target_date: Any, days: int = 7) -> List[Dict[str, Any]]:
         """최근 N일간 해당 팀의 선수 이동 현황(부상, 트레이드 등) 조회"""
+        if isinstance(target_date, str):
+            target_date = datetime.strptime(target_date.replace("-", ""), "%Y%m%d").date()
+            
+        from src.utils.team_codes import resolve_team_code
+        # HT -> KIA, LT -> 롯데 등 한국어 이름으로도 검색 가능하도록 확장
+        # (테이블에 한국어 이름과 영문 코드가 섞여 있을 수 있음)
+        possible_names = [team_code]
+        # KIA, 롯데 등 한국어 이름을 포함시키기 위해 resolve_team_code 활용 (역방향 필요할 수도 있음)
+        # 우선 수동 매핑 추가 (가장 확실한 방법)
+        team_name_map = {
+            "HT": "KIA", "LT": "롯데", "SS": "삼성", "OB": "두산", "HH": "한화",
+            "KT": "KT", "NC": "NC", "SK": "SSG", "WO": "키움", "KH": "키움",
+            "KIA": "KIA", "롯데": "롯데", "삼성": "삼성", "두산": "두산", "한화": "한화", "SSG": "SSG", "키움": "키움"
+        }
+        if team_code in team_name_map:
+            possible_names.append(team_name_map[team_code])
+        
+        # 롯데/NC/KT 등은 그대로 쓰거나 영문 코드를 추가
+        reverse_map = {v: k for k, v in team_name_map.items()}
+        if team_code in reverse_map:
+            possible_names.append(reverse_map[team_code])
+
         start_date = target_date - timedelta(days=days)
         movements = self.session.query(PlayerMovement).filter(
-            PlayerMovement.team_code == team_code,
-            PlayerMovement.date >= start_date,
-            PlayerMovement.date <= target_date
-        ).order_by(desc(PlayerMovement.date)).all()
+            PlayerMovement.team_code.in_(possible_names),
+            PlayerMovement.movement_date >= start_date,
+            PlayerMovement.movement_date <= target_date
+        ).order_by(desc(PlayerMovement.movement_date)).all()
+        
+        # DEBUG: print(f"🔍 Found {len(movements)} movements for {possible_names} from {start_date} to {target_date}")
         
         results = []
         for m in movements:
             results.append({
-                "date": m.date.isoformat(),
+                "date": m.movement_date.isoformat(),
                 "section": m.section,
                 "player": m.player_name,
                 "remarks": m.remarks
             })
         return results
 
-    def get_daily_roster_changes(self, team_code: str, target_date: date) -> Dict[str, List[str]]:
+    def get_daily_roster_changes(self, team_code: str, target_date: Any) -> Dict[str, List[str]]:
         """해당 날짜의 1군 등록/말소 현황 비교 (어제와 비교)"""
+        if isinstance(target_date, str):
+            target_date = datetime.strptime(target_date.replace("-", ""), "%Y%m%d").date()
+            
         prev_date = target_date - timedelta(days=1)
         
         curr_roster = self.session.query(TeamDailyRoster).filter(
@@ -305,4 +333,3 @@ class ContextAggregator:
             "added": added,
             "removed": removed
         }
-

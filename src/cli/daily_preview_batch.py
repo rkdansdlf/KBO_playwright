@@ -1,123 +1,114 @@
 """
 Daily Preview Batch Script
-Fetches Pre-game context (Starting Pitchers, Lineups) and saves it to GameSummary.
-Designed to be run 1~2 hours before the games start via GitHub Actions.
+Fetches pre-game context and persists both preview JSON and core pregame tables.
 """
-import asyncio
+from __future__ import annotations
+
 import argparse
-import json
+import asyncio
 import os
-from contextlib import contextmanager
 from datetime import datetime
+from typing import List, Sequence
 
 from src.crawlers.preview_crawler import PreviewCrawler
 from src.db.engine import SessionLocal
-from src.models.game import GameSummary
-from src.models.player import PlayerBasic
+from src.repositories.game_repository import save_pregame_lineups
 from src.services.context_aggregator import ContextAggregator
-from src.utils.team_codes import resolve_team_code
+from src.sync.oci_sync import OCISync
+from src.utils.refresh_manifest import write_refresh_manifest
 from src.utils.safe_print import safe_print as print
+from src.utils.team_codes import resolve_team_code
 
-async def run_preview_batch(target_date: str, custom_session=None):
+
+async def run_preview_batch(target_date: str, *, sync_to_oci: bool | None = None) -> List[str]:
     print(f"🚀 Starting Preview Data Batch for {target_date}...")
-    
+
     crawler = PreviewCrawler(request_delay=1.0)
     previews = await crawler.crawl_preview_for_date(target_date)
-    
     if not previews:
-        print("ℹ️ No preview data found. Games might be cancelled or not scheduled today.")
-        return
+        manifest_path = write_refresh_manifest(
+            phase="pregame",
+            target_date=target_date,
+            game_ids=[],
+            datasets=["game", "game_metadata", "game_lineups", "game_summary"],
+        )
+        print(f"ℹ️ No preview data found. manifest={manifest_path}")
+        return []
 
-    saved_count = 0
+    saved_ids: List[str] = []
     target_dt_obj = datetime.strptime(target_date, "%Y%m%d").date()
     season_year = target_dt_obj.year
 
-    # Use custom session factory if provided, else use default SessionLocal
-    if custom_session:
-        @contextmanager
-        def session_ctx():
-            session = custom_session()
-            try:
-                yield session
-            finally:
-                session.close()
-    else:
-        session_ctx = SessionLocal
-
-    with session_ctx() as session:
+    with SessionLocal() as session:
         agg = ContextAggregator(session)
         for preview in previews:
             game_id = preview.get("game_id")
             if not game_id:
                 continue
-            
-            # Resolve canonical codes for aggregation
-            away_code = resolve_team_code(preview['away_team_name'], season_year)
-            home_code = resolve_team_code(preview['home_team_name'], season_year)
-            
+
+            away_code = resolve_team_code(preview.get("away_team_name"), season_year)
+            home_code = resolve_team_code(preview.get("home_team_name"), season_year)
+
             if away_code and home_code:
-                print(f"📊 Aggregating context for {away_code} vs {home_code}...")
-                preview['matchup_h2h'] = agg.get_head_to_head_summary(away_code, home_code, season_year, target_dt_obj)
-                preview['away_recent_l10'] = agg.get_team_l10_summary(away_code, target_dt_obj)
-                preview['home_recent_l10'] = agg.get_team_l10_summary(home_code, target_dt_obj)
-                preview['away_metrics'] = agg.get_team_recent_metrics(away_code, target_dt_obj)
-                preview['home_metrics'] = agg.get_team_recent_metrics(home_code, target_dt_obj)
-                
-                # Postseason Context (Optional)
+                print(f"📊 Aggregating pregame context for {game_id}...")
+                preview["matchup_h2h"] = agg.get_head_to_head_summary(away_code, home_code, season_year, target_dt_obj)
+                preview["away_recent_l10"] = agg.get_team_l10_summary(away_code, target_dt_obj)
+                preview["home_recent_l10"] = agg.get_team_l10_summary(home_code, target_dt_obj)
+                preview["away_metrics"] = agg.get_team_recent_metrics(away_code, target_dt_obj)
+                preview["home_metrics"] = agg.get_team_recent_metrics(home_code, target_dt_obj)
+                preview["away_movements"] = agg.get_recent_player_movements(away_code, target_dt_obj)
+                preview["home_movements"] = agg.get_recent_player_movements(home_code, target_dt_obj)
+                preview["away_roster_changes"] = agg.get_daily_roster_changes(away_code, target_dt_obj)
+                preview["home_roster_changes"] = agg.get_daily_roster_changes(home_code, target_dt_obj)
+
                 series_context = agg.get_postseason_series_summary(away_code, home_code, season_year, target_dt_obj)
                 if series_context:
-                    preview['series_context'] = series_context
+                    preview["series_context"] = series_context
 
-            # Fetch Starting Pitcher Season Stats
-            away_starter_id = preview.get('away_starter_id')
-            home_starter_id = preview.get('home_starter_id')
+            away_starter_id = preview.get("away_starter_id")
+            home_starter_id = preview.get("home_starter_id")
             if away_starter_id:
-                preview['away_starter_stats'] = agg.get_pitcher_season_stats(away_starter_id, season_year)
+                preview["away_starter_stats"] = agg.get_pitcher_season_stats(away_starter_id, season_year)
             if home_starter_id:
-                preview['home_starter_stats'] = agg.get_pitcher_season_stats(home_starter_id, season_year)
+                preview["home_starter_stats"] = agg.get_pitcher_season_stats(home_starter_id, season_year)
 
-            # Convert dict to JSON string for storage
-            preview_json = json.dumps(preview, ensure_ascii=False)
-            
-            # Upsert into GameSummary table
-            existing = session.query(GameSummary).filter(
-                GameSummary.game_id == game_id,
-                GameSummary.summary_type == "프리뷰"
-            ).first()
-            
-            if existing:
-                existing.detail_text = preview_json
-            else:
-                new_summary = GameSummary(
-                    game_id=game_id,
-                    summary_type="프리뷰",
-                    detail_text=preview_json
-                )
-                session.add(new_summary)
-            
-            saved_count += 1
-            
-        try:
-            session.commit()
-            print(f"✅ Successfully saved {saved_count} game previews to DB.")
-        except Exception as e:
-            session.rollback()
-            print(f"❌ Failed to save previews to DB: {e}")
+            if save_pregame_lineups(preview):
+                saved_ids.append(game_id)
 
-if __name__ == "__main__":
+    should_sync = sync_to_oci if sync_to_oci is not None else bool(os.getenv("OCI_DB_URL"))
+    if should_sync and saved_ids:
+        oci_url = os.getenv("OCI_DB_URL")
+        if oci_url:
+            with SessionLocal() as sync_session:
+                syncer = OCISync(oci_url, sync_session)
+                try:
+                    for game_id in sorted(set(saved_ids)):
+                        syncer.sync_specific_game(game_id)
+                finally:
+                    syncer.close()
+
+    manifest_path = write_refresh_manifest(
+        phase="pregame",
+        target_date=target_date,
+        game_ids=saved_ids,
+        datasets=["game", "game_metadata", "game_lineups", "game_summary"],
+    )
+    print(f"✅ Pregame batch finished. saved={len(saved_ids)} manifest={manifest_path}")
+    return saved_ids
+
+
+def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="KBO Daily Preview Crawler")
     parser.add_argument("--date", type=str, help="Target date (YYYYMMDD). Defaults to today.", default=None)
-    args = parser.parse_args()
-    
-    target = args.date if args.date else datetime.now().strftime("%Y%m%d")
-    
-    oci_url = os.getenv("OCI_DB_URL")
-    custom_session = None
-    if oci_url:
-        from sqlalchemy import create_engine
-        from sqlalchemy.orm import sessionmaker
-        engine = create_engine(oci_url)
-        custom_session = sessionmaker(bind=engine)
-        print(f"🔗 Using OCI Database for preview generation.")
+    parser.add_argument("--no-sync", action="store_true", help="Skip explicit OCI sync after local writes")
+    args = parser.parse_args(argv)
 
-    asyncio.run(run_preview_batch(target, custom_session=custom_session))
+    target = args.date if args.date else datetime.now().strftime("%Y%m%d")
+    asyncio.run(run_preview_batch(target, sync_to_oci=not args.no_sync))
+    return 0
+
+
+if __name__ == "__main__":
+    import sys
+
+    sys.exit(main())

@@ -1,0 +1,47 @@
+name: KBO Live Refresh
+
+on:
+  schedule:
+    # GitHub Actions cannot schedule every 2 minutes.
+    # This is a best-effort 5-minute cadence for 12:00-23:30 KST.
+    - cron: '*/5 3-13 * * *'
+    - cron: '0-30/5 14 * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: kbo-live-refresh
+  cancel-in-progress: false
+
+jobs:
+  live-refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      PYTHONPATH: ${{ github.workspace }}
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.10
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          playwright install chromium
+
+      - name: Initialize Database & Seed Metadata
+        run: |
+          python3 -c "from src.db.engine import init_db; init_db()"
+          python3 scripts/maintenance/seed_data.py
+
+      - name: Run Live Refresh Cycle
+        env:
+          OCI_DB_URL: ${{ secrets.OCI_DB_URL }}
+          AUTO_SYNC_OCI: 'false'
+        run: |
+          python3 -m src.cli.live_crawler --run-once

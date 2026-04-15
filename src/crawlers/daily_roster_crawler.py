@@ -8,7 +8,8 @@ import asyncio
 from typing import Dict, List, Optional, Any
 from datetime import datetime, date
 
-from playwright.async_api import Page
+from tenacity import AsyncRetrying, stop_after_attempt, wait_exponential, retry_if_exception_type
+from playwright.async_api import Page, TimeoutError as PlaywrightTimeoutError
 
 from src.utils.team_codes import resolve_team_code
 from src.utils.safe_print import safe_print as print
@@ -34,8 +35,14 @@ class DailyRosterCrawler:
         try:
             page = await pool.acquire()
             try:
-                # Initial load
-                await page.goto(self.base_url, wait_until="networkidle")
+                # Initial load with Exponential Backoff
+                async for attempt in AsyncRetrying(
+                    stop=stop_after_attempt(3), 
+                    wait=wait_exponential(multiplier=1, min=2, max=10), 
+                    retry=retry_if_exception_type(PlaywrightTimeoutError)
+                ):
+                    with attempt:
+                        await page.goto(self.base_url, wait_until="networkidle", timeout=30000)
 
                 # Create a date range list
                 from datetime import timedelta

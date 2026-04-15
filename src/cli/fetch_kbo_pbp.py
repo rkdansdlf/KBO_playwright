@@ -16,6 +16,7 @@ from src.utils.playwright_pool import AsyncPlaywrightPool
 from src.db.engine import SessionLocal
 from src.models.game import Game
 from sqlalchemy import text
+from src.utils.game_status import COMPLETED_LIKE_GAME_STATUSES
 
 async def main():
     parser = argparse.ArgumentParser(description="KBO Play-by-Play (game_events) Historical Fetcher")
@@ -38,7 +39,7 @@ async def main():
             game_ids.append(args.game_id)
         else:
             query = session.query(Game.game_id).filter(Game.season_id == args.season)
-            query = query.filter(Game.game_status == 'COMPLETED')
+            query = query.filter(Game.game_status.in_(tuple(COMPLETED_LIKE_GAME_STATUSES)))
             
             if args.month:
                 # Naive month filter depending on game_id format (YYYYMMDD...)
@@ -49,7 +50,7 @@ async def main():
             game_ids = [r[0] for r in results]
 
     if not game_ids:
-        print("[INFO] No COMPLETED games found for the given criteria.")
+        print("[INFO] No completed-like games found for the given criteria.")
         return
 
     print(f"[INFO] Found {len(game_ids)} games to process.")
