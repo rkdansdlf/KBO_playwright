@@ -17,7 +17,7 @@ def _is_sqlite(url: str) -> bool:
 
 def create_engine_for_url(url: str, *, disable_sqlite_wal: bool = False):
     if _is_sqlite(url):
-        engine = create_engine(url, connect_args={"check_same_thread": False}, pool_pre_ping=True, echo=False)
+        engine = create_engine(url, connect_args={"check_same_thread": False, "timeout": 30}, pool_pre_ping=True, echo=False)
         @event.listens_for(engine, "connect")
         def _sqlite_pragmas(dbapi_con, _):
             try:

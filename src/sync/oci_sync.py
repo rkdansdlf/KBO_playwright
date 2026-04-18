@@ -27,6 +27,7 @@ from src.models.game import (
 )
 from src.models.matchup import BatterTeamSplit, PitcherTeamSplit, BatterStadiumSplit, BatterVsStarter
 from src.models.rankings import StatRanking
+from src.utils.game_status import GAME_STATUS_SCHEDULED
 
 
 LEAGUE_NAME_TO_CODE = {
@@ -225,6 +226,40 @@ def detect_dirty_game_ids(local_session_or_conn, remote_session_or_conn, *, game
                 break
 
     return dirty
+
+
+def filter_publishable_game_ids(session, game_ids: List[str]) -> List[str]:
+    """Restrict parent-game sync to rows that are more than schedule-only stubs."""
+    if not game_ids:
+        return []
+
+    rows = (
+        session.query(
+            Game.game_id,
+            Game.game_status,
+            Game.home_score,
+            Game.away_score,
+        )
+        .filter(Game.game_id.in_(game_ids))
+        .all()
+    )
+    publishable: List[str] = []
+    for game_id, game_status, home_score, away_score in rows:
+        if home_score is not None or away_score is not None:
+            publishable.append(game_id)
+            continue
+        if str(game_status or "").upper() != GAME_STATUS_SCHEDULED:
+            publishable.append(game_id)
+            continue
+
+        has_detail = any(
+            session.query(model.game_id).filter(model.game_id == game_id).first() is not None
+            for model in (GameInningScore, GameLineup, GameBattingStat, GamePitchingStat, GameEvent, GameSummary)
+        )
+        if has_detail:
+            publishable.append(game_id)
+
+    return sorted(set(publishable))
 
 
 class OCISync:
@@ -1166,6 +1201,8 @@ class OCISync:
         filters = []
         target_game_ids = None
 
+        publishable_parent_game_ids = None
+
         if unsynced_only:
             print("🔍 식별 중: OCI에 없거나 로컬에서 최근에 갱신된 게임 데이터를 검사합니다...")
             target_game_ids = self.get_unsynced_or_modified_game_ids()
@@ -1175,6 +1212,14 @@ class OCISync:
             print(f"🎯 총 {len(target_game_ids)}개의 변경/누락된 게임을 발견했습니다.")
             # target_game_ids가 너무 길면 sqlite in_ 절 한도를 초과할 수 있지만, 부분 업데이트라 대개 수십 건 내외임.
             filters.append(Game.game_id.in_(target_game_ids))
+            publishable_parent_game_ids = filter_publishable_game_ids(self.sqlite_session, target_game_ids)
+            skipped_schedule_only = sorted(set(target_game_ids) - set(publishable_parent_game_ids))
+            if skipped_schedule_only:
+                print(
+                    "⚠️ Skipping parent game sync for schedule-only dirty rows: "
+                    f"{', '.join(skipped_schedule_only[:10])}"
+                    + (" ..." if len(skipped_schedule_only) > 10 else "")
+                )
         else:
             if days:
                 from datetime import datetime, timedelta
@@ -1185,7 +1230,14 @@ class OCISync:
             
         # 0. Sync Parent Games first (Required for Foreign Keys)
         print("⚾ Syncing Parent Game Records...")
-        results['games'] = self.sync_games(filters=filters if filters else None)
+        if unsynced_only and target_game_ids is not None:
+            if publishable_parent_game_ids:
+                results['games'] = self.sync_games(filters=[Game.game_id.in_(publishable_parent_game_ids)])
+            else:
+                results['games'] = 0
+                print("ℹ️ No publishable parent game rows beyond schedule-only stubs.")
+        else:
+            results['games'] = self.sync_games(filters=filters if filters else None)
 
         # Build filters for child tables (they often use game_id instead of game_date)
         child_filters = []
@@ -1295,12 +1347,12 @@ class OCISync:
         # Sync children
         results['metadata'] = self._sync_simple_table(GameMetadata, ['game_id'], exclude_cols=['created_at'], filters=[GameMetadata.game_id == game_id])
         results['inning_scores'] = self._sync_simple_table(GameInningScore, ['game_id', 'team_side', 'inning'], exclude_cols=['created_at'], filters=[GameInningScore.game_id == game_id])
-        results['lineups'] = self._sync_simple_table(GameLineup, ['game_id', 'team_side', 'appearance_seq'], exclude_cols=['created_at'], filters=[GameLineup.game_id == game_id])
-        results['batting_stats'] = self._sync_simple_table(GameBattingStat, ['game_id', 'player_id', 'appearance_seq'], exclude_cols=['created_at'], filters=[GameBattingStat.game_id == game_id])
-        results['pitching_stats'] = self._sync_simple_table(GamePitchingStat, ['game_id', 'player_id', 'appearance_seq'], exclude_cols=['created_at'], filters=[GamePitchingStat.game_id == game_id])
+        results['lineups'] = self._sync_simple_table(GameLineup, ['game_id', 'team_side', 'appearance_seq'], exclude_cols=['id', 'created_at'], filters=[GameLineup.game_id == game_id])
+        results['batting_stats'] = self._sync_simple_table(GameBattingStat, ['game_id', 'player_id', 'appearance_seq'], exclude_cols=['id', 'created_at'], filters=[GameBattingStat.game_id == game_id])
+        results['pitching_stats'] = self._sync_simple_table(GamePitchingStat, ['game_id', 'player_id', 'appearance_seq'], exclude_cols=['id', 'created_at'], filters=[GamePitchingStat.game_id == game_id])
         results['play_by_play'] = self._sync_game_play_by_play(filters=[GamePlayByPlay.game_id == game_id])
-        results['events'] = self._sync_simple_table(GameEvent, ['game_id', 'event_seq'], exclude_cols=['created_at'], filters=[GameEvent.game_id == game_id])
-        results['summary'] = self._sync_simple_table(GameSummary, ['game_id', 'summary_type', 'player_name', 'detail_text'], exclude_cols=['created_at', 'id'], filters=[GameSummary.game_id == game_id])
+        results['events'] = self._sync_simple_table(GameEvent, ['game_id', 'event_seq'], exclude_cols=['id', 'created_at'], filters=[GameEvent.game_id == game_id])
+        results['summary'] = self._sync_simple_table(GameSummary, ['game_id', 'summary_type', 'player_name', 'detail_text'], exclude_cols=['id', 'created_at'], filters=[GameSummary.game_id == game_id])
         
         return results
 
@@ -1355,7 +1407,9 @@ class OCISync:
     ) -> int:
         """Generic sync parameter for simple tables using Batched UPSERT or COPY"""
         if exclude_cols is None:
-            exclude_cols = []
+            exclude_cols = ['id'] # Default to exclude ID for auto-inc compatibility
+        elif 'id' not in exclude_cols:
+            exclude_cols.append('id')
             
         columns = [c.key for c in model.__table__.columns if c.key not in exclude_cols and c.key not in ('created_at', 'updated_at')]
         

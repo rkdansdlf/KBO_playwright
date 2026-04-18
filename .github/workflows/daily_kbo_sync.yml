@@ -65,3 +65,24 @@ jobs:
           AUTO_SYNC_OCI: 'false'
         run: |
           python3 -m src.cli.run_daily_update --date ${{ env.KST_DATE }} --sync
+
+      - name: Notify Slack on Status
+        if: always()
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+        run: |
+          if [ "${{ job.status }}" == "success" ]; then
+            EMOJI="✅"
+            STATUS="Success"
+          else
+            EMOJI="❌"
+            STATUS="Failure"
+          fi
+          
+          MESSAGE="${EMOJI} *KBO Sync ${STATUS}* (${{ env.KST_DATE }})\nRepo: ${{ github.repository }}\nWorkflow: ${{ github.workflow }}\n<https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Run Details>"
+          
+          if [ -n "$SLACK_WEBHOOK_URL" ]; then
+            curl -X POST -H 'Content-type: application/json' --data "{\"text\": \"${MESSAGE}\"}" $SLACK_WEBHOOK_URL
+          else
+            echo "⚠️ SLACK_WEBHOOK_URL not set, skipping notification."
+          fi

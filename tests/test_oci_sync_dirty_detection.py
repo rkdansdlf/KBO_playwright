@@ -5,9 +5,19 @@ from datetime import date, datetime, time
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-from src.models.game import Game, GameEvent, GameInningScore, GameLineup, GameMetadata, GamePlayByPlay, GameSummary
+from src.models.game import (
+    Game,
+    GameBattingStat,
+    GameEvent,
+    GameInningScore,
+    GameLineup,
+    GameMetadata,
+    GamePitchingStat,
+    GamePlayByPlay,
+    GameSummary,
+)
 from src.models.player import PlayerBasic
-from src.sync.oci_sync import detect_dirty_game_ids
+from src.sync.oci_sync import detect_dirty_game_ids, filter_publishable_game_ids
 
 
 def _build_session_factory():
@@ -18,6 +28,8 @@ def _build_session_factory():
         GameMetadata.__table__,
         GameInningScore.__table__,
         GameLineup.__table__,
+        GameBattingStat.__table__,
+        GamePitchingStat.__table__,
         GameEvent.__table__,
         GameSummary.__table__,
         GamePlayByPlay.__table__,
@@ -131,3 +143,65 @@ def test_detect_dirty_game_ids_uses_local_newer_updated_at_but_not_remote_newer(
         dirty = detect_dirty_game_ids(local_session, remote_session)
 
     assert dirty == ["20250402LGSS0"]
+
+
+def test_filter_publishable_game_ids_excludes_schedule_only_parent_rows():
+    local_factory = _build_session_factory()
+    stamp = datetime(2025, 4, 1, 18, 0, 0)
+
+    with local_factory() as session:
+        session.add(
+            Game(
+                game_id="20250404LGSS0",
+                game_date=date(2025, 4, 4),
+                away_team="LG",
+                home_team="SS",
+                game_status="SCHEDULED",
+                created_at=stamp,
+                updated_at=stamp,
+            )
+        )
+        session.add(
+            Game(
+                game_id="20250405LGSS0",
+                game_date=date(2025, 4, 5),
+                away_team="LG",
+                home_team="SS",
+                game_status="CANCELLED",
+                created_at=stamp,
+                updated_at=stamp,
+            )
+        )
+        session.add(
+            Game(
+                game_id="20250406LGSS0",
+                game_date=date(2025, 4, 6),
+                away_team="LG",
+                home_team="SS",
+                game_status="SCHEDULED",
+                created_at=stamp,
+                updated_at=stamp,
+            )
+        )
+        session.add(
+            GameLineup(
+                game_id="20250406LGSS0",
+                team_side="away",
+                team_code="LG",
+                player_name="타자1",
+                batting_order=1,
+                appearance_seq=1,
+                standard_position="CF",
+                created_at=stamp,
+                updated_at=stamp,
+            )
+        )
+        session.commit()
+
+    with local_factory() as session:
+        publishable = filter_publishable_game_ids(
+            session,
+            ["20250404LGSS0", "20250405LGSS0", "20250406LGSS0"],
+        )
+
+    assert publishable == ["20250405LGSS0", "20250406LGSS0"]
