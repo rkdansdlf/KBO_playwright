@@ -7,11 +7,12 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import pandas as pd
 from bs4 import BeautifulSoup
+from sqlalchemy import text
 
 from src.utils.team_codes import resolve_team_code, team_code_from_game_id_segment
 
 
-def parse_game_detail_html(html: str, game_id: str, game_date: str) -> Dict[str, Any]:
+def parse_game_detail_html(html: str, game_id: str, game_date: str, db_session=None) -> Dict[str, Any]:
     soup = BeautifulSoup(html, "html.parser")
     dataframes = pd.read_html(StringIO(html))
 
@@ -21,8 +22,8 @@ def parse_game_detail_html(html: str, game_id: str, game_date: str) -> Dict[str,
 
     season_year = _season_year_from_game(game_date)
     teams = _build_team_info(scoreboard_df, game_id, season_year)
-    hitters = _build_hitter_payload(hitter_tables, teams)
-    pitchers = _build_pitcher_payload(pitcher_tables, teams)
+    hitters = _build_hitter_payload(hitter_tables, teams, db_session)
+    pitchers = _build_pitcher_payload(pitcher_tables, teams, db_session)
 
     metadata = _parse_metadata(soup)
 
@@ -107,7 +108,7 @@ def _build_team_info(scoreboard: Optional[pd.DataFrame], game_id: str, season_ye
     return {"away": away_info, "home": home_info}
 
 
-def _build_hitter_payload(tables: List[pd.DataFrame], teams: Dict[str, Dict[str, Any]]) -> Dict[str, List[Dict[str, Any]]]:
+def _build_hitter_payload(tables: List[pd.DataFrame], teams: Dict[str, Dict[str, Any]], db_session=None) -> Dict[str, List[Dict[str, Any]]]:
     results = {"away": [], "home": []}
     team_cycle = ["away", "home"]
     team_index = 0
@@ -121,10 +122,16 @@ def _build_hitter_payload(tables: List[pd.DataFrame], teams: Dict[str, Dict[str,
             name = str(row.get("선수", "") or row.get("선수명", "")).strip()
             if not name or name in {"팀합계", "합계"}:
                 continue
+            
+            p_id = _safe_player_id(row.get("선수ID") or row.get("playerId"))
+            team_code = teams[team_side]["code"]
+            if p_id is None and db_session:
+                p_id = _resolve_missing_player_id(db_session, name, team_code)
+
             entry = {
-                "player_id": _safe_player_id(row.get("선수ID") or row.get("playerId")),
+                "player_id": p_id,
                 "player_name": name,
-                "team_code": teams[team_side]["code"],
+                "team_code": team_code,
                 "team_side": team_side,
                 "batting_order": _safe_int(row.get("타순")),
                 "position": str(row.get("POS", "") or row.get("포지션", "")).strip() or None,
@@ -160,7 +167,7 @@ def _build_hitter_payload(tables: List[pd.DataFrame], teams: Dict[str, Dict[str,
     return results
 
 
-def _build_pitcher_payload(tables: List[pd.DataFrame], teams: Dict[str, Dict[str, Any]]) -> Dict[str, List[Dict[str, Any]]]:
+def _build_pitcher_payload(tables: List[pd.DataFrame], teams: Dict[str, Dict[str, Any]], db_session=None) -> Dict[str, List[Dict[str, Any]]]:
     results = {"away": [], "home": []}
     team_cycle = ["away", "home"]
     team_index = 0
@@ -175,11 +182,16 @@ def _build_pitcher_payload(tables: List[pd.DataFrame], teams: Dict[str, Dict[str
             if not name or name in {"팀합계", "합계"}:
                 continue
 
+            p_id = _safe_player_id(row.get("선수ID") or row.get("playerId"))
+            team_code = teams[team_side]["code"]
+            if p_id is None and db_session:
+                p_id = _resolve_missing_player_id(db_session, name, team_code)
+
             innings_text = str(row.get("이닝", "") or row.get("IP", "")).strip()
             entry = {
-                "player_id": _safe_player_id(row.get("선수ID") or row.get("playerId")),
+                "player_id": p_id,
                 "player_name": name,
-                "team_code": teams[team_side]["code"],
+                "team_code": team_code,
                 "team_side": team_side,
                 "is_starting": len(results[team_side]) == 0,
                 "stats": {
@@ -340,6 +352,55 @@ def _parse_duration_minutes(duration: Optional[str]) -> Optional[int]:
         minutes = int(parts[1])
         return hours * 60 + minutes
     except ValueError:
+        return None
+
+
+def _resolve_missing_player_id(db_session, player_name: str, team_code: str) -> Optional[int]:
+    """
+    Fallback resolution of player_id via name and team search.
+    Useful for exhibition games where IDs are missing from the HTML.
+    """
+    if not db_session or not player_name:
+        return None
+
+    # Try name + team match (team name in player_basic is often Korean)
+    # Mapping team_code to Korean name fragment might help but let's try direct first
+    query = text("""
+        SELECT player_id FROM player_basic 
+        WHERE (name = :name OR name = :name_space) 
+          AND (team LIKE :team OR team IS NULL OR :team_empty = 1)
+        LIMIT 2
+    """)
+    # Handle space variations (e.g. '김 태연' vs '김태연')
+    name_no_space = player_name.replace(" ", "")
+    name_with_space = player_name if " " in player_name else f"{player_name[0]} {player_name[1:]}" if len(player_name) > 2 else player_name
+
+    try:
+        # We don't have a reliable code -> Korean name mapping here easily
+        # but let's try searching by name first and if multiple, filter by team
+        rows = db_session.execute(text("SELECT player_id, team FROM player_basic WHERE name = :n1 OR name = :n2"), 
+                                 {"n1": name_no_space, "n2": name_with_space}).fetchall()
+        
+        if not rows:
+            return None
+        if len(rows) == 1:
+            return rows[0][0]
+        
+        # If multiple, try to find a team match
+        # This is a heuristic - KBO team names in player_basic vary (e.g. '한화 이글스')
+        for r_id, r_team in rows:
+            if not r_team: continue
+            # Check if team_code (e.g. 'HH') is represented in Korean team name (e.g. '한화')
+            # This requires some knowledge of team mapping, but 'LIKE' is a start
+            from src.utils.team_codes import STANDARD_TEAM_CODES
+            team_meta = STANDARD_TEAM_CODES.get(team_code, {})
+            k_name = team_meta.get('name', '')
+            if k_name and k_name in r_team:
+                return r_id
+                
+        # Last resort: just return first if we have to, but better to be safe
+        return rows[0][0]
+    except Exception:
         return None
 
 

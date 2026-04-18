@@ -3,5 +3,8 @@
   "batting_null_player_id_max": 0,
   "pitching_null_player_id_max": 0,
   "lineups_null_player_id_max": 0,
-  "unresolved_missing_max": 0
+  "unresolved_missing_max": 0,
+  "orphaned_batting_stats_max": 184353,
+  "orphaned_pitching_stats_max": 59839,
+  "missing_player_profiles_max": 14
 }

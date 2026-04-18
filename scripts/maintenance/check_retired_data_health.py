@@ -21,8 +21,8 @@ def check_health():
 
     oci_engine = create_engine_for_url(oci_url)
     
-    print("📊 KBO Retired Data Health Check")
-    print("-" * 40)
+    print("\n📊 KBO Retired Data Health Check")
+    print("-" * 60)
     
     tables = [
         ("player_basic", "Basic Search Data"),
@@ -43,20 +43,37 @@ def check_health():
             oci_count = f"Error"
             
         print(f"{desc:<22} | Local: {local_count:<6} | OCI: {oci_count:<6}")
+    
+    print("-" * 60)
         
     # Check for photo_url and retirement status in Master Records
     retired_with_photo = local_session.execute(
-        text("SELECT COUNT(*) FROM players WHERE status='RETIRED' AND photo_url IS NOT NULL")
+        text("SELECT COUNT(*) FROM players WHERE status='RETIRED' AND (photo_url IS NOT NULL AND photo_url != '')")
     ).scalar()
     total_retired = local_session.execute(
         text("SELECT COUNT(*) FROM players WHERE status='RETIRED'")
     ).scalar()
     
-    print("-" * 60)
     print(f"📸 Master Records: Retired players with photo: {retired_with_photo} / {total_retired}")
     
-    # Check if backfill is currently active by looking at recent updates? 
-    # (Optional, but good for feedback)
+    # 1. Check for missing master records
+    missing_count = local_session.execute(text("""
+        SELECT COUNT(*) FROM player_basic pb 
+        LEFT JOIN players p ON pb.player_id = CAST(p.kbo_person_id AS INTEGER)
+        WHERE p.id IS NULL
+    """)).scalar()
+    
+    # 2. Check for status mismatches
+    mismatch_count = local_session.execute(text("""
+        SELECT COUNT(*) FROM player_basic pb 
+        JOIN players p ON pb.player_id = CAST(p.kbo_person_id AS INTEGER)
+        WHERE lower(pb.status) != lower(p.status)
+        AND pb.status IS NOT NULL
+    """)).scalar()
+
+    print(f"⚠️  Missing Master Records (Search -> Master): {missing_count}")
+    print(f"🔄 Status Mismatches (Basic vs Master): {mismatch_count}")
+    print("-" * 60)
     
     local_session.close()
 

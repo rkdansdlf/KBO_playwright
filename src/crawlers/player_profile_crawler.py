@@ -37,16 +37,28 @@ _EXTRACT_JS = f"""
         return el ? el.innerText.trim() : null;
     }};
 
-    const photoEl = document.getElementById(prefix + "_imgProfile") || 
-                    document.getElementById(prefix + "_imgProgile") || 
-                    document.querySelector('.photo img');
-
+    // Wait for img profile element to have a real source
+    const photoSelector = '#' + prefix + '_imgProfile, #' + prefix + '_imgProgile';
+    let photoEl = document.querySelector(photoSelector);
+    
     const infoEl = document.querySelector('.player-info, .playerInfo, #' + prefix);
     const rawText = infoEl ? infoEl.innerText : document.body.innerText;
 
+    let photoUrl = photoEl ? (photoEl.src || photoEl.getAttribute('src')) : null;
+    
+    // Final check for the specific person image pattern if the ID-based one is not found or is default
+    if (!photoUrl || photoUrl.includes('no-Image.png') || photoUrl.includes('emblem')) {{
+        const personImg = document.querySelector('.photo img[src*="person"], .photo img[src*="player"]');
+        if (personImg) photoUrl = personImg.src || personImg.getAttribute('src');
+    }}
+    
+    // If still emblem, null it out
+    if (photoUrl && photoUrl.includes('emblem')) photoUrl = null;
+
     return {{
         name:         name,
-        photo_url:    photoEl ? (photoEl.src || photoEl.getAttribute('src')) : null,
+        photo_url:    photoUrl,
+        photo_attr:   photoEl ? photoEl.getAttribute('src') : null,
         salary:       getVal('lblSalary'),
         signing:      getVal('lblPayment'),
         draft:        getVal('lblDraft'),
@@ -177,11 +189,17 @@ class PlayerProfileCrawler:
                 await page.goto(url, wait_until="domcontentloaded", timeout=15000)
                 await page.wait_for_timeout(500)
                 
-                # Wait for name element to be attached to DOM
+                # Anchor on Name label to ensure profile is loaded
                 await page.wait_for_selector(f'[id$="lblName"]', state="attached", timeout=5000)
-                # Short grace period for visibility (some profiles are empty and stay hidden)
                 try:
-                    await page.wait_for_selector(f'[id$="lblName"]', state="visible", timeout=1000)
+                    # Wait for any image in the photo container to have a valid src
+                    await page.wait_for_function(
+                        """() => {
+                            const img = document.querySelector('.player_info img, .playerInfo img, .photo img, [id*="imgPro"]');
+                            return img && img.src && !img.src.includes('about:blank');
+                        }""",
+                        timeout=3000
+                    )
                 except:
                     pass
                 
@@ -198,9 +216,18 @@ class PlayerProfileCrawler:
                 
                 # Success found data
                 hands = _parse_hands(raw.get("raw_text") or "")
+                photo_url = raw.get("photo_url") or raw.get("photo_attr")
+
+                # If still emblem or no-Image, try heuristic CDN URL for newer players
+                if not photo_url or "no-Image.png" in photo_url:
+                    from datetime import datetime
+                    year = datetime.now().year
+                    # Standard pattern: https://6ptotvmi5753.edge.naverncp.com/KBO_IMAGE/person/middle/<year>/<player_id>.jpg
+                    photo_url = f"https://6ptotvmi5753.edge.naverncp.com/KBO_IMAGE/person/middle/{year}/{player_id}.jpg"
+
                 return {
                     "player_id": player_id,
-                    "photo_url": _clean_photo_url(raw.get("photo_url")),
+                    "photo_url": _clean_photo_url(photo_url),
                     "bats": hands["bats"],
                     "throws": hands["throws"],
                     "debut_year": _parse_debut_year(raw.get("debut")),

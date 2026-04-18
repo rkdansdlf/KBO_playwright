@@ -207,14 +207,31 @@ cp .env.example .env
 
 ### 운영 엔트리포인트 (신규 경기/선수 무결성)
 ```bash
-# 운영 기준: 하루 단위 통합 업데이트
-./venv/bin/python3 -m src.cli.run_daily_update --date 20251015
+# 운영 기준: 경기 종료 후 finalize + freshness gate + OCI publish
+./venv/bin/python3 -m src.cli.run_daily_update --date 20251015 --sync
+
+# fresh runner에서 운영 캐시를 먼저 OCI에서 hydrate
+./venv/bin/python3 -m src.cli.hydrate_runtime_from_oci --year 2025 --date 20251015
+
+# 경기 전 pregame refresh
+./venv/bin/python3 -m src.cli.daily_preview_batch --date 20251015
+
+# 경기 중 live refresh 1회
+./venv/bin/python3 -m src.cli.live_crawler --run-once
+
+# 완료 경기 freshness 검증
+./venv/bin/python3 -m src.cli.freshness_gate --date 20251015
 
 # 스케줄만 월 단위 반영
 ./venv/bin/python3 -m src.cli.crawl_schedule --year 2025 --months 10
 
 # 수동 상세 수집(월 단위 대상 필터)
 ./venv/bin/python3 -m src.cli.collect_games --year 2025 --month 10
+
+# 범용 unsynced-only 상세 동기화
+# 주의: schedule-only parent game 행은 자동 제외되지만, fresh runner 운영에서는
+# run_daily_update 또는 sync_specific_game 경로를 우선 사용
+./venv/bin/python3 -m src.cli.sync_oci --game-details --unsynced-only
 ```
 
 ---

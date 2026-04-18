@@ -166,46 +166,26 @@ class ScheduleCrawler:
                 const cells = Array.from(tr.querySelectorAll('td'));
                 if (cells.length < 3) return;
 
-                // 1. Identify Date
-                // Sometimes the date is in the first cell: "03.28(Sat)"
-                // Or proper class might be used. 
-                // Let's check the first cell's text.
                 let firstCellText = cells[0].innerText.trim();
                 let timeCellIndex = 1;
                 let matchCellIndex = 2;
-                let stadiumCellIndex = 7; // Default assumption based on sample
+                let stadiumCellIndex = 7;
 
                 // heuristic: Date like "03.28" or "03.28(토)"
-                // If first cell matches date pattern, update currentDateString
-                // Regex: DD.MM or MM.DD? KBO is usually MM.DD(Day)
                 const dateMatch = firstCellText.match(/(\d{2})\.(\d{2})/);
                 if (dateMatch) {
-                    currentDateString = dateMatch[0]; // "03.28"
-                    // If date cell exists, time is next
-                } else {
-                    // If no date in first cell, it might be rowspan'd from previous.
-                    // But effectively in DOM traversal, if a cell is rowspan'd, it doesn't appear in subsequent rows?
-                    // Actually, in `querySelectorAll` of TRs, if a TD has rowspan=5, it only appears in the FIRST TR.
-                    // subsequent TRs will have fewer cells.
-                    // So we must rely on `currentDateString` persistence.
-                    // AND adjust indices. If date cell is missing, Time is likely at index 0.
-                    
-                    // Check if first cell is Time
-                    if (/^\d{1,2}:\d{2}$/.test(firstCellText)) {
-                        timeCellIndex = 0;
-                        matchCellIndex = 1;
-                        stadiumCellIndex = 6; // Shifted by 1?
-                    }
+                    currentDateString = dateMatch[0];
+                } else if (/^\d{1,2}:\d{2}$/.test(firstCellText)) {
+                    timeCellIndex = 0;
+                    matchCellIndex = 1;
+                    stadiumCellIndex = 6;
                 }
                 
-                if (!currentDateString) return; // Can't parse without date
+                if (!currentDateString) return;
 
-                // 2. Extract Time
                 const timeText = cells[timeCellIndex] ? cells[timeCellIndex].innerText.trim() : "";
-                if (!/^\d{1,2}:\d{2}$/.test(timeText)) return; // Not a game row?
+                if (!/^\d{1,2}:\d{2}$/.test(timeText)) return;
 
-                // 3. Extract Matchup (Away vs Home)
-                // Text: "KTvsLG" or "KT vs LG"
                 const matchText = cells[matchCellIndex] ? cells[matchCellIndex].innerText.trim() : "";
                 if (!matchText.includes("vs")) return;
 
@@ -215,41 +195,19 @@ class ScheduleCrawler:
                 const awayName = teams[0].trim();
                 const homeName = teams[1].trim();
 
-                // 4. Extract Stadium (heuristic index)
-                // Based on sample: ['03.28(토)\t14:00\tKTvsLG\t\t\t\t\t잠실\t-']
-                // Split by tab shows many empty cells. 
-                // Let's just find the cell that is NOT Time, NOT Match, and looks like Stadium.
-                // Stadiums: 잠실, 문학, 대구, 창원, 대전, 고척, 광주, 사직, 수원
                 let stadium = "";
                 for (let i = matchCellIndex + 1; i < cells.length; i++) {
                     const txt = cells[i].innerText.trim();
                     if (txt.length >= 2 && txt.length <= 5 && !txt.includes("-") && !txt.includes("취소")) {
-                         // Very rough heuristic
                          stadium = txt;
                          break;
                     }
                 }
                 
-                // 5. Construct Game ID
-                // Need standard team codes. The site uses Names (KT, LG, etc.).
-                // We need to map Name -> Code. 
-                // Ideally this mapping happens in Python, but we need Code to form GameID if we want it in JS.
-                // OR we pass raw names to Python and Python constructs ID.
-                // Let's pass raw names and let Python handle ID construction if ID is missing.
-                
-                // Let's check if there is a link
+                // Construct Game ID only if link is missing
                 const link = tr.querySelector('a[href*="gameId="]');
-                if (link) {
-                    // We already handled this in previous logic? 
-                    // No, we are replacing the logic or augmenting it?
-                    // The instruction says "Update the JS... to fallback".
-                    // So I should keep the link logic or merge it.
-                    // If link exists, we prefer it.
-                    return; 
-                }
+                if (link) return;
 
-                // If no link, we construct data
-                // Date extraction: "03.28" -> "20260328"
                 const [mm, dd] = currentDateString.split(".");
                 const fullDate = `${year}${mm}${dd}`;
 
@@ -269,7 +227,6 @@ class ScheduleCrawler:
                 });
             });
 
-            // Original Link-based Logic (keep it for existing games)
             const linkSet = new Set();
             const links = document.querySelectorAll('a[href*="gameId="]');
             links.forEach(link => {
@@ -280,28 +237,32 @@ class ScheduleCrawler:
                 if (linkSet.has(gameId)) return;
                 linkSet.add(gameId);
                 
-                // ... same parsing ...
                 const gameDate = gameId.substring(0, 8);
-                const awaySegment = gameId.length >= 10 ? gameId.substring(8, 10) : "";
-                const homeSegment = gameId.length >= 12 ? gameId.substring(10, 12) : "";
-                const doubleHeader = (!isNaN(parseInt(gameId.slice(-1)))) ? parseInt(gameId.slice(-1)) : 0;
                 
-                // Time/Stadium extraction from DOM (link parent)
+                // Flexible segment extraction: search for team codes in the remaining string
+                const suffix = gameId.substring(8);
+                let away_segment = "";
+                let home_segment = "";
+                let dh = 0;
+
+                const m = suffix.match(/^([A-Z]{2,3})([A-Z]{2,3})(\d)?$/);
+                if (m) {
+                    away_segment = m[1];
+                    home_segment = m[2];
+                    dh = m[3] ? parseInt(m[3]) : 0;
+                }
+
                 let gameTime = null;
                 let stadium = null;
                 try {
                     const cell = link.closest('td');
                     if (cell) {
                          const row = cell.parentElement; 
-                         // Try to find time in the row
                          const cells = Array.from(row.querySelectorAll('td'));
                          cells.forEach(c => {
                             const t = c.innerText.trim();
-                            if (/^\\d{1,2}:\\d{2}$/.test(t)) gameTime = t;
+                            if (/^\d{1,2}:\d{2}$/.test(t)) gameTime = t;
                          });
-                         // Stadium...
-                         // Reuse the loop or index logic?
-                         // It's consistent with text-only logic.
                     }
                 } catch(e) {}
 
@@ -310,9 +271,9 @@ class ScheduleCrawler:
                     game_date: gameDate,
                     season_year: year,
                     season_type: 'regular',
-                    away_segment: awaySegment, 
-                    home_segment: homeSegment,
-                    doubleheader_no: doubleHeader,
+                    away_segment: away_segment, 
+                    home_segment: home_segment,
+                    doubleheader_no: dh,
                     game_status: 'scheduled',
                     crawl_status: 'link_parsed',
                     url_suffix: href,
@@ -337,9 +298,14 @@ class ScheduleCrawler:
                 if not g.get('game_id'):
                     away_name = g.get('away_name')
                     home_name = g.get('home_name')
+                    
                     # Pass 'year' to ensure history-aware resolution
-                    away_code = resolve_team_code(away_name, year) or away_name
-                    home_code = resolve_team_code(home_name, year) or home_name
+                    away_code = resolve_team_code(away_name, year)
+                    home_code = resolve_team_code(home_name, year)
+                    
+                    if not away_code or not home_code:
+                        print(f"[WARN] Skipping game due to unresolved team names: {away_name} vs {home_name}")
+                        continue
                     
                     # KBO Website uses LEGACY codes in Game IDs.
                     # We must map our canonical codes (KH, DB, SSG, KIA) to KBO legacy (WO, OB, SK, HT).

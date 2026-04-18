@@ -7,22 +7,33 @@ import asyncio
 import argparse
 import sys
 import os
+import sys
 
 # Add project root to sys.path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+from typing import List, Optional
+from sqlalchemy import or_
 from src.crawlers.player_profile_crawler import PlayerProfileCrawler
 from src.repositories.player_basic_repository import PlayerBasicRepository
 from src.db.engine import SessionLocal
 from src.models.player import PlayerBasic
 from src.utils.playwright_pool import AsyncPlaywrightPool
 
-async def backfill(limit: int, delay: float):
+async def backfill(limit: int, delay: float, ids: Optional[List[str]] = None):
     repo = PlayerBasicRepository()
     
-    # 1. Target players: missing photo_url
+    # Target players: missing photo_url
     with SessionLocal() as session:
-        query = session.query(PlayerBasic).filter(PlayerBasic.photo_url == None)
+        query = session.query(PlayerBasic).filter(
+            or_(
+                PlayerBasic.photo_url == None,
+                PlayerBasic.photo_url == 'NOT_FOUND'
+            )
+        )
+        if ids:
+            query = query.filter(PlayerBasic.player_id.in_(ids))
+            print(f"🎯 Targeted processing for {len(ids)} IDs")
         if limit > 0:
             query = query.limit(limit)
         targets = query.all()
@@ -59,7 +70,13 @@ async def backfill(limit: int, delay: float):
                     print(f"  ✅ Updated: photo={profile['photo_url']}, salary={profile['salary_original']}")
                     success_count += 1
                 else:
-                    print(f"  ⚠️ No profile found for {p.player_id}")
+                    print(f"  ⚠️ No profile found for {p.player_id}. Marking as NOT_FOUND.")
+                    # Mark as NOT_FOUND to avoid re-crawling
+                    repo.upsert_players([{
+                        'player_id': p.player_id,
+                        'name': p.name,
+                        'photo_url': 'NOT_FOUND'
+                    }])
                     fail_count += 1
             except Exception as e:
                 print(f"  ❌ Error processing {p.player_id}: {e}")
@@ -80,10 +97,15 @@ def main():
     parser = argparse.ArgumentParser(description="Backfill missing player profile details")
     parser.add_argument("--limit", type=int, default=0, help="Number of players to process (0 = all)")
     parser.add_argument("--delay", type=float, default=1.5, help="Delay between requests in seconds")
+    parser.add_argument("--ids", type=str, help="Comma-separated List of KBO Player IDs")
     
     args = parser.parse_args()
     
-    asyncio.run(backfill(args.limit, args.delay))
+    target_ids = None
+    if args.ids:
+        target_ids = [i.strip() for i in args.ids.split(",")]
+    
+    asyncio.run(backfill(args.limit, args.delay, target_ids))
 
 if __name__ == "__main__":
     main()

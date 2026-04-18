@@ -131,7 +131,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--unsynced-only",
         action="store_true",
-        help="OCI에 없거나 로컬 업데이트가 더 최근인 미동기화/수정된 데이터만 선별하여 동기화합니다.",
+        help="OCI에 없거나 로컬 업데이트가 더 최근인 미동기화/수정된 데이터만 선별하여 동기화합니다. schedule-only 부모 game 행은 자동 제외됩니다.",
     )
     parser.add_argument(
         "--player-basic",

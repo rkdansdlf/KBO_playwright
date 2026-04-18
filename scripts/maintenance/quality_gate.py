@@ -34,6 +34,9 @@ BASELINE_KEYS = (
     "pitching_null_player_id_max",
     "lineups_null_player_id_max",
     "unresolved_missing_max",
+    "orphaned_batting_stats_max",
+    "orphaned_pitching_stats_max",
+    "missing_player_profiles_max",
 )
 
 
@@ -55,6 +58,12 @@ def collect_metrics(session_or_conn) -> Dict[str, int]:
         "batting_null_player_id": "SELECT COUNT(*) FROM game_batting_stats WHERE player_id IS NULL",
         "pitching_null_player_id": "SELECT COUNT(*) FROM game_pitching_stats WHERE player_id IS NULL",
         "lineups_null_player_id": "SELECT COUNT(*) FROM game_lineups WHERE player_id IS NULL",
+        "orphaned_batting_stats": "SELECT COUNT(*) FROM game_batting_stats WHERE game_id NOT IN (SELECT game_id FROM game)",
+        "orphaned_pitching_stats": "SELECT COUNT(*) FROM game_pitching_stats WHERE game_id NOT IN (SELECT game_id FROM game)",
+        "missing_player_profiles": """
+            SELECT COUNT(DISTINCT player_id) FROM player_season_batting 
+            WHERE player_id NOT IN (SELECT player_id FROM player_basic)
+        """,
     }
     metrics: Dict[str, int] = {}
     for key, sql in metrics_sql.items():
@@ -114,6 +123,9 @@ def evaluate_quality_gate(
         "pitching_null_player_id_max": "pitching_null_player_id",
         "lineups_null_player_id_max": "lineups_null_player_id",
         "unresolved_missing_max": "unresolved_missing",
+        "orphaned_batting_stats_max": "orphaned_batting_stats",
+        "orphaned_pitching_stats_max": "orphaned_pitching_stats",
+        "missing_player_profiles_max": "missing_player_profiles",
     }
 
     for baseline_key, metric_key in threshold_map.items():
@@ -131,6 +143,9 @@ def evaluate_quality_gate(
         "pitching_null_player_id",
         "lineups_null_player_id",
         "unresolved_missing",
+        "orphaned_batting_stats",
+        "orphaned_pitching_stats",
+        "missing_player_profiles",
     )
     for key in parity_keys:
         if int(local_metrics.get(key, 0)) != int(oci_metrics.get(key, 0)):
