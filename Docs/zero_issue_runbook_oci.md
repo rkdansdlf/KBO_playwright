@@ -6,6 +6,11 @@
 - 로컬/OCI 지표 및 집합 완전 일치
 
 ## 실행 순서
+0. fresh runner 운영 캐시 hydrate
+```bash
+python3 -m src.cli.hydrate_runtime_from_oci --year YYYY --date YYYYMMDD
+```
+
 1. 2019 일정 근거 수집
 ```bash
 python3 /Users/mac/project/KBO_playwright/scripts/maintenance/collect_2019_schedule_status_evidence.py \
@@ -49,6 +54,21 @@ python3 -m src.cli.sync_oci --game-details --year YYYY
 ```bash
 python3 /Users/mac/project/KBO_playwright/scripts/maintenance/quality_gate.py
 ```
+
+## 실시간 운영 phase
+- 경기 전:
+  - `python3 -m src.cli.daily_preview_batch --date YYYYMMDD`
+- 경기 중:
+  - `python3 -m src.cli.live_crawler --run-once`
+- 경기 종료 직후:
+  - `python3 -m src.cli.run_daily_update --date YYYYMMDD --sync`
+- 완료 경기 freshness 확인:
+  - `python3 -m src.cli.freshness_gate --date YYYYMMDD`
+
+## GitHub Actions 운영 메모
+- `daily_preview.yml`과 `daily_kbo_sync.yml`은 fresh GitHub runner에서 먼저 `hydrate_runtime_from_oci`를 실행합니다.
+- `run_daily_update --sync`는 freshness gate를 통과한 뒤에만 OCI publish를 수행합니다.
+- `sync_oci --game-details --unsynced-only`는 schedule-only parent `game` 행을 자동으로 제외합니다.
 
 ## 아티팩트
 - 상태 근거:

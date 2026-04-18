@@ -151,7 +151,7 @@ class PlayerSeasonBatting(Base, TimestampMixin):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     player_id: Mapped[int] = mapped_column(
-        Integer, nullable=False, comment="KBO player ID (not foreign key)"
+        Integer, ForeignKey("player_basic.player_id"), nullable=False, comment="KBO player ID"
     )
     season: Mapped[int] = mapped_column(Integer, nullable=False)
     league: Mapped[str] = mapped_column(String(16), nullable=False, default="REGULAR")
@@ -207,13 +207,13 @@ class PlayerSeasonPitching(Base, TimestampMixin):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     player_id: Mapped[int] = mapped_column(
-        Integer, nullable=False, comment="KBO player ID (not foreign key)"
+        Integer, ForeignKey("player_basic.player_id"), nullable=False, comment="KBO player ID"
     )
     season: Mapped[int] = mapped_column(Integer, nullable=False)
     league: Mapped[str] = mapped_column(String(16), nullable=False, default="REGULAR")
     level: Mapped[str] = mapped_column(String(16), nullable=False, default="KBO1")
     source: Mapped[str] = mapped_column(String(16), nullable=False, default="CRAWLER")
-    team_code: Mapped[Optional[str]] = mapped_column(String(8), nullable=True)
+    team_code: Mapped[Optional[str]] = mapped_column(String(10), ForeignKey("teams.team_id"), nullable=True)
     franchise_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, comment="Canonical franchise ID")
     canonical_team_code: Mapped[Optional[str]] = mapped_column(String(10), nullable=True, comment="Modern canonical team code")
     

@@ -9,7 +9,9 @@ from urllib.parse import urljoin, urlparse, parse_qs
 
 from datetime import datetime
 from playwright.async_api import Page
+from sqlalchemy import text
 
+from src.db.engine import SessionLocal
 from src.utils.team_codes import resolve_team_code, team_code_from_game_id_segment
 from src.utils.playwright_pool import AsyncPlaywrightPool
 
@@ -90,8 +92,22 @@ class GameDetailCrawler:
 
     async def crawl_game(self, game_id: str, game_date: str, lightweight: bool = False) -> Optional[Dict[str, Any]]:
         self._last_failure_reason.pop(game_id, None)
-        result = await self.crawl_games([{"game_id": game_id, "game_date": game_date}], lightweight=lightweight)
-        return result[0] if result else None
+        
+        # Ensure resolver is available if not provided in __init__
+        close_session = False
+        if not self.resolver:
+            from src.services.player_id_resolver import PlayerIdResolver
+            session = SessionLocal()
+            self.resolver = PlayerIdResolver(session)
+            close_session = True
+            
+        try:
+            result = await self.crawl_games([{"game_id": game_id, "game_date": game_date}], lightweight=lightweight)
+            return result[0] if result else None
+        finally:
+            if close_session and hasattr(self.resolver, 'session'):
+                self.resolver.session.close()
+                self.resolver = None
 
     async def crawl_games(
         self,
@@ -402,7 +418,7 @@ class GameDetailCrawler:
 
         return {'away': away_info, 'home': home_info}
 
-    async def _extract_hitters(self, page: Page, team_side: str, team_code: Optional[str], season_year: Optional[int], roster_map: Optional[Dict[str, List[Dict[str, Any]]]] = None) -> List[Dict[str, Any]]:
+    async def _extract_hitters(self, page: Page, team_side: str, team_code: Optional[str], season_year: Optional[int], roster_map: Optional[Dict[str, List[Dict[str, Any]]]] = None, db_session=None) -> List[Dict[str, Any]]:
         selectors = ['#tblAwayHitter1', '#tblAwayHitter3'] if team_side == 'away' else ['#tblHomeHitter1', '#tblHomeHitter3']
         tables = []
         for selector in selectors:
@@ -412,13 +428,13 @@ class GameDetailCrawler:
 
         base_rows = tables[0] if tables else []
         extra_rows = tables[1] if len(tables) > 1 else []
-        
+
         # KEY FIX: Legacy tables (e.g. 2018) might not have player name in the extra table (Table 3).
         # In that case, we must merge by INDEX, assuming 1:1 correspondence.
         # Modern tables (Table 2 in some views) might have names.
         # We check if extra_rows have names.
         extra_has_names = any(r.get('playerName') for r in extra_rows)
-        
+
         extra_map = {}
         if extra_has_names:
             extra_map = {row['playerName']: row for row in extra_rows if row['playerName']}
@@ -429,10 +445,17 @@ class GameDetailCrawler:
             if not player_name or player_name in {'합계', '팀합계'}:
                 continue
 
+            p_id = self._safe_int(row.get('playerId'))
+            
             stats = {}
             extras = {}
             self._populate_hitter_stats(stats, extras, row['cells'])
-
+            
+            # Key fix for Task 3: Use resolver for exhibition/missing IDs
+            if p_id is None and self.resolver and team_code and season_year:
+                p_id = self.resolver.resolve_id(player_name, team_code, season_year, uniform_no=row.get('cells', {}).get('등번호'))
+                if p_id:
+                    print(f"   [RESOLVED] {player_name} ({team_code}) -> {p_id}")
             # Merge Strategy: Name-based OR Index-based
             if extra_has_names:
                 extra_row = extra_map.get(player_name)
@@ -450,14 +473,13 @@ class GameDetailCrawler:
             position = self._parse_position(row['cells'])
             is_starter = batting_order is not None and batting_order <= 9
 
-            player_id = row['playerId']
-            uniform_no = row.get('uniformNo')
+            uniform_no = row.get('cells', {}).get('등번호')
             
             # Optimization: Check roster_map if ID is missing
-            if not player_id and roster_map and player_name in roster_map:
+            if not p_id and roster_map and player_name in roster_map:
                 candidates = roster_map[player_name]
                 if len(candidates) == 1:
-                    player_id = candidates[0]['id']
+                    p_id = candidates[0]['id']
                     # Use roster uniform if available and row uniform is missing
                     if not uniform_no:
                         uniform_no = candidates[0]['uniform']
@@ -466,19 +488,11 @@ class GameDetailCrawler:
                     if uniform_no:
                         for c in candidates:
                             if c['uniform'] == str(uniform_no):
-                                player_id = c['id']
+                                p_id = c['id']
                                 break
-                    # If still ambiguous, we might fall back to resolver or heuristics
-            
-            if not player_id and self.resolver and team_code and season_year:
-                player_id = self.resolver.resolve_id(player_name, team_code, season_year, uniform_no=uniform_no)
-                # If resolved, ensure it's a string as crawler usually expects string IDs?
-                # DB stores as int in models (PlayerBasic.player_id is int).
-                # But here we pass it through.
-                # Let's keep it as is (int or str), DB layer handles type.
 
             payload = {
-                'player_id': player_id,
+                'player_id': p_id,
                 'player_name': player_name,
                 'uniform_no': uniform_no,
                 'team_code': team_code,
@@ -494,15 +508,44 @@ class GameDetailCrawler:
 
         return results
 
-    async def _extract_pitchers(self, page: Page, team_side: str, team_code: Optional[str], season_year: Optional[int], roster_map: Optional[Dict[str, List[Dict[str, Any]]]] = None) -> List[Dict[str, Any]]:
-        selector = '#tblAwayPitcher' if team_side == 'away' else '#tblHomePitcher'
-        rows = await self._extract_table_rows(page, selector)
+    async def _extract_pitchers(self, page: Page, team_side: str, team_code: Optional[str], season_year: Optional[int], roster_map: Optional[Dict[str, List[Dict[str, Any]]]] = None, db_session=None) -> List[Dict[str, Any]]:
+        selectors = ['#tblAwayPitcher1', '#tblAwayPitcher2'] if team_side == 'away' else ['#tblHomePitcher1', '#tblHomePitcher2']
+        rows = []
+        for selector in selectors:
+            table_rows = await self._extract_table_rows(page, selector)
+            if table_rows:
+                rows = table_rows
+                break
+        
         results: List[Dict[str, Any]] = []
-
         for idx, row in enumerate(rows, start=1):
             player_name = row['playerName']
             if not player_name or player_name in {'합계', '팀합계'}:
                 continue
+
+            p_id = self._safe_int(row.get('playerId'))
+
+            uniform_no = row.get('cells', {}).get('등번호')
+
+            # Key fix for Task 3: Use resolver for exhibition/missing IDs
+            if p_id is None and self.resolver and team_code and season_year:
+                p_id = self.resolver.resolve_id(player_name, team_code, season_year, uniform_no=uniform_no)
+                if p_id:
+                    print(f"   [RESOLVED] {player_name} ({team_code}) -> {p_id}")
+
+            # Optimization: Check roster_map if ID is missing
+            if not p_id and roster_map and player_name in roster_map:
+                candidates = roster_map[player_name]
+                if len(candidates) == 1:
+                    p_id = candidates[0]['id']
+                    if not uniform_no:
+                        uniform_no = candidates[0]['uniform']
+                elif len(candidates) > 1:
+                    if uniform_no:
+                        for c in candidates:
+                            if c['uniform'] == str(uniform_no):
+                                p_id = c['id']
+                                break
 
             stats = {}
             extras = {}
@@ -516,33 +559,8 @@ class GameDetailCrawler:
             if decision:
                 stats['decision'] = decision
 
-            player_id = row['playerId']
-            uniform_no = row.get('uniformNo')
-            
-            # Optimization: Check roster_map if ID is missing
-            if not player_id and roster_map and player_name in roster_map:
-                candidates = roster_map[player_name]
-                if len(candidates) == 1:
-                    player_id = candidates[0]['id']
-                    if not uniform_no:
-                        uniform_no = candidates[0]['uniform']
-                elif len(candidates) > 1:
-                    if uniform_no:
-                        for c in candidates:
-                            if c['uniform'] == str(uniform_no):
-                                player_id = c['id']
-                                break
-                    else:
-                        # Ambiguous case: Multiple candidates, no uniform in table.
-                        # We'll let the resolver handle it or pick the first one?
-                        # Using resolver is safer as it might have DB knowledge.
-                        pass
-
-            if not player_id and self.resolver and team_code and season_year:
-                player_id = self.resolver.resolve_id(player_name, team_code, season_year, uniform_no=uniform_no)
-
             payload = {
-                'player_id': player_id,
+                'player_id': p_id,
                 'player_name': player_name,
                 'uniform_no': uniform_no,
                 'team_code': team_code,
