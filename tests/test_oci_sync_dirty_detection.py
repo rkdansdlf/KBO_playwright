@@ -17,7 +17,7 @@ from src.models.game import (
     GameSummary,
 )
 from src.models.player import PlayerBasic
-from src.sync.oci_sync import detect_dirty_game_ids, filter_publishable_game_ids
+from src.sync.oci_sync import detect_dirty_game_ids, filter_game_ids_by_year, filter_publishable_game_ids
 
 
 def _build_session_factory():
@@ -205,3 +205,10 @@ def test_filter_publishable_game_ids_excludes_schedule_only_parent_rows():
         )
 
     assert publishable == ["20250405LGSS0", "20250406LGSS0"]
+
+
+def test_filter_game_ids_by_year_preserves_only_requested_year():
+    game_ids = ["20240401LGSS0", "20250401LGSS0", "20250402LGSS0", "20260401LGSS0"]
+
+    assert filter_game_ids_by_year(game_ids, 2025) == ["20250401LGSS0", "20250402LGSS0"]
+    assert filter_game_ids_by_year(game_ids, None) == game_ids

@@ -55,7 +55,13 @@ def normalize_game_status(status: str | None) -> str | None:
     if status is None:
         return None
     value = str(status).strip().upper()
-    return value if value in ALL_GAME_STATUSES else value
+    aliases = {
+        "CANCELED": GAME_STATUS_CANCELLED,
+        "CANCEL": GAME_STATUS_CANCELLED,
+        "CANCELLED_GAME": GAME_STATUS_CANCELLED,
+    }
+    value = aliases.get(value, value)
+    return value if value in ALL_GAME_STATUSES else None
 
 
 def completed_like_statuses() -> Iterable[str]:

@@ -7,7 +7,17 @@ from typing import Dict, Iterable, List, Sequence, Type
 
 from sqlalchemy.orm import Session
 
-from src.models.game import Game, GameBattingStat, GamePitchingStat
+from src.models.game import (
+    Game,
+    GameBattingStat,
+    GameEvent,
+    GameInningScore,
+    GameLineup,
+    GameMetadata,
+    GamePitchingStat,
+    GamePlayByPlay,
+    GameSummary,
+)
 from src.models.player import PlayerBasic, PlayerMovement, PlayerSeasonBatting, PlayerSeasonPitching
 from src.models.team import TeamDailyRoster
 
@@ -43,7 +53,7 @@ class RuntimeHydrator:
                 PlayerBasic,
                 (),
                 (),
-                replace_scope=True,
+                replace_scope=False,
                 exclude_columns=("created_at", "updated_at"),
             ),
             HydrationSpec(
@@ -82,6 +92,27 @@ class RuntimeHydrator:
                 exclude_columns=("created_at", "updated_at"),
             ),
             HydrationSpec(
+                "game_metadata",
+                GameMetadata,
+                (GameMetadata.game_id.like(f"{year}%"),),
+                (GameMetadata.game_id.like(f"{year}%"),),
+                exclude_columns=("created_at", "updated_at"),
+            ),
+            HydrationSpec(
+                "game_inning_scores",
+                GameInningScore,
+                (GameInningScore.game_id.like(f"{year}%"),),
+                (GameInningScore.game_id.like(f"{year}%"),),
+                exclude_columns=("created_at", "updated_at"),
+            ),
+            HydrationSpec(
+                "game_lineups",
+                GameLineup,
+                (GameLineup.game_id.like(f"{year}%"),),
+                (GameLineup.game_id.like(f"{year}%"),),
+                exclude_columns=("created_at", "updated_at"),
+            ),
+            HydrationSpec(
                 "game_batting_stats",
                 GameBattingStat,
                 (GameBattingStat.game_id.like(f"{year}%"),),
@@ -95,24 +126,49 @@ class RuntimeHydrator:
                 (GamePitchingStat.game_id.like(f"{year}%"),),
                 exclude_columns=("created_at", "updated_at"),
             ),
+            HydrationSpec(
+                "game_events",
+                GameEvent,
+                (GameEvent.game_id.like(f"{year}%"),),
+                (GameEvent.game_id.like(f"{year}%"),),
+                exclude_columns=("created_at", "updated_at"),
+            ),
+            HydrationSpec(
+                "game_summary",
+                GameSummary,
+                (GameSummary.game_id.like(f"{year}%"),),
+                (GameSummary.game_id.like(f"{year}%"),),
+                exclude_columns=("created_at", "updated_at"),
+            ),
+            HydrationSpec(
+                "game_play_by_play",
+                GamePlayByPlay,
+                (GamePlayByPlay.game_id.like(f"{year}%"),),
+                (GamePlayByPlay.game_id.like(f"{year}%"),),
+                exclude_columns=("created_at", "updated_at"),
+            ),
         )
 
         summary: Dict[str, int] = {}
+        for spec in reversed(specs):
+            if spec.replace_scope:
+                self._delete_scope(spec)
         for spec in specs:
             summary[spec.label] = self._hydrate_spec(spec)
         return summary
+
+    def _delete_scope(self, spec: HydrationSpec) -> None:
+        target_query = self.target_session.query(spec.model)
+        if spec.target_filters:
+            target_query = target_query.filter(*spec.target_filters)
+        target_query.delete(synchronize_session=False)
+        self.target_session.commit()
 
     def _hydrate_spec(self, spec: HydrationSpec) -> int:
         source_query = self.source_session.query(spec.model)
         if spec.source_filters:
             source_query = source_query.filter(*spec.source_filters)
         rows = source_query.all()
-
-        if spec.replace_scope:
-            target_query = self.target_session.query(spec.model)
-            if spec.target_filters:
-                target_query = target_query.filter(*spec.target_filters)
-            target_query.delete(synchronize_session=False)
 
         if not rows:
             self.target_session.commit()
@@ -123,6 +179,12 @@ class RuntimeHydrator:
         mappings: List[Dict[str, object]] = []
         for row in rows:
             mappings.append({column: getattr(row, column) for column in columns})
+
+        if not spec.replace_scope:
+            for mapping in mappings:
+                self.target_session.merge(spec.model(**mapping))
+            self.target_session.commit()
+            return len(mappings)
 
         self.target_session.execute(spec.model.__table__.insert(), mappings)
         self.target_session.commit()
