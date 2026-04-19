@@ -4,6 +4,7 @@ from sqlalchemy.orm import sessionmaker
 from scripts.maintenance.resolve_null_player_ids_conservative import (
     OverrideEntry,
     choose_candidate_ids,
+    fetch_group_uniform_nos,
     is_group_resolvable,
     update_null_player_ids_for_group,
 )
@@ -47,7 +48,7 @@ def _make_session():
                 """
             )
         )
-        for table in ("game_batting_stats", "game_pitching_stats", "game_lineups"):
+        for table in ("game_batting_stats", "game_pitching_stats"):
             conn.execute(
                 text(
                     f"""
@@ -73,6 +74,32 @@ def _make_session():
                     """
                 )
             )
+        conn.execute(
+            text(
+                """
+                CREATE TABLE game_lineups (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    game_id TEXT NOT NULL,
+                    team_code TEXT,
+                    player_name TEXT NOT NULL,
+                    batting_order INTEGER,
+                    uniform_no TEXT,
+                    player_id INTEGER
+                )
+                """
+            )
+        )
+        conn.execute(
+            text(
+                """
+                INSERT INTO game_lineups (game_id, team_code, player_name, batting_order, uniform_no, player_id)
+                VALUES
+                    ('20240201KIAHH0', 'KIA', '테스트선수', 1, '10', NULL),
+                    ('20240202KIAHH0', 'KIA', '테스트선수', 2, '10', NULL),
+                    ('20240202KIAHH0', 'KIA', '다른선수', 3, '99', NULL)
+                """
+            )
+        )
     return sessionmaker(bind=engine)()
 
 
@@ -212,5 +239,33 @@ def test_role_and_uniform_filter_narrows_to_single_candidate():
         )
         assert result["candidate_ids"] == [1002]
         assert result["resolution_method"] == "uniform_filter"
+    finally:
+        session.close()
+
+
+def test_lineup_order_values_are_not_used_as_uniform_filter():
+    session = _make_session()
+    try:
+        session.execute(
+            text(
+                """
+                INSERT INTO game_lineups (game_id, team_code, player_name, batting_order, uniform_no, player_id)
+                VALUES
+                    ('20240203KIAHH0', 'KIA', '타순오염', 7, '7', NULL),
+                    ('20240204KIAHH0', 'KIA', '타순오염', 8, '8', NULL)
+                """
+            )
+        )
+        session.commit()
+
+        uniforms = fetch_group_uniform_nos(
+            session,
+            table_name="game_lineups",
+            year=2024,
+            team_code="KIA",
+            player_name="타순오염",
+        )
+
+        assert uniforms == []
     finally:
         session.close()

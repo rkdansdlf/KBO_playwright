@@ -1,1 +1,9 @@
 source_table,year,team_code,player_name,resolved_player_id,reason,evidence_source
+game_lineups,2026,HH,손아섭,77532,manual_lineup_resolution,team_daily_roster_2026_HH
+game_lineups,2026,HH,오재원,77248,manual_lineup_resolution,unique_player_basic_exact_name
+game_lineups,2026,HH,최유빈,52805,manual_lineup_resolution,unique_player_basic_exact_name
+game_lineups,2026,SSG,김민식,62864,manual_lineup_resolution,unique_player_basic_exact_name
+game_lineups,2026,SSG,김정민,900093,manual_lineup_resolution,player_basic_team_SSG
+game_lineups,2026,SSG,문상준,50007,manual_lineup_resolution,unique_player_basic_exact_name
+game_lineups,2026,SSG,이승민,54806,manual_lineup_resolution,previous_season_SSG_batting_profile
+game_lineups,2026,SSG,현원회,50840,manual_lineup_resolution,previous_season_SSG_batting_profile
