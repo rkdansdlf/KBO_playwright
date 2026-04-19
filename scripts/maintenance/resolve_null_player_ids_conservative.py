@@ -20,6 +20,7 @@ from pathlib import Path
 import sys
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 
+from sqlalchemy import inspect
 from sqlalchemy import bindparam, text
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -166,6 +167,37 @@ def fetch_group_uniform_nos(
     team_code: str,
     player_name: str,
 ) -> List[str]:
+    has_batting_order = table_name == "game_lineups" and _table_has_column(session, table_name, "batting_order")
+    if has_batting_order:
+        rows = session.execute(
+            text(
+                f"""
+                SELECT DISTINCT COALESCE(uniform_no, '') AS uniform_no, batting_order
+                FROM {table_name}
+                WHERE player_id IS NULL
+                  AND substr(game_id, 1, 4) = :year
+                  AND COALESCE(team_code, '') = :team_code
+                  AND player_name = :player_name
+                """
+            ),
+            {
+                "year": str(year),
+                "team_code": normalize_text(team_code),
+                "player_name": player_name,
+            },
+        ).fetchall()
+        uniforms: List[str] = []
+        for uniform_no, batting_order in rows:
+            normalized = normalize_uniform_no(uniform_no)
+            if not normalized:
+                continue
+            # Some relay-derived lineups put batting order into uniform_no.
+            # Treat that as missing jersey evidence rather than filtering out a valid candidate.
+            if _looks_like_lineup_order(normalized, batting_order):
+                continue
+            uniforms.append(normalized)
+        return sorted(set(uniforms))
+
     rows = session.execute(
         text(
             f"""
@@ -189,6 +221,18 @@ def fetch_group_uniform_nos(
         if normalized:
             uniforms.append(normalized)
     return sorted(set(uniforms))
+
+
+def _table_has_column(session, table_name: str, column_name: str) -> bool:
+    return any(column["name"] == column_name for column in inspect(session.bind).get_columns(table_name))
+
+
+def _looks_like_lineup_order(uniform_no: str, batting_order: Any) -> bool:
+    order = normalize_text(batting_order)
+    if not uniform_no.isdigit() or not order.isdigit():
+        return False
+    uniform_int = int(uniform_no)
+    return 1 <= uniform_int <= 9 and uniform_int == int(order)
 
 
 def resolve_candidate_ids(
@@ -404,10 +448,13 @@ def update_null_player_ids_for_group(
     player_id: int,
     dry_run: bool = False,
 ) -> int:
+    set_clause = "player_id = :player_id"
+    if _table_has_column(session, table_name, "updated_at"):
+        set_clause += ", updated_at = CURRENT_TIMESTAMP"
     update_sql = text(
         f"""
         UPDATE {table_name}
-        SET player_id = :player_id
+        SET {set_clause}
         WHERE player_id IS NULL
           AND substr(game_id, 1, 4) = :year
           AND COALESCE(team_code, '') = :team_code

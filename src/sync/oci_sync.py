@@ -228,6 +228,13 @@ def detect_dirty_game_ids(local_session_or_conn, remote_session_or_conn, *, game
     return dirty
 
 
+def filter_game_ids_by_year(game_ids: List[str], year: int | None) -> List[str]:
+    if year is None:
+        return list(game_ids)
+    prefix = str(int(year))
+    return [game_id for game_id in game_ids if str(game_id).startswith(prefix)]
+
+
 def filter_publishable_game_ids(session, game_ids: List[str]) -> List[str]:
     """Restrict parent-game sync to rows that are more than schedule-only stubs."""
     if not game_ids:
@@ -1206,8 +1213,10 @@ class OCISync:
         if unsynced_only:
             print("🔍 식별 중: OCI에 없거나 로컬에서 최근에 갱신된 게임 데이터를 검사합니다...")
             target_game_ids = self.get_unsynced_or_modified_game_ids()
+            target_game_ids = filter_game_ids_by_year(target_game_ids, year)
             if not target_game_ids:
-                print("🎉 모든 게임 데이터가 이미 최신 상태입니다. 동기화를 건너뜁니다.")
+                year_msg = f" ({year})" if year else ""
+                print(f"🎉 모든 게임 데이터{year_msg}가 이미 최신 상태입니다. 동기화를 건너뜁니다.")
                 return results
             print(f"🎯 총 {len(target_game_ids)}개의 변경/누락된 게임을 발견했습니다.")
             # target_game_ids가 너무 길면 sqlite in_ 절 한도를 초과할 수 있지만, 부분 업데이트라 대개 수십 건 내외임.
@@ -1252,7 +1261,7 @@ class OCISync:
                 print("ℹ️ No games found for the specified period.")
                 return results
 
-        if year:
+        if year and not unsynced_only:
             # Remove existing year-scoped child rows first to avoid stale/null duplicates.
             self._purge_game_detail_children_for_year(year)
 

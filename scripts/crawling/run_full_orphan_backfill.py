@@ -20,8 +20,10 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from src.crawlers.game_detail_crawler import GameDetailCrawler
-from src.repositories.game_repository import save_game_detail
+from src.repositories.game_repository import repair_game_parent_from_existing_children, save_game_snapshot
 from src.db.engine import SessionLocal
+from src.utils.game_status import GAME_STATUS_CANCELLED
+from src.utils.team_codes import team_code_from_game_id_segment
 
 # Setup logging
 LOG_DIR = PROJECT_ROOT / "logs"
@@ -37,6 +39,37 @@ logging.basicConfig(
     ]
 )
 logger = logging.getLogger(__name__)
+
+
+def _cancelled_snapshot_payload(game_id: str, date_str: str) -> dict:
+    try:
+        season_year = int(date_str[:4])
+    except (TypeError, ValueError):
+        season_year = None
+
+    away_segment = game_id[8:10] if len(game_id) >= 10 else None
+    home_segment = game_id[10:12] if len(game_id) >= 12 else None
+
+    return {
+        "game_id": game_id,
+        "game_date": date_str,
+        "game_status": GAME_STATUS_CANCELLED,
+        "season_year": season_year,
+        "metadata": {"is_cancelled": True},
+        "teams": {
+            "away": {
+                "code": team_code_from_game_id_segment(away_segment, season_year),
+                "score": None,
+                "line_score": [],
+            },
+            "home": {
+                "code": team_code_from_game_id_segment(home_segment, season_year),
+                "score": None,
+                "line_score": [],
+            },
+        },
+    }
+
 
 async def run_backfill(chunk_size: int = 100, max_total: int = 10000):
     logger.info("Starting robust orphan backfill...")
@@ -72,16 +105,31 @@ async def run_backfill(chunk_size: int = 100, max_total: int = 10000):
             
             for attempt in range(retry_attempts + 1):
                 try:
+                    # We use lightweight=True because we mainly need metadata to fix the 'game' table relationship.
                     payload = await crawler.crawl_game(game_id, date_str, lightweight=True)
+
                     if payload:
-                        if save_game_detail(payload):
+                        if save_game_snapshot(payload):
                             logger.info(f"✅ [{success_count+fail_count+1}/{len(missing_ids)}] Saved {game_id}")
                             success_count += 1
                             break
                         else:
                             logger.error(f"❌ Failed to save {game_id} (DB Error)")
                     else:
-                        logger.warning(f"⚠️  No payload for {game_id}")
+                        # KEY FIX: If no payload, it might be CANCELLED. Check crawler's last reason.
+                        reason = crawler.get_last_failure_reason(game_id)
+                        if repair_game_parent_from_existing_children(game_id):
+                            logger.info(f"✅ [{success_count+fail_count+1}/{len(missing_ids)}] Repaired {game_id} from existing child rows")
+                            success_count += 1
+                            break
+                        if reason and "cancelled" in reason.lower():
+                            logger.warning(f"ℹ️  Game {game_id} is CANCELLED. Saving as placeholder.")
+                            cancel_payload = _cancelled_snapshot_payload(game_id, date_str)
+                            if save_game_snapshot(cancel_payload, status=GAME_STATUS_CANCELLED):
+                                logger.info(f"✅ [{success_count+fail_count+1}/{len(missing_ids)}] Marked {game_id} as CANCELLED")
+                                success_count += 1
+                                break
+                        logger.warning(f"⚠️  No payload for {game_id} (Reason: {reason})")
                 except Exception as e:
                     if "locked" in str(e).lower() and attempt < retry_attempts:
                         logger.warning(f"🔒 DB Locked. Retrying {game_id} (Attempt {attempt+1})...")

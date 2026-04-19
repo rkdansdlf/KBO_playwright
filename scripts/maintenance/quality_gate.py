@@ -53,7 +53,8 @@ def collect_metrics(session_or_conn) -> Dict[str, int]:
         "past_missing_runs": """
             SELECT COUNT(*) FROM game
             WHERE (home_score IS NULL OR away_score IS NULL)
-              AND game_date <= CURRENT_DATE
+              AND game_date < CURRENT_DATE
+              AND COALESCE(game_status, '') NOT IN ('CANCELLED', 'POSTPONED')
         """,
         "batting_null_player_id": "SELECT COUNT(*) FROM game_batting_stats WHERE player_id IS NULL",
         "pitching_null_player_id": "SELECT COUNT(*) FROM game_pitching_stats WHERE player_id IS NULL",
@@ -83,7 +84,7 @@ def collect_metrics(session_or_conn) -> Dict[str, int]:
         )
         metrics["past_scheduled"] = int(
             session_or_conn.execute(
-                text("SELECT COUNT(*) FROM game WHERE game_status = 'SCHEDULED' AND game_date <= CURRENT_DATE")
+                text("SELECT COUNT(*) FROM game WHERE game_status = 'SCHEDULED' AND game_date < CURRENT_DATE")
             ).scalar()
             or 0
         )
@@ -100,7 +101,8 @@ def fetch_past_missing_game_ids(session_or_conn) -> Set[str]:
             SELECT game_id
             FROM game
             WHERE (home_score IS NULL OR away_score IS NULL)
-              AND game_date <= CURRENT_DATE
+              AND game_date < CURRENT_DATE
+              AND COALESCE(game_status, '') NOT IN ('CANCELLED', 'POSTPONED')
             """
         )
     ).fetchall()
