@@ -174,6 +174,11 @@ class RuntimeHydrator:
             self.target_session.commit()
             return 0
 
+        rows = self._filter_child_rows_with_parent_games(spec, rows)
+        if not rows:
+            self.target_session.commit()
+            return 0
+
         excluded = {"id", *spec.exclude_columns}
         columns = [column.key for column in spec.model.__table__.columns if column.key not in excluded]
         mappings: List[Dict[str, object]] = []
@@ -186,6 +191,72 @@ class RuntimeHydrator:
             self.target_session.commit()
             return len(mappings)
 
+        self._ensure_player_basic_refs(rows)
         self.target_session.execute(spec.model.__table__.insert(), mappings)
         self.target_session.commit()
         return len(mappings)
+
+    def _filter_child_rows_with_parent_games(self, spec: HydrationSpec, rows: List[object]) -> List[object]:
+        if spec.model is Game or "game_id" not in spec.model.__table__.columns:
+            return rows
+        game_ids = sorted({str(getattr(row, "game_id")) for row in rows if getattr(row, "game_id", None)})
+        if not game_ids:
+            return rows
+        existing_ids = {
+            str(row[0])
+            for row in self.target_session.query(Game.game_id).filter(Game.game_id.in_(game_ids)).all()
+        }
+        return [row for row in rows if str(getattr(row, "game_id", "")) in existing_ids]
+
+    def _ensure_player_basic_refs(self, rows: Iterable[object]) -> None:
+        refs: Dict[int, str] = {}
+        for row in rows:
+            player_id = getattr(row, "player_id", None)
+            if player_id is None:
+                continue
+            try:
+                player_id_int = int(player_id)
+            except (TypeError, ValueError):
+                continue
+            player_name = getattr(row, "player_name", None) or f"Unknown {player_id_int}"
+            refs.setdefault(player_id_int, str(player_name))
+
+        if not refs:
+            return
+
+        existing_ids = {
+            int(row[0])
+            for row in self.target_session.query(PlayerBasic.player_id)
+            .filter(PlayerBasic.player_id.in_(refs.keys()))
+            .all()
+        }
+        missing_ids = sorted(set(refs) - existing_ids)
+        if not missing_ids:
+            return
+
+        source_rows = {
+            row.player_id: row
+            for row in self.source_session.query(PlayerBasic).filter(PlayerBasic.player_id.in_(missing_ids)).all()
+        }
+        for player_id in missing_ids:
+            source_player = source_rows.get(player_id)
+            if source_player:
+                self.target_session.merge(
+                    PlayerBasic(
+                        **{
+                            column.key: getattr(source_player, column.key)
+                            for column in PlayerBasic.__table__.columns
+                            if column.key not in {"created_at", "updated_at"}
+                        }
+                    )
+                )
+                continue
+            self.target_session.merge(
+                PlayerBasic(
+                    player_id=player_id,
+                    name=refs[player_id],
+                    status="Unknown/Runtime",
+                    status_source="runtime_hydrator",
+                )
+            )
+        self.target_session.flush()
