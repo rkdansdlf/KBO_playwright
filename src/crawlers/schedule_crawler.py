@@ -11,6 +11,7 @@ from playwright.async_api import Page
 from src.utils.team_codes import team_code_from_game_id_segment, resolve_team_code, normalize_kbo_game_id
 from src.utils.playwright_pool import AsyncPlaywrightPool
 from src.utils.compliance import compliance
+from src.utils.throttle import throttle
 
 
 class ScheduleCrawler:
@@ -79,6 +80,7 @@ class ScheduleCrawler:
             page = await pool.acquire()
             try:
                 for month in months:
+                    await throttle.wait()
                     month_games = await self._crawl_month(page, year, month, series_id=series_id)
                     all_games.extend(month_games)
                 return all_games
@@ -97,6 +99,7 @@ class ScheduleCrawler:
             if not await compliance.is_allowed(self.base_url):
                 print(f"[COMPLIANCE] Navigation to {self.base_url} aborted.")
                 return []
+            await throttle.wait()
             await page.goto(self.base_url, wait_until="networkidle", timeout=30000)
         
         # 1. 연도 및 월 선택 (Postback 발생 가능)
