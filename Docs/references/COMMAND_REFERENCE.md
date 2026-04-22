@@ -9,7 +9,8 @@
 3. [데이터베이스 관리](#데이터베이스-관리)
 4. [크롤링 명령어](#크롤링-명령어)
 5. [자동화 스크립트](#자동화-스크립트)
-6. [Supabase 동기화](#supabase-동기화)
+6. [데이터 무결성 및 유지보수](#데이터-무결성-및-유지보수)
+7. [Supabase 동기화](#supabase-동기화)
 7. [문제 해결](#문제-해결)
 8. [고급 사용법](#고급-사용법)
 
@@ -301,6 +302,48 @@ docker-compose up -d scheduler
 
 # 스케줄러 로그 확인
 docker-compose logs -f scheduler
+```
+
+---
+
+## 🛠️ 데이터 무결성 및 유지보수
+
+시스템의 데이터 일관성을 유지하고, 누락되거나 잘못된 상태의 데이터를 복구하는 도구들입니다.
+
+### 1. 전체 고아 데이터 백필 (Orphan Games Backfill)
+스탯 데이터만 있고 경기 정보(메타데이터)가 없는 '고아 데이터'를 대량으로 복구합니다. 취소된 경기를 감지하여 중복 시도를 방지하는 기능이 포함되어 있습니다.
+
+```bash
+# 기본 실행 (최대 1000건, 100개씩 배치 처리)
+./venv/bin/python3 scripts/crawling/run_full_orphan_backfill.py
+
+# 파라미터 지정 (대상 건수, 배치 크기)
+./venv/bin/python3 scripts/crawling/run_full_orphan_backfill.py 2000 50
+```
+
+### 2. 누락 선수 프로필 보충 (Missing Player Backfill)
+시즌 스탯에는 존재하지만 기본 프로필(`player_basic`)이 없는 선수 정보를 자동으로 수집합니다.
+
+```bash
+./venv/bin/python3 scripts/crawling/backfill_missing_players.py
+```
+
+### 3. 상태 지연 경기 수정 (Past Scheduled Fix)
+과거 날짜임에도 여전히 `SCHEDULED` 상태로 남아있는 경기들을 찾아 `UNRESOLVED_MISSING`으로 업데이트하여 자동 갱신을 유도합니다.
+
+```bash
+./venv/bin/python3 scripts/maintenance/fix_past_scheduled_games.py
+```
+
+### 4. 품질 게이트 (Quality Gate Audit)
+데이터베이스의 전반적인 무결성 지표를 점검합니다. 로컬 SQLite와 OCI 원격 DB 간의 일치 여부, 고아 데이터 현황, NULL 값 등을 종합적으로 체크합니다.
+
+```bash
+# 로컬 DB만 점검
+./venv/bin/python3 scripts/maintenance/quality_gate.py --skip-oci
+
+# 로컬 및 OCI 전체 점검 (권한 필요)
+./venv/bin/python3 scripts/maintenance/quality_gate.py
 ```
 
 ---

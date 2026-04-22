@@ -50,27 +50,33 @@ async def run_preview_batch(target_date: str, *, sync_to_oci: bool | None = None
             home_code = resolve_team_code(preview.get("home_team_name"), season_year)
 
             if away_code and home_code:
-                print(f"📊 Aggregating pregame context for {game_id}...")
-                preview["matchup_h2h"] = agg.get_head_to_head_summary(away_code, home_code, season_year, target_dt_obj)
-                preview["away_recent_l10"] = agg.get_team_l10_summary(away_code, target_dt_obj)
-                preview["home_recent_l10"] = agg.get_team_l10_summary(home_code, target_dt_obj)
-                preview["away_metrics"] = agg.get_team_recent_metrics(away_code, target_dt_obj)
-                preview["home_metrics"] = agg.get_team_recent_metrics(home_code, target_dt_obj)
-                preview["away_movements"] = agg.get_recent_player_movements(away_code, target_dt_obj)
-                preview["home_movements"] = agg.get_recent_player_movements(home_code, target_dt_obj)
-                preview["away_roster_changes"] = agg.get_daily_roster_changes(away_code, target_dt_obj)
-                preview["home_roster_changes"] = agg.get_daily_roster_changes(home_code, target_dt_obj)
+                try:
+                    print(f"📊 Aggregating pregame context for {game_id}...")
+                    preview["matchup_h2h"] = agg.get_head_to_head_summary(away_code, home_code, season_year, target_dt_obj)
+                    preview["away_recent_l10"] = agg.get_team_l10_summary(away_code, target_dt_obj)
+                    preview["home_recent_l10"] = agg.get_team_l10_summary(home_code, target_dt_obj)
+                    preview["away_metrics"] = agg.get_team_recent_metrics(away_code, target_dt_obj)
+                    preview["home_metrics"] = agg.get_team_recent_metrics(home_code, target_dt_obj)
+                    preview["away_movements"] = agg.get_recent_player_movements(away_code, target_dt_obj)
+                    preview["home_movements"] = agg.get_recent_player_movements(home_code, target_dt_obj)
+                    preview["away_roster_changes"] = agg.get_daily_roster_changes(away_code, target_dt_obj)
+                    preview["home_roster_changes"] = agg.get_daily_roster_changes(home_code, target_dt_obj)
 
-                series_context = agg.get_postseason_series_summary(away_code, home_code, season_year, target_dt_obj)
-                if series_context:
-                    preview["series_context"] = series_context
+                    series_context = agg.get_postseason_series_summary(away_code, home_code, season_year, target_dt_obj)
+                    if series_context:
+                        preview["series_context"] = series_context
+                except Exception as exc:
+                    print(f"⚠️ Context aggregation failed for {game_id}: {exc}")
 
             away_starter_id = preview.get("away_starter_id")
             home_starter_id = preview.get("home_starter_id")
-            if away_starter_id:
-                preview["away_starter_stats"] = agg.get_pitcher_season_stats(away_starter_id, season_year)
-            if home_starter_id:
-                preview["home_starter_stats"] = agg.get_pitcher_season_stats(home_starter_id, season_year)
+            try:
+                if away_starter_id:
+                    preview["away_starter_stats"] = agg.get_pitcher_season_stats(away_starter_id, season_year)
+                if home_starter_id:
+                    preview["home_starter_stats"] = agg.get_pitcher_season_stats(home_starter_id, season_year)
+            except Exception as exc:
+                print(f"⚠️ Pitcher stats aggregation failed for {game_id}: {exc}")
 
             if save_pregame_lineups(preview):
                 saved_ids.append(game_id)

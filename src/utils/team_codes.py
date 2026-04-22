@@ -3,6 +3,7 @@ Utility helpers for mapping KBO team names to canonical short codes.
 """
 from __future__ import annotations
 
+import re
 from typing import Optional
 
 # Canonical KBO short codes (aligned with modern franchise IDs)
@@ -85,6 +86,13 @@ TEAM_NAME_TO_CODE = {
     "체코": "CZ",
 }
 
+KBO_LEGACY_TECHNICAL_CODE = {
+    "SSG": "SK",
+    "KH": "WO",
+    "DB": "OB",
+    "KIA": "HT",
+}
+
 def resolve_team_code(name: Optional[str], season_year: Optional[int] = None) -> Optional[str]:
     if not name:
         return None
@@ -99,6 +107,11 @@ def resolve_team_code(name: Optional[str], season_year: Optional[int] = None) ->
             return resolved
             
     return raw_code
+
+
+def resolve_kbo_legacy_team_code(name: Optional[str], season_year: Optional[int] = None) -> Optional[str]:
+    code = resolve_team_code(name, season_year)
+    return KBO_LEGACY_TECHNICAL_CODE.get(code or "", code)
 
 
 GAME_ID_SEGMENT_TO_CODE = {
@@ -141,10 +154,85 @@ def team_code_from_game_id_segment(segment: Optional[str], season_year: Optional
             
     return mapped
 
+def normalize_kbo_game_id(game_id: str) -> str:
+    """
+    Normalize KBO game IDs to always use legacy franchise codes (SK, WO, OB, HT).
+    
+    Some KBO internal APIs (like GetKboGameList) have started returning modern codes
+    (SSG, KH, DB, KIA) in the G_ID field for 2026, while the public GameCenter 
+    HTML links and boxscore parameters still expect legacy codes.
+    
+    Format: YYYYMMDD + AWAY(2-3) + HOME(2-3) + DH(0-2)
+    Example: 20260418SSGNC0 -> 20260418SKNC0
+    """
+    if not game_id or len(game_id) < 12:
+        return game_id
+
+    raw = str(game_id).strip().upper()
+    match = re.match(r"^(\d{8})([A-Z]+)(\d)$", raw)
+    if not match:
+        return game_id
+
+    date_part, team_part, dh = match.groups()
+    
+    # IMPORTANT: Only normalize for 2024 and later.
+    # Legacy data (2001-2023) in the database often uses modern or mixed codes 
+    # and shouldn't be forcefully normalized to legacy codes which might not 
+    # match existing records.
+    try:
+        year = int(date_part[:4])
+        if year < 2024:
+            return game_id
+    except ValueError:
+        return game_id
+
+    away_segment, home_segment = _split_game_id_team_part(team_part)
+    if not away_segment or not home_segment:
+        return game_id
+
+    away_legacy = KBO_LEGACY_TECHNICAL_CODE.get(away_segment, away_segment)
+    home_legacy = KBO_LEGACY_TECHNICAL_CODE.get(home_segment, home_segment)
+
+    return f"{date_part}{away_legacy}{home_legacy}{dh}"
+
+
+KBO_GAME_ID_TEAM_CODES = tuple(
+    sorted(
+        {
+            *GAME_ID_SEGMENT_TO_CODE.keys(),
+            *GAME_ID_SEGMENT_TO_CODE.values(),
+            "SSG",
+            "KIA",
+            "KH",
+            "DB",
+            "SK",
+            "WO",
+            "OB",
+            "HT",
+        },
+        key=lambda code: (-len(code), code),
+    )
+)
+
+
+def _split_game_id_team_part(team_part: str) -> tuple[Optional[str], Optional[str]]:
+    """Split AWAY+HOME team code suffix using known KBO game-id code tokens."""
+    for away_code in KBO_GAME_ID_TEAM_CODES:
+        if not team_part.startswith(away_code):
+            continue
+        home_code = team_part[len(away_code):]
+        if home_code in KBO_GAME_ID_TEAM_CODES:
+            return away_code, home_code
+    return None, None
+
 # Standard codes for the 10 current franchises
 STANDARD_TEAM_CODES = {"HH", "KIA", "KT", "LG", "LT", "NC", "DB", "SSG", "SS", "KH"}
 
-__all__ = ["resolve_team_code", "team_code_from_game_id_segment", "TEAM_NAME_TO_CODE", "STANDARD_TEAM_CODES"]
-
-__all__ = ["resolve_team_code", "team_code_from_game_id_segment", "TEAM_NAME_TO_CODE", "STANDARD_TEAM_CODES"]
-
+__all__ = [
+    "resolve_team_code",
+    "team_code_from_game_id_segment",
+    "resolve_kbo_legacy_team_code",
+    "TEAM_NAME_TO_CODE",
+    "STANDARD_TEAM_CODES",
+    "normalize_kbo_game_id",
+]

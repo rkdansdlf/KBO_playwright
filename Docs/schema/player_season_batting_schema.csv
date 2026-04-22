@@ -1,6 +1,6 @@
 column_name,type,is_primary_key,foreign_key
 id,INTEGER,True,
-player_id,INTEGER,False,
+player_id,INTEGER,False,player_basic(player_id)
 season,INTEGER,False,
 league,VARCHAR(16),False,
 level,VARCHAR(16),False,

@@ -7,7 +7,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 import src.repositories.game_repository as game_repository
-from src.models.game import Game, GameEvent, GamePlayByPlay
+from src.models.game import Game, GameEvent, GameIdAlias, GamePlayByPlay
 from src.sources.relay.base import NormalizedRelayResult, read_manifest_entries
 from src.sources.relay.importer import ImportRelayAdapter
 from src.sources.relay.kbo import KboRelayAdapter
@@ -17,6 +17,7 @@ from src.sources.relay.orchestrator import RelayRecoveryOrchestrator
 def _build_session_factory():
     engine = create_engine("sqlite:///:memory:")
     Game.__table__.create(bind=engine)
+    GameIdAlias.__table__.create(bind=engine)
     GamePlayByPlay.__table__.create(bind=engine)
     GameEvent.__table__.create(bind=engine)
     return sessionmaker(bind=engine, autoflush=False, autocommit=False, expire_on_commit=False)

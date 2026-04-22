@@ -53,7 +53,8 @@ def collect_metrics(session_or_conn) -> Dict[str, int]:
         "past_missing_runs": """
             SELECT COUNT(*) FROM game
             WHERE (home_score IS NULL OR away_score IS NULL)
-              AND game_date <= CURRENT_DATE
+              AND game_date < CURRENT_DATE
+              AND COALESCE(game_status, '') NOT IN ('CANCELLED', 'POSTPONED')
         """,
         "batting_null_player_id": "SELECT COUNT(*) FROM game_batting_stats WHERE player_id IS NULL",
         "pitching_null_player_id": "SELECT COUNT(*) FROM game_pitching_stats WHERE player_id IS NULL",
@@ -83,7 +84,7 @@ def collect_metrics(session_or_conn) -> Dict[str, int]:
         )
         metrics["past_scheduled"] = int(
             session_or_conn.execute(
-                text("SELECT COUNT(*) FROM game WHERE game_status = 'SCHEDULED' AND game_date <= CURRENT_DATE")
+                text("SELECT COUNT(*) FROM game WHERE game_status = 'SCHEDULED' AND game_date < CURRENT_DATE")
             ).scalar()
             or 0
         )
@@ -100,7 +101,8 @@ def fetch_past_missing_game_ids(session_or_conn) -> Set[str]:
             SELECT game_id
             FROM game
             WHERE (home_score IS NULL OR away_score IS NULL)
-              AND game_date <= CURRENT_DATE
+              AND game_date < CURRENT_DATE
+              AND COALESCE(game_status, '') NOT IN ('CANCELLED', 'POSTPONED')
             """
         )
     ).fetchall()
@@ -196,25 +198,38 @@ def run_quality_gate(
     output_dir: Path,
     oci_url: str | None,
     skip_oci: bool = False,
+    oci_only: bool = False,
 ) -> Dict[str, Any]:
     output_dir.mkdir(parents=True, exist_ok=True)
     stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     baseline = load_baseline(baseline_path)
 
-    with SessionLocal() as local_session:
-        local_metrics = collect_metrics(local_session)
-        local_missing_ids = fetch_past_missing_game_ids(local_session)
-
-    if skip_oci:
-        oci_metrics = dict(local_metrics)
-        oci_missing_ids = set(local_missing_ids)
-    else:
+    if oci_only:
         if not oci_url:
-            raise RuntimeError("OCI_DB_URL is required unless --skip-oci is used")
+            raise RuntimeError("OCI_DB_URL is required for --oci-only")
         oci_engine = create_engine(oci_url)
         with oci_engine.connect() as oci_conn:
             oci_metrics = collect_metrics(oci_conn)
             oci_missing_ids = fetch_past_missing_game_ids(oci_conn)
+        
+        # In oci_only mode, we treat local as identical to OCI so parity checks pass
+        local_metrics = dict(oci_metrics)
+        local_missing_ids = set(oci_missing_ids)
+    else:
+        with SessionLocal() as local_session:
+            local_metrics = collect_metrics(local_session)
+            local_missing_ids = fetch_past_missing_game_ids(local_session)
+
+        if skip_oci:
+            oci_metrics = dict(local_metrics)
+            oci_missing_ids = set(local_missing_ids)
+        else:
+            if not oci_url:
+                raise RuntimeError("OCI_DB_URL is required unless --skip-oci is used")
+            oci_engine = create_engine(oci_url)
+            with oci_engine.connect() as oci_conn:
+                oci_metrics = collect_metrics(oci_conn)
+                oci_missing_ids = fetch_past_missing_game_ids(oci_conn)
 
     local_rows = list(local_metrics.items())
     oci_rows = list(oci_metrics.items())
@@ -255,7 +270,12 @@ def main() -> None:
     parser.add_argument("--output-dir", default="data", help="Directory to write output snapshots")
     parser.add_argument("--oci-url", default=None, help="Override OCI DB URL")
     parser.add_argument("--skip-oci", action="store_true", help="Run gate against local DB only")
+    parser.add_argument("--oci-only", action="store_true", help="Run gate against OCI DB only (useful for CI)")
     args = parser.parse_args()
+
+    if args.skip_oci and args.oci_only:
+        print("Error: cannot use both --skip-oci and --oci-only")
+        sys.exit(1)
 
     load_dotenv()
     oci_url = args.oci_url or os.getenv("OCI_DB_URL")
@@ -264,6 +284,7 @@ def main() -> None:
         output_dir=Path(args.output_dir),
         oci_url=oci_url,
         skip_oci=args.skip_oci,
+        oci_only=args.oci_only,
     )
 
     print("✅ Quality gate finished")

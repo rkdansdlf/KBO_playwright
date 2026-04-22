@@ -91,15 +91,15 @@ jobs:
             ;;
         esac
 
-      - name: Notify Slack on Failure
-        if: failure()
-        env:
-          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
-        run: |
-          MESSAGE="❌ *KBO Automation Phase Failed* (${{ github.event.inputs.phase }})\nTarget Date: ${{ steps.target.outputs.TARGET_DATE }}\nRepo: ${{ github.repository }}\nWorkflow: ${{ github.workflow }}\n<https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Run Details>"
-          
-          if [ -n "$SLACK_WEBHOOK_URL" ]; then
-            curl -X POST -H 'Content-type: application/json' --data "{\"text\": \"${MESSAGE}\"}" $SLACK_WEBHOOK_URL
-          else
-            echo "⚠️ SLACK_WEBHOOK_URL not set, skipping notification."
-          fi
+    - name: Notify Slack on Failure
+      if: failure()
+      env:
+        SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+      run: |
+        MESSAGE="❌ *KBO Automation Phase Failed* (${{ github.event.inputs.phase }})\nTarget Date: ${{ steps.target.outputs.TARGET_DATE }}\nRepo: ${{ github.repository }}\nWorkflow: ${{ github.workflow }}\n<https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Run Details>"
+
+        if [ -n "$SLACK_WEBHOOK_URL" ]; then
+          curl -X POST -H 'Content-type: application/json' --data "{\"text\": \"${MESSAGE}\"}" $SLACK_WEBHOOK_URL
+        else
+          echo "⚠️ SLACK_WEBHOOK_URL not set, skipping notification."
+        fi
