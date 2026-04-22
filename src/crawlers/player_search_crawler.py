@@ -1,9 +1,7 @@
 """
 Player Search Crawler
-Collects comprehensive player information from KBO Player Search page
-Source: https://www.koreabaseball.com/Player/Search.aspx?searchWord=%25
-
-Based on Docs/PLAYERID_CRAWLING.md design
+Collects comprehensive player information from KBO Player Search page.
+Now refactored into a class as expected by GameDetailCrawler.
 """
 import asyncio
 import os
@@ -24,630 +22,268 @@ SEARCH_URL = "https://www.koreabaseball.com/Player/Search.aspx"
 SEARCH_INPUT = "input[id$='txtSearchPlayerName']"
 SEARCH_BTN = "input[id$='btnSearch']"
 TABLE_ROWS = "table.tEx tbody tr"
-NEXT_BTN = "a[id$='ucPager_btnNext']"
 HFPAGE = "input[id$='hfPage']"
 PAGE_NUMBER_BTNS = "a[id*='btnNo'], span[id*='btnNo']"
 PAGER_CONTAINER = "div.paging"
 PAGER_NEXT_BTNS = "a[id$='btnNext'], a:has(img[alt='다음']), a:has-text('다음'), a[id$='btnNext10']"
 
-
-# Crawler settings
 REQUEST_DELAY_SEC = 1.0
 TIMEOUT_MS = 15000
 
-# Patterns
 POSTBACK_RE = re.compile(r"__doPostBack\('([^']+)'\s*,\s*'([^']*)'\)")
 INITIAL_CH_RE = re.compile(r"^[가-힣A-Z]$")
+NAME_CLEAN_RE = re.compile(r'[^가-힣a-zA-Z]')
+
 POSTBACK_EVAL = """
-(target, arg) => {
-  if (typeof window.__doPostBack === 'function') {
-    window.__doPostBack(target, arg || '');
-    return true;
-  }
+([target, arg]) => {
   const form = document.querySelector('form');
   if (!form) return false;
-  const et = form.querySelector("input[name='__EVENTTARGET']");
-  const ea = form.querySelector("input[name='__EVENTARGUMENT']");
-  if (et) et.value = target;
-  if (ea) ea.value = arg || '';
+  let et = form.querySelector("input[name='__EVENTTARGET']");
+  let ea = form.querySelector("input[name='__EVENTARGUMENT']");
+  if (!et) {
+    et = document.createElement('input');
+    et.type = 'hidden';
+    et.name = '__EVENTTARGET';
+    form.appendChild(et);
+  }
+  if (!ea) {
+    ea = document.createElement('input');
+    ea.type = 'hidden';
+    ea.name = '__EVENTARGUMENT';
+    form.appendChild(ea);
+  }
+  et.value = target;
+  ea.value = arg || '';
   form.submit();
   return true;
 }
 """
 
-
 @dataclass
 class PlayerRow:
-    """Data structure for one player from search results"""
     player_id: int
     uniform_no: Optional[str]
     name: str
     team: Optional[str]
     position: Optional[str]
-    birth_date: Optional[str]   # Original string format
+    birth_date: Optional[str]
     height_cm: Optional[int]
     weight_kg: Optional[int]
-    career: Optional[str]        # School/origin (출신교)
+    career: Optional[str]
 
+class PlayerSearchCrawler:
+    def __init__(
+        self,
+        pool: Optional[AsyncPlaywrightPool] = None,
+        request_delay: float = REQUEST_DELAY_SEC,
+        headless: bool = True,
+    ):
+        self.pool = pool
+        self.request_delay = request_delay
+        self.headless = headless
 
-def _parse_height_weight(s: str) -> tuple[Optional[int], Optional[int]]:
-    """
-    Parse height and weight from strings like:
-    - "180cm/80kg"
-    - "180cm / 80kg"
-    - "182cm, 76kg" (comma separated)
-    - "180/80"
-    - "-" (returns None, None)
-    """
-    if not s:
-        return None, None
+    async def search_player(self, player_name: str) -> List[dict]:
+        """Searches for a player and returns matching profiles as dicts."""
+        clean_name = NAME_CLEAN_RE.sub('', player_name)
+        if not clean_name: return []
 
-    # Remove spaces for easier parsing
-    s_clean = s.replace(" ", "")
+        active_pool = self.pool or AsyncPlaywrightPool(max_pages=1, headless=self.headless)
+        owns_pool = self.pool is None
+        if owns_pool: await active_pool.start()
 
-    # Try pattern with comma: "182cm,76kg"
-    m = re.search(r"(\d{2,3})cm[,/](\d{2,3})kg", s_clean, re.IGNORECASE)
-    if m:
-        h = int(m.group(1))
-        w = int(m.group(2))
-        # Sanity check
-        if 140 <= h <= 220 and 45 <= w <= 150:
-            return h, w
-
-    # Fallback: more flexible pattern
-    m = re.search(r"(\d{2,3})\s*cm?[,/ ]?\s*(\d{2,3})\s*kg?", s, re.IGNORECASE)
-    if m:
-        h = int(m.group(1))
-        w = int(m.group(2))
-        # Sanity check
-        if 140 <= h <= 220 and 45 <= w <= 150:
-            return h, w
-
-    return None, None
-
-
-def _extract_player_id(href: Optional[str]) -> Optional[int]:
-    """Extract playerId from URL like '...?playerId=12345'"""
-    if not href:
-        return None
-
-    try:
-        q = parse_qs(urlparse(href).query)
-        pid = q.get("playerId", [None])[0]
-        if pid:
-            # Remove commas and any non-digit characters
-            pid_clean = re.sub(r'[^\d]', '', str(pid))
-            return int(pid_clean) if pid_clean.isdigit() else None
-    except Exception:
-        pass
-
-    # Fallback regex
-    try:
-        m = re.search(r"playerId=([0-9,]+)", href)
-        if m:
-            # Remove commas from matched string
-            pid_clean = m.group(1).replace(',', '')
-            return int(pid_clean) if pid_clean.isdigit() else None
-    except Exception:
-        pass
-
-    return None
-
-
-async def _collect_page_rows(page: Page) -> List[PlayerRow]:
-    """
-    Extract player data from current page table.
-
-    Table structure (td indices):
-    0 = 등번호 (uniform number)
-    1 = 선수명 (link with playerId)
-    2 = 팀명
-    3 = 포지션
-    4 = 생년월일
-    5 = 체격 (키/몸무게)
-    6 = 출신교
-    """
-    results: List[PlayerRow] = []
-
-    payload = await page.evaluate(
-        """
-        (rowsSelector) => {
-            const rows = Array.from(document.querySelectorAll(rowsSelector));
-            return rows.map((row) => {
-                const cells = Array.from(row.querySelectorAll('td')).map(td => td.innerText.trim());
-                const link = row.querySelector('td:nth-child(2) a');
-                return {
-                    cells,
-                    linkText: link ? link.innerText.trim() : null,
-                    linkHref: link ? link.getAttribute('href') : null,
-                };
-            });
-        }
-        """,
-        TABLE_ROWS,
-    )
-
-    for row in payload or []:
-        cells = row.get("cells") or []
-        if len(cells) < 7:
-            continue
-
-        uniform_no = cells[0] or None
-        name = row.get("linkText") or (cells[1] if len(cells) > 1 else None)
-        href = row.get("linkHref")
-        player_id = _extract_player_id(href)
-        if player_id is None or not name:
-            continue
-
-        team = cells[2] if len(cells) > 2 else None
-        position = cells[3] if len(cells) > 3 else None
-        birth = cells[4] if len(cells) > 4 else None
-        body = cells[5] if len(cells) > 5 else ""
-        career = cells[6] if len(cells) > 6 else None
-
-        h, w = _parse_height_weight(body)
-
-        results.append(
-            PlayerRow(
-                player_id=player_id,
-                uniform_no=uniform_no if uniform_no != "-" else None,
-                name=name,
-                team=team if team != "-" else None,
-                position=position if position != "-" else None,
-                birth_date=birth if birth and birth != "-" else None,
-                height_cm=h,
-                weight_kg=w,
-                career=career if career != "-" else None,
-            )
-        )
-
-    return results
-
-
-async def _get_hfpage_value(page: Page) -> str:
-    """Return the combined values of all hfPage hidden fields, empty string on failure."""
-    try:
-        value = await page.evaluate(
-            "(selector) => Array.from(document.querySelectorAll(selector)).map(el => el.value || '').join('|')",
-            HFPAGE,
-        )
-        if not value:
-            return ""
-        if "|" in value:
-            for part in value.split("|"):
-                if part:
-                    return part
-        return value
-    except Exception:
-        return ""
-
-
-async def _click_postback_link(page: Page, locator: str) -> bool:
-    """Click link matching locator via postback when available."""
-    el = page.locator(locator)
-    try:
-        if await el.count() == 0:
-            return False
-        target_el = el.first
-    except Exception:
-        return False
-
-    return await _trigger_postback(page, target_el)
-
-
-async def _trigger_postback(page: Page, anchor: Locator) -> bool:
-    """Trigger a postback for the given anchor, falling back to a regular click."""
-    try:
-        href = await anchor.get_attribute("href")
-    except Exception:
-        href = None
-
-    if href and "javascript:__doPostBack" in href:
-        match = POSTBACK_RE.search(href)
-        if match:
-            target = match.group(1)
-            argument = match.group(2) if len(match.groups()) > 1 else ""
+        try:
+            page = await active_pool.acquire()
             try:
-                success = await page.evaluate(POSTBACK_EVAL, target, argument)
-                if success:
-                    return True
-            except Exception:
-                pass
-
-    try:
-        try:
-            await anchor.scroll_into_view_if_needed()
-        except Exception:
-            pass
-        await anchor.click(timeout=5000)
-        return True
-    except Exception:
-        return False
-
-
-async def _list_initial_links(page: Page) -> List[Locator]:
-    """Return locators for initial filters composed of a single Korean/Latin character."""
-    links = page.locator("a")
-    total = await links.count()
-    result = []
-    for idx in range(total):
-        candidate = links.nth(idx)
-        try:
-            text = (await candidate.inner_text()).strip()
-        except Exception:
-            continue
-        if not INITIAL_CH_RE.match(text):
-            continue
-        try:
-            href = await candidate.get_attribute("href")
-        except Exception:
-            continue
-        if href and "__doPostBack" in href:
-            result.append(candidate)
-    return result
-
-
-async def _wait_hfpage_change(page: Page, previous: str, timeout: int = TIMEOUT_MS) -> None:
-    """Wait until the hfPage hidden field updates to a different value."""
-    await page.wait_for_function(
-        """(selector, prev) => {
-            const values = Array.from(document.querySelectorAll(selector))
-                .map(el => (el && typeof el.value === 'string') ? el.value : '')
-                .filter(Boolean);
-            const current = values.length > 0 ? values[0] : '';
-            return current && current !== prev;
-        }""",
-        (HFPAGE, previous),
-        timeout=timeout,
-    )
-
-
-async def _wait_first_row_change(page: Page, previous: str, timeout: int = TIMEOUT_MS) -> None:
-    """Fallback wait that checks for first row name change."""
-    await page.wait_for_function(
-        """(rowsSelector, prev) => {
-            const row = document.querySelector(rowsSelector);
-            if (!row) {
-                return false;
-            }
-            const link = row.querySelector('td:nth-child(2) a');
-            if (!link) {
-                return false;
-            }
-            const text = (link.textContent || '').trim();
-            if (!text) {
-                return false;
-            }
-            return text !== prev;
-        }""",
-        (TABLE_ROWS, previous or "__EMPTY__"),
-        timeout=timeout,
-    )
-
-
-async def _get_first_player_name(page: Page) -> str:
-    """Return the first player's name on the current table page."""
-    try:
-        locator = page.locator(TABLE_ROWS).first.locator("td").nth(1).locator("a")
-        text = await locator.inner_text()
-        return text.strip()
-    except Exception:
-        return ""
-
-
-async def _wait_updatepanel_idle(page: Page, timeout: int = TIMEOUT_MS) -> None:
-    """Wait for ASP.NET UpdatePanel postback completion."""
-    await page.wait_for_function(
-        """() => {
-            const sys = window.Sys;
-            if (!sys || !sys.WebForms || !sys.WebForms.PageRequestManager) {
-                return true;
-            }
-            const mgr = sys.WebForms.PageRequestManager.getInstance();
-            if (!mgr) {
-                return true;
-            }
-            return !mgr.get_isInAsyncPostBack();
-        }""",
-        timeout=timeout,
-    )
-
-
-async def _wait_after_navigation(page: Page, prev_hf: str, first_before: str, request_delay: float) -> bool:
-    """Wait for navigation signals and ensure table is ready."""
-    changed = False
-    try:
-        await _wait_hfpage_change(page, prev_hf, timeout=TIMEOUT_MS)
-        changed = True
-    except Exception:
-        try:
-            await _wait_first_row_change(page, first_before, timeout=TIMEOUT_MS)
-            changed = True
-        except Exception:
-            changed = False
-
-    await page.wait_for_selector(TABLE_ROWS, timeout=TIMEOUT_MS)
-    await asyncio.sleep(request_delay)
-    return changed
-
-
-async def _paginate_current_tab(page: Page, request_delay: float) -> List[PlayerRow]:
-    """Enumerate pages in the current initial tab until pagination is exhausted."""
-    collected: List[PlayerRow] = []
-    seen: Set[int] = set()
-
-    async def collect_current() -> List[PlayerRow]:
-        rows = await _collect_page_rows(page)
-        fresh: List[PlayerRow] = []
-        for row in rows:
-            if row.player_id in seen:
-                continue
-            seen.add(row.player_id)
-            fresh.append(row)
-        return fresh
-
-    collected.extend(await collect_current())
-
-    while True:
-        pager = page.locator(PAGER_CONTAINER).last
-        if await pager.count() == 0:
-            break
-
-        number_locators = pager.locator(":is(a, span)").filter(
-            has_text=re.compile(r"^\d+$")
-        )
-        total_numbers = await number_locators.count()
-
-        if total_numbers == 0:
-            fallback_numbers = pager.locator(PAGE_NUMBER_BTNS)
-            fallback_count = await fallback_numbers.count()
-            if fallback_count > 0:
-                number_locators = fallback_numbers
-                total_numbers = fallback_count
-
-        # If still no page number buttons found, try "Next" button
-        if total_numbers == 0:
-            next_candidates = pager.locator(PAGER_NEXT_BTNS)
-            next_anchor = None
-            next_count = await next_candidates.count()
-            for idx in range(next_count):
-                candidate = next_candidates.nth(idx)
+                await page.goto(SEARCH_URL, wait_until="domcontentloaded")
+                await page.locator(SEARCH_INPUT).fill(clean_name)
+                await page.locator(SEARCH_BTN).click()
                 try:
-                    tag_name = (await candidate.evaluate("el => el.tagName")).lower()
+                    await page.wait_for_selector(TABLE_ROWS, timeout=5000)
                 except Exception:
-                    tag_name = ""
-                if tag_name == "a":
-                    next_anchor = candidate
-                    break
-
-            if next_anchor is None:
-                break
-
-            prev_value = await _get_hfpage_value(page)
-            first_before = await _get_first_player_name(page)
-            if not await _trigger_postback(page, next_anchor):
-                break
-
-            await _wait_updatepanel_idle(page, timeout=TIMEOUT_MS)
-            changed = await _wait_after_navigation(page, prev_value, first_before, request_delay)
-            fresh_rows = await collect_current()
-            if fresh_rows:
-                collected.extend(fresh_rows)
-                continue
-            if changed:
-                continue
-            break
-
-        current_index = 0
-        found_current = False
-        for idx in range(total_numbers):
-            classes = (await number_locators.nth(idx).get_attribute("class") or "").lower()
-            if "on" in classes:
-                current_index = idx
-                found_current = True
-                break
-        if not found_current:
-            hf_snapshot = await _get_hfpage_value(page)
-            if hf_snapshot:
-                for idx in range(total_numbers):
-                    try:
-                        label = (await number_locators.nth(idx).inner_text()).strip()
-                    except Exception:
-                        continue
-                    if label == hf_snapshot:
-                        current_index = idx
-                        break
-
-        moved = False
-
-        for target_idx in range(current_index + 1, total_numbers):
-            refreshed_pager = page.locator(PAGER_CONTAINER).last
-            # Use same selector as initial search (text-based priority)
-            refreshed_numbers = refreshed_pager.locator(":is(a, span)").filter(
-                has_text=re.compile(r"^\d+$")
-            )
-            refreshed_count = await refreshed_numbers.count()
-            if refreshed_count == 0:
-                refreshed_numbers = refreshed_pager.locator(PAGE_NUMBER_BTNS)
-                refreshed_count = await refreshed_numbers.count()
-
-            if target_idx >= refreshed_count:
-                break
-            target = refreshed_numbers.nth(target_idx)
-
-            try:
-                tag_name = (await target.evaluate("el => el.tagName")).lower()
-            except Exception:
-                tag_name = ""
-            if tag_name != "a":
-                continue
-
-            prev_value = await _get_hfpage_value(page)
-            first_before = await _get_first_player_name(page)
-
-            clicked = await _trigger_postback(page, target)
-            if not clicked:
-                continue
-
-            await _wait_updatepanel_idle(page, timeout=TIMEOUT_MS)
-            changed = await _wait_after_navigation(page, prev_value, first_before, request_delay)
-            fresh_rows = await collect_current()
-            if fresh_rows:
-                collected.extend(fresh_rows)
-                moved = True
-                continue
-
-            if not changed:
-                continue
-
-            moved = True
-
-        prev_value = await _get_hfpage_value(page)
-        first_before = await _get_first_player_name(page)
-
-        refreshed_pager = page.locator(PAGER_CONTAINER).last
-        next_candidates = refreshed_pager.locator(PAGER_NEXT_BTNS)
-        clicked_next = False
-        count_next = await next_candidates.count()
-        for idx in range(count_next):
-            candidate = next_candidates.nth(idx)
-            # ensure anchor
-            try:
-                tag_name = (await candidate.evaluate("el => el.tagName")).lower()
-            except Exception:
-                tag_name = ""
-            if tag_name != "a":
-                continue
-            if await _trigger_postback(page, candidate):
-                clicked_next = True
-                break
-
-        if not clicked_next:
-            break
-
-        await _wait_updatepanel_idle(page, timeout=TIMEOUT_MS)
-        changed = await _wait_after_navigation(page, prev_value, first_before, request_delay)
-        fresh_rows = await collect_current()
-        if fresh_rows:
-            collected.extend(fresh_rows)
-            moved = True
-        elif not changed:
-            break
-        else:
-            moved = True
-
-        if not moved:
-            break
-
-    return collected
-
-
-async def crawl_all_players(
-    max_pages: Optional[int] = None,
-    headless: bool = False,
-    slow_mo=200,
-    request_delay: float = REQUEST_DELAY_SEC,
-    pool: Optional[AsyncPlaywrightPool] = None,
-) -> List[PlayerRow]:
-    """
-    Crawl all players from KBO search page, traversing all initial filters and pagination.
-
-    Args:
-        max_pages: Maximum number of result pages to include (approx., 20 rows per page)
-        headless: Run browser in headless mode
-        request_delay: Delay between page interactions (seconds)
-
-    Returns:
-        List of PlayerRow objects
-    """
-    active_pool = pool or AsyncPlaywrightPool(max_pages=1, headless=headless)
-    owns_pool = pool is None
-    await active_pool.start()
-    try:
-        page = await active_pool.acquire()
-        try:
-            # 1. Navigate to search page
-            await page.goto(SEARCH_URL, wait_until="domcontentloaded")
-            await page.wait_for_timeout(2000)
-
-            # 2. Enter '%' in search input to get all players
-            search_input = page.locator(SEARCH_INPUT)
-            await search_input.fill("%")
-
-            # 3. Click search button
-            search_btn = page.locator(SEARCH_BTN)
-            await search_btn.click()
-
-            # 4. Wait for results table and pagination to appear
-            await page.wait_for_selector(TABLE_ROWS, timeout=TIMEOUT_MS)
-            await page.wait_for_selector(PAGER_CONTAINER, timeout=TIMEOUT_MS)
-
-            all_rows: List[PlayerRow] = []
-            seen_ids: Set[int] = set()
-            limit = max_pages * 20 if max_pages is not None else None
-
-            def merge_rows(rows: List[PlayerRow]) -> bool:
-                for row in rows:
-                    if row.player_id in seen_ids:
-                        continue
-                    seen_ids.add(row.player_id)
-                    all_rows.append(row)
-                    if limit is not None and len(all_rows) >= limit:
-                        return True
-                return False
-
-            initial_links = await _list_initial_links(page)
-
-            if not initial_links:
-                merge_rows(await _paginate_current_tab(page, request_delay))
-                return all_rows
-            else:
-                if merge_rows(await _paginate_current_tab(page, request_delay)) and limit is not None:
-                    return all_rows
-                index = 0
-                while True:
-                    current_links = await _list_initial_links(page)
-                    if index >= len(current_links):
-                        break
-
-                    link = current_links[index]
-                    prev_value = await _get_hfpage_value(page)
-                    first_before = await _get_first_player_name(page)
-
-                    clicked = await _trigger_postback(page, link)
-                    if not clicked:
-                        index += 1
-                        continue
-
-                    await _wait_updatepanel_idle(page, timeout=TIMEOUT_MS)
-                    await _wait_after_navigation(page, prev_value, first_before, request_delay)
-
-                    if merge_rows(await _paginate_current_tab(page, request_delay)) and limit is not None:
-                        return all_rows
-
-                    index += 1
-
-            return all_rows
+                    return []
+                rows = await self._paginate_current_tab(page)
+                return [self.row_to_dict(r) for r in rows]
+            finally:
+                await active_pool.release(page)
         finally:
-            await active_pool.release(page)
-    finally:
-        if owns_pool:
-            await active_pool.close()
+            if owns_pool: await active_pool.close()
+
+    async def crawl_all_players(self, max_pages: Optional[int] = None) -> List[PlayerRow]:
+        active_pool = self.pool or AsyncPlaywrightPool(max_pages=1, headless=self.headless)
+        owns_pool = self.pool is None
+        if owns_pool: await active_pool.start()
+        try:
+            page = await active_pool.acquire()
+            try:
+                await page.goto(SEARCH_URL, wait_until="domcontentloaded")
+                await page.locator(SEARCH_INPUT).fill("%")
+                await page.locator(SEARCH_BTN).click()
+                await page.wait_for_selector(TABLE_ROWS, timeout=TIMEOUT_MS)
+
+                all_rows: List[PlayerRow] = []
+                seen_ids: Set[int] = set()
+                limit = max_pages * 20 if max_pages is not None else None
+
+                initial_links = await self._list_initial_links(page)
+                if not initial_links:
+                    await self._merge_rows(page, all_rows, seen_ids, limit)
+                else:
+                    if await self._merge_rows(page, all_rows, seen_ids, limit): return all_rows
+                    index = 0
+                    while True:
+                        current_links = await self._list_initial_links(page)
+                        if index >= len(current_links): break
+                        prev_v = await self._get_hfpage_value(page)
+                        first_b = await self._get_first_player_name(page)
+                        if not await self._trigger_postback(page, current_links[index]):
+                            index += 1; continue
+                        await self._wait_after_nav(page, prev_v, first_b)
+                        if await self._merge_rows(page, all_rows, seen_ids, limit): return all_rows
+                        index += 1
+                return all_rows
+            finally:
+                await active_pool.release(page)
+        finally:
+            if owns_pool: await active_pool.close()
+
+    async def _merge_rows(self, page, all_rows, seen_ids, limit):
+        rows = await self._paginate_current_tab(page)
+        for r in rows:
+            if r.player_id not in seen_ids:
+                seen_ids.add(r.player_id)
+                all_rows.append(r)
+                if limit and len(all_rows) >= limit: return True
+        return False
+
+    async def _paginate_current_tab(self, page: Page) -> List[PlayerRow]:
+        collected: List[PlayerRow] = []
+        seen: Set[int] = set()
+
+        async def add_current():
+            for r in await self._collect_page_rows(page):
+                if r.player_id not in seen:
+                    seen.add(r.player_id); collected.append(r)
+
+        await add_current()
+        while True:
+            pager = page.locator(PAGER_CONTAINER).last
+            if await pager.count() == 0: break
+            nums = pager.locator(":is(a, span)").filter(has_text=re.compile(r"^\d+$"))
+            count = await nums.count()
+            if count == 0: break
+
+            curr_idx = 0
+            for i in range(count):
+                if "on" in (await nums.nth(i).get_attribute("class") or "").lower():
+                    curr_idx = i; break
+
+            moved = False
+            for i in range(curr_idx + 1, count):
+                target = page.locator(PAGER_CONTAINER).last.locator(":is(a, span)").filter(has_text=re.compile(r"^\d+$")).nth(i)
+                if (await target.evaluate("el => el.tagName")).lower() != "a": continue
+                prev_v = await self._get_hfpage_value(page)
+                first_b = await self._get_first_player_name(page)
+                if await self._trigger_postback(page, target):
+                    await self._wait_after_nav(page, prev_v, first_b)
+                    await add_current(); moved = True
+
+            # Next block
+            next_btn = page.locator(PAGER_CONTAINER).last.locator(PAGER_NEXT_BTNS).first
+            btn_count = await next_btn.count()
+            print(f"DEBUG: next_btn count: {btn_count}")
+            if btn_count > 0 and (await next_btn.evaluate("el => el.tagName")).lower() == "a":
+                prev_v = await self._get_hfpage_value(page)
+                first_b = await self._get_first_player_name(page)
+                print(f"DEBUG: Triggering next_btn postback...")
+                if await self._trigger_postback(page, next_btn):
+                    print(f"DEBUG: Postback success, waiting after nav...")
+                    await self._wait_after_nav(page, prev_v, first_b)
+                    await add_current(); moved = True
+                else:
+                    print(f"DEBUG: Postback failed for next_btn")
+                    break
+            if not moved: break
+        return collected
+
+    async def _collect_page_rows(self, page: Page) -> List[PlayerRow]:
+        payload = await page.evaluate("(sel) => Array.from(document.querySelectorAll(sel)).map(r => ({cells: Array.from(r.querySelectorAll('td')).map(td => td.innerText.trim()), linkHref: r.querySelector('td:nth-child(2) a')?.getAttribute('href')}))", TABLE_ROWS)
+        res = []
+        for r in payload or []:
+            cells = r['cells']
+            if len(cells) < 7: continue
+            pid = self._extract_pid(r['linkHref'])
+            if not pid: continue
+            h, w = self._parse_hw(cells[5])
+            res.append(PlayerRow(player_id=pid, uniform_no=cells[0] if cells[0] != "-" else None, name=cells[1], team=cells[2] if cells[2] != "-" else None, position=cells[3], birth_date=cells[4], height_cm=h, weight_kg=w, career=cells[6]))
+        return res
+
+    def _extract_pid(self, href):
+        if not href: return None
+        m = re.search(r"playerId=(\d+)", href.replace(',', ''))
+        return int(m.group(1)) if m else None
+
+    def _parse_hw(self, s):
+        m = re.search(r"(\d+)cm.*/(\d+)kg", s.replace(" ", ""))
+        return (int(m.group(1)), int(m.group(2))) if m else (None, None)
+
+    async def _get_hfpage_value(self, page):
+        return await page.evaluate("(sel) => document.querySelector(sel)?.value || ''", HFPAGE)
+
+    async def _get_first_player_name(self, page):
+        try: return (await page.locator(TABLE_ROWS).first.locator("td").nth(1).inner_text()).strip()
+        except: return ""
+
+    async def _trigger_postback(self, page, anchor):
+        try:
+            # Try to use click() which handles both normal links and many JS-based navigations reliably.
+            # We use wait_for_load_state as a generic way to ensure navigation finished.
+            print(f"DEBUG: Clicking postback anchor...")
+            await anchor.click(timeout=10000)
+            await page.wait_for_load_state("networkidle", timeout=10000)
+            return True
+        except Exception as e:
+            print(f"DEBUG: Click failed: {e}")
+            # Fallback to manual postback if click fails or times out
+            try:
+                href = await anchor.get_attribute("href", timeout=5000)
+                print(f"DEBUG: Fallback href: {href}")
+                if href and "javascript:__doPostBack" in href:
+                    m = POSTBACK_RE.search(href)
+                    if m:
+                        try:
+                            print(f"DEBUG: Manual PostBack with {m.group(1)}, {m.group(2)}")
+                            await page.evaluate(POSTBACK_EVAL, [m.group(1), m.group(2)])
+                            await page.wait_for_load_state("networkidle", timeout=10000)
+                            return True
+                        except Exception as ee:
+                            print(f"DEBUG: Manual PostBack failed: {ee}")
+            except Exception as he:
+                print(f"DEBUG: get_attribute failed: {he}")
+            return False
+
+    async def _wait_after_nav(self, page, prev_v, first_b):
+        try: await page.wait_for_function("([s, v]) => document.querySelector(s)?.value !== v", [HFPAGE, prev_v], timeout=5000)
+        except: pass
+        await asyncio.sleep(self.request_delay)
+
+    async def _list_initial_links(self, page):
+        links = page.locator("a")
+        res = []
+        for i in range(await links.count()):
+            txt = (await links.nth(i).inner_text()).strip()
+            if INITIAL_CH_RE.match(txt): res.append(links.nth(i))
+        return res
+
+    @staticmethod
+    def row_to_dict(row: PlayerRow) -> dict:
+        return player_row_to_dict(row)
 
 
 def parse_birth_date(raw: Optional[str]) -> Optional[date_type]:
-    """
-    Parse birth date from various formats:
-    - YYYY-MM-DD, YYYY.MM.DD, YYYY/MM/DD
-    - YYYYMMDD
-    - Handles non-zero-padded dates (e.g., 1990.7.3)
-    """
     if not raw:
         return None
 
-    s = raw.strip().replace(" ", "")
-
-    # Standard formats
+    text = raw.strip().replace(" ", "")
     formats = (
         "%Y-%m-%d",
         "%Y.%m.%d",
@@ -657,28 +293,24 @@ def parse_birth_date(raw: Optional[str]) -> Optional[date_type]:
         "%y.%m.%d",
         "%y/%m/%d",
     )
-
-    for fmt in formats:
+    for date_format in formats:
         try:
-            return datetime.strptime(s, fmt).date()
+            return datetime.strptime(text, date_format).date()
         except ValueError:
             continue
 
-    # Handle non-zero-padded dates (e.g., 1990.7.3)
     try:
-        parts = s.replace("-", ".").replace("/", ".").split(".")
-        if len(parts) == 3 and all(p.isdigit() for p in parts):
-            y, m, d = int(parts[0]), int(parts[1]), int(parts[2])
-            if 1900 <= y <= 2100 and 1 <= m <= 12 and 1 <= d <= 31:
-                return datetime(y, m, d).date()
+        parts = text.replace("-", ".").replace("/", ".").split(".")
+        if len(parts) == 3 and all(part.isdigit() for part in parts):
+            year, month, day = (int(part) for part in parts)
+            if 1900 <= year <= 2100 and 1 <= month <= 12 and 1 <= day <= 31:
+                return datetime(year, month, day).date()
     except Exception:
-        pass
-
+        return None
     return None
 
 
 def player_row_to_dict(row: PlayerRow) -> dict:
-    """Convert PlayerRow to dictionary for database storage"""
     category = classify_player({"team": row.team, "position": row.position})
     status = "active"
     staff_role = None
@@ -705,8 +337,22 @@ def player_row_to_dict(row: PlayerRow) -> dict:
     }
 
 
+async def crawl_all_players(
+    max_pages: Optional[int] = None,
+    headless: bool = False,
+    slow_mo=200,
+    request_delay: float = REQUEST_DELAY_SEC,
+    pool: Optional[AsyncPlaywrightPool] = None,
+) -> List[PlayerRow]:
+    crawler = PlayerSearchCrawler(
+        pool=pool,
+        request_delay=request_delay,
+        headless=headless,
+    )
+    return await crawler.crawl_all_players(max_pages=max_pages)
+
+
 async def main():
-    """Main entry point for player crawler with database save"""
     import argparse
 
     parser = argparse.ArgumentParser(description="KBO Player Search Crawler")
@@ -732,77 +378,80 @@ async def main():
     print("KBO Player Search Crawler")
     print("=" * 60)
 
-    # Crawl players
-    print(f"\n🕷️  Crawling players (max_pages={args.max_pages or 'all'})...")
+    print(f"\nCrawling players (max_pages={args.max_pages or 'all'})...")
     players = await crawl_all_players(max_pages=args.max_pages)
-    print(f"\n✅ Total players collected: {len(players)}")
+    print(f"\nTotal players collected: {len(players)}")
 
     if not players:
-        print("❌ No players collected")
+        print("No players collected")
         return
 
-    # Show sample
-    print("\n📋 Sample (first 5 players):")
-    for p in players[:5]:
-        print(f"  - {p.name} (ID: {p.player_id}, #{p.uniform_no}, {p.team}/{p.position})")
+    print("\nSample (first 5 players):")
+    for player in players[:5]:
+        print(f"  - {player.name} (ID: {player.player_id}, #{player.uniform_no}, {player.team}/{player.position})")
 
-    supabase_url = os.getenv('SUPABASE_DB_URL')
+    supabase_url = os.getenv("SUPABASE_DB_URL")
     should_sync = args.sync_supabase if args.sync_supabase is not None else bool(supabase_url)
 
     if args.save or should_sync:
         from src.db.engine import init_db
 
-        print("\n📦 Initializing database...")
+        print("\nInitializing database...")
         init_db()
+
+    player_dicts = [player_row_to_dict(player) for player in players]
 
     if args.save:
         from src.repositories.player_basic_repository import PlayerBasicRepository
 
-        print("\n🔄 Processing player data...")
-    player_dicts = [player_row_to_dict(p) for p in players]
-    confirmer = PlayerStatusConfirmer()
-    confirm_stats = await confirmer.confirm_entries([entry for entry in player_dicts if entry.get("status") in {"retired", "staff"}])
-    if confirm_stats.get("confirmed"):
-        print(f"\n🔎 Profile-confirmed statuses: {confirm_stats['confirmed']} (attempted {confirm_stats['attempted']})")
-        parsed_dates = sum(1 for p in player_dicts if p['birth_date_date'] is not None)
-        print(f"   - Parsed birth dates: {parsed_dates}/{len(player_dicts)}")
+        suspects = [entry for entry in player_dicts if entry.get("status") in {"retired", "staff"}]
+        if suspects:
+            confirmer = PlayerStatusConfirmer()
+            confirm_stats = await confirmer.confirm_entries(suspects)
+            print(
+                "\nProfile-confirmed statuses: "
+                f"{confirm_stats['confirmed']} (attempted {confirm_stats['attempted']})"
+            )
 
-        print("\n💾 Saving to SQLite...")
+        parsed_dates = sum(1 for player in player_dicts if player["birth_date_date"] is not None)
+        print(f"\nParsed birth dates: {parsed_dates}/{len(player_dicts)}")
+
+        print("\nSaving to SQLite...")
         repo = PlayerBasicRepository()
         saved_count = repo.upsert_players(player_dicts)
-        print(f"✅ Saved {saved_count} players to SQLite")
+        print(f"Saved {saved_count} players to SQLite")
     else:
-        print("\n⚠️  Skipping SQLite save (--no-save specified)")
+        print("\nSkipping SQLite save (--no-save specified)")
         if should_sync:
-            print("   - Existing SQLite data will be used for Supabase sync")
+            print("Existing SQLite data will be used for Supabase sync")
 
     if should_sync:
         from src.db.engine import SessionLocal
         from src.sync.supabase_sync import SupabaseSync
 
         if not supabase_url:
-            print("\n❌ SUPABASE_DB_URL not set; skipping Supabase sync")
+            print("\nSUPABASE_DB_URL not set; skipping Supabase sync")
         else:
-            print("\n🔄 Syncing to Supabase...")
+            print("\nSyncing to Supabase...")
             with SessionLocal() as sqlite_session:
                 sync = SupabaseSync(supabase_url, sqlite_session)
                 try:
                     if not sync.test_connection():
-                        print("❌ Supabase connection failed")
+                        print("Supabase connection failed")
                         return
 
                     synced = sync.sync_player_basic()
-                    print(f"✅ Synced {synced} players to Supabase")
+                    print(f"Synced {synced} players to Supabase")
                 finally:
                     sync.close()
     else:
         if args.sync_supabase is False:
-            print("\n⚠️  Skipping Supabase sync (--no-sync-supabase specified)")
+            print("\nSkipping Supabase sync (--no-sync-supabase specified)")
         elif not supabase_url:
-            print("\nℹ️  SUPABASE_DB_URL not set; Supabase sync skipped")
+            print("\nSUPABASE_DB_URL not set; Supabase sync skipped")
 
     print("\n" + "=" * 60)
-    print("✅ Complete!")
+    print("Complete")
     print("=" * 60)
 
 
