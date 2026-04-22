@@ -189,18 +189,13 @@ class PlayerSearchCrawler:
 
             # Next block
             next_btn = page.locator(PAGER_CONTAINER).last.locator(PAGER_NEXT_BTNS).first
-            btn_count = await next_btn.count()
-            print(f"DEBUG: next_btn count: {btn_count}")
-            if btn_count > 0 and (await next_btn.evaluate("el => el.tagName")).lower() == "a":
+            if await next_btn.count() > 0 and (await next_btn.evaluate("el => el.tagName")).lower() == "a":
                 prev_v = await self._get_hfpage_value(page)
                 first_b = await self._get_first_player_name(page)
-                print(f"DEBUG: Triggering next_btn postback...")
                 if await self._trigger_postback(page, next_btn):
-                    print(f"DEBUG: Postback success, waiting after nav...")
                     await self._wait_after_nav(page, prev_v, first_b)
                     await add_current(); moved = True
                 else:
-                    print(f"DEBUG: Postback failed for next_btn")
                     break
             if not moved: break
         return collected
@@ -237,28 +232,24 @@ class PlayerSearchCrawler:
         try:
             # Try to use click() which handles both normal links and many JS-based navigations reliably.
             # We use wait_for_load_state as a generic way to ensure navigation finished.
-            print(f"DEBUG: Clicking postback anchor...")
             await anchor.click(timeout=10000)
             await page.wait_for_load_state("networkidle", timeout=10000)
             return True
         except Exception as e:
-            print(f"DEBUG: Click failed: {e}")
             # Fallback to manual postback if click fails or times out
             try:
                 href = await anchor.get_attribute("href", timeout=5000)
-                print(f"DEBUG: Fallback href: {href}")
                 if href and "javascript:__doPostBack" in href:
                     m = POSTBACK_RE.search(href)
                     if m:
                         try:
-                            print(f"DEBUG: Manual PostBack with {m.group(1)}, {m.group(2)}")
                             await page.evaluate(POSTBACK_EVAL, [m.group(1), m.group(2)])
                             await page.wait_for_load_state("networkidle", timeout=10000)
                             return True
-                        except Exception as ee:
-                            print(f"DEBUG: Manual PostBack failed: {ee}")
-            except Exception as he:
-                print(f"DEBUG: get_attribute failed: {he}")
+                        except:
+                            pass
+            except:
+                pass
             return False
 
     async def _wait_after_nav(self, page, prev_v, first_b):
