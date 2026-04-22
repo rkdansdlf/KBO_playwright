@@ -255,7 +255,11 @@ async def run_update(
         runner(["-m", "src.cli.freshness_gate", "--date", target_date])
         print("   ✅ Freshness gate passed")
 
-        print("\n☁️ Step 12: Synchronizing to OCI...")
+        print("\n⚖️ Step 12: Statistical quality gate check...")
+        runner(["-m", "src.cli.quality_gate_check", "--year", str(year)])
+        print("   ✅ Statistical quality gate passed")
+
+        print("\n☁️ Step 13: Synchronizing to OCI...")
         oci_url = os.getenv("OCI_DB_URL")
         if not oci_url:
             raise RuntimeError("OCI_DB_URL is required when --sync is enabled")
@@ -279,7 +283,7 @@ async def run_update(
 
     if seed_tomorrow_preview:
         tomorrow_date = (datetime.strptime(target_date, "%Y%m%d") + timedelta(days=1)).strftime("%Y%m%d")
-        print(f"\n🔮 Step 13: Seeding tomorrow preview contexts ({tomorrow_date})...")
+        print(f"\n🔮 Step 14: Seeding tomorrow preview contexts ({tomorrow_date})...")
         try:
             preview_args = ["-m", "src.cli.daily_preview_batch", "--date", tomorrow_date]
             if not sync:
