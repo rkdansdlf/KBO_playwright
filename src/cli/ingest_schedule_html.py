@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Iterable, List, Dict, Any
 
 from src.parsers.schedule_parser import parse_schedule_html
-from src.repositories.game_repository import GameRepository
+from src.services.schedule_collection_service import save_schedule_games
 
 
 def ingest_schedule_html(args: argparse.Namespace) -> None:
@@ -20,7 +20,6 @@ def ingest_schedule_html(args: argparse.Namespace) -> None:
     if not fixtures_dir.exists():
         raise SystemExit(f"Fixture directory not found: {fixtures_dir}")
 
-    repo = GameRepository()
     all_games: List[Dict[str, Any]] = []
 
     files = sorted(fixtures_dir.glob("*.html"))
@@ -44,8 +43,8 @@ def ingest_schedule_html(args: argparse.Namespace) -> None:
         return
 
     # 파싱된 모든 경기 일정을 데이터베이스에 저장합니다.
-    repo.save_schedules(all_games)
-    print(f"✅ Ingested {len(all_games)} games from fixtures.")
+    result = save_schedule_games(all_games)
+    print(f"✅ Ingested {result.saved} games from fixtures. Failed: {result.failed}")
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
@@ -81,5 +80,4 @@ def main(argv: Iterable[str] | None = None) -> None:
 
 if __name__ == "__main__":  # pragma: no cover
     main()
-
 

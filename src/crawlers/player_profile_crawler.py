@@ -10,6 +10,8 @@ from typing import Dict, Optional
 from playwright.async_api import Page
 from src.utils.playwright_pool import AsyncPlaywrightPool
 from src.utils.safe_print import safe_print as print
+from src.utils.throttle import throttle
+from src.utils.compliance import compliance
 
 # KBO profile page selectors (common across Hitter/Pitcher detail pages)
 _PROFILE_ID_REG = "cphContents_cphContents_cphContents_playerProfile"
@@ -184,7 +186,12 @@ class PlayerProfileCrawler:
         
         for url in urls:
             print(f"📡 Attempting profile [{player_id}]: {url}")
+            if not await compliance.is_allowed(url):
+                print(f"⚠️  BLOCKED by compliance: {url}")
+                continue
+
             try:
+                await throttle.wait()
                 # domcontentloaded avoids networkidle timeout on KBO pages
                 await page.goto(url, wait_until="domcontentloaded", timeout=15000)
                 await page.wait_for_timeout(500)

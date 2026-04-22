@@ -26,16 +26,17 @@ from src.repositories.game_repository import (
     GAME_STATUS_CANCELLED,
     GAME_STATUS_UNRESOLVED,
     refresh_game_status_for_date,
-    save_game_detail,
-    save_schedule_game,
     update_game_status,
 )
 from src.repositories.player_repository import PlayerRepository
 from src.repositories.team_repository import TeamRepository
+from src.services.game_collection_service import crawl_and_save_game_details
 from src.services.player_id_resolver import PlayerIdResolver
+from src.services.schedule_collection_service import save_schedule_games
 from src.sync.oci_sync import OCISync
 from src.utils.refresh_manifest import write_refresh_manifest
 from src.utils.safe_print import safe_print as print
+from src.utils.team_codes import normalize_kbo_game_id
 
 KST = ZoneInfo("Asia/Seoul")
 
@@ -94,16 +95,10 @@ async def run_update(
     print("\n📅 Step 1: Crawling + saving monthly schedule...")
     s_crawler = ScheduleCrawler()
     schedule_games = await s_crawler.crawl_schedule(year, month)
-    schedule_saved = 0
-    schedule_failed = 0
-    for game in schedule_games:
-        if save_schedule_game(game):
-            schedule_saved += 1
-        else:
-            schedule_failed += 1
+    schedule_result = save_schedule_games(schedule_games, log=print)
     print(
-        f"   ✅ Schedule discovered={len(schedule_games)} "
-        f"saved={schedule_saved} failed={schedule_failed}"
+        f"   ✅ Schedule discovered={schedule_result.discovered} "
+        f"saved={schedule_result.saved} failed={schedule_result.failed}"
     )
 
     daily_games = [g for g in schedule_games if str(g.get("game_date", "")).replace("-", "") == target_date]
@@ -121,38 +116,41 @@ async def run_update(
         resolver.preload_season_index(year)
         g_crawler = GameDetailCrawler(resolver=resolver)
 
-        success_count = 0
-        failed_count = 0
+        collection_result = await crawl_and_save_game_details(
+            daily_games,
+            detail_crawler=g_crawler,
+            force=True,
+            concurrency=1,
+            log=print,
+        )
+        processed_game_ids = list(collection_result.processed_game_ids)
+
         for game in daily_games:
             game_id = game["game_id"]
-            print(f"   📡 Processing Game: {game_id}")
-            try:
-                detail = await g_crawler.crawl_game(game_id, target_date)
-                if detail:
-                    if save_game_detail(detail):
-                        print(f"   ✅ Successfully saved {game_id}")
-                        processed_game_ids.append(game_id)
-                        success_count += 1
-                    else:
-                        print(f"   ❌ Failed to save {game_id} to local DB")
-                        failed_count += 1
-                        fallback = _failure_status(target_date, "save_failed", today_kst)
-                        if fallback:
-                            update_game_status(game_id, fallback)
-                else:
-                    failed_count += 1
-                    reason = g_crawler.get_last_failure_reason(game_id)
-                    print(f"   ⚠️ Could not fetch details for {game_id} (reason={reason or 'unknown'})")
-                    fallback = _failure_status(target_date, reason, today_kst)
-                    if fallback:
-                        update_game_status(game_id, fallback)
-            except Exception as exc:
-                failed_count += 1
-                print(f"   ❌ Error processing {game_id}: {exc}")
-                fallback = _failure_status(target_date, "exception", today_kst)
-                if fallback:
-                    update_game_status(game_id, fallback)
-        print(f"   ✅ Detail result success={success_count} failed={failed_count}")
+            item = collection_result.items.get(normalize_kbo_game_id(game_id))
+            if item and item.detail_saved:
+                print(f"   ✅ Successfully saved {game_id}")
+                continue
+
+            reason = item.failure_reason if item else "exception"
+            if item and item.detail_status == "save_failed":
+                print(f"   ❌ Failed to save {game_id} to local DB")
+            else:
+                print(f"   ⚠️ Could not fetch details for {game_id} (reason={reason or 'unknown'})")
+            fallback = _failure_status(target_date, reason, today_kst)
+            if fallback:
+                update_game_status(game_id, fallback)
+        print(
+            f"   ✅ Detail result success={collection_result.detail_saved} "
+            f"failed={collection_result.detail_failed}"
+        )
+    except Exception as exc:
+        print(f"   ❌ Error processing daily details: {exc}")
+        for game in daily_games:
+            game_id = game["game_id"]
+            fallback = _failure_status(target_date, "exception", today_kst)
+            if fallback:
+                update_game_status(game_id, fallback)
     finally:
         resolver_session.close()
 

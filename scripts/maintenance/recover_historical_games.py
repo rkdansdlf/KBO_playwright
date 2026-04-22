@@ -9,7 +9,7 @@ from typing import List, Dict
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../../')))
 
 from src.crawlers.game_detail_crawler import GameDetailCrawler
-from src.repositories.game_repository import save_game_detail
+from src.services.game_collection_service import crawl_and_save_game_details
 
 async def recover_historical_games(json_file: str, max_concurrency: int = 5):
     if not os.path.exists(json_file):
@@ -71,18 +71,16 @@ async def recover_historical_games(json_file: str, max_concurrency: int = 5):
         print(f"📦 Batch {batch_num}/{total_batches}: Processing {len(batch)} games...")
         
         try:
-            results = await crawler.crawl_games(batch, concurrency=max_concurrency)
-            
-            saved_in_batch = 0
-            for game_data in results:
-                if game_data:
-                    if save_game_detail(game_data):
-                        success_count += 1
-                        saved_in_batch += 1
-                    else:
-                        fail_count += 1
-                else:
-                    fail_count += 1
+            result = await crawl_and_save_game_details(
+                batch,
+                detail_crawler=crawler,
+                force=True,
+                concurrency=max_concurrency,
+                log=print,
+            )
+            saved_in_batch = result.detail_saved
+            success_count += result.detail_saved
+            fail_count += result.detail_failed
             print(f"   ✅ Saved {saved_in_batch} games in this batch.")
             
         except Exception as e:

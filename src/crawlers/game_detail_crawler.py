@@ -14,6 +14,8 @@ from sqlalchemy import text
 from src.db.engine import SessionLocal
 from src.utils.team_codes import normalize_kbo_game_id, resolve_team_code, team_code_from_game_id_segment
 from src.utils.playwright_pool import AsyncPlaywrightPool
+from src.utils.request_policy import RequestPolicy
+from src.utils.compliance import compliance
 
 
 HITTER_HEADER_MAP = {
@@ -77,12 +79,12 @@ class GameDetailCrawler:
 
     def __init__(
         self,
-        request_delay: float = 1.5,
+        request_delay: Optional[float] = None,
         resolver: Optional[Any] = None,
         pool: Optional[AsyncPlaywrightPool] = None,
     ):
         self.base_url = "https://www.koreabaseball.com/Schedule/GameCenter/Main.aspx"
-        self.request_delay = request_delay
+        self.policy = RequestPolicy(min_delay=request_delay)
         self.resolver = resolver
         self.pool = pool
         self._last_failure_reason: Dict[str, str] = {}
@@ -93,7 +95,7 @@ class GameDetailCrawler:
     async def crawl_game(self, game_id: str, game_date: str, lightweight: bool = False) -> Optional[Dict[str, Any]]:
         game_id = normalize_kbo_game_id(game_id)
         self._last_failure_reason.pop(game_id, None)
-        
+
         # Ensure resolver is available if not provided in __init__
         close_session = False
         if not self.resolver:
@@ -101,7 +103,7 @@ class GameDetailCrawler:
             session = SessionLocal()
             self.resolver = PlayerIdResolver(session)
             close_session = True
-            
+
         try:
             result = await self.crawl_games([{"game_id": game_id, "game_date": game_date}], lightweight=lightweight)
             return result[0] if result else None
@@ -170,32 +172,34 @@ class GameDetailCrawler:
         return [payload for payload in results if payload]
 
     async def _crawl_single(self, page: Page, game_id: str, game_date: str, lightweight: bool = False) -> Optional[Dict[str, Any]]:
-        # 1. Navigate directly to REVIEW section with full URL params.
-        #    This is the reliable approach — window.setGameDetail() requires
-        #    the game card <li> to have class 'on' and doesn't accept a gameId
-        #    argument, so JS-based navigation doesn't work.
         review_url = f"{self.base_url}?gameDate={game_date}&gameId={game_id}&section=REVIEW"
         print(f"📡 Navigating to REVIEW: {review_url}")
-        for attempt in range(3):
-            try:
-                await page.goto(review_url, wait_until="networkidle", timeout=30000)
-                break
-            except Exception as e:
-                print(f"⚠️  Timeout on {review_url}, retrying ({attempt+1}/3)...")
-                if attempt == 2: raise e
-                await asyncio.sleep(2)
-        await asyncio.sleep(2)
+
+        if not await compliance.is_allowed(review_url):
+            print(f"❌ BLOCKED by compliance policy: {review_url}")
+            return None
+
+        async def _navigate():
+            await self.policy.delay_async(host="www.koreabaseball.com")
+            await page.goto(review_url, wait_until="networkidle", timeout=30000)
+
+        try:
+            await self.policy.run_with_retry_async(_navigate)
+        except Exception as e:
+            print(f"❌ Failed to navigate after retries: {e}")
+            self._last_failure_reason[game_id] = "navigation_error"
+            return None
+
         is_ready, failure_reason = await self._wait_for_boxscore(page, lightweight=lightweight)
         if not is_ready:
             self._last_failure_reason[game_id] = failure_reason
             return None
-        await asyncio.sleep(self.request_delay)
 
         roster_map = await self._load_roster_map_from_lineup(page, game_id, game_date, review_url)
         season_year = self._parse_season_year(game_date)
         team_info = await self._extract_team_info(page, game_id, season_year)
         metadata = await self._extract_metadata(page)
-        
+
         # New: Extract Game Summary
         game_summary = await self._extract_game_summary(page)
 
@@ -205,21 +209,21 @@ class GameDetailCrawler:
         else:
             away_hitters, away_total = await self._extract_hitters(page, 'away', team_info['away']['code'], season_year, roster_map)
             home_hitters, home_total = await self._extract_hitters(page, 'home', team_info['home']['code'], season_year, roster_map)
-            
+
             # INTEGRITY CHECK: Sum of hits/AB must match team total
             for side, player_list, total_row in [('away', away_hitters, away_total), ('home', home_hitters, home_total)]:
                 if not total_row: continue # Some legacy games might miss total row
-                
+
                 sum_hits = sum(p['stats'].get('hits', 0) for p in player_list)
                 sum_ab = sum(p['stats'].get('at_bats', 0) for p in player_list)
-                
+
                 if sum_hits != total_row.get('hits') or sum_ab != total_row.get('at_bats'):
                     error_msg = f"Integrity check FAILED for {game_id} ({side}): Players Sum({sum_hits}H, {sum_ab}AB) != Team Total({total_row.get('hits')}H, {total_row.get('at_bats')}AB)"
                     print(f"⚠️ {error_msg}")
                     # Capture debug screenshot
                     await page.screenshot(path=f"data/integrity_warning_{game_id}_{side}.png")
                     # DANGEROUS: Returning payload anyway for final calibration
-            
+
             hitters = {'away': away_hitters, 'home': home_hitters}
 
             pitchers = {
@@ -250,7 +254,7 @@ class GameDetailCrawler:
         try:
             # Check for the boxscore tables or the cancellation status specifically for the current game
             await page.wait_for_selector('#tblAwayHitter1, #tblHomeHitter1, #tblAwayPitcher, #tblHomePitcher, li.game-cont.on p.staus, .game-status.cancel', timeout=15000)
-            
+
             # Check the status of the CURRENTLY SELECTED game in the carousel
             status_el = await page.query_selector('li.game-cont.on p.staus, li.game-cont.on .game-status.cancel')
             if status_el:
@@ -258,7 +262,7 @@ class GameDetailCrawler:
                 if "취소" in txt:
                     print(f"ℹ️ Game {page.url} is marked as CANCELLED (경기취소)")
                     return False, "cancelled"
-            
+
             return True, "ok"  # Found boxscore or at least not cancelled
         except Exception:
             # Check if it was a timeout but maybe we missed the cancel badge?
@@ -270,7 +274,7 @@ class GameDetailCrawler:
                     txt = await content_area.inner_text()
                     if "취소" in txt:
                         return False, "cancelled"
-                
+
                 if lightweight:
                     return True, "ok"
             except Exception:
@@ -297,7 +301,7 @@ class GameDetailCrawler:
             stadium_el = await page.query_selector('#txtStadium')
             if stadium_el:
                 metadata['stadium'] = (await stadium_el.inner_text()).replace('구장 :', '').strip()
-            
+
             crowd_el = await page.query_selector('#txtCrowd')
             if crowd_el:
                 try:
@@ -346,10 +350,10 @@ class GameDetailCrawler:
         () => {
             const tables = Array.from(document.querySelectorAll('table'));
             let teamTable, inningTable, totalTable;
-            
+
             for (const table of tables) {
                 const headers = Array.from(table.querySelectorAll('thead th')).map(th => th.innerText.replace(/\u00a0/g, ' ').trim().toUpperCase());
-                
+
                 if (!teamTable && (headers.some(h => h.includes('TEAM')) || headers.includes('팀'))) {
                     // Make sure it's not a stats table or something else
                     if (headers.length <= 4) teamTable = table;
@@ -357,10 +361,10 @@ class GameDetailCrawler:
                 if (!inningTable && headers.includes('1') && headers.includes('2') && headers.includes('3')) inningTable = table;
                 if (!totalTable && headers.includes('R') && headers.includes('H')) totalTable = table;
             }
-            
+
             if (!teamTable || !inningTable || !totalTable) return null;
-            
-            const getRows = (t) => Array.from(t.querySelectorAll('tbody tr')).map(tr => 
+
+            const getRows = (t) => Array.from(t.querySelectorAll('tbody tr')).map(tr =>
                 Array.from(tr.querySelectorAll('td')).map(td => {
                     const img = td.querySelector('img');
                     if (img && img.alt) return img.alt;
@@ -369,7 +373,7 @@ class GameDetailCrawler:
                         const match = img.src.match(/\/([A-Z]{2})\.png/i);
                         if (match) return match[1];
                     }
-                    
+
                     // Clone to avoid modifying the actual page UI
                     const clone = td.cloneNode(true);
                     // Remove labels like '승', '패', '무' often found in spans or other small tags
@@ -379,25 +383,25 @@ class GameDetailCrawler:
                             el.remove();
                         }
                     });
-                    
+
                     let text = clone.innerText.replace(/\u00a0/g, ' ').trim();
                     // Additional cleanup if they are just text nodes
                     text = text.replace(/^[승패무세]\s*/, '').replace(/\s*[승패무세]$/, '').trim();
                     return text;
                 })
             );
-            
+
             const teamRows = getRows(teamTable);
             const inningRows = getRows(inningTable);
             const totalRows = getRows(totalTable);
-            
+
             if (teamRows.length >= 2 && inningRows.length >= 2 && totalRows.length >= 2) {
                 const headers = ["TEAM", ...Array.from({length: inningRows[0].length}, (_,k)=>String(k+1)), "R", "H", "E"];
                 const rows = [];
                 for (let i=0; i<2; i++) {
                     const teamName = teamRows[i][0] || "Unknown";
                     const innings = inningRows[i];
-                    const totals = totalRows[i].slice(0, 3); 
+                    const totals = totalRows[i].slice(0, 3);
                     rows.push([teamName, ...innings, ...totals]);
                 }
                 return { headers, rows };
@@ -480,18 +484,18 @@ class GameDetailCrawler:
             player_name = row['playerName']
             if not player_name:
                 continue
-            
+
             if player_name in {'합계', '팀합계'}:
                 self._populate_hitter_stats(team_total_stats, {}, row['cells'])
                 continue
 
             p_id = self._safe_int(row.get('playerId'))
 
-            
+
             stats = {}
             extras = {}
             self._populate_hitter_stats(stats, extras, row['cells'])
-            
+
             # Key fix for Task 3: Use resolver for exhibition/missing IDs
             if p_id is None and self.resolver and team_code and season_year:
                 p_id = self.resolver.resolve_id(player_name, team_code, season_year, uniform_no=row.get('cells', {}).get('등번호'))
@@ -515,7 +519,7 @@ class GameDetailCrawler:
             is_starter = batting_order is not None and batting_order <= 9
 
             uniform_no = row.get('cells', {}).get('등번호')
-            
+
             # Optimization: Check roster_map if ID is missing
             if not p_id and roster_map and player_name in roster_map:
                 candidates = roster_map[player_name]
@@ -558,7 +562,7 @@ class GameDetailCrawler:
             if table_rows:
                 rows = table_rows
                 break
-        
+
         results: List[Dict[str, Any]] = []
         for idx, row in enumerate(rows, start=1):
             player_name = row['playerName']
@@ -570,8 +574,28 @@ class GameDetailCrawler:
             uniform_no = row.get('cells', {}).get('등번호')
 
             # Key fix for Task 3: Use resolver for exhibition/missing IDs
+            # AND: Auto-search and register if still unknown
             if p_id is None and self.resolver and team_code and season_year:
                 p_id = self.resolver.resolve_id(player_name, team_code, season_year, uniform_no=uniform_no)
+
+                if p_id is None:
+                    # PROACTIVE SEARCH: If not found in DB, try to find on KBO site and register
+                    print(f"🔍 Unknown player '{player_name}' ({team_code}) found. Searching KBO...")
+                    from src.crawlers.player_search_crawler import PlayerSearchCrawler
+                    search_crawler = PlayerSearchCrawler()
+                    # Note: Using a simplified search to avoid infinite loops
+                    new_profiles = await search_crawler.search_player(player_name)
+                    if new_profiles:
+                        # Register the first matching profile
+                        for profile in new_profiles:
+                            if profile.get('name') == player_name:
+                                p_id = int(profile['player_id'])
+                                # Save to DB immediately so resolver can find it next time
+                                from src.repositories.player_basic_repository import save_player_basic
+                                save_player_basic(profile)
+                                print(f"✅ Registered new player: {player_name} ({p_id})")
+                                break
+
                 if p_id:
                     print(f"   [RESOLVED] {player_name} ({team_code}) -> {p_id}")
 
@@ -625,7 +649,7 @@ class GameDetailCrawler:
             const table = document.querySelector(sel);
             if (!table) return [];
             const headers = Array.from(table.querySelectorAll('thead th')).map(th => th.innerText.trim());
-            
+
             // Find '선수명' index
             let nameIndex = -1;
             for (let i = 0; i < headers.length; i++) {
@@ -634,7 +658,7 @@ class GameDetailCrawler:
                     break;
                 }
             }
-            
+
             return Array.from(table.querySelectorAll('tbody tr')).map((tr, index) => {
                 const cells = Array.from(tr.querySelectorAll('th,td'));
                 const values = {};
@@ -665,12 +689,12 @@ class GameDetailCrawler:
                         playerId = null;
                     }
                 }
-                
+
                 // Fallback: Use name column if link not found
                 if (!playerName && nameIndex !== -1 && cells.length > nameIndex) {
                     playerName = cells[nameIndex].innerText.trim();
                 }
-                
+
                 return { index, cells: values, playerId, playerName, uniformNo };
             });
         }
@@ -688,10 +712,10 @@ class GameDetailCrawler:
         (sel) => {
             const table = document.querySelector(sel);
             if (!table) return [];
-            
+
             const results = [];
             const rows = table.querySelectorAll('tbody tr');
-            
+
             rows.forEach(tr => {
                 const th = tr.querySelector('th');
                 const td = tr.querySelector('td');
@@ -700,7 +724,7 @@ class GameDetailCrawler:
                     const content = td.innerText.trim();
                     if (content && content !== '없음') {
                          results.push({
-                             'summary_type': category, 
+                             'summary_type': category,
                              'detail_text': content
                          });
                     }
@@ -721,15 +745,13 @@ class GameDetailCrawler:
         roster_map: Dict[str, List[Dict[str, Any]]] = {}
         for section in ("ENTRY", "LINEUP"):
             lineup_url = f"{self.base_url}?gameDate={game_date}&gameId={game_id}&section={section}"
+
+            async def _navigate_lineup():
+                await self.policy.delay_async()
+                await page.goto(lineup_url, wait_until="networkidle", timeout=20000)
+
             try:
-                for attempt in range(3):
-                    try:
-                        await page.goto(lineup_url, wait_until="networkidle", timeout=20000)
-                        break
-                    except Exception as e:
-                        if attempt == 2: raise e
-                        await asyncio.sleep(1)
-                await asyncio.sleep(0.8)
+                await self.policy.run_with_retry_async(_navigate_lineup)
                 roster_map = await self._extract_roster_from_lineup(page)
                 if roster_map:
                     break
@@ -738,14 +760,11 @@ class GameDetailCrawler:
 
         # Always return to REVIEW page for box score extraction.
         try:
-            for attempt in range(3):
-                try:
-                    await page.goto(review_url, wait_until="networkidle", timeout=30000)
-                    break
-                except Exception as e:
-                    if attempt == 2: raise e
-                    await asyncio.sleep(1)
-            await asyncio.sleep(1)
+            async def _navigate_back():
+                await self.policy.delay_async()
+                await page.goto(review_url, wait_until="networkidle", timeout=30000)
+
+            await self.policy.run_with_retry_async(_navigate_back)
             await self._wait_for_boxscore(page)
         except Exception as exc:
             print(f"⚠️  Failed to return to review page for {game_id}: {exc}")
@@ -850,7 +869,7 @@ class GameDetailCrawler:
                 if value:
                     return int(value.group())
         return None
-        
+
     def _parse_position(self, cells: Dict[str, str]) -> Optional[str]:
         for key in ('POS', '포지션', '수비위치', 'COL_1'):
             if key in cells:
@@ -943,11 +962,11 @@ class GameDetailCrawler:
             const addToMap = (name, id, uniform) => {
                 const cleanName = name.trim();
                 if (!cleanName) return;
-                
+
                 if (!map[cleanName]) {
                     map[cleanName] = [];
                 }
-                
+
                 // Avoid duplicates
                 const exists = map[cleanName].some(p => p.id === id);
                 if (!exists) {
@@ -957,16 +976,16 @@ class GameDetailCrawler:
 
             // Find all anchor tags that look like player links
             const links = document.querySelectorAll('a[href*="Player/PlayerDetail"], a[href*="playerId="], a[href*="p_id="]');
-            
+
             links.forEach(a => {
                 const name = a.innerText.trim();
                 const href = a.getAttribute('href');
                 if (!href) return;
-                
+
                 const idMatch = href.match(/playerId=(\d+)/) || href.match(/p_id=(\d+)/) || href.match(/id=(\d+)/);
                 if (name && idMatch) {
                     let uniform = null;
-                    
+
                     // strategy 1: Check nearby lists or text for "No.XX"
                     const parentLi = a.closest('li');
                     if (parentLi) {
@@ -974,10 +993,10 @@ class GameDetailCrawler:
                         const uniMatch = text.match(/No\.(\d+)/);
                         if (uniMatch) uniform = uniMatch[1];
                     }
-                    
+
                     // strategy 2: Check previous sibling or parent structure (table columns)
                     // (Simplification: just take what we found)
-                    
+
                     addToMap(name, idMatch[1], uniform);
                 }
             });
@@ -1005,11 +1024,15 @@ async def main():  # pragma: no cover
 
     game_id = normalize_kbo_game_id(args.game_id)
     game_date = args.date or game_id[:8]
-    
+
     print(f"🚀 Starting crawl for game {game_id} ({game_date})...")
     crawler = GameDetailCrawler()
     game_data = await crawler.crawl_game(game_id, game_date)
     if game_data and args.save:
+        print(
+            "[DEBUG] Direct --save is intended for one-off parser checks. "
+            "Operational collection should use src.cli.collect_games or src.cli.run_daily_update."
+        )
         from src.repositories.game_repository import save_game_detail
         success = save_game_detail(game_data)
         if success:

@@ -1,31 +1,19 @@
 
 """
-Unified Game Data Collector (Details + Relay + Summary)
+Unified Game Data Collector (Details + optional direct relay fallback)
 """
 import asyncio
 import argparse
-from typing import List, Optional
-from datetime import date
+from typing import Optional
 
 from src.crawlers.game_detail_crawler import GameDetailCrawler
 from src.crawlers.naver_relay_crawler import NaverRelayCrawler
-from src.repositories.game_repository import save_game_detail, save_relay_data
 from src.db.engine import SessionLocal
-from src.models.game import Game
+from src.services.game_collection_service import (
+    crawl_and_save_game_details,
+    load_game_targets_from_db,
+)
 from src.utils.safe_print import safe_print as print
-
-
-def _build_game_id_range(year: int, month: Optional[int]) -> tuple[str, str]:
-    if month:
-        start = date(year, month, 1)
-        if month == 12:
-            end = date(year + 1, 1, 1)
-        else:
-            end = date(year, month + 1, 1)
-    else:
-        start = date(year, 1, 1)
-        end = date(year + 1, 1, 1)
-    return start.strftime("%Y%m%d"), end.strftime("%Y%m%d")
 
 
 async def collect_games(year: int, month: Optional[int] = None, force: bool = False, concurrency: Optional[int] = None):
@@ -33,14 +21,11 @@ async def collect_games(year: int, month: Optional[int] = None, force: bool = Fa
     Collects game details and relay data for a given year/month.
     Iterates through games in the database for that period.
     """
+    targets = load_game_targets_from_db(year, month)
+    print(f"🎯 Target: {len(targets)} games for {year}" + (f"-{month}" if month else ""))
+
     session = SessionLocal()
     try:
-        start_id, end_id = _build_game_id_range(year, month)
-        query = session.query(Game).filter(Game.game_id >= start_id, Game.game_id < end_id)
-
-        games = query.all()
-        print(f"🎯 Target: {len(games)} games for {year}" + (f"-{month}" if month else ""))
-        
         from src.services.player_id_resolver import PlayerIdResolver
         resolver = PlayerIdResolver(session)
         resolver.preload_season_index(year)
@@ -48,51 +33,40 @@ async def collect_games(year: int, month: Optional[int] = None, force: bool = Fa
         detail_crawler = GameDetailCrawler(request_delay=1.0, resolver=resolver)
         relay_crawler = NaverRelayCrawler()
 
-        inputs = [
-            {
-                "game_id": game.game_id,
-                "game_date": game.game_date.strftime("%Y%m%d"),
-            }
-            for game in games
-        ]
-
-        detail_payloads = await detail_crawler.crawl_games(inputs, concurrency=concurrency)
-        success_count = 0
-
-        for idx, detail_data in enumerate(detail_payloads, 1):
-            game_id = detail_data.get("game_id")
-            game_date = detail_data.get("game_date")
-            print(f"[{idx}/{len(detail_payloads)}] Saving {game_id} ({game_date})...")
-            saved = save_game_detail(detail_data)
-            if saved:
-                print("   ✅ Details saved")
-            else:
-                print("   ⚠️ Details save failed")
-
-            # 2. Relay (Play-by-play) via Naver API
-            relay_data = await relay_crawler.crawl_game_events(game_id)
-            if relay_data and relay_data.get("events"):
-                from src.repositories.game_repository import save_relay_data
-                saved_events = save_relay_data(game_id, relay_data["events"])
-                print(f"   ✅ Relay saved ({saved_events} events)")
-            else:
-                print("   ℹ️  No relay data available via Naver")
-            success_count += 1
-            if idx % 10 == 0:
-                print("⏸️  Pausing briefly...")
-                await asyncio.sleep(2)
-                
+        result = await crawl_and_save_game_details(
+            targets,
+            detail_crawler=detail_crawler,
+            relay_crawler=relay_crawler,
+            force=force,
+            concurrency=concurrency,
+            pause_every=10,
+            pause_seconds=2.0,
+            log=print,
+        )
+        print(
+            "[FINISH] "
+            f"detail_saved={result.detail_saved} detail_failed={result.detail_failed} "
+            f"detail_skipped={result.detail_skipped_existing} "
+            f"relay_games={result.relay_saved_games} relay_rows={result.relay_rows_saved} "
+            f"relay_skipped={result.relay_skipped_existing}"
+        )
     finally:
         session.close()
 
 def main():
-    parser = argparse.ArgumentParser(description="Collect Game Details & Relay")
+    parser = argparse.ArgumentParser(
+        description=(
+            "Collect game details and direct Naver relay fallback rows. "
+            "For completed-game relay recovery, prefer scripts/fetch_kbo_pbp.py."
+        )
+    )
     parser.add_argument("--year", type=int, required=True, help="Target Year (e.g. 2024)")
     parser.add_argument("--month", type=int, help="Target Month (Optional)")
     parser.add_argument("--concurrency", type=int, default=None, help="Max concurrent game detail crawls")
+    parser.add_argument("--force", action="store_true", help="Recrawl and overwrite existing detail/relay rows")
     args = parser.parse_args()
     
-    asyncio.run(collect_games(args.year, args.month, concurrency=args.concurrency))
+    asyncio.run(collect_games(args.year, args.month, force=args.force, concurrency=args.concurrency))
 
 if __name__ == "__main__":
     main()

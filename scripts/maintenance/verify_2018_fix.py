@@ -1,4 +1,10 @@
 
+"""Manual live verification probe for a 2018 parser fix.
+
+This script intentionally calls `GameDetailCrawler` directly and does not save
+to the database. Use `src.cli.collect_games` or `src.cli.run_daily_update` for
+operational detail collection.
+"""
 import sys
 import os
 import asyncio
@@ -10,6 +16,10 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../../'
 from src.crawlers.game_detail_crawler import GameDetailCrawler
 
 async def verify_fix(game_id):
+    print(
+        "[DEBUG] scripts/maintenance/verify_2018_fix.py performs a live parser probe only. "
+        "It does not persist data."
+    )
     print(f"🕵️‍♀️ Verifying fix for {game_id}...")
     crawler = GameDetailCrawler()
     

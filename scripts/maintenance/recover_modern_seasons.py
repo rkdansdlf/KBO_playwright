@@ -14,7 +14,7 @@ from src.crawlers.schedule_crawler import ScheduleCrawler
 from src.utils.playwright_pool import AsyncPlaywrightPool
 from src.services.player_id_resolver import PlayerIdResolver
 from src.db.engine import SessionLocal
-from src.repositories.game_repository import save_game_detail
+from src.services.game_collection_service import crawl_and_save_game_details
 from sqlalchemy import text
 
 # Configure logging
@@ -133,18 +133,18 @@ async def recover_season(year: int):
             chunk = games[i:i + chunk_size]
             logger.info(f"Processing chunk {i//chunk_size + 1}/{(len(games)-1)//chunk_size + 1} ({len(chunk)} games)...")
             
-            results = await crawler.crawl_games(chunk, concurrency=3)
-            
-            success_count = 0
-            for game_data in results:
-                if game_data:
-                    # Save to DB
-                    if save_game_detail(game_data):
-                        success_count += 1
-                    else:
-                        logger.error(f"Failed to save {game_data['game_id']}")
-            
-            logger.info(f"Chunk complete. Saved {success_count}/{len(chunk)} games.")
+            result = await crawl_and_save_game_details(
+                chunk,
+                detail_crawler=crawler,
+                force=True,
+                concurrency=3,
+                log=logger.info,
+            )
+            for item in result.items.values():
+                if not item.detail_saved:
+                    logger.error(f"Failed to save {item.game_id} (reason={item.failure_reason or 'unknown'})")
+
+            logger.info(f"Chunk complete. Saved {result.detail_saved}/{len(chunk)} games.")
             
     except Exception as e:
         logger.error(f"Critical error recovering {year}: {e}", exc_info=True)

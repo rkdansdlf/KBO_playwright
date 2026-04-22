@@ -74,12 +74,11 @@ class AsyncPlaywrightPool:
         ]
         self._browser = await browser_factory.launch(headless=self.headless, args=launch_args)
         
-        # Define realistic User-Agent if not provided
+        # Dynamic User-Agent Rotation
         if "user_agent" not in self.context_kwargs:
-            self.context_kwargs["user_agent"] = (
-                "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
-                "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36"
-            )
+            from src.utils.request_policy import RequestPolicy
+            policy = RequestPolicy()
+            self.context_kwargs["user_agent"] = policy.random_user_agent()
 
         self._context = await self._browser.new_context(**self.context_kwargs)
         

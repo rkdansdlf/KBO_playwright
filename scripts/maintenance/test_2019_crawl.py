@@ -1,4 +1,9 @@
 
+"""Live debug test for one 2019 GameCenter page.
+
+This is intentionally skipped unless RUN_LIVE_DEBUG_TESTS=1. It probes parser
+behavior and does not save to the database.
+"""
 import asyncio
 import os
 import sys
@@ -16,6 +21,10 @@ pytestmark = pytest.mark.skipif(
 )
 
 async def test_single_game():
+    print(
+        "[DEBUG] scripts/maintenance/test_2019_crawl.py performs a live parser probe only. "
+        "It does not persist data."
+    )
     game_id = '20190323SSNC0' 
     game_date = '20190323'
     

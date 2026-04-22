@@ -15,6 +15,14 @@
   - **지연 수집:** 경기 종료 시점으로부터 최소 1시간 이상 지난 후에 데이터를 수집하는 것을 원칙으로 합니다.
   - **재검증 로직:** 일일 롤업 작업 시, 전날 수집된 데이터의 완전성을 재확인하고 누락된 부분이 있다면 추가 수집을 시도합니다.
 
+### 1.3. 중복 수집 방지와 예외 경로
+- **기본 정책:** 수동 상세 수집 CLI(`collect_games`, `crawl_game_details`)와 주요 백필 스크립트는 기존 박스스코어/릴레이 데이터가 있으면 기본적으로 재수집하지 않습니다. 다시 덮어써야 할 때만 `--force` 또는 스크립트 내부의 명시적 repair 모드를 사용합니다.
+- **완료 경기 PBP 표준 경로:** 완료 경기 릴레이/PBP 복구는 `scripts/fetch_kbo_pbp.py`를 사용합니다. 실시간 수집은 `src.cli.live_crawler`가 담당합니다.
+- **공통 상세 저장 서비스 예외:** `live_crawler`의 lightweight snapshot, orphan parent 복구, 기존 player_id 보존용 커스텀 복구 스크립트, bootstrap/demo 워크플로우, 디버그/검증 스크립트는 의도적으로 직접 크롤러 호출을 유지합니다. `src.crawlers.game_detail_crawler --save`, `scripts/maintenance/init_data_collection.py`, `scripts/crawl_2009_game_details.py`, `scripts/maintenance/debug_*.py`, `scripts/maintenance/test_*crawl.py`, `scripts/maintenance/test_cancel_detect.py`, `scripts/maintenance/verify_2018_fix.py`, `scripts/maintenance/prototype_2000_crawler.py`는 운영 진입점이 아니라 bootstrap 또는 parser/레거시 조사용 예외입니다.
+- **JSON manifest 예외:** `scripts/maintenance/collect_historical_game_ids.py`와 `scripts/maintenance/crawl_historical_schedule.py`는 schedule crawler를 직접 호출하지만 DB에 저장하지 않고 로컬 JSON manifest만 생성합니다. DB 일정 저장은 `src.cli.crawl_schedule`을 사용합니다.
+- **국제대회 일정 예외:** `scripts/crawling/collect_international_games.py`는 정규시즌 schedule 페이지가 아닌 국제대회 전용 페이지를 읽습니다. 저장 시에는 직접 ORM upsert가 아니라 공통 `save_game_snapshot` 경로를 사용합니다.
+- **중복 game_id 정리:** `smart_deduplicate.py`, `deduplicate_games.py`, `hard_deduplicate.py`, `absolute_completeness.py`, `fix_2026_only.py`는 모두 공통 `game_deduplication_service`를 통해 슬롯별 primary game을 선정합니다.
+
 ## 2. 퓨처스리그 (선수 프로필 기반 수집) 시 고려사항
 
 ### 2.1. 데이터 공백 및 누락 케이스

@@ -1,4 +1,9 @@
 
+"""Manual prototype for the 2000 legacy GameCenter parser.
+
+This is a parser investigation script, not an operational collection path. It
+does not save to the database.
+"""
 import sys
 import os
 from playwright.sync_api import sync_playwright
@@ -9,6 +14,10 @@ from src.crawlers.legacy_game_detail_crawler import LegacyGameDetailCrawler
 from src.utils.team_history import resolve_team_code_for_season
 
 def run_prototype():
+    print(
+        "[DEBUG] scripts/maintenance/prototype_2000_crawler.py performs a live legacy parser probe only. "
+        "It does not persist data."
+    )
     # Example game from 2000 season Opening Day (April 5, 2000)
     # Samsung (SS) vs Lotte (LT) at Busan
     game_id = "20000405SSLT0"

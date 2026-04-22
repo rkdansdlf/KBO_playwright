@@ -108,6 +108,8 @@ async def run_backfill(chunk_size: int = 100, max_total: int = 10000):
             for attempt in range(retry_attempts + 1):
                 try:
                     # We use lightweight=True because we mainly need metadata to fix the 'game' table relationship.
+                    # This repair path intentionally bypasses the shared full-detail collector:
+                    # it rebuilds missing parent rows and must preserve existing child stats.
                     payload = await crawler.crawl_game(game_id, date_str, lightweight=True)
 
                     if payload:

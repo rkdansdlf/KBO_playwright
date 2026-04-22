@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from types import SimpleNamespace
 
 import src.cli.run_daily_update as run_daily_update
 from src.repositories.game_repository import GAME_STATUS_CANCELLED, GAME_STATUS_UNRESOLVED
@@ -97,6 +98,50 @@ async def _noop_to_thread(func, *args, **kwargs):
     return None
 
 
+async def _fake_crawl_and_save_game_details(
+    games,
+    *,
+    detail_crawler,
+    force,
+    concurrency,
+    log,
+):
+    items = {}
+    processed_game_ids = []
+    detail_saved = 0
+    detail_failed = 0
+    for game in games:
+        game_id = game["game_id"]
+        if isinstance(detail_crawler, _FakeDetailCrawlerSuccess):
+            items[game_id] = SimpleNamespace(
+                detail_saved=True,
+                detail_status="saved",
+                failure_reason=None,
+            )
+            processed_game_ids.append(game_id)
+            detail_saved += 1
+        else:
+            reason = detail_crawler.get_last_failure_reason(game_id)
+            items[game_id] = SimpleNamespace(
+                detail_saved=False,
+                detail_status="crawl_failed",
+                failure_reason=reason,
+            )
+            detail_failed += 1
+
+    return SimpleNamespace(
+        items=items,
+        processed_game_ids=processed_game_ids,
+        detail_saved=detail_saved,
+        detail_failed=detail_failed,
+    )
+
+
+def _fake_save_schedule_games(games, **_kwargs):
+    game_list = list(games)
+    return SimpleNamespace(games=game_list, discovered=len(game_list), saved=len(game_list), failed=0)
+
+
 class _FakeSyncer:
     created = []
 
@@ -143,8 +188,8 @@ def _patch_common(monkeypatch):
     monkeypatch.setattr(run_daily_update, "ScheduleCrawler", _FakeScheduleCrawler)
     monkeypatch.setattr(run_daily_update, "SessionLocal", lambda: _FakeSession())
     monkeypatch.setattr(run_daily_update, "PlayerIdResolver", _FakeResolver)
-    monkeypatch.setattr(run_daily_update, "save_schedule_game", lambda _game: True)
-    monkeypatch.setattr(run_daily_update, "save_game_detail", lambda _detail: True)
+    monkeypatch.setattr(run_daily_update, "save_schedule_games", _fake_save_schedule_games)
+    monkeypatch.setattr(run_daily_update, "crawl_and_save_game_details", _fake_crawl_and_save_game_details)
     monkeypatch.setattr(
         run_daily_update,
         "refresh_game_status_for_date",

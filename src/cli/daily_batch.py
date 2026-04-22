@@ -21,7 +21,7 @@ from src.cli.live_crawler import run_live_crawler_cycle
 from src.cli.run_daily_update import run_update
 from src.crawlers.schedule_crawler import ScheduleCrawler
 from dateutil.relativedelta import relativedelta
-from src.repositories.game_repository import save_schedule_game
+from src.services.schedule_collection_service import save_schedule_games
 
 # Configure Logging
 logging.basicConfig(
@@ -59,9 +59,8 @@ async def run_startup():
         try:
             games = await sch_crawler.crawl_schedule(year, month)
             logger.info(f"   Crawled {year}-{month:02d}: Found {len(games)} games")
-            for game in games:
-                if save_schedule_game(game):
-                    total_saved += 1
+            result = save_schedule_games(games, log=logger.warning)
+            total_saved += result.saved
         except Exception as e:
             logger.error(f"   Failed to crawl schedule for {year}-{month:02d}: {e}")
 

@@ -1,61 +1,74 @@
-"""
-Shared throttle service to enforce per-host request spacing.
-Supports both synchronous and asynchronous usage.
-"""
 import asyncio
 import random
 import time
-from typing import Dict, Optional
+import os
+import logging
+from typing import Dict, Any
 
+logger = logging.getLogger(__name__)
 
 class AsyncThrottle:
     """
-    A per-host throttle that ensures a minimum delay between requests to the same host.
-    Uses a singleton-like pattern or shared instance to coordinate across crawlers.
+    A centralized throttling service with random jitter to prevent IP blocks.
+    Respects global delays configured via environment variables.
     """
-    _instance: Optional["AsyncThrottle"] = None
+    def __init__(self, delay: float = 1.0, jitter: float = 0.3):
+        # Override with env vars if present
+        env_delay = os.getenv("KBO_REQUEST_DELAY")
+        env_jitter = os.getenv("KBO_REQUEST_JITTER")
 
-    def __init__(self, default_delay: float = 3.0, jitter: float = 0.5):
-        self.default_delay = default_delay
-        self.jitter = jitter
-        self.last_request_time: Dict[str, float] = {}
+        self._default_delay = float(env_delay) if env_delay is not None else delay
+        self.jitter = float(env_jitter) if env_jitter is not None else jitter
+        self._last_request_times: Dict[str, float] = {}
         self._lock = asyncio.Lock()
-        self._sync_lock = None # Will be initialized if needed for sync usage
 
-    @classmethod
-    def get_instance(cls) -> "AsyncThrottle":
-        if cls._instance is None:
-            cls._instance = cls()
-        return cls._instance
+    @property
+    def default_delay(self) -> float:
+        return self._default_delay
 
-    def _get_delay(self, host: str) -> float:
-        """Calculate the required delay for a host."""
-        now = time.time()
-        last_time = self.last_request_time.get(host, 0)
-        
-        # Add random jitter to the delay
-        actual_delay = self.default_delay + random.uniform(-self.jitter, self.jitter)
-        wait_time = max(0, last_time + actual_delay - now)
-        return wait_time
+    @default_delay.setter
+    def default_delay(self, val: float):
+        self._default_delay = val
 
-    async def wait(self, host: str = "default"):
-        """Async wait until the host is ready for another request."""
+    def _get_target_delay(self) -> float:
+        current_jitter = random.uniform(-self.jitter / 2, self.jitter)
+        return max(0.0, self._default_delay + current_jitter)
+
+    async def wait(self, host: str = "koreabaseball.com") -> None:
+        """
+        Wait for the required delay plus jitter since the last request to this host.
+        Safe for concurrent use.
+        """
         async with self._lock:
-            wait_time = self._get_delay(host)
-            if wait_time > 0:
-                print(f"[THROTTLE] Waiting {wait_time:.2f}s for {host}...")
-                await asyncio.sleep(wait_time)
-            self.last_request_time[host] = time.time()
+            now = time.monotonic()
+            last_time = self._last_request_times.get(host, 0.0)
+            elapsed = now - last_time
 
-    def wait_sync(self, host: str = "default"):
-        """Synchronous wait until the host is ready for another request."""
-        # Note: In a mixed sync/async environment, this might block the event loop 
-        # if not called carefully. But for pure sync crawlers, it's fine.
-        wait_time = self._get_delay(host)
-        if wait_time > 0:
-            print(f"[THROTTLE] Sync Waiting {wait_time:.2f}s for {host}...")
-            time.sleep(wait_time)
-        self.last_request_time[host] = time.time()
+            target_delay = self._get_target_delay()
+            sleep_time = target_delay - elapsed
 
-# Shared global throttle instance
-throttle = AsyncThrottle.get_instance()
+            if sleep_time > 0:
+                if sleep_time > self._default_delay * 5:
+                    logger.warning(f"Heavy throttling for {host}: sleeping for {sleep_time:.2f}s")
+                await asyncio.sleep(sleep_time)
+
+            self._last_request_times[host] = time.monotonic()
+
+    def wait_sync(self, host: str = "koreabaseball.com") -> None:
+        """
+        Synchronous version of wait.
+        """
+        now = time.monotonic()
+        last_time = self._last_request_times.get(host, 0.0)
+        elapsed = now - last_time
+
+        target_delay = self._get_target_delay()
+        sleep_time = target_delay - elapsed
+
+        if sleep_time > 0:
+            time.sleep(sleep_time)
+
+        self._last_request_times[host] = time.monotonic()
+
+# Global instance for shared rate limiting across concurrent crawlers
+throttle = AsyncThrottle()
