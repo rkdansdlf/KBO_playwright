@@ -22,6 +22,20 @@ class RetiredPlayerDetailCrawler:
     def __init__(self, request_delay: float = 1.5, pool: Optional[AsyncPlaywrightPool] = None):
         self.request_delay = request_delay
         self.pool = pool
+        self._internal_pool: Optional[AsyncPlaywrightPool] = None
+
+    async def _get_pool(self) -> AsyncPlaywrightPool:
+        if self.pool:
+            return self.pool
+        if self._internal_pool is None:
+            self._internal_pool = AsyncPlaywrightPool(max_pages=5)
+            await self._internal_pool.start()
+        return self._internal_pool
+
+    async def close(self) -> None:
+        if self._internal_pool:
+            await self._internal_pool.close()
+            self._internal_pool = None
 
     async def _wait(self) -> None:
         await throttle.wait()
@@ -32,31 +46,26 @@ class RetiredPlayerDetailCrawler:
         """
         Fetch hitter & pitcher pages for the given player ID.
         """
-        pool = self.pool or AsyncPlaywrightPool(max_pages=1)
-        owns_pool = self.pool is None
-        await pool.start()
-        try:
-            for attempt in range(retries + 1):
-                try:
-                    page = await pool.acquire()
-                    try:
-                        hitter_payload = await self._fetch_page(page, self.hitter_url, player_id)
-                        pitcher_payload = await self._fetch_page(page, self.pitcher_url, player_id)
-                        return {
-                            "player_id": player_id,
-                            "hitter": hitter_payload,
-                            "pitcher": pitcher_payload,
-                        }
-                    finally:
-                        await pool.release(page)
-                except Exception as exc:
-                    if attempt == retries:
-                        raise exc
-                    print(f"⚠️ Retry {attempt + 1} for {player_id} due to: {exc}")
-                    await asyncio.sleep(2.0 * (attempt + 1))
-        finally:
-            if owns_pool:
-                await pool.close()
+        pool = await self._get_pool()
+        hitter_payload = None
+        pitcher_payload = None
+
+        for attempt in range(retries + 1):
+            try:
+                async with pool.page() as page:
+                    hitter_payload = await self._fetch_page(page, self.hitter_url, player_id)
+                    pitcher_payload = await self._fetch_page(page, self.pitcher_url, player_id)
+                    return {
+                        "player_id": player_id,
+                        "hitter": hitter_payload,
+                        "pitcher": pitcher_payload,
+                    }
+            except Exception as exc:
+                if attempt == retries:
+                    print(f"❌ Failed to fetch player {player_id} after {retries} retries: {exc}")
+                    break
+                print(f"⚠️ Retry {attempt + 1} for {player_id} due to: {exc}")
+                await asyncio.sleep(1.0 * (attempt + 1))
 
         return {
             "player_id": player_id,
@@ -147,10 +156,13 @@ class RetiredPlayerDetailCrawler:
 async def main():
     crawler = RetiredPlayerDetailCrawler()
     sample_id = "78137"
-    payload = await crawler.fetch_player(sample_id)
-    print(f"Fetched player {sample_id}")
-    print(f"Hitter tables: {len(payload.get('hitter', {}).get('tables', []))}")
-    print(f"Pitcher tables: {len(payload.get('pitcher', {}).get('tables', []))}")
+    try:
+        payload = await crawler.fetch_player(sample_id)
+        print(f"Fetched player {sample_id}")
+        print(f"Hitter tables: {len(payload.get('hitter', {}).get('tables', []))}")
+        print(f"Pitcher tables: {len(payload.get('pitcher', {}).get('tables', []))}")
+    finally:
+        await crawler.close()
 
 
 if __name__ == "__main__":
