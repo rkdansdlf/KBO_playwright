@@ -18,6 +18,9 @@ class MetricConfig:
     entity_type: str = "PLAYER"
     min_games_field: Optional[str] = None
     min_games: Optional[int] = None
+    # Participation qualifiers
+    min_pa: Optional[int] = None
+    min_ip_outs: Optional[int] = None
 
 
 FIELDING_METRICS: List[MetricConfig] = [
@@ -39,6 +42,30 @@ BASERUNNING_METRICS: List[MetricConfig] = [
     ),
 ]
 
+BATTING_METRICS: List[MetricConfig] = [
+    MetricConfig(name="avg", source="BATTING", value_key="avg", min_pa=0),
+    MetricConfig(name="obp", source="BATTING", value_key="obp", min_pa=0),
+    MetricConfig(name="slg", source="BATTING", value_key="slg", min_pa=0),
+    MetricConfig(name="ops", source="BATTING", value_key="ops", min_pa=0),
+    MetricConfig(name="iso", source="BATTING", value_key="iso", min_pa=0),
+    MetricConfig(name="babip", source="BATTING", value_key="babip", min_pa=0),
+    MetricConfig(name="xr", source="BATTING", value_key="xr", min_pa=0),
+    MetricConfig(name="home_runs", source="BATTING", value_key="home_runs"),
+    MetricConfig(name="rbi", source="BATTING", value_key="rbi"),
+]
+
+PITCHING_METRICS: List[MetricConfig] = [
+    MetricConfig(name="era", source="PITCHING", value_key="era", descending=False, min_ip_outs=0),
+    MetricConfig(name="whip", source="PITCHING", value_key="whip", descending=False, min_ip_outs=0),
+    MetricConfig(name="fip", source="PITCHING", value_key="fip", descending=False, min_ip_outs=0),
+    MetricConfig(name="k_per_nine", source="PITCHING", value_key="k_per_nine", min_ip_outs=0),
+    MetricConfig(name="bb_per_nine", source="PITCHING", value_key="bb_per_nine", descending=False, min_ip_outs=0),
+    MetricConfig(name="kbb", source="PITCHING", value_key="kbb", min_ip_outs=0),
+    MetricConfig(name="wins", source="PITCHING", value_key="wins"),
+    MetricConfig(name="saves", source="PITCHING", value_key="saves"),
+    MetricConfig(name="holds", source="PITCHING", value_key="holds"),
+]
+
 
 class RankingAggregator:
     """Aggregates per-metric rankings across stat categories."""
@@ -50,13 +77,47 @@ class RankingAggregator:
         self,
         season: int,
         *,
-        fielding_stats: Iterable[Dict[str, Any]],
-        baserunning_stats: Iterable[Dict[str, Any]],
+        fielding_stats: Optional[Iterable[Dict[str, Any]]] = None,
+        baserunning_stats: Optional[Iterable[Dict[str, Any]]] = None,
+        batting_stats: Optional[Iterable[Dict[str, Any]]] = None,
+        pitching_stats: Optional[Iterable[Dict[str, Any]]] = None,
         persist: bool = True,
+        min_pa: Optional[int] = None,
+        min_ip_outs: Optional[int] = None,
     ) -> List[Dict[str, Any]]:
         rankings: List[Dict[str, Any]] = []
-        rankings.extend(self._build_rankings(season, fielding_stats, FIELDING_METRICS))
-        rankings.extend(self._build_rankings(season, baserunning_stats, BASERUNNING_METRICS))
+        
+        if fielding_stats:
+            rankings.extend(self._build_rankings(season, fielding_stats, FIELDING_METRICS))
+        if baserunning_stats:
+            rankings.extend(self._build_rankings(season, baserunning_stats, BASERUNNING_METRICS))
+        
+        if batting_stats:
+            # Inject dynamic min_pa into config copies if provided
+            batting_configs = []
+            for cfg in BATTING_METRICS:
+                if cfg.min_pa is not None and min_pa is not None:
+                    batting_configs.append(MetricConfig(
+                        name=cfg.name, source=cfg.source, value_key=cfg.value_key,
+                        descending=cfg.descending, entity_type=cfg.entity_type,
+                        min_pa=min_pa
+                    ))
+                else:
+                    batting_configs.append(cfg)
+            rankings.extend(self._build_rankings(season, batting_stats, batting_configs))
+            
+        if pitching_stats:
+            pitching_configs = []
+            for cfg in PITCHING_METRICS:
+                if cfg.min_ip_outs is not None and min_ip_outs is not None:
+                    pitching_configs.append(MetricConfig(
+                        name=cfg.name, source=cfg.source, value_key=cfg.value_key,
+                        descending=cfg.descending, entity_type=cfg.entity_type,
+                        min_ip_outs=min_ip_outs
+                    ))
+                else:
+                    pitching_configs.append(cfg)
+            rankings.extend(self._build_rankings(season, pitching_stats, pitching_configs))
 
         if persist and rankings:
             self.repository.save_rankings(rankings)
@@ -87,18 +148,34 @@ class RankingAggregator:
             value = row.get(config.value_key)
             if value is None:
                 continue
+            
+            # 1. Min Games Filter
             if config.min_games_field and config.min_games:
                 games = row.get(config.min_games_field)
                 if games is None or games < config.min_games:
                     continue
+            
+            # 2. Min PA Filter
+            if config.min_pa is not None:
+                pa = row.get("plate_appearances") or 0
+                if pa < config.min_pa:
+                    continue
+            
+            # 3. Min IP Outs Filter
+            if config.min_ip_outs is not None:
+                ip_outs = row.get("innings_outs") or 0
+                if ip_outs < config.min_ip_outs:
+                    continue
+
             entity_id = row.get("player_id") or row.get("player_name")
             if not entity_id:
                 continue
+                
             processed.append(
                 {
                     "entity_id": str(entity_id),
                     "entity_label": row.get("player_name") or str(entity_id),
-                    "team_id": row.get("team_id"),
+                    "team_id": row.get("team_id") or row.get("team_code"),
                     "value": float(value),
                     "raw": row,
                 }

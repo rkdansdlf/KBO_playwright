@@ -1,0 +1,7 @@
+column_name,type,is_primary_key,foreign_key
+alias_game_id,VARCHAR(20),True,
+canonical_game_id,VARCHAR(20),False,game(game_id)
+source,VARCHAR(50),False,
+reason,VARCHAR(120),False,
+created_at,DATETIME,False,
+updated_at,DATETIME,False,

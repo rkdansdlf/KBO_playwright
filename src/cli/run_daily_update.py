@@ -70,6 +70,7 @@ async def run_update(
     *,
     step_runner: Optional[Callable[[Sequence[str]], None]] = None,
     seed_tomorrow_preview: bool = False,
+    run_auto_healer: bool = True,
 ):
     """Main orchestration logic for postgame finalize and daily reconciliation."""
     runner = step_runner or _run_python_step
@@ -81,11 +82,14 @@ async def run_update(
     year = int(target_date[:4])
     month = int(target_date[4:6])
 
-    print("\n🩺 Step 0: Running Auto-Healer...")
-    try:
-        await run_healer_async(dry_run=False)
-    except Exception as exc:
-        print(f"   ⚠️ Auto-Healer encountered an error (continuing anyway): {exc}")
+    if run_auto_healer:
+        print("\n🩺 Step 0: Running Auto-Healer...")
+        try:
+            await run_healer_async(dry_run=False)
+        except Exception as exc:
+            print(f"   ⚠️ Auto-Healer encountered an error (continuing anyway): {exc}")
+    else:
+        print("\n🩺 Step 0: Auto-Healer skipped for scoped backfill run.")
 
     print("\n📅 Step 1: Crawling + saving monthly schedule...")
     s_crawler = ScheduleCrawler()
@@ -343,6 +347,11 @@ def build_arg_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Optionally seed tomorrow preview data after finalize.",
     )
+    parser.add_argument(
+        "--skip-auto-healer",
+        action="store_true",
+        help="Skip global past-game auto-healing for scoped backfill runs.",
+    )
     return parser
 
 
@@ -364,6 +373,7 @@ def main(argv: Sequence[str] | None = None):
             headless=args.headless,
             limit=args.limit,
             seed_tomorrow_preview=args.seed_tomorrow_preview,
+            run_auto_healer=not args.skip_auto_healer,
         )
     )
 

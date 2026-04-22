@@ -4,10 +4,10 @@ Recompute and persist standardized game_status for all games.
 
 Status rules:
   - COMPLETED: both scores are present
-  - SCHEDULED: missing score and game_date is in the future
+  - SCHEDULED: missing score and game_date is in the future, or today before detail appears
   - CANCELLED/POSTPONED: manual status from overrides/evidence for past/today games
-  - CANCELLED: missing score, past/today, has metadata, and has no detail rows
-  - UNRESOLVED_MISSING: missing score, past/today, and does not meet CANCELLED rule
+  - CANCELLED: missing score, past, has metadata, and has no detail rows
+  - UNRESOLVED_MISSING: missing score, past, and does not meet CANCELLED rule
 """
 from __future__ import annotations
 
@@ -70,8 +70,8 @@ def derive_game_status(
     if manual_status in MANUAL_STATUS_ALLOWED:
         return manual_status
     has_any_detail = has_inning_scores or has_lineups or has_batting or has_pitching
-    if game_date == today and has_any_detail and manual_status is None:
-        return STATUS_LIVE
+    if game_date == today:
+        return STATUS_LIVE if has_any_detail else STATUS_SCHEDULED
     if has_metadata and not has_any_detail:
         return STATUS_CANCELLED
     return STATUS_UNRESOLVED
@@ -199,11 +199,11 @@ def refresh_game_statuses(
             if manual_entry and status == manual_entry["status"]:
                 manual_source_counts[manual_entry["source"]] += 1
 
-            is_past_or_today = game_date <= today
+            is_past = game_date < today
             is_missing_runs = game["home_score"] is None or game["away_score"] is None
-            if is_past_or_today and status == STATUS_SCHEDULED:
+            if is_past and status == STATUS_SCHEDULED:
                 past_scheduled += 1
-            if is_past_or_today and is_missing_runs:
+            if is_past and is_missing_runs:
                 past_missing_runs += 1
 
             detail_rows.append(

@@ -1,24 +1,20 @@
 #!/usr/bin/env python3
-"""
-Conservative NULL player_id resolver.
+"""Conservatively resolve NULL player_id values in per-game tables.
 
-Resolution policy (fixed):
-  1) Override exact group match (source_table, year, team_code, player_name)
-  2) Apply name alias
-  3) Build season+team candidates
-  4) Apply role filter (batting/lineups -> batting profile, pitching -> pitching profile)
-  5) Apply uniform_no filter
-  6) Update only when exactly one candidate remains
+The resolver only applies a group when the evidence narrows to exactly one
+existing player_basic row. It never auto-registers placeholder players.
 """
 from __future__ import annotations
 
 import argparse
 import csv
+import os
+import shutil
+import sys
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-import sys
-from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
+from typing import Any, Iterable
 
 from sqlalchemy import bindparam, text
 
@@ -26,31 +22,12 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from src.db.engine import SessionLocal
+from src.db.engine import DATABASE_URL, SessionLocal
 
-TABLES = ("game_batting_stats", "game_pitching_stats", "game_lineups")
-ALIASES_PATH = PROJECT_ROOT / "data/player_name_aliases.csv"
+
 DEFAULT_OVERRIDES_CSV = PROJECT_ROOT / "data/player_id_overrides.csv"
-
-TEAM_VARIANTS_MAP: Dict[str, Sequence[str]] = {
-    "DB": ("DB", "OB", "DO"),
-    "OB": ("OB", "DB", "DO"),
-    "DO": ("DO", "OB", "DB"),
-    "KIA": ("KIA", "HT", "KI"),
-    "HT": ("HT", "KIA", "KI"),
-    "KI": ("KI", "KIA", "HT"),
-    "SSG": ("SSG", "SK"),
-    "SK": ("SK", "SSG"),
-    "KH": ("KH", "WO", "NX"),
-    "WO": ("WO", "NX", "KH"),
-    "NX": ("NX", "WO", "KH"),
-}
-
-ROLE_TABLE_MAP = {
-    "game_batting_stats": "player_season_batting",
-    "game_lineups": "player_season_batting",
-    "game_pitching_stats": "player_season_pitching",
-}
+DEFAULT_OUTPUT_DIR = PROJECT_ROOT / "data"
+DEFAULT_TABLES = ("game_batting_stats", "game_pitching_stats", "game_lineups")
 
 
 @dataclass(frozen=True)
@@ -60,102 +37,101 @@ class OverrideEntry:
     team_code: str
     player_name: str
     resolved_player_id: int
-    reason: str
-    evidence_source: str
+    reason: str = ""
+    evidence_source: str = ""
 
 
-def normalize_text(value: Any) -> str:
-    return str(value or "").strip()
+def _sqlite_path_from_url(db_url: str) -> Path | None:
+    if not db_url.startswith("sqlite:///"):
+        return None
+    return Path(db_url.removeprefix("sqlite:///"))
 
 
-def normalize_team_code(value: Any) -> str:
-    return normalize_text(value).upper()
+def _backup_sqlite_database(output_dir: Path) -> Path | None:
+    db_path = _sqlite_path_from_url(DATABASE_URL)
+    if db_path is None or not db_path.exists():
+        return None
+    stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    backup_path = output_dir / f"{db_path.name}.backup_before_null_player_id_{stamp}"
+    output_dir.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(db_path, backup_path)
+    return backup_path
 
 
-def normalize_uniform_no(value: Any) -> str:
-    raw = normalize_text(value)
-    if not raw:
-        return ""
-    if raw.isdigit():
-        return str(int(raw))
-    return raw.upper()
+def _write_csv(path: Path, rows: Iterable[dict[str, Any]], fieldnames: list[str]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", newline="", encoding="utf-8") as fh:
+        writer = csv.DictWriter(fh, fieldnames=fieldnames)
+        writer.writeheader()
+        for row in rows:
+            writer.writerow({field: row.get(field) for field in fieldnames})
 
 
-def load_alias_map(path: Path = ALIASES_PATH) -> Dict[str, str]:
-    if not path.exists():
+def _table_columns(session, table_name: str) -> set[str]:
+    if session.bind.dialect.name == "sqlite":
+        return {row[1] for row in session.execute(text(f"PRAGMA table_info({table_name})")).fetchall()}
+    rows = session.execute(
+        text(
+            """
+            SELECT column_name
+            FROM information_schema.columns
+            WHERE table_name = :table_name
+            """
+        ),
+        {"table_name": table_name},
+    ).fetchall()
+    return {str(row[0]) for row in rows}
+
+
+def _load_alias_map(path: Path | None = None) -> dict[str, str]:
+    alias_path = path or PROJECT_ROOT / "data/player_name_aliases.csv"
+    if not alias_path.exists():
         return {}
-    aliases: Dict[str, str] = {}
-    with path.open("r", encoding="utf-8") as fh:
+    aliases: dict[str, str] = {}
+    with alias_path.open("r", newline="", encoding="utf-8") as fh:
         reader = csv.DictReader(fh)
         for row in reader:
-            old_name = normalize_text(row.get("old_name"))
-            new_name = normalize_text(row.get("new_name"))
-            if old_name and new_name and old_name != new_name:
-                aliases[old_name] = new_name
+            old = str(row.get("old_name") or "").strip()
+            new = str(row.get("new_name") or "").strip()
+            if old and new:
+                aliases[old] = new
     return aliases
 
 
-def load_overrides(path: Path) -> Dict[Tuple[str, int, str, str], OverrideEntry]:
-    overrides: Dict[Tuple[str, int, str, str], OverrideEntry] = {}
+def load_overrides(path: Path) -> dict[tuple[str, int, str, str], OverrideEntry]:
     if not path.exists():
-        return overrides
-
-    with path.open("r", encoding="utf-8") as fh:
+        return {}
+    overrides: dict[tuple[str, int, str, str], OverrideEntry] = {}
+    with path.open("r", newline="", encoding="utf-8") as fh:
         reader = csv.DictReader(fh)
         for row in reader:
-            source_table = normalize_text(row.get("source_table"))
-            if source_table not in TABLES:
-                continue
-            year_raw = normalize_text(row.get("year"))
-            player_name = normalize_text(row.get("player_name"))
-            team_code = normalize_team_code(row.get("team_code"))
-            resolved_player_id_raw = normalize_text(row.get("resolved_player_id"))
-            if not year_raw or not player_name or not resolved_player_id_raw:
+            table = str(row.get("source_table") or "").strip()
+            player_name = str(row.get("player_name") or "").strip()
+            team_code = str(row.get("team_code") or "").strip()
+            raw_year = str(row.get("year") or "").strip()
+            raw_player_id = str(row.get("resolved_player_id") or "").strip()
+            if not table or not player_name or not team_code or not raw_year or not raw_player_id:
                 continue
             try:
-                year = int(year_raw)
-                resolved_player_id = int(resolved_player_id_raw)
+                year = int(raw_year)
+                player_id = int(raw_player_id)
             except ValueError:
                 continue
-
-            key = (source_table, year, team_code, player_name)
-            overrides[key] = OverrideEntry(
-                source_table=source_table,
+            entry = OverrideEntry(
+                source_table=table,
                 year=year,
                 team_code=team_code,
                 player_name=player_name,
-                resolved_player_id=resolved_player_id,
-                reason=normalize_text(row.get("reason")),
-                evidence_source=normalize_text(row.get("evidence_source")),
+                resolved_player_id=player_id,
+                reason=str(row.get("reason") or "").strip(),
+                evidence_source=str(row.get("evidence_source") or "").strip(),
             )
+            overrides[(table, year, team_code, player_name)] = entry
     return overrides
 
 
-def team_code_variants(team_code: str | None) -> List[str]:
-    code = normalize_team_code(team_code)
-    if not code:
-        return []
-    variants = list(TEAM_VARIANTS_MAP.get(code, (code,)))
-    seen = set()
-    result: List[str] = []
-    for item in variants:
-        norm = normalize_team_code(item)
-        if norm and norm not in seen:
-            seen.add(norm)
-            result.append(norm)
-    return result
-
-
-def is_group_resolvable(candidate_ids: Sequence[int]) -> bool:
-    return len(candidate_ids) == 1
-
-
-def player_exists(session, player_id: int) -> bool:
-    found = session.execute(
-        text("SELECT 1 FROM player_basic WHERE player_id = :player_id LIMIT 1"),
-        {"player_id": int(player_id)},
-    ).fetchone()
-    return found is not None
+def is_group_resolvable(candidate_ids: list[int]) -> bool:
+    return len(set(candidate_ids)) == 1
 
 
 def fetch_group_uniform_nos(
@@ -165,132 +141,102 @@ def fetch_group_uniform_nos(
     year: int,
     team_code: str,
     player_name: str,
-) -> List[str]:
+) -> list[str]:
+    columns = _table_columns(session, table_name)
+    if "uniform_no" not in columns or table_name == "game_lineups":
+        return []
     rows = session.execute(
         text(
             f"""
-            SELECT DISTINCT COALESCE(uniform_no, '') AS uniform_no
+            SELECT DISTINCT uniform_no
             FROM {table_name}
             WHERE player_id IS NULL
               AND substr(game_id, 1, 4) = :year
               AND COALESCE(team_code, '') = :team_code
               AND player_name = :player_name
+              AND uniform_no IS NOT NULL
+              AND trim(uniform_no) != ''
             """
         ),
-        {
-            "year": str(year),
-            "team_code": normalize_text(team_code),
-            "player_name": player_name,
-        },
+        {"year": str(year), "team_code": team_code, "player_name": player_name},
     ).fetchall()
-    uniforms: List[str] = []
-    for row in rows:
-        normalized = normalize_uniform_no(row[0])
-        if normalized:
-            uniforms.append(normalized)
-    return sorted(set(uniforms))
+    return sorted({str(row[0]).strip() for row in rows if str(row[0]).strip()})
 
 
-def resolve_candidate_ids(
+def _existing_player_id(session, player_id: int) -> bool:
+    return bool(
+        session.execute(
+            text("SELECT 1 FROM player_basic WHERE player_id = :player_id LIMIT 1"),
+            {"player_id": player_id},
+        ).first()
+    )
+
+
+def _candidate_ids_from_season_table(
     session,
     *,
+    season_table: str,
     season: int,
     team_code: str | None,
     player_name: str,
-) -> List[int]:
-    teams = team_code_variants(team_code)
-    if not teams:
-        return []
-
-    candidate_sql = (
-        text(
-            """
-            SELECT DISTINCT pb.player_id
-            FROM player_basic pb
-            JOIN player_season_batting psb ON psb.player_id = pb.player_id
-            WHERE pb.name = :player_name
-              AND psb.season = :season
-              AND psb.team_code IN :team_codes
-            UNION
-            SELECT DISTINCT pb.player_id
-            FROM player_basic pb
-            JOIN player_season_pitching psp ON psp.player_id = pb.player_id
-            WHERE pb.name = :player_name
-              AND psp.season = :season
-              AND psp.team_code IN :team_codes
-            ORDER BY 1
-            """
-        )
-        .bindparams(bindparam("team_codes", expanding=True))
-    )
-
+) -> list[int]:
+    team_filter = "AND ps.team_code = :team_code" if team_code else ""
+    params: dict[str, Any] = {"season": int(season), "player_name": player_name}
+    if team_code:
+        params["team_code"] = team_code
     rows = session.execute(
-        candidate_sql,
-        {"player_name": player_name, "season": int(season), "team_codes": teams},
-    ).fetchall()
-    return [int(row[0]) for row in rows]
-
-
-def filter_candidates_by_role(
-    session,
-    *,
-    table_name: str,
-    season: int,
-    team_codes: Sequence[str],
-    candidate_ids: Sequence[int],
-) -> List[int]:
-    if not candidate_ids:
-        return []
-    role_table = ROLE_TABLE_MAP.get(table_name)
-    if not role_table:
-        return list(candidate_ids)
-
-    role_sql = (
         text(
             f"""
-            SELECT DISTINCT player_id
-            FROM {role_table}
-            WHERE season = :season
-              AND team_code IN :team_codes
-              AND player_id IN :candidate_ids
+            SELECT DISTINCT pb.player_id
+            FROM {season_table} ps
+            JOIN player_basic pb ON pb.player_id = ps.player_id
+            WHERE ps.season = :season
+              AND pb.name = :player_name
+              {team_filter}
             """
-        )
-        .bindparams(bindparam("team_codes", expanding=True))
-        .bindparams(bindparam("candidate_ids", expanding=True))
-    )
-    rows = session.execute(
-        role_sql,
-        {"season": int(season), "team_codes": list(team_codes), "candidate_ids": list(candidate_ids)},
+        ),
+        params,
     ).fetchall()
     return sorted({int(row[0]) for row in rows})
 
 
-def filter_candidates_by_uniform(
-    session,
-    *,
-    candidate_ids: Sequence[int],
-    uniform_nos: Sequence[str],
-) -> List[int]:
-    if not candidate_ids:
-        return []
-    normalized_uniforms = {normalize_uniform_no(u) for u in uniform_nos if normalize_uniform_no(u)}
-    if not normalized_uniforms:
-        return list(candidate_ids)
+def _filter_by_uniform(session, candidate_ids: list[int], uniform_nos: list[str]) -> list[int]:
+    if len(candidate_ids) <= 1 or not uniform_nos:
+        return candidate_ids
+    stmt = (
+        text(
+            """
+            SELECT player_id
+            FROM player_basic
+            WHERE player_id IN :candidate_ids
+              AND CAST(uniform_no AS TEXT) IN :uniform_nos
+            """
+        )
+        .bindparams(bindparam("candidate_ids", expanding=True))
+        .bindparams(bindparam("uniform_nos", expanding=True))
+    )
+    rows = session.execute(
+        stmt,
+        {
+            "candidate_ids": candidate_ids,
+            "uniform_nos": [str(no) for no in uniform_nos],
+        },
+    ).fetchall()
+    return sorted({int(row[0]) for row in rows})
 
-    uniform_sql = text(
-        """
-        SELECT player_id, COALESCE(uniform_no, '') AS uniform_no
-        FROM player_basic
-        WHERE player_id IN :candidate_ids
-        """
-    ).bindparams(bindparam("candidate_ids", expanding=True))
-    rows = session.execute(uniform_sql, {"candidate_ids": list(candidate_ids)}).fetchall()
 
-    matched: List[int] = []
-    for player_id, uniform_no in rows:
-        if normalize_uniform_no(uniform_no) in normalized_uniforms:
-            matched.append(int(player_id))
-    return sorted(set(matched))
+def _unique_player_basic_exact_name(session, player_name: str) -> list[int]:
+    rows = session.execute(
+        text(
+            """
+            SELECT player_id
+            FROM player_basic
+            WHERE name = :player_name
+            """
+        ),
+        {"player_name": player_name},
+    ).fetchall()
+    return sorted({int(row[0]) for row in rows})
 
 
 def choose_candidate_ids(
@@ -300,97 +246,87 @@ def choose_candidate_ids(
     season: int,
     team_code: str,
     player_name: str,
-    uniform_nos: Sequence[str],
-    alias_map: Dict[str, str],
-    overrides: Dict[Tuple[str, int, str, str], OverrideEntry],
-) -> Dict[str, Any]:
-    key = (table_name, int(season), normalize_team_code(team_code), player_name)
-    override = overrides.get(key)
+    uniform_nos: list[str],
+    alias_map: dict[str, str],
+    overrides: dict[tuple[str, int, str, str], OverrideEntry],
+) -> dict[str, Any]:
+    override = overrides.get((table_name, int(season), team_code, player_name))
     if override:
-        if player_exists(session, override.resolved_player_id):
+        if _existing_player_id(session, override.resolved_player_id):
             return {
                 "candidate_ids": [override.resolved_player_id],
                 "resolution_method": "override_exact_group",
-                "resolution_reason": "override_applied",
-                "resolved_name": player_name,
-                "override_reason": override.reason,
-                "override_evidence_source": override.evidence_source,
+                "resolution_reason": override.reason,
             }
         return {
             "candidate_ids": [],
-            "resolution_method": "override_exact_group",
+            "resolution_method": "",
             "resolution_reason": "override_player_id_not_found_in_player_basic",
-            "resolved_name": player_name,
-            "override_reason": override.reason,
-            "override_evidence_source": override.evidence_source,
         }
 
-    resolved_name = alias_map.get(player_name, player_name)
-    teams = team_code_variants(team_code)
-    candidates = resolve_candidate_ids(
-        session,
-        season=int(season),
-        team_code=team_code,
-        player_name=resolved_name,
+    canonical_name = alias_map.get(player_name, player_name)
+    preferred_tables = (
+        ("player_season_pitching",)
+        if table_name == "game_pitching_stats"
+        else ("player_season_batting", "player_season_pitching")
     )
-    if not candidates:
-        return {
-            "candidate_ids": [],
-            "resolution_method": "season_team_candidate",
-            "resolution_reason": "no_candidates",
-            "resolved_name": resolved_name,
-            "override_reason": "",
-            "override_evidence_source": "",
-        }
 
-    role_filtered = filter_candidates_by_role(
-        session,
-        table_name=table_name,
-        season=int(season),
-        team_codes=teams,
-        candidate_ids=candidates,
-    )
-    if not role_filtered:
-        return {
-            "candidate_ids": [],
-            "resolution_method": "role_filter",
-            "resolution_reason": "filtered_to_zero_by_role",
-            "resolved_name": resolved_name,
-            "override_reason": "",
-            "override_evidence_source": "",
-        }
-
-    uniform_filtered = filter_candidates_by_uniform(
-        session,
-        candidate_ids=role_filtered,
-        uniform_nos=uniform_nos,
-    )
-    if uniform_nos:
-        if not uniform_filtered:
+    for season_table in preferred_tables:
+        candidate_ids = _candidate_ids_from_season_table(
+            session,
+            season_table=season_table,
+            season=season,
+            team_code=team_code,
+            player_name=canonical_name,
+        )
+        uniform_filtered = _filter_by_uniform(session, candidate_ids, uniform_nos)
+        if is_group_resolvable(uniform_filtered):
+            method = "uniform_filter" if uniform_filtered != candidate_ids else "season_team_name"
+            return {
+                "candidate_ids": uniform_filtered,
+                "resolution_method": method,
+                "resolution_reason": season_table,
+            }
+        if candidate_ids and uniform_nos and not uniform_filtered:
             return {
                 "candidate_ids": [],
-                "resolution_method": "uniform_filter",
-                "resolution_reason": "filtered_to_zero_by_uniform",
-                "resolved_name": resolved_name,
-                "override_reason": "",
-                "override_evidence_source": "",
+                "resolution_method": "",
+                "resolution_reason": "uniform_filter_no_match",
             }
+
+    season_candidates: set[int] = set()
+    for season_table in ("player_season_batting", "player_season_pitching"):
+        season_candidates.update(
+            _candidate_ids_from_season_table(
+                session,
+                season_table=season_table,
+                season=season,
+                team_code=None,
+                player_name=canonical_name,
+            )
+        )
+    candidate_ids = sorted(season_candidates)
+    uniform_filtered = _filter_by_uniform(session, candidate_ids, uniform_nos)
+    if is_group_resolvable(uniform_filtered):
+        method = "uniform_filter" if uniform_filtered != candidate_ids else "season_name_unique"
         return {
             "candidate_ids": uniform_filtered,
-            "resolution_method": "uniform_filter",
-            "resolution_reason": "season_team_role_uniform",
-            "resolved_name": resolved_name,
-            "override_reason": "",
-            "override_evidence_source": "",
+            "resolution_method": method,
+            "resolution_reason": "season_without_team",
+        }
+
+    exact_name_candidates = _unique_player_basic_exact_name(session, canonical_name)
+    if is_group_resolvable(exact_name_candidates):
+        return {
+            "candidate_ids": exact_name_candidates,
+            "resolution_method": "unique_player_basic_exact_name",
+            "resolution_reason": "single_exact_name_in_player_basic",
         }
 
     return {
-        "candidate_ids": role_filtered,
-        "resolution_method": "role_filter",
-        "resolution_reason": "season_team_role",
-        "resolved_name": resolved_name,
-        "override_reason": "",
-        "override_evidence_source": "",
+        "candidate_ids": candidate_ids,
+        "resolution_method": "",
+        "resolution_reason": "ambiguous_or_missing_candidate",
     }
 
 
@@ -399,244 +335,210 @@ def update_null_player_ids_for_group(
     *,
     table_name: str,
     year: int,
-    team_code: str | None,
+    team_code: str,
     player_name: str,
     player_id: int,
-    dry_run: bool = False,
+    dry_run: bool,
 ) -> int:
-    update_sql = text(
-        f"""
-        UPDATE {table_name}
-        SET player_id = :player_id
+    columns = _table_columns(session, table_name)
+    conflict_guard = ""
+    if table_name in {"game_batting_stats", "game_pitching_stats"} and "appearance_seq" in columns:
+        conflict_guard = f"""
+          AND NOT EXISTS (
+              SELECT 1
+              FROM {table_name} existing
+              WHERE existing.game_id = {table_name}.game_id
+                AND existing.appearance_seq = {table_name}.appearance_seq
+                AND existing.player_id = :player_id
+                AND existing.id != {table_name}.id
+          )
+        """
+    where_sql = f"""
         WHERE player_id IS NULL
           AND substr(game_id, 1, 4) = :year
           AND COALESCE(team_code, '') = :team_code
           AND player_name = :player_name
-        """
-    )
-    result = session.execute(
-        update_sql,
-        {
-            "player_id": int(player_id),
-            "year": str(year),
-            "team_code": normalize_text(team_code),
-            "player_name": player_name,
-        },
-    )
+          {conflict_guard}
+    """
+    params = {
+        "player_id": int(player_id),
+        "year": str(year),
+        "team_code": team_code,
+        "player_name": player_name,
+    }
     if dry_run:
-        session.rollback()
+        return int(
+            session.execute(text(f"SELECT COUNT(*) FROM {table_name} {where_sql}"), params).scalar()
+            or 0
+        )
+    result = session.execute(
+        text(f"UPDATE {table_name} SET player_id = :player_id {where_sql}"),
+        params,
+    )
     return int(result.rowcount or 0)
 
 
-def process_table(
-    session,
-    table_name: str,
-    alias_map: Dict[str, str],
-    overrides: Dict[Tuple[str, int, str, str], OverrideEntry],
-    dry_run: bool = False,
-):
-    group_sql = text(
-        f"""
-        SELECT
-            CAST(substr(game_id, 1, 4) AS INTEGER) AS season,
-            COALESCE(team_code, '') AS team_code,
-            player_name,
-            COUNT(*) AS unresolved_rows
-        FROM {table_name}
-        WHERE player_id IS NULL
-          AND player_name IS NOT NULL
-        GROUP BY CAST(substr(game_id, 1, 4) AS INTEGER), COALESCE(team_code, ''), player_name
-        ORDER BY season, team_code, player_name
-        """
-    )
-    groups = session.execute(group_sql).fetchall()
-    applied_rows: List[Dict[str, Any]] = []
-    unresolved_rows: List[Dict[str, Any]] = []
-
-    for season, team_code, player_name, unresolved_count in groups:
-        season_int = int(season)
-        team_code_norm = normalize_team_code(team_code)
-        uniforms = fetch_group_uniform_nos(
-            session,
-            table_name=table_name,
-            year=season_int,
-            team_code=team_code_norm,
-            player_name=player_name,
+def _collect_null_groups(session, *, tables: tuple[str, ...], years: tuple[int, ...]) -> list[dict[str, Any]]:
+    groups: list[dict[str, Any]] = []
+    years_as_text = [str(year) for year in years]
+    for table_name in tables:
+        stmt = (
+            text(
+                f"""
+                SELECT
+                    substr(game_id, 1, 4) AS year,
+                    COALESCE(team_code, '') AS team_code,
+                    player_name,
+                    COUNT(*) AS row_count
+                FROM {table_name}
+                WHERE player_id IS NULL
+                  AND substr(game_id, 1, 4) IN :years
+                GROUP BY substr(game_id, 1, 4), COALESCE(team_code, ''), player_name
+                ORDER BY year, team_code, player_name
+                """
+            ).bindparams(bindparam("years", expanding=True))
         )
-        selected = choose_candidate_ids(
-            session,
-            table_name=table_name,
-            season=season_int,
-            team_code=team_code_norm,
-            player_name=player_name,
-            uniform_nos=uniforms,
-            alias_map=alias_map,
-            overrides=overrides,
-        )
-        candidates = [int(x) for x in selected["candidate_ids"]]
-        candidate_ids_str = ",".join(str(x) for x in candidates)
-        uniforms_str = ",".join(uniforms)
-        alias_applied = alias_map.get(player_name, player_name) != player_name
-
-        base = {
-            "source_table": table_name,
-            "year": season_int,
-            "team_code": team_code_norm,
-            "player_name": player_name,
-            "unresolved_rows": int(unresolved_count),
-            "uniform_nos": uniforms_str,
-            "candidate_count": len(candidates),
-            "candidate_ids": candidate_ids_str,
-            "resolved_name": selected["resolved_name"],
-            "alias_applied": int(alias_applied),
-            "resolution_method": selected["resolution_method"],
-            "resolution_reason": selected["resolution_reason"],
-            "override_reason": selected["override_reason"],
-            "override_evidence_source": selected["override_evidence_source"],
-        }
-
-        if is_group_resolvable(candidates):
-            resolved_player_id = candidates[0]
-            updated = update_null_player_ids_for_group(
-                session,
-                table_name=table_name,
-                year=season_int,
-                team_code=team_code_norm,
-                player_name=player_name,
-                player_id=resolved_player_id,
-                dry_run=dry_run,
-            )
-            applied_rows.append(
+        for row in session.execute(stmt, {"years": years_as_text}).mappings():
+            groups.append(
                 {
-                    **base,
-                    "resolved_player_id": resolved_player_id,
-                    "updated_rows": updated,
+                    "table_name": table_name,
+                    "year": int(row["year"]),
+                    "team_code": str(row["team_code"] or ""),
+                    "player_name": str(row["player_name"] or ""),
+                    "row_count": int(row["row_count"] or 0),
                 }
             )
-        else:
-            unresolved_rows.append(base)
-
-    if dry_run:
-        session.rollback()
-    else:
-        session.commit()
-
-    return applied_rows, unresolved_rows
+    return groups
 
 
-def _write_csv(path: Path, columns: Iterable[str], rows: List[Dict[str, Any]]) -> None:
-    with path.open("w", newline="", encoding="utf-8") as fh:
-        writer = csv.DictWriter(fh, fieldnames=list(columns))
-        writer.writeheader()
-        writer.writerows(rows)
-
-
-def run_conservative_resolution(
+def resolve_null_player_ids(
     *,
-    dry_run: bool = False,
-    output_dir: str = "data",
-    overrides_csv: str = str(DEFAULT_OVERRIDES_CSV),
-) -> Dict[str, Any]:
-    out_dir = Path(output_dir)
-    out_dir.mkdir(parents=True, exist_ok=True)
+    years: tuple[int, ...],
+    tables: tuple[str, ...],
+    overrides_csv: Path,
+    output_dir: Path,
+    apply: bool,
+    backup: bool = True,
+) -> dict[str, Any]:
+    output_dir.mkdir(parents=True, exist_ok=True)
     stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    alias_map = load_alias_map()
-    overrides = load_overrides(Path(overrides_csv))
+    alias_map = _load_alias_map()
+    overrides = load_overrides(overrides_csv)
+    resolved_rows: list[dict[str, Any]] = []
+    unresolved_rows: list[dict[str, Any]] = []
 
-    all_applied: List[Dict[str, Any]] = []
-    all_unresolved: List[Dict[str, Any]] = []
+    backup_path = None
+    if apply and backup:
+        backup_path = _backup_sqlite_database(output_dir)
 
     with SessionLocal() as session:
-        for table_name in TABLES:
-            applied, unresolved = process_table(
+        groups = _collect_null_groups(session, tables=tables, years=years)
+        total_updated = 0
+        for group in groups:
+            uniforms = fetch_group_uniform_nos(
                 session,
-                table_name,
-                alias_map,
-                overrides,
-                dry_run=dry_run,
+                table_name=group["table_name"],
+                year=group["year"],
+                team_code=group["team_code"],
+                player_name=group["player_name"],
             )
-            all_applied.extend(applied)
-            all_unresolved.extend(unresolved)
+            result = choose_candidate_ids(
+                session,
+                table_name=group["table_name"],
+                season=group["year"],
+                team_code=group["team_code"],
+                player_name=group["player_name"],
+                uniform_nos=uniforms,
+                alias_map=alias_map,
+                overrides=overrides,
+            )
+            candidate_ids = [int(pid) for pid in result["candidate_ids"]]
+            base_row = {
+                **group,
+                "uniform_nos": ",".join(uniforms),
+                "candidate_ids": ",".join(str(pid) for pid in candidate_ids),
+                "resolution_method": result.get("resolution_method", ""),
+                "resolution_reason": result.get("resolution_reason", ""),
+            }
+            if is_group_resolvable(candidate_ids):
+                updated = update_null_player_ids_for_group(
+                    session,
+                    table_name=group["table_name"],
+                    year=group["year"],
+                    team_code=group["team_code"],
+                    player_name=group["player_name"],
+                    player_id=candidate_ids[0],
+                    dry_run=not apply,
+                )
+                total_updated += updated
+                resolved_rows.append({**base_row, "resolved_player_id": candidate_ids[0], "updated_rows": updated})
+            else:
+                unresolved_rows.append({**base_row, "resolved_player_id": "", "updated_rows": 0})
+        if apply:
+            session.commit()
+        else:
+            session.rollback()
 
-    applied_csv = out_dir / f"null_player_id_conservative_applied_{stamp}.csv"
-    unresolved_csv = out_dir / f"null_player_id_conservative_unresolved_{stamp}.csv"
-
-    _write_csv(
-        applied_csv,
-        (
-            "source_table",
-            "year",
-            "team_code",
-            "player_name",
-            "unresolved_rows",
-            "uniform_nos",
-            "candidate_count",
-            "candidate_ids",
-            "resolved_name",
-            "alias_applied",
-            "resolution_method",
-            "resolution_reason",
-            "override_reason",
-            "override_evidence_source",
-            "resolved_player_id",
-            "updated_rows",
-        ),
-        all_applied,
-    )
-    _write_csv(
-        unresolved_csv,
-        (
-            "source_table",
-            "year",
-            "team_code",
-            "player_name",
-            "unresolved_rows",
-            "uniform_nos",
-            "candidate_count",
-            "candidate_ids",
-            "resolved_name",
-            "alias_applied",
-            "resolution_method",
-            "resolution_reason",
-            "override_reason",
-            "override_evidence_source",
-        ),
-        all_unresolved,
-    )
-
+    resolved_csv = output_dir / f"null_player_id_conservative_resolved_{stamp}.csv"
+    unresolved_csv = output_dir / f"null_player_id_conservative_unresolved_{stamp}.csv"
+    fieldnames = [
+        "table_name",
+        "year",
+        "team_code",
+        "player_name",
+        "row_count",
+        "uniform_nos",
+        "candidate_ids",
+        "resolution_method",
+        "resolution_reason",
+        "resolved_player_id",
+        "updated_rows",
+    ]
+    _write_csv(resolved_csv, resolved_rows, fieldnames)
+    _write_csv(unresolved_csv, unresolved_rows, fieldnames)
     return {
-        "dry_run": dry_run,
-        "applied_csv": str(applied_csv),
+        "dry_run": not apply,
+        "resolved_groups": len(resolved_rows),
+        "unresolved_groups": len(unresolved_rows),
+        "updated_rows": total_updated,
+        "resolved_csv": str(resolved_csv),
         "unresolved_csv": str(unresolved_csv),
-        "applied_groups": len(all_applied),
-        "unresolved_groups": len(all_unresolved),
-        "updated_rows": sum(int(row.get("updated_rows", 0)) for row in all_applied),
+        "backup_path": str(backup_path) if backup_path else "",
     }
 
 
-def main() -> None:
-    parser = argparse.ArgumentParser(description="Conservative resolver for NULL player_id rows")
-    parser.add_argument("--dry-run", action="store_true", help="Do not persist updates")
-    parser.add_argument("--output-dir", default="data", help="Directory to write output CSV files")
-    parser.add_argument(
-        "--overrides-csv",
-        default=str(DEFAULT_OVERRIDES_CSV),
-        help="Path to player_id_overrides.csv",
-    )
-    args = parser.parse_args()
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Conservatively fill NULL player_id values.")
+    parser.add_argument("--years", default="2024,2025", help="Comma-separated years to inspect.")
+    parser.add_argument("--tables", default=",".join(DEFAULT_TABLES), help="Comma-separated table names.")
+    parser.add_argument("--overrides-csv", default=str(DEFAULT_OVERRIDES_CSV), help="Manual override CSV path.")
+    parser.add_argument("--output-dir", default=str(DEFAULT_OUTPUT_DIR), help="Directory for report CSV files.")
+    parser.add_argument("--apply", action="store_true", help="Persist updates. Default is dry-run only.")
+    parser.add_argument("--no-backup", action="store_true", help="Skip SQLite backup before --apply.")
+    return parser.parse_args()
 
-    result = run_conservative_resolution(
-        dry_run=args.dry_run,
-        output_dir=args.output_dir,
-        overrides_csv=args.overrides_csv,
+
+def main() -> None:
+    args = parse_args()
+    years = tuple(int(part.strip()) for part in args.years.split(",") if part.strip())
+    tables = tuple(part.strip() for part in args.tables.split(",") if part.strip())
+    result = resolve_null_player_ids(
+        years=years,
+        tables=tables,
+        overrides_csv=Path(args.overrides_csv),
+        output_dir=Path(args.output_dir),
+        apply=bool(args.apply),
+        backup=not args.no_backup,
     )
-    print("✅ Conservative NULL player_id resolution completed")
-    print(f"   dry_run: {result['dry_run']}")
-    print(f"   applied_groups: {result['applied_groups']}")
-    print(f"   unresolved_groups: {result['unresolved_groups']}")
-    print(f"   updated_rows: {result['updated_rows']}")
-    print(f"   applied_csv: {result['applied_csv']}")
-    print(f"   unresolved_csv: {result['unresolved_csv']}")
+    mode = "APPLY" if args.apply else "DRY-RUN"
+    print(
+        f"[{mode}] resolved_groups={result['resolved_groups']} "
+        f"unresolved_groups={result['unresolved_groups']} updated_rows={result['updated_rows']}"
+    )
+    if result["backup_path"]:
+        print(f"[BACKUP] {result['backup_path']}")
+    print(f"[REPORT] resolved={result['resolved_csv']}")
+    print(f"[REPORT] unresolved={result['unresolved_csv']}")
 
 
 if __name__ == "__main__":

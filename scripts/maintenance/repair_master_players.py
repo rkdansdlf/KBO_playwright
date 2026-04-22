@@ -69,6 +69,9 @@ def repair_master():
             session.add(new_player)
             new_inserts += 1
             
+        # NEW: Ensure player_basic.status is also normalized for health check
+        pb.status = calc_status.lower()
+            
         # Batch commit every 100 records
         if (new_inserts + upsert_count) % 100 == 0:
             session.commit()
