@@ -35,6 +35,66 @@ class _NoNavigationPage:
         raise AssertionError("navigation should be blocked by compliance")
 
 
+class _FakePagingButton:
+    def __init__(self, text=None, on_click=None):
+        self.text = text
+        self.on_click = on_click
+        self.clicks = 0
+
+    async def inner_text(self):
+        return self.text
+
+    async def is_visible(self):
+        return True
+
+    async def click(self):
+        self.clicks += 1
+        if self.on_click:
+            self.on_click()
+
+
+class _FakeRecordPage:
+    def __init__(self):
+        self.page_index = 0
+        self.goto_calls = []
+        self.selector_waits = []
+        self.select_options = []
+        self.load_states = []
+        self.timeouts = []
+        self.query_selectors = []
+
+    async def goto(self, url, wait_until, timeout):
+        self.goto_calls.append((url, wait_until, timeout))
+
+    async def wait_for_selector(self, selector, timeout):
+        self.selector_waits.append((selector, timeout))
+
+    async def select_option(self, selector, value):
+        self.select_options.append((selector, value))
+
+    async def wait_for_load_state(self, state):
+        self.load_states.append(state)
+
+    async def wait_for_timeout(self, timeout):
+        self.timeouts.append(timeout)
+
+    async def evaluate(self, _script):
+        if self.page_index == 0:
+            return ["10001", "10002"]
+        return ["20001"]
+
+    async def query_selector(self, selector):
+        self.query_selectors.append(selector)
+        if selector == "div.paging span.on, div.paging a.on":
+            return _FakePagingButton(str(self.page_index + 1))
+        if selector == "div.paging a:has-text('2')" and self.page_index == 0:
+            return _FakePagingButton(on_click=self._advance_page)
+        return None
+
+    def _advance_page(self):
+        self.page_index += 1
+
+
 def test_retired_listing_blocks_navigation_when_compliance_disallows(monkeypatch):
     page = _NoNavigationPage()
     compliance = _FakeCompliance(allowed=False)
@@ -58,6 +118,43 @@ def test_retired_listing_blocks_navigation_when_compliance_disallows(monkeypatch
     ]
     assert page.goto_called is False
     assert throttle.calls == 0
+
+
+def test_retired_listing_uses_flexible_selectors_and_paginates(monkeypatch):
+    page = _FakeRecordPage()
+    compliance = _FakeCompliance(allowed=True)
+    throttle = _FakeThrottle()
+
+    monkeypatch.setattr(retired_listing, "compliance", compliance)
+    monkeypatch.setattr(retired_listing, "throttle", throttle)
+
+    crawler = RetiredPlayerListingCrawler(request_delay=1.0)
+    ids = asyncio.run(
+        crawler._crawl_record_page_ids(
+            page,
+            "https://www.koreabaseball.com/Record/Player/HitterBasic/Basic1.aspx",
+            2024,
+        )
+    )
+
+    assert ids == {"10001", "10002", "20001"}
+    assert page.goto_calls == [
+        (
+            "https://www.koreabaseball.com/Record/Player/HitterBasic/Basic1.aspx",
+            "networkidle",
+            30000,
+        )
+    ]
+    assert page.selector_waits == [('select[name*="ddlSeason"]', 15000)]
+    assert page.select_options == [
+        ('select[name*="ddlSeason"]', "2024"),
+        ('select[name*="ddlSeries"]', "0"),
+    ]
+    assert page.load_states == ["networkidle", "networkidle", "networkidle"]
+    assert page.timeouts == [1000, 500, 1000]
+    assert "div.paging span.on, div.paging a.on" in page.query_selectors
+    assert "div.paging a:has-text('2')" in page.query_selectors
+    assert throttle.calls == 2
 
 
 def test_retired_detail_blocks_navigation_when_compliance_disallows(monkeypatch):
