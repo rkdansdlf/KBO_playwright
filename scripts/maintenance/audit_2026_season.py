@@ -16,10 +16,10 @@ def audit_2026_season():
     print("📊 Auditing 2026 season data for missing stats...")
     
     with SessionLocal() as session:
-        # 1. Get all games for 2026 that are not CANCELLED
+        # 1. Get all games for 2026 that should have completed-game detail rows
         games = session.query(Game).filter(
             Game.game_date.like('2026%'),
-            Game.game_status != 'CANCELLED'
+            Game.game_status.notin_(['CANCELLED', 'POSTPONED'])
         ).all()
         
         print(f"🔍 Total games found for 2026: {len(games)}")
