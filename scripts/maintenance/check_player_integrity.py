@@ -49,7 +49,7 @@ def run_audit():
         FROM player_season_batting s
         JOIN game_sums g ON s.player_id = g.player_id
         JOIN player_basic pb ON s.player_id = pb.player_id
-        WHERE s.season = 2024 AND s.hits != g.total_hits
+        WHERE s.season = 2024 AND s.league = 'REGULAR' AND s.hits != g.total_hits
         """
         mismatches = session.execute(text(recon_query)).fetchall()
         if mismatches:
