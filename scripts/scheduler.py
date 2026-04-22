@@ -12,6 +12,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import logging
+from logging.handlers import RotatingFileHandler
 import os
 import sys
 from datetime import datetime, timedelta
@@ -39,13 +40,18 @@ from src.cli.run_daily_update import main as run_daily_update_main
 from src.db.engine import SessionLocal
 from src.models.game import Game
 from src.utils.safe_print import safe_print as print
+from src.utils.alerting import SlackWebhookClient
 
 # Configure logging
+log_path = Path('logs/scheduler.log')
+log_path.parent.mkdir(exist_ok=True)
+
+handler = RotatingFileHandler(log_path, maxBytes=10*1024*1024, backupCount=5, encoding='utf-8')
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     handlers=[
-        logging.FileHandler('logs/scheduler.log', encoding='utf-8'),
+        handler,
         logging.StreamHandler()
     ]
 )
@@ -53,6 +59,40 @@ logger = logging.getLogger(__name__)
 KST = ZoneInfo("Asia/Seoul")
 FALSE_ENV_VALUES = {"0", "false", "no", "off"}
 JOB_RUN_LOCK = Lock()
+
+
+def alert_failure(retry_state):
+    """Alert on final tenacity failure and re-raise the original exception."""
+    exc = retry_state.outcome.exception() if retry_state.outcome else None
+    func_name = retry_state.fn.__name__
+    import traceback
+
+    if exc:
+        tb = "".join(traceback.format_exception(type(exc), exc, exc.__traceback__))
+        error_text = str(exc)
+    else:
+        tb = "No exception was attached to retry state."
+        error_text = "unknown"
+
+    logger.error(f"Job {func_name} failed permanently after {retry_state.attempt_number} attempts: {exc}")
+    try:
+        SlackWebhookClient.send_error_alert(f"Job: {func_name}\nError: {error_text}\n\n{tb}")
+    except Exception:
+        logger.exception("Failed to send failure alert for job %s", func_name)
+
+    if exc:
+        raise exc
+    raise RuntimeError(f"Job {func_name} failed permanently without an attached exception")
+
+
+def alert_success(func_name: str):
+    """Send optional success notification."""
+    if os.getenv("NOTIFY_SUCCESS", "0") == "1":
+        try:
+            SlackWebhookClient.send_alert(f"✅ KBO Job {func_name} completed successfully.")
+        except Exception:
+            logger.exception("Failed to send success alert for job %s", func_name)
+
 
 # Ensure logs directory exists
 Path('logs').mkdir(exist_ok=True)
@@ -142,7 +182,11 @@ def _pregame_sync_to_oci_enabled() -> bool:
     return _env_enabled("PREGAME_SYNC_TO_OCI") and bool(os.getenv("OCI_DB_URL"))
 
 
-@retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=60, max=300))
+@retry(
+    stop=stop_after_attempt(3),
+    wait=wait_exponential(multiplier=1, min=60, max=300),
+    retry_error_callback=alert_failure,
+)
 def crawl_daily_games():
     """
     Daily job: Run unified daily update entrypoint.
@@ -159,13 +203,18 @@ def crawl_daily_games():
             run_daily_update_main(['--date', target_date, '--seed-tomorrow-preview'])
 
             logger.info("=== Daily Games Crawl Completed Successfully ===")
+            alert_success("crawl_daily_games")
 
         except Exception as e:
-            logger.error(f"Daily games crawl failed: {e}", exc_info=True)
-            raise  # Re-raise for tenacity retry
+            logger.error(f"Daily games crawl attempt failed: {e}")
+            raise
 
 
-@retry(stop=stop_after_attempt(2), wait=wait_exponential(multiplier=1, min=30, max=120))
+@retry(
+    stop=stop_after_attempt(3),
+    wait=wait_exponential(multiplier=1, min=30, max=120),
+    retry_error_callback=alert_failure,
+)
 def crawl_pregame_refresh():
     with JOB_RUN_LOCK:
         failures: list[str] = []
@@ -189,6 +238,8 @@ def crawl_pregame_refresh():
         if failures:
             raise RuntimeError("Pregame refresh saved no preview rows: " + "; ".join(failures))
 
+        alert_success("crawl_pregame_refresh")
+
 
 def crawl_live_refresh():
     if _should_skip_live_for_pregame():
@@ -200,7 +251,11 @@ def crawl_live_refresh():
         asyncio.run(run_live_crawler_cycle())
 
 
-@retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=120, max=600))
+@retry(
+    stop=stop_after_attempt(3),
+    wait=wait_exponential(multiplier=1, min=120, max=600),
+    retry_error_callback=alert_failure,
+)
 def crawl_all_futures_profiles():
     """
     Weekly job: Crawl Futures league stats from all player profiles.
@@ -223,10 +278,11 @@ def crawl_all_futures_profiles():
             ])
 
             logger.info("=== Weekly Futures Profile Crawl Completed Successfully ===")
+            alert_success("crawl_all_futures_profiles")
 
         except Exception as e:
-            logger.error(f"Futures profile crawl failed: {e}", exc_info=True)
-            raise  # Re-raise for tenacity retry
+            logger.error(f"Futures profile crawl attempt failed: {e}")
+            raise
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
