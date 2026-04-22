@@ -37,7 +37,7 @@ from src.utils.game_status import (
 )
 from src.utils.player_positions import get_primary_position
 from src.utils.safe_print import safe_print as print
-from src.utils.team_codes import normalize_kbo_game_id, resolve_team_code, team_code_from_game_id_segment
+from src.utils.team_codes import build_kbo_game_id, normalize_kbo_game_id, resolve_team_code, team_code_from_game_id_segment
 from src.utils.team_history import FRANCHISE_CANONICAL_CODE, iter_team_history, resolve_team_code_for_season
 
 SEASON_TYPE_TO_LEAGUE_CODE = {
@@ -127,6 +127,43 @@ def _canonicalize_game_id(game_id: Any) -> tuple[Optional[str], Optional[str]]:
     return canonical, original
 
 
+def _canonicalize_game_id_for_payload(
+    game_id: Any,
+    *,
+    game_date: Any = None,
+    away_team_code: Any = None,
+    home_team_code: Any = None,
+    season_year: Optional[int] = None,
+    doubleheader_no: Any = None,
+) -> tuple[Optional[str], Optional[str]]:
+    """Return a canonical game_id, preferring explicit payload teams when available."""
+    canonical, original = _canonicalize_game_id(game_id)
+    if not original:
+        return canonical, original
+
+    fallback_date = canonical[:8] if canonical else ""
+    date_part = str(game_date or fallback_date).replace("-", "").strip()
+    try:
+        if int(date_part[:4]) < 2024:
+            return canonical, original
+    except (TypeError, ValueError):
+        pass
+
+    dh = doubleheader_no
+    if dh is None and original[-1:].isdigit():
+        dh = original[-1]
+    expected = build_kbo_game_id(
+        date_part,
+        str(away_team_code).strip().upper() if away_team_code not in (None, "") else None,
+        str(home_team_code).strip().upper() if home_team_code not in (None, "") else None,
+        doubleheader_no=dh,
+        season_year=season_year,
+    )
+    if expected and expected != canonical:
+        return expected, original
+    return canonical, original
+
+
 def _record_game_id_alias(
     session,
     alias_game_id: Optional[str],
@@ -177,14 +214,22 @@ def resolve_canonical_game_id(game_id: str) -> Optional[str]:
 
 def save_schedule_game(game_data: Dict[str, Any]) -> bool:
     """Persist basic game info from schedule crawler."""
-    game_id, original_game_id = _canonicalize_game_id(game_data.get("game_id"))
-    if not game_id:
-        return False
-
     game_date_str = str(game_data.get("game_date", "")).replace("-", "")
     try:
         game_date = datetime.strptime(game_date_str, "%Y%m%d").date()
     except Exception:
+        return False
+
+    season_year = _coerce_int(game_data.get("season_year")) or game_date.year
+    game_id, original_game_id = _canonicalize_game_id_for_payload(
+        game_data.get("game_id"),
+        game_date=game_date_str,
+        away_team_code=game_data.get("away_team_code"),
+        home_team_code=game_data.get("home_team_code"),
+        season_year=season_year,
+        doubleheader_no=game_data.get("doubleheader_no"),
+    )
+    if not game_id:
         return False
 
     with SessionLocal() as session:
@@ -241,17 +286,27 @@ def save_game_detail(game_data: Dict[str, Any]) -> bool:
     if not game_data:
         return False
 
-    game_id, original_game_id = _canonicalize_game_id(game_data["game_id"])
-    if not game_id:
-        return False
-    game_date_str = str(game_data.get("game_date", "")).replace("-", "") or game_id[:8]
+    teams = game_data.get("teams", {}) or {}
+    away_info = teams.get("away", {}) or {}
+    home_info = teams.get("home", {}) or {}
+    provisional_game_id, _ = _canonicalize_game_id(game_data["game_id"])
+    game_date_str = str(game_data.get("game_date", "")).replace("-", "") or str(provisional_game_id or "")[:8]
     try:
         game_date = datetime.strptime(game_date_str, "%Y%m%d").date()
     except Exception:
         game_date = datetime.now().date()
 
+    game_id, original_game_id = _canonicalize_game_id_for_payload(
+        game_data["game_id"],
+        game_date=game_date_str,
+        away_team_code=away_info.get("code"),
+        home_team_code=home_info.get("code"),
+        season_year=game_date.year,
+    )
+    if not game_id:
+        return False
+
     metadata = game_data.get("metadata", {}) or {}
-    teams = game_data.get("teams", {}) or {}
     hitters = game_data.get("hitters", {}) or {}
     pitchers = game_data.get("pitchers", {}) or {}
     explicit_status = normalize_game_status(game_data.get("game_status"))
@@ -270,9 +325,6 @@ def save_game_detail(game_data: Dict[str, Any]) -> bool:
                 source="detail",
                 reason="normalized_to_kbo_legacy_game_id",
             )
-
-            away_info = teams.get("away", {})
-            home_info = teams.get("home", {})
 
             game.game_date = game_date
             game.stadium = metadata.get("stadium")
@@ -373,18 +425,27 @@ def save_game_snapshot(game_data: Dict[str, Any], *, status: Optional[str] = Non
     if not game_data:
         return False
 
-    game_id, original_game_id = _canonicalize_game_id(game_data.get("game_id"))
-    if not game_id:
-        return False
-
-    game_date_str = str(game_data.get("game_date", "")).replace("-", "") or game_id[:8]
+    teams = game_data.get("teams", {}) or {}
+    away_info = teams.get("away", {}) or {}
+    home_info = teams.get("home", {}) or {}
+    provisional_game_id, _ = _canonicalize_game_id(game_data.get("game_id"))
+    game_date_str = str(game_data.get("game_date", "")).replace("-", "") or str(provisional_game_id or "")[:8]
     try:
         game_date = datetime.strptime(game_date_str, "%Y%m%d").date()
     except Exception:
         game_date = datetime.now().date()
 
+    game_id, original_game_id = _canonicalize_game_id_for_payload(
+        game_data.get("game_id"),
+        game_date=game_date_str,
+        away_team_code=away_info.get("code"),
+        home_team_code=home_info.get("code"),
+        season_year=game_date.year,
+    )
+    if not game_id:
+        return False
+
     metadata = game_data.get("metadata", {}) or {}
-    teams = game_data.get("teams", {}) or {}
     pitchers = game_data.get("pitchers", {}) or {}
 
     with SessionLocal() as session:
@@ -401,9 +462,6 @@ def save_game_snapshot(game_data: Dict[str, Any], *, status: Optional[str] = Non
                 source="snapshot",
                 reason="normalized_to_kbo_legacy_game_id",
             )
-
-            away_info = teams.get("away", {}) or {}
-            home_info = teams.get("home", {}) or {}
 
             game.game_date = game_date
             game.stadium = metadata.get("stadium") or game.stadium
@@ -467,9 +525,9 @@ def save_pregame_lineups(preview_data: Dict[str, Any]) -> bool:
     if not preview_data:
         return False
 
-    game_id, original_game_id = _canonicalize_game_id(preview_data.get("game_id"))
-    game_date_str = str(preview_data.get("game_date", "")).replace("-", "") or str(game_id or "")[:8]
-    if not game_id or not game_date_str:
+    provisional_game_id, _ = _canonicalize_game_id(preview_data.get("game_id"))
+    game_date_str = str(preview_data.get("game_date", "")).replace("-", "") or str(provisional_game_id or "")[:8]
+    if not provisional_game_id or not game_date_str:
         return False
 
     try:
@@ -479,13 +537,23 @@ def save_pregame_lineups(preview_data: Dict[str, Any]) -> bool:
 
     season_year = game_date.year
     away_code = resolve_team_code(preview_data.get("away_team_name"), season_year) or team_code_from_game_id_segment(
-        game_id[8:10] if len(game_id) >= 10 else None,
+        provisional_game_id[8:10] if len(provisional_game_id) >= 10 else None,
         season_year,
     )
     home_code = resolve_team_code(preview_data.get("home_team_name"), season_year) or team_code_from_game_id_segment(
-        game_id[10:12] if len(game_id) >= 12 else None,
+        provisional_game_id[10:12] if len(provisional_game_id) >= 12 else None,
         season_year,
     )
+    game_id, original_game_id = _canonicalize_game_id_for_payload(
+        preview_data.get("game_id"),
+        game_date=game_date_str,
+        away_team_code=away_code,
+        home_team_code=home_code,
+        season_year=season_year,
+    )
+    if not game_id:
+        return False
+
     preview_payload = {
         "game_id": game_id,
         "game_date": game_date_str,

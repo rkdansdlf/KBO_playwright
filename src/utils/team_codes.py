@@ -114,6 +114,61 @@ def resolve_kbo_legacy_team_code(name: Optional[str], season_year: Optional[int]
     return KBO_LEGACY_TECHNICAL_CODE.get(code or "", code)
 
 
+def kbo_game_id_team_code(team_code: Optional[str], season_year: Optional[int] = None) -> Optional[str]:
+    """Return the KBO GameCenter team-code token for a team code."""
+    if not team_code:
+        return None
+
+    raw_code = str(team_code).strip().upper()
+    if not raw_code:
+        return None
+
+    normalized_code = team_code_from_game_id_segment(raw_code, season_year) or raw_code
+    if season_year:
+        from src.utils.team_history import resolve_team_code_for_season
+
+        normalized_code = resolve_team_code_for_season(normalized_code, season_year) or normalized_code
+
+    return KBO_LEGACY_TECHNICAL_CODE.get(normalized_code, normalized_code)
+
+
+def build_kbo_game_id(
+    game_date: Optional[str],
+    away_team_code: Optional[str],
+    home_team_code: Optional[str],
+    *,
+    doubleheader_no: Optional[object] = 0,
+    season_year: Optional[int] = None,
+) -> Optional[str]:
+    """Build a canonical KBO legacy GameCenter ID from explicit game fields."""
+    if not game_date:
+        return None
+
+    date_part = str(game_date).replace("-", "").strip()
+    if len(date_part) != 8 or not date_part.isdigit():
+        return None
+
+    year = season_year
+    if year is None:
+        try:
+            year = int(date_part[:4])
+        except ValueError:
+            year = None
+
+    away_code = kbo_game_id_team_code(away_team_code, year)
+    home_code = kbo_game_id_team_code(home_team_code, year)
+    if not away_code or not home_code:
+        return None
+
+    dh = str(doubleheader_no if doubleheader_no is not None else 0).strip()
+    if not dh or not dh[-1].isdigit():
+        dh = "0"
+    else:
+        dh = dh[-1]
+
+    return f"{date_part}{away_code}{home_code}{dh}"
+
+
 GAME_ID_SEGMENT_TO_CODE = {
     "LG": "LG",
     "KT": "KT",
@@ -229,6 +284,8 @@ def _split_game_id_team_part(team_part: str) -> tuple[Optional[str], Optional[st
 STANDARD_TEAM_CODES = {"HH", "KIA", "KT", "LG", "LT", "NC", "DB", "SSG", "SS", "KH"}
 
 __all__ = [
+    "build_kbo_game_id",
+    "kbo_game_id_team_code",
     "resolve_team_code",
     "team_code_from_game_id_segment",
     "resolve_kbo_legacy_team_code",

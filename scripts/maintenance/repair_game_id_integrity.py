@@ -20,7 +20,7 @@ ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from src.utils.team_codes import normalize_kbo_game_id, resolve_team_code, team_code_from_game_id_segment
+from src.utils.team_codes import build_kbo_game_id, normalize_kbo_game_id, resolve_team_code, team_code_from_game_id_segment
 from src.utils.team_history import iter_team_history
 
 
@@ -47,6 +47,7 @@ MERGE_SOURCE_COLUMNS = {
 }
 TEAM_CODE_TO_FRANCHISE_ID = {entry.team_code.upper(): entry.franchise_id for entry in iter_team_history()}
 ACTIONABLE_BACKFILL_CLASSIFICATIONS = {"pending_recrawl", "past_scheduled_missing_detail"}
+MERGEABLE_MASTER_STATUSES = {"", "SCHEDULED", "UNRESOLVED_MISSING"}
 
 
 @dataclass(frozen=True)
@@ -371,6 +372,36 @@ def _franchise_id_for_code(code: Any, season_year: int | None = None) -> int | N
     return TEAM_CODE_TO_FRANCHISE_ID.get(str(season_code or raw).upper()) or TEAM_CODE_TO_FRANCHISE_ID.get(raw)
 
 
+def _team_code_for_franchise(franchise_id: int, season_year: int) -> str | None:
+    for entry in iter_team_history():
+        if entry.franchise_id != franchise_id:
+            continue
+        end_season = entry.end_season or season_year
+        if entry.start_season <= season_year <= end_season:
+            return entry.team_code.upper()
+    return None
+
+
+def _canonical_game_id_for_key(key: tuple[Any, ...]) -> str | None:
+    season_year, _league_type_code, game_date, away_fid, home_fid, dh = key
+    try:
+        year = int(season_year)
+        away_franchise_id = int(away_fid)
+        home_franchise_id = int(home_fid)
+    except (TypeError, ValueError):
+        return None
+
+    away_code = _team_code_for_franchise(away_franchise_id, year)
+    home_code = _team_code_for_franchise(home_franchise_id, year)
+    return build_kbo_game_id(
+        str(game_date or ""),
+        away_code,
+        home_code,
+        doubleheader_no=dh,
+        season_year=year,
+    )
+
+
 def _derive_game_franchise_ids(row: dict[str, Any]) -> dict[str, int | None]:
     game_id = str(row.get("game_id") or "")
     season_year = int(game_id[:4]) if len(game_id) >= 4 and game_id[:4].isdigit() else None
@@ -415,7 +446,11 @@ def collect_duplicate_groups(conn, tables: dict[str, Table], years: Iterable[int
             continue
         game_ids = [str(row["game_id"]) for row in rows]
         counts = _child_counts(conn, tables, game_ids)
-        primary_id = choose_primary_game_id(game_ids, counts)
+        primary_id = choose_primary_game_id(
+            game_ids,
+            counts,
+            expected_game_id=_canonical_game_id_for_key(key),
+        )
         groups.append(
             {
                 "key": key,
@@ -433,7 +468,14 @@ def collect_duplicate_groups(conn, tables: dict[str, Table], years: Iterable[int
     return groups
 
 
-def choose_primary_game_id(game_ids: list[str], child_counts: dict[str, int]) -> str:
+def choose_primary_game_id(
+    game_ids: list[str],
+    child_counts: dict[str, int],
+    expected_game_id: str | None = None,
+) -> str:
+    if expected_game_id:
+        return expected_game_id
+
     normalized = {game_id: normalize_kbo_game_id(game_id) for game_id in game_ids}
     existing_ids = set(game_ids)
     for game_id, canonical in normalized.items():
@@ -841,6 +883,36 @@ def _upsert_alias(conn, tables: dict[str, Table], alias_game_id: str, canonical_
         conn.execute(alias_table.insert().values(**insert_values))
 
 
+def _retarget_aliases(conn, tables: dict[str, Table], source_game_id: str, canonical_game_id: str) -> None:
+    alias_table = tables.get("game_id_aliases")
+    if alias_table is None or source_game_id == canonical_game_id:
+        return
+
+    source_alias_rows = [
+        dict(row)
+        for row in conn.execute(
+            select(alias_table).where(alias_table.c.canonical_game_id == source_game_id)
+        ).mappings()
+    ]
+    for row in source_alias_rows:
+        alias_game_id = str(row["alias_game_id"])
+        if alias_game_id == canonical_game_id:
+            conn.execute(alias_table.delete().where(alias_table.c.alias_game_id == alias_game_id))
+            continue
+        values = {"canonical_game_id": canonical_game_id}
+        if "updated_at" in alias_table.c:
+            values["updated_at"] = datetime.utcnow()
+        conn.execute(
+            alias_table.update()
+            .where(alias_table.c.alias_game_id == alias_game_id)
+            .values(**values)
+        )
+
+    conn.execute(
+        alias_table.delete().where(alias_table.c.alias_game_id == alias_table.c.canonical_game_id)
+    )
+
+
 def _ensure_canonical_game_row(
     conn,
     tables: dict[str, Table],
@@ -878,6 +950,12 @@ def _merge_master_fields(conn, tables: dict[str, Table], source_game_id: str, ca
     updates = {}
     for column in game.columns:
         if column.name in {"id", "game_id", *TIMESTAMP_COLUMNS}:
+            continue
+        if column.name == "game_status":
+            target_status = str(target.get(column.name) or "").upper()
+            source_status = source.get(column.name)
+            if target_status in MERGEABLE_MASTER_STATUSES and source_status not in (None, ""):
+                updates[column.name] = source_status
             continue
         if target.get(column.name) in (None, "") and source.get(column.name) not in (None, ""):
             updates[column.name] = source.get(column.name)
@@ -960,6 +1038,7 @@ def apply_duplicate_group(conn, tables: dict[str, Table], group: dict[str, Any])
             continue
         _merge_master_fields(conn, tables, source_id, canonical_id)
         _move_child_rows(conn, tables, source_id, canonical_id)
+        _retarget_aliases(conn, tables, source_id, canonical_id)
         _upsert_alias(conn, tables, source_id, canonical_id)
         conn.execute(game.delete().where(game.c.game_id == source_id))
 

@@ -352,6 +352,248 @@ def test_duplicate_repair_keeps_canonical_summary_when_generated_player_ids_diff
         ]
 
 
+def test_duplicate_repair_prefers_derived_legacy_id_and_retargets_aliases():
+    engine = create_engine("sqlite:///:memory:")
+    with engine.begin() as conn:
+        conn.execute(
+            text(
+                """
+                CREATE TABLE game (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    game_id VARCHAR(20) NOT NULL UNIQUE,
+                    game_date DATE NOT NULL,
+                    away_team VARCHAR(20),
+                    home_team VARCHAR(20),
+                    away_score INTEGER,
+                    home_score INTEGER,
+                    away_pitcher VARCHAR(30),
+                    home_pitcher VARCHAR(30),
+                    away_franchise_id INTEGER,
+                    home_franchise_id INTEGER,
+                    season_id INTEGER,
+                    game_status VARCHAR(32),
+                    is_primary BOOLEAN DEFAULT 1,
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                )
+                """
+            )
+        )
+        conn.execute(
+            text(
+                """
+                CREATE TABLE game_batting_stats (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    game_id VARCHAR(20) NOT NULL,
+                    player_id INTEGER,
+                    appearance_seq INTEGER,
+                    player_name VARCHAR(64),
+                    hits INTEGER
+                )
+                """
+            )
+        )
+        conn.execute(
+            text(
+                """
+                CREATE TABLE game_pitching_stats (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    game_id VARCHAR(20) NOT NULL,
+                    player_id INTEGER,
+                    appearance_seq INTEGER,
+                    player_name VARCHAR(64),
+                    is_starting BOOLEAN
+                )
+                """
+            )
+        )
+        conn.execute(
+            text(
+                """
+                CREATE TABLE game_lineups (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    game_id VARCHAR(20) NOT NULL,
+                    team_side VARCHAR(5),
+                    appearance_seq INTEGER,
+                    player_name VARCHAR(64)
+                )
+                """
+            )
+        )
+        conn.execute(
+            text(
+                """
+                CREATE TABLE game_inning_scores (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    game_id VARCHAR(20) NOT NULL,
+                    team_side VARCHAR(5),
+                    inning INTEGER,
+                    runs INTEGER
+                )
+                """
+            )
+        )
+        conn.execute(
+            text(
+                """
+                CREATE TABLE game_events (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    game_id VARCHAR(20) NOT NULL,
+                    event_seq INTEGER,
+                    inning INTEGER,
+                    inning_half VARCHAR(6),
+                    outs INTEGER,
+                    batter_name VARCHAR(64),
+                    pitcher_name VARCHAR(64),
+                    description TEXT,
+                    event_type VARCHAR(32),
+                    result_code VARCHAR(16),
+                    bases_before VARCHAR(3),
+                    bases_after VARCHAR(3)
+                )
+                """
+            )
+        )
+        conn.execute(
+            text(
+                """
+                CREATE TABLE game_play_by_play (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    game_id VARCHAR(20) NOT NULL,
+                    inning INTEGER,
+                    inning_half VARCHAR(10),
+                    batter_name VARCHAR(50),
+                    pitcher_name VARCHAR(50),
+                    play_description VARCHAR(1000),
+                    event_type VARCHAR(50),
+                    result VARCHAR(100)
+                )
+                """
+            )
+        )
+        conn.execute(
+            text(
+                """
+                CREATE TABLE game_id_aliases (
+                    alias_game_id VARCHAR(20) PRIMARY KEY,
+                    canonical_game_id VARCHAR(20) NOT NULL,
+                    source VARCHAR(50),
+                    reason VARCHAR(120),
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                )
+                """
+            )
+        )
+        conn.execute(
+            text(
+                """
+                INSERT INTO game (
+                    game_id, game_date, away_team, home_team, away_franchise_id, home_franchise_id, season_id, game_status
+                )
+                VALUES
+                    ('20260403SSKT0', '2026-04-03', 'SS', 'KT', 1, 10, 2026, 'SCHEDULED'),
+                    ('20260403SSSGT0', '2026-04-03', 'SS', 'KT', 1, 10, 2026, 'COMPLETED')
+                """
+            )
+        )
+        conn.execute(
+            text(
+                """
+                UPDATE game
+                SET away_score = 1, home_score = 2, away_pitcher = '후라도', home_pitcher = '사우어'
+                WHERE game_id = '20260403SSSGT0'
+                """
+            )
+        )
+        conn.execute(
+            text(
+                """
+                INSERT INTO game_batting_stats (game_id, player_id, appearance_seq, player_name, hits)
+                VALUES ('20260403SSSGT0', 1001, 1, '타자', 2)
+                """
+            )
+        )
+        conn.execute(
+            text(
+                """
+                INSERT INTO game_pitching_stats (game_id, player_id, appearance_seq, player_name, is_starting)
+                VALUES ('20260403SSSGT0', 2001, 1, '후라도', 1)
+                """
+            )
+        )
+        conn.execute(text("INSERT INTO game_lineups (game_id, team_side, appearance_seq, player_name) VALUES ('20260403SSSGT0', 'away', 1, '타자')"))
+        conn.execute(text("INSERT INTO game_inning_scores (game_id, team_side, inning, runs) VALUES ('20260403SSSGT0', 'away', 1, 1)"))
+        conn.execute(
+            text(
+                """
+                INSERT INTO game_events (
+                    game_id, event_seq, inning, inning_half, outs, batter_name, pitcher_name,
+                    description, event_type, result_code, bases_before, bases_after
+                )
+                VALUES ('20260403SSSGT0', 1, 1, '초', 0, '타자', '사우어', '안타', 'batting', 'H1', '---', '1--')
+                """
+            )
+        )
+        conn.execute(
+            text(
+                """
+                INSERT INTO game_play_by_play (
+                    game_id, inning, inning_half, batter_name, pitcher_name, play_description, event_type, result
+                )
+                VALUES ('20260403SSSGT0', 1, '초', '타자', '사우어', '안타', 'batting', 'H1')
+                """
+            )
+        )
+        conn.execute(
+            text(
+                """
+                INSERT INTO game_id_aliases (alias_game_id, canonical_game_id, source, reason)
+                VALUES ('20260403SSKT0', '20260403SSSGT0', 'old', 'reversed')
+                """
+            )
+        )
+
+        tables = _load_tables(conn)
+        groups = collect_duplicate_groups(conn, tables, [2026])
+        conflicts = collect_conflicts(conn, tables, groups)
+
+        assert len(groups) == 1
+        assert groups[0]["primary_game_id"] == "20260403SSKT0"
+        assert conflicts == []
+
+        apply_duplicate_group(conn, tables, groups[0])
+
+        games = conn.execute(text("SELECT game_id FROM game ORDER BY game_id")).fetchall()
+        assert games == [("20260403SSKT0",)]
+
+        master = conn.execute(
+            text(
+                """
+                SELECT game_status, away_score, home_score, away_pitcher, home_pitcher
+                FROM game WHERE game_id = '20260403SSKT0'
+                """
+            )
+        ).fetchone()
+        assert master == ("COMPLETED", 1, 2, "후라도", "사우어")
+
+        for table_name in (
+            "game_batting_stats",
+            "game_pitching_stats",
+            "game_lineups",
+            "game_inning_scores",
+            "game_events",
+            "game_play_by_play",
+        ):
+            assert conn.execute(text(f"SELECT COUNT(*) FROM {table_name} WHERE game_id = '20260403SSKT0'")).scalar() == 1
+            assert conn.execute(text(f"SELECT COUNT(*) FROM {table_name} WHERE game_id = '20260403SSSGT0'")).scalar() == 0
+
+        aliases = conn.execute(
+            text("SELECT alias_game_id, canonical_game_id FROM game_id_aliases ORDER BY alias_game_id")
+        ).fetchall()
+        assert aliases == [("20260403SSSGT0", "20260403SSKT0")]
+
+
 def test_2024_backfill_manifest_classifies_international_games_as_non_actionable():
     engine = create_engine("sqlite:///:memory:")
     with engine.begin() as conn:
