@@ -313,9 +313,12 @@ def test_run_update_syncs_only_target_games_after_freshness_gate(monkeypatch):
 
     assert ["-m", "src.cli.daily_review_batch", "--date", "20250101", "--no-sync"] in commands
     assert ["-m", "src.cli.freshness_gate", "--date", "20250101"] in commands
+    assert ["-m", "src.cli.quality_gate_check", "--year", "2025"] in commands
     gate_index = commands.index(["-m", "src.cli.freshness_gate", "--date", "20250101"])
+    quality_index = commands.index(["-m", "src.cli.quality_gate_check", "--year", "2025"])
     standings_index = commands.index(["-m", "src.cli.calculate_standings", "--year", "2025"])
     assert standings_index < gate_index
+    assert gate_index < quality_index
 
     assert len(_FakeSyncer.created) == 1
     syncer = _FakeSyncer.created[0]
