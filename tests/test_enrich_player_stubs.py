@@ -46,13 +46,14 @@ class _FakePool:
 
 class _FakeCrawler:
     calls = []
+    profiles = {}
 
     def __init__(self, pool):
         self.pool = pool
 
     async def crawl_player_profile(self, player_id, position=None):
         _FakeCrawler.calls.append((player_id, position))
-        return {
+        profile = {
             "photo_url": f"https://example.test/{player_id}.png",
             "bats": "R",
             "throws": "R",
@@ -61,6 +62,8 @@ class _FakeCrawler:
             "signing_bonus_original": "0만원",
             "draft_info": "unit-test",
         }
+        profile.update(_FakeCrawler.profiles.get(player_id, {}))
+        return profile
 
 
 class _FakeRepository:
@@ -74,6 +77,7 @@ class _FakeRepository:
 def _patch_runtime(monkeypatch, session):
     _FakePool.created = []
     _FakeCrawler.calls = []
+    _FakeCrawler.profiles = {}
     _FakeRepository.payloads = []
     monkeypatch.setattr(enrich_player_stubs, "load_dotenv", lambda: None)
     monkeypatch.setattr(enrich_player_stubs, "SessionLocal", lambda: session)
@@ -131,6 +135,31 @@ def test_enrich_stubs_filters_query_by_explicit_player_ids(monkeypatch):
     assert _FakePool.created[0].started is True
     assert _FakePool.created[0].closed is True
     assert session.closed is True
+
+
+def test_enrich_stubs_applies_profile_height_weight(monkeypatch):
+    session = _FakeSession(
+        [
+            SimpleNamespace(
+                player_id=99,
+                name="신규선수",
+                position="투수",
+                birth_date_date="2001-02-03",
+                height_cm=None,
+                weight_kg=None,
+            ),
+        ]
+    )
+    _patch_runtime(monkeypatch, session)
+    _FakeCrawler.profiles = {"99": {"height_cm": 191, "weight_kg": 96}}
+
+    enriched = asyncio.run(enrich_player_stubs.enrich_stubs(limit=1, player_ids=[99]))
+
+    assert enriched == 1
+    payload = _FakeRepository.payloads[0]
+    assert payload["height_cm"] == 191
+    assert payload["weight_kg"] == 96
+    assert payload["birth_date_date"].isoformat() == "2001-02-03"
 
 
 def test_enrich_stubs_uses_limit_when_ids_are_not_provided(monkeypatch):
