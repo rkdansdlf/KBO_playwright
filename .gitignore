@@ -28,6 +28,9 @@ pw-browsers/
 tests/fixtures/**/*.html
 tests/fixtures/**/*.json
 
+# Runtime robots.txt snapshots
+Docs/robots/robots_*.txt
+
 # Supabase
 supabase/
 supabase.db

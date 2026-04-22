@@ -1,109 +1,68 @@
+from __future__ import annotations
+
 import argparse
 import asyncio
 import sys
-import os
-from typing import List, Dict
+from typing import Sequence
 
-# Adjust sys.path to run from CLI easily
-project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-sys.path.insert(0, project_root)
-
-from src.crawlers.pbp_crawler import PBPCrawler
-from src.repositories.game_repository import save_relay_data
+from src.services.relay_recovery_service import (
+    load_relay_recovery_targets,
+    recover_relay_data,
+)
 from src.utils.safe_print import safe_print as print
-from src.utils.request_policy import RequestPolicy
-from src.utils.playwright_pool import AsyncPlaywrightPool
-from src.db.engine import SessionLocal
-from src.models.game import Game
-from sqlalchemy import text
-from src.utils.game_status import COMPLETED_LIKE_GAME_STATUSES
 
-async def main():
+
+async def run_fetcher(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description=(
-            "Deprecated direct KBO Play-by-Play fetcher. Prefer "
+            "Deprecated KBO play-by-play fetcher alias. Prefer "
             "`python scripts/fetch_kbo_pbp.py ...` for completed-game relay recovery."
         )
     )
     parser.add_argument("--season", type=int, help="Season year to fetch (e.g. 2024)")
     parser.add_argument("--month", type=int, help="Optional month to filter games")
     parser.add_argument("--game-id", type=str, help="Specific Game ID to fetch (e.g. 20240323SSHH0)")
-    parser.add_argument("--concurrency", type=int, default=1, help="Number of concurrent pages")
-    
-    args = parser.parse_args()
+    parser.add_argument("--concurrency", type=int, default=1, help="Deprecated compatibility option")
+    parser.add_argument("--force", action="store_true", help="Process games even if relay rows already exist")
+    args = parser.parse_args(argv)
 
     print(
-        "[DEPRECATED] src.cli.fetch_kbo_pbp is a direct legacy fetcher. "
+        "[DEPRECATED] src.cli.fetch_kbo_pbp is a compatibility alias. "
         "Prefer `python scripts/fetch_kbo_pbp.py` for completed-game relay recovery."
     )
+    if args.concurrency != 1:
+        print("[WARN] --concurrency is ignored by the shared relay recovery service.")
 
     if not args.season and not args.game_id:
         print("[ERROR] Must provide --season or --game-id")
-        sys.exit(1)
+        return 1
 
-    game_ids = []
-    
-    # Check if we query from DB
-    with SessionLocal() as session:
-        if args.game_id:
-            game_ids.append(args.game_id)
-        else:
-            query = session.query(Game.game_id).filter(Game.season_id == args.season)
-            query = query.filter(Game.game_status.in_(tuple(COMPLETED_LIKE_GAME_STATUSES)))
-            
-            if args.month:
-                # Naive month filter depending on game_id format (YYYYMMDD...)
-                month_str = f"{args.season}{args.month:02d}"
-                query = query.filter(Game.game_id.like(f"{month_str}%"))
-
-            results = query.all()
-            game_ids = [r[0] for r in results]
-
-    if not game_ids:
-        print("[INFO] No completed-like games found for the given criteria.")
-        return
-
-    print(f"[INFO] Found {len(game_ids)} games to process.")
-
-    # Initialize Crawler Pool
-    policy = RequestPolicy(min_delay=1.0, max_delay=1.5)
-    pool = AsyncPlaywrightPool(max_pages=args.concurrency, context_kwargs=policy.build_context_kwargs(locale='ko-KR'))
-    crawler = PBPCrawler(policy=policy, pool=pool)
-
-    await pool.start()
     try:
-        if args.concurrency > 1:
-            # Parallel processing wrapper
-            sem = asyncio.Semaphore(args.concurrency)
-            async def _process(gid: str):
-                async with sem:
-                    return await _crawl_and_save(crawler, gid)
-            
-            tasks = [_process(gid) for gid in game_ids]
-            await asyncio.gather(*tasks)
-        else:
-            # Sequential processing
-            for idx, gid in enumerate(game_ids, 1):
-                print(f"[PROGRESS] Processing {idx}/{len(game_ids)}: {gid}")
-                await _crawl_and_save(crawler, gid)
-                await asyncio.sleep(0.5) # Soft loop delay
-                
-    except KeyboardInterrupt:
-        print("\n[INFO] Stopped by user.")
-    finally:
-        await pool.close()
-        print("\n[INFO] Fetching completed.")
+        targets = load_relay_recovery_targets(
+            season=args.season,
+            month=args.month,
+            game_ids=[args.game_id] if args.game_id else None,
+            missing_only=not args.force,
+            log=print,
+        )
+    except (FileNotFoundError, ValueError) as exc:
+        print(f"[ERROR] {exc}")
+        return 1
 
-async def _crawl_and_save(crawler: PBPCrawler, game_id: str):
-    res = await crawler.crawl_game_events(game_id)
-    if res and res.get('events'):
-        events = res['events']
-        saved = save_relay_data(game_id, events)
-        print(f"[SUCCESS] Saved {saved} events for {game_id}")
-    else:
-        print(f"[SKIP] No events extracted for {game_id}")
+    if not targets:
+        print("[INFO] No games found to process.")
+        return 0
+
+    await recover_relay_data(targets, log=print)
+    print("\n[INFO] Relay recovery run completed.")
+    return 0
+
+
+def main(argv: Sequence[str] | None = None) -> int:
+    if sys.platform == "win32":
+        asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+    return asyncio.run(run_fetcher(argv))
+
 
 if __name__ == "__main__":
-    if sys.platform == 'win32':
-        asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
-    asyncio.run(main())
+    raise SystemExit(main())
