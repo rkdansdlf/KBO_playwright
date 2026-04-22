@@ -99,6 +99,16 @@ class _FakeRecordPage:
         self.page_index += 1
 
 
+class _FakeNextOnlyRecordPage(_FakeRecordPage):
+    async def query_selector(self, selector):
+        self.query_selectors.append(selector)
+        if selector == "div.paging span.on, div.paging a.on":
+            return _FakePagingButton(str(self.page_index + 1))
+        if selector == "div.paging a:has-text('다음')" and self.page_index == 0:
+            return _FakePagingButton(on_click=self._advance_page)
+        return None
+
+
 def test_retired_listing_blocks_navigation_when_compliance_disallows(monkeypatch):
     page = _NoNavigationPage()
     compliance = _FakeCompliance(allowed=False)
@@ -168,6 +178,31 @@ def test_retired_listing_uses_flexible_selectors_and_paginates(monkeypatch):
     assert page.timeouts == [1000, 500, 1000]
     assert "div.paging span.on, div.paging a.on" in page.query_selectors
     assert "div.paging a:has-text('2')" in page.query_selectors
+    assert throttle.calls == 2
+
+
+def test_retired_listing_uses_next_button_when_numeric_page_is_absent(monkeypatch):
+    page = _FakeNextOnlyRecordPage()
+    compliance = _FakeCompliance(allowed=True)
+    throttle = _FakeThrottle()
+
+    monkeypatch.setattr(retired_listing, "compliance", compliance)
+    monkeypatch.setattr(retired_listing, "throttle", throttle)
+
+    crawler = RetiredPlayerListingCrawler(request_delay=1.0)
+    ids = asyncio.run(
+        crawler._crawl_record_page_ids(
+            page,
+            "https://www.koreabaseball.com/Record/Player/PitcherBasic/Basic1.aspx",
+            2024,
+        )
+    )
+
+    assert ids == {"10001", "10002", "20001"}
+    assert "div.paging a:has-text('2')" in page.query_selectors
+    assert "div.paging a[id$='btnNext']" in page.query_selectors
+    assert "div.paging a:has(img[alt='다음'])" in page.query_selectors
+    assert "div.paging a:has-text('다음')" in page.query_selectors
     assert throttle.calls == 2
 
 
