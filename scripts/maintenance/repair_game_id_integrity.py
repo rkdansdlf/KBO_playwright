@@ -611,6 +611,42 @@ def _is_generated_player_id(value: Any) -> bool:
         return False
 
 
+def _player_id_only_resolution(
+    source_row: dict[str, Any],
+    target_row: dict[str, Any],
+    source_payload: dict[str, str],
+    target_payload: dict[str, str],
+    table: Table,
+    diff_keys: set[str],
+) -> str | None:
+    if diff_keys != {"player_id"}:
+        return None
+
+    if table.name == "game_lineups":
+        if source_payload.get("player_name") == target_payload.get("player_name"):
+            return "target"
+        return None
+
+    if table.name != "game_summary":
+        return None
+
+    source_player_id = source_payload.get("player_id", "")
+    target_player_id = target_payload.get("player_id", "")
+    source_blank = _is_blank_compare_value(source_player_id)
+    target_blank = _is_blank_compare_value(target_player_id)
+    if source_blank and not target_blank:
+        return "target"
+    if target_blank and not source_blank:
+        return "source"
+
+    source_generated = _is_generated_player_id(source_row.get("player_id"))
+    target_generated = _is_generated_player_id(target_row.get("player_id"))
+    if source_generated != target_generated:
+        return "target" if source_generated else "source"
+
+    return "target"
+
+
 def _mergeable_payload_diff(key: str, source_value: str, target_value: str) -> bool:
     if key in MERGE_KEEP_TARGET_COLUMNS:
         return _is_blank_compare_value(source_value) and not _is_blank_compare_value(target_value)
@@ -636,16 +672,21 @@ def _payload_resolution(source_row: dict[str, Any], target_row: dict[str, Any], 
         if source_payload.get(key, "") != target_payload.get(key, "")
         and not _blank_zero_equivalent(source_payload.get(key, ""), target_payload.get(key, ""))
     }
-    if table.name == "game_lineups" and diff_keys == {"player_id"}:
-        if source_payload.get("player_name") == target_payload.get("player_name"):
-            return "target"
+    player_id_resolution = _player_id_only_resolution(
+        source_row,
+        target_row,
+        source_payload,
+        target_payload,
+        table,
+        diff_keys,
+    )
+    if player_id_resolution:
+        return player_id_resolution
     if "player_id" in diff_keys and source_row.get("player_name") and target_row.get("player_name"):
         source_generated = _is_generated_player_id(source_row.get("player_id"))
         target_generated = _is_generated_player_id(target_row.get("player_id"))
         if source_generated != target_generated:
             return "target" if source_generated else "source"
-        if table.name == "game_summary" and diff_keys == {"player_id"} and source_generated and target_generated:
-            return "target"
     if diff_keys == {"extra_stats"}:
         source_score = _payload_score({"extra_stats": source_payload.get("extra_stats", "")})
         target_score = _payload_score({"extra_stats": target_payload.get("extra_stats", "")})
