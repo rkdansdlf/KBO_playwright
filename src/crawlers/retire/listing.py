@@ -52,24 +52,26 @@ class RetiredPlayerListingCrawler:
             return set()
 
         await self._wait()
-        await page.goto(base_url, wait_until="load", timeout=30000)
+        await page.goto(base_url, wait_until="networkidle", timeout=30000)
 
         # Select Year
-        season_selector = 'select[id$="ddlSeason_ddlSeason"]'
+        season_selector = 'select[name*="ddlSeason"]'
         await page.wait_for_selector(season_selector, timeout=15000)
         await page.select_option(season_selector, str(year))
-        await page.wait_for_load_state("load")
-        await page.wait_for_timeout(500)
+        await page.wait_for_load_state("networkidle")
+        await page.wait_for_timeout(1000)
 
         # Select Regular Season (value="0") if available
         try:
-            series_selector = 'select[id$="ddlSeries_ddlSeries"]'
+            series_selector = 'select[name*="ddlSeries"]'
             await page.select_option(series_selector, "0")
-            await page.wait_for_load_state("load")
+            await page.wait_for_load_state("networkidle")
+            await page.wait_for_timeout(500)
         except Exception:
             pass
 
         ids: Set[str] = set()
+        page_num = 1
         while True:
             # Extract IDs from current page
             page_ids = await page.evaluate("""
@@ -77,36 +79,43 @@ class RetiredPlayerListingCrawler:
                     const links = document.querySelectorAll('table.tData01.tt tbody tr td:nth-child(2) a');
                     return Array.from(links).map(a => {
                         const href = a.getAttribute('href');
-                        const m = href.match(/playerId=(\d+)/);
+                        const m = href ? href.match(/playerId=(\d+)/) : null;
                         return m ? m[1] : null;
                     }).filter(id => id !== null);
                 }
             """)
             ids.update(page_ids)
+            print(
+                f"    [Year {year}] Page {page_num}: Found {len(page_ids)} IDs (Total: {len(ids)})",
+                file=sys.stderr,
+            )
 
             # Try to go to next page
-            # Pager structure: a[id*='btnNo'], a[id*='btnNext']
             try:
-                current_active_btn = await page.query_selector("div.paging span.on")
+                # Find current page number from span.on or similar
+                current_active_btn = await page.query_selector("div.paging span.on, div.paging a.on")
                 current_active_text = await current_active_btn.inner_text() if current_active_btn else "1"
-                current_page = int(current_active_text)
+                current_page_val = int(current_active_text.strip())
 
-                next_page_btn = await page.query_selector(f"div.paging a:has-text('{current_page + 1}')")
+                # Try to find next numeric button
+                next_page_num = current_page_val + 1
+                next_page_btn = await page.query_selector(f"div.paging a:has-text('{next_page_num}')")
+
+                # If no next numeric button, try "Next" block button
                 if not next_page_btn:
-                    # Check for "Next" block button
-                    next_block_btn = await page.query_selector("div.paging a[id*='btnNext']")
-                    if next_block_btn:
-                        next_page_btn = next_block_btn
+                    next_page_btn = await page.query_selector(
+                        "div.paging a[id*='btnNext'], div.paging a:has(img[alt='다음'])"
+                    )
 
-                if next_page_btn:
+                if next_page_btn and await next_page_btn.is_visible():
                     await self._wait()
                     await next_page_btn.click()
-                    await page.wait_for_load_state("load")
-                    await page.wait_for_timeout(500)
+                    await page.wait_for_load_state("networkidle")
+                    await page.wait_for_timeout(1000)
+                    page_num += 1
                 else:
                     break
-            except Exception as e:
-                print(f"[WARN] Pagination ended or failed for {year}: {e}", file=sys.stderr)
+            except Exception:
                 break
 
         return ids
