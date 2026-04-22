@@ -233,7 +233,7 @@ class PlayerSearchCrawler:
             # Try to use click() which handles both normal links and many JS-based navigations reliably.
             # We use wait_for_load_state as a generic way to ensure navigation finished.
             await anchor.click(timeout=10000)
-            await page.wait_for_load_state("load", timeout=10000)
+            await page.wait_for_load_state("networkidle", timeout=10000)
             return True
         except Exception as e:
             # Fallback to manual postback if click fails or times out
@@ -244,7 +244,7 @@ class PlayerSearchCrawler:
                     if m:
                         try:
                             await page.evaluate(POSTBACK_EVAL, [m.group(1), m.group(2)])
-                            await page.wait_for_load_state("load", timeout=10000)
+                            await page.wait_for_load_state("networkidle", timeout=10000)
                             return True
                         except:
                             pass
