@@ -65,6 +65,7 @@ _EXTRACT_JS = f"""
         signing:      getVal('lblPayment'),
         draft:        getVal('lblDraft'),
         debut:        getVal('lblJoinInfo') || getVal('lblEntryYear') || getVal('lblDebutYear'),
+        height_weight: getVal('lblHeightWeight'),
         raw_text:     rawText,
     }};
 }}
@@ -102,6 +103,18 @@ def _parse_debut_year(text: Optional[str]) -> Optional[int]:
         # Assume 2000s for KBO entrants (founded 1982)
         return 2000 + year if year < 50 else 1900 + year
     return year
+
+
+def _parse_height_weight(text: Optional[str]) -> Dict[str, Optional[int]]:
+    """Parse height and weight from '185cm/92kg' format."""
+    result = {"height_cm": None, "weight_kg": None}
+    if not text:
+        return result
+    m = re.search(r"(\d+)\s*cm\s*/\s*(\d+)\s*kg", text)
+    if m:
+        result["height_cm"] = int(m.group(1))
+        result["weight_kg"] = int(m.group(2))
+    return result
 
 
 def _clean_photo_url(raw: Optional[str]) -> Optional[str]:
@@ -223,6 +236,7 @@ class PlayerProfileCrawler:
                 
                 # Success found data
                 hands = _parse_hands(raw.get("raw_text") or "")
+                hw = _parse_height_weight(raw.get("height_weight"))
                 photo_url = raw.get("photo_url") or raw.get("photo_attr")
 
                 # If still emblem or no-Image, try heuristic CDN URL for newer players
@@ -237,6 +251,8 @@ class PlayerProfileCrawler:
                     "photo_url": _clean_photo_url(photo_url),
                     "bats": hands["bats"],
                     "throws": hands["throws"],
+                    "height_cm": hw["height_cm"],
+                    "weight_kg": hw["weight_kg"],
                     "debut_year": _parse_debut_year(raw.get("debut")),
                     "salary_original": (raw.get("salary") or "").strip() or None,
                     "signing_bonus_original": (raw.get("signing") or "").strip() or None,
