@@ -10,6 +10,7 @@ import asyncio
 import os
 import sys
 from collections.abc import Mapping
+from datetime import date, datetime
 
 from dotenv import load_dotenv
 from sqlalchemy import bindparam, text
@@ -84,6 +85,17 @@ def _profile_or_existing(profile_data: dict, row, field: str):
     return value if value is not None else _row_value(row, field)
 
 
+def _normalize_date(value: object) -> date | None:
+    if isinstance(value, date):
+        return value
+    if isinstance(value, str) and value:
+        try:
+            return datetime.strptime(value[:10], "%Y-%m-%d").date()
+        except ValueError:
+            return None
+    return None
+
+
 async def enrich_stubs(limit: int = 200, player_ids: list[int] | None = None) -> int:
     load_dotenv()
 
@@ -112,9 +124,9 @@ async def enrich_stubs(limit: int = 200, player_ids: list[int] | None = None) ->
 
         enriched_count = 0
         for idx, row in enumerate(stubs, 1):
-            pid = str(row.player_id)
-            name = row.name
-            pos = row.position
+            pid = str(_row_value(row, "player_id"))
+            name = _row_value(row, "name")
+            pos = _row_value(row, "position")
 
             print(f"[{idx}/{len(stubs)}] Processing {name} ({pid})...")
 
@@ -129,9 +141,9 @@ async def enrich_stubs(limit: int = 200, player_ids: list[int] | None = None) ->
                         "team": _row_value(row, "team"),
                         "position": pos,
                         "birth_date": _row_value(row, "birth_date"),
-                        "birth_date_date": _row_value(row, "birth_date_date"),
-                        "height_cm": _row_value(row, "height_cm"),
-                        "weight_kg": _row_value(row, "weight_kg"),
+                        "birth_date_date": _normalize_date(_row_value(row, "birth_date_date")),
+                        "height_cm": _profile_or_existing(data, row, "height_cm"),
+                        "weight_kg": _profile_or_existing(data, row, "weight_kg"),
                         "career": _row_value(row, "career"),
                         "status": _row_value(row, "status"),
                         "staff_role": _row_value(row, "staff_role"),
@@ -144,10 +156,6 @@ async def enrich_stubs(limit: int = 200, player_ids: list[int] | None = None) ->
                         "signing_bonus_original": _profile_or_existing(data, row, "signing_bonus_original"),
                         "draft_info": _profile_or_existing(data, row, "draft_info"),
                     }
-
-                    # Note: PlayerProfileCrawler doesn't fetch height/weight currently
-                    # as they were in the search result, but some stubs might be missing them.
-                    # We might want to expand the JS extractor if needed.
 
                     repo.upsert_players([update_payload])
                     enriched_count += 1
