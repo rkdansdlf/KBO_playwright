@@ -8,6 +8,8 @@ from playwright.async_api import Page
 from bs4 import BeautifulSoup
 
 from src.utils.playwright_pool import AsyncPlaywrightPool
+from src.utils.compliance import compliance
+from src.utils.throttle import throttle
 
 class FuturesProfileCrawler:
     hitter_profile_url = "https://www.koreabaseball.com/Futures/Player/HitterDetail.aspx"
@@ -16,6 +18,11 @@ class FuturesProfileCrawler:
     def __init__(self, request_delay: float = 1.5, pool: Optional[AsyncPlaywrightPool] = None) -> None:
         self.request_delay = request_delay
         self.pool = pool
+
+    async def _wait(self) -> None:
+        await throttle.wait()
+        if self.request_delay > throttle.default_delay:
+            await asyncio.sleep(self.request_delay - throttle.default_delay)
 
     async def fetch_player_futures(self, player_id: str) -> Dict[str, Any]:
         """Fetch futures profile data (tables + profile text) for a player."""
@@ -50,12 +57,17 @@ class FuturesProfileCrawler:
 
     async def _scrape_profile(self, page: Page, base_url: str, player_id: str) -> Optional[Dict[str, Any]]:
         url = f"{base_url}?playerId={player_id}"
+        if not await compliance.is_allowed(url):
+            print(f"[COMPLIANCE] Blocked futures profile: {url}")
+            return None
+
         try:
+            await self._wait()
             await page.goto(url, wait_until="networkidle", timeout=30000)
         except Exception:
             return None
 
-        await asyncio.sleep(self.request_delay)
+        await self._wait()
 
         profile_text = await self._extract_profile_text(page)
         futures_tables = await self._extract_futures_tables(page)
@@ -116,7 +128,7 @@ class FuturesProfileCrawler:
             if not existing:
                 return []
 
-        await asyncio.sleep(self.request_delay)
+        await self._wait()
 
         # Get HTML content and parse with BeautifulSoup for proper encoding
         html_content = await page.content()

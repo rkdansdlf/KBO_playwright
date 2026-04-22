@@ -7,6 +7,8 @@ import re
 from typing import List, Dict, Optional
 from bs4 import BeautifulSoup
 from src.utils.playwright_pool import AsyncPlaywrightPool
+from src.utils.compliance import compliance
+from src.utils.throttle import throttle
 
 FUTURES_KEYS = [
     "season", "AVG", "G", "AB", "R", "H", "2B", "3B", "HR", "RBI", "SB", "BB", "HBP", "SO", "SLG", "OBP"
@@ -186,15 +188,20 @@ async def fetch_and_parse_futures_batting(
     try:
         page = await active_pool.acquire()
         try:
+            if not await compliance.is_allowed(profile_url):
+                print(f"[COMPLIANCE] Blocked futures batting: {profile_url}")
+                return []
+
+            await throttle.wait()
             await page.goto(profile_url, wait_until="networkidle", timeout=30000)
-            await asyncio.sleep(1)  # Extra wait for dynamic content
+            await throttle.wait()  # Wait for dynamic content using throttle instead of sleep
 
             # Try to click Futures tab if it exists
             try:
                 futures_tab = await page.wait_for_selector('text="퓨처스"', timeout=3000)
                 if futures_tab:
                     await futures_tab.click()
-                    await asyncio.sleep(2)
+                    await throttle.wait()
             except Exception:
                 pass  # Tab might not exist or already selected
 
