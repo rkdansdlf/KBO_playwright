@@ -13,6 +13,7 @@ from src.services.wpa_calculator import WPACalculator
 from src.utils.safe_print import safe_print as print
 from src.utils.playwright_pool import AsyncPlaywrightPool
 from src.utils.team_codes import normalize_kbo_game_id
+from src.utils.throttle import throttle
 
 
 KBO_TO_NAVER_TEAM_CODE = {
@@ -171,9 +172,8 @@ class RelayCrawler:
         self.last_resolved_naver_game_id = None
         direct_naver_id = self._map_to_naver_id(kbo_game_id)
         
-        # print(f"[FETCH] Requesting PBP via Naver API for {naver_id}")
-        
         try:
+            await throttle.wait()
             async with httpx.AsyncClient() as client:
                 naver_id = direct_naver_id
                 all_text_relays = await self._fetch_text_relays(client, naver_id)

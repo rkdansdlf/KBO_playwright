@@ -19,13 +19,23 @@ from sqlalchemy import text
 from src.utils.game_status import COMPLETED_LIKE_GAME_STATUSES
 
 async def main():
-    parser = argparse.ArgumentParser(description="KBO Play-by-Play (game_events) Historical Fetcher")
+    parser = argparse.ArgumentParser(
+        description=(
+            "Deprecated direct KBO Play-by-Play fetcher. Prefer "
+            "`python scripts/fetch_kbo_pbp.py ...` for completed-game relay recovery."
+        )
+    )
     parser.add_argument("--season", type=int, help="Season year to fetch (e.g. 2024)")
     parser.add_argument("--month", type=int, help="Optional month to filter games")
     parser.add_argument("--game-id", type=str, help="Specific Game ID to fetch (e.g. 20240323SSHH0)")
     parser.add_argument("--concurrency", type=int, default=1, help="Number of concurrent pages")
     
     args = parser.parse_args()
+
+    print(
+        "[DEPRECATED] src.cli.fetch_kbo_pbp is a direct legacy fetcher. "
+        "Prefer `python scripts/fetch_kbo_pbp.py` for completed-game relay recovery."
+    )
 
     if not args.season and not args.game_id:
         print("[ERROR] Must provide --season or --game-id")

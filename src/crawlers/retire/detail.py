@@ -9,6 +9,8 @@ from typing import Any, Dict, List, Optional
 from playwright.async_api import Page
 
 from src.utils.playwright_pool import AsyncPlaywrightPool
+from src.utils.throttle import throttle
+from src.utils.compliance import compliance
 
 
 class RetiredPlayerDetailCrawler:
@@ -59,8 +61,12 @@ class RetiredPlayerDetailCrawler:
 
     async def _fetch_page(self, page: Page, base_url: str, player_id: str) -> Optional[Dict[str, Any]]:
         url = f"{base_url}?playerId={player_id}"
+        if not await compliance.is_allowed(url):
+            print(f"⚠️  BLOCKED by compliance: {url}")
+            return None
+
         await page.goto(url, wait_until="domcontentloaded", timeout=60000)
-        await asyncio.sleep(self.request_delay)
+        await throttle.wait()
 
         profile_text = await self._extract_profile_text(page)
         photo_url = await self._extract_photo_url(page)

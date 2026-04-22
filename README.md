@@ -10,6 +10,9 @@ Korean Baseball Organization (KBO) data collection system using Playwright, with
 - **Supabase Sync**: CLI tool to synchronize local data with a remote Supabase Postgres database.
 - **Automated Scheduling**: APScheduler for daily/weekly data collection.
 - **Idempotent Storage**: Safe to re-run crawlers without data duplication thanks to UPSERT logic.
+- **Adaptive Rate-Limiting**: Centralized throttling with random jitter to prevent IP blocks.
+- **Anti-Bot Protections**: Automatic User-Agent rotation and stealth script injection.
+- **Compliance Focused**: Built-in support for `robots.txt` rules and automated compliance checks.
 
 ## Data Coverage & Limitations
 
@@ -70,6 +73,12 @@ You can run specific parts of the crawling pipeline using the CLI scripts.
 # Operational daily entrypoint (recommended)
 python3 -m src.cli.run_daily_update --date 20251015
 
+# Completed-game relay/PBP recovery (recommended for historical/finalized games)
+python3 scripts/fetch_kbo_pbp.py --date 20251015
+
+# Manual monthly detail collection; existing detail/relay rows are skipped unless --force is used
+python3 -m src.cli.collect_games --year 2025 --month 10
+
 # Crawl and persist monthly schedule
 python3 -m src.cli.crawl_schedule --year 2025 --months 10
 
@@ -116,6 +125,33 @@ docker-compose logs -f scheduler
 docker-compose down
 ```
 
+## Rate Limiting & Anti-Block
+
+To ensure long-running crawls remain stable and respect the target server's resources, the system implements several anti-block mechanisms:
+
+- **Centralized Throttling**: All crawlers use a shared `AsyncThrottle` service that enforces a minimum delay between requests.
+- **Random Jitter**: A random delay (default ±0.3s) is added to each request to simulate human-like behavior.
+- **User-Agent Rotation**: Every browser session automatically picks a random, modern User-Agent from a curated pool.
+- **Stealth Injection**: Evasion scripts are injected to mask automation flags (e.g., `navigator.webdriver`).
+
+### Configuration
+
+You can tune these settings in your `.env` file:
+
+| Variable | Default | Description |
+|---|---|---|
+| `KBO_REQUEST_DELAY` | `1.5` | Base delay between requests in seconds. |
+| `KBO_REQUEST_JITTER` | `0.3` | Random variance added to the base delay. |
+| `KBO_UA_ROTATION` | `true` | Whether to enable automatic User-Agent rotation. |
+
+## Robots.txt & Compliance
+
+The system is designed to be a "good citizen" crawler:
+
+- **Automated Checks**: The `compliance` utility fetches and parses `https://www.koreabaseball.com/robots.txt` to ensure target paths are allowed.
+- **Fail-Safe**: Crawlers will automatically abort navigation if a `Disallow` rule is detected for the target URL.
+- **Snapshots**: Compliance snapshots are stored under `Docs/robots/` for auditing.
+
 ## Project Structure
 
 ```
@@ -154,7 +190,7 @@ The `scripts/` directory contains utility scripts for maintenance and operations
 ### Crawling Scripts (`scripts/crawling/`)
 - `crawl_all_historical.py` - Crawl historical game data
 - `recrawl_legacy_years.py` - Re-crawl specific historical seasons
-- `collect_detailed_data.py` - Collect detailed player profiles and game data
+- `collect_detailed_data.py` - Deprecated wrapper; use `python -m src.cli.collect_games` or `python -m src.cli.run_daily_update`
 
 ### Supabase Scripts (`scripts/supabase/`)
 - `sync_player_basic_first.py` - Initial sync of player basic data

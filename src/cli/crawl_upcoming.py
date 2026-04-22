@@ -9,7 +9,7 @@ from dateutil.relativedelta import relativedelta
 from typing import List, Dict
 
 from src.crawlers.schedule_crawler import ScheduleCrawler
-from src.repositories.game_repository import save_schedule_game
+from src.services.schedule_collection_service import save_schedule_games
 from src.utils.safe_print import safe_print as print
 
 async def crawl_upcoming(args: argparse.Namespace) -> None:
@@ -47,10 +47,8 @@ async def crawl_upcoming(args: argparse.Namespace) -> None:
         # But user request focused on "upcoming".
         
         # Let's save all found games for the month. Upsert handles duplicates.
-        for game in games:
-            saved = save_schedule_game(game)
-            if saved:
-                total_new += 1
+        result = save_schedule_games(games, log=print)
+        total_new += result.saved
                 
         print(f"   => Processed {len(games)} games for {month}월")
 

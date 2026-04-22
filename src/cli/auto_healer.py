@@ -5,7 +5,7 @@ Detects past games stuck in SCHEDULED state (no scores) and attempts
 to self-correct by re-crawling from the KBO GameCenter.
 
 Resolution logic per game:
-  - crawl_result=data   → save_game_detail() → COMPLETED
+  - shared detail collection saved data → COMPLETED
   - failure_reason=cancelled → update status → CANCELLED
   - failure_reason=missing   → update status → UNRESOLVED_MISSING
 """
@@ -24,12 +24,11 @@ from src.models.game import Game
 from src.services.player_id_resolver import PlayerIdResolver
 from src.repositories.game_repository import (
     GAME_STATUS_CANCELLED,
-    GAME_STATUS_COMPLETED,
     GAME_STATUS_SCHEDULED,
     GAME_STATUS_UNRESOLVED,
-    save_game_detail,
     update_game_status,
 )
+from src.services.game_collection_service import crawl_and_save_game_details
 from src.utils.alerting import SlackWebhookClient
 from src.utils.safe_print import safe_print as print
 
@@ -45,38 +44,22 @@ def _find_stuck_games() -> List[Game]:
         return session.execute(stmt).scalars().all()
 
 
-async def _heal_game(
-    crawler: GameDetailCrawler,
-    game_id: str,
-    game_date: str,
-    dry_run: bool,
-) -> str:
+def _apply_heal_outcome(game_id: str, item) -> str:
     """
-    Attempt to heal a single stuck game.
+    Apply status repair based on one shared collection result item.
 
-    Returns one of: 'completed', 'cancelled', 'unresolved', 'dry_run'
+    Returns one of: 'completed', 'cancelled', 'unresolved'
     """
-    if dry_run:
-        print(f"  [DRY-RUN] Would re-crawl {game_id}")
-        return "dry_run"
+    if item and item.detail_saved:
+        print(f"  ✅ {game_id} → COMPLETED (score saved)")
+        return "completed"
 
-    detail = await crawler.crawl_game(game_id, game_date)
-    if detail is not None:
-        # Box score found → persist and set COMPLETED
-        if save_game_detail(detail):
-            print(f"  ✅ {game_id} → COMPLETED (score saved)")
-            return "completed"
-        else:
-            print(f"  ⚠️  {game_id} → detail found but DB save failed")
-            return "unresolved"
-
-    failure_reason = crawler.get_last_failure_reason(game_id)
+    failure_reason = item.failure_reason if item else None
     if failure_reason == "cancelled":
         update_game_status(game_id, GAME_STATUS_CANCELLED)
         print(f"  🚫 {game_id} → CANCELLED")
         return "cancelled"
 
-    # Timeout / missing / unknown failure
     update_game_status(game_id, GAME_STATUS_UNRESOLVED)
     print(f"  ❓ {game_id} → UNRESOLVED_MISSING (reason={failure_reason})")
     return "unresolved"
@@ -137,10 +120,30 @@ async def run_healer_async(dry_run: bool = False) -> int:
         crawler = GameDetailCrawler(request_delay=1.0, resolver=resolver)
 
         results = {"completed": 0, "cancelled": 0, "unresolved": 0, "dry_run": 0}
-        for game in stuck_games:
-            game_date_str = game.game_date.strftime("%Y%m%d")
-            outcome = await _heal_game(crawler, game.game_id, game_date_str, dry_run)
-            results[outcome] = results.get(outcome, 0) + 1
+        if dry_run:
+            for game in stuck_games:
+                print(f"  [DRY-RUN] Would re-crawl {game.game_id}")
+                results["dry_run"] += 1
+        else:
+            collection_result = await crawl_and_save_game_details(
+                [
+                    {
+                        "game_id": game.game_id,
+                        "game_date": game.game_date.strftime("%Y%m%d"),
+                    }
+                    for game in stuck_games
+                ],
+                detail_crawler=crawler,
+                force=True,
+                concurrency=1,
+                log=print,
+            )
+            for game in stuck_games:
+                outcome = _apply_heal_outcome(
+                    game.game_id,
+                    collection_result.items.get(game.game_id),
+                )
+                results[outcome] = results.get(outcome, 0) + 1
 
     # Summary
     print("\n📊 Auto-Healer Summary:")

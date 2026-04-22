@@ -1,15 +1,17 @@
 import asyncio
 import sys
 import os
-from datetime import datetime
 import sqlite3
 
 # Add project root to sys.path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from src.crawlers.game_detail_crawler import GameDetailCrawler
-from src.repositories.game_repository import save_game_detail
-from src.db.engine import SessionLocal
+from src.services.game_collection_service import crawl_and_save_game_details
+
+
+def _has_hitter_payload(payload: dict) -> bool:
+    return bool(payload.get("hitters") and any(payload["hitters"].values()))
 
 async def repair_2025_stats():
     conn = sqlite3.connect("data/kbo_dev.db")
@@ -55,19 +57,17 @@ async def repair_2025_stats():
         chunk = games_to_crawl[i:i+chunk_size]
         print(f"Processing chunk {i//chunk_size + 1}/{(len(games_to_crawl)-1)//chunk_size + 1} ({len(chunk)} games)...")
         
-        results = await crawler.crawl_games(chunk)
-        
-        for payload in results:
-            if payload:
-                # Check if we actually got stats in the payload
-                has_hitters = payload.get('hitters') and any(payload['hitters'].values())
-                if has_hitters:
-                    if save_game_detail(payload):
-                        success_count += 1
-                    else:
-                        print(f"  ❌ Failed to save detail for {payload['game_id']}")
-                else:
-                    print(f"  ⚠️ Crawford {payload['game_id']} but result still has no hitters.")
+        result = await crawl_and_save_game_details(
+            chunk,
+            detail_crawler=crawler,
+            force=True,
+            should_save_detail=_has_hitter_payload,
+            log=print,
+        )
+        success_count += result.detail_saved
+        for item in result.items.values():
+            if item.detail_status == "filtered":
+                print(f"  ⚠️ Crawled {item.game_id} but result still has no hitters.")
 
     print(f"\nRepair Complete: {success_count}/{len(targets)} games updated successfully.")
 

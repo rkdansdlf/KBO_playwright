@@ -1,3 +1,9 @@
+"""Collect historical game IDs into a local JSON manifest.
+
+This script intentionally writes only `data/historical_game_ids.json`; it does
+not persist schedules to the database. Use `src.cli.crawl_schedule` for DB
+schedule ingestion.
+"""
 import asyncio
 import json
 import os
@@ -5,6 +11,10 @@ from datetime import datetime
 from src.crawlers.schedule_crawler import ScheduleCrawler
 
 async def collect_historical_game_ids(start_year: int, end_year: int):
+    print(
+        "[MANIFEST] scripts/maintenance/collect_historical_game_ids.py writes JSON only. "
+        "Use src.cli.crawl_schedule for DB schedule ingestion."
+    )
     crawler = ScheduleCrawler(request_delay=1.0)
     all_games = []
     

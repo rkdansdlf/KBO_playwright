@@ -1,3 +1,8 @@
+"""Manual live debug probe for cancelled-game parser behavior.
+
+This file is named like a test but is an executable debug script. It does not
+save to the database. Use standard CLIs for operational collection.
+"""
 import asyncio
 import sys
 import os
@@ -8,6 +13,10 @@ sys.path.insert(0, os.getcwd())
 from src.crawlers.game_detail_crawler import GameDetailCrawler
 
 async def main():
+    print(
+        "[DEBUG] scripts/maintenance/test_cancel_detect.py performs a live parser probe only. "
+        "It does not persist data."
+    )
     crawler = GameDetailCrawler()
     # Mock some basic setup if needed
     

@@ -17,13 +17,14 @@ def _is_sqlite(url: str) -> bool:
 
 def create_engine_for_url(url: str, *, disable_sqlite_wal: bool = False):
     if _is_sqlite(url):
-        engine = create_engine(url, connect_args={"check_same_thread": False, "timeout": 30}, pool_pre_ping=True, echo=False)
+        engine = create_engine(url, connect_args={"check_same_thread": False, "timeout": 120}, pool_pre_ping=True, echo=False)
         @event.listens_for(engine, "connect")
         def _sqlite_pragmas(dbapi_con, _):
             try:
                 cursor = dbapi_con.cursor()
                 cursor.execute("PRAGMA foreign_keys = ON;")
                 if not disable_sqlite_wal: cursor.execute("PRAGMA journal_mode = WAL;")
+                cursor.execute("PRAGMA busy_timeout = 120000;")
                 cursor.execute("PRAGMA synchronous = NORMAL;")
                 cursor.close()
             except: pass

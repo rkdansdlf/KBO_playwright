@@ -7,7 +7,7 @@ import sqlite3
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from src.crawlers.game_detail_crawler import GameDetailCrawler
-from src.repositories.game_repository import save_game_detail
+from src.services.game_collection_service import crawl_and_save_game_details
 
 async def flawless_crawl():
     with open("scratch/flawless_crawl_list.txt", "r") as f:
@@ -32,16 +32,14 @@ async def flawless_crawl():
         chunk = games_to_crawl[i:i+chunk_size]
         print(f"📦 Progress: {i}/{len(games_to_crawl)} games. Current Success: {success_count}")
         
-        results = await crawler.crawl_games(chunk)
-        
-        for payload in results:
-            if payload:
-                if save_game_detail(payload):
-                    success_count += 1
-                else:
-                    fail_count += 1
-            else:
-                fail_count += 1
+        result = await crawl_and_save_game_details(
+            chunk,
+            detail_crawler=crawler,
+            force=True,
+            log=print,
+        )
+        success_count += result.detail_saved
+        fail_count += result.detail_failed
 
     print(f"\n✅ FLAWLESS CRAWL COMPLETE!")
     print(f"Total Success: {success_count}")

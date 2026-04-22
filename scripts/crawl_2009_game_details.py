@@ -1,4 +1,11 @@
 
+"""One-off legacy 2009 detail extractor.
+
+This script intentionally remains outside the shared async
+`game_collection_service` because it drives a sync Playwright page and the
+legacy 2009-only parser directly. Do not use it as an operational collection
+entry point; use the standard CLIs for modern schedule/detail collection.
+"""
 import os
 import sys
 import time
@@ -13,6 +20,11 @@ from src.repositories.game_repository import save_game_detail
 from src.db.engine import SessionLocal
 
 def crawl_2009_details():
+    print(
+        "[LEGACY] scripts/crawl_2009_game_details.py is a manual 2009 repair/debug path. "
+        "Operational detail collection should use src.cli.collect_games or src.cli.run_daily_update."
+    )
+
     # DB Session
     session = SessionLocal()
     resolver = PlayerIdResolver(session)
@@ -73,7 +85,7 @@ def crawl_2009_details():
                     
                 # Extract Data
                 print(f"   [Driver] Instantiating Crawler...")
-                crawler = LegacyGameDetailCrawler(resolver=resolver) 
+                crawler = LegacyGameDetailCrawler(resolver=resolver)
                 
                 # Derive Game ID from href
                 parsed = urllib.parse.urlparse(href)
