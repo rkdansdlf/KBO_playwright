@@ -224,7 +224,7 @@ def _parse_batting_stats_table_fast(page: Page, series_key: str, year: int = 202
     """
     team_mapping = get_team_mapping_for_year(year)
 
-    extraction_script = """
+    extraction_script = r"""
     () => {
         const table = document.querySelector('table.tData01.tt');
         if (!table) return null;

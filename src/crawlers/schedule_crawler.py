@@ -153,7 +153,7 @@ class ScheduleCrawler:
         """
         
         # JS를 사용하여 모든 게임 정보를 한 번에 추출
-        extraction_script = """
+        extraction_script = r"""
         (year) => {
             const results = [];
             const rows = document.querySelectorAll('.tbl tbody tr');
