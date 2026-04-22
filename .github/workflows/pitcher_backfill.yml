@@ -1,0 +1,73 @@
+name: KBO Pitcher Backfill
+
+on:
+  schedule:
+    # Every hour from 14:00 to 22:00 KST (05:00 to 13:00 UTC)
+    - cron: '0 5-13 * * *'
+    # Morning refresh at 09:00 KST (00:00 UTC)
+    - cron: '0 0 * * *'
+  workflow_dispatch:
+    inputs:
+      days_ahead:
+        description: 'Number of days ahead to search for scheduled games'
+        required: false
+        default: '1'
+        type: string
+
+concurrency:
+  group: kbo-pitcher-backfill
+  cancel-in-progress: false
+
+jobs:
+  backfill-pitchers:
+    runs-on: ubuntu-latest
+    env:
+      PYTHONPATH: ${{ github.workspace }}
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.10
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          playwright install chromium
+
+      - name: Initialize Database & Seed Metadata
+        run: |
+          python3 -c "from src.db.engine import init_db; init_db()"
+          python3 scripts/maintenance/seed_data.py
+
+      - name: Resolve Backfill Window
+        run: |
+          if [ "${{ github.event.inputs.days_ahead }}" != "" ]; then
+            DAYS_AHEAD="${{ github.event.inputs.days_ahead }}"
+          else
+            DAYS_AHEAD="1"
+          fi
+          KST_DATE="$(TZ='Asia/Seoul' date +'%Y%m%d')"
+          echo "DAYS_AHEAD=${DAYS_AHEAD}" >> $GITHUB_ENV
+          echo "KST_DATE=${KST_DATE}" >> $GITHUB_ENV
+          echo "KST_YEAR=${KST_DATE:0:4}" >> $GITHUB_ENV
+
+      - name: Hydrate Runtime Cache From OCI
+        env:
+          OCI_DB_URL: ${{ secrets.OCI_DB_URL }}
+        run: |
+          # Hydrate current year to ensure scheduled games exist in local SQLite
+          python3 -m src.cli.hydrate_runtime_from_oci --year "${KST_YEAR}" --date "${KST_DATE}"
+
+      - name: Run Pregame Backfill
+        env:
+          OCI_DB_URL: ${{ secrets.OCI_DB_URL }}
+          KBO_USER_ID: ${{ secrets.KBO_USER_ID }}
+          KBO_USER_PWD: ${{ secrets.KBO_USER_PWD }}
+        run: |
+          echo "Running pregame backfill (today + ${DAYS_AHEAD} days)..."
+          python3 -m src.cli.backfill_pregame_previews --days-ahead "${DAYS_AHEAD}"
