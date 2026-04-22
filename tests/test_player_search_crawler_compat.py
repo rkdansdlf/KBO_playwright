@@ -87,3 +87,30 @@ def test_module_crawl_all_players_delegates_to_class(monkeypatch):
         },
         "max_pages": 3,
     }
+
+
+def test_trigger_postback_waits_for_load_state_after_click():
+    class FakeAnchor:
+        def __init__(self):
+            self.click_timeout = None
+
+        async def click(self, timeout):
+            self.click_timeout = timeout
+
+        async def get_attribute(self, *_args, **_kwargs):
+            raise AssertionError("fallback should not run after click success")
+
+    class FakePage:
+        def __init__(self):
+            self.wait_calls = []
+
+        async def wait_for_load_state(self, state, timeout):
+            self.wait_calls.append((state, timeout))
+
+    anchor = FakeAnchor()
+    page = FakePage()
+    crawler = PlayerSearchCrawler()
+
+    assert asyncio.run(crawler._trigger_postback(page, anchor)) is True
+    assert anchor.click_timeout == 10000
+    assert page.wait_calls == [("load", 10000)]

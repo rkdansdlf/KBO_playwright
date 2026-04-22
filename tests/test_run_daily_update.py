@@ -232,6 +232,14 @@ def test_run_update_injects_resolver_marks_cancelled_and_uses_step_runner(monkey
     assert ("20250101LGSS0", GAME_STATUS_CANCELLED) in updates
     assert ["scripts/fetch_kbo_pbp.py", "--date", "20250101"] in commands
     assert ["-m", "src.cli.daily_review_batch", "--date", "20250101", "--no-sync"] in commands
+    assert [
+        "-m",
+        "src.cli.backfill_starting_pitchers_from_stats",
+        "--start-date",
+        "20250101",
+        "--end-date",
+        "20250101",
+    ] in commands
     assert ["-m", "src.cli.calculate_standings", "--year", "2025"] in commands
     assert ["-m", "src.cli.calculate_matchups", "--year", "2025"] in commands
     assert ["-m", "src.cli.calculate_rankings", "--year", "2025"] in commands
@@ -312,11 +320,23 @@ def test_run_update_syncs_only_target_games_after_freshness_gate(monkeypatch):
     )
 
     assert ["-m", "src.cli.daily_review_batch", "--date", "20250101", "--no-sync"] in commands
+    backfill_command = [
+        "-m",
+        "src.cli.backfill_starting_pitchers_from_stats",
+        "--start-date",
+        "20250101",
+        "--end-date",
+        "20250101",
+        "--sync",
+    ]
+    assert backfill_command in commands
     assert ["-m", "src.cli.freshness_gate", "--date", "20250101"] in commands
     assert ["-m", "src.cli.quality_gate_check", "--year", "2025"] in commands
+    backfill_index = commands.index(backfill_command)
     gate_index = commands.index(["-m", "src.cli.freshness_gate", "--date", "20250101"])
     quality_index = commands.index(["-m", "src.cli.quality_gate_check", "--year", "2025"])
     standings_index = commands.index(["-m", "src.cli.calculate_standings", "--year", "2025"])
+    assert backfill_index < standings_index
     assert standings_index < gate_index
     assert gate_index < quality_index
 
