@@ -2,8 +2,8 @@ column_name,type,is_primary_key,foreign_key
 id,INTEGER,True,
 game_id,VARCHAR(20),False,game(game_id)
 team_side,VARCHAR(5),False,
-team_code,VARCHAR(10),False,
-player_id,INTEGER,False,
+team_code,VARCHAR(10),False,teams(team_id)
+player_id,INTEGER,False,player_basic(player_id)
 player_name,VARCHAR(64),False,
 batting_order,INTEGER,False,
 is_starter,BOOLEAN,False,

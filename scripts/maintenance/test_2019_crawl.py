@@ -2,12 +2,18 @@
 import asyncio
 import os
 import sys
+import pytest
 
 # Add project root to path
 sys.path.append(os.getcwd())
 
 from src.crawlers.game_detail_crawler import GameDetailCrawler
 from src.db.engine import SessionLocal
+
+pytestmark = pytest.mark.skipif(
+    os.getenv("RUN_LIVE_DEBUG_TESTS") != "1",
+    reason="Live debug crawler test is disabled unless RUN_LIVE_DEBUG_TESTS=1",
+)
 
 async def test_single_game():
     game_id = '20190323SSNC0' 

@@ -23,7 +23,8 @@ from src.models.game import (
     GameBattingStat,
     GamePitchingStat,
     GameEvent,
-    GameSummary
+    GameSummary,
+    GameIdAlias,
 )
 from src.models.matchup import BatterTeamSplit, PitcherTeamSplit, BatterStadiumSplit, BatterVsStarter
 from src.models.rankings import StatRanking
@@ -1203,6 +1204,7 @@ class OCISync:
             GamePlayByPlay,
             GameEvent,
             GameSummary,
+            GameIdAlias,
         )
         
         filters = []
@@ -1247,6 +1249,23 @@ class OCISync:
                 print("ℹ️ No publishable parent game rows beyond schedule-only stubs.")
         else:
             results['games'] = self.sync_games(filters=filters if filters else None)
+
+        alias_filters = None
+        if unsynced_only and target_game_ids:
+            alias_filters = [GameIdAlias.canonical_game_id.in_(target_game_ids)]
+        elif year:
+            alias_filters = [GameIdAlias.canonical_game_id.like(f"{year}%")]
+        elif days and filters:
+            game_ids = [g.game_id for g in self.sqlite_session.query(Game.game_id).filter(*filters).all()]
+            alias_filters = [GameIdAlias.canonical_game_id.in_(game_ids)] if game_ids else []
+
+        if alias_filters != []:
+            results['game_id_aliases'] = self._sync_simple_table(
+                GameIdAlias,
+                ['alias_game_id'],
+                exclude_cols=['created_at'],
+                filters=alias_filters,
+            )
 
         # Build filters for child tables (they often use game_id instead of game_date)
         child_filters = []
@@ -1345,6 +1364,7 @@ class OCISync:
             GamePlayByPlay,
             GameEvent,
             GameSummary,
+            GameIdAlias,
         )
         
         results = {}
@@ -1352,6 +1372,7 @@ class OCISync:
 
         # Sync Game record
         results['game'] = self._sync_simple_table(Game, ['game_id'], exclude_cols=['created_at', 'updated_at'], filters=filters)
+        results['game_id_aliases'] = self._sync_simple_table(GameIdAlias, ['alias_game_id'], exclude_cols=['created_at'], filters=[GameIdAlias.canonical_game_id == game_id])
         
         # Sync children
         results['metadata'] = self._sync_simple_table(GameMetadata, ['game_id'], exclude_cols=['created_at'], filters=[GameMetadata.game_id == game_id])

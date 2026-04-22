@@ -3,11 +3,16 @@ import os
 import sys
 from sqlalchemy import create_engine, text
 from dotenv import load_dotenv
+import pytest
 
 sys.path.insert(0, os.getcwd())
 from src.db.engine import SessionLocal
 from src.sync.oci_sync import OCISync
-from src.models.game import GameMetadata, GameInningScores, GameLineup, GameBattingStats, GamePitchingStats, GameSummary, Game
+
+pytestmark = pytest.mark.skipif(
+    os.getenv("RUN_OCI_PURGE_TEST") != "1",
+    reason="OCI purge integration test is disabled unless RUN_OCI_PURGE_TEST=1",
+)
 
 def test_purge_logic():
     load_dotenv()

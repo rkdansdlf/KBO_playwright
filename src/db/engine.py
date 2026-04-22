@@ -121,6 +121,26 @@ def _ensure_game_status_column():
         print(f"[WARN] Could not ensure game.game_status column: {exc}")
 
 
+def _ensure_game_identity_columns():
+    """Ensure game identity repair columns exist on SQLite databases."""
+    if not _is_sqlite(DATABASE_URL):
+        return
+    try:
+        with Engine.begin() as conn:
+            info_rows = conn.exec_driver_sql("PRAGMA table_info(game);").fetchall()
+            column_names = {row[1] for row in info_rows}
+            if "home_franchise_id" not in column_names:
+                conn.exec_driver_sql("ALTER TABLE game ADD COLUMN home_franchise_id INTEGER;")
+            if "away_franchise_id" not in column_names:
+                conn.exec_driver_sql("ALTER TABLE game ADD COLUMN away_franchise_id INTEGER;")
+            if "winning_franchise_id" not in column_names:
+                conn.exec_driver_sql("ALTER TABLE game ADD COLUMN winning_franchise_id INTEGER;")
+            if "is_primary" not in column_names:
+                conn.exec_driver_sql("ALTER TABLE game ADD COLUMN is_primary BOOLEAN DEFAULT 1;")
+    except Exception as exc:
+        print(f"[WARN] Could not ensure game identity columns: {exc}")
+
+
 def _migrate_game_table(conn):
     info_rows = conn.exec_driver_sql("PRAGMA table_info(game);").fetchall()
     column_names = {row[1] for row in info_rows}
@@ -150,6 +170,10 @@ def _migrate_game_table(conn):
     has_winning_score = "winning_score" in column_names
     has_season_id = "season_id" in column_names
     has_game_status = "game_status" in column_names
+    has_home_franchise_id = "home_franchise_id" in column_names
+    has_away_franchise_id = "away_franchise_id" in column_names
+    has_winning_franchise_id = "winning_franchise_id" in column_names
+    has_is_primary = "is_primary" in column_names
 
     conn.exec_driver_sql("PRAGMA foreign_keys=OFF;")
     conn.exec_driver_sql("ALTER TABLE game RENAME TO game_old;")
@@ -170,6 +194,10 @@ def _migrate_game_table(conn):
             winning_score INTEGER,
             season_id INTEGER,
             game_status VARCHAR(32),
+            home_franchise_id INTEGER,
+            away_franchise_id INTEGER,
+            winning_franchise_id INTEGER,
+            is_primary BOOLEAN DEFAULT 1,
             created_at DATETIME NOT NULL,
             updated_at DATETIME NOT NULL
         );
@@ -179,7 +207,9 @@ def _migrate_game_table(conn):
         INSERT INTO game (
             game_id, game_date, stadium, home_team, away_team,
             away_score, home_score, away_pitcher, home_pitcher,
-            winning_team, winning_score, season_id, game_status, created_at, updated_at
+            winning_team, winning_score, season_id, game_status,
+            home_franchise_id, away_franchise_id, winning_franchise_id, is_primary,
+            created_at, updated_at
         )
         SELECT
             game_id,
@@ -195,6 +225,10 @@ def _migrate_game_table(conn):
             {"winning_score" if has_winning_score else "NULL"},
             {"season_id" if has_season_id else "NULL"},
             {"game_status" if has_game_status else "NULL"},
+            {"home_franchise_id" if has_home_franchise_id else "NULL"},
+            {"away_franchise_id" if has_away_franchise_id else "NULL"},
+            {"winning_franchise_id" if has_winning_franchise_id else "NULL"},
+            {"is_primary" if has_is_primary else "1"},
             created_at,
             updated_at
         FROM game_old;
@@ -254,4 +288,5 @@ def init_db():
     _ensure_player_basic_status_columns()
     _ensure_game_core_tables()
     _ensure_game_status_column()
+    _ensure_game_identity_columns()
     print(f"[DB] Database initialized: {DATABASE_URL}")

@@ -9,6 +9,7 @@ from src.models.game import (
     Game,
     GameBattingStat,
     GameEvent,
+    GameIdAlias,
     GameInningScore,
     GameLineup,
     GameMetadata,
@@ -38,6 +39,7 @@ def _build_session_factory():
         PlayerMovement.__table__,
         TeamDailyRoster.__table__,
         Game.__table__,
+        GameIdAlias.__table__,
         GameMetadata.__table__,
         GameInningScore.__table__,
         GameLineup.__table__,
@@ -272,3 +274,48 @@ def test_runtime_hydrator_copies_operational_year_scope():
         assert session.query(GamePlayByPlay).filter(GamePlayByPlay.game_id == "20250401LGSS0").count() == 1
         assert session.query(TeamDailyRoster).count() == 1
         assert session.query(PlayerMovement).count() == 1
+
+
+def test_runtime_hydrator_can_preserve_local_aliases():
+    source_factory = _build_session_factory()
+    target_factory = _build_session_factory()
+    _seed_source(source_factory)
+
+    with target_factory() as session:
+        session.add(Team(team_id="LG", team_name="LG 트윈스", team_short_name="LG", city="서울"))
+        session.add(Team(team_id="SS", team_name="삼성 라이온즈", team_short_name="삼성", city="대구"))
+        session.add(
+            Game(
+                game_id="20250401LGSS0",
+                game_date=date(2025, 4, 1),
+                away_team="LG",
+                home_team="SS",
+                game_status="SCHEDULED",
+                season_id=2025,
+            )
+        )
+        session.flush()
+        session.add(
+            GameIdAlias(
+                alias_game_id="20250401LGSSG0",
+                canonical_game_id="20250401LGSS0",
+                source="test",
+                reason="preserve",
+            )
+        )
+        session.commit()
+
+    with source_factory() as source_session, target_factory() as target_session:
+        summary = RuntimeHydrator(source_session, target_session).hydrate_year(
+            2025,
+            preserve_aliases=True,
+        )
+
+    assert summary["game_id_aliases_preserved"] == 1
+
+    with target_factory() as session:
+        alias = session.query(GameIdAlias).filter(GameIdAlias.alias_game_id == "20250401LGSSG0").one()
+        game = session.query(Game).filter(Game.game_id == "20250401LGSS0").one()
+
+        assert alias.canonical_game_id == "20250401LGSS0"
+        assert game.game_status == "COMPLETED"
