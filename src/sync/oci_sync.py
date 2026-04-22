@@ -23,7 +23,8 @@ from src.models.game import (
     GameBattingStat,
     GamePitchingStat,
     GameEvent,
-    GameSummary
+    GameSummary,
+    GameIdAlias,
 )
 from src.models.matchup import BatterTeamSplit, PitcherTeamSplit, BatterStadiumSplit, BatterVsStarter
 from src.models.rankings import StatRanking
@@ -226,6 +227,13 @@ def detect_dirty_game_ids(local_session_or_conn, remote_session_or_conn, *, game
                 break
 
     return dirty
+
+
+def filter_game_ids_by_year(game_ids: List[str], year: int | None) -> List[str]:
+    if year is None:
+        return list(game_ids)
+    prefix = str(int(year))
+    return [game_id for game_id in game_ids if str(game_id).startswith(prefix)]
 
 
 def filter_publishable_game_ids(session, game_ids: List[str]) -> List[str]:
@@ -1196,6 +1204,7 @@ class OCISync:
             GamePlayByPlay,
             GameEvent,
             GameSummary,
+            GameIdAlias,
         )
         
         filters = []
@@ -1206,8 +1215,10 @@ class OCISync:
         if unsynced_only:
             print("🔍 식별 중: OCI에 없거나 로컬에서 최근에 갱신된 게임 데이터를 검사합니다...")
             target_game_ids = self.get_unsynced_or_modified_game_ids()
+            target_game_ids = filter_game_ids_by_year(target_game_ids, year)
             if not target_game_ids:
-                print("🎉 모든 게임 데이터가 이미 최신 상태입니다. 동기화를 건너뜁니다.")
+                year_msg = f" ({year})" if year else ""
+                print(f"🎉 모든 게임 데이터{year_msg}가 이미 최신 상태입니다. 동기화를 건너뜁니다.")
                 return results
             print(f"🎯 총 {len(target_game_ids)}개의 변경/누락된 게임을 발견했습니다.")
             # target_game_ids가 너무 길면 sqlite in_ 절 한도를 초과할 수 있지만, 부분 업데이트라 대개 수십 건 내외임.
@@ -1239,6 +1250,23 @@ class OCISync:
         else:
             results['games'] = self.sync_games(filters=filters if filters else None)
 
+        alias_filters = None
+        if unsynced_only and target_game_ids:
+            alias_filters = [GameIdAlias.canonical_game_id.in_(target_game_ids)]
+        elif year:
+            alias_filters = [GameIdAlias.canonical_game_id.like(f"{year}%")]
+        elif days and filters:
+            game_ids = [g.game_id for g in self.sqlite_session.query(Game.game_id).filter(*filters).all()]
+            alias_filters = [GameIdAlias.canonical_game_id.in_(game_ids)] if game_ids else []
+
+        if alias_filters != []:
+            results['game_id_aliases'] = self._sync_simple_table(
+                GameIdAlias,
+                ['alias_game_id'],
+                exclude_cols=['created_at'],
+                filters=alias_filters,
+            )
+
         # Build filters for child tables (they often use game_id instead of game_date)
         child_filters = []
         if year:
@@ -1252,7 +1280,7 @@ class OCISync:
                 print("ℹ️ No games found for the specified period.")
                 return results
 
-        if year:
+        if year and not unsynced_only:
             # Remove existing year-scoped child rows first to avoid stale/null duplicates.
             self._purge_game_detail_children_for_year(year)
 
@@ -1336,6 +1364,7 @@ class OCISync:
             GamePlayByPlay,
             GameEvent,
             GameSummary,
+            GameIdAlias,
         )
         
         results = {}
@@ -1343,6 +1372,7 @@ class OCISync:
 
         # Sync Game record
         results['game'] = self._sync_simple_table(Game, ['game_id'], exclude_cols=['created_at', 'updated_at'], filters=filters)
+        results['game_id_aliases'] = self._sync_simple_table(GameIdAlias, ['alias_game_id'], exclude_cols=['created_at'], filters=[GameIdAlias.canonical_game_id == game_id])
         
         # Sync children
         results['metadata'] = self._sync_simple_table(GameMetadata, ['game_id'], exclude_cols=['created_at'], filters=[GameMetadata.game_id == game_id])

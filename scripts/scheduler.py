@@ -3,7 +3,7 @@ APScheduler-based automation for KBO data collection.
 
 Jobs:
 1. crawl_games_regular: Daily at 03:00 KST (run run_daily_update for previous KST day)
-2. crawl_pregame_refresh: Every 15 minutes, 10:00-19:45 KST
+2. crawl_pregame_refresh: Every 15 minutes, 10:00-23:45 KST
 3. crawl_live_refresh: Every 2 minutes, 12:00-23:30 KST
 4. crawl_futures_profile: Weekly Sunday at 05:00 KST (sync all Futures stats)
 """
@@ -19,17 +19,24 @@ from pathlib import Path
 from typing import Sequence
 from zoneinfo import ZoneInfo
 
+from dotenv import load_dotenv
+
 # Add project root to sys.path
-sys.path.append(str(Path(__file__).parent.parent))
+PROJECT_ROOT = Path(__file__).parent.parent
+sys.path.append(str(PROJECT_ROOT))
+load_dotenv(PROJECT_ROOT / ".env")
 
 from apscheduler.schedulers.blocking import BlockingScheduler
 from apscheduler.triggers.cron import CronTrigger
+from sqlalchemy import func
 from tenacity import retry, stop_after_attempt, wait_exponential
 
 from src.cli.crawl_futures import main as crawl_futures_main
 from src.cli.daily_preview_batch import run_preview_batch
 from src.cli.live_crawler import run_live_crawler_cycle
 from src.cli.run_daily_update import main as run_daily_update_main
+from src.db.engine import SessionLocal
+from src.models.game import Game
 from src.utils.safe_print import safe_print as print
 
 # Configure logging
@@ -43,6 +50,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 KST = ZoneInfo("Asia/Seoul")
+FALSE_ENV_VALUES = {"0", "false", "no", "off"}
 
 # Ensure logs directory exists
 Path('logs').mkdir(exist_ok=True)
@@ -51,6 +59,41 @@ Path('logs').mkdir(exist_ok=True)
 def _previous_day_kst() -> str:
     """Return yesterday in KST as YYYYMMDD."""
     return (datetime.now(KST) - timedelta(days=1)).strftime('%Y%m%d')
+
+
+def _pregame_target_dates(now: datetime | None = None) -> list[str]:
+    """Return pregame dates to refresh for the current scheduler tick."""
+    current = now or datetime.now(KST)
+    if current.tzinfo is None:
+        current = current.replace(tzinfo=KST)
+    else:
+        current = current.astimezone(KST)
+
+    target_dates = [current.strftime("%Y%m%d")]
+    if current.hour >= 18:
+        target_dates.append((current + timedelta(days=1)).strftime("%Y%m%d"))
+    return target_dates
+
+
+def _scheduled_game_count(target_date: str) -> int:
+    try:
+        target_day = datetime.strptime(target_date, "%Y%m%d").date()
+    except ValueError:
+        return 0
+
+    with SessionLocal() as session:
+        return session.query(Game).filter(
+            Game.game_date == target_day,
+            func.upper(Game.game_status) == "SCHEDULED",
+        ).count()
+
+
+def _env_enabled(name: str, default: str = "1") -> bool:
+    return os.getenv(name, default).strip().lower() not in FALSE_ENV_VALUES
+
+
+def _pregame_sync_to_oci_enabled() -> bool:
+    return _env_enabled("PREGAME_SYNC_TO_OCI") and bool(os.getenv("OCI_DB_URL"))
 
 
 @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=60, max=300))
@@ -66,7 +109,7 @@ def crawl_daily_games():
     try:
         target_date = _previous_day_kst()
         logger.info("Running run_daily_update for target_date=%s", target_date)
-        run_daily_update_main(['--date', target_date])
+        run_daily_update_main(['--date', target_date, '--seed-tomorrow-preview'])
 
         logger.info("=== Daily Games Crawl Completed Successfully ===")
 
@@ -75,10 +118,28 @@ def crawl_daily_games():
         raise  # Re-raise for tenacity retry
 
 
+@retry(stop=stop_after_attempt(2), wait=wait_exponential(multiplier=1, min=30, max=120))
 def crawl_pregame_refresh():
-    target_date = datetime.now(KST).strftime("%Y%m%d")
-    logger.info("Running pregame refresh for target_date=%s", target_date)
-    asyncio.run(run_preview_batch(target_date))
+    failures: list[str] = []
+    sync_to_oci = _pregame_sync_to_oci_enabled()
+    if sync_to_oci:
+        logger.info("Pregame OCI sync is enabled")
+    elif not _env_enabled("PREGAME_SYNC_TO_OCI"):
+        logger.info("Pregame OCI sync is disabled by PREGAME_SYNC_TO_OCI")
+    else:
+        logger.warning("Pregame OCI sync is disabled because OCI_DB_URL is not set")
+
+    for target_date in _pregame_target_dates():
+        logger.info("Running pregame refresh for target_date=%s", target_date)
+        saved_ids = asyncio.run(run_preview_batch(target_date, sync_to_oci=sync_to_oci))
+        if saved_ids and sync_to_oci:
+            logger.info("Pregame OCI sync completed for target_date=%s games=%s", target_date, len(saved_ids))
+        scheduled_count = _scheduled_game_count(target_date)
+        if scheduled_count and not saved_ids:
+            failures.append(f"{target_date}: scheduled={scheduled_count}, saved=0")
+
+    if failures:
+        raise RuntimeError("Pregame refresh saved no preview rows: " + "; ".join(failures))
 
 
 def crawl_live_refresh():
@@ -122,6 +183,11 @@ def build_arg_parser() -> argparse.ArgumentParser:
         help="Run only one daily update job immediately and exit.",
     )
     parser.add_argument(
+        "--run-pregame-once",
+        action="store_true",
+        help="Run only one pregame refresh job immediately and exit.",
+    )
+    parser.add_argument(
         "--no-startup-run",
         action="store_true",
         help="Disable one-time startup run regardless of STARTUP_RUN env.",
@@ -136,6 +202,9 @@ def main(argv: Sequence[str] | None = None):
 
     if args.run_once:
         crawl_daily_games()
+        return
+    if args.run_pregame_once:
+        crawl_pregame_refresh()
         return
 
     scheduler = BlockingScheduler(timezone='Asia/Seoul')
@@ -164,13 +233,13 @@ def main(argv: Sequence[str] | None = None):
 
     scheduler.add_job(
         crawl_pregame_refresh,
-        trigger=CronTrigger(hour="10-19", minute="*/15"),
+        trigger=CronTrigger(hour="10-23", minute="*/15"),
         id='crawl_pregame_refresh',
         name='Pregame Refresh',
         misfire_grace_time=900,
         max_instances=1,
     )
-    logger.info("Registered job: crawl_pregame_refresh (Every 15m, 10:00-19:45 KST)")
+    logger.info("Registered job: crawl_pregame_refresh (Every 15m, 10:00-23:45 KST)")
 
     scheduler.add_job(
         crawl_live_refresh,
@@ -207,7 +276,7 @@ def main(argv: Sequence[str] | None = None):
     print("="*60)
     print("\nScheduled Jobs:")
     print("  1. Daily Games Crawl: Every day at 03:00 KST")
-    print("  2. Pregame Refresh: Every 15 minutes, 10:00-19:45 KST")
+    print("  2. Pregame Refresh: Every 15 minutes, 10:00-23:45 KST")
     print("  3. Live Refresh: Every 2 minutes, 12:00-23:30 KST")
     print("  4. Futures Profile Sync: Every Sunday at 05:00 KST")
     print("="*60 + "\n")

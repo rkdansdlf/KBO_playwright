@@ -2,7 +2,14 @@
 Test navigation to page 52 to see why pagination stopped
 """
 import asyncio
+import os
+import pytest
 from playwright.async_api import async_playwright
+
+pytestmark = pytest.mark.skipif(
+    os.getenv("RUN_LIVE_DEBUG_TESTS") != "1",
+    reason="Live debug crawler test is disabled unless RUN_LIVE_DEBUG_TESTS=1",
+)
 
 SEARCH_URL = "https://www.koreabaseball.com/Player/Search.aspx?searchWord=%25"
 TABLE_ROWS = "table.tEx tbody tr"

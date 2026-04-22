@@ -8,7 +8,7 @@ from datetime import datetime
 from typing import List, Dict, Optional
 from playwright.async_api import Page
 
-from src.utils.team_codes import team_code_from_game_id_segment, resolve_team_code
+from src.utils.team_codes import team_code_from_game_id_segment, resolve_team_code, normalize_kbo_game_id
 from src.utils.playwright_pool import AsyncPlaywrightPool
 from src.utils.compliance import compliance
 
@@ -332,7 +332,7 @@ class ScheduleCrawler:
                         g['game_id'] = constructed_id                
                 
                 games.append({
-                    'game_id': g['game_id'],
+                    'game_id': normalize_kbo_game_id(g['game_id']),
                     'game_date': g['game_date'],
                     'season_year': g['season_year'],
                     'season_type': g['season_type'],

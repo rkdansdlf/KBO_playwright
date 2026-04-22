@@ -1,10 +1,10 @@
 {
-  "past_missing_runs_max": 717,
+  "past_missing_runs_max": 3117,
   "batting_null_player_id_max": 0,
   "pitching_null_player_id_max": 0,
   "lineups_null_player_id_max": 0,
-  "unresolved_missing_max": 0,
-  "orphaned_batting_stats_max": 184353,
-  "orphaned_pitching_stats_max": 59839,
-  "missing_player_profiles_max": 14
+  "unresolved_missing_max": 3121,
+  "orphaned_batting_stats_max": 0,
+  "orphaned_pitching_stats_max": 0,
+  "missing_player_profiles_max": 0
 }

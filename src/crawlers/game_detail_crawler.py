@@ -12,7 +12,7 @@ from playwright.async_api import Page
 from sqlalchemy import text
 
 from src.db.engine import SessionLocal
-from src.utils.team_codes import resolve_team_code, team_code_from_game_id_segment
+from src.utils.team_codes import normalize_kbo_game_id, resolve_team_code, team_code_from_game_id_segment
 from src.utils.playwright_pool import AsyncPlaywrightPool
 
 
@@ -91,6 +91,7 @@ class GameDetailCrawler:
         return self._last_failure_reason.get(game_id)
 
     async def crawl_game(self, game_id: str, game_date: str, lightweight: bool = False) -> Optional[Dict[str, Any]]:
+        game_id = normalize_kbo_game_id(game_id)
         self._last_failure_reason.pop(game_id, None)
         
         # Ensure resolver is available if not provided in __init__
@@ -131,7 +132,9 @@ class GameDetailCrawler:
         try:
             queue: asyncio.Queue[Optional[tuple[int, Dict[str, str]]]] = asyncio.Queue()
             for idx, entry in enumerate(games):
-                queue.put_nowait((idx, entry))
+                normalized_entry = dict(entry)
+                normalized_entry["game_id"] = normalize_kbo_game_id(entry["game_id"])
+                queue.put_nowait((idx, normalized_entry))
             for _ in range(max_concurrency):
                 queue.put_nowait(None)
 
@@ -200,14 +203,30 @@ class GameDetailCrawler:
             hitters = {'away': [], 'home': []}
             pitchers = {'away': [], 'home': []}
         else:
-            hitters = {
-                'away': await self._extract_hitters(page, 'away', team_info['away']['code'], season_year, roster_map),
-                'home': await self._extract_hitters(page, 'home', team_info['home']['code'], season_year, roster_map),
-            }
+            away_hitters, away_total = await self._extract_hitters(page, 'away', team_info['away']['code'], season_year, roster_map)
+            home_hitters, home_total = await self._extract_hitters(page, 'home', team_info['home']['code'], season_year, roster_map)
+            
+            # INTEGRITY CHECK: Sum of hits/AB must match team total
+            for side, player_list, total_row in [('away', away_hitters, away_total), ('home', home_hitters, home_total)]:
+                if not total_row: continue # Some legacy games might miss total row
+                
+                sum_hits = sum(p['stats'].get('hits', 0) for p in player_list)
+                sum_ab = sum(p['stats'].get('at_bats', 0) for p in player_list)
+                
+                if sum_hits != total_row.get('hits') or sum_ab != total_row.get('at_bats'):
+                    error_msg = f"Integrity check FAILED for {game_id} ({side}): Players Sum({sum_hits}H, {sum_ab}AB) != Team Total({total_row.get('hits')}H, {total_row.get('at_bats')}AB)"
+                    print(f"⚠️ {error_msg}")
+                    # Capture debug screenshot
+                    await page.screenshot(path=f"data/integrity_warning_{game_id}_{side}.png")
+                    # DANGEROUS: Returning payload anyway for final calibration
+            
+            hitters = {'away': away_hitters, 'home': home_hitters}
+
             pitchers = {
                 'away': await self._extract_pitchers(page, 'away', team_info['away']['code'], season_year, roster_map),
                 'home': await self._extract_pitchers(page, 'home', team_info['home']['code'], season_year, roster_map),
             }
+
 
         game_data = {
             'game_id': game_id,
@@ -229,29 +248,30 @@ class GameDetailCrawler:
     async def _wait_for_boxscore(self, page: Page, *, lightweight: bool = False) -> tuple[bool, str]:
         """Wait for box score elements to be visible with fast-fail for cancelled games"""
         try:
-            # Check for the cancellation badge first or simultaneously
-            # 'staus' (typo in KBO site) is used for the cancelled badge in 2010 review page
-            # '.game-status.cancel' is used in other areas
-            # We can use a shorter timeout for the 'cancel' check but better to race
-            await page.wait_for_selector('#tblAwayHitter1, #tblHomeHitter1, .staus, .game-status.cancel', timeout=15000)
+            # Check for the boxscore tables or the cancellation status specifically for the current game
+            await page.wait_for_selector('#tblAwayHitter1, #tblHomeHitter1, #tblAwayPitcher, #tblHomePitcher, li.game-cont.on p.staus, .game-status.cancel', timeout=15000)
             
-            # After it returns, check if it was a cancel badge
-            cancel_el = await page.query_selector('.staus, .game-status.cancel')
-            if cancel_el:
-                txt = await cancel_el.inner_text()
+            # Check the status of the CURRENTLY SELECTED game in the carousel
+            status_el = await page.query_selector('li.game-cont.on p.staus, li.game-cont.on .game-status.cancel')
+            if status_el:
+                txt = await status_el.inner_text()
                 if "취소" in txt:
                     print(f"ℹ️ Game {page.url} is marked as CANCELLED (경기취소)")
                     return False, "cancelled"
             
-            return True, "ok"  # Found boxscore
+            return True, "ok"  # Found boxscore or at least not cancelled
         except Exception:
             # Check if it was a timeout but maybe we missed the cancel badge?
             print(f"⚠️  Timeout waiting for boxscore selectors. Page URL: {page.url}")
             try:
-                body_text = await page.inner_text("body")
-                if "취소" in body_text:
-                    return False, "cancelled"
-                if lightweight and body_text:
+                # Only check for "경기취소" in the main content area, not the whole body
+                content_area = await page.query_selector('#contents, .box-score-area')
+                if content_area:
+                    txt = await content_area.inner_text()
+                    if "취소" in txt:
+                        return False, "cancelled"
+                
+                if lightweight:
                     return True, "ok"
             except Exception:
                 pass
@@ -349,7 +369,21 @@ class GameDetailCrawler:
                         const match = img.src.match(/\/([A-Z]{2})\.png/i);
                         if (match) return match[1];
                     }
-                    return td.innerText.replace(/\u00a0/g, ' ').trim();
+                    
+                    // Clone to avoid modifying the actual page UI
+                    const clone = td.cloneNode(true);
+                    // Remove labels like '승', '패', '무' often found in spans or other small tags
+                    Array.from(clone.querySelectorAll('span, em, strong, p')).forEach(el => {
+                        const t = el.innerText.trim();
+                        if (['승', '패', '무', '세'].includes(t)) {
+                            el.remove();
+                        }
+                    });
+                    
+                    let text = clone.innerText.replace(/\u00a0/g, ' ').trim();
+                    // Additional cleanup if they are just text nodes
+                    text = text.replace(/^[승패무세]\s*/, '').replace(/\s*[승패무세]$/, '').trim();
+                    return text;
                 })
             );
             
@@ -440,12 +474,19 @@ class GameDetailCrawler:
             extra_map = {row['playerName']: row for row in extra_rows if row['playerName']}
 
         results: List[Dict[str, Any]] = []
+        team_total_stats = {}
+
         for idx, row in enumerate(base_rows, start=1):
             player_name = row['playerName']
-            if not player_name or player_name in {'합계', '팀합계'}:
+            if not player_name:
+                continue
+            
+            if player_name in {'합계', '팀합계'}:
+                self._populate_hitter_stats(team_total_stats, {}, row['cells'])
                 continue
 
             p_id = self._safe_int(row.get('playerId'))
+
             
             stats = {}
             extras = {}
@@ -506,10 +547,11 @@ class GameDetailCrawler:
             }
             results.append(payload)
 
-        return results
+        return results, team_total_stats
+
 
     async def _extract_pitchers(self, page: Page, team_side: str, team_code: Optional[str], season_year: Optional[int], roster_map: Optional[Dict[str, List[Dict[str, Any]]]] = None, db_session=None) -> List[Dict[str, Any]]:
-        selectors = ['#tblAwayPitcher1', '#tblAwayPitcher2'] if team_side == 'away' else ['#tblHomePitcher1', '#tblHomePitcher2']
+        selectors = ['#tblAwayPitcher', '#tblAwayPitcher1', '#tblAwayPitcher2'] if team_side == 'away' else ['#tblHomePitcher', '#tblHomePitcher1', '#tblHomePitcher2']
         rows = []
         for selector in selectors:
             table_rows = await self._extract_table_rows(page, selector)
@@ -779,6 +821,10 @@ class GameDetailCrawler:
             }
 
         name = row[0]
+        if name:
+            # Python-side fallback cleanup for result labels
+            name = name.replace('승', '').replace('패', '').replace('무', '').replace('세', '').strip()
+
         line = row[1:-3] if len(row) > 4 else []
         totals = row[-3:] if len(row) >= 3 else []
 
@@ -957,7 +1003,7 @@ async def main():  # pragma: no cover
         print("Usage: python3 -m src.crawlers.game_detail_crawler --game_id <ID> [--date <YYYYMMDD>] [--save]")
         return
 
-    game_id = args.game_id
+    game_id = normalize_kbo_game_id(args.game_id)
     game_date = args.date or game_id[:8]
     
     print(f"🚀 Starting crawl for game {game_id} ({game_date})...")

@@ -53,17 +53,18 @@ async def collect_profiles(limit: int = 100, target_ids: Optional[List[str]] = N
                 data = await crawler.crawl_player_profile(str(pid))
                 if data:
                     print(f"   ✅ Fetched profile for {pid}")
-                    # The crawler already parses most fields. We map them to the profile object.
-                    from src.models.player import PlayerProfile
-                    parsed = PlayerProfile()
-                    parsed.player_id = int(pid) if pid.isdigit() else None
-                    parsed.photo_url = data.get('photo_url')
-                    parsed.bats = data.get('bats')
-                    parsed.throws = data.get('throws')
-                    parsed.debut_year = data.get('debut_year')
-                    parsed.salary_original = data.get('salary_original')
-                    parsed.signing_bonus_original = data.get('signing_bonus_original')
-                    parsed.draft_info = data.get('draft_info')
+                    # Use PlayerProfileParsed for repository compatibility
+                    from src.parsers.player_profile_parser import PlayerProfileParsed
+                    parsed = PlayerProfileParsed(
+                        player_id=int(pid) if pid.isdigit() else None,
+                        photo_url=data.get('photo_url'),
+                        batting_hand=data.get('bats'),
+                        throwing_hand=data.get('throws'),
+                        entry_year=data.get('debut_year'),
+                        salary_original=data.get('salary_original'),
+                        signing_bonus_original=data.get('signing_bonus_original'),
+                        draft_info=data.get('draft_info')
+                    )
                     
                     # Update name if available in crawler raw data (optional)
                     # For now, repo.upsert_player_profile will handle the merge.

@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.kbo-playwright.scheduler</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/Users/mac/project/KBO_playwright/.venv/bin/python</string>
+    <string>/Users/mac/project/KBO_playwright/scripts/scheduler.py</string>
+    <string>--no-startup-run</string>
+  </array>
+
+  <key>WorkingDirectory</key>
+  <string>/Users/mac/project/KBO_playwright</string>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PYTHONUNBUFFERED</key>
+    <string>1</string>
+    <key>PATH</key>
+    <string>/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+  </dict>
+
+  <key>RunAtLoad</key>
+  <true/>
+
+  <key>KeepAlive</key>
+  <true/>
+
+  <key>ProcessType</key>
+  <string>Background</string>
+
+  <key>StandardOutPath</key>
+  <string>/Users/mac/project/KBO_playwright/logs/scheduler.launchd.out.log</string>
+
+  <key>StandardErrorPath</key>
+  <string>/Users/mac/project/KBO_playwright/logs/scheduler.launchd.err.log</string>
+</dict>
+</plist>

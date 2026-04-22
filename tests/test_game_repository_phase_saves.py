@@ -10,6 +10,7 @@ from src.models.game import (
     Game,
     GameBattingStat,
     GameEvent,
+    GameIdAlias,
     GameInningScore,
     GameLineup,
     GameMetadata,
@@ -17,7 +18,7 @@ from src.models.game import (
     GameSummary,
 )
 from src.models.player import PlayerBasic
-from src.utils.game_status import GAME_STATUS_LIVE, GAME_STATUS_SCHEDULED
+from src.utils.game_status import GAME_STATUS_CANCELLED, GAME_STATUS_LIVE, GAME_STATUS_SCHEDULED
 
 
 class _FakeResolver:
@@ -35,6 +36,7 @@ def _build_session_factory():
     engine = create_engine("sqlite:///:memory:")
     for table in (
         Game.__table__,
+        GameIdAlias.__table__,
         PlayerBasic.__table__,
         GameMetadata.__table__,
         GameInningScore.__table__,
@@ -217,3 +219,118 @@ def test_save_game_snapshot_preserves_detail_rows_and_start_time(monkeypatch):
         assert session.query(GameBattingStat).filter(GameBattingStat.game_id == "20250401LGSS0").count() == 1
         assert session.query(GamePitchingStat).filter(GamePitchingStat.game_id == "20250401LGSS0").count() == 1
         assert session.query(GameEvent).filter(GameEvent.game_id == "20250401LGSS0").count() == 1
+
+
+def test_save_game_snapshot_marks_cancelled_alias_and_sets_season(monkeypatch):
+    SessionLocal = _build_session_factory()
+    monkeypatch.setattr(game_repository, "SessionLocal", SessionLocal)
+    monkeypatch.setattr(game_repository, "_auto_sync_to_oci", lambda game_id: None)
+
+    saved = game_repository.save_game_snapshot(
+        {
+            "game_id": "20250402LGSS0",
+            "game_date": "20250402",
+            "metadata": {"is_cancelled": True},
+            "teams": {
+                "away": {"code": "LG", "score": None, "line_score": []},
+                "home": {"code": "SS", "score": None, "line_score": []},
+            },
+        },
+        status="CANCELED",
+    )
+
+    assert saved is True
+
+    with SessionLocal() as session:
+        game = session.query(Game).filter(Game.game_id == "20250402LGSS0").one()
+        metadata = session.query(GameMetadata).filter(GameMetadata.game_id == "20250402LGSS0").one()
+
+        assert game.game_status == GAME_STATUS_CANCELLED
+        assert game.season_id == 2025
+        assert game.away_team == "LG"
+        assert game.home_team == "SS"
+        assert metadata.source_payload == {"is_cancelled": True}
+
+
+def test_save_game_detail_honors_explicit_cancelled_status(monkeypatch):
+    SessionLocal = _build_session_factory()
+    monkeypatch.setattr(game_repository, "SessionLocal", SessionLocal)
+    monkeypatch.setattr(game_repository, "_auto_sync_to_oci", lambda game_id: None)
+
+    saved = game_repository.save_game_detail(
+        {
+            "game_id": "20250403LGSS0",
+            "game_date": "20250403",
+            "game_status": "CANCELED",
+            "metadata": {"is_cancelled": True},
+            "teams": {
+                "away": {"code": "LG", "score": None, "line_score": []},
+                "home": {"code": "SS", "score": None, "line_score": []},
+            },
+        }
+    )
+
+    assert saved is True
+
+    with SessionLocal() as session:
+        game = session.query(Game).filter(Game.game_id == "20250403LGSS0").one()
+
+        assert game.game_status == GAME_STATUS_CANCELLED
+        assert game.season_id == 2025
+
+
+def test_repair_game_parent_from_existing_children_uses_child_scores(monkeypatch):
+    SessionLocal = _build_session_factory()
+    monkeypatch.setattr(game_repository, "SessionLocal", SessionLocal)
+    monkeypatch.setattr(game_repository, "_auto_sync_to_oci", lambda game_id: None)
+
+    with SessionLocal() as session:
+        session.add_all(
+            [
+                GameInningScore(
+                    game_id="20250404LGSS0",
+                    team_side="away",
+                    team_code="LG",
+                    inning=1,
+                    runs=1,
+                ),
+                GameInningScore(
+                    game_id="20250404LGSS0",
+                    team_side="home",
+                    team_code="SS",
+                    inning=1,
+                    runs=3,
+                ),
+                GameBattingStat(
+                    game_id="20250404LGSS0",
+                    team_side="away",
+                    team_code="LG",
+                    player_id=901,
+                    player_name="기존타자",
+                    appearance_seq=1,
+                    runs=1,
+                ),
+            ]
+        )
+        session.commit()
+
+    repaired = game_repository.repair_game_parent_from_existing_children("20250404LGSS0")
+
+    assert repaired is True
+
+    with SessionLocal() as session:
+        game = session.query(Game).filter(Game.game_id == "20250404LGSS0").one()
+        inning = session.query(GameInningScore).filter(
+            GameInningScore.game_id == "20250404LGSS0",
+            GameInningScore.team_side == "away",
+        ).one()
+
+        assert game.away_team == "LG"
+        assert game.home_team == "SS"
+        assert game.away_score == 1
+        assert game.home_score == 3
+        assert game.game_status == "COMPLETED"
+        assert game.winning_team == "SS"
+        assert game.season_id == 2025
+        assert inning.franchise_id == 3
+        assert inning.canonical_team_code == "LG"

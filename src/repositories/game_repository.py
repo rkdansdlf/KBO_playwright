@@ -14,7 +14,7 @@ from src.db.engine import SessionLocal
 from src.models.game import (
     Game, GameMetadata, GameInningScore, GameLineup,
     GameBattingStat, GamePitchingStat, GamePlayByPlay, GameEvent,
-    GameSummary
+    GameSummary, GameIdAlias
 )
 import re
 from src.services.player_id_resolver import PlayerIdResolver
@@ -37,7 +37,7 @@ from src.utils.game_status import (
 )
 from src.utils.player_positions import get_primary_position
 from src.utils.safe_print import safe_print as print
-from src.utils.team_codes import resolve_team_code, team_code_from_game_id_segment
+from src.utils.team_codes import normalize_kbo_game_id, resolve_team_code, team_code_from_game_id_segment
 from src.utils.team_history import FRANCHISE_CANONICAL_CODE, iter_team_history, resolve_team_code_for_season
 
 SEASON_TYPE_TO_LEAGUE_CODE = {
@@ -103,6 +103,58 @@ def _resolve_schedule_season_id(session, game_data: Dict[str, Any], existing_sea
     return season_year
 
 
+def _resolve_game_season_id(
+    session,
+    game_data: Dict[str, Any],
+    game_date: date,
+    existing_season_id: Optional[int],
+) -> Optional[int]:
+    """Resolve season_id for non-schedule write paths that only know game_date."""
+    season_data = {
+        "season_id": game_data.get("season_id"),
+        "season_year": game_data.get("season_year") or game_date.year,
+        "season_type": game_data.get("season_type") or "regular",
+    }
+    return _resolve_schedule_season_id(session, season_data, existing_season_id)
+
+
+def _canonicalize_game_id(game_id: Any) -> tuple[Optional[str], Optional[str]]:
+    """Return (canonical legacy game_id, original game_id)."""
+    if not game_id:
+        return None, None
+    original = str(game_id).strip().upper()
+    canonical = normalize_kbo_game_id(original)
+    return canonical, original
+
+
+def _record_game_id_alias(
+    session,
+    alias_game_id: Optional[str],
+    canonical_game_id: Optional[str],
+    *,
+    source: str,
+    reason: str,
+) -> None:
+    if not alias_game_id or not canonical_game_id or alias_game_id == canonical_game_id:
+        return
+
+    existing = session.query(GameIdAlias).filter(GameIdAlias.alias_game_id == alias_game_id).one_or_none()
+    if existing:
+        existing.canonical_game_id = canonical_game_id
+        existing.source = source
+        existing.reason = reason
+        return
+
+    session.add(
+        GameIdAlias(
+            alias_game_id=alias_game_id,
+            canonical_game_id=canonical_game_id,
+            source=source,
+            reason=reason,
+        )
+    )
+
+
 def get_games_by_date(target_date: str) -> List[Game]:
     """Retrieve Game objects for a specific date (YYYYMMDD)."""
     try:
@@ -113,9 +165,19 @@ def get_games_by_date(target_date: str) -> List[Game]:
     with SessionLocal() as session:
         return session.query(Game).filter(Game.game_date == dt).all()
 
+
+def resolve_canonical_game_id(game_id: str) -> Optional[str]:
+    """Resolve an external/alias game_id to the canonical legacy KBO game_id."""
+    canonical, original = _canonicalize_game_id(game_id)
+    if not canonical:
+        return None
+    with SessionLocal() as session:
+        alias = session.query(GameIdAlias).filter(GameIdAlias.alias_game_id == original).one_or_none()
+        return alias.canonical_game_id if alias else canonical
+
 def save_schedule_game(game_data: Dict[str, Any]) -> bool:
     """Persist basic game info from schedule crawler."""
-    game_id = game_data.get("game_id")
+    game_id, original_game_id = _canonicalize_game_id(game_data.get("game_id"))
     if not game_id:
         return False
 
@@ -139,6 +201,13 @@ def save_schedule_game(game_data: Dict[str, Any]) -> bool:
             if resolved_season_id is not None:
                 game.season_id = resolved_season_id
             _apply_game_team_identity(game, game_date.year)
+            _record_game_id_alias(
+                session,
+                original_game_id,
+                game_id,
+                source="schedule",
+                reason="normalized_to_kbo_legacy_game_id",
+            )
 
             # Schedule crawl should keep already finalized statuses intact.
             if game.home_score is not None and game.away_score is not None:
@@ -172,7 +241,9 @@ def save_game_detail(game_data: Dict[str, Any]) -> bool:
     if not game_data:
         return False
 
-    game_id = game_data["game_id"]
+    game_id, original_game_id = _canonicalize_game_id(game_data["game_id"])
+    if not game_id:
+        return False
     game_date_str = str(game_data.get("game_date", "")).replace("-", "") or game_id[:8]
     try:
         game_date = datetime.strptime(game_date_str, "%Y%m%d").date()
@@ -183,6 +254,7 @@ def save_game_detail(game_data: Dict[str, Any]) -> bool:
     teams = game_data.get("teams", {}) or {}
     hitters = game_data.get("hitters", {}) or {}
     pitchers = game_data.get("pitchers", {}) or {}
+    explicit_status = normalize_game_status(game_data.get("game_status"))
 
     with SessionLocal() as session:
         try:
@@ -191,6 +263,13 @@ def save_game_detail(game_data: Dict[str, Any]) -> bool:
                 game = Game(game_id=game_id, game_date=game_date)
                 session.add(game)
                 session.flush()  # Ensure game_id exists before child inserts
+            _record_game_id_alias(
+                session,
+                original_game_id,
+                game_id,
+                source="detail",
+                reason="normalized_to_kbo_legacy_game_id",
+            )
 
             away_info = teams.get("away", {})
             home_info = teams.get("home", {})
@@ -204,6 +283,8 @@ def save_game_detail(game_data: Dict[str, Any]) -> bool:
             game.winning_team, game.winning_score = _resolve_winner(home_info, away_info)
             if game.home_score is not None and game.away_score is not None:
                 game.game_status = _resolve_terminal_status(game.home_score, game.away_score)
+            elif explicit_status:
+                game.game_status = explicit_status
             
             # Update Starting Pitchers
             home_pitcher_data = next((p for p in pitchers.get("home", []) if p.get("is_starting")), None)
@@ -213,7 +294,7 @@ def save_game_detail(game_data: Dict[str, Any]) -> bool:
             if away_pitcher_data:
                 game.away_pitcher = away_pitcher_data.get("player_name")
 
-            season_id = game_data.get("season_id")
+            season_id = _resolve_game_season_id(session, game_data, game_date, game.season_id)
             if season_id:
                 game.season_id = season_id
             _apply_game_team_identity(game, game_date.year)
@@ -292,7 +373,7 @@ def save_game_snapshot(game_data: Dict[str, Any], *, status: Optional[str] = Non
     if not game_data:
         return False
 
-    game_id = game_data.get("game_id")
+    game_id, original_game_id = _canonicalize_game_id(game_data.get("game_id"))
     if not game_id:
         return False
 
@@ -313,6 +394,13 @@ def save_game_snapshot(game_data: Dict[str, Any], *, status: Optional[str] = Non
                 game = Game(game_id=game_id, game_date=game_date)
                 session.add(game)
                 session.flush()
+            _record_game_id_alias(
+                session,
+                original_game_id,
+                game_id,
+                source="snapshot",
+                reason="normalized_to_kbo_legacy_game_id",
+            )
 
             away_info = teams.get("away", {}) or {}
             home_info = teams.get("home", {}) or {}
@@ -333,6 +421,10 @@ def save_game_snapshot(game_data: Dict[str, Any], *, status: Optional[str] = Non
             if away_pitcher_data and away_pitcher_data.get("player_name"):
                 game.away_pitcher = away_pitcher_data.get("player_name")
 
+            season_id = _resolve_game_season_id(session, game_data, game_date, game.season_id)
+            if season_id:
+                game.season_id = season_id
+
             explicit_status = normalize_game_status(status)
             if explicit_status:
                 if not is_terminal_status(game.game_status) or is_terminal_status(explicit_status):
@@ -345,13 +437,16 @@ def save_game_snapshot(game_data: Dict[str, Any], *, status: Optional[str] = Non
             if inning_rows:
                 _replace_records(session, GameInningScore, game_id, inning_rows)
 
-            if is_terminal_status(explicit_status) or (
-                explicit_status is None
-                and game.game_date < date.today()
-                and game.home_score is not None
-                and game.away_score is not None
-                and inning_rows
-            ):
+            score_complete = game.home_score is not None and game.away_score is not None
+            should_resolve_score_terminal = score_complete and (
+                explicit_status in {GAME_STATUS_COMPLETED, GAME_STATUS_DRAW}
+                or (
+                    explicit_status is None
+                    and game.game_date < date.today()
+                    and inning_rows
+                )
+            )
+            if should_resolve_score_terminal:
                 game.winning_team, game.winning_score = _resolve_winner(
                     {"code": game.home_team, "score": game.home_score},
                     {"code": game.away_team, "score": game.away_score},
@@ -372,7 +467,7 @@ def save_pregame_lineups(preview_data: Dict[str, Any]) -> bool:
     if not preview_data:
         return False
 
-    game_id = preview_data.get("game_id")
+    game_id, original_game_id = _canonicalize_game_id(preview_data.get("game_id"))
     game_date_str = str(preview_data.get("game_date", "")).replace("-", "") or str(game_id or "")[:8]
     if not game_id or not game_date_str:
         return False
@@ -413,6 +508,13 @@ def save_pregame_lineups(preview_data: Dict[str, Any]) -> bool:
                 game = Game(game_id=game_id, game_date=game_date)
                 session.add(game)
                 session.flush()
+            _record_game_id_alias(
+                session,
+                original_game_id,
+                game_id,
+                source="preview",
+                reason="normalized_to_kbo_legacy_game_id",
+            )
 
             game.game_date = game_date
             game.away_team = away_code or game.away_team
@@ -476,6 +578,7 @@ def save_pregame_lineups(preview_data: Dict[str, Any]) -> bool:
 
 def update_game_status(game_id: str, status: str) -> bool:
     """Update one game's status."""
+    game_id, _ = _canonicalize_game_id(game_id)
     if not game_id or not status:
         return False
     with SessionLocal() as session:
@@ -549,6 +652,9 @@ def derive_play_by_play_rows_from_events(events: Iterable[Dict[str, Any]]) -> Li
 
 def backfill_game_play_by_play_from_existing_events(game_id: str) -> int:
     """Regenerate game_play_by_play rows from stored game_events for one game."""
+    game_id, _ = _canonicalize_game_id(game_id)
+    if not game_id:
+        return 0
     with SessionLocal() as session:
         try:
             _ensure_game_stub(session, game_id)
@@ -644,6 +750,104 @@ def backfill_missing_game_stubs_for_relays(
     return len(missing_ids)
 
 
+def repair_game_parent_from_existing_children(
+    game_id: str,
+    *,
+    sync_to_oci: bool = False,
+) -> bool:
+    """
+    Rebuild/repair one parent `game` row from existing child tables.
+
+    Historical backfills sometimes inserted box-score children before the parent
+    `game` row. If those children exist, they are more authoritative than a
+    later lightweight crawler miss/cancel signal.
+    """
+    game_id, original_game_id = _canonicalize_game_id(game_id)
+    if not game_id:
+        return False
+
+    with SessionLocal() as session:
+        try:
+            _record_game_id_alias(
+                session,
+                original_game_id,
+                game_id,
+                source="parent_repair",
+                reason="normalized_to_kbo_legacy_game_id",
+            )
+            has_children = any(
+                _has_game_child_rows(session, model, game_id)
+                for model in (GameInningScore, GameLineup, GameBattingStat, GamePitchingStat)
+            )
+            if not has_children:
+                return False
+
+            try:
+                game_date = datetime.strptime(game_id[:8], "%Y%m%d").date()
+            except Exception:
+                game_date = datetime.now().date()
+            season_year = game_date.year
+
+            game = session.query(Game).filter(Game.game_id == game_id).one_or_none()
+            if not game:
+                game = Game(game_id=game_id, game_date=game_date)
+                session.add(game)
+                session.flush()
+
+            game.game_date = game_date
+            season_id = _resolve_game_season_id(
+                session,
+                {"season_year": season_year, "season_type": "regular"},
+                game_date,
+                game.season_id,
+            )
+            if season_id:
+                game.season_id = season_id
+
+            away_team = _infer_team_code_from_children(session, game_id, "away", season_year)
+            home_team = _infer_team_code_from_children(session, game_id, "home", season_year)
+            if away_team:
+                game.away_team = away_team
+            if home_team:
+                game.home_team = home_team
+
+            away_score = _infer_score_from_children(session, game_id, "away")
+            home_score = _infer_score_from_children(session, game_id, "home")
+            if away_score is not None:
+                game.away_score = away_score
+            if home_score is not None:
+                game.home_score = home_score
+
+            # Infer starting pitchers
+            away_pitcher = _infer_pitcher_from_children(session, game_id, "away")
+            home_pitcher = _infer_pitcher_from_children(session, game_id, "home")
+            if away_pitcher:
+                game.away_pitcher = away_pitcher
+            if home_pitcher:
+                game.home_pitcher = home_pitcher
+
+            if game.home_score is not None and game.away_score is not None:
+                game.winning_team, game.winning_score = _resolve_winner(
+                    {"code": game.home_team, "score": game.home_score},
+                    {"code": game.away_team, "score": game.away_score},
+                )
+                game.game_status = _resolve_terminal_status(game.home_score, game.away_score)
+            elif not game.game_status:
+                game.game_status = GAME_STATUS_UNRESOLVED
+
+            _apply_game_team_identity(game, season_year)
+            _enrich_existing_child_team_identity(session, game_id, season_year)
+            session.commit()
+        except Exception as exc:
+            session.rollback()
+            print(f"[ERROR] DB Error (Game Parent Repair): {exc}")
+            return False
+
+    if sync_to_oci:
+        _auto_sync_to_oci(game_id)
+    return True
+
+
 def save_relay_data(
     game_id: str,
     events: Optional[List[Dict[str, Any]]] = None,
@@ -661,6 +865,10 @@ def save_relay_data(
     - When only lightweight play-by-play rows exist, persist game_play_by_play only.
     - Never synthesize game_events if WPA/state coverage is insufficient.
     """
+    game_id, original_game_id = _canonicalize_game_id(game_id)
+    if not game_id:
+        return 0
+
     events = list(events or [])
     raw_pbp_rows = [normalize_pbp_row(row) for row in (raw_pbp_rows or [])]
     if events and not raw_pbp_rows:
@@ -673,6 +881,13 @@ def save_relay_data(
     with SessionLocal() as session:
         try:
             _ensure_game_stub(session, game_id)
+            _record_game_id_alias(
+                session,
+                original_game_id,
+                game_id,
+                source="relay",
+                reason="normalized_to_kbo_legacy_game_id",
+            )
             if raw_pbp_rows:
                 session.query(GamePlayByPlay).filter(GamePlayByPlay.game_id == game_id).delete()
             if valid_event_rows:
@@ -748,9 +963,84 @@ def _has_game_child_rows(session, model, game_id: str) -> bool:
     return session.query(model).filter(model.game_id == game_id).first() is not None
 
 
+def _infer_team_code_from_children(
+    session,
+    game_id: str,
+    team_side: str,
+    season_year: Optional[int],
+) -> Optional[str]:
+    for model in (GameInningScore, GameLineup, GameBattingStat, GamePitchingStat):
+        row = (
+            session.query(model.team_code)
+            .filter(model.game_id == game_id, model.team_side == team_side, model.team_code.isnot(None))
+            .first()
+        )
+        if row and row[0]:
+            return row[0]
+
+    segment = game_id[8:10] if team_side == "away" and len(game_id) >= 10 else None
+    if team_side == "home" and len(game_id) >= 12:
+        segment = game_id[10:12]
+    return team_code_from_game_id_segment(segment, season_year)
+
+
+def _infer_score_from_children(session, game_id: str, team_side: str) -> Optional[int]:
+    inning_rows = (
+        session.query(GameInningScore.runs)
+        .filter(GameInningScore.game_id == game_id, GameInningScore.team_side == team_side)
+        .all()
+    )
+    if inning_rows:
+        return sum(int(row[0] or 0) for row in inning_rows)
+
+    batting_rows = (
+        session.query(GameBattingStat.runs)
+        .filter(GameBattingStat.game_id == game_id, GameBattingStat.team_side == team_side)
+        .all()
+    )
+    if batting_rows:
+        return sum(int(row[0] or 0) for row in batting_rows)
+    return None
+
+
+def _infer_pitcher_from_children(session, game_id: str, team_side: str) -> Optional[str]:
+    """Find starting pitcher name from game_pitching_stats."""
+    row = (
+        session.query(GamePitchingStat.player_name)
+        .filter(
+            GamePitchingStat.game_id == game_id,
+            GamePitchingStat.team_side == team_side,
+            GamePitchingStat.is_starting == True
+        )
+        .first()
+    )
+    return row[0] if row else None
+
+
+def _enrich_existing_child_team_identity(session, game_id: str, season_year: Optional[int]) -> None:
+    for model in (GameInningScore, GameLineup, GameBattingStat, GamePitchingStat):
+        for row in session.query(model).filter(model.game_id == game_id).all():
+            franchise_id, canonical_team_code, season_code = _resolve_team_identity(row.team_code, season_year)
+            if season_code:
+                row.team_code = season_code
+            row.franchise_id = franchise_id
+            row.canonical_team_code = canonical_team_code
+
+
 def _ensure_game_stub(session, game_id: str) -> None:
+    game_id, original_game_id = _canonicalize_game_id(game_id)
+    if not game_id:
+        return
+
     existing = session.query(Game).filter(Game.game_id == game_id).one_or_none()
     if existing:
+        _record_game_id_alias(
+            session,
+            original_game_id,
+            game_id,
+            source="game_stub",
+            reason="normalized_to_kbo_legacy_game_id",
+        )
         return
 
     try:
@@ -786,6 +1076,8 @@ def _ensure_game_stub(session, game_id: str) -> None:
             )
         except Exception:
             season_id = None
+        if season_id is None:
+            season_id = season_year
 
     session.add(
         Game(
@@ -796,6 +1088,14 @@ def _ensure_game_stub(session, game_id: str) -> None:
             season_id=season_id,
             game_status=GAME_STATUS_COMPLETED,
         )
+    )
+    session.flush()
+    _record_game_id_alias(
+        session,
+        original_game_id,
+        game_id,
+        source="game_stub",
+        reason="normalized_to_kbo_legacy_game_id",
     )
 
 
