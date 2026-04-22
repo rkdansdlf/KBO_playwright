@@ -117,22 +117,32 @@ class RetiredPlayerListingCrawler:
 
             # Try to go to next page
             try:
-                # Find current page number from span.on or similar
+                # Find current page number
                 current_active_btn = await page.query_selector("div.paging span.on, div.paging a.on")
-                current_active_text = await current_active_btn.inner_text() if current_active_btn else "1"
+                if not current_active_btn:
+                    break
+                current_active_text = await current_active_btn.inner_text()
                 current_page_val = int(current_active_text.strip())
 
-                # Try to find next numeric button
-                next_page_num = current_page_val + 1
-                next_page_btn = await page.query_selector(f"div.paging a:has-text('{next_page_num}')")
+                # Try to find next numeric button or Next button
+                # KBO pager: 1 2 3 4 5 [Next]
+                next_page_btn = await page.query_selector(f"div.paging a:has-text('{current_page_val + 1}')")
 
-                # If no next numeric button, try "Next" block button
                 if not next_page_btn:
-                    next_page_btn = await page.query_selector(
-                        "div.paging a[id*='btnNext'], div.paging a:has(img[alt='다음'])"
-                    )
+                    # Look for Next button
+                    next_selectors = [
+                        "a[id$='btnNext']",
+                        "a:has(img[alt='다음'])",
+                        "a:has-text('다음')",
+                        "a.next",
+                    ]
+                    for sel in next_selectors:
+                        btn = await page.query_selector(f"div.paging {sel}")
+                        if btn and await btn.is_visible():
+                            next_page_btn = btn
+                            break
 
-                if next_page_btn and await next_page_btn.is_visible():
+                if next_page_btn:
                     await self._wait()
                     await next_page_btn.click()
                     await page.wait_for_load_state("load", timeout=10000)
@@ -140,7 +150,8 @@ class RetiredPlayerListingCrawler:
                     page_num += 1
                 else:
                     break
-            except Exception:
+            except Exception as exc:
+                print(f"    [WARN] Pagination failed for {year} at page {page_num}: {exc}", file=sys.stderr)
                 break
 
         return ids
