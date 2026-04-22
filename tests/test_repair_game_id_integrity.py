@@ -20,6 +20,7 @@ def _build_db(
     metadata_drift: bool = False,
     summary_player_id_drift: bool = False,
     summary_generated_player_id_drift: bool = False,
+    summary_real_player_id_conflict: bool = False,
 ):
     engine = create_engine("sqlite:///:memory:")
     with engine.begin() as conn:
@@ -189,6 +190,17 @@ def _build_db(
                     """
                 )
             )
+        if summary_real_player_id_conflict:
+            conn.execute(
+                text(
+                    """
+                    INSERT INTO game_summary (game_id, summary_type, player_id, player_name, detail_text)
+                    VALUES
+                        ('20250315LGSK0', '결승타', 7002, '김테스트', '김테스트(4회)'),
+                        ('20250315LGSSG0', '결승타', 7001, '김테스트', '김테스트(4회)')
+                    """
+                )
+            )
     return engine
 
 
@@ -349,6 +361,158 @@ def test_duplicate_repair_keeps_canonical_summary_when_generated_player_ids_diff
 
         assert summary_rows == [
             ("20250315LGSK0", "폭투", 900517, "데이비슨", "데이비슨(7회)"),
+        ]
+
+
+def test_duplicate_repair_keeps_canonical_summary_when_real_player_ids_differ():
+    engine = _build_db(summary_real_player_id_conflict=True)
+    with engine.begin() as conn:
+        tables = _load_tables(conn)
+        groups = collect_duplicate_groups(conn, tables, [2025])
+        conflicts = collect_conflicts(conn, tables, groups)
+
+        assert conflicts == []
+
+        apply_duplicate_group(conn, tables, groups[0])
+
+        summary_rows = conn.execute(
+            text(
+                """
+                SELECT game_id, summary_type, player_id, player_name, detail_text
+                FROM game_summary
+                """
+            )
+        ).fetchall()
+
+        assert summary_rows == [
+            ("20250315LGSK0", "결승타", 7002, "김테스트", "김테스트(4회)"),
+        ]
+
+
+def test_duplicate_repair_prefers_2020_legacy_ids_and_merges_summary_player_id_drift():
+    engine = create_engine("sqlite:///:memory:")
+    with engine.begin() as conn:
+        conn.execute(
+            text(
+                """
+                CREATE TABLE game (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    game_id VARCHAR(20) NOT NULL UNIQUE,
+                    game_date DATE NOT NULL,
+                    away_team VARCHAR(20),
+                    home_team VARCHAR(20),
+                    away_franchise_id INTEGER,
+                    home_franchise_id INTEGER,
+                    season_id INTEGER,
+                    game_status VARCHAR(32),
+                    is_primary BOOLEAN DEFAULT 1,
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                )
+                """
+            )
+        )
+        conn.execute(
+            text(
+                """
+                CREATE TABLE game_summary (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    game_id VARCHAR(20) NOT NULL,
+                    summary_type VARCHAR(50),
+                    player_id INTEGER,
+                    player_name VARCHAR(50),
+                    detail_text TEXT,
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE (game_id, summary_type, player_name, detail_text)
+                )
+                """
+            )
+        )
+        conn.execute(
+            text(
+                """
+                CREATE TABLE game_id_aliases (
+                    alias_game_id VARCHAR(20) PRIMARY KEY,
+                    canonical_game_id VARCHAR(20) NOT NULL,
+                    source VARCHAR(50),
+                    reason VARCHAR(120),
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                )
+                """
+            )
+        )
+        conn.execute(
+            text(
+                """
+                INSERT INTO game (
+                    game_id, game_date, away_team, home_team, away_franchise_id, home_franchise_id, season_id, game_status
+                )
+                VALUES
+                    ('20200505WOHT0', '2020-05-05', '키움', 'KIA', 6, 5, 2020, 'COMPLETED'),
+                    ('20200505KHHT0', '2020-05-05', '키움', 'KIA', 6, 5, 2020, 'COMPLETED'),
+                    ('20200506SKLG0', '2020-05-06', 'SK', 'LG', 8, 3, 2020, 'COMPLETED'),
+                    ('20200506SSGLG0', '2020-05-06', 'SK', 'LG', 8, 3, 2020, 'COMPLETED')
+                """
+            )
+        )
+        conn.execute(
+            text(
+                """
+                INSERT INTO game_summary (game_id, summary_type, player_id, player_name, detail_text)
+                VALUES
+                    ('20200505WOHT0', '결승타', 71002, '김테스트', '김테스트(8회)'),
+                    ('20200505KHHT0', '결승타', 71001, '김테스트', '김테스트(8회)')
+                """
+            )
+        )
+        conn.execute(
+            text(
+                """
+                INSERT INTO game_id_aliases (alias_game_id, canonical_game_id, source, reason)
+                VALUES
+                    ('20200505WOHT0', '20200505KHHT0', 'old', 'reversed'),
+                    ('20200506SKLG0', '20200506SSGLG0', 'old', 'reversed')
+                """
+            )
+        )
+
+        tables = _load_tables(conn)
+        groups = collect_duplicate_groups(conn, tables, [2020])
+        conflicts = collect_conflicts(conn, tables, groups)
+        primary_ids = {str(group["game_date"]): group["primary_game_id"] for group in groups}
+
+        assert len(groups) == 2
+        assert primary_ids == {
+            "2020-05-05": "20200505WOHT0",
+            "2020-05-06": "20200506SKLG0",
+        }
+        assert conflicts == []
+
+        for group in groups:
+            apply_duplicate_group(conn, tables, group)
+
+        games = conn.execute(text("SELECT game_id FROM game ORDER BY game_id")).fetchall()
+        summary_rows = conn.execute(
+            text(
+                """
+                SELECT game_id, summary_type, player_id, player_name, detail_text
+                FROM game_summary
+                """
+            )
+        ).fetchall()
+        aliases = conn.execute(
+            text("SELECT alias_game_id, canonical_game_id FROM game_id_aliases ORDER BY alias_game_id")
+        ).fetchall()
+
+        assert games == [("20200505WOHT0",), ("20200506SKLG0",)]
+        assert summary_rows == [
+            ("20200505WOHT0", "결승타", 71002, "김테스트", "김테스트(8회)"),
+        ]
+        assert aliases == [
+            ("20200505KHHT0", "20200505WOHT0"),
+            ("20200506SSGLG0", "20200506SKLG0"),
         ]
 
 
