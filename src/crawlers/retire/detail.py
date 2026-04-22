@@ -23,6 +23,11 @@ class RetiredPlayerDetailCrawler:
         self.request_delay = request_delay
         self.pool = pool
 
+    async def _wait(self) -> None:
+        await throttle.wait()
+        if self.request_delay > throttle.default_delay:
+            await asyncio.sleep(self.request_delay - throttle.default_delay)
+
     async def fetch_player(self, player_id: str, retries: int = 2) -> Dict[str, Any]:
         """
         Fetch hitter & pitcher pages for the given player ID.
@@ -65,8 +70,9 @@ class RetiredPlayerDetailCrawler:
             print(f"⚠️  BLOCKED by compliance: {url}")
             return None
 
+        await self._wait()
         await page.goto(url, wait_until="domcontentloaded", timeout=60000)
-        await throttle.wait()
+        await self._wait()
 
         profile_text = await self._extract_profile_text(page)
         photo_url = await self._extract_photo_url(page)
