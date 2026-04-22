@@ -45,4 +45,5 @@ data/kbo_dev.db
 /data/*
 !/data/game_status_overrides.csv
 !/data/player_id_overrides.csv
+!/data/player_id_row_overrides.csv
 data/kbo_auth_state.json

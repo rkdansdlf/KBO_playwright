@@ -351,7 +351,42 @@ docker-compose logs -f scheduler
 ./venv/bin/python3 scripts/maintenance/fix_past_scheduled_games.py
 ```
 
-### 4. 품질 게이트 (Quality Gate Audit)
+### 4. Player ID 무결성 보수 (Player ID Repair)
+`player_id` NULL 또는 generated placeholder 보수는 보수 범위를 좁혀 순차 실행합니다. curated row-level override는 `data/player_id_row_overrides.csv`에 보관하며, report/backup CSV는 로컬 산출물로 둡니다.
+
+```bash
+# 1) 로컬 NULL player_id를 OCI의 non-null 값으로 보수 (dry-run)
+./venv/bin/python3 scripts/maintenance/fill_null_player_ids_from_oci.py \
+    --years 2009,2010,2019,2025,2026 \
+    --output-dir data/null_player_id_oci
+
+# 1) 적용
+./venv/bin/python3 scripts/maintenance/fill_null_player_ids_from_oci.py \
+    --years 2009,2010,2019,2025,2026 \
+    --output-dir data/null_player_id_oci \
+    --apply
+
+# 2) 로컬 보수 후보를 보수적으로 해석 (dry-run 후 --apply)
+./venv/bin/python3 scripts/maintenance/resolve_null_player_ids_conservative.py \
+    --years 2009,2010,2019,2025,2026 \
+    --output-dir data/null_player_id_conservative
+
+# 3) curated row override 적용 (dry-run 후 --apply)
+./venv/bin/python3 scripts/maintenance/apply_player_id_overrides.py \
+    --years 2009,2010,2019,2025,2026 \
+    --include-generated \
+    --output-dir data/player_id_override_reports
+
+# 4) 로컬에서 확정된 non-null 값을 OCI NULL row에 역보수 (dry-run 후 --apply)
+./venv/bin/python3 scripts/maintenance/fill_oci_null_player_ids_from_local.py \
+    --years 2009,2010,2019,2025,2026 \
+    --output-dir data/oci_null_player_id_from_local
+
+# 5) 최종 품질 게이트
+./venv/bin/python3 scripts/maintenance/quality_gate.py
+```
+
+### 5. 품질 게이트 (Quality Gate Audit)
 데이터베이스의 전반적인 무결성 지표를 점검합니다. 로컬 SQLite와 OCI 원격 DB 간의 일치 여부, 고아 데이터 현황, NULL 값 등을 종합적으로 체크합니다.
 
 ```bash
