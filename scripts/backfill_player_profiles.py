@@ -25,12 +25,7 @@ async def backfill(limit: int, delay: float, ids: Optional[List[str]] = None):
     
     # Target players: missing photo_url
     with SessionLocal() as session:
-        query = session.query(PlayerBasic).filter(
-            or_(
-                PlayerBasic.photo_url == None,
-                PlayerBasic.photo_url == 'NOT_FOUND'
-            )
-        )
+        query = session.query(PlayerBasic).filter(PlayerBasic.photo_url == None)
         if ids:
             query = query.filter(PlayerBasic.player_id.in_(ids))
             print(f"🎯 Targeted processing for {len(ids)} IDs")

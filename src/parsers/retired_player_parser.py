@@ -5,7 +5,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Optional, Tuple
 
-from src.utils.team_codes import resolve_team_code
+from src.utils.team_codes import resolve_kbo_legacy_team_code
 
 
 def _clean_header(text: str) -> str:
@@ -123,7 +123,7 @@ def parse_retired_hitter_tables(
             "season": season,
             "league": league,
             "level": level,
-            "team_code": resolve_team_code(team_name, season_year=season),
+            "team_code": resolve_kbo_legacy_team_code(team_name, season_year=season),
             "extra_stats": {},
             "source": "PROFILE",
         }
@@ -185,7 +185,7 @@ def parse_retired_pitcher_table(
             "season": season,
             "league": league,
             "level": level,
-            "team_code": resolve_team_code(team_name, season_year=season),
+            "team_code": resolve_kbo_legacy_team_code(team_name, season_year=season),
             "extra_stats": {},
             "source": "PROFILE",
         }

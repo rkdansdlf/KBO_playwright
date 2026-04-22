@@ -1,0 +1,48 @@
+name: KBO Data Quality Check
+
+on:
+  schedule:
+    # Runs at 19:00 UTC which is 04:00 KST the next day.
+    # This runs 1 hour after 'KBO Postgame Finalize' (daily_kbo_sync.yml).
+    - cron: '0 19 * * *'
+  workflow_dispatch:
+
+jobs:
+  quality-gate:
+    runs-on: ubuntu-latest
+    env:
+      PYTHONPATH: ${{ github.workspace }}
+    
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.10
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+
+      - name: Run Quality Gate (OCI Only)
+        env:
+          OCI_DB_URL: ${{ secrets.OCI_DB_URL }}
+        run: |
+          # Use --oci-only to check production data without needing a local SQLite setup
+          python3 scripts/maintenance/quality_gate.py --oci-only
+
+      - name: Notify Slack on Failure
+        if: failure()
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+        run: |
+          MESSAGE="❌ *KBO Data Quality Gate Failed*\nRepo: ${{ github.repository }}\nWorkflow: ${{ github.workflow }}\n<https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Run Details>"
+          
+          if [ -n "$SLACK_WEBHOOK_URL" ]; then
+            curl -X POST -H 'Content-type: application/json' --data "{\"text\": \"${MESSAGE}\"}" $SLACK_WEBHOOK_URL
+          else
+            echo "⚠️ SLACK_WEBHOOK_URL not set, skipping notification."
+          fi

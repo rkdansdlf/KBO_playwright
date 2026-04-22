@@ -34,6 +34,7 @@ class Game(Base, TimestampMixin):
     winning_score = Column(Integer)
     season_id = Column(Integer)
     game_status = Column(String(32), nullable=True)
+    is_primary = Column(Boolean, nullable=False, default=True, server_default="1")
     
     # Canonical/Franchise IDs for stable analysis
     home_franchise_id = Column(Integer, nullable=True)
@@ -49,6 +50,19 @@ class Game(Base, TimestampMixin):
     batting_stats = relationship("GameBattingStat", back_populates="game")
     pitching_stats = relationship("GamePitchingStat", back_populates="game")
     events = relationship("GameEvent", back_populates="game")
+    aliases = relationship("GameIdAlias", back_populates="canonical_game")
+
+
+class GameIdAlias(Base, TimestampMixin):
+    """Alternate source IDs that resolve to the canonical KBO legacy game_id."""
+    __tablename__ = "game_id_aliases"
+
+    alias_game_id = Column(String(20), primary_key=True)
+    canonical_game_id = Column(String(20), ForeignKey("game.game_id"), nullable=False, index=True)
+    source = Column(String(50))
+    reason = Column(String(120))
+
+    canonical_game = relationship("Game", back_populates="aliases")
 
 class GameSummary(Base, TimestampMixin):
     """Summary of game results (pitcher decisions, home runs, etc.)"""
