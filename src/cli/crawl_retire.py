@@ -21,6 +21,10 @@ from src.parsers.retired_player_parser import (
 )
 from src.repositories.player_repository import PlayerRepository
 
+# Ensure all models are loaded to resolve foreign keys
+from src.models.player import Player, PlayerSeasonBatting, PlayerSeasonPitching  # noqa: F401
+from src.models.team import Team  # noqa: F401
+
 
 async def determine_inactive_ids(
     start_year: int,
@@ -126,7 +130,10 @@ async def crawl_retired_players(args: argparse.Namespace) -> None:
             except Exception as exc:
                 print(f"❌ Failed to process player {pid}: {exc}")
 
-    await asyncio.gather(*(runner(pid) for pid in inactive_list))
+    try:
+        await asyncio.gather(*(runner(pid) for pid in inactive_list))
+    finally:
+        await detail_crawler.close()
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
