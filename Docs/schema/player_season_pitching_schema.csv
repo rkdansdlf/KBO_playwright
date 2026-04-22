@@ -1,11 +1,11 @@
 column_name,type,is_primary_key,foreign_key
 id,INTEGER,True,
-player_id,INTEGER,False,
+player_id,INTEGER,False,player_basic(player_id)
 season,INTEGER,False,
 league,VARCHAR(16),False,
 level,VARCHAR(16),False,
 source,VARCHAR(16),False,
-team_code,VARCHAR(8),False,
+team_code,VARCHAR(10),False,teams(team_id)
 games,INTEGER,False,
 games_started,INTEGER,False,
 wins,INTEGER,False,

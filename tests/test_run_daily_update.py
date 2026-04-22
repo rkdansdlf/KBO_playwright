@@ -193,6 +193,33 @@ def test_run_update_injects_resolver_marks_cancelled_and_uses_step_runner(monkey
     assert ["-m", "src.cli.daily_preview_batch", "--date", "20250102", "--no-sync"] in commands
 
 
+def test_run_update_can_skip_auto_healer_for_scoped_backfill(monkeypatch):
+    healer_calls = []
+
+    _patch_common(monkeypatch)
+    monkeypatch.setattr(run_daily_update, "GameDetailCrawler", _FakeDetailCrawlerSuccess)
+
+    async def _record_healer(*_args, **_kwargs):
+        healer_calls.append(True)
+        return 0
+
+    monkeypatch.setattr(run_daily_update, "run_healer_async", _record_healer)
+    monkeypatch.setattr(run_daily_update, "update_game_status", lambda *_args, **_kwargs: True)
+
+    asyncio.run(
+        run_daily_update.run_update(
+            "20250101",
+            sync=False,
+            headless=True,
+            limit=None,
+            step_runner=lambda _argv: None,
+            run_auto_healer=False,
+        )
+    )
+
+    assert healer_calls == []
+
+
 def test_run_update_marks_unresolved_when_detail_missing_for_past_date(monkeypatch):
     _FakeResolver.created = []
     updates = []

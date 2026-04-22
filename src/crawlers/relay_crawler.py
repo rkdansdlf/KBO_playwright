@@ -12,6 +12,7 @@ from typing import List, Dict, Any, Optional
 from src.services.wpa_calculator import WPACalculator
 from src.utils.safe_print import safe_print as print
 from src.utils.playwright_pool import AsyncPlaywrightPool
+from src.utils.team_codes import normalize_kbo_game_id
 
 
 KBO_TO_NAVER_TEAM_CODE = {
@@ -166,6 +167,7 @@ class RelayCrawler:
         Fetch and parse ALL PBP events for a given KBO game ID by iterating innings.
         Supports both LIVE and COMPLETED games natively through the API.
         """
+        kbo_game_id = normalize_kbo_game_id(kbo_game_id)
         self.last_resolved_naver_game_id = None
         direct_naver_id = self._map_to_naver_id(kbo_game_id)
         

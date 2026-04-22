@@ -100,12 +100,14 @@ class PitchingStatCalculator:
     FIP_CONSTANT = 3.10
     
     @staticmethod
-    def calculate_ratios(data: Dict[str, Any]) -> Dict[str, Optional[float]]:
+    def calculate_ratios(data: Dict[str, Any], fip_constant: Optional[float] = None) -> Dict[str, Optional[float]]:
         """
         Calculates pitching ratios from raw stats.
         Required keys: innings_outs, earned_runs, hits_allowed, walks_allowed, strikeouts, 
                        home_runs_allowed, hit_batters, batters_faced.
         """
+        if fip_constant is None:
+            fip_constant = PitchingStatCalculator.FIP_CONSTANT
         # innings_outs: 3 outs = 1 IP
         innings_outs = data.get('innings_outs', 0) or 0
         ip = innings_outs / 3.0  # Convert to innings pitched
@@ -138,9 +140,9 @@ class PitchingStatCalculator:
         kbb = round(so / bb, 2) if bb > 0 else (float(so) if so > 0 else 0.0)
         
         # 6. FIP (Fielding Independent Pitching)
-        # FIP = ((13 * HR) + (3 * (BB + HBP)) - (2 * SO)) / IP + FIP_CONSTANT
+        # FIP = ((13 * HR) + (3 * (BB + HBP)) - (2 * SO)) / IP + fip_constant
         if ip > 0:
-            fip = round(((13 * hr) + (3 * (bb + hbp)) - (2 * so)) / ip + PitchingStatCalculator.FIP_CONSTANT, 2)
+            fip = round(((13 * hr) + (3 * (bb + hbp)) - (2 * so)) / ip + fip_constant, 2)
         else:
             fip = 0.0
         

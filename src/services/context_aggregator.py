@@ -32,6 +32,8 @@ class ContextAggregator:
         
         results = []
         for g in games:
+            if g.home_score is None or g.away_score is None:
+                continue
             is_home = (g.home_team == team_code)
             my_score = g.home_score if is_home else g.away_score
             opp_score = g.away_score if is_home else g.home_score
@@ -78,6 +80,8 @@ class ContextAggregator:
 
         a_wins, b_wins, draws = 0, 0, 0
         for g in games:
+            if g.home_score is None or g.away_score is None:
+                continue
             # team_a 기준 승패
             if g.home_team == team_a:
                 if g.home_score > g.away_score: a_wins += 1
@@ -213,6 +217,8 @@ class ContextAggregator:
 
         a_wins, b_wins, draws = 0, 0, 0
         for g in games:
+            if g.home_score is None or g.away_score is None:
+                continue
             if g.home_team == team_a:
                 if g.home_score > g.away_score: a_wins += 1
                 elif g.home_score < g.away_score: b_wins += 1

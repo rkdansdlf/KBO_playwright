@@ -29,7 +29,7 @@ def test_extract_hitters_uses_roster_map_for_missing_player_id():
 
     crawler._extract_table_rows = fake_extract_table_rows  # type: ignore[method-assign]
 
-    hitters = asyncio.run(
+    hitters, team_total = asyncio.run(
         crawler._extract_hitters(
             page=None,
             team_side="away",
@@ -39,5 +39,6 @@ def test_extract_hitters_uses_roster_map_for_missing_player_id():
         )
     )
 
+    assert team_total == {}
     assert len(hitters) == 1
     assert hitters[0]["player_id"] == "12345"

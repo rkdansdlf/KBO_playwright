@@ -76,10 +76,12 @@ async def run_backfill(chunk_size: int = 100, max_total: int = 10000):
     
     with SessionLocal() as session:
         query = text("""
-            SELECT DISTINCT game_id 
-            FROM game_batting_stats 
-            WHERE game_id NOT IN (SELECT game_id FROM game)
-            ORDER BY game_id DESC -- Start from newest missing
+            SELECT DISTINCT game_id FROM game_batting_stats WHERE game_id NOT IN (SELECT game_id FROM game)
+            UNION
+            SELECT DISTINCT game_id FROM game_pitching_stats WHERE game_id NOT IN (SELECT game_id FROM game)
+            UNION
+            SELECT DISTINCT game_id FROM game_play_by_play WHERE game_id NOT IN (SELECT game_id FROM game)
+            ORDER BY game_id DESC
             LIMIT :max_total
         """)
         missing_rows = session.execute(query, {"max_total": max_total}).fetchall()

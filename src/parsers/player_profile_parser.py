@@ -8,7 +8,7 @@ import re
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Any
 
-from src.utils.team_codes import resolve_team_code
+from src.utils.team_codes import resolve_kbo_legacy_team_code
 
 
 LABELS = (
@@ -143,7 +143,7 @@ def parse_draft(value: str) -> Dict[str, Optional[Any]]:
 
     return {
         "draft_year": _to_year(yy),
-        "draft_team_code": resolve_team_code(team),
+        "draft_team_code": resolve_kbo_legacy_team_code(team, _to_year(yy)),
         "draft_round": int(draft_round) if draft_round else None,
         "draft_pick_overall": int(draft_pick) if draft_pick else None,
         "draft_type": draft_type,
@@ -160,7 +160,7 @@ def parse_entry_year_team(value: str) -> Dict[str, Optional[Any]]:
     team = match.group("team")
     return {
         "entry_year": _to_year(yy),
-        "entry_team_code": resolve_team_code(team),
+        "entry_team_code": resolve_kbo_legacy_team_code(team, _to_year(yy)),
     }
 
 

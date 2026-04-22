@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from src.crawlers.pbp_crawler import PBPCrawler
+from src.utils.team_codes import normalize_kbo_game_id
 
 from .base import NormalizedRelayResult, RelaySourceAdapter, events_have_minimum_state
 
@@ -11,6 +12,7 @@ class KboRelayAdapter(RelaySourceAdapter):
         self.crawler = crawler or PBPCrawler()
 
     async def fetch_game(self, game_id: str) -> NormalizedRelayResult:
+        game_id = normalize_kbo_game_id(game_id)
         result = await self.crawler.crawl_game_events(game_id)
         events = list((result or {}).get("events") or [])
         failure_reason = getattr(self.crawler, "last_failure_reason", None)
@@ -30,4 +32,3 @@ class KboRelayAdapter(RelaySourceAdapter):
             has_raw_pbp=False,
             notes=notes,
         )
-

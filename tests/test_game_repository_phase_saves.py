@@ -10,6 +10,7 @@ from src.models.game import (
     Game,
     GameBattingStat,
     GameEvent,
+    GameIdAlias,
     GameInningScore,
     GameLineup,
     GameMetadata,
@@ -35,6 +36,7 @@ def _build_session_factory():
     engine = create_engine("sqlite:///:memory:")
     for table in (
         Game.__table__,
+        GameIdAlias.__table__,
         PlayerBasic.__table__,
         GameMetadata.__table__,
         GameInningScore.__table__,
