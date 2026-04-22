@@ -118,7 +118,8 @@ def test_collect_metrics_treats_current_date_as_operational_not_past():
                 VALUES
                     ('TODAY0', CURRENT_DATE, 'SCHEDULED'),
                     ('PAST0', date(CURRENT_DATE, '-1 day'), 'SCHEDULED'),
-                    ('RAIN0', date(CURRENT_DATE, '-1 day'), 'CANCELLED')
+                    ('RAIN0', date(CURRENT_DATE, '-1 day'), 'CANCELLED'),
+                    ('POSTPONED0', date(CURRENT_DATE, '-1 day'), 'POSTPONED')
                 """
             )
         )
