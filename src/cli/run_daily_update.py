@@ -203,6 +203,23 @@ async def run_update(
     except Exception as exc:
         print(f"   ❌ Error during stats update: {exc}")
 
+    print("\n🩹 Step 6.5: Backfilling starting pitchers from stats...")
+    try:
+        backfill_args = [
+            "-m",
+            "src.cli.backfill_starting_pitchers_from_stats",
+            "--start-date",
+            target_date,
+            "--end-date",
+            target_date,
+        ]
+        if sync:
+            backfill_args.append("--sync")
+        runner(backfill_args)
+        print("   ✅ Starting pitcher backfill complete")
+    except Exception as exc:
+        print(f"   ❌ Error during pitcher backfill: {exc}")
+
     print("\n🔄 Step 7: Updating player movements and daily rosters...")
     try:
         m_crawler = PlayerMovementCrawler()
