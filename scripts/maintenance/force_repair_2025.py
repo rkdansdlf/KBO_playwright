@@ -7,7 +7,7 @@ import sqlite3
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from src.crawlers.game_detail_crawler import GameDetailCrawler
-from src.repositories.game_repository import save_game_detail
+from src.services.game_collection_service import crawl_and_save_game_details
 
 async def force_repair_2025():
     conn = sqlite3.connect("data/kbo_dev.db")
@@ -42,13 +42,13 @@ async def force_repair_2025():
     # we'll use a slightly different approach: crawl and then manually extract if needed
     # But for this task, I will temporarily modify the crawler to NOT return None, just log it.
     
-    results = await crawler.crawl_games(games_to_crawl)
-    
-    success_count = 0
-    for payload in results:
-        if payload:
-            if save_game_detail(payload):
-                success_count += 1
+    result = await crawl_and_save_game_details(
+        games_to_crawl,
+        detail_crawler=crawler,
+        force=True,
+        log=print,
+    )
+    success_count = result.detail_saved
 
     print(f"Force repair complete: {success_count} games added.")
 

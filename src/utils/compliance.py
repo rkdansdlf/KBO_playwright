@@ -13,7 +13,7 @@ class ComplianceChecker:
     Fetches and parses robots.txt to check crawling permissions.
     """
     _instance: Optional["ComplianceChecker"] = None
-    
+
     def __init__(self, robots_url: str = "https://www.koreabaseball.com/robots.txt"):
         self.robots_url = robots_url
         self.parser = urllib.robotparser.RobotFileParser()
@@ -42,6 +42,23 @@ class ComplianceChecker:
                                 content = response.text
                                 self.parser.parse(content.splitlines())
                                 self.last_fetch_time = now
+
+                                # Save snapshot
+                                try:
+                                    import os
+                                    from datetime import datetime
+                                    snapshot_dir = "Docs/robots"
+                                    os.makedirs(snapshot_dir, exist_ok=True)
+                                    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                                    snapshot_path = os.path.join(snapshot_dir, f"robots_{timestamp}.txt")
+                                    with open(snapshot_path, "w", encoding="utf-8") as f:
+                                        f.write(f"# Source: {self.robots_url}\n")
+                                        f.write(f"# Fetched at: {datetime.now().isoformat()}\n\n")
+                                        f.write(content)
+                                    print(f"[COMPLIANCE] robots.txt snapshot saved to {snapshot_path}")
+                                except Exception as se:
+                                    print(f"[COMPLIANCE] Failed to save snapshot: {se}")
+
                                 print("[COMPLIANCE] robots.txt loaded successfully.")
                             else:
                                 print(f"[COMPLIANCE] Failed to fetch robots.txt (Status {response.status_code}). Using fallback.")

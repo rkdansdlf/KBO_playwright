@@ -228,7 +228,7 @@ def wait_for_table(page: Page, timeout: int = 30000) -> None:
         page.wait_for_timeout(500)
 
 
-def go_to_next_page(page: Page, current_page: int) -> bool:
+def go_to_next_page(page: Page, current_page: int, policy: Optional[RequestPolicy] = None) -> bool:
     """
     다음 페이지로 이동 (1→2,3,4,5→다음→6,7,8,9,10→다음 반복)
     타자 크롤러와 동일한 개선된 로직
@@ -241,20 +241,17 @@ def go_to_next_page(page: Page, current_page: int) -> bool:
             next_button = page.query_selector(next_button_selector)
             
             if not next_button:
-                print("   📄 다음 페이지 버튼을 찾을 수 없습니다.")
                 return False
             
             # 버튼이 비활성화되어 있는지 확인
             disabled_attr = next_button.get_attribute("disabled")
             class_attr = next_button.get_attribute("class") or ""
             if disabled_attr or "disabled" in class_attr:
-                print("   📄 마지막 페이지에 도달했습니다.")
                 return False
             
-            print(f"   ➡️ 다음 버튼 클릭 ({current_page}페이지 후)")
+            if policy: policy.delay()
             next_button.click()
             page.wait_for_load_state('networkidle', timeout=30000)
-            page.wait_for_timeout(2000)  # 2초 대기
             
         else:
             # 5페이지 내에서 번호 버튼 클릭
@@ -264,13 +261,11 @@ def go_to_next_page(page: Page, current_page: int) -> bool:
             page_button = page.query_selector(selector)
             
             if not page_button:
-                print(f"   📄 {relative}번 페이지 버튼을 찾을 수 없습니다.")
                 return False
             
-            print(f"   ➡️ {relative}번 페이지 버튼 클릭")
+            if policy: policy.delay()
             page_button.click()
             page.wait_for_load_state("networkidle", timeout=30000)
-            page.wait_for_timeout(1000)  # 1초 대기
         
         # 페이지 이동 후 테이블 대기
         wait_for_table(page)
@@ -284,26 +279,25 @@ def go_to_next_page(page: Page, current_page: int) -> bool:
         return False
 
 
-def apply_sort(page: Page, header_label: str, sort_code: Optional[str] = None) -> bool:
+def apply_sort(page: Page, header_label: str, sort_code: Optional[str] = None, policy: Optional[RequestPolicy] = None) -> bool:
     try:
         if sort_code:
             # Use JS execution for robustness against DOM changes
             # Check if 'sort' function exists
             has_sort_fn = page.evaluate("typeof sort === 'function'")
             if has_sort_fn:
-                print(f"   ⚡ JS sort('{sort_code}') 실행")
+                if policy: policy.delay()
                 page.evaluate(f"sort('{sort_code}')")
                 page.wait_for_load_state("networkidle", timeout=60000)
-                page.wait_for_timeout(1000)
                 return True
             
             # Fallback to selector
             selector = f"a[href=\"javascript:sort('{sort_code}');\"]"
             anchor = page.query_selector(selector)
             if anchor:
+                if policy: policy.delay()
                 anchor.click()
                 page.wait_for_load_state("networkidle", timeout=60000)
-                page.wait_for_timeout(800)
                 return True
 
         anchors = page.query_selector_all("table.tData01.tt thead a")
@@ -790,6 +784,7 @@ def crawl_pitcher_series(
                 page,
                 header_label=primary_sort["label"],
                 sort_code=primary_sort["sort_code"],
+                policy=policy,
             )
 
             wait_for_table(page)
@@ -809,7 +804,7 @@ def crawl_pitcher_series(
                     print("   🎯 수집 제한에 도달했습니다.")
                     break
 
-                if not go_to_next_page(page, page_number):
+                if not go_to_next_page(page, page_number, policy=policy):
                     break
                 page_number += 1
             
@@ -832,7 +827,7 @@ def crawl_pitcher_series(
                 return list(pitchers.values()) if not limit else list(pitchers.values())[:limit]
 
             for display_name, sort_code in BASIC2_SORT_SEQUENCE:
-                if not apply_sort(page, display_name, sort_code):
+                if not apply_sort(page, display_name, sort_code, policy=policy):
                     continue
                 wait_for_table(page)
 
@@ -850,7 +845,7 @@ def crawl_pitcher_series(
                     )
                     total_processed += processed
 
-                    if not go_to_next_page(page, page_number):
+                    if not go_to_next_page(page, page_number, policy=policy):
                         break
                     page_number += 1
 

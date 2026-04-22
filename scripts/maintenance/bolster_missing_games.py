@@ -46,6 +46,8 @@ async def bolster_missing_games(year_start=2010, year_end=2024):
         print(f"\n📦 Processing batch {i//chunk_size + 1}/{(len(missing_games)-1)//chunk_size + 1} ({len(batch_args)} games)...")
         
         try:
+            # This script keeps a custom save path to preserve existing player_id
+            # assignments while filling null score/metadata gaps.
             results = await crawler.crawl_games(batch_args, concurrency=3)
             
             for data in results:

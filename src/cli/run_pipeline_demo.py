@@ -14,35 +14,38 @@ import asyncio
 from pathlib import Path
 from typing import Sequence, Optional
 
+from sqlalchemy import func
+
+from src.db.engine import SessionLocal
+from src.models.game import Game, GameBattingStat, GamePitchingStat
 from src.parsers.schedule_parser import parse_schedule_html
 from src.parsers.game_detail_parser import parse_game_detail_html
-from src.repositories.game_repository import GameRepository
+from src.repositories.game_repository import save_game_detail
+from src.services.schedule_collection_service import save_schedule_games
 
 
 def ingest_schedule_fixtures(fixtures_dir: Path, season_type: str, default_year: Optional[int]) -> int:
     """경기 일정 fixture 파일들을 데이터베이스로 가져옵니다."""
-    repo = GameRepository()
     total = 0
     for html_file in sorted(fixtures_dir.glob("*.html")):
         html = html_file.read_text(encoding="utf-8")
         rows = parse_schedule_html(html, default_year=default_year, season_type=season_type)
         if not rows:
             continue
-        repo.save_schedules(rows)
-        total += len(rows)
-        print(f"✅ Schedule ingest: {html_file.name} ({len(rows)} games)")
+        result = save_schedule_games(rows)
+        total += result.saved
+        print(f"✅ Schedule ingest: {html_file.name} ({result.saved} saved, {result.failed} failed)")
     return total
 
 
 def ingest_game_fixtures(fixtures_dir: Path) -> int:
     """경기 상세 정보 fixture 파일들을 데이터베이스로 가져옵니다."""
-    repo = GameRepository()
     count = 0
     for html_file in sorted(fixtures_dir.glob("*.html")):
         game_id = html_file.stem
         html = html_file.read_text(encoding="utf-8")
         payload = parse_game_detail_html(html, game_id, game_id[:8])
-        if repo.save_game_detail(payload):
+        if save_game_detail(payload):
             count += 1
             print(f"✅ Game ingest: {game_id}")
     return count
@@ -61,30 +64,45 @@ async def run_futures(limit: Optional[int], season: int, delay: float, concurren
     await crawl_futures(args)
 
 
+def _count_games_by_season_id() -> dict[str, int]:
+    """Return stored game counts grouped by season_id."""
+    with SessionLocal() as session:
+        rows = (
+            session.query(Game.season_id, func.count(Game.game_id))
+            .group_by(Game.season_id)
+            .order_by(Game.season_id)
+            .all()
+        )
+    return {str(season_id if season_id is not None else "unknown"): count for season_id, count in rows}
+
+
+def show_schedule_totals() -> None:
+    """현재 저장된 경기 수 요약을 출력합니다."""
+    counts = _count_games_by_season_id()
+    print("\n📊 Schedule totals:")
+    for season_id, count in sorted(counts.items()):
+        print(f"  - season_id {season_id}: {count}")
+
+
 def show_summary(game_ids: list[str]) -> None:
     """처리된 게임 데이터의 요약 정보를 출력합니다."""
-    repo = GameRepository()
-    counts = repo.count_schedules_by_type()
-    print("\n📊 Schedule totals:")
-    for season_type, count in sorted(counts.items()):
-        print(f"  - {season_type}: {count}")
+    show_schedule_totals()
 
-    for game_id in game_ids:
-        summary = repo.get_game_summary(game_id)
-        print(f"\n🎯 Game summary: {game_id}")
-        schedule = summary["schedule"]
-        game = summary["game"]
-        if schedule:
-            print(f"  Season type: {schedule.season_type}")
-            print(f"  Game date:  {schedule.game_date}")
-        else:
-            print("  Schedule: not found")
-        if game:
-            print(f"  Stored scores: away {game.away_score} / home {game.home_score}")
-        else:
-            print("  Game detail: not ingested")
-        print(f"  Batting rows:  {summary['batting_rows']}")
-        print(f"  Pitching rows: {summary['pitching_rows']}")
+    with SessionLocal() as session:
+        for game_id in game_ids:
+            game = session.query(Game).filter(Game.game_id == game_id).one_or_none()
+            batting_rows = session.query(GameBattingStat).filter(GameBattingStat.game_id == game_id).count()
+            pitching_rows = session.query(GamePitchingStat).filter(GamePitchingStat.game_id == game_id).count()
+
+            print(f"\n🎯 Game summary: {game_id}")
+            if game:
+                print(f"  Game date:  {game.game_date}")
+                print(f"  Season ID:  {game.season_id}")
+                print(f"  Stored scores: away {game.away_score} / home {game.home_score}")
+            else:
+                print("  Game: not found")
+            print(f"  Batting rows:  {batting_rows}")
+            print(f"  Pitching rows: {pitching_rows}")
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
@@ -136,13 +154,8 @@ def main(argv: Sequence[str] | None = None) -> None:
     if game_ids:
         show_summary(game_ids)
     else:
-        repo = GameRepository()
-        counts = repo.count_schedules_by_type()
-        print("\n📊 Schedule totals:")
-        for season_type, count in sorted(counts.items()):
-            print(f"  - {season_type}: {count}")
+        show_schedule_totals()
 
 
 if __name__ == "__main__":  # pragma: no cover
     main()
-

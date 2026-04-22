@@ -8,7 +8,7 @@ import sqlite3
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from src.crawlers.game_detail_crawler import GameDetailCrawler
-from src.repositories.game_repository import save_game_detail
+from src.services.game_collection_service import crawl_and_save_game_details
 
 async def crawl_2024_missing():
     conn = sqlite3.connect("data/kbo_dev.db")
@@ -45,14 +45,13 @@ async def crawl_2024_missing():
         chunk = games_to_crawl[i:i+chunk_size]
         print(f"Processing 2024 chunk {i//chunk_size + 1}/{(len(games_to_crawl)-1)//chunk_size + 1} ({len(chunk)} games)...")
         
-        results = await crawler.crawl_games(chunk)
-        
-        for payload in results:
-            if payload:
-                if save_game_detail(payload):
-                    success_count += 1
-                else:
-                    print(f"  ❌ Failed to save detail for {payload['game_id']}")
+        result = await crawl_and_save_game_details(
+            chunk,
+            detail_crawler=crawler,
+            force=True,
+            log=print,
+        )
+        success_count += result.detail_saved
 
     print(f"\n2024 Crawl Complete: {success_count}/{len(targets)} games saved.")
 

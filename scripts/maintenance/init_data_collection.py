@@ -2,6 +2,11 @@
 Initial Data Collection Script
 Follows the correct order from ProjectOverview.md:
 
+Deprecated for operational DB writes:
+    This is now a limited exploratory/bootstrap workflow. For production-like
+    schedule/detail collection, use `src.cli.crawl_schedule`,
+    `src.cli.collect_games`, or `src.cli.run_daily_update`.
+
 1. Player List Crawler - Collect all players by team
 2. Player Profile Crawler - Collect player basic info (ID, physical stats, position)
 3. Retired/Inactive Players - (TODO: separate script)
@@ -193,6 +198,10 @@ def build_arg_parser() -> argparse.ArgumentParser:
 
 async def run_pipeline(args: argparse.Namespace):
     """Run initial data collection in correct order"""
+    print(
+        "[DEPRECATED] scripts/maintenance/init_data_collection.py is a bootstrap/demo workflow. "
+        "Prefer the dedicated src.cli entrypoints for operational collection."
+    )
     print("\n" + "🚀" * 30)
     print("KBO Initial Data Collection")
     print("Following ProjectOverview.md order")

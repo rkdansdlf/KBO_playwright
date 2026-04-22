@@ -38,10 +38,12 @@ def run_audit():
         print("\n[STATISTICAL RECONCILIATION - 2024 HITS]")
         recon_query = """
         WITH game_sums AS (
-            SELECT player_id, SUM(hits) as total_hits 
-            FROM game_batting_stats 
-            WHERE game_id LIKE '2024%'
-            GROUP BY player_id
+            SELECT gbs.player_id, SUM(gbs.hits) as total_hits
+            FROM game_batting_stats gbs
+            JOIN game g ON gbs.game_id = g.game_id
+            JOIN kbo_seasons ks ON g.season_id = ks.season_id
+            WHERE ks.season_year = 2024 AND ks.league_type_code = 0
+            GROUP BY gbs.player_id
         )
         SELECT s.player_id, pb.name, s.hits as season_hits, g.total_hits as calc_hits
         FROM player_season_batting s

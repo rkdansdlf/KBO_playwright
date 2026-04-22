@@ -1,3 +1,9 @@
+"""Manual live debug probe for one missing historical game.
+
+This script intentionally calls `GameDetailCrawler` directly and does not save
+to the database. Use `src.cli.collect_games` or `src.cli.run_daily_update` for
+operational detail collection.
+"""
 import asyncio
 import sys
 import os
@@ -8,6 +14,10 @@ sys.path.insert(0, os.getcwd())
 from src.crawlers.game_detail_crawler import GameDetailCrawler
 
 async def main():
+    print(
+        "[DEBUG] scripts/maintenance/debug_missing_game.py performs a live parser probe only. "
+        "It does not persist data."
+    )
     crawler = GameDetailCrawler()
     # crawler.init()  <-- This was causing the error
     try:

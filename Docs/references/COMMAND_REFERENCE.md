@@ -220,20 +220,35 @@ cp .env.example .env
 # 경기 중 live refresh 1회
 ./venv/bin/python3 -m src.cli.live_crawler --run-once
 
+# 완료 경기 릴레이/PBP 복구(표준 경로)
+./venv/bin/python3 scripts/fetch_kbo_pbp.py --date 20251015
+
+# 누락 릴레이만 시즌 단위 복구
+./venv/bin/python3 scripts/fetch_kbo_pbp.py --season 2025 --missing-only
+
 # 완료 경기 freshness 검증
 ./venv/bin/python3 -m src.cli.freshness_gate --date 20251015
 
 # 스케줄만 월 단위 반영
 ./venv/bin/python3 -m src.cli.crawl_schedule --year 2025 --months 10
 
-# 수동 상세 수집(월 단위 대상 필터)
+# 수동 상세 수집(월 단위 대상 필터; 기존 상세/릴레이는 기본 스킵)
 ./venv/bin/python3 -m src.cli.collect_games --year 2025 --month 10
+
+# 기존 상세/릴레이를 강제로 다시 수집
+./venv/bin/python3 -m src.cli.collect_games --year 2025 --month 10 --force
 
 # 범용 unsynced-only 상세 동기화
 # 주의: schedule-only parent game 행은 자동 제외되지만, fresh runner 운영에서는
 # run_daily_update 또는 sync_specific_game 경로를 우선 사용
 ./venv/bin/python3 -m src.cli.sync_oci --game-details --unsynced-only
 ```
+
+#### 릴레이/PBP 수집 경로 구분
+- 완료 경기의 릴레이/PBP 복구는 `scripts/fetch_kbo_pbp.py`를 표준 경로로 사용합니다. 이 스크립트는 Naver/KBO/import manifest를 순서대로 시도하고, 이미 `game_events` 또는 `game_play_by_play`가 있는 경기는 `--force`가 없으면 건너뜁니다.
+- 경기 중 실시간 릴레이와 스코어보드 스냅샷은 `src.cli.live_crawler`가 담당합니다.
+- `src.cli.collect_games`와 `src.cli.crawl_game_details --relay`의 릴레이 수집은 수동 보조 경로입니다. 완료 경기 대량 복구에는 `scripts/fetch_kbo_pbp.py`를 우선 사용하세요.
+- 상세/릴레이 통합 수집 CLI는 기본적으로 기존 데이터가 있으면 재수집하지 않습니다. 다시 덮어써야 할 때만 `--force`를 사용합니다.
 
 ---
 

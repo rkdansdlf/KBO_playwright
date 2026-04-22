@@ -9,16 +9,18 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from sqlalchemy import text
-
 ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from src.crawlers.game_detail_crawler import GameDetailCrawler
 from src.crawlers.relay_crawler import RelayCrawler
-from src.db.engine import DATABASE_URL, SessionLocal
-from src.repositories.game_repository import save_game_detail, save_relay_data
+from src.db.engine import DATABASE_URL
+from src.services.game_collection_service import (
+    GameCollectionTarget,
+    crawl_and_save_game_details,
+    inspect_existing_game_data,
+)
 from src.utils.team_codes import normalize_kbo_game_id
 
 
@@ -70,16 +72,9 @@ def _backup_sqlite_database(output_dir: Path) -> Path | None:
 
 
 def _game_has_required_details(game_id: str) -> bool:
-    with SessionLocal() as session:
-        batting_count = session.execute(
-            text("SELECT COUNT(*) FROM game_batting_stats WHERE game_id = :game_id"),
-            {"game_id": game_id},
-        ).scalar()
-        pitching_count = session.execute(
-            text("SELECT COUNT(*) FROM game_pitching_stats WHERE game_id = :game_id"),
-            {"game_id": game_id},
-        ).scalar()
-    return bool(batting_count and pitching_count)
+    normalized_id = normalize_kbo_game_id(game_id)
+    existing = inspect_existing_game_data([GameCollectionTarget(normalized_id, normalized_id[:8])])
+    return bool(existing.get(normalized_id) and existing[normalized_id].has_detail)
 
 
 async def run(args: argparse.Namespace) -> int:
@@ -144,18 +139,21 @@ async def run(args: argparse.Namespace) -> int:
         return 0
 
     crawler = GameDetailCrawler(request_delay=args.delay)
-    details = await crawler.crawl_games(
-        [{"game_id": row["game_id"], "game_date": row["game_date"]} for row in pending_targets],
-        concurrency=args.concurrency,
-    )
-    detail_by_id = {detail.get("game_id"): detail for detail in details if detail.get("game_id")}
     relay_crawler = RelayCrawler(request_delay=args.delay) if args.relay else None
+    collection_result = await crawl_and_save_game_details(
+        pending_targets,
+        detail_crawler=crawler,
+        relay_crawler=relay_crawler,
+        force=True,
+        concurrency=args.concurrency,
+        log=print,
+    )
 
     results = list(skipped)
     for target in pending_targets:
         game_id = target["game_id"]
-        detail = detail_by_id.get(game_id)
-        if not detail:
+        item = collection_result.items.get(game_id)
+        if not item or item.detail_status == "crawl_failed":
             results.append(
                 {
                     "game_id": game_id,
@@ -163,25 +161,23 @@ async def run(args: argparse.Namespace) -> int:
                     "classification": "crawl_failed",
                     "detail_saved": 0,
                     "relay_rows": 0,
-                    "failure_reason": crawler.get_last_failure_reason(game_id) or "no_detail_payload",
+                    "failure_reason": (
+                        (item.failure_reason if item else None)
+                        or crawler.get_last_failure_reason(game_id)
+                        or "no_detail_payload"
+                    ),
                 }
             )
             continue
 
-        detail_saved = save_game_detail(detail)
-        relay_rows = 0
-        if detail_saved and relay_crawler:
-            relay_data = await relay_crawler.crawl_game_relay(game_id)
-            if relay_data and relay_data.get("events"):
-                relay_rows = save_relay_data(game_id, relay_data["events"])
         results.append(
             {
                 "game_id": game_id,
                 "game_date": target["game_date"],
-                "classification": "recrawl_saved" if detail_saved else "save_failed",
-                "detail_saved": int(detail_saved),
-                "relay_rows": relay_rows,
-                "failure_reason": "",
+                "classification": "recrawl_saved" if item.detail_saved else "save_failed",
+                "detail_saved": int(item.detail_saved),
+                "relay_rows": item.relay_rows_saved,
+                "failure_reason": "" if item.detail_saved else (item.failure_reason or "detail_save_failed"),
             }
         )
 

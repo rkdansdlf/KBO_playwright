@@ -38,6 +38,21 @@ def check_schedules(session) -> dict:
         total = 0
     print(f"Total schedules: {total}")
 
+    try:
+        operational_total = session.execute(text("SELECT COUNT(*) FROM game")).scalar() or 0
+        operational_scheduled = session.execute(
+            text(
+                """
+                SELECT COUNT(*)
+                FROM game
+                WHERE UPPER(COALESCE(game_status, '')) = 'SCHEDULED'
+                """
+            )
+        ).scalar() or 0
+    except Exception:
+        operational_total = 0
+        operational_scheduled = 0
+
     # 시즌 유형(정규, 프리시즌 등)별 집계
     type_counts = {}
     results = []
@@ -72,6 +87,11 @@ def check_schedules(session) -> dict:
     for year, count in results:
         print(f"  {year}: {count}")
 
+    if total == 0 and operational_total > 0:
+        print("\nOperational game table fallback:")
+        print(f"  Total game rows: {operational_total}")
+        print(f"  Scheduled game rows: {operational_scheduled}")
+
     # 데이터의 날짜 범위 확인
     try:
         stmt = text(
@@ -85,6 +105,16 @@ def check_schedules(session) -> dict:
     if min_date and max_date:
         print(f"\nDate range: {min_date} to {max_date}")
 
+    if total == 0 and operational_total > 0:
+        try:
+            game_min_date, game_max_date = session.execute(
+                text("SELECT MIN(game_date), MAX(game_date) FROM game")
+            ).first()
+        except Exception:
+            game_min_date, game_max_date = None, None
+        if game_min_date and game_max_date:
+            print(f"Operational game date range: {game_min_date} to {game_max_date}")
+
     # 예상 데이터 수와 비교하여 검증 (2025 시즌 기준)
     warnings = []
     expected = {
@@ -94,15 +124,25 @@ def check_schedules(session) -> dict:
     }
 
     print("\nValidation:")
-    for stype, expected_count in expected.items():
-        actual = type_counts.get(stype, 0)
-        status = "OK" if actual >= expected_count else "WARN"
-        print(f"  {stype}: {actual}/{expected_count} [{status}]")
-        if actual < expected_count:
-            warnings.append(f"{stype}: {actual} < {expected_count} (missing {expected_count - actual})")
+    if total == 0 and operational_total > 0:
+        print("  game_schedules: 0 rows [INFO: using game table fallback]")
+        print(f"  game table: {operational_total} rows [OK]")
+    else:
+        for stype, expected_count in expected.items():
+            actual = type_counts.get(stype, 0)
+            status = "OK" if actual >= expected_count else "WARN"
+            print(f"  {stype}: {actual}/{expected_count} [{status}]")
+            if actual < expected_count:
+                warnings.append(f"{stype}: {actual} < {expected_count} (missing {expected_count - actual})")
+
+    effective_total = total if total > 0 else operational_total
 
     return {
-        "total": total,
+        "total": effective_total,
+        "game_schedules_total": total,
+        "operational_total": operational_total,
+        "operational_scheduled": operational_scheduled,
+        "source": "game_schedules" if total > 0 else "game",
         "by_type": type_counts,
         "warnings": warnings
     }

@@ -61,6 +61,9 @@ async def run_live_crawler_cycle(*, sync_to_oci: bool | None = None) -> bool:
                 touched_game_ids.add(game_id)
                 print(f"[LIVE] 📝 Synced {saved_rows} relay rows for {game_id}")
 
+            # Live mode intentionally uses a lightweight snapshot instead of the
+            # shared full-detail collector; finalized box scores are handled by
+            # run_daily_update after games complete.
             detail = await detail_crawler.crawl_game(game_id, today_str, lightweight=True)
             if detail and save_game_snapshot(detail, status=GAME_STATUS_LIVE):
                 touched_game_ids.add(game_id)

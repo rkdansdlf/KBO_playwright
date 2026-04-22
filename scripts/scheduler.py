@@ -3,7 +3,7 @@ APScheduler-based automation for KBO data collection.
 
 Jobs:
 1. crawl_games_regular: Daily at 03:00 KST (run run_daily_update for previous KST day)
-2. crawl_pregame_refresh: Every 15 minutes, 10:00-23:45 KST
+2. crawl_pregame_refresh: Every 15 minutes, 10:00-23:45 KST (today + configurable lookahead)
 3. crawl_live_refresh: Every 2 minutes, 12:00-23:30 KST
 4. crawl_futures_profile: Weekly Sunday at 05:00 KST (sync all Futures stats)
 """
@@ -16,6 +16,7 @@ import os
 import sys
 from datetime import datetime, timedelta
 from pathlib import Path
+from threading import Lock
 from typing import Sequence
 from zoneinfo import ZoneInfo
 
@@ -51,6 +52,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 KST = ZoneInfo("Asia/Seoul")
 FALSE_ENV_VALUES = {"0", "false", "no", "off"}
+JOB_RUN_LOCK = Lock()
 
 # Ensure logs directory exists
 Path('logs').mkdir(exist_ok=True)
@@ -69,10 +71,54 @@ def _pregame_target_dates(now: datetime | None = None) -> list[str]:
     else:
         current = current.astimezone(KST)
 
-    target_dates = [current.strftime("%Y%m%d")]
-    if current.hour >= 18:
-        target_dates.append((current + timedelta(days=1)).strftime("%Y%m%d"))
-    return target_dates
+    try:
+        lookahead_days = int(os.getenv("PREGAME_LOOKAHEAD_DAYS", "2"))
+    except ValueError:
+        lookahead_days = 2
+    lookahead_days = max(0, min(lookahead_days, 7))
+
+    return [
+        (current + timedelta(days=offset)).strftime("%Y%m%d")
+        for offset in range(lookahead_days + 1)
+    ]
+
+
+def _minutes_until_next_pregame_tick(now: datetime | None = None) -> float | None:
+    current = now or datetime.now(KST)
+    if current.tzinfo is None:
+        current = current.replace(tzinfo=KST)
+    else:
+        current = current.astimezone(KST)
+
+    if current.hour < 10 or current.hour > 23:
+        return None
+
+    base = current.replace(second=0, microsecond=0)
+    minute = base.minute
+    if minute % 15 == 0:
+        next_tick = base
+    else:
+        next_minute = ((minute // 15) + 1) * 15
+        if next_minute >= 60:
+            next_tick = (base.replace(minute=0) + timedelta(hours=1))
+        else:
+            next_tick = base.replace(minute=next_minute)
+
+    if next_tick.hour > 23:
+        return None
+    return (next_tick - current).total_seconds() / 60.0
+
+
+def _should_skip_live_for_pregame(now: datetime | None = None) -> bool:
+    try:
+        threshold_minutes = int(os.getenv("LIVE_SKIP_BEFORE_PREGAME_MINUTES", "10"))
+    except ValueError:
+        threshold_minutes = 10
+    if threshold_minutes <= 0:
+        return False
+
+    minutes_until_pregame = _minutes_until_next_pregame_tick(now)
+    return minutes_until_pregame is not None and minutes_until_pregame <= threshold_minutes
 
 
 def _scheduled_game_count(target_date: str) -> int:
@@ -104,47 +150,54 @@ def crawl_daily_games():
     Runs at 03:00 KST daily to collect previous KST day's schedule+details.
     Uses exponential backoff retry on failures (3 attempts max).
     """
-    logger.info("=== Starting Daily Games Crawl ===")
+    with JOB_RUN_LOCK:
+        logger.info("=== Starting Daily Games Crawl ===")
 
-    try:
-        target_date = _previous_day_kst()
-        logger.info("Running run_daily_update for target_date=%s", target_date)
-        run_daily_update_main(['--date', target_date, '--seed-tomorrow-preview'])
+        try:
+            target_date = _previous_day_kst()
+            logger.info("Running run_daily_update for target_date=%s", target_date)
+            run_daily_update_main(['--date', target_date, '--seed-tomorrow-preview'])
 
-        logger.info("=== Daily Games Crawl Completed Successfully ===")
+            logger.info("=== Daily Games Crawl Completed Successfully ===")
 
-    except Exception as e:
-        logger.error(f"Daily games crawl failed: {e}", exc_info=True)
-        raise  # Re-raise for tenacity retry
+        except Exception as e:
+            logger.error(f"Daily games crawl failed: {e}", exc_info=True)
+            raise  # Re-raise for tenacity retry
 
 
 @retry(stop=stop_after_attempt(2), wait=wait_exponential(multiplier=1, min=30, max=120))
 def crawl_pregame_refresh():
-    failures: list[str] = []
-    sync_to_oci = _pregame_sync_to_oci_enabled()
-    if sync_to_oci:
-        logger.info("Pregame OCI sync is enabled")
-    elif not _env_enabled("PREGAME_SYNC_TO_OCI"):
-        logger.info("Pregame OCI sync is disabled by PREGAME_SYNC_TO_OCI")
-    else:
-        logger.warning("Pregame OCI sync is disabled because OCI_DB_URL is not set")
+    with JOB_RUN_LOCK:
+        failures: list[str] = []
+        sync_to_oci = _pregame_sync_to_oci_enabled()
+        if sync_to_oci:
+            logger.info("Pregame OCI sync is enabled")
+        elif not _env_enabled("PREGAME_SYNC_TO_OCI"):
+            logger.info("Pregame OCI sync is disabled by PREGAME_SYNC_TO_OCI")
+        else:
+            logger.warning("Pregame OCI sync is disabled because OCI_DB_URL is not set")
 
-    for target_date in _pregame_target_dates():
-        logger.info("Running pregame refresh for target_date=%s", target_date)
-        saved_ids = asyncio.run(run_preview_batch(target_date, sync_to_oci=sync_to_oci))
-        if saved_ids and sync_to_oci:
-            logger.info("Pregame OCI sync completed for target_date=%s games=%s", target_date, len(saved_ids))
-        scheduled_count = _scheduled_game_count(target_date)
-        if scheduled_count and not saved_ids:
-            failures.append(f"{target_date}: scheduled={scheduled_count}, saved=0")
+        for target_date in _pregame_target_dates():
+            logger.info("Running pregame refresh for target_date=%s", target_date)
+            saved_ids = asyncio.run(run_preview_batch(target_date, sync_to_oci=sync_to_oci))
+            if saved_ids and sync_to_oci:
+                logger.info("Pregame OCI sync completed for target_date=%s games=%s", target_date, len(saved_ids))
+            scheduled_count = _scheduled_game_count(target_date)
+            if scheduled_count and not saved_ids:
+                failures.append(f"{target_date}: scheduled={scheduled_count}, saved=0")
 
-    if failures:
-        raise RuntimeError("Pregame refresh saved no preview rows: " + "; ".join(failures))
+        if failures:
+            raise RuntimeError("Pregame refresh saved no preview rows: " + "; ".join(failures))
 
 
 def crawl_live_refresh():
-    logger.info("Running live refresh cycle")
-    asyncio.run(run_live_crawler_cycle())
+    if _should_skip_live_for_pregame():
+        logger.info("Skipping live refresh because pregame refresh is due soon")
+        return
+
+    with JOB_RUN_LOCK:
+        logger.info("Running live refresh cycle")
+        asyncio.run(run_live_crawler_cycle())
 
 
 @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=120, max=600))
@@ -155,24 +208,25 @@ def crawl_all_futures_profiles():
     Runs on Sunday at 05:00 KST to sync season-cumulative Futures stats.
     Uses exponential backoff retry on failures (3 attempts max).
     """
-    logger.info("=== Starting Weekly Futures Profile Crawl ===")
+    with JOB_RUN_LOCK:
+        logger.info("=== Starting Weekly Futures Profile Crawl ===")
 
-    try:
-        current_year = datetime.now().year
+        try:
+            current_year = datetime.now().year
 
-        # Crawl Futures stats with recommended settings
-        logger.info(f"Crawling Futures stats for active players in {current_year}")
-        crawl_futures_main([
-            '--season', str(current_year),
-            '--concurrency', '2',  # Low concurrency to respect rate limits
-            '--delay', '2.0'  # 2-second delay between requests
-        ])
+            # Crawl Futures stats with recommended settings
+            logger.info(f"Crawling Futures stats for active players in {current_year}")
+            crawl_futures_main([
+                '--season', str(current_year),
+                '--concurrency', '2',  # Low concurrency to respect rate limits
+                '--delay', '2.0'  # 2-second delay between requests
+            ])
 
-        logger.info("=== Weekly Futures Profile Crawl Completed Successfully ===")
+            logger.info("=== Weekly Futures Profile Crawl Completed Successfully ===")
 
-    except Exception as e:
-        logger.error(f"Futures profile crawl failed: {e}", exc_info=True)
-        raise  # Re-raise for tenacity retry
+        except Exception as e:
+            logger.error(f"Futures profile crawl failed: {e}", exc_info=True)
+            raise  # Re-raise for tenacity retry
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
@@ -239,7 +293,7 @@ def main(argv: Sequence[str] | None = None):
         misfire_grace_time=900,
         max_instances=1,
     )
-    logger.info("Registered job: crawl_pregame_refresh (Every 15m, 10:00-23:45 KST)")
+    logger.info("Registered job: crawl_pregame_refresh (Every 15m, 10:00-23:45 KST, today + lookahead)")
 
     scheduler.add_job(
         crawl_live_refresh,
@@ -276,7 +330,7 @@ def main(argv: Sequence[str] | None = None):
     print("="*60)
     print("\nScheduled Jobs:")
     print("  1. Daily Games Crawl: Every day at 03:00 KST")
-    print("  2. Pregame Refresh: Every 15 minutes, 10:00-23:45 KST")
+    print("  2. Pregame Refresh: Every 15 minutes, 10:00-23:45 KST, today + lookahead")
     print("  3. Live Refresh: Every 2 minutes, 12:00-23:30 KST")
     print("  4. Futures Profile Sync: Every Sunday at 05:00 KST")
     print("="*60 + "\n")

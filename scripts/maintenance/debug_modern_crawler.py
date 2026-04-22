@@ -1,4 +1,10 @@
 
+"""Manual live debug probe for modern GameCenter parser output.
+
+This script intentionally calls `GameDetailCrawler` directly and does not save
+to the database. Use `src.cli.collect_games` or `src.cli.run_daily_update` for
+operational detail collection.
+"""
 import asyncio
 import os
 import json
@@ -13,6 +19,10 @@ from src.services.player_id_resolver import PlayerIdResolver
 from src.db.engine import SessionLocal
 
 async def debug_modern_crawler():
+    print(
+        "[DEBUG] scripts/maintenance/debug_modern_crawler.py performs a live parser probe only. "
+        "It does not persist data."
+    )
     pool = AsyncPlaywrightPool(max_pages=1)
     session = SessionLocal()
     try:

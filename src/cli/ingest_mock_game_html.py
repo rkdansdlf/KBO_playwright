@@ -10,12 +10,11 @@ from pathlib import Path
 from typing import Iterable
 
 from src.parsers.game_detail_parser import parse_game_detail_html
-from src.repositories.game_repository import GameRepository
+from src.repositories.game_repository import save_game_detail
 
 
 def ingest_mock_html(args: argparse.Namespace) -> None:
     """저장된 HTML fixture를 파싱하여 데이터베이스에 저장하는 로직을 수행합니다."""
-    repo = GameRepository()
     fixtures_dir = Path(args.fixtures_dir)
     if not fixtures_dir.exists():
         raise SystemExit(f"Fixture directory not found: {fixtures_dir}")
@@ -38,7 +37,7 @@ def ingest_mock_html(args: argparse.Namespace) -> None:
         payload = parse_game_detail_html(html, game_id, game_date)
         
         # 변환된 데이터를 데이터베이스에 저장합니다.
-        success = repo.save_game_detail(payload)
+        success = save_game_detail(payload)
         if success:
             print(f"✅ Ingested mock game {game_id}")
         else:
@@ -61,4 +60,3 @@ def main(argv: Iterable[str] | None = None) -> None:
 
 if __name__ == "__main__":  # pragma: no cover
     main()
-

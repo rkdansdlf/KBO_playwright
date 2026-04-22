@@ -4,13 +4,12 @@ KBO Game Data Collector (Schedule + Detail + Relay)
 from __future__ import annotations
 import argparse
 import asyncio
-from datetime import datetime
 from typing import Sequence
 
 from src.crawlers.schedule_crawler import ScheduleCrawler
 from src.crawlers.game_detail_crawler import GameDetailCrawler
 from src.crawlers.relay_crawler import RelayCrawler
-from src.repositories.game_repository import save_game_detail, save_relay_data
+from src.services.game_collection_service import crawl_and_save_game_details
 from src.utils.safe_print import safe_print as print
 
 async def run_pipeline(args: argparse.Namespace):
@@ -26,39 +25,39 @@ async def run_pipeline(args: argparse.Namespace):
     print(f"[SUCCESS] Found {len(games)} games. Starting detail collection...")
 
     detail_crawler = GameDetailCrawler(request_delay=args.delay)
-    inputs = [{"game_id": g["game_id"], "game_date": g["game_date"]} for g in games]
-    details = await detail_crawler.crawl_games(inputs, concurrency=args.concurrency)
+    relay_crawler = RelayCrawler(request_delay=args.delay) if args.relay else None
+    result = await crawl_and_save_game_details(
+        games,
+        detail_crawler=detail_crawler,
+        relay_crawler=relay_crawler,
+        force=args.force,
+        concurrency=args.concurrency,
+        log=print,
+    )
 
-    relay_crawler = RelayCrawler(request_delay=args.delay)
-    success_count = 0
-    for detail in details:
-        game_id = detail['game_id']
-        game_date = detail.get('game_date', game_id[:8]).replace('-', '')
-        
-        if save_game_detail(detail):
-            print(f"[DB] Saved Detail for Game {game_id}.")
-            if args.relay:
-                print(f"[INFO] Fetching Relay for {game_id}...")
-                relay_data = await relay_crawler.crawl_game_relay(game_id)
-                if relay_data and 'events' in relay_data:
-                    pbp_count = save_relay_data(game_id, relay_data['events'])
-                    print(f"[DB] Saved {pbp_count} PBP events for {game_id}.")
-                else:
-                    print(f"[WARN] No relay events found for {game_id}.")
-            success_count += 1
-        else:
-            print(f"[ERROR] Failed to save Game {game_id}.")
-
-    print(f"\n[FINISH] Pipeline finished: {success_count}/{len(games)} games processed.")
+    print(
+        "\n[FINISH] Pipeline finished: "
+        f"detail_saved={result.detail_saved}/{result.detail_targets}, "
+        f"detail_failed={result.detail_failed}, "
+        f"detail_skipped={result.detail_skipped_existing}, "
+        f"relay_games={result.relay_saved_games}, "
+        f"relay_rows={result.relay_rows_saved}, "
+        f"relay_skipped={result.relay_skipped_existing}."
+    )
 
 def main(argv: Sequence[str] | None = None) -> None:
     parser = argparse.ArgumentParser(description="KBO Full Data Pipeline")
     parser.add_argument("--year", type=int, required=True, help="Year (e.g. 2024)")
     parser.add_argument("--month", type=int, required=True, help="Month (1-12)")
     parser.add_argument("--limit", type=int, help="Limit number of games for testing")
-    parser.add_argument("--relay", action="store_true", help="Include Play-by-Play data")
+    parser.add_argument(
+        "--relay",
+        action="store_true",
+        help="Include direct relay fallback rows. Prefer scripts/fetch_kbo_pbp.py for completed-game PBP recovery.",
+    )
     parser.add_argument("--delay", type=float, default=1.0, help="Request delay")
     parser.add_argument("--concurrency", type=int, default=None, help="Max concurrent games")
+    parser.add_argument("--force", action="store_true", help="Recrawl and overwrite existing detail/relay rows")
     args = parser.parse_args(argv)
     asyncio.run(run_pipeline(args))
 

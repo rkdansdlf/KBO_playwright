@@ -1,4 +1,10 @@
 
+"""Manual live debug probe for historical team-code parsing.
+
+This script intentionally calls `GameDetailCrawler` directly and does not save
+to the database. Use `src.cli.collect_games` or `src.cli.run_daily_update` for
+operational detail collection.
+"""
 import asyncio
 import os
 import sys
@@ -12,6 +18,10 @@ from src.services.player_id_resolver import PlayerIdResolver
 from src.db.engine import SessionLocal
 
 async def check_kia_code():
+    print(
+        "[DEBUG] scripts/maintenance/check_kia_code.py performs a live parser probe only. "
+        "It does not persist data."
+    )
     session = SessionLocal()
     pool = AsyncPlaywrightPool(max_pages=1)
     
