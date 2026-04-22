@@ -125,6 +125,7 @@ async def crawl_retired_players(args: argparse.Namespace) -> None:
     async def runner(pid: str):
         async with semaphore:
             try:
+                print(f"📡 Processing player {pid}...")
                 await process_player(pid, detail_crawler, repository)
                 print(f"✅ Processed retired player {pid}")
             except Exception as exc:
