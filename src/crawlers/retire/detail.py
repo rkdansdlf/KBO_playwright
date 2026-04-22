@@ -79,9 +79,9 @@ class RetiredPlayerDetailCrawler:
             print(f"⚠️  BLOCKED by compliance: {url}")
             return None
 
+        # One policy wait is enough before navigation.
         await self._wait()
         await page.goto(url, wait_until="domcontentloaded", timeout=60000)
-        await self._wait()
 
         profile_text = await self._extract_profile_text(page)
         photo_url = await self._extract_photo_url(page)
