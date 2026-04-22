@@ -247,42 +247,17 @@ def find_target_missing_ready_games(session, args: argparse.Namespace) -> list[d
 
     local_query = text(
         """
-        WITH starts AS (
-            SELECT
-                game_id,
-                max(
-                    CASE
-                        WHEN team_side = 'away'
-                             AND is_starting = 1
-                             AND coalesce(trim(player_name), '') <> ''
-                        THEN player_name
-                    END
-                ) AS away_start,
-                max(
-                    CASE
-                        WHEN team_side = 'home'
-                             AND is_starting = 1
-                             AND coalesce(trim(player_name), '') <> ''
-                        THEN player_name
-                    END
-                ) AS home_start
-            FROM game_pitching_stats
-            GROUP BY game_id
-        )
         SELECT
             g.game_id,
             g.away_pitcher,
             g.home_pitcher
         FROM game g
-        JOIN starts s ON s.game_id = g.game_id
         WHERE (:start_date IS NULL OR g.game_date >= :start_date)
           AND (:end_date IS NULL OR g.game_date <= :end_date)
           AND g.game_date < date('now')
           AND coalesce(g.game_status, '') <> 'SCHEDULED'
           AND coalesce(trim(g.away_pitcher), '') <> ''
           AND coalesce(trim(g.home_pitcher), '') <> ''
-          AND coalesce(trim(s.away_start), '') <> ''
-          AND coalesce(trim(s.home_start), '') <> ''
         """
     )
     local_ready_rows = [
