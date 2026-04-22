@@ -346,7 +346,7 @@ class GameDetailCrawler:
         return metadata
 
     async def _extract_team_info(self, page: Page, game_id: str, season_year: Optional[int]) -> Dict[str, Dict[str, Any]]:
-        script = """
+        script = r"""
         () => {
             const tables = Array.from(document.querySelectorAll('table'));
             let teamTable, inningTable, totalTable;
@@ -644,7 +644,7 @@ class GameDetailCrawler:
         if not selector:
             return []
 
-        script = """
+        script = r"""
         (sel) => {
             const table = document.querySelector(sel);
             if (!table) return [];
@@ -708,7 +708,7 @@ class GameDetailCrawler:
         if not await page.query_selector(selector):
             return []
 
-        script = """
+        script = r"""
         (sel) => {
             const table = document.querySelector(sel);
             if (!table) return [];
@@ -956,7 +956,7 @@ class GameDetailCrawler:
         Extracts a map of {PlayerName: [{id, uniform_no}, ...]} from the LINEUP page.
         Used to resolve player IDs when the Review page boxscore lacks links (legacy games).
         """
-        script = """
+        script = r"""
         () => {
             const map = {};
             const addToMap = (name, id, uniform) => {

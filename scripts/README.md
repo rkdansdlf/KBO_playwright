@@ -44,10 +44,11 @@ PYTHONPATH=. python scripts/maintenance/verify_sqlite_data.py
 - `collect_international_games.py` - Dedicated international schedule crawler; DB writes use the shared game snapshot persistence path
 
 ### Operational Collection
-Use the `src.cli` entrypoints for DB-writing schedule/detail collection:
+Use the `src.cli` entrypoints for DB-writing schedule/detail collection, and the relay recovery script for finalized PBP recovery:
 - `python -m src.cli.crawl_schedule --year 2025 --months 3`
 - `python -m src.cli.collect_games --year 2025 --month 3`
 - `python -m src.cli.run_daily_update --date YYYYMMDD`
+- `python scripts/fetch_kbo_pbp.py --date YYYYMMDD`
 
 ### Manual Debug and Manifest Scripts
 These scripts call crawlers directly for parser investigation or write JSON manifests only. They are not standard DB-writing collection paths:
