@@ -25,6 +25,7 @@ from src.utils.team_mapping import get_team_mapping_for_year, get_team_code
 from src.utils.playwright_blocking import install_sync_resource_blocking
 from src.utils.request_policy import RequestPolicy
 from src.utils.compliance import compliance
+from src.utils.playwright_retry import retry_navigation, retry_wait_for_selector
 
 
 
@@ -415,37 +416,54 @@ def crawl_basic2_with_headers(page: Page, year: int, series_info: dict, policy: 
         # 1. Basic1 페이지로 이동
         url = "https://www.koreabaseball.com/Record/Player/HitterBasic/Basic1.aspx"
         if policy: policy.delay()
-        page.goto(url, wait_until='load', timeout=30000)
-        page.wait_for_load_state('networkidle', timeout=30000)
+        if not retry_navigation(page, url, timeout=45000):
+            print(f"   ❌ Basic1 페이지 로딩 실패")
+            return {}
 
         # 2. 연도 선택
         try:
             season_selector = 'select[name="ctl00$ctl00$ctl00$cphContents$cphContents$cphContents$ddlSeason$ddlSeason"]'
-            if policy: policy.delay()
-            page.select_option(season_selector, str(year))
-            page.wait_for_load_state('networkidle', timeout=30000)
-        except Exception: pass
+            if not retry_wait_for_selector(page, season_selector):
+                print(f"   ⚠️ 연도 선택기를 찾을 수 없습니다.")
+            else:
+                if policy: policy.delay()
+                page.select_option(season_selector, str(year))
+                page.wait_for_load_state('networkidle', timeout=30000)
+        except Exception as e:
+            print(f"   ⚠️ 연도 선택 중 오류 (무시): {e}")
 
         # 3. 정규시즌 선택
         try:
             series_selector = 'select[name="ctl00$ctl00$ctl00$cphContents$cphContents$cphContents$ddlSeries$ddlSeries"]'
-            if policy: policy.delay()
-            page.select_option(series_selector, value=series_info['value'])
-            page.wait_for_load_state('networkidle', timeout=30000)
-        except Exception: pass
+            if retry_wait_for_selector(page, series_selector):
+                if policy: policy.delay()
+                page.select_option(series_selector, value=series_info['value'])
+                page.wait_for_load_state('networkidle', timeout=30000)
+        except Exception as e:
+            print(f"   ⚠️ 시리즈 선택 중 오류 (무시): {e}")
 
         # 4. "다음" 링크 클릭하여 Basic2로 이동
         try:
             next_link_selector = 'a[href="/Record/Player/HitterBasic/Basic2.aspx"]'
-            if policy: policy.delay()
-            page.click(next_link_selector)
-            page.wait_for_load_state('networkidle', timeout=30000)
-        except Exception:
+            if retry_wait_for_selector(page, next_link_selector):
+                if policy: policy.delay()
+                page.click(next_link_selector)
+                page.wait_for_load_state('networkidle', timeout=30000)
+            else:
+                print(f"   ❌ Basic2 이동 링크를 찾을 수 없습니다.")
+                return {}
+        except Exception as e:
+            print(f"   ❌ Basic2 이동 중 오류: {e}")
             return {}
 
         # 5. Basic2 페이지 전체 순회
         page_num = 1
         while True:
+            # 테이블 헤더가 나타날 때까지 대기
+            if not retry_wait_for_selector(page, "table.tData01.tt thead th", timeout=15000):
+                print(f"   ⚠️ {page_num}페이지 테이블 헤더 로딩 실패")
+                break
+
             current_page_data = parse_batting_stats_table(page, "regular", year)
             for player_stat in current_page_data:
                 pid = player_stat['player_id']

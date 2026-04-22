@@ -31,6 +31,7 @@ from src.utils.team_mapping import get_team_mapping_for_year
 from src.utils.playwright_blocking import install_sync_resource_blocking
 from src.utils.request_policy import RequestPolicy
 from src.utils.compliance import compliance
+from src.utils.playwright_retry import retry_navigation, retry_wait_for_selector
 
 
 
@@ -410,9 +411,7 @@ def parse_basic1_page(
     max_players: Optional[int] = None,
 ) -> int:
     # Wait for the table headers to be visible
-    try:
-        page.wait_for_selector("table.tData01.tt thead th", timeout=15000)
-    except PlaywrightTimeout:
+    if not retry_wait_for_selector(page, "table.tData01.tt thead th", timeout=30000):
         print("   ⚠️  기록 테이블 헤더를 찾을 수 없습니다. (타임아웃)")
         return 0
 
@@ -584,6 +583,10 @@ def parse_basic2_page(
     sort_key: str,
     max_players: Optional[int] = None,
 ) -> int:
+    if not retry_wait_for_selector(page, "table.tData01.tt thead th", timeout=30000):
+        print("⚠️  Basic2 테이블 헤더 파싱 실패 (타임아웃)")
+        return 0
+
     headers = [normalize_header(th.inner_text()) for th in page.query_selector_all("table.tData01.tt thead th")]
     header_index = {name: idx for idx, name in enumerate(headers)}
     team_mapping = get_team_mapping_for_year(season)
@@ -696,21 +699,29 @@ def setup_pitcher_page(page: Page, url: str, year: int, series_value: str, polic
         print(f"[COMPLIANCE] Navigation to {url} aborted.")
         return False
 
-    page.goto(url, wait_until="load", timeout=60000)
-    page.wait_for_load_state("networkidle", timeout=60000)
+    if not retry_navigation(page, url, timeout=60000):
+        print(f"❌ {url} 페이지 로딩 실패")
+        return False
+
     page.wait_for_timeout(1000)
 
     try:
         season_selector = 'select[name="ctl00$ctl00$ctl00$cphContents$cphContents$cphContents$ddlSeason$ddlSeason"]'
         series_selector = 'select[name="ctl00$ctl00$ctl00$cphContents$cphContents$cphContents$ddlSeries$ddlSeries"]'
-        page.select_option(season_selector, str(year))
-        page.wait_for_timeout(300)
-        page.select_option(series_selector, value=series_value)
-        page.wait_for_timeout(1500)
+
+        if retry_wait_for_selector(page, season_selector, timeout=15000):
+            page.select_option(season_selector, str(year))
+            page.wait_for_timeout(300)
+
+        if retry_wait_for_selector(page, series_selector, timeout=15000):
+            page.select_option(series_selector, value=series_value)
+            page.wait_for_timeout(1500)
+
         page.wait_for_load_state("networkidle", timeout=60000)
         page.wait_for_timeout(1000)
         return True
-    except PlaywrightTimeout:
+    except Exception as e:
+        print(f"   ⚠️ 페이지 설정 중 오류: {e}")
         return False
 
 
