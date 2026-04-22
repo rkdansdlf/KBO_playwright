@@ -62,6 +62,7 @@ class _FakeRecordPage:
         self.load_states = []
         self.timeouts = []
         self.query_selectors = []
+        self.change_dispatches = []
 
     async def goto(self, url, wait_until, timeout):
         self.goto_calls.append((url, wait_until, timeout))
@@ -72,13 +73,16 @@ class _FakeRecordPage:
     async def select_option(self, selector, value):
         self.select_options.append((selector, value))
 
-    async def wait_for_load_state(self, state):
-        self.load_states.append(state)
+    async def wait_for_load_state(self, state, timeout=None):
+        self.load_states.append((state, timeout))
 
     async def wait_for_timeout(self, timeout):
         self.timeouts.append(timeout)
 
-    async def evaluate(self, _script):
+    async def evaluate(self, _script, selector=None):
+        if selector is not None:
+            self.change_dispatches.append(selector)
+            return True
         if self.page_index == 0:
             return ["10001", "10002"]
         return ["20001"]
@@ -141,16 +145,26 @@ def test_retired_listing_uses_flexible_selectors_and_paginates(monkeypatch):
     assert page.goto_calls == [
         (
             "https://www.koreabaseball.com/Record/Player/HitterBasic/Basic1.aspx",
-            "networkidle",
+            "load",
             30000,
         )
     ]
-    assert page.selector_waits == [('select[name*="ddlSeason"]', 15000)]
-    assert page.select_options == [
-        ('select[name*="ddlSeason"]', "2024"),
-        ('select[name*="ddlSeries"]', "0"),
+    assert page.selector_waits == [
+        ('select[id$="ddlSeason_ddlSeason"], select[name*="ddlSeason"]', 15000)
     ]
-    assert page.load_states == ["networkidle", "networkidle", "networkidle"]
+    assert page.select_options == [
+        ('select[id$="ddlSeason_ddlSeason"], select[name*="ddlSeason"]', "2024"),
+        ('select[id$="ddlSeries_ddlSeries"], select[name*="ddlSeries"]', "0"),
+    ]
+    assert page.change_dispatches == [
+        'select[id$="ddlSeason_ddlSeason"], select[name*="ddlSeason"]',
+        'select[id$="ddlSeries_ddlSeries"], select[name*="ddlSeries"]',
+    ]
+    assert page.load_states == [
+        ("load", 10000),
+        ("load", 10000),
+        ("load", 10000),
+    ]
     assert page.timeouts == [1000, 500, 1000]
     assert "div.paging span.on, div.paging a.on" in page.query_selectors
     assert "div.paging a:has-text('2')" in page.query_selectors
@@ -207,6 +221,23 @@ def test_retired_crawlers_preserve_request_delay(monkeypatch):
 
     assert detail_throttle.calls == 1
     assert sleeps == [0.5, 1.0]
+
+
+def test_collect_historical_player_ids_unions_years_and_skips_failures():
+    calls = []
+
+    class FakeCrawler(RetiredPlayerListingCrawler):
+        async def collect_player_ids_for_year(self, season_year):
+            calls.append(season_year)
+            if season_year == 2021:
+                raise RuntimeError("temporary listing failure")
+            return {str(season_year), "shared"}
+
+    crawler = FakeCrawler()
+    ids = asyncio.run(crawler.collect_historical_player_ids([2020, 2021, 2022]))
+
+    assert ids == {"2020", "2022", "shared"}
+    assert sorted(calls) == [2020, 2021, 2022]
 
 
 def test_determine_inactive_player_ids_diffs_historical_and_active(monkeypatch):
