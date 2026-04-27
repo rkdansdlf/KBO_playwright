@@ -352,3 +352,39 @@ def test_run_update_syncs_only_target_games_after_freshness_gate(monkeypatch):
     assert ("daily_rosters", None) in syncer.calls
     assert ("players", None) in syncer.calls
     assert syncer.closed is True
+
+
+def test_run_update_syncs_auto_healer_recovery_targets(monkeypatch):
+    _FakeResolver.created = []
+    _FakeSyncer.created = []
+    commands: list[list[str]] = []
+
+    _patch_common(monkeypatch)
+    monkeypatch.setattr(run_daily_update, "GameDetailCrawler", _FakeDetailCrawlerSuccess)
+    monkeypatch.setattr(run_daily_update, "OCISync", _FakeSyncer)
+    monkeypatch.setattr(run_daily_update, "update_game_status", lambda *_args, **_kwargs: True)
+    monkeypatch.setattr(
+        run_daily_update,
+        "_collect_past_scheduled_recovery_targets",
+        lambda _today: [{"game_id": "20241231LGSS0", "game_date": "20241231"}],
+    )
+    monkeypatch.setenv("OCI_DB_URL", "postgresql://example")
+
+    asyncio.run(
+        run_daily_update.run_update(
+            "20250101",
+            sync=True,
+            headless=True,
+            limit=None,
+            step_runner=lambda argv: commands.append(list(argv)),
+        )
+    )
+
+    assert ["scripts/fetch_kbo_pbp.py", "--date", "20250101"] in commands
+    assert ["scripts/fetch_kbo_pbp.py", "--date", "20241231"] in commands
+    assert ["-m", "src.cli.freshness_gate", "--date", "20250101"] in commands
+    assert ["-m", "src.cli.freshness_gate", "--date", "20241231"] in commands
+
+    assert len(_FakeSyncer.created) == 1
+    syncer = _FakeSyncer.created[0]
+    assert syncer.synced_games == ["20241231LGSS0", "20250101LGSS0"]

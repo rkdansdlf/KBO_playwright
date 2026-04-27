@@ -22,15 +22,18 @@ class RetiredPlayerDetailCrawler:
     def __init__(self, request_delay: float = 1.5, pool: Optional[AsyncPlaywrightPool] = None):
         self.request_delay = request_delay
         self.pool = pool
-        self._internal_pool: Optional[AsyncPlaywrightPool] = None
+        self._internal_pool = None
+        self._lock = asyncio.Lock()
 
     async def _get_pool(self) -> AsyncPlaywrightPool:
         if self.pool:
             return self.pool
-        if self._internal_pool is None:
-            self._internal_pool = AsyncPlaywrightPool(max_pages=5)
-            await self._internal_pool.start()
+        async with self._lock:
+            if self._internal_pool is None:
+                self._internal_pool = AsyncPlaywrightPool(max_pages=5)
+                await self._internal_pool.start()
         return self._internal_pool
+
 
     async def close(self) -> None:
         if self._internal_pool:

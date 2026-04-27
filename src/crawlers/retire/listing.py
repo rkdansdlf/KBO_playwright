@@ -5,25 +5,11 @@ from __future__ import annotations
 
 import asyncio
 import sys
-from typing import Dict, Iterable, List, Optional, Set
+from typing import Iterable, List, Set, Dict, Optional
 
 from src.utils.playwright_pool import AsyncPlaywrightPool
 from src.utils.compliance import compliance
 from src.utils.throttle import throttle
-
-
-CHANGE_EVENT_SCRIPT = """
-(selector) => {
-  const el = document.querySelector(selector);
-  if (!el) return false;
-  if (typeof el.onchange === 'function') {
-    el.onchange();
-  } else {
-    el.dispatchEvent(new Event('change', { bubbles: true }));
-  }
-  return true;
-}
-"""
 
 
 class RetiredPlayerListingCrawler:
@@ -42,9 +28,6 @@ class RetiredPlayerListingCrawler:
         if self.request_delay > throttle.default_delay:
             await asyncio.sleep(self.request_delay - throttle.default_delay)
 
-    async def _dispatch_change(self, page, selector: str) -> None:
-        await page.evaluate(CHANGE_EVENT_SCRIPT, selector)
-
     async def collect_player_ids_for_year(self, season_year: int) -> Set[str]:
         """Collect all player IDs (hitters + pitchers) for a given season from Record pages."""
         pool = self.pool or AsyncPlaywrightPool(max_pages=1)
@@ -53,8 +36,8 @@ class RetiredPlayerListingCrawler:
         try:
             page = await pool.acquire()
             try:
-                hitter_ids = await self._crawl_record_page_ids(page, self.hitter_url, season_year)
-                pitcher_ids = await self._crawl_record_page_ids(page, self.pitcher_url, season_year)
+                hitter_ids = await self._crawl_record_page_ids_with_teams(page, self.hitter_url, season_year)
+                pitcher_ids = await self._crawl_record_page_ids_with_teams(page, self.pitcher_url, season_year)
                 return hitter_ids | pitcher_ids
             finally:
                 await pool.release(page)
@@ -62,8 +45,8 @@ class RetiredPlayerListingCrawler:
             if owns_pool:
                 await pool.close()
 
-    async def _crawl_record_page_ids(self, page, base_url: str, year: int) -> Set[str]:
-        """Navigate to record page, select year, and paginate to collect player IDs."""
+    async def _crawl_record_page_ids_with_teams(self, page, base_url: str, year: int) -> Set[str]:
+        """Navigate to record page, select year, and iterate through all teams to collect IDs."""
         if not await compliance.is_allowed(base_url):
             print(f"[COMPLIANCE] Blocked record listing: {base_url}", file=sys.stderr)
             return set()
@@ -72,34 +55,51 @@ class RetiredPlayerListingCrawler:
         await page.goto(base_url, wait_until="load", timeout=30000)
 
         # Select Year
-        season_selector = 'select[id$="ddlSeason_ddlSeason"], select[name*="ddlSeason"]'
+        season_selector = 'select[id$="ddlSeason_ddlSeason"]'
         await page.wait_for_selector(season_selector, timeout=15000)
-
-        # Trigger change event manually to ensure PostBack happens
         await page.select_option(season_selector, str(year))
-        await self._dispatch_change(page, season_selector)
-
+        await page.evaluate("el => { if (el.onchange) el.onchange(); else el.dispatchEvent(new Event('change', { bubbles: true })); }", await page.query_selector(season_selector))
         try:
             await page.wait_for_load_state("load", timeout=10000)
-        except Exception:
+        except:
             pass
         await page.wait_for_timeout(1000)
 
-        # Select Regular Season (value="0") if available
-        try:
-            series_selector = 'select[id$="ddlSeries_ddlSeries"], select[name*="ddlSeries"]'
-            await page.select_option(series_selector, "0")
-            await self._dispatch_change(page, series_selector)
-            await page.wait_for_load_state("load", timeout=10000)
-            await page.wait_for_timeout(500)
-        except Exception:
-            pass
+        # Get all team codes
+        team_selector = 'select[id$="ddlTeam_ddlTeam"]'
+        team_options = await page.locator(f"{team_selector} option").all()
+        team_codes = []
+        for opt in team_options:
+            val = await opt.get_attribute("value")
+            if val and val != "" and val != "9999":
+                team_codes.append(val)
+        
+        if not team_codes:
+            # Fallback to no team selection (current page)
+            return await self._collect_ids_from_pages(page, year)
 
+        all_ids: Set[str] = set()
+        for code in team_codes:
+            print(f"    [Year {year}] Fetching team {code}", file=sys.stderr)
+            await page.select_option(team_selector, code)
+            await page.evaluate("el => { if (el.onchange) el.onchange(); else el.dispatchEvent(new Event('change', { bubbles: true })); }", await page.query_selector(team_selector))
+            try:
+                await page.wait_for_load_state("load", timeout=10000)
+            except:
+                pass
+            await page.wait_for_timeout(500)
+            
+            team_ids = await self._collect_ids_from_pages(page, year)
+            all_ids.update(team_ids)
+            
+        return all_ids
+
+    async def _collect_ids_from_pages(self, page, year: int) -> Set[str]:
         ids: Set[str] = set()
         page_num = 1
         while True:
             # Extract IDs from current page
-            page_ids = await page.evaluate(r"""
+            page_ids = await page.evaluate("""
                 () => {
                     const links = document.querySelectorAll('table.tData01.tt tbody tr td:nth-child(2) a');
                     return Array.from(links).map(a => {
@@ -110,31 +110,23 @@ class RetiredPlayerListingCrawler:
                 }
             """)
             ids.update(page_ids)
-            print(
-                f"    [Year {year}] Page {page_num}: Found {len(page_ids)} IDs (Total: {len(ids)})",
-                file=sys.stderr,
-            )
 
             # Try to go to next page
             try:
-                # Find current page number
                 current_active_btn = await page.query_selector("div.paging span.on, div.paging a.on")
                 if not current_active_btn:
                     break
                 current_active_text = await current_active_btn.inner_text()
                 current_page_val = int(current_active_text.strip())
 
-                # Try to find next numeric button or Next button
-                # KBO pager: 1 2 3 4 5 [Next]
                 next_page_btn = await page.query_selector(f"div.paging a:has-text('{current_page_val + 1}')")
-
+                
                 if not next_page_btn:
-                    # Look for Next button
                     next_selectors = [
                         "a[id$='btnNext']",
                         "a:has(img[alt='다음'])",
                         "a:has-text('다음')",
-                        "a.next",
+                        "a.next"
                     ]
                     for sel in next_selectors:
                         btn = await page.query_selector(f"div.paging {sel}")
@@ -150,32 +142,27 @@ class RetiredPlayerListingCrawler:
                     page_num += 1
                 else:
                     break
-            except Exception as exc:
-                print(f"    [WARN] Pagination failed for {year} at page {page_num}: {exc}", file=sys.stderr)
+            except Exception:
                 break
-
         return ids
 
     async def collect_historical_player_ids(self, seasons: Iterable[int]) -> Set[str]:
         historical_ids: Set[str] = set()
         seasons_list = list(seasons)
-        print(
-            f"🔍 Collecting historical player IDs for {len(seasons_list)} seasons in parallel...",
-            file=sys.stderr,
-        )
+        print(f"🔍 Collecting historical player IDs for {len(seasons_list)} seasons in parallel...", file=sys.stderr)
 
-        semaphore = asyncio.Semaphore(5)
+        semaphore = asyncio.Semaphore(10)  # Allow 10 concurrent years
 
         async def fetch_year(season):
             async with semaphore:
                 print(f"  Fetching IDs for {season}...", file=sys.stderr)
                 try:
                     return await self.collect_player_ids_for_year(season)
-                except Exception as exc:
-                    print(f"  ❌ Error fetching IDs for {season}: {exc}", file=sys.stderr)
+                except Exception as e:
+                    print(f"  ❌ Error fetching IDs for {season}: {e}", file=sys.stderr)
                     return set()
 
-        results = await asyncio.gather(*(fetch_year(season) for season in seasons_list))
+        results = await asyncio.gather(*(fetch_year(s) for s in seasons_list))
         for season_ids in results:
             historical_ids |= season_ids
 
@@ -199,10 +186,7 @@ class RetiredPlayerListingCrawler:
         print(f"📡 Fetching active player IDs for {active_year}...", file=sys.stderr)
         active_ids = await self.collect_player_ids_for_year(active_year)
         inactive = {pid for pid in historical_ids if pid and pid not in active_ids}
-        print(
-            f"✨ Found {len(inactive)} inactive players out of {len(historical_ids)} total unique IDs.",
-            file=sys.stderr,
-        )
+        print(f"✨ Found {len(inactive)} inactive players out of {len(historical_ids)} total unique IDs.", file=sys.stderr)
         return inactive
 
     def _extract_ids(self, data: Dict[str, List[Dict]]) -> Set[str]:

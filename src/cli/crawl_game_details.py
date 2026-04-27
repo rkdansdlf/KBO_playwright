@@ -9,7 +9,9 @@ from typing import Sequence
 from src.crawlers.schedule_crawler import ScheduleCrawler
 from src.crawlers.game_detail_crawler import GameDetailCrawler
 from src.crawlers.relay_crawler import RelayCrawler
+from src.db.engine import SessionLocal
 from src.services.game_collection_service import crawl_and_save_game_details
+from src.services.player_id_resolver import PlayerIdResolver
 from src.utils.safe_print import safe_print as print
 
 async def run_pipeline(args: argparse.Namespace):
@@ -24,16 +26,22 @@ async def run_pipeline(args: argparse.Namespace):
     if args.limit: games = games[:args.limit]
     print(f"[SUCCESS] Found {len(games)} games. Starting detail collection...")
 
-    detail_crawler = GameDetailCrawler(request_delay=args.delay)
-    relay_crawler = RelayCrawler(request_delay=args.delay) if args.relay else None
-    result = await crawl_and_save_game_details(
-        games,
-        detail_crawler=detail_crawler,
-        relay_crawler=relay_crawler,
-        force=args.force,
-        concurrency=args.concurrency,
-        log=print,
-    )
+    resolver_session = SessionLocal()
+    try:
+        resolver = PlayerIdResolver(resolver_session)
+        resolver.preload_season_index(args.year)
+        detail_crawler = GameDetailCrawler(request_delay=args.delay, resolver=resolver)
+        relay_crawler = RelayCrawler(request_delay=args.delay) if args.relay else None
+        result = await crawl_and_save_game_details(
+            games,
+            detail_crawler=detail_crawler,
+            relay_crawler=relay_crawler,
+            force=args.force,
+            concurrency=args.concurrency,
+            log=print,
+        )
+    finally:
+        resolver_session.close()
 
     print(
         "\n[FINISH] Pipeline finished: "
