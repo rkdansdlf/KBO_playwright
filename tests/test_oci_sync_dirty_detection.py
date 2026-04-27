@@ -17,7 +17,12 @@ from src.models.game import (
     GameSummary,
 )
 from src.models.player import PlayerBasic
-from src.sync.oci_sync import detect_dirty_game_ids, filter_game_ids_by_year, filter_publishable_game_ids
+from src.sync.oci_sync import (
+    _dedupe_records_for_conflict_keys,
+    detect_dirty_game_ids,
+    filter_game_ids_by_year,
+    filter_publishable_game_ids,
+)
 
 
 def _build_session_factory():
@@ -212,3 +217,19 @@ def test_filter_game_ids_by_year_preserves_only_requested_year():
 
     assert filter_game_ids_by_year(game_ids, 2025) == ["20250401LGSS0", "20250402LGSS0"]
     assert filter_game_ids_by_year(game_ids, None) == game_ids
+
+
+def test_dedupe_records_for_conflict_keys_preserves_null_key_rows():
+    records = [
+        {"game_id": "20260426KTSK0", "player_id": None, "appearance_seq": 1, "team_side": "away"},
+        {"game_id": "20260426KTSK0", "player_id": None, "appearance_seq": 1, "team_side": "home"},
+        {"game_id": "20260426KTSK0", "player_id": 50859, "appearance_seq": 1, "team_side": "away"},
+        {"game_id": "20260426KTSK0", "player_id": 50859, "appearance_seq": 1, "team_side": "away"},
+    ]
+
+    deduped = _dedupe_records_for_conflict_keys(
+        records,
+        ["game_id", "player_id", "appearance_seq"],
+    )
+
+    assert deduped == records[:3]

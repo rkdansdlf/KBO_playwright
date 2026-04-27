@@ -58,6 +58,33 @@ def _serialize_scalar(value: Any) -> Any:
     return value
 
 
+def _dedupe_records_for_conflict_keys(
+    records: List[Dict[str, Any]],
+    conflict_keys: List[str],
+) -> List[Dict[str, Any]]:
+    """Mirror Postgres unique semantics while removing duplicate upsert keys.
+
+    Postgres unique indexes allow multiple rows when any indexed column is NULL.
+    Python tuple-based dedupe would otherwise collapse rows such as away/home
+    pitching lines that share ``(game_id, NULL, appearance_seq)``.
+    """
+    if not conflict_keys:
+        return records
+
+    seen = set()
+    deduped_records = []
+    for record in records:
+        key = tuple(record.get(column) for column in conflict_keys)
+        if any(value is None for value in key):
+            deduped_records.append(record)
+            continue
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped_records.append(record)
+    return deduped_records
+
+
 def _execute_signature_query(session_or_conn, sql: str, *, game_ids: List[str] | None = None):
     stmt = text(sql)
     params = {}
@@ -1373,6 +1400,24 @@ class OCISync:
         # Sync Game record
         results['game'] = self._sync_simple_table(Game, ['game_id'], exclude_cols=['created_at', 'updated_at'], filters=filters)
         results['game_id_aliases'] = self._sync_simple_table(GameIdAlias, ['alias_game_id'], exclude_cols=['created_at'], filters=[GameIdAlias.canonical_game_id == game_id])
+
+        # Player IDs can be repaired after an initial crawl. Because Postgres
+        # treats NULL values as distinct in unique constraints, an upsert keyed
+        # by player_id would otherwise leave stale NULL-player rows beside the
+        # repaired rows. For one-game publishing, replace child snapshots.
+        for child_model in (
+            GameMetadata,
+            GameInningScore,
+            GameLineup,
+            GameBattingStat,
+            GamePitchingStat,
+            GameEvent,
+            GameSummary,
+        ):
+            self.target_session.query(child_model).filter(child_model.game_id == game_id).delete(
+                synchronize_session=False
+            )
+        self.target_session.commit()
         
         # Sync children
         results['metadata'] = self._sync_simple_table(GameMetadata, ['game_id'], exclude_cols=['created_at'], filters=[GameMetadata.game_id == game_id])
@@ -1473,16 +1518,9 @@ class OCISync:
                         data[k] = json.dumps(v, ensure_ascii=False)
                 records.append(data)
             
-            # Deduplicate records to avoid postgres error
-            if conflict_keys:
-                seen = set()
-                deduped_records = []
-                for r in records:
-                    key = tuple(r.get(k) for k in conflict_keys)
-                    if key not in seen:
-                        seen.add(key)
-                        deduped_records.append(r)
-                records = deduped_records
+            # Deduplicate records to avoid Postgres "affect row a second time"
+            # errors, while preserving SQL's distinct-NULL unique semantics.
+            records = _dedupe_records_for_conflict_keys(records, conflict_keys)
 
             self._bulk_copy_upsert(
                 model.__tablename__, 
