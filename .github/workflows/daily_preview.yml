@@ -34,7 +34,7 @@ jobs:
       - name: Install dependencies
         run: |
           pip install -r requirements.txt
-          playwright install chromium
+          playwright install --with-deps chromium
 
       - name: Get current date in KST
         id: date
