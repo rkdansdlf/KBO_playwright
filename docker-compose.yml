@@ -13,10 +13,11 @@ services:
       - .env
     environment:
       DATABASE_URL: ${DATABASE_URL:-sqlite:///./data/kbo_dev.db}
+      OCI_DB_URL: ${OCI_DB_URL:-}
       TARGET_DATABASE_URL: ${TARGET_DATABASE_URL:-}
       SOURCE_DATABASE_URL: ${SOURCE_DATABASE_URL:-sqlite:///./data/kbo_dev.db}
       RUN_INIT_DB: ${RUN_INIT_DB:-0}
-      RUN_SYNC_SUPABASE: ${RUN_SYNC_SUPABASE:-0}
+      RUN_SYNC_OCI: ${RUN_SYNC_OCI:-0}
       SYNC_TRUNCATE: ${SYNC_TRUNCATE:-0}
     volumes:
       - ./tests/fixtures:/app/tests/fixtures:ro

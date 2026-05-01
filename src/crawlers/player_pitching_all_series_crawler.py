@@ -9,10 +9,11 @@ KBO 전체 시리즈 투수 기록 크롤러
    - `CG, SHO, QS, BSV, TBF, NP, AVG, 2B, 3B, SAC, SF, IBB, WP, BK` 헤더를 순서대로 클릭
    - 각 정렬마다 전체 페이지를 순회하며 추가 지표 수집 및 기존 데이터 업데이트
 3. Docs/schema/KBO_시즌별 투수기록 테이블.csv에 정의된 스키마에 맞춰 데이터 정리
-4. 필요 시 Supabase(PostgreSQL)에 UPSERT 저장 (season_id + player_id 기준)
+4. 필요 시 OCI(PostgreSQL)에 UPSERT 동기화 (season_id + player_id 기준)
 
 Usage:
-    python -m src.crawlers.pitching_stats_crawler --year 2025 --series regular --save --sync-supabase
+    python -m src.crawlers.player_pitching_all_series_crawler --year 2025 --series regular --save
+    python -m src.cli.sync_oci --season-stats --year 2025
 """
 from __future__ import annotations
 
@@ -377,6 +378,7 @@ class PitcherStats:
             "saves": self.saves,
             "holds": self.holds,
             "innings_pitched": self.innings_pitched,  # 타자처럼 단순 필드명
+            "innings_outs": self.innings_outs,
             "hits_allowed": self.hits_allowed,
             "runs_allowed": self.runs_allowed,
             "earned_runs": self.earned_runs,
@@ -389,6 +391,10 @@ class PitcherStats:
             "balks": self.balks,
             "era": self.era,
             "whip": self.whip,
+            "fip": self.fip,
+            "k_per_nine": self.k_per_nine,
+            "bb_per_nine": self.bb_per_nine,
+            "kbb": self.kbb,
             "extra_stats": self.extra_stats,
         }
         # innings_outs를 extra_stats에 따로 저장
@@ -528,6 +534,10 @@ def parse_basic1_page(
             def get_val(key): return raw.get(key)
 
             stats.games = safe_int(get_val("G")) if "G" in raw else stats.games
+            if "GS" in raw:
+                stats.games_started = safe_int(get_val("GS"))
+            elif "선발" in raw:
+                stats.games_started = safe_int(get_val("선발"))
             stats.wins = safe_int(get_val("W")) if "W" in raw else stats.wins
             stats.losses = safe_int(get_val("L")) if "L" in raw else stats.losses
             stats.saves = safe_int(get_val("SV")) if "SV" in raw else stats.saves
@@ -879,7 +889,7 @@ def crawl_pitcher_series(
             payloads = [stat.to_repository_payload() for stat in stats_list]
             saved_count = save_pitching_stats_to_db(payloads)
             print(f"✅ 투수 데이터 저장 완료: {saved_count}명")
-            print(f"📌 다음 단계: ./venv/bin/python3 src/sync/supabase_sync.py 실행하여 Supabase 동기화")
+            print(f"📌 다음 단계: ./venv/bin/python3 -m src.cli.sync_oci --season-stats --year {year} 실행하여 OCI 동기화")
         except Exception as e:
             print(f"❌ 투수 데이터 저장 실패: {e}")
 

@@ -1,4 +1,4 @@
--- Supabase Migration: Create player_basic Table
+-- PostgreSQL Migration: Create player_basic Table
 -- Simple player table from player search crawler
 -- Source: Docs/PLAYERID_CRAWLING.md
 -- Generated: 2025-10-16

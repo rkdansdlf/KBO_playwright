@@ -138,14 +138,20 @@ class ImportRelayAdapter(RelaySourceAdapter):
             relays = payload
         else:
             relays = []
-        events = self._relay_parser._parse_naver_data(relays) if relays else []
+        parsed_payload = (
+            self._relay_parser._parse_naver_payload(relays)
+            if relays
+            else {"events": [], "raw_pbp_rows": []}
+        )
+        events = parsed_payload["events"]
+        raw_pbp_rows = parsed_payload["raw_pbp_rows"]
         return NormalizedRelayResult(
             game_id=entry.game_id,
             source_name=self.source_name,
             events=events,
-            raw_pbp_rows=[],
+            raw_pbp_rows=[normalize_pbp_row(row) for row in raw_pbp_rows],
             has_event_state=events_have_minimum_state(events),
-            has_raw_pbp=False,
+            has_raw_pbp=bool(raw_pbp_rows),
             notes=entry.notes,
         )
 

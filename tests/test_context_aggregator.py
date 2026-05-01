@@ -1,7 +1,10 @@
 
 import pytest
 from datetime import date, datetime
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
 from src.services.context_aggregator import ContextAggregator
+from src.models.game import GameEvent
 from src.models.player import PlayerMovement
 from src.models.team import TeamDailyRoster
 from src.db.engine import SessionLocal
@@ -54,6 +57,79 @@ def test_daily_roster_changes_added_removed():
         # This acts as a regression test for the set difference logic
         # (Assuming the local DB has the backfilled data)
         # print(f"HT 05-21 Changes: {res}")
+
+
+def test_get_crucial_moments_filters_relay_noise_rows():
+    engine = create_engine("sqlite:///:memory:")
+    GameEvent.__table__.create(bind=engine)
+    TestSessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False, expire_on_commit=False)
+
+    with TestSessionLocal() as session:
+        session.add_all(
+            [
+                GameEvent(
+                    game_id="20250401LGSS0",
+                    event_seq=1,
+                    inning=9,
+                    inning_half="bottom",
+                    description="=====================================",
+                    event_type="batting",
+                    wpa=-1.0,
+                    away_score=3,
+                    home_score=2,
+                ),
+                GameEvent(
+                    game_id="20250401LGSS0",
+                    event_seq=2,
+                    inning=9,
+                    inning_half="bottom",
+                    description="1구 볼",
+                    event_type="batting",
+                    wpa=0.9,
+                    away_score=3,
+                    home_score=2,
+                ),
+                GameEvent(
+                    game_id="20250401LGSS0",
+                    event_seq=3,
+                    inning=9,
+                    inning_half="bottom",
+                    description="박성한 : 중견수 플라이 아웃",
+                    event_type="batting",
+                    batter_name="박성한",
+                    wpa=-0.3,
+                    away_score=3,
+                    home_score=2,
+                ),
+                GameEvent(
+                    game_id="20250401LGSS0",
+                    event_seq=4,
+                    inning=8,
+                    inning_half="bottom",
+                    description="피치클락 위반 타자 경고 : NC 김수윤",
+                    event_type="batting",
+                    wpa=0.8,
+                    away_score=3,
+                    home_score=2,
+                ),
+                GameEvent(
+                    game_id="20250401LGSS0",
+                    event_seq=5,
+                    inning=8,
+                    inning_half="top",
+                    description="8회초 LG 공격",
+                    event_type="unknown",
+                    wpa=-0.8,
+                    away_score=3,
+                    home_score=2,
+                ),
+            ]
+        )
+        session.commit()
+
+        moments = ContextAggregator(session).get_crucial_moments("20250401LGSS0", limit=3)
+
+    assert [moment["description"] for moment in moments] == ["박성한 : 중견수 플라이 아웃"]
 
 if __name__ == "__main__":
     pytest.main([__file__])

@@ -28,7 +28,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--games", action="store_true", help="Legacy pending-game mode; no longer supported")
     parser.add_argument("--all", action="store_true", help="Legacy combined mode; no longer supported")
     parser.add_argument("--limit", type=int, default=10, help="Legacy limit argument; no longer used")
-    parser.add_argument("--sync", action="store_true", help="Legacy Supabase sync flag; no longer used")
+    parser.add_argument("--sync", action="store_true", help="Legacy sync flag; no longer used")
     return parser
 
 

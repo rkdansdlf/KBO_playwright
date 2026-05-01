@@ -12,6 +12,17 @@ from src.db.engine import SessionLocal, get_database_type
 from src.models.player import PlayerSeasonPitching
 
 
+def _prefer_payload_value(
+    payload: Dict[str, Any],
+    metrics: Dict[str, Any],
+    key: str,
+) -> Any:
+    value = payload.get(key)
+    if value is not None:
+        return value
+    return metrics.get(key)
+
+
 def save_pitching_stats_to_db(payloads: List[Dict[str, Any]]) -> int:
     """
     투수 시즌 통계를 player_season_pitching 테이블에 UPSERT 저장
@@ -33,6 +44,8 @@ def save_pitching_stats_to_db(payloads: List[Dict[str, Any]]) -> int:
             # extra_stats에서 확장 통계 추출하여 정규 컬럼으로 승격
             extra_stats = payload.get('extra_stats', {})
             metrics = extra_stats.get('metrics', {}) if isinstance(extra_stats, dict) else {}
+            if not isinstance(metrics, dict):
+                metrics = {}
             
             # 기본 필드들 매핑 (크롤러 PitcherStats.to_repository_payload()와 일치)
             data = {
@@ -53,7 +66,11 @@ def save_pitching_stats_to_db(payloads: List[Dict[str, Any]]) -> int:
                 
                 # 이닝 관련
                 'innings_pitched': payload.get('innings_pitched'),
-                'innings_outs': payload.get('innings_outs'),
+                'innings_outs': _prefer_payload_value(
+                    payload,
+                    extra_stats if isinstance(extra_stats, dict) else {},
+                    'innings_outs',
+                ),
                 
                 # 피칭 결과
                 'hits_allowed': payload.get('hits_allowed'),
@@ -76,17 +93,29 @@ def save_pitching_stats_to_db(payloads: List[Dict[str, Any]]) -> int:
                 'kbb': payload.get('kbb'),
                 
                 # Basic2에서 수집한 확장 통계를 정규 컬럼으로 승격
-                'complete_games': metrics.get('complete_games'),
-                'shutouts': metrics.get('shutouts'),
-                'quality_starts': metrics.get('quality_starts'),
-                'blown_saves': metrics.get('blown_saves'),
-                'tbf': metrics.get('tbf'),
-                'np': metrics.get('np'),
-                'avg_against': metrics.get('avg_against'),
-                'doubles_allowed': metrics.get('doubles_allowed'),
-                'triples_allowed': metrics.get('triples_allowed'),
-                'sacrifices_allowed': metrics.get('sacrifices_allowed'),
-                'sacrifice_flies_allowed': metrics.get('sacrifice_flies_allowed'),
+                'complete_games': _prefer_payload_value(
+                    payload, metrics, 'complete_games'
+                ),
+                'shutouts': _prefer_payload_value(payload, metrics, 'shutouts'),
+                'quality_starts': _prefer_payload_value(
+                    payload, metrics, 'quality_starts'
+                ),
+                'blown_saves': _prefer_payload_value(payload, metrics, 'blown_saves'),
+                'tbf': _prefer_payload_value(payload, metrics, 'tbf'),
+                'np': _prefer_payload_value(payload, metrics, 'np'),
+                'avg_against': _prefer_payload_value(payload, metrics, 'avg_against'),
+                'doubles_allowed': _prefer_payload_value(
+                    payload, metrics, 'doubles_allowed'
+                ),
+                'triples_allowed': _prefer_payload_value(
+                    payload, metrics, 'triples_allowed'
+                ),
+                'sacrifices_allowed': _prefer_payload_value(
+                    payload, metrics, 'sacrifices_allowed'
+                ),
+                'sacrifice_flies_allowed': _prefer_payload_value(
+                    payload, metrics, 'sacrifice_flies_allowed'
+                ),
                 
                 # 나머지는 extra_stats에 보관
                 'extra_stats': extra_stats

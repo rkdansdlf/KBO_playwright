@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-KBO_playwright is a Python-based web scraping project that collects Korean Baseball Organization (KBO) data using Playwright. The project implements a **2-track data collection pipeline** that separates regular season (game-based) and Futures League (profile-based) data collection strategies. It supports both SQLite for local development and PostgreSQL/MySQL for production, with Docker and Supabase integration.
+KBO_playwright is a Python-based web scraping project that collects Korean Baseball Organization (KBO) data using Playwright. The project implements a **2-track data collection pipeline** that separates regular season (game-based) and Futures League (profile-based) data collection strategies. It supports SQLite for local development and OCI PostgreSQL for production.
 
 ## Core Architecture
 
@@ -22,16 +22,16 @@ KBO_playwright is a Python-based web scraping project that collects Korean Baseb
     *   Low-frequency updates (weekly on Sunday at 05:00 KST).
     *   No game-by-game detail available.
 
-### Dual Repository Pattern (SQLite + Supabase)
+### Dual Repository Pattern (SQLite + OCI)
 
 ```
-Crawl → SQLite (validation) → Supabase (production)
+Crawl → SQLite (validation) → OCI PostgreSQL (production)
 ```
 
 - **SQLite**: Local development, fast writes, easy debugging, data validation
-- **Supabase (PostgreSQL)**: Production storage, persistent, API access, realtime
-- **Sync**: `src/sync/supabase_sync.py` handles validated data transfer
-- **Setup**: See [Docs/SUPABASE_SETUP.md](Docs/SUPABASE_SETUP.md)
+- **OCI PostgreSQL**: Production storage for validated crawler data
+- **Sync**: `src/cli/sync_oci.py` and `src/sync/oci_sync.py` handle validated data transfer
+- **Setup**: See [Docs/zero_issue_runbook_oci.md](Docs/zero_issue_runbook_oci.md)
 
 ### Data Processing Flow
 
@@ -40,7 +40,7 @@ All data collection follows a strict 4-stage process:
 2.  **Parse**: Extract data using dedicated parsers (e.g., `futures_stats_parser`).
 3.  **Validate**: Data quality checks in SQLite (see `verify_sqlite_data.py`).
 4.  **Save**: Use repository patterns (`save_futures_batting`) to UPSERT data idempotently into the database (SQLite/PostgreSQL/MySQL).
-5.  **Sync**: Transfer validated data to Supabase for production use.
+5.  **Sync**: Transfer validated data to OCI for production use.
 
 ## Development Commands
 
@@ -68,9 +68,9 @@ cp .env.example .env
 # Verify SQLite data integrity
 ./venv/bin/python3 verify_sqlite_data.py
 
-# Sync validated data to Supabase
-export SUPABASE_DB_URL='postgresql://postgres.xxx:[PASSWORD]@xxx.pooler.supabase.com:5432/postgres'
-./venv/bin/python3 src/sync/supabase_sync.py
+# Sync validated data to OCI
+export OCI_DB_URL='postgresql://user:password@host:5432/bega_backend'
+./venv/bin/python3 -m src.cli.sync_oci --game-details --unsynced-only
 ```
 
 ### Running Crawlers
@@ -103,7 +103,7 @@ docker-compose logs -f scheduler
 ### Database Management
 - **Engine**: `src/db/engine.py` provides a factory `create_engine_for_url` that configures SQLite, PostgreSQL, or MySQL based on the `DATABASE_URL` in `.env`.
 - **Idempotency**: Repositories like `save_futures_batting.py` use dialect-specific `INSERT ... ON CONFLICT` (SQLite) or `ON DUPLICATE KEY UPDATE` (MySQL) for safe, repeatable data saving.
-- **Data Sync**: `src/cli/sync_supabase.py` provides a robust mechanism to transfer data from a source (e.g., local SQLite) to a target (e.g., Supabase Postgres), handling all registered models in the correct dependency order.
+- **Data Sync**: `src/cli/sync_oci.py` provides a robust mechanism to transfer validated data from local SQLite to OCI PostgreSQL.
 
 ### Web Scraping Etiquette
 - **Rate Limiting**: Minimum 1-2 second delay between requests.
@@ -156,4 +156,3 @@ docker-compose logs -f scheduler
 - **[Docs/URL_REFERENCE.md](Docs/URL_REFERENCE.md)** - Canonical URL patterns and selectors.
 - **[Docs/SCHEDULER_README.md](Docs/SCHEDULER_README.md)** - APScheduler strategy and job configuration.
 - **[Docs/CRAWLING_LIMITATIONS.md](Docs/CRAWLING_LIMITATIONS.md)** - Known data quality issues.
-

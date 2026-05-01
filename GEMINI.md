@@ -29,7 +29,7 @@ The core functionalities include:
 -   **`src/models/`**: Defines SQLAlchemy ORM models for all database tables (e.g., `player.py`, `season.py`, `team.py`). These models include schema definitions and relationships.
 -   **`src/repositories/`**: Provides an abstraction layer for database operations (CRUD, UPSERT) for specific models (e.g., `player_season_batting_repository.py`, `player_season_pitching_repository.py`).
 -   **`src/db/`**: Contains database engine configuration and session management (`engine.py`).
--   **`src/cli/`**: Houses command-line interface tools for various tasks (e.g., `sync_supabase.py`).
+-   **`src/cli/`**: Houses command-line interface tools for various tasks (e.g., `sync_oci.py`).
 -   **`src/utils/`**: Utility functions and helpers.
 -   **`data/`**: Stores the local SQLite database file (`kbo_dev.db`) and CSV files for seeding.
 -   **`Docs/`**: Project documentation, including database schema definitions.
@@ -86,14 +86,14 @@ venv/bin/python3 -m src.crawlers.player_batting_all_series_crawler --year 2025 -
 Synchronize data from the local SQLite database to a remote OCI PostgreSQL instance. Ensure your `TARGET_DATABASE_URL` or `OCI_DB_URL` environment variable is set.
 
 ```bash
-# Example: Sync all tables to OCI
-venv/bin/python3 -m src.cli.sync_supabase
+# Example: Sync validated game details to OCI
+venv/bin/python3 -m src.cli.sync_oci --game-details --unsynced-only
 
-# Example: Sync only the 'player_season_pitching' table to OCI
-venv/bin/python3 -m src.cli.sync_supabase --table player_season_pitching
+# Example: Sync player season stats to OCI
+venv/bin/python3 -m src.cli.sync_oci --season-stats
 
 # Example: Sync all tables after truncating (clearing) them on OCI
-venv/bin/python3 -m src.cli.sync_supabase --truncate
+venv/bin/python3 -m src.cli.sync_oci --truncate
 ```
 
 ## Development Conventions

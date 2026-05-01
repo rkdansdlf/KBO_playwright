@@ -322,7 +322,7 @@ sqlite3 ./data/kbo_dev.db "SELECT * FROM player_basic LIMIT 5;"
 
 ---
 
-좋습니다. 아래에 **마이그레이션 SQL**, **백필(파싱) 스크립트**, **모델 패치**와 **실행 절차**를 한 번에 드릴게요. (기본 DB는 SQLite 가정, Supabase/Postgres용도 함께 제공합니다.)
+좋습니다. 아래에 **마이그레이션 SQL**, **백필(파싱) 스크립트**, **모델 패치**와 **실행 절차**를 한 번에 드릴게요. (기본 DB는 SQLite 가정, 운영 DB는 OCI/Postgres 기준입니다.)
 
 ---
 
@@ -384,7 +384,7 @@ PRAGMA foreign_keys=ON;
 
 ---
 
-# 2) Supabase/Postgres 마이그레이션 SQL (선택)
+# 2) OCI/Postgres 마이그레이션 SQL (선택)
 
 `backend/db/migrations_pg/0002_player_basic_indexes_birthdate.sql`
 
@@ -543,7 +543,7 @@ sqlite3 ./data/kbo_dev.db "SELECT COUNT(*) FROM player_basic WHERE birth_date_da
 sqlite3 ./data/kbo_dev.db "SELECT player_id, name, birth_date, birth_date_date FROM player_basic WHERE birth_date_date IS NULL AND birth_date IS NOT NULL LIMIT 20;"
 ```
 
-( Supabase/Postgres 를 병행한다면 1단계에서 `psql`로 PG용 SQL을 적용하고, `backfill_birthdates.py`는 같은 코드로 동작합니다. )
+( OCI/Postgres 를 병행한다면 1단계에서 `psql`로 PG용 SQL을 적용하고, `backfill_birthdates.py`는 같은 코드로 동작합니다. )
 
 ---
 
@@ -552,4 +552,3 @@ sqlite3 ./data/kbo_dev.db "SELECT player_id, name, birth_date, birth_date_date F
 * **인덱스**: `name`, `team`, `position`, `(team, position)`은 조회/필터 빈도가 높아 질 확률이 큽니다.
 * **NOT NULL**: 이미 `name`은 NOT NULL/`player_id`는 PK. 그 외 컬럼은 현행 크롤링 데이터에 공란이 많아 강제하지 않았습니다. 강제 필요 시 **새 테이블 생성→데이터 이관** 패턴(주석 템플릿)으로 적용하세요.
 * **birth_date_date**: 원문 문자열(`birth_date`)을 보존하면서 파싱된 날짜 컬럼을 별도로 두면, 검색/통계를 날짜형으로 정확히 처리할 수 있고 원문 유지로 회귀·검증이 용이합니다.
-

@@ -10,7 +10,7 @@
 4. [크롤링 명령어](#크롤링-명령어)
 5. [자동화 스크립트](#자동화-스크립트)
 6. [데이터 무결성 및 유지보수](#데이터-무결성-및-유지보수)
-7. [Supabase 동기화](#supabase-동기화)
+7. [OCI 동기화](#oci-동기화)
 7. [문제 해결](#문제-해결)
 8. [고급 사용법](#고급-사용법)
 
@@ -251,6 +251,93 @@ cp .env.example .env
 - `src.cli.collect_games`와 `src.cli.crawl_game_details --relay`의 릴레이 수집은 수동 보조 경로입니다. 완료 경기 대량 복구에는 `scripts/fetch_kbo_pbp.py`를 우선 사용하세요.
 - 상세/릴레이 통합 수집 CLI는 기본적으로 기존 데이터가 있으면 재수집하지 않습니다. 다시 덮어써야 할 때만 `--force`를 사용합니다.
 
+#### 릴레이 `game_events` 정제/보정
+문자중계 저장은 두 갈래입니다. `game_play_by_play`는 이닝 헤더, 투구 로그, 교체/방문, 구분선까지 포함하는 원문 보존용이고, `game_events`는 WPA와 Coach 리뷰가 소비하는 실제 결과 이벤트만 저장합니다. 이닝 헤더, `N구`, `N번타자`, 구분선, 피치클락/비디오판독/경기중단 같은 행정 메시지가 승부처로 보이면 `game_events` 정제가 필요한 상태입니다.
+
+```bash
+# 2024-2026 시즌 정제 가능 여부만 점검
+./venv/bin/python3 -m src.cli.rebuild_relay_events \
+    --season 2024 --season 2025 --season 2026 \
+    --dry-run \
+    --report-out data/recovery/relay_event_rebuild_dry_run.csv
+
+# 실제 로컬 반영 + OCI에는 game_events만 배치 동기화
+./venv/bin/python3 -m src.cli.rebuild_relay_events \
+    --season 2024 --season 2025 --season 2026 \
+    --apply --sync-oci --oci-sync-mode events \
+    --report-out data/recovery/relay_event_rebuild_apply.csv \
+    --backup-out data/recovery/relay_event_rebuild_backup.csv
+
+# 특정 경기만 다시 보정
+./venv/bin/python3 -m src.cli.rebuild_relay_events \
+    --game-id 20260428HTNC0 \
+    --apply --sync-oci --oci-sync-mode events
+
+# CSV/텍스트 파일의 경기 목록만 보정
+./venv/bin/python3 -m src.cli.rebuild_relay_events \
+    --game-ids-file /tmp/game_ids.txt \
+    --apply --sync-oci --oci-sync-mode events
+
+# 보정 skip 경기 원천 재수집 후보 점검(저장 없음)
+./venv/bin/python3 scripts/fetch_kbo_pbp.py \
+    --game-ids-file data/recovery/relay_event_rebuild_skipped_game_ids.txt \
+    --force --dry-run \
+    --source-order naver,kbo \
+    --min-result-events 20 \
+    --validate-final-score \
+    --report-out data/recovery/relay_skip_recrawl_dry_run.csv
+
+# 검증을 통과한 fresh relay만 저장
+./venv/bin/python3 scripts/fetch_kbo_pbp.py \
+    --game-ids-file data/recovery/relay_event_rebuild_skipped_game_ids.txt \
+    --force \
+    --source-order naver,kbo \
+    --min-result-events 20 \
+    --validate-final-score \
+    --report-out data/recovery/relay_skip_recrawl_apply.csv
+```
+
+리포트 해석:
+- `DRY_RUN_READY`: 적용 가능하지만 `--dry-run`이라 DB를 바꾸지 않음.
+- `APPLIED`: 로컬 `game_events`를 경기 단위로 교체함.
+- `SKIPPED_TOO_FEW_EVENTS`: 정제 후 결과 이벤트가 기본 기준 20개 미만이라 안전상 미적용. 원천 재수집 후보입니다.
+- `SKIPPED_SCORE_MISMATCH`: 정제 이벤트의 최종 점수가 `game` 최종 점수와 달라 미적용. 점수 상태 누락/불완전 문자중계 후보입니다.
+- `oci_status=synced_events:<rows>`: 적용 경기의 OCI `game_events`만 삭제 후 재삽입 완료. 전체 경기 child snapshot 동기화가 필요할 때만 `--oci-sync-mode specific-game`을 사용합니다.
+- `fetch_kbo_pbp.py`의 `skipped_validation`: fresh relay를 가져왔지만 `--min-result-events` 또는 `--validate-final-score` 기준을 통과하지 못해 저장하지 않음.
+
+#### 보정 후 Coach 리뷰 JSON 재생성
+`game_events`를 보정하면 기존 `game_summary`의 `리뷰_WPA` JSON은 예전 승부처를 계속 들고 있을 수 있습니다. 보정 성공 경기 목록만 대상으로 리뷰 JSON을 다시 만들고, OCI에는 `game_summary` 리뷰 행만 빠르게 동기화합니다.
+
+```bash
+# 보정 성공 경기 목록으로 변경 예정 리뷰만 점검
+./venv/bin/python3 -m src.cli.regenerate_review_summaries \
+    --game-ids-file data/recovery/relay_event_rebuild_applied_game_ids.txt \
+    --dry-run \
+    --report-out data/recovery/review_summary_regen_dry_run.csv
+
+# 로컬 리뷰 JSON 재생성 + OCI game_summary 리뷰 행 동기화
+./venv/bin/python3 -m src.cli.regenerate_review_summaries \
+    --game-ids-file data/recovery/relay_event_rebuild_applied_game_ids.txt \
+    --apply --sync-oci \
+    --report-out data/recovery/review_summary_regen_apply.csv \
+    --backup-out data/recovery/review_summary_regen_backup.csv
+
+# 특정 날짜 전체 리뷰만 다시 생성
+./venv/bin/python3 -m src.cli.regenerate_review_summaries \
+    --date 20251015 \
+    --apply --sync-oci
+```
+
+리포트 해석:
+- `DRY_RUN_READY`: 새 리뷰 JSON이 기존 값과 달라질 예정.
+- `DRY_RUN_UNCHANGED`: 재생성해도 기존 로컬 리뷰와 동일.
+- `APPLIED`: 로컬 `game_summary`의 `리뷰_WPA`를 갱신.
+- `UNCHANGED`: 로컬 값은 그대로지만 `--sync-oci` 대상에는 포함.
+- `SKIPPED_REVIEW_MOMENT_NOISE`: 재생성 결과에도 헤더/구분선/투구 로그 같은 noise 승부처가 있어 저장하지 않음.
+- `oci_status=synced_summary:<rows>`: 대상 경기의 OCI `리뷰_WPA` summary 행을 교체/동기화 완료.
+
+`freshness_gate`는 `missing_review_moments`뿐 아니라 `review_moment_noise`도 검사합니다. 이 항목이 실패하면 `game_events` 정제 또는 리뷰 재생성을 먼저 확인하세요.
+
 ---
 
 ## 🤖 자동화 스크립트
@@ -399,30 +486,27 @@ docker-compose logs -f scheduler
 
 ---
 
-## ☁️ Supabase 동기화
+## ☁️ OCI 동기화
 
 ### 환경변수 설정
 ```bash
-# Supabase 연결 정보 설정
-export SUPABASE_DB_URL='postgresql://postgres.xxx:[PASSWORD]@xxx.pooler.supabase.com:5432/postgres'
+# OCI PostgreSQL 연결 정보 설정
+export OCI_DB_URL='postgresql://user:password@host:5432/bega_backend'
 ```
 
 ### 동기화 명령어
 ```bash
-# 전체 데이터 동기화
-./venv/bin/python3 -m src.sync.supabase_sync
+# 운영 권장: 검증된 경기 상세만 OCI에 반영
+./venv/bin/python3 -m src.cli.sync_oci --game-details --unsynced-only
 
-# 특정 모델만 동기화
-./venv/bin/python3 -m src.sync.supabase_sync --models PlayerSeasonBatting
+# 특정 연도 경기 상세 동기화
+./venv/bin/python3 -m src.cli.sync_oci --game-details --year 2025
 
-# 건배치 동기화 (메모리 절약)
-./venv/bin/python3 -m src.sync.supabase_sync --batch-size 500
+# player_basic 동기화
+./venv/bin/python3 -m src.cli.sync_oci --player-basic
 
-# 동기화 상태 확인
-./venv/bin/python3 -c "
-from src.sync.supabase_sync import check_sync_status
-check_sync_status()
-"
+# 로컬/OCI 품질 게이트
+./venv/bin/python3 scripts/maintenance/quality_gate.py
 ```
 
 ---
@@ -477,13 +561,8 @@ print(get_team_code('MBC청룡', 1985))  # LG 트윈스로 매핑
 print(get_team_code('해태타이거즈', 1990))  # KIA 타이거즈로 매핑
 "
 
-# Supabase 팀 히스토리 확인
-./venv/bin/python3 -c "
-from src.utils.team_mapping import TeamMappingService
-tms = TeamMappingService()
-tms.load_supabase_mapping()
-print(tms.year_specific_mapping)
-"
+# OCI 팀/시즌 기준 데이터 확인
+./venv/bin/python3 scripts/check_oci_summary.py
 ```
 
 ---
@@ -512,8 +591,8 @@ print(tms.year_specific_mapping)
     --years 2020-2025 \
     --concurrency 5
 
-# 메모리 최적화 동기화
-./venv/bin/python3 -m src.sync.supabase_sync --batch-size 100
+# OCI 변경분 중심 동기화
+./venv/bin/python3 -m src.cli.sync_oci --game-details --unsynced-only
 ```
 
 ### 데이터 분석
@@ -614,7 +693,7 @@ export DATABASE_URL="sqlite:///./data/kbo_dev.db"
 ```bash
 # PostgreSQL 연결
 export DATABASE_URL="postgresql://user:pass@localhost:5432/kbo_prod"
-export SUPABASE_DB_URL="postgresql://postgres.xxx:pass@xxx.pooler.supabase.com:5432/postgres"
+export OCI_DB_URL="postgresql://user:pass@oci-host:5432/bega_backend"
 
 # 안정적인 크롤링
 ./crawl_clean_and_sync.sh
@@ -693,7 +772,7 @@ print(f'2001년 플레이오프: {msg}')
 
 - **[프로젝트 개요](projectOverviewGuid.md)**: 전체 아키텍처
 - **[스케줄러 가이드](SCHEDULER_README.md)**: 자동화 설정
-- **[Supabase 설정](SUPABASE_SETUP.md)**: 클라우드 연동
+- **[OCI 런북](../zero_issue_runbook_oci.md)**: OCI 운영/품질 게이트
 - **[URL 레퍼런스](URL_REFERENCE.md)**: KBO 사이트 구조
 - **[크롤링 제약사항](CRAWLING_LIMITATIONS.md)**: 알려진 이슈들
 

@@ -16,7 +16,7 @@ class TeamHistoryEntry:
     end_season: Optional[int]
 
 
-# This list mirrors Docs/schema/teams_history.md and Supabase public.team_history seed data.
+# This list mirrors Docs/schema/teams_history.md and OCI public.team_history seed data.
 _TEAM_HISTORY: tuple[TeamHistoryEntry, ...] = (
     TeamHistoryEntry(1, "SS", 1982, None),
     TeamHistoryEntry(2, "LT", 1982, None),

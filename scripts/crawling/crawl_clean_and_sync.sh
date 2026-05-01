@@ -1,7 +1,7 @@
 #!/bin/bash
-# 깨끗한 크롤링 + Supabase 동기화 원스텝 스크립트
+# 깨끗한 크롤링 + OCI 동기화 원스텝 스크립트
 
-echo "🚀 KBO 데이터 깨끗한 크롤링 + Supabase 동기화"
+echo "🚀 KBO 데이터 깨끗한 크롤링 + OCI 동기화"
 echo "================================================"
 
 # 기본 설정
@@ -40,23 +40,23 @@ if [ $? -ne 0 ]; then
 fi
 
 echo ""
-echo "☁️ Supabase 동기화 확인..."
+echo "☁️ OCI 동기화 확인..."
 
-if [ -z "$SUPABASE_DB_URL" ]; then
-    echo "⚠️ SUPABASE_DB_URL 환경변수가 설정되지 않았습니다."
+if [ -z "$OCI_DB_URL" ]; then
+    echo "⚠️ OCI_DB_URL 환경변수가 설정되지 않았습니다."
     echo "동기화를 건너뜁니다."
     echo ""
-    echo "💡 Supabase 동기화 방법:"
-    echo "  export SUPABASE_DB_URL='postgresql://postgres.xxx:[PASSWORD]@xxx.pooler.supabase.com:5432/postgres'"
-    echo "  ./venv/bin/python3 -m src.sync.supabase_sync"
+    echo "💡 OCI 동기화 방법:"
+    echo "  export OCI_DB_URL='postgresql://user:password@host:5432/bega_backend'"
+    echo "  ./venv/bin/python3 -m src.cli.sync_oci --game-details --unsynced-only"
 else
-    echo "🔄 Supabase 동기화 중..."
-    $PYTHON -m src.sync.supabase_sync
+    echo "🔄 OCI 동기화 중..."
+    $PYTHON -m src.cli.sync_oci --game-details --unsynced-only
     
     if [ $? -eq 0 ]; then
-        echo "✅ Supabase 동기화 완료"
+        echo "✅ OCI 동기화 완료"
     else
-        echo "⚠️ Supabase 동기화 중 문제 발생"
+        echo "⚠️ OCI 동기화 중 문제 발생"
     fi
 fi
 

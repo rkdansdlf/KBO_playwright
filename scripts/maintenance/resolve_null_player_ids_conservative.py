@@ -16,7 +16,9 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Iterable
 
-from sqlalchemy import bindparam, text
+from dotenv import load_dotenv
+from sqlalchemy import bindparam, create_engine, text
+from sqlalchemy.orm import sessionmaker
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(PROJECT_ROOT) not in sys.path:
@@ -47,11 +49,11 @@ def _sqlite_path_from_url(db_url: str) -> Path | None:
     return Path(db_url.removeprefix("sqlite:///"))
 
 
-def _backup_sqlite_database(output_dir: Path) -> Path | None:
-    db_path = _sqlite_path_from_url(DATABASE_URL)
+def _backup_sqlite_database(db_url: str, output_dir: Path) -> Path | None:
+    db_path = _sqlite_path_from_url(db_url)
     if db_path is None or not db_path.exists():
         return None
-    stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    stamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
     backup_path = output_dir / f"{db_path.name}.backup_before_null_player_id_{stamp}"
     output_dir.mkdir(parents=True, exist_ok=True)
     shutil.copy2(db_path, backup_path)
@@ -378,6 +380,48 @@ def update_null_player_ids_for_group(
     return int(result.rowcount or 0)
 
 
+def delete_duplicate_null_player_id_rows_for_group(
+    session,
+    *,
+    table_name: str,
+    year: int,
+    team_code: str,
+    player_name: str,
+    player_id: int,
+    dry_run: bool,
+) -> int:
+    columns = _table_columns(session, table_name)
+    if table_name not in {"game_batting_stats", "game_pitching_stats"} or "appearance_seq" not in columns:
+        return 0
+    where_sql = f"""
+        WHERE player_id IS NULL
+          AND substr(game_id, 1, 4) = :year
+          AND COALESCE(team_code, '') = :team_code
+          AND player_name = :player_name
+          AND EXISTS (
+              SELECT 1
+              FROM {table_name} existing
+              WHERE existing.game_id = {table_name}.game_id
+                AND existing.appearance_seq = {table_name}.appearance_seq
+                AND existing.player_id = :player_id
+                AND existing.id != {table_name}.id
+          )
+    """
+    params = {
+        "player_id": int(player_id),
+        "year": str(year),
+        "team_code": team_code,
+        "player_name": player_name,
+    }
+    if dry_run:
+        return int(
+            session.execute(text(f"SELECT COUNT(*) FROM {table_name} {where_sql}"), params).scalar()
+            or 0
+        )
+    result = session.execute(text(f"DELETE FROM {table_name} {where_sql}"), params)
+    return int(result.rowcount or 0)
+
+
 def _collect_null_groups(session, *, tables: tuple[str, ...], years: tuple[int, ...]) -> list[dict[str, Any]]:
     groups: list[dict[str, Any]] = []
     years_as_text = [str(year) for year in years]
@@ -419,65 +463,96 @@ def resolve_null_player_ids(
     output_dir: Path,
     apply: bool,
     backup: bool = True,
+    db_url: str | None = None,
+    delete_duplicates: bool = False,
 ) -> dict[str, Any]:
     output_dir.mkdir(parents=True, exist_ok=True)
-    stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    stamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
     alias_map = _load_alias_map()
     overrides = load_overrides(overrides_csv)
     resolved_rows: list[dict[str, Any]] = []
     unresolved_rows: list[dict[str, Any]] = []
 
     backup_path = None
+    active_db_url = db_url or DATABASE_URL
     if apply and backup:
-        backup_path = _backup_sqlite_database(output_dir)
+        backup_path = _backup_sqlite_database(active_db_url, output_dir)
 
-    with SessionLocal() as session:
-        groups = _collect_null_groups(session, tables=tables, years=years)
-        total_updated = 0
-        for group in groups:
-            uniforms = fetch_group_uniform_nos(
-                session,
-                table_name=group["table_name"],
-                year=group["year"],
-                team_code=group["team_code"],
-                player_name=group["player_name"],
-            )
-            result = choose_candidate_ids(
-                session,
-                table_name=group["table_name"],
-                season=group["year"],
-                team_code=group["team_code"],
-                player_name=group["player_name"],
-                uniform_nos=uniforms,
-                alias_map=alias_map,
-                overrides=overrides,
-            )
-            candidate_ids = [int(pid) for pid in result["candidate_ids"]]
-            base_row = {
-                **group,
-                "uniform_nos": ",".join(uniforms),
-                "candidate_ids": ",".join(str(pid) for pid in candidate_ids),
-                "resolution_method": result.get("resolution_method", ""),
-                "resolution_reason": result.get("resolution_reason", ""),
-            }
-            if is_group_resolvable(candidate_ids):
-                updated = update_null_player_ids_for_group(
+    engine = None
+    session_factory = SessionLocal
+    if db_url:
+        engine = create_engine(db_url)
+        session_factory = sessionmaker(bind=engine, autoflush=False, autocommit=False, expire_on_commit=False)
+
+    try:
+        with session_factory() as session:
+            groups = _collect_null_groups(session, tables=tables, years=years)
+            total_updated = 0
+            for group in groups:
+                uniforms = fetch_group_uniform_nos(
                     session,
                     table_name=group["table_name"],
                     year=group["year"],
                     team_code=group["team_code"],
                     player_name=group["player_name"],
-                    player_id=candidate_ids[0],
-                    dry_run=not apply,
                 )
-                total_updated += updated
-                resolved_rows.append({**base_row, "resolved_player_id": candidate_ids[0], "updated_rows": updated})
+                result = choose_candidate_ids(
+                    session,
+                    table_name=group["table_name"],
+                    season=group["year"],
+                    team_code=group["team_code"],
+                    player_name=group["player_name"],
+                    uniform_nos=uniforms,
+                    alias_map=alias_map,
+                    overrides=overrides,
+                )
+                candidate_ids = [int(pid) for pid in result["candidate_ids"]]
+                base_row = {
+                    **group,
+                    "uniform_nos": ",".join(uniforms),
+                    "candidate_ids": ",".join(str(pid) for pid in candidate_ids),
+                    "resolution_method": result.get("resolution_method", ""),
+                    "resolution_reason": result.get("resolution_reason", ""),
+                }
+                if is_group_resolvable(candidate_ids):
+                    duplicate_rows = delete_duplicate_null_player_id_rows_for_group(
+                        session,
+                        table_name=group["table_name"],
+                        year=group["year"],
+                        team_code=group["team_code"],
+                        player_name=group["player_name"],
+                        player_id=candidate_ids[0],
+                        dry_run=not (apply and delete_duplicates),
+                    )
+                    updated = update_null_player_ids_for_group(
+                        session,
+                        table_name=group["table_name"],
+                        year=group["year"],
+                        team_code=group["team_code"],
+                        player_name=group["player_name"],
+                        player_id=candidate_ids[0],
+                        dry_run=not apply,
+                    )
+                    total_updated += updated
+                    resolved_rows.append(
+                        {
+                            **base_row,
+                            "resolved_player_id": candidate_ids[0],
+                            "updated_rows": updated,
+                            "duplicate_null_rows": duplicate_rows,
+                        }
+                    )
+                else:
+                    unresolved_rows.append(
+                        {**base_row, "resolved_player_id": "", "updated_rows": 0, "duplicate_null_rows": 0}
+                    )
+            if apply:
+                session.commit()
             else:
-                unresolved_rows.append({**base_row, "resolved_player_id": "", "updated_rows": 0})
-        if apply:
-            session.commit()
-        else:
-            session.rollback()
+                session.rollback()
+    finally:
+        if engine is not None:
+            engine.dispose()
 
     resolved_csv = output_dir / f"null_player_id_conservative_resolved_{stamp}.csv"
     unresolved_csv = output_dir / f"null_player_id_conservative_unresolved_{stamp}.csv"
@@ -493,6 +568,7 @@ def resolve_null_player_ids(
         "resolution_reason",
         "resolved_player_id",
         "updated_rows",
+        "duplicate_null_rows",
     ]
     _write_csv(resolved_csv, resolved_rows, fieldnames)
     _write_csv(unresolved_csv, unresolved_rows, fieldnames)
@@ -501,6 +577,7 @@ def resolve_null_player_ids(
         "resolved_groups": len(resolved_rows),
         "unresolved_groups": len(unresolved_rows),
         "updated_rows": total_updated,
+        "duplicate_null_rows": sum(int(row["duplicate_null_rows"]) for row in resolved_rows),
         "resolved_csv": str(resolved_csv),
         "unresolved_csv": str(unresolved_csv),
         "backup_path": str(backup_path) if backup_path else "",
@@ -509,17 +586,28 @@ def resolve_null_player_ids(
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Conservatively fill NULL player_id values.")
+    parser.add_argument("--oci", action="store_true", help="Use OCI_DB_URL instead of local DATABASE_URL.")
+    parser.add_argument("--db-url", default=None, help="Explicit database URL. Overrides --oci and local DATABASE_URL.")
     parser.add_argument("--years", default="2024,2025", help="Comma-separated years to inspect.")
     parser.add_argument("--tables", default=",".join(DEFAULT_TABLES), help="Comma-separated table names.")
     parser.add_argument("--overrides-csv", default=str(DEFAULT_OVERRIDES_CSV), help="Manual override CSV path.")
     parser.add_argument("--output-dir", default=str(DEFAULT_OUTPUT_DIR), help="Directory for report CSV files.")
     parser.add_argument("--apply", action="store_true", help="Persist updates. Default is dry-run only.")
+    parser.add_argument(
+        "--delete-duplicates",
+        action="store_true",
+        help="With --apply, delete NULL rows that duplicate an existing resolved row.",
+    )
     parser.add_argument("--no-backup", action="store_true", help="Skip SQLite backup before --apply.")
     return parser.parse_args()
 
 
 def main() -> None:
+    load_dotenv()
     args = parse_args()
+    db_url = args.db_url or (os.getenv("OCI_DB_URL") if args.oci else None)
+    if args.oci and not db_url:
+        raise SystemExit("OCI_DB_URL is required with --oci")
     years = tuple(int(part.strip()) for part in args.years.split(",") if part.strip())
     tables = tuple(part.strip() for part in args.tables.split(",") if part.strip())
     result = resolve_null_player_ids(
@@ -529,11 +617,14 @@ def main() -> None:
         output_dir=Path(args.output_dir),
         apply=bool(args.apply),
         backup=not args.no_backup,
+        db_url=db_url,
+        delete_duplicates=bool(args.delete_duplicates),
     )
     mode = "APPLY" if args.apply else "DRY-RUN"
     print(
         f"[{mode}] resolved_groups={result['resolved_groups']} "
-        f"unresolved_groups={result['unresolved_groups']} updated_rows={result['updated_rows']}"
+        f"unresolved_groups={result['unresolved_groups']} updated_rows={result['updated_rows']} "
+        f"duplicate_null_rows={result['duplicate_null_rows']}"
     )
     if result["backup_path"]:
         print(f"[BACKUP] {result['backup_path']}")

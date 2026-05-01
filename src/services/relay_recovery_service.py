@@ -180,6 +180,8 @@ async def recover_relay_data(
     capability_path: str | Path = DEFAULT_CAPABILITY_PATH,
     source_timeout: float = 30.0,
     allow_derived_pbp: bool = False,
+    min_result_events: int | None = None,
+    validate_final_score: bool = False,
     report_out: str | Path | None = None,
     sleep_seconds: float = 1.0,
     orchestrator: RelayRecoveryOrchestrator | None = None,
@@ -203,6 +205,12 @@ async def recover_relay_data(
     log(f"[INFO] Total games to process: {len(target_list)}")
     if dry_run:
         log("[WARN] Dry-run mode activated. No data will be saved.")
+
+    final_scores = (
+        _load_final_scores([target.game_id for target in target_list])
+        if validate_final_score
+        else {}
+    )
 
     for bucket_id, bucket_targets in bucket_map.items():
         source_order = orchestrator.source_order_for_bucket(
@@ -246,6 +254,29 @@ async def recover_relay_data(
             if relay_result.is_empty:
                 run_result.empty_games += 1
                 log(f"[SKIP] No relay data extracted for {target.game_id}")
+                continue
+
+            validation_failure = _validate_relay_result(
+                target.game_id,
+                relay_result,
+                final_scores=final_scores,
+                min_result_events=min_result_events,
+                validate_final_score=validate_final_score,
+            )
+            if validation_failure:
+                log(f"[SKIP] Validation failed for {target.game_id}: {validation_failure}")
+                run_result.report_rows.append(
+                    {
+                        "game_id": target.game_id,
+                        "bucket_id": bucket_id,
+                        "source_name": relay_result.source_name,
+                        "status": "skipped_validation",
+                        "saved_rows": 0,
+                        "has_event_state": relay_result.has_event_state,
+                        "has_raw_pbp": relay_result.has_raw_pbp or bool(relay_result.raw_pbp_rows),
+                        "notes": validation_failure,
+                    }
+                )
                 continue
 
             saved_rows = _save_or_count_rows(
@@ -376,6 +407,67 @@ def _load_target_rows(
         prefix = f"{season}{month:02d}" if month else str(season)
         query = query.filter(Game.game_id.like(f"{prefix}%"))
     return query.order_by(Game.game_id.asc()).all()
+
+
+def _load_final_scores(game_ids: Sequence[str]) -> dict[str, tuple[int | None, int | None]]:
+    if not game_ids:
+        return {}
+    with SessionLocal() as session:
+        rows = (
+            session.query(Game.game_id, Game.away_score, Game.home_score)
+            .filter(Game.game_id.in_(list(game_ids)))
+            .all()
+        )
+    return {game_id: (away_score, home_score) for game_id, away_score, home_score in rows}
+
+
+def _validate_relay_result(
+    game_id: str,
+    relay_result: NormalizedRelayResult,
+    *,
+    final_scores: dict[str, tuple[int | None, int | None]],
+    min_result_events: int | None,
+    validate_final_score: bool,
+) -> str | None:
+    events = relay_result.events or []
+    if min_result_events is not None and len(events) < min_result_events:
+        return f"too_few_result_events:{len(events)}<{min_result_events}"
+
+    if not validate_final_score:
+        return None
+
+    expected = final_scores.get(game_id)
+    if expected is None or expected[0] is None or expected[1] is None:
+        return "missing_game_final_score"
+
+    actual = _last_event_score(events)
+    if actual is None:
+        return "missing_event_final_score"
+
+    if actual != expected:
+        return (
+            "final_score_mismatch:"
+            f"events={actual[0]}-{actual[1]} game={expected[0]}-{expected[1]}"
+        )
+    return None
+
+
+def _last_event_score(events: Sequence[dict[str, Any]]) -> tuple[int, int] | None:
+    for event in reversed(events):
+        away = _coerce_int(event.get("away_score"))
+        home = _coerce_int(event.get("home_score"))
+        if away is not None and home is not None:
+            return away, home
+    return None
+
+
+def _coerce_int(value: Any) -> int | None:
+    if value is None or value == "":
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
 
 
 def _save_or_count_rows(

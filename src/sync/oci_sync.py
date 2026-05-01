@@ -393,7 +393,7 @@ class OCISync:
         except Exception as e:
             print(f"⚠️ 타자 데이터 동기화 검증 실패: {e}")
 
-    def show_supabase_data_sample(self):
+    def show_oci_data_sample(self):
         """OCI의 데이터 샘플 표시"""
         try:
             # 투수 데이터 샘플
@@ -578,9 +578,9 @@ class OCISync:
 
         for sf in sqlite_franchises:
             # Find corresponding OCI franchise by original_code (Unique Key)
-            supabase_franchise = self.target_session.query(Franchise).filter_by(original_code=sf.original_code).first()
-            if supabase_franchise:
-                mapping[sf.id] = supabase_franchise.id
+            oci_franchise = self.target_session.query(Franchise).filter_by(original_code=sf.original_code).first()
+            if oci_franchise:
+                mapping[sf.id] = oci_franchise.id
         
         return mapping
 
@@ -591,9 +591,9 @@ class OCISync:
         sqlite_ballparks = self.sqlite_session.query(Ballpark).all()
 
         for sb in sqlite_ballparks:
-            supabase_ballpark = self.target_session.query(Ballpark).filter_by(name_kor=sb.name_kor).first()
-            if supabase_ballpark:
-                mapping[sb.id] = supabase_ballpark.id
+            oci_ballpark = self.target_session.query(Ballpark).filter_by(name_kor=sb.name_kor).first()
+            if oci_ballpark:
+                mapping[sb.id] = oci_ballpark.id
 
         return mapping
 
@@ -654,12 +654,12 @@ class OCISync:
         synced = 0
 
         for identity in identities:
-            supabase_player_id = player_mapping.get(identity.player_id)
-            if not supabase_player_id:
+            oci_player_id = player_mapping.get(identity.player_id)
+            if not oci_player_id:
                 continue
 
             data = {
-                'player_id': supabase_player_id,
+                'player_id': oci_player_id,
                 'name_kor': identity.name_kor,
                 'name_eng': identity.name_eng,
                 'start_date': identity.start_date,
@@ -685,11 +685,11 @@ class OCISync:
 
         for sp in sqlite_players:
             if sp.kbo_person_id:
-                supabase_player = self.target_session.query(Player).filter_by(
+                oci_player = self.target_session.query(Player).filter_by(
                     kbo_person_id=sp.kbo_person_id
                 ).first()
-                if supabase_player:
-                    mapping[sp.id] = supabase_player.id
+                if oci_player:
+                    mapping[sp.id] = oci_player.id
 
         return mapping
 
@@ -1368,10 +1368,7 @@ class OCISync:
         )
 
         # 7. Game Summary
-        results['summary'] = self._sync_simple_table(
-            GameSummary,
-            ['game_id', 'summary_type', 'player_name', 'detail_text'],
-            exclude_cols=['created_at', 'id'],
+        results['summary'] = self._sync_game_summary_rows(
             filters=get_child_filters(GameSummary)
         )
         
@@ -1427,9 +1424,90 @@ class OCISync:
         results['pitching_stats'] = self._sync_simple_table(GamePitchingStat, ['game_id', 'player_id', 'appearance_seq'], exclude_cols=['id', 'created_at'], filters=[GamePitchingStat.game_id == game_id])
         results['play_by_play'] = self._sync_game_play_by_play(filters=[GamePlayByPlay.game_id == game_id])
         results['events'] = self._sync_simple_table(GameEvent, ['game_id', 'event_seq'], exclude_cols=['id', 'created_at'], filters=[GameEvent.game_id == game_id])
-        results['summary'] = self._sync_simple_table(GameSummary, ['game_id', 'summary_type', 'player_name', 'detail_text'], exclude_cols=['id', 'created_at'], filters=[GameSummary.game_id == game_id])
+        results['summary'] = self._sync_game_summary_rows(
+            filters=[GameSummary.game_id == game_id],
+            replace_game_ids=[game_id],
+        )
         
         return results
+
+    def sync_review_summaries_for_games(
+        self,
+        game_ids: List[str],
+        *,
+        summary_type: str = "리뷰_WPA",
+    ) -> Dict[str, int]:
+        """Replace and sync review summary rows for a bounded game_id set."""
+        from src.models.game import GameSummary
+
+        target_game_ids = sorted({game_id for game_id in game_ids if game_id})
+        if not target_game_ids:
+            return {"summary": 0, "games": 0}
+
+        for batch in self._chunked(target_game_ids, 500):
+            self.target_session.query(GameSummary).filter(
+                GameSummary.game_id.in_(batch),
+                GameSummary.summary_type == summary_type,
+            ).delete(synchronize_session=False)
+        self.target_session.commit()
+
+        synced = self._sync_game_summary_rows(
+            filters=[
+                GameSummary.game_id.in_(target_game_ids),
+                GameSummary.summary_type == summary_type,
+            ],
+            summary_type=summary_type,
+            replace_game_ids=target_game_ids,
+        )
+        return {"summary": synced, "games": len(target_game_ids)}
+
+    def _sync_game_summary_rows(
+        self,
+        filters: List = None,
+        *,
+        summary_type: str | None = None,
+        replace_game_ids: List[str] | None = None,
+    ) -> int:
+        from src.models.game import GameSummary
+
+        query = self.sqlite_session.query(GameSummary)
+        if filters:
+            query = query.filter(*filters)
+        if summary_type:
+            query = query.filter(GameSummary.summary_type == summary_type)
+
+        rows = query.all()
+        if not rows:
+            print("ℹ️  No records for game_summary")
+            return 0
+
+        game_ids = sorted(set(replace_game_ids or [row.game_id for row in rows if row.game_id]))
+        if game_ids:
+            for batch in self._chunked(game_ids, 500):
+                delete_query = self.target_session.query(GameSummary).filter(GameSummary.game_id.in_(batch))
+                if summary_type:
+                    delete_query = delete_query.filter(GameSummary.summary_type == summary_type)
+                delete_query.delete(synchronize_session=False)
+            self.target_session.commit()
+
+        columns = [
+            c.key
+            for c in GameSummary.__table__.columns
+            if c.key not in {"id", "created_at", "updated_at"}
+        ]
+        records = []
+        seen = set()
+        for row in rows:
+            key = (row.game_id, row.summary_type, row.player_name or "")
+            if key in seen:
+                continue
+            seen.add(key)
+            records.append({column: getattr(row, column) for column in columns if hasattr(row, column)})
+
+        print(f"🚚 Syncing game_summary ({len(records)} rows)...")
+        self._bulk_copy_upsert("game_summary", records, [], update_timestamp=False)
+        print(f"   Synced {len(records)}/{len(records)} rows via COPY...")
+        return len(records)
 
     def _sync_game_play_by_play(self, filters: List = None) -> int:
         from src.models.game import GamePlayByPlay
@@ -1615,7 +1693,9 @@ class OCISync:
             # 4. UPSERT from Temp Table to Target Table
             update_cols = [k for k in keys if k not in unique_cols and k not in ('created_at', 'updated_at', 'id')]
             
-            if not update_cols:
+            if not unique_cols:
+                conflict_action = ""
+            elif not update_cols:
                 conflict_action = "DO NOTHING"
             else:
                 set_clause = ", ".join([f'"{k}" = EXCLUDED."{k}"' for k in update_cols])
@@ -1671,7 +1751,7 @@ class OCISync:
         """Sync awards from SQLite to OCI"""
         # Ensure table exists
         try:
-            migration_path = Path("migrations/supabase/019_create_awards.sql")
+            migration_path = Path("migrations/oci/019_create_awards.sql")
             if migration_path.exists():
                 sql = migration_path.read_text()
                 self.target_session.execute(text(sql))
@@ -1829,7 +1909,7 @@ def main():
                 total_synced += pitching_synced
 
             # OCI 데이터 샘플 표시
-            sync.show_supabase_data_sample()
+            sync.show_oci_data_sample()
 
             print("\n" + "=" * 50)
             print("📈 동기화 완료")

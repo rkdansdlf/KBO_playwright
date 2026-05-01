@@ -253,15 +253,30 @@ class GameDetailCrawler:
         """Wait for box score elements to be visible with fast-fail for cancelled games"""
         try:
             # Check for the boxscore tables or the cancellation status specifically for the current game
-            await page.wait_for_selector('#tblAwayHitter1, #tblHomeHitter1, #tblAwayPitcher, #tblHomePitcher, li.game-cont.on p.staus, .game-status.cancel', timeout=15000)
+            # Improved selector to include both correct 'status' and potential typo 'staus' just in case, 
+            # and better targets for the actual score board area.
+            await page.wait_for_selector('#tblAwayHitter1, #tblHomeHitter1, #tblAwayPitcher, #tblHomePitcher, li.game-cont.on p.status, li.game-cont.on p.staus, .game-status.cancel', timeout=15000)
 
             # Check the status of the CURRENTLY SELECTED game in the carousel
-            status_el = await page.query_selector('li.game-cont.on p.staus, li.game-cont.on .game-status.cancel')
+            # We look for specific cancellation text in the status badge of the active game item
+            status_el = await page.query_selector('li.game-cont.on p.status, li.game-cont.on p.staus, li.game-cont.on .game-status.cancel')
             if status_el:
-                txt = await status_el.inner_text()
-                if "취소" in txt:
-                    print(f"ℹ️ Game {page.url} is marked as CANCELLED (경기취소)")
+                txt = (await status_el.inner_text()).strip()
+                # Must be a clear match for cancellation, not just containing the word
+                if any(cancel_word in txt for cancel_word in ["경기취소", "취소", "우천취소"]):
+                    print(f"ℹ️ Game {page.url} is clearly marked as CANCELLED in badge: '{txt}'")
                     return False, "cancelled"
+
+            # Double check: if no boxscore tables are found but we didn't see a cancel badge
+            # We check if the main scoreboard area says it's cancelled
+            hitter_table = await page.query_selector('#tblAwayHitter1')
+            if not hitter_table:
+                scoreboard = await page.query_selector('.sms-score, .score-board')
+                if scoreboard:
+                    sb_text = await scoreboard.inner_text()
+                    if "취소" in sb_text:
+                        print(f"ℹ️ Game {page.url} is marked as CANCELLED in scoreboard area")
+                        return False, "cancelled"
 
             return True, "ok"  # Found boxscore or at least not cancelled
         except Exception:

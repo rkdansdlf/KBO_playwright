@@ -29,7 +29,7 @@ player_id | name           | team | position
 
 ### Key Findings
 
-1. **Issue Location**: The problem exists in the SQLite database itself, NOT in Supabase sync
+1. **Issue Location**: The problem exists in the SQLite database itself, NOT in OCI sync
 2. **String Pattern**: The exact string is "Unknown Player" (capital U, capital P, with space)
 3. **No Default Value**: The string "Unknown Player" does NOT appear anywhere in the source code
 4. **Database Schema**: No DEFAULT value is set for the `name` column
@@ -59,7 +59,7 @@ Korean character encoding might have failed during a previous crawl, causing nam
 
 ## Investigation Steps Completed
 
-1. ✅ Verified issue exists in SQLite (not Supabase sync)
+1. ✅ Verified issue exists in SQLite (not OCI sync)
 2. ✅ Confirmed "Unknown Player" not in source code
 3. ✅ Checked database schema - no default values
 4. ✅ Reviewed all player-saving repositories
@@ -117,9 +117,9 @@ sqlite3 data/kbo_dev.db "SELECT player_id, name, team FROM player_basic WHERE na
 # Verify SQLite data quality
 venv/bin/python verify_sqlite_data.py
 
-# Sync to Supabase
-export SUPABASE_DB_URL='postgresql://...'
-venv/bin/python -m src.crawlers.player_search_crawler --save --sync-supabase
+# Sync to OCI
+export OCI_DB_URL='postgresql://...'
+venv/bin/python -m src.crawlers.player_search_crawler --save --sync-oci
 ```
 
 ## Prevention Measures
@@ -168,7 +168,7 @@ if not name or name == 'Unknown Player':
 2. Inspect live website HTML if test fails
 3. Fix crawler selectors if needed
 4. Re-crawl all 2,710 players with corrected logic
-5. Verify data quality before Supabase sync
+5. Verify data quality before OCI sync
 6. Add validation and tests to prevent recurrence
 
 ## Files to Monitor

@@ -233,7 +233,7 @@ class PlayerSearchCrawler:
             # Try to use click() which handles both normal links and many JS-based navigations reliably.
             # We use wait_for_load_state as a generic way to ensure navigation finished.
             await anchor.click(timeout=10000)
-            await page.wait_for_load_state("networkidle", timeout=10000)
+            await page.wait_for_load_state("load", timeout=10000)
             return True
         except Exception as e:
             # Fallback to manual postback if click fails or times out
@@ -244,7 +244,7 @@ class PlayerSearchCrawler:
                     if m:
                         try:
                             await page.evaluate(POSTBACK_EVAL, [m.group(1), m.group(2)])
-                            await page.wait_for_load_state("networkidle", timeout=10000)
+                            await page.wait_for_load_state("load", timeout=10000)
                             return True
                         except:
                             pass
@@ -347,21 +347,21 @@ async def main():
     import argparse
 
     parser = argparse.ArgumentParser(description="KBO Player Search Crawler")
-    parser.set_defaults(save=True, sync_supabase=None)
+    parser.set_defaults(save=True, sync_oci=None)
     parser.add_argument("--max-pages", type=int, default=None, help="Maximum pages to crawl (default: all)")
     parser.add_argument("--save", dest="save", action="store_true", help="Save to SQLite database (default)")
     parser.add_argument("--no-save", dest="save", action="store_false", help="Skip saving to SQLite database")
     parser.add_argument(
-        "--sync-supabase",
-        dest="sync_supabase",
+        "--sync-oci",
+        dest="sync_oci",
         action="store_true",
-        help="Sync to Supabase after crawling (default when SUPABASE_DB_URL is set)",
+        help="Sync player_basic to OCI after crawling (default when OCI_DB_URL is set)",
     )
     parser.add_argument(
-        "--no-sync-supabase",
-        dest="sync_supabase",
+        "--no-sync-oci",
+        dest="sync_oci",
         action="store_false",
-        help="Skip Supabase sync even if SUPABASE_DB_URL is set",
+        help="Skip OCI sync even if OCI_DB_URL is set",
     )
     args = parser.parse_args()
 
@@ -381,8 +381,8 @@ async def main():
     for player in players[:5]:
         print(f"  - {player.name} (ID: {player.player_id}, #{player.uniform_no}, {player.team}/{player.position})")
 
-    supabase_url = os.getenv("SUPABASE_DB_URL")
-    should_sync = args.sync_supabase if args.sync_supabase is not None else bool(supabase_url)
+    oci_url = os.getenv("OCI_DB_URL")
+    should_sync = args.sync_oci if args.sync_oci is not None else bool(oci_url)
 
     if args.save or should_sync:
         from src.db.engine import init_db
@@ -414,32 +414,32 @@ async def main():
     else:
         print("\nSkipping SQLite save (--no-save specified)")
         if should_sync:
-            print("Existing SQLite data will be used for Supabase sync")
+            print("Existing SQLite data will be used for OCI sync")
 
     if should_sync:
         from src.db.engine import SessionLocal
-        from src.sync.supabase_sync import SupabaseSync
+        from src.sync.oci_sync import OCISync
 
-        if not supabase_url:
-            print("\nSUPABASE_DB_URL not set; skipping Supabase sync")
+        if not oci_url:
+            print("\nOCI_DB_URL not set; skipping OCI sync")
         else:
-            print("\nSyncing to Supabase...")
+            print("\nSyncing to OCI...")
             with SessionLocal() as sqlite_session:
-                sync = SupabaseSync(supabase_url, sqlite_session)
+                sync = OCISync(oci_url, sqlite_session)
                 try:
                     if not sync.test_connection():
-                        print("Supabase connection failed")
+                        print("OCI connection failed")
                         return
 
                     synced = sync.sync_player_basic()
-                    print(f"Synced {synced} players to Supabase")
+                    print(f"Synced {synced} players to OCI")
                 finally:
                     sync.close()
     else:
-        if args.sync_supabase is False:
-            print("\nSkipping Supabase sync (--no-sync-supabase specified)")
-        elif not supabase_url:
-            print("\nSUPABASE_DB_URL not set; Supabase sync skipped")
+        if args.sync_oci is False:
+            print("\nSkipping OCI sync (--no-sync-oci specified)")
+        elif not oci_url:
+            print("\nOCI_DB_URL not set; OCI sync skipped")
 
     print("\n" + "=" * 60)
     print("Complete")

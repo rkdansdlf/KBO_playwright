@@ -30,7 +30,7 @@ load_dotenv(PROJECT_ROOT / ".env")
 
 from apscheduler.schedulers.blocking import BlockingScheduler
 from apscheduler.triggers.cron import CronTrigger
-from sqlalchemy import func
+from sqlalchemy import text
 from tenacity import retry, stop_after_attempt, wait_exponential
 
 from src.cli.crawl_futures import main as crawl_futures_main
@@ -38,7 +38,6 @@ from src.cli.daily_preview_batch import run_preview_batch
 from src.cli.live_crawler import run_live_crawler_cycle
 from src.cli.run_daily_update import main as run_daily_update_main
 from src.db.engine import SessionLocal
-from src.models.game import Game
 from src.utils.safe_print import safe_print as print
 from src.utils.alerting import SlackWebhookClient
 
@@ -59,6 +58,7 @@ logger = logging.getLogger(__name__)
 KST = ZoneInfo("Asia/Seoul")
 FALSE_ENV_VALUES = {"0", "false", "no", "off"}
 JOB_RUN_LOCK = Lock()
+MISSING_PREGAME_ALERTED_DATES: set[str] = set()
 
 
 def alert_failure(retry_state):
@@ -161,17 +161,47 @@ def _should_skip_live_for_pregame(now: datetime | None = None) -> bool:
     return minutes_until_pregame is not None and minutes_until_pregame <= threshold_minutes
 
 
-def _scheduled_game_count(target_date: str) -> int:
+def _pregame_refresh_summary(target_date: str) -> tuple[int, int, int]:
+    """Return scheduled games, missing starters count, and preview-missing count for a date."""
     try:
-        target_day = datetime.strptime(target_date, "%Y%m%d").date()
+        datetime.strptime(target_date, "%Y%m%d")
     except ValueError:
-        return 0
+        return 0, 0, 0
+
+    query = text(
+        """
+        SELECT
+            COUNT(*) AS scheduled_total,
+            SUM(
+                CASE
+                    WHEN (g.away_pitcher IS NULL OR g.away_pitcher = '')
+                      OR (g.home_pitcher IS NULL OR g.home_pitcher = '')
+                    THEN 1 ELSE 0
+                END
+            ) AS starters_missing,
+            SUM(CASE WHEN p.game_id IS NULL THEN 1 ELSE 0 END) AS preview_missing
+        FROM game g
+        LEFT JOIN (
+            SELECT DISTINCT game_id
+            FROM game_summary
+            WHERE summary_type = '프리뷰'
+        ) p ON p.game_id = g.game_id
+        WHERE UPPER(g.game_status) = 'SCHEDULED'
+          AND REPLACE(CAST(g.game_date AS TEXT), '-', '') = :target_date
+        """
+    )
 
     with SessionLocal() as session:
-        return session.query(Game).filter(
-            Game.game_date == target_day,
-            func.upper(Game.game_status) == "SCHEDULED",
-        ).count()
+        row = session.execute(query, {"target_date": target_date}).first()
+
+    if row is None:
+        return 0, 0, 0
+
+    return (
+        int(row.scheduled_total or 0),
+        int(row.starters_missing or 0),
+        int(row.preview_missing or 0),
+    )
 
 
 def _env_enabled(name: str, default: str = "1") -> bool:
@@ -218,6 +248,8 @@ def crawl_daily_games():
 def crawl_pregame_refresh():
     with JOB_RUN_LOCK:
         failures: list[str] = []
+        refresh_only_missing = _env_enabled("PREGAME_REFRESH_ONLY_MISSING", "1")
+        alert_on_missing = _env_enabled("PREGAME_MISSING_ALERT", "0")
         sync_to_oci = _pregame_sync_to_oci_enabled()
         if sync_to_oci:
             logger.info("Pregame OCI sync is enabled")
@@ -225,13 +257,47 @@ def crawl_pregame_refresh():
             logger.info("Pregame OCI sync is disabled by PREGAME_SYNC_TO_OCI")
         else:
             logger.warning("Pregame OCI sync is disabled because OCI_DB_URL is not set")
+        if refresh_only_missing:
+            logger.info("Pregame refresh mode: missing only")
+        else:
+            logger.info("Pregame refresh mode: full date window")
 
         for target_date in _pregame_target_dates():
-            logger.info("Running pregame refresh for target_date=%s", target_date)
+            scheduled_count, starters_missing, preview_missing = _pregame_refresh_summary(target_date)
+            if scheduled_count == 0:
+                continue
+
+            should_refresh = not refresh_only_missing or starters_missing > 0 or preview_missing > 0
+            if not should_refresh:
+                logger.info(
+                    "Skipping pregame refresh for target_date=%s (all starters/preview present)",
+                    target_date,
+                )
+                MISSING_PREGAME_ALERTED_DATES.discard(target_date)
+                continue
+
+            logger.info(
+                "Running pregame refresh for target_date=%s (starters_missing=%s, preview_missing=%s)",
+                target_date,
+                starters_missing,
+                preview_missing,
+            )
             saved_ids = asyncio.run(run_preview_batch(target_date, sync_to_oci=sync_to_oci))
             if saved_ids and sync_to_oci:
                 logger.info("Pregame OCI sync completed for target_date=%s games=%s", target_date, len(saved_ids))
-            scheduled_count = _scheduled_game_count(target_date)
+            post_refresh = _pregame_refresh_summary(target_date)
+            if post_refresh[0] and (post_refresh[1] > 0 or post_refresh[2] > 0):
+                if alert_on_missing and target_date not in MISSING_PREGAME_ALERTED_DATES:
+                    try:
+                        SlackWebhookClient.send_alert(
+                            f"⚠️ Pregame missing remains for {target_date}: "
+                            f"starters_missing={post_refresh[1]}, preview_missing={post_refresh[2]}"
+                        )
+                    except Exception:
+                        logger.exception("Failed to send pregame missing alert for target_date=%s", target_date)
+                    MISSING_PREGAME_ALERTED_DATES.add(target_date)
+            else:
+                MISSING_PREGAME_ALERTED_DATES.discard(target_date)
             if scheduled_count and not saved_ids:
                 failures.append(f"{target_date}: scheduled={scheduled_count}, saved=0")
 

@@ -7,7 +7,7 @@ import sys
 # Add src to path
 sys.path.append(os.getcwd())
 
-from src.sync.supabase_sync import SupabaseSync
+from src.sync.oci_sync import OCISync
 from src.models.game import GameMetadata, GameInningScore
 
 def isolate_sync():
@@ -19,7 +19,7 @@ def isolate_sync():
     SessionSource = sessionmaker(bind=source_engine)
     
     with SessionSource() as session:
-        syncer = SupabaseSync(target_url, session)
+        syncer = OCISync(target_url, session)
         
         # Test GameMetadata with a limit that covers many records but manageable
         print("\n2. Syncing GameMetadata (limit=10000)...")
