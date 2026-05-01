@@ -2,8 +2,14 @@ name: KBO Pregame Refresh
 
 on:
   schedule:
-    # Every 15 minutes from 10:00 to 19:45 KST.
-    - cron: '*/15 1-10 * * *'
+    # 화~금 (Tue-Fri): 16:00~18:45 KST (07:00~09:45 UTC)
+    - cron: '*/15 7-9 * * 2-5'
+    # 토요일 (Sat): 14:30~17:45 KST (05:30~08:45 UTC)
+    - cron: '30,45 5 * * 6'
+    - cron: '*/15 6-8 * * 6'
+    # 일요일 (Sun): 11:30~17:45 KST (02:30~08:45 UTC)
+    - cron: '30,45 2 * * 0'
+    - cron: '*/15 3-8 * * 0'
   workflow_dispatch:
     inputs:
       target_date:
