@@ -38,32 +38,89 @@ async def run_live_crawler_cycle(*, sync_to_oci: bool | None = None) -> bool:
     today_games = [g for g in games if g["game_date"].replace("-", "") == today_str]
 
     if not today_games:
-        manifest_path = write_refresh_manifest(
-            phase="live",
-            target_date=today_str,
-            game_ids=[],
-            datasets=["game", "game_metadata", "game_inning_scores", "game_events", "game_play_by_play"],
-        )
-        print(f"[INFO] No games scheduled for today. manifest={manifest_path}")
+        print(f"[INFO] No games scheduled for today ({today_str}).")
         return False
 
+    # Optimization: Fetch latest game statuses from Naver to skip unnecessary crawls
     relay_crawler = NaverRelayCrawler()
+    active_game_ids: set[str] = set()
+    try:
+        async with httpx.AsyncClient() as client:
+            # We use RelayCrawler's internal methods to get the schedule context
+            query = relay_crawler._schedule_query_context(today_str + "XXXXX") 
+            response = await client.get(
+                relay_crawler.schedule_api_base_url,
+                params=query,
+                headers=relay_crawler.headers,
+                timeout=10.0,
+            )
+            if response.status_code == 200:
+                payload = response.json()
+                naver_games = list((payload.get("result") or {}).get("games") or [])
+                for ng in naver_games:
+                    status = str(ng.get("status") or "").upper()
+                    # Statuses: 'BEFORE', 'RUNNING', 'RESULT', 'CANCEL'
+                    if status == "RUNNING":
+                        # Match Naver game to KBO game ID using team codes if possible
+                        # but for simplicity, we'll just trust Naver's 'RUNNING' status
+                        # to filter our today_games list in the loop below.
+                        pass
+                    
+                # Store naver status mapping for quick lookup
+                naver_status_map = {
+                    (ng.get("awayTeamCode"), ng.get("homeTeamCode")): status
+                    for ng in naver_games
+                    if (status := ng.get("status"))
+                }
+            else:
+                naver_status_map = {}
+    except Exception as e:
+        print(f"[WARN] Failed to fetch Naver live statuses: {e}")
+        naver_status_map = {}
+
     detail_crawler = GameDetailCrawler(request_delay=0.1)
     touched_game_ids: set[str] = set()
 
     for game in today_games:
         game_id = game["game_id"]
+        
+        # Heuristic matching for Naver status
+        away_nav = relay_crawler._naver_team_code(game["away_team_code"])
+        home_nav = relay_crawler._naver_team_code(game["home_team_code"])
+        nav_status = str(naver_status_map.get((away_nav, home_nav)) or "").upper()
+
+        if nav_status == "CANCEL":
+            print(f"[SKIP] {game_id} is CANCELLED.")
+            continue
+        if nav_status == "BEFORE":
+            print(f"[SKIP] {game_id} has not started yet.")
+            continue
+        if nav_status == "RESULT":
+            # If it's already COMPLETED in our DB, skip it.
+            # We can check this via a quick repository call if needed, 
+            # but for a simple 'live' loop, skipping 'RESULT' is generally safe
+            # as run_daily_update will finalize it later.
+            print(f"[SKIP] {game_id} is already finished (RESULT).")
+            continue
+        
+        # Default to crawl if status is RUNNING or unknown
+        print(f"[LIVE] 🔍 Crawling active game: {game_id} (Status: {nav_status or 'UNKNOWN'})")
+        
         relay_data = await relay_crawler.crawl_game_events(game_id)
-        if relay_data and relay_data.get("events"):
-            flat_events = relay_data.get("events", [])
-            saved_rows = save_relay_data(game_id, flat_events, source_name="naver_live")
+        flat_events = list((relay_data or {}).get("events") or [])
+        raw_pbp_rows = list((relay_data or {}).get("raw_pbp_rows") or [])
+        
+        if flat_events or raw_pbp_rows:
+            saved_rows = save_relay_data(
+                game_id,
+                flat_events,
+                raw_pbp_rows=raw_pbp_rows,
+                source_name="naver_live",
+            )
             if saved_rows:
                 touched_game_ids.add(game_id)
                 print(f"[LIVE] 📝 Synced {saved_rows} relay rows for {game_id}")
 
-            # Live mode intentionally uses a lightweight snapshot instead of the
-            # shared full-detail collector; finalized box scores are handled by
-            # run_daily_update after games complete.
             detail = await detail_crawler.crawl_game(game_id, today_str, lightweight=True)
             if detail and save_game_snapshot(detail, status=GAME_STATUS_LIVE):
                 touched_game_ids.add(game_id)
