@@ -9,6 +9,7 @@ from typing import Any, Callable, Dict, Iterable, List, Optional, Protocol
 from src.db.engine import SessionLocal
 from src.models.game import Game, GameBattingStat, GameEvent, GamePitchingStat, GamePlayByPlay
 from src.repositories.game_repository import save_game_detail, save_relay_data
+from src.services.game_write_contract import GameWriteContract, GameWriteSource
 from src.utils.safe_print import safe_print as print
 from src.utils.team_codes import normalize_kbo_game_id
 
@@ -151,6 +152,11 @@ async def crawl_and_save_game_details(
     pause_every: Optional[int] = None,
     pause_seconds: float = 0.0,
     log: Callable[[str], None] = print,
+    write_contract: Optional[GameWriteContract] = None,
+    source_stage: str = "detail",
+    source_crawler: Optional[str] = None,
+    source_reason: str = "detail_recovery",
+    relay_source_reason: str = "relay_recovery",
 ) -> GameCollectionResult:
     targets = normalize_game_targets(games)
     result = GameCollectionResult(total_targets=len(targets))
@@ -160,6 +166,15 @@ async def crawl_and_save_game_details(
     }
     if not targets:
         return result
+
+    contract = write_contract or GameWriteContract(run_label="game_collection", log=log)
+    detail_source = GameWriteSource(
+        source_stage,
+        source_crawler or detail_crawler.__class__.__name__,
+        source_reason,
+    )
+    for target in targets:
+        contract.claim_game(target.game_id, detail_source)
 
     existing = inspect_existing_game_data(targets)
     detail_ready_game_ids = {
@@ -207,7 +222,13 @@ async def crawl_and_save_game_details(
                 item.failure_reason = "detail_payload_filtered"
                 log("   [WARN] Detail payload did not pass save predicate")
                 continue
-            if save_game_detail(payload):
+            if save_game_detail(
+                payload,
+                write_contract=contract,
+                source_stage=detail_source.stage,
+                source_crawler=detail_source.crawler,
+                source_reason=detail_source.reason,
+            ):
                 result.detail_saved += 1
                 result.processed_game_ids.append(target.game_id)
                 detail_ready_game_ids.add(target.game_id)
@@ -223,6 +244,7 @@ async def crawl_and_save_game_details(
                 log("   [ERROR] Detail save failed")
 
     if relay_crawler:
+        relay_source = GameWriteSource("relay", relay_crawler.__class__.__name__, relay_source_reason)
         relay_targets = [
             target
             for target in targets
@@ -242,11 +264,22 @@ async def crawl_and_save_game_details(
                     item.relay_status = "skipped_no_detail"
 
         for index, target in enumerate(relay_targets, start=1):
+            contract.claim_game(target.game_id, relay_source)
             log(f"[RELAY] {index}/{len(relay_targets)} {target.game_id}")
             relay_data = await relay_crawler.crawl_game_events(target.game_id)
             item = result.items[target.game_id]
-            if relay_data and relay_data.get("events"):
-                saved_rows = save_relay_data(target.game_id, relay_data["events"])
+            flat_events = list((relay_data or {}).get("events") or [])
+            raw_pbp_rows = list((relay_data or {}).get("raw_pbp_rows") or [])
+            if flat_events or raw_pbp_rows:
+                saved_rows = save_relay_data(
+                    target.game_id,
+                    flat_events,
+                    raw_pbp_rows=raw_pbp_rows,
+                    write_contract=contract,
+                    source_stage=relay_source.stage,
+                    source_crawler=relay_source.crawler,
+                    source_reason=relay_source.reason,
+                )
                 result.relay_rows_saved += saved_rows
                 item.relay_rows_saved = saved_rows
                 if saved_rows:
@@ -266,6 +299,9 @@ async def crawl_and_save_game_details(
                 item.failure_reason = item.failure_reason or "no_relay_payload"
                 log("   [INFO] No relay data available")
             await _maybe_pause(index, pause_every, pause_seconds, log)
+
+    if write_contract is None:
+        log(contract.summary())
 
     return result
 

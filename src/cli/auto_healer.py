@@ -29,6 +29,7 @@ from src.repositories.game_repository import (
     update_game_status,
 )
 from src.services.game_collection_service import crawl_and_save_game_details
+from src.services.game_write_contract import GameWriteContract
 from src.utils.alerting import SlackWebhookClient
 from src.utils.safe_print import safe_print as print
 
@@ -118,6 +119,10 @@ async def run_healer_async(dry_run: bool = False) -> int:
             resolver.preload_season_index(y)
             
         crawler = GameDetailCrawler(request_delay=1.0, resolver=resolver)
+        write_contract = GameWriteContract(
+            run_label=f"auto_healer:{datetime.now():%Y%m%dT%H%M%S}",
+            log=print,
+        )
 
         results = {"completed": 0, "cancelled": 0, "unresolved": 0, "dry_run": 0}
         if dry_run:
@@ -137,6 +142,8 @@ async def run_healer_async(dry_run: bool = False) -> int:
                 force=True,
                 concurrency=1,
                 log=print,
+                write_contract=write_contract,
+                source_reason="past_scheduled_recovery",
             )
             for game in stuck_games:
                 outcome = _apply_heal_outcome(
@@ -144,6 +151,7 @@ async def run_healer_async(dry_run: bool = False) -> int:
                     collection_result.items.get(game.game_id),
                 )
                 results[outcome] = results.get(outcome, 0) + 1
+            print(write_contract.summary())
 
     # Summary
     print("\n📊 Auto-Healer Summary:")

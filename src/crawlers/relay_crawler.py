@@ -10,6 +10,10 @@ from datetime import datetime, timedelta
 from typing import List, Dict, Any, Optional
 
 from src.services.wpa_calculator import WPACalculator
+from src.utils.relay_text import (
+    detect_relay_event_type,
+    is_relay_result_event_text,
+)
 from src.utils.safe_print import safe_print as print
 from src.utils.playwright_pool import AsyncPlaywrightPool
 from src.utils.team_codes import normalize_kbo_game_id
@@ -186,7 +190,8 @@ class RelayCrawler:
 
             if not all_text_relays: return None
             
-            events = self._parse_naver_data(all_text_relays)
+            parsed_payload = self._parse_naver_payload(all_text_relays)
+            events = parsed_payload["events"]
             # Determine status by heuristic: if 9+ innings and 3 outs recorded, it's completed, but we can just say completed if events exist
             # since game status is handled by GameDetailCrawler anyway.
             return {
@@ -194,36 +199,44 @@ class RelayCrawler:
                 "naver_game_id": naver_id,
                 "game_date": kbo_game_id[:8], 
                 "status": "completed", # Assume completed or live, upstream handles the real status
-                "events": events
+                "events": events,
+                "raw_pbp_rows": parsed_payload["raw_pbp_rows"],
             }
         except Exception as e:
             print(f"[ERROR] Relay API crawl failed for {kbo_game_id}: {e}")
             return None
 
     def _parse_naver_data(self, text_relays: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        return self._parse_naver_payload(text_relays)["events"]
+
+    def _parse_naver_payload(self, text_relays: List[Dict[str, Any]]) -> Dict[str, List[Dict[str, Any]]]:
         parsed_events = []
+        raw_pbp_rows = []
         sequence = 1
         processed_segments = []
-        seen_keys = set()
-        for segment in text_relays:
-            title = segment.get("title", "")
-            match = re.search(r'(\d+)회\s*(초|말)', title)
-            if match:
-                inn, side = int(match.group(1)), ("AWAY" if match.group(2) == "초" else "HOME")
-            else:
-                inn, side = int(segment.get("inn") or 0), segment.get("homeOrAway", "AWAY")
-            key = f"{inn}_{side}"
-            if not inn or key in seen_keys: continue
-            seen_keys.add(key)
-            segment["_parsed_inn"], segment["_parsed_side"] = inn, side
+        for index, segment in enumerate(text_relays):
+            inn, half = self._parse_segment_inning_half(segment)
+            if not inn or not half:
+                continue
+            segment["_parsed_index"] = index
+            segment["_parsed_inn"] = inn
+            segment["_parsed_half"] = half
             processed_segments.append(segment)
 
-        sorted_segments = sorted(processed_segments, key=lambda x: (x["_parsed_inn"], 0 if x["_parsed_side"] == "AWAY" else 1))
+        sorted_segments = sorted(
+            processed_segments,
+            key=lambda x: (
+                x["_parsed_inn"],
+                0 if x["_parsed_half"] == "top" else 1,
+                -int(x["_parsed_index"]),
+            ),
+        )
 
         for segment in sorted_segments:
-            inning, half = segment["_parsed_inn"], ("top" if segment["_parsed_side"] == "AWAY" else "bottom")
+            inning, half = segment["_parsed_inn"], segment["_parsed_half"]
             logs = segment.get("textOptions") or []
-            # In archived mode, logs are chronological. 
+            # Naver returns batter segments newest-first within each half-inning,
+            # while logs inside a segment are chronological.
             for log in logs:
                 state = log.get("currentGameState") or {}
                 batter_record = log.get("batterRecord") or {}
@@ -244,6 +257,28 @@ class RelayCrawler:
                 
                 # Ensure description length fits DB column (usually text, but to be safe)
                 description = str(log.get("text") or "")
+                if not description.strip():
+                    continue
+
+                batter_name = batter_record.get("name") or log.get("batterName")
+                if not batter_name and ":" in description:
+                    batter_name = description.split(":", 1)[0].strip() or None
+                pitcher_name = log.get("pitcherName")
+
+                raw_pbp_rows.append(
+                    {
+                        "inning": inning,
+                        "inning_half": half,
+                        "pitcher_name": pitcher_name,
+                        "batter_name": batter_name,
+                        "play_description": description,
+                        "event_type": self._detect_event_type(description),
+                        "result": description.split(":", 1)[-1].strip() if ":" in description else None,
+                    }
+                )
+
+                if not is_relay_result_event_text(description):
+                    continue
                 
                 event = {
                     "event_seq": sequence,
@@ -251,8 +286,8 @@ class RelayCrawler:
                     "inning_half": half,
                     "description": description,
                     "event_type": self._detect_event_type(description),
-                    "batter_name": batter_record.get("name") or log.get("batterName"),
-                    "pitcher_name": log.get("pitcherName"),
+                    "batter_name": batter_name,
+                    "pitcher_name": pitcher_name,
                     "home_score": home_score,
                     "away_score": away_score,
                     "score_diff": home_score - away_score,
@@ -268,19 +303,35 @@ class RelayCrawler:
                 # Try to emulate the old structure fields if needed, 
                 event['batter'] = event['batter_name']
                 event['pitcher'] = event['pitcher_name']
-                event['result'] = description.split(":")[-1].strip() if ":" in description else None
+                event['result'] = description.split(":", 1)[-1].strip() if ":" in description else None
                 
                 parsed_events.append(event)
                 sequence += 1
                 
         self._apply_wpa_transitions(parsed_events)
-        return parsed_events
+        return {"events": parsed_events, "raw_pbp_rows": raw_pbp_rows}
+
+    def _parse_segment_inning_half(self, segment: Dict[str, Any]) -> tuple[int, str | None]:
+        title = str(segment.get("title") or "")
+        match = re.search(r"(\d+)회\s*(초|말)", title)
+        if match:
+            return int(match.group(1)), "top" if match.group(2) == "초" else "bottom"
+
+        try:
+            inning = int(segment.get("inn") or 0)
+        except (TypeError, ValueError):
+            inning = 0
+
+        raw_value = segment.get("homeOrAway")
+        raw_side = str(raw_value if raw_value is not None else "").strip().upper()
+        if raw_side in {"0", "AWAY", "A", "TOP", "초"}:
+            return inning, "top"
+        if raw_side in {"1", "HOME", "H", "BOTTOM", "말"}:
+            return inning, "bottom"
+        return inning, None
 
     def _detect_event_type(self, text: str) -> str:
-        if ":" in text and ("타자" in text or "안타" in text or "아웃" in text or "홈런" in text): return "batting"
-        if "교체" in text: return "substitution"
-        if "도루" in text: return "steal"
-        return "unknown"
+        return detect_relay_event_type(text)
 
     def _format_base_string(self, runners: int) -> str:
         return f"{'1' if (runners & 1) else '-'}{'2' if (runners & 2) else '-'}{'3' if (runners & 4) else '-'}"
@@ -335,6 +386,34 @@ def _events_to_legacy_innings(events: List[Dict[str, Any]]) -> List[Dict[str, An
     return innings
 
 
+def _pbp_rows_to_legacy_innings(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    innings: List[Dict[str, Any]] = []
+    current_key = None
+    current_bucket: Dict[str, Any] | None = None
+    for row in rows:
+        key = (row.get("inning"), row.get("inning_half"))
+        if key != current_key:
+            current_key = key
+            current_bucket = {
+                "inning": row.get("inning"),
+                "half": row.get("inning_half"),
+                "plays": [],
+            }
+            innings.append(current_bucket)
+        if current_bucket is not None:
+            current_bucket["plays"].append(
+                {
+                    "description": row.get("play_description") or row.get("description"),
+                    "event_type": row.get("event_type"),
+                    "batter": row.get("batter_name") or row.get("batter"),
+                    "pitcher": row.get("pitcher_name") or row.get("pitcher"),
+                    "result": row.get("result"),
+                    "outs": row.get("outs"),
+                }
+            )
+    return innings
+
+
 async def fetch_and_parse_relay(game_id: str, game_date: str | None = None) -> Optional[Dict[str, Any]]:
     """
     Compatibility helper for older tests and scripts that expect inning-grouped output.
@@ -344,8 +423,13 @@ async def fetch_and_parse_relay(game_id: str, game_date: str | None = None) -> O
     if not result:
         return None
     events = list(result.get("events") or [])
+    raw_pbp_rows = list(result.get("raw_pbp_rows") or [])
     return {
         "game_id": game_id,
         "game_date": game_date or game_id[:8],
-        "innings": _events_to_legacy_innings(events),
+        "innings": (
+            _pbp_rows_to_legacy_innings(raw_pbp_rows)
+            if raw_pbp_rows
+            else _events_to_legacy_innings(events)
+        ),
     }

@@ -1,13 +1,13 @@
 # KBO Playwright Crawler
 
-Korean Baseball Organization (KBO) data collection system using Playwright, with support for Docker, Supabase, and multiple database backends.
+Korean Baseball Organization (KBO) data collection system using Playwright, with support for Docker, OCI PostgreSQL, and multiple database backends.
 
 ## Features
 
 - **2-Track Pipeline**: Separate crawling for Regular Season (game-based) and Futures League (profile-based).
 - **Flexible Database Support**: Works with SQLite, PostgreSQL, and MySQL.
 - **Dockerized Environment**: Easy setup and deployment with Docker and Docker Compose.
-- **Supabase Sync**: CLI tool to synchronize local data with a remote Supabase Postgres database.
+- **OCI Sync**: CLI tool to publish validated local SQLite data to OCI PostgreSQL.
 - **Automated Scheduling**: APScheduler for daily/weekly data collection.
 - **Idempotent Storage**: Safe to re-run crawlers without data duplication thanks to UPSERT logic.
 - **Adaptive Rate-Limiting**: Centralized throttling with random jitter to prevent IP blocks.
@@ -100,13 +100,9 @@ python3 -m src.cli.db_healthcheck
 # is merged so team FKs stay valid without manual SQL.
 python3 seed_data.py
 
-# NOTE: teams is treated as a semi-static reference table. Supabase still has
-# legacy tables (e.g., team_history) referencing it, so `sync_supabase.py`
-# always UPSERTs teams and never truncates that table.
-
-# Sync local SQLite data to a remote Postgres/Supabase DB
-# Ensure TARGET_DATABASE_URL is set in your .env file
-python3 -m src.cli.sync_supabase --truncate
+# Sync validated local SQLite data to OCI PostgreSQL
+# Ensure OCI_DB_URL is set in your .env file
+python3 -m src.cli.sync_oci --game-details --unsynced-only
 ```
 
 ### Docker Deployment
@@ -167,13 +163,12 @@ KBO_playwright/
 │   └── utils/             # Helper utilities
 ├── scripts/
 │   ├── crawling/          # Historical data crawling scripts
-│   ├── supabase/          # Supabase sync and maintenance scripts
 │   ├── maintenance/       # Database validation and repair scripts
 │   └── scheduler.py       # APScheduler job definitions (production)
 ├── data/                  # Default directory for SQLite DB
 ├── Docs/                  # Detailed project documentation
 ├── migrations/            # Database migration scripts
-│   └── supabase/          # Supabase-specific migrations
+│   └── *_oci.py           # OCI-specific migrations
 ├── docker-compose.yml     # Docker service definitions
 ├── Dockerfile             # Docker container setup
 ├── requirements.txt       # Python dependencies
@@ -192,18 +187,13 @@ The `scripts/` directory contains utility scripts for maintenance and operations
 - `recrawl_legacy_years.py` - Re-crawl specific historical seasons
 - `collect_detailed_data.py` - Deprecated wrapper; use `python -m src.cli.collect_games` or `python -m src.cli.run_daily_update`
 
-### Supabase Scripts (`scripts/supabase/`)
-- `sync_player_basic_first.py` - Initial sync of player basic data
-- `check_supabase_data.py` - Verify Supabase data integrity
-- `fix_supabase_constraints.py` - Fix foreign key constraints
-- `test_supabase_sync.py` - Test Supabase synchronization
-
 ### Maintenance Scripts (`scripts/maintenance/`)
 - `fix_player_names.py` - Re-crawl and fix player names
 - `verify_sqlite_data.py` - Verify local SQLite data quality
 - `reset_sqlite.py` - Reset local database
 - `check_missing_teams.py` - Find missing team data
-- `check_missing_supabase_teams.py` - Compare SQLite vs Supabase `teams` table IDs
+- `quality_gate.py` - Compare local SQLite vs OCI integrity metrics
+- `fill_oci_null_player_ids_from_local.py` - Repair OCI NULL `player_id` values from validated local rows
 
 ## Documentation
 

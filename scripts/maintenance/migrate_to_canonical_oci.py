@@ -110,7 +110,7 @@ def main():
         if args.sqlite:
             urls.append(os.getenv("SOURCE_DATABASE_URL", "sqlite:///./data/kbo_dev.db"))
         if args.oci:
-            oci_url = os.getenv("OCI_DB_URL") or os.getenv("SUPABASE_DB_URL")
+            oci_url = os.getenv("OCI_DB_URL") or os.getenv("TARGET_DATABASE_URL")
             if oci_url:
                 urls.append(oci_url)
     

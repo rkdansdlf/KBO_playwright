@@ -20,7 +20,6 @@ PYTHONPATH=. python scripts/maintenance/verify_sqlite_data.py
 ## Directory Structure
 
 - **crawling/** - Historical data crawling scripts
-- **supabase/** - Supabase sync and maintenance 
 - **maintenance/** - Database validation and repair
 
 ## Available Scripts
@@ -32,10 +31,10 @@ PYTHONPATH=. python scripts/maintenance/verify_sqlite_data.py
 - `check_missing_teams.py` - Find missing team data
 - `smart_deduplicate.py`, `deduplicate_games.py`, `hard_deduplicate.py` - Primary-game calibration wrappers over `src.services.game_deduplication_service`
 
-### Supabase
-- `sync_player_basic_first.py` - Initial sync of player basic data
-- `check_supabase_data.py` - Verify Supabase data integrity
-- `test_supabase_sync.py` - Test synchronization
+### OCI
+- `check_oci_summary.py` - Summarize OCI database contents
+- `debug_oci.py` - Inspect OCI connection and selected rows
+- `fast_sync_stats.py`, `sync_2002_2009.py`, `sync_all_game_details.py` - OCI-oriented sync helpers
 
 ### Crawling
 - `crawl_all_historical.py` - Crawl historical game data

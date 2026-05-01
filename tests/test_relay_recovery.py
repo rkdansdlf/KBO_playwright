@@ -78,6 +78,38 @@ def test_save_relay_data_events_only_writes_both_tables(monkeypatch):
         assert pbp.result == "안타"
 
 
+def test_save_relay_data_keeps_raw_pbp_while_saving_filtered_events(monkeypatch):
+    SessionLocal = _build_session_factory()
+    monkeypatch.setattr(game_repository, "SessionLocal", SessionLocal)
+    monkeypatch.setattr(game_repository, "_auto_sync_to_oci", lambda game_id: None)
+    _seed_game(SessionLocal, "20250406LGSS0")
+
+    saved = game_repository.save_relay_data(
+        "20250406LGSS0",
+        [_sample_event()],
+        raw_pbp_rows=[
+            {"inning": 1, "inning_half": "top", "play_description": "1회초 LG 공격"},
+            {"inning": 1, "inning_half": "top", "play_description": "타자A : 좌전 안타"},
+            {"inning": 1, "inning_half": "top", "play_description": "1구 볼"},
+        ],
+    )
+
+    assert saved == 1
+    with SessionLocal() as session:
+        assert session.query(GameEvent).filter(GameEvent.game_id == "20250406LGSS0").count() == 1
+        pbp_rows = (
+            session.query(GamePlayByPlay)
+            .filter(GamePlayByPlay.game_id == "20250406LGSS0")
+            .order_by(GamePlayByPlay.id.asc())
+            .all()
+        )
+        assert [row.play_description for row in pbp_rows] == [
+            "1회초 LG 공격",
+            "타자A : 좌전 안타",
+            "1구 볼",
+        ]
+
+
 def test_save_relay_data_pbp_only_preserves_existing_events(monkeypatch):
     SessionLocal = _build_session_factory()
     monkeypatch.setattr(game_repository, "SessionLocal", SessionLocal)

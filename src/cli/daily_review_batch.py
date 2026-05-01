@@ -21,6 +21,53 @@ from src.utils.safe_print import safe_print as print
 from src.utils.team_codes import team_code_from_game_id_segment
 
 
+REVIEW_SUMMARY_TYPE = "리뷰_WPA"
+
+
+def _upsert_review_summary(session, game_id: str, review_json: str) -> None:
+    existing_summaries = session.query(GameSummary).filter(
+        GameSummary.game_id == game_id,
+        GameSummary.summary_type == REVIEW_SUMMARY_TYPE,
+    ).all()
+    if existing_summaries:
+        for summary in existing_summaries:
+            summary.detail_text = review_json
+        return
+
+    session.add(
+        GameSummary(
+            game_id=game_id,
+            summary_type=REVIEW_SUMMARY_TYPE,
+            detail_text=review_json,
+        )
+    )
+
+
+def _build_review_data(agg: ContextAggregator, game: Game) -> dict:
+    target_date = game.game_date.strftime("%Y%m%d")
+    season_year = game.game_date.year
+    away_code = team_code_from_game_id_segment(game.away_team, season_year)
+    home_code = team_code_from_game_id_segment(game.home_team, season_year)
+
+    review_data = {
+        "game_id": game.game_id,
+        "game_date": target_date,
+        "final_score": f"{game.away_team} {game.away_score} : {game.home_score} {game.home_team}",
+        "crucial_moments": agg.get_crucial_moments(game.game_id, limit=5),
+        "pitching_breakdown": agg.get_completed_game_pitching_breakdown(
+            game.game_id,
+            season_year=season_year,
+        ),
+    }
+    if away_code and home_code:
+        review_data["away_movements"] = agg.get_recent_player_movements(away_code, game.game_date)
+        review_data["home_movements"] = agg.get_recent_player_movements(home_code, game.game_date)
+        review_data["away_roster_changes"] = agg.get_daily_roster_changes(away_code, game.game_date)
+        review_data["home_roster_changes"] = agg.get_daily_roster_changes(home_code, game.game_date)
+
+    return review_data
+
+
 async def run_review_batch(target_date: str, *, sync_to_oci: bool | None = None) -> List[str]:
     print(f"🚀 Starting Post-game Review Data Batch for {target_date}...")
 
@@ -39,29 +86,22 @@ async def run_review_batch(target_date: str, *, sync_to_oci: bool | None = None)
                 phase="postgame_review",
                 target_date=target_date,
                 game_ids=[],
-                datasets=["game", "game_events", "game_summary"],
+                datasets=[
+                    "game",
+                    "game_events",
+                    "game_pitching_stats",
+                    "player_season_pitching",
+                    "game_summary",
+                ],
             )
             print(f"ℹ️ No completed games found for {target_date}. manifest={manifest_path}")
             return []
 
-        season_year = target_dt_obj.year
         for game in games:
             game_id = game.game_id
-            away_code = team_code_from_game_id_segment(game.away_team, season_year)
-            home_code = team_code_from_game_id_segment(game.home_team, season_year)
 
             print(f"📊 Generating review context for {game_id}...")
-            review_data = {
-                "game_id": game_id,
-                "game_date": target_date,
-                "final_score": f"{game.away_team} {game.away_score} : {game.home_score} {game.home_team}",
-                "crucial_moments": agg.get_crucial_moments(game_id, limit=5),
-            }
-            if away_code and home_code:
-                review_data["away_movements"] = agg.get_recent_player_movements(away_code, target_dt_obj)
-                review_data["home_movements"] = agg.get_recent_player_movements(home_code, target_dt_obj)
-                review_data["away_roster_changes"] = agg.get_daily_roster_changes(away_code, target_dt_obj)
-                review_data["home_roster_changes"] = agg.get_daily_roster_changes(home_code, target_dt_obj)
+            review_data = _build_review_data(agg, game)
 
             if not review_data["crucial_moments"]:
                 print(
@@ -70,20 +110,7 @@ async def run_review_batch(target_date: str, *, sync_to_oci: bool | None = None)
                 )
 
             review_json = json.dumps(review_data, ensure_ascii=False)
-            existing = session.query(GameSummary).filter(
-                GameSummary.game_id == game_id,
-                GameSummary.summary_type == "리뷰_WPA",
-            ).first()
-            if existing:
-                existing.detail_text = review_json
-            else:
-                session.add(
-                    GameSummary(
-                        game_id=game_id,
-                        summary_type="리뷰_WPA",
-                        detail_text=review_json,
-                    )
-                )
+            _upsert_review_summary(session, game_id, review_json)
             saved_ids.append(game_id)
 
         try:
@@ -109,7 +136,13 @@ async def run_review_batch(target_date: str, *, sync_to_oci: bool | None = None)
         phase="postgame_review",
         target_date=target_date,
         game_ids=saved_ids,
-        datasets=["game", "game_events", "game_summary"],
+        datasets=[
+            "game",
+            "game_events",
+            "game_pitching_stats",
+            "player_season_pitching",
+            "game_summary",
+        ],
     )
     print(f"✅ Review batch finished. saved={len(saved_ids)} manifest={manifest_path}")
     return saved_ids

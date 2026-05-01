@@ -18,6 +18,7 @@ from src.models.game import (
     GameSummary,
 )
 from src.models.player import PlayerBasic
+from src.services.game_write_contract import GameWriteContract
 from src.utils.game_status import GAME_STATUS_CANCELLED, GAME_STATUS_LIVE, GAME_STATUS_SCHEDULED
 
 
@@ -250,6 +251,115 @@ def test_save_game_snapshot_marks_cancelled_alias_and_sets_season(monkeypatch):
         assert game.away_team == "LG"
         assert game.home_team == "SS"
         assert metadata.source_payload == {"is_cancelled": True}
+
+
+def test_schedule_write_contract_logs_duplicate_field_skips(monkeypatch):
+    SessionLocal = _build_session_factory()
+    monkeypatch.setattr(game_repository, "SessionLocal", SessionLocal)
+
+    logs: list[str] = []
+    contract = GameWriteContract(run_label="unit-schedule", log=logs.append, log_duplicate_fields=True)
+    payload = {
+        "game_id": "20250405LGSS0",
+        "game_date": "20250405",
+        "home_team_code": "SS",
+        "away_team_code": "LG",
+        "season_year": 2025,
+        "season_type": "regular",
+        "game_time": "18:30",
+        "stadium": "잠실",
+    }
+
+    assert game_repository.save_schedule_game(
+        payload,
+        write_contract=contract,
+        source_reason="monthly_schedule_refresh:2025-04",
+    )
+    assert game_repository.save_schedule_game(
+        payload,
+        write_contract=contract,
+        source_reason="monthly_schedule_refresh:2025-04",
+    )
+
+    assert any("field=game_date" in line and line.startswith("[WRITE]") for line in logs)
+    assert any("field=game_date" in line and line.startswith("[SKIP]") for line in logs)
+    assert contract.updated_fields > 0
+    assert contract.duplicate_fields > 0
+
+
+def test_save_game_detail_skips_identical_child_rewrites(monkeypatch):
+    SessionLocal = _build_session_factory()
+    monkeypatch.setattr(game_repository, "SessionLocal", SessionLocal)
+    monkeypatch.setattr(game_repository, "_auto_sync_to_oci", lambda game_id: None)
+
+    logs: list[str] = []
+    contract = GameWriteContract(run_label="unit-detail", log=logs.append)
+    payload = {
+        "game_id": "20250406LGSS0",
+        "game_date": "20250406",
+        "metadata": {"stadium": "잠실", "start_time": "18:30"},
+        "teams": {
+            "away": {"code": "LG", "score": 2, "line_score": [1, 1, 0]},
+            "home": {"code": "SS", "score": 1, "line_score": [0, 0, 1]},
+        },
+        "hitters": {
+            "away": [
+                {
+                    "player_id": 1001,
+                    "player_name": "홍길동",
+                    "team_code": "LG",
+                    "batting_order": 1,
+                    "is_starter": True,
+                    "appearance_seq": 1,
+                    "position": "중견수",
+                    "stats": {"plate_appearances": 4, "at_bats": 4, "runs": 1, "hits": 2},
+                }
+            ],
+            "home": [
+                {
+                    "player_id": 2001,
+                    "player_name": "이승엽",
+                    "team_code": "SS",
+                    "batting_order": 4,
+                    "is_starter": True,
+                    "appearance_seq": 1,
+                    "position": "1루수",
+                    "stats": {"plate_appearances": 4, "at_bats": 4, "runs": 1, "hits": 1},
+                }
+            ],
+        },
+        "pitchers": {
+            "away": [
+                {
+                    "player_id": 3001,
+                    "player_name": "임찬규",
+                    "team_code": "LG",
+                    "is_starting": True,
+                    "appearance_seq": 1,
+                    "stats": {"innings_outs": 18, "runs_allowed": 1},
+                }
+            ],
+            "home": [
+                {
+                    "player_id": 4001,
+                    "player_name": "원태인",
+                    "team_code": "SS",
+                    "is_starting": True,
+                    "appearance_seq": 1,
+                    "stats": {"innings_outs": 18, "runs_allowed": 2},
+                }
+            ],
+        },
+    }
+
+    assert game_repository.save_game_detail(payload, write_contract=contract, source_reason="postgame_finalize")
+    assert game_repository.save_game_detail(payload, write_contract=contract, source_reason="postgame_finalize")
+
+    assert any("dataset=game_batting_stats rows=2" in line for line in logs)
+    assert any("dataset=game_batting_stats duplicate_rows=2" in line for line in logs)
+    assert any("dataset=game_pitching_stats duplicate_rows=2" in line for line in logs)
+    assert contract.replaced_datasets > 0
+    assert contract.duplicate_datasets > 0
 
 
 def test_save_game_detail_honors_explicit_cancelled_status(monkeypatch):

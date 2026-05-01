@@ -1,0 +1,20 @@
+import sqlite3
+import pandas as pd
+df = pd.read_csv('data/repair_game_id_integrity/game_identity_conflicts_20260428_144444.csv')
+games = df['source_game_id'].unique()
+conn = sqlite3.connect('data/kbo_dev.db')
+cursor = conn.cursor()
+for g in games:
+    print(f"Deleting {g}...")
+    cursor.execute("DELETE FROM game WHERE game_id = ?", (g,))
+    cursor.execute("DELETE FROM game_events WHERE game_id = ?", (g,))
+    cursor.execute("DELETE FROM game_batting_stats WHERE game_id = ?", (g,))
+    cursor.execute("DELETE FROM game_pitching_stats WHERE game_id = ?", (g,))
+    cursor.execute("DELETE FROM game_lineups WHERE game_id = ?", (g,))
+    cursor.execute("DELETE FROM game_inning_scores WHERE game_id = ?", (g,))
+    cursor.execute("DELETE FROM game_metadata WHERE game_id = ?", (g,))
+    cursor.execute("DELETE FROM game_play_by_play WHERE game_id = ?", (g,))
+    cursor.execute("DELETE FROM game_summary WHERE game_id = ?", (g,))
+conn.commit()
+conn.close()
+print("Done")

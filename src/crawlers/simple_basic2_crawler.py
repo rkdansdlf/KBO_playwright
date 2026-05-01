@@ -1,6 +1,6 @@
 """
 단순화된 Basic2 크롤러 - BB 헤더만 클릭
-Supabase 저장 테스트용
+OCI 동기화 전 SQLite 저장 테스트용
 """
 
 import sys
@@ -277,8 +277,8 @@ def main():
                     for key, value in first_player.items():
                         print(f"   {key}: {value}")
                 
-                # Supabase 저장
-                print(f"\n💾 Supabase 저장 시작...")
+                # SQLite 저장
+                print(f"\n💾 SQLite 저장 시작...")
                 saved_count = save_kbo_batting_batch(bb_data, "정규시즌 BB 테스트")
                 
                 print(f"\n🎉 완료!")

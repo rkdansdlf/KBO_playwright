@@ -56,7 +56,7 @@ def test_run_healer_async_uses_shared_collection_and_applies_statuses(monkeypatc
     monkeypatch.setattr(auto_healer, "update_game_status", lambda game_id, status: updates.append((game_id, status)) or True)
     monkeypatch.setattr(auto_healer.SlackWebhookClient, "send_alert", lambda *args, **kwargs: alerts.append((args, kwargs)))
 
-    async def _fake_collect(games, *, detail_crawler, force, concurrency, log):
+    async def _fake_collect(games, *, detail_crawler, force, concurrency, log, **_kwargs):
         seen["games"] = list(games)
         seen["crawler"] = detail_crawler
         seen["force"] = force

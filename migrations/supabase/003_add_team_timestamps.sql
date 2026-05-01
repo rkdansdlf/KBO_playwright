@@ -1,5 +1,5 @@
--- Add created_at/updated_at timestamps to Supabase teams table
--- Run inside Supabase SQL editor or psql connected to the project DB.
+-- Add created_at/updated_at timestamps to the teams table.
+-- Run with psql connected to the OCI project DB.
 
 ALTER TABLE public.teams
     ADD COLUMN IF NOT EXISTS created_at timestamptz NOT NULL DEFAULT now(),
