@@ -2,10 +2,10 @@ name: KBO Pitcher Backfill
 
 on:
   schedule:
-    # Every hour from 14:00 to 22:00 KST (05:00 to 13:00 UTC)
-    - cron: '0 5-13 * * *'
-    # Morning refresh at 09:00 KST (00:00 UTC)
+    # 09:00 KST (00:00 UTC) - Morning refresh for today/tomorrow
     - cron: '0 0 * * *'
+    # 23:00 KST (14:00 UTC) - Nightly update for next day's previews
+    - cron: '0 14 * * *'
   workflow_dispatch:
     inputs:
       days_ahead:

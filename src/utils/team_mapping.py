@@ -1,6 +1,6 @@
 """
 KBO 팀명 매핑 유틸리티
-Supabase team_history 테이블과 연동하여 동적 매핑 제공
+OCI team_history 테이블과 연동하여 동적 매핑 제공
 """
 import os
 from typing import Dict, Optional, List, Tuple
@@ -14,9 +14,9 @@ class TeamMapper:
     
     def __init__(self):
         self.static_mapping = self._get_static_mapping()
-        self.supabase_mapping = {}
+        self.oci_mapping = {}
         self.year_specific_mapping = {}
-        self._supabase_loaded = False
+        self._oci_loaded = False
     
     def _get_static_mapping(self) -> Dict[str, str]:
         """기본 정적 매핑 (현재 팀들)"""
@@ -44,15 +44,15 @@ class TeamMapper:
             'SSG랜더스': 'SSG',
         }
     
-    def load_supabase_mapping(self) -> bool:
-        """Supabase team_history 테이블에서 매핑 데이터 로드"""
-        supabase_url = os.getenv('SUPABASE_DB_URL')
-        if not supabase_url:
-            print("⚠️ SUPABASE_DB_URL 환경변수가 설정되지 않음. 정적 매핑만 사용.")
+    def load_oci_mapping(self) -> bool:
+        """OCI team_history 테이블에서 매핑 데이터 로드"""
+        oci_url = os.getenv('OCI_DB_URL') or os.getenv('TARGET_DATABASE_URL')
+        if not oci_url:
+            print("⚠️ OCI_DB_URL 환경변수가 설정되지 않음. 정적 매핑만 사용.")
             return False
         
         try:
-            engine = create_engine(supabase_url)
+            engine = create_engine(oci_url)
             Session = sessionmaker(bind=engine)
             session = Session()
             
@@ -111,7 +111,7 @@ class TeamMapper:
                 AND code IS NOT NULL
                 ORDER BY start_year
                 """,
-                # 컬럼명 패턴 3 (실제 Supabase 일부 구조)
+                # 컬럼명 패턴 3 (레거시 PostgreSQL 일부 구조)
                 """
                 SELECT 
                     team_name,
@@ -166,7 +166,7 @@ class TeamMapper:
                 franchise = row[4]
                 
                 # 기본 매핑
-                self.supabase_mapping[team_name] = team_code
+                self.oci_mapping[team_name] = team_code
                 
                 # 년도별 매핑
                 for year in range(start_year, end_year + 1):
@@ -176,7 +176,7 @@ class TeamMapper:
                 
                 # 프랜차이즈명도 매핑에 추가
                 if franchise and franchise != team_name:
-                    self.supabase_mapping[franchise] = team_code
+                    self.oci_mapping[franchise] = team_code
                     for year in range(start_year, end_year + 1):
                         if year not in self.year_specific_mapping:
                             self.year_specific_mapping[year] = {}
@@ -185,12 +185,12 @@ class TeamMapper:
             session.close()
             engine.dispose()
             
-            self._supabase_loaded = True
-            print(f"✅ Supabase에서 {len(results)}개 팀 매핑 로드 완료")
+            self._oci_loaded = True
+            print(f"✅ OCI에서 {len(results)}개 팀 매핑 로드 완료")
             return True
             
         except Exception as e:
-            print(f"⚠️ Supabase 팀 매핑 로드 실패: {e}")
+            print(f"⚠️ OCI 팀 매핑 로드 실패: {e}")
             return False
     
     def get_team_code(self, team_name: str, year: Optional[int] = None) -> Optional[str]:
@@ -200,12 +200,12 @@ class TeamMapper:
         
         team_name = team_name.strip()
         
-        # 1. 년도별 매핑 우선 확인 (Supabase 등의 외부 소스)
-        if year and self._supabase_loaded and year in self.year_specific_mapping:
+        # 1. 년도별 매핑 우선 확인 (OCI 등의 외부 소스)
+        if year and self._oci_loaded and year in self.year_specific_mapping:
             year_mapping = self.year_specific_mapping[year]
             if team_name in year_mapping:
                 # [REFINED] If we have a year, ensure it follows historical resolution
-                # to avoid Supabase legacy overrides for modern years or vice versa.
+                # to avoid legacy overrides for modern years or vice versa.
                 canonical_code = resolve_team_code(team_name, year)
                 if canonical_code:
                     return canonical_code
@@ -216,9 +216,9 @@ class TeamMapper:
         if resolved:
             return resolved
         
-        # 2. Supabase 매핑 확인
-        if self._supabase_loaded and team_name in self.supabase_mapping:
-            return self.supabase_mapping[team_name]
+        # 2. OCI 매핑 확인
+        if self._oci_loaded and team_name in self.oci_mapping:
+            return self.oci_mapping[team_name]
         
         # 3. 정적 매핑 확인
         if team_name in self.static_mapping:
@@ -318,8 +318,8 @@ def get_team_mapper() -> TeamMapper:
     global _team_mapper
     if _team_mapper is None:
         _team_mapper = TeamMapper()
-        # 처음 생성시 Supabase 매핑 시도
-        _team_mapper.load_supabase_mapping()
+        # 처음 생성시 OCI 매핑 시도
+        _team_mapper.load_oci_mapping()
     return _team_mapper
 
 def get_team_code(team_name: str, year: Optional[int] = None) -> Optional[str]:
@@ -332,16 +332,16 @@ def get_team_mapping_for_year(year: int) -> Dict[str, str]:
     mapper = get_team_mapper()
     return mapper.get_all_teams_for_year(year)
 
-def refresh_supabase_mapping() -> bool:
-    """Supabase 매핑 갱신"""
+def refresh_oci_mapping() -> bool:
+    """OCI 매핑 갱신"""
     mapper = get_team_mapper()
-    return mapper.load_supabase_mapping()
+    return mapper.load_oci_mapping()
 
 
 if __name__ == "__main__":
     # 테스트 코드
     mapper = TeamMapper()
-    mapper.load_supabase_mapping()
+    mapper.load_oci_mapping()
     
     # 테스트 케이스들
     test_cases = [

@@ -35,6 +35,16 @@ class _FakeRelayCrawler:
         return {"events": [{"event_seq": 1, "inning": 1, "inning_half": "top", "description": game_id}]}
 
 
+class _RawRelayCrawler:
+    async def crawl_game_events(self, game_id: str):
+        return {
+            "events": [],
+            "raw_pbp_rows": [
+                {"inning": 1, "inning_half": "top", "play_description": f"{game_id} raw"},
+            ],
+        }
+
+
 class _FailingDetailCrawler:
     async def crawl_games(self, games, concurrency=None, lightweight=False):
         return []
@@ -111,11 +121,15 @@ def test_crawl_and_save_game_details_skips_existing_detail_and_relay(monkeypatch
 
     saved_details = []
     saved_relays = []
-    monkeypatch.setattr(service, "save_game_detail", lambda payload: saved_details.append(payload["game_id"]) or True)
+    monkeypatch.setattr(
+        service,
+        "save_game_detail",
+        lambda payload, **_kwargs: saved_details.append(payload["game_id"]) or True,
+    )
     monkeypatch.setattr(
         service,
         "save_relay_data",
-        lambda game_id, events: saved_relays.append((game_id, len(events))) or len(events),
+        lambda game_id, events, **_kwargs: saved_relays.append((game_id, len(events))) or len(events),
     )
 
     detail_crawler = _FakeDetailCrawler()
@@ -157,11 +171,15 @@ def test_crawl_and_save_game_details_force_recrawls_existing(monkeypatch):
 
     saved_details = []
     saved_relays = []
-    monkeypatch.setattr(service, "save_game_detail", lambda payload: saved_details.append(payload["game_id"]) or True)
+    monkeypatch.setattr(
+        service,
+        "save_game_detail",
+        lambda payload, **_kwargs: saved_details.append(payload["game_id"]) or True,
+    )
     monkeypatch.setattr(
         service,
         "save_relay_data",
-        lambda game_id, events: saved_relays.append((game_id, len(events))) or len(events),
+        lambda game_id, events, **_kwargs: saved_relays.append((game_id, len(events))) or len(events),
     )
 
     detail_crawler = _FakeDetailCrawler()
@@ -184,12 +202,49 @@ def test_crawl_and_save_game_details_force_recrawls_existing(monkeypatch):
     assert result.relay_skipped_existing == 0
 
 
+def test_crawl_and_save_game_details_saves_raw_pbp_without_events(monkeypatch):
+    SessionLocal = _build_session_factory()
+    monkeypatch.setattr(service, "SessionLocal", SessionLocal)
+
+    monkeypatch.setattr(service, "save_game_detail", lambda payload, **_kwargs: True)
+    saved_relays = []
+
+    def _save_relay(game_id, events, **kwargs):
+        saved_relays.append((game_id, list(events or []), list(kwargs.get("raw_pbp_rows") or [])))
+        return len(kwargs.get("raw_pbp_rows") or [])
+
+    monkeypatch.setattr(service, "save_relay_data", _save_relay)
+
+    result = asyncio.run(
+        service.crawl_and_save_game_details(
+            [{"game_id": "20250405LGSS0", "game_date": "20250405"}],
+            detail_crawler=_FakeDetailCrawler(),
+            relay_crawler=_RawRelayCrawler(),
+            log=lambda _message: None,
+        )
+    )
+
+    assert saved_relays == [
+        (
+            "20250405LGSS0",
+            [],
+            [{"inning": 1, "inning_half": "top", "play_description": "20250405LGSS0 raw"}],
+        )
+    ]
+    assert result.relay_saved_games == 1
+    assert result.relay_rows_saved == 1
+
+
 def test_crawl_and_save_game_details_does_not_fetch_relay_when_detail_fails(monkeypatch):
     SessionLocal = _build_session_factory()
     monkeypatch.setattr(service, "SessionLocal", SessionLocal)
 
     saved_details = []
-    monkeypatch.setattr(service, "save_game_detail", lambda payload: saved_details.append(payload["game_id"]) or True)
+    monkeypatch.setattr(
+        service,
+        "save_game_detail",
+        lambda payload, **_kwargs: saved_details.append(payload["game_id"]) or True,
+    )
 
     relay_crawler = _FakeRelayCrawler()
     result = asyncio.run(
@@ -214,7 +269,11 @@ def test_crawl_and_save_game_details_can_filter_payloads_before_save(monkeypatch
     monkeypatch.setattr(service, "SessionLocal", SessionLocal)
 
     saved_details = []
-    monkeypatch.setattr(service, "save_game_detail", lambda payload: saved_details.append(payload["game_id"]) or True)
+    monkeypatch.setattr(
+        service,
+        "save_game_detail",
+        lambda payload, **_kwargs: saved_details.append(payload["game_id"]) or True,
+    )
 
     result = asyncio.run(
         service.crawl_and_save_game_details(

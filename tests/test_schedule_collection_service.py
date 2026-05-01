@@ -6,7 +6,7 @@ import src.services.schedule_collection_service as service
 def test_save_schedule_games_counts_saved_and_failed(monkeypatch):
     calls = []
 
-    def _fake_save(game):
+    def _fake_save(game, **_kwargs):
         calls.append(game["game_id"])
         return game["game_id"] != "fail"
 
@@ -24,4 +24,8 @@ def test_save_schedule_games_counts_saved_and_failed(monkeypatch):
     assert result.failed == 1
     assert [game["game_id"] for game in result.saved_games] == ["ok-1", "ok-2"]
     assert [game["game_id"] for game in result.failed_games] == ["fail"]
-    assert warnings == ["[WARN] Failed to save schedule game: fail"]
+    assert warnings == [
+        "[WARN] Failed to save schedule game: fail",
+        "[WRITE-SUMMARY] run=schedule_collection games=0 field_updates=0 field_duplicates=0 "
+        "dataset_replacements=0 dataset_duplicates=0",
+    ]

@@ -38,6 +38,8 @@ def _seed_games(SessionLocal):
                     game_date=date(2025, 4, 1),
                     home_team="SS",
                     away_team="LG",
+                    away_score=1,
+                    home_score=0,
                     season_id=20250,
                     game_status="COMPLETED",
                 ),
@@ -46,6 +48,8 @@ def _seed_games(SessionLocal):
                     game_date=date(2025, 4, 2),
                     home_team="SS",
                     away_team="LG",
+                    away_score=2,
+                    home_score=1,
                     season_id=20250,
                     game_status="COMPLETED",
                 ),
@@ -54,6 +58,8 @@ def _seed_games(SessionLocal):
                     game_date=date(2025, 4, 3),
                     home_team="SS",
                     away_team="LG",
+                    away_score=3,
+                    home_score=2,
                     season_id=20250,
                     game_status="COMPLETED",
                 ),
@@ -216,3 +222,93 @@ def test_recover_relay_data_derives_missing_pbp_from_existing_events(monkeypatch
     assert derived_calls == ["20250402LGSS0"]
     assert result.derived_pbp_games == 1
     assert result.saved_rows == 2
+
+
+def test_recover_relay_data_skips_result_with_too_few_events(monkeypatch):
+    saved_calls: list[str] = []
+    monkeypatch.setattr(
+        service,
+        "save_relay_data",
+        lambda game_id, *_args, **_kwargs: saved_calls.append(game_id) or 1,
+    )
+
+    class _FakeOrchestrator:
+        def source_order_for_bucket(self, _bucket_id, override=None):
+            return list(override or ["fake"])
+
+        async def probe_bucket(self, *_args):
+            return {}
+
+        async def fetch_game(self, game_id, bucket_id, source_order):
+            return (
+                NormalizedRelayResult(
+                    game_id=game_id,
+                    source_name="fake",
+                    events=[{"description": "홍길동 : 안타", "away_score": 1, "home_score": 0}],
+                    has_event_state=True,
+                ),
+                [],
+            )
+
+    result = asyncio.run(
+        service.recover_relay_data(
+            [service.RelayRecoveryTarget(game_id="20250401LGSS0", bucket_id="2025_regular_kbo")],
+            min_result_events=2,
+            orchestrator=_FakeOrchestrator(),
+            sleep_seconds=0,
+            log=lambda _msg: None,
+        )
+    )
+
+    assert saved_calls == []
+    assert result.saved_games == 0
+    assert result.report_rows[-1]["status"] == "skipped_validation"
+    assert result.report_rows[-1]["notes"] == "too_few_result_events:1<2"
+
+
+def test_recover_relay_data_skips_score_mismatch_when_validation_enabled(monkeypatch):
+    SessionLocal = _build_session_factory()
+    monkeypatch.setattr(service, "SessionLocal", SessionLocal)
+    _seed_games(SessionLocal)
+    saved_calls: list[str] = []
+    monkeypatch.setattr(
+        service,
+        "save_relay_data",
+        lambda game_id, *_args, **_kwargs: saved_calls.append(game_id) or 1,
+    )
+
+    class _FakeOrchestrator:
+        def source_order_for_bucket(self, _bucket_id, override=None):
+            return list(override or ["fake"])
+
+        async def probe_bucket(self, *_args):
+            return {}
+
+        async def fetch_game(self, game_id, bucket_id, source_order):
+            return (
+                NormalizedRelayResult(
+                    game_id=game_id,
+                    source_name="fake",
+                    events=[
+                        {"description": "홍길동 : 안타", "away_score": 0, "home_score": 0},
+                        {"description": "이몽룡 : 삼진", "away_score": 0, "home_score": 0},
+                    ],
+                    has_event_state=True,
+                ),
+                [],
+            )
+
+    result = asyncio.run(
+        service.recover_relay_data(
+            [service.RelayRecoveryTarget(game_id="20250401LGSS0", bucket_id="2025_regular_kbo")],
+            validate_final_score=True,
+            orchestrator=_FakeOrchestrator(),
+            sleep_seconds=0,
+            log=lambda _msg: None,
+        )
+    )
+
+    assert saved_calls == []
+    assert result.saved_games == 0
+    assert result.report_rows[-1]["status"] == "skipped_validation"
+    assert result.report_rows[-1]["notes"] == "final_score_mismatch:events=0-0 game=1-0"

@@ -105,6 +105,7 @@ async def _fake_crawl_and_save_game_details(
     force,
     concurrency,
     log,
+    **_kwargs,
 ):
     items = {}
     processed_game_ids = []
@@ -135,6 +136,10 @@ async def _fake_crawl_and_save_game_details(
         detail_saved=detail_saved,
         detail_failed=detail_failed,
     )
+
+
+async def _fake_reconcile_postgame_range(*_args, **_kwargs):
+    return SimpleNamespace(candidates=0, changes=[], changed_game_ids=[])
 
 
 def _fake_save_schedule_games(games, **_kwargs):
@@ -200,6 +205,8 @@ def _patch_common(monkeypatch):
     monkeypatch.setattr(run_daily_update, "PlayerMovementCrawler", _FakeMovementCrawler)
     monkeypatch.setattr(run_daily_update, "DailyRosterCrawler", _FakeRosterCrawler)
     monkeypatch.setattr(run_daily_update, "write_refresh_manifest", lambda **_kwargs: "manifest.json")
+    monkeypatch.setattr(run_daily_update, "reconcile_postgame_range", _fake_reconcile_postgame_range)
+    monkeypatch.setattr(run_daily_update, "format_reconciliation_report", lambda changes: "")
 
 
 def test_run_update_injects_resolver_marks_cancelled_and_uses_step_runner(monkeypatch):
@@ -331,14 +338,33 @@ def test_run_update_syncs_only_target_games_after_freshness_gate(monkeypatch):
     ]
     assert backfill_command in commands
     assert ["-m", "src.cli.freshness_gate", "--date", "20250101"] in commands
+    assert [
+        "-m",
+        "src.cli.freshness_gate",
+        "--date",
+        "20250101",
+        "--source-url-env",
+        "OCI_DB_URL",
+    ] in commands
     assert ["-m", "src.cli.quality_gate_check", "--year", "2025"] in commands
     backfill_index = commands.index(backfill_command)
     gate_index = commands.index(["-m", "src.cli.freshness_gate", "--date", "20250101"])
+    oci_gate_index = commands.index(
+        [
+            "-m",
+            "src.cli.freshness_gate",
+            "--date",
+            "20250101",
+            "--source-url-env",
+            "OCI_DB_URL",
+        ]
+    )
     quality_index = commands.index(["-m", "src.cli.quality_gate_check", "--year", "2025"])
     standings_index = commands.index(["-m", "src.cli.calculate_standings", "--year", "2025"])
     assert backfill_index < standings_index
     assert standings_index < gate_index
     assert gate_index < quality_index
+    assert quality_index < oci_gate_index
 
     assert len(_FakeSyncer.created) == 1
     syncer = _FakeSyncer.created[0]
@@ -384,7 +410,76 @@ def test_run_update_syncs_auto_healer_recovery_targets(monkeypatch):
     assert ["scripts/fetch_kbo_pbp.py", "--date", "20241231"] in commands
     assert ["-m", "src.cli.freshness_gate", "--date", "20250101"] in commands
     assert ["-m", "src.cli.freshness_gate", "--date", "20241231"] in commands
+    assert [
+        "-m",
+        "src.cli.freshness_gate",
+        "--date",
+        "20250101",
+        "--source-url-env",
+        "OCI_DB_URL",
+    ] in commands
+    assert [
+        "-m",
+        "src.cli.freshness_gate",
+        "--date",
+        "20241231",
+        "--source-url-env",
+        "OCI_DB_URL",
+    ] in commands
 
     assert len(_FakeSyncer.created) == 1
     syncer = _FakeSyncer.created[0]
     assert syncer.synced_games == ["20241231LGSS0", "20250101LGSS0"]
+
+
+def test_run_update_syncs_postgame_reconciliation_changes(monkeypatch):
+    _FakeResolver.created = []
+    _FakeSyncer.created = []
+    commands: list[list[str]] = []
+    seen: dict[str, object] = {}
+
+    _patch_common(monkeypatch)
+    monkeypatch.setattr(run_daily_update, "GameDetailCrawler", _FakeDetailCrawlerSuccess)
+    monkeypatch.setattr(run_daily_update, "OCISync", _FakeSyncer)
+    monkeypatch.setattr(run_daily_update, "update_game_status", lambda *_args, **_kwargs: True)
+    monkeypatch.setenv("OCI_DB_URL", "postgresql://example")
+
+    async def _fake_reconcile(start_date, end_date, *, detail_crawler, concurrency, log, **_kwargs):
+        seen["range"] = (start_date, end_date)
+        seen["crawler"] = detail_crawler
+        seen["concurrency"] = concurrency
+        return SimpleNamespace(
+            candidates=1,
+            changes=[SimpleNamespace(game_id="20241230LGSS0", game_date="20241230")],
+            changed_game_ids=["20241230LGSS0"],
+        )
+
+    monkeypatch.setattr(run_daily_update, "reconcile_postgame_range", _fake_reconcile)
+    monkeypatch.setattr(run_daily_update, "format_reconciliation_report", lambda _changes: "report")
+
+    asyncio.run(
+        run_daily_update.run_update(
+            "20250101",
+            sync=True,
+            headless=True,
+            limit=None,
+            step_runner=lambda argv: commands.append(list(argv)),
+            postgame_reconcile_lookback_days=2,
+        )
+    )
+
+    assert seen["range"] == ("20241230", "20250101")
+    assert seen["crawler"].__class__ is _FakeDetailCrawlerSuccess
+    assert seen["concurrency"] == 1
+    assert ["-m", "src.cli.freshness_gate", "--date", "20241230"] in commands
+    assert [
+        "-m",
+        "src.cli.freshness_gate",
+        "--date",
+        "20241230",
+        "--source-url-env",
+        "OCI_DB_URL",
+    ] in commands
+    assert len(_FakeSyncer.created) == 1
+    syncer = _FakeSyncer.created[0]
+    assert syncer.synced_games == ["20241230LGSS0", "20250101LGSS0"]

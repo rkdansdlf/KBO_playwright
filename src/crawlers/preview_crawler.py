@@ -68,6 +68,16 @@ class PreviewCrawler:
             return ""
         return str(value).strip()
 
+    @staticmethod
+    def _to_flag(value: Any) -> bool:
+        """Interpret API flags (0/1/numeric/string) as bool."""
+        try:
+            return bool(int(value))
+        except (TypeError, ValueError):
+            if isinstance(value, str):
+                return value.strip() not in ("", "0", "false", "False", "FALSE")
+            return bool(value)
+
     async def _fetch_api_json(
         self,
         url: str,
@@ -175,10 +185,20 @@ class PreviewCrawler:
                 home_team_name = self._clean_text(g.get("HOME_NM"))
                 away_starter = self._clean_text(g.get("T_PIT_P_NM"))
                 home_starter = self._clean_text(g.get("B_PIT_P_NM"))
+                if not away_starter:
+                    away_starter = self._clean_text(g.get("T_D_PIT_P_NM"))
+                if not home_starter:
+                    home_starter = self._clean_text(g.get("B_D_PIT_P_NM"))
+                if not away_starter:
+                    away_starter = self._clean_text(g.get("W_PIT_P_NM"))
+                if not home_starter:
+                    home_starter = self._clean_text(g.get("L_PIT_P_NM"))
                 away_starter_id = g.get("T_PIT_P_ID")
                 home_starter_id = g.get("B_PIT_P_ID")
                 stadium = self._clean_text(g.get("S_NM")) or None
                 start_time = self._clean_text(g.get("G_TM")) or None
+                start_pitcher_announced = self._to_flag(g.get("START_PIT_CK"))
+                lineup_announced = self._to_flag(g.get("LINEUP_CK"))
 
                 preview_data = {
                     "game_id": game_id,
@@ -191,6 +211,8 @@ class PreviewCrawler:
                     "away_starter_id": away_starter_id,
                     "home_starter": home_starter,
                     "home_starter_id": home_starter_id,
+                    "start_pitcher_announced": start_pitcher_announced,
+                    "lineup_announced": lineup_announced,
                     "away_lineup": [],
                     "home_lineup": [],
                 }

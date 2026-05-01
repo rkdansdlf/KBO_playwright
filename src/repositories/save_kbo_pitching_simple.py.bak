@@ -13,7 +13,7 @@ from src.repositories.player_season_batting_repository import PlayerSeasonBattin
 def save_pitching_stats_to_sqlite(pitching_stats: List[Dict[str, Any]]) -> int:
     """
     투수 기록을 SQLite에 저장 (외래키 제약조건 임시 비활성화)
-    이후 supabase_sync.py로 Supabase 동기화 예정
+    이후 sync_oci로 OCI 동기화 예정
     """
     if not pitching_stats:
         return 0

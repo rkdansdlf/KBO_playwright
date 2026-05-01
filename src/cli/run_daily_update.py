@@ -35,7 +35,12 @@ from src.repositories.player_repository import PlayerRepository
 from src.repositories.team_repository import TeamRepository
 from src.services.game_collection_service import crawl_and_save_game_details
 from src.services.player_id_resolver import PlayerIdResolver
+from src.services.postgame_reconciliation_service import (
+    format_reconciliation_report,
+    reconcile_postgame_range,
+)
 from src.services.schedule_collection_service import save_schedule_games
+from src.services.game_write_contract import GameWriteContract
 from src.sync.oci_sync import OCISync
 from src.utils.refresh_manifest import write_refresh_manifest
 from src.utils.safe_print import safe_print as print
@@ -112,6 +117,8 @@ async def run_update(
     step_runner: Optional[Callable[[Sequence[str]], None]] = None,
     seed_tomorrow_preview: bool = False,
     run_auto_healer: bool = True,
+    run_postgame_reconciliation: bool = True,
+    postgame_reconcile_lookback_days: int = 3,
 ):
     """Main orchestration logic for postgame finalize and daily reconciliation."""
     runner = step_runner or _run_python_step
@@ -124,6 +131,9 @@ async def run_update(
     month = int(target_date[4:6])
     today_kst = _today_kst()
     healer_recovery_targets: list[dict[str, str]] = []
+    reconciliation_changed_ids: list[str] = []
+    reconciliation_dates: list[str] = []
+    write_contract = GameWriteContract(run_label=f"daily_update:{target_date}", log=print)
 
     if run_auto_healer:
         print("\n🩺 Step 0: Running Auto-Healer...")
@@ -141,7 +151,12 @@ async def run_update(
     print("\n📅 Step 1: Crawling + saving monthly schedule...")
     s_crawler = ScheduleCrawler()
     schedule_games = await s_crawler.crawl_schedule(year, month)
-    schedule_result = save_schedule_games(schedule_games, log=print)
+    schedule_result = save_schedule_games(
+        schedule_games,
+        log=print,
+        write_contract=write_contract,
+        source_reason=f"monthly_schedule_refresh:{year}-{month:02d}",
+    )
     print(
         f"   ✅ Schedule discovered={schedule_result.discovered} "
         f"saved={schedule_result.saved} failed={schedule_result.failed}"
@@ -167,6 +182,8 @@ async def run_update(
             force=True,
             concurrency=1,
             log=print,
+            write_contract=write_contract,
+            source_reason=f"postgame_finalize:{target_date}",
         )
         processed_game_ids = list(collection_result.processed_game_ids)
 
@@ -189,6 +206,37 @@ async def run_update(
             f"   ✅ Detail result success={collection_result.detail_saved} "
             f"failed={collection_result.detail_failed}"
         )
+
+        if run_postgame_reconciliation:
+            reconcile_start = (
+                datetime.strptime(target_date, "%Y%m%d")
+                - timedelta(days=max(0, postgame_reconcile_lookback_days))
+            ).strftime("%Y%m%d")
+            print(
+                "\n🧩 Step 2.5: Reconciling recently started games "
+                f"({reconcile_start}~{target_date})..."
+            )
+            reconciliation_result = await reconcile_postgame_range(
+                reconcile_start,
+                target_date,
+                detail_crawler=g_crawler,
+                concurrency=1,
+                log=print,
+                write_contract=write_contract,
+                source_reason=f"postgame_reconciliation:{reconcile_start}-{target_date}",
+            )
+            reconciliation_changed_ids = reconciliation_result.changed_game_ids
+            reconciliation_dates = sorted({change.game_date for change in reconciliation_result.changes})
+            print(
+                "   ✅ "
+                f"candidates={reconciliation_result.candidates} "
+                f"changed={len(reconciliation_result.changes)}"
+            )
+            if reconciliation_result.changes:
+                for line in format_reconciliation_report(reconciliation_result.changes).splitlines():
+                    print(f"   {line}")
+        else:
+            print("\n🧩 Step 2.5: Postgame reconciliation skipped.")
     except Exception as exc:
         print(f"   ❌ Error processing daily details: {exc}")
         for game in daily_games:
@@ -315,9 +363,14 @@ async def run_update(
     candidate_sync_game_ids = sorted(
         {game["game_id"] for game in daily_games}
         | set(processed_game_ids)
+        | set(reconciliation_changed_ids)
         | {item["game_id"] for item in healer_recovery_targets}
     )
-    freshness_dates = sorted({target_date} | {item["game_date"] for item in healer_recovery_targets})
+    freshness_dates = sorted(
+        {target_date}
+        | set(reconciliation_dates)
+        | {item["game_date"] for item in healer_recovery_targets}
+    )
 
     if sync:
         print("\n🧪 Step 11: Freshness gate before OCI publish...")
@@ -354,6 +407,11 @@ async def run_update(
             finally:
                 syncer.close()
 
+        print("\n🧪 Step 13.5: Freshness gate after OCI publish...")
+        for freshness_date in freshness_dates:
+            runner(["-m", "src.cli.freshness_gate", "--date", freshness_date, "--source-url-env", "OCI_DB_URL"])
+        print("   ✅ OCI freshness gate passed")
+
     if seed_tomorrow_preview:
         tomorrow_date = (datetime.strptime(target_date, "%Y%m%d") + timedelta(days=1)).strftime("%Y%m%d")
         print(f"\n🔮 Step 14: Seeding tomorrow preview contexts ({tomorrow_date})...")
@@ -369,7 +427,8 @@ async def run_update(
     manifest_path = write_refresh_manifest(
         phase="postgame_finalize",
         target_date=target_date,
-        game_ids=processed_game_ids or [game["game_id"] for game in daily_games],
+        game_ids=sorted(set(processed_game_ids) | set(reconciliation_changed_ids))
+        or [game["game_id"] for game in daily_games],
         datasets=[
             "game",
             "game_metadata",
@@ -381,6 +440,8 @@ async def run_update(
         ],
         derived_refresh=derived_refresh,
     )
+
+    print(write_contract.summary())
 
     print(f"\n{'=' * 60}")
     print(f"🏁 Daily Finalize Finished for {target_date}")
@@ -427,6 +488,17 @@ def build_arg_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Skip global past-game auto-healing for scoped backfill runs.",
     )
+    parser.add_argument(
+        "--skip-postgame-reconciliation",
+        action="store_true",
+        help="Skip the recent started-game reconciliation pass.",
+    )
+    parser.add_argument(
+        "--postgame-reconcile-lookback-days",
+        type=int,
+        default=3,
+        help="Number of days before --date to revisit for started-game reconciliation.",
+    )
     return parser
 
 
@@ -449,6 +521,8 @@ def main(argv: Sequence[str] | None = None):
             limit=args.limit,
             seed_tomorrow_preview=args.seed_tomorrow_preview,
             run_auto_healer=not args.skip_auto_healer,
+            run_postgame_reconciliation=not args.skip_postgame_reconciliation,
+            postgame_reconcile_lookback_days=args.postgame_reconcile_lookback_days,
         )
     )
 

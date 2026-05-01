@@ -178,7 +178,7 @@ def generate_missing_teams_sql():
     
     print("\n📝 누락된 팀들을 위한 SQL:")
     print("=" * 50)
-    print("-- Supabase에서 실행할 SQL")
+    print("-- OCI PostgreSQL에서 실행할 SQL")
     print()
     
     for team in missing_teams_data:
@@ -201,7 +201,7 @@ INSERT INTO public.teams (
     NOW()
 ) ON CONFLICT (team_code) DO NOTHING;""")
     
-    print("\n💡 이 SQL을 Supabase 대시보드 → SQL Editor에서 실행하세요!")
+    print("\n💡 이 SQL을 OCI PostgreSQL 접속 세션에서 실행하세요!")
 
 
 def main():
@@ -216,8 +216,8 @@ def main():
         generate_missing_teams_sql()
         
         print("\n🎯 다음 단계:")
-        print("1. 위의 SQL을 Supabase에서 실행")
-        print("2. ./venv/bin/python3 -m src.sync.supabase_sync 재시도")
+        print("1. 위의 SQL을 OCI PostgreSQL에서 실행")
+        print("2. ./venv/bin/python3 -m src.cli.sync_oci --teams 재시도")
         
     except Exception as e:
         print(f"❌ 오류 발생: {e}")

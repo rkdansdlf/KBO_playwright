@@ -9,7 +9,7 @@ def debug_pg_insert():
     engine = create_engine(url)
     metadata = MetaData()
     
-    # Define table exactly as in SupabaseSync
+    # Define table exactly as in OCISync
     game_metadata_table = Table('game_metadata', metadata, schema='public', autoload_with=engine)
     
     # Exact failing data

@@ -195,8 +195,9 @@ class ScheduleCrawler:
                 const teams = matchText.split("vs");
                 if (teams.length !== 2) return;
                 
-                const awayName = teams[0].trim();
-                const homeName = teams[1].trim();
+                // Strip trailing/leading numbers and whitespace (e.g., "삼성 0" -> "삼성")
+                const awayName = teams[0].replace(/[\d\s]+$/, "").replace(/^[\d\s]+/, "").trim();
+                const homeName = teams[1].replace(/[\d\s]+$/, "").replace(/^[\d\s]+/, "").trim();
 
                 let stadium = "";
                 for (let i = matchCellIndex + 1; i < cells.length; i++) {

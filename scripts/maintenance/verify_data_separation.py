@@ -120,7 +120,7 @@ def verify_data_separation():
         
         print(f"\n💡 이제 다음 단계로 진행할 수 있습니다:")
         print(f"1. 더 많은 데이터 수집 (다른 시리즈, 더 많은 선수)")
-        print(f"2. Supabase 환경변수 설정 후 동기화 테스트")
+        print(f"2. OCI_DB_URL 환경변수 설정 후 동기화 테스트")
         print(f"3. 실제 운영 데이터 수집")
 
 if __name__ == "__main__":

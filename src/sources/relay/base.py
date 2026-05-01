@@ -7,6 +7,13 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable, Optional
 
+from src.utils.relay_text import (
+    RELAY_RESULT_KEYWORDS,
+    detect_relay_event_type,
+    is_relay_noise_text,
+    is_relay_result_event_text,
+)
+
 ALLOWED_SOURCE_TYPES = {
     "naver",
     "kbo",
@@ -86,7 +93,7 @@ def trailing_result_from_description(description: Any) -> Any:
     if not text:
         return None
     if ":" in text:
-        return text.rsplit(":", 1)[-1].strip() or None
+        return text.split(":", 1)[-1].strip() or None
     tokens = [token for token in text.split() if token]
     return tokens[-1] if tokens else None
 

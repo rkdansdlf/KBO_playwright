@@ -45,6 +45,57 @@ class RetiredPlayerListingCrawler:
             if owns_pool:
                 await pool.close()
 
+    async def _crawl_record_page_ids(self, page, base_url: str, year: int) -> Set[str]:
+        """Navigate to one record page and collect IDs across its pagination.
+
+        Kept as the stable no-team-filter path used by compatibility tests and
+        smaller diagnostics. `collect_player_ids_for_year` uses the broader
+        team-aware path for production collection.
+        """
+        if not await compliance.is_allowed(base_url):
+            print(f"[COMPLIANCE] Blocked record listing: {base_url}", file=sys.stderr)
+            return set()
+
+        await self._wait()
+        await page.goto(base_url, wait_until="load", timeout=30000)
+
+        season_selector = 'select[id$="ddlSeason_ddlSeason"], select[name*="ddlSeason"]'
+        series_selector = 'select[id$="ddlSeries_ddlSeries"], select[name*="ddlSeries"]'
+        await page.wait_for_selector(season_selector, timeout=15000)
+        await self._select_option_and_dispatch(page, season_selector, str(year))
+        try:
+            await page.wait_for_load_state("load", timeout=10000)
+        except Exception:
+            pass
+        await page.wait_for_timeout(1000)
+
+        try:
+            await self._select_option_and_dispatch(page, series_selector, "0")
+            await page.wait_for_load_state("load", timeout=10000)
+            await page.wait_for_timeout(500)
+        except Exception:
+            pass
+
+        return await self._collect_ids_from_pages(page, year)
+
+    async def _select_option_and_dispatch(self, page, selector: str, value: str) -> None:
+        await page.select_option(selector, value)
+        await page.evaluate(
+            """
+            selector => {
+                const el = document.querySelector(selector);
+                if (!el) return false;
+                if (el.onchange) {
+                    el.onchange();
+                } else {
+                    el.dispatchEvent(new Event('change', { bubbles: true }));
+                }
+                return true;
+            }
+            """,
+            selector,
+        )
+
     async def _crawl_record_page_ids_with_teams(self, page, base_url: str, year: int) -> Set[str]:
         """Navigate to record page, select year, and iterate through all teams to collect IDs."""
         if not await compliance.is_allowed(base_url):
@@ -99,7 +150,7 @@ class RetiredPlayerListingCrawler:
         page_num = 1
         while True:
             # Extract IDs from current page
-            page_ids = await page.evaluate("""
+            page_ids = await page.evaluate(r"""
                 () => {
                     const links = document.querySelectorAll('table.tData01.tt tbody tr td:nth-child(2) a');
                     return Array.from(links).map(a => {
