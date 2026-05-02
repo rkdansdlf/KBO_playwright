@@ -20,6 +20,12 @@ from typing import Dict, List, Optional
 from playwright.sync_api import sync_playwright, Page
 
 from src.repositories.safe_batting_repository import save_batting_stats_safe
+from src.db.engine import SessionLocal
+from src.aggregators.season_stat_aggregator import SeasonStatAggregator
+from src.utils.fallback_monitor import FallbackMonitor
+from src.models.player import PlayerBasic
+from src.models.game import GameBattingStat, Game
+from src.models.season import KboSeason
 from src.utils.team_codes import resolve_team_code
 from src.utils.team_mapping import get_team_mapping_for_year, get_team_code
 from src.utils.playwright_blocking import install_sync_resource_blocking
@@ -713,6 +719,78 @@ def parse_basic2_header_data(
 
 
 
+# ---------------------------------------------------------------------------
+# Fallback logic
+# ---------------------------------------------------------------------------
+
+def fallback_batting_from_db(year: int, series_key: str, reason: str = "Manual Trigger") -> List[Dict]:
+    """
+    KBO 페이지 장애 시 로컬 DB의 상세 기록을 합산하여 타자 시즌 기록을 생성합니다.
+    """
+    FallbackMonitor.log_fallback(year, series_key, "BATTING", reason)
+    print(f"🔄 로컬 DB 기반 타자 기록 집계 시작 (연도: {year}, 시리즈: {series_key})...")
+    all_players_data = []
+    
+    with SessionLocal() as session:
+        # 1. 해당 시즌/시리즈에 경기를 뛴 모든 타자 ID 조회
+        pattern = SeasonStatAggregator._get_league_name_pattern(series_key)
+        
+        player_ids_query = (
+            session.query(GameBattingStat.player_id)
+            .join(Game, GameBattingStat.game_id == Game.game_id)
+            .join(KboSeason, Game.season_id == KboSeason.season_id)
+            .filter(KboSeason.season_year == year)
+            .filter(KboSeason.league_type_name.like(f"%{pattern}%"))
+            .distinct()
+        )
+        
+        player_ids = [p[0] for p in player_ids_query.all() if p[0]]
+        print(f"🔍 DB에서 {len(player_ids)}명의 타자를 발견했습니다.")
+        
+        series_mapping = get_series_mapping()
+        series_info = series_mapping.get(series_key, {})
+        league_name = series_info.get("league", "REGULAR")
+        
+        for pid in player_ids:
+            # 2. 개별 타자별 집계
+            agg_data = SeasonStatAggregator.aggregate_batting_season(session, pid, year, series_key)
+            if not agg_data:
+                continue
+                
+            # 3. 선수 기본 정보 조회
+            player_basic = session.query(PlayerBasic).filter_by(player_id=pid).first()
+            
+            # 4. 데이터 딕셔너리 생성
+            player_data = {
+                'player_id': pid,
+                'player_name': player_basic.name if player_basic else f"Player_{pid}",
+                'season': year,
+                'league': league_name,
+                'source': 'FALLBACK',
+            }
+            
+            # 데이터 매핑
+            player_data.update(agg_data)
+            
+            # 팀 정보 보정
+            last_game_stat = (
+                session.query(GameBattingStat.team_code)
+                .join(Game, GameBattingStat.game_id == Game.game_id)
+                .join(KboSeason, Game.season_id == KboSeason.season_id)
+                .filter(GameBattingStat.player_id == pid)
+                .filter(KboSeason.season_year == year)
+                .order_by(Game.game_date.desc())
+                .first()
+            )
+            if last_game_stat:
+                player_data['team_code'] = last_game_stat[0]
+            
+            all_players_data.append(player_data)
+            
+    print(f"✅ DB 집계 완료: 총 {len(all_players_data)}명")
+    return all_players_data
+
+
 def crawl_series_batting_stats(year: int = 2025, series_key: str = 'regular',
                              limit: int = None, save_to_db: bool = False,
                              headless: bool = False, by_team: bool = False) -> List[Dict]:
@@ -781,8 +859,14 @@ def crawl_series_batting_stats(year: int = 2025, series_key: str = 'regular',
                 page.wait_for_load_state('networkidle', timeout=30000)
 
             except Exception as e:
-                print(f"⚠️ 시즌/시리즈 선택 중 오류: {e}")
-                return []
+                reason = f"Season/Series selection error: {e}"
+                print(f"⚠️ 시즌/시리즈 선택 중 오류: {e}. DB에서 직접 집계하여 폴백(Fallback)을 시도합니다.")
+                browser.close()
+                all_players_data = fallback_batting_from_db(year, series_key, reason=reason)
+                FallbackMonitor.log_fallback(year, series_key, "BATTING", f"Fallback completed via {reason}", player_count=len(all_players_data))
+                if save_to_db and all_players_data:
+                    save_batting_stats_safe(all_players_data)
+                return all_players_data
 
             # 팀별 순회 로직
             team_options = []

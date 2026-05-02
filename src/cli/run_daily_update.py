@@ -360,6 +360,13 @@ async def run_update(
     except Exception as exc:
         print(f"   ❌ Error recalculating stat rankings: {exc}")
 
+    print("\n🕵️  Step 10.5: Auditing season stats vs transactional details...")
+    try:
+        runner(["scripts/verification/audit_fallback_stats.py", "--year", str(year), "--type", "all"])
+        print("   ✅ Statistical audit complete")
+    except Exception as exc:
+        print(f"   ⚠️ Statistical audit found potential discrepancies (see logs): {exc}")
+
     candidate_sync_game_ids = sorted(
         {game["game_id"] for game in daily_games}
         | set(processed_game_ids)
