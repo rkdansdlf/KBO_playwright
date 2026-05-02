@@ -360,12 +360,12 @@ async def run_update(
     except Exception as exc:
         print(f"   ❌ Error recalculating stat rankings: {exc}")
 
-    print("\n🕵️  Step 10.5: Auditing season stats vs transactional details...")
+    print("\n🕵️  Step 10.5: Auditing season stats vs transactional details (Auto-fix enabled)...")
     try:
-        runner(["scripts/verification/audit_fallback_stats.py", "--year", str(year), "--type", "all"])
-        print("   ✅ Statistical audit complete")
+        runner(["scripts/verification/audit_fallback_stats.py", "--year", str(year), "--type", "all", "--fix"])
+        print("   ✅ Statistical audit and auto-remediation complete")
     except Exception as exc:
-        print(f"   ⚠️ Statistical audit found potential discrepancies (see logs): {exc}")
+        print(f"   ⚠️ Statistical audit/fix found issues (see logs): {exc}")
 
     candidate_sync_game_ids = sorted(
         {game["game_id"] for game in daily_games}
@@ -400,8 +400,14 @@ async def run_update(
         with SessionLocal() as sync_session:
             syncer = OCISync(oci_url, sync_session)
             try:
+                # 1. Sync specific targeted games (full detail)
                 for game_id in candidate_sync_game_ids:
                     syncer.sync_specific_game(game_id)
+                
+                # 2. Sync all parent games for the year (to ensure future schedules are pushed)
+                # This fixes the issue where D+1 games are present locally but missing in OCI.
+                syncer.sync_games(filters=[Game.game_id.like(f"{year}%")])
+                
                 syncer.sync_standings(year=year)
                 syncer.sync_matchups(year=year)
                 syncer.sync_stat_rankings(year=year)
