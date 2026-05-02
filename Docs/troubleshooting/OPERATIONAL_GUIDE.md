@@ -10,8 +10,10 @@ Throttling and stability can be tuned via `.env`:
 | :--- | :--- | :--- |
 | `KBO_REQUEST_DELAY_MIN` | `1.5` | Minimum delay (seconds) between requests. |
 | `KBO_REQUEST_DELAY_MAX` | `2.5` | Maximum delay (seconds) between requests. |
-| `SLACK_WEBHOOK_URL` | - | Webhook URL for critical failure alerts. |
-| `NOTIFY_SUCCESS` | `0` | Set to `1` to receive Slack alerts on successful job completion. |
+| `TELEGRAM_BOT_TOKEN` | - | Token for Telegram Bot notifications (Recommended). |
+| `TELEGRAM_CHAT_ID` | - | Chat ID to send Telegram notifications to. |
+| `SLACK_WEBHOOK_URL` | - | Webhook URL for Slack alerts (Legacy fallback). |
+| `NOTIFY_SUCCESS` | `0` | Set to `1` to receive success alerts. |
 
 ## 2. Manual Data Recovery
 
@@ -31,7 +33,7 @@ To verify statistical consistency manually:
 ## 3. Monitoring
 
 - **Logs:** Located in `logs/scheduler.log`. These are automatically rotated (max 10MB, 5 backups).
-- **Alerts:** Critical errors in the scheduler are sent to the configured Slack webhook after 3 failed attempts.
+- **Alerts:** Critical errors in the scheduler are sent to the configured Telegram bot (or Slack as fallback) after 3 failed attempts.
 
 ## 4. Troubleshooting Common Issues
 
