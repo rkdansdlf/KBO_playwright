@@ -1,0 +1,75 @@
+name: KBO Full Stat Recalculation
+
+on:
+  workflow_dispatch:
+    inputs:
+      year:
+        description: 'Season year'
+        required: true
+        default: '2025'
+      series:
+        description: 'Series key'
+        required: true
+        default: 'all'
+        type: choice
+        options:
+          - all
+          - regular
+          - wildcard
+          - semi_playoff
+          - playoff
+          - korean_series
+      sync:
+        description: 'Sync to OCI after recalculation'
+        type: boolean
+        default: true
+
+jobs:
+  recalc:
+    runs-on: ubuntu-latest
+    env:
+      PYTHONPATH: ${{ github.workspace }}
+    
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.10
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Initialize Database & Seed Metadata
+        run: |
+          python3 -c "from src.db.engine import init_db; init_db()"
+          python3 scripts/maintenance/seed_data.py
+
+      - name: Run Recalculation
+        run: |
+          python3 -m src.cli.recalc_season_stats --year ${{ github.event.inputs.year }} --series ${{ github.event.inputs.series }} --save
+
+      - name: Sync to OCI
+        if: ${{ github.event.inputs.sync == 'true' }}
+        env:
+          OCI_DB_URL: ${{ secrets.OCI_DB_URL }}
+        run: |
+          python3 -m src.cli.sync_oci --season-stats
+
+      - name: Notify Telegram on Failure
+        if: failure()
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          MESSAGE="❌ <b>KBO Full Recalculation Failed</b> (${{ github.event.inputs.year }} ${{ github.event.inputs.series }})%0ARepo: ${{ github.repository }}%0A<a href=\"https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}\">View Run Details</a>"
+          
+          if [ -n "$TELEGRAM_BOT_TOKEN" ] && [ -n "$TELEGRAM_CHAT_ID" ]; then
+            curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+              -d "chat_id=${TELEGRAM_CHAT_ID}" \
+              -d "text=${MESSAGE}" \
+              -d "parse_mode=HTML"
+          fi

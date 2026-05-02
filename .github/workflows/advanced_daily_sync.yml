@@ -1,0 +1,76 @@
+name: KBO Advanced Daily Sync
+
+on:
+  schedule:
+    # Runs at 19:30 UTC which is 04:30 KST the next day.
+    # This runs 30 minutes after 'KBO Postgame Finalize' (daily_kbo_sync.yml).
+    - cron: '30 19 * * *'
+  workflow_dispatch:
+    inputs:
+      year:
+        description: 'Season year to sync'
+        required: false
+        default: ''
+
+concurrency:
+  group: kbo-advanced-sync
+  cancel-in-progress: false
+
+jobs:
+  advanced-sync:
+    runs-on: ubuntu-latest
+    env:
+      PYTHONPATH: ${{ github.workspace }}
+    
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.10
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          playwright install --with-deps chromium
+
+      - name: Resolve year
+        id: year
+        run: |
+          if [ "${{ github.event.inputs.year }}" != "" ]; then
+            KST_YEAR="${{ github.event.inputs.year }}"
+          else
+            KST_YEAR="$(TZ='Asia/Seoul' date +'%Y')"
+          fi
+          echo "KST_YEAR=${KST_YEAR}" >> $GITHUB_ENV
+
+      - name: Initialize Database & Seed Metadata
+        run: |
+          python3 -c "from src.db.engine import init_db; init_db()"
+          python3 scripts/maintenance/seed_data.py
+
+      - name: Run Advanced Daily Update & Sync
+        env:
+          OCI_DB_URL: ${{ secrets.OCI_DB_URL }}
+        run: |
+          python3 -m src.cli.run_advanced_daily --year ${{ env.KST_YEAR }} --sync
+
+      - name: Notify Telegram on Failure
+        if: failure()
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          MESSAGE="❌ <b>KBO Advanced Daily Sync Failed</b> (${{ env.KST_YEAR }})%0ARepo: ${{ github.repository }}%0AWorkflow: ${{ github.workflow }}%0A<a href=\"https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}\">View Run Details</a>"
+          
+          if [ -n "$TELEGRAM_BOT_TOKEN" ] && [ -n "$TELEGRAM_CHAT_ID" ]; then
+            curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+              -d "chat_id=${TELEGRAM_CHAT_ID}" \
+              -d "text=${MESSAGE}" \
+              -d "parse_mode=HTML"
+          else
+            echo "⚠️ Telegram credentials not set, skipping notification."
+          fi
