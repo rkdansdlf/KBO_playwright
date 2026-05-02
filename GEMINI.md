@@ -11,6 +11,7 @@ The core functionalities include:
 -   **Database Schema Management:** Defining clear ORM models with Foreign Key constraints for data integrity.
 -   **Data Seeding:** Populating essential metadata tables (e.g., teams, seasons) from CSV files.
 -   **OCI Synchronization:** A dedicated CLI tool to sync local database changes to a remote OCI PostgreSQL instance.
+-   **Fallback & Auto-Remediation:** Robust system to calculate cumulative stats from transactional game details when KBO official summary pages are unavailable. (See `Docs/FALLBACK_SYSTEM.md`)
 
 ## Main Technologies
 
@@ -30,6 +31,7 @@ The core functionalities include:
 -   **`src/repositories/`**: Provides an abstraction layer for database operations (CRUD, UPSERT) for specific models (e.g., `player_season_batting_repository.py`, `player_season_pitching_repository.py`).
 -   **`src/db/`**: Contains database engine configuration and session management (`engine.py`).
 -   **`src/cli/`**: Houses command-line interface tools for various tasks (e.g., `sync_oci.py`).
+-   **`src/aggregators/`**: Contains logic for complex data aggregations, such as the `SeasonStatAggregator` for cumulative stats fallback and `RankingAggregator`.
 -   **`src/utils/`**: Utility functions and helpers.
 -   **`data/`**: Stores the local SQLite database file (`kbo_dev.db`) and CSV files for seeding.
 -   **`Docs/`**: Project documentation, including database schema definitions.
