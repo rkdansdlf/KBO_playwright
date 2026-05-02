@@ -12,7 +12,14 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from datetime import datetime
 
 # 현재 사용 가능한 모델들만 import
-from src.models.player import PlayerSeasonBatting, PlayerSeasonPitching, PlayerBasic
+from src.models.player import (
+    PlayerSeasonBatting,
+    PlayerSeasonPitching,
+    PlayerBasic,
+    PlayerSeasonFielding,
+    PlayerSeasonBaserunning,
+)
+from src.models.team_stats import TeamSeasonBatting, TeamSeasonPitching
 from src.models.award import Award
 from src.models.crawl import CrawlRun
 from src.models.game import (
@@ -873,9 +880,11 @@ class OCISync:
         print(f"✅ Synced {synced} player_season_batting records to OCI")
         return synced
 
-    def sync_player_season_batting(self, limit: int = None) -> int:
+    def sync_player_season_batting(self, year: int | None = None, limit: int = None) -> int:
         """Sync player_season_batting data from SQLite to OCI using bulk upsert"""
         query = self.sqlite_session.query(PlayerSeasonBatting)
+        if year:
+            query = query.filter(PlayerSeasonBatting.season == year)
         if limit:
             query = query.limit(limit)
 
@@ -940,9 +949,11 @@ class OCISync:
         print(f"  ✅ Finished syncing {synced} player_season_batting records to OCI")
         return synced
 
-    def sync_player_season_pitching(self, limit: int = None) -> int:
+    def sync_player_season_pitching(self, year: int | None = None, limit: int = None) -> int:
         """Sync player_season_pitching data from SQLite to OCI using bulk upsert"""
         query = self.sqlite_session.query(PlayerSeasonPitching)
+        if year:
+            query = query.filter(PlayerSeasonPitching.season == year)
         if limit:
             query = query.limit(limit)
 
@@ -1498,7 +1509,7 @@ class OCISync:
         records = []
         seen = set()
         for row in rows:
-            key = (row.game_id, row.summary_type, row.player_name or "")
+            key = (row.game_id, row.summary_type, row.player_id, row.player_name or "", row.detail_text)
             if key in seen:
                 continue
             seen.add(key)
@@ -1842,6 +1853,46 @@ class OCISync:
         return self._sync_simple_table(
             StatRanking,
             ["season", "metric", "entity_id", "entity_type"],
+            exclude_cols=["created_at", "id"],
+            filters=filters,
+        )
+
+    def sync_fielding_stats(self, year: int | None = None) -> int:
+        """Sync player fielding stats to OCI."""
+        filters = [PlayerSeasonFielding.year == year] if year else None
+        return self._sync_simple_table(
+            PlayerSeasonFielding,
+            ["player_id", "team_id", "year", "position_id"],
+            exclude_cols=["created_at", "id"],
+            filters=filters,
+        )
+
+    def sync_baserunning_stats(self, year: int | None = None) -> int:
+        """Sync player baserunning stats to OCI."""
+        filters = [PlayerSeasonBaserunning.year == year] if year else None
+        return self._sync_simple_table(
+            PlayerSeasonBaserunning,
+            ["player_id", "team_id", "year"],
+            exclude_cols=["created_at", "id"],
+            filters=filters,
+        )
+
+    def sync_team_batting_stats(self, year: int | None = None) -> int:
+        """Sync team batting stats to OCI."""
+        filters = [TeamSeasonBatting.season == year] if year else None
+        return self._sync_simple_table(
+            TeamSeasonBatting,
+            ["team_id", "season", "league"],
+            exclude_cols=["created_at", "id"],
+            filters=filters,
+        )
+
+    def sync_team_pitching_stats(self, year: int | None = None) -> int:
+        """Sync team pitching stats to OCI."""
+        filters = [TeamSeasonPitching.season == year] if year else None
+        return self._sync_simple_table(
+            TeamSeasonPitching,
+            ["team_id", "season", "league"],
             exclude_cols=["created_at", "id"],
             filters=filters,
         )

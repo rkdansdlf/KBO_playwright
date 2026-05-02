@@ -275,26 +275,34 @@ async def run_update(
         print(f"   ❌ Error generating review context: {exc}")
 
     print("\n📈 Step 6: Updating cumulative player stats...")
+    # Identify unique season types from today's games
+    active_series = sorted({g.get("season_type", "regular") for g in daily_games if g.get("season_type")})
+    if not active_series:
+        active_series = ["regular"] # Fallback
+
+    print(f"   🔍 Active series detected: {active_series}")
+
     try:
-        print("   🏏 Updating Batting Stats...")
-        await asyncio.to_thread(
-            crawl_series_batting_stats,
-            year=year,
-            series_key="regular",
-            save_to_db=True,
-            headless=headless,
-            limit=limit,
-        )
-        print("   ⚾ Updating Pitching Stats...")
-        await asyncio.to_thread(
-            crawl_pitcher_series,
-            year=year,
-            series_key="regular",
-            save_to_db=True,
-            headless=headless,
-            limit=limit,
-        )
-        print(f"   ✅ Local cumulative stats for {year} regular season updated")
+        for series_key in active_series:
+            print(f"   [{series_key}] Updating Batting Stats...")
+            await asyncio.to_thread(
+                crawl_series_batting_stats,
+                year=year,
+                series_key=series_key,
+                save_to_db=True,
+                headless=headless,
+                limit=limit,
+            )
+            print(f"   [{series_key}] Updating Pitching Stats...")
+            await asyncio.to_thread(
+                crawl_pitcher_series,
+                year=year,
+                series_key=series_key,
+                save_to_db=True,
+                headless=headless,
+                limit=limit,
+            )
+        print(f"   ✅ Local cumulative stats for {year} {active_series} series updated")
     except Exception as exc:
         print(f"   ❌ Error during stats update: {exc}")
 
@@ -411,8 +419,8 @@ async def run_update(
                 syncer.sync_standings(year=year)
                 syncer.sync_matchups(year=year)
                 syncer.sync_stat_rankings(year=year)
-                syncer.sync_player_season_batting()
-                syncer.sync_player_season_pitching()
+                syncer.sync_player_season_batting(year=year)
+                syncer.sync_player_season_pitching(year=year)
                 syncer.sync_player_movements()
                 syncer.sync_daily_rosters()
                 syncer.sync_players()

@@ -288,3 +288,63 @@ class PlayerMovement(Base, TimestampMixin):
 
     def __repr__(self) -> str:
         return f"<PlayerMovement(date={self.movement_date}, section='{self.section}', player='{self.player_name}')>"
+
+
+class PlayerSeasonFielding(Base, TimestampMixin):
+    """
+    Season-level fielding stats.
+    Source: https://www.koreabaseball.com/Record/Player/Defense/Basic.aspx
+    """
+    __tablename__ = "player_season_fielding"
+    __table_args__ = (
+        UniqueConstraint("player_id", "team_id", "year", "position_id", name="uq_player_season_fielding"),
+        Index("idx_psf_player_year", "player_id", "year"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    player_id: Mapped[int] = mapped_column(Integer, ForeignKey("player_basic.player_id"), nullable=False)
+    team_id: Mapped[str] = mapped_column(String(10), ForeignKey("teams.team_id"), nullable=False)
+    year: Mapped[int] = mapped_column(Integer, nullable=False)
+    position_id: Mapped[str] = mapped_column(String(10), nullable=False, comment="POS (e.g. C, 1B, SS)")
+    
+    games: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    games_started: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    innings: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    putouts: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    assists: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    errors: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    double_plays: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    fielding_pct: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    pickoffs: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+
+    def __repr__(self) -> str:
+        return f"<PlayerSeasonFielding(player_id={self.player_id}, year={self.year}, pos='{self.position_id}')>"
+
+
+class PlayerSeasonBaserunning(Base, TimestampMixin):
+    """
+    Season-level baserunning stats.
+    Source: https://www.koreabaseball.com/Record/Player/Runner/Basic.aspx
+    """
+    __tablename__ = "player_season_baserunning"
+    __table_args__ = (
+        UniqueConstraint("player_id", "team_id", "year", name="uq_player_season_baserunning"),
+        Index("idx_psb_run_player_year", "player_id", "year"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    player_id: Mapped[int] = mapped_column(Integer, ForeignKey("player_basic.player_id"), nullable=False)
+    team_id: Mapped[str] = mapped_column(String(10), ForeignKey("teams.team_id"), nullable=False)
+    year: Mapped[int] = mapped_column(Integer, nullable=False)
+    player_name: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    
+    games: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    stolen_base_attempts: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    stolen_bases: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    caught_stealing: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    stolen_base_percentage: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    out_on_base: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    picked_off: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+
+    def __repr__(self) -> str:
+        return f"<PlayerSeasonBaserunning(player_id={self.player_id}, year={self.year})>"

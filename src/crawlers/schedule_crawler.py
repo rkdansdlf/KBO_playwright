@@ -116,6 +116,17 @@ class ScheduleCrawler:
         all_games = []
         seen_game_ids = set()
         
+        # Mapping from numeric series ID to canonical season_type
+        # Source: src/crawlers/player_batting_all_series_crawler.py
+        series_id_to_key = {
+            '0': 'regular',
+            '1': 'exhibition',
+            '3': 'semi_playoff',
+            '4': 'wildcard',
+            '5': 'playoff',
+            '7': 'korean_series'
+        }
+        
         for sid in target_series:
             print(f"[NAV] Selecting Series: {sid} for {year}-{month:02d}")
             try:
@@ -123,7 +134,8 @@ class ScheduleCrawler:
                 await page.wait_for_load_state("networkidle", timeout=5000)
                 await page.wait_for_timeout(500)
                 
-                month_games = await self._extract_games(page, year, month)
+                season_type = series_id_to_key.get(sid, 'regular')
+                month_games = await self._extract_games(page, year, month, season_type=season_type)
                 for g in month_games:
                     gid = g.get('game_id')
                     if gid and gid not in seen_game_ids:
@@ -149,7 +161,7 @@ class ScheduleCrawler:
             await page.wait_for_load_state("networkidle", timeout=5000)
             await page.wait_for_timeout(500)
 
-    async def _extract_games(self, page: Page, year: int, month: int) -> List[Dict]:
+    async def _extract_games(self, page: Page, year: int, month: int, season_type: str = 'regular') -> List[Dict]:
         """페이지에서 경기 관련 데이터를 추출합니다. (JS Fast Path)
 
         `gameId`가 포함된 모든 링크를 찾아, 각 링크에서 경기 ID, 날짜, 팀 정보 등을 파싱합니다.
@@ -157,7 +169,7 @@ class ScheduleCrawler:
         
         # JS를 사용하여 모든 게임 정보를 한 번에 추출
         extraction_script = r"""
-        (year) => {
+        (year, season_type) => {
             const results = [];
             const rows = document.querySelectorAll('.tbl tbody tr');
             let currentDateString = ""; // To handle rowspan or implicit date
@@ -219,7 +231,7 @@ class ScheduleCrawler:
                     game_id: null,
                     game_date: fullDate,
                     season_year: year,
-                    season_type: 'regular',
+                    season_type: season_type,
                     away_name: awayName,
                     home_name: homeName,
                     doubleheader_no: 0,
@@ -274,7 +286,7 @@ class ScheduleCrawler:
                     game_id: gameId,
                     game_date: gameDate,
                     season_year: year,
-                    season_type: 'regular',
+                    season_type: season_type,
                     away_segment: away_segment, 
                     home_segment: home_segment,
                     doubleheader_no: dh,
@@ -291,7 +303,7 @@ class ScheduleCrawler:
         """
 
         try:
-            raw_games = await page.evaluate(extraction_script, year)
+            raw_games = await page.evaluate(extraction_script, year, season_type)
             games = []
 
             for g in raw_games:
