@@ -66,10 +66,11 @@ jobs:
         run: |
           python3 -m src.cli.run_daily_update --date ${{ env.KST_DATE }} --sync
 
-      - name: Notify Slack on Status
+      - name: Notify Telegram on Status
         if: always()
         env:
-          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: |
           if [ "${{ job.status }}" == "success" ]; then
             EMOJI="✅"
@@ -79,10 +80,13 @@ jobs:
             STATUS="Failure"
           fi
           
-          MESSAGE="${EMOJI} *KBO Sync ${STATUS}* (${{ env.KST_DATE }})\nRepo: ${{ github.repository }}\nWorkflow: ${{ github.workflow }}\n<https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Run Details>"
+          MESSAGE="${EMOJI} <b>KBO Sync ${STATUS}</b> (${{ env.KST_DATE }})%0ARepo: ${{ github.repository }}%0AWorkflow: ${{ github.workflow }}%0A<a href=\"https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}\">View Run Details</a>"
           
-          if [ -n "$SLACK_WEBHOOK_URL" ]; then
-            curl -X POST -H 'Content-type: application/json' --data "{\"text\": \"${MESSAGE}\"}" $SLACK_WEBHOOK_URL
+          if [ -n "$TELEGRAM_BOT_TOKEN" ] && [ -n "$TELEGRAM_CHAT_ID" ]; then
+            curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+              -d "chat_id=${TELEGRAM_CHAT_ID}" \
+              -d "text=${MESSAGE}" \
+              -d "parse_mode=HTML"
           else
-            echo "⚠️ SLACK_WEBHOOK_URL not set, skipping notification."
+            echo "⚠️ Telegram credentials not set, skipping notification."
           fi
