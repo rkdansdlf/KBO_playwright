@@ -290,11 +290,15 @@ class TeamMapper:
         return None
     
     def get_all_teams_for_year(self, year: int) -> Dict[str, str]:
-        """특정 년도의 모든 팀 매핑 반환"""
+        """특정 년도의 모든 팀 매핑 반환 (정적 매핑과 통합)"""
+        # 기본적으로 정적 매핑에서 시작
+        mapping = self.static_mapping.copy()
+        
+        # OCI에서 로드된 년도별 특수 매핑이 있으면 덮어씀
         if year in self.year_specific_mapping:
-            return self.year_specific_mapping[year].copy()
-        else:
-            return self.static_mapping.copy()
+            mapping.update(self.year_specific_mapping[year])
+            
+        return mapping
     
     def validate_team_code(self, team_code: str, year: Optional[int] = None) -> bool:
         """팀 코드 유효성 검증"""

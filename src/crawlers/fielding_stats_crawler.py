@@ -5,14 +5,13 @@
 from playwright.sync_api import sync_playwright
 import sqlite3
 import sys
-from pathlib import Path
-
-# config 모듈 임포트
-sys.path.append(str(Path(__file__).parent.parent))
-from config.browser_config import get_browser_config
 import time
 from datetime import datetime
+from pathlib import Path
+
 from src.utils.playwright_blocking import install_sync_resource_blocking
+from src.utils.team_codes import resolve_team_code
+from src.utils.request_policy import RequestPolicy
 
 
 def crawl_all_fielding_stats(year=2025):
@@ -40,11 +39,12 @@ def crawl_all_fielding_stats(year=2025):
             - fielding_pct: 수비율
     """
     fielding_data = []
+    policy = RequestPolicy()
 
     with sync_playwright() as playwright:
-        browser_config = get_browser_config()
-        browser = playwright.chromium.launch(**browser_config)
-        page = browser.new_page()
+        browser = playwright.chromium.launch(headless=True)
+        context = browser.new_context(**policy.build_context_kwargs())
+        page = context.new_page()
         install_sync_resource_blocking(page)
 
         # 포지션별 수비 랭킹 페이지
@@ -183,21 +183,33 @@ def crawl_all_fielding_stats(year=2025):
                             # 팀 ID 변환
                             team_id = team_mapping.get(team_name, team_name)
 
+                            def safe_float(text):
+                                if not text or text.strip() in ('-', ''): return 0.0
+                                try: return float(text.strip().replace(',', ''))
+                                except: return 0.0
+
+                            def safe_int(text):
+                                if not text or text.strip() in ('-', ''): return 0
+                                try: return int(text.strip().replace(',', ''))
+                                except: return 0
+
                             # 이닝 파싱 (예: "1262 1/3" → 1262.333)
                             innings_text = cells[6].inner_text().strip().replace(',', '')
                             innings_value = 0.0
 
-                            if innings_text:
+                            if innings_text and innings_text != '-':
                                 if ' ' in innings_text:
                                     # 분수 형식 처리 (예: "1262 1/3")
                                     parts = innings_text.split(' ')
-                                    innings_value = float(parts[0])
+                                    innings_value = safe_float(parts[0])
 
                                     if len(parts) > 1 and '/' in parts[1]:
                                         fraction = parts[1].split('/')
-                                        innings_value += float(fraction[0]) / float(fraction[1])
+                                        try:
+                                            innings_value += float(fraction[0]) / float(fraction[1])
+                                        except: pass
                                 else:
-                                    innings_value = float(innings_text)
+                                    innings_value = safe_float(innings_text)
 
                             # 수비 통계 추출 (헤더: 순위, 선수명, 팀명, POS, G, GS, IP, E, PKO, PO, A, DP, FPCT, ...)
                             fielding_record = {
@@ -205,17 +217,18 @@ def crawl_all_fielding_stats(year=2025):
                                 'player_name': player_name,
                                 'team_name': team_name,
                                 'team_id': team_id,
+                                'year': year,
                                 'position': position,
                                 'position_id': position_id,
-                                'games': int(cells[4].inner_text().strip()) if cells[4].inner_text().strip() else 0,
-                                'games_started': int(cells[5].inner_text().strip()) if cells[5].inner_text().strip() else 0,
+                                'games': safe_int(cells[4].inner_text()),
+                                'games_started': safe_int(cells[5].inner_text()),
                                 'innings': innings_value,
-                                'errors': int(cells[7].inner_text().strip()) if cells[7].inner_text().strip() else 0,
-                                'pickoffs': int(cells[8].inner_text().strip()) if cells[8].inner_text().strip() else 0,
-                                'putouts': int(cells[9].inner_text().strip()) if cells[9].inner_text().strip() else 0,
-                                'assists': int(cells[10].inner_text().strip()) if cells[10].inner_text().strip() else 0,
-                                'double_plays': int(cells[11].inner_text().strip()) if cells[11].inner_text().strip() else 0,
-                                'fielding_pct': float(cells[12].inner_text().strip()) if cells[12].inner_text().strip() else None,
+                                'errors': safe_int(cells[7].inner_text()),
+                                'pickoffs': safe_int(cells[8].inner_text()),
+                                'putouts': safe_int(cells[9].inner_text()),
+                                'assists': safe_int(cells[10].inner_text()),
+                                'double_plays': safe_int(cells[11].inner_text()),
+                                'fielding_pct': safe_float(cells[12].inner_text()),
                             }
 
                             fielding_data.append(fielding_record)

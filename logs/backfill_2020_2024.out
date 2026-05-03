@@ -1,0 +1,1 @@
+nohup: ./scripts/maintenance/backfill_advanced_stats.sh: Permission denied
