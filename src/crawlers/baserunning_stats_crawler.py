@@ -4,14 +4,13 @@
 from playwright.sync_api import sync_playwright
 import sqlite3
 import sys
-from pathlib import Path
-
-# config 모듈 임포트
-sys.path.append(str(Path(__file__).parent.parent))
-from config.browser_config import get_browser_config
 import time
 from datetime import datetime
+from pathlib import Path
+
 from src.utils.playwright_blocking import install_sync_resource_blocking
+from src.utils.team_codes import resolve_team_code
+from src.utils.request_policy import RequestPolicy
 
 
 def crawl_baserunning_stats(year=2025, max_retries=3, timeout=60000):
@@ -27,11 +26,12 @@ def crawl_baserunning_stats(year=2025, max_retries=3, timeout=60000):
         list: 주루 기록 리스트
     """
     baserunning_data = []
+    policy = RequestPolicy()
 
     with sync_playwright() as playwright:
-        browser_config = get_browser_config()
-        browser = playwright.chromium.launch(**browser_config)
-        page = browser.new_page()
+        browser = playwright.chromium.launch(headless=True)
+        context = browser.new_context(**policy.build_context_kwargs())
+        page = context.new_page()
         page.set_default_timeout(timeout)
         install_sync_resource_blocking(page)
 
@@ -84,27 +84,30 @@ def crawl_baserunning_stats(year=2025, max_retries=3, timeout=60000):
                                 player_name = cells[1].inner_text().strip()
 
                             team_name = cells[2].inner_text().strip()
+                            team_id = resolve_team_code(team_name, year) or team_name
 
-                            # 팀명을 team_id로 변환
-                            team_map = {
-                                'LG': 'LG', 'NC': 'NC', 'SSG': 'SK', 'KT': 'KT',
-                                '삼성': 'SS', '두산': 'OB', 'KIA': 'HT', '롯데': 'LT',
-                                '한화': 'HH', '키움': 'WO'
-                            }
-                            team_id = team_map.get(team_name, team_name)
+                            def safe_int(text):
+                                if not text or text.strip() in ('-', ''): return 0
+                                try: return int(text.strip().replace(',', ''))
+                                except: return 0
+                            
+                            def safe_float(text):
+                                if not text or text.strip() in ('-', ''): return 0.0
+                                try: return float(text.strip().replace(',', ''))
+                                except: return 0.0
 
                             stats = {
                                 'player_id': player_id,  # 링크가 있으면 player_id 포함
                                 'player_name': player_name,
                                 'team_id': team_id,
                                 'year': year,
-                                'games': int(cells[3].inner_text().strip().replace(',', '')) if cells[3].inner_text().strip() else 0,
-                                'stolen_base_attempts': int(cells[4].inner_text().strip().replace(',', '')) if cells[4].inner_text().strip() else 0,
-                                'stolen_bases': int(cells[5].inner_text().strip().replace(',', '')) if cells[5].inner_text().strip() else 0,
-                                'caught_stealing': int(cells[6].inner_text().strip().replace(',', '')) if cells[6].inner_text().strip() else 0,
-                                'stolen_base_percentage': float(cells[7].inner_text().strip().replace(',', '')) if cells[7].inner_text().strip() else 0.0,
-                                'out_on_base': int(cells[8].inner_text().strip().replace(',', '')) if cells[8].inner_text().strip() else 0,
-                                'picked_off': int(cells[9].inner_text().strip().replace(',', '')) if cells[9].inner_text().strip() else 0
+                                'games': safe_int(cells[3].inner_text()),
+                                'stolen_base_attempts': safe_int(cells[4].inner_text()),
+                                'stolen_bases': safe_int(cells[5].inner_text()),
+                                'caught_stealing': safe_int(cells[6].inner_text()),
+                                'stolen_base_percentage': safe_float(cells[7].inner_text()),
+                                'out_on_base': safe_int(cells[8].inner_text()),
+                                'picked_off': safe_int(cells[9].inner_text())
                             }
 
                             baserunning_data.append(stats)

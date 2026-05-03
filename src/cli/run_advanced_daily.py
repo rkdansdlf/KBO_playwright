@@ -31,50 +31,73 @@ async def run_advanced_update(
     print(f"🚀 KBO Advanced Daily Sync Started for Year: {year}")
     print(f"{'=' * 60}")
 
+    any_error = False
+
     # 1. Fielding Stats
     print("\n🛡️ Step 1: Crawling Fielding Stats...")
     try:
-        fielding_records = crawl_all_fielding_stats(year)
+        fielding_records = await asyncio.to_thread(crawl_all_fielding_stats, year)
         if fielding_records:
-            # Adapt record keys to match ORM if necessary (team_id, year, position_id are already there)
-            # Filter out records without player_id
-            fielding_records = [r for r in fielding_records if r.get('player_id')]
+            from src.models.player import PlayerSeasonFielding
+            valid_cols = {c.key for c in PlayerSeasonFielding.__table__.columns}
+            
+            # Adapt and filter records
+            processed = []
+            for r in fielding_records:
+                if not r.get('player_id'):
+                    continue
+                # Map and filter
+                payload = {k: v for k, v in r.items() if k in valid_cols}
+                processed.append(payload)
+                
             fielding_repo = PlayerSeasonFieldingRepository()
-            saved = fielding_repo.upsert_many(fielding_records)
+            saved = fielding_repo.upsert_many(processed)
             print(f"   ✅ Saved {saved} fielding records")
     except Exception as exc:
         print(f"   ❌ Error crawling fielding stats: {exc}")
+        any_error = True
 
     # 2. Baserunning Stats
     print("\n🏃 Step 2: Crawling Baserunning Stats...")
     try:
-        baserunning_records = crawl_baserunning_stats(year)
+        baserunning_records = await asyncio.to_thread(crawl_baserunning_stats, year)
         if baserunning_records:
-            # Filter out records without player_id
-            baserunning_records = [r for r in baserunning_records if r.get('player_id')]
+            from src.models.player import PlayerSeasonBaserunning
+            valid_cols = {c.key for c in PlayerSeasonBaserunning.__table__.columns}
+            
+            processed = []
+            for r in baserunning_records:
+                if not r.get('player_id'):
+                    continue
+                payload = {k: v for k, v in r.items() if k in valid_cols}
+                processed.append(payload)
+                
             baserunning_repo = PlayerSeasonBaserunningRepository()
-            saved = baserunning_repo.upsert_many(baserunning_records)
+            saved = baserunning_repo.upsert_many(processed)
             print(f"   ✅ Saved {saved} baserunning records")
     except Exception as exc:
         print(f"   ❌ Error crawling baserunning stats: {exc}")
+        any_error = True
 
     # 3. Team Batting Stats
     print("\n🏏 Step 3: Crawling Team Batting Stats...")
     try:
         batting_crawler = TeamBattingStatsCrawler()
-        batting_stats = batting_crawler.crawl(year, persist=True, headless=headless)
+        batting_stats = await asyncio.to_thread(batting_crawler.crawl, year, persist=True, headless=headless)
         print(f"   ✅ Saved {len(batting_stats)} team batting records")
     except Exception as exc:
         print(f"   ❌ Error crawling team batting stats: {exc}")
+        any_error = True
 
     # 4. Team Pitching Stats
     print("\n⚾ Step 4: Crawling Team Pitching Stats...")
     try:
         pitching_crawler = TeamPitchingStatsCrawler()
-        pitching_stats = pitching_crawler.crawl(year, persist=True, headless=headless)
+        pitching_stats = await asyncio.to_thread(pitching_crawler.crawl, year, persist=True, headless=headless)
         print(f"   ✅ Saved {len(pitching_stats)} team pitching records")
     except Exception as exc:
         print(f"   ❌ Error crawling team pitching stats: {exc}")
+        any_error = True
 
     if sync:
         print("\n☁️ Step 5: Synchronizing to OCI...")
@@ -92,12 +115,16 @@ async def run_advanced_update(
                     print("   ✅ OCI synchronization completed")
                 except Exception as exc:
                     print(f"   ❌ OCI sync error: {exc}")
+                    any_error = True
                 finally:
                     syncer.close()
 
     print(f"\n{'=' * 60}")
     print(f"🏁 Advanced Daily Sync Finished for {year}")
     print(f"{'=' * 60}\n")
+
+    if any_error:
+        raise RuntimeError(f"Advanced Daily Sync finished with errors for {year}")
 
 
 def main():
