@@ -11,6 +11,8 @@ from bs4 import BeautifulSoup
 from playwright.sync_api import sync_playwright, Page
 
 from src.repositories.team_stats_repository import TeamSeasonPitchingRepository
+from src.db.engine import SessionLocal
+from src.aggregators.team_stat_aggregator import TeamStatAggregator
 from src.utils.team_mapping import get_team_mapping_for_year
 from src.utils.request_policy import RequestPolicy
 from src.utils.playwright_blocking import install_sync_resource_blocking
@@ -87,6 +89,16 @@ class TeamPitchingStatsCrawler:
     def crawl(self, season: int, *, persist: bool = True, headless: bool = True) -> List[Dict[str, Any]]:
         mapping = get_team_mapping_for_year(season)
         stats = self._collect_from_site(season, mapping, headless=headless)
+        
+        if not stats:
+            print(f"⚠️ KBO 팀 투구 페이지 오류. DB에서 폴백 집계를 시작합니다 (시즌: {season})...")
+            with SessionLocal() as session:
+                stats = TeamStatAggregator.aggregate_team_pitching(session, season, self.league)
+                # 팀명 보충
+                reverse_mapping = {v: k for k, v in mapping.items()}
+                for s in stats:
+                    s['team_name'] = reverse_mapping.get(s['team_id'], s['team_id'])
+        
         if persist and stats:
             self.repo.upsert_many(stats)
         return stats
