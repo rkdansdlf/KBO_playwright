@@ -863,6 +863,10 @@ def crawl_series_batting_stats(year: int = 2025, series_key: str = 'regular',
                 print(f"⚠️ 시즌/시리즈 선택 중 오류: {e}. DB에서 직접 집계하여 폴백(Fallback)을 시도합니다.")
                 browser.close()
                 all_players_data = fallback_batting_from_db(year, series_key, reason=reason)
+                # Set source to FALLBACK_AUTO
+                for s in all_players_data:
+                    s['source'] = 'FALLBACK_AUTO'
+                
                 FallbackMonitor.log_fallback(year, series_key, "BATTING", f"Fallback completed via {reason}", player_count=len(all_players_data))
                 if save_to_db and all_players_data:
                     save_batting_stats_safe(all_players_data)

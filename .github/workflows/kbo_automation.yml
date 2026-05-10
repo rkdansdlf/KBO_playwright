@@ -91,19 +91,32 @@ jobs:
             ;;
         esac
 
+    - name: Notify Telegram on Success
+      if: success() && github.event.inputs.phase == 'finalize'
+      env:
+        TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+        TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+      run: |
+        MESSAGE="✅ <b>KBO Pipeline Successfully Completed</b>%0ADate: ${{ steps.target.outputs.TARGET_DATE }}%0AStatus: All data crawled, healed, analyzed (Sabermetrics), and synced to OCI."
+        
+        if [ -n "$TELEGRAM_BOT_TOKEN" ] && [ -n "$TELEGRAM_CHAT_ID" ]; then
+          curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+            -d "chat_id=${TELEGRAM_CHAT_ID}" \
+            -d "text=${MESSAGE}" \
+            -d "parse_mode=HTML"
+        fi
+
     - name: Notify Telegram on Failure
       if: failure()
       env:
         TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
         TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
       run: |
-        MESSAGE="❌ <b>KBO Automation Phase Failed</b> (${{ github.event.inputs.phase }})%0ATarget Date: ${{ steps.target.outputs.TARGET_DATE }}%0ARepo: ${{ github.repository }}%0AWorkflow: ${{ github.workflow }}%0A<a href=\"https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}\">View Run Details</a>"
+        MESSAGE="❌ <b>KBO Automation Phase Failed</b> (${{ github.event.inputs.phase }})%0ATarget Date: ${{ steps.target.outputs.TARGET_DATE }}%0A<a href=\"https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}\">View Run Details</a>"
 
         if [ -n "$TELEGRAM_BOT_TOKEN" ] && [ -n "$TELEGRAM_CHAT_ID" ]; then
           curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
             -d "chat_id=${TELEGRAM_CHAT_ID}" \
             -d "text=${MESSAGE}" \
             -d "parse_mode=HTML"
-        else
-          echo "⚠️ Telegram credentials not set, skipping notification."
         fi

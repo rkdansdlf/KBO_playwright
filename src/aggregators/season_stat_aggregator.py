@@ -1,8 +1,10 @@
 from typing import Dict, Any, List, Optional
+import re
 from sqlalchemy.orm import Session
-from sqlalchemy import func, Integer
-from src.models.game import Game, GameBattingStat, GamePitchingStat
+from sqlalchemy import func, Integer, or_
+from src.models.game import Game, GameBattingStat, GamePitchingStat, GameEvent, GameLineup
 from src.models.season import KboSeason
+from src.models.player import PlayerBasic
 from src.services.stat_calculator import BattingStatCalculator, PitchingStatCalculator
 
 class SeasonStatAggregator:
@@ -23,7 +25,7 @@ class SeasonStatAggregator:
         return series_map.get(series.lower(), series)
 
     @staticmethod
-    def aggregate_batting_season(session: Session, player_id: int, year: int, series: str) -> Optional[Dict[str, Any]]:
+    def aggregate_batting_season(session: Session, player_id: int, year: int, series: str, source: str = 'FALLBACK') -> Optional[Dict[str, Any]]:
         pattern = SeasonStatAggregator._get_league_name_pattern(series)
         
         query = (
@@ -69,13 +71,13 @@ class SeasonStatAggregator:
             'player_id': player_id,
             'season': year,
             'league': series.upper(),
-            'source': 'FALLBACK'
+            'source': source
         })
         
         return data
 
     @staticmethod
-    def aggregate_batting_season_bulk(session: Session, year: int, series: str) -> List[Dict[str, Any]]:
+    def aggregate_batting_season_bulk(session: Session, year: int, series: str, source: str = 'FALLBACK') -> List[Dict[str, Any]]:
         """
         Aggregate batting stats for all players in a season/series in a single query.
         """
@@ -119,14 +121,14 @@ class SeasonStatAggregator:
             data.update({
                 'season': year,
                 'league': series.upper(),
-                'source': 'FALLBACK'
+                'source': source
             })
             results.append(data)
         
         return results
 
     @staticmethod
-    def aggregate_pitching_season(session: Session, player_id: int, year: int, series: str) -> Optional[Dict[str, Any]]:
+    def aggregate_pitching_season(session: Session, player_id: int, year: int, series: str, source: str = 'FALLBACK') -> Optional[Dict[str, Any]]:
         pattern = SeasonStatAggregator._get_league_name_pattern(series)
 
         query = (
@@ -175,13 +177,13 @@ class SeasonStatAggregator:
             'player_id': player_id,
             'season': year,
             'league': series.upper(),
-            'source': 'FALLBACK'
+            'source': source
         })
         
         return data
 
     @staticmethod
-    def aggregate_pitching_season_bulk(session: Session, year: int, series: str) -> List[Dict[str, Any]]:
+    def aggregate_pitching_season_bulk(session: Session, year: int, series: str, source: str = 'FALLBACK') -> List[Dict[str, Any]]:
         """
         Aggregate pitching stats for all players in a season/series in a single query.
         """
@@ -226,8 +228,212 @@ class SeasonStatAggregator:
             data.update({
                 'season': year,
                 'league': series.upper(),
-                'source': 'FALLBACK'
+                'source': source
             })
             results.append(data)
 
         return results
+
+    @staticmethod
+    def aggregate_baserunning_season(session: Session, player_id: int, year: int, series: str, source: str = 'FALLBACK') -> Optional[Dict[str, Any]]:
+        """
+        Aggregate cumulative baserunning stats from game batting stats.
+        """
+        pattern = SeasonStatAggregator._get_league_name_pattern(series)
+
+        query = (
+            session.query(
+                func.count(GameBattingStat.id).label('games'),
+                func.sum(GameBattingStat.stolen_bases).label('stolen_bases'),
+                func.sum(GameBattingStat.caught_stealing).label('caught_stealing')
+            )
+            .join(Game, GameBattingStat.game_id == Game.game_id)
+            .join(KboSeason, Game.season_id == KboSeason.season_id)
+            .filter(GameBattingStat.player_id == player_id)
+            .filter(KboSeason.season_year == year)
+            .filter(KboSeason.league_type_name.like(f"%{pattern}%"))
+        )
+
+        row = query.one_or_none()
+        if not row or row.games == 0:
+            return None
+
+        data = {k: (v if v is not None else 0) for k, v in row._asdict().items()}
+        data['stolen_base_attempts'] = data['stolen_bases'] + data['caught_stealing']
+        if data['stolen_base_attempts'] > 0:
+            data['stolen_base_percentage'] = round(data['stolen_bases'] / data['stolen_base_attempts'] * 100, 1)
+        else:
+            data['stolen_base_percentage'] = 0.0
+
+        data.update({
+            'player_id': player_id,
+            'year': year,
+            'league': series.upper(),
+            'source': source
+        })
+        return data
+
+    @staticmethod
+    def aggregate_baserunning_season_bulk(session: Session, year: int, series: str, source: str = 'FALLBACK') -> List[Dict[str, Any]]:
+        """
+        Aggregate baserunning stats for all players in bulk.
+        """
+        pattern = SeasonStatAggregator._get_league_name_pattern(series)
+        print(f"🚀 [BULK] Aggregating baserunning stats for {year} {series}...")
+
+        query = (
+            session.query(
+                GameBattingStat.player_id,
+                func.count(GameBattingStat.id).label('games'),
+                func.sum(GameBattingStat.stolen_bases).label('stolen_bases'),
+                func.sum(GameBattingStat.caught_stealing).label('caught_stealing')
+            )
+            .join(Game, GameBattingStat.game_id == Game.game_id)
+            .join(KboSeason, Game.season_id == KboSeason.season_id)
+            .filter(KboSeason.season_year == year)
+            .filter(KboSeason.league_type_name.like(f"%{pattern}%"))
+            .group_by(GameBattingStat.player_id)
+        )
+
+        results = []
+        for row in query.all():
+            data = {k: (v if v is not None else 0) for k, v in row._asdict().items()}
+            data['stolen_base_attempts'] = data['stolen_bases'] + data['caught_stealing']
+            if data['stolen_base_attempts'] > 0:
+                data['stolen_base_percentage'] = round(data['stolen_bases'] / data['stolen_base_attempts'] * 100, 1)
+            else:
+                data['stolen_base_percentage'] = 0.0
+            
+            data.update({
+                'year': year,
+                'league': series.upper(),
+                'source': source
+            })
+            results.append(data)
+        return results
+
+    @staticmethod
+    def aggregate_fielding_season_bulk(session: Session, year: int, series: str, source: str = 'FALLBACK') -> List[Dict[str, Any]]:
+        """
+        Aggregate fielding stats for all players and positions in bulk.
+        """
+        pattern = SeasonStatAggregator._get_league_name_pattern(series)
+        print(f"🚀 [BULK] Aggregating fielding stats for {year} {series}...")
+
+        # 1. Get all player-position-game counts
+        pos_counts_query = (
+            session.query(
+                GameLineup.player_id,
+                GameLineup.standard_position,
+                func.count(GameLineup.id).label('games')
+            )
+            .join(Game, GameLineup.game_id == Game.game_id)
+            .join(KboSeason, Game.season_id == KboSeason.season_id)
+            .filter(KboSeason.season_year == year)
+            .filter(KboSeason.league_type_name.like(f"%{pattern}%"))
+            .filter(GameLineup.player_id.isnot(None))
+            .group_by(GameLineup.player_id, GameLineup.standard_position)
+        )
+        
+        counts = pos_counts_query.all()
+        
+        # 2. Extract error events for the whole season
+        error_events = (
+            session.query(GameEvent.game_id, GameEvent.description)
+            .join(Game, GameEvent.game_id == Game.game_id)
+            .join(KboSeason, Game.season_id == KboSeason.season_id)
+            .filter(KboSeason.season_year == year)
+            .filter(KboSeason.league_type_name.like(f"%{pattern}%"))
+            .filter(GameEvent.description.like('%실책%'))
+            .all()
+        )
+        
+        players = session.query(PlayerBasic.player_id, PlayerBasic.name).all()
+        pid_to_name = {p.player_id: p.name for p in players}
+        
+        error_map = {}
+        for event_game_id, desc in error_events:
+            game_lineups = (
+                session.query(GameLineup.player_id, GameLineup.standard_position)
+                .filter(GameLineup.game_id == event_game_id)
+                .all()
+            )
+            
+            for pid, pos in game_lineups:
+                if not pid or not pos: continue
+                name = pid_to_name.get(pid, "")
+                if (name and name in desc) or (pos and pos in desc):
+                    key = (pid, pos)
+                    error_map[key] = error_map.get(key, 0) + 1
+                    break
+
+        results = []
+        for pid, pos, game_count in counts:
+            results.append({
+                'player_id': pid,
+                'year': year,
+                'league': series.upper(),
+                'position_id': pos,
+                'games': game_count,
+                'errors': error_map.get((pid, pos), 0),
+                'source': source
+            })
+            
+        return results
+
+    @staticmethod
+    def aggregate_fielding_season(session: Session, player_id: int, year: int, series: str, source: str = 'FALLBACK') -> List[Dict[str, Any]]:
+        """
+        Aggregate fielding stats (primarily errors) by parsing GameEvents for a single player.
+        Returns a list of dicts, one per position played.
+        """
+        pattern = SeasonStatAggregator._get_league_name_pattern(series)
+        player = session.query(PlayerBasic).filter_by(player_id=player_id).first()
+        if not player:
+            return []
+
+        positions_query = (
+            session.query(GameLineup.standard_position, func.count(GameLineup.id).label('games'))
+            .join(Game, GameLineup.game_id == Game.game_id)
+            .join(KboSeason, Game.season_id == KboSeason.season_id)
+            .filter(GameLineup.player_id == player_id)
+            .filter(KboSeason.season_year == year)
+            .filter(KboSeason.league_type_name.like(f"%{pattern}%"))
+            .group_by(GameLineup.standard_position)
+        )
+        
+        pos_stats = []
+        for pos_row in positions_query.all():
+            pos = pos_row.standard_position
+            if not pos: continue
+            
+            error_count = (
+                session.query(func.count(GameEvent.id))
+                .join(Game, GameEvent.game_id == Game.game_id)
+                .join(KboSeason, Game.season_id == KboSeason.season_id)
+                .filter(KboSeason.season_year == year)
+                .filter(KboSeason.league_type_name.like(f"%{pattern}%"))
+                .filter(GameEvent.game_id.in_(
+                    session.query(GameLineup.game_id)
+                    .filter(GameLineup.player_id == player_id)
+                    .filter(GameLineup.standard_position == pos)
+                ))
+                .filter(GameEvent.description.like('%실책%'))
+                .filter(or_(
+                    GameEvent.description.like(f"%{player.name}%"),
+                    GameEvent.description.like(f"%{pos}%")
+                ))
+                .scalar() or 0
+            )
+
+            pos_stats.append({
+                'player_id': player_id,
+                'year': year,
+                'league': series.upper(),
+                'position_id': pos,
+                'games': pos_row.games,
+                'errors': error_count,
+                'source': source
+            })
+            
+        return pos_stats

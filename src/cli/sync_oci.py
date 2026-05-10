@@ -279,13 +279,17 @@ def main(argv: Iterable[str] | None = None) -> None:
             print("✅ Crawl Runs Sync Finished")
 
     elif args.season_stats:
-        print("🚀 Syncing Season Stats (Batting & Pitching) using specialized OCISync...")
+        print("🚀 Syncing Season Stats (Batting, Pitching, Fielding, Baserunning) using specialized OCISync...")
         with SessionLocal() as session:
             syncer = OCISync(args.target_url, session)
             print("  - Syncing Batting stats...")
             syncer.sync_player_season_batting()
             print("  - Syncing Pitching stats...")
             syncer.sync_player_season_pitching()
+            print("  - Syncing Fielding stats...")
+            syncer.sync_fielding_stats()
+            print("  - Syncing Baserunning stats...")
+            syncer.sync_baserunning_stats()
             print("✅ Season Stats Sync Finished")
             
     elif args.matchups:

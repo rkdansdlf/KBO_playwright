@@ -93,11 +93,20 @@ class TeamPitchingStatsCrawler:
         if not stats:
             print(f"⚠️ KBO 팀 투구 페이지 오류. DB에서 폴백 집계를 시작합니다 (시즌: {season})...")
             with SessionLocal() as session:
-                stats = TeamStatAggregator.aggregate_team_pitching(session, season, self.league)
+                stats = TeamStatAggregator.aggregate_team_pitching(session, season, self.league, source='FALLBACK_AUTO')
                 # 팀명 보충
                 reverse_mapping = {v: k for k, v in mapping.items()}
                 for s in stats:
                     s['team_name'] = reverse_mapping.get(s['team_id'], s['team_id'])
+
+                # 순위 데이터도 함께 재계산 (통합 폴백 로직)
+                print(f"⚠️ 팀 순위 데이터도 함께 재계산합니다 (시즌: {season})...")
+                try:
+                    from src.cli.calculate_standings import StandingsCalculator
+                    calc = StandingsCalculator(session)
+                    calc.calculate_year(season)
+                except Exception as e:
+                    print(f"[ERROR] 순위 연산 폴백 중 오류 발생: {e}")
         
         if persist and stats:
             self.repo.upsert_many(stats)

@@ -1804,8 +1804,9 @@ class OCISync:
         return synced
 
     def sync_matchups(self, year: int = None) -> Dict[str, int]:
-        """Sync Matchup Split tables (Batter/Pitcher vs Team, Stadium, Starter) to OCI"""
+        """Sync Matchup Split tables (Batter/Pitcher vs Team, Stadium, Starter, PBP-BvP) to OCI"""
         from src.models.base import Base
+        from src.models.matchup import BatterTeamSplit, PitcherTeamSplit, BatterStadiumSplit, BatterVsStarter, MatchupBvP, BatterSplit, PitcherSplit
         print("📁 Ensuring matchup tables exist on OCI...")
         Base.metadata.create_all(self.oci_engine)
 
@@ -1840,6 +1841,28 @@ class OCISync:
         results['batter_vs_starter'] = self._sync_simple_table(
             BatterVsStarter,
             ['season_year', 'league_type_code', 'player_id', 'pitcher_name'],
+            exclude_cols=['created_at', 'id'],
+            filters=filters
+        )
+
+        # 5. Precise BvP (PBP based)
+        # Note: BvP is cumulative across years in current model
+        results['matchup_bvp'] = self._sync_simple_table(
+            MatchupBvP,
+            ['batter_id', 'pitcher_id'],
+            exclude_cols=['created_at', 'id']
+        )
+
+        # 6. Situational Splits
+        results['batter_splits'] = self._sync_simple_table(
+            BatterSplit,
+            ['player_id', 'season_year', 'split_type'],
+            exclude_cols=['created_at', 'id'],
+            filters=filters
+        )
+        results['pitcher_splits'] = self._sync_simple_table(
+            PitcherSplit,
+            ['player_id', 'season_year', 'split_type'],
             exclude_cols=['created_at', 'id'],
             filters=filters
         )
