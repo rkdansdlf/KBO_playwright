@@ -140,3 +140,85 @@ class BatterVsStarter(Base, TimestampMixin):
     obp = Column(Float)
     slg = Column(Float)
     ops = Column(Float)
+
+
+class MatchupBvP(Base, TimestampMixin):
+    """Precise Batter vs Pitcher statistics aggregated from play-by-play."""
+    __tablename__ = "matchup_bvp"
+    __table_args__ = (
+        UniqueConstraint("batter_id", "pitcher_id", name="uq_matchup_bvp"),
+    )
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    batter_id = Column(Integer, nullable=False, index=True)
+    batter_name = Column(String(64))
+    pitcher_id = Column(Integer, nullable=False, index=True)
+    pitcher_name = Column(String(64))
+
+    # Aggregated Stats
+    plate_appearances = Column(Integer, default=0)
+    at_bats = Column(Integer, default=0)
+    hits = Column(Integer, default=0)
+    doubles = Column(Integer, default=0)
+    triples = Column(Integer, default=0)
+    home_runs = Column(Integer, default=0)
+    rbi = Column(Integer, default=0)
+    walks = Column(Integer, default=0)
+    hbp = Column(Integer, default=0)
+    strikeouts = Column(Integer, default=0)
+    sacrifice_flies = Column(Integer, default=0)
+
+    # Derived
+    avg = Column(Float)
+    obp = Column(Float)
+    slg = Column(Float)
+    ops = Column(Float)
+
+
+class BatterSplit(Base, TimestampMixin):
+    """Situational splits for batters (RISP, vs LHP, vs RHP, etc.)."""
+    __tablename__ = "matchup_batter_splits"
+    __table_args__ = (
+        UniqueConstraint("player_id", "season_year", "split_type", name="uq_batter_split"),
+    )
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    player_id = Column(Integer, nullable=False, index=True)
+    season_year = Column(Integer, nullable=False)
+    split_type = Column(String(20), nullable=False) # 'RISP', 'LHP', 'RHP'
+
+    plate_appearances = Column(Integer, default=0)
+    at_bats = Column(Integer, default=0)
+    hits = Column(Integer, default=0)
+    home_runs = Column(Integer, default=0)
+    rbi = Column(Integer, default=0)
+    walks = Column(Integer, default=0)
+    strikeouts = Column(Integer, default=0)
+
+    avg = Column(Float)
+    obp = Column(Float)
+    slg = Column(Float)
+    ops = Column(Float)
+
+
+class PitcherSplit(Base, TimestampMixin):
+    """Situational splits for pitchers (vs LHB, vs RHB, RISP)."""
+    __tablename__ = "matchup_pitcher_splits"
+    __table_args__ = (
+        UniqueConstraint("player_id", "season_year", "split_type", name="uq_pitcher_split"),
+    )
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    player_id = Column(Integer, nullable=False, index=True)
+    season_year = Column(Integer, nullable=False)
+    split_type = Column(String(20), nullable=False) # 'vsLHB', 'vsRHB', 'RISP'
+
+    batters_faced = Column(Integer, default=0)
+    innings_outs = Column(Integer, default=0)
+    hits_allowed = Column(Integer, default=0)
+    home_runs_allowed = Column(Integer, default=0)
+    walks_allowed = Column(Integer, default=0)
+    strikeouts = Column(Integer, default=0)
+
+    avg_against = Column(Float)
+    whip = Column(Float)

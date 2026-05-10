@@ -27,7 +27,11 @@ def main():
     for series in series_list:
         if args.type in ["batting", "all"]:
             print(f"\n[BATTING] Processing {args.year} {series}...")
-            batting_data = fallback_batting_from_db(args.year, series)
+            batting_data = fallback_batting_from_db(args.year, series, reason="Manual CLI Trigger")
+            # Set source to MANUAL_RECALC
+            for s in batting_data:
+                s['source'] = 'MANUAL_RECALC'
+            
             if args.save and batting_data:
                 save_batting_stats_safe(batting_data)
             elif not batting_data:
@@ -35,7 +39,11 @@ def main():
         
         if args.type in ["pitching", "all"]:
             print(f"\n[PITCHING] Processing {args.year} {series}...")
-            pitching_data = fallback_pitching_from_db(args.year, series)
+            pitching_data = fallback_pitching_from_db(args.year, series, reason="Manual CLI Trigger")
+            # Set source to MANUAL_RECALC
+            for s in pitching_data:
+                s.source = 'MANUAL_RECALC'
+                
             if args.save and pitching_data:
                 payloads = [stat.to_repository_payload() for stat in pitching_data]
                 save_pitching_stats_to_db(payloads)

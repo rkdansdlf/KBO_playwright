@@ -26,7 +26,8 @@ class BaseStatsUpsertRepository:
         if not records:
             return 0
 
-        cleaned = [self._filter_none(record) for record in records]
+        # Filter fields that exist in the model to avoid CompileError
+        cleaned = [self._filter_model_fields(self._filter_none(record)) for record in records]
         db_type = get_database_type()
         
         with SessionLocal() as session:
@@ -48,6 +49,11 @@ class BaseStatsUpsertRepository:
             except SQLAlchemyError:
                 session.rollback()
                 raise
+
+    def _filter_model_fields(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+        """Filter out keys that are not present in the model's columns."""
+        model_columns = self.model.__table__.columns.keys()
+        return {k: v for k, v in payload.items() if k in model_columns}
 
     def _build_insert_stmt(self, payload: Dict[str, Any]):
         if self.dialect == "sqlite":

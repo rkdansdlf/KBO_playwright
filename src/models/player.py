@@ -316,6 +316,7 @@ class PlayerSeasonFielding(Base, TimestampMixin):
     double_plays: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     fielding_pct: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     pickoffs: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    source: Mapped[Optional[str]] = mapped_column(String(20), nullable=True, default='CRAWLER')
 
     def __repr__(self) -> str:
         return f"<PlayerSeasonFielding(player_id={self.player_id}, year={self.year}, pos='{self.position_id}')>"
@@ -345,6 +346,7 @@ class PlayerSeasonBaserunning(Base, TimestampMixin):
     stolen_base_percentage: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     out_on_base: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     picked_off: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    source: Mapped[Optional[str]] = mapped_column(String(20), nullable=True, default='CRAWLER')
 
     def __repr__(self) -> str:
         return f"<PlayerSeasonBaserunning(player_id={self.player_id}, year={self.year})>"

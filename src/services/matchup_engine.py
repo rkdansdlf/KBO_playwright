@@ -2,11 +2,13 @@ from typing import List, Dict, Any
 from sqlalchemy import select, func, and_, case
 from src.db.engine import SessionLocal
 from src.models.game import Game, GameBattingStat, GamePitchingStat
-from src.models.matchup import BatterTeamSplit, PitcherTeamSplit, BatterStadiumSplit, BatterVsStarter
+from src.models.matchup import BatterTeamSplit, PitcherTeamSplit, BatterStadiumSplit, BatterVsStarter, MatchupBvP, BatterSplit, PitcherSplit
+from src.models.game import Game, GameBattingStat, GamePitchingStat, GameEvent
+from src.models.player import PlayerBasic
 
 class MatchupEngine:
-    """Service to aggregate splits matrices natively from Box Scores."""
-    
+    """Service to aggregate splits matrices natively from Box Scores and Play-by-Play."""
+
     def __init__(self, session=None):
         self.session = session
 
@@ -14,10 +16,16 @@ class MatchupEngine:
         """Runs the entire suite of split calculations."""
         sess = self.session or SessionLocal()
         try:
+            print(f"📊 Recalculating matchups for {season_year}...")
             self._calc_batter_team_splits(sess, season_year)
             self._calc_pitcher_team_splits(sess, season_year)
             self._calc_batter_stadium_splits(sess, season_year)
             self._calc_batter_vs_starter(sess, season_year)
+
+            # Precise PBP based analytics
+            self._calc_precise_bvp(sess, season_year)
+            self._calc_situational_splits(sess, season_year)
+
             sess.commit()
             print(f"✅ Matchup metrics recalculated for season {season_year}")
         except Exception as e:
@@ -27,6 +35,173 @@ class MatchupEngine:
         finally:
             if not self.session:
                 sess.close()
+
+    def _calc_precise_bvp(self, session, season_year: int) -> None:
+        """Aggregates precise batter vs pitcher stats from GameEvents."""
+        print(f"   🎯 Calculating precise BvP for {season_year}...")
+        
+        # We fetch all plate appearance events
+        events = (
+            session.query(GameEvent)
+            .join(Game, Game.game_id == GameEvent.game_id)
+            .filter(func.substr(Game.game_id, 1, 4) == str(season_year))
+            .filter(GameEvent.batter_id.isnot(None))
+            .filter(GameEvent.pitcher_id.isnot(None))
+            .all()
+        )
+        
+        # Aggregation Map: (batter_id, pitcher_id) -> stats
+        bvp_map = {}
+        
+        for ev in events:
+            key = (ev.batter_id, ev.pitcher_id)
+            if key not in bvp_map:
+                bvp_map[key] = {
+                    'batter_name': ev.batter_name,
+                    'pitcher_name': ev.pitcher_name,
+                    'pa': 0, 'ab': 0, 'h': 0, 'd2': 0, 'd3': 0, 'hr': 0, 'bb': 0, 'hbp': 0, 'so': 0, 'sf': 0, 'rbi': 0
+                }
+            
+            stats = bvp_map[key]
+            stats['pa'] += 1
+            
+            desc = ev.description or ""
+            is_hit = any(k in desc for k in ["안타", "2루타", "3루타", "홈런"])
+            is_bb = "볼넷" in desc or "사구" in desc
+            is_sf = "희생플라이" in desc
+            
+            if is_hit:
+                stats['ab'] += 1
+                stats['h'] += 1
+                if "2루타" in desc: stats['d2'] += 1
+                elif "3루타" in desc: stats['d3'] += 1
+                elif "홈런" in desc: stats['hr'] += 1
+            elif is_bb:
+                if "볼넷" in desc: stats['bb'] += 1
+                else: stats['hbp'] += 1
+            elif is_sf:
+                stats['sf'] += 1
+            else:
+                if "희생번트" not in desc:
+                    stats['ab'] += 1
+                    if "삼진" in desc: stats['so'] += 1
+            
+            stats['rbi'] += (ev.rbi or 0)
+
+        # Upsert Logic: Check for existing career record
+        for (bid, pid), s in bvp_map.items():
+            existing = session.query(MatchupBvP).filter_by(batter_id=bid, pitcher_id=pid).first()
+            if existing:
+                existing.plate_appearances += s['pa']
+                existing.at_bats += s['ab']
+                existing.hits += s['h']
+                existing.doubles += s['d2']
+                existing.triples += s['d3']
+                existing.home_runs += s['hr']
+                existing.rbi += s['rbi']
+                existing.walks += s['bb']
+                existing.hbp += s['hbp']
+                existing.strikeouts += s['so']
+                existing.sacrifice_flies += s['sf']
+                # Recalculate
+                avg, obp, slg, ops = self._calc_rate_stats(existing.hits, existing.at_bats, existing.plate_appearances, existing.walks, existing.hbp, existing.doubles, existing.triples, existing.home_runs)
+                existing.avg, existing.obp, existing.slg, existing.ops = avg, obp, slg, ops
+            else:
+                avg, obp, slg, ops = self._calc_rate_stats(s['h'], s['ab'], s['pa'], s['bb'], s['hbp'], s['d2'], s['d3'], s['hr'])
+                session.add(MatchupBvP(
+                    batter_id=bid, batter_name=s['batter_name'], pitcher_id=pid, pitcher_name=s['pitcher_name'],
+                    plate_appearances=s['pa'], at_bats=s['ab'], hits=s['h'], doubles=s['d2'], triples=s['d3'], home_runs=s['hr'],
+                    rbi=s['rbi'], walks=s['bb'], hbp=s['hbp'], strikeouts=s['so'], sacrifice_flies=s['sf'],
+                    avg=avg, obp=obp, slg=slg, ops=ops
+                ))
+
+    def _calc_situational_splits(self, session, season_year: int) -> None:
+        """Calculates RISP and vs Handedness splits using GameEvents."""
+        print(f"   📉 Calculating situational splits for {season_year}...")
+        
+        # Cleanup for the specific year first
+        session.query(BatterSplit).filter(BatterSplit.season_year == season_year).delete()
+        session.query(PitcherSplit).filter(PitcherSplit.season_year == season_year).delete()
+
+        # 1. Fetch needed player metadata (handedness)
+        players = {p.player_id: p for p in session.query(PlayerBasic).all()}
+        
+        events = (
+            session.query(GameEvent)
+            .join(Game, Game.game_id == GameEvent.game_id)
+            .filter(func.substr(Game.game_id, 1, 4) == str(season_year))
+            .filter(GameEvent.batter_id.isnot(None))
+            .filter(GameEvent.pitcher_id.isnot(None))
+            .all()
+        )
+        
+        bat_splits = {}
+        pit_splits = {}
+
+        for ev in events:
+            b = players.get(ev.batter_id)
+            p = players.get(ev.pitcher_id)
+            
+            is_risp = '2' in (ev.bases_before or "") or '3' in (ev.bases_before or "")
+            
+            def update_bat(pid, stype, is_hit, is_ab, is_pa, is_bb, is_sf, is_hr):
+                if pid not in bat_splits: bat_splits[pid] = {}
+                if stype not in bat_splits[pid]: bat_splits[pid][stype] = {'pa':0, 'ab':0, 'h':0, 'bb':0, 'hbp':0, 'hr':0, 'sf':0}
+                s = bat_splits[pid][stype]
+                if is_pa: s['pa'] += 1
+                if is_ab: s['ab'] += 1
+                if is_hit: s['h'] += 1
+                if is_hr: s['hr'] += 1
+                if is_bb: s['bb'] += 1
+                if is_sf: s['sf'] += 1
+
+            desc = ev.description or ""
+            is_hit = any(k in desc for k in ["안타", "2루타", "3루타", "홈런"])
+            is_hr = "홈런" in desc
+            is_bb = "볼넷" in desc or "사구" in desc
+            is_sf = "희생플라이" in desc
+            is_pa = True
+            is_ab = not is_bb and not is_sf and "희생번트" not in desc
+
+            if is_risp:
+                update_bat(ev.batter_id, 'RISP', is_hit, is_ab, is_pa, is_bb, is_sf, is_hr)
+            if p:
+                update_bat(ev.batter_id, f"vs{p.throws or 'R'}", is_hit, is_ab, is_pa, is_bb, is_sf, is_hr)
+            
+            if ev.pitcher_id not in pit_splits: pit_splits[ev.pitcher_id] = {}
+            stypes = []
+            if is_risp: stypes.append('RISP')
+            if b: stypes.append(f"vs{b.bats or 'R'}")
+            
+            for st in stypes:
+                if st not in pit_splits[ev.pitcher_id]: pit_splits[ev.pitcher_id][st] = {'bf':0, 'h':0, 'hr':0, 'bb':0, 'so':0, 'outs':0}
+                ps = pit_splits[ev.pitcher_id][st]
+                ps['bf'] += 1
+                if is_hit: ps['h'] += 1
+                if is_hr: ps['hr'] += 1
+                if is_bb: ps['bb'] += 1
+                if "삼진" in desc: ps['so'] += 1
+                if not is_hit and not is_bb and "실책" not in desc:
+                    ps['outs'] += 1
+
+        for pid, splits in bat_splits.items():
+            for stype, s in splits.items():
+                avg, obp, slg, ops = self._calc_rate_stats(s['h'], s['ab'], s['pa'], s['bb'], s['hbp'], 0, 0, s['hr'], is_full=False)
+                session.add(BatterSplit(
+                    player_id=pid, season_year=season_year, split_type=stype,
+                    plate_appearances=s['pa'], at_bats=s['ab'], hits=s['h'], home_runs=s['hr'], walks=s['bb'], avg=avg, obp=obp, slg=slg, ops=ops
+                ))
+        
+        for pid, splits in pit_splits.items():
+            for stype, s in splits.items():
+                avg_against = round(s['h'] / (s['bf'] - s['bb']) , 3) if (s['bf'] - s['bb']) > 0 else 0.0
+                ip = s['outs'] / 3.0
+                whip = round((s['h'] + s['bb']) / ip, 2) if ip > 0 else 0.0
+                session.add(PitcherSplit(
+                    player_id=pid, season_year=season_year, split_type=stype,
+                    batters_faced=s['bf'], innings_outs=s['outs'], hits_allowed=s['h'], home_runs_allowed=s['hr'], walks_allowed=s['bb'], strikeouts=s['so'],
+                    avg_against=avg_against, whip=whip
+                ))
 
     def _calc_batter_team_splits(self, session, season_year: int) -> None:
         """Aggregates batter stats partitioned by the opposing team."""
