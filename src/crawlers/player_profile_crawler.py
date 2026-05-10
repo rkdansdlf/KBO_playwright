@@ -248,6 +248,7 @@ class PlayerProfileCrawler:
 
                 return {
                     "player_id": player_id,
+                    "name": raw.get("name"),
                     "photo_url": _clean_photo_url(photo_url),
                     "bats": hands["bats"],
                     "throws": hands["throws"],

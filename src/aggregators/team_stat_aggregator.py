@@ -23,7 +23,7 @@ class TeamStatAggregator:
         return series_map.get(series.lower(), series)
 
     @staticmethod
-    def aggregate_team_batting(session: Session, year: int, series: str) -> List[Dict[str, Any]]:
+    def aggregate_team_batting(session: Session, year: int, series: str, source: str = 'FALLBACK') -> List[Dict[str, Any]]:
         """
         Aggregate team batting stats for a season/series.
         """
@@ -69,14 +69,14 @@ class TeamStatAggregator:
             data.update({
                 'season': year,
                 'league': series.upper(),
-                'source': 'FALLBACK'
+                'source': source
             })
             results.append(data)
         
         return results
 
     @staticmethod
-    def aggregate_team_pitching(session: Session, year: int, series: str) -> List[Dict[str, Any]]:
+    def aggregate_team_pitching(session: Session, year: int, series: str, source: str = 'FALLBACK') -> List[Dict[str, Any]]:
         """
         Aggregate team pitching stats for a season/series.
         """
@@ -158,7 +158,7 @@ class TeamStatAggregator:
             data.update({
                 'season': year,
                 'league': series.upper(),
-                'source': 'FALLBACK'
+                'source': source
             })
             results.append(data)
 

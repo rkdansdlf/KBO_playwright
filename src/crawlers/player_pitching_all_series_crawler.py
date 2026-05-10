@@ -856,6 +856,10 @@ def crawl_pitcher_series(
             print(f"❌ Basic1 페이지 설정 실패. {reason}. DB에서 직접 집계하여 폴백(Fallback)을 시도합니다.")
             browser.close()
             stats_list = fallback_pitching_from_db(year, series_key, reason=reason)
+            # Use FALLBACK_AUTO if triggered during crawl
+            for s in stats_list:
+                s.source = "FALLBACK_AUTO"
+            
             FallbackMonitor.log_fallback(year, series_key, "PITCHING", f"Fallback completed via {reason}", player_count=len(stats_list))
             if save_to_db and stats_list:
                 payloads = [stat.to_repository_payload() for stat in stats_list]

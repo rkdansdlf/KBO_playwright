@@ -368,6 +368,13 @@ async def run_update(
     except Exception as exc:
         print(f"   ❌ Error recalculating stat rankings: {exc}")
 
+    print("\n📈 Step 10.6: Calculating advanced Sabermetrics (wOBA, wRC+, WAR)...")
+    try:
+        runner(["-m", "src.cli.calculate_sabermetrics", "--years", str(year)])
+        print("   ✅ Sabermetrics engine completed successfully")
+    except Exception as exc:
+        print(f"   ❌ Error calculating Sabermetrics: {exc}")
+
     print("\n🕵️  Step 10.5: Auditing season stats vs transactional details (Auto-fix enabled)...")
     try:
         runner(["scripts/verification/audit_fallback_stats.py", "--year", str(year), "--type", "all", "--fix"])
