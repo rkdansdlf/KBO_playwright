@@ -39,6 +39,7 @@ from src.utils.playwright_blocking import install_sync_resource_blocking
 from src.utils.request_policy import RequestPolicy
 from src.utils.compliance import compliance
 from src.utils.playwright_retry import retry_navigation, retry_wait_for_selector
+from src.utils.player_season_stat_validation import filter_valid_season_stat_payloads
 
 
 
@@ -371,6 +372,7 @@ class PitcherStats:
         """타자 크롤러 방식의 단순 데이터 구조"""
         data = {
             "player_id": self.player_id,
+            "player_name": self.player_name,
             "season": self.season,
             "league": self.league,
             "level": self.level,
@@ -664,12 +666,7 @@ def parse_basic2_page(
 
         stats = pitchers.get(player_id)
         if not stats:
-            stats = PitcherStats(player_id=player_id, season=season, league=league)
-            pitchers[player_id] = stats
-            stats.player_name = player_name
-            stats.team_name = team_name
-            team_code = resolve_team_code(team_name, season) or team_name
-            stats.team_code = team_code
+            continue
 
         metrics = stats.extra_stats.setdefault("metrics", {})
 
@@ -750,6 +747,20 @@ def setup_pitcher_page(page: Page, url: str, year: int, series_value: str, polic
     except Exception as e:
         print(f"   ⚠️ 페이지 설정 중 오류: {e}")
         return False
+
+
+def build_pitching_crawl_summary(stats_list: List[PitcherStats]) -> tuple[Dict[str, object], List[PitcherStats]]:
+    payloads = [stat.to_repository_payload() for stat in stats_list]
+    valid_payloads, failure_counts = filter_valid_season_stat_payloads(payloads, stat_type="pitching")
+    valid_ids = {payload["player_id"] for payload in valid_payloads}
+    valid_stats = [stat for stat in stats_list if stat.player_id in valid_ids]
+    summary = {
+        "processed_rows": len(stats_list),
+        "valid_rows": len(valid_stats),
+        "filtered_rows": len(stats_list) - len(valid_stats),
+        "failure_counts": dict(failure_counts),
+    }
+    return summary, valid_stats
 
 # ---------------------------------------------------------------------------
 # Fallback logic
@@ -980,6 +991,14 @@ def crawl_pitcher_series(
         stats_list = stats_list[:limit]
 
     print(f"✅ {series_info['name']} 크롤링 완료: {len(stats_list)}명")
+    summary, valid_stats_list = build_pitching_crawl_summary(stats_list)
+    if summary["filtered_rows"]:
+        print(
+            "⚠️ 투수 시즌 row 필터링: "
+            f"{summary['filtered_rows']}건 "
+            f"({summary['failure_counts']})"
+        )
+    stats_list = valid_stats_list
 
     # 투수 전용 테이블에 저장
     if save_to_db and stats_list:

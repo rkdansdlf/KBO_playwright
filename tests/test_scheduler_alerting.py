@@ -77,3 +77,20 @@ def test_alert_success_is_optional_and_non_blocking(monkeypatch):
     scheduler.alert_success("sample_job")
 
     assert calls == ["called"]
+
+
+def test_alert_success_includes_optional_details(monkeypatch):
+    calls = []
+
+    monkeypatch.setenv("NOTIFY_SUCCESS", "1")
+    monkeypatch.setattr(
+        scheduler.SlackWebhookClient,
+        "send_alert",
+        lambda message: calls.append(message) or True,
+    )
+
+    scheduler.alert_success("sample_job", "detail_failures=incomplete_detail=1")
+
+    assert calls == [
+        "✅ KBO Job sample_job completed successfully.\ndetail_failures=incomplete_detail=1"
+    ]

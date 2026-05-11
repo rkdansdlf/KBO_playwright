@@ -4,7 +4,6 @@ Fetches play-by-play data from Naver Sports API instead of KBO website due to ac
 """
 from __future__ import annotations
 import httpx
-import asyncio
 import re
 from datetime import datetime, timedelta
 from typing import List, Dict, Any, Optional
@@ -16,8 +15,9 @@ from src.utils.relay_text import (
 )
 from src.utils.safe_print import safe_print as print
 from src.utils.playwright_pool import AsyncPlaywrightPool
+from src.utils.compliance import compliance
+from src.utils.request_policy import RequestPolicy
 from src.utils.team_codes import normalize_kbo_game_id
-from src.utils.throttle import throttle
 
 
 KBO_TO_NAVER_TEAM_CODE = {
@@ -31,7 +31,7 @@ class RelayCrawler:
 
     def __init__(self, request_delay: float = 1.0, policy=None, pool: AsyncPlaywrightPool | None = None):
         """
-        pool and policy arguments are retained for backward compatibility with GameDetailCrawler but are unused.
+        pool is retained for backward compatibility with GameDetailCrawler but is unused.
         """
         self.api_base_url = "https://api-gw.sports.naver.com/schedule/games/{game_id}/relay"
         self.wpa_calc = WPACalculator()
@@ -42,6 +42,18 @@ class RelayCrawler:
         }
         self.schedule_api_base_url = "https://api-gw.sports.naver.com/schedule/today-games"
         self.last_resolved_naver_game_id: str | None = None
+        self.policy = policy or RequestPolicy(min_delay=request_delay)
+        self._last_failure_reason: dict[str, str] = {}
+        self.last_failure_reason: str | None = None
+        self._last_fetch_failure_reason: str | None = None
+
+    def get_last_failure_reason(self, game_id: str) -> str | None:
+        return self._last_failure_reason.get(normalize_kbo_game_id(game_id))
+
+    def _set_failure_reason(self, game_id: str, reason: str) -> None:
+        normalized_id = normalize_kbo_game_id(game_id)
+        self._last_failure_reason[normalized_id] = reason
+        self.last_failure_reason = reason
 
     async def crawl_game_events(self, game_id: str) -> Optional[Dict[str, Any]]:
         """Backward-compatible alias used by older CLI entrypoints."""
@@ -73,6 +85,23 @@ class RelayCrawler:
     def _naver_team_code(self, code: str) -> str:
         return KBO_TO_NAVER_TEAM_CODE.get(str(code or "").strip(), str(code or "").strip())
 
+    def _expected_match_values(self, kbo_game_id: str) -> tuple[str, str, str, str, str]:
+        kbo_game_id = normalize_kbo_game_id(kbo_game_id)
+        game_date = kbo_game_id[:8]
+        away_code = self._naver_team_code(kbo_game_id[8:10])
+        home_code = self._naver_team_code(kbo_game_id[10:12])
+        doubleheader_no = kbo_game_id[-1] if kbo_game_id[-1:].isdigit() else "0"
+        season_year = kbo_game_id[:4]
+        return game_date, away_code, home_code, doubleheader_no, season_year
+
+    @staticmethod
+    def _schedule_game_has_team_match(game: Dict[str, Any], away_code: str, home_code: str) -> bool:
+        away_field = str(game.get("awayTeamCode") or "").strip()
+        home_field = str(game.get("homeTeamCode") or "").strip()
+        if not away_field and not home_field:
+            return True
+        return away_field == away_code and home_field == home_code
+
     def _schedule_query_dates(self, kbo_game_id: str) -> List[str]:
         base_date = datetime.strptime(kbo_game_id[:8], "%Y%m%d").date()
         query_dates = [base_date.isoformat()]
@@ -81,6 +110,41 @@ class RelayCrawler:
             query_dates.append((base_date - timedelta(days=offset)).isoformat())
         return query_dates
 
+    async def _request_json(
+        self,
+        client: httpx.AsyncClient,
+        url: str,
+        *,
+        params: dict[str, Any] | None = None,
+        headers: dict[str, str] | None = None,
+        timeout: float = 10.0,
+    ) -> tuple[dict[str, Any] | None, str | None]:
+        full_url = str(httpx.URL(url, params=params or {}))
+        if not await compliance.is_allowed(full_url):
+            print(f"[COMPLIANCE] Relay request blocked: {full_url}")
+            return None, "blocked"
+
+        async def _fetch() -> dict[str, Any]:
+            await self.policy.delay_async(host="api-gw.sports.naver.com")
+            response = await client.get(
+                url,
+                params=params,
+                headers=headers or self.headers,
+                timeout=timeout,
+            )
+            if response.status_code != 200:
+                raise RuntimeError(f"status_{response.status_code}")
+            payload = response.json()
+            if not isinstance(payload, dict):
+                raise RuntimeError("non_object_json")
+            return payload
+
+        try:
+            return await self.policy.run_with_retry_async(_fetch), None
+        except Exception as exc:
+            print(f"[WARN] Relay API request failed: {full_url} reason={exc}")
+            return None, "relay_api_error"
+
     def _match_schedule_game(
         self,
         kbo_game_id: str,
@@ -88,13 +152,12 @@ class RelayCrawler:
         *,
         allow_team_fallback: bool = True,
     ) -> Optional[Dict[str, Any]]:
-        away_code = self._naver_team_code(kbo_game_id[8:10])
-        home_code = self._naver_team_code(kbo_game_id[10:12])
-        exact_suffix = f"{kbo_game_id[4:8]}{away_code}{home_code}0{kbo_game_id[:4]}"
+        game_date, away_code, home_code, doubleheader_no, season_year = self._expected_match_values(kbo_game_id)
+        exact_suffix = f"{game_date[4:8]}{away_code}{home_code}{doubleheader_no}{season_year}"
 
         for game in games:
             game_id = str(game.get("gameId") or "").strip()
-            if game_id.endswith(exact_suffix):
+            if game_id.endswith(exact_suffix) and self._schedule_game_has_team_match(game, away_code, home_code):
                 return game
 
         if not allow_team_fallback:
@@ -107,27 +170,32 @@ class RelayCrawler:
             ):
                 return game
 
-        suffix = f"{away_code}{home_code}0{kbo_game_id[:4]}"
+        suffix = f"{away_code}{home_code}{doubleheader_no}{season_year}"
         for game in games:
             game_id = str(game.get("gameId") or "").strip()
-            if game_id.endswith(suffix):
+            if game_id.endswith(suffix) and self._schedule_game_has_team_match(game, away_code, home_code):
                 return game
         return None
 
     async def _resolve_naver_game_id(self, client: httpx.AsyncClient, kbo_game_id: str) -> Optional[str]:
         query_dates = self._schedule_query_dates(kbo_game_id)
+        saw_schedule_games = False
         for index, query_date in enumerate(query_dates):
             query = self._schedule_query_context(kbo_game_id, query_date=query_date)
-            response = await client.get(
+            payload, failure_reason = await self._request_json(
+                client,
                 self.schedule_api_base_url,
                 params=query,
                 headers=self.headers,
                 timeout=10.0,
             )
-            if response.status_code != 200:
+            if payload is None:
+                if failure_reason:
+                    self._set_failure_reason(kbo_game_id, failure_reason)
                 continue
-            payload = response.json()
             games = list((payload.get("result") or {}).get("games") or [])
+            if games:
+                saw_schedule_games = True
             matched = self._match_schedule_game(
                 kbo_game_id,
                 games,
@@ -135,6 +203,7 @@ class RelayCrawler:
             )
             if matched:
                 return str(matched.get("gameId") or "").strip() or None
+        self._set_failure_reason(kbo_game_id, "invalid_relay_match" if saw_schedule_games else "relay_not_found")
         return None
 
     async def _fetch_text_relays(
@@ -143,28 +212,33 @@ class RelayCrawler:
         naver_id: str,
     ) -> List[Dict[str, Any]]:
         all_text_relays: list[dict[str, Any]] = []
+        self._last_fetch_failure_reason = None
         for inn in range(1, 16):
             url = f"{self.api_base_url.format(game_id=naver_id)}?inning={inn}"
-            response = await client.get(
+            data, failure_reason = await self._request_json(
+                client,
                 url,
                 headers={**self.headers, "Referer": f"https://m.sports.naver.com/game/{naver_id}/relay"},
                 timeout=10.0,
             )
-            if response.status_code != 200:
+            if data is None:
+                self._last_fetch_failure_reason = failure_reason
                 break
-            data = response.json()
             result = data.get("result") or {}
+            if not isinstance(result, dict):
+                result = {}
             relay_data = result.get("textRelayData") or {}
+            if not isinstance(relay_data, dict):
+                relay_data = {}
             text_relays = relay_data.get("textRelays") or []
+            if not isinstance(text_relays, list):
+                text_relays = []
             if not text_relays:
-                if all_text_relays:
-                    break
-                continue
+                break
             has_logs = any(len(tr.get("textOptions", [])) > 0 for tr in text_relays)
             if not has_logs and all_text_relays:
                 break
             all_text_relays.extend(text_relays)
-            await asyncio.sleep(0.05)
         return all_text_relays
 
     async def crawl_game_relay(self, kbo_game_id: str) -> Optional[Dict[str, Any]]:
@@ -173,11 +247,12 @@ class RelayCrawler:
         Supports both LIVE and COMPLETED games natively through the API.
         """
         kbo_game_id = normalize_kbo_game_id(kbo_game_id)
+        self._last_failure_reason.pop(kbo_game_id, None)
+        self.last_failure_reason = None
         self.last_resolved_naver_game_id = None
         direct_naver_id = self._map_to_naver_id(kbo_game_id)
         
         try:
-            await throttle.wait()
             async with httpx.AsyncClient() as client:
                 naver_id = direct_naver_id
                 all_text_relays = await self._fetch_text_relays(client, naver_id)
@@ -188,10 +263,17 @@ class RelayCrawler:
                         all_text_relays = await self._fetch_text_relays(client, resolved_naver_id)
                         naver_id = resolved_naver_id
 
-            if not all_text_relays: return None
+            if not all_text_relays:
+                reason = self.get_last_failure_reason(kbo_game_id) or self._last_fetch_failure_reason or "relay_not_found"
+                self._set_failure_reason(kbo_game_id, reason)
+                return None
             
             parsed_payload = self._parse_naver_payload(all_text_relays)
             events = parsed_payload["events"]
+            raw_pbp_rows = parsed_payload["raw_pbp_rows"]
+            if not events and not raw_pbp_rows:
+                self._set_failure_reason(kbo_game_id, "relay_empty")
+                return None
             # Determine status by heuristic: if 9+ innings and 3 outs recorded, it's completed, but we can just say completed if events exist
             # since game status is handled by GameDetailCrawler anyway.
             return {
@@ -200,10 +282,11 @@ class RelayCrawler:
                 "game_date": kbo_game_id[:8], 
                 "status": "completed", # Assume completed or live, upstream handles the real status
                 "events": events,
-                "raw_pbp_rows": parsed_payload["raw_pbp_rows"],
+                "raw_pbp_rows": raw_pbp_rows,
             }
         except Exception as e:
             print(f"[ERROR] Relay API crawl failed for {kbo_game_id}: {e}")
+            self._set_failure_reason(kbo_game_id, "relay_api_error")
             return None
 
     def _parse_naver_data(self, text_relays: List[Dict[str, Any]]) -> List[Dict[str, Any]]:

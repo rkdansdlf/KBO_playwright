@@ -36,7 +36,7 @@ from tenacity import retry, stop_after_attempt, wait_exponential
 from src.cli.crawl_futures import main as crawl_futures_main
 from src.cli.daily_preview_batch import run_preview_batch
 from src.cli.live_crawler import run_live_crawler_cycle
-from src.cli.run_daily_update import main as run_daily_update_main
+from src.cli.run_daily_update import format_stability_alert_summary, main as run_daily_update_main
 from src.db.engine import SessionLocal
 from src.utils.safe_print import safe_print as print
 from src.utils.alerting import SlackWebhookClient
@@ -85,11 +85,14 @@ def alert_failure(retry_state):
     raise RuntimeError(f"Job {func_name} failed permanently without an attached exception")
 
 
-def alert_success(func_name: str):
+def alert_success(func_name: str, details: str | None = None):
     """Send optional success notification."""
     if os.getenv("NOTIFY_SUCCESS", "0") == "1":
         try:
-            SlackWebhookClient.send_alert(f"✅ KBO Job {func_name} completed successfully.")
+            message = f"✅ KBO Job {func_name} completed successfully."
+            if details:
+                message = f"{message}\n{details}"
+            SlackWebhookClient.send_alert(message)
         except Exception:
             logger.exception("Failed to send success alert for job %s", func_name)
 
@@ -230,10 +233,10 @@ def crawl_daily_games():
         try:
             target_date = _previous_day_kst()
             logger.info("Running run_daily_update for target_date=%s", target_date)
-            run_daily_update_main(['--date', target_date, '--seed-tomorrow-preview'])
+            update_result = run_daily_update_main(['--date', target_date, '--seed-tomorrow-preview'])
 
             logger.info("=== Daily Games Crawl Completed Successfully ===")
-            alert_success("crawl_daily_games")
+            alert_success("crawl_daily_games", format_stability_alert_summary(update_result))
 
         except Exception as e:
             logger.error(f"Daily games crawl attempt failed: {e}")

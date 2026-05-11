@@ -62,6 +62,7 @@ def test_run_pipeline_injects_player_id_resolver(monkeypatch):
                 relay=False,
                 force=True,
                 concurrency=1,
+                game_ids=None,
             )
         )
     )
@@ -73,3 +74,65 @@ def test_run_pipeline_injects_player_id_resolver(monkeypatch):
     assert calls["force"] is True
     assert calls["concurrency"] == 1
     assert calls["session_closed"] is True
+
+
+def test_run_pipeline_filters_requested_game_ids(monkeypatch):
+    calls: dict[str, object] = {}
+
+    class FakeScheduleCrawler:
+        async def crawl_schedule(self, year: int, month: int):
+            return [
+                {"game_id": "20260426KTSK0", "game_date": "20260426"},
+                {"game_id": "20260427LGSS0", "game_date": "20260427"},
+            ]
+
+    class FakeSession:
+        def close(self):
+            return None
+
+    class FakeResolver:
+        def __init__(self, session):
+            self.session = session
+
+        def preload_season_index(self, year: int):
+            return None
+
+    class FakeDetailCrawler:
+        def __init__(self, *, request_delay: float, resolver):
+            self.request_delay = request_delay
+            self.resolver = resolver
+
+    async def fake_crawl_and_save_game_details(games, **_kwargs):
+        calls["games"] = games
+        return argparse.Namespace(
+            detail_saved=1,
+            detail_targets=1,
+            detail_failed=0,
+            detail_skipped_existing=0,
+            relay_saved_games=0,
+            relay_rows_saved=0,
+            relay_skipped_existing=0,
+        )
+
+    monkeypatch.setattr(cli, "ScheduleCrawler", FakeScheduleCrawler)
+    monkeypatch.setattr(cli, "SessionLocal", lambda: FakeSession())
+    monkeypatch.setattr(cli, "PlayerIdResolver", FakeResolver)
+    monkeypatch.setattr(cli, "GameDetailCrawler", FakeDetailCrawler)
+    monkeypatch.setattr(cli, "crawl_and_save_game_details", fake_crawl_and_save_game_details)
+
+    asyncio.run(
+        cli.run_pipeline(
+            argparse.Namespace(
+                year=2026,
+                month=4,
+                limit=None,
+                delay=1.5,
+                relay=False,
+                force=True,
+                concurrency=1,
+                game_ids="20260427LGSS0",
+            )
+        )
+    )
+
+    assert calls["games"] == [{"game_id": "20260427LGSS0", "game_date": "20260427"}]

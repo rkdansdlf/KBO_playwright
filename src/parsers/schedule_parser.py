@@ -10,6 +10,7 @@ from typing import Dict, List, Optional, Any
 import pandas as pd
 from bs4 import BeautifulSoup
 
+from src.utils.schedule_validation import split_schedule_game_id
 from src.utils.team_codes import team_code_from_game_id_segment
 
 
@@ -42,8 +43,14 @@ def parse_schedule_html(
         year = default_year or int(game_id[:4])
         month = int(game_id[4:6])
 
-        away_segment = game_id[8:10] if len(game_id) >= 10 else None
-        home_segment = game_id[10:12] if len(game_id) >= 12 else None
+        id_parts = split_schedule_game_id(game_id)
+        if id_parts:
+            _, away_segment, home_segment, doubleheader_no = id_parts
+            doubleheader_no = int(doubleheader_no)
+        else:
+            away_segment = game_id[8:10] if len(game_id) >= 10 else None
+            home_segment = game_id[10:12] if len(game_id) >= 12 else None
+            doubleheader_no = int(game_id[-1]) if game_id[-1].isdigit() else 0
 
         games[game_id] = {
             "game_id": game_id,
@@ -52,9 +59,10 @@ def parse_schedule_html(
             "game_date": game_id[:8],
             "away_team_code": team_code_from_game_id_segment(away_segment, year),
             "home_team_code": team_code_from_game_id_segment(home_segment, year),
-            "doubleheader_no": int(game_id[-1]) if game_id[-1].isdigit() else 0,
+            "doubleheader_no": doubleheader_no,
             "game_status": "scheduled",
             "crawl_status": "pending",
+            "stadium": "",
         }
 
     return list(games.values())

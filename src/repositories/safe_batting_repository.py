@@ -2,6 +2,7 @@
 Safe batting data repository with foreign key constraint bypass
 타자 데이터를 외래키 제약조건 우회하여 안전하게 저장
 """
+from collections import Counter
 from typing import List, Dict, Any, Optional
 from sqlalchemy.orm import Session
 from sqlalchemy import text, func
@@ -11,6 +12,14 @@ from sqlalchemy.dialects.postgresql import insert as postgresql_insert
 
 from src.db.engine import SessionLocal, get_database_type
 from src.models.player import PlayerSeasonBatting
+from src.utils.player_season_stat_validation import filter_valid_season_stat_payloads
+
+
+LAST_FILTER_COUNTS: Counter = Counter()
+
+
+def get_last_filter_counts() -> Dict[str, int]:
+    return dict(LAST_FILTER_COUNTS)
 
 
 def save_batting_stats_safe(payloads: List[Dict[str, Any]]) -> int:
@@ -24,6 +33,15 @@ def save_batting_stats_safe(payloads: List[Dict[str, Any]]) -> int:
     Returns:
         저장된 레코드 수
     """
+    global LAST_FILTER_COUNTS
+    LAST_FILTER_COUNTS = Counter()
+    if not payloads:
+        return 0
+
+    payloads, LAST_FILTER_COUNTS = filter_valid_season_stat_payloads(
+        payloads,
+        stat_type="batting",
+    )
     if not payloads:
         return 0
     

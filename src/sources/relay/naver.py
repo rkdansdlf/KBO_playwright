@@ -14,7 +14,11 @@ class NaverRelayAdapter(RelaySourceAdapter):
         result = await self.crawler.crawl_game_relay(game_id)
         events = list((result or {}).get("events") or [])
         raw_pbp_rows = list((result or {}).get("raw_pbp_rows") or [])
-        notes = None if events else "No events extracted from Naver relay"
+        failure_reason = None
+        getter = getattr(self.crawler, "get_last_failure_reason", None)
+        if callable(getter):
+            failure_reason = getter(game_id)
+        notes = None if events or raw_pbp_rows else failure_reason or "No events extracted from Naver relay"
         return NormalizedRelayResult(
             game_id=game_id,
             source_name=self.source_name,

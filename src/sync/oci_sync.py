@@ -6,6 +6,7 @@ import os
 import json
 from typing import List, Dict, Any, Optional, Callable, Type
 from pathlib import Path
+from dataclasses import dataclass, field
 from sqlalchemy import bindparam, create_engine, text, select, MetaData, Table, column, table
 from sqlalchemy.orm import sessionmaker, Session
 from sqlalchemy.dialects.postgresql import insert as pg_insert
@@ -30,12 +31,18 @@ from src.models.game import (
     GameBattingStat,
     GamePitchingStat,
     GameEvent,
+    GamePlayByPlay,
     GameSummary,
     GameIdAlias,
 )
 from src.models.matchup import BatterTeamSplit, PitcherTeamSplit, BatterStadiumSplit, BatterVsStarter
 from src.models.rankings import StatRanking
-from src.utils.game_status import GAME_STATUS_SCHEDULED
+from src.utils.game_status import (
+    COMPLETED_LIKE_GAME_STATUSES,
+    GAME_STATUS_CANCELLED,
+    GAME_STATUS_POSTPONED,
+    GAME_STATUS_SCHEDULED,
+)
 
 
 LEAGUE_NAME_TO_CODE = {
@@ -55,6 +62,27 @@ GAME_SIGNATURE_CHILD_TABLES = (
     "game_summary",
     "game_play_by_play",
 )
+
+NON_DETAIL_TERMINAL_STATUSES = {GAME_STATUS_CANCELLED, GAME_STATUS_POSTPONED}
+
+
+@dataclass(frozen=True)
+class GameSyncEligibility:
+    parent_game_ids: List[str] = field(default_factory=list)
+    detail_game_ids: List[str] = field(default_factory=list)
+    relay_game_ids: List[str] = field(default_factory=list)
+    skipped_schedule_only: List[str] = field(default_factory=list)
+    skipped_incomplete_detail: List[str] = field(default_factory=list)
+    skipped_empty_relay: List[str] = field(default_factory=list)
+    skipped_cancelled: List[str] = field(default_factory=list)
+
+    def counts(self) -> Dict[str, int]:
+        return {
+            "skipped_schedule_only": len(self.skipped_schedule_only),
+            "skipped_incomplete_detail": len(self.skipped_incomplete_detail),
+            "skipped_empty_relay": len(self.skipped_empty_relay),
+            "skipped_cancelled": len(self.skipped_cancelled),
+        }
 
 
 def _serialize_scalar(value: Any) -> Any:
@@ -270,10 +298,45 @@ def filter_game_ids_by_year(game_ids: List[str], year: int | None) -> List[str]:
     return [game_id for game_id in game_ids if str(game_id).startswith(prefix)]
 
 
-def filter_publishable_game_ids(session, game_ids: List[str]) -> List[str]:
-    """Restrict parent-game sync to rows that are more than schedule-only stubs."""
+def _load_team_sides(session, model: Type, game_ids: List[str]) -> Dict[str, set[str]]:
     if not game_ids:
-        return []
+        return {}
+    rows = (
+        session.query(model.game_id, model.team_side)
+        .filter(model.game_id.in_(game_ids))
+        .distinct()
+        .all()
+    )
+    result: Dict[str, set[str]] = {}
+    for game_id, team_side in rows:
+        if not game_id or not team_side:
+            continue
+        result.setdefault(str(game_id), set()).add(str(team_side))
+    return result
+
+
+def _load_game_ids_with_rows(session, model: Type, game_ids: List[str]) -> set[str]:
+    if not game_ids:
+        return set()
+    return {
+        str(row[0])
+        for row in session.query(model.game_id)
+        .filter(model.game_id.in_(game_ids))
+        .distinct()
+        .all()
+    }
+
+
+def _has_both_team_sides(side_map: Dict[str, set[str]], game_id: str) -> bool:
+    sides = side_map.get(game_id, set())
+    return "away" in sides and "home" in sides
+
+
+def build_game_sync_eligibility(session, game_ids: List[str]) -> GameSyncEligibility:
+    """Classify which game datasets are safe to publish to OCI."""
+    target_game_ids = sorted({str(game_id) for game_id in game_ids if game_id})
+    if not target_game_ids:
+        return GameSyncEligibility()
 
     rows = (
         session.query(
@@ -282,26 +345,72 @@ def filter_publishable_game_ids(session, game_ids: List[str]) -> List[str]:
             Game.home_score,
             Game.away_score,
         )
-        .filter(Game.game_id.in_(game_ids))
+        .filter(Game.game_id.in_(target_game_ids))
         .all()
     )
-    publishable: List[str] = []
-    for game_id, game_status, home_score, away_score in rows:
-        if home_score is not None or away_score is not None:
-            publishable.append(game_id)
-            continue
-        if str(game_status or "").upper() != GAME_STATUS_SCHEDULED:
-            publishable.append(game_id)
-            continue
+    game_rows = {str(game_id): (str(game_status or "").upper(), home_score, away_score) for game_id, game_status, home_score, away_score in rows}
 
-        has_detail = any(
-            session.query(model.game_id).filter(model.game_id == game_id).first() is not None
-            for model in (GameInningScore, GameLineup, GameBattingStat, GamePitchingStat, GameEvent, GameSummary)
-        )
-        if has_detail:
-            publishable.append(game_id)
+    batting_sides = _load_team_sides(session, GameBattingStat, target_game_ids)
+    pitching_sides = _load_team_sides(session, GamePitchingStat, target_game_ids)
+    inning_ids = _load_game_ids_with_rows(session, GameInningScore, target_game_ids)
+    lineup_ids = _load_game_ids_with_rows(session, GameLineup, target_game_ids)
+    summary_ids = _load_game_ids_with_rows(session, GameSummary, target_game_ids)
+    event_ids = _load_game_ids_with_rows(session, GameEvent, target_game_ids)
+    pbp_ids = _load_game_ids_with_rows(session, GamePlayByPlay, target_game_ids)
 
-    return sorted(set(publishable))
+    parent_game_ids: list[str] = []
+    detail_game_ids: list[str] = []
+    relay_game_ids: list[str] = []
+    skipped_schedule_only: list[str] = []
+    skipped_incomplete_detail: list[str] = []
+    skipped_empty_relay: list[str] = []
+    skipped_cancelled: list[str] = []
+
+    for game_id in target_game_ids:
+        game_status, home_score, away_score = game_rows.get(game_id, ("", None, None))
+        is_cancelled = game_status in NON_DETAIL_TERMINAL_STATUSES
+        is_scheduled = game_status == GAME_STATUS_SCHEDULED
+        is_completed = game_status in COMPLETED_LIKE_GAME_STATUSES
+        has_score = home_score is not None or away_score is not None
+        has_complete_detail = _has_both_team_sides(batting_sides, game_id) and _has_both_team_sides(pitching_sides, game_id)
+        has_any_detail_or_relay = any(
+            game_id in ids
+            for ids in (inning_ids, lineup_ids, summary_ids, event_ids, pbp_ids)
+        ) or bool(batting_sides.get(game_id)) or bool(pitching_sides.get(game_id))
+        has_relay = game_id in event_ids or game_id in pbp_ids
+
+        if is_cancelled:
+            skipped_cancelled.append(game_id)
+
+        if is_scheduled and not has_score and not has_any_detail_or_relay:
+            skipped_schedule_only.append(game_id)
+        else:
+            parent_game_ids.append(game_id)
+
+        if has_complete_detail:
+            detail_game_ids.append(game_id)
+        elif is_completed:
+            skipped_incomplete_detail.append(game_id)
+
+        if has_relay:
+            relay_game_ids.append(game_id)
+        elif is_completed:
+            skipped_empty_relay.append(game_id)
+
+    return GameSyncEligibility(
+        parent_game_ids=sorted(set(parent_game_ids)),
+        detail_game_ids=sorted(set(detail_game_ids)),
+        relay_game_ids=sorted(set(relay_game_ids)),
+        skipped_schedule_only=sorted(set(skipped_schedule_only)),
+        skipped_incomplete_detail=sorted(set(skipped_incomplete_detail)),
+        skipped_empty_relay=sorted(set(skipped_empty_relay)),
+        skipped_cancelled=sorted(set(skipped_cancelled)),
+    )
+
+
+def filter_publishable_game_ids(session, game_ids: List[str]) -> List[str]:
+    """Restrict parent-game sync to rows that are more than schedule-only stubs."""
+    return build_game_sync_eligibility(session, game_ids).parent_game_ids
 
 
 class OCISync:
@@ -822,65 +931,7 @@ class OCISync:
         print(f"✅ Synced {synced} player movement records to OCI")
         return synced
 
-    def sync_player_season_batting(self, limit: int = None) -> int:
-        """Sync player_season_batting data from SQLite to OCI"""
-        query = self.sqlite_session.query(PlayerSeasonBatting)
-        if limit:
-            query = query.limit(limit)
-
-        batting_stats = query.all()
-        synced = 0
-
-        for stat in batting_stats:
-            data = {
-                'player_id': stat.player_id,
-                'season': stat.season,
-                'league': stat.league,
-                'level': stat.level,
-                'source': stat.source,
-                'team_code': stat.team_code,
-                'games': stat.games,
-                'plate_appearances': stat.plate_appearances,
-                'at_bats': stat.at_bats,
-                'runs': stat.runs,
-                'hits': stat.hits,
-                'doubles': stat.doubles,
-                'triples': stat.triples,
-                'home_runs': stat.home_runs,
-                'rbi': stat.rbi,
-                'walks': stat.walks,
-                'intentional_walks': stat.intentional_walks,
-                'hbp': stat.hbp,
-                'strikeouts': stat.strikeouts,
-                'stolen_bases': stat.stolen_bases,
-                'caught_stealing': stat.caught_stealing,
-                'sacrifice_hits': stat.sacrifice_hits,
-                'sacrifice_flies': stat.sacrifice_flies,
-                'gdp': stat.gdp,
-                'avg': stat.avg,
-                'obp': stat.obp,
-                'slg': stat.slg,
-                'ops': stat.ops,
-                'iso': stat.iso,
-                'babip': stat.babip,
-                'extra_stats': stat.extra_stats if stat.extra_stats not in [None, 'null', 'None'] else None,
-            }
-
-            stmt = pg_insert(PlayerSeasonBatting).values(**data)
-            update_dict = {k: stmt.excluded[k] for k in data.keys() if k not in ['player_id', 'season', 'league', 'level']}
-            stmt = stmt.on_conflict_do_update(
-                index_elements=['player_id', 'season', 'league', 'level'],
-                set_=update_dict
-            )
-
-            self.target_session.execute(stmt)
-            synced += 1
-
-        self.target_session.commit()
-        print(f"✅ Synced {synced} player_season_batting records to OCI")
-        return synced
-
-    def sync_player_season_batting(self, year: int | None = None, limit: int = None) -> int:
+    def sync_player_season_batting(self, year: int | None = None, limit: int = None, batch_size: int = 500) -> int:
         """Sync player_season_batting data from SQLite to OCI using bulk upsert"""
         query = self.sqlite_session.query(PlayerSeasonBatting)
         if year:
@@ -888,15 +939,14 @@ class OCISync:
         if limit:
             query = query.limit(limit)
 
-        pitcher_stats = query.all()
-        total = len(pitcher_stats)
+        batting_stats = query.all()
+        total = len(batting_stats)
         synced = 0
-        chunk_size = 500
 
-        print(f"  - Starting bulk sync for {total} batting records...")
+        print(f"  - Starting bulk sync for {total} batting records (batch={batch_size})...")
 
-        for i in range(0, total, chunk_size):
-            chunk = pitcher_stats[i:i + chunk_size]
+        for i in range(0, total, batch_size):
+            chunk = batting_stats[i:i + batch_size]
             data_list = []
             for stat in chunk:
                 data_list.append({
@@ -949,7 +999,7 @@ class OCISync:
         print(f"  ✅ Finished syncing {synced} player_season_batting records to OCI")
         return synced
 
-    def sync_player_season_pitching(self, year: int | None = None, limit: int = None) -> int:
+    def sync_player_season_pitching(self, year: int | None = None, limit: int = None, batch_size: int = 500) -> int:
         """Sync player_season_pitching data from SQLite to OCI using bulk upsert"""
         query = self.sqlite_session.query(PlayerSeasonPitching)
         if year:
@@ -960,12 +1010,11 @@ class OCISync:
         pitching_stats = query.all()
         total = len(pitching_stats)
         synced = 0
-        chunk_size = 500
 
-        print(f"  - Starting bulk sync for {total} pitching records...")
+        print(f"  - Starting bulk sync for {total} pitching records (batch={batch_size})...")
 
-        for i in range(0, total, chunk_size):
-            chunk = pitching_stats[i:i + chunk_size]
+        for i in range(0, total, batch_size):
+            chunk = pitching_stats[i:i + batch_size]
             data_list = []
             for stat in chunk:
                 data_list.append({
@@ -1040,7 +1089,7 @@ class OCISync:
         }
         return results
 
-    def sync_games(self, limit: int = None, filters: List = None) -> int:
+    def sync_games(self, limit: int = None, filters: List = None, batch_size: int = 10000) -> int:
         """Sync game detail data from SQLite to OCI using Batched UPSERT or COPY"""
         from src.models.game import Game
         
@@ -1067,7 +1116,8 @@ class OCISync:
             ['game_id'], 
             exclude_cols=exclude_cols,
             filters=filters,
-            transform_fn=transform
+            transform_fn=transform,
+            batch_size=batch_size
         )
 
     def sync_player_game_batting(self, limit: int = None) -> int:
@@ -1229,7 +1279,24 @@ class OCISync:
         """Detect dirty game_ids by comparing game + child-table signatures across local/OCI."""
         return detect_dirty_game_ids(self.sqlite_session, self.target_session)
 
-    def sync_game_details(self, days: int = None, year: int = None, unsynced_only: bool = False) -> Dict[str, int]:
+    @staticmethod
+    def _log_sync_eligibility(eligibility: GameSyncEligibility) -> None:
+        samples = {
+            "skipped_schedule_only": eligibility.skipped_schedule_only,
+            "skipped_incomplete_detail": eligibility.skipped_incomplete_detail,
+            "skipped_empty_relay": eligibility.skipped_empty_relay,
+            "skipped_cancelled": eligibility.skipped_cancelled,
+        }
+        for reason, game_ids in samples.items():
+            if not game_ids:
+                continue
+            print(
+                f"⚠️ {reason}={len(game_ids)} "
+                f"sample={', '.join(game_ids[:10])}"
+                + (" ..." if len(game_ids) > 10 else "")
+            )
+
+    def sync_game_details(self, days: int = None, year: int = None, unsynced_only: bool = False, batch_size: int = 10000) -> Dict[str, int]:
         """Sync all game detail tables to OCI"""
         results = {}
         from src.models.game import (
@@ -1249,6 +1316,7 @@ class OCISync:
         target_game_ids = None
 
         publishable_parent_game_ids = None
+        eligibility = None
 
         if unsynced_only:
             print("🔍 식별 중: OCI에 없거나 로컬에서 최근에 갱신된 게임 데이터를 검사합니다...")
@@ -1261,14 +1329,6 @@ class OCISync:
             print(f"🎯 총 {len(target_game_ids)}개의 변경/누락된 게임을 발견했습니다.")
             # target_game_ids가 너무 길면 sqlite in_ 절 한도를 초과할 수 있지만, 부분 업데이트라 대개 수십 건 내외임.
             filters.append(Game.game_id.in_(target_game_ids))
-            publishable_parent_game_ids = filter_publishable_game_ids(self.sqlite_session, target_game_ids)
-            skipped_schedule_only = sorted(set(target_game_ids) - set(publishable_parent_game_ids))
-            if skipped_schedule_only:
-                print(
-                    "⚠️ Skipping parent game sync for schedule-only dirty rows: "
-                    f"{', '.join(skipped_schedule_only[:10])}"
-                    + (" ..." if len(skipped_schedule_only) > 10 else "")
-                )
         else:
             if days:
                 from datetime import datetime, timedelta
@@ -1276,17 +1336,30 @@ class OCISync:
                 filters.append(Game.game_date >= since_date)
             if year:
                 filters.append(Game.game_id.like(f"{year}%"))
+
+        scoped_game_ids = target_game_ids
+        if scoped_game_ids is None:
+            scoped_query = self.sqlite_session.query(Game.game_id)
+            if filters:
+                scoped_query = scoped_query.filter(*filters)
+            scoped_game_ids = [row[0] for row in scoped_query.all()]
+
+        eligibility = build_game_sync_eligibility(self.sqlite_session, scoped_game_ids)
+        results.update(eligibility.counts())
+        self._log_sync_eligibility(eligibility)
+        if unsynced_only:
+            publishable_parent_game_ids = eligibility.parent_game_ids
             
         # 0. Sync Parent Games first (Required for Foreign Keys)
         print("⚾ Syncing Parent Game Records...")
         if unsynced_only and target_game_ids is not None:
             if publishable_parent_game_ids:
-                results['games'] = self.sync_games(filters=[Game.game_id.in_(publishable_parent_game_ids)])
+                results['games'] = self.sync_games(filters=[Game.game_id.in_(publishable_parent_game_ids)], batch_size=batch_size)
             else:
                 results['games'] = 0
                 print("ℹ️ No publishable parent game rows beyond schedule-only stubs.")
         else:
-            results['games'] = self.sync_games(filters=filters if filters else None)
+            results['games'] = self.sync_games(filters=filters if filters else None, batch_size=batch_size)
 
         alias_filters = None
         if unsynced_only and target_game_ids:
@@ -1303,6 +1376,7 @@ class OCISync:
                 ['alias_game_id'],
                 exclude_cols=['created_at'],
                 filters=alias_filters,
+                batch_size=batch_size
             )
 
         # Build filters for child tables (they often use game_id instead of game_date)
@@ -1323,8 +1397,10 @@ class OCISync:
             self._purge_game_detail_children_for_year(year)
 
         def get_child_filters(model_cls):
-            if unsynced_only and target_game_ids:
-                return [model_cls.game_id.in_(target_game_ids)]
+            if model_cls in {GameEvent, GamePlayByPlay}:
+                return [model_cls.game_id.in_(eligibility.relay_game_ids)]
+            if model_cls in {GameMetadata, GameInningScore, GameLineup, GameBattingStat, GamePitchingStat, GameSummary}:
+                return [model_cls.game_id.in_(eligibility.detail_game_ids)]
             return child_filters if child_filters else None
 
         # 1. Game Metadata
@@ -1332,7 +1408,8 @@ class OCISync:
             GameMetadata, 
             ['game_id'], 
             exclude_cols=['created_at'],
-            filters=get_child_filters(GameMetadata)
+            filters=get_child_filters(GameMetadata),
+            batch_size=batch_size
         )
 
         # 2. Inning Scores
@@ -1340,7 +1417,8 @@ class OCISync:
             GameInningScore,
             ['game_id', 'team_side', 'inning'],
             exclude_cols=['created_at', 'id'],
-            filters=get_child_filters(GameInningScore)
+            filters=get_child_filters(GameInningScore),
+            batch_size=batch_size
         )
 
         # 3. Lineups
@@ -1348,7 +1426,8 @@ class OCISync:
             GameLineup,
             ['game_id', 'team_side', 'appearance_seq'],
              exclude_cols=['created_at', 'id'],
-             filters=get_child_filters(GameLineup)
+             filters=get_child_filters(GameLineup),
+             batch_size=batch_size
         )
 
         # 4. Batting Stats
@@ -1356,7 +1435,8 @@ class OCISync:
             GameBattingStat,
             ['game_id', 'player_id', 'appearance_seq'],
             exclude_cols=['created_at', 'id'],
-            filters=get_child_filters(GameBattingStat)
+            filters=get_child_filters(GameBattingStat),
+            batch_size=batch_size
         )
 
         # 5. Pitching Stats
@@ -1364,7 +1444,8 @@ class OCISync:
             GamePitchingStat,
             ['game_id', 'player_id', 'appearance_seq'],
             exclude_cols=['created_at', 'id'],
-            filters=get_child_filters(GamePitchingStat)
+            filters=get_child_filters(GamePitchingStat),
+            batch_size=batch_size
         )
 
         results['play_by_play'] = self._sync_game_play_by_play(
@@ -1375,12 +1456,14 @@ class OCISync:
             GameEvent,
             ['game_id', 'event_seq'],
             exclude_cols=['created_at', 'id'],
-            filters=get_child_filters(GameEvent)
+            filters=get_child_filters(GameEvent),
+            batch_size=batch_size
         )
 
         # 7. Game Summary
         results['summary'] = self._sync_game_summary_rows(
-            filters=get_child_filters(GameSummary)
+            filters=get_child_filters(GameSummary),
+            batch_size=batch_size
         )
         
         print(f"✅ Game Details Sync Summary: {results}")
@@ -1403,7 +1486,12 @@ class OCISync:
         )
         
         results = {}
+        eligibility = build_game_sync_eligibility(self.sqlite_session, [game_id])
+        results.update(eligibility.counts())
+        self._log_sync_eligibility(eligibility)
         filters = [Game.game_id == game_id]
+        detail_filters = [GameMetadata.game_id.in_(eligibility.detail_game_ids)]
+        relay_filters = [GamePlayByPlay.game_id.in_(eligibility.relay_game_ids)]
 
         # Sync Game record
         results['game'] = self._sync_simple_table(Game, ['game_id'], exclude_cols=['created_at', 'updated_at'], filters=filters)
@@ -1413,31 +1501,31 @@ class OCISync:
         # treats NULL values as distinct in unique constraints, an upsert keyed
         # by player_id would otherwise leave stale NULL-player rows beside the
         # repaired rows. For one-game publishing, replace child snapshots.
-        for child_model in (
-            GameMetadata,
-            GameInningScore,
-            GameLineup,
-            GameBattingStat,
-            GamePitchingStat,
-            GameEvent,
-            GameSummary,
-        ):
-            self.target_session.query(child_model).filter(child_model.game_id == game_id).delete(
-                synchronize_session=False
-            )
+        detail_child_models = (GameMetadata, GameInningScore, GameLineup, GameBattingStat, GamePitchingStat, GameSummary)
+        relay_child_models = (GameEvent, GamePlayByPlay)
+        if eligibility.detail_game_ids:
+            for child_model in detail_child_models:
+                self.target_session.query(child_model).filter(child_model.game_id == game_id).delete(
+                    synchronize_session=False
+                )
+        if eligibility.relay_game_ids:
+            for child_model in relay_child_models:
+                self.target_session.query(child_model).filter(child_model.game_id == game_id).delete(
+                    synchronize_session=False
+                )
         self.target_session.commit()
         
         # Sync children
-        results['metadata'] = self._sync_simple_table(GameMetadata, ['game_id'], exclude_cols=['created_at'], filters=[GameMetadata.game_id == game_id])
-        results['inning_scores'] = self._sync_simple_table(GameInningScore, ['game_id', 'team_side', 'inning'], exclude_cols=['created_at'], filters=[GameInningScore.game_id == game_id])
-        results['lineups'] = self._sync_simple_table(GameLineup, ['game_id', 'team_side', 'appearance_seq'], exclude_cols=['id', 'created_at'], filters=[GameLineup.game_id == game_id])
-        results['batting_stats'] = self._sync_simple_table(GameBattingStat, ['game_id', 'player_id', 'appearance_seq'], exclude_cols=['id', 'created_at'], filters=[GameBattingStat.game_id == game_id])
-        results['pitching_stats'] = self._sync_simple_table(GamePitchingStat, ['game_id', 'player_id', 'appearance_seq'], exclude_cols=['id', 'created_at'], filters=[GamePitchingStat.game_id == game_id])
-        results['play_by_play'] = self._sync_game_play_by_play(filters=[GamePlayByPlay.game_id == game_id])
-        results['events'] = self._sync_simple_table(GameEvent, ['game_id', 'event_seq'], exclude_cols=['id', 'created_at'], filters=[GameEvent.game_id == game_id])
+        results['metadata'] = self._sync_simple_table(GameMetadata, ['game_id'], exclude_cols=['created_at'], filters=detail_filters)
+        results['inning_scores'] = self._sync_simple_table(GameInningScore, ['game_id', 'team_side', 'inning'], exclude_cols=['created_at'], filters=[GameInningScore.game_id.in_(eligibility.detail_game_ids)])
+        results['lineups'] = self._sync_simple_table(GameLineup, ['game_id', 'team_side', 'appearance_seq'], exclude_cols=['id', 'created_at'], filters=[GameLineup.game_id.in_(eligibility.detail_game_ids)])
+        results['batting_stats'] = self._sync_simple_table(GameBattingStat, ['game_id', 'player_id', 'appearance_seq'], exclude_cols=['id', 'created_at'], filters=[GameBattingStat.game_id.in_(eligibility.detail_game_ids)])
+        results['pitching_stats'] = self._sync_simple_table(GamePitchingStat, ['game_id', 'player_id', 'appearance_seq'], exclude_cols=['id', 'created_at'], filters=[GamePitchingStat.game_id.in_(eligibility.detail_game_ids)])
+        results['play_by_play'] = self._sync_game_play_by_play(filters=relay_filters)
+        results['events'] = self._sync_simple_table(GameEvent, ['game_id', 'event_seq'], exclude_cols=['id', 'created_at'], filters=[GameEvent.game_id.in_(eligibility.relay_game_ids)])
         results['summary'] = self._sync_game_summary_rows(
-            filters=[GameSummary.game_id == game_id],
-            replace_game_ids=[game_id],
+            filters=[GameSummary.game_id.in_(eligibility.detail_game_ids)],
+            replace_game_ids=eligibility.detail_game_ids,
         )
         
         return results
@@ -1478,6 +1566,7 @@ class OCISync:
         *,
         summary_type: str | None = None,
         replace_game_ids: List[str] | None = None,
+        batch_size: int = 10000
     ) -> int:
         from src.models.game import GameSummary
 
@@ -1515,7 +1604,7 @@ class OCISync:
             seen.add(key)
             records.append({column: getattr(row, column) for column in columns if hasattr(row, column)})
 
-        print(f"🚚 Syncing game_summary ({len(records)} rows)...")
+        print(f"🚚 Syncing game_summary ({len(records)} rows, batch={batch_size})...")
         self._bulk_copy_upsert("game_summary", records, [], update_timestamp=False)
         print(f"   Synced {len(records)}/{len(records)} rows via COPY...")
         return len(records)
@@ -1562,41 +1651,41 @@ class OCISync:
         return len(mappings)
 
     def _sync_simple_table(
-        self, 
-        model: Type, 
-        conflict_keys: List[str], 
-        exclude_cols: List[str] = None, 
+        self,
+        model: Type,
+        conflict_keys: List[str],
+        exclude_cols: List[str] = None,
         filters: List = None,
-        transform_fn: Optional[Callable] = None
+        transform_fn: Optional[Callable] = None,
+        batch_size: int = 10000
     ) -> int:
         """Generic sync parameter for simple tables using Batched UPSERT or COPY"""
         if exclude_cols is None:
             exclude_cols = ['id'] # Default to exclude ID for auto-inc compatibility
         elif 'id' not in exclude_cols:
             exclude_cols.append('id')
-            
+
         columns = [c.key for c in model.__table__.columns if c.key not in exclude_cols and c.key not in ('created_at', 'updated_at')]
-        
+
         query = self.sqlite_session.query(model)
         if filters:
             query = query.filter(*filters)
-            
+
         total_count = query.count()
         if total_count == 0:
             print(f"ℹ️  No records for {model.__tablename__}")
             return 0
-            
-        print(f"🚚 Syncing {model.__tablename__} ({total_count} rows)...")
-        
+
+        print(f"🚚 Syncing {model.__tablename__} ({total_count} rows, batch={batch_size})...")
+
         # Always use Bulk COPY Upsert to be safe from schema mismatches (e.g. created_at/updated_at missing on OCI)
-        batch_size = 10000
         synced = 0
         for offset in range(0, total_count, batch_size):
             rows = query.offset(offset).limit(batch_size).all()
             records = []
             for row in rows:
                 data = {c: getattr(row, c) for c in columns if hasattr(row, c)}
-                
+
                 # Apply transformation if provided
                 if transform_fn:
                     data = transform_fn(data)
@@ -1606,22 +1695,21 @@ class OCISync:
                     if isinstance(v, (dict, list)):
                         data[k] = json.dumps(v, ensure_ascii=False)
                 records.append(data)
-            
+
             # Deduplicate records to avoid Postgres "affect row a second time"
             # errors, while preserving SQL's distinct-NULL unique semantics.
             records = _dedupe_records_for_conflict_keys(records, conflict_keys)
 
             self._bulk_copy_upsert(
-                model.__tablename__, 
-                records, 
-                conflict_keys, 
+                model.__tablename__,
+                records,
+                conflict_keys,
                 update_timestamp=('updated_at' not in exclude_cols)
             )
             synced += len(records)
             print(f"   Synced {synced}/{total_count} rows via COPY...")
-            
-        return synced
 
+        return synced
 
     def sync_crawl_runs(self) -> int:
         """Sync crawl runs from SQLite to OCI"""
@@ -1735,7 +1823,7 @@ class OCISync:
             cursor.close()
             connection.close()
 
-    def sync_standings(self, year: int = None, days: int = None) -> int:
+    def sync_standings(self, year: int = None, days: int = None, batch_size: int = 10000) -> int:
         """Sync calculated daily standings snapshots to OCI"""
         from src.models.standings import TeamStandingsDaily
         from src.models.base import Base
@@ -1755,7 +1843,8 @@ class OCISync:
             TeamStandingsDaily,
             ['standings_date', 'team_code'],
             exclude_cols=['created_at', 'id'],
-            filters=filters
+            filters=filters,
+            batch_size=batch_size
         )
 
     def sync_awards(self) -> int:
@@ -1803,7 +1892,7 @@ class OCISync:
         print(f"✅ Synced {synced} awards to OCI")
         return synced
 
-    def sync_matchups(self, year: int = None) -> Dict[str, int]:
+    def sync_matchups(self, year: int = None, batch_size: int = 10000) -> Dict[str, int]:
         """Sync Matchup Split tables (Batter/Pitcher vs Team, Stadium, Starter, PBP-BvP) to OCI"""
         from src.models.base import Base
         from src.models.matchup import BatterTeamSplit, PitcherTeamSplit, BatterStadiumSplit, BatterVsStarter, MatchupBvP, BatterSplit, PitcherSplit
@@ -1818,7 +1907,8 @@ class OCISync:
             BatterTeamSplit,
             ['season_year', 'league_type_code', 'player_id', 'team_code', 'opponent_team_code'],
             exclude_cols=['created_at', 'id'],
-            filters=filters
+            filters=filters,
+            batch_size=batch_size
         )
 
         # 2. Pitcher Team Splits
@@ -1826,7 +1916,8 @@ class OCISync:
             PitcherTeamSplit,
             ['season_year', 'league_type_code', 'player_id', 'team_code', 'opponent_team_code'],
             exclude_cols=['created_at', 'id'],
-            filters=filters
+            filters=filters,
+            batch_size=batch_size
         )
 
         # 3. Batter Stadium Splits
@@ -1834,7 +1925,8 @@ class OCISync:
             BatterStadiumSplit,
             ['season_year', 'league_type_code', 'player_id', 'team_code', 'stadium_name'],
             exclude_cols=['created_at', 'id'],
-            filters=filters
+            filters=filters,
+            batch_size=batch_size
         )
 
         # 4. Batter vs Starter (Starter Heuristic)
@@ -1842,7 +1934,8 @@ class OCISync:
             BatterVsStarter,
             ['season_year', 'league_type_code', 'player_id', 'pitcher_name'],
             exclude_cols=['created_at', 'id'],
-            filters=filters
+            filters=filters,
+            batch_size=batch_size
         )
 
         # 5. Precise BvP (PBP based)
@@ -1850,7 +1943,8 @@ class OCISync:
         results['matchup_bvp'] = self._sync_simple_table(
             MatchupBvP,
             ['batter_id', 'pitcher_id'],
-            exclude_cols=['created_at', 'id']
+            exclude_cols=['created_at', 'id'],
+            batch_size=batch_size
         )
 
         # 6. Situational Splits
@@ -1858,19 +1952,21 @@ class OCISync:
             BatterSplit,
             ['player_id', 'season_year', 'split_type'],
             exclude_cols=['created_at', 'id'],
-            filters=filters
+            filters=filters,
+            batch_size=batch_size
         )
         results['pitcher_splits'] = self._sync_simple_table(
             PitcherSplit,
             ['player_id', 'season_year', 'split_type'],
             exclude_cols=['created_at', 'id'],
-            filters=filters
+            filters=filters,
+            batch_size=batch_size
         )
 
         print(f"✅ Matchup Splits Sync Summary: {results}")
         return results
 
-    def sync_stat_rankings(self, year: int | None = None) -> int:
+    def sync_stat_rankings(self, year: int | None = None, batch_size: int = 10000) -> int:
         """Sync derived stat_rankings rows to OCI."""
         filters = [StatRanking.season == year] if year else None
         return self._sync_simple_table(
@@ -1878,9 +1974,10 @@ class OCISync:
             ["season", "metric", "entity_id", "entity_type"],
             exclude_cols=["created_at", "id"],
             filters=filters,
+            batch_size=batch_size
         )
 
-    def sync_fielding_stats(self, year: int | None = None) -> int:
+    def sync_fielding_stats(self, year: int | None = None, batch_size: int = 10000) -> int:
         """Sync player fielding stats to OCI."""
         filters = [PlayerSeasonFielding.year == year] if year else None
         return self._sync_simple_table(
@@ -1888,9 +1985,10 @@ class OCISync:
             ["player_id", "team_id", "year", "position_id"],
             exclude_cols=["created_at", "id"],
             filters=filters,
+            batch_size=batch_size
         )
 
-    def sync_baserunning_stats(self, year: int | None = None) -> int:
+    def sync_baserunning_stats(self, year: int | None = None, batch_size: int = 10000) -> int:
         """Sync player baserunning stats to OCI."""
         filters = [PlayerSeasonBaserunning.year == year] if year else None
         return self._sync_simple_table(
@@ -1898,9 +1996,10 @@ class OCISync:
             ["player_id", "team_id", "year"],
             exclude_cols=["created_at", "id"],
             filters=filters,
+            batch_size=batch_size
         )
 
-    def sync_team_batting_stats(self, year: int | None = None) -> int:
+    def sync_team_batting_stats(self, year: int | None = None, batch_size: int = 10000) -> int:
         """Sync team batting stats to OCI."""
         filters = [TeamSeasonBatting.season == year] if year else None
         return self._sync_simple_table(
@@ -1908,9 +2007,10 @@ class OCISync:
             ["team_id", "season", "league"],
             exclude_cols=["created_at", "id"],
             filters=filters,
+            batch_size=batch_size
         )
 
-    def sync_team_pitching_stats(self, year: int | None = None) -> int:
+    def sync_team_pitching_stats(self, year: int | None = None, batch_size: int = 10000) -> int:
         """Sync team pitching stats to OCI."""
         filters = [TeamSeasonPitching.season == year] if year else None
         return self._sync_simple_table(
@@ -1918,6 +2018,7 @@ class OCISync:
             ["team_id", "season", "league"],
             exclude_cols=["created_at", "id"],
             filters=filters,
+            batch_size=batch_size
         )
 
     def close(self):

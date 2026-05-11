@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import asyncio
+import json
+from pathlib import Path
 from types import SimpleNamespace
 
 import src.cli.run_daily_update as run_daily_update
@@ -45,6 +47,22 @@ class _FakeScheduleCrawler:
         ]
 
 
+class _FakeScheduleCrawlerCancelled:
+    async def crawl_schedule(self, year: int, month: int):
+        game_date = f"{year}{month:02d}01"
+        return [
+            {
+                "game_id": f"{game_date}LGSS0",
+                "game_date": game_date,
+                "home_team_code": "SS",
+                "away_team_code": "LG",
+                "season_year": year,
+                "season_type": "regular",
+                "game_status": "CANCELLED",
+            }
+        ]
+
+
 class _FakeDetailCrawlerCancelled:
     received_resolver = None
 
@@ -67,6 +85,17 @@ class _FakeDetailCrawlerMissing:
 
     def get_last_failure_reason(self, game_id: str):
         return "missing"
+
+
+class _FakeDetailCrawlerIncomplete:
+    def __init__(self, resolver=None, **_kwargs):
+        self.resolver = resolver
+
+    async def crawl_game(self, game_id: str, game_date: str):
+        return None
+
+    def get_last_failure_reason(self, game_id: str):
+        return "incomplete_detail"
 
 
 class _FakeDetailCrawlerSuccess:
@@ -161,6 +190,10 @@ class _FakeSyncer:
     def sync_specific_game(self, game_id: str):
         self.synced_games.append(game_id)
 
+    def sync_games(self, *, filters=None, batch_size=10000, limit=None):
+        self.calls.append(("games", filters, batch_size, limit))
+        return 0
+
     def sync_standings(self, *, year: int):
         self.calls.append(("standings", year))
 
@@ -170,11 +203,11 @@ class _FakeSyncer:
     def sync_stat_rankings(self, *, year: int):
         self.calls.append(("rankings", year))
 
-    def sync_player_season_batting(self):
-        self.calls.append(("season_batting", None))
+    def sync_player_season_batting(self, *, year=None):
+        self.calls.append(("season_batting", year))
 
-    def sync_player_season_pitching(self):
-        self.calls.append(("season_pitching", None))
+    def sync_player_season_pitching(self, *, year=None):
+        self.calls.append(("season_pitching", year))
 
     def sync_player_movements(self):
         self.calls.append(("player_movements", None))
@@ -187,6 +220,12 @@ class _FakeSyncer:
 
     def close(self):
         self.closed = True
+
+
+class _FakeSyncerWithSkips(_FakeSyncer):
+    def sync_specific_game(self, game_id: str):
+        super().sync_specific_game(game_id)
+        return {"skipped_empty_relay": 1}
 
 
 def _patch_common(monkeypatch):
@@ -204,6 +243,11 @@ def _patch_common(monkeypatch):
     monkeypatch.setattr(run_daily_update, "run_healer_async", _noop_async)
     monkeypatch.setattr(run_daily_update, "PlayerMovementCrawler", _FakeMovementCrawler)
     monkeypatch.setattr(run_daily_update, "DailyRosterCrawler", _FakeRosterCrawler)
+    monkeypatch.setattr(
+        run_daily_update,
+        "DEFAULT_DAILY_SUMMARY_DIR",
+        Path("/private/tmp/kbo_daily_update_summary_tests"),
+    )
     monkeypatch.setattr(run_daily_update, "write_refresh_manifest", lambda **_kwargs: "manifest.json")
     monkeypatch.setattr(run_daily_update, "reconcile_postgame_range", _fake_reconcile_postgame_range)
     monkeypatch.setattr(run_daily_update, "format_reconciliation_report", lambda changes: "")
@@ -237,7 +281,7 @@ def test_run_update_injects_resolver_marks_cancelled_and_uses_step_runner(monkey
     assert _FakeResolver.created[0].preloaded_years == [2025]
     assert _FakeDetailCrawlerCancelled.received_resolver is _FakeResolver.created[0]
     assert ("20250101LGSS0", GAME_STATUS_CANCELLED) in updates
-    assert ["scripts/fetch_kbo_pbp.py", "--date", "20250101"] in commands
+    assert not any(command[:1] == ["scripts/fetch_kbo_pbp.py"] for command in commands)
     assert ["-m", "src.cli.daily_review_batch", "--date", "20250101", "--no-sync"] in commands
     assert [
         "-m",
@@ -305,6 +349,120 @@ def test_run_update_marks_unresolved_when_detail_missing_for_past_date(monkeypat
     assert ("20200101LGSS0", GAME_STATUS_UNRESOLVED) in updates
 
 
+def test_run_update_marks_unresolved_when_detail_incomplete_for_past_date(monkeypatch):
+    _FakeResolver.created = []
+    updates = []
+
+    _patch_common(monkeypatch)
+    monkeypatch.setattr(run_daily_update, "GameDetailCrawler", _FakeDetailCrawlerIncomplete)
+    monkeypatch.setattr(
+        run_daily_update,
+        "update_game_status",
+        lambda game_id, status: updates.append((game_id, status)) or True,
+    )
+
+    asyncio.run(
+        run_daily_update.run_update(
+            "20200101",
+            sync=False,
+            headless=True,
+            limit=None,
+            step_runner=lambda _argv: None,
+        )
+    )
+
+    assert ("20200101LGSS0", GAME_STATUS_UNRESOLVED) in updates
+
+
+def test_run_update_summarizes_detail_failure_reasons(monkeypatch, capsys):
+    _patch_common(monkeypatch)
+    monkeypatch.setattr(run_daily_update, "GameDetailCrawler", _FakeDetailCrawlerIncomplete)
+    monkeypatch.setattr(run_daily_update, "update_game_status", lambda *_args, **_kwargs: True)
+
+    asyncio.run(
+        run_daily_update.run_update(
+            "20200101",
+            sync=False,
+            headless=True,
+            limit=None,
+            step_runner=lambda _argv: None,
+        )
+    )
+
+    output = capsys.readouterr().out
+    assert "Detail failure reasons: incomplete_detail=1" in output
+    assert "detail_failures=incomplete_detail=1" in output
+
+
+def test_run_update_writes_detail_failure_summary_json_and_manifest(monkeypatch, tmp_path):
+    manifest_kwargs = {}
+
+    _patch_common(monkeypatch)
+    monkeypatch.setattr(run_daily_update, "GameDetailCrawler", _FakeDetailCrawlerIncomplete)
+    monkeypatch.setattr(run_daily_update, "update_game_status", lambda *_args, **_kwargs: True)
+    monkeypatch.setattr(
+        run_daily_update,
+        "write_refresh_manifest",
+        lambda **kwargs: manifest_kwargs.update(kwargs) or tmp_path / "manifest.json",
+    )
+
+    result = asyncio.run(
+        run_daily_update.run_update(
+            "20200101",
+            sync=False,
+            headless=True,
+            limit=None,
+            step_runner=lambda _argv: None,
+            summary_dir=tmp_path,
+        )
+    )
+
+    summary_path = tmp_path / "20200101.json"
+    payload = json.loads(summary_path.read_text(encoding="utf-8"))
+    stability = payload["stability"]
+
+    assert result["summary_path"] == str(summary_path)
+    assert payload["manifest_path"] == str(tmp_path / "manifest.json")
+    assert stability["detail"]["failure_counts"] == {"incomplete_detail": 1}
+    assert stability["detail"]["failure_game_ids"] == {"incomplete_detail": ["20200101LGSS0"]}
+    assert stability["retry_candidates"]["detail"] == ["20200101LGSS0"]
+    assert stability["affected_game_ids"] == ["20200101LGSS0"]
+    assert manifest_kwargs["stability"] == stability
+
+
+def test_run_update_skips_cancelled_schedule_games_before_detail(monkeypatch):
+    detail_batches = []
+    updates = []
+
+    _patch_common(monkeypatch)
+    monkeypatch.setattr(run_daily_update, "ScheduleCrawler", _FakeScheduleCrawlerCancelled)
+    monkeypatch.setattr(run_daily_update, "GameDetailCrawler", _FakeDetailCrawlerMissing)
+    monkeypatch.setattr(
+        run_daily_update,
+        "update_game_status",
+        lambda game_id, status: updates.append((game_id, status)) or True,
+    )
+
+    async def _capture_details(games, **kwargs):
+        detail_batches.append(list(games))
+        return await _fake_crawl_and_save_game_details(games, **kwargs)
+
+    monkeypatch.setattr(run_daily_update, "crawl_and_save_game_details", _capture_details)
+
+    asyncio.run(
+        run_daily_update.run_update(
+            "20200101",
+            sync=False,
+            headless=True,
+            limit=None,
+            step_runner=lambda _argv: None,
+        )
+    )
+
+    assert detail_batches == [[]]
+    assert updates == []
+
+
 def test_run_update_syncs_only_target_games_after_freshness_gate(monkeypatch):
     _FakeResolver.created = []
     _FakeSyncer.created = []
@@ -327,6 +485,7 @@ def test_run_update_syncs_only_target_games_after_freshness_gate(monkeypatch):
     )
 
     assert ["-m", "src.cli.daily_review_batch", "--date", "20250101", "--no-sync"] in commands
+    assert ["scripts/fetch_kbo_pbp.py", "--game-ids", "20250101LGSS0"] in commands
     backfill_command = [
         "-m",
         "src.cli.backfill_starting_pitchers_from_stats",
@@ -372,12 +531,111 @@ def test_run_update_syncs_only_target_games_after_freshness_gate(monkeypatch):
     assert ("standings", 2025) in syncer.calls
     assert ("matchups", 2025) in syncer.calls
     assert ("rankings", 2025) in syncer.calls
-    assert ("season_batting", None) in syncer.calls
-    assert ("season_pitching", None) in syncer.calls
+    assert ("season_batting", 2025) in syncer.calls
+    assert ("season_pitching", 2025) in syncer.calls
     assert ("player_movements", None) in syncer.calls
     assert ("daily_rosters", None) in syncer.calls
     assert ("players", None) in syncer.calls
     assert syncer.closed is True
+
+
+def test_run_update_prints_oci_skip_and_relay_summary(monkeypatch, capsys):
+    _FakeResolver.created = []
+    _FakeSyncer.created = []
+
+    _patch_common(monkeypatch)
+    monkeypatch.setattr(run_daily_update, "GameDetailCrawler", _FakeDetailCrawlerSuccess)
+    monkeypatch.setattr(run_daily_update, "OCISync", _FakeSyncerWithSkips)
+    monkeypatch.setattr(run_daily_update, "update_game_status", lambda *_args, **_kwargs: True)
+    monkeypatch.setenv("OCI_DB_URL", "postgresql://example")
+
+    asyncio.run(
+        run_daily_update.run_update(
+            "20250101",
+            sync=True,
+            headless=True,
+            limit=None,
+            step_runner=lambda _argv: None,
+        )
+    )
+
+    output = capsys.readouterr().out
+    assert "Relay candidates=1" in output
+    assert "OCI skip summary: skipped_empty_relay=1" in output
+    assert "Stability summary:" in output
+    assert "relay_targets=1" in output
+    assert "oci_skips=skipped_empty_relay=1" in output
+
+
+def test_run_update_writes_oci_skip_summary_json(monkeypatch, tmp_path):
+    manifest_kwargs = {}
+    _FakeResolver.created = []
+    _FakeSyncer.created = []
+
+    _patch_common(monkeypatch)
+    monkeypatch.setattr(run_daily_update, "GameDetailCrawler", _FakeDetailCrawlerSuccess)
+    monkeypatch.setattr(run_daily_update, "OCISync", _FakeSyncerWithSkips)
+    monkeypatch.setattr(run_daily_update, "update_game_status", lambda *_args, **_kwargs: True)
+    monkeypatch.setattr(
+        run_daily_update,
+        "write_refresh_manifest",
+        lambda **kwargs: manifest_kwargs.update(kwargs) or tmp_path / "manifest.json",
+    )
+    monkeypatch.setenv("OCI_DB_URL", "postgresql://example")
+
+    result = asyncio.run(
+        run_daily_update.run_update(
+            "20250101",
+            sync=True,
+            headless=True,
+            limit=None,
+            step_runner=lambda _argv: None,
+            summary_dir=tmp_path,
+        )
+    )
+
+    payload = json.loads((tmp_path / "20250101.json").read_text(encoding="utf-8"))
+    stability = payload["stability"]
+
+    assert result["stability"] == stability
+    assert stability["detail"]["failure_counts"] == {}
+    assert stability["relay"]["target_count"] == 1
+    assert stability["relay"]["target_game_ids"] == ["20250101LGSS0"]
+    assert stability["oci"]["skip_counts"] == {"skipped_empty_relay": 1}
+    assert stability["oci"]["skip_game_ids"] == {"skipped_empty_relay": ["20250101LGSS0"]}
+    assert stability["retry_candidates"]["relay"] == ["20250101LGSS0"]
+    assert stability["affected_game_ids"] == ["20250101LGSS0"]
+    assert manifest_kwargs["stability"] == stability
+
+
+def test_run_update_writes_empty_stability_summary_for_clean_run(monkeypatch, tmp_path):
+    _patch_common(monkeypatch)
+    monkeypatch.setattr(run_daily_update, "GameDetailCrawler", _FakeDetailCrawlerSuccess)
+    monkeypatch.setattr(run_daily_update, "update_game_status", lambda *_args, **_kwargs: True)
+    monkeypatch.setattr(
+        run_daily_update,
+        "write_refresh_manifest",
+        lambda **_kwargs: tmp_path / "manifest.json",
+    )
+
+    asyncio.run(
+        run_daily_update.run_update(
+            "20250101",
+            sync=False,
+            headless=True,
+            limit=None,
+            step_runner=lambda _argv: None,
+            summary_dir=tmp_path,
+        )
+    )
+
+    stability = json.loads((tmp_path / "20250101.json").read_text(encoding="utf-8"))["stability"]
+
+    assert stability["detail"]["failure_counts"] == {}
+    assert stability["detail"]["failure_game_ids"] == {}
+    assert stability["oci"]["skip_counts"] == {}
+    assert stability["retry_candidates"] == {"detail": [], "relay": []}
+    assert stability["affected_game_ids"] == []
 
 
 def test_run_update_syncs_auto_healer_recovery_targets(monkeypatch):
@@ -406,8 +664,8 @@ def test_run_update_syncs_auto_healer_recovery_targets(monkeypatch):
         )
     )
 
-    assert ["scripts/fetch_kbo_pbp.py", "--date", "20250101"] in commands
-    assert ["scripts/fetch_kbo_pbp.py", "--date", "20241231"] in commands
+    assert ["scripts/fetch_kbo_pbp.py", "--game-ids", "20250101LGSS0"] in commands
+    assert ["scripts/fetch_kbo_pbp.py", "--game-ids", "20241231LGSS0"] in commands
     assert ["-m", "src.cli.freshness_gate", "--date", "20250101"] in commands
     assert ["-m", "src.cli.freshness_gate", "--date", "20241231"] in commands
     assert [
@@ -471,6 +729,11 @@ def test_run_update_syncs_postgame_reconciliation_changes(monkeypatch):
     assert seen["range"] == ("20241230", "20250101")
     assert seen["crawler"].__class__ is _FakeDetailCrawlerSuccess
     assert seen["concurrency"] == 1
+    assert [
+        "scripts/fetch_kbo_pbp.py",
+        "--game-ids",
+        "20241230LGSS0,20250101LGSS0",
+    ] in commands
     assert ["-m", "src.cli.freshness_gate", "--date", "20241230"] in commands
     assert [
         "-m",

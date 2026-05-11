@@ -23,7 +23,7 @@ class _FakeDetailCrawler:
                 "lightweight": lightweight,
             }
         )
-        return [{"game_id": game["game_id"], "game_date": game["game_date"]} for game in games]
+        return [_valid_detail_payload(game["game_id"], game["game_date"]) for game in games]
 
 
 class _FakeRelayCrawler:
@@ -60,9 +60,28 @@ class _EmptyHittersDetailCrawler:
                 "game_id": game["game_id"],
                 "game_date": game["game_date"],
                 "hitters": {"away": [], "home": []},
+                "pitchers": {
+                    "away": [{"player_name": "Away Pitcher"}],
+                    "home": [{"player_name": "Home Pitcher"}],
+                },
             }
             for game in games
         ]
+
+
+def _valid_detail_payload(game_id: str, game_date: str):
+    return {
+        "game_id": game_id,
+        "game_date": game_date,
+        "hitters": {
+            "away": [{"player_name": "Away Hitter"}],
+            "home": [{"player_name": "Home Hitter"}],
+        },
+        "pitchers": {
+            "away": [{"player_name": "Away Pitcher"}],
+            "home": [{"player_name": "Home Pitcher"}],
+        },
+    }
 
 
 def _build_session_factory():
@@ -278,9 +297,9 @@ def test_crawl_and_save_game_details_can_filter_payloads_before_save(monkeypatch
     result = asyncio.run(
         service.crawl_and_save_game_details(
             [{"game_id": "20250404LGSS0", "game_date": "20250404"}],
-            detail_crawler=_EmptyHittersDetailCrawler(),
+            detail_crawler=_FakeDetailCrawler(),
             force=True,
-            should_save_detail=lambda payload: bool(payload.get("hitters", {}).get("away")),
+            should_save_detail=lambda payload: False,
             log=lambda _message: None,
         )
     )
@@ -291,3 +310,31 @@ def test_crawl_and_save_game_details_can_filter_payloads_before_save(monkeypatch
     assert result.detail_failed == 1
     assert item.detail_status == "filtered"
     assert item.failure_reason == "detail_payload_filtered"
+
+
+def test_crawl_and_save_game_details_filters_incomplete_payload_by_default(monkeypatch):
+    SessionLocal = _build_session_factory()
+    monkeypatch.setattr(service, "SessionLocal", SessionLocal)
+
+    saved_details = []
+    monkeypatch.setattr(
+        service,
+        "save_game_detail",
+        lambda payload, **_kwargs: saved_details.append(payload["game_id"]) or True,
+    )
+
+    result = asyncio.run(
+        service.crawl_and_save_game_details(
+            [{"game_id": "20250407LGSS0", "game_date": "20250407"}],
+            detail_crawler=_EmptyHittersDetailCrawler(),
+            force=True,
+            log=lambda _message: None,
+        )
+    )
+
+    item = result.items["20250407LGSS0"]
+    assert saved_details == []
+    assert result.detail_saved == 0
+    assert result.detail_failed == 1
+    assert item.detail_status == "filtered"
+    assert item.failure_reason == "incomplete_detail"

@@ -215,6 +215,13 @@ async def crawl_and_save_game_details(
                 item.failure_reason = _get_failure_reason(detail_crawler, target.game_id) or "no_detail_payload"
                 log("   [WARN] No detail payload returned")
                 continue
+            if not _has_required_detail_rows(payload):
+                result.detail_failed += 1
+                item = result.items[target.game_id]
+                item.detail_status = "filtered"
+                item.failure_reason = _get_failure_reason(detail_crawler, target.game_id) or "incomplete_detail"
+                log("   [WARN] Detail payload is missing required hitter/pitcher rows")
+                continue
             if should_save_detail and not should_save_detail(payload):
                 result.detail_failed += 1
                 item = result.items[target.game_id]
@@ -296,7 +303,11 @@ async def crawl_and_save_game_details(
             else:
                 result.relay_missing += 1
                 item.relay_status = "missing"
-                item.failure_reason = item.failure_reason or "no_relay_payload"
+                item.failure_reason = (
+                    item.failure_reason
+                    or _get_failure_reason(relay_crawler, target.game_id)
+                    or "no_relay_payload"
+                )
                 log("   [INFO] No relay data available")
             await _maybe_pause(index, pause_every, pause_seconds, log)
 
@@ -341,6 +352,17 @@ def _get_failure_reason(crawler: Any, game_id: str) -> Optional[str]:
         return getter(game_id)
     except Exception:
         return None
+
+
+def _has_required_detail_rows(payload: Dict[str, Any]) -> bool:
+    hitters = payload.get("hitters") or {}
+    pitchers = payload.get("pitchers") or {}
+    return (
+        bool(hitters.get("away"))
+        and bool(hitters.get("home"))
+        and bool(pitchers.get("away"))
+        and bool(pitchers.get("home"))
+    )
 
 
 async def _maybe_pause(

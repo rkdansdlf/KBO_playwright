@@ -3,15 +3,25 @@ KBO Schedule Crawler POC
 Collects game IDs from the KBO schedule page
 """
 import asyncio
-import time
 from datetime import datetime
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Any
 from playwright.async_api import Page
 
 from src.utils.team_codes import team_code_from_game_id_segment, resolve_team_code, normalize_kbo_game_id
 from src.utils.playwright_pool import AsyncPlaywrightPool
+from src.utils.request_policy import RequestPolicy
 from src.utils.compliance import compliance
-from src.utils.throttle import throttle
+from src.utils.game_status import (
+    GAME_STATUS_CANCELLED,
+    GAME_STATUS_COMPLETED,
+    GAME_STATUS_DELAYED,
+    GAME_STATUS_LIVE,
+    GAME_STATUS_POSTPONED,
+    GAME_STATUS_SCHEDULED,
+    GAME_STATUS_SUSPENDED,
+    normalize_game_status,
+)
+from src.utils.schedule_validation import validate_schedule_game_payload
 
 
 class ScheduleCrawler:
@@ -24,10 +34,24 @@ class ScheduleCrawler:
     - 수집된 경기 정보 리스트를 반환합니다.
     """
 
-    def __init__(self, request_delay: float = 1.5, pool: Optional[AsyncPlaywrightPool] = None):
+    def __init__(
+        self,
+        request_delay: float = 1.5,
+        pool: Optional[AsyncPlaywrightPool] = None,
+        policy: Optional[RequestPolicy] = None,
+    ):
         self.base_url = "https://www.koreabaseball.com/Schedule/Schedule.aspx"
         self.request_delay = request_delay
         self.pool = pool
+        self.policy = policy or RequestPolicy(min_delay=request_delay)
+        self._last_failure_reason: Dict[str, str] = {}
+
+    def get_last_failure_reason(self, key: str) -> Optional[str]:
+        return self._last_failure_reason.get(key)
+
+    def _schedule_key(self, year: int, month: int, series_id: str | None = None) -> str:
+        suffix = series_id if series_id is not None else "all"
+        return f"{year}-{month:02d}:{suffix}"
 
     async def crawl_schedule(self, year: int, month: int, series_id: str = None) -> List[Dict]:
         """
@@ -80,7 +104,7 @@ class ScheduleCrawler:
             page = await pool.acquire()
             try:
                 for month in months:
-                    await throttle.wait()
+                    await self.policy.delay_async(host="www.koreabaseball.com")
                     month_games = await self._crawl_month(page, year, month, series_id=series_id)
                     all_games.extend(month_games)
                 return all_games
@@ -91,19 +115,85 @@ class ScheduleCrawler:
                 await pool.close()
 
 
+    async def _navigate_schedule_page(
+        self,
+        page: Page,
+        *,
+        required_selector: str = "#ddlYear, #ddlMonth, #ddlSeries, .tbl",
+        timeout: int = 30000,
+        selector_timeout: int = 10000,
+    ) -> tuple[bool, str]:
+        if not await compliance.is_allowed(self.base_url):
+            print(f"[COMPLIANCE] Navigation to {self.base_url} aborted.")
+            return False, "blocked"
+
+        async def _navigate() -> None:
+            await self.policy.delay_async(host="www.koreabaseball.com")
+            if page.url != self.base_url:
+                await page.goto(self.base_url, wait_until="networkidle", timeout=timeout)
+            await page.wait_for_selector(required_selector, timeout=selector_timeout)
+
+        try:
+            await self.policy.run_with_retry_async(_navigate)
+        except Exception as exc:
+            print(f"[WARN] Schedule page navigation failed: {exc}")
+            return False, "schedule_navigation_failed"
+
+        return True, "ok"
+
+    async def _wait_for_schedule_table(self, page: Page, *, timeout: int = 10000) -> tuple[bool, str]:
+        try:
+            await page.wait_for_selector(".tbl tbody tr", timeout=timeout)
+            return True, "ok"
+        except Exception as exc:
+            print(f"[WARN] Schedule table wait failed: {exc}")
+            return False, "schedule_empty"
+
+    async def _select_option_with_retry(
+        self,
+        page: Page,
+        selector: str,
+        value: str,
+        *,
+        label: str,
+    ) -> tuple[bool, str]:
+        async def _select() -> None:
+            await self.policy.delay_async(host="www.koreabaseball.com")
+            await page.select_option(selector, value)
+            await page.wait_for_load_state("networkidle", timeout=5000)
+            await page.wait_for_timeout(500)
+            await page.wait_for_selector(".tbl", timeout=10000)
+
+        try:
+            await self.policy.run_with_retry_async(_select)
+        except Exception as exc:
+            print(f"[WARN] Schedule {label} select failed ({value}): {exc}")
+            return False, "schedule_navigation_failed"
+
+        return True, "ok"
+
     async def _crawl_month(self, page: Page, year: int, month: int, series_id: str = None) -> List[Dict]:
         """특정 월의 경기 일정 페이지에서 정보를 추출합니다.
         series_id가 지정되지 않은 경우 전 시리즈(시범/정규/포스트)를 순회합니다.
         """
-        if page.url != self.base_url:
-            if not await compliance.is_allowed(self.base_url):
-                print(f"[COMPLIANCE] Navigation to {self.base_url} aborted.")
-                return []
-            await throttle.wait()
-            await page.goto(self.base_url, wait_until="networkidle", timeout=30000)
+        crawl_key = self._schedule_key(year, month, series_id)
+        self._last_failure_reason.pop(crawl_key, None)
+
+        ok, failure_reason = await self._navigate_schedule_page(page)
+        if not ok:
+            self._last_failure_reason[crawl_key] = failure_reason
+            return []
         
         # 1. 연도 및 월 선택 (Postback 발생 가능)
-        await self._select_year_month(page, year, month)
+        ok, failure_reason = await self._select_year_month(page, year, month)
+        if not ok:
+            self._last_failure_reason[crawl_key] = failure_reason
+            return []
+
+        ok, failure_reason = await self._wait_for_schedule_table(page)
+        if not ok:
+            self._last_failure_reason[crawl_key] = failure_reason
+            return []
         
         # 2. 시리즈 목록 확인
         all_series_options = await page.eval_on_selector_all(
@@ -130,9 +220,15 @@ class ScheduleCrawler:
         for sid in target_series:
             print(f"[NAV] Selecting Series: {sid} for {year}-{month:02d}")
             try:
-                await page.select_option('#ddlSeries', sid)
-                await page.wait_for_load_state("networkidle", timeout=5000)
-                await page.wait_for_timeout(500)
+                ok, failure_reason = await self._select_option_with_retry(
+                    page,
+                    '#ddlSeries',
+                    sid,
+                    label="series",
+                )
+                if not ok:
+                    self._last_failure_reason[crawl_key] = failure_reason
+                    continue
                 
                 season_type = series_id_to_key.get(sid, 'regular')
                 month_games = await self._extract_games(page, year, month, season_type=season_type)
@@ -143,23 +239,60 @@ class ScheduleCrawler:
                         seen_game_ids.add(gid)
             except Exception as e:
                 print(f"[WARN] Error crawling series {sid}: {e}")
+
+        if not all_games and not self._last_failure_reason.get(crawl_key):
+            self._last_failure_reason[crawl_key] = "schedule_empty"
                 
         return all_games
 
-    async def _select_year_month(self, page: Page, year: int, month: int):
+    async def _select_year_month(self, page: Page, year: int, month: int) -> tuple[bool, str]:
         """연도와 월 드롭다운을 선택하고 페이지 갱신을 기다립니다."""
         current_year = await page.eval_on_selector('#ddlYear', 'el => el.value')
         if current_year != str(year):
-            await page.select_option('#ddlYear', str(year))
-            await page.wait_for_load_state("networkidle", timeout=5000)
-            await page.wait_for_timeout(500)
+            ok, failure_reason = await self._select_option_with_retry(
+                page,
+                '#ddlYear',
+                str(year),
+                label="year",
+            )
+            if not ok:
+                return False, failure_reason
             
         current_month = await page.eval_on_selector('#ddlMonth', 'el => el.value')
         target_month_str = f"{month:02d}"
         if current_month != target_month_str:
-            await page.select_option('#ddlMonth', target_month_str)
-            await page.wait_for_load_state("networkidle", timeout=5000)
-            await page.wait_for_timeout(500)
+            ok, failure_reason = await self._select_option_with_retry(
+                page,
+                '#ddlMonth',
+                target_month_str,
+                label="month",
+            )
+            if not ok:
+                return False, failure_reason
+
+        return True, "ok"
+
+    def _normalize_schedule_status(self, status: Any) -> str:
+        normalized = normalize_game_status(str(status or "").strip())
+        if normalized:
+            return normalized
+
+        labels = {
+            "경기종료": GAME_STATUS_COMPLETED,
+            "종료": GAME_STATUS_COMPLETED,
+            "경기중": GAME_STATUS_LIVE,
+            "진행중": GAME_STATUS_LIVE,
+            "지연": GAME_STATUS_DELAYED,
+            "서스펜디드": GAME_STATUS_SUSPENDED,
+            "일시정지": GAME_STATUS_SUSPENDED,
+            "취소": GAME_STATUS_CANCELLED,
+            "우천취소": GAME_STATUS_CANCELLED,
+            "경기취소": GAME_STATUS_CANCELLED,
+            "순연": GAME_STATUS_POSTPONED,
+            "연기": GAME_STATUS_POSTPONED,
+        }
+        text = str(status or "").strip()
+        return labels.get(text, GAME_STATUS_SCHEDULED)
 
     async def _extract_games(self, page: Page, year: int, month: int, season_type: str = 'regular') -> List[Dict]:
         """페이지에서 경기 관련 데이터를 추출합니다. (JS Fast Path)
@@ -173,6 +306,43 @@ class ScheduleCrawler:
             const results = [];
             const rows = document.querySelectorAll('.tbl tbody tr');
             let currentDateString = ""; // To handle rowspan or implicit date
+            const stadiumNames = new Set([
+                "잠실", "문학", "인천", "수원", "대전", "대구", "광주",
+                "사직", "창원", "고척", "목동", "포항", "울산", "청주",
+                "군산", "마산", "제주", "춘천"
+            ]);
+
+            function inferStatus(text) {
+                if (/우천|취소|콜드취소|경기취소/.test(text)) return "CANCELLED";
+                if (/순연|연기/.test(text)) return "POSTPONED";
+                if (/서스펜디드|일시정지/.test(text)) return "SUSPENDED";
+                if (/지연/.test(text)) return "DELAYED";
+                if (/경기중|진행중/.test(text)) return "LIVE";
+                if (/경기종료|종료/.test(text)) return "COMPLETED";
+                if (/\d+\s*vs\s*\d+/.test(text)) return "COMPLETED";
+                return "SCHEDULED";
+            }
+
+            function findGameTime(cells) {
+                for (const cell of cells) {
+                    const txt = cell.innerText.trim();
+                    const match = txt.match(/\b\d{1,2}:\d{2}\b/);
+                    if (match) return match[0];
+                }
+                return null;
+            }
+
+            function findStadium(cells, matchCellIndex) {
+                for (let i = Math.max(0, matchCellIndex + 1); i < cells.length; i++) {
+                    const txt = cells[i].innerText.trim();
+                    if (stadiumNames.has(txt)) return txt;
+                }
+                for (const cell of cells) {
+                    const txt = cell.innerText.trim();
+                    if (stadiumNames.has(txt)) return txt;
+                }
+                return "";
+            }
 
             rows.forEach(tr => {
                 // If it's a "No Game" row, skip
@@ -211,14 +381,8 @@ class ScheduleCrawler:
                 const awayName = teams[0].replace(/[\d\s]+$/, "").replace(/^[\d\s]+/, "").trim();
                 const homeName = teams[1].replace(/[\d\s]+$/, "").replace(/^[\d\s]+/, "").trim();
 
-                let stadium = "";
-                for (let i = matchCellIndex + 1; i < cells.length; i++) {
-                    const txt = cells[i].innerText.trim();
-                    if (txt.length >= 2 && txt.length <= 5 && !txt.includes("-") && !txt.includes("취소")) {
-                         stadium = txt;
-                         break;
-                    }
-                }
+                const stadium = findStadium(cells, matchCellIndex);
+                const status = inferStatus(tr.innerText);
                 
                 // Construct Game ID only if link is missing
                 const link = tr.querySelector('a[href*="gameId="]');
@@ -235,7 +399,7 @@ class ScheduleCrawler:
                     away_name: awayName,
                     home_name: homeName,
                     doubleheader_no: 0,
-                    game_status: 'scheduled',
+                    game_status: status,
                     crawl_status: 'text_parsed',
                     url_suffix: '', 
                     game_time: timeText,
@@ -269,16 +433,17 @@ class ScheduleCrawler:
                 }
 
                 let gameTime = null;
-                let stadium = null;
+                let stadium = "";
+                let status = "SCHEDULED";
                 try {
-                    const cell = link.closest('td');
-                    if (cell) {
-                         const row = cell.parentElement; 
-                         const cells = Array.from(row.querySelectorAll('td'));
-                         cells.forEach(c => {
-                            const t = c.innerText.trim();
-                            if (/^\d{1,2}:\d{2}$/.test(t)) gameTime = t;
-                         });
+                    const row = link.closest('tr');
+                    if (row) {
+                        const cells = Array.from(row.querySelectorAll('td'));
+                        const linkCell = link.closest('td');
+                        const matchCellIndex = linkCell ? cells.indexOf(linkCell) : 2;
+                        gameTime = findGameTime(cells);
+                        stadium = findStadium(cells, matchCellIndex);
+                        status = inferStatus(row.innerText);
                     }
                 } catch(e) {}
 
@@ -290,7 +455,7 @@ class ScheduleCrawler:
                     away_segment: away_segment, 
                     home_segment: home_segment,
                     doubleheader_no: dh,
-                    game_status: 'scheduled',
+                    game_status: status,
                     crawl_status: 'link_parsed',
                     url_suffix: href,
                     game_time: gameTime,
@@ -347,7 +512,7 @@ class ScheduleCrawler:
                         constructed_id = f"{g['game_date']}{kbo_away_code}{kbo_home_code}{dh}"
                         g['game_id'] = constructed_id                
                 
-                games.append({
+                schedule_game = {
                     'game_id': normalize_kbo_game_id(g['game_id']),
                     'game_date': g['game_date'],
                     'season_year': g['season_year'],
@@ -355,12 +520,26 @@ class ScheduleCrawler:
                     'away_team_code': away_code,
                     'home_team_code': home_code,
                     'doubleheader_no': g['doubleheader_no'],
-                    'game_status': g['game_status'],
+                    'game_status': self._normalize_schedule_status(g.get('game_status')),
                     'crawl_status': g['crawl_status'],
                     'game_time': g.get('game_time'),
                     'stadium': g.get('stadium'),
                     'url': f"https://www.koreabaseball.com{g['url_suffix']}" if g.get('url_suffix') and g['url_suffix'].startswith('/') else g.get('url_suffix')
-                })
+                }
+                is_valid, failure_reason = validate_schedule_game_payload(
+                    schedule_game,
+                    expected_year=year,
+                    expected_month=month,
+                )
+                if not is_valid:
+                    print(
+                        "[WARN] Filtered schedule row: "
+                        f"{schedule_game.get('game_id') or '<missing>'} "
+                        f"reason={failure_reason}"
+                    )
+                    continue
+
+                games.append(schedule_game)
             
             
         except Exception as e:
