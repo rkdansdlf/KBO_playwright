@@ -10,8 +10,9 @@ from typing import Dict, Optional
 from playwright.async_api import Page
 from src.utils.playwright_pool import AsyncPlaywrightPool
 from src.utils.safe_print import safe_print as print
-from src.utils.throttle import throttle
 from src.utils.compliance import compliance
+from src.utils.player_validation import validate_player_payload
+from src.utils.request_policy import RequestPolicy
 
 # KBO profile page selectors (common across Hitter/Pitcher detail pages)
 _PROFILE_ID_REG = "cphContents_cphContents_cphContents_playerProfile"
@@ -144,6 +145,11 @@ class PlayerProfileCrawler:
     def __init__(self, request_delay: float = 1.2, pool: Optional[AsyncPlaywrightPool] = None):
         self.request_delay = request_delay
         self.pool = pool
+        self.policy = RequestPolicy(min_delay=request_delay, max_delay=request_delay)
+        self._last_failure_reason: dict[str, str] = {}
+
+    def get_last_failure_reason(self, player_id: str) -> Optional[str]:
+        return self._last_failure_reason.get(str(player_id))
 
     def _select_urls(self, player_id: str, position: Optional[str]) -> list[str]:
         """순차적으로 시도할 URL 후보 목록을 반환"""
@@ -196,42 +202,32 @@ class PlayerProfileCrawler:
         self, page: Page, player_id: str, position: Optional[str]
     ) -> Optional[Dict]:
         urls = self._select_urls(player_id, position)
+        last_reason = "profile_not_found"
         
         for url in urls:
             print(f"📡 Attempting profile [{player_id}]: {url}")
             if not await compliance.is_allowed(url):
                 print(f"⚠️  BLOCKED by compliance: {url}")
+                last_reason = "blocked"
                 continue
 
             try:
-                await throttle.wait()
-                # domcontentloaded avoids networkidle timeout on KBO pages
-                await page.goto(url, wait_until="domcontentloaded", timeout=15000)
-                await page.wait_for_timeout(500)
-                
-                # Anchor on Name label to ensure profile is loaded
-                await page.wait_for_selector(f'[id$="lblName"]', state="attached", timeout=5000)
-                try:
-                    # Wait for any image in the photo container to have a valid src
-                    await page.wait_for_function(
-                        """() => {
-                            const img = document.querySelector('.player_info img, .playerInfo img, .photo img, [id*="imgPro"]');
-                            return img && img.src && !img.src.includes('about:blank');
-                        }""",
-                        timeout=3000
-                    )
-                except:
-                    pass
-                
-                raw = await page.evaluate(_EXTRACT_JS)
+                raw = await self.policy.run_with_retry_async(
+                    self._load_profile_page,
+                    page,
+                    url,
+                )
                 
                 if raw.get("error"):
+                    last_reason = "profile_element_missing"
                     continue
                     
                 # If name is empty, this is a stub page. Try next URL if possible, 
                 # but usually stub means no data on any of them.
-                if not raw.get("name"):
+                ok, reason = validate_player_payload({"player_id": player_id, "name": raw.get("name")})
+                if not ok:
                     print(f"⚠️  Stub profile detected at {url}")
+                    last_reason = "profile_stub" if reason in {"missing_player_name", "unknown_player_name"} else (reason or "profile_stub")
                     continue
                 
                 # Success found data
@@ -246,7 +242,7 @@ class PlayerProfileCrawler:
                     # Standard pattern: https://6ptotvmi5753.edge.naverncp.com/KBO_IMAGE/person/middle/<year>/<player_id>.jpg
                     photo_url = f"https://6ptotvmi5753.edge.naverncp.com/KBO_IMAGE/person/middle/{year}/{player_id}.jpg"
 
-                return {
+                result = {
                     "player_id": player_id,
                     "name": raw.get("name"),
                     "photo_url": _clean_photo_url(photo_url),
@@ -259,11 +255,37 @@ class PlayerProfileCrawler:
                     "signing_bonus_original": (raw.get("signing") or "").strip() or None,
                     "draft_info": (raw.get("draft") or "").strip() or None,
                 }
+                self._last_failure_reason.pop(str(player_id), None)
+                return result
             except Exception as e:
                 print(f"   (Failed attempt at {url}: {e})")
+                last_reason = "selector_timeout"
                 continue
         
+        self._last_failure_reason[str(player_id)] = last_reason
         return None
+
+    async def _load_profile_page(self, page: Page, url: str) -> Dict:
+        await self.policy.delay_async(host="www.koreabaseball.com")
+        # domcontentloaded avoids networkidle timeout on KBO pages
+        await page.goto(url, wait_until="domcontentloaded", timeout=15000)
+        await page.wait_for_timeout(500)
+
+        # Anchor on Name label to ensure profile is loaded
+        await page.wait_for_selector('[id$="lblName"]', state="attached", timeout=5000)
+        try:
+            # Wait for any image in the photo container to have a valid src.
+            await page.wait_for_function(
+                """() => {
+                    const img = document.querySelector('.player_info img, .playerInfo img, .photo img, [id*="imgPro"]');
+                    return img && img.src && !img.src.includes('about:blank');
+                }""",
+                timeout=3000
+            )
+        except Exception:
+            pass
+
+        return await page.evaluate(_EXTRACT_JS)
 
 
 async def main():

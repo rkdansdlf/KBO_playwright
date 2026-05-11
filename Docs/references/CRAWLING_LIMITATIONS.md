@@ -14,6 +14,14 @@
 - **정책:**
   - **지연 수집:** 경기 종료 시점으로부터 최소 1시간 이상 지난 후에 데이터를 수집하는 것을 원칙으로 합니다.
   - **재검증 로직:** 일일 롤업 작업 시, 전날 수집된 데이터의 완전성을 재확인하고 누락된 부분이 있다면 추가 수집을 시도합니다.
+  - **일정 row 검증:** `ScheduleCrawler`와 일정 저장 서비스는 `game_id`, `game_date`, 양 팀 코드, 상태, 경기장 필드가 있는 row만 저장 후보로 사용합니다. 날짜가 game_id와 맞지 않거나 game_id를 팀 코드로 분해할 수 없으면 `invalid_game_id`/`game_id_date_mismatch` 계열로 필터링합니다.
+  - **상세 handoff 제한:** 취소/순연 경기와 미래 일정은 full detail 후보로 넘기지 않습니다. 과거 또는 당일의 `SCHEDULED` row는 KBO 일정 페이지가 종료 상태를 늦게 반영할 수 있어 상세 복구 후보로 유지합니다.
+  - **부분 상세 저장 금지:** 완료 경기의 full detail 저장은 양 팀 타자 row와 투수 row가 모두 존재할 때만 성공으로 간주합니다. HITTER/PITCHER 직접 섹션과 REVIEW fallback이 모두 실패해 한쪽이라도 비면 `incomplete_detail`로 남기고 저장하지 않습니다.
+  - **relay/PBP 빈 저장 금지:** 완료 경기 relay 복구는 event 또는 raw PBP row가 하나 이상 있어야 저장 성공으로 집계합니다. malformed event/PBP row는 저장 전 필터링하고, 모두 필터링되면 `skipped_filtered`로 남깁니다. 네이버 일정 매칭은 날짜/팀/더블헤더 번호가 맞는 경기만 허용합니다.
+  - **OCI 발행 기준:** OCI full-detail sync는 parent game, boxscore detail, relay/PBP dataset을 분리해 판단합니다. 미래 schedule-only row는 parent game 동기화만 허용하고, 완료 경기의 타자/투수 양 팀 row가 부족하면 detail child dataset publish에서 제외합니다. 완료 경기의 relay/PBP가 모두 비면 relay dataset publish에서 제외합니다.
+  - **운영 회귀 게이트:** 크롤러 안정성 또는 OCI publish eligibility 변경 후에는 `./scripts/verification/crawler_stability_gate.sh`로 schedule/detail/relay/OCI/daily update 회귀 묶음을 실행합니다. 네트워크 없는 단위/목 테스트가 기본이며 실제 KBO 라이브 smoke는 별도 운영 판단으로 수행합니다.
+  - **라이브 smoke 제한:** 실제 KBO/Naver 접근은 `crawler_live_smoke` 또는 `crawler_release_check.sh`에서 `KBO_LIVE_SMOKE=1`/`--allow-network`로 명시한 경우에만 수행합니다. live smoke는 DB에 저장하지 않는 read-only 검증입니다.
+  - **운영 summary:** 일일 finalize는 `logs/daily_update_summary/YYYYMMDD.json`에 detail failure, relay target, OCI skip, retry candidate를 구조화해 남깁니다. 이 summary는 refresh manifest의 `stability` 필드에도 포함해 후속 cache invalidation 또는 알림 경로가 같은 판단 기준을 공유하게 합니다.
 
 ### 1.3. 중복 수집 방지와 예외 경로
 - **기본 정책:** 수동 상세 수집 CLI(`collect_games`, `crawl_game_details`)와 주요 백필 스크립트는 기존 박스스코어/릴레이 데이터가 있으면 기본적으로 재수집하지 않습니다. 다시 덮어써야 할 때만 `--force` 또는 스크립트 내부의 명시적 repair 모드를 사용합니다.

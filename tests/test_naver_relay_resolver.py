@@ -1,8 +1,32 @@
 from __future__ import annotations
 
+import src.crawlers.relay_crawler as relay_module
 from src.crawlers.relay_crawler import RelayCrawler
 from src.sources.relay.base import default_source_order_for_bucket
 import asyncio
+
+
+class _FakePolicy:
+    def __init__(self):
+        self.delay_hosts = []
+        self.retry_calls = 0
+
+    async def delay_async(self, *, host="koreabaseball.com"):
+        self.delay_hosts.append(host)
+
+    async def run_with_retry_async(self, func, *args, **kwargs):
+        self.retry_calls += 1
+        return await func(*args, **kwargs)
+
+
+class _FakeCompliance:
+    def __init__(self, allowed=True):
+        self.allowed = allowed
+        self.urls = []
+
+    async def is_allowed(self, url: str):
+        self.urls.append(url)
+        return self.allowed
 
 
 def test_match_schedule_game_for_postseason_prefix_id():
@@ -95,8 +119,9 @@ def test_schedule_query_context_switches_to_premier12_bucket():
     }
 
 
-def test_resolve_naver_game_id_scans_nearby_dates_for_rescheduled_postseason_game():
-    crawler = RelayCrawler()
+def test_resolve_naver_game_id_scans_nearby_dates_for_rescheduled_postseason_game(monkeypatch):
+    monkeypatch.setattr(relay_module, "compliance", _FakeCompliance())
+    crawler = RelayCrawler(policy=_FakePolicy())
 
     class _Response:
         def __init__(self, payload):
@@ -379,8 +404,10 @@ def test_parse_naver_payload_keeps_all_batter_segments_in_chronological_order():
     assert len(payload["raw_pbp_rows"]) == 6
 
 
-def test_fetch_text_relays_handles_null_result_payload():
-    crawler = RelayCrawler()
+def test_fetch_text_relays_handles_null_result_payload(monkeypatch):
+    compliance = _FakeCompliance()
+    monkeypatch.setattr(relay_module, "compliance", compliance)
+    crawler = RelayCrawler(policy=_FakePolicy())
 
     class _Response:
         def __init__(self, payload):
@@ -403,3 +430,69 @@ def test_fetch_text_relays_handles_null_result_payload():
     relays = asyncio.run(crawler._fetch_text_relays(_Client(), "dummy"))
 
     assert relays == []
+    assert compliance.urls
+
+
+def test_relay_request_helper_uses_compliance_delay_and_retry(monkeypatch):
+    compliance = _FakeCompliance()
+    policy = _FakePolicy()
+    monkeypatch.setattr(relay_module, "compliance", compliance)
+    crawler = RelayCrawler(policy=policy)
+
+    class _Response:
+        status_code = 200
+
+        def json(self):
+            return {"result": {"ok": True}}
+
+    class _Client:
+        async def get(self, url, params=None, headers=None, timeout=None):
+            self.call = (url, params, headers, timeout)
+            return _Response()
+
+    client = _Client()
+    payload, reason = asyncio.run(
+        crawler._request_json(
+            client,
+            "https://api-gw.sports.naver.com/schedule/today-games",
+            params={"date": "2025-04-01"},
+        )
+    )
+
+    assert payload == {"result": {"ok": True}}
+    assert reason is None
+    assert policy.retry_calls == 1
+    assert policy.delay_hosts == ["api-gw.sports.naver.com"]
+    assert compliance.urls == [
+        "https://api-gw.sports.naver.com/schedule/today-games?date=2025-04-01"
+    ]
+
+
+def test_match_schedule_game_rejects_team_mismatch_even_when_id_suffix_matches():
+    crawler = RelayCrawler(policy=_FakePolicy())
+
+    matched = crawler._match_schedule_game(
+        "20250401LGSS0",
+        [
+            {
+                "gameId": "77770401LGSS02025",
+                "awayTeamCode": "KT",
+                "homeTeamCode": "SS",
+            }
+        ],
+    )
+
+    assert matched is None
+
+
+def test_match_schedule_game_uses_doubleheader_number():
+    crawler = RelayCrawler(policy=_FakePolicy())
+    games = [
+        {"gameId": "77770401LGSS02025", "awayTeamCode": "LG", "homeTeamCode": "SS"},
+        {"gameId": "77770401LGSS12025", "awayTeamCode": "LG", "homeTeamCode": "SS"},
+    ]
+
+    matched = crawler._match_schedule_game("20250401LGSS1", games)
+
+    assert matched is not None
+    assert matched["gameId"] == "77770401LGSS12025"

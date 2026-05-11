@@ -7,11 +7,14 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import json
 import os
 import subprocess
 import sys
+from collections import Counter
 from datetime import date, datetime, timedelta
-from typing import Callable, Optional, Sequence
+from pathlib import Path
+from typing import Any, Callable, Mapping, Optional, Sequence
 from zoneinfo import ZoneInfo
 
 from src.cli.auto_healer import run_healer_async
@@ -44,13 +47,166 @@ from src.services.game_write_contract import GameWriteContract
 from src.sync.oci_sync import OCISync
 from src.utils.refresh_manifest import write_refresh_manifest
 from src.utils.safe_print import safe_print as print
+from src.utils.schedule_validation import is_detail_candidate_game
 from src.utils.team_codes import normalize_kbo_game_id
 
 KST = ZoneInfo("Asia/Seoul")
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+DEFAULT_DAILY_SUMMARY_DIR = PROJECT_ROOT / "logs" / "daily_update_summary"
+OCI_SKIP_KEYS = (
+    "skipped_schedule_only",
+    "skipped_incomplete_detail",
+    "skipped_empty_relay",
+    "skipped_cancelled",
+)
 
 
 def _today_kst() -> date:
     return datetime.now(KST).date()
+
+
+def _format_counts(counts: dict[str, int]) -> str:
+    parts = [f"{key}={value}" for key, value in sorted(counts.items()) if value]
+    return ", ".join(parts) if parts else "none"
+
+
+def _failure_reason_summary(items: Mapping[str, object]) -> tuple[dict[str, int], dict[str, list[str]]]:
+    counter = Counter()
+    game_ids_by_reason: dict[str, list[str]] = {}
+    for game_id, item in items.items():
+        reason = getattr(item, "failure_reason", None)
+        if reason:
+            reason_text = str(reason)
+            counter[reason_text] += 1
+            if game_id:
+                game_ids_by_reason.setdefault(reason_text, []).append(str(game_id))
+    return (
+        dict(counter),
+        {reason: sorted(set(game_ids)) for reason, game_ids in sorted(game_ids_by_reason.items())},
+    )
+
+
+def _merge_oci_skip_summary(
+    counter: dict[str, int],
+    game_ids_by_reason: dict[str, list[str]],
+    result: object,
+    game_id: str,
+) -> None:
+    if not isinstance(result, dict):
+        return
+
+    for key in OCI_SKIP_KEYS:
+        raw_value = result.get(key)
+        if not raw_value:
+            continue
+        if isinstance(raw_value, Sequence) and not isinstance(raw_value, (str, bytes, bytearray)):
+            value = len(raw_value)
+            skipped_ids = [str(item) for item in raw_value if item]
+        else:
+            try:
+                value = int(raw_value)
+            except (TypeError, ValueError):
+                continue
+            skipped_ids = [game_id] if value else []
+        if value:
+            counter[key] = counter.get(key, 0) + value
+            game_ids_by_reason.setdefault(key, []).extend(skipped_ids)
+
+
+def _daily_summary_path(target_date: str, summary_dir: str | Path | None = None) -> Path:
+    output_dir = Path(summary_dir) if summary_dir is not None else DEFAULT_DAILY_SUMMARY_DIR
+    return output_dir / f"{target_date}.json"
+
+
+def _build_stability_summary(
+    *,
+    detail_failure_counts: Mapping[str, int],
+    detail_failure_game_ids: Mapping[str, list[str]],
+    relay_recovery_target_ids: Sequence[str],
+    oci_skip_counts: Mapping[str, int],
+    oci_skip_game_ids: Mapping[str, list[str]],
+    summary_path: Path,
+) -> dict[str, Any]:
+    detail_retry_candidates = sorted(
+        set(detail_failure_game_ids.get("incomplete_detail", []))
+        | set(detail_failure_game_ids.get("detail_payload_filtered", []))
+    )
+    relay_retry_candidates = sorted(set(oci_skip_game_ids.get("skipped_empty_relay", [])))
+    affected_game_ids = sorted(
+        {
+            game_id
+            for ids in [*detail_failure_game_ids.values(), *oci_skip_game_ids.values()]
+            for game_id in ids
+            if game_id
+        }
+    )
+    return {
+        "summary_path": str(summary_path),
+        "detail": {
+            "failure_counts": dict(sorted(detail_failure_counts.items())),
+            "failure_game_ids": {
+                reason: sorted(set(game_ids))
+                for reason, game_ids in sorted(detail_failure_game_ids.items())
+            },
+        },
+        "relay": {
+            "target_count": len(set(relay_recovery_target_ids)),
+            "target_game_ids": sorted(set(relay_recovery_target_ids)),
+        },
+        "oci": {
+            "skip_counts": dict(sorted(oci_skip_counts.items())),
+            "skip_game_ids": {
+                reason: sorted(set(game_ids))
+                for reason, game_ids in sorted(oci_skip_game_ids.items())
+            },
+        },
+        "retry_candidates": {
+            "detail": detail_retry_candidates,
+            "relay": relay_retry_candidates,
+        },
+        "affected_game_ids": affected_game_ids,
+    }
+
+
+def _write_daily_update_summary(
+    *,
+    target_date: str,
+    stability: Mapping[str, Any],
+    manifest_path: Path | str,
+    summary_path: Path,
+) -> Path:
+    summary_path.parent.mkdir(parents=True, exist_ok=True)
+    payload = {
+        "phase": "postgame_finalize",
+        "target_date": target_date,
+        "generated_at": datetime.now(KST).isoformat(),
+        "manifest_path": str(manifest_path),
+        "stability": dict(stability),
+    }
+    summary_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    return summary_path
+
+
+def format_stability_alert_summary(result: object) -> str | None:
+    if not isinstance(result, dict):
+        return None
+    stability = result.get("stability")
+    if not isinstance(stability, dict):
+        return None
+
+    detail = stability.get("detail") if isinstance(stability.get("detail"), dict) else {}
+    relay = stability.get("relay") if isinstance(stability.get("relay"), dict) else {}
+    oci = stability.get("oci") if isinstance(stability.get("oci"), dict) else {}
+    detail_counts = detail.get("failure_counts") if isinstance(detail, dict) else {}
+    oci_counts = oci.get("skip_counts") if isinstance(oci, dict) else {}
+    relay_targets = relay.get("target_count", 0) if isinstance(relay, dict) else 0
+
+    return (
+        f"target_date={result.get('target_date', 'unknown')} "
+        f"detail_failures={_format_counts(detail_counts if isinstance(detail_counts, dict) else {})} "
+        f"relay_targets={relay_targets} "
+        f"oci_skips={_format_counts(oci_counts if isinstance(oci_counts, dict) else {})}"
+    )
 
 
 def _failure_status(target_date: str, failure_reason: Optional[str], today: date) -> Optional[str]:
@@ -115,6 +271,7 @@ async def run_update(
     limit: int | None = None,
     *,
     step_runner: Optional[Callable[[Sequence[str]], None]] = None,
+    summary_dir: str | Path | None = None,
     seed_tomorrow_preview: bool = False,
     run_auto_healer: bool = True,
     run_postgame_reconciliation: bool = True,
@@ -133,6 +290,11 @@ async def run_update(
     healer_recovery_targets: list[dict[str, str]] = []
     reconciliation_changed_ids: list[str] = []
     reconciliation_dates: list[str] = []
+    detail_failure_counts: dict[str, int] = {}
+    detail_failure_game_ids: dict[str, list[str]] = {}
+    relay_recovery_target_ids: set[str] = set()
+    oci_skip_counts: dict[str, int] = {}
+    oci_skip_game_ids: dict[str, list[str]] = {}
     write_contract = GameWriteContract(run_label=f"daily_update:{target_date}", log=print)
 
     if run_auto_healer:
@@ -163,8 +325,12 @@ async def run_update(
     )
 
     daily_games = [g for g in schedule_games if str(g.get("game_date", "")).replace("-", "") == target_date]
-    if limit and len(daily_games) > limit:
-        daily_games = daily_games[:limit]
+    detail_games = [g for g in daily_games if is_detail_candidate_game(g, today=today_kst)]
+    skipped_detail_games = len(daily_games) - len(detail_games)
+    if skipped_detail_games:
+        print(f"   ℹ️ Skipping {skipped_detail_games} non-detail schedule games")
+    if limit and len(detail_games) > limit:
+        detail_games = detail_games[:limit]
         print(f"   [LIMIT] Restricted to first {limit} games")
     print(f"   ✅ Found {len(daily_games)} games for {target_date}")
 
@@ -177,7 +343,7 @@ async def run_update(
         g_crawler = GameDetailCrawler(resolver=resolver)
 
         collection_result = await crawl_and_save_game_details(
-            daily_games,
+            detail_games,
             detail_crawler=g_crawler,
             force=True,
             concurrency=1,
@@ -186,8 +352,9 @@ async def run_update(
             source_reason=f"postgame_finalize:{target_date}",
         )
         processed_game_ids = list(collection_result.processed_game_ids)
+        detail_failure_counts, detail_failure_game_ids = _failure_reason_summary(collection_result.items)
 
-        for game in daily_games:
+        for game in detail_games:
             game_id = game["game_id"]
             item = collection_result.items.get(normalize_kbo_game_id(game_id))
             if item and item.detail_saved:
@@ -206,6 +373,8 @@ async def run_update(
             f"   ✅ Detail result success={collection_result.detail_saved} "
             f"failed={collection_result.detail_failed}"
         )
+        if detail_failure_counts:
+            print(f"   ℹ️ Detail failure reasons: {_format_counts(detail_failure_counts)}")
 
         if run_postgame_reconciliation:
             reconcile_start = (
@@ -239,7 +408,12 @@ async def run_update(
             print("\n🧩 Step 2.5: Postgame reconciliation skipped.")
     except Exception as exc:
         print(f"   ❌ Error processing daily details: {exc}")
-        for game in daily_games:
+        if detail_games:
+            detail_failure_counts["exception"] = detail_failure_counts.get("exception", 0) + len(detail_games)
+            detail_failure_game_ids.setdefault("exception", []).extend(
+                str(game["game_id"]) for game in detail_games if game.get("game_id")
+            )
+        for game in detail_games:
             game_id = game["game_id"]
             fallback = _failure_status(target_date, "exception", today_kst)
             if fallback:
@@ -258,9 +432,24 @@ async def run_update(
 
     print("\n📝 Step 4: Relay recovery (events / PBP)...")
     try:
-        runner(["scripts/fetch_kbo_pbp.py", "--date", target_date])
-        for recovery_date in sorted({item["game_date"] for item in healer_recovery_targets} - {target_date}):
-            runner(["scripts/fetch_kbo_pbp.py", "--date", recovery_date])
+        relay_game_ids = sorted(set(processed_game_ids) | set(reconciliation_changed_ids))
+        if relay_game_ids:
+            relay_recovery_target_ids.update(relay_game_ids)
+            print(f"   ℹ️ Relay candidates={len(relay_game_ids)}")
+            runner(["scripts/fetch_kbo_pbp.py", "--game-ids", ",".join(relay_game_ids)])
+        else:
+            print("   ℹ️ No detail-success relay candidates for target date")
+
+        healer_ids_by_date: dict[str, set[str]] = {}
+        for item in healer_recovery_targets:
+            game_id = item["game_id"]
+            if game_id in relay_game_ids:
+                continue
+            healer_ids_by_date.setdefault(item["game_date"], set()).add(game_id)
+        for recovery_date in sorted(healer_ids_by_date):
+            healer_ids = sorted(healer_ids_by_date[recovery_date])
+            relay_recovery_target_ids.update(healer_ids)
+            runner(["scripts/fetch_kbo_pbp.py", "--game-ids", ",".join(healer_ids)])
         print("   ✅ Relay recovery complete")
     except Exception as exc:
         print(f"   ❌ Error generating relay events: {exc}")
@@ -417,12 +606,13 @@ async def run_update(
             try:
                 # 1. Sync specific targeted games (full detail)
                 for game_id in candidate_sync_game_ids:
-                    syncer.sync_specific_game(game_id)
-                
+                    sync_result = syncer.sync_specific_game(game_id)
+                    _merge_oci_skip_summary(oci_skip_counts, oci_skip_game_ids, sync_result, game_id)
+
                 # 2. Sync all parent games for the year (to ensure future schedules are pushed)
                 # This fixes the issue where D+1 games are present locally but missing in OCI.
                 syncer.sync_games(filters=[Game.game_id.like(f"{year}%")])
-                
+
                 syncer.sync_standings(year=year)
                 syncer.sync_matchups(year=year)
                 syncer.sync_stat_rankings(year=year)
@@ -432,6 +622,8 @@ async def run_update(
                 syncer.sync_daily_rosters()
                 syncer.sync_players()
                 print("   ✅ OCI synchronization completed")
+                if oci_skip_counts:
+                    print(f"   ℹ️ OCI skip summary: {_format_counts(oci_skip_counts)}")
             finally:
                 syncer.close()
 
@@ -452,6 +644,16 @@ async def run_update(
         except Exception as exc:
             print(f"   ❌ Error generating tomorrow preview seed: {exc}")
 
+    summary_path = _daily_summary_path(target_date, summary_dir)
+    stability_summary = _build_stability_summary(
+        detail_failure_counts=detail_failure_counts,
+        detail_failure_game_ids=detail_failure_game_ids,
+        relay_recovery_target_ids=sorted(relay_recovery_target_ids),
+        oci_skip_counts=oci_skip_counts,
+        oci_skip_game_ids=oci_skip_game_ids,
+        summary_path=summary_path,
+    )
+
     manifest_path = write_refresh_manifest(
         phase="postgame_finalize",
         target_date=target_date,
@@ -467,14 +669,36 @@ async def run_update(
             "game_play_by_play",
         ],
         derived_refresh=derived_refresh,
+        stability=stability_summary,
+    )
+    _write_daily_update_summary(
+        target_date=target_date,
+        stability=stability_summary,
+        manifest_path=manifest_path,
+        summary_path=summary_path,
     )
 
     print(write_contract.summary())
+    print(
+        "🔎 Stability summary: "
+        f"detail_failures={_format_counts(detail_failure_counts)} "
+        f"relay_targets={len(relay_recovery_target_ids)} "
+        f"oci_skips={_format_counts(oci_skip_counts)}"
+    )
 
     print(f"\n{'=' * 60}")
     print(f"🏁 Daily Finalize Finished for {target_date}")
     print(f"📄 Refresh Manifest: {manifest_path}")
+    print(f"📄 Daily Summary: {summary_path}")
     print(f"{'=' * 60}\n")
+
+    return {
+        "phase": "postgame_finalize",
+        "target_date": target_date,
+        "manifest_path": str(manifest_path),
+        "summary_path": str(summary_path),
+        "stability": stability_summary,
+    }
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
@@ -505,6 +729,11 @@ def build_arg_parser() -> argparse.ArgumentParser:
         "--limit",
         type=int,
         help="Limit number of games and players (for testing/debugging)",
+    )
+    parser.add_argument(
+        "--summary-dir",
+        type=str,
+        help="Directory for daily stability summary JSON. Defaults to logs/daily_update_summary.",
     )
     parser.add_argument(
         "--seed-tomorrow-preview",
@@ -541,12 +770,13 @@ def main(argv: Sequence[str] | None = None):
         print(f"❌ Invalid date format: {target_date}. Please use YYYYMMDD.")
         sys.exit(1)
 
-    asyncio.run(
+    return asyncio.run(
         run_update(
             target_date,
             sync=args.sync,
             headless=args.headless,
             limit=args.limit,
+            summary_dir=args.summary_dir,
             seed_tomorrow_preview=args.seed_tomorrow_preview,
             run_auto_healer=not args.skip_auto_healer,
             run_postgame_reconciliation=not args.skip_postgame_reconciliation,

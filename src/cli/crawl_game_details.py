@@ -4,7 +4,9 @@ KBO Game Data Collector (Schedule + Detail + Relay)
 from __future__ import annotations
 import argparse
 import asyncio
+from datetime import datetime
 from typing import Sequence
+from zoneinfo import ZoneInfo
 
 from src.crawlers.schedule_crawler import ScheduleCrawler
 from src.crawlers.game_detail_crawler import GameDetailCrawler
@@ -13,6 +15,17 @@ from src.db.engine import SessionLocal
 from src.services.game_collection_service import crawl_and_save_game_details
 from src.services.player_id_resolver import PlayerIdResolver
 from src.utils.safe_print import safe_print as print
+from src.utils.schedule_validation import is_detail_candidate_game
+from src.utils.team_codes import normalize_kbo_game_id
+
+KST = ZoneInfo("Asia/Seoul")
+
+
+def _parse_game_ids(value: str | None) -> list[str]:
+    if not value:
+        return []
+    return [normalize_kbo_game_id(token.strip()) for token in value.split(",") if token.strip()]
+
 
 async def run_pipeline(args: argparse.Namespace):
     print(f"[INFO] Fetching schedule for {args.year}-{args.month:02d}...")
@@ -23,7 +36,30 @@ async def run_pipeline(args: argparse.Namespace):
         print("[ERROR] No games found for the given period.")
         return
 
-    if args.limit: games = games[:args.limit]
+    today_kst = datetime.now(KST).date()
+    detail_games = [game for game in games if is_detail_candidate_game(game, today=today_kst)]
+    skipped_count = len(games) - len(detail_games)
+    if skipped_count:
+        print(f"[INFO] Skipping {skipped_count} non-detail schedule games.")
+
+    requested_game_ids = _parse_game_ids(getattr(args, "game_ids", None))
+    if requested_game_ids:
+        requested_set = set(requested_game_ids)
+        detail_games = [
+            game
+            for game in detail_games
+            if normalize_kbo_game_id(str(game.get("game_id") or "")) in requested_set
+        ]
+        found_set = {normalize_kbo_game_id(str(game.get("game_id") or "")) for game in detail_games}
+        missing_ids = sorted(requested_set - found_set)
+        if missing_ids:
+            print(f"[WARN] Requested game_ids not found in schedule/detail candidates: {','.join(missing_ids)}")
+
+    if args.limit: detail_games = detail_games[:args.limit]
+    if not detail_games:
+        print("[ERROR] No detail candidates found for the given period.")
+        return
+    games = detail_games
     print(f"[SUCCESS] Found {len(games)} games. Starting detail collection...")
 
     resolver_session = SessionLocal()
@@ -57,6 +93,7 @@ def main(argv: Sequence[str] | None = None) -> None:
     parser = argparse.ArgumentParser(description="KBO Full Data Pipeline")
     parser.add_argument("--year", type=int, required=True, help="Year (e.g. 2024)")
     parser.add_argument("--month", type=int, required=True, help="Month (1-12)")
+    parser.add_argument("--game-ids", type=str, help="Specific Game IDs to crawl, comma separated")
     parser.add_argument("--limit", type=int, help="Limit number of games for testing")
     parser.add_argument(
         "--relay",

@@ -75,6 +75,30 @@ def _seed_games(SessionLocal):
         session.commit()
 
 
+def _valid_event(**overrides):
+    event = {
+        "event_seq": 1,
+        "inning": 1,
+        "inning_half": "top",
+        "outs": 0,
+        "description": "타자A : 좌전 안타",
+        "event_type": "batting",
+        "batter_name": "타자A",
+        "pitcher_name": "투수B",
+        "bases_before": "---",
+        "bases_after": "1--",
+        "base_state": 1,
+        "home_score": 0,
+        "away_score": 1,
+        "score_diff": -1,
+        "wpa": 0.01,
+        "win_expectancy_before": 0.5,
+        "win_expectancy_after": 0.51,
+    }
+    event.update(overrides)
+    return event
+
+
 def test_load_relay_recovery_targets_skips_fully_recovered_games(monkeypatch):
     SessionLocal = _build_session_factory()
     monkeypatch.setattr(service, "SessionLocal", SessionLocal)
@@ -111,6 +135,32 @@ def test_load_relay_recovery_targets_preserves_requested_order(monkeypatch):
     assert [target.game_id for target in targets] == ["20250403LGSS0", "20250401LGSS0"]
     assert targets[0].has_events is True
     assert targets[0].has_pbp is True
+
+
+def test_load_relay_recovery_targets_excludes_non_completed_requested_games(monkeypatch):
+    SessionLocal = _build_session_factory()
+    monkeypatch.setattr(service, "SessionLocal", SessionLocal)
+    _seed_games(SessionLocal)
+    with SessionLocal() as session:
+        session.add(
+            Game(
+                game_id="20250404LGSS0",
+                game_date=date(2025, 4, 4),
+                home_team="SS",
+                away_team="LG",
+                season_id=20250,
+                game_status="CANCELLED",
+            )
+        )
+        session.commit()
+
+    targets = service.load_relay_recovery_targets(
+        game_ids=["20250404LGSS0", "20250401LGSS0"],
+        missing_only=False,
+        log=lambda _msg: None,
+    )
+
+    assert [target.game_id for target in targets] == ["20250401LGSS0"]
 
 
 def test_recover_relay_data_saves_orchestrator_result(monkeypatch):
@@ -175,11 +225,116 @@ def test_recover_relay_data_saves_orchestrator_result(monkeypatch):
         (
             "20250401LGSS0",
             [],
-            [{"inning": 1, "inning_half": "top", "play_description": "test hit"}],
+            [
+                {
+                    "inning": 1,
+                    "inning_half": "top",
+                    "pitcher_name": None,
+                    "batter_name": None,
+                    "play_description": "test hit",
+                    "event_type": None,
+                    "result": "hit",
+                }
+            ],
             "fake",
         )
     ]
     assert result.report_rows[-1]["status"] == "saved"
+
+
+def test_recover_relay_data_filters_malformed_rows_before_save(monkeypatch):
+    saved_calls: list[tuple[list[dict], list[dict]]] = []
+
+    def _fake_save(_game_id, events, raw_pbp_rows=None, **_kwargs):
+        saved_calls.append((events, raw_pbp_rows))
+        return len(events or []) + len(raw_pbp_rows or [])
+
+    monkeypatch.setattr(service, "save_relay_data", _fake_save)
+
+    class _FakeOrchestrator:
+        def source_order_for_bucket(self, _bucket_id, override=None):
+            return list(override or ["fake"])
+
+        async def probe_bucket(self, *_args):
+            return {}
+
+        async def fetch_game(self, game_id, bucket_id, source_order):
+            return (
+                NormalizedRelayResult(
+                    game_id=game_id,
+                    source_name="fake",
+                    events=[
+                        _valid_event(),
+                        {"inning": 1, "inning_half": "top", "description": "missing state"},
+                    ],
+                    raw_pbp_rows=[
+                        {"inning": 1, "inning_half": "top", "play_description": "타자A : 좌전 안타"},
+                        {"inning": None, "inning_half": "side", "play_description": ""},
+                    ],
+                    has_event_state=False,
+                    has_raw_pbp=True,
+                ),
+                [],
+            )
+
+    result = asyncio.run(
+        service.recover_relay_data(
+            [service.RelayRecoveryTarget(game_id="20250401LGSS0", bucket_id="2025_regular_kbo")],
+            orchestrator=_FakeOrchestrator(),
+            sleep_seconds=0,
+            log=lambda _msg: None,
+        )
+    )
+
+    assert len(saved_calls) == 1
+    assert len(saved_calls[0][0]) == 1
+    assert len(saved_calls[0][1]) == 1
+    assert result.saved_games == 1
+    assert result.saved_rows == 2
+    assert result.report_rows[-1]["status"] == "partial_relay"
+    assert "filtered_event_rows:1" in result.report_rows[-1]["notes"]
+    assert "filtered_pbp_rows:1" in result.report_rows[-1]["notes"]
+
+
+def test_recover_relay_data_skips_when_all_rows_filtered(monkeypatch):
+    saved_calls: list[str] = []
+    monkeypatch.setattr(
+        service,
+        "save_relay_data",
+        lambda game_id, *_args, **_kwargs: saved_calls.append(game_id) or 1,
+    )
+
+    class _FakeOrchestrator:
+        def source_order_for_bucket(self, _bucket_id, override=None):
+            return list(override or ["fake"])
+
+        async def probe_bucket(self, *_args):
+            return {}
+
+        async def fetch_game(self, game_id, bucket_id, source_order):
+            return (
+                NormalizedRelayResult(
+                    game_id=game_id,
+                    source_name="fake",
+                    events=[{"description": "missing inning"}],
+                    raw_pbp_rows=[{"inning": None, "inning_half": "top", "play_description": ""}],
+                ),
+                [],
+            )
+
+    result = asyncio.run(
+        service.recover_relay_data(
+            [service.RelayRecoveryTarget(game_id="20250401LGSS0", bucket_id="2025_regular_kbo")],
+            orchestrator=_FakeOrchestrator(),
+            sleep_seconds=0,
+            log=lambda _msg: None,
+        )
+    )
+
+    assert saved_calls == []
+    assert result.saved_games == 0
+    assert result.filtered_games == 1
+    assert result.report_rows[-1]["status"] == "skipped_filtered"
 
 
 def test_recover_relay_data_derives_missing_pbp_from_existing_events(monkeypatch):

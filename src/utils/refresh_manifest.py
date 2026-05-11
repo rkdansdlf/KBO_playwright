@@ -4,7 +4,7 @@ from __future__ import annotations
 import json
 from datetime import datetime
 from pathlib import Path
-from typing import Iterable, Sequence
+from typing import Any, Iterable, Mapping, Sequence
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -45,6 +45,7 @@ def write_refresh_manifest(
     derived_refresh: Sequence[str] | None = None,
     topics: Sequence[str] | None = None,
     output_dir: Path | None = None,
+    stability: Mapping[str, Any] | None = None,
 ) -> Path:
     output_path = output_dir or DEFAULT_MANIFEST_DIR
     output_path.mkdir(parents=True, exist_ok=True)
@@ -58,6 +59,8 @@ def write_refresh_manifest(
         "topics": list(dict.fromkeys(topics or infer_topics(datasets, derived_refresh))),
         "generated_at": datetime.now().isoformat(),
     }
+    if stability is not None:
+        payload["stability"] = dict(stability)
     path = output_path / f"{stamp}_{phase}.json"
     path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
     return path

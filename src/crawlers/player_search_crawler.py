@@ -6,16 +6,19 @@ Now refactored into a class as expected by GameDetailCrawler.
 import asyncio
 import os
 import re
+from collections import Counter
 from dataclasses import dataclass
 from datetime import datetime, date as date_type
 from typing import List, Optional, Set
-from urllib.parse import urlparse, parse_qs
 
 from playwright.async_api import Locator, Page
 
 from src.utils.playwright_pool import AsyncPlaywrightPool
 from src.utils.player_classification import classify_player, PlayerCategory
 from src.services.player_status_confirmer import PlayerStatusConfirmer
+from src.utils.compliance import compliance
+from src.utils.player_validation import normalize_player_name, validate_player_payload
+from src.utils.request_policy import RequestPolicy
 
 # URL and selectors
 SEARCH_URL = "https://www.koreabaseball.com/Player/Search.aspx"
@@ -81,6 +84,41 @@ class PlayerSearchCrawler:
         self.pool = pool
         self.request_delay = request_delay
         self.headless = headless
+        self.policy = RequestPolicy(min_delay=request_delay, max_delay=request_delay)
+        self.failure_counts: Counter = Counter()
+
+    def _record_failure(self, reason: str) -> None:
+        self.failure_counts[reason] += 1
+
+    def get_failure_summary(self) -> dict:
+        return dict(self.failure_counts)
+
+    async def _navigate_search_page(
+        self,
+        page: Page,
+        *,
+        url: str = SEARCH_URL,
+        required_selector: Optional[str] = None,
+        timeout: int = TIMEOUT_MS,
+        selector_timeout: int = TIMEOUT_MS,
+    ) -> tuple[bool, str]:
+        if not await compliance.is_allowed(url):
+            self._record_failure("blocked")
+            return False, "blocked"
+
+        async def _navigate():
+            await self.policy.delay_async(host="www.koreabaseball.com")
+            await page.goto(url, wait_until="domcontentloaded", timeout=timeout)
+            if required_selector:
+                await page.wait_for_selector(required_selector, timeout=selector_timeout)
+
+        try:
+            await self.policy.run_with_retry_async(_navigate)
+            return True, "ok"
+        except Exception:
+            reason = "selector_timeout" if required_selector else "navigation_failed"
+            self._record_failure(reason)
+            return False, reason
 
     async def search_player(self, player_name: str) -> List[dict]:
         """Searches for a player and returns matching profiles as dicts."""
@@ -94,7 +132,9 @@ class PlayerSearchCrawler:
         try:
             page = await active_pool.acquire()
             try:
-                await page.goto(SEARCH_URL, wait_until="domcontentloaded")
+                ok, _ = await self._navigate_search_page(page)
+                if not ok:
+                    return []
                 await page.locator(SEARCH_INPUT).fill(clean_name)
                 await page.locator(SEARCH_BTN).click()
                 try:
@@ -115,7 +155,9 @@ class PlayerSearchCrawler:
         try:
             page = await active_pool.acquire()
             try:
-                await page.goto(SEARCH_URL, wait_until="domcontentloaded")
+                ok, _ = await self._navigate_search_page(page)
+                if not ok:
+                    return []
                 await page.locator(SEARCH_INPUT).fill("%")
                 await page.locator(SEARCH_BTN).click()
                 await page.wait_for_selector(TABLE_ROWS, timeout=TIMEOUT_MS)
@@ -153,6 +195,8 @@ class PlayerSearchCrawler:
                 seen_ids.add(r.player_id)
                 all_rows.append(r)
                 if limit and len(all_rows) >= limit: return True
+            else:
+                self._record_failure("duplicate_player_id")
         return False
 
     async def _paginate_current_tab(self, page: Page) -> List[PlayerRow]:
@@ -163,6 +207,8 @@ class PlayerSearchCrawler:
             for r in await self._collect_page_rows(page):
                 if r.player_id not in seen:
                     seen.add(r.player_id); collected.append(r)
+                else:
+                    self._record_failure("duplicate_player_id")
 
         await add_current()
         while True:
@@ -196,6 +242,7 @@ class PlayerSearchCrawler:
                     await self._wait_after_nav(page, prev_v, first_b)
                     await add_current(); moved = True
                 else:
+                    self._record_failure("pagination_failed")
                     break
             if not moved: break
         return collected
@@ -205,11 +252,17 @@ class PlayerSearchCrawler:
         res = []
         for r in payload or []:
             cells = r['cells']
-            if len(cells) < 7: continue
+            if len(cells) < 7:
+                self._record_failure("insufficient_columns")
+                continue
             pid = self._extract_pid(r['linkHref'])
-            if not pid: continue
+            name = normalize_player_name(cells[1] if len(cells) > 1 else None)
+            ok, reason = validate_player_payload({"player_id": pid, "name": name})
+            if not ok:
+                self._record_failure(reason or "invalid_player_payload")
+                continue
             h, w = self._parse_hw(cells[5])
-            res.append(PlayerRow(player_id=pid, uniform_no=cells[0] if cells[0] != "-" else None, name=cells[1], team=cells[2] if cells[2] != "-" else None, position=cells[3], birth_date=cells[4], height_cm=h, weight_kg=w, career=cells[6]))
+            res.append(PlayerRow(player_id=pid, uniform_no=cells[0] if cells[0] != "-" else None, name=name, team=cells[2] if cells[2] != "-" else None, position=cells[3], birth_date=cells[4], height_cm=h, weight_kg=w, career=cells[6]))
         return res
 
     def _extract_pid(self, href):
