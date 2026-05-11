@@ -12,6 +12,21 @@ from pathlib import Path
 from src.utils.playwright_blocking import install_sync_resource_blocking
 from src.utils.team_codes import resolve_team_code
 from src.utils.request_policy import RequestPolicy
+from src.utils.player_season_stat_validation import filter_valid_season_stat_payloads
+
+
+def build_fielding_crawl_summary(records):
+    valid_records, failure_counts = filter_valid_season_stat_payloads(
+        records,
+        stat_type="fielding",
+    )
+    summary = {
+        "processed_rows": len(records),
+        "valid_rows": len(valid_records),
+        "filtered_rows": len(records) - len(valid_records),
+        "failure_counts": dict(failure_counts),
+    }
+    return summary, valid_records
 
 
 def crawl_all_fielding_stats(year=2025):
@@ -236,6 +251,14 @@ def crawl_all_fielding_stats(year=2025):
                         except (ValueError, AttributeError) as e:
                             print(f"   ⚠️ 데이터 파싱 오류: {e}")
                             continue
+
+            summary, fielding_data = build_fielding_crawl_summary(fielding_data)
+            if summary["filtered_rows"]:
+                print(
+                    "⚠️ 수비 시즌 row 필터링: "
+                    f"{summary['filtered_rows']}건 "
+                    f"({summary['failure_counts']})"
+                )
 
             print(f"\n✅ 총 {len(fielding_data)}개의 수비 기록 수집 완료!")
 

@@ -226,6 +226,20 @@ cp .env.example .env
 # 누락 릴레이만 시즌 단위 복구
 ./venv/bin/python3 scripts/fetch_kbo_pbp.py --season 2025 --missing-only
 
+# 일일 finalize stability summary 기반 soft-failure 재시도
+./venv/bin/python3 -m src.cli.retry_daily_failures --date 20251015 --dry-run
+./venv/bin/python3 -m src.cli.retry_daily_failures --date 20251015 --apply
+./venv/bin/python3 -m src.cli.retry_daily_failures --date 20251015 --apply --sync
+
+# 릴리즈 전 deterministic gate 및 opt-in live smoke
+./scripts/verification/crawler_release_check.sh
+KBO_LIVE_SMOKE=1 KBO_LIVE_SMOKE_DATE=20251015 ./scripts/verification/crawler_release_check.sh
+./venv/bin/python3 -m src.cli.crawler_live_smoke --date 20251015 --scope all --allow-network
+
+# 릴리즈 노트 / 파일 위생 확인
+cat Docs/release_notes/crawler_stability_20260511.md
+git status --short
+
 # 완료 경기 freshness 검증
 ./venv/bin/python3 -m src.cli.freshness_gate --date 20251015
 

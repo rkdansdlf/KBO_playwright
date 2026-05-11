@@ -2,6 +2,7 @@
 Player Basic Repository
 UPSERT operations for player_basic table
 """
+from collections import Counter
 from typing import List, Dict, Any
 from sqlalchemy.orm import Session
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
@@ -10,6 +11,7 @@ from sqlalchemy.dialects.mysql import insert as mysql_insert
 
 from src.db.engine import SessionLocal, Engine
 from src.models.player import PlayerBasic
+from src.utils.player_validation import filter_valid_player_payloads, validate_player_payload
 
 
 class PlayerBasicRepository:
@@ -17,6 +19,7 @@ class PlayerBasicRepository:
 
     def __init__(self):
         self.dialect = Engine.dialect.name
+        self.last_filter_counts: Counter = Counter()
 
     def upsert_players(self, players: List[Dict[str, Any]]) -> int:
         """
@@ -35,12 +38,15 @@ class PlayerBasicRepository:
         Returns:
             Number of players upserted
         """
+        self.last_filter_counts = Counter()
         if not players:
             return 0
 
         with SessionLocal() as session:
             try:
-                payload = [self._build_payload(player_data) for player_data in players]
+                valid_players, filter_counts = filter_valid_player_payloads(players)
+                self.last_filter_counts = filter_counts
+                payload = [self._build_payload(player_data) for player_data in valid_players]
                 unique_payload = {}
                 for row in payload:
                     player_id = row.get("player_id")
@@ -80,6 +86,11 @@ class PlayerBasicRepository:
 
     def _upsert_one(self, session: Session, player_data: Dict[str, Any]):
         """UPSERT single player (SQLite/PostgreSQL compatible)"""
+        ok, reason = validate_player_payload(player_data)
+        if not ok:
+            self.last_filter_counts[reason or "invalid_player_payload"] += 1
+            return
+
         data = self._build_payload(player_data)
 
         if self.dialect == "sqlite":

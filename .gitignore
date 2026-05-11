@@ -37,6 +37,15 @@ supabase.db
 
 *.log
 
+# Local crawler investigation artifacts
+inspect_*.py
+find_boxscore.py
+gamecenter_*.png
+gamecenter_*.html
+*_debug.png
+hitter_direct.png
+review_page.png
+
 !migrations/supabase/
 data/kbo_dev.db-wal
 data/kbo_dev.db-shm

@@ -24,6 +24,8 @@ from src.sources.relay import (
     RelayRecoveryOrchestrator,
     default_source_order_for_bucket,
     derive_bucket_id,
+    event_has_minimum_state,
+    normalize_pbp_row,
     read_manifest_entries,
 )
 from src.utils.game_status import COMPLETED_LIKE_GAME_STATUSES
@@ -73,6 +75,9 @@ class RelayRecoveryResult:
     saved_rows: int = 0
     derived_pbp_games: int = 0
     empty_games: int = 0
+    filtered_games: int = 0
+    match_failed_games: int = 0
+    api_failed_games: int = 0
     report_rows: list[dict[str, Any]] = field(default_factory=list)
 
 
@@ -253,6 +258,11 @@ async def recover_relay_data(
             run_result.report_rows.extend(attempts)
             if relay_result.is_empty:
                 run_result.empty_games += 1
+                failure_bucket = _classify_relay_failure(relay_result.notes)
+                if failure_bucket == "relay_match_failed":
+                    run_result.match_failed_games += 1
+                elif failure_bucket == "relay_api_failed":
+                    run_result.api_failed_games += 1
                 log(f"[SKIP] No relay data extracted for {target.game_id}")
                 continue
 
@@ -279,6 +289,25 @@ async def recover_relay_data(
                 )
                 continue
 
+            relay_result, filter_notes, filtered_rows = _sanitize_relay_result(relay_result)
+            if relay_result.is_empty:
+                run_result.filtered_games += 1
+                notes = ";".join(filter_notes) or "relay_rows_empty_after_filter"
+                log(f"[SKIP] Relay rows filtered out for {target.game_id}: {notes}")
+                run_result.report_rows.append(
+                    {
+                        "game_id": target.game_id,
+                        "bucket_id": bucket_id,
+                        "source_name": relay_result.source_name,
+                        "status": "skipped_filtered",
+                        "saved_rows": 0,
+                        "has_event_state": relay_result.has_event_state,
+                        "has_raw_pbp": relay_result.has_raw_pbp,
+                        "notes": notes,
+                    }
+                )
+                continue
+
             saved_rows = _save_or_count_rows(
                 target.game_id,
                 relay_result,
@@ -301,11 +330,11 @@ async def recover_relay_data(
                     "game_id": target.game_id,
                     "bucket_id": bucket_id,
                     "source_name": relay_result.source_name,
-                    "status": "dry_run" if dry_run else "saved",
+                    "status": "dry_run" if dry_run else ("partial_relay" if filtered_rows else "saved"),
                     "saved_rows": saved_rows,
                     "has_event_state": relay_result.has_event_state,
                     "has_raw_pbp": relay_result.has_raw_pbp or bool(relay_result.raw_pbp_rows),
-                    "notes": relay_result.notes,
+                    "notes": _join_notes(relay_result.notes, *filter_notes),
                 }
             )
             if sleep_seconds > 0:
@@ -386,11 +415,14 @@ def _load_target_rows(
         found_rows = (
             session.query(Game.game_id, KboSeason.league_type_name)
             .outerjoin(KboSeason, KboSeason.season_id == Game.season_id)
-            .filter(Game.game_id.in_(requested_ids))
+            .filter(
+                Game.game_id.in_(requested_ids),
+                Game.game_status.in_(tuple(COMPLETED_LIKE_GAME_STATUSES)),
+            )
             .all()
         )
         row_map = {game_id: league_type_name for game_id, league_type_name in found_rows}
-        return [(game_id, row_map.get(game_id)) for game_id in requested_ids]
+        return [(game_id, row_map[game_id]) for game_id in requested_ids if game_id in row_map]
 
     query = (
         session.query(Game.game_id, KboSeason.league_type_name)
@@ -450,6 +482,66 @@ def _validate_relay_result(
             f"events={actual[0]}-{actual[1]} game={expected[0]}-{expected[1]}"
         )
     return None
+
+
+def _sanitize_relay_result(
+    relay_result: NormalizedRelayResult,
+) -> tuple[NormalizedRelayResult, list[str], int]:
+    valid_events = [
+        event
+        for event in relay_result.events or []
+        if event_has_minimum_state(event)
+    ]
+    valid_pbp_rows = [
+        row
+        for row in (_normalize_valid_pbp_row(row) for row in relay_result.raw_pbp_rows or [])
+        if row is not None
+    ]
+
+    filtered_events = len(relay_result.events or []) - len(valid_events)
+    filtered_pbp = len(relay_result.raw_pbp_rows or []) - len(valid_pbp_rows)
+    notes: list[str] = []
+    if filtered_events:
+        notes.append(f"filtered_event_rows:{filtered_events}")
+    if filtered_pbp:
+        notes.append(f"filtered_pbp_rows:{filtered_pbp}")
+
+    sanitized = NormalizedRelayResult(
+        game_id=relay_result.game_id,
+        source_name=relay_result.source_name,
+        events=valid_events,
+        raw_pbp_rows=valid_pbp_rows,
+        has_event_state=bool(valid_events),
+        has_raw_pbp=bool(valid_pbp_rows),
+        notes=relay_result.notes,
+    )
+    return sanitized, notes, filtered_events + filtered_pbp
+
+
+def _normalize_valid_pbp_row(row: dict[str, Any]) -> dict[str, Any] | None:
+    normalized = normalize_pbp_row(row)
+    inning = _coerce_int(normalized.get("inning"))
+    inning_half = normalized.get("inning_half")
+    description = str(normalized.get("play_description") or "").strip()
+    if inning is None or inning_half not in {"top", "bottom"} or not description:
+        return None
+    normalized["inning"] = inning
+    normalized["play_description"] = description
+    return normalized
+
+
+def _classify_relay_failure(notes: str | None) -> str:
+    value = str(notes or "").lower()
+    if "invalid_relay_match" in value or "match" in value:
+        return "relay_match_failed"
+    if "relay_api_error" in value or "api" in value or "timeout" in value:
+        return "relay_api_failed"
+    return "relay_empty"
+
+
+def _join_notes(*notes: str | None) -> str | None:
+    tokens = [str(note).strip() for note in notes if str(note or "").strip()]
+    return ";".join(tokens) or None
 
 
 def _last_event_score(events: Sequence[dict[str, Any]]) -> tuple[int, int] | None:

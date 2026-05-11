@@ -9,10 +9,11 @@ from __future__ import annotations
 
 import argparse
 import os
-from typing import Iterable, List, Type
+from typing import Iterable, List, Type, Callable, Any
+from concurrent.futures import ThreadPoolExecutor
 
 from dotenv import load_dotenv
-from sqlalchemy import delete
+from sqlalchemy import delete, text
 from sqlalchemy.orm import Session, sessionmaker
 
 from src.db.engine import create_engine_for_url
@@ -40,7 +41,37 @@ def clone_row(instance: object, model: Type) -> object:
     return model(**data)
 
 
-def sync_databases(source_url: str, target_url: str, truncate: bool = False) -> None:
+def run_parallel_sync(
+    sync_fn: Callable[[OCISync, Any], None],
+    target_url: str,
+    years: List[int],
+    workers: int,
+    **kwargs
+) -> None:
+    """연도별로 병렬 동기화 작업을 수행합니다."""
+    print(f"🚀 Starting parallel sync with {workers} workers for years: {years}")
+
+    def sync_worker(year: int):
+        print(f"🧵 Worker started for year {year}")
+        with SessionLocal() as session:
+            try:
+                syncer = OCISync(target_url, session)
+                sync_fn(syncer, year, **kwargs)
+                print(f"✅ Worker finished for year {year}")
+            except Exception as e:
+                print(f"❌ Worker failed for year {year}: {e}")
+
+    with ThreadPoolExecutor(max_workers=workers) as executor:
+        executor.map(sync_worker, years)
+
+
+def _parse_game_ids(value: str | None) -> list[str]:
+    if not value:
+        return []
+    return list(dict.fromkeys(token.strip() for token in value.split(",") if token.strip()))
+
+
+def sync_databases(source_url: str, target_url: str, truncate: bool = False, batch_size: int = 500) -> None:
     """원본 데이터베이스에서 대상 데이터베이스로 데이터를 동기화합니다."""
     source_engine = create_engine_for_url(source_url, disable_sqlite_wal=True)
     target_engine = create_engine_for_url(target_url, disable_sqlite_wal=True)
@@ -71,8 +102,7 @@ def sync_databases(source_url: str, target_url: str, truncate: bool = False) -> 
                     dst.execute(delete(model))
                     dst.commit()
 
-            print(f"🚚 Syncing {model.__name__} ({total} rows)…")
-            batch_size = 500
+            print(f"🚚 Syncing {model.__name__} ({total} rows, batch={batch_size})…")
             offset = 0
             pk_columns = list(model.__table__.primary_key.columns)
             while offset < total:
@@ -117,6 +147,11 @@ def build_arg_parser() -> argparse.ArgumentParser:
         "--game-details",
         action="store_true",
         help="경기 상세 데이터(박스스코어, 라인업, PBP 등)를 동기화합니다.",
+    )
+    parser.add_argument(
+        "--game-ids",
+        type=str,
+        help="특정 game_id만 동기화합니다. --game-details와 함께 사용합니다.",
     )
     parser.add_argument(
         "--games-only",
@@ -193,7 +228,38 @@ def build_arg_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="계산된 stat_rankings 테이블을 동기화합니다.",
     )
+    parser.add_argument(
+        "--batch-size",
+        type=int,
+        default=500,
+        help="일반 UPSERT 작업 시 배치 크기 (기본값: 500)",
+    )
+    parser.add_argument(
+        "--copy-batch-size",
+        type=int,
+        default=10000,
+        help="고속 COPY 작업 시 배치 크기 (기본값: 10000)",
+    )
+    parser.add_argument(
+        "--parallel",
+        "-p",
+        action="store_true",
+        help="연도별 병렬 동기화를 활성화합니다.",
+    )
+    parser.add_argument(
+        "--workers",
+        type=int,
+        default=4,
+        help="병렬 작업 시 워커(스레드) 수 (기본값: 4)",
+    )
     return parser
+
+
+def get_available_years(session: Session, model: Any, column_name: str = "season") -> List[int]:
+    """대상 테이블에서 사용 가능한 연도 목록을 가져옵니다."""
+    query = session.query(text(f"DISTINCT {column_name}")).select_from(model)
+    years = [int(row[0]) for row in query.all() if row[0]]
+    return sorted(years, reverse=True)
 
 
 def main(argv: Iterable[str] | None = None) -> None:
@@ -202,25 +268,83 @@ def main(argv: Iterable[str] | None = None) -> None:
     parser = build_arg_parser()
     args = parser.parse_args(argv)
 
+    if args.game_ids and not args.game_details:
+        parser.error("--game-ids can only be used with --game-details")
+    if args.game_ids and args.parallel:
+        parser.error("--game-ids cannot be combined with --parallel")
+
     if not args.target_url:
         raise SystemExit("TARGET_DATABASE_URL must be provided via flag or environment variable")
 
+    # 병렬 처리가 필요한 경우 연도 목록 식별
+    target_years = [args.year] if args.year else []
+
     if args.game_details:
         print("🚀 Syncing Game Details using specialized OCISync...")
-        with SessionLocal() as session:
-            syncer = OCISync(args.target_url, session)
-            syncer.sync_game_details(days=args.days, year=args.year, unsynced_only=args.unsynced_only)
-            print("✅ Game Details Sync Finished")
+        requested_game_ids = _parse_game_ids(args.game_ids)
+
+        def sync_details_fn(syncer: OCISync, year: int | None, **kwargs):
+            syncer.sync_game_details(
+                days=kwargs.get("days"),
+                year=year,
+                unsynced_only=kwargs.get("unsynced_only"),
+                batch_size=kwargs.get("copy_batch_size")
+            )
+
+        if args.parallel:
+            if not target_years:
+                from src.models.game import Game
+                with SessionLocal() as session:
+                    target_years = get_available_years(session, Game, "strftime('%Y', game_date)")
+
+            run_parallel_sync(
+                sync_details_fn,
+                args.target_url,
+                target_years,
+                args.workers,
+                days=args.days,
+                unsynced_only=args.unsynced_only,
+                copy_batch_size=args.copy_batch_size
+            )
+        else:
+            with SessionLocal() as session:
+                syncer = OCISync(args.target_url, session)
+                try:
+                    if requested_game_ids:
+                        for game_id in requested_game_ids:
+                            result = syncer.sync_specific_game(game_id)
+                            print(f"   [{game_id}] {result}")
+                    else:
+                        syncer.sync_game_details(
+                            days=args.days,
+                            year=args.year,
+                            unsynced_only=args.unsynced_only,
+                            batch_size=args.copy_batch_size
+                        )
+                finally:
+                    syncer.close()
+        print("✅ Game Details Sync Finished")
 
     elif args.games_only:
         print("🚀 Syncing game table only using specialized OCISync...")
-        with SessionLocal() as session:
-            from src.models.game import Game
+        from src.models.game import Game
 
-            syncer = OCISync(args.target_url, session)
-            filters = [Game.game_id.like(f"{args.year}%")] if args.year else None
-            synced = syncer.sync_games(filters=filters)
-            print(f"✅ Game Table Sync Finished ({synced} rows)")
+        def sync_games_fn(syncer: OCISync, year: int | None, **kwargs):
+            filters = [Game.game_id.like(f"{year}%")] if year else None
+            synced = syncer.sync_games(filters=filters, batch_size=kwargs.get("copy_batch_size"))
+            print(f"   [{year}] Synced {synced} rows")
+
+        if args.parallel:
+            if not target_years:
+                with SessionLocal() as session:
+                    target_years = get_available_years(session, Game, "strftime('%Y', game_date)")
+            run_parallel_sync(sync_games_fn, args.target_url, target_years, args.workers, copy_batch_size=args.copy_batch_size)
+        else:
+            with SessionLocal() as session:
+                syncer = OCISync(args.target_url, session)
+                filters = [Game.game_id.like(f"{args.year}%")] if args.year else None
+                synced = syncer.sync_games(filters=filters, batch_size=args.copy_batch_size)
+                print(f"✅ Game Table Sync Finished ({synced} rows)")
 
     elif args.daily_roster:
         print("🚀 Syncing Daily Rosters using specialized OCISync...")
@@ -249,7 +373,7 @@ def main(argv: Iterable[str] | None = None) -> None:
             syncer = OCISync(args.target_url, session)
             syncer.sync_player_movements()
             print("✅ Player Movement Sync Finished")
-            
+
     elif args.teams:
         print("🚀 Syncing Franchises & Teams using specialized OCISync...")
         with SessionLocal() as session:
@@ -259,10 +383,21 @@ def main(argv: Iterable[str] | None = None) -> None:
 
     elif args.standings:
         print("🚀 Syncing Daily Standings using specialized OCISync...")
-        with SessionLocal() as session:
-            syncer = OCISync(args.target_url, session)
-            synced = syncer.sync_standings(days=args.days, year=args.year)
-            print(f"✅ Daily Standings Sync Finished ({synced} rows)")
+        def sync_standings_fn(syncer: OCISync, year: int | None, **kwargs):
+            synced = syncer.sync_standings(days=kwargs.get("days"), year=year, batch_size=kwargs.get("copy_batch_size"))
+            print(f"   [{year}] Synced {synced} rows")
+
+        if args.parallel:
+            if not target_years:
+                from src.models.standings import TeamStandingsDaily
+                with SessionLocal() as session:
+                    target_years = get_available_years(session, TeamStandingsDaily, "strftime('%Y', standings_date)")
+            run_parallel_sync(sync_standings_fn, args.target_url, target_years, args.workers, days=args.days, copy_batch_size=args.copy_batch_size)
+        else:
+            with SessionLocal() as session:
+                syncer = OCISync(args.target_url, session)
+                synced = syncer.sync_standings(days=args.days, year=args.year, batch_size=args.copy_batch_size)
+                print(f"✅ Daily Standings Sync Finished ({synced} rows)")
 
     elif args.awards:
         print("🚀 Syncing Awards using specialized OCISync...")
@@ -280,36 +415,81 @@ def main(argv: Iterable[str] | None = None) -> None:
 
     elif args.season_stats:
         print("🚀 Syncing Season Stats (Batting, Pitching, Fielding, Baserunning) using specialized OCISync...")
-        with SessionLocal() as session:
-            syncer = OCISync(args.target_url, session)
-            print("  - Syncing Batting stats...")
-            syncer.sync_player_season_batting()
-            print("  - Syncing Pitching stats...")
-            syncer.sync_player_season_pitching()
-            print("  - Syncing Fielding stats...")
-            syncer.sync_fielding_stats()
-            print("  - Syncing Baserunning stats...")
-            syncer.sync_baserunning_stats()
-            print("✅ Season Stats Sync Finished")
-            
+
+        def sync_season_stats_fn(syncer: OCISync, year: int | None, **kwargs):
+            print(f"  - [{year}] Syncing Batting stats...")
+            syncer.sync_player_season_batting(year=year, batch_size=kwargs.get("batch_size"))
+            print(f"  - [{year}] Syncing Pitching stats...")
+            syncer.sync_player_season_pitching(year=year, batch_size=kwargs.get("batch_size"))
+            print(f"  - [{year}] Syncing Fielding stats...")
+            syncer.sync_fielding_stats(year=year, batch_size=kwargs.get("copy_batch_size"))
+            print(f"  - [{year}] Syncing Baserunning stats...")
+            syncer.sync_baserunning_stats(year=year, batch_size=kwargs.get("copy_batch_size"))
+
+        if args.parallel:
+            if not target_years:
+                from src.models.player import PlayerSeasonBatting
+                with SessionLocal() as session:
+                    target_years = get_available_years(session, PlayerSeasonBatting, "season")
+
+            run_parallel_sync(
+                sync_season_stats_fn,
+                args.target_url,
+                target_years,
+                args.workers,
+                batch_size=args.batch_size,
+                copy_batch_size=args.copy_batch_size
+            )
+        else:
+            with SessionLocal() as session:
+                syncer = OCISync(args.target_url, session)
+                print("  - Syncing Batting stats...")
+                syncer.sync_player_season_batting(year=args.year, batch_size=args.batch_size)
+                print("  - Syncing Pitching stats...")
+                syncer.sync_player_season_pitching(year=args.year, batch_size=args.batch_size)
+                print("  - Syncing Fielding stats...")
+                syncer.sync_fielding_stats(year=args.year, batch_size=args.copy_batch_size)
+                print("  - Syncing Baserunning stats...")
+                syncer.sync_baserunning_stats(year=args.year, batch_size=args.copy_batch_size)
+        print("✅ Season Stats Sync Finished")
+
     elif args.matchups:
         print("🚀 Syncing Matchup Splits using specialized OCISync...")
-        with SessionLocal() as session:
-            syncer = OCISync(args.target_url, session)
-            syncer.sync_matchups(year=args.year)
-            print("✅ Matchup Splits Sync Finished")
+        def sync_matchups_fn(syncer: OCISync, year: int | None, **kwargs):
+            syncer.sync_matchups(year=year, batch_size=kwargs.get("copy_batch_size"))
+
+        if args.parallel:
+            if not target_years:
+                from src.models.matchup import BatterTeamSplit
+                with SessionLocal() as session:
+                    target_years = get_available_years(session, BatterTeamSplit, "season_year")
+            run_parallel_sync(sync_matchups_fn, args.target_url, target_years, args.workers, copy_batch_size=args.copy_batch_size)
+        else:
+            with SessionLocal() as session:
+                syncer = OCISync(args.target_url, session)
+                syncer.sync_matchups(year=args.year, batch_size=args.copy_batch_size)
+                print("✅ Matchup Splits Sync Finished")
 
     elif args.rankings:
         print("🚀 Syncing Stat Rankings using specialized OCISync...")
-        with SessionLocal() as session:
-            syncer = OCISync(args.target_url, session)
-            synced = syncer.sync_stat_rankings(year=args.year)
-            print(f"✅ Stat Rankings Sync Finished ({synced} rows)")
+        def sync_rankings_fn(syncer: OCISync, year: int | None, **kwargs):
+            synced = syncer.sync_stat_rankings(year=year, batch_size=kwargs.get("copy_batch_size"))
+            print(f"   [{year}] Synced {synced} rows")
 
+        if args.parallel:
+            if not target_years:
+                from src.models.rankings import StatRanking
+                with SessionLocal() as session:
+                    target_years = get_available_years(session, StatRanking, "season")
+            run_parallel_sync(sync_rankings_fn, args.target_url, target_years, args.workers, copy_batch_size=args.copy_batch_size)
+        else:
+            with SessionLocal() as session:
+                syncer = OCISync(args.target_url, session)
+                synced = syncer.sync_stat_rankings(year=args.year, batch_size=args.copy_batch_size)
+                print(f"✅ Stat Rankings Sync Finished ({synced} rows)")
 
-        
     else:
-        sync_databases(args.source_url, args.target_url, truncate=args.truncate)
+        sync_databases(args.source_url, args.target_url, truncate=args.truncate, batch_size=args.batch_size)
 
     print("\n🚀 Resetting Sequence Identifiers on Target DB...")
     try:

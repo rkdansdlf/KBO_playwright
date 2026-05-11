@@ -2,6 +2,7 @@
 PlayerSeasonPitching 전용 리포지토리
 투수 시즌 데이터를 player_season_pitching 테이블에 올바르게 저장
 """
+from collections import Counter
 from typing import List, Dict, Any, Optional
 from sqlalchemy.orm import Session
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
@@ -10,6 +11,14 @@ from sqlalchemy.dialects.postgresql import insert as postgresql_insert
 
 from src.db.engine import SessionLocal, get_database_type
 from src.models.player import PlayerSeasonPitching
+from src.utils.player_season_stat_validation import filter_valid_season_stat_payloads
+
+
+LAST_FILTER_COUNTS: Counter = Counter()
+
+
+def get_last_filter_counts() -> Dict[str, int]:
+    return dict(LAST_FILTER_COUNTS)
 
 
 def _prefer_payload_value(
@@ -33,6 +42,15 @@ def save_pitching_stats_to_db(payloads: List[Dict[str, Any]]) -> int:
     Returns:
         저장된 레코드 수
     """
+    global LAST_FILTER_COUNTS
+    LAST_FILTER_COUNTS = Counter()
+    if not payloads:
+        return 0
+
+    payloads, LAST_FILTER_COUNTS = filter_valid_season_stat_payloads(
+        payloads,
+        stat_type="pitching",
+    )
     if not payloads:
         return 0
     

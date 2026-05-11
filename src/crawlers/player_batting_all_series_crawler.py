@@ -32,6 +32,7 @@ from src.utils.playwright_blocking import install_sync_resource_blocking
 from src.utils.request_policy import RequestPolicy
 from src.utils.compliance import compliance
 from src.utils.playwright_retry import retry_navigation, retry_wait_for_selector
+from src.utils.player_season_stat_validation import filter_valid_season_stat_payloads
 
 
 
@@ -366,6 +367,17 @@ def parse_batting_stats_table(
     if use_fast:
         return _parse_batting_stats_table_fast(page, series_key, year)
     return _parse_batting_stats_table_legacy(page, series_key, year)
+
+
+def build_batting_crawl_summary(rows: List[Dict]) -> tuple[Dict[str, object], List[Dict]]:
+    valid_rows, failure_counts = filter_valid_season_stat_payloads(rows, stat_type="batting")
+    summary = {
+        "processed_rows": len(rows),
+        "valid_rows": len(valid_rows),
+        "filtered_rows": len(rows) - len(valid_rows),
+        "failure_counts": dict(failure_counts),
+    }
+    return summary, valid_rows
 
 
 def go_to_next_page(page: Page, current_page_num: int, policy: Optional[RequestPolicy] = None) -> bool:
@@ -972,6 +984,14 @@ def crawl_series_batting_stats(year: int = 2025, series_key: str = 'regular',
 
     print("-" * 60)
     print(f"✅ {series_info['name']} 크롤링 완료! 총 {len(all_players_data)}명 수집")
+    summary, valid_players_data = build_batting_crawl_summary(all_players_data)
+    if summary["filtered_rows"]:
+        print(
+            "⚠️ 타자 시즌 row 필터링: "
+            f"{summary['filtered_rows']}건 "
+            f"({summary['failure_counts']})"
+        )
+    all_players_data = valid_players_data
 
     # DB 저장 (안전한 외래키 제약조건 우회)
     if save_to_db and all_players_data:

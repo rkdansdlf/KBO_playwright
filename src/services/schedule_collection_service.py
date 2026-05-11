@@ -7,6 +7,7 @@ from typing import Any, Callable, Iterable, List
 from src.repositories.game_repository import save_schedule_game
 from src.services.game_write_contract import GameWriteContract
 from src.utils.safe_print import safe_print as print
+from src.utils.schedule_validation import validate_schedule_game_payload
 
 
 @dataclass
@@ -14,8 +15,10 @@ class ScheduleSaveResult:
     games: List[dict[str, Any]]
     saved_games: List[dict[str, Any]]
     failed_games: List[dict[str, Any]]
+    filtered_games: List[dict[str, Any]]
     saved: int = 0
     failed: int = 0
+    filtered: int = 0
 
     @property
     def discovered(self) -> int:
@@ -31,9 +34,25 @@ def save_schedule_games(
     source_reason: str = "schedule_refresh",
 ) -> ScheduleSaveResult:
     game_list = list(games)
-    result = ScheduleSaveResult(games=game_list, saved_games=[], failed_games=[])
+    result = ScheduleSaveResult(games=game_list, saved_games=[], failed_games=[], filtered_games=[])
     contract = write_contract or GameWriteContract(run_label="schedule_collection", log=log)
     for game in game_list:
+        is_valid, failure_reason = validate_schedule_game_payload(game)
+        if not is_valid:
+            result.failed += 1
+            result.filtered += 1
+            filtered_game = dict(game)
+            filtered_game["failure_reason"] = failure_reason or "schedule_payload_filtered"
+            result.failed_games.append(filtered_game)
+            result.filtered_games.append(filtered_game)
+            if log:
+                log(
+                    "[WARN] Filtered schedule game: "
+                    f"{game.get('game_id') or '<missing>'} "
+                    f"reason={filtered_game['failure_reason']}"
+                )
+            continue
+
         if save_schedule_game(
             game,
             write_contract=contract,
