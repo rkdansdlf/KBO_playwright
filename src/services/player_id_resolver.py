@@ -77,6 +77,15 @@ class PlayerIdResolver:
             pass
         return aliases
 
+    def _return_ambiguous(self, cache_key: str, player_name: str, team_code: str, season: int, candidate_ids) -> Optional[int]:
+        candidates = sorted({int(pid) for pid in candidate_ids if pid is not None})
+        print(
+            f"   [AMBIGUOUS PLAYER] {player_name} ({team_code}, {season}) "
+            f"matches multiple official candidates: {candidates}. Leaving player_id NULL."
+        )
+        self._cache[cache_key] = None
+        return None
+
     def preload_season_index(self, season: int) -> None:
         print(f"🔄 Preloading player index for season {season}...")
         
@@ -108,6 +117,7 @@ class PlayerIdResolver:
 
         # 1. Try Seasonal Data (Most accurate)
         is_allstar = team_code in self.ALL_STAR_TEAMS
+        season_candidate_ids = set()
         for model in [PlayerSeasonBatting, PlayerSeasonPitching]:
             stmt = select(PlayerBasic.player_id).select_from(model).join(
                 PlayerBasic, model.player_id == PlayerBasic.player_id
@@ -121,13 +131,13 @@ class PlayerIdResolver:
                 stmt = stmt.where(PlayerBasic.uniform_no == str(uniform_no))
             
             results = self.session.execute(stmt).fetchall()
-            if len(results) == 1:
-                pid = results[0][0]
-                self._cache[cache_key] = pid
-                return pid
-            elif len(results) > 1 and is_allstar:
-                # Multiple matches for all-star: can't disambiguate without more info
-                break
+            season_candidate_ids.update(row[0] for row in results)
+        if len(season_candidate_ids) == 1:
+            pid = next(iter(season_candidate_ids))
+            self._cache[cache_key] = pid
+            return pid
+        if len(season_candidate_ids) > 1:
+            return self._return_ambiguous(cache_key, player_name, team_code, season, season_candidate_ids)
 
         # 2. Try PlayerBasic with Team/Career context
         kor_team_name = self.TEAM_NAME_MAP.get(team_code, '')
@@ -147,6 +157,8 @@ class PlayerIdResolver:
                 pid = results[0][0]
                 self._cache[cache_key] = pid
                 return pid
+            if len(results) > 1:
+                return self._return_ambiguous(cache_key, player_name, team_code, season, [row[0] for row in results])
 
         # 3. Fallback: Relaxed Uniqueness Check
         # If we have uniform_no, try unique by (name, uniform_no) global
@@ -160,6 +172,8 @@ class PlayerIdResolver:
                 pid = results[0][0]
                 self._cache[cache_key] = pid
                 return pid
+            if len(results) > 1:
+                return self._return_ambiguous(cache_key, player_name, team_code, season, [row[0] for row in results])
 
         # 4. Ultimate Fallback: Is the name unique in the entire KBO history?
         stmt = select(PlayerBasic.player_id).where(PlayerBasic.name == player_name)
@@ -168,6 +182,8 @@ class PlayerIdResolver:
             pid = results[0][0]
             self._cache[cache_key] = pid
             return pid
+        if len(results) > 1:
+            return self._return_ambiguous(cache_key, player_name, team_code, season, [row[0] for row in results])
             
         # 5. Last resort: Try relaxed season resolution without uniform_no or strict team
         relaxed_id = self._resolve_relaxed(player_name, team_code, season)

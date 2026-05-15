@@ -183,7 +183,7 @@ class PlayerBasicRepository:
                 query = query.limit(limit)
             return list(query.all())
 
-    def count(self) -> int:
-        """Count total players"""
-        with SessionLocal() as session:
-            return session.query(PlayerBasic).count()
+def save_player_basic(player_data: Dict[str, Any]) -> int:
+    """Helper function to save a single player's basic profile."""
+    repo = PlayerBasicRepository()
+    return repo.upsert_players([player_data])

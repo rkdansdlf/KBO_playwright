@@ -1,7 +1,9 @@
 from types import SimpleNamespace
+from datetime import datetime
 
 import pytest
 
+import src.cli.generate_quality_report as generate_quality_report
 import scripts.scheduler as scheduler
 
 
@@ -94,3 +96,78 @@ def test_alert_success_includes_optional_details(monkeypatch):
     assert calls == [
         "✅ KBO Job sample_job completed successfully.\ndetail_failures=incomplete_detail=1"
     ]
+
+
+def test_sync_from_oci_job_runs_hydration_for_current_year(monkeypatch):
+    calls = []
+    fixed_now = datetime(2026, 1, 2, 5, 0, tzinfo=scheduler.KST)
+
+    class _FrozenDateTime:
+        @staticmethod
+        def now(tz=None):
+            return fixed_now
+
+    monkeypatch.setattr(scheduler, "datetime", _FrozenDateTime)
+    monkeypatch.setattr(scheduler, "_run_hydration", lambda year: calls.append(year))
+
+    scheduler.sync_from_oci_job()
+
+    assert calls == [2026]
+
+
+def test_generate_daily_report_job_forces_morning_summary_notify(monkeypatch):
+    calls = []
+    monkeypatch.setattr(scheduler, "_previous_day_kst", lambda: "20260513")
+
+    def _fake_report_main(argv):
+        calls.append(list(argv))
+        return 0
+
+    monkeypatch.setattr(generate_quality_report, "main", _fake_report_main)
+    scheduler.generate_daily_report_job()
+
+    assert calls == [["--date", "20260513", "--force-notify"]]
+
+
+def test_main_registers_morning_jobs_with_expected_cron(monkeypatch):
+    scheduled = []
+
+    class _FakeTrigger:
+        def __init__(self, **kwargs):
+            self.kwargs = kwargs
+
+        def __repr__(self):  # pragma: no cover - debug helper only
+            return f"FakeCronTrigger({self.kwargs})"
+
+    class _FakeScheduler:
+        def add_job(self, func, trigger, **kwargs):
+            scheduled.append((getattr(func, "__name__", str(func)), trigger, kwargs))
+
+        def start(self):
+            return None
+
+    monkeypatch.setattr(scheduler, "CronTrigger", _FakeTrigger)
+    monkeypatch.setattr(scheduler, "BlockingScheduler", lambda timezone=None: _FakeScheduler())
+    monkeypatch.setenv("STARTUP_RUN", "0")
+    monkeypatch.setattr(scheduler, "crawl_daily_games", lambda: None)
+    monkeypatch.setattr(scheduler, "crawl_pregame_refresh", lambda: None)
+    monkeypatch.setattr(scheduler, "crawl_live_refresh", lambda: None)
+    monkeypatch.setattr(scheduler, "crawl_all_futures_profiles", lambda: None)
+    monkeypatch.setattr(scheduler, "sync_from_oci_job", lambda: None)
+    monkeypatch.setattr(scheduler, "generate_daily_report_job", lambda: None)
+
+    scheduler.main(["--no-startup-run"])
+
+    ids_to_trigger = {
+        kwargs["id"]: trigger.kwargs
+        for _, trigger, kwargs in scheduled
+        if "id" in kwargs
+    }
+
+    assert ids_to_trigger["sync_from_oci"] == {"hour": 5, "minute": 0}
+    assert ids_to_trigger["generate_quality_report"] == {"hour": 5, "minute": 15}
+    assert ids_to_trigger["crawl_games_regular"] == {"hour": 3, "minute": 0}
+    assert ids_to_trigger["crawl_futures_profile"] == {"day_of_week": "sun", "hour": 5, "minute": 0}
+    assert ids_to_trigger["crawl_pregame_refresh"] == {"hour": "10-23", "minute": "*/15"}
+    assert ids_to_trigger["crawl_live_refresh_day"] == {"hour": "12-22", "minute": "*/2"}
+    assert ids_to_trigger["crawl_live_refresh_night"] == {"hour": 23, "minute": "0-30/2"}

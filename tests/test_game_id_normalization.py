@@ -7,7 +7,8 @@ from sqlalchemy.orm import sessionmaker
 
 import src.repositories.game_repository as game_repository
 from src.models.game import Game, GameIdAlias
-from src.utils.team_codes import normalize_kbo_game_id
+from src.utils.team_codes import normalize_kbo_game_id, resolve_team_code, team_code_from_game_id_segment
+from src.utils.team_history import canonical_code_for_team_code, franchise_id_for_team_code
 
 
 def _build_session_factory():
@@ -26,6 +27,35 @@ def test_normalize_kbo_game_id_splits_mixed_length_team_codes():
     assert normalize_kbo_game_id("20260401KHDB0") == "20260401WOOB0"
     assert normalize_kbo_game_id("20260401LGSS0") == "20260401LGSS0"
     assert normalize_kbo_game_id("20260401OBWO0") == "20260401OBWO0"
+
+
+def test_hd_team_code_resolves_to_hyundai_hu():
+    assert resolve_team_code("HD", 2001) == "HU"
+    assert team_code_from_game_id_segment("HD", 2001) == "HU"
+    assert franchise_id_for_team_code("HD", 2001) == 6
+
+
+def test_historical_team_code_boundaries_resolve_by_season():
+    assert resolve_team_code("청보", 1985) == "CB"
+    assert team_code_from_game_id_segment("SM", 1985) == "CB"
+    assert resolve_team_code("빙그레", 1993) == "BE"
+    assert resolve_team_code("한화", 1994) == "HH"
+    assert team_code_from_game_id_segment("WO", 2008) == "WO"
+    assert team_code_from_game_id_segment("WO", 2010) == "NX"
+    assert team_code_from_game_id_segment("WO", 2024) == "KH"
+
+
+def test_historical_franchise_split_identity():
+    assert franchise_id_for_team_code("HU", 2001) == 6
+    assert canonical_code_for_team_code("HU", 2001) == "HU"
+    assert franchise_id_for_team_code("WO", 2008) == 11
+    assert canonical_code_for_team_code("WO", 2008) == "KH"
+    assert franchise_id_for_team_code("SL", 1999) == 12
+    assert canonical_code_for_team_code("SL", 1999) == "SL"
+    assert franchise_id_for_team_code("SSG", 1999) == 12
+    assert canonical_code_for_team_code("SSG", 1999) == "SL"
+    assert franchise_id_for_team_code("SK", 2000) == 8
+    assert franchise_id_for_team_code("SSG", 2024) == 8
 
 
 def test_save_schedule_game_records_alias_for_modern_source_id(monkeypatch):

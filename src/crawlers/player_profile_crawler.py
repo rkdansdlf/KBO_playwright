@@ -15,25 +15,43 @@ from src.utils.player_validation import validate_player_payload
 from src.utils.request_policy import RequestPolicy
 
 # KBO profile page selectors (common across Hitter/Pitcher detail pages)
-_PROFILE_ID_REG = "cphContents_cphContents_cphContents_playerProfile"
-_PROFILE_ID_FUT = "cphContents_cphContents_cphContents_ucPlayerProfile"
+_PROFILE_PREFIXES = [
+    'cphContents_cphContents_cphContents_playerProfile',
+    'cphContents_cphContents_cphContents_ucPlayerProfile',
+    'cphContents_cphContents_cphContents_ucRetireInfo',
+]
 
 _EXTRACT_JS = f"""
 () => {{
-    const prefixes = ['{_PROFILE_ID_REG}', '{_PROFILE_ID_FUT}'];
+    const prefixes = {list(_PROFILE_PREFIXES)};
     let prefix = null;
     let name = "";
-    
+
     for (const p of prefixes) {{
         const el = document.getElementById(p + "_lblName");
-        if (el) {{
+        if (el && el.innerText.trim()) {{
             prefix = p;
             name = el.innerText.trim();
             break;
         }}
     }}
 
-    if (!prefix) return {{ error: "NO_PROFILE_ELEMENT" }};
+    // Fallback for some retired pages where name is in a different place
+    if (!name) {{
+        const nameEl = document.querySelector('.player_basic .list02 li span, .player_info .name');
+        if (nameEl) name = nameEl.innerText.trim();
+    }}
+
+    // Last resort: Title (format: "Name | Position | ...")
+    if (!name) {{
+        const title = document.title;
+        if (title && title.includes('|')) {{
+            name = title.split('|')[0].trim();
+        }}
+    }}
+
+    if (!name && !prefix) return {{ error: "NO_PROFILE_ELEMENT" }};
+    if (!prefix) prefix = prefixes[0]; // fallback prefix for getVal
 
     const getVal = (suffix) => {{
         const el = document.getElementById(prefix + "_" + suffix);
@@ -139,6 +157,8 @@ class PlayerProfileCrawler:
 
     HITTER_URL = "https://www.koreabaseball.com/Record/Player/HitterDetail/Basic.aspx"
     PITCHER_URL = "https://www.koreabaseball.com/Record/Player/PitcherDetail/Basic.aspx"
+    RETIRE_HITTER_URL = "https://www.koreabaseball.com/Record/Retire/Hitter.aspx"
+    RETIRE_PITCHER_URL = "https://www.koreabaseball.com/Record/Retire/Pitcher.aspx"
     FUTURES_HITTER_URL = "https://www.koreabaseball.com/Futures/Player/HitterDetail.aspx"
     FUTURES_PITCHER_URL = "https://www.koreabaseball.com/Futures/Player/PitcherDetail.aspx"
 
@@ -155,21 +175,27 @@ class PlayerProfileCrawler:
         """순차적으로 시도할 URL 후보 목록을 반환"""
         is_pitcher = position and (position.strip() in PITCHER_POSITIONS or
                                    any(p in (position or "") for p in ["투수", "P"]))
-        
+
+        candidates = []
         if is_pitcher:
-            return [
+            candidates = [
                 f"{self.PITCHER_URL}?playerId={player_id}",
                 f"{self.HITTER_URL}?playerId={player_id}",
+                f"{self.RETIRE_PITCHER_URL}?playerId={player_id}",
+                f"{self.RETIRE_HITTER_URL}?playerId={player_id}",
                 f"{self.FUTURES_PITCHER_URL}?playerId={player_id}",
                 f"{self.FUTURES_HITTER_URL}?playerId={player_id}",
             ]
         else:
-            return [
+            candidates = [
                 f"{self.HITTER_URL}?playerId={player_id}",
                 f"{self.PITCHER_URL}?playerId={player_id}",
+                f"{self.RETIRE_HITTER_URL}?playerId={player_id}",
+                f"{self.RETIRE_PITCHER_URL}?playerId={player_id}",
                 f"{self.FUTURES_HITTER_URL}?playerId={player_id}",
                 f"{self.FUTURES_PITCHER_URL}?playerId={player_id}",
             ]
+        return candidates
 
     async def crawl_player_profile(
         self,
@@ -269,21 +295,25 @@ class PlayerProfileCrawler:
         await self.policy.delay_async(host="www.koreabaseball.com")
         # domcontentloaded avoids networkidle timeout on KBO pages
         await page.goto(url, wait_until="domcontentloaded", timeout=15000)
-        await page.wait_for_timeout(500)
 
-        # Anchor on Name label to ensure profile is loaded
-        await page.wait_for_selector('[id$="lblName"]', state="attached", timeout=5000)
+        # Wait for any name element to be attached
         try:
-            # Wait for any image in the photo container to have a valid src.
+            await page.wait_for_selector('[id$="lblName"], .player_basic, .player_info', timeout=5000)
+        except Exception:
+            pass
+
+        # Wait for potential AJAX content (especially for retired players)
+        try:
             await page.wait_for_function(
                 """() => {
-                    const img = document.querySelector('.player_info img, .playerInfo img, .photo img, [id*="imgPro"]');
-                    return img && img.src && !img.src.includes('about:blank');
+                    const el = document.querySelector('[id$="lblName"], .player_basic .list02 li span, .player_info .name');
+                    return el && el.innerText.trim().length > 0;
                 }""",
                 timeout=3000
             )
         except Exception:
-            pass
+            # Fallback to a small timeout if JS check fails
+            await page.wait_for_timeout(500)
 
         return await page.evaluate(_EXTRACT_JS)
 

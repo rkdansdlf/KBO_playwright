@@ -2,9 +2,14 @@
 from __future__ import annotations
 
 from collections import Counter
+import re
 from typing import Any, Iterable, Mapping
 
-INVALID_PLAYER_NAMES = {"", "-", "N/A", "NA", "UNKNOWN", "UNKNOWN PLAYER", "Unknown", "Unknown Player"}
+INVALID_PLAYER_NAMES = {
+    "", "-", "N/A", "NA", "UNKNOWN", "UNKNOWN PLAYER", "Unknown", "Unknown Player",
+    "타자", "투수", "은퇴선수(타자)", "은퇴선수(투수)", "은퇴선수", "선수"
+}
+UNKNOWN_ID_NAME_RE = re.compile(r"^unknown\s+\d+$", re.IGNORECASE)
 
 
 def normalize_player_name(name: Any) -> str:
@@ -15,7 +20,11 @@ def normalize_player_name(name: Any) -> str:
 
 def is_invalid_player_name(name: Any) -> bool:
     normalized = normalize_player_name(name)
-    return not normalized or normalized.upper() in {value.upper() for value in INVALID_PLAYER_NAMES}
+    return (
+        not normalized
+        or normalized.upper() in {value.upper() for value in INVALID_PLAYER_NAMES}
+        or UNKNOWN_ID_NAME_RE.match(normalized) is not None
+    )
 
 
 def normalize_player_id(player_id: Any) -> int | None:
@@ -35,7 +44,10 @@ def validate_player_payload(payload: Mapping[str, Any]) -> tuple[bool, str | Non
 
     if is_invalid_player_name(payload.get("name") or payload.get("player_name")):
         raw_name = normalize_player_name(payload.get("name") or payload.get("player_name"))
-        if raw_name.upper() in {value.upper() for value in INVALID_PLAYER_NAMES if value}:
+        if (
+            raw_name.upper() in {value.upper() for value in INVALID_PLAYER_NAMES if value}
+            or UNKNOWN_ID_NAME_RE.match(raw_name) is not None
+        ):
             return False, "unknown_player_name"
         return False, "missing_player_name"
 

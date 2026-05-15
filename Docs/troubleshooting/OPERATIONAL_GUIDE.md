@@ -30,6 +30,40 @@ To verify statistical consistency manually:
 ./.venv/bin/python3 -m src.cli.quality_gate_check --year 2024
 ```
 
+### Run Reference Integrity Gate
+Run this before OCI publish, after reference repair jobs, and before applying FK migrations:
+```bash
+./venv/bin/python scripts/verification/check_orphan_data.py --strict --json --sample-limit 20
+./venv/bin/python scripts/maintenance/quality_gate.py --skip-oci
+```
+
+Use the default command for operator runs where the CSV snapshots under `data/` are useful audit artifacts. In CI or agent sessions that only need pass/fail and may not have a writable artifact directory, add `--no-write`:
+```bash
+./venv/bin/python scripts/maintenance/quality_gate.py --skip-oci --no-write
+```
+
+After OCI publish, verify production parity:
+```bash
+./venv/bin/python scripts/verification/check_orphan_data.py --db-url env:OCI_DB_URL --strict --json --sample-limit 20
+./venv/bin/python scripts/maintenance/quality_gate.py
+```
+
+For fresh CI runners that validate OCI directly without a local snapshot, use OCI-only non-writing mode:
+```bash
+./venv/bin/python scripts/maintenance/quality_gate.py --oci-only --no-write
+```
+
+If a year-scoped game-detail sync fails with a duplicate primary key on an auto-increment table, reset the target sequences and retry the same year:
+```bash
+./venv/bin/python scripts/maintenance/reset_oci_sequences.py
+./venv/bin/python -m src.cli.sync_oci --game-details --year YYYY
+```
+
+Apply declared FK constraints only after the OCI integrity gate passes:
+```bash
+./venv/bin/python scripts/maintenance/apply_oci_migration.py migrations/oci/023_reference_integrity_foreign_keys.sql
+```
+
 ### Run Crawler Stability Gate
 Run this before crawler/publish releases or after selector, retry, relay, or OCI eligibility changes:
 ```bash

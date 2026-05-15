@@ -149,6 +149,52 @@ def test_today_without_detail_stays_scheduled():
     assert status == STATUS_SCHEDULED
 
 
+def test_today_with_lineups_only_stays_scheduled():
+    status = derive_game_status(
+        game_date=date(2026, 2, 14),
+        home_score=None,
+        away_score=None,
+        has_metadata=True,
+        has_inning_scores=False,
+        has_lineups=True,
+        has_batting=False,
+        has_pitching=False,
+        today=date(2026, 2, 14),
+    )
+    assert status == STATUS_SCHEDULED
+
+
+def test_today_with_progress_evidence_is_live():
+    # Test that having events or pbp makes it LIVE even without inning scores yet
+    status_events = derive_game_status(
+        game_date=date(2026, 2, 14),
+        home_score=None,
+        away_score=None,
+        has_metadata=True,
+        has_inning_scores=False,
+        has_lineups=True,
+        has_batting=False,
+        has_pitching=False,
+        has_events=True,
+        today=date(2026, 2, 14),
+    )
+    assert status_events == STATUS_LIVE
+
+    status_pbp = derive_game_status(
+        game_date=date(2026, 2, 14),
+        home_score=None,
+        away_score=None,
+        has_metadata=True,
+        has_inning_scores=False,
+        has_lineups=True,
+        has_batting=False,
+        has_pitching=False,
+        has_pbp=True,
+        today=date(2026, 2, 14),
+    )
+    assert status_pbp == STATUS_LIVE
+
+
 def test_draw_when_terminal_scores_are_tied():
     status = derive_game_status(
         game_date=date(2025, 7, 1),

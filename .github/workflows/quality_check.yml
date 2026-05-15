@@ -27,12 +27,19 @@ jobs:
         run: |
           pip install -r requirements.txt
 
-      - name: Run Quality Gate (OCI Only)
+      - name: Run Reference Integrity Gate (OCI Only)
         env:
           OCI_DB_URL: ${{ secrets.OCI_DB_URL }}
         run: |
-          # Use --oci-only to check production data without needing a local SQLite setup
-          python3 scripts/maintenance/quality_gate.py --oci-only
+          python3 scripts/verification/check_orphan_data.py --db-url env:OCI_DB_URL --strict --json --sample-limit 20
+
+      - name: Run Quality Gate (OCI Only, No Artifacts)
+        env:
+          OCI_DB_URL: ${{ secrets.OCI_DB_URL }}
+        run: |
+          # Use --oci-only to check production data without needing a local SQLite setup.
+          # Use --no-write so CI does not require writable artifact directories.
+          python3 scripts/maintenance/quality_gate.py --oci-only --no-write
 
       - name: Notify Telegram on Failure
         if: failure()

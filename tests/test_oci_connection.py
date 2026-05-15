@@ -17,6 +17,9 @@ def test_oci_connection_from_env():
     This avoids hard-coded credentials and import-time network calls so the
     default pytest suite remains deterministic.
     """
+    if os.getenv("KBO_RUN_OCI_INTEGRATION") != "1":
+        pytest.skip("set KBO_RUN_OCI_INTEGRATION=1 to run OCI connectivity smoke test")
+
     db_url = os.getenv("OCI_TEST_DATABASE_URL") or os.getenv("OCI_DB_URL")
     if not db_url:
         pytest.skip("OCI_TEST_DATABASE_URL or OCI_DB_URL is not set")

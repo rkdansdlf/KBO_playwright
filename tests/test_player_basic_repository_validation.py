@@ -22,6 +22,7 @@ def test_upsert_players_filters_invalid_payloads_before_save(monkeypatch, tmp_pa
             {"player_id": None, "name": "홍길동"},
             {"player_id": 1001, "name": ""},
             {"player_id": 1002, "name": "Unknown Player"},
+            {"player_id": 1004, "name": "Unknown 1004"},
             {"player_id": 1003, "name": "정상선수", "team": "LG", "position": "투수"},
         ]
     )
@@ -30,7 +31,7 @@ def test_upsert_players_filters_invalid_payloads_before_save(monkeypatch, tmp_pa
     assert dict(repo.last_filter_counts) == {
         "invalid_player_id": 1,
         "missing_player_name": 1,
-        "unknown_player_name": 1,
+        "unknown_player_name": 2,
     }
 
     with sessionmaker(bind=engine)() as session:

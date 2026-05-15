@@ -1,6 +1,14 @@
+import json
+from pathlib import Path
+
 from sqlalchemy import create_engine, text
 
-from scripts.maintenance.quality_gate import collect_metrics, evaluate_quality_gate, fetch_past_missing_game_ids
+from scripts.maintenance.quality_gate import (
+    collect_metrics,
+    evaluate_quality_gate,
+    fetch_past_missing_game_ids,
+    run_quality_gate,
+)
 
 
 BASELINE = {
@@ -13,6 +21,44 @@ BASELINE = {
     "orphaned_pitching_stats_max": 0,
     "missing_player_profiles_max": 0,
 }
+
+
+def _create_quality_gate_tables(conn):
+    conn.execute(
+        text(
+            """
+            CREATE TABLE game (
+                game_id TEXT PRIMARY KEY,
+                game_date DATE NOT NULL,
+                home_score INTEGER,
+                away_score INTEGER,
+                game_status TEXT
+            )
+            """
+        )
+    )
+    conn.execute(text("CREATE TABLE game_batting_stats (game_id TEXT, player_id INTEGER)"))
+    conn.execute(text("CREATE TABLE game_pitching_stats (game_id TEXT, player_id INTEGER)"))
+    conn.execute(text("CREATE TABLE game_lineups (game_id TEXT, player_id INTEGER)"))
+    conn.execute(text("CREATE TABLE player_season_batting (player_id INTEGER)"))
+    conn.execute(text("CREATE TABLE player_season_pitching (player_id INTEGER)"))
+    conn.execute(text("CREATE TABLE player_basic (player_id INTEGER, name TEXT)"))
+    conn.execute(text("CREATE TABLE game_inning_scores (game_id TEXT)"))
+    conn.execute(text("CREATE TABLE game_events (game_id TEXT)"))
+    conn.execute(text("CREATE TABLE game_play_by_play (game_id TEXT)"))
+
+
+def _write_baseline(tmp_path: Path) -> Path:
+    baseline_path = tmp_path / "baseline.json"
+    baseline_path.write_text(json.dumps(BASELINE), encoding="utf-8")
+    return baseline_path
+
+
+def _create_sqlite_quality_gate_db(path: Path) -> str:
+    engine = create_engine(f"sqlite:///{path}")
+    with engine.begin() as conn:
+        _create_quality_gate_tables(conn)
+    return f"sqlite:///{path}"
 
 
 def test_quality_gate_passes_when_within_baseline_and_in_sync():
@@ -93,24 +139,7 @@ def test_quality_gate_fails_when_local_oci_mismatch_exists():
 def test_collect_metrics_treats_current_date_as_operational_not_past():
     engine = create_engine("sqlite:///:memory:")
     with engine.begin() as conn:
-        conn.execute(
-            text(
-                """
-                CREATE TABLE game (
-                    game_id TEXT PRIMARY KEY,
-                    game_date DATE NOT NULL,
-                    home_score INTEGER,
-                    away_score INTEGER,
-                    game_status TEXT
-                )
-                """
-            )
-        )
-        conn.execute(text("CREATE TABLE game_batting_stats (game_id TEXT, player_id INTEGER)"))
-        conn.execute(text("CREATE TABLE game_pitching_stats (game_id TEXT, player_id INTEGER)"))
-        conn.execute(text("CREATE TABLE game_lineups (game_id TEXT, player_id INTEGER)"))
-        conn.execute(text("CREATE TABLE player_season_batting (player_id INTEGER)"))
-        conn.execute(text("CREATE TABLE player_basic (player_id INTEGER)"))
+        _create_quality_gate_tables(conn)
         conn.execute(
             text(
                 """
@@ -130,3 +159,68 @@ def test_collect_metrics_treats_current_date_as_operational_not_past():
     assert metrics["past_missing_runs"] == 1
     assert metrics["past_scheduled"] == 1
     assert missing_ids == {"PAST0"}
+
+
+def test_collect_metrics_counts_pitching_missing_profiles_and_unknown_stubs():
+    engine = create_engine("sqlite:///:memory:")
+    with engine.begin() as conn:
+        _create_quality_gate_tables(conn)
+        conn.execute(text("INSERT INTO player_season_batting (player_id) VALUES (1001), (1002)"))
+        conn.execute(text("INSERT INTO player_season_pitching (player_id) VALUES (2001), (2002), (1002)"))
+        conn.execute(
+            text(
+                """
+                INSERT INTO player_basic (player_id, name)
+                VALUES
+                    (1001, '정상타자'),
+                    (1002, 'Unknown 1002'),
+                    (2002, '정상투수')
+                """
+            )
+        )
+
+        metrics = collect_metrics(conn)
+
+    assert metrics["missing_player_profiles"] == 2
+
+
+def test_run_quality_gate_no_write_skips_artifact_directory(tmp_path):
+    baseline_path = _write_baseline(tmp_path)
+    db_url = _create_sqlite_quality_gate_db(tmp_path / "gate.sqlite")
+    output_dir = tmp_path / "missing" / "artifacts"
+
+    result = run_quality_gate(
+        baseline_path=baseline_path,
+        output_dir=output_dir,
+        oci_url=db_url,
+        oci_only=True,
+        write_artifacts=False,
+    )
+
+    assert result["ok"] is True
+    assert result["artifacts_written"] is False
+    assert result["local_snapshot"] is None
+    assert result["oci_snapshot"] is None
+    assert result["set_diff_csv"] is None
+    assert not output_dir.exists()
+
+
+def test_run_quality_gate_writes_csv_snapshots_by_default(tmp_path):
+    baseline_path = _write_baseline(tmp_path)
+    db_url = _create_sqlite_quality_gate_db(tmp_path / "gate.sqlite")
+    output_dir = tmp_path / "artifacts"
+
+    result = run_quality_gate(
+        baseline_path=baseline_path,
+        output_dir=output_dir,
+        oci_url=db_url,
+        oci_only=True,
+    )
+
+    assert result["ok"] is True
+    assert result["artifacts_written"] is True
+    assert output_dir.exists()
+    for key in ("local_snapshot", "oci_snapshot", "set_diff_csv"):
+        path = Path(result[key])
+        assert path.exists()
+        assert path.read_text(encoding="utf-8").splitlines()[0] in {"metric,count", "scope,game_id"}
