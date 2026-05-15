@@ -1,6 +1,13 @@
 
 import os
 import sys
+from pathlib import Path
+import argparse
+
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
 from sqlalchemy import text
 from src.db.engine import create_engine_for_url
 from dotenv import load_dotenv
@@ -43,4 +50,7 @@ def reset_sequences(target_url=None):
         print(f"❌ Failed to reset sequences: {e}")
 
 if __name__ == "__main__":
-    reset_sequences()
+    parser = argparse.ArgumentParser(description="Reset PostgreSQL sequences on the OCI target database.")
+    parser.add_argument("--target-url", help="Target PostgreSQL URL. Defaults to OCI_DB_URL from .env.")
+    args = parser.parse_args()
+    reset_sequences(args.target_url)

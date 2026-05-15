@@ -61,10 +61,11 @@ async def run_periodic_extras(
             with SessionLocal() as session:
                 syncer = OCISync(oci_url, session)
                 try:
-                    # Sync batting/pitching (includes futures if level='FUTURES')
+                    # Sync reference player rows before dependent season-stat tables.
+                    syncer.sync_player_basic()
+                    syncer.sync_players()
                     syncer.sync_player_season_batting(year=year)
                     syncer.sync_player_season_pitching(year=year)
-                    syncer.sync_player_basic()
                     print("   ✅ OCI synchronization completed")
                 except Exception as exc:
                     print(f"   ❌ OCI sync error: {exc}")

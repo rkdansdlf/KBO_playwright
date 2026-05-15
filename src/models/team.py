@@ -77,7 +77,7 @@ class TeamCodeMap(Base, TimestampMixin):
     franchise_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
     season: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
     curr_code: Mapped[str] = mapped_column(String(10), nullable=False, comment="The code used in that season (e.g. SK)")
-    canonical_code: Mapped[str] = mapped_column(String(10), nullable=False, comment="Modern canonical code (e.g. SSG)")
+    canonical_code: Mapped[str] = mapped_column(String(10), nullable=False, comment="Active/final franchise code (e.g. SSG)")
     is_canonical: Mapped[bool] = mapped_column(Boolean, default=False, comment="Is this the modern canonical code?")
     
     def __repr__(self) -> str:

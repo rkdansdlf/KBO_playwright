@@ -21,7 +21,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from src.utils.team_codes import build_kbo_game_id, normalize_kbo_game_id, resolve_team_code, team_code_from_game_id_segment
-from src.utils.team_history import iter_team_history
+from src.utils.team_history import find_team_history_entry, iter_team_history
 
 
 DEFAULT_DB_URL = "sqlite:///./data/kbo_dev.db"
@@ -45,7 +45,6 @@ MERGE_SOURCE_COLUMNS = {
     "uniform_no",
     "extra_stats",
 }
-TEAM_CODE_TO_FRANCHISE_ID = {entry.team_code.upper(): entry.franchise_id for entry in iter_team_history()}
 ACTIONABLE_BACKFILL_CLASSIFICATIONS = {"pending_recrawl", "past_scheduled_missing_detail"}
 MERGEABLE_MASTER_STATUSES = {"", "SCHEDULED", "UNRESOLVED_MISSING"}
 
@@ -369,7 +368,10 @@ def _franchise_id_for_code(code: Any, season_year: int | None = None) -> int | N
     if not raw:
         return None
     season_code = team_code_from_game_id_segment(raw, season_year) if season_year else raw
-    return TEAM_CODE_TO_FRANCHISE_ID.get(str(season_code or raw).upper()) or TEAM_CODE_TO_FRANCHISE_ID.get(raw)
+    entry = find_team_history_entry(str(season_code or raw).upper(), season_year)
+    if entry is None and season_year is None:
+        entry = find_team_history_entry(raw)
+    return entry.franchise_id if entry else None
 
 
 def _team_code_for_franchise(franchise_id: int, season_year: int) -> str | None:

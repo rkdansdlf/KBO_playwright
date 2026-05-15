@@ -25,8 +25,9 @@ from src.crawlers.player_batting_all_series_crawler import crawl_series_batting_
 from src.crawlers.player_movement_crawler import PlayerMovementCrawler
 from src.crawlers.player_pitching_all_series_crawler import crawl_pitcher_series
 from src.crawlers.schedule_crawler import ScheduleCrawler
+from sqlalchemy import select, func
 from src.db.engine import SessionLocal
-from src.models.game import Game
+from src.models.game import Game, GamePlayByPlay
 from src.repositories.game_repository import (
     GAME_STATUS_CANCELLED,
     GAME_STATUS_SCHEDULED,
@@ -366,9 +367,17 @@ async def run_update(
                 print(f"   ❌ Failed to save {game_id} to local DB")
             else:
                 print(f"   ⚠️ Could not fetch details for {game_id} (reason={reason or 'unknown'})")
+            
+            # 🛡️ Protection: If the game is already marked as terminal in the DB (e.g. by Auto-Healer),
+            # don't overwrite it with a generic fallback status unless the reason is specifically 'cancelled'.
             fallback = _failure_status(target_date, reason, today_kst)
             if fallback:
-                update_game_status(game_id, fallback)
+                with SessionLocal() as status_check_session:
+                    current_game = status_check_session.query(Game).filter(Game.game_id == normalize_kbo_game_id(game_id)).one_or_none()
+                    if current_game and current_game.game_status in {GAME_STATUS_CANCELLED, "POSTPONED"} and fallback != GAME_STATUS_CANCELLED:
+                        print(f"   ℹ️ Preservation: Keeping terminal status '{current_game.game_status}' for {game_id}")
+                    else:
+                        update_game_status(game_id, fallback)
         print(
             f"   ✅ Detail result success={collection_result.detail_saved} "
             f"failed={collection_result.detail_failed}"
@@ -453,6 +462,42 @@ async def run_update(
         print("   ✅ Relay recovery complete")
     except Exception as exc:
         print(f"   ❌ Error generating relay events: {exc}")
+
+    print("\n🔍 Step 4.5: Proactive Relay Recovery (Last 14 days)...")
+    try:
+        with SessionLocal() as session:
+            fourteen_days_ago = (datetime.now(KST).date() - timedelta(days=14))
+            
+            # Find games that are completed but have 0 PBP rows
+            stmt = (
+                select(Game.game_id)
+                .where(
+                    Game.game_date >= fourteen_days_ago,
+                    Game.game_status.in_(["COMPLETED", "DRAW"])
+                )
+                .where(
+                    ~Game.game_id.in_(
+                        select(GamePlayByPlay.game_id).distinct()
+                    )
+                )
+            )
+            missing_pbp_game_ids = session.execute(stmt).scalars().all()
+            
+            if missing_pbp_game_ids:
+                print(f"   ⚠️ Found {len(missing_pbp_game_ids)} games missing PBP data. Attempting recovery...")
+                # Filter out ones already in relay_recovery_target_ids to avoid redundant runs 
+                # (though fetch_kbo_pbp handles it, cleaner to show accurate count here)
+                to_recover = [gid for gid in missing_pbp_game_ids if gid not in relay_recovery_target_ids]
+                if to_recover:
+                    runner(["scripts/fetch_kbo_pbp.py", "--game-ids", ",".join(to_recover)])
+                    relay_recovery_target_ids.update(to_recover)
+                    print(f"   ✅ Proactive recovery initiated for {len(to_recover)} games")
+                else:
+                    print("   ℹ️ Missing games already covered in Step 4")
+            else:
+                print("   ✅ No missing PBP data detected in recent games")
+    except Exception as exc:
+        print(f"   ❌ Error in proactive relay recovery: {exc}")
 
     print("\n📝 Step 5: Post-game review/WPA generation...")
     try:
@@ -564,6 +609,13 @@ async def run_update(
     except Exception as exc:
         print(f"   ❌ Error calculating Sabermetrics: {exc}")
 
+    print("\n🎭 Step 10.7: Enriching new player profiles (fetching missing photos/details)...")
+    try:
+        runner(["scripts/backfill_player_profiles.py", "--limit", "0", "--delay", "1.0"])
+        print("   ✅ Player profile enrichment complete")
+    except Exception as exc:
+        print(f"   ⚠️ Profile enrichment found issues (continuing): {exc}")
+
     print("\n🕵️  Step 10.5: Auditing season stats vs transactional details (Auto-fix enabled)...")
     try:
         runner(["scripts/verification/audit_fallback_stats.py", "--year", str(year), "--type", "all", "--fix"])
@@ -571,11 +623,19 @@ async def run_update(
     except Exception as exc:
         print(f"   ⚠️ Statistical audit/fix found issues (see logs): {exc}")
 
+    print("\n🕵️  Step 10.8: Deep statistical logic audit (cross-table invariants)...")
+    try:
+        runner(["scripts/verification/audit_game_logic.py", "--year", str(year)])
+        print("   ✅ Deep statistical logic audit complete")
+    except Exception as exc:
+        print(f"   ⚠️ Deep statistical audit found logical inconsistencies (see logs): {exc}")
+
     candidate_sync_game_ids = sorted(
         {game["game_id"] for game in daily_games}
         | set(processed_game_ids)
         | set(reconciliation_changed_ids)
         | {item["game_id"] for item in healer_recovery_targets}
+        | relay_recovery_target_ids
     )
     freshness_dates = sorted(
         {target_date}
@@ -588,6 +648,14 @@ async def run_update(
         for freshness_date in freshness_dates:
             runner(["-m", "src.cli.freshness_gate", "--date", freshness_date])
         print("   ✅ Freshness gate passed")
+
+        print("\n🕵️  Step 11.5: Local game status integrity audit...")
+        try:
+            runner(["scripts/maintenance/audit_game_status_integrity.py", "--fail"])
+            print("   ✅ Local integrity audit passed")
+        except subprocess.CalledProcessError as exc:
+            print(f"   ❌ Local integrity audit FAILED: {exc}")
+            raise RuntimeError("Aborting OCI sync due to local data integrity violations.")
 
         print("\n⚖️ Step 12: Statistical quality gate check...")
         try:
@@ -604,6 +672,11 @@ async def run_update(
         with SessionLocal() as sync_session:
             syncer = OCISync(oci_url, sync_session)
             try:
+                # 0. Sync Players and PlayerBasic first to satisfy FK constraints
+                print("   🛡️ Syncing players/basic first to satisfy FK constraints...")
+                syncer.sync_player_basic()
+                syncer.sync_players()
+
                 # 1. Sync specific targeted games (full detail)
                 for game_id in candidate_sync_game_ids:
                     sync_result = syncer.sync_specific_game(game_id)
@@ -620,7 +693,6 @@ async def run_update(
                 syncer.sync_player_season_pitching(year=year)
                 syncer.sync_player_movements()
                 syncer.sync_daily_rosters()
-                syncer.sync_players()
                 print("   ✅ OCI synchronization completed")
                 if oci_skip_counts:
                     print(f"   ℹ️ OCI skip summary: {_format_counts(oci_skip_counts)}")
@@ -631,6 +703,13 @@ async def run_update(
         for freshness_date in freshness_dates:
             runner(["-m", "src.cli.freshness_gate", "--date", freshness_date, "--source-url-env", "OCI_DB_URL"])
         print("   ✅ OCI freshness gate passed")
+
+        print("\n⚖️ Step 13.6: OCI parity quality gate check...")
+        try:
+            runner(["scripts/maintenance/quality_gate.py"])
+            print("   ✅ OCI parity check complete")
+        except subprocess.CalledProcessError as exc:
+            print(f"   ⚠️ OCI parity check found mismatches (see logs): {exc}")
 
     if seed_tomorrow_preview:
         tomorrow_date = (datetime.strptime(target_date, "%Y%m%d") + timedelta(days=1)).strftime("%Y%m%d")

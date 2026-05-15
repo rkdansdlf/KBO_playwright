@@ -15,7 +15,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from .base import Base, TimestampMixin
 
 
-class PlayerBasic(Base):
+class PlayerBasic(Base, TimestampMixin):
     """
     Simple player table populated from player search crawler.
     Source: https://www.koreabaseball.com/Player/Search.aspx

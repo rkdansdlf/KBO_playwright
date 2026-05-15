@@ -10,6 +10,12 @@ from src.repositories.game_repository import GAME_STATUS_CANCELLED, GAME_STATUS_
 
 
 class _FakeSession:
+    def query(self, *_args, **_kwargs):
+        return _FakeQuery()
+
+    def execute(self, *_args, **_kwargs):
+        return _FakeExecuteResult()
+
     def close(self):
         return None
 
@@ -18,6 +24,28 @@ class _FakeSession:
 
     def __exit__(self, exc_type, exc, tb):
         return False
+
+
+class _FakeQuery:
+    def filter(self, *_args, **_kwargs):
+        return self
+
+    def order_by(self, *_args, **_kwargs):
+        return self
+
+    def all(self):
+        return []
+
+    def one_or_none(self):
+        return None
+
+
+class _FakeExecuteResult:
+    def scalars(self):
+        return self
+
+    def all(self):
+        return []
 
 
 class _FakeResolver:
@@ -188,6 +216,7 @@ class _FakeSyncer:
         _FakeSyncer.created.append(self)
 
     def sync_specific_game(self, game_id: str):
+        self.calls.append(("specific_game", game_id))
         self.synced_games.append(game_id)
 
     def sync_games(self, *, filters=None, batch_size=10000, limit=None):
@@ -214,6 +243,9 @@ class _FakeSyncer:
 
     def sync_daily_rosters(self):
         self.calls.append(("daily_rosters", None))
+
+    def sync_player_basic(self):
+        self.calls.append(("player_basic", None))
 
     def sync_players(self):
         self.calls.append(("players", None))
@@ -528,6 +560,10 @@ def test_run_update_syncs_only_target_games_after_freshness_gate(monkeypatch):
     assert len(_FakeSyncer.created) == 1
     syncer = _FakeSyncer.created[0]
     assert syncer.synced_games == ["20250101LGSS0"]
+    assert syncer.calls[:2] == [("player_basic", None), ("players", None)]
+    call_names = [call[0] for call in syncer.calls]
+    assert call_names.index("players") < call_names.index("specific_game")
+    assert call_names.index("specific_game") < call_names.index("games")
     assert ("standings", 2025) in syncer.calls
     assert ("matchups", 2025) in syncer.calls
     assert ("rankings", 2025) in syncer.calls
@@ -535,6 +571,7 @@ def test_run_update_syncs_only_target_games_after_freshness_gate(monkeypatch):
     assert ("season_pitching", 2025) in syncer.calls
     assert ("player_movements", None) in syncer.calls
     assert ("daily_rosters", None) in syncer.calls
+    assert ("player_basic", None) in syncer.calls
     assert ("players", None) in syncer.calls
     assert syncer.closed is True
 

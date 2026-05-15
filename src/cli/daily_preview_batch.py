@@ -88,8 +88,11 @@ async def run_preview_batch(target_date: str, *, sync_to_oci: bool | None = None
             with SessionLocal() as sync_session:
                 syncer = OCISync(oci_url, sync_session)
                 try:
+                    print("🛡️ Syncing players/basic first to satisfy FK constraints...")
+                    syncer.sync_player_basic()
+                    syncer.sync_players()
                     for game_id in sorted(set(saved_ids)):
-                        syncer.sync_specific_game(game_id)
+                        syncer.sync_pregame_game(game_id)
                 finally:
                     syncer.close()
 

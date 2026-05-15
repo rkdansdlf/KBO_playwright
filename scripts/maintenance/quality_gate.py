@@ -7,6 +7,9 @@ Checks:
   - Local/OCI metric parity
   - Local/OCI past-missing game-id set parity
   - No past SCHEDULED rows
+
+CSV snapshots are written by default. Use --no-write for CI or agent
+sessions that should not create artifact directories.
 """
 from __future__ import annotations
 
@@ -62,8 +65,16 @@ def collect_metrics(session_or_conn) -> Dict[str, int]:
         "orphaned_batting_stats": "SELECT COUNT(*) FROM game_batting_stats WHERE game_id NOT IN (SELECT game_id FROM game)",
         "orphaned_pitching_stats": "SELECT COUNT(*) FROM game_pitching_stats WHERE game_id NOT IN (SELECT game_id FROM game)",
         "missing_player_profiles": """
-            SELECT COUNT(DISTINCT player_id) FROM player_season_batting 
-            WHERE player_id NOT IN (SELECT player_id FROM player_basic)
+            WITH season_players AS (
+                SELECT player_id FROM player_season_batting
+                UNION
+                SELECT player_id FROM player_season_pitching
+            )
+            SELECT COUNT(DISTINCT sp.player_id)
+            FROM season_players sp
+            LEFT JOIN player_basic p ON sp.player_id = p.player_id
+            WHERE p.player_id IS NULL
+               OR UPPER(TRIM(COALESCE(p.name, ''))) LIKE 'UNKNOWN %'
         """,
     }
     metrics: Dict[str, int] = {}
@@ -85,6 +96,21 @@ def collect_metrics(session_or_conn) -> Dict[str, int]:
         metrics["past_scheduled"] = int(
             session_or_conn.execute(
                 text("SELECT COUNT(*) FROM game WHERE game_status = 'SCHEDULED' AND game_date < CURRENT_DATE")
+            ).scalar()
+            or 0
+        )
+        metrics["live_no_evidence"] = int(
+            session_or_conn.execute(
+                text(
+                    """
+                    SELECT COUNT(*)
+                    FROM game g
+                    WHERE g.game_status = 'LIVE'
+                      AND NOT EXISTS (SELECT 1 FROM game_inning_scores gis WHERE gis.game_id = g.game_id)
+                      AND NOT EXISTS (SELECT 1 FROM game_events ge WHERE ge.game_id = g.game_id)
+                      AND NOT EXISTS (SELECT 1 FROM game_play_by_play pbp WHERE pbp.game_id = g.game_id)
+                    """
+                )
             ).scalar()
             or 0
         )
@@ -148,6 +174,7 @@ def evaluate_quality_gate(
         "orphaned_batting_stats",
         "orphaned_pitching_stats",
         "missing_player_profiles",
+        "live_no_evidence",
     )
     for key in parity_keys:
         if int(local_metrics.get(key, 0)) != int(oci_metrics.get(key, 0)):
@@ -164,6 +191,11 @@ def evaluate_quality_gate(
         failures.append(f"local past_scheduled={local_metrics['past_scheduled']} must be 0")
     if int(oci_metrics.get("past_scheduled", 0)) > 0:
         failures.append(f"oci past_scheduled={oci_metrics['past_scheduled']} must be 0")
+
+    if int(local_metrics.get("live_no_evidence", 0)) > 0:
+        failures.append(f"local live_no_evidence={local_metrics['live_no_evidence']} must be 0")
+    if int(oci_metrics.get("live_no_evidence", 0)) > 0:
+        failures.append(f"oci live_no_evidence={oci_metrics['live_no_evidence']} must be 0")
 
     if local_missing_ids != oci_missing_ids:
         failures.append(
@@ -199,9 +231,8 @@ def run_quality_gate(
     oci_url: str | None,
     skip_oci: bool = False,
     oci_only: bool = False,
+    write_artifacts: bool = True,
 ) -> Dict[str, Any]:
-    output_dir.mkdir(parents=True, exist_ok=True)
-    stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     baseline = load_baseline(baseline_path)
 
     if oci_only:
@@ -211,7 +242,7 @@ def run_quality_gate(
         with oci_engine.connect() as oci_conn:
             oci_metrics = collect_metrics(oci_conn)
             oci_missing_ids = fetch_past_missing_game_ids(oci_conn)
-        
+
         # In oci_only mode, we treat local as identical to OCI so parity checks pass
         local_metrics = dict(oci_metrics)
         local_missing_ids = set(oci_missing_ids)
@@ -231,13 +262,6 @@ def run_quality_gate(
                 oci_metrics = collect_metrics(oci_conn)
                 oci_missing_ids = fetch_past_missing_game_ids(oci_conn)
 
-    local_rows = list(local_metrics.items())
-    oci_rows = list(oci_metrics.items())
-    local_snapshot = output_dir / f"quality_gate_local_{stamp}.csv"
-    oci_snapshot = output_dir / f"quality_gate_oci_{stamp}.csv"
-    _write_snapshot(local_snapshot, local_rows)
-    _write_snapshot(oci_snapshot, oci_rows)
-
     failures = evaluate_quality_gate(
         local_metrics=local_metrics,
         oci_metrics=oci_metrics,
@@ -246,15 +270,26 @@ def run_quality_gate(
         oci_missing_ids=oci_missing_ids,
     )
 
-    set_diff_csv = output_dir / f"quality_gate_missing_set_diff_{stamp}.csv"
-    _write_set_diff(set_diff_csv, local_missing_ids - oci_missing_ids, oci_missing_ids - local_missing_ids)
+    local_snapshot: Path | None = None
+    oci_snapshot: Path | None = None
+    set_diff_csv: Path | None = None
+    if write_artifacts:
+        output_dir.mkdir(parents=True, exist_ok=True)
+        stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        local_snapshot = output_dir / f"quality_gate_local_{stamp}.csv"
+        oci_snapshot = output_dir / f"quality_gate_oci_{stamp}.csv"
+        set_diff_csv = output_dir / f"quality_gate_missing_set_diff_{stamp}.csv"
+        _write_snapshot(local_snapshot, list(local_metrics.items()))
+        _write_snapshot(oci_snapshot, list(oci_metrics.items()))
+        _write_set_diff(set_diff_csv, local_missing_ids - oci_missing_ids, oci_missing_ids - local_missing_ids)
 
     return {
         "ok": len(failures) == 0,
         "failures": failures,
-        "local_snapshot": str(local_snapshot),
-        "oci_snapshot": str(oci_snapshot),
-        "set_diff_csv": str(set_diff_csv),
+        "artifacts_written": write_artifacts,
+        "local_snapshot": str(local_snapshot) if local_snapshot else None,
+        "oci_snapshot": str(oci_snapshot) if oci_snapshot else None,
+        "set_diff_csv": str(set_diff_csv) if set_diff_csv else None,
         "local_metrics": local_metrics,
         "oci_metrics": oci_metrics,
     }
@@ -271,6 +306,13 @@ def main() -> None:
     parser.add_argument("--oci-url", default=None, help="Override OCI DB URL")
     parser.add_argument("--skip-oci", action="store_true", help="Run gate against local DB only")
     parser.add_argument("--oci-only", action="store_true", help="Run gate against OCI DB only (useful for CI)")
+    parser.add_argument(
+        "--no-write",
+        "--no-artifacts",
+        dest="write_artifacts",
+        action="store_false",
+        help="Run checks without creating output directories or CSV snapshot artifacts",
+    )
     args = parser.parse_args()
 
     if args.skip_oci and args.oci_only:
@@ -285,12 +327,16 @@ def main() -> None:
         oci_url=oci_url,
         skip_oci=args.skip_oci,
         oci_only=args.oci_only,
+        write_artifacts=args.write_artifacts,
     )
 
     print("✅ Quality gate finished")
-    print(f"   local snapshot: {result['local_snapshot']}")
-    print(f"   oci snapshot: {result['oci_snapshot']}")
-    print(f"   missing-set diff: {result['set_diff_csv']}")
+    if result["artifacts_written"]:
+        print(f"   local snapshot: {result['local_snapshot']}")
+        print(f"   oci snapshot: {result['oci_snapshot']}")
+        print(f"   missing-set diff: {result['set_diff_csv']}")
+    else:
+        print("   artifacts: disabled (--no-write)")
     if result["ok"]:
         print("   status: PASS")
         return

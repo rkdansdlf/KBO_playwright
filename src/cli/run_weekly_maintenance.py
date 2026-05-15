@@ -71,9 +71,9 @@ async def run_weekly_maintenance(
             with SessionLocal() as session:
                 syncer = OCISync(oci_url, session)
                 try:
-                    # Sync both players (master) and player_basic
-                    syncer.sync_players()
+                    # Sync player_basic before master/profile records to match publish dependency order.
                     syncer.sync_player_basic()
+                    syncer.sync_players()
                     print("   ✅ OCI synchronization completed")
                 except Exception as exc:
                     print(f"   ❌ OCI sync error: {exc}")

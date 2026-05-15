@@ -4,8 +4,19 @@
 - `UNRESOLVED_MISSING = 0`
 - `NULL player_id = 0` (`game_batting_stats`, `game_pitching_stats`, `game_lineups`)
 - 로컬/OCI 지표 및 집합 완전 일치
+- 참조 무결성 검증 `PASS` (`check_orphan_data.py --strict`)
 
 ## 실행 순서
+사전 검증:
+```bash
+./venv/bin/python scripts/verification/check_orphan_data.py --strict --json --sample-limit 20
+./venv/bin/python scripts/maintenance/quality_gate.py --skip-oci
+```
+CI 또는 agent 세션처럼 CSV 아티팩트 디렉터리에 쓰지 않는 실행에서는 품질 게이트에 `--no-write`를 추가합니다:
+```bash
+./venv/bin/python scripts/maintenance/quality_gate.py --skip-oci --no-write
+```
+
 0. fresh runner 운영 캐시 hydrate
 ```bash
 python3 -m src.cli.hydrate_runtime_from_oci --year YYYY --date YYYYMMDD
@@ -50,9 +61,22 @@ python3 -m src.cli.sync_oci --games-only
 python3 -m src.cli.sync_oci --game-details --year YYYY
 ```
 
-8. 품질 게이트 실행
+8. OCI 시퀀스 보정
 ```bash
+./venv/bin/python scripts/maintenance/reset_oci_sequences.py
+```
+
+9. 참조 무결성 및 품질 게이트 실행
+```bash
+./venv/bin/python scripts/verification/check_orphan_data.py --db-url env:OCI_DB_URL --strict --json --sample-limit 20
 python3 /Users/mac/project/KBO_playwright/scripts/maintenance/quality_gate.py
+```
+
+10. FK migration 적용
+데이터 검증이 먼저 통과한 뒤에만 실행합니다.
+```bash
+./venv/bin/python scripts/maintenance/apply_oci_migration.py migrations/oci/023_reference_integrity_foreign_keys.sql
+./venv/bin/python scripts/verification/check_orphan_data.py --db-url env:OCI_DB_URL --strict --json --sample-limit 20
 ```
 
 ## 실시간 운영 phase
@@ -69,6 +93,8 @@ python3 /Users/mac/project/KBO_playwright/scripts/maintenance/quality_gate.py
 - `daily_preview.yml`과 `daily_kbo_sync.yml`은 fresh GitHub runner에서 먼저 `hydrate_runtime_from_oci`를 실행합니다.
 - `run_daily_update --sync`는 freshness gate를 통과한 뒤에만 OCI publish를 수행합니다.
 - `sync_oci --game-details --unsynced-only`는 schedule-only parent `game` 행을 자동으로 제외합니다.
+- OCI만 검증하는 fresh runner의 참조 무결성 게이트는 `quality_gate.py --oci-only --no-write`를 사용합니다.
+- 릴리스 감사용 CSV 스냅샷이 필요한 운영자 실행에서는 `--no-write`를 생략합니다.
 
 ## 아티팩트
 - 상태 근거:
@@ -81,7 +107,7 @@ python3 /Users/mac/project/KBO_playwright/scripts/maintenance/quality_gate.py
 - player_id 해소 결과:
   - `null_player_id_conservative_applied_*.csv`
   - `null_player_id_conservative_unresolved_*.csv`
-- 품질 게이트 스냅샷:
+- 품질 게이트 스냅샷 (`--no-write` 없이 실행한 경우):
   - `quality_gate_local_*.csv`
   - `quality_gate_oci_*.csv`
   - `quality_gate_missing_set_diff_*.csv`

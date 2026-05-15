@@ -2,9 +2,11 @@ from __future__ import annotations
 
 from datetime import date, datetime, time
 
+import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
+import src.sync.oci_sync as oci_sync_module
 from src.models.game import (
     Game,
     GameBattingStat,
@@ -45,6 +47,417 @@ def _build_session_factory():
     ):
         table.create(bind=engine)
     return sessionmaker(bind=engine, autoflush=False, autocommit=False, expire_on_commit=False)
+
+
+def test_reset_target_sequence_for_table_uses_postgres_serial_sequence():
+    class _Result:
+        def __init__(self, value):
+            self.value = value
+
+        def scalar(self):
+            return self.value
+
+    class _Dialect:
+        name = "postgresql"
+
+    class _Bind:
+        dialect = _Dialect()
+
+    class _Session:
+        def __init__(self):
+            self.executed = []
+            self.commits = 0
+
+        def get_bind(self):
+            return _Bind()
+
+        def execute(self, stmt, params=None):
+            sql = str(stmt)
+            self.executed.append((sql, params or {}))
+            if "pg_get_serial_sequence" in sql:
+                return _Result("public.game_play_by_play_id_seq")
+            return _Result(None)
+
+        def commit(self):
+            self.commits += 1
+
+    syncer = OCISync.__new__(OCISync)
+    syncer.target_session = _Session()
+
+    assert syncer._reset_target_sequence_for_table("game_play_by_play") is True
+    assert syncer.target_session.commits == 1
+    assert syncer.target_session.executed[0][1] == {
+        "table_name": "game_play_by_play",
+        "column_name": "id",
+    }
+    reset_sql = syncer.target_session.executed[1][0]
+    assert "setval" in reset_sql
+    assert "to_regclass" in reset_sql
+    assert '"game_play_by_play"' in reset_sql
+    assert '"id"' in reset_sql
+
+
+def test_reset_target_sequence_for_table_skips_non_postgres_target():
+    class _Dialect:
+        name = "sqlite"
+
+    class _Bind:
+        dialect = _Dialect()
+
+    class _Session:
+        def get_bind(self):
+            return _Bind()
+
+        def execute(self, *_args, **_kwargs):
+            raise AssertionError("non-Postgres targets should not execute sequence SQL")
+
+    syncer = OCISync.__new__(OCISync)
+    syncer.target_session = _Session()
+
+    assert syncer._reset_target_sequence_for_table("game_play_by_play") is False
+
+
+def test_reset_target_sequence_for_table_skips_when_table_has_no_sequence():
+    class _Result:
+        def scalar(self):
+            return None
+
+    class _Dialect:
+        name = "postgresql"
+
+    class _Bind:
+        dialect = _Dialect()
+
+    class _Session:
+        def __init__(self):
+            self.executed = 0
+            self.commits = 0
+
+        def get_bind(self):
+            return _Bind()
+
+        def execute(self, *_args, **_kwargs):
+            self.executed += 1
+            return _Result()
+
+        def commit(self):
+            self.commits += 1
+
+    syncer = OCISync.__new__(OCISync)
+    syncer.target_session = _Session()
+
+    assert syncer._reset_target_sequence_for_table("game_play_by_play") is False
+    assert syncer.target_session.executed == 1
+    assert syncer.target_session.commits == 0
+
+
+def test_reset_target_sequence_for_table_rejects_unsafe_identifiers():
+    class _Dialect:
+        name = "postgresql"
+
+    class _Bind:
+        dialect = _Dialect()
+
+    class _Session:
+        def get_bind(self):
+            return _Bind()
+
+        def execute(self, *_args, **_kwargs):
+            raise AssertionError("unsafe identifiers should be rejected before SQL execution")
+
+    syncer = OCISync.__new__(OCISync)
+    syncer.target_session = _Session()
+
+    with pytest.raises(ValueError, match="unsafe SQL identifier"):
+        syncer._reset_target_sequence_for_table("game_play_by_play;drop")
+
+
+def test_sync_game_play_by_play_resets_target_sequence_before_replace(monkeypatch):
+    local_factory = _build_session_factory()
+    stamp = datetime(2026, 5, 14, 18, 0, 0)
+    calls = []
+
+    class _DeleteQuery:
+        def filter(self, *_args):
+            calls.append("delete_filter")
+            return self
+
+        def delete(self, **_kwargs):
+            calls.append("delete_rows")
+            return 1
+
+    class _TargetSession:
+        def query(self, model):
+            assert model is GamePlayByPlay
+            calls.append("target_query")
+            return _DeleteQuery()
+
+        def execute(self, _stmt, mappings):
+            calls.append(("insert", len(mappings)))
+
+        def commit(self):
+            calls.append("commit")
+
+    def _reset_sequence(_self, table_name, column_name="id"):
+        calls.append(("reset_sequence", table_name, column_name))
+        return True
+
+    with local_factory() as session:
+        session.add(
+            GamePlayByPlay(
+                game_id="20260514NCLT0",
+                inning=1,
+                inning_half="top",
+                pitcher_name="투수",
+                batter_name="타자",
+                play_description="타자 : 안타",
+                event_type="single",
+                result="1B",
+                created_at=stamp,
+                updated_at=stamp,
+            )
+        )
+        session.commit()
+
+        syncer = object.__new__(OCISync)
+        syncer.sqlite_session = session
+        syncer.target_session = _TargetSession()
+        monkeypatch.setattr(OCISync, "_reset_target_sequence_for_table", _reset_sequence)
+
+        assert syncer._sync_game_play_by_play() == 1
+
+    assert calls == [
+        ("reset_sequence", "game_play_by_play", "id"),
+        "target_query",
+        "delete_filter",
+        "delete_rows",
+        ("insert", 1),
+        "commit",
+    ]
+
+
+def test_sync_game_play_by_play_skips_sequence_reset_when_no_rows(monkeypatch):
+    local_factory = _build_session_factory()
+    syncer = object.__new__(OCISync)
+
+    with local_factory() as session:
+        syncer.sqlite_session = session
+        monkeypatch.setattr(
+            OCISync,
+            "_reset_target_sequence_for_table",
+            lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("sequence reset should be skipped")),
+        )
+
+        assert syncer._sync_game_play_by_play() == 0
+
+
+def test_sync_referenced_player_basic_for_games_requires_local_player_basic():
+    local_factory = _build_session_factory()
+    stamp = datetime(2026, 5, 14, 18, 0, 0)
+
+    with local_factory() as session:
+        session.add(
+            Game(
+                game_id="20260514NCLT0",
+                game_date=date(2026, 5, 14),
+                away_team="NC",
+                home_team="LT",
+                game_status="SCHEDULED",
+                created_at=stamp,
+                updated_at=stamp,
+            )
+        )
+        session.add(
+            GameLineup(
+                game_id="20260514NCLT0",
+                team_side="away",
+                team_code="NC",
+                player_id=901654,
+                player_name="박시원",
+                batting_order=9,
+                appearance_seq=9,
+                created_at=stamp,
+                updated_at=stamp,
+            )
+        )
+        session.commit()
+
+        syncer = object.__new__(OCISync)
+        syncer.sqlite_session = session
+
+        with pytest.raises(ValueError, match="missing_player_ids=\\[901654\\]"):
+            syncer._sync_referenced_player_basic_for_games(["20260514NCLT0"])
+
+
+def test_sync_referenced_player_basic_for_games_syncs_local_stubs(monkeypatch):
+    local_factory = _build_session_factory()
+    stamp = datetime(2026, 5, 14, 18, 0, 0)
+
+    with local_factory() as session:
+        session.add(PlayerBasic(player_id=901654, name="박시원", team="NC", status="Unknown/Local"))
+        session.add(
+            Game(
+                game_id="20260514NCLT0",
+                game_date=date(2026, 5, 14),
+                away_team="NC",
+                home_team="LT",
+                game_status="SCHEDULED",
+                created_at=stamp,
+                updated_at=stamp,
+            )
+        )
+        session.add(
+            GameLineup(
+                game_id="20260514NCLT0",
+                team_side="away",
+                team_code="NC",
+                player_id=901654,
+                player_name="박시원",
+                batting_order=9,
+                appearance_seq=9,
+                created_at=stamp,
+                updated_at=stamp,
+            )
+        )
+        session.commit()
+
+        syncer = object.__new__(OCISync)
+        syncer.sqlite_session = session
+        synced_ids = []
+
+        def _sync_player_basic_by_ids(_self, player_ids):
+            synced_ids.extend(player_ids)
+            return len(player_ids)
+
+        monkeypatch.setattr(OCISync, "sync_player_basic_by_ids", _sync_player_basic_by_ids)
+
+        assert syncer._sync_referenced_player_basic_for_games(["20260514NCLT0"]) == 1
+        assert synced_ids == [901654]
+
+
+def test_sync_pregame_game_syncs_player_basic_before_lineups(monkeypatch):
+    calls = []
+    syncer = object.__new__(OCISync)
+
+    class _DeleteQuery:
+        def filter(self, *_args):
+            return self
+
+        def delete(self, **_kwargs):
+            calls.append("delete_lineups")
+            return 1
+
+    class _TargetSession:
+        def query(self, model):
+            assert model is GameLineup
+            return _DeleteQuery()
+
+        def commit(self):
+            calls.append("commit")
+
+    def _sync_simple_table(_self, model, _conflict_keys, **_kwargs):
+        calls.append(model.__tablename__)
+        return 1
+
+    def _sync_refs(_self, game_ids):
+        calls.append("player_basic_refs")
+        assert game_ids == ["20260514NCLT0"]
+        return 1
+
+    def _sync_summary(_self, **_kwargs):
+        calls.append("game_summary")
+        return 1
+
+    syncer.target_session = _TargetSession()
+    monkeypatch.setattr(OCISync, "_sync_simple_table", _sync_simple_table)
+    monkeypatch.setattr(OCISync, "_sync_referenced_player_basic_for_games", _sync_refs)
+    monkeypatch.setattr(OCISync, "_sync_game_summary_rows", _sync_summary)
+
+    result = syncer.sync_pregame_game("20260514NCLT0")
+
+    assert result == {
+        "game": 1,
+        "game_id_aliases": 1,
+        "player_basic": 1,
+        "metadata": 1,
+        "lineups": 1,
+        "summary": 1,
+    }
+    assert calls == [
+        "game",
+        "game_id_aliases",
+        "player_basic_refs",
+        "delete_lineups",
+        "commit",
+        "game_metadata",
+        "game_lineups",
+        "game_summary",
+    ]
+
+
+def test_sync_specific_game_syncs_player_basic_before_child_replacement(monkeypatch):
+    calls = []
+    syncer = object.__new__(OCISync)
+
+    class _Eligibility:
+        detail_game_ids = ["20260514NCLT0"]
+        relay_game_ids = ["20260514NCLT0"]
+
+        def counts(self):
+            return {}
+
+    class _DeleteQuery:
+        def __init__(self, model):
+            self.model = model
+
+        def filter(self, *_args):
+            return self
+
+        def delete(self, **_kwargs):
+            calls.append(f"delete:{self.model.__tablename__}")
+            return 1
+
+    class _TargetSession:
+        def query(self, model):
+            return _DeleteQuery(model)
+
+        def commit(self):
+            calls.append("commit")
+
+    def _sync_simple_table(_self, model, _conflict_keys, **_kwargs):
+        calls.append(model.__tablename__)
+        return 1
+
+    def _sync_refs(_self, game_ids):
+        calls.append("player_basic_refs")
+        assert game_ids == ["20260514NCLT0"]
+        return 1
+
+    def _sync_pbp(_self, **_kwargs):
+        calls.append("game_play_by_play")
+        return 1
+
+    def _sync_summary(_self, **_kwargs):
+        calls.append("game_summary")
+        return 1
+
+    monkeypatch.setattr(oci_sync_module, "build_game_sync_eligibility", lambda *_args, **_kwargs: _Eligibility())
+    monkeypatch.setattr(OCISync, "_log_sync_eligibility", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(OCISync, "_sync_simple_table", _sync_simple_table)
+    monkeypatch.setattr(OCISync, "_sync_referenced_player_basic_for_games", _sync_refs)
+    monkeypatch.setattr(OCISync, "_sync_game_play_by_play", _sync_pbp)
+    monkeypatch.setattr(OCISync, "_sync_game_summary_rows", _sync_summary)
+
+    syncer.sqlite_session = object()
+    syncer.target_session = _TargetSession()
+
+    result = syncer.sync_specific_game("20260514NCLT0")
+
+    assert result["player_basic"] == 1
+    assert calls[:3] == ["game", "game_id_aliases", "player_basic_refs"]
+    assert calls.index("player_basic_refs") < calls.index("delete:game_lineups")
+    assert calls.index("commit") < calls.index("game_metadata")
+    assert calls[-3:] == ["game_play_by_play", "game_events", "game_summary"]
 
 
 def _seed_game(

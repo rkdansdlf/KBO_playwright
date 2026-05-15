@@ -59,6 +59,8 @@ def derive_game_status(
     has_lineups: bool,
     has_batting: bool,
     has_pitching: bool,
+    has_events: bool = False,
+    has_pbp: bool = False,
     manual_status: Optional[str] = None,
     today: date | None = None,
 ) -> str:
@@ -69,10 +71,15 @@ def derive_game_status(
         return STATUS_SCHEDULED
     if manual_status in MANUAL_STATUS_ALLOWED:
         return manual_status
-    has_any_detail = has_inning_scores or has_lineups or has_batting or has_pitching
+    
+    # LIVE detection needs to be robust against pre-game data (like lineups)
+    # If it's today, we only mark as LIVE if there's actual game progress evidence.
+    has_progress_evidence = has_inning_scores or has_events or has_pbp or has_batting or has_pitching
+    
     if game_date == today:
-        return STATUS_LIVE if has_any_detail else STATUS_SCHEDULED
-    if has_metadata and not has_any_detail:
+        return STATUS_LIVE if has_progress_evidence else STATUS_SCHEDULED
+    
+    if has_metadata and not (has_lineups or has_progress_evidence):
         return STATUS_CANCELLED
     return STATUS_UNRESOLVED
 
@@ -90,7 +97,9 @@ def _load_games_with_flags(session) -> List[Dict[str, Any]]:
                 CASE WHEN EXISTS (SELECT 1 FROM game_inning_scores gis WHERE gis.game_id = g.game_id) THEN 1 ELSE 0 END AS has_inning_scores,
                 CASE WHEN EXISTS (SELECT 1 FROM game_lineups gl WHERE gl.game_id = g.game_id) THEN 1 ELSE 0 END AS has_lineups,
                 CASE WHEN EXISTS (SELECT 1 FROM game_batting_stats gbs WHERE gbs.game_id = g.game_id) THEN 1 ELSE 0 END AS has_batting,
-                CASE WHEN EXISTS (SELECT 1 FROM game_pitching_stats gps WHERE gps.game_id = g.game_id) THEN 1 ELSE 0 END AS has_pitching
+                CASE WHEN EXISTS (SELECT 1 FROM game_pitching_stats gps WHERE gps.game_id = g.game_id) THEN 1 ELSE 0 END AS has_pitching,
+                CASE WHEN EXISTS (SELECT 1 FROM game_events ge WHERE ge.game_id = g.game_id) THEN 1 ELSE 0 END AS has_events,
+                CASE WHEN EXISTS (SELECT 1 FROM game_play_by_play pbp WHERE pbp.game_id = g.game_id) THEN 1 ELSE 0 END AS has_pbp
             FROM game g
             ORDER BY g.game_id
             """
@@ -191,6 +200,8 @@ def refresh_game_statuses(
                 has_lineups=bool(game["has_lineups"]),
                 has_batting=bool(game["has_batting"]),
                 has_pitching=bool(game["has_pitching"]),
+                has_events=bool(game["has_events"]),
+                has_pbp=bool(game["has_pbp"]),
                 manual_status=manual_entry["status"] if manual_entry else None,
                 today=today,
             )
@@ -217,6 +228,8 @@ def refresh_game_statuses(
                     "has_lineups": int(bool(game["has_lineups"])),
                     "has_batting": int(bool(game["has_batting"])),
                     "has_pitching": int(bool(game["has_pitching"])),
+                    "has_events": int(bool(game["has_events"])),
+                    "has_pbp": int(bool(game["has_pbp"])),
                     "manual_status": manual_entry["status"] if manual_entry else "",
                     "manual_source": manual_entry["source"] if manual_entry else "",
                     "manual_reason": manual_entry["reason"] if manual_entry else "",
@@ -269,6 +282,8 @@ def refresh_game_statuses(
             "has_lineups",
             "has_batting",
             "has_pitching",
+            "has_events",
+            "has_pbp",
             "manual_status",
             "manual_source",
             "manual_reason",

@@ -220,6 +220,17 @@ def _pregame_sync_to_oci_enabled() -> bool:
     wait=wait_exponential(multiplier=1, min=60, max=300),
     retry_error_callback=alert_failure,
 )
+def _run_hydration(year: int, target_date: str | None = None):
+    """Run OCI to Local hydration via CLI main."""
+    from src.cli.hydrate_runtime_from_oci import main as hydrate_main
+    logger.info("Starting hydration for year=%d, date=%s", year, target_date)
+    args = ["--year", str(year)]
+    if target_date:
+        args.extend(["--date", target_date])
+    hydrate_main(args)
+    logger.info("Hydration completed successfully")
+
+
 def crawl_daily_games():
     """
     Daily job: Run unified daily update entrypoint.
@@ -233,7 +244,13 @@ def crawl_daily_games():
         try:
             target_date = _previous_day_kst()
             logger.info("Running run_daily_update for target_date=%s", target_date)
-            update_result = run_daily_update_main(['--date', target_date, '--seed-tomorrow-preview'])
+            
+            args = ['--date', target_date, '--seed-tomorrow-preview']
+            if bool(os.getenv("OCI_DB_URL")):
+                logger.info("Enabling OCI sync for daily update")
+                args.append('--sync')
+                
+            update_result = run_daily_update_main(args)
 
             logger.info("=== Daily Games Crawl Completed Successfully ===")
             alert_success("crawl_daily_games", format_stability_alert_summary(update_result))
@@ -374,6 +391,39 @@ def build_arg_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def sync_from_oci_job():
+    """
+    Sync job: Hydrate local DB from OCI after GitHub Actions run window.
+    Runs daily at 05:00 KST.
+    """
+    with JOB_RUN_LOCK:
+        logger.info("=== Starting OCI to Local Sync (Hydration) ===")
+        current_year = datetime.now(KST).year
+        # Hydrate for the current year
+        _run_hydration(current_year)
+        logger.info("=== OCI to Local Sync Completed Successfully ===")
+
+
+@retry(
+    stop=stop_after_attempt(3),
+    wait=wait_exponential(multiplier=1, min=60, max=300),
+    retry_error_callback=alert_failure,
+)
+def generate_daily_report_job():
+    """
+    Quality report job: Analyze previous day's data integrity.
+    Runs daily at 05:15 KST.
+    """
+    from src.cli.generate_quality_report import main as report_main
+
+    with JOB_RUN_LOCK:
+        logger.info("=== Starting Daily Quality Report Generation ===")
+        target_date = _previous_day_kst()
+        # Run report and notify if issues found
+        report_main(["--date", target_date, "--force-notify"])
+        logger.info("=== Daily Quality Report Generation Completed ===")
+
+
 def main(argv: Sequence[str] | None = None):
     """Initialize and start the APScheduler."""
     parser = build_arg_parser()
@@ -398,6 +448,28 @@ def main(argv: Sequence[str] | None = None):
         max_instances=1  # Prevent concurrent runs
     )
     logger.info("Registered job: crawl_games_regular (Daily 03:00 KST)")
+
+    # Job 1.5: Sync from OCI (05:00 KST) - After GitHub Actions finish
+    scheduler.add_job(
+        sync_from_oci_job,
+        trigger=CronTrigger(hour=5, minute=0),
+        id='sync_from_oci',
+        name='OCI to Local Sync (Hydration)',
+        misfire_grace_time=3600,
+        max_instances=1
+    )
+    logger.info("Registered job: sync_from_oci (Daily 05:00 KST)")
+
+    # Job 1.6: Daily Quality Report (05:15 KST)
+    scheduler.add_job(
+        generate_daily_report_job,
+        trigger=CronTrigger(hour=5, minute=15),
+        id='generate_quality_report',
+        name='Daily Quality Report Generation',
+        misfire_grace_time=3600,
+        max_instances=1
+    )
+    logger.info("Registered job: generate_quality_report (Daily 05:15 KST)")
 
     # Job 2: Weekly Futures profile sync (Sunday 05:00 KST)
     scheduler.add_job(
@@ -455,9 +527,11 @@ def main(argv: Sequence[str] | None = None):
     print("="*60)
     print("\nScheduled Jobs:")
     print("  1. Daily Games Crawl: Every day at 03:00 KST")
-    print("  2. Pregame Refresh: Every 15 minutes, 10:00-23:45 KST, today + lookahead")
-    print("  3. Live Refresh: Every 2 minutes, 12:00-23:30 KST")
-    print("  4. Futures Profile Sync: Every Sunday at 05:00 KST")
+    print("  2. OCI to Local Sync: Every day at 05:00 KST")
+    print("  3. Daily Quality Report: Every day at 05:15 KST")
+    print("  4. Pregame Refresh: Every 15 minutes, 10:00-23:45 KST, today + lookahead")
+    print("  5. Live Refresh: Every 2 minutes, 12:00-23:30 KST")
+    print("  6. Futures Profile Sync: Every Sunday at 05:00 KST")
     print("="*60 + "\n")
 
     logger.info("Scheduler started successfully")

@@ -364,6 +364,7 @@ def main(argv: Iterable[str] | None = None) -> None:
         print(f"🚀 Syncing Master Players using specialized OCISync...")
         with SessionLocal() as session:
             syncer = OCISync(args.target_url, session)
+            syncer.sync_player_basic()
             syncer.sync_players()
             print(f"✅ Master Players Sync Finished")
 
@@ -378,7 +379,11 @@ def main(argv: Iterable[str] | None = None) -> None:
         print("🚀 Syncing Franchises & Teams using specialized OCISync...")
         with SessionLocal() as session:
             syncer = OCISync(args.target_url, session)
-            synced = syncer.sync_teams()
+            # Sync in dependency order
+            syncer.sync_franchises()
+            syncer.sync_teams()
+            syncer.sync_team_history()
+            syncer.sync_team_code_map()
             print(f"✅ Franchises & Teams Sync Finished")
 
     elif args.standings:
