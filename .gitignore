@@ -38,11 +38,17 @@ supabase.db
 *.log
 
 # Local crawler investigation artifacts
+scratch/
 inspect_*.py
 find_boxscore.py
+scripts/investigations/dump_*.py
 gamecenter_*.png
 gamecenter_*.html
 *_debug.png
+*_debug.html
+error.png
+game_stats_*.png
+hitter_daily_*.png
 hitter_direct.png
 review_page.png
 
@@ -56,3 +62,8 @@ data/kbo_dev.db
 !/data/player_id_overrides.csv
 !/data/player_id_row_overrides.csv
 data/kbo_auth_state.json
+
+# Temporary root-level crawler debug artifacts
+/*.json
+/*.png
+/*.html
