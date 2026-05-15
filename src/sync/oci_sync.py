@@ -445,6 +445,53 @@ class OCISync:
     def _chunked(items: List[str], size: int) -> List[List[str]]:
         return [items[idx: idx + size] for idx in range(0, len(items), size)]
 
+    @staticmethod
+    def _quote_identifier(identifier: str) -> str:
+        if not identifier:
+            raise ValueError("identifier must not be empty")
+        if not (identifier[0].isalpha() or identifier[0] == "_"):
+            raise ValueError(f"unsafe SQL identifier: {identifier!r}")
+        if not all(char.isalnum() or char == "_" for char in identifier):
+            raise ValueError(f"unsafe SQL identifier: {identifier!r}")
+        return f'"{identifier}"'
+
+    def _reset_target_sequence_for_table(self, table_name: str, column_name: str = "id") -> bool:
+        """Align a PostgreSQL serial/identity sequence with MAX(id).
+
+        Some sync paths use ORM inserts that rely on the target-side sequence
+        after prior COPY/upsert or manual repair jobs have changed row ids. If
+        that sequence lags behind the table maximum, the next insert can reuse
+        an existing primary key and fail mid-sync.
+        """
+        bind = self.target_session.get_bind()
+        if not bind or bind.dialect.name != "postgresql":
+            return False
+
+        quoted_table = self._quote_identifier(table_name)
+        quoted_column = self._quote_identifier(column_name)
+        sequence_name = self.target_session.execute(
+            text("SELECT pg_get_serial_sequence(:table_name, :column_name)"),
+            {"table_name": table_name, "column_name": column_name},
+        ).scalar()
+        if not sequence_name:
+            return False
+
+        self.target_session.execute(
+            text(
+                f"""
+                SELECT setval(
+                    to_regclass(:sequence_name),
+                    GREATEST(COALESCE(MAX({quoted_column}), 0), 1),
+                    COALESCE(MAX({quoted_column}), 0) > 0
+                )
+                FROM {quoted_table}
+                """
+            ),
+            {"sequence_name": sequence_name},
+        )
+        self.target_session.commit()
+        return True
+
     def test_connection(self) -> bool:
         """Test OCI connection"""
         try:
@@ -682,6 +729,55 @@ class OCISync:
         print(f"✅ Synced {synced} team history records to OCI")
         return synced
 
+    def sync_team_code_map(self) -> int:
+        """Sync team_code_map table using PostgreSQL UPSERT"""
+        from src.models.team import TeamCodeMap
+
+        franchise_mapping = self._get_franchise_id_mapping()
+        maps = self.sqlite_session.query(TeamCodeMap).all()
+        synced = 0
+        batch_size = 500
+
+        for i in range(0, len(maps), batch_size):
+            batch = maps[i : i + batch_size]
+            values_list = []
+            for m in batch:
+                sup_fid = franchise_mapping.get(m.franchise_id) or m.franchise_id
+
+                data = {
+                    'franchise_id': sup_fid,
+                    'season': m.season,
+                    'curr_code': m.curr_code,
+                    'canonical_code': m.canonical_code,
+                    'is_canonical': m.is_canonical,
+                    'created_at': m.created_at or datetime.now(),
+                    'updated_at': m.updated_at or datetime.now()
+                }
+                values_list.append(data)
+
+            if not values_list:
+                continue
+
+            stmt = pg_insert(TeamCodeMap).values(values_list)
+            update_dict = {
+                'franchise_id': stmt.excluded.franchise_id,
+                'canonical_code': stmt.excluded.canonical_code,
+                'is_canonical': stmt.excluded.is_canonical,
+                'updated_at': stmt.excluded.updated_at
+            }
+
+            stmt = stmt.on_conflict_do_update(
+                constraint='uq_team_code_map',
+                set_=update_dict
+            )
+
+            self.target_session.execute(stmt)
+            self.target_session.commit()
+            synced += len(values_list)
+
+        print(f"✅ Synced {synced} team code map records to OCI")
+        return synced
+
     # ... (other methods)
 
     def _get_franchise_id_mapping(self) -> Dict[int, int]:
@@ -891,6 +987,95 @@ class OCISync:
         self.target_session.commit()
         print(f"✅ Synced {synced} player_basic records to OCI")
         return synced
+
+    def sync_player_basic_by_ids(self, player_ids: List[int]) -> int:
+        """Sync specific players from SQLite to OCI by their IDs"""
+        target_player_ids = sorted({int(player_id) for player_id in player_ids if player_id is not None})
+        if not target_player_ids:
+            return 0
+            
+        players = self.sqlite_session.query(PlayerBasic).filter(PlayerBasic.player_id.in_(target_player_ids)).all()
+        if not players:
+            return 0
+            
+        synced = 0
+        for player in players:
+            data = {
+                'player_id': player.player_id,
+                'name': player.name,
+                'uniform_no': player.uniform_no,
+                'team': player.team,
+                'position': player.position,
+                'birth_date': player.birth_date,
+                'birth_date_date': player.birth_date_date,
+                'height_cm': player.height_cm,
+                'weight_kg': player.weight_kg,
+                'career': player.career,
+                'status': player.status,
+                'staff_role': player.staff_role,
+                'status_source': player.status_source,
+                'photo_url': player.photo_url,
+                'bats': player.bats,
+                'throws': player.throws,
+                'debut_year': player.debut_year,
+                'salary_original': player.salary_original,
+                'signing_bonus_original': player.signing_bonus_original,
+                'draft_info': player.draft_info,
+            }
+
+            stmt = pg_insert(PlayerBasic).values(**data)
+            update_dict = {k: stmt.excluded[k] for k in data.keys() if k != 'player_id'}
+            stmt = stmt.on_conflict_do_update(
+                index_elements=['player_id'],
+                set_=update_dict
+            )
+
+            self.target_session.execute(stmt)
+            synced += 1
+
+        self.target_session.commit()
+        print(f"✅ Synced {synced} player_basic records to OCI (by IDs)")
+        return synced
+
+    def _sync_referenced_player_basic_for_games(self, game_ids: List[str]) -> int:
+        """Sync local player_basic rows referenced by game child tables before FK-bound child sync."""
+        target_game_ids = sorted({str(game_id) for game_id in game_ids if game_id})
+        if not target_game_ids:
+            return 0
+
+        referenced_player_ids: set[int] = set()
+        for model in (GameLineup, GameBattingStat, GamePitchingStat, GameSummary):
+            rows = (
+                self.sqlite_session.query(model.player_id)
+                .filter(model.game_id.in_(target_game_ids), model.player_id.isnot(None))
+                .distinct()
+                .all()
+            )
+            referenced_player_ids.update(int(row[0]) for row in rows if row[0] is not None)
+
+        if not referenced_player_ids:
+            return 0
+
+        local_player_ids = {
+            int(row[0])
+            for row in self.sqlite_session.query(PlayerBasic.player_id)
+            .filter(PlayerBasic.player_id.in_(sorted(referenced_player_ids)))
+            .all()
+        }
+        missing_player_ids = sorted(referenced_player_ids - local_player_ids)
+        if missing_player_ids:
+            game_list = ", ".join(target_game_ids[:5])
+            if len(target_game_ids) > 5:
+                game_list += f", ... (+{len(target_game_ids) - 5})"
+            missing_list = ", ".join(str(player_id) for player_id in missing_player_ids[:20])
+            if len(missing_player_ids) > 20:
+                missing_list += f", ... (+{len(missing_player_ids) - 20})"
+            raise ValueError(
+                "Cannot sync game child rows because referenced player_id values are missing "
+                f"from local player_basic. games=[{game_list}] missing_player_ids=[{missing_list}]"
+            )
+
+        return self.sync_player_basic_by_ids(sorted(referenced_player_ids))
 
     def sync_player_movements(self) -> int:
         """Sync player_movements from SQLite to OCI"""
@@ -1497,6 +1682,8 @@ class OCISync:
         results['game'] = self._sync_simple_table(Game, ['game_id'], exclude_cols=['created_at', 'updated_at'], filters=filters)
         results['game_id_aliases'] = self._sync_simple_table(GameIdAlias, ['alias_game_id'], exclude_cols=['created_at'], filters=[GameIdAlias.canonical_game_id == game_id])
 
+        results['player_basic'] = self._sync_referenced_player_basic_for_games([game_id])
+
         # Player IDs can be repaired after an initial crawl. Because Postgres
         # treats NULL values as distinct in unique constraints, an upsert keyed
         # by player_id would otherwise leave stale NULL-player rows beside the
@@ -1528,6 +1715,62 @@ class OCISync:
             replace_game_ids=eligibility.detail_game_ids,
         )
         
+        return results
+
+    def sync_pregame_game(self, game_id: str) -> Dict[str, int]:
+        """Sync only pregame publish tables for one game without touching completed detail datasets."""
+        from src.models.game import (
+            Game,
+            GameMetadata,
+            GameLineup,
+            GameSummary,
+            GameIdAlias,
+        )
+
+        if not game_id:
+            return {}
+
+        results: Dict[str, int] = {}
+        results['game'] = self._sync_simple_table(
+            Game,
+            ['game_id'],
+            exclude_cols=['created_at', 'updated_at'],
+            filters=[Game.game_id == game_id],
+        )
+        results['game_id_aliases'] = self._sync_simple_table(
+            GameIdAlias,
+            ['alias_game_id'],
+            exclude_cols=['created_at'],
+            filters=[GameIdAlias.canonical_game_id == game_id],
+        )
+        results['player_basic'] = self._sync_referenced_player_basic_for_games([game_id])
+
+        self.target_session.query(GameLineup).filter(GameLineup.game_id == game_id).delete(
+            synchronize_session=False
+        )
+        self.target_session.commit()
+
+        results['metadata'] = self._sync_simple_table(
+            GameMetadata,
+            ['game_id'],
+            exclude_cols=['created_at'],
+            filters=[GameMetadata.game_id == game_id],
+        )
+        results['lineups'] = self._sync_simple_table(
+            GameLineup,
+            ['game_id', 'team_side', 'appearance_seq'],
+            exclude_cols=['id', 'created_at'],
+            filters=[GameLineup.game_id == game_id],
+        )
+        results['summary'] = self._sync_game_summary_rows(
+            filters=[
+                GameSummary.game_id == game_id,
+                GameSummary.summary_type == "프리뷰",
+            ],
+            summary_type="프리뷰",
+            replace_game_ids=[game_id],
+        )
+
         return results
 
     def sync_review_summaries_for_games(
@@ -1621,6 +1864,8 @@ class OCISync:
         game_ids = sorted({row.game_id for row in rows})
         if not game_ids:
             return 0
+
+        self._reset_target_sequence_for_table(GamePlayByPlay.__tablename__)
 
         for batch in self._chunked(game_ids, 500):
             self.target_session.query(GamePlayByPlay).filter(GamePlayByPlay.game_id.in_(batch)).delete(

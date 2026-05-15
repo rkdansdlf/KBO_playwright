@@ -35,11 +35,12 @@ from src.utils.game_status import (
     is_live_status,
     is_terminal_status,
     normalize_game_status,
+    derive_stable_game_status,
 )
 from src.utils.player_positions import get_primary_position
 from src.utils.safe_print import safe_print as print
 from src.utils.team_codes import build_kbo_game_id, normalize_kbo_game_id, resolve_team_code, team_code_from_game_id_segment
-from src.utils.team_history import FRANCHISE_CANONICAL_CODE, iter_team_history, resolve_team_code_for_season
+from src.utils.team_history import FRANCHISE_CANONICAL_CODE, find_team_history_entry
 
 SEASON_TYPE_TO_LEAGUE_CODE = {
     "regular": 0,
@@ -364,27 +365,21 @@ def save_schedule_game(
             )
 
             # Schedule crawl should keep already finalized statuses intact.
-            if game.home_score is not None and game.away_score is not None:
-                changed |= _assign_field_if_changed(
-                    game,
-                    "game_status",
-                    _resolve_terminal_status(game.home_score, game.away_score),
-                    game_id=game_id,
-                    source=source,
-                    write_contract=write_contract,
-                )
-            elif game.game_status not in {
-                *TERMINAL_GAME_STATUSES,
-                *LIVE_GAME_STATUSES,
-            }:
-                changed |= _assign_field_if_changed(
-                    game,
-                    "game_status",
-                    GAME_STATUS_SCHEDULED,
-                    game_id=game_id,
-                    source=source,
-                    write_contract=write_contract,
-                )
+            new_status = derive_stable_game_status(
+                game_date=game_date,
+                current_status=game.game_status,
+                new_status=game_data.get("game_status"),
+                home_score=game.home_score,
+                away_score=game.away_score,
+            )
+            changed |= _assign_field_if_changed(
+                game,
+                "game_status",
+                new_status,
+                game_id=game_id,
+                source=source,
+                write_contract=write_contract,
+            )
             
             # Note: Scores and other details are not available in basic schedule crawl
             
@@ -520,42 +515,48 @@ def save_game_detail(
                 write_contract=write_contract,
                 allow_empty=True,
             )
-            winning_team, winning_score = _resolve_winner(home_info, away_info)
-            changed |= _assign_field_if_changed(
-                game,
-                "winning_team",
-                winning_team,
-                game_id=game_id,
-                source=source,
-                write_contract=write_contract,
-                allow_empty=True,
+            # Resolve stable status using evidence from detail payload
+            inning_rows = _build_inning_scores(game_id, teams, season_year=game_date.year)
+            has_progress = bool(inning_rows) or game.home_score is not None or game.away_score is not None
+
+            new_status = derive_stable_game_status(
+                game_date=game_date,
+                current_status=game.game_status,
+                new_status=explicit_status,
+                home_score=game.home_score,
+                away_score=game.away_score,
+                has_progress_evidence=has_progress,
             )
             changed |= _assign_field_if_changed(
                 game,
-                "winning_score",
-                winning_score,
+                "game_status",
+                new_status,
                 game_id=game_id,
                 source=source,
                 write_contract=write_contract,
-                allow_empty=True,
             )
-            if game.home_score is not None and game.away_score is not None:
+            
+            # Winner resolution logic
+            score_complete = game.home_score is not None and game.away_score is not None
+            if score_complete and is_terminal_status(new_status):
+                winning_team, winning_score = _resolve_winner(home_info, away_info)
                 changed |= _assign_field_if_changed(
                     game,
-                    "game_status",
-                    _resolve_terminal_status(game.home_score, game.away_score),
+                    "winning_team",
+                    winning_team,
                     game_id=game_id,
                     source=source,
                     write_contract=write_contract,
+                    allow_empty=True,
                 )
-            elif explicit_status:
                 changed |= _assign_field_if_changed(
                     game,
-                    "game_status",
-                    explicit_status,
+                    "winning_score",
+                    winning_score,
                     game_id=game_id,
                     source=source,
                     write_contract=write_contract,
+                    allow_empty=True,
                 )
             
             # Update Starting Pitchers
@@ -783,21 +784,28 @@ def save_game_snapshot(game_data: Dict[str, Any], *, status: Optional[str] = Non
             if inning_rows:
                 _replace_records(session, GameInningScore, game_id, inning_rows)
 
-            score_complete = game.home_score is not None and game.away_score is not None
-            should_resolve_score_terminal = score_complete and (
-                explicit_status in {GAME_STATUS_COMPLETED, GAME_STATUS_DRAW}
-                or (
-                    explicit_status is None
-                    and game.game_date < date.today()
-                    and inning_rows
-                )
+            # Resolve stable status using evidence
+            # snapshots often have lineups but not necessarily progress
+            has_progress = bool(inning_rows) or game.home_score is not None or game.away_score is not None
+            
+            stable_status = derive_stable_game_status(
+                game_date=game_date,
+                current_status=game.game_status,
+                new_status=status,
+                home_score=game.home_score,
+                away_score=game.away_score,
+                has_progress_evidence=has_progress,
             )
-            if should_resolve_score_terminal:
+            game.game_status = stable_status
+
+            score_complete = game.home_score is not None and game.away_score is not None
+            should_resolve_winner = score_complete and is_terminal_status(stable_status)
+            
+            if should_resolve_winner:
                 game.winning_team, game.winning_score = _resolve_winner(
                     {"code": game.home_team, "score": game.home_score},
                     {"code": game.away_team, "score": game.away_score},
                 )
-                game.game_status = _resolve_terminal_status(game.home_score, game.away_score)
 
             session.commit()
             _auto_sync_to_oci(game_id)
@@ -2004,16 +2012,14 @@ def _resolve_team_identity(team_code: Any, season_year: Optional[int]) -> tuple[
         return None, None, None
     raw_code = str(team_code).strip().upper()
     normalized_code = team_code_from_game_id_segment(raw_code, season_year) or raw_code
-    season_code = resolve_team_code_for_season(normalized_code, season_year) if season_year else normalized_code
-    season_code = season_code or normalized_code
+    entry = find_team_history_entry(normalized_code, season_year)
+    if entry is None and season_year is None:
+        entry = find_team_history_entry(raw_code)
+    if entry is None:
+        return None, None, normalized_code
 
-    franchise_id = None
-    for entry in iter_team_history():
-        if entry.team_code.upper() in {season_code, normalized_code, raw_code}:
-            franchise_id = entry.franchise_id
-            break
-    canonical_code = FRANCHISE_CANONICAL_CODE.get(franchise_id)
-    return franchise_id, canonical_code, season_code
+    canonical_code = FRANCHISE_CANONICAL_CODE.get(entry.franchise_id)
+    return entry.franchise_id, canonical_code, entry.team_code.upper()
 
 
 def _build_pregame_lineup_rows(

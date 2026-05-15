@@ -6,6 +6,7 @@ Handles duplicate records (merged or deleted) and transaction failures.
 import os
 import sys
 import argparse
+from urllib.parse import urlsplit, urlunsplit
 from sqlalchemy import create_engine, text, exc
 from dotenv import load_dotenv
 
@@ -14,10 +15,25 @@ sys.path.append(os.getcwd())
 
 from src.utils.team_history import resolve_team_code_for_season
 
+
+def _mask_url(db_url: str) -> str:
+    parts = urlsplit(db_url)
+    if not parts.password:
+        return db_url
+    username = parts.username or ""
+    hostname = parts.hostname or ""
+    port = f":{parts.port}" if parts.port else ""
+    netloc = f"{username}:***@{hostname}{port}"
+    return urlunsplit((parts.scheme, netloc, parts.path, parts.query, parts.fragment))
+
 # Tables where season/year is directly available
 SEASON_DIRECT_TABLES = [
     ("player_season_batting", "season", "team_code"),
     ("player_season_pitching", "season", "team_code"),
+    ("player_season_fielding", "year", "team_id"),
+    ("player_season_baserunning", "year", "team_id"),
+    ("team_season_batting", "season", "team_id"),
+    ("team_season_pitching", "season", "team_id"),
     ("team_history", "season", "team_code"),
 ]
 
@@ -175,9 +191,9 @@ def main():
 
     for url in urls:
         if not url: continue
-        print(f"\n🚀 Processing {url}...")
+        print(f"\n🚀 Processing {_mask_url(url)}...")
         is_sqlite = url.startswith("sqlite")
-        engine = create_engine(url)
+        engine = create_engine(url, pool_pre_ping=True)
         
         with engine.connect() as conn:
             # For Postgres, we need a transaction to use SAVEPOINTs effectively if we are in one.
@@ -204,7 +220,7 @@ def main():
                 trans.commit()
             except Exception as e:
                 trans.rollback()
-                print(f"💥 Failed to process {url}: {e}")
+                print(f"💥 Failed to process {_mask_url(url)}: {e}")
 
             print(f"\n✅ Total rows repaired (or potential): {repaired_count}")
 

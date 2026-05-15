@@ -1,0 +1,172 @@
+"""
+KBO Daily Data Quality Report Generator.
+Analyzes daily data integrity and statistical consistency.
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import os
+from datetime import datetime, date
+from pathlib import Path
+from typing import Any, Dict, List, Sequence
+from zoneinfo import ZoneInfo
+
+from sqlalchemy import func, select, text
+from src.db.engine import SessionLocal
+from src.models.game import (
+    Game,
+    GameBattingStat,
+    GameInningScore,
+    GameLineup,
+    GameMetadata,
+    GamePitchingStat,
+    GamePlayByPlay,
+    GameSummary,
+)
+from src.models.player import PlayerBasic
+from src.validators.quality_gate import run_quality_gate
+from src.utils.alerting import SlackWebhookClient
+
+
+_KST = ZoneInfo("Asia/Seoul")
+
+def get_daily_metrics(session, target_date_str: str) -> Dict[str, Any]:
+    """Calculate core collection metrics for a specific date."""
+    target_dt = datetime.strptime(target_date_str, "%Y%m%d").date()
+    
+    # 1. Game Status Counts
+    status_counts = (
+        session.query(Game.game_status, func.count(Game.game_id))
+        .filter(Game.game_date == target_dt)
+        .group_by(Game.game_status)
+        .all()
+    )
+    status_map = {status: count for status, count in status_counts}
+    
+    # 2. Detail Completion Analysis
+    completed_games = (
+        session.query(Game.game_id)
+        .filter(Game.game_date == target_dt)
+        .filter(Game.game_status.in_(["COMPLETED", "DRAW"]))
+        .all()
+    )
+    game_ids = [g[0] for g in completed_games]
+    
+    detail_integrity = []
+    for gid in game_ids:
+        metrics = {
+            "game_id": gid,
+            "has_metadata": session.query(GameMetadata).filter_by(game_id=gid).count() > 0,
+            "has_innings": session.query(GameInningScore).filter_by(game_id=gid).count() > 0,
+            "has_lineup": session.query(GameLineup).filter_by(game_id=gid).count() > 0,
+            "has_batting": session.query(GameBattingStat).filter_by(game_id=gid).count() > 0,
+            "has_pitching": session.query(GamePitchingStat).filter_by(game_id=gid).count() > 0,
+            "has_pbp": session.query(GamePlayByPlay).filter_by(game_id=gid).count() > 0,
+        }
+        metrics["is_complete"] = all(metrics.values())
+        detail_integrity.append(metrics)
+    
+    # 3. New Players
+    new_players = (
+        session.query(PlayerBasic.player_id, PlayerBasic.name)
+        .filter(func.strftime("%Y%m%d", PlayerBasic.created_at) == target_date_str)
+        .all()
+    )
+    
+    return {
+        "date": target_date_str,
+        "status_counts": status_map,
+        "detail_integrity": detail_integrity,
+        "new_players": [{"id": p[0], "name": p[1]} for p in new_players],
+        "total_games": sum(status_map.values()),
+        "completed_count": len(game_ids)
+    }
+
+
+def format_telegram_report(metrics: Dict[str, Any], gate_result: Dict[str, Any]) -> str:
+    """Format the metrics and gate results into a readable Telegram message."""
+    lines = [f"<b>📊 KBO Quality Report ({metrics['date']})</b>\n"]
+    
+    # Collection Status
+    total = metrics["total_games"]
+    comp = metrics["completed_count"]
+    status_summary = ", ".join([f"{s}: {c}" for s, c in metrics["status_counts"].items()])
+    lines.append(f"📡 <b>Collection</b>: {comp}/{total} games finished")
+    lines.append(f"   ({status_summary})")
+    
+    # Detail Integrity
+    incomplete = [d["game_id"] for d in metrics["detail_integrity"] if not d["is_complete"]]
+    if not incomplete:
+        lines.append("✅ <b>Integrity</b>: 100% (All details captured)")
+    else:
+        lines.append(f"⚠️ <b>Integrity</b>: {len(incomplete)} games missing details")
+        for gid in incomplete[:3]:
+            lines.append(f"   - {gid}")
+    
+    # Statistical Consistency
+    if gate_result["ok"]:
+        lines.append("✅ <b>Stats</b>: Consistent with cumulative totals")
+    else:
+        bat_miss = len(gate_result["batting"].get("mismatches", []))
+        pit_miss = len(gate_result["pitching"].get("mismatches", []))
+        lines.append(f"❌ <b>Stats</b>: {bat_miss + pit_miss} mismatches detected")
+        if bat_miss: lines.append(f"   - Batting: {bat_miss} issues")
+        if pit_miss: lines.append(f"   - Pitching: {pit_miss} issues")
+        
+    # New Players
+    if metrics["new_players"]:
+        p_names = ", ".join([p["name"] for p in metrics["new_players"][:5]])
+        count = len(metrics["new_players"])
+        lines.append(f"🆕 <b>New Players</b>: {count} found ({p_names})")
+    
+    return "\n".join(lines)
+
+
+def main(argv: Sequence[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description="Generate KBO Daily Quality Report")
+    parser.add_argument("--date", type=str, help="Target date YYYYMMDD (defaults to today)")
+    parser.add_argument("--notify", action="store_true", help="Send to Telegram if issues found")
+    parser.add_argument("--force-notify", action="store_true", help="Always send to Telegram")
+    args = parser.parse_args(argv)
+
+    target_date = args.date if args.date else datetime.now(_KST).strftime("%Y%m%d")
+    year = int(target_date[:4])
+    
+    with SessionLocal() as session:
+        metrics = get_daily_metrics(session, target_date)
+        gate_result = run_quality_gate(session, year)
+        
+    report_json = {
+        "metrics": metrics,
+        "quality_gate": gate_result,
+        "generated_at": datetime.now(_KST).isoformat()
+    }
+    
+    # Save to logs
+    log_dir = Path("logs/quality_reports")
+    log_dir.mkdir(parents=True, exist_ok=True)
+    with open(log_dir / f"{target_date}.json", "w", encoding="utf-8") as f:
+        json.dump(report_json, f, indent=2, ensure_ascii=False)
+        
+    print(f"✅ Quality report saved to {log_dir}/{target_date}.json")
+    
+    # Telegram Notification
+    telegram_msg = format_telegram_report(metrics, gate_result)
+    
+    should_notify = args.force_notify or (
+        args.notify and (not gate_result["ok"] or any(not d["is_complete"] for d in metrics["detail_integrity"]))
+    )
+    
+    if should_notify:
+        print("🚀 Sending report to Telegram...")
+        SlackWebhookClient.send_alert(telegram_msg)
+    else:
+        print("\n" + telegram_msg.replace("<b>", "").replace("</b>", ""))
+        
+    return 0
+
+
+if __name__ == "__main__":
+    import sys
+    sys.exit(main())

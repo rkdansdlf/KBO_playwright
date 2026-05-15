@@ -5,14 +5,19 @@ import sys
 import os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+import pytest
 from playwright.sync_api import sync_playwright
 import time
 from src.crawlers.player_batting_all_series_crawler import crawl_basic2_with_headers
 
 def test_basic2_headers():
     """11개 Basic2 헤더가 모두 정상적으로 클릭되는지 테스트"""
+    if os.getenv("KBO_RUN_LIVE_BASIC2_HEADERS") != "1":
+        pytest.skip("set KBO_RUN_LIVE_BASIC2_HEADERS=1 to run live headed Basic2 header test")
+
     with sync_playwright() as playwright:
-        browser = playwright.chromium.launch(headless=False)
+        headless = os.getenv("KBO_BASIC2_HEADLESS", "1") != "0"
+        browser = playwright.chromium.launch(headless=headless)
         page = browser.new_page()
         
         try:
@@ -64,8 +69,9 @@ def test_basic2_headers():
             print(f"❌ 테스트 중 오류 발생: {e}")
         
         finally:
-            print("\n⏸️  확인을 위해 5초 대기...")
-            time.sleep(5)
+            if not headless:
+                print("\n⏸️  확인을 위해 5초 대기...")
+                time.sleep(5)
             browser.close()
 
 if __name__ == "__main__":

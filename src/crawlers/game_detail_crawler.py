@@ -92,6 +92,42 @@ class GameDetailCrawler:
     def get_last_failure_reason(self, game_id: str) -> Optional[str]:
         return self._last_failure_reason.get(game_id)
 
+    def _section_url(self, game_id: str, game_date: str, section: str) -> str:
+        return f"{self.base_url}?gameDate={game_date}&gameId={game_id}&section={section}"
+
+    async def _navigate_section(
+        self,
+        page: Page,
+        game_id: str,
+        game_date: str,
+        section: str,
+        *,
+        required_selector: Optional[str] = None,
+        timeout: int = 30000,
+        selector_timeout: int = 15000,
+        extra_delay: float = 0,
+    ) -> tuple[bool, str, str]:
+        url = self._section_url(game_id, game_date, section)
+        if not await compliance.is_allowed(url):
+            print(f"❌ BLOCKED by compliance policy: {url}")
+            return False, "blocked", url
+
+        async def _navigate() -> None:
+            await self.policy.delay_async(host="www.koreabaseball.com")
+            await page.goto(url, wait_until="load", timeout=timeout)
+            if extra_delay:
+                await asyncio.sleep(extra_delay)
+            if required_selector:
+                await page.wait_for_selector(required_selector, timeout=selector_timeout)
+
+        try:
+            await self.policy.run_with_retry_async(_navigate)
+        except Exception as exc:
+            print(f"❌ Failed to navigate {section} for {game_id}: {exc}")
+            return False, "navigation_error", url
+
+        return True, "ok", url
+
     async def crawl_game(self, game_id: str, game_date: str, lightweight: bool = False) -> Optional[Dict[str, Any]]:
         game_id = normalize_kbo_game_id(game_id)
         self._last_failure_reason.pop(game_id, None)
@@ -172,22 +208,12 @@ class GameDetailCrawler:
         return [payload for payload in results if payload]
 
     async def _crawl_single(self, page: Page, game_id: str, game_date: str, lightweight: bool = False) -> Optional[Dict[str, Any]]:
-        review_url = f"{self.base_url}?gameDate={game_date}&gameId={game_id}&section=REVIEW"
+        review_url = self._section_url(game_id, game_date, "REVIEW")
         print(f"📡 Navigating to REVIEW: {review_url}")
 
-        if not await compliance.is_allowed(review_url):
-            print(f"❌ BLOCKED by compliance policy: {review_url}")
-            return None
-
-        async def _navigate():
-            await self.policy.delay_async(host="www.koreabaseball.com")
-            await page.goto(review_url, wait_until="networkidle", timeout=30000)
-
-        try:
-            await self.policy.run_with_retry_async(_navigate)
-        except Exception as e:
-            print(f"❌ Failed to navigate after retries: {e}")
-            self._last_failure_reason[game_id] = "navigation_error"
+        ok, reason, _ = await self._navigate_section(page, game_id, game_date, "REVIEW")
+        if not ok:
+            self._last_failure_reason[game_id] = reason
             return None
 
         is_ready, failure_reason = await self._wait_for_boxscore(page, lightweight=lightweight)
@@ -207,8 +233,85 @@ class GameDetailCrawler:
             hitters = {'away': [], 'home': []}
             pitchers = {'away': [], 'home': []}
         else:
-            away_hitters, away_total = await self._extract_hitters(page, 'away', team_info['away']['code'], season_year, roster_map)
-            home_hitters, home_total = await self._extract_hitters(page, 'home', team_info['home']['code'], season_year, roster_map)
+            await self._navigate_section(
+                page,
+                game_id,
+                game_date,
+                "HITTER",
+                required_selector="#tblAwayHitter1, #tblHomeHitter1, #tblAwayHitter3, #tblHomeHitter3",
+                selector_timeout=5000,
+            )
+            away_hitters, away_total = await self._extract_hitters(
+                page,
+                'away',
+                team_info['away']['code'],
+                season_year,
+                roster_map,
+                use_hitter_section=True,
+            )
+            home_hitters, home_total = await self._extract_hitters(
+                page,
+                'home',
+                team_info['home']['code'],
+                season_year,
+                roster_map,
+                use_hitter_section=True,
+            )
+
+            await self._navigate_section(
+                page,
+                game_id,
+                game_date,
+                "PITCHER",
+                required_selector="#tblAwayPitcher, #tblHomePitcher, #tblAwayPitcher1, #tblHomePitcher1",
+                selector_timeout=5000,
+            )
+            pitchers = {
+                'away': await self._extract_pitchers(
+                    page,
+                    'away',
+                    team_info['away']['code'],
+                    season_year,
+                    roster_map,
+                    use_pitcher_section=True,
+                ),
+                'home': await self._extract_pitchers(
+                    page,
+                    'home',
+                    team_info['home']['code'],
+                    season_year,
+                    roster_map,
+                    use_pitcher_section=True,
+                ),
+            }
+
+            if not any((away_hitters, home_hitters, pitchers['away'], pitchers['home'])):
+                ok, reason, _ = await self._navigate_section(page, game_id, game_date, "REVIEW")
+                if not ok:
+                    self._last_failure_reason[game_id] = reason
+                    return None
+                away_hitters, away_total = await self._extract_hitters(
+                    page,
+                    'away',
+                    team_info['away']['code'],
+                    season_year,
+                    roster_map,
+                )
+                home_hitters, home_total = await self._extract_hitters(
+                    page,
+                    'home',
+                    team_info['home']['code'],
+                    season_year,
+                    roster_map,
+                )
+                pitchers = {
+                    'away': await self._extract_pitchers(page, 'away', team_info['away']['code'], season_year, roster_map),
+                    'home': await self._extract_pitchers(page, 'home', team_info['home']['code'], season_year, roster_map),
+                }
+
+            if not any((away_hitters, home_hitters, pitchers['away'], pitchers['home'])):
+                self._last_failure_reason[game_id] = "incomplete_detail"
+                return None
 
             # INTEGRITY CHECK: Sum of hits/AB must match team total
             for side, player_list, total_row in [('away', away_hitters, away_total), ('home', home_hitters, home_total)]:
@@ -225,11 +328,6 @@ class GameDetailCrawler:
                     # DANGEROUS: Returning payload anyway for final calibration
 
             hitters = {'away': away_hitters, 'home': home_hitters}
-
-            pitchers = {
-                'away': await self._extract_pitchers(page, 'away', team_info['away']['code'], season_year, roster_map),
-                'home': await self._extract_pitchers(page, 'home', team_info['home']['code'], season_year, roster_map),
-            }
 
 
         game_data = {
@@ -471,7 +569,16 @@ class GameDetailCrawler:
 
         return {'away': away_info, 'home': home_info}
 
-    async def _extract_hitters(self, page: Page, team_side: str, team_code: Optional[str], season_year: Optional[int], roster_map: Optional[Dict[str, List[Dict[str, Any]]]] = None, db_session=None) -> List[Dict[str, Any]]:
+    async def _extract_hitters(
+        self,
+        page: Page,
+        team_side: str,
+        team_code: Optional[str],
+        season_year: Optional[int],
+        roster_map: Optional[Dict[str, List[Dict[str, Any]]]] = None,
+        db_session=None,
+        use_hitter_section: bool = False,
+    ) -> List[Dict[str, Any]]:
         selectors = ['#tblAwayHitter1', '#tblAwayHitter3'] if team_side == 'away' else ['#tblHomeHitter1', '#tblHomeHitter3']
         tables = []
         for selector in selectors:
@@ -569,7 +676,16 @@ class GameDetailCrawler:
         return results, team_total_stats
 
 
-    async def _extract_pitchers(self, page: Page, team_side: str, team_code: Optional[str], season_year: Optional[int], roster_map: Optional[Dict[str, List[Dict[str, Any]]]] = None, db_session=None) -> List[Dict[str, Any]]:
+    async def _extract_pitchers(
+        self,
+        page: Page,
+        team_side: str,
+        team_code: Optional[str],
+        season_year: Optional[int],
+        roster_map: Optional[Dict[str, List[Dict[str, Any]]]] = None,
+        db_session=None,
+        use_pitcher_section: bool = False,
+    ) -> List[Dict[str, Any]]:
         selectors = ['#tblAwayPitcher', '#tblAwayPitcher1', '#tblAwayPitcher2'] if team_side == 'away' else ['#tblHomePitcher', '#tblHomePitcher1', '#tblHomePitcher2']
         rows = []
         for selector in selectors:

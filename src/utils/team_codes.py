@@ -43,6 +43,7 @@ TEAM_NAME_TO_CODE = {
     "히어로즈": "WO", # Usually refers to Woori/Heroes era
     "우리": "WO",
     "우리 히어로즈": "WO",
+    "HD": "HU",
     "현대": "HU", 
     "현대 유니콘스": "HU",
     "태평양": "TP",
@@ -183,6 +184,8 @@ GAME_ID_SEGMENT_TO_CODE = {
     "WO": "KH", # KBO uses WO (Woori) for Kiwoom franchise, we use KH for current
     "KI": "KH",
     "KH": "KH",
+    "HD": "HU",
+    "HU": "HU",
     "DB": "DB",
     "HT": "KIA", # KBO uses HT (Haitai) for KIA franchise, we use KIA for current
     "KIA": "KIA",
