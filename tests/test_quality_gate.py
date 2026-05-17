@@ -19,7 +19,18 @@ BASELINE = {
     "unresolved_missing_max": 0,
     "orphaned_batting_stats_max": 0,
     "orphaned_pitching_stats_max": 0,
+    "orphaned_lineups_max": 0,
     "missing_player_profiles_max": 0,
+    "game_batting_duplicate_player_groups_max": 0,
+    "game_pitching_duplicate_player_groups_max": 0,
+    "game_lineups_duplicate_player_team_groups_max": 0,
+    "game_batting_player_team_collisions_max": 0,
+    "game_pitching_player_team_collisions_max": 0,
+    "game_lineups_player_team_collisions_max": 0,
+    "batting_hits_gt_at_bats_max": 0,
+    "batting_at_bats_gt_plate_appearances_max": 0,
+    "pitching_earned_runs_gt_runs_allowed_max": 0,
+    "pseudo_player_profiles_max": 0,
 }
 
 
@@ -105,6 +116,31 @@ def test_quality_gate_fails_when_baseline_exceeded():
         oci_missing_ids={"A"},
     )
     assert any("exceeds baseline" in msg for msg in failures)
+
+
+def test_quality_gate_strict_zero_fails_for_baseline_debt():
+    metrics = {
+        "past_missing_runs": 717,
+        "batting_null_player_id": 0,
+        "pitching_null_player_id": 0,
+        "lineups_null_player_id": 0,
+        "unresolved_missing": 0,
+        "past_scheduled": 0,
+        "game_batting_duplicate_player_groups": 1,
+    }
+    baseline = dict(BASELINE)
+    baseline["game_batting_duplicate_player_groups_max"] = 1
+
+    failures = evaluate_quality_gate(
+        local_metrics=metrics,
+        oci_metrics=dict(metrics),
+        baseline=baseline,
+        local_missing_ids={"A"},
+        oci_missing_ids={"A"},
+        strict_zero=True,
+    )
+
+    assert any("strict-zero" in msg for msg in failures)
 
 
 def test_quality_gate_fails_when_local_oci_mismatch_exists():

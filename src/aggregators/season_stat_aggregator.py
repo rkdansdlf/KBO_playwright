@@ -87,6 +87,8 @@ class SeasonStatAggregator:
         query = (
             session.query(
                 GameBattingStat.player_id,
+                func.max(GameBattingStat.player_name).label('player_name'),
+                func.max(GameBattingStat.team_code).label('team_code'),
                 func.count(GameBattingStat.id).label('games'),
                 func.sum(GameBattingStat.plate_appearances).label('plate_appearances'),
                 func.sum(GameBattingStat.at_bats).label('at_bats'),
@@ -108,6 +110,7 @@ class SeasonStatAggregator:
             )
             .join(Game, GameBattingStat.game_id == Game.game_id)
             .join(KboSeason, Game.season_id == KboSeason.season_id)
+            .filter(GameBattingStat.player_id != None)
             .filter(KboSeason.season_year == year)
             .filter(KboSeason.league_type_name.like(f"%{pattern}%"))
             .group_by(GameBattingStat.player_id)
@@ -193,6 +196,8 @@ class SeasonStatAggregator:
         query = (
             session.query(
                 GamePitchingStat.player_id,
+                func.max(GamePitchingStat.player_name).label('player_name'),
+                func.max(GamePitchingStat.team_code).label('team_code'),
                 func.count(GamePitchingStat.id).label('games'),
                 func.sum(func.cast(GamePitchingStat.is_starting, Integer)).label('games_started'),
                 func.sum(GamePitchingStat.wins).label('wins'),
@@ -214,6 +219,7 @@ class SeasonStatAggregator:
             )
             .join(Game, GamePitchingStat.game_id == Game.game_id)
             .join(KboSeason, Game.season_id == KboSeason.season_id)
+            .filter(GamePitchingStat.player_id != None)
             .filter(KboSeason.season_year == year)
             .filter(KboSeason.league_type_name.like(f"%{pattern}%"))
             .group_by(GamePitchingStat.player_id)
@@ -290,6 +296,7 @@ class SeasonStatAggregator:
             )
             .join(Game, GameBattingStat.game_id == Game.game_id)
             .join(KboSeason, Game.season_id == KboSeason.season_id)
+            .filter(GameBattingStat.player_id != None)
             .filter(KboSeason.season_year == year)
             .filter(KboSeason.league_type_name.like(f"%{pattern}%"))
             .group_by(GameBattingStat.player_id)
@@ -329,9 +336,9 @@ class SeasonStatAggregator:
             )
             .join(Game, GameLineup.game_id == Game.game_id)
             .join(KboSeason, Game.season_id == KboSeason.season_id)
+            .filter(GameLineup.player_id != None)
             .filter(KboSeason.season_year == year)
             .filter(KboSeason.league_type_name.like(f"%{pattern}%"))
-            .filter(GameLineup.player_id.isnot(None))
             .group_by(GameLineup.player_id, GameLineup.standard_position)
         )
         

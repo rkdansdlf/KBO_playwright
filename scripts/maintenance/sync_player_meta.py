@@ -41,6 +41,7 @@ def sync_profiles():
                 # Create master player record
                 player = Player(
                     kbo_person_id=kbo_id,
+                    player_basic_id=basic.player_id,
                     height_cm=basic.height_cm,
                     weight_kg=basic.weight_kg,
                     birth_date=basic.birth_date_date,
@@ -49,6 +50,8 @@ def sync_profiles():
                 session.add(player)
                 session.flush() # Get player.id
                 new_players += 1
+            elif player.player_basic_id != basic.player_id:
+                player.player_basic_id = basic.player_id
             
             # 2. Check/create Identity
             identity = session.execute(

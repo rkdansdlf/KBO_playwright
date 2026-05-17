@@ -4,7 +4,7 @@ Team-related ORM models
 from __future__ import annotations
 
 from typing import Optional
-from sqlalchemy import Integer, String, Boolean, JSON, UniqueConstraint, Date
+from sqlalchemy import Integer, String, Boolean, JSON, UniqueConstraint, Date, ForeignKey
 from sqlalchemy.orm import Mapped, mapped_column
 
 from .base import Base, TimestampMixin
@@ -26,7 +26,12 @@ class Team(Base, TimestampMixin):
     franchise_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, comment="Franchise ID")
     
     # New Fields for Phase 7
-    is_active: Mapped[bool] = mapped_column(Boolean, default=True, comment="Currently active team code")
+    is_active: Mapped[bool] = mapped_column(
+        Boolean,
+        default=True,
+        server_default="1",
+        comment="Currently active team code",
+    )
     
     # Use ARRAY for Postgres compatibility, JSON for others (like SQLite)
     from sqlalchemy.dialects.postgresql import ARRAY as PG_ARRAY
@@ -50,8 +55,22 @@ class TeamDailyRoster(Base, TimestampMixin):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     roster_date: Mapped[Date] = mapped_column(Date, nullable=False, index=True)
-    team_code: Mapped[str] = mapped_column(String(10), nullable=False, index=True)
+    team_code: Mapped[str] = mapped_column(String(10), ForeignKey("teams.team_id", ondelete="RESTRICT"), nullable=False, index=True)
     player_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    player_basic_id: Mapped[Optional[int]] = mapped_column(
+        Integer,
+        ForeignKey("player_basic.player_id", ondelete="RESTRICT"),
+        nullable=True,
+        index=True,
+        comment="Canonical player link for roster rows that represent players; staff rows keep this NULL",
+    )
+    person_type: Mapped[str] = mapped_column(
+        String(16),
+        nullable=False,
+        default="player",
+        server_default="player",
+        comment="player|staff|unknown",
+    )
     player_name: Mapped[str] = mapped_column(String(50), nullable=False)
     position: Mapped[str] = mapped_column(String(20)) # e.g. 투수, 포수, 감독
     back_number: Mapped[Optional[str]] = mapped_column(String(10))

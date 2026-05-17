@@ -41,6 +41,13 @@ jobs:
           # Use --no-write so CI does not require writable artifact directories.
           python3 scripts/maintenance/quality_gate.py --oci-only --no-write
 
+      - name: Run Daily Completeness Audit (OCI Only)
+        env:
+          OCI_DB_URL: ${{ secrets.OCI_DB_URL }}
+        run: |
+          # Audit the last 14 days of completed games for missing stats or relay data.
+          python3 scripts/verification/audit_daily_completeness.py --db-url env:OCI_DB_URL --days 14
+
       - name: Notify Telegram on Failure
         if: failure()
         env:

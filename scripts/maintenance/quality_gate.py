@@ -30,6 +30,7 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from src.db.engine import SessionLocal
+from scripts.maintenance.full_audit import collect_audit_metrics, flatten_gate_metrics
 
 BASELINE_KEYS = (
     "past_missing_runs_max",
@@ -39,8 +40,21 @@ BASELINE_KEYS = (
     "unresolved_missing_max",
     "orphaned_batting_stats_max",
     "orphaned_pitching_stats_max",
+    "orphaned_lineups_max",
     "missing_player_profiles_max",
+    "game_batting_duplicate_player_groups_max",
+    "game_pitching_duplicate_player_groups_max",
+    "game_lineups_duplicate_player_team_groups_max",
+    "game_batting_player_team_collisions_max",
+    "game_pitching_player_team_collisions_max",
+    "game_lineups_player_team_collisions_max",
+    "batting_hits_gt_at_bats_max",
+    "batting_at_bats_gt_plate_appearances_max",
+    "pitching_earned_runs_gt_runs_allowed_max",
+    "pseudo_player_profiles_max",
 )
+
+STRICT_ZERO_KEYS = tuple(key.removesuffix("_max") for key in BASELINE_KEYS)
 
 
 def load_baseline(path: Path) -> Dict[str, int]:
@@ -80,6 +94,9 @@ def collect_metrics(session_or_conn) -> Dict[str, int]:
     metrics: Dict[str, int] = {}
     for key, sql in metrics_sql.items():
         metrics[key] = int(session_or_conn.execute(text(sql)).scalar() or 0)
+
+    audit_report = collect_audit_metrics(session_or_conn)
+    metrics.update(flatten_gate_metrics(audit_report))
 
     has_game_status = True
     try:
@@ -142,6 +159,7 @@ def evaluate_quality_gate(
     baseline: Dict[str, int],
     local_missing_ids: Set[str],
     oci_missing_ids: Set[str],
+    strict_zero: bool = False,
 ) -> List[str]:
     failures: List[str] = []
 
@@ -153,7 +171,18 @@ def evaluate_quality_gate(
         "unresolved_missing_max": "unresolved_missing",
         "orphaned_batting_stats_max": "orphaned_batting_stats",
         "orphaned_pitching_stats_max": "orphaned_pitching_stats",
+        "orphaned_lineups_max": "orphaned_lineups",
         "missing_player_profiles_max": "missing_player_profiles",
+        "game_batting_duplicate_player_groups_max": "game_batting_duplicate_player_groups",
+        "game_pitching_duplicate_player_groups_max": "game_pitching_duplicate_player_groups",
+        "game_lineups_duplicate_player_team_groups_max": "game_lineups_duplicate_player_team_groups",
+        "game_batting_player_team_collisions_max": "game_batting_player_team_collisions",
+        "game_pitching_player_team_collisions_max": "game_pitching_player_team_collisions",
+        "game_lineups_player_team_collisions_max": "game_lineups_player_team_collisions",
+        "batting_hits_gt_at_bats_max": "batting_hits_gt_at_bats",
+        "batting_at_bats_gt_plate_appearances_max": "batting_at_bats_gt_plate_appearances",
+        "pitching_earned_runs_gt_runs_allowed_max": "pitching_earned_runs_gt_runs_allowed",
+        "pseudo_player_profiles_max": "pseudo_player_profiles",
     }
 
     for baseline_key, metric_key in threshold_map.items():
@@ -173,8 +202,19 @@ def evaluate_quality_gate(
         "unresolved_missing",
         "orphaned_batting_stats",
         "orphaned_pitching_stats",
+        "orphaned_lineups",
         "missing_player_profiles",
         "live_no_evidence",
+        "game_batting_duplicate_player_groups",
+        "game_pitching_duplicate_player_groups",
+        "game_lineups_duplicate_player_team_groups",
+        "game_batting_player_team_collisions",
+        "game_pitching_player_team_collisions",
+        "game_lineups_player_team_collisions",
+        "batting_hits_gt_at_bats",
+        "batting_at_bats_gt_plate_appearances",
+        "pitching_earned_runs_gt_runs_allowed",
+        "pseudo_player_profiles",
     )
     for key in parity_keys:
         if int(local_metrics.get(key, 0)) != int(oci_metrics.get(key, 0)):
@@ -202,6 +242,15 @@ def evaluate_quality_gate(
             f"past missing game-id set mismatch: local_only={len(local_missing_ids - oci_missing_ids)} "
             f"oci_only={len(oci_missing_ids - local_missing_ids)}"
         )
+
+    if strict_zero:
+        for key in STRICT_ZERO_KEYS:
+            local_val = int(local_metrics.get(key, 0))
+            oci_val = int(oci_metrics.get(key, 0))
+            if local_val > 0:
+                failures.append(f"local {key}={local_val} must be 0 in strict-zero mode")
+            if oci_val > 0:
+                failures.append(f"oci {key}={oci_val} must be 0 in strict-zero mode")
 
     return failures
 
@@ -232,6 +281,7 @@ def run_quality_gate(
     skip_oci: bool = False,
     oci_only: bool = False,
     write_artifacts: bool = True,
+    strict_zero: bool = False,
 ) -> Dict[str, Any]:
     baseline = load_baseline(baseline_path)
 
@@ -268,6 +318,7 @@ def run_quality_gate(
         baseline=baseline,
         local_missing_ids=local_missing_ids,
         oci_missing_ids=oci_missing_ids,
+        strict_zero=strict_zero,
     )
 
     local_snapshot: Path | None = None
@@ -285,6 +336,7 @@ def run_quality_gate(
 
     return {
         "ok": len(failures) == 0,
+        "strict_zero": strict_zero,
         "failures": failures,
         "artifacts_written": write_artifacts,
         "local_snapshot": str(local_snapshot) if local_snapshot else None,
@@ -313,6 +365,7 @@ def main() -> None:
         action="store_false",
         help="Run checks without creating output directories or CSV snapshot artifacts",
     )
+    parser.add_argument("--strict-zero", action="store_true", help="Require all baseline-managed metrics to be zero")
     args = parser.parse_args()
 
     if args.skip_oci and args.oci_only:
@@ -328,6 +381,7 @@ def main() -> None:
         skip_oci=args.skip_oci,
         oci_only=args.oci_only,
         write_artifacts=args.write_artifacts,
+        strict_zero=args.strict_zero,
     )
 
     print("✅ Quality gate finished")

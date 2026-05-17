@@ -619,6 +619,12 @@ class ContextAggregator:
             "KT": "KT", "NC": "NC", "SK": "SSG", "WO": "키움", "KH": "키움",
             "KIA": "KIA", "롯데": "롯데", "삼성": "삼성", "두산": "두산", "한화": "한화", "SSG": "SSG", "키움": "키움"
         }
+        canonical_team_map = {
+            "HT": "KIA", "KIA": "KIA", "롯데": "LT", "LT": "LT", "삼성": "SS", "SS": "SS",
+            "두산": "DB", "OB": "OB", "DB": "DB", "한화": "HH", "HH": "HH", "SSG": "SSG",
+            "SK": "SK", "키움": "KH", "KH": "KH", "WO": "WO", "NX": "NX", "KT": "KT",
+            "NC": "NC", "LG": "LG"
+        }
         if team_code in team_name_map:
             possible_names.append(team_name_map[team_code])
         
@@ -626,10 +632,14 @@ class ContextAggregator:
         reverse_map = {v: k for k, v in team_name_map.items()}
         if team_code in reverse_map:
             possible_names.append(reverse_map[team_code])
+        canonical_codes = list(dict.fromkeys([team_code, canonical_team_map.get(team_code, team_code)]))
 
         start_date = target_date - timedelta(days=days)
         movements = self.session.query(PlayerMovement).filter(
-            PlayerMovement.team_code.in_(possible_names),
+            or_(
+                PlayerMovement.canonical_team_id.in_(canonical_codes),
+                PlayerMovement.team_code.in_(possible_names),
+            ),
             PlayerMovement.movement_date >= start_date,
             PlayerMovement.movement_date <= target_date
         ).order_by(desc(PlayerMovement.movement_date)).all()

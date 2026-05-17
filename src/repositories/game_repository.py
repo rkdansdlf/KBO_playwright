@@ -7,6 +7,7 @@ import os
 from datetime import date, datetime
 from decimal import Decimal
 from typing import Dict, Any, List, Iterable, Optional
+from zoneinfo import ZoneInfo
 
 from sqlalchemy import text
 
@@ -16,6 +17,7 @@ from src.models.game import (
     GameBattingStat, GamePitchingStat, GamePlayByPlay, GameEvent,
     GameSummary, GameIdAlias
 )
+from src.models.player import PlayerBasic
 import re
 from src.services.player_id_resolver import PlayerIdResolver
 from src.services.game_write_contract import GameWriteContract, GameWriteSource
@@ -145,11 +147,6 @@ def _canonicalize_game_id_for_payload(
 
     fallback_date = canonical[:8] if canonical else ""
     date_part = str(game_date or fallback_date).replace("-", "").strip()
-    try:
-        if int(date_part[:4]) < 2024:
-            return canonical, original
-    except (TypeError, ValueError):
-        pass
 
     dh = doubleheader_no
     if dh is None and original[-1:].isdigit():
@@ -192,6 +189,17 @@ def _record_game_id_alias(
             reason=reason,
         )
     )
+
+
+def _new_strict_player_resolver(session) -> PlayerIdResolver:
+    try:
+        return PlayerIdResolver(
+            session,
+            strict_game_resolution=True,
+            allow_auto_register=False,
+        )
+    except TypeError:
+        return PlayerIdResolver(session)
 
 
 def _assign_field_if_changed(
@@ -616,7 +624,26 @@ def save_game_detail(
                     write_contract=write_contract,
                 )
 
-            lineup_rows = _build_lineups(game_id, hitters, season_year=game_date.year)
+            lineup_rows = _prepare_player_rows(
+                game_id,
+                "game_lineups",
+                _build_lineups(game_id, hitters, season_year=game_date.year),
+            )
+            batting_rows = _prepare_player_rows(
+                game_id,
+                "game_batting_stats",
+                _build_batting_stats(game_id, hitters, season_year=game_date.year),
+            )
+            pitching_rows = _prepare_player_rows(
+                game_id,
+                "game_pitching_stats",
+                _build_pitching_stats(game_id, pitchers, season_year=game_date.year),
+            )
+
+            changed |= _ensure_player_basic_stubs(
+                session,
+                [*lineup_rows, *batting_rows, *pitching_rows],
+            )
             if lineup_rows:
                 changed |= _replace_records(
                     session,
@@ -626,8 +653,6 @@ def save_game_detail(
                     source=source,
                     write_contract=write_contract,
                 )
-
-            batting_rows = _build_batting_stats(game_id, hitters, season_year=game_date.year)
             if batting_rows:
                 changed |= _replace_records(
                     session,
@@ -637,8 +662,6 @@ def save_game_detail(
                     source=source,
                     write_contract=write_contract,
                 )
-
-            pitching_rows = _build_pitching_stats(game_id, pitchers, season_year=game_date.year)
             if pitching_rows:
                 changed |= _replace_records(
                     session,
@@ -650,7 +673,7 @@ def save_game_detail(
                 )
 
             # Game Summary Handling
-            resolver = PlayerIdResolver(session)
+            resolver = _new_strict_player_resolver(session)
             summary_rows = []
             
             # Map for quick name lookup for this game
@@ -905,7 +928,7 @@ def save_pregame_lineups(preview_data: Dict[str, Any]) -> bool:
                 },
             )
 
-            resolver = PlayerIdResolver(session)
+            resolver = _new_strict_player_resolver(session)
             away_rows = _build_pregame_lineup_rows(
                 game_id,
                 team_side="away",
@@ -922,6 +945,9 @@ def save_pregame_lineups(preview_data: Dict[str, Any]) -> bool:
                 lineup=preview_data.get("home_lineup") or [],
                 resolver=resolver,
             )
+            prepared_lineups = _prepare_player_rows(game_id, "game_lineups", away_rows + home_rows)
+            away_rows = [row for row in prepared_lineups if row.get("team_side") == "away"]
+            home_rows = [row for row in prepared_lineups if row.get("team_side") == "home"]
 
             if away_rows:
                 _replace_records_for_side(session, GameLineup, game_id, "away", away_rows)
@@ -972,7 +998,8 @@ def refresh_game_status_for_date(target_date: str, today: Optional[date] = None)
     except ValueError:
         return {"target_date": target_date, "total": 0, "updated": 0, "status_counts": {}}
 
-    today = today or date.today()
+    if today is None:
+        today = datetime.now(ZoneInfo("Asia/Seoul")).date()
     with SessionLocal() as session:
         try:
             games = session.query(Game).filter(Game.game_date == dt).all()
@@ -1628,6 +1655,100 @@ def _upsert_metadata(
         )
 
     return changed
+
+
+def _prepare_player_rows(game_id: str, dataset: str, mappings: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    deduped = _dedupe_exact_player_rows(game_id, dataset, mappings)
+    _assert_no_player_team_collisions(game_id, dataset, deduped)
+    return deduped
+
+
+def _dedupe_exact_player_rows(game_id: str, dataset: str, mappings: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    deduped: List[Dict[str, Any]] = []
+    seen: set[str] = set()
+    removed = 0
+    for mapping in mappings:
+        key = repr(sorted(_normalize_record_for_compare(mapping).items()))
+        if key in seen:
+            removed += 1
+            continue
+        seen.add(key)
+        deduped.append(mapping)
+    if removed:
+        print(f"[WARN] Removed {removed} exact duplicate rows from {dataset} for {game_id}")
+    return deduped
+
+
+def _assert_no_player_team_collisions(game_id: str, dataset: str, mappings: List[Dict[str, Any]]) -> None:
+    by_player: Dict[int, set[tuple[str, str]]] = {}
+    for mapping in mappings:
+        player_id = _normalize_player_id(mapping.get("player_id"))
+        if player_id is None:
+            continue
+        team_key = (
+            str(mapping.get("team_side") or "").strip(),
+            str(mapping.get("team_code") or "").strip(),
+        )
+        by_player.setdefault(player_id, set()).add(team_key)
+
+    collisions = {
+        player_id: sorted(team_keys)
+        for player_id, team_keys in by_player.items()
+        if len(team_keys) > 1
+    }
+    if not collisions:
+        return
+
+    preview = ", ".join(
+        f"{player_id}:{team_keys}"
+        for player_id, team_keys in list(collisions.items())[:5]
+    )
+    raise ValueError(
+        f"{dataset} has player_id team collisions for {game_id}: {preview}. "
+        "Refusing to save ambiguous game detail rows."
+    )
+
+
+def _ensure_player_basic_stubs(session, mappings: Iterable[Dict[str, Any]]) -> bool:
+    candidates: Dict[int, Dict[str, Any]] = {}
+    for mapping in mappings:
+        player_id = _normalize_player_id(mapping.get("player_id"))
+        player_name = str(mapping.get("player_name") or "").strip()
+        if player_id is None or not player_name:
+            continue
+        candidates.setdefault(player_id, mapping)
+
+    if not candidates:
+        return False
+
+    existing_ids = {
+        int(row[0])
+        for row in session.query(PlayerBasic.player_id)
+        .filter(PlayerBasic.player_id.in_(list(candidates)))
+        .all()
+        if row[0] is not None
+    }
+    missing_ids = sorted(set(candidates) - existing_ids)
+    if not missing_ids:
+        return False
+
+    for player_id in missing_ids:
+        mapping = candidates[player_id]
+        standard_position = str(mapping.get("standard_position") or "").strip()
+        session.add(
+            PlayerBasic(
+                player_id=player_id,
+                name=str(mapping.get("player_name") or f"Unknown {player_id}"),
+                uniform_no=str(mapping.get("uniform_no")) if mapping.get("uniform_no") not in (None, "") else None,
+                team=str(mapping.get("team_code")) if mapping.get("team_code") not in (None, "") else None,
+                position=str(mapping.get("position") or ("투수" if standard_position == "P" else "")) or None,
+                status="STUB",
+                status_source="game_detail",
+            )
+        )
+    session.flush()
+    print(f"[WARN] Created {len(missing_ids)} player_basic stub(s) for game detail save")
+    return True
 
 
 def _replace_records(

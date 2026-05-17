@@ -27,7 +27,11 @@ async def collect_games(year: int, month: Optional[int] = None, force: bool = Fa
     session = SessionLocal()
     try:
         from src.services.player_id_resolver import PlayerIdResolver
-        resolver = PlayerIdResolver(session)
+        resolver = PlayerIdResolver(
+            session,
+            strict_game_resolution=True,
+            allow_auto_register=False,
+        )
         resolver.preload_season_index(year)
 
         detail_crawler = GameDetailCrawler(request_delay=1.0, resolver=resolver)

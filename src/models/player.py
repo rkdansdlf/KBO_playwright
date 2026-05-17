@@ -85,6 +85,14 @@ class Player(Base, TimestampMixin):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     kbo_person_id: Mapped[Optional[str]] = mapped_column(String(32), unique=True)
+    player_basic_id: Mapped[Optional[int]] = mapped_column(
+        Integer,
+        ForeignKey("player_basic.player_id", ondelete="RESTRICT"),
+        unique=True,
+        nullable=True,
+        index=True,
+        comment="Canonical player_basic.player_id mirror when this row represents a KBO player",
+    )
     birth_date: Mapped[Optional[Date]] = mapped_column(Date, nullable=True)
     birth_place: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
     height_cm: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
@@ -277,6 +285,25 @@ class PlayerMovement(Base, TimestampMixin):
     movement_date: Mapped[Date] = mapped_column(Date, nullable=False, comment="Event date")
     section: Mapped[str] = mapped_column(String(50), nullable=False, comment="Movement type (e.g. Trade)")
     team_code: Mapped[str] = mapped_column(String(20), nullable=False, comment="Related team")
+    canonical_team_id: Mapped[Optional[str]] = mapped_column(
+        String(10),
+        ForeignKey("teams.team_id", ondelete="RESTRICT"),
+        nullable=True,
+        comment="Resolved teams.team_id; raw team_code is retained as source snapshot",
+    )
+    player_basic_id: Mapped[Optional[int]] = mapped_column(
+        Integer,
+        ForeignKey("player_basic.player_id", ondelete="RESTRICT"),
+        nullable=True,
+        comment="Resolved player_basic.player_id when the movement can be unambiguously linked",
+    )
+    resolution_status: Mapped[str] = mapped_column(
+        String(24),
+        nullable=False,
+        default="unresolved",
+        server_default="unresolved",
+        comment="resolved|unresolved|unresolved_player|unresolved_team",
+    )
     player_name: Mapped[str] = mapped_column(String(100), nullable=False, comment="Player name (with position info)")
     remarks: Mapped[Optional[str]] = mapped_column(Text, nullable=True, comment="Detailed remarks")
 
@@ -284,6 +311,8 @@ class PlayerMovement(Base, TimestampMixin):
         UniqueConstraint("movement_date", "team_code", "player_name", "section", name="uq_player_movement"),
         Index("idx_player_movement_date", "movement_date"),
         Index("idx_player_movement_player", "player_name"),
+        Index("idx_player_movement_player_basic", "player_basic_id"),
+        Index("idx_player_movement_canonical_team", "canonical_team_id"),
     )
 
     def __repr__(self) -> str:

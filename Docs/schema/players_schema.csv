@@ -1,6 +1,7 @@
 column_name,type,is_primary_key,foreign_key
 id,INTEGER,True,
 kbo_person_id,VARCHAR(32),False,
+player_basic_id,INTEGER,False,player_basic(player_id)
 birth_date,DATE,False,
 birth_place,VARCHAR(64),False,
 height_cm,INTEGER,False,

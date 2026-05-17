@@ -64,7 +64,11 @@ async def run_pipeline(args: argparse.Namespace):
 
     resolver_session = SessionLocal()
     try:
-        resolver = PlayerIdResolver(resolver_session)
+        resolver = PlayerIdResolver(
+            resolver_session,
+            strict_game_resolution=True,
+            allow_auto_register=False,
+        )
         resolver.preload_season_index(args.year)
         detail_crawler = GameDetailCrawler(request_delay=args.delay, resolver=resolver)
         relay_crawler = RelayCrawler(request_delay=args.delay) if args.relay else None
