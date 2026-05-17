@@ -22,6 +22,7 @@ from src.db.engine import SessionLocal
 
 
 DEFAULT_TABLES = ("game_batting_stats", "game_pitching_stats", "game_lineups")
+DEFAULT_START_YEAR = 2001
 MATCH_COLUMNS = {
     "game_batting_stats": ("game_id", "team_side", "team_code", "player_name", "appearance_seq"),
     "game_pitching_stats": ("game_id", "team_side", "team_code", "player_name", "appearance_seq"),
@@ -184,9 +185,15 @@ def fill_oci_from_local(
 
 
 def parse_args() -> argparse.Namespace:
+    current_year = datetime.now().year
+    default_years = ",".join(str(year) for year in range(DEFAULT_START_YEAR, current_year + 1))
     parser = argparse.ArgumentParser(description="Fill OCI NULL player_id values from local rows.")
     parser.add_argument("--oci-url", default=None, help="OCI/Postgres URL. Defaults to OCI_DB_URL.")
-    parser.add_argument("--years", default="2024,2025", help="Comma-separated years.")
+    parser.add_argument(
+        "--years",
+        default=default_years,
+        help=f"Comma-separated years. Defaults to {DEFAULT_START_YEAR}-{current_year}.",
+    )
     parser.add_argument("--tables", default=",".join(DEFAULT_TABLES), help="Comma-separated table names.")
     parser.add_argument("--output-dir", default="data/oci_null_player_id_from_local")
     parser.add_argument("--apply", action="store_true", help="Persist updates. Default is dry-run only.")

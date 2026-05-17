@@ -137,7 +137,11 @@ class GameDetailCrawler:
         if not self.resolver:
             from src.services.player_id_resolver import PlayerIdResolver
             session = SessionLocal()
-            self.resolver = PlayerIdResolver(session)
+            self.resolver = PlayerIdResolver(
+                session,
+                strict_game_resolution=True,
+                allow_auto_register=False,
+            )
             close_session = True
 
         try:
@@ -239,7 +243,7 @@ class GameDetailCrawler:
                 game_date,
                 "HITTER",
                 required_selector="#tblAwayHitter1, #tblHomeHitter1, #tblAwayHitter3, #tblHomeHitter3",
-                selector_timeout=5000,
+                selector_timeout=15000,
             )
             away_hitters, away_total = await self._extract_hitters(
                 page,
@@ -264,7 +268,7 @@ class GameDetailCrawler:
                 game_date,
                 "PITCHER",
                 required_selector="#tblAwayPitcher, #tblHomePitcher, #tblAwayPitcher1, #tblHomePitcher1",
-                selector_timeout=5000,
+                selector_timeout=15000,
             )
             pitchers = {
                 'away': await self._extract_pitchers(
@@ -587,12 +591,11 @@ class GameDetailCrawler:
                 tables.append(table_rows)
 
         base_rows = tables[0] if tables else []
+        inning_rows = await self._extract_table_rows(page, '#tblAwayHitter2' if team_side == 'away' else '#tblHomeHitter2')
         extra_rows = tables[1] if len(tables) > 1 else []
 
         # KEY FIX: Legacy tables (e.g. 2018) might not have player name in the extra table (Table 3).
         # In that case, we must merge by INDEX, assuming 1:1 correspondence.
-        # Modern tables (Table 2 in some views) might have names.
-        # We check if extra_rows have names.
         extra_has_names = any(r.get('playerName') for r in extra_rows)
 
         extra_map = {}
@@ -613,16 +616,23 @@ class GameDetailCrawler:
 
             p_id = self._safe_int(row.get('playerId'))
 
-
             stats = {}
             extras = {}
             self._populate_hitter_stats(stats, extras, row['cells'])
+
+            # KEY FIX: Derive missing stats from inning breakdown if needed
+            if inning_rows and idx - 1 < len(inning_rows):
+                derived = self._derive_hitter_stats_from_inning_cells(inning_rows[idx - 1]['cells'])
+                for k, v in derived.items():
+                    if stats.get(k) in (0, None):
+                        stats[k] = v
 
             # Key fix for Task 3: Use resolver for exhibition/missing IDs
             if p_id is None and self.resolver and team_code and season_year:
                 p_id = self.resolver.resolve_id(player_name, team_code, season_year, uniform_no=row.get('cells', {}).get('등번호'))
                 if p_id:
                     print(f"   [RESOLVED] {player_name} ({team_code}) -> {p_id}")
+
             # Merge Strategy: Name-based OR Index-based
             if extra_has_names:
                 extra_row = extra_map.get(player_name)
@@ -635,6 +645,16 @@ class GameDetailCrawler:
 
             if extra_row:
                  self._populate_hitter_stats(stats, extras, extra_row['cells'])
+
+            # Formula-based PA backfill if still 0
+            if stats.get('plate_appearances') in (0, None):
+                stats['plate_appearances'] = (
+                    (stats.get('at_bats') or 0) +
+                    (stats.get('walks') or 0) +
+                    (stats.get('hbp') or 0) +
+                    (stats.get('sacrifice_hits') or 0) +
+                    (stats.get('sacrifice_flies') or 0)
+                )
 
             batting_order = self._parse_batting_order(row['cells'])
             position = self._parse_position(row['cells'])
@@ -709,7 +729,12 @@ class GameDetailCrawler:
             if p_id is None and self.resolver and team_code and season_year:
                 p_id = self.resolver.resolve_id(player_name, team_code, season_year, uniform_no=uniform_no)
 
-                if p_id is None:
+                can_register_from_search = not getattr(self.resolver, "strict_game_resolution", False) and getattr(
+                    self.resolver,
+                    "allow_auto_register",
+                    True,
+                )
+                if p_id is None and can_register_from_search:
                     # PROACTIVE SEARCH: If not found in DB, try to find on KBO site and register
                     print(f"🔍 Unknown player '{player_name}' ({team_code}) found. Searching KBO...")
                     from src.crawlers.player_search_crawler import PlayerSearchCrawler
@@ -924,6 +949,23 @@ class GameDetailCrawler:
                 f"name={name}, team_code={team_code or 'N/A'}, "
                 f"uniform_no={uniform_no or 'N/A'}"
             )
+
+    def _derive_hitter_stats_from_inning_cells(self, cells: Dict[str, str]) -> Dict[str, int]:
+        """Counts stats from inning breakdown cells (e.g. '삼진', '4구')."""
+        derived = {"strikeouts": 0, "walks": 0, "hbp": 0, "sacrifice_hits": 0, "sacrifice_flies": 0}
+        for val in cells.values():
+            if not val or val == '&nbsp;': continue
+            if "삼진" in val:
+                derived["strikeouts"] += 1
+            if "4구" in val or "볼넷" in val or "고의4구" in val:
+                derived["walks"] += 1
+            if "사구" in val or "몸에 맞는 볼" in val:
+                derived["hbp"] += 1
+            if "희번" in val or "희생번트" in val:
+                derived["sacrifice_hits"] += 1
+            if "희비" in val or "희생플라이" in val:
+                derived["sacrifice_flies"] += 1
+        return derived
 
     def _populate_hitter_stats(self, stats: Dict[str, Any], extras: Dict[str, Any], cells: Dict[str, str]) -> None:
         for header, value in cells.items():

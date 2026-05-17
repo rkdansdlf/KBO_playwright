@@ -6,13 +6,14 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
+import logging
 from datetime import datetime, date
 from pathlib import Path
-from typing import Any, Dict, List, Sequence
+from typing import Any, Dict, Sequence
 from zoneinfo import ZoneInfo
 
-from sqlalchemy import func, select, text
+from sqlalchemy import MetaData, Table, func, inspect, select
+from sqlalchemy.exc import SQLAlchemyError
 from src.db.engine import SessionLocal
 from src.models.game import (
     Game,
@@ -30,6 +31,65 @@ from src.utils.alerting import SlackWebhookClient
 
 
 _KST = ZoneInfo("Asia/Seoul")
+_LOGGER = logging.getLogger(__name__)
+_PLAYER_BASIC_NEW_PLAYER_COLUMNS = {"player_id", "name", "created_at"}
+
+
+def _player_basic_table_for_new_players(session) -> Table | None:
+    """Return a player_basic table object when new-player dates are queryable."""
+    table = PlayerBasic.__table__
+    table_name = table.name
+    bind = session.get_bind()
+
+    db_columns: set[str] | None = None
+    if bind is not None:
+        try:
+            db_columns = {column["name"] for column in inspect(bind).get_columns(table_name)}
+        except SQLAlchemyError as exc:
+            _LOGGER.info("Could not inspect %s for new player report metrics: %s", table_name, exc)
+
+    if db_columns is not None and not _PLAYER_BASIC_NEW_PLAYER_COLUMNS.issubset(db_columns):
+        _LOGGER.info("Omitting new_players metric: %s.created_at is unavailable", table_name)
+        return None
+
+    if _PLAYER_BASIC_NEW_PLAYER_COLUMNS.issubset(table.c.keys()):
+        return table
+
+    if bind is None:
+        _LOGGER.info("Omitting new_players metric: no database bind is available")
+        return None
+
+    try:
+        reflected_table = Table(table_name, MetaData(), autoload_with=bind)
+    except SQLAlchemyError as exc:
+        _LOGGER.info("Could not reflect %s for new player report metrics: %s", table_name, exc)
+        return None
+
+    if _PLAYER_BASIC_NEW_PLAYER_COLUMNS.issubset(reflected_table.c.keys()):
+        return reflected_table
+
+    _LOGGER.info("Omitting new_players metric: %s.created_at is unavailable", table_name)
+    return None
+
+
+def _get_new_players(session, target_dt: date) -> list[dict[str, Any]]:
+    table = _player_basic_table_for_new_players(session)
+    if table is None:
+        return []
+
+    day_start = datetime.combine(target_dt, datetime.min.time())
+    day_end = datetime.combine(target_dt, datetime.max.time())
+    rows = (
+        session.execute(
+            select(table.c.player_id, table.c.name)
+            .where(table.c.created_at >= day_start)
+            .where(table.c.created_at <= day_end)
+            .order_by(table.c.player_id)
+        )
+        .all()
+    )
+    return [{"id": player_id, "name": name} for player_id, name in rows]
+
 
 def get_daily_metrics(session, target_date_str: str) -> Dict[str, Any]:
     """Calculate core collection metrics for a specific date."""
@@ -68,17 +128,13 @@ def get_daily_metrics(session, target_date_str: str) -> Dict[str, Any]:
         detail_integrity.append(metrics)
     
     # 3. New Players
-    new_players = (
-        session.query(PlayerBasic.player_id, PlayerBasic.name)
-        .filter(func.strftime("%Y%m%d", PlayerBasic.created_at) == target_date_str)
-        .all()
-    )
+    new_players = _get_new_players(session, target_dt)
     
     return {
         "date": target_date_str,
         "status_counts": status_map,
         "detail_integrity": detail_integrity,
-        "new_players": [{"id": p[0], "name": p[1]} for p in new_players],
+        "new_players": new_players,
         "total_games": sum(status_map.values()),
         "completed_count": len(game_ids)
     }

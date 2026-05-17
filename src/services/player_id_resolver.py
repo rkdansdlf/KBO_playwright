@@ -14,8 +14,20 @@ class PlayerIdResolver:
     Resolver ensuring player IDs are found even if missing in game crawl data.
     """
 
-    def __init__(self, session: Session):
+    def __init__(
+        self,
+        session: Session,
+        allow_unknown_registration: bool | None = None,
+        *,
+        strict_game_resolution: bool = False,
+        allow_auto_register: bool | None = None,
+    ):
         self.session = session
+        if allow_auto_register is not None:
+            allow_unknown_registration = allow_auto_register
+        self.allow_unknown_registration = bool(allow_unknown_registration) if allow_unknown_registration is not None else False
+        self.allow_auto_register = self.allow_unknown_registration
+        self.strict_game_resolution = strict_game_resolution
         self._cache = {}
         
         # Load name aliases from CSV
@@ -86,23 +98,51 @@ class PlayerIdResolver:
         self._cache[cache_key] = None
         return None
 
+    def _return_existing_unknown_or_ambiguous(
+        self,
+        cache_key: str,
+        player_name: str,
+        team_code: str,
+        season: int,
+        uniform_no: Optional[str],
+        candidate_ids,
+    ) -> Optional[int]:
+        candidates = sorted({int(pid) for pid in candidate_ids if pid is not None})
+        if team_code and candidates and all(pid >= 900000 for pid in candidates):
+            if self.strict_game_resolution:
+                return self._return_ambiguous(cache_key, player_name, team_code, season, candidates)
+            existing_unknown_id = self._find_existing_unknown_player(player_name, team_code, uniform_no)
+            if existing_unknown_id:
+                self._cache[cache_key] = existing_unknown_id
+                return existing_unknown_id
+        return self._return_ambiguous(cache_key, player_name, team_code, season, candidates)
+
     def preload_season_index(self, season: int) -> None:
         print(f"🔄 Preloading player index for season {season}...")
+        season_index: Dict[str, set[int]] = {}
         
         # Batters
         stmt = select(PlayerBasic.name, PlayerSeasonBatting.team_code, PlayerSeasonBatting.player_id)\
             .join(PlayerBasic, PlayerSeasonBatting.player_id == PlayerBasic.player_id)\
             .where(PlayerSeasonBatting.season == season)
         for name, team, pid in self.session.execute(stmt).fetchall():
-            # Match the format used in resolve_id: {name}_{team}_{season}_{uniform_no or ''}
-            self._cache[f"{name}_{team}_{season}_"] = pid
+            if pid is not None:
+                # Match the format used in resolve_id: {name}_{team}_{season}_{uniform_no or ''}
+                season_index.setdefault(f"{name}_{team}_{season}_", set()).add(int(pid))
             
         # Pitchers 
         stmt = select(PlayerBasic.name, PlayerSeasonPitching.team_code, PlayerSeasonPitching.player_id)\
             .join(PlayerBasic, PlayerSeasonPitching.player_id == PlayerBasic.player_id)\
             .where(PlayerSeasonPitching.season == season)
         for name, team, pid in self.session.execute(stmt).fetchall():
-            self._cache[f"{name}_{team}_{season}_"] = pid
+            if pid is not None:
+                season_index.setdefault(f"{name}_{team}_{season}_", set()).add(int(pid))
+
+        for cache_key, candidate_ids in season_index.items():
+            if len(candidate_ids) == 1:
+                self._cache[cache_key] = next(iter(candidate_ids))
+            else:
+                self._cache[cache_key] = None
 
     def resolve_id(self, player_name: str, team_code: str, season: int, uniform_no: Optional[str] = None) -> Optional[int]:
         if not player_name:
@@ -137,7 +177,14 @@ class PlayerIdResolver:
             self._cache[cache_key] = pid
             return pid
         if len(season_candidate_ids) > 1:
-            return self._return_ambiguous(cache_key, player_name, team_code, season, season_candidate_ids)
+            return self._return_existing_unknown_or_ambiguous(
+                cache_key,
+                player_name,
+                team_code,
+                season,
+                uniform_no,
+                season_candidate_ids,
+            )
 
         # 2. Try PlayerBasic with Team/Career context
         kor_team_name = self.TEAM_NAME_MAP.get(team_code, '')
@@ -158,7 +205,14 @@ class PlayerIdResolver:
                 self._cache[cache_key] = pid
                 return pid
             if len(results) > 1:
-                return self._return_ambiguous(cache_key, player_name, team_code, season, [row[0] for row in results])
+                return self._return_existing_unknown_or_ambiguous(
+                    cache_key,
+                    player_name,
+                    team_code,
+                    season,
+                    uniform_no,
+                    [row[0] for row in results],
+                )
 
         # 3. Fallback: Relaxed Uniqueness Check
         # If we have uniform_no, try unique by (name, uniform_no) global
@@ -173,7 +227,22 @@ class PlayerIdResolver:
                 self._cache[cache_key] = pid
                 return pid
             if len(results) > 1:
-                return self._return_ambiguous(cache_key, player_name, team_code, season, [row[0] for row in results])
+                return self._return_existing_unknown_or_ambiguous(
+                    cache_key,
+                    player_name,
+                    team_code,
+                    season,
+                    uniform_no,
+                    [row[0] for row in results],
+                )
+
+        if self.strict_game_resolution:
+            print(
+                f"   [UNRESOLVED PLAYER] {player_name} ({team_code}, {season}) lacked "
+                "strict team/season/uniform evidence. Leaving player_id NULL."
+            )
+            self._cache[cache_key] = None
+            return None
 
         # 4. Ultimate Fallback: Is the name unique in the entire KBO history?
         stmt = select(PlayerBasic.player_id).where(PlayerBasic.name == player_name)
@@ -183,7 +252,14 @@ class PlayerIdResolver:
             self._cache[cache_key] = pid
             return pid
         if len(results) > 1:
-            return self._return_ambiguous(cache_key, player_name, team_code, season, [row[0] for row in results])
+            return self._return_existing_unknown_or_ambiguous(
+                cache_key,
+                player_name,
+                team_code,
+                season,
+                uniform_no,
+                [row[0] for row in results],
+            )
             
         # 5. Last resort: Try relaxed season resolution without uniform_no or strict team
         relaxed_id = self._resolve_relaxed(player_name, team_code, season)
@@ -191,7 +267,23 @@ class PlayerIdResolver:
             self._cache[cache_key] = relaxed_id
             return relaxed_id
 
-        # 6. Auto-register unknown player as a local profile
+        # 6. Optional legacy fallback: auto-register unknown player as a local profile.
+        if not self.allow_unknown_registration:
+            print(
+                f"   [UNKNOWN PLAYER] {player_name} ({team_code}, {season}) was not resolved. "
+                "Leaving player_id NULL; automatic local profile registration is disabled."
+            )
+            self._cache[cache_key] = None
+            return None
+
+        if not team_code:
+            print(
+                f"   [UNKNOWN PLAYER] {player_name} ({season}) has no team context. "
+                "Leaving player_id NULL instead of auto-registering."
+            )
+            self._cache[cache_key] = None
+            return None
+
         new_id = self.register_unknown_player(player_name, team_code, uniform_no)
         if new_id:
             self._cache[cache_key] = new_id
@@ -199,10 +291,46 @@ class PlayerIdResolver:
 
         return None
 
+    def _unknown_profile_team(self, team_code: str) -> str:
+        return self.TEAM_NAME_MAP.get(team_code, team_code)
+
+    def _find_existing_unknown_player(self, name: str, team_code: str, uniform_no: Optional[str]) -> Optional[int]:
+        team_name = self._unknown_profile_team(team_code)
+        stmt = select(PlayerBasic.player_id).where(
+            PlayerBasic.player_id >= 900000,
+            PlayerBasic.name == name,
+        )
+        if team_name:
+            stmt = stmt.where(PlayerBasic.team == team_name)
+        else:
+            stmt = stmt.where(or_(PlayerBasic.team.is_(None), PlayerBasic.team == ""))
+
+        if uniform_no:
+            stmt = stmt.where(PlayerBasic.uniform_no == str(uniform_no))
+        else:
+            stmt = stmt.where(or_(PlayerBasic.uniform_no.is_(None), PlayerBasic.uniform_no == ""))
+
+        existing_ids = sorted(
+            int(row[0])
+            for row in self.session.execute(stmt).fetchall()
+            if row[0] is not None
+        )
+        return existing_ids[0] if existing_ids else None
+
     def register_unknown_player(self, name: str, team_code: str, uniform_no: Optional[str]) -> Optional[int]:
+        existing_id = self._find_existing_unknown_player(name, team_code, uniform_no)
+        if existing_id:
+            print(f"   [UNKNOWN PLAYER REUSED] {name} ({team_code}) -> {existing_id}")
+            return existing_id
+
         print(f"   [NEW PLAYER ADDED] Auto-registering local profile for {name} ({team_code})")
         # Generate a large fake ID (>900000)
-        stmt = select(PlayerBasic.player_id).order_by(PlayerBasic.player_id.desc()).limit(1)
+        stmt = (
+            select(PlayerBasic.player_id)
+            .where(PlayerBasic.player_id >= 900000)
+            .order_by(PlayerBasic.player_id.desc())
+            .limit(1)
+        )
         max_id = self.session.execute(stmt).scalar()
         if max_id is None or max_id < 900000:
             new_id = 900000
@@ -210,7 +338,7 @@ class PlayerIdResolver:
             new_id = max_id + 1
 
         try:
-            kor_team_name = self.TEAM_NAME_MAP.get(team_code, team_code)
+            kor_team_name = self._unknown_profile_team(team_code)
             new_player = PlayerBasic(
                 player_id=new_id,
                 name=name,

@@ -83,7 +83,10 @@ def derive_stable_game_status(
     Central logic to resolve game status based on date and evidence.
     Ensures stability and prevents premature LIVE/COMPLETED transitions.
     """
-    today = today or date.today()
+    if today is None:
+        from zoneinfo import ZoneInfo
+        from datetime import datetime
+        today = datetime.now(ZoneInfo("Asia/Seoul")).date()
     
     # 1. Future games are strictly SCHEDULED unless manually overridden (not handled here)
     if game_date > today:

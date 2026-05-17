@@ -32,6 +32,13 @@ DEFAULT_OUTPUT_DIR = PROJECT_ROOT / "data"
 DEFAULT_TABLES = ("game_batting_stats", "game_pitching_stats", "game_lineups")
 
 
+def _default_years() -> tuple[int, ...]:
+    return tuple(range(2001, datetime.now().year + 1))
+
+
+DEFAULT_YEARS = _default_years()
+
+
 @dataclass(frozen=True)
 class OverrideEntry:
     source_table: str
@@ -588,7 +595,11 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Conservatively fill NULL player_id values.")
     parser.add_argument("--oci", action="store_true", help="Use OCI_DB_URL instead of local DATABASE_URL.")
     parser.add_argument("--db-url", default=None, help="Explicit database URL. Overrides --oci and local DATABASE_URL.")
-    parser.add_argument("--years", default="2024,2025", help="Comma-separated years to inspect.")
+    parser.add_argument(
+        "--years",
+        default=",".join(str(year) for year in DEFAULT_YEARS),
+        help="Comma-separated years to inspect.",
+    )
     parser.add_argument("--tables", default=",".join(DEFAULT_TABLES), help="Comma-separated table names.")
     parser.add_argument("--overrides-csv", default=str(DEFAULT_OVERRIDES_CSV), help="Manual override CSV path.")
     parser.add_argument("--output-dir", default=str(DEFAULT_OUTPUT_DIR), help="Directory for report CSV files.")

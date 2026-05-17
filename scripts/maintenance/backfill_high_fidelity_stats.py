@@ -41,6 +41,7 @@ async def backfill_batting_stats(year: int, player_ids: Optional[List[int]] = No
             FROM player_season_batting ps
             JOIN player_basic pb ON ps.player_id = pb.player_id
             WHERE ps.season = {year} AND ps.league = 'REGULAR'
+            AND ps.player_id >= 50000
         """
         if player_ids:
             p_list = ",".join(map(str, player_ids))
@@ -109,6 +110,7 @@ async def backfill_pitching_stats(year: int, player_ids: Optional[List[int]] = N
             FROM player_season_pitching ps
             JOIN player_basic pb ON ps.player_id = pb.player_id
             WHERE ps.season = {year} AND ps.league = 'REGULAR'
+            AND ps.player_id >= 50000
         """
         if player_ids:
             p_list = ",".join(map(str, player_ids))

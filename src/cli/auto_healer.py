@@ -112,7 +112,11 @@ async def run_healer_async(dry_run: bool = False) -> int:
     print(f"\n🚀 Initiating self-recovery for {total} game(s)...")
     
     with SessionLocal() as db_session:
-        resolver = PlayerIdResolver(db_session)
+        resolver = PlayerIdResolver(
+            db_session,
+            strict_game_resolution=True,
+            allow_auto_register=False,
+        )
         # Preload for potentially multiple years found in anomalies
         years = {d.year for d in anomaly_dates}
         for y in years:

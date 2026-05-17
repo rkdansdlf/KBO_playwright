@@ -4,11 +4,17 @@ from sqlalchemy import select, update, delete
 from sqlalchemy.orm import Session
 
 from src.db.engine import SessionLocal
-from src.models.player import PlayerBasic, PlayerSeasonBatting, PlayerSeasonPitching
+from src.models.player import (
+    PlayerBasic, 
+    PlayerSeasonBatting, 
+    PlayerSeasonPitching,
+    PlayerSeasonFielding,
+    PlayerSeasonBaserunning
+)
 from src.models.game import GameBattingStat, GamePitchingStat, GameLineup
 
 def merge_player(session: Session, source_id: int, target_id: int):
-    """Merges source_id into target_id for all game stat models, then deletes source_id."""
+    """Merges source_id into target_id for all game and season stat models, then deletes source_id."""
     print(f"Merging temporary ID {source_id} -> Official KBO ID {target_id}")
     
     # 1. Update Game Batting Stats
@@ -25,12 +31,30 @@ def merge_player(session: Session, source_id: int, target_id: int):
     l_updated = session.execute(
         update(GameLineup).where(GameLineup.player_id == source_id).values(player_id=target_id)
     ).rowcount
+
+    # 4. Update Season Stats (Batting, Pitching, Fielding, Baserunning)
+    # If update fails due to UniqueConstraint, it means official profile already has that season record.
+    # In that case, we delete the temporary profile's season record to satisfy FK when deleting PlayerBasic.
+    for model, label in [
+        (PlayerSeasonBatting, "Batting"),
+        (PlayerSeasonPitching, "Pitching"),
+        (PlayerSeasonFielding, "Fielding"),
+        (PlayerSeasonBaserunning, "Baserunning")
+    ]:
+        try:
+            updated = session.execute(
+                update(model).where(model.player_id == source_id).values(player_id=target_id)
+            ).rowcount
+            print(f"  - Season {label} updated: {updated}")
+        except Exception:
+            deleted = session.execute(
+                delete(model).where(model.player_id == source_id)
+            ).rowcount
+            print(f"  - Season {label} merged (deleted pseudo): {deleted}")
     
-    print(f"  - Batting Stats updated: {b_updated}")
-    print(f"  - Pitching Stats updated: {p_updated}")
-    print(f"  - Lineups updated: {l_updated}")
+    session.commit() # Commit updates/deletes in other tables first
     
-    # 4. Delete temporary PlayerBasic profile
+    # 5. Delete temporary PlayerBasic profile
     session.execute(delete(PlayerBasic).where(PlayerBasic.player_id == source_id))
     session.commit()
     print(f"✅ Deleted temporary profile {source_id}")

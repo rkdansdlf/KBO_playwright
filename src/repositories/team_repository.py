@@ -8,7 +8,11 @@ from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.dialects.mysql import insert as mysql_insert
 
+from src.models.player import PlayerBasic
 from src.models.team import TeamDailyRoster
+
+PLAYER_ROSTER_POSITIONS = {"투수", "포수", "내야수", "외야수", "선수"}
+STAFF_ROSTER_POSITIONS = {"감독", "코치"}
 
 class TeamRepository:
     def __init__(self, session: Session):
@@ -32,22 +36,46 @@ class TeamRepository:
             return 0
 
         dialect = self.session.get_bind().dialect.name
-        values = [
-            {
-                "roster_date": r["roster_date"],
-                "team_code": r["team_code"],
-                "player_id": r["player_id"],
-                "player_name": r["player_name"],
-                "position": r["position"],
-                "back_number": r["back_number"],
-            }
+        candidate_player_ids = {
+            int(r["player_id"])
             for r in rows
-        ]
+            if self._person_type_for_position(r.get("position")) == "player" and r.get("player_id") is not None
+        }
+        existing_player_ids = set()
+        if candidate_player_ids:
+            existing_player_ids = {
+                int(row[0])
+                for row in self.session.query(PlayerBasic.player_id)
+                .filter(PlayerBasic.player_id.in_(candidate_player_ids))
+                .all()
+            }
+
+        values = []
+        for r in rows:
+            player_id = int(r["player_id"])
+            person_type = r.get("person_type") or self._person_type_for_position(r.get("position"))
+            player_basic_id = r.get("player_basic_id")
+            if player_basic_id is None and person_type == "player" and player_id in existing_player_ids:
+                player_basic_id = player_id
+            values.append(
+                {
+                    "roster_date": r["roster_date"],
+                    "team_code": r["team_code"],
+                    "player_id": player_id,
+                    "player_basic_id": player_basic_id,
+                    "person_type": person_type,
+                    "player_name": r["player_name"],
+                    "position": r["position"],
+                    "back_number": r["back_number"],
+                }
+            )
 
         if dialect == "sqlite":
             stmt = sqlite_insert(TeamDailyRoster).values(values)
             update_dict = {
                 "player_name": stmt.excluded.player_name,
+                "player_basic_id": stmt.excluded.player_basic_id,
+                "person_type": stmt.excluded.person_type,
                 "position": stmt.excluded.position,
                 "back_number": stmt.excluded.back_number,
                 "updated_at": text("CURRENT_TIMESTAMP"),
@@ -61,6 +89,8 @@ class TeamRepository:
             stmt = mysql_insert(TeamDailyRoster).values(values)
             update_dict = {
                 "player_name": stmt.inserted.player_name,
+                "player_basic_id": stmt.inserted.player_basic_id,
+                "person_type": stmt.inserted.person_type,
                 "position": stmt.inserted.position,
                 "back_number": stmt.inserted.back_number,
                 "updated_at": text("CURRENT_TIMESTAMP"),
@@ -71,6 +101,8 @@ class TeamRepository:
             stmt = pg_insert(TeamDailyRoster).values(values)
             update_dict = {
                 "player_name": stmt.excluded.player_name,
+                "player_basic_id": stmt.excluded.player_basic_id,
+                "person_type": stmt.excluded.person_type,
                 "position": stmt.excluded.position,
                 "back_number": stmt.excluded.back_number,
                 "updated_at": text("CURRENT_TIMESTAMP"),
@@ -83,3 +115,11 @@ class TeamRepository:
 
         self.session.commit()
         return len(values)
+
+    def _person_type_for_position(self, position: str | None) -> str:
+        normalized = str(position or "").strip()
+        if normalized in PLAYER_ROSTER_POSITIONS:
+            return "player"
+        if normalized in STAFF_ROSTER_POSITIONS:
+            return "staff"
+        return "unknown"
