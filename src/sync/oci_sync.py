@@ -620,6 +620,8 @@ class OCISync:
                     'roster_date': r.roster_date,
                     'team_code': r.team_code,
                     'player_id': r.player_id,
+                    'player_basic_id': r.player_basic_id,
+                    'person_type': r.person_type,
                     'player_name': r.player_name,
                     'position': r.position,
                     'back_number': r.back_number,
@@ -636,6 +638,8 @@ class OCISync:
             
             update_dict = {
                 'player_name': stmt.excluded.player_name,
+                'player_basic_id': stmt.excluded.player_basic_id,
+                'person_type': stmt.excluded.person_type,
                 'position': stmt.excluded.position,
                 'back_number': stmt.excluded.back_number,
                 'updated_at': stmt.excluded.updated_at
@@ -821,6 +825,7 @@ class OCISync:
             # Map all relevant fields including the new photo_url and profile details
             data = {
                 'kbo_person_id': player.kbo_person_id,
+                'player_basic_id': player.player_basic_id,
                 'birth_date': player.birth_date,
                 'birth_place': player.birth_place,
                 'height_cm': player.height_cm,
@@ -942,51 +947,14 @@ class OCISync:
         return synced
 
     def sync_player_basic(self, limit: int = None) -> int:
-        """Sync player_basic data from SQLite to OCI"""
-        query = self.sqlite_session.query(PlayerBasic)
-        if limit:
-            query = query.limit(limit)
-
-        players = query.all()
-        synced = 0
-
-        for player in players:
-            data = {
-                'player_id': player.player_id,
-                'name': player.name,
-                'uniform_no': player.uniform_no,
-                'team': player.team,
-                'position': player.position,
-                'birth_date': player.birth_date,
-                'birth_date_date': player.birth_date_date,
-                'height_cm': player.height_cm,
-                'weight_kg': player.weight_kg,
-                'career': player.career,
-                'status': player.status,
-                'staff_role': player.staff_role,
-                'status_source': player.status_source,
-                'photo_url': player.photo_url,
-                'bats': player.bats,
-                'throws': player.throws,
-                'debut_year': player.debut_year,
-                'salary_original': player.salary_original,
-                'signing_bonus_original': player.signing_bonus_original,
-                'draft_info': player.draft_info,
-            }
-
-            stmt = pg_insert(PlayerBasic).values(**data)
-            update_dict = {k: stmt.excluded[k] for k in data.keys() if k != 'player_id'}
-            stmt = stmt.on_conflict_do_update(
-                index_elements=['player_id'],
-                set_=update_dict
-            )
-
-            self.target_session.execute(stmt)
-            synced += 1
-
-        self.target_session.commit()
-        print(f"✅ Synced {synced} player_basic records to OCI")
-        return synced
+        """Sync player_basic data from SQLite to OCI using fast bulk COPY"""
+        return self._sync_simple_table(
+            PlayerBasic,
+            conflict_keys=['player_id'],
+            exclude_cols=['created_at', 'updated_at'], # Let OCI handle timestamps if possible, or include them if needed
+            filters=None,
+            batch_size=5000
+        )
 
     def sync_player_basic_by_ids(self, player_ids: List[int]) -> int:
         """Sync specific players from SQLite to OCI by their IDs"""
@@ -1052,6 +1020,14 @@ class OCISync:
                 .all()
             )
             referenced_player_ids.update(int(row[0]) for row in rows if row[0] is not None)
+        for column in (GameEvent.batter_id, GameEvent.pitcher_id):
+            rows = (
+                self.sqlite_session.query(column)
+                .filter(GameEvent.game_id.in_(target_game_ids), column.isnot(None))
+                .distinct()
+                .all()
+            )
+            referenced_player_ids.update(int(row[0]) for row in rows if row[0] is not None)
 
         if not referenced_player_ids:
             return 0
@@ -1093,6 +1069,9 @@ class OCISync:
                 'movement_date': m.movement_date,
                 'section': m.section,
                 'team_code': m.team_code,
+                'canonical_team_id': m.canonical_team_id,
+                'player_basic_id': m.player_basic_id,
+                'resolution_status': m.resolution_status,
                 'player_name': m.player_name,
                 'remarks': m.remarks
             }
@@ -1101,6 +1080,9 @@ class OCISync:
             
             update_dict = {
                 'remarks': stmt.excluded.remarks,
+                'canonical_team_id': stmt.excluded.canonical_team_id,
+                'player_basic_id': stmt.excluded.player_basic_id,
+                'resolution_status': stmt.excluded.resolution_status,
                 'updated_at': text('CURRENT_TIMESTAMP')
             }
             
@@ -1832,6 +1814,7 @@ class OCISync:
                     delete_query = delete_query.filter(GameSummary.summary_type == summary_type)
                 delete_query.delete(synchronize_session=False)
             self.target_session.commit()
+            self._reset_target_sequence_for_table(GameSummary.__tablename__)
 
         columns = [
             c.key
@@ -1855,45 +1838,29 @@ class OCISync:
     def _sync_game_play_by_play(self, filters: List = None) -> int:
         from src.models.game import GamePlayByPlay
 
-        query = self.sqlite_session.query(GamePlayByPlay)
+        query = self.sqlite_session.query(GamePlayByPlay.game_id).distinct()
         if filters:
             for filter_clause in filters:
                 query = query.filter(filter_clause)
 
-        rows = query.all()
-        game_ids = sorted({row.game_id for row in rows})
+        game_ids = [row[0] for row in query.all()]
         if not game_ids:
             return 0
-
-        self._reset_target_sequence_for_table(GamePlayByPlay.__tablename__)
 
         for batch in self._chunked(game_ids, 500):
             self.target_session.query(GamePlayByPlay).filter(GamePlayByPlay.game_id.in_(batch)).delete(
                 synchronize_session=False
             )
-
-        mappings = []
-        for row in rows:
-            mappings.append(
-                {
-                    "game_id": row.game_id,
-                    "inning": row.inning,
-                    "inning_half": row.inning_half,
-                    "pitcher_name": row.pitcher_name,
-                    "batter_name": row.batter_name,
-                    "play_description": row.play_description,
-                    "event_type": row.event_type,
-                    "result": row.result,
-                    "created_at": row.created_at,
-                    "updated_at": row.updated_at,
-                }
-            )
-
-        if mappings:
-            self.target_session.execute(GamePlayByPlay.__table__.insert(), mappings)
         self.target_session.commit()
-        print(f"✅ Synced {len(mappings)} game_play_by_play rows to OCI")
-        return len(mappings)
+
+        # Use _sync_simple_table with empty conflict_keys for blind bulk insert
+        return self._sync_simple_table(
+            GamePlayByPlay,
+            conflict_keys=[], # Blind insert
+            exclude_cols=['id'],
+            filters=filters,
+            batch_size=20000
+        )
 
     def _sync_simple_table(
         self,
@@ -1910,7 +1877,8 @@ class OCISync:
         elif 'id' not in exclude_cols:
             exclude_cols.append('id')
 
-        columns = [c.key for c in model.__table__.columns if c.key not in exclude_cols and c.key not in ('created_at', 'updated_at')]
+        # Use all columns except those explicitly excluded
+        columns = [c.key for c in model.__table__.columns if c.key not in exclude_cols]
 
         query = self.sqlite_session.query(model)
         if filters:
@@ -1930,6 +1898,13 @@ class OCISync:
             records = []
             for row in rows:
                 data = {c: getattr(row, c) for c in columns if hasattr(row, c)}
+                
+                # Ensure created_at/updated_at are never null if the table requires them
+                now = datetime.now()
+                if 'created_at' in columns and data.get('created_at') is None:
+                    data['created_at'] = now
+                if 'updated_at' in columns and data.get('updated_at') is None:
+                    data['updated_at'] = now
 
                 # Apply transformation if provided
                 if transform_fn:

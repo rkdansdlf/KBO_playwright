@@ -19,7 +19,7 @@ def test_run_pipeline_injects_player_id_resolver(monkeypatch):
             calls["session_closed"] = True
 
     class FakeResolver:
-        def __init__(self, session):
+        def __init__(self, session, **_kwargs):
             calls["resolver_session"] = session
 
         def preload_season_index(self, year: int):
@@ -91,7 +91,7 @@ def test_run_pipeline_filters_requested_game_ids(monkeypatch):
             return None
 
     class FakeResolver:
-        def __init__(self, session):
+        def __init__(self, session, **_kwargs):
             self.session = session
 
         def preload_season_index(self, year: int):

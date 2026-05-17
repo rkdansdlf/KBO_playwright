@@ -13,7 +13,8 @@ import time
 from datetime import datetime
 from typing import Sequence
 
-import pytz
+import httpx
+from zoneinfo import ZoneInfo
 
 from src.crawlers.game_detail_crawler import GameDetailCrawler
 from src.crawlers.naver_relay_crawler import NaverRelayCrawler
@@ -27,7 +28,7 @@ from src.utils.safe_print import safe_print as print
 
 async def run_live_crawler_cycle(*, sync_to_oci: bool | None = None) -> bool:
     """Run one live polling cycle. Returns True when at least one game was updated."""
-    seoul_tz = pytz.timezone("Asia/Seoul")
+    seoul_tz = ZoneInfo("Asia/Seoul")
     now = datetime.now(seoul_tz)
     today_str = now.strftime("%Y%m%d")
 
@@ -159,7 +160,7 @@ async def main_loop(interval_minutes: int, *, sync_to_oci: bool | None = None):
         try:
             active = await run_live_crawler_cycle(sync_to_oci=sync_to_oci)
             if not active:
-                seoul_tz = pytz.timezone("Asia/Seoul")
+                seoul_tz = ZoneInfo("Asia/Seoul")
                 now = datetime.now(seoul_tz)
                 if now.hour < 12 or now.hour >= 23:
                     print("[SLEEP] Outside primary live window. Sleeping for 30 minutes.")

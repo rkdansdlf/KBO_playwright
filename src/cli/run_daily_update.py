@@ -339,7 +339,11 @@ async def run_update(
     resolver_session = SessionLocal()
     processed_game_ids: list[str] = []
     try:
-        resolver = PlayerIdResolver(resolver_session)
+        resolver = PlayerIdResolver(
+            resolver_session,
+            strict_game_resolution=True,
+            allow_auto_register=False,
+        )
         resolver.preload_season_index(year)
         g_crawler = GameDetailCrawler(resolver=resolver)
 

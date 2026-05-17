@@ -91,7 +91,7 @@ class _ForeignKeyCheckingSyncer:
         self.closed = True
 
 
-def test_preview_sync_pushes_player_basic_before_missing_player_lineup(monkeypatch):
+def test_preview_sync_leaves_unresolved_player_lineup_null(monkeypatch):
     SessionLocal = _build_session_factory()
     _ForeignKeyCheckingSyncer.created = []
 
@@ -113,6 +113,6 @@ def test_preview_sync_pushes_player_basic_before_missing_player_lineup(monkeypat
 
     with SessionLocal() as session:
         lineup = session.query(GameLineup).filter(GameLineup.game_id == "20260515NCLT0").one()
-        player = session.query(PlayerBasic).filter(PlayerBasic.player_id == lineup.player_id).one()
-        assert player.name == "신규타자"
-        assert lineup.player_id in syncer.synced_player_ids
+        assert lineup.player_id is None
+        assert session.query(PlayerBasic).filter(PlayerBasic.name == "신규타자").count() == 0
+        assert syncer.synced_player_ids == set()

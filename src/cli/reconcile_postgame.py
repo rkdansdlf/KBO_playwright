@@ -23,7 +23,11 @@ async def run_reconciliation(args: argparse.Namespace) -> int:
 
     session = SessionLocal()
     try:
-        resolver = PlayerIdResolver(session)
+        resolver = PlayerIdResolver(
+            session,
+            strict_game_resolution=True,
+            allow_auto_register=False,
+        )
         for season_year in range(int(start_date[:4]), year + 1):
             resolver.preload_season_index(season_year)
 

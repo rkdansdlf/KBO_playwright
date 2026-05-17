@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import date, time
 
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, event
 from sqlalchemy.orm import sessionmaker
 
 import src.repositories.game_repository as game_repository
@@ -19,11 +19,11 @@ from src.models.game import (
 )
 from src.models.player import PlayerBasic
 from src.services.game_write_contract import GameWriteContract
-from src.utils.game_status import GAME_STATUS_CANCELLED, GAME_STATUS_LIVE, GAME_STATUS_SCHEDULED
+from src.utils.game_status import GAME_STATUS_CANCELLED, GAME_STATUS_COMPLETED, GAME_STATUS_LIVE, GAME_STATUS_SCHEDULED
 
 
 class _FakeResolver:
-    def __init__(self, session):
+    def __init__(self, session, **_kwargs):
         self.session = session
 
     def resolve_id(self, player_name: str, team_code: str, season: int):
@@ -35,6 +35,29 @@ class _FakeResolver:
 
 def _build_session_factory():
     engine = create_engine("sqlite:///:memory:")
+    for table in (
+        Game.__table__,
+        GameIdAlias.__table__,
+        PlayerBasic.__table__,
+        GameMetadata.__table__,
+        GameInningScore.__table__,
+        GameLineup.__table__,
+        GameBattingStat.__table__,
+        GamePitchingStat.__table__,
+        GameEvent.__table__,
+        GameSummary.__table__,
+    ):
+        table.create(bind=engine)
+    return sessionmaker(bind=engine, autoflush=False, autocommit=False, expire_on_commit=False)
+
+
+def _build_fk_session_factory():
+    engine = create_engine("sqlite:///:memory:")
+
+    @event.listens_for(engine, "connect")
+    def _enable_foreign_keys(dbapi_connection, _connection_record):
+        dbapi_connection.execute("PRAGMA foreign_keys=ON")
+
     for table in (
         Game.__table__,
         GameIdAlias.__table__,
@@ -208,7 +231,7 @@ def test_save_game_snapshot_preserves_detail_rows_and_start_time(monkeypatch):
         metadata = session.query(GameMetadata).filter(GameMetadata.game_id == "20250401LGSS0").one()
         inning_rows = session.query(GameInningScore).filter(GameInningScore.game_id == "20250401LGSS0").all()
 
-        assert game.game_status == GAME_STATUS_LIVE
+        assert game.game_status == GAME_STATUS_COMPLETED
         assert game.away_score == 1
         assert game.home_score == 0
         assert game.away_pitcher == "임찬규"
@@ -387,6 +410,132 @@ def test_save_game_detail_honors_explicit_cancelled_status(monkeypatch):
 
         assert game.game_status == GAME_STATUS_CANCELLED
         assert game.season_id == 2025
+
+
+def test_save_game_detail_creates_player_basic_stubs_for_new_payload_ids(monkeypatch):
+    SessionLocal = _build_fk_session_factory()
+    monkeypatch.setattr(game_repository, "SessionLocal", SessionLocal)
+    monkeypatch.setattr(game_repository, "_auto_sync_to_oci", lambda game_id: None)
+
+    saved = game_repository.save_game_detail(
+        {
+            "game_id": "20260515HHKT0",
+            "game_date": "20260515",
+            "metadata": {"stadium": "수원"},
+            "teams": {
+                "away": {"code": "HH", "score": 5, "line_score": [1, 0, 0, 0, 0, 0, 0, 2, 2]},
+                "home": {"code": "KT", "score": 3, "line_score": [0, 1, 0, 0, 0, 0, 0, 2, 0]},
+            },
+            "hitters": {
+                "away": [
+                    {
+                        "player_id": 56760,
+                        "player_name": "쿠싱",
+                        "team_code": "HH",
+                        "uniform_no": "5",
+                        "batting_order": 1,
+                        "position": "중",
+                        "is_starter": True,
+                        "appearance_seq": 1,
+                        "stats": {"plate_appearances": 4, "at_bats": 4, "runs": 1, "hits": 2},
+                    }
+                ],
+                "home": [
+                    {
+                        "player_id": 66606,
+                        "player_name": "최원준",
+                        "team_code": "KT",
+                        "uniform_no": "61",
+                        "batting_order": 1,
+                        "position": "우",
+                        "is_starter": True,
+                        "appearance_seq": 1,
+                        "stats": {"plate_appearances": 4, "at_bats": 4, "runs": 0, "hits": 1},
+                    }
+                ],
+            },
+            "pitchers": {
+                "away": [
+                    {
+                        "player_id": 56761,
+                        "player_name": "왕옌청",
+                        "team_code": "HH",
+                        "is_starting": True,
+                        "appearance_seq": 1,
+                        "stats": {"innings_outs": 18, "runs_allowed": 3},
+                    }
+                ],
+                "home": [
+                    {
+                        "player_id": 64001,
+                        "player_name": "고영표",
+                        "team_code": "KT",
+                        "is_starting": True,
+                        "appearance_seq": 1,
+                        "stats": {"innings_outs": 18, "runs_allowed": 5},
+                    }
+                ],
+            },
+        }
+    )
+
+    assert saved is True
+    with SessionLocal() as session:
+        stubs = {
+            row.player_id: row
+            for row in session.query(PlayerBasic).filter(PlayerBasic.player_id.in_([56760, 66606, 56761, 64001])).all()
+        }
+        assert set(stubs) == {56760, 66606, 56761, 64001}
+        assert stubs[56760].name == "쿠싱"
+        assert stubs[66606].team == "KT"
+        assert stubs[56761].position == "투수"
+        assert all(row.status == "STUB" for row in stubs.values())
+        assert session.query(GameBattingStat).filter(GameBattingStat.game_id == "20260515HHKT0").count() == 2
+        assert session.query(GamePitchingStat).filter(GamePitchingStat.game_id == "20260515HHKT0").count() == 2
+
+
+def test_save_game_detail_rejects_same_player_id_on_both_teams(monkeypatch):
+    SessionLocal = _build_session_factory()
+    monkeypatch.setattr(game_repository, "SessionLocal", SessionLocal)
+    monkeypatch.setattr(game_repository, "_auto_sync_to_oci", lambda game_id: None)
+
+    saved = game_repository.save_game_detail(
+        {
+            "game_id": "20010726SSHH0",
+            "game_date": "20010726",
+            "metadata": {"stadium": "대구"},
+            "teams": {
+                "away": {"code": "SS", "score": 3, "line_score": [1, 2]},
+                "home": {"code": "HH", "score": 2, "line_score": [0, 2]},
+            },
+            "hitters": {
+                "away": [
+                    {
+                        "player_id": 94415,
+                        "player_name": "김태균",
+                        "team_code": "SS",
+                        "appearance_seq": 1,
+                        "stats": {"plate_appearances": 1, "at_bats": 1, "hits": 1},
+                    }
+                ],
+                "home": [
+                    {
+                        "player_id": 94415,
+                        "player_name": "김태균",
+                        "team_code": "HH",
+                        "appearance_seq": 1,
+                        "stats": {"plate_appearances": 1, "at_bats": 1, "hits": 1},
+                    }
+                ],
+            },
+            "pitchers": {"away": [], "home": []},
+        }
+    )
+
+    assert saved is False
+    with SessionLocal() as session:
+        assert session.query(Game).filter(Game.game_id == "20010726SSHH0").count() == 0
+        assert session.query(GameBattingStat).filter(GameBattingStat.game_id == "20010726SSHH0").count() == 0
 
 
 def test_repair_game_parent_from_existing_children_uses_child_scores(monkeypatch):

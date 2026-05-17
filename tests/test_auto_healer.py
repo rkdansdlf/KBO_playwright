@@ -19,7 +19,7 @@ class _FakeSession:
 class _FakeResolver:
     created = []
 
-    def __init__(self, session):
+    def __init__(self, session, **_kwargs):
         self.session = session
         self.preloaded_years = []
         _FakeResolver.created.append(self)

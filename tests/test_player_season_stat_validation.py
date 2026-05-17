@@ -67,6 +67,21 @@ def test_validate_season_stat_rejects_invalid_numeric_values():
     ) == (False, "invalid_numeric_stat")
 
 
+def test_validate_season_stat_rejects_impossible_baseball_stats():
+    assert validate_season_stat_payload(
+        _batting_row(hits=6, at_bats=5, plate_appearances=6),
+        stat_type="batting",
+    ) == (False, "hits_gt_at_bats")
+    assert validate_season_stat_payload(
+        _batting_row(hits=5, at_bats=7, plate_appearances=6),
+        stat_type="batting",
+    ) == (False, "at_bats_gt_plate_appearances")
+    assert validate_season_stat_payload(
+        _pitching_row(earned_runs=4, runs_allowed=3),
+        stat_type="pitching",
+    ) == (False, "earned_runs_gt_runs_allowed")
+
+
 def test_filter_valid_season_stat_payloads_normalizes_valid_rows_and_counts_failures():
     rows, reasons = filter_valid_season_stat_payloads(
         [

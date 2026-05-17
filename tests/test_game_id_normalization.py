@@ -83,6 +83,32 @@ def test_save_schedule_game_records_alias_for_modern_source_id(monkeypatch):
         assert alias.canonical_game_id == "20260319LGSK0"
 
 
+def test_save_schedule_game_records_alias_for_legacy_source_id(monkeypatch):
+    SessionLocal = _build_session_factory()
+    monkeypatch.setattr(game_repository, "SessionLocal", SessionLocal)
+
+    saved = game_repository.save_schedule_game(
+        {
+            "game_id": "20010509SSGLT1",
+            "game_date": "20010509",
+            "away_team_code": "SSG",
+            "home_team_code": "LT",
+            "doubleheader_no": 1,
+            "season_year": 2001,
+            "season_type": "regular",
+        }
+    )
+
+    assert saved is True
+    with SessionLocal() as session:
+        game = session.query(Game).filter(Game.game_id == "20010509SKLT1").one()
+        alias = session.query(GameIdAlias).filter(GameIdAlias.alias_game_id == "20010509SSGLT1").one()
+        assert game.game_date == date(2001, 5, 9)
+        assert game.home_team == "LT"
+        assert game.away_team == "SSG"
+        assert alias.canonical_game_id == "20010509SKLT1"
+
+
 def test_save_schedule_game_uses_payload_teams_for_malformed_source_id(monkeypatch):
     SessionLocal = _build_session_factory()
     monkeypatch.setattr(game_repository, "SessionLocal", SessionLocal)

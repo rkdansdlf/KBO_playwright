@@ -36,6 +36,7 @@ class CheckResult:
 
 
 EXPECTED_FKS = (
+    ("players", "player_basic_id", "player_basic", "player_id"),
     ("game_metadata", "game_id", "game", "game_id"),
     ("game_batting_stats", "game_id", "game", "game_id"),
     ("game_batting_stats", "player_id", "player_basic", "player_id"),
@@ -43,11 +44,52 @@ EXPECTED_FKS = (
     ("game_pitching_stats", "player_id", "player_basic", "player_id"),
     ("game_lineups", "game_id", "game", "game_id"),
     ("game_lineups", "player_id", "player_basic", "player_id"),
+    ("game_events", "game_id", "game", "game_id"),
+    ("game_events", "batter_id", "player_basic", "player_id"),
+    ("game_events", "pitcher_id", "player_basic", "player_id"),
+    ("game_summary", "game_id", "game", "game_id"),
+    ("game_summary", "player_id", "player_basic", "player_id"),
+    ("game_play_by_play", "game_id", "game", "game_id"),
+    ("game_inning_scores", "game_id", "game", "game_id"),
+    ("game_id_aliases", "canonical_game_id", "game", "game_id"),
     ("player_season_batting", "player_id", "player_basic", "player_id"),
     ("player_season_batting", "team_code", "teams", "team_id"),
     ("player_season_pitching", "player_id", "player_basic", "player_id"),
     ("player_season_pitching", "team_code", "teams", "team_id"),
+    ("team_daily_roster", "team_code", "teams", "team_id"),
+    ("team_daily_roster", "player_basic_id", "player_basic", "player_id"),
+    ("player_movements", "canonical_team_id", "teams", "team_id"),
+    ("player_movements", "player_basic_id", "player_basic", "player_id"),
+    ("matchup_bvp", "batter_id", "player_basic", "player_id"),
+    ("matchup_bvp", "pitcher_id", "player_basic", "player_id"),
+    ("matchup_batter_splits", "player_id", "player_basic", "player_id"),
+    ("matchup_pitcher_splits", "player_id", "player_basic", "player_id"),
+    ("matchup_batter_team_split", "player_id", "player_basic", "player_id"),
+    ("matchup_pitcher_team_split", "player_id", "player_basic", "player_id"),
+    ("matchup_batter_stadium_split", "player_id", "player_basic", "player_id"),
+    ("matchup_batter_vs_starter", "player_id", "player_basic", "player_id"),
 )
+
+EXPECTED_CASCADE_FKS = (
+    ("game_metadata", "game_id", "game", "game_id"),
+    ("game_batting_stats", "game_id", "game", "game_id"),
+    ("game_pitching_stats", "game_id", "game", "game_id"),
+    ("game_lineups", "game_id", "game", "game_id"),
+    ("game_events", "game_id", "game", "game_id"),
+    ("game_summary", "game_id", "game", "game_id"),
+    ("game_play_by_play", "game_id", "game", "game_id"),
+    ("game_inning_scores", "game_id", "game", "game_id"),
+    ("game_id_aliases", "canonical_game_id", "game", "game_id"),
+)
+
+REQUIRED_INTEGRITY_COLUMNS = (
+    ("players", {"player_basic_id"}),
+    ("team_daily_roster", {"person_type", "player_basic_id"}),
+    ("player_movements", {"canonical_team_id", "player_basic_id", "resolution_status"}),
+)
+
+ROSTER_PLAYER_POSITIONS = ("투수", "포수", "내야수", "외야수")
+ROSTER_STAFF_POSITIONS = ("감독", "코치")
 
 
 def _sqlite_path_from_url(db_url: str) -> Path:
@@ -127,9 +169,10 @@ def _run_count_check(
 ) -> CheckResult:
     try:
         row_count = _scalar(conn, f"SELECT COUNT(*) {base_sql}")
-        distinct_count = _scalar(conn, f"SELECT COUNT(DISTINCT {distinct_expr}) {base_sql}")
+        distinct_count = 0
         samples: list[Any] = []
         if row_count:
+            distinct_count = _scalar(conn, f"SELECT COUNT(DISTINCT {distinct_expr}) {base_sql}")
             sample_sql = f"SELECT DISTINCT {sample_expr} {base_sql} LIMIT {int(sample_limit)}"
             samples = [row[0] for row in conn.execute(sample_sql).fetchall()]
         if row_count == 0:
@@ -189,6 +232,47 @@ def _declared_fk_report(conn: sqlite3.Connection) -> CheckResult:
     )
 
 
+def _cascade_fk_report(conn: sqlite3.Connection) -> CheckResult:
+    missing = []
+    for child_table, child_col, parent_table, parent_col in EXPECTED_CASCADE_FKS:
+        if not _has_columns(conn, child_table, {child_col}) or not _has_columns(conn, parent_table, {parent_col}):
+            continue
+        fk_rows = conn.execute(f"PRAGMA foreign_key_list({child_table})").fetchall()
+        has_cascade = any(
+            row[2] == parent_table
+            and row[3] == child_col
+            and row[4] == parent_col
+            and str(row[6]).upper() == "CASCADE"
+            for row in fk_rows
+        )
+        if not has_cascade:
+            missing.append(f"{child_table}.{child_col}->{parent_table}.{parent_col} ON DELETE CASCADE")
+    return CheckResult(
+        name="SQLite game child cascade coverage",
+        status="FAIL" if missing else "PASS",
+        row_count=len(missing),
+        distinct_count=len(missing),
+        samples=missing[:20],
+    )
+
+
+def _integrity_column_report(conn: sqlite3.Connection) -> CheckResult:
+    missing = []
+    for table_name, required_columns in REQUIRED_INTEGRITY_COLUMNS:
+        if not _table_exists(conn, table_name):
+            continue
+        missing_columns = sorted(required_columns - _columns(conn, table_name))
+        if missing_columns:
+            missing.append(f"{table_name}: {', '.join(missing_columns)}")
+    return CheckResult(
+        name="Canonical integrity column coverage",
+        status="FAIL" if missing else "PASS",
+        row_count=len(missing),
+        distinct_count=len(missing),
+        samples=missing[:20],
+    )
+
+
 def _unknown_player_predicate(alias: str) -> str:
     return (
         f"UPPER(TRIM({alias}.name)) LIKE 'UNKNOWN %' "
@@ -234,9 +318,10 @@ def _sa_run_count_check(
 ) -> CheckResult:
     try:
         row_count = _sa_scalar(conn, f"SELECT COUNT(*) {base_sql}")
-        distinct_count = _sa_scalar(conn, f"SELECT COUNT(DISTINCT {distinct_expr}) {base_sql}")
+        distinct_count = 0
         samples: list[Any] = []
         if row_count:
+            distinct_count = _sa_scalar(conn, f"SELECT COUNT(DISTINCT {distinct_expr}) {base_sql}")
             sample_sql = f"SELECT DISTINCT {sample_expr} {base_sql} LIMIT {int(sample_limit)}"
             samples = [row[0] for row in conn.execute(text(sample_sql)).fetchall()]
         if row_count == 0:
@@ -282,6 +367,53 @@ def _sa_declared_fk_report(conn: Connection) -> CheckResult:
     )
 
 
+def _sa_cascade_fk_report(conn: Connection) -> CheckResult:
+    missing = []
+    inspector = inspect(conn)
+    for child_table, child_col, parent_table, parent_col in EXPECTED_CASCADE_FKS:
+        if not _sa_has_columns(conn, child_table, {child_col}) or not _sa_has_columns(conn, parent_table, {parent_col}):
+            continue
+        fk_rows = inspector.get_foreign_keys(child_table)
+        has_cascade = False
+        for fk in fk_rows:
+            options = fk.get("options") or {}
+            ondelete = str(options.get("ondelete") or options.get("on_delete") or "").upper()
+            if (
+                fk.get("referred_table") == parent_table
+                and child_col in (fk.get("constrained_columns") or [])
+                and parent_col in (fk.get("referred_columns") or [])
+                and ondelete == "CASCADE"
+            ):
+                has_cascade = True
+                break
+        if not has_cascade:
+            missing.append(f"{child_table}.{child_col}->{parent_table}.{parent_col} ON DELETE CASCADE")
+    return CheckResult(
+        name="Game child cascade coverage",
+        status="FAIL" if missing else "PASS",
+        row_count=len(missing),
+        distinct_count=len(missing),
+        samples=missing[:20],
+    )
+
+
+def _sa_integrity_column_report(conn: Connection) -> CheckResult:
+    missing = []
+    for table_name, required_columns in REQUIRED_INTEGRITY_COLUMNS:
+        if not _sa_table_exists(conn, table_name):
+            continue
+        missing_columns = sorted(required_columns - _sa_columns(conn, table_name))
+        if missing_columns:
+            missing.append(f"{table_name}: {', '.join(missing_columns)}")
+    return CheckResult(
+        name="Canonical integrity column coverage",
+        status="FAIL" if missing else "PASS",
+        row_count=len(missing),
+        distinct_count=len(missing),
+        samples=missing[:20],
+    )
+
+
 def _sa_add_check(
     checks: list[dict[str, str]],
     conn: Connection,
@@ -308,7 +440,16 @@ def _sa_targeted_checks(conn: Connection, sample_limit: int) -> list[CheckResult
     checks: list[dict[str, str]] = []
     dialect = conn.dialect.name
 
-    for table_name in ("game_batting_stats", "game_pitching_stats", "game_metadata", "game_inning_scores", "game_lineups"):
+    for table_name in (
+        "game_batting_stats",
+        "game_pitching_stats",
+        "game_metadata",
+        "game_inning_scores",
+        "game_lineups",
+        "game_events",
+        "game_summary",
+        "game_play_by_play",
+    ):
         _sa_add_check(
             checks,
             conn,
@@ -319,6 +460,19 @@ def _sa_targeted_checks(conn: Connection, sample_limit: int) -> list[CheckResult
             distinct_expr="t.game_id",
             sample_expr="t.game_id",
         )
+    _sa_add_check(
+        checks,
+        conn,
+        table="game_id_aliases",
+        required={"canonical_game_id"},
+        name="game_id_aliases -> game",
+        base_sql=(
+            "FROM game_id_aliases AS t LEFT JOIN game AS p "
+            "ON t.canonical_game_id = p.game_id WHERE p.game_id IS NULL"
+        ),
+        distinct_expr="t.canonical_game_id",
+        sample_expr="t.canonical_game_id",
+    )
 
     unknown_predicate = _sa_unknown_player_predicate("p", dialect)
     for table_name in ("player_season_batting", "player_season_pitching"):
@@ -358,6 +512,36 @@ def _sa_targeted_checks(conn: Connection, sample_limit: int) -> list[CheckResult
             sample_expr="t.player_id",
         )
 
+    for table_name, column in (
+        ("game_events", "batter_id"),
+        ("game_events", "pitcher_id"),
+        ("game_summary", "player_id"),
+        ("matchup_bvp", "batter_id"),
+        ("matchup_bvp", "pitcher_id"),
+        ("matchup_batter_splits", "player_id"),
+        ("matchup_pitcher_splits", "player_id"),
+        ("matchup_batter_team_split", "player_id"),
+        ("matchup_pitcher_team_split", "player_id"),
+        ("matchup_batter_stadium_split", "player_id"),
+        ("matchup_batter_vs_starter", "player_id"),
+        ("team_daily_roster", "player_basic_id"),
+        ("player_movements", "player_basic_id"),
+        ("players", "player_basic_id"),
+    ):
+        _sa_add_check(
+            checks,
+            conn,
+            table=table_name,
+            required={column},
+            name=f"{table_name}.{column} -> player_basic",
+            base_sql=(
+                f"FROM {table_name} AS t LEFT JOIN player_basic AS p ON t.{column} = p.player_id "
+                f"WHERE t.{column} IS NOT NULL AND p.player_id IS NULL"
+            ),
+            distinct_expr=f"t.{column}",
+            sample_expr=f"t.{column}",
+        )
+
     for column, name in (("home_team", "Game home_team -> teams"), ("away_team", "Game away_team -> teams"), ("winning_team", "Game winning_team -> teams")):
         _sa_add_check(
             checks,
@@ -381,6 +565,8 @@ def _sa_targeted_checks(conn: Connection, sample_limit: int) -> list[CheckResult
         ("player_season_baserunning", "team_id"),
         ("team_season_batting", "team_id"),
         ("team_season_pitching", "team_id"),
+        ("team_daily_roster", "team_code"),
+        ("player_movements", "canonical_team_id"),
     ):
         _sa_add_check(
             checks,
@@ -391,6 +577,75 @@ def _sa_targeted_checks(conn: Connection, sample_limit: int) -> list[CheckResult
             base_sql=f"FROM {table_name} AS t LEFT JOIN teams AS p ON t.{column} = p.team_id WHERE t.{column} IS NOT NULL AND p.team_id IS NULL",
             distinct_expr=f"t.{column}",
             sample_expr=f"t.{column}",
+        )
+
+    if _sa_has_columns(conn, "team_daily_roster", {"position"}):
+        checks.append(
+            {
+                "name": "team_daily_roster parser artifact positions",
+                "base_sql": "FROM team_daily_roster AS t WHERE t.position IN ('포지션')",
+                "distinct_expr": "t.id",
+                "sample_expr": "t.id",
+            }
+        )
+    if _sa_has_columns(conn, "team_daily_roster", {"person_type", "player_basic_id"}):
+        checks.append(
+            {
+                "name": "team_daily_roster player rows require canonical player",
+                "base_sql": "FROM team_daily_roster AS t WHERE t.person_type = 'player' AND t.player_basic_id IS NULL",
+                "distinct_expr": "t.id",
+                "sample_expr": "t.id",
+            }
+        )
+    if _sa_has_columns(conn, "player_movements", {"canonical_team_id"}):
+        checks.append(
+            {
+                "name": "player_movements require canonical team",
+                "base_sql": "FROM player_movements AS t WHERE t.canonical_team_id IS NULL",
+                "distinct_expr": "t.id",
+                "sample_expr": "t.id",
+            }
+        )
+    if _sa_has_columns(conn, "player_movements", {"resolution_status"}):
+        checks.append(
+            {
+                "name": "player_movements unresolved player links",
+                "base_sql": (
+                    "FROM player_movements AS t "
+                    "WHERE t.resolution_status IN ('unresolved', 'unresolved_player')"
+                ),
+                "distinct_expr": "t.id",
+                "sample_expr": "t.id",
+                "severity": "warning",
+            }
+        )
+    if _sa_has_columns(conn, "players", {"kbo_person_id", "player_basic_id"}):
+        if dialect == "postgresql":
+            numeric_predicate = "t.kbo_person_id ~ '^[0-9]+$'"
+            numeric_id_expr = "CASE WHEN t.kbo_person_id ~ '^[0-9]+$' THEN CAST(t.kbo_person_id AS INTEGER) END"
+        else:
+            numeric_predicate = "t.kbo_person_id <> '' AND t.kbo_person_id NOT GLOB '*[^0-9]*'"
+            numeric_id_expr = "CAST(t.kbo_person_id AS INTEGER)"
+        checks.append(
+            {
+                "name": "players mirror canonical player_basic_id mismatch",
+                "base_sql": (
+                    "FROM players AS t JOIN player_basic AS p "
+                    f"ON {numeric_id_expr} = p.player_id WHERE {numeric_predicate} "
+                    "AND (t.player_basic_id IS NULL OR t.player_basic_id <> p.player_id)"
+                ),
+                "distinct_expr": "t.id",
+                "sample_expr": "t.id",
+            }
+        )
+        checks.append(
+            {
+                "name": "players legacy rows without player_basic mirror",
+                "base_sql": "FROM players AS t WHERE t.player_basic_id IS NULL",
+                "distinct_expr": "t.id",
+                "sample_expr": "t.id",
+                "severity": "warning",
+            }
         )
 
     if _sa_has_columns(conn, "player_basic", {"player_id", "name"}):
@@ -411,6 +666,7 @@ def _sa_targeted_checks(conn: Connection, sample_limit: int) -> list[CheckResult
             distinct_expr=check["distinct_expr"],
             sample_expr=check["sample_expr"],
             sample_limit=sample_limit,
+            severity=check.get("severity", "fail"),
         )
         for check in checks
     ]
@@ -441,7 +697,16 @@ def _add_check(
 def _targeted_checks(conn: sqlite3.Connection, sample_limit: int) -> list[CheckResult]:
     checks: list[dict[str, str]] = []
 
-    for table in ("game_batting_stats", "game_pitching_stats", "game_metadata", "game_inning_scores", "game_lineups"):
+    for table in (
+        "game_batting_stats",
+        "game_pitching_stats",
+        "game_metadata",
+        "game_inning_scores",
+        "game_lineups",
+        "game_events",
+        "game_summary",
+        "game_play_by_play",
+    ):
         _add_check(
             checks,
             conn,
@@ -452,6 +717,19 @@ def _targeted_checks(conn: sqlite3.Connection, sample_limit: int) -> list[CheckR
             distinct_expr="t.game_id",
             sample_expr="t.game_id",
         )
+    _add_check(
+        checks,
+        conn,
+        table="game_id_aliases",
+        required={"canonical_game_id"},
+        name="game_id_aliases -> game",
+        base_sql=(
+            "FROM game_id_aliases AS t LEFT JOIN game AS p "
+            "ON t.canonical_game_id = p.game_id WHERE p.game_id IS NULL"
+        ),
+        distinct_expr="t.canonical_game_id",
+        sample_expr="t.canonical_game_id",
+    )
 
     for table in ("player_season_batting", "player_season_pitching"):
         _add_check(
@@ -493,6 +771,36 @@ def _targeted_checks(conn: sqlite3.Connection, sample_limit: int) -> list[CheckR
             sample_expr="t.player_id",
         )
 
+    for table, column in (
+        ("game_events", "batter_id"),
+        ("game_events", "pitcher_id"),
+        ("game_summary", "player_id"),
+        ("matchup_bvp", "batter_id"),
+        ("matchup_bvp", "pitcher_id"),
+        ("matchup_batter_splits", "player_id"),
+        ("matchup_pitcher_splits", "player_id"),
+        ("matchup_batter_team_split", "player_id"),
+        ("matchup_pitcher_team_split", "player_id"),
+        ("matchup_batter_stadium_split", "player_id"),
+        ("matchup_batter_vs_starter", "player_id"),
+        ("team_daily_roster", "player_basic_id"),
+        ("player_movements", "player_basic_id"),
+        ("players", "player_basic_id"),
+    ):
+        _add_check(
+            checks,
+            conn,
+            table=table,
+            required={column},
+            name=f"{table}.{column} -> player_basic",
+            base_sql=(
+                f"FROM {table} AS t LEFT JOIN player_basic AS p ON t.{column} = p.player_id "
+                f"WHERE t.{column} IS NOT NULL AND p.player_id IS NULL"
+            ),
+            distinct_expr=f"t.{column}",
+            sample_expr=f"t.{column}",
+        )
+
     game_team_columns = (("home_team", "Game home_team -> teams"), ("away_team", "Game away_team -> teams"), ("winning_team", "Game winning_team -> teams"))
     for column, name in game_team_columns:
         _add_check(
@@ -517,6 +825,8 @@ def _targeted_checks(conn: sqlite3.Connection, sample_limit: int) -> list[CheckR
         ("player_season_baserunning", "team_id"),
         ("team_season_batting", "team_id"),
         ("team_season_pitching", "team_id"),
+        ("team_daily_roster", "team_code"),
+        ("player_movements", "canonical_team_id"),
     ):
         _add_check(
             checks,
@@ -527,6 +837,70 @@ def _targeted_checks(conn: sqlite3.Connection, sample_limit: int) -> list[CheckR
             base_sql=f"FROM {table} AS t LEFT JOIN teams AS p ON t.{column} = p.team_id WHERE t.{column} IS NOT NULL AND p.team_id IS NULL",
             distinct_expr=f"t.{column}",
             sample_expr=f"t.{column}",
+        )
+
+    if _has_columns(conn, "team_daily_roster", {"position"}):
+        checks.append(
+            {
+                "name": "team_daily_roster parser artifact positions",
+                "base_sql": "FROM team_daily_roster AS t WHERE t.position IN ('포지션')",
+                "distinct_expr": "t.id",
+                "sample_expr": "t.id",
+            }
+        )
+    if _has_columns(conn, "team_daily_roster", {"person_type", "player_basic_id"}):
+        checks.append(
+            {
+                "name": "team_daily_roster player rows require canonical player",
+                "base_sql": "FROM team_daily_roster AS t WHERE t.person_type = 'player' AND t.player_basic_id IS NULL",
+                "distinct_expr": "t.id",
+                "sample_expr": "t.id",
+            }
+        )
+    if _has_columns(conn, "player_movements", {"canonical_team_id"}):
+        checks.append(
+            {
+                "name": "player_movements require canonical team",
+                "base_sql": "FROM player_movements AS t WHERE t.canonical_team_id IS NULL",
+                "distinct_expr": "t.id",
+                "sample_expr": "t.id",
+            }
+        )
+    if _has_columns(conn, "player_movements", {"resolution_status"}):
+        checks.append(
+            {
+                "name": "player_movements unresolved player links",
+                "base_sql": (
+                    "FROM player_movements AS t "
+                    "WHERE t.resolution_status IN ('unresolved', 'unresolved_player')"
+                ),
+                "distinct_expr": "t.id",
+                "sample_expr": "t.id",
+                "severity": "warning",
+            }
+        )
+    if _has_columns(conn, "players", {"kbo_person_id", "player_basic_id"}):
+        checks.append(
+            {
+                "name": "players mirror canonical player_basic_id mismatch",
+                "base_sql": (
+                    "FROM players AS t JOIN player_basic AS p "
+                    "ON CAST(t.kbo_person_id AS INTEGER) = p.player_id "
+                    "WHERE t.kbo_person_id <> '' AND t.kbo_person_id NOT GLOB '*[^0-9]*' "
+                    "AND (t.player_basic_id IS NULL OR t.player_basic_id <> p.player_id)"
+                ),
+                "distinct_expr": "t.id",
+                "sample_expr": "t.id",
+            }
+        )
+        checks.append(
+            {
+                "name": "players legacy rows without player_basic mirror",
+                "base_sql": "FROM players AS t WHERE t.player_basic_id IS NULL",
+                "distinct_expr": "t.id",
+                "sample_expr": "t.id",
+                "severity": "warning",
+            }
         )
 
     if _has_columns(conn, "player_basic", {"player_id", "name"}):
@@ -547,6 +921,7 @@ def _targeted_checks(conn: sqlite3.Connection, sample_limit: int) -> list[CheckR
             distinct_expr=check["distinct_expr"],
             sample_expr=check["sample_expr"],
             sample_limit=sample_limit,
+            severity=check.get("severity", "fail"),
         )
         for check in checks
     ]
@@ -556,7 +931,12 @@ def collect_sqlite_report(db_path: Path, sample_limit: int) -> dict[str, Any]:
     conn = sqlite3.connect(db_path)
     try:
         conn.row_factory = sqlite3.Row
-        results = [_foreign_key_check(conn, sample_limit), _declared_fk_report(conn)]
+        results = [
+            _foreign_key_check(conn, sample_limit),
+            _integrity_column_report(conn),
+            _declared_fk_report(conn),
+            _cascade_fk_report(conn),
+        ]
         results.extend(_targeted_checks(conn, sample_limit))
         return {
             "database": str(db_path),
@@ -581,7 +961,9 @@ def collect_database_url_report(db_url: str, sample_limit: int) -> dict[str, Any
                     severity="warning",
                     samples=["native FK scan is not implemented for this dialect; logical checks were executed"],
                 ),
+                _sa_integrity_column_report(conn),
                 _sa_declared_fk_report(conn),
+                _sa_cascade_fk_report(conn),
             ]
             results.extend(_sa_targeted_checks(conn, sample_limit))
             return {

@@ -98,6 +98,22 @@ def _is_number_like(value: Any) -> bool:
     return False
 
 
+def _number_or_none(value: Any) -> float | None:
+    if value is None:
+        return None
+    if isinstance(value, (int, float)):
+        return float(value)
+    if isinstance(value, str):
+        cleaned = value.strip().replace(",", "")
+        if cleaned in {"", "-", "–", "—"}:
+            return None
+        try:
+            return float(cleaned)
+        except ValueError:
+            return None
+    return None
+
+
 def _has_core_stats(payload: Mapping[str, Any], stat_type: str) -> bool:
     if stat_type == "pitching":
         fields = PITCHING_CORE_STATS
@@ -147,6 +163,21 @@ def validate_season_stat_payload(
     for key in NUMERIC_FIELDS:
         if key in payload and not _is_number_like(payload.get(key)):
             return False, "invalid_numeric_stat"
+
+    if stat_type == "batting":
+        hits = _number_or_none(payload.get("hits"))
+        at_bats = _number_or_none(payload.get("at_bats"))
+        plate_appearances = _number_or_none(payload.get("plate_appearances"))
+        if hits is not None and at_bats is not None and hits > at_bats:
+            return False, "hits_gt_at_bats"
+        if at_bats is not None and plate_appearances is not None and at_bats > plate_appearances:
+            return False, "at_bats_gt_plate_appearances"
+
+    if stat_type == "pitching":
+        earned_runs = _number_or_none(payload.get("earned_runs"))
+        runs_allowed = _number_or_none(payload.get("runs_allowed"))
+        if earned_runs is not None and runs_allowed is not None and earned_runs > runs_allowed:
+            return False, "earned_runs_gt_runs_allowed"
 
     return True, None
 

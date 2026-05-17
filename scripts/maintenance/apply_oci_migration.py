@@ -1,10 +1,49 @@
 import os
+import shutil
+import subprocess
 import sys
-from sqlalchemy import create_engine, text
+from urllib.parse import unquote, urlparse
+
 from dotenv import load_dotenv
 
 # Add project root to path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../../')))
+
+
+def _psql_command(database_url: str, file_path: str) -> tuple[list[str], dict[str, str]]:
+    parsed = urlparse(database_url.replace("postgresql+psycopg2://", "postgresql://", 1))
+    if parsed.scheme not in {"postgres", "postgresql"}:
+        raise ValueError(f"Unsupported OCI_DB_URL scheme: {parsed.scheme}")
+
+    psql_path = shutil.which("psql")
+    if not psql_path:
+        raise RuntimeError("psql executable not found")
+
+    db_name = parsed.path.lstrip("/")
+    if not parsed.hostname or not parsed.username or not db_name:
+        raise ValueError("OCI_DB_URL must include host, user, and database name")
+
+    env = os.environ.copy()
+    if parsed.password:
+        env["PGPASSWORD"] = unquote(parsed.password)
+
+    command = [
+        psql_path,
+        "-h",
+        parsed.hostname,
+        "-p",
+        str(parsed.port or 5432),
+        "-U",
+        unquote(parsed.username),
+        "-d",
+        unquote(db_name),
+        "-v",
+        "ON_ERROR_STOP=1",
+        "-f",
+        file_path,
+    ]
+    return command, env
+
 
 def apply_migration(file_path: str):
     load_dotenv()
@@ -20,19 +59,14 @@ def apply_migration(file_path: str):
     print(f"🔌 Connecting to OCI for migration: {file_path}")
     
     try:
-        engine = create_engine(oci_url)
-        with engine.connect() as conn:
-            with open(file_path, 'r', encoding='utf-8') as f:
-                sql = f.read()
-            
-            # Split by semicolon for execution if needed, but for simple ALTERs, single execute works
-            print(f"📜 Executing SQL from {file_path}...")
-            conn.execute(text(sql))
-            conn.commit()
-            print("✅ Migration applied successfully.")
+        command, env = _psql_command(oci_url, file_path)
+        print(f"📜 Executing SQL from {file_path}...")
+        subprocess.run(command, env=env, check=True)
+        print("✅ Migration applied successfully.")
 
-    except Exception as e:
+    except (Exception, subprocess.CalledProcessError) as e:
         print(f"❌ Migration failed: {e}")
+        raise SystemExit(1) from e
 
 if __name__ == "__main__":
     import argparse

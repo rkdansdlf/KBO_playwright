@@ -5,6 +5,7 @@ from sqlalchemy import (
     Float,
     Numeric,
     UniqueConstraint,
+    ForeignKey,
 )
 from src.models.base import Base, TimestampMixin
 
@@ -18,7 +19,7 @@ class BatterTeamSplit(Base, TimestampMixin):
     id = Column(Integer, primary_key=True, autoincrement=True)
     season_year = Column(Integer, nullable=False)
     league_type_code = Column(Integer, nullable=False)
-    player_id = Column(Integer, nullable=False)
+    player_id = Column(Integer, ForeignKey("player_basic.player_id", ondelete="RESTRICT"), nullable=False)
     player_name = Column(String(64), nullable=False)
     team_code = Column(String(20), nullable=False)
     opponent_team_code = Column(String(20), nullable=False)
@@ -58,7 +59,7 @@ class PitcherTeamSplit(Base, TimestampMixin):
     id = Column(Integer, primary_key=True, autoincrement=True)
     season_year = Column(Integer, nullable=False)
     league_type_code = Column(Integer, nullable=False)
-    player_id = Column(Integer, nullable=False)
+    player_id = Column(Integer, ForeignKey("player_basic.player_id", ondelete="RESTRICT"), nullable=False)
     player_name = Column(String(64), nullable=False)
     team_code = Column(String(20), nullable=False)
     opponent_team_code = Column(String(20), nullable=False)
@@ -91,7 +92,7 @@ class BatterStadiumSplit(Base, TimestampMixin):
     id = Column(Integer, primary_key=True, autoincrement=True)
     season_year = Column(Integer, nullable=False)
     league_type_code = Column(Integer, nullable=False)
-    player_id = Column(Integer, nullable=False)
+    player_id = Column(Integer, ForeignKey("player_basic.player_id", ondelete="RESTRICT"), nullable=False)
     player_name = Column(String(64), nullable=False)
     team_code = Column(String(20), nullable=False)
     stadium_name = Column(String(100), nullable=False)
@@ -124,7 +125,7 @@ class BatterVsStarter(Base, TimestampMixin):
     id = Column(Integer, primary_key=True, autoincrement=True)
     season_year = Column(Integer, nullable=False)
     league_type_code = Column(Integer, nullable=False)
-    player_id = Column(Integer, nullable=False)
+    player_id = Column(Integer, ForeignKey("player_basic.player_id", ondelete="RESTRICT"), nullable=False)
     player_name = Column(String(64), nullable=False)
     pitcher_name = Column(String(64), nullable=False) # Only string available commonly for opposing starter
     
@@ -150,9 +151,9 @@ class MatchupBvP(Base, TimestampMixin):
     )
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    batter_id = Column(Integer, nullable=False, index=True)
+    batter_id = Column(Integer, ForeignKey("player_basic.player_id", ondelete="RESTRICT"), nullable=False, index=True)
     batter_name = Column(String(64))
-    pitcher_id = Column(Integer, nullable=False, index=True)
+    pitcher_id = Column(Integer, ForeignKey("player_basic.player_id", ondelete="RESTRICT"), nullable=False, index=True)
     pitcher_name = Column(String(64))
 
     # Aggregated Stats
@@ -183,7 +184,7 @@ class BatterSplit(Base, TimestampMixin):
     )
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    player_id = Column(Integer, nullable=False, index=True)
+    player_id = Column(Integer, ForeignKey("player_basic.player_id", ondelete="RESTRICT"), nullable=False, index=True)
     season_year = Column(Integer, nullable=False)
     split_type = Column(String(20), nullable=False) # 'RISP', 'LHP', 'RHP'
 
@@ -209,7 +210,7 @@ class PitcherSplit(Base, TimestampMixin):
     )
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    player_id = Column(Integer, nullable=False, index=True)
+    player_id = Column(Integer, ForeignKey("player_basic.player_id", ondelete="RESTRICT"), nullable=False, index=True)
     season_year = Column(Integer, nullable=False)
     split_type = Column(String(20), nullable=False) # 'vsLHB', 'vsRHB', 'RISP'
 

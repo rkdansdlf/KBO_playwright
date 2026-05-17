@@ -58,7 +58,7 @@ class GameIdAlias(Base, TimestampMixin):
     __tablename__ = "game_id_aliases"
 
     alias_game_id = Column(String(20), primary_key=True)
-    canonical_game_id = Column(String(20), ForeignKey("game.game_id"), nullable=False, index=True)
+    canonical_game_id = Column(String(20), ForeignKey("game.game_id", ondelete="CASCADE"), nullable=False, index=True)
     source = Column(String(50))
     reason = Column(String(120))
 
@@ -69,9 +69,9 @@ class GameSummary(Base, TimestampMixin):
     __tablename__ = "game_summary"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    game_id = Column(String(20), ForeignKey("game.game_id"), nullable=False)
+    game_id = Column(String(20), ForeignKey("game.game_id", ondelete="CASCADE"), nullable=False)
     summary_type = Column(String(50))
-    player_id = Column(Integer, ForeignKey("player_basic.player_id"), nullable=True)
+    player_id = Column(Integer, ForeignKey("player_basic.player_id", ondelete="RESTRICT"), nullable=True)
     player_name = Column(String(50))
     detail_text = Column(Text)
 
@@ -83,7 +83,7 @@ class GamePlayByPlay(Base, TimestampMixin):
     __tablename__ = "game_play_by_play"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    game_id = Column(String(20), ForeignKey("game.game_id"), nullable=False)
+    game_id = Column(String(20), ForeignKey("game.game_id", ondelete="CASCADE"), nullable=False)
     inning = Column(Integer)
     inning_half = Column(String(10)) # "초" or "말"
     pitcher_name = Column(String(50))
@@ -99,7 +99,7 @@ class GameMetadata(Base, TimestampMixin):
     """Captured metadata for a game (attendance, times, etc.)."""
     __tablename__ = "game_metadata"
 
-    game_id = Column(String(20), ForeignKey("game.game_id"), primary_key=True)
+    game_id = Column(String(20), ForeignKey("game.game_id", ondelete="CASCADE"), primary_key=True)
     stadium_code = Column(String(30))
     stadium_name = Column(String(64))
     attendance = Column(Integer)
@@ -120,7 +120,7 @@ class GameInningScore(Base, TimestampMixin):
     )
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    game_id = Column(String(20), ForeignKey("game.game_id"), nullable=False)
+    game_id = Column(String(20), ForeignKey("game.game_id", ondelete="CASCADE"), nullable=False)
     team_side = Column(String(5), nullable=False)  # away/home
     team_code = Column(String(10))
     franchise_id = Column(Integer, nullable=True)
@@ -140,12 +140,12 @@ class GameLineup(Base, TimestampMixin):
     )
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    game_id = Column(String(20), ForeignKey("game.game_id"), nullable=False)
+    game_id = Column(String(20), ForeignKey("game.game_id", ondelete="CASCADE"), nullable=False)
     team_side = Column(String(5), nullable=False)
     team_code = Column(String(10))
     franchise_id = Column(Integer, nullable=True)
     canonical_team_code = Column(String(10), nullable=True)
-    player_id = Column(Integer, ForeignKey("player_basic.player_id"), nullable=True)
+    player_id = Column(Integer, ForeignKey("player_basic.player_id", ondelete="RESTRICT"), nullable=True)
     player_name = Column(String(64), nullable=False)
     uniform_no = Column(String(10))
     batting_order = Column(Integer)
@@ -166,12 +166,12 @@ class GameBattingStat(Base, TimestampMixin):
     )
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    game_id = Column(String(20), ForeignKey("game.game_id"), nullable=False)
+    game_id = Column(String(20), ForeignKey("game.game_id", ondelete="CASCADE"), nullable=False)
     team_side = Column(String(5), nullable=False)
     team_code = Column(String(10))
     franchise_id = Column(Integer, nullable=True)
     canonical_team_code = Column(String(10), nullable=True)
-    player_id = Column(Integer, ForeignKey("player_basic.player_id"), nullable=True)
+    player_id = Column(Integer, ForeignKey("player_basic.player_id", ondelete="RESTRICT"), nullable=True)
     player_name = Column(String(64), nullable=False)
     uniform_no = Column(String(10))
     batting_order = Column(Integer)
@@ -215,12 +215,12 @@ class GamePitchingStat(Base, TimestampMixin):
     )
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    game_id = Column(String(20), ForeignKey("game.game_id"), nullable=False)
+    game_id = Column(String(20), ForeignKey("game.game_id", ondelete="CASCADE"), nullable=False)
     team_side = Column(String(5), nullable=False)
     team_code = Column(String(10))
     franchise_id = Column(Integer, nullable=True)
     canonical_team_code = Column(String(10), nullable=True)
-    player_id = Column(Integer, ForeignKey("player_basic.player_id"), nullable=True)
+    player_id = Column(Integer, ForeignKey("player_basic.player_id", ondelete="RESTRICT"), nullable=True)
     player_name = Column(String(64), nullable=False)
     uniform_no = Column(String(10))
     is_starting = Column(Boolean, default=False)
@@ -262,14 +262,14 @@ class GameEvent(Base, TimestampMixin):
     )
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    game_id = Column(String(20), ForeignKey("game.game_id"), nullable=False)
+    game_id = Column(String(20), ForeignKey("game.game_id", ondelete="CASCADE"), nullable=False)
     event_seq = Column(Integer, nullable=False)
     inning = Column(Integer)
     inning_half = Column(String(6))
     outs = Column(Integer)
-    batter_id = Column(Integer)
+    batter_id = Column(Integer, ForeignKey("player_basic.player_id", ondelete="RESTRICT"), nullable=True)
     batter_name = Column(String(64))
-    pitcher_id = Column(Integer)
+    pitcher_id = Column(Integer, ForeignKey("player_basic.player_id", ondelete="RESTRICT"), nullable=True)
     pitcher_name = Column(String(64))
     description = Column(Text)
     event_type = Column(String(32))

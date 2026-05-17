@@ -25,7 +25,11 @@ from src.utils.team_history import find_team_history_entry, iter_team_history
 
 
 DEFAULT_DB_URL = "sqlite:///./data/kbo_dev.db"
-DEFAULT_YEARS = (2024, 2025, 2026)
+def _default_years() -> tuple[int, ...]:
+    return tuple(range(2001, datetime.now().year + 1))
+
+
+DEFAULT_YEARS = _default_years()
 TIMESTAMP_COLUMNS = {"created_at", "updated_at"}
 MERGE_KEEP_TARGET_COLUMNS = {"franchise_id", "canonical_team_code"}
 MERGE_SOURCE_COLUMNS = {
@@ -328,11 +332,13 @@ def _child_counts(conn, tables: dict[str, Table], game_ids: Iterable[str]) -> di
         table = tables.get(spec.table_name)
         if table is None or "game_id" not in table.c:
             continue
-        rows = conn.execute(
-            select(table.c.game_id).where(table.c.game_id.in_(ids))
-        ).all()
-        for row in rows:
-            counts[row[0]] = counts.get(row[0], 0) + 1
+        for start in range(0, len(ids), 900):
+            chunk = ids[start:start + 900]
+            rows = conn.execute(
+                select(table.c.game_id).where(table.c.game_id.in_(chunk))
+            ).all()
+            for row in rows:
+                counts[row[0]] = counts.get(row[0], 0) + 1
     return counts
 
 
@@ -437,7 +443,9 @@ def _derive_game_franchise_ids(row: dict[str, Any]) -> dict[str, int | None]:
 def collect_duplicate_groups(conn, tables: dict[str, Table], years: Iterable[int]) -> list[dict[str, Any]]:
     season_by_id = _season_map(conn, tables)
     grouped: dict[tuple[Any, ...], list[dict[str, Any]]] = defaultdict(list)
-    for row in _game_rows(conn, tables, years):
+    rows = _game_rows(conn, tables, years)
+    child_counts = _child_counts(conn, tables, [str(row["game_id"]) for row in rows])
+    for row in rows:
         key = _logical_key(row, season_by_id)
         if key:
             grouped[key].append(row)
@@ -447,7 +455,7 @@ def collect_duplicate_groups(conn, tables: dict[str, Table], years: Iterable[int
         if len(rows) < 2:
             continue
         game_ids = [str(row["game_id"]) for row in rows]
-        counts = _child_counts(conn, tables, game_ids)
+        counts = {game_id: child_counts.get(game_id, 0) for game_id in game_ids}
         primary_id = choose_primary_game_id(
             game_ids,
             counts,
@@ -862,7 +870,6 @@ def detect_child_conflicts(
         table = tables.get(spec.table_name)
         if table is None or "game_id" not in table.c:
             continue
-        unique_columns = _unique_columns_for_table(table, spec)
         source_rows = [
             dict(row)
             for row in conn.execute(select(table).where(table.c.game_id == source_game_id)).mappings()
@@ -873,29 +880,56 @@ def detect_child_conflicts(
             dict(row)
             for row in conn.execute(select(table).where(table.c.game_id == canonical_game_id)).mappings()
         ]
-        if spec.table_name == "game_events" and target_rows:
-            resolution = _event_dataset_resolution(source_rows, target_rows)
-            if resolution in {"source", "target", "same"}:
-                continue
-        target_by_key = {
-            _row_key(row, unique_columns, canonical_game_id): row
-            for row in target_rows
-        }
-        for source_row in source_rows:
-            key = _row_key(source_row, unique_columns, canonical_game_id)
-            target_row = target_by_key.get(key)
-            if target_row is None:
-                continue
-            if _payload_resolution(source_row, target_row, table) == "conflict":
-                conflicts.append(
-                    {
-                        "table_name": spec.table_name,
-                        "source_game_id": source_game_id,
-                        "canonical_game_id": canonical_game_id,
-                        "key": "|".join(key),
-                        "reason": "conflicting_child_row",
-                    }
-                )
+        conflicts.extend(
+            _detect_child_conflicts_from_rows(
+                table,
+                spec,
+                source_game_id,
+                canonical_game_id,
+                source_rows,
+                target_rows,
+            )
+        )
+    return conflicts
+
+
+def _detect_child_conflicts_from_rows(
+    table: Table,
+    spec: ChildSpec,
+    source_game_id: str,
+    canonical_game_id: str,
+    source_rows: list[dict[str, Any]],
+    target_rows: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    if not source_rows:
+        return []
+
+    conflicts: list[dict[str, Any]] = []
+    unique_columns = _unique_columns_for_table(table, spec)
+    if spec.table_name == "game_events" and target_rows:
+        resolution = _event_dataset_resolution(source_rows, target_rows)
+        if resolution in {"source", "target", "same"}:
+            return []
+
+    target_by_key = {
+        _row_key(row, unique_columns, canonical_game_id): row
+        for row in target_rows
+    }
+    for source_row in source_rows:
+        key = _row_key(source_row, unique_columns, canonical_game_id)
+        target_row = target_by_key.get(key)
+        if target_row is None:
+            continue
+        if _payload_resolution(source_row, target_row, table) == "conflict":
+            conflicts.append(
+                {
+                    "table_name": spec.table_name,
+                    "source_game_id": source_game_id,
+                    "canonical_game_id": canonical_game_id,
+                    "key": "|".join(key),
+                    "reason": "conflicting_child_row",
+                }
+            )
     return conflicts
 
 
@@ -1090,13 +1124,48 @@ def apply_duplicate_group(conn, tables: dict[str, Table], group: dict[str, Any])
 
 
 def collect_conflicts(conn, tables: dict[str, Table], groups: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    target_game_ids = sorted(
+        {
+            str(game_id)
+            for group in groups
+            for game_id in [group["primary_game_id"], *group["game_ids"]]
+        }
+    )
+    rows_by_table: dict[str, dict[str, list[dict[str, Any]]]] = {}
+    if target_game_ids:
+        for spec in CHILD_SPECS:
+            table = tables.get(spec.table_name)
+            if table is None or "game_id" not in table.c:
+                continue
+            by_game_id: dict[str, list[dict[str, Any]]] = defaultdict(list)
+            for start in range(0, len(target_game_ids), 900):
+                chunk = target_game_ids[start:start + 900]
+                for row in conn.execute(select(table).where(table.c.game_id.in_(chunk))).mappings():
+                    row_dict = dict(row)
+                    by_game_id[str(row_dict.get("game_id"))].append(row_dict)
+            rows_by_table[spec.table_name] = by_game_id
+
     conflicts = []
     for group in groups:
         canonical_id = group["primary_game_id"]
         for source_id in group["game_ids"]:
             if source_id == canonical_id:
                 continue
-            conflicts.extend(detect_child_conflicts(conn, tables, source_id, canonical_id))
+            for spec in CHILD_SPECS:
+                table = tables.get(spec.table_name)
+                if table is None or "game_id" not in table.c:
+                    continue
+                by_game_id = rows_by_table.get(spec.table_name, {})
+                conflicts.extend(
+                    _detect_child_conflicts_from_rows(
+                        table,
+                        spec,
+                        source_id,
+                        canonical_id,
+                        by_game_id.get(source_id, []),
+                        by_game_id.get(canonical_id, []),
+                    )
+                )
     return conflicts
 
 
@@ -1339,7 +1408,11 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Audit and repair KBO game_id identity duplicates.")
     parser.add_argument("--db-url", default=None, help="SQLAlchemy database URL. Defaults to DATABASE_URL or local SQLite.")
     parser.add_argument("--oci", action="store_true", help="Use OCI_DB_URL as target database.")
-    parser.add_argument("--years", default="2024,2025,2026", help="Comma-separated years to inspect/repair.")
+    parser.add_argument(
+        "--years",
+        default=",".join(str(year) for year in DEFAULT_YEARS),
+        help="Comma-separated years to inspect/repair.",
+    )
     parser.add_argument("--output-dir", default="data/repair_game_id_integrity", help="Directory for CSV reports and backups.")
     parser.add_argument("--apply", action="store_true", help="Apply repairs. Default is dry-run only.")
     parser.add_argument("--no-backup", action="store_true", help="Skip SQLite backup before --apply.")
