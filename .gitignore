@@ -67,3 +67,5 @@ data/kbo_auth_state.json
 /*.json
 /*.png
 /*.html
+/logs
+/data
