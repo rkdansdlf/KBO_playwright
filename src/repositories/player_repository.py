@@ -37,6 +37,7 @@ class PlayerRepository:
     ) -> Optional[Player]:
         """
         Upsert player and primary identity based on parsed profile info.
+        Also synchronizes status and key fields to PlayerBasic.
         """
         if not kbo_player_id:
             raise ValueError("kbo_player_id is required to upsert a player profile")
@@ -45,9 +46,48 @@ class PlayerRepository:
             player = self._get_or_create_player(session, kbo_player_id)
             self._apply_profile_fields(player, profile)
             self._upsert_identity(session, player, profile)
+            
+            # Synchronize back to PlayerBasic
+            self._sync_to_player_basic(session, kbo_player_id, profile)
+            
             session.commit()
             session.refresh(player)
             return player
+
+    def _sync_to_player_basic(self, session: Session, kbo_player_id: str, profile: PlayerProfileParsed) -> None:
+        try:
+            pid = int(str(kbo_player_id).strip())
+        except (TypeError, ValueError):
+            return
+
+        basic = session.query(PlayerBasic).filter_by(player_id=pid).first()
+        if basic:
+            if profile.is_active is not None:
+                basic.status = "active" if profile.is_active else "retired"
+                basic.status_source = "profile"
+            
+            if profile.photo_url:
+                basic.photo_url = profile.photo_url
+            if profile.height_cm:
+                basic.height_cm = profile.height_cm
+            if profile.weight_kg:
+                basic.weight_kg = profile.weight_kg
+            if profile.birth_date:
+                basic.birth_date = profile.birth_date
+                try:
+                    basic.birth_date_date = datetime.strptime(profile.birth_date, "%Y-%m-%d").date()
+                except ValueError:
+                    pass
+            if profile.batting_hand:
+                basic.bats = profile.batting_hand
+            if profile.throwing_hand:
+                basic.throws = profile.throwing_hand
+            if profile.entry_year:
+                basic.debut_year = profile.entry_year
+            if profile.salary_original:
+                basic.salary_original = profile.salary_original
+            if profile.signing_bonus_original:
+                basic.signing_bonus_original = profile.signing_bonus_original
 
     def _get_or_create_player(self, session: Session, kbo_player_id: str) -> Player:
         player_basic_id = self._canonical_player_basic_id(session, kbo_player_id)

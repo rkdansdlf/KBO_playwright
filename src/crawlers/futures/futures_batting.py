@@ -193,7 +193,7 @@ async def fetch_and_parse_futures_batting(
                 return []
 
             await throttle.wait()
-            await page.goto(profile_url, wait_until="networkidle", timeout=30000)
+            await page.goto(profile_url, wait_until="domcontentloaded", timeout=30000)
             await throttle.wait()  # Wait for dynamic content using throttle instead of sleep
 
             # Try to click Futures tab if it exists

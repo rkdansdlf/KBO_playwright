@@ -7,12 +7,12 @@ from __future__ import annotations
 import argparse
 import json
 import logging
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
 from pathlib import Path
 from typing import Any, Dict, Sequence
 from zoneinfo import ZoneInfo
 
-from sqlalchemy import MetaData, Table, func, inspect, select
+from sqlalchemy import MetaData, Table, func, inspect, or_, select
 from sqlalchemy.exc import SQLAlchemyError
 from src.db.engine import SessionLocal
 from src.models.game import (
@@ -26,13 +26,17 @@ from src.models.game import (
     GameSummary,
 )
 from src.models.player import PlayerBasic
+from src.models.season import KboSeason
 from src.validators.quality_gate import run_quality_gate
+from src.validators.standings_integrity import validate_standings_integrity
 from src.utils.alerting import SlackWebhookClient
+from src.utils.game_status import COMPLETED_LIKE_GAME_STATUSES
 
 
 _KST = ZoneInfo("Asia/Seoul")
 _LOGGER = logging.getLogger(__name__)
 _PLAYER_BASIC_NEW_PLAYER_COLUMNS = {"player_id", "name", "created_at"}
+_REGULAR_SEASON_NAMES = ("정규시즌", "Regular Season", "regular")
 
 
 def _player_basic_table_for_new_players(session) -> Table | None:
@@ -91,6 +95,62 @@ def _get_new_players(session, target_dt: date) -> list[dict[str, Any]]:
     return [{"id": player_id, "name": name} for player_id, name in rows]
 
 
+def get_relay_integrity_metrics(
+    session,
+    target_date: date,
+    recent_days: int = 14,
+) -> dict[str, Any]:
+    """Return completed games missing game_play_by_play rows."""
+    recent_start = target_date - timedelta(days=max(recent_days - 1, 0))
+    pbp_game_ids = select(GamePlayByPlay.game_id).distinct()
+
+    recent_missing = [
+        row[0]
+        for row in (
+            session.query(Game.game_id)
+            .filter(
+                Game.game_status.in_(tuple(COMPLETED_LIKE_GAME_STATUSES)),
+                Game.game_date >= recent_start,
+                Game.game_date <= target_date,
+                ~Game.game_id.in_(pbp_game_ids),
+            )
+            .order_by(Game.game_date.asc(), Game.game_id.asc())
+            .all()
+        )
+    ]
+
+    current_season_missing = [
+        row[0]
+        for row in (
+            session.query(Game.game_id)
+            .join(KboSeason, Game.season_id == KboSeason.season_id)
+            .filter(
+                KboSeason.season_year == target_date.year,
+                or_(
+                    KboSeason.league_type_code == 0,
+                    KboSeason.league_type_name.in_(_REGULAR_SEASON_NAMES),
+                ),
+                Game.game_status.in_(tuple(COMPLETED_LIKE_GAME_STATUSES)),
+                ~Game.game_id.in_(pbp_game_ids),
+            )
+            .order_by(Game.game_date.asc(), Game.game_id.asc())
+            .all()
+        )
+    ]
+    missing_game_ids = sorted(set(recent_missing) | set(current_season_missing))
+
+    return {
+        "ok": not missing_game_ids,
+        "checked_date": target_date.isoformat(),
+        "recent_days": recent_days,
+        "recent_missing_count": len(recent_missing),
+        "current_season_missing_count": len(current_season_missing),
+        "missing_game_ids": missing_game_ids,
+        "recent_missing_game_ids": recent_missing,
+        "current_season_missing_game_ids": current_season_missing,
+    }
+
+
 def get_daily_metrics(session, target_date_str: str) -> Dict[str, Any]:
     """Calculate core collection metrics for a specific date."""
     target_dt = datetime.strptime(target_date_str, "%Y%m%d").date()
@@ -129,12 +189,16 @@ def get_daily_metrics(session, target_date_str: str) -> Dict[str, Any]:
     
     # 3. New Players
     new_players = _get_new_players(session, target_dt)
+    relay_integrity = get_relay_integrity_metrics(session, target_dt)
+    standings_integrity = validate_standings_integrity(session, target_dt)
     
     return {
         "date": target_date_str,
         "status_counts": status_map,
         "detail_integrity": detail_integrity,
         "new_players": new_players,
+        "relay_integrity": relay_integrity,
+        "standings_integrity": standings_integrity,
         "total_games": sum(status_map.values()),
         "completed_count": len(game_ids)
     }
@@ -169,6 +233,34 @@ def format_telegram_report(metrics: Dict[str, Any], gate_result: Dict[str, Any])
         lines.append(f"❌ <b>Stats</b>: {bat_miss + pit_miss} mismatches detected")
         if bat_miss: lines.append(f"   - Batting: {bat_miss} issues")
         if pit_miss: lines.append(f"   - Pitching: {pit_miss} issues")
+
+    relay_integrity = metrics.get("relay_integrity") or {}
+    if relay_integrity.get("ok", True):
+        lines.append("✅ <b>PBP</b>: Recent/current-season relay complete")
+    else:
+        recent_count = relay_integrity.get("recent_missing_count", 0)
+        season_count = relay_integrity.get("current_season_missing_count", 0)
+        lines.append(
+            "⚠️ <b>PBP</b>: "
+            f"{recent_count} recent / {season_count} current-season games missing"
+        )
+        for gid in list(relay_integrity.get("missing_game_ids") or [])[:5]:
+            lines.append(f"   - {gid}")
+
+    standings_integrity = metrics.get("standings_integrity") or {}
+    if standings_integrity.get("ok", True):
+        lines.append("✅ <b>Standings</b>: Matches completed-game rollup")
+    else:
+        mismatch_count = len(standings_integrity.get("mismatches") or [])
+        missing_score_count = len(standings_integrity.get("missing_score_games") or [])
+        lines.append(
+            "❌ <b>Standings</b>: "
+            f"{mismatch_count} mismatches / {missing_score_count} score gaps"
+        )
+        for item in list(standings_integrity.get("mismatches") or [])[:5]:
+            team_code = item.get("team_code", "unknown")
+            issue = item.get("issue", "mismatch")
+            lines.append(f"   - {team_code}: {issue}")
         
     # New Players
     if metrics["new_players"]:
@@ -177,6 +269,15 @@ def format_telegram_report(metrics: Dict[str, Any], gate_result: Dict[str, Any])
         lines.append(f"🆕 <b>New Players</b>: {count} found ({p_names})")
     
     return "\n".join(lines)
+
+
+def _has_report_issues(metrics: dict[str, Any], gate_result: dict[str, Any]) -> bool:
+    return (
+        not gate_result["ok"]
+        or any(not d["is_complete"] for d in metrics["detail_integrity"])
+        or not (metrics.get("relay_integrity") or {}).get("ok", True)
+        or not (metrics.get("standings_integrity") or {}).get("ok", True)
+    )
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -210,9 +311,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     # Telegram Notification
     telegram_msg = format_telegram_report(metrics, gate_result)
     
-    should_notify = args.force_notify or (
-        args.notify and (not gate_result["ok"] or any(not d["is_complete"] for d in metrics["detail_integrity"]))
-    )
+    should_notify = args.force_notify or (args.notify and _has_report_issues(metrics, gate_result))
     
     if should_notify:
         print("🚀 Sending report to Telegram...")

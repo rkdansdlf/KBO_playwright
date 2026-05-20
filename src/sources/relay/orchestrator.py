@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any, Callable, Iterable, Optional
 
 from .base import (
     CapabilityRecord,
@@ -128,6 +128,8 @@ class RelayRecoveryOrchestrator:
         game_id: str,
         bucket_id: str,
         source_order: Iterable[str],
+        *,
+        validator: Optional[Callable[[NormalizedRelayResult], Optional[str]]] = None,
     ) -> tuple[NormalizedRelayResult, list[dict[str, Any]]]:
         attempts: list[dict[str, Any]] = []
         for source_name in source_order:
@@ -158,6 +160,14 @@ class RelayRecoveryOrchestrator:
                 continue
 
             result, status = await self._fetch_with_timeout(adapter, game_id)
+
+            validation_error = None
+            if not result.is_empty and validator:
+                validation_error = validator(result)
+                if validation_error:
+                    status = "skipped_validation"
+                    # We continue to the next source if validation fails
+
             attempts.append(
                 {
                     "game_id": game_id,
@@ -166,14 +176,15 @@ class RelayRecoveryOrchestrator:
                     "status": status,
                     "has_event_state": result.has_event_state,
                     "has_raw_pbp": result.has_raw_pbp,
-                    "notes": result.notes,
+                    "notes": validation_error or result.notes,
                 }
             )
-            if not result.is_empty:
+
+            if not result.is_empty and not validation_error:
                 return result, attempts
 
         return NormalizedRelayResult(
             game_id=game_id,
             source_name="none",
-            notes="All configured relay sources missed",
+            notes="All configured relay sources missed or failed validation",
         ), attempts

@@ -179,7 +179,7 @@ def test_recover_relay_data_saves_orchestrator_result(monkeypatch):
         async def probe_bucket(self, bucket_id, game_ids, source_order):
             self.probe = (bucket_id, list(game_ids), list(source_order))
 
-        async def fetch_game(self, game_id, bucket_id, source_order):
+        async def fetch_game(self, game_id, bucket_id, source_order, **kwargs):
             return (
                 NormalizedRelayResult(
                     game_id=game_id,
@@ -258,7 +258,7 @@ def test_recover_relay_data_filters_malformed_rows_before_save(monkeypatch):
         async def probe_bucket(self, *_args):
             return {}
 
-        async def fetch_game(self, game_id, bucket_id, source_order):
+        async def fetch_game(self, game_id, bucket_id, source_order, **kwargs):
             return (
                 NormalizedRelayResult(
                     game_id=game_id,
@@ -311,7 +311,7 @@ def test_recover_relay_data_skips_when_all_rows_filtered(monkeypatch):
         async def probe_bucket(self, *_args):
             return {}
 
-        async def fetch_game(self, game_id, bucket_id, source_order):
+        async def fetch_game(self, game_id, bucket_id, source_order, **kwargs):
             return (
                 NormalizedRelayResult(
                     game_id=game_id,
@@ -394,16 +394,28 @@ def test_recover_relay_data_skips_result_with_too_few_events(monkeypatch):
         async def probe_bucket(self, *_args):
             return {}
 
-        async def fetch_game(self, game_id, bucket_id, source_order):
-            return (
-                NormalizedRelayResult(
-                    game_id=game_id,
-                    source_name="fake",
-                    events=[{"description": "홍길동 : 안타", "away_score": 1, "home_score": 0}],
-                    has_event_state=True,
-                ),
-                [],
+        async def fetch_game(self, game_id, bucket_id, source_order, **kwargs):
+            result = NormalizedRelayResult(
+                game_id=game_id,
+                source_name="fake",
+                events=[{"description": "홍길동 : 안타", "away_score": 1, "home_score": 0}],
+                has_event_state=True,
             )
+            validation_error = kwargs["validator"](result)
+            if validation_error:
+                return (
+                    NormalizedRelayResult(game_id=game_id, source_name="none", notes=validation_error),
+                    [
+                        {
+                            "game_id": game_id,
+                            "bucket_id": bucket_id,
+                            "source_name": source_order[0],
+                            "status": "skipped_validation",
+                            "notes": validation_error,
+                        }
+                    ],
+                )
+            return (result, [])
 
     result = asyncio.run(
         service.recover_relay_data(
@@ -439,19 +451,31 @@ def test_recover_relay_data_skips_score_mismatch_when_validation_enabled(monkeyp
         async def probe_bucket(self, *_args):
             return {}
 
-        async def fetch_game(self, game_id, bucket_id, source_order):
-            return (
-                NormalizedRelayResult(
-                    game_id=game_id,
-                    source_name="fake",
-                    events=[
-                        {"description": "홍길동 : 안타", "away_score": 0, "home_score": 0},
-                        {"description": "이몽룡 : 삼진", "away_score": 0, "home_score": 0},
-                    ],
-                    has_event_state=True,
-                ),
-                [],
+        async def fetch_game(self, game_id, bucket_id, source_order, **kwargs):
+            result = NormalizedRelayResult(
+                game_id=game_id,
+                source_name="fake",
+                events=[
+                    {"description": "홍길동 : 안타", "away_score": 0, "home_score": 0},
+                    {"description": "이몽룡 : 삼진", "away_score": 0, "home_score": 0},
+                ],
+                has_event_state=True,
             )
+            validation_error = kwargs["validator"](result)
+            if validation_error:
+                return (
+                    NormalizedRelayResult(game_id=game_id, source_name="none", notes=validation_error),
+                    [
+                        {
+                            "game_id": game_id,
+                            "bucket_id": bucket_id,
+                            "source_name": source_order[0],
+                            "status": "skipped_validation",
+                            "notes": validation_error,
+                        }
+                    ],
+                )
+            return (result, [])
 
     result = asyncio.run(
         service.recover_relay_data(

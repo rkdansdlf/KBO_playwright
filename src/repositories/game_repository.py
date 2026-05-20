@@ -114,6 +114,8 @@ def _resolve_game_season_id(
     existing_season_id: Optional[int],
 ) -> Optional[int]:
     """Resolve season_id for non-schedule write paths that only know game_date."""
+    if existing_season_id is not None:
+        return existing_season_id
     season_data = {
         "season_id": game_data.get("season_id"),
         "season_year": game_data.get("season_year") or game_date.year,
@@ -1004,8 +1006,12 @@ def refresh_game_status_for_date(target_date: str, today: Optional[date] = None)
         try:
             games = session.query(Game).filter(Game.game_date == dt).all()
             status_counts: Dict[str, int] = {}
+            game_ids: List[str] = []
+            updated_game_ids: List[str] = []
+            game_ids_by_status: Dict[str, List[str]] = {}
             updated = 0
             for game in games:
+                game_ids.append(game.game_id)
                 has_metadata = _has_game_child_rows(session, GameMetadata, game.game_id)
                 has_inning = _has_game_child_rows(session, GameInningScore, game.game_id)
                 has_lineup = _has_game_child_rows(session, GameLineup, game.game_id)
@@ -1024,8 +1030,10 @@ def refresh_game_status_for_date(target_date: str, today: Optional[date] = None)
                     today=today,
                 )
                 status_counts[next_status] = status_counts.get(next_status, 0) + 1
+                game_ids_by_status.setdefault(next_status, []).append(game.game_id)
                 if game.game_status != next_status:
                     game.game_status = next_status
+                    updated_game_ids.append(game.game_id)
                     updated += 1
             session.commit()
             return {
@@ -1033,6 +1041,9 @@ def refresh_game_status_for_date(target_date: str, today: Optional[date] = None)
                 "total": len(games),
                 "updated": updated,
                 "status_counts": status_counts,
+                "game_ids": sorted(game_ids),
+                "updated_game_ids": sorted(updated_game_ids),
+                "game_ids_by_status": {status: sorted(ids) for status, ids in game_ids_by_status.items()},
             }
         except Exception as exc:
             session.rollback()

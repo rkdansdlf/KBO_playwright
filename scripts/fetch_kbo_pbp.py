@@ -59,10 +59,19 @@ async def run_fetcher(argv: list[str] | None = None) -> int:
         help="Skip saving fetched relay data when result event count is below this threshold",
     )
     parser.add_argument(
-        "--validate-final-score",
-        action="store_true",
-        help="Skip saving fetched relay data when final event score differs from game final score",
+        "--no-validate-score",
+        action="store_false",
+        dest="validate_final_score",
+        help="Disable final event score validation against game boxscore",
     )
+    parser.set_defaults(validate_final_score=True)
+    parser.add_argument(
+        "--no-validate-continuity",
+        action="store_false",
+        dest="validate_inning_continuity",
+        help="Disable inning continuity validation",
+    )
+    parser.set_defaults(validate_inning_continuity=True)
     parser.add_argument("--report-out", type=str, help="CSV report output path")
     args = parser.parse_args(argv)
 
@@ -103,6 +112,7 @@ async def run_fetcher(argv: list[str] | None = None) -> int:
         allow_derived_pbp=args.allow_derived_pbp,
         min_result_events=args.min_result_events,
         validate_final_score=args.validate_final_score,
+        validate_inning_continuity=args.validate_inning_continuity,
         report_out=Path(args.report_out) if args.report_out else None,
         log=print,
     )

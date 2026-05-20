@@ -123,8 +123,9 @@ def derive_stable_game_status(
             return new_status or GAME_STATUS_UNRESOLVED
         if is_terminal_status(current_status):
             return current_status or GAME_STATUS_UNRESOLVED
-            
-        # Past games without scores should eventually be CANCELLED or UNRESOLVED
-        return new_status or current_status or GAME_STATUS_UNRESOLVED
+
+        # Past games without scores must not remain SCHEDULED. A later
+        # detail/status refresh can still promote them to terminal.
+        return GAME_STATUS_UNRESOLVED
 
     return new_status or GAME_STATUS_SCHEDULED

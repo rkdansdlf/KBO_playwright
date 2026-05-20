@@ -315,6 +315,7 @@ def test_run_update_injects_resolver_marks_cancelled_and_uses_step_runner(monkey
     assert ("20250101LGSS0", GAME_STATUS_CANCELLED) in updates
     assert not any(command[:1] == ["scripts/fetch_kbo_pbp.py"] for command in commands)
     assert ["-m", "src.cli.daily_review_batch", "--date", "20250101", "--no-sync"] in commands
+    assert ["-m", "src.cli.daily_story_batch", "--date", "20250101", "--no-sync"] in commands
     assert [
         "-m",
         "src.cli.backfill_starting_pitchers_from_stats",
@@ -517,6 +518,7 @@ def test_run_update_syncs_only_target_games_after_freshness_gate(monkeypatch):
     )
 
     assert ["-m", "src.cli.daily_review_batch", "--date", "20250101", "--no-sync"] in commands
+    assert ["-m", "src.cli.daily_story_batch", "--date", "20250101", "--no-sync"] in commands
     assert ["scripts/fetch_kbo_pbp.py", "--game-ids", "20250101LGSS0"] in commands
     backfill_command = [
         "-m",
@@ -725,6 +727,41 @@ def test_run_update_syncs_auto_healer_recovery_targets(monkeypatch):
     assert len(_FakeSyncer.created) == 1
     syncer = _FakeSyncer.created[0]
     assert syncer.synced_games == ["20241231LGSS0", "20250101LGSS0"]
+
+
+def test_run_update_syncs_games_seen_by_status_refresh(monkeypatch):
+    _FakeResolver.created = []
+    _FakeSyncer.created = []
+
+    _patch_common(monkeypatch)
+    monkeypatch.setattr(run_daily_update, "GameDetailCrawler", _FakeDetailCrawlerSuccess)
+    monkeypatch.setattr(run_daily_update, "OCISync", _FakeSyncer)
+    monkeypatch.setattr(run_daily_update, "update_game_status", lambda *_args, **_kwargs: True)
+    monkeypatch.setattr(
+        run_daily_update,
+        "refresh_game_status_for_date",
+        lambda *_args, **_kwargs: {
+            "total": 2,
+            "updated": 1,
+            "status_counts": {"COMPLETED": 2},
+            "game_ids": ["20250101LGSS0", "20250101HHKT0"],
+        },
+    )
+    monkeypatch.setenv("OCI_DB_URL", "postgresql://example")
+
+    asyncio.run(
+        run_daily_update.run_update(
+            "20250101",
+            sync=True,
+            headless=True,
+            limit=None,
+            step_runner=lambda _argv: None,
+        )
+    )
+
+    assert len(_FakeSyncer.created) == 1
+    syncer = _FakeSyncer.created[0]
+    assert syncer.synced_games == ["20250101HHKT0", "20250101LGSS0"]
 
 
 def test_run_update_syncs_postgame_reconciliation_changes(monkeypatch):

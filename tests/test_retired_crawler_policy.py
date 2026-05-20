@@ -84,8 +84,8 @@ class _FakeRecordPage:
             self.change_dispatches.append(selector)
             return True
         if self.page_index == 0:
-            return ["10001", "10002"]
-        return ["20001"]
+            return {"10001": "Hitter1", "10002": "Hitter2"}
+        return {"20001": "Hitter3"}
 
     async def query_selector(self, selector):
         self.query_selectors.append(selector)
@@ -126,7 +126,7 @@ def test_retired_listing_blocks_navigation_when_compliance_disallows(monkeypatch
         )
     )
 
-    assert ids == set()
+    assert ids == {}
     assert compliance.urls == [
         "https://www.koreabaseball.com/Record/Player/HitterBasic/Basic1.aspx"
     ]
@@ -151,7 +151,7 @@ def test_retired_listing_uses_flexible_selectors_and_paginates(monkeypatch):
         )
     )
 
-    assert ids == {"10001", "10002", "20001"}
+    assert ids == {"10001": "Hitter1", "10002": "Hitter2", "20001": "Hitter3"}
     assert page.goto_calls == [
         (
             "https://www.koreabaseball.com/Record/Player/HitterBasic/Basic1.aspx",
@@ -198,7 +198,7 @@ def test_retired_listing_uses_next_button_when_numeric_page_is_absent(monkeypatc
         )
     )
 
-    assert ids == {"10001", "10002", "20001"}
+    assert ids == {"10001": "Hitter1", "10002": "Hitter2", "20001": "Hitter3"}
     assert "div.paging a:has-text('2')" in page.query_selectors
     assert "div.paging a[id$='btnNext']" in page.query_selectors
     assert "div.paging a:has(img[alt='다음'])" in page.query_selectors
@@ -266,12 +266,12 @@ def test_collect_historical_player_ids_unions_years_and_skips_failures():
             calls.append(season_year)
             if season_year == 2021:
                 raise RuntimeError("temporary listing failure")
-            return {str(season_year), "shared"}
+            return {str(season_year): f"Player_{season_year}", "shared": "SharedPlayer"}
 
     crawler = FakeCrawler()
     ids = asyncio.run(crawler.collect_historical_player_ids([2020, 2021, 2022]))
 
-    assert ids == {"2020", "2022", "shared"}
+    assert ids == {"2020": "Player_2020", "2022": "Player_2022", "shared": "SharedPlayer"}
     assert sorted(calls) == [2020, 2021, 2022]
 
 
@@ -281,11 +281,11 @@ def test_determine_inactive_player_ids_diffs_historical_and_active(monkeypatch):
     class FakeCrawler(RetiredPlayerListingCrawler):
         async def collect_historical_player_ids(self, seasons):
             calls.append(("historical", list(seasons)))
-            return {"1", "2", "3"}
+            return {"1": "P1", "2": "P2", "3": "P3"}
 
         async def collect_player_ids_for_year(self, season_year):
             calls.append(("active", season_year))
-            return {"2"}
+            return {"2": "P2"}
 
     crawler = FakeCrawler()
     inactive = asyncio.run(

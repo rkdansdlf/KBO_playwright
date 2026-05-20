@@ -116,7 +116,7 @@ async def process_player_result(
     # 파싱된 기록을 데이터베이스에 저장
     saved = await asyncio.to_thread(
         save_futures_batting,
-        player.id,
+        player_id,
         rows
     )
 

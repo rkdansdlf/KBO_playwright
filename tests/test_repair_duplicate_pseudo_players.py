@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import csv
 from pathlib import Path
 
 from sqlalchemy import create_engine, text
@@ -175,6 +176,33 @@ def _make_db(tmp_path: Path, *, conflict: bool = False) -> str:
     return f"sqlite:///{db_path}"
 
 
+def _write_mergeable_worklist(path: Path, rows: list[dict[str, object]]) -> Path:
+    fieldnames = [
+        "name",
+        "team_key",
+        "uniform_no",
+        "target_player_id",
+        "source_player_ids",
+        "player_ids",
+        "reference_rows",
+        "reason",
+    ]
+    with path.open("w", newline="", encoding="utf-8") as fh:
+        writer = csv.DictWriter(fh, fieldnames=fieldnames)
+        writer.writeheader()
+        writer.writerows(rows)
+    return path
+
+
+def _write_conflict_worklist(path: Path, rows: list[dict[str, object]]) -> Path:
+    fieldnames = ["table_name", "name", "target_player_id", "source_player_ids", "key", "reason"]
+    with path.open("w", newline="", encoding="utf-8") as fh:
+        writer = csv.DictWriter(fh, fieldnames=fieldnames)
+        writer.writeheader()
+        writer.writerows(rows)
+    return path
+
+
 def test_duplicate_pseudo_player_repair_dry_run_and_apply(tmp_path):
     db_url = _make_db(tmp_path)
 
@@ -245,3 +273,113 @@ def test_duplicate_pseudo_player_repair_reports_payload_conflict(tmp_path):
 
     assert player_count == 2
     assert batting_count == 2
+
+
+def test_duplicate_pseudo_player_repair_applies_reviewed_worklist_and_reports_conflicts(tmp_path):
+    db_url = _make_db(tmp_path, conflict=True)
+    engine = create_engine(db_url)
+    with engine.begin() as conn:
+        conn.execute(
+            text(
+                """
+                INSERT INTO player_basic (player_id, name, team, uniform_no)
+                VALUES
+                    (900101, '검토선수', 'SS', NULL),
+                    (900102, '검토선수', 'SS', NULL)
+                """
+            )
+        )
+
+    worklist = _write_mergeable_worklist(
+        tmp_path / "reviewed_mergeable.csv",
+        [
+            {
+                "name": "임시선수",
+                "team_key": "LG",
+                "uniform_no": "17",
+                "target_player_id": 900001,
+                "source_player_ids": "900002",
+                "player_ids": "900001,900002",
+                "reference_rows": 2,
+                "reason": "single_team_single_uniform_evidence",
+            },
+            {
+                "name": "검토선수",
+                "team_key": "SS",
+                "uniform_no": "",
+                "target_player_id": 900101,
+                "source_player_ids": "900102",
+                "player_ids": "900101,900102",
+                "reference_rows": 0,
+                "reason": "single_team_single_uniform_evidence",
+            },
+        ],
+    )
+    conflict_worklist = _write_conflict_worklist(
+        tmp_path / "reviewed_conflicts.csv",
+        [
+            {
+                "table_name": "game_batting_stats",
+                "name": "임시선수",
+                "target_player_id": 900001,
+                "source_player_ids": "900002",
+                "key": "20260401LGSS0|900001|1",
+                "reason": "conflicting_duplicate_reference_payload",
+            },
+            {
+                "table_name": "players",
+                "name": "검토선수",
+                "target_player_id": 900101,
+                "source_player_ids": "900102",
+                "key": "900101",
+                "reason": "conflicting_duplicate_reference_payload",
+            },
+        ],
+    )
+
+    applied = repair_duplicate_pseudo_players(
+        db_url=db_url,
+        output_dir=tmp_path / "reports",
+        apply=True,
+        mergeable_worklist=worklist,
+        conflict_worklist=conflict_worklist,
+        conflict_policy="delete-source-duplicates",
+    )
+
+    assert applied["mergeable_groups"] == 2
+    assert applied["safe_mergeable_groups"] == 2
+    assert applied["conflict_groups"] == 2
+    assert applied["conflicts"] == 2
+    assert applied["deleted_conflicting_reference_rows"] == 1
+    assert applied["deleted_player_basic_rows"] == 2
+
+    with Path(applied["conflict_report_path"]).open(newline="", encoding="utf-8") as fh:
+        conflict_rows = list(csv.DictReader(fh))
+
+    assert conflict_rows == [
+        {
+            "table_name": "game_batting_stats",
+            "name": "임시선수",
+            "target_player_id": "900001",
+            "source_player_ids": "900002",
+            "key": "20260401LGSS0|900001|1",
+            "reason": "conflicting_duplicate_reference_payload",
+        },
+        {
+            "table_name": "players",
+            "name": "검토선수",
+            "target_player_id": "900101",
+            "source_player_ids": "900102",
+            "key": "900101",
+            "reason": "conflicting_duplicate_reference_payload",
+        }
+    ]
+
+    with engine.connect() as conn:
+        player_ids = conn.execute(text("SELECT player_id FROM player_basic ORDER BY player_id")).fetchall()
+        batting_rows = conn.execute(
+            text("SELECT player_id, hits FROM game_batting_stats ORDER BY id")
+        ).fetchall()
+
+    assert player_ids == [(900001,), (900101,)]
+    assert batting_rows == [(900001, 1)]
