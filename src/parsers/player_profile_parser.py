@@ -168,6 +168,7 @@ def parse_entry_year_team(value: str) -> Dict[str, Optional[Any]]:
 class PlayerProfileParsed:
     player_id: Optional[int] = None
     player_name: Optional[str] = None
+    photo_url: Optional[str] = None
     back_number: Optional[int] = None
     birth_date: Optional[str] = None
     position: Optional[str] = None

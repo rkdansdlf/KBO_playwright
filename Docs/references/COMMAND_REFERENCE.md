@@ -352,6 +352,38 @@ git status --short
 
 `freshness_gate`는 `missing_review_moments`뿐 아니라 `review_moment_noise`도 검사합니다. 이 항목이 실패하면 `game_events` 정제 또는 리뷰 재생성을 먼저 확인하세요.
 
+#### LLM-ready 경기 스토리 JSON 생성
+`game_events`를 원천으로 홈런, 역전/동점 득점, 결정적 실책, 후반 high-WPA 이벤트만 추린 타임라인 JSON을 `game_summary.summary_type = '경기_스토리'`로 저장합니다. `v_ai_game_context`에는 포함하지 않으므로 소비자는 `game_summary`를 직접 조회합니다.
+
+```bash
+# 특정 날짜 완료 경기의 경기 스토리 생성
+./venv/bin/python3 -m src.cli.daily_story_batch \
+    --date 20251015 \
+    --no-sync
+
+# 변경 예정 스토리 점검
+./venv/bin/python3 -m src.cli.regenerate_game_stories \
+    --season 2025 \
+    --dry-run \
+    --report-out data/reports/game_story_regen_2025_dry_run.csv
+
+# 로컬 스토리 JSON 재생성 + OCI game_summary 경기_스토리 행 동기화
+./venv/bin/python3 -m src.cli.regenerate_game_stories \
+    --season 2025 \
+    --apply --sync-oci \
+    --report-out data/reports/game_story_regen_2025_apply.csv \
+    --backup-out data/recovery/game_story_regen_2025_backup.csv
+```
+
+리포트 해석:
+- `DRY_RUN_READY`: 새 경기 스토리 JSON이 기존 값과 달라질 예정.
+- `DRY_RUN_UNCHANGED`: 재생성해도 기존 로컬 스토리와 동일.
+- `APPLIED`: 로컬 `game_summary`의 `경기_스토리`를 갱신.
+- `UNCHANGED`: 로컬 값은 그대로지만 `--sync-oci` 대상에는 포함.
+- `SKIPPED_NOT_COMPLETED`: 완료/무승부 상태가 아니어서 생성하지 않음.
+- `warnings=missing_game_events`: 원천 이벤트가 없어 빈 timeline으로 생성됨.
+- `oci_status=synced_summary:<rows>`: 대상 경기의 OCI `경기_스토리` summary 행을 교체/동기화 완료.
+
 ---
 
 ## 🤖 자동화 스크립트
@@ -453,7 +485,7 @@ docker-compose logs -f scheduler
 ```
 
 ### 4. Player ID 무결성 보수 (Player ID Repair)
-`player_id` NULL 또는 generated placeholder 보수는 보수 범위를 좁혀 순차 실행합니다. curated row-level override는 `data/player_id_row_overrides.csv`에 보관하며, report/backup CSV는 로컬 산출물로 둡니다.
+`player_id` NULL 또는 generated placeholder 보수는 보수 범위를 좁혀 순차 실행합니다. curated row-level override는 `data/player_id_row_overrides.csv`에 보관하며, report/backup CSV는 로컬 산출물로 둡니다. row override는 `source_table + game_id + appearance_seq + team_code + player_name` exact key만 수정하고, report `status`가 `needs_update` 또는 `already_correct`일 때만 안전합니다. `missing`, `ambiguous`, `conflict`는 `--apply`를 중단하며 DB를 변경하지 않습니다.
 
 ```bash
 # 1) 로컬 NULL player_id를 OCI의 non-null 값으로 보수 (dry-run)
@@ -472,11 +504,26 @@ docker-compose logs -f scheduler
     --years 2009,2010,2019,2025,2026 \
     --output-dir data/null_player_id_conservative
 
-# 3) curated row override 적용 (dry-run 후 --apply)
+# 3) curated row override dry-run
 ./venv/bin/python3 scripts/maintenance/apply_player_id_overrides.py \
     --years 2009,2010,2019,2025,2026 \
     --include-generated \
     --output-dir data/player_id_override_reports
+
+# 3) local SQLite 적용
+./venv/bin/python3 scripts/maintenance/apply_player_id_overrides.py \
+    --years 2009,2010,2019,2025,2026 \
+    --include-generated \
+    --output-dir data/player_id_override_reports \
+    --apply
+
+# 3) OCI 적용은 명시적으로만 실행
+./venv/bin/python3 scripts/maintenance/apply_player_id_overrides.py \
+    --oci \
+    --years 2009,2010,2019,2025,2026 \
+    --include-generated \
+    --output-dir data/player_id_override_reports \
+    --apply
 
 # 4) 로컬에서 확정된 non-null 값을 OCI NULL row에 역보수 (dry-run 후 --apply)
 ./venv/bin/python3 scripts/maintenance/fill_oci_null_player_ids_from_local.py \

@@ -24,9 +24,9 @@ print(f"Futures Pitching Records: {pitching_count}")
 # Sample batting data
 print("\nSample Futures Batting Data:")
 cursor.execute("""
-    SELECT p.player_id, p.name_kor, psb.season, psb.league, psb.games_played, psb.avg
-    FROM players p
-    JOIN player_season_batting psb ON p.id = psb.player_id
+    SELECT pb.player_id, pb.name, psb.season, psb.league, psb.games, psb.avg
+    FROM player_basic pb
+    JOIN player_season_batting psb ON pb.player_id = psb.player_id
     WHERE psb.league='FUTURES'
     LIMIT 10
 """)
@@ -36,9 +36,9 @@ for row in cursor.fetchall():
 # Sample pitching data
 print("\nSample Futures Pitching Data:")
 cursor.execute("""
-    SELECT p.player_id, p.name_kor, psp.season, psp.league, psp.games_played, psp.era
-    FROM players p
-    JOIN player_season_pitching psp ON p.id = psp.player_id
+    SELECT pb.player_id, pb.name, psp.season, psp.league, psp.games, psp.era
+    FROM player_basic pb
+    JOIN player_season_pitching psp ON pb.player_id = psp.player_id
     WHERE psp.league='FUTURES'
     LIMIT 10
 """)

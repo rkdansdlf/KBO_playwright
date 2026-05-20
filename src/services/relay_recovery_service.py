@@ -186,7 +186,8 @@ async def recover_relay_data(
     source_timeout: float = 30.0,
     allow_derived_pbp: bool = False,
     min_result_events: int | None = None,
-    validate_final_score: bool = False,
+    validate_final_score: bool = True,
+    validate_inning_continuity: bool = True,
     report_out: str | Path | None = None,
     sleep_seconds: float = 1.0,
     orchestrator: RelayRecoveryOrchestrator | None = None,
@@ -254,7 +255,23 @@ async def recover_relay_data(
                 )
                 continue
 
-            relay_result, attempts = await orchestrator.fetch_game(target.game_id, bucket_id, source_order)
+            # Define a closure for per-source validation
+            def _validator(relay_result: NormalizedRelayResult) -> str | None:
+                return _validate_relay_result(
+                    target.game_id,
+                    relay_result,
+                    final_scores=final_scores,
+                    min_result_events=min_result_events,
+                    validate_final_score=validate_final_score,
+                    validate_inning_continuity=validate_inning_continuity,
+                )
+
+            relay_result, attempts = await orchestrator.fetch_game(
+                target.game_id,
+                bucket_id,
+                source_order,
+                validator=_validator
+            )
             run_result.report_rows.extend(attempts)
             if relay_result.is_empty:
                 run_result.empty_games += 1
@@ -266,29 +283,7 @@ async def recover_relay_data(
                 log(f"[SKIP] No relay data extracted for {target.game_id}")
                 continue
 
-            validation_failure = _validate_relay_result(
-                target.game_id,
-                relay_result,
-                final_scores=final_scores,
-                min_result_events=min_result_events,
-                validate_final_score=validate_final_score,
-            )
-            if validation_failure:
-                log(f"[SKIP] Validation failed for {target.game_id}: {validation_failure}")
-                run_result.report_rows.append(
-                    {
-                        "game_id": target.game_id,
-                        "bucket_id": bucket_id,
-                        "source_name": relay_result.source_name,
-                        "status": "skipped_validation",
-                        "saved_rows": 0,
-                        "has_event_state": relay_result.has_event_state,
-                        "has_raw_pbp": relay_result.has_raw_pbp or bool(relay_result.raw_pbp_rows),
-                        "notes": validation_failure,
-                    }
-                )
-                continue
-
+            # Result passed validation during fetch_game if it reached here and is not empty
             relay_result, filter_notes, filtered_rows = _sanitize_relay_result(relay_result)
             if relay_result.is_empty:
                 run_result.filtered_games += 1
@@ -460,14 +455,29 @@ def _validate_relay_result(
     final_scores: dict[str, tuple[int | None, int | None]],
     min_result_events: int | None,
     validate_final_score: bool,
+    validate_inning_continuity: bool = True,
 ) -> str | None:
     events = relay_result.events or []
     if min_result_events is not None and len(events) < min_result_events:
         return f"too_few_result_events:{len(events)}<{min_result_events}"
 
+    if not events:
+        return None
+
+    # 1. Inning Continuity Check
+    if validate_inning_continuity and events:
+        innings = sorted(list({int(e.get("inning") or 1) for e in events}))
+        if innings:
+            if innings[0] != 1:
+                return f"missing_starting_inning:first={innings[0]}"
+            for i in range(len(innings) - 1):
+                if innings[i+1] != innings[i] + 1:
+                    return f"missing_middle_inning:gap_between_{innings[i]}_and_{innings[i+1]}"
+
     if not validate_final_score:
         return None
 
+    # 2. Final Score Check
     expected = final_scores.get(game_id)
     if expected is None or expected[0] is None or expected[1] is None:
         return "missing_game_final_score"

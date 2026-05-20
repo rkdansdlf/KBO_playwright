@@ -1098,151 +1098,37 @@ class OCISync:
         print(f"✅ Synced {synced} player movement records to OCI")
         return synced
 
-    def sync_player_season_batting(self, year: int | None = None, limit: int = None, batch_size: int = 500) -> int:
-        """Sync player_season_batting data from SQLite to OCI using bulk upsert"""
-        query = self.sqlite_session.query(PlayerSeasonBatting)
+    def sync_player_season_batting(self, year: int | None = None, limit: int = None, batch_size: int = 5000) -> int:
+        """Sync player_season_batting data from SQLite to OCI using fast bulk COPY"""
+        from src.models.player import PlayerSeasonBatting
+        filters = []
         if year:
-            query = query.filter(PlayerSeasonBatting.season == year)
-        if limit:
-            query = query.limit(limit)
-
-        batting_stats = query.all()
-        total = len(batting_stats)
-        synced = 0
-
-        print(f"  - Starting bulk sync for {total} batting records (batch={batch_size})...")
-
-        for i in range(0, total, batch_size):
-            chunk = batting_stats[i:i + batch_size]
-            data_list = []
-            for stat in chunk:
-                data_list.append({
-                    'player_id': stat.player_id,
-                    'season': stat.season,
-                    'league': stat.league,
-                    'level': stat.level,
-                    'source': stat.source,
-                    'team_code': stat.team_code,
-                    'franchise_id': stat.franchise_id,
-                    'canonical_team_code': stat.canonical_team_code,
-                    'games': stat.games,
-                    'at_bats': stat.at_bats,
-                    'runs': stat.runs,
-                    'hits': stat.hits,
-                    'doubles': stat.doubles,
-                    'triples': stat.triples,
-                    'home_runs': stat.home_runs,
-                    'rbi': stat.rbi,
-                    'walks': stat.walks,
-                    'intentional_walks': stat.intentional_walks,
-                    'hbp': stat.hbp,
-                    'strikeouts': stat.strikeouts,
-                    'stolen_bases': stat.stolen_bases,
-                    'caught_stealing': stat.caught_stealing,
-                    'sacrifice_hits': stat.sacrifice_hits,
-                    'sacrifice_flies': stat.sacrifice_flies,
-                    'gdp': stat.gdp,
-                    'avg': stat.avg,
-                    'obp': stat.obp,
-                    'slg': stat.slg,
-                    'ops': stat.ops,
-                    'iso': stat.iso,
-                    'babip': stat.babip,
-                    'extra_stats': stat.extra_stats if stat.extra_stats not in [None, 'null', 'None'] else None,
-                })
-
-            if data_list:
-                stmt = pg_insert(PlayerSeasonBatting).values(data_list)
-                update_cols = {k: stmt.excluded[k] for k in data_list[0].keys() if k not in ['player_id', 'season', 'league', 'level']}
-                stmt = stmt.on_conflict_do_update(
-                    index_elements=['player_id', 'season', 'league', 'level'],
-                    set_=update_cols
-                )
-                self.target_session.execute(stmt)
-                synced += len(data_list)
-                self.target_session.commit()
-                print(f"    ✅ Synced {synced}/{total} batting records...")
-
+            filters.append(PlayerSeasonBatting.season == year)
+        
+        synced = self._sync_simple_table(
+            PlayerSeasonBatting,
+            conflict_keys=['player_id', 'season', 'league', 'level'],
+            exclude_cols=['id', 'created_at', 'updated_at'],
+            filters=filters,
+            batch_size=batch_size
+        )
         print(f"  ✅ Finished syncing {synced} player_season_batting records to OCI")
         return synced
 
-    def sync_player_season_pitching(self, year: int | None = None, limit: int = None, batch_size: int = 500) -> int:
-        """Sync player_season_pitching data from SQLite to OCI using bulk upsert"""
-        query = self.sqlite_session.query(PlayerSeasonPitching)
+    def sync_player_season_pitching(self, year: int | None = None, limit: int = None, batch_size: int = 5000) -> int:
+        """Sync player_season_pitching data from SQLite to OCI using fast bulk COPY"""
+        from src.models.player import PlayerSeasonPitching
+        filters = []
         if year:
-            query = query.filter(PlayerSeasonPitching.season == year)
-        if limit:
-            query = query.limit(limit)
-
-        pitching_stats = query.all()
-        total = len(pitching_stats)
-        synced = 0
-
-        print(f"  - Starting bulk sync for {total} pitching records (batch={batch_size})...")
-
-        for i in range(0, total, batch_size):
-            chunk = pitching_stats[i:i + batch_size]
-            data_list = []
-            for stat in chunk:
-                data_list.append({
-                    'player_id': stat.player_id,
-                    'season': stat.season,
-                    'league': stat.league,
-                    'level': stat.level,
-                    'source': stat.source,
-                    'team_code': stat.team_code,
-                    'franchise_id': stat.franchise_id,
-                    'canonical_team_code': stat.canonical_team_code,
-                    'games': stat.games,
-                    'games_started': stat.games_started,
-                    'wins': stat.wins,
-                    'losses': stat.losses,
-                    'saves': stat.saves,
-                    'holds': stat.holds,
-                    'innings_pitched': stat.innings_pitched,
-                    'innings_outs': stat.innings_outs,
-                    'hits_allowed': stat.hits_allowed,
-                    'runs_allowed': stat.runs_allowed,
-                    'earned_runs': stat.earned_runs,
-                    'home_runs_allowed': stat.home_runs_allowed,
-                    'walks_allowed': stat.walks_allowed,
-                    'intentional_walks': stat.intentional_walks,
-                    'hit_batters': stat.hit_batters,
-                    'strikeouts': stat.strikeouts,
-                    'wild_pitches': stat.wild_pitches,
-                    'balks': stat.balks,
-                    'era': stat.era,
-                    'whip': stat.whip,
-                    'fip': stat.fip,
-                    'k_per_nine': stat.k_per_nine,
-                    'bb_per_nine': stat.bb_per_nine,
-                    'kbb': stat.kbb,
-                    'complete_games': stat.complete_games,
-                    'shutouts': stat.shutouts,
-                    'quality_starts': stat.quality_starts,
-                    'blown_saves': stat.blown_saves,
-                    'tbf': stat.tbf,
-                    'np': stat.np,
-                    'avg_against': stat.avg_against,
-                    'doubles_allowed': stat.doubles_allowed,
-                    'triples_allowed': stat.triples_allowed,
-                    'sacrifices_allowed': stat.sacrifices_allowed,
-                    'sacrifice_flies_allowed': stat.sacrifice_flies_allowed,
-                    'extra_stats': stat.extra_stats if stat.extra_stats not in [None, 'null', 'None'] else None,
-                })
-
-            if data_list:
-                stmt = pg_insert(PlayerSeasonPitching).values(data_list)
-                update_cols = {k: stmt.excluded[k] for k in data_list[0].keys() if k not in ['player_id', 'season', 'league', 'level']}
-                stmt = stmt.on_conflict_do_update(
-                    index_elements=['player_id', 'season', 'league', 'level'],
-                    set_=update_cols
-                )
-                self.target_session.execute(stmt)
-                synced += len(data_list)
-                self.target_session.commit()
-                print(f"    ✅ Synced {synced}/{total} pitching records...")
-
+            filters.append(PlayerSeasonPitching.season == year)
+            
+        synced = self._sync_simple_table(
+            PlayerSeasonPitching,
+            conflict_keys=['player_id', 'season', 'league', 'level'],
+            exclude_cols=['id', 'created_at', 'updated_at'],
+            filters=filters,
+            batch_size=batch_size
+        )
         print(f"  ✅ Finished syncing {synced} player_season_pitching records to OCI")
         return synced
 
@@ -1846,6 +1732,8 @@ class OCISync:
         game_ids = [row[0] for row in query.all()]
         if not game_ids:
             return 0
+
+        self._reset_target_sequence_for_table("game_play_by_play")
 
         for batch in self._chunked(game_ids, 500):
             self.target_session.query(GamePlayByPlay).filter(GamePlayByPlay.game_id.in_(batch)).delete(

@@ -296,6 +296,7 @@ async def run_update(
     relay_recovery_target_ids: set[str] = set()
     oci_skip_counts: dict[str, int] = {}
     oci_skip_game_ids: dict[str, list[str]] = {}
+    status_refresh_game_ids: list[str] = []
     write_contract = GameWriteContract(run_label=f"daily_update:{target_date}", log=print)
 
     if run_auto_healer:
@@ -436,6 +437,11 @@ async def run_update(
 
     print("\n🧭 Step 3: Refreshing game status for target date...")
     status_result = refresh_game_status_for_date(target_date, today=today_kst)
+    status_refresh_game_ids = [
+        normalized
+        for game_id in status_result.get("game_ids", [])
+        if (normalized := normalize_kbo_game_id(game_id))
+    ]
     print(
         "   ✅ "
         f"total={status_result.get('total', 0)} "
@@ -512,6 +518,15 @@ async def run_update(
     except Exception as exc:
         print(f"   ❌ Error generating review context: {exc}")
 
+    print("\n📚 Step 5.5: LLM-ready game story generation...")
+    try:
+        story_args = ["-m", "src.cli.daily_story_batch", "--date", target_date]
+        story_args.append("--no-sync")
+        runner(story_args)
+        print("   ✅ Game story generation complete")
+    except Exception as exc:
+        print(f"   ❌ Error generating game stories: {exc}")
+
     print("\n📈 Step 6: Updating cumulative player stats...")
     # Identify unique season types from today's games
     active_series = sorted({g.get("season_type", "regular") for g in daily_games if g.get("season_type")})
@@ -560,6 +575,13 @@ async def run_update(
         print("   ✅ Starting pitcher backfill complete")
     except Exception as exc:
         print(f"   ❌ Error during pitcher backfill: {exc}")
+
+    print("\n🕵️  Step 6.6: Auditing season stats vs transactional details (Auto-remediation)...")
+    try:
+        runner(["scripts/verification/audit_fallback_stats.py", "--year", str(year), "--type", "all", "--fix"])
+        print("   ✅ Statistical audit and auto-remediation complete")
+    except Exception as exc:
+        print(f"   ⚠️ Statistical audit/fix found issues (see logs): {exc}")
 
     print("\n🔄 Step 7: Updating player movements and daily rosters...")
     try:
@@ -620,13 +642,6 @@ async def run_update(
     except Exception as exc:
         print(f"   ⚠️ Profile enrichment found issues (continuing): {exc}")
 
-    print("\n🕵️  Step 10.5: Auditing season stats vs transactional details (Auto-fix enabled)...")
-    try:
-        runner(["scripts/verification/audit_fallback_stats.py", "--year", str(year), "--type", "all", "--fix"])
-        print("   ✅ Statistical audit and auto-remediation complete")
-    except Exception as exc:
-        print(f"   ⚠️ Statistical audit/fix found issues (see logs): {exc}")
-
     print("\n🕵️  Step 10.8: Deep statistical logic audit (cross-table invariants)...")
     try:
         runner(["scripts/verification/audit_game_logic.py", "--year", str(year)])
@@ -636,6 +651,7 @@ async def run_update(
 
     candidate_sync_game_ids = sorted(
         {game["game_id"] for game in daily_games}
+        | set(status_refresh_game_ids)
         | set(processed_game_ids)
         | set(reconciliation_changed_ids)
         | {item["game_id"] for item in healer_recovery_targets}
@@ -741,6 +757,7 @@ async def run_update(
         phase="postgame_finalize",
         target_date=target_date,
         game_ids=sorted(set(processed_game_ids) | set(reconciliation_changed_ids))
+        or status_refresh_game_ids
         or [game["game_id"] for game in daily_games],
         datasets=[
             "game",

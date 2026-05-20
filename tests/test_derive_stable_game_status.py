@@ -75,6 +75,18 @@ def test_derive_stable_past_unresolved_remains_unresolved_if_no_scores():
     )
     assert status == GAME_STATUS_UNRESOLVED
 
+def test_derive_stable_past_scheduled_advances_to_unresolved_if_no_scores():
+    today = date(2026, 5, 14)
+    game_date = date(2026, 5, 13)
+
+    status = derive_stable_game_status(
+        game_date=game_date,
+        current_status=GAME_STATUS_SCHEDULED,
+        new_status=GAME_STATUS_SCHEDULED,
+        today=today,
+    )
+    assert status == GAME_STATUS_UNRESOLVED
+
 def test_derive_stable_prevents_terminal_reversion():
     today = date(2026, 5, 14)
     game_date = date(2026, 5, 13)

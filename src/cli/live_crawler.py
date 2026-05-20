@@ -155,22 +155,35 @@ async def run_live_crawler_cycle(*, sync_to_oci: bool | None = None) -> bool:
     return True
 
 
-async def main_loop(interval_minutes: int, *, sync_to_oci: bool | None = None):
+async def main_loop(base_interval_minutes: int, *, sync_to_oci: bool | None = None, dynamic: bool = False):
     while True:
         try:
+            # Use seoul time for window logic
+            seoul_tz = ZoneInfo("Asia/Seoul")
+            now = datetime.now(seoul_tz)
+            
+            # 1. Run the cycle
             active = await run_live_crawler_cycle(sync_to_oci=sync_to_oci)
-            if not active:
-                seoul_tz = ZoneInfo("Asia/Seoul")
-                now = datetime.now(seoul_tz)
-                if now.hour < 12 or now.hour >= 23:
-                    print("[SLEEP] Outside primary live window. Sleeping for 30 minutes.")
-                    await asyncio.sleep(1800)
-                else:
-                    print("[WAIT] No live games. Next check in 5 minutes.")
-                    await asyncio.sleep(300)
+            
+            # 2. Determine next sleep interval
+            if not dynamic:
+                # Traditional fixed interval
+                sleep_seconds = base_interval_minutes * 60 if active else 300
             else:
-                print(f"[WAIT] Waiting {interval_minutes} minutes for next live cycle...")
-                await asyncio.sleep(interval_minutes * 60)
+                # Dynamic Interval Logic
+                if active:
+                    # Active games running: poll frequently (20 seconds for near real-time)
+                    sleep_seconds = 20
+                elif 12 <= now.hour < 23:
+                    # During game hours but no active games right now (e.g., between games or pre-game)
+                    sleep_seconds = 120  # 2 minutes
+                else:
+                    # Outside game hours
+                    sleep_seconds = 1800 # 30 minutes
+
+            print(f"[WAIT] Next check in {sleep_seconds} seconds...")
+            await asyncio.sleep(sleep_seconds)
+
         except Exception as exc:
             print(f"[CRITICAL ERROR] Live loop crashed: {exc}")
             await asyncio.sleep(60)
@@ -178,7 +191,8 @@ async def main_loop(interval_minutes: int, *, sync_to_oci: bool | None = None):
 
 def main(argv: Sequence[str] | None = None):
     parser = argparse.ArgumentParser(description="KBO Live Score & PBP Daemon")
-    parser.add_argument("--interval", type=int, default=2, help="Crawling polling interval in minutes")
+    parser.add_argument("--interval", type=int, default=2, help="Crawling polling interval in minutes (default for fixed mode)")
+    parser.add_argument("--dynamic", action="store_true", help="Enable dynamic polling (20s when active, 2m pre-game, 30m off-hours)")
     parser.add_argument("--run-once", action="store_true", help="Run precisely one cycle and exit")
     parser.add_argument("--no-sync", action="store_true", help="Skip explicit OCI sync after local writes")
     args = parser.parse_args(argv)
@@ -186,8 +200,9 @@ def main(argv: Sequence[str] | None = None):
     if args.run_once:
         asyncio.run(run_live_crawler_cycle(sync_to_oci=not args.no_sync))
     else:
-        print(f"🚀 Starting Real-time Daemon... Polling every {args.interval}m.")
-        asyncio.run(main_loop(args.interval, sync_to_oci=not args.no_sync))
+        mode = "DYNAMIC" if args.dynamic else f"FIXED ({args.interval}m)"
+        print(f"🚀 Starting Real-time Daemon... Mode: {mode}")
+        asyncio.run(main_loop(args.interval, sync_to_oci=not args.no_sync, dynamic=args.dynamic))
 
 
 if __name__ == "__main__":

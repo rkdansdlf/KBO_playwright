@@ -1,0 +1,3 @@
+bucket_id,source_name,sample_size,supported,last_checked_at,notes
+2024_regular_kbo,kbo,1,true,2026-05-18T18:36:53.248348+00:00,probe_success
+2024_regular_kbo,naver,1,true,2026-05-18T18:36:53.247944+00:00,probe_success
