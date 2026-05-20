@@ -13,6 +13,7 @@ from typing import List, Sequence
 
 from src.db.engine import SessionLocal
 from src.models.game import Game, GameSummary
+from src.repositories.game_repository import refresh_game_status_for_date
 from src.services.context_aggregator import ContextAggregator
 from src.sync.oci_sync import OCISync
 from src.utils.game_status import COMPLETED_LIKE_GAME_STATUSES
@@ -72,6 +73,13 @@ async def run_review_batch(target_date: str, *, sync_to_oci: bool | None = None)
     print(f"🚀 Starting Post-game Review Data Batch for {target_date}...")
 
     target_dt_obj = datetime.strptime(target_date, "%Y%m%d").date()
+    status_result = refresh_game_status_for_date(target_date)
+    if status_result.get("updated", 0):
+        print(
+            "🔄 Refreshed game statuses before review: "
+            f"updated={status_result.get('updated', 0)} "
+            f"counts={status_result.get('status_counts', {})}"
+        )
     saved_ids: List[str] = []
 
     with SessionLocal() as session:

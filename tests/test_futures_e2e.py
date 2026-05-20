@@ -47,7 +47,7 @@ async def main():
 
     # Step 3: Save Futures stats
     print(f"Step 3: Saving {len(rows)} Futures records to database...")
-    saved = save_futures_batting(player_id_db=player.id, rows=rows)
+    saved = save_futures_batting(player_id_db=player.player_basic_id, rows=rows)
     print(f"✓ Saved {saved} records\n")
 
     # Step 4: Verify
@@ -58,7 +58,7 @@ async def main():
 
     with SessionLocal() as session:
         stmt = select(PlayerSeasonBatting).where(
-            PlayerSeasonBatting.player_id == player.id,
+            PlayerSeasonBatting.player_id == player.player_basic_id,
             PlayerSeasonBatting.league == "FUTURES"
         ).order_by(PlayerSeasonBatting.season)
 

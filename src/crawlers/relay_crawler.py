@@ -21,8 +21,11 @@ from src.utils.team_codes import normalize_kbo_game_id
 
 
 KBO_TO_NAVER_TEAM_CODE = {
-    "PA": "PN",
-    "DB": "DO",
+    "PA": "PN",  # Panama -> PN (Naver)
+    "DB": "DO",  # Doosan (OB) -> DO (Naver)
+    "KH": "WO",  # Kiwoom -> WO (Naver uses WO for Heroes franchise)
+    "HT": "KIA", # KIA (HT) -> KIA (Naver)
+    "SK": "SSG", # SSG (SK) -> SSG (Naver)
 }
 
 
@@ -152,30 +155,91 @@ class RelayCrawler:
         *,
         allow_team_fallback: bool = True,
     ) -> Optional[Dict[str, Any]]:
-        game_date, away_code, home_code, doubleheader_no, season_year = self._expected_match_values(kbo_game_id)
-        exact_suffix = f"{game_date[4:8]}{away_code}{home_code}{doubleheader_no}{season_year}"
+        """
+        Match a KBO game ID to a Naver schedule game object using a scoring system.
+        """
+        game_date_str, away_code, home_code, dh_no, season_year = self._expected_match_values(kbo_game_id)
+        
+        # Suffix matching is the strongest signal for Naver's internal ID scheme
+        # Format: MMDDAWAYHOME{DH}{YEAR} e.g. 0510SSHH02024
+        exact_suffix = f"{game_date_str[4:8]}{away_code}{home_code}{dh_no}{season_year}"
+        team_suffix = f"{away_code}{home_code}{dh_no}{season_year}"
 
+        candidates = []
         for game in games:
             game_id = str(game.get("gameId") or "").strip()
-            if game_id.endswith(exact_suffix) and self._schedule_game_has_team_match(game, away_code, home_code):
-                return game
+            score = 0
+            
+            # Normalize Naver-provided team codes for comparison
+            g_away = self._naver_team_code(str(game.get("awayTeamCode") or "").strip())
+            g_home = self._naver_team_code(str(game.get("homeTeamCode") or "").strip())
+            
+            # 1. ID Suffix Match (Very Strong)
+            # We also check if the game_id contains the teams at all to avoid false suffix matches
+            id_has_teams = self._is_team_in_id(away_code, game_id) and self._is_team_in_id(home_code, game_id)
+            if game_id.endswith(exact_suffix):
+                score += 100
+            elif game_id.endswith(team_suffix):
+                score += 80
+            elif id_has_teams and dh_no in game_id:
+                score += 20
+                
+            # 2. Team Code Match (Strong)
+            teams_match = (g_away == away_code and g_home == home_code)
+            if teams_match:
+                score += 50
+            elif g_away == away_code or g_home == home_code:
+                score += 10
+            
+            # Penalty for ANY explicit mismatch to prevent false positives from similar IDs
+            if (g_away and g_away != away_code) or (g_home and g_home != home_code):
+                score -= 150
+                
+            # 3. Doubleheader Match
+            # Some Naver payloads have 'doubleHeader' field
+            g_dh = str(game.get("doubleHeader") or game.get("doubleHeaderNo") or "0").strip()
+            if g_dh == dh_no:
+                score += 20
+            
+            # 4. Date Match (if we are scanning nearby dates)
+            g_date = str(game.get("gameDate") or "").replace("-", "").strip()
+            if not g_date and len(game_id) >= 8:
+                # Try to extract date from game_id (usually starts with YYYYMMDD or contains MMDD)
+                date_match = re.search(r"(\d{8})", game_id)
+                if date_match:
+                    g_date = date_match.group(1)
 
-        if not allow_team_fallback:
+            if g_date == game_date_str:
+                score += 30
+            elif g_date and g_date[4:8] == game_date_str[4:8]:
+                score += 10
+
+            if score > 0:
+                candidates.append((score, game))
+
+        if not candidates:
             return None
 
-        for game in games:
-            if (
-                str(game.get("awayTeamCode") or "").strip() == away_code
-                and str(game.get("homeTeamCode") or "").strip() == home_code
-            ):
-                return game
+        # Sort by score descending
+        candidates.sort(key=lambda x: x[0], reverse=True)
+        best_score, best_game = candidates[0]
 
-        suffix = f"{away_code}{home_code}{doubleheader_no}{season_year}"
-        for game in games:
-            game_id = str(game.get("gameId") or "").strip()
-            if game_id.endswith(suffix) and self._schedule_game_has_team_match(game, away_code, home_code):
-                return game
-        return None
+        # Safety: require a minimum score to avoid false positives during broad date scans
+        # If we matched the suffix and at least one other field (or teams), we are likely good.
+        min_required = 100 if not allow_team_fallback else 60
+        if best_score < min_required:
+            return None
+
+        return best_game
+
+    def _is_team_in_id(self, team_code: str, game_id: str) -> bool:
+        """Check if a team code (modern or legacy) is present in the game ID string."""
+        if team_code in game_id:
+            return True
+        # Check for legacy equivalents commonly found in Naver IDs
+        legacy_map = {"KIA": "HT", "SSG": "SK", "WO": "KH", "DO": "OB", "KH": "WO"}
+        legacy = legacy_map.get(team_code)
+        return bool(legacy and legacy in game_id)
 
     async def _resolve_naver_game_id(self, client: httpx.AsyncClient, kbo_game_id: str) -> Optional[str]:
         query_dates = self._schedule_query_dates(kbo_game_id)

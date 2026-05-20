@@ -2,6 +2,9 @@ import argparse
 import math
 import logging
 import sys
+import json
+import os
+from datetime import datetime
 from pathlib import Path
 
 # Add project root to sys.path
@@ -9,7 +12,7 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 from src.db.engine import SessionLocal
 from src.aggregators.season_stat_aggregator import SeasonStatAggregator
 from src.models.player import (
@@ -31,6 +34,20 @@ class StatAudit:
     Compares officially crawled KBO stats with our fallback aggregation logic
     to identify discrepancies and optionally fix them.
     """
+    
+
+    @staticmethod
+    def _is_safe_to_fix(off_val: int, calc_val: int, max_diff: int = 15, max_ratio: float = 0.5) -> bool:
+        if off_val == 0 and calc_val > 0:
+            return True # Recovery of missing data
+        diff = abs(off_val - calc_val)
+        if diff <= 5: 
+            return True # Minor diff
+        if diff > max_diff:
+            return False # Too large
+        if off_val > 0 and (diff / off_val) > max_ratio:
+            return False # Too much relative change
+        return True
 
     @staticmethod
     def audit_batting(year: int, series: str, fix: bool = False):
@@ -48,14 +65,19 @@ class StatAudit:
                 print("   ⚠️ No official batting stats found to compare.")
                 return
 
+            # Use BULK aggregation for performance
+            calc_stats_list = SeasonStatAggregator.aggregate_batting_season_bulk(session, year, series, source='AUDIT_FIX')
+            calc_map = {c['player_id']: c for c in calc_stats_list}
+
             mismatches = 0
             fix_count = 0
+            keys_to_check = ['games', 'at_bats', 'hits', 'home_runs', 'rbi', 'walks']
+
             for off in official_stats:
-                calc = SeasonStatAggregator.aggregate_batting_season(session, off.player_id, year, series, source='AUDIT_FIX')
+                calc = calc_map.get(off.player_id)
                 if not calc:
                     continue
                 
-                keys_to_check = ['games', 'at_bats', 'hits', 'home_runs', 'rbi', 'walks']
                 diffs = []
                 for key in keys_to_check:
                     off_val = getattr(off, key) or 0
@@ -70,45 +92,40 @@ class StatAudit:
                     mismatches += 1
 
                     if fix:
-                        # Safety Guard: If game diff > 10, skip auto-fix UNLESS official is 0
                         off_games = off.games or 0
                         calc_games = calc.get('games', 0)
                         
-                        should_fix = False
-                        if off_games == 0 and calc_games > 0:
-                            should_fix = True
-                        elif abs(off_games - calc_games) <= 15: # Increased threshold
-                            should_fix = True
-                        
-                        if not should_fix:
+                        if not StatAudit._is_safe_to_fix(off_games, calc_games):
                             msg = f"🛑 Auto-fix skipped for {name}: large discrepancy ({off_games} vs {calc_games} games)"
                             print(f"      {msg}")
                             FallbackMonitor.log_fallback(year, series, "BATTING_AUDIT", msg)
                             continue
 
                         try:
-                            # Repositories expect a list of dicts
-                            # For batting, we need to ensure player_name/team_code are included if repo requires them
+                            # Backup
+                            original_dict = {key: getattr(off, key) for key in off.__table__.columns.keys() if not key.startswith('_')}
+                            backup_path_str = FallbackMonitor.save_audit_backup(
+                                player_id=str(off.player_id),
+                                type_name="batting",
+                                original_data=original_dict,
+                                calculated_data=calc
+                            )
+                            backup_name = os.path.basename(backup_path_str)
+                            
                             calc['player_name'] = name
-                            # Resolve team code from original if missing
                             if not calc.get('team_code'):
                                 calc['team_code'] = off.team_code
                             
                             save_batting_stats_safe([calc])
-                            print(f"      ✅ Fixed {name} in DB.")
+                            print(f"      ✅ Fixed {name} in DB. (Backup: {backup_name})")
                             fix_count += 1
                         except Exception as e:
                             print(f"      ⚠️ Failed to fix {name}: {e}")
             
-            if mismatches == 0:
-                print(f"   ✅ All {len(official_stats)} batting records match!")
-            else:
-                msg = f"Found {mismatches} mismatches out of {len(official_stats)}."
-                if fix:
-                    msg += f" Successfully fixed {fix_count} records."
-                print(f"   ⚠️ {msg}")
-                if not fix or (mismatches > fix_count):
-                    FallbackMonitor.log_fallback(year, series, "BATTING_AUDIT", msg)
+            summary_msg = f"Audited {len(official_stats)} records. Mismatches: {mismatches}, Fixed: {fix_count}"
+            print(f"   📊 {summary_msg}")
+            if mismatches > fix_count:
+                FallbackMonitor.log_fallback(year, series, "BATTING_AUDIT", summary_msg)
 
     @staticmethod
     def audit_pitching(year: int, series: str, fix: bool = False):
@@ -126,14 +143,19 @@ class StatAudit:
                 print("   ⚠️ No official pitching stats found to compare.")
                 return
 
+            # Use BULK aggregation for performance
+            calc_stats_list = SeasonStatAggregator.aggregate_pitching_season_bulk(session, year, series, source='AUDIT_FIX')
+            calc_map = {c['player_id']: c for c in calc_stats_list}
+
             mismatches = 0
             fix_count = 0
+            keys_to_check = ['games', 'wins', 'losses', 'saves', 'earned_runs', 'innings_outs']
+
             for off in official_stats:
-                calc = SeasonStatAggregator.aggregate_pitching_season(session, off.player_id, year, series, source='AUDIT_FIX')
+                calc = calc_map.get(off.player_id)
                 if not calc:
                     continue
                 
-                keys_to_check = ['games', 'wins', 'losses', 'saves', 'earned_runs', 'innings_outs']
                 diffs = []
                 for key in keys_to_check:
                     off_val = getattr(off, key) or 0
@@ -148,44 +170,40 @@ class StatAudit:
                     mismatches += 1
 
                     if fix:
-                        # Safety Guard: If game diff > 15, skip auto-fix UNLESS official is 0
                         off_games = off.games or 0
                         calc_games = calc.get('games', 0)
                         
-                        should_fix = False
-                        if off_games == 0 and calc_games > 0:
-                            should_fix = True
-                        elif abs(off_games - calc_games) <= 15:
-                            should_fix = True
-                            
-                        if not should_fix:
+                        if not StatAudit._is_safe_to_fix(off_games, calc_games):
                             msg = f"🛑 Auto-fix skipped for {name}: large discrepancy ({off_games} vs {calc_games} games)"
                             print(f"      {msg}")
                             FallbackMonitor.log_fallback(year, series, "PITCHING_AUDIT", msg)
                             continue
 
                         try:
-                            # Pitching repo expects payloads from stats list to_repository_payload
-                            # We'll simulate that structure or ensure it matches
+                            # Backup
+                            original_dict = {key: getattr(off, key) for key in off.__table__.columns.keys() if not key.startswith('_')}
+                            backup_path_str = FallbackMonitor.save_audit_backup(
+                                player_id=str(off.player_id),
+                                type_name="pitching",
+                                original_data=original_dict,
+                                calculated_data=calc
+                            )
+                            backup_name = os.path.basename(backup_path_str)
+                            
                             calc['player_name'] = name
                             if not calc.get('team_code'):
                                 calc['team_code'] = off.team_code
                             
                             save_pitching_stats_to_db([calc])
-                            print(f"      ✅ Fixed {name} in DB.")
+                            print(f"      ✅ Fixed {name} in DB. (Backup: {backup_name})")
                             fix_count += 1
                         except Exception as e:
                             print(f"      ⚠️ Failed to fix {name}: {e}")
             
-            if mismatches == 0:
-                print(f"   ✅ All {len(official_stats)} pitching records match!")
-            else:
-                msg = f"Found {mismatches} mismatches out of {len(official_stats)}."
-                if fix:
-                    msg += f" Successfully fixed {fix_count} records."
-                print(f"   ⚠️ {msg}")
-                if not fix or (mismatches > fix_count):
-                    FallbackMonitor.log_fallback(year, series, "PITCHING_AUDIT", msg)
+            summary_msg = f"Audited {len(official_stats)} records. Mismatches: {mismatches}, Fixed: {fix_count}"
+            print(f"   📊 {summary_msg}")
+            if mismatches > fix_count:
+                FallbackMonitor.log_fallback(year, series, "PITCHING_AUDIT", summary_msg)
 
     @staticmethod
     def audit_fielding(year: int, series: str, fix: bool = False):
@@ -226,9 +244,19 @@ class StatAudit:
                         
                         if fix:
                             try:
+                                # Backup
+                                original_dict = {key: getattr(off, key) for key in off.__table__.columns.keys() if not key.startswith('_')}
+                                backup_path_str = FallbackMonitor.save_audit_backup(
+                                    player_id=str(pid),
+                                    type_name="fielding",
+                                    original_data=original_dict,
+                                    calculated_data=calc
+                                )
+                                backup_name = os.path.basename(backup_path_str)
+
                                 calc['team_id'] = off.team_id
                                 repo.upsert_many([calc])
-                                print(f"      ✅ Fixed {name} ({off.position_id}) in DB.")
+                                print(f"      ✅ Fixed {name} ({off.position_id}) in DB. (Backup: {backup_name})")
                                 fix_count += 1
                             except Exception as e:
                                 print(f"      ⚠️ Failed to fix {name}: {e}")
@@ -272,9 +300,19 @@ class StatAudit:
                     
                     if fix:
                         try:
+                            # Backup
+                            original_dict = {key: getattr(off, key) for key in off.__table__.columns.keys() if not key.startswith('_')}
+                            backup_path_str = FallbackMonitor.save_audit_backup(
+                                player_id=str(off.player_id),
+                                type_name="baserunning",
+                                original_data=original_dict,
+                                calculated_data=calc
+                            )
+                            backup_name = os.path.basename(backup_path_str)
+
                             calc['team_id'] = off.team_id
                             repo.upsert_many([calc])
-                            print(f"      ✅ Fixed {name} in DB.")
+                            print(f"      ✅ Fixed {name} in DB. (Backup: {backup_name})")
                             fix_count += 1
                         except Exception as e:
                             print(f"      ⚠️ Failed to fix {name}: {e}")

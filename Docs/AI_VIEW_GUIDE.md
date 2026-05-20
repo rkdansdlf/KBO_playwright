@@ -8,6 +8,7 @@
 
 - **프리뷰 데이터:** 선발 투수 기록, 팀 최근 10경기 흐름, 맞대결 전적, 최근 타격/투구 지표.
 - **리뷰 데이터:** `game_events` 기반 WPA(Win Probability Added) 결정적 순간(Crucial Moments).
+- **경기 스토리 데이터:** `game_summary.summary_type = '경기_스토리'`에 저장되는 LLM-ready 타임라인 JSON. `v_ai_game_context`에는 아직 포함하지 않으며, 소비자는 `game_summary`에서 직접 조회합니다.
 
 ## 1.1. 리뷰/WPA 데이터의 실제 원천
 
@@ -88,6 +89,25 @@ WHERE game_date = CURRENT_DATE - 1
   AND review_wpa_data IS NOT NULL;
 ```
 
+### D. 특정 경기의 LLM-ready 경기 스토리 조회
+홈런, 역전/동점 득점, 결정적 실책, 후반 high-WPA 이벤트만 추린 타임라인 JSON을 사용할 때 조회합니다.
+
+```sql
+SELECT
+    game_id,
+    detail_text::jsonb AS game_story
+FROM game_summary
+WHERE game_id = '20250405HHSS0'
+  AND summary_type = '경기_스토리';
+```
+
+`game_story` 주요 필드:
+
+- `schema_version`: 현재 `game_story.v1`
+- `timeline`: 시간순 핵심 이벤트 목록. 각 항목은 `inning_label`, `batting_team`, `tags`, `importance_score`, `score_before`, `score_after`, `runs_scored`, `batter`, `pitcher`, `description`을 포함합니다.
+- `story_flags`: `home_runs`, `lead_changes`, `critical_errors`, `walk_off`
+- `source`: 원천 `game_events` 행 수와 warning 목록
+
 ## 4. 데이터 파싱 가이드 (Python 예시)
 
 `preview_data`와 `review_wpa_data`는 JSON 타입이므로 Python에서 다음과 같이 쉽게 활용할 수 있습니다.
@@ -120,5 +140,6 @@ for moment in row['review_wpa_data']['crucial_moments']:
 
 ## 5. 주의 사항
 
-1. **데이터 업데이트 타이밍:** `preview_data`는 경기 시작 약 1~2시간 전(선발 투수 확정 후)에 생성되며, `review_wpa_data`는 경기 종료 및 문자중계 수집 완료 후 생성됩니다.
-2. **NULL 처리:** 경기 전에는 `review_wpa_data`가 NULL일 수 있으며, 비정상적으로 종료되거나 데이터가 없는 경우 `preview_data` 내부 필드들이 비어있을 수 있으므로 방어적 프로그래밍이 필요합니다.
+1. **데이터 업데이트 타이밍:** `preview_data`는 경기 시작 약 1~2시간 전(선발 투수 확정 후)에 생성되며, `review_wpa_data`와 `경기_스토리`는 경기 종료 및 문자중계 수집 완료 후 생성됩니다.
+2. **NULL 처리:** 경기 전에는 `review_wpa_data`와 `경기_스토리`가 없을 수 있으며, 비정상적으로 종료되거나 데이터가 없는 경우 `preview_data` 내부 필드들이 비어있을 수 있으므로 방어적 프로그래밍이 필요합니다.
+3. **스토리 warning:** `경기_스토리.source.warnings`에 `missing_game_events`가 있으면 해당 경기의 이벤트 원천이 없어서 빈 timeline으로 생성된 상태입니다.

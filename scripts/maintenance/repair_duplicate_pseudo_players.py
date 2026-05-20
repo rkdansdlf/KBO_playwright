@@ -33,6 +33,34 @@ from src.utils.team_codes import resolve_team_code, team_code_from_game_id_segme
 PSEUDO_MIN_PLAYER_ID = 900000
 DEFAULT_OUTPUT_DIR = PROJECT_ROOT / "data" / "repair_duplicate_pseudo_players"
 TIMESTAMP_COLUMNS = {"created_at", "updated_at"}
+CONFLICT_POLICY_SKIP_GROUP = "skip-group"
+CONFLICT_POLICY_DELETE_SOURCE_DUPLICATES = "delete-source-duplicates"
+CONFLICT_POLICIES = {
+    CONFLICT_POLICY_SKIP_GROUP,
+    CONFLICT_POLICY_DELETE_SOURCE_DUPLICATES,
+}
+
+MERGEABLE_FIELDNAMES = [
+    "name",
+    "team_key",
+    "uniform_no",
+    "target_player_id",
+    "source_player_ids",
+    "player_ids",
+    "reference_rows",
+    "reason",
+]
+UNRESOLVED_FIELDNAMES = [
+    "player_id",
+    "name",
+    "team",
+    "uniform_no",
+    "evidence_teams",
+    "evidence_uniforms",
+    "reference_rows",
+    "reason",
+]
+CONFLICT_FIELDNAMES = ["table_name", "name", "target_player_id", "source_player_ids", "key", "reason"]
 
 
 @dataclass(frozen=True)
@@ -181,6 +209,96 @@ def _write_csv(path: Path, rows: Iterable[dict[str, Any]], fieldnames: list[str]
         writer.writeheader()
         for row in rows:
             writer.writerow({field: row.get(field) for field in fieldnames})
+
+
+def _parse_id_list(value: Any) -> list[int]:
+    return [
+        int(part.strip())
+        for part in str(value or "").split(",")
+        if part.strip()
+    ]
+
+
+def _load_mergeable_worklist(path: Path) -> list[dict[str, Any]]:
+    groups: list[dict[str, Any]] = []
+    with path.open(newline="", encoding="utf-8") as fh:
+        reader = csv.DictReader(fh)
+        for line_number, row in enumerate(reader, start=2):
+            try:
+                target_id = int(str(row.get("target_player_id") or "").strip())
+                source_ids = _parse_id_list(row.get("source_player_ids"))
+                player_ids = _parse_id_list(row.get("player_ids"))
+                reference_rows = int(str(row.get("reference_rows") or "0").strip() or "0")
+            except ValueError as exc:
+                raise RuntimeError(f"Invalid mergeable worklist row {line_number} in {path}") from exc
+
+            if not source_ids:
+                source_ids = [player_id for player_id in player_ids if player_id != target_id]
+            if not source_ids:
+                raise RuntimeError(f"Missing source_player_ids in mergeable worklist row {line_number} in {path}")
+
+            ordered_player_ids = []
+            for player_id in [target_id, *source_ids, *player_ids]:
+                if player_id not in ordered_player_ids:
+                    ordered_player_ids.append(player_id)
+
+            groups.append(
+                {
+                    "name": row.get("name") or "",
+                    "team_key": row.get("team_key") or "",
+                    "uniform_no": row.get("uniform_no") or "",
+                    "target_player_id": target_id,
+                    "source_player_ids": source_ids,
+                    "player_ids": ordered_player_ids,
+                    "reference_rows": reference_rows,
+                    "reason": row.get("reason") or "reviewed_mergeable_worklist",
+                }
+            )
+    return groups
+
+
+def _load_conflict_worklist(path: Path) -> list[dict[str, Any]]:
+    conflicts: list[dict[str, Any]] = []
+    with path.open(newline="", encoding="utf-8") as fh:
+        reader = csv.DictReader(fh)
+        for line_number, row in enumerate(reader, start=2):
+            try:
+                target_id = int(str(row.get("target_player_id") or "").strip())
+                source_ids = _parse_id_list(row.get("source_player_ids"))
+            except ValueError as exc:
+                raise RuntimeError(f"Invalid conflict worklist row {line_number} in {path}") from exc
+            if not source_ids:
+                raise RuntimeError(f"Missing source_player_ids in conflict worklist row {line_number} in {path}")
+            conflicts.append(
+                {
+                    "table_name": row.get("table_name") or "",
+                    "name": row.get("name") or "",
+                    "target_player_id": target_id,
+                    "source_player_ids": ",".join(str(player_id) for player_id in source_ids),
+                    "key": row.get("key") or "",
+                    "reason": row.get("reason") or "conflicting_duplicate_reference_payload",
+                }
+            )
+    return conflicts
+
+
+def _merge_conflict_reports(*conflict_sets: Iterable[dict[str, Any]]) -> list[dict[str, Any]]:
+    merged: list[dict[str, Any]] = []
+    seen: set[tuple[str, str, str, str, str]] = set()
+    for conflicts in conflict_sets:
+        for conflict in conflicts:
+            key = (
+                str(conflict.get("table_name") or ""),
+                str(conflict.get("target_player_id") or ""),
+                str(conflict.get("source_player_ids") or ""),
+                str(conflict.get("key") or ""),
+                str(conflict.get("reason") or ""),
+            )
+            if key in seen:
+                continue
+            seen.add(key)
+            merged.append(conflict)
+    return merged
 
 
 def _table_exists(inspector, table_name: str) -> bool:
@@ -518,10 +636,11 @@ def _apply_unique_reference_spec(
     *,
     target_id: int,
     source_ids: list[int],
-) -> tuple[int, int]:
+    conflict_policy: str,
+) -> tuple[int, int, int]:
     unique_columns = _unique_columns_available(table, spec)
     if not unique_columns:
-        return 0, 0
+        return 0, 0, 0
 
     all_ids = [target_id, *source_ids]
     rows = [
@@ -534,6 +653,7 @@ def _apply_unique_reference_spec(
     seen: dict[tuple[str, ...], dict[str, Any]] = {}
     updated = 0
     deleted = 0
+    deleted_conflicting = 0
     for row in rows:
         key = _unique_key(row, unique_columns, spec.player_column, target_id)
         existing = seen.get(key)
@@ -541,6 +661,11 @@ def _apply_unique_reference_spec(
             source_payload = _comparison_payload(row, table, spec.player_column)
             target_payload = _comparison_payload(existing, table, spec.player_column)
             if source_payload != target_payload:
+                if conflict_policy == CONFLICT_POLICY_DELETE_SOURCE_DUPLICATES:
+                    conn.execute(table.delete().where(_where_row_identity(table, row, unique_columns)))
+                    deleted += 1
+                    deleted_conflicting += 1
+                    continue
                 raise RuntimeError(f"conflicting duplicate row in {spec.table_name}: {'|'.join(key)}")
             conn.execute(table.delete().where(_where_row_identity(table, row, unique_columns)))
             deleted += 1
@@ -553,7 +678,7 @@ def _apply_unique_reference_spec(
                 .values(**{spec.player_column: target_id})
             )
             updated += 1
-    return updated, deleted
+    return updated, deleted, deleted_conflicting
 
 
 def _apply_direct_reference_spec(
@@ -572,23 +697,36 @@ def _apply_direct_reference_spec(
     return int(result.rowcount or 0)
 
 
-def apply_group(conn, tables: dict[str, Table], group: dict[str, Any]) -> dict[str, int]:
+def apply_group(
+    conn,
+    tables: dict[str, Table],
+    group: dict[str, Any],
+    *,
+    conflict_policy: str,
+) -> dict[str, int]:
     target_id = int(group["target_player_id"])
     source_ids = [int(pid) for pid in group["source_player_ids"]]
-    stats = {"updated_rows": 0, "deleted_duplicate_rows": 0, "deleted_player_basic_rows": 0}
+    stats = {
+        "updated_rows": 0,
+        "deleted_duplicate_rows": 0,
+        "deleted_conflicting_reference_rows": 0,
+        "deleted_player_basic_rows": 0,
+    }
 
     for spec in _available_reference_specs(tables):
         table = tables[spec.table_name]
         if _unique_columns_available(table, spec):
-            updated, deleted = _apply_unique_reference_spec(
+            updated, deleted, deleted_conflicting = _apply_unique_reference_spec(
                 conn,
                 table,
                 spec,
                 target_id=target_id,
                 source_ids=source_ids,
+                conflict_policy=conflict_policy,
             )
             stats["updated_rows"] += updated
             stats["deleted_duplicate_rows"] += deleted
+            stats["deleted_conflicting_reference_rows"] += deleted_conflicting
         else:
             stats["updated_rows"] += _apply_direct_reference_spec(
                 conn,
@@ -612,22 +750,39 @@ def repair_duplicate_pseudo_players(
     output_dir: Path,
     apply: bool,
     backup: bool = True,
+    mergeable_worklist: Path | None = None,
+    conflict_worklist: Path | None = None,
+    conflict_policy: str = CONFLICT_POLICY_SKIP_GROUP,
 ) -> dict[str, Any]:
+    if conflict_policy not in CONFLICT_POLICIES:
+        raise RuntimeError(f"Unsupported conflict_policy: {conflict_policy}")
+
     output_dir.mkdir(parents=True, exist_ok=True)
     stamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
     backup_path = None
     if apply and backup:
         backup_path = _backup_sqlite_database(db_url, output_dir)
 
-    applied_stats = {"updated_rows": 0, "deleted_duplicate_rows": 0, "deleted_player_basic_rows": 0}
+    applied_stats = {
+        "updated_rows": 0,
+        "deleted_duplicate_rows": 0,
+        "deleted_conflicting_reference_rows": 0,
+        "deleted_player_basic_rows": 0,
+    }
     engine = create_engine(db_url)
     try:
         with engine.begin() as conn:
             tables = _load_tables(conn)
             if "player_basic" not in tables:
                 raise RuntimeError("player_basic table not found")
-            groups, unresolved = collect_merge_plan(conn, tables)
-            conflicts = collect_conflicts(conn, tables, groups)
+            if mergeable_worklist is not None:
+                groups = _load_mergeable_worklist(Path(mergeable_worklist))
+                unresolved = []
+            else:
+                groups, unresolved = collect_merge_plan(conn, tables)
+            detected_conflicts = collect_conflicts(conn, tables, groups)
+            worklist_conflicts = _load_conflict_worklist(Path(conflict_worklist)) if conflict_worklist else []
+            conflicts = _merge_conflict_reports(worklist_conflicts, detected_conflicts)
             mergeable = [
                 {
                     **group,
@@ -637,48 +792,38 @@ def repair_duplicate_pseudo_players(
                 for group in groups
             ]
 
+            mergeable_report_path = output_dir / f"pseudo_player_mergeable_{stamp}.csv"
+            unresolved_report_path = output_dir / f"pseudo_player_unresolved_{stamp}.csv"
+            conflict_report_path = output_dir / f"pseudo_player_conflicts_{stamp}.csv"
             _write_csv(
-                output_dir / f"pseudo_player_mergeable_{stamp}.csv",
+                mergeable_report_path,
                 mergeable,
-                [
-                    "name",
-                    "team_key",
-                    "uniform_no",
-                    "target_player_id",
-                    "source_player_ids",
-                    "player_ids",
-                    "reference_rows",
-                    "reason",
-                ],
+                MERGEABLE_FIELDNAMES,
             )
             _write_csv(
-                output_dir / f"pseudo_player_unresolved_{stamp}.csv",
+                unresolved_report_path,
                 unresolved,
-                [
-                    "player_id",
-                    "name",
-                    "team",
-                    "uniform_no",
-                    "evidence_teams",
-                    "evidence_uniforms",
-                    "reference_rows",
-                    "reason",
-                ],
+                UNRESOLVED_FIELDNAMES,
             )
             _write_csv(
-                output_dir / f"pseudo_player_conflicts_{stamp}.csv",
+                conflict_report_path,
                 conflicts,
-                ["table_name", "name", "target_player_id", "source_player_ids", "key", "reason"],
+                CONFLICT_FIELDNAMES,
             )
 
             conflicted_group_keys = _conflicted_group_keys(conflicts)
-            safe_groups = [
-                group for group in groups
-                if _group_conflict_key(group) not in conflicted_group_keys
-            ]
+            if conflict_policy == CONFLICT_POLICY_DELETE_SOURCE_DUPLICATES:
+                safe_groups = groups
+                skipped_conflict_groups = 0
+            else:
+                safe_groups = [
+                    group for group in groups
+                    if _group_conflict_key(group) not in conflicted_group_keys
+                ]
+                skipped_conflict_groups = len(conflicted_group_keys)
             if apply:
                 for group in safe_groups:
-                    group_stats = apply_group(conn, tables, group)
+                    group_stats = apply_group(conn, tables, group, conflict_policy=conflict_policy)
                     for key, value in group_stats.items():
                         applied_stats[key] += value
 
@@ -686,14 +831,22 @@ def repair_duplicate_pseudo_players(
             "dry_run": not apply,
             "mergeable_groups": len(groups),
             "safe_mergeable_groups": len(safe_groups),
-            "skipped_conflict_groups": len(conflicted_group_keys),
+            "skipped_conflict_groups": skipped_conflict_groups,
+            "conflict_groups": len(conflicted_group_keys),
             "unresolved_rows": len(unresolved),
             "conflicts": len(conflicts),
             "updated_rows": applied_stats["updated_rows"],
             "deleted_duplicate_rows": applied_stats["deleted_duplicate_rows"],
+            "deleted_conflicting_reference_rows": applied_stats["deleted_conflicting_reference_rows"],
             "deleted_player_basic_rows": applied_stats["deleted_player_basic_rows"],
             "output_dir": str(output_dir),
+            "mergeable_report_path": str(mergeable_report_path),
+            "unresolved_report_path": str(unresolved_report_path),
+            "conflict_report_path": str(conflict_report_path),
             "backup_path": str(backup_path) if backup_path else "",
+            "mergeable_worklist": str(mergeable_worklist) if mergeable_worklist else "",
+            "conflict_worklist": str(conflict_worklist) if conflict_worklist else "",
+            "conflict_policy": conflict_policy,
         }
     finally:
         engine.dispose()
@@ -704,6 +857,26 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--oci", action="store_true", help="Use OCI_DB_URL instead of local DATABASE_URL.")
     parser.add_argument("--db-url", default=None, help="Explicit database URL. Overrides --oci and local DATABASE_URL.")
     parser.add_argument("--output-dir", default=str(DEFAULT_OUTPUT_DIR), help="Directory for report CSV files.")
+    parser.add_argument(
+        "--mergeable-worklist",
+        default=None,
+        help="Reviewed pseudo_player_mergeable CSV to apply instead of auto-discovering duplicate groups.",
+    )
+    parser.add_argument(
+        "--conflict-worklist",
+        default=None,
+        help="Reviewed pseudo_player_conflicts CSV to include in conflict reporting.",
+    )
+    parser.add_argument(
+        "--conflict-policy",
+        default=CONFLICT_POLICY_SKIP_GROUP,
+        choices=sorted(CONFLICT_POLICIES),
+        help=(
+            "How to handle detected duplicate reference payload conflicts. "
+            "skip-group leaves conflicting groups untouched. "
+            "delete-source-duplicates keeps the target reference row and deletes source-side duplicate rows."
+        ),
+    )
     parser.add_argument("--apply", action="store_true", help="Persist safe merges. Default is dry-run only.")
     parser.add_argument("--no-backup", action="store_true", help="Skip SQLite backup before --apply.")
     return parser.parse_args()
@@ -722,6 +895,9 @@ def main() -> None:
             output_dir=Path(args.output_dir),
             apply=bool(args.apply),
             backup=not args.no_backup,
+            mergeable_worklist=Path(args.mergeable_worklist) if args.mergeable_worklist else None,
+            conflict_worklist=Path(args.conflict_worklist) if args.conflict_worklist else None,
+            conflict_policy=args.conflict_policy,
         )
     except RuntimeError as exc:
         raise SystemExit(str(exc)) from exc
@@ -734,6 +910,7 @@ def main() -> None:
         f"unresolved_rows={result['unresolved_rows']} conflicts={result['conflicts']} "
         f"updated_rows={result['updated_rows']} "
         f"deleted_duplicate_rows={result['deleted_duplicate_rows']} "
+        f"deleted_conflicting_reference_rows={result['deleted_conflicting_reference_rows']} "
         f"deleted_player_basic_rows={result['deleted_player_basic_rows']}"
     )
     if result["backup_path"]:

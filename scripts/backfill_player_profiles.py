@@ -23,9 +23,13 @@ from src.utils.playwright_pool import AsyncPlaywrightPool
 async def backfill(limit: int, delay: float, ids: Optional[List[str]] = None):
     repo = PlayerBasicRepository()
     
-    # Target players: missing photo_url
+    # Target players: missing photo_url, NOT a pseudo ID, and NOT already marked as NOT_FOUND
     with SessionLocal() as session:
-        query = session.query(PlayerBasic).filter(PlayerBasic.photo_url == None)
+        query = session.query(PlayerBasic).filter(
+            PlayerBasic.photo_url == None,
+            PlayerBasic.player_id >= 10000,
+            or_(PlayerBasic.status == None, PlayerBasic.status.not_in(['NOT_FOUND', 'PSEUDO']))
+        )
         if ids:
             query = query.filter(PlayerBasic.player_id.in_(ids))
             print(f"🎯 Targeted processing for {len(ids)} IDs")
@@ -70,7 +74,8 @@ async def backfill(limit: int, delay: float, ids: Optional[List[str]] = None):
                     repo.upsert_players([{
                         'player_id': p.player_id,
                         'name': p.name,
-                        'photo_url': 'NOT_FOUND'
+                        'photo_url': 'NOT_FOUND',
+                        'status': 'NOT_FOUND'
                     }])
                     fail_count += 1
             except Exception as e:

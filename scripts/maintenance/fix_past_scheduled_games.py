@@ -22,7 +22,7 @@ def fix_scheduled_games():
         # Find affected games
         select_sql = text("""
             SELECT game_id, game_date FROM game 
-            WHERE game_status = 'SCHEDULED' AND game_date <= :today
+            WHERE game_status = 'SCHEDULED' AND game_date < :today
         """)
         rows = session.execute(select_sql, {"today": today}).fetchall()
         
@@ -35,7 +35,7 @@ def fix_scheduled_games():
         update_sql = text("""
             UPDATE game 
             SET game_status = 'UNRESOLVED_MISSING', updated_at = CURRENT_TIMESTAMP
-            WHERE game_status = 'SCHEDULED' AND game_date <= :today
+            WHERE game_status = 'SCHEDULED' AND game_date < :today
         """)
         result = session.execute(update_sql, {"today": today})
         session.commit()

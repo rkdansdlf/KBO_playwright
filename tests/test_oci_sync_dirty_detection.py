@@ -224,6 +224,10 @@ def test_sync_game_play_by_play_resets_target_sequence_before_replace(monkeypatc
         syncer.target_session = _TargetSession()
         monkeypatch.setattr(OCISync, "_reset_target_sequence_for_table", _reset_sequence)
 
+        def _fake_bulk_copy_upsert(_self, table_name, records, unique_cols, **kwargs):
+            calls.append(("insert", len(records)))
+        monkeypatch.setattr(OCISync, "_bulk_copy_upsert", _fake_bulk_copy_upsert)
+
         assert syncer._sync_game_play_by_play() == 1
 
     assert calls == [
@@ -231,8 +235,8 @@ def test_sync_game_play_by_play_resets_target_sequence_before_replace(monkeypatc
         "target_query",
         "delete_filter",
         "delete_rows",
-        ("insert", 1),
         "commit",
+        ("insert", 1),
     ]
 
 

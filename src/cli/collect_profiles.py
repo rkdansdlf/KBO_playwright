@@ -53,22 +53,23 @@ async def collect_profiles(limit: int = 100, target_ids: Optional[List[str]] = N
                 data = await crawler.crawl_player_profile(str(pid))
                 if data:
                     print(f"   ✅ Fetched profile for {pid}")
-                    # Use PlayerProfileParsed for repository compatibility
                     from src.parsers.player_profile_parser import PlayerProfileParsed
+                    
+                    # Manually populate parsed object since we already have parsed data
                     parsed = PlayerProfileParsed(
                         player_id=int(pid) if pid.isdigit() else None,
+                        player_name=data.get('name'),
                         photo_url=data.get('photo_url'),
                         batting_hand=data.get('bats'),
                         throwing_hand=data.get('throws'),
+                        height_cm=data.get('height_cm'),
+                        weight_kg=data.get('weight_kg'),
                         entry_year=data.get('debut_year'),
                         salary_original=data.get('salary_original'),
-                        signing_bonus_original=data.get('signing_bonus_original'),
-                        draft_info=data.get('draft_info')
+                        signing_bonus_original=data.get('signing_bonus_original')
                     )
                     
-                    # Update name if available in crawler raw data (optional)
-                    # For now, repo.upsert_player_profile will handle the merge.
-                    
+                    # The repo.upsert_player_profile expects a PlayerProfileParsed object
                     repo.upsert_player_profile(str(pid), parsed)
                     print(f"   ✅ Saved profile metadata for {pid}")
                 else:

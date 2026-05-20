@@ -261,12 +261,12 @@ class PlayerProfileCrawler:
                 hw = _parse_height_weight(raw.get("height_weight"))
                 photo_url = raw.get("photo_url") or raw.get("photo_attr")
 
-                # If still emblem or no-Image, try heuristic CDN URL for newer players
+                # Heuristic: try current year CDN if still no photo or placeholder detected
                 if not photo_url or "no-Image.png" in photo_url:
                     from datetime import datetime
-                    year = datetime.now().year
-                    # Standard pattern: https://6ptotvmi5753.edge.naverncp.com/KBO_IMAGE/person/middle/<year>/<player_id>.jpg
-                    photo_url = f"https://6ptotvmi5753.edge.naverncp.com/KBO_IMAGE/person/middle/{year}/{player_id}.jpg"
+                    curr_year = datetime.now().year
+                    # Fallback to current year's directory which often contains the latest photos
+                    photo_url = f"https://6ptotvmi5753.edge.naverncp.com/KBO_IMAGE/person/middle/{curr_year}/{player_id}.jpg"
 
                 result = {
                     "player_id": player_id,
@@ -294,7 +294,7 @@ class PlayerProfileCrawler:
     async def _load_profile_page(self, page: Page, url: str) -> Dict:
         await self.policy.delay_async(host="www.koreabaseball.com")
         # domcontentloaded avoids networkidle timeout on KBO pages
-        await page.goto(url, wait_until="domcontentloaded", timeout=15000)
+        await page.goto(url, wait_until="domcontentloaded", timeout=20000)
 
         # Wait for any name element to be attached
         try:
@@ -302,18 +302,19 @@ class PlayerProfileCrawler:
         except Exception:
             pass
 
-        # Wait for potential AJAX content (especially for retired players)
+        # Wait for potential AJAX content or image source update
         try:
+            # Look for non-placeholder images in the photo div
             await page.wait_for_function(
                 """() => {
-                    const el = document.querySelector('[id$="lblName"], .player_basic .list02 li span, .player_info .name');
-                    return el && el.innerText.trim().length > 0;
+                    const img = document.querySelector('.photo img');
+                    return img && img.src && !img.src.includes('no-Image.png') && !img.src.includes('about:blank');
                 }""",
-                timeout=3000
+                timeout=2000
             )
         except Exception:
-            # Fallback to a small timeout if JS check fails
-            await page.wait_for_timeout(500)
+            # Continue even if no real image found (some players don't have one)
+            pass
 
         return await page.evaluate(_EXTRACT_JS)
 
