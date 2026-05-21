@@ -103,7 +103,7 @@ def test_navigate_section_uses_compliance_delay_retry_and_selector(monkeypatch):
     assert compliance.urls == [url]
     assert policy.retry_calls == 1
     assert policy.delay_hosts == ["www.koreabaseball.com"]
-    assert page.goto_calls == [(url, "load", 12345)]
+    assert page.goto_calls == [(url, "domcontentloaded", 12345)]
     assert page.selector_calls == [("#tblAwayHitter", 6789)]
 
 
@@ -131,13 +131,17 @@ def test_crawl_single_uses_review_fallback_when_direct_sections_are_empty(monkey
         return []
 
     async def fake_hitters(page, team_side, team_code, season_year, roster_map=None, use_hitter_section=False, db_session=None):
-        if use_hitter_section:
+        if not use_hitter_section:
+            # First try on REVIEW page is mocked empty
             return [], {}
+        # Fallback to dedicated section returns actual data
         return [_hitter(team_side)], {"hits": 1, "at_bats": 3}
 
     async def fake_pitchers(page, team_side, team_code, season_year, roster_map=None, use_pitcher_section=False, db_session=None):
-        if use_pitcher_section:
+        if not use_pitcher_section:
+            # First try on REVIEW page is mocked empty
             return []
+        # Fallback to dedicated section returns actual data
         return [_pitcher(team_side)]
 
     monkeypatch.setattr(crawler, "_navigate_section", fake_navigate)
@@ -152,7 +156,7 @@ def test_crawl_single_uses_review_fallback_when_direct_sections_are_empty(monkey
     payload = asyncio.run(crawler._crawl_single(object(), "20250401LGSS0", "20250401"))
 
     assert payload is not None
-    assert sections == ["REVIEW", "HITTER", "PITCHER", "REVIEW"]
+    assert sections == ["REVIEW", "HITTER", "PITCHER"]
     assert payload["hitters"]["away"] == [_hitter("away")]
     assert payload["hitters"]["home"] == [_hitter("home")]
     assert payload["pitchers"]["away"] == [_pitcher("away")]

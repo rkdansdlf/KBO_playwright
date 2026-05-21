@@ -73,11 +73,103 @@ def _resolve_league_type_code(season_type: Any) -> int:
 
 
 def _resolve_schedule_season_id(session, game_data: Dict[str, Any], existing_season_id: Optional[int]) -> Optional[int]:
+    from datetime import date, datetime
     explicit = _coerce_int(game_data.get("season_id"))
     if explicit is not None:
         return explicit
 
     season_year = _coerce_int(game_data.get("season_year"))
+    
+    # Resolve game date object if available
+    raw_date = game_data.get("game_date")
+    game_date_obj = None
+    if isinstance(raw_date, date):
+        game_date_obj = raw_date
+    elif isinstance(raw_date, datetime):
+        game_date_obj = raw_date.date()
+    elif isinstance(raw_date, str):
+        val_clean = raw_date.replace("-", "").replace("/", "").strip()
+        if len(val_clean) == 8 and val_clean.isdigit():
+            try:
+                game_date_obj = date(int(val_clean[:4]), int(val_clean[4:6]), int(val_clean[6:]))
+            except ValueError:
+                pass
+
+    if game_date_obj is not None:
+        season_year = game_date_obj.year
+        
+        # 1. Try to query database using start_date/end_date ranges
+        try:
+            mapped = _coerce_int(
+                session.execute(
+                    text(
+                        """
+                        SELECT MIN(season_id)
+                        FROM kbo_seasons
+                        WHERE season_year = :season_year
+                          AND start_date IS NOT NULL
+                          AND end_date IS NOT NULL
+                          AND :game_date BETWEEN start_date AND end_date
+                        """
+                    ),
+                    {"season_year": season_year, "game_date": game_date_obj},
+                ).scalar()
+            )
+            if mapped is not None:
+                return mapped
+        except Exception:
+            pass
+
+        # 2. Fallback to hardcoded historical rules for 2023, 2024, and 2025
+        SEASON_DATE_RULES = {
+            2023: [
+                ("2023-03-13", "2023-03-28", "시범경기"),
+                ("2023-10-19", "2023-10-19", "와일드카드"),
+                ("2023-10-22", "2023-10-25", "준플레이오프"),
+                ("2023-10-30", "2023-11-05", "플레이오프"),
+                ("2023-11-07", "2023-11-13", "한국시리즈"),
+            ],
+            2024: [
+                ("2024-03-09", "2024-03-19", "시범경기"),
+                ("2024-07-06", "2024-07-06", "올스타전"),
+                ("2024-10-02", "2024-10-03", "와일드카드"),
+                ("2024-10-05", "2024-10-11", "준플레이오프"),
+                ("2024-10-13", "2024-10-19", "플레이오프"),
+                ("2024-10-21", "2024-10-30", "한국시리즈"),
+            ],
+            2025: [
+                ("2025-03-08", "2025-03-18", "시범경기"),
+                ("2025-10-06", "2025-10-07", "와일드카드"),
+                ("2025-10-09", "2025-10-14", "준플레이오프"),
+                ("2025-10-18", "2025-10-24", "플레이오프"),
+                ("2025-10-26", "2025-11-01", "한국시리즈"),
+            ]
+        }
+        
+        rules = SEASON_DATE_RULES.get(season_year, [])
+        for start_str, end_str, type_name in rules:
+            try:
+                start_dt = date.fromisoformat(start_str)
+                end_dt = date.fromisoformat(end_str)
+                if start_dt <= game_date_obj <= end_dt:
+                    mapped = _coerce_int(
+                        session.execute(
+                            text(
+                                """
+                                SELECT MIN(season_id)
+                                FROM kbo_seasons
+                                WHERE season_year = :season_year
+                                  AND league_type_name = :league_type_name
+                                """
+                            ),
+                            {"season_year": season_year, "league_type_name": type_name},
+                        ).scalar()
+                    )
+                    if mapped is not None:
+                        return mapped
+            except Exception:
+                pass
+
     if season_year is None:
         return existing_season_id
 

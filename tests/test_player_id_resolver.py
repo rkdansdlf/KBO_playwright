@@ -26,6 +26,16 @@ def _build_resolver_session():
         conn.execute(
             text(
                 """
+                CREATE TABLE players (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    kbo_person_id TEXT UNIQUE
+                )
+                """
+            )
+        )
+        conn.execute(
+            text(
+                """
                 CREATE TABLE player_season_batting (
                     player_id INTEGER NOT NULL,
                     season INTEGER NOT NULL,

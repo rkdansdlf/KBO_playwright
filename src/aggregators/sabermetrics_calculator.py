@@ -1,6 +1,6 @@
 from typing import Dict, Any, List, Optional
 from sqlalchemy.orm import Session
-from sqlalchemy import func
+from sqlalchemy import func, or_
 from src.models.player import PlayerSeasonBatting, PlayerSeasonPitching
 from src.services.stat_calculator import BattingStatCalculator, PitchingStatCalculator
 
@@ -16,6 +16,8 @@ class SabermetricsCalculator:
         Calculates league-wide averages and constants for a given year.
         """
         # Aggregate league batting stats
+        # Filter: Exclude players that likely have incomplete data (e.g., 0 HR and 0 BB despite high PA)
+        # This makes league constants more resilient to dirty data.
         bat_query = session.query(
             func.sum(PlayerSeasonBatting.plate_appearances).label('pa'),
             func.sum(PlayerSeasonBatting.at_bats).label('ab'),
@@ -24,10 +26,19 @@ class SabermetricsCalculator:
             func.sum(PlayerSeasonBatting.triples).label('d3'),
             func.sum(PlayerSeasonBatting.home_runs).label('hr'),
             func.sum(PlayerSeasonBatting.walks).label('bb'),
+            func.sum(PlayerSeasonBatting.intentional_walks).label('ibb'),
             func.sum(PlayerSeasonBatting.hbp).label('hbp'),
             func.sum(PlayerSeasonBatting.sacrifice_flies).label('sf'),
             func.sum(PlayerSeasonBatting.runs).label('r')
-        ).filter(PlayerSeasonBatting.season == year).one()
+        ).filter(
+            PlayerSeasonBatting.season == year,
+            PlayerSeasonBatting.player_id >= 10000,
+            # Filter out obvious stubs/incomplete rows
+            or_(
+                PlayerSeasonBatting.plate_appearances <= 10,
+                or_(PlayerSeasonBatting.home_runs > 0, PlayerSeasonBatting.walks > 0)
+            )
+        ).one()
 
         # Aggregate league pitching stats
         pit_query = session.query(
@@ -38,19 +49,26 @@ class SabermetricsCalculator:
             func.sum(PlayerSeasonPitching.hit_batters).label('hbp_allowed'),
             func.sum(PlayerSeasonPitching.strikeouts).label('so'),
             func.sum(PlayerSeasonPitching.runs_allowed).label('r_allowed')
-        ).filter(PlayerSeasonPitching.season == year).one()
+        ).filter(
+            PlayerSeasonPitching.season == year,
+            PlayerSeasonPitching.player_id >= 10000,
+            or_(
+                PlayerSeasonPitching.innings_outs <= 10,
+                or_(PlayerSeasonPitching.strikeouts > 0, PlayerSeasonPitching.walks_allowed > 0)
+            )
+        ).one()
 
         # 1. League wOBA
         # wOBA = (0.69*uBB + 0.72*HBP + 0.89*1B + 1.27*2B + 1.62*3B + 2.10*HR) / (AB + BB – IBB + HBP + SF)
-        # Simplified weights for KBO
         h_1b = (bat_query.h or 0) - (bat_query.d2 or 0) - (bat_query.d3 or 0) - (bat_query.hr or 0)
-        numerator = (0.69 * (bat_query.bb or 0)) + (0.72 * (bat_query.hbp or 0)) + (0.89 * h_1b) + \
+        u_bb = (bat_query.bb or 0) - (bat_query.ibb or 0)
+        numerator = (0.69 * u_bb) + (0.72 * (bat_query.hbp or 0)) + (0.89 * h_1b) + \
                     (1.27 * (bat_query.d2 or 0)) + (1.62 * (bat_query.d3 or 0)) + (2.10 * (bat_query.hr or 0))
-        denominator = (bat_query.ab or 0) + (bat_query.bb or 0) + (bat_query.hbp or 0) + (bat_query.sf or 0)
+        denominator = (bat_query.ab or 0) + u_bb + (bat_query.hbp or 0) + (bat_query.sf or 0)
         lg_woba = numerator / denominator if denominator > 0 else 0.320
         
         # 2. wOBA Scale (League OBP / League wOBA is a common approximation)
-        lg_obp = ((bat_query.h or 0) + (bat_query.bb or 0) + (bat_query.hbp or 0)) / denominator if denominator > 0 else 0.330
+        lg_obp = ((bat_query.h or 0) + u_bb + (bat_query.hbp or 0)) / denominator if denominator > 0 else 0.330
         woba_scale = lg_obp / lg_woba if lg_woba > 0 else 1.2
         
         # 3. Runs per PA
@@ -82,11 +100,12 @@ class SabermetricsCalculator:
         Calculates wOBA, wRC+, wRAA, and WAR for a batter.
         """
         h_1b = (stat.hits or 0) - (stat.doubles or 0) - (stat.triples or 0) - (stat.home_runs or 0)
+        u_bb = (stat.walks or 0) - (stat.intentional_walks or 0)
         
         # 1. wOBA
-        numerator = (0.69 * (stat.walks or 0)) + (0.72 * (stat.hbp or 0)) + (0.89 * h_1b) + \
+        numerator = (0.69 * u_bb) + (0.72 * (stat.hbp or 0)) + (0.89 * h_1b) + \
                     (1.27 * (stat.doubles or 0)) + (1.62 * (stat.triples or 0)) + (2.10 * (stat.home_runs or 0))
-        denominator = (stat.at_bats or 0) + (stat.walks or 0) + (stat.hbp or 0) + (stat.sacrifice_flies or 0)
+        denominator = (stat.at_bats or 0) + u_bb + (stat.hbp or 0) + (stat.sacrifice_flies or 0)
         woba = round(numerator / denominator, 3) if denominator > 0 else 0.0
         
         # 2. wRAA (Weighted Runs Above Average)

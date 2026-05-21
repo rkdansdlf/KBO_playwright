@@ -5,7 +5,7 @@ from typing import Optional, Dict
 from sqlalchemy.orm import Session
 from sqlalchemy import select, and_, or_
 
-from src.models.player import PlayerBasic, PlayerSeasonBatting, PlayerSeasonPitching
+from src.models.player import Player, PlayerBasic, PlayerSeasonBatting, PlayerSeasonPitching
 
 ALIAS_CSV_PATH = os.path.join(os.path.dirname(__file__), '..', '..', 'data', 'player_name_aliases.csv')
 
@@ -98,6 +98,36 @@ class PlayerIdResolver:
         self._cache[cache_key] = None
         return None
 
+    def _filter_surrogate_ids(self, candidate_ids: set[int]) -> set[int]:
+        if len(candidate_ids) <= 1:
+            return candidate_ids
+            
+        from src.models.player import Player
+        stmt = select(Player.id, Player.kbo_person_id).where(
+            Player.id.in_(list(candidate_ids)),
+            Player.kbo_person_id.isnot(None)
+        )
+        rows = self.session.execute(stmt).fetchall()
+        
+        surrogates = {}
+        for pid, kbo_id in rows:
+            try:
+                kbo_pid = int(kbo_id)
+                surrogates[pid] = kbo_pid
+            except (ValueError, TypeError):
+                pass
+                
+        if not surrogates:
+            return candidate_ids
+            
+        filtered = set()
+        for pid in candidate_ids:
+            if pid in surrogates:
+                filtered.add(surrogates[pid])
+            else:
+                filtered.add(pid)
+        return filtered
+
     def _return_existing_unknown_or_ambiguous(
         self,
         cache_key: str,
@@ -139,8 +169,9 @@ class PlayerIdResolver:
                 season_index.setdefault(f"{name}_{team}_{season}_", set()).add(int(pid))
 
         for cache_key, candidate_ids in season_index.items():
-            if len(candidate_ids) == 1:
-                self._cache[cache_key] = next(iter(candidate_ids))
+            filtered_ids = self._filter_surrogate_ids(candidate_ids)
+            if len(filtered_ids) == 1:
+                self._cache[cache_key] = next(iter(filtered_ids))
             else:
                 self._cache[cache_key] = None
 
@@ -172,6 +203,7 @@ class PlayerIdResolver:
             
             results = self.session.execute(stmt).fetchall()
             season_candidate_ids.update(row[0] for row in results)
+        season_candidate_ids = self._filter_surrogate_ids(season_candidate_ids)
         if len(season_candidate_ids) == 1:
             pid = next(iter(season_candidate_ids))
             self._cache[cache_key] = pid
@@ -200,18 +232,19 @@ class PlayerIdResolver:
                 stmt = stmt.where(PlayerBasic.uniform_no == str(uniform_no))
             
             results = self.session.execute(stmt).fetchall()
-            if len(results) == 1:
-                pid = results[0][0]
+            candidate_ids = self._filter_surrogate_ids({row[0] for row in results})
+            if len(candidate_ids) == 1:
+                pid = next(iter(candidate_ids))
                 self._cache[cache_key] = pid
                 return pid
-            if len(results) > 1:
+            if len(candidate_ids) > 1:
                 return self._return_existing_unknown_or_ambiguous(
                     cache_key,
                     player_name,
                     team_code,
                     season,
                     uniform_no,
-                    [row[0] for row in results],
+                    candidate_ids,
                 )
 
         # 3. Fallback: Relaxed Uniqueness Check
@@ -222,18 +255,19 @@ class PlayerIdResolver:
                 PlayerBasic.uniform_no == str(uniform_no)
             )
             results = self.session.execute(stmt).fetchall()
-            if len(results) == 1:
-                pid = results[0][0]
+            candidate_ids = self._filter_surrogate_ids({row[0] for row in results})
+            if len(candidate_ids) == 1:
+                pid = next(iter(candidate_ids))
                 self._cache[cache_key] = pid
                 return pid
-            if len(results) > 1:
+            if len(candidate_ids) > 1:
                 return self._return_existing_unknown_or_ambiguous(
                     cache_key,
                     player_name,
                     team_code,
                     season,
                     uniform_no,
-                    [row[0] for row in results],
+                    candidate_ids,
                 )
 
         if self.strict_game_resolution:
@@ -247,18 +281,19 @@ class PlayerIdResolver:
         # 4. Ultimate Fallback: Is the name unique in the entire KBO history?
         stmt = select(PlayerBasic.player_id).where(PlayerBasic.name == player_name)
         results = self.session.execute(stmt).fetchall()
-        if len(results) == 1:
-            pid = results[0][0]
+        candidate_ids = self._filter_surrogate_ids({row[0] for row in results})
+        if len(candidate_ids) == 1:
+            pid = next(iter(candidate_ids))
             self._cache[cache_key] = pid
             return pid
-        if len(results) > 1:
+        if len(candidate_ids) > 1:
             return self._return_existing_unknown_or_ambiguous(
                 cache_key,
                 player_name,
                 team_code,
                 season,
                 uniform_no,
-                [row[0] for row in results],
+                candidate_ids,
             )
             
         # 5. Last resort: Try relaxed season resolution without uniform_no or strict team
