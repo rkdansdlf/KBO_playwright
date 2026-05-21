@@ -1098,9 +1098,57 @@ class OCISync:
         print(f"✅ Synced {synced} player movement records to OCI")
         return synced
 
-    def sync_player_season_batting(self, year: int | None = None, limit: int = None, batch_size: int = 5000) -> int:
+    def _get_table_signature(self, model: Type, year: int | None = None, year_col: str = "season") -> Dict[str, Any]:
+        """
+        Calculate a unique signature for a table/year combination to detect changes.
+        Signature includes ROW COUNT and MAX(updated_at).
+        """
+        def get_sig(session):
+            table_name = model.__tablename__
+            where_clause = ""
+            params = {}
+            if year:
+                # Some tables use 'year' instead of 'season'
+                col = year_col
+                where_clause = f'WHERE "{col}" = :year'
+                params = {"year": year}
+
+            sql = f'SELECT COUNT(*), MAX("updated_at") FROM "{table_name}" {where_clause}'
+            try:
+                row = session.execute(text(sql), params).fetchone()
+                return {
+                    "count": row[0] or 0,
+                    "max_updated_at": _serialize_scalar(row[1])
+                }
+            except Exception:
+                return {"count": -1, "max_updated_at": None}
+
+        local_sig = get_sig(self.sqlite_session)
+        remote_sig = get_sig(self.target_session)
+        
+        # Compare strings but only up to seconds to avoid precision issues
+        # Also replace 'T' with space to handle SQLite vs ISO/Postgres format differences
+        l_ts = str(local_sig["max_updated_at"])[:19].replace("T", " ") if local_sig["max_updated_at"] else "None"
+        r_ts = str(remote_sig["max_updated_at"])[:19].replace("T", " ") if remote_sig["max_updated_at"] else "None"
+        
+        match = (local_sig["count"] == remote_sig["count"] and l_ts == r_ts)
+
+        return {
+            "local": local_sig,
+            "remote": remote_sig,
+            "match": match
+        }
+
+    def sync_player_season_batting(self, year: int | None = None, batch_size: int = 5000, force: bool = False) -> int:
         """Sync player_season_batting data from SQLite to OCI using fast bulk COPY"""
         from src.models.player import PlayerSeasonBatting
+        
+        if year and not force:
+            sig = self._get_table_signature(PlayerSeasonBatting, year)
+            if sig["match"]:
+                print(f"   ⏩ Skipping player_season_batting for {year} (No changes detected)")
+                return 0
+
         filters = []
         if year:
             filters.append(PlayerSeasonBatting.season == year)
@@ -1108,16 +1156,22 @@ class OCISync:
         synced = self._sync_simple_table(
             PlayerSeasonBatting,
             conflict_keys=['player_id', 'season', 'league', 'level'],
-            exclude_cols=['id', 'created_at', 'updated_at'],
+            exclude_cols=['id', 'created_at'], # Include updated_at
             filters=filters,
             batch_size=batch_size
         )
-        print(f"  ✅ Finished syncing {synced} player_season_batting records to OCI")
         return synced
 
-    def sync_player_season_pitching(self, year: int | None = None, limit: int = None, batch_size: int = 5000) -> int:
+    def sync_player_season_pitching(self, year: int | None = None, batch_size: int = 5000, force: bool = False) -> int:
         """Sync player_season_pitching data from SQLite to OCI using fast bulk COPY"""
         from src.models.player import PlayerSeasonPitching
+        
+        if year and not force:
+            sig = self._get_table_signature(PlayerSeasonPitching, year)
+            if sig["match"]:
+                print(f"   ⏩ Skipping player_season_pitching for {year} (No changes detected)")
+                return 0
+
         filters = []
         if year:
             filters.append(PlayerSeasonPitching.season == year)
@@ -1125,11 +1179,10 @@ class OCISync:
         synced = self._sync_simple_table(
             PlayerSeasonPitching,
             conflict_keys=['player_id', 'season', 'league', 'level'],
-            exclude_cols=['id', 'created_at', 'updated_at'],
+            exclude_cols=['id', 'created_at'], # Include updated_at
             filters=filters,
             batch_size=batch_size
         )
-        print(f"  ✅ Finished syncing {synced} player_season_pitching records to OCI")
         return synced
 
     def sync_all_player_data(self) -> Dict[str, int]:
@@ -1139,8 +1192,54 @@ class OCISync:
             'player_identities': self.sync_player_identities(),
             'player_season_batting': self.sync_player_season_batting(),
             'player_season_pitching': self.sync_player_season_pitching(),
+            'team_season_batting': self.sync_team_season_batting(),
+            'team_season_pitching': self.sync_team_season_pitching(),
         }
         return results
+
+    def sync_team_season_batting(self, year: int | None = None, batch_size: int = 5000, force: bool = False) -> int:
+        """Sync team_season_batting data from SQLite to OCI"""
+        from src.models.team_stats import TeamSeasonBatting
+        
+        if year and not force:
+            sig = self._get_table_signature(TeamSeasonBatting, year)
+            if sig["match"]:
+                print(f"   ⏩ Skipping team_season_batting for {year} (No changes detected)")
+                return 0
+
+        filters = []
+        if year:
+            filters.append(TeamSeasonBatting.season == year)
+        
+        return self._sync_simple_table(
+            TeamSeasonBatting,
+            conflict_keys=['team_id', 'season', 'league'],
+            exclude_cols=['id', 'created_at'], # Include updated_at
+            filters=filters,
+            batch_size=batch_size
+        )
+
+    def sync_team_season_pitching(self, year: int | None = None, batch_size: int = 5000, force: bool = False) -> int:
+        """Sync team_season_pitching data from SQLite to OCI"""
+        from src.models.team_stats import TeamSeasonPitching
+        
+        if year and not force:
+            sig = self._get_table_signature(TeamSeasonPitching, year)
+            if sig["match"]:
+                print(f"   ⏩ Skipping team_season_pitching for {year} (No changes detected)")
+                return 0
+
+        filters = []
+        if year:
+            filters.append(TeamSeasonPitching.season == year)
+            
+        return self._sync_simple_table(
+            TeamSeasonPitching,
+            conflict_keys=['team_id', 'season', 'league'],
+            exclude_cols=['id', 'created_at'], # Include updated_at
+            filters=filters,
+            batch_size=batch_size
+        )
 
     def sync_games(self, limit: int = None, filters: List = None, batch_size: int = 10000) -> int:
         """Sync game detail data from SQLite to OCI using Batched UPSERT or COPY"""
@@ -1898,19 +1997,20 @@ class OCISync:
             )
             
             # 4. UPSERT from Temp Table to Target Table
-            update_cols = [k for k in keys if k not in unique_cols and k not in ('created_at', 'updated_at', 'id')]
-            
+            # We want to sync updated_at if provided, otherwise fallback to CURRENT_TIMESTAMP
+            update_cols = [k for k in keys if k not in unique_cols and k not in ('created_at', 'id')]
+
             if not unique_cols:
                 conflict_action = ""
             elif not update_cols:
                 conflict_action = "DO NOTHING"
             else:
                 set_clause = ", ".join([f'"{k}" = EXCLUDED."{k}"' for k in update_cols])
-                if update_timestamp:
+                # If updated_at was NOT in the source data but update_timestamp is True, add it
+                if update_timestamp and "updated_at" not in keys:
                     set_clause += ', "updated_at" = CURRENT_TIMESTAMP'
                 conflict_target = ", ".join([f'"{k}"' for k in unique_cols])
                 conflict_action = f"ON CONFLICT ({conflict_target}) DO UPDATE SET {set_clause}"
-
             cols_list = ", ".join([f'"{k}"' for k in keys])
             insert_sql = f"""
                 INSERT INTO {table_name} ({cols_list})
@@ -2085,52 +2185,65 @@ class OCISync:
             batch_size=batch_size
         )
 
-    def sync_fielding_stats(self, year: int | None = None, batch_size: int = 10000) -> int:
+    def sync_fielding_stats(self, year: int | None = None, batch_size: int = 10000, force: bool = False) -> int:
         """Sync player fielding stats to OCI."""
+        if year and not force:
+            sig = self._get_table_signature(PlayerSeasonFielding, year, year_col="year")
+            if sig["match"]:
+                print(f"   ⏩ Skipping fielding stats for {year} (No changes detected)")
+                return 0
+
         filters = [PlayerSeasonFielding.year == year] if year else None
         return self._sync_simple_table(
             PlayerSeasonFielding,
             ["player_id", "team_id", "year", "position_id"],
-            exclude_cols=["created_at", "id"],
+            exclude_cols=["created_at", "id"], # Include updated_at
             filters=filters,
             batch_size=batch_size
         )
 
-    def sync_baserunning_stats(self, year: int | None = None, batch_size: int = 10000) -> int:
+    def sync_baserunning_stats(self, year: int | None = None, batch_size: int = 10000, force: bool = False) -> int:
         """Sync player baserunning stats to OCI."""
+        if year and not force:
+            sig = self._get_table_signature(PlayerSeasonBaserunning, year, year_col="year")
+            if sig["match"]:
+                print(f"   ⏩ Skipping baserunning stats for {year} (No changes detected)")
+                return 0
+
         filters = [PlayerSeasonBaserunning.year == year] if year else None
         return self._sync_simple_table(
             PlayerSeasonBaserunning,
             ["player_id", "team_id", "year"],
-            exclude_cols=["created_at", "id"],
+            exclude_cols=["created_at", "id"], # Include updated_at
             filters=filters,
             batch_size=batch_size
         )
 
-    def sync_team_batting_stats(self, year: int | None = None, batch_size: int = 10000) -> int:
-        """Sync team batting stats to OCI."""
-        filters = [TeamSeasonBatting.season == year] if year else None
-        return self._sync_simple_table(
-            TeamSeasonBatting,
-            ["team_id", "season", "league"],
-            exclude_cols=["created_at", "id"],
-            filters=filters,
-            batch_size=batch_size
-        )
+    def purge_season_stats(self, year: int, type: str = "all") -> None:
+        """Delete year-scoped stats from OCI to prepare for a clean sync."""
+        tables = []
+        if type in ("batting", "all"):
+            tables.append("player_season_batting")
+            tables.append("team_season_batting")
+        if type in ("pitching", "all"):
+            tables.append("player_season_pitching")
+            tables.append("team_season_pitching")
+        if type in ("fielding", "all"):
+            tables.append("player_season_fielding")
+        if type in ("baserunning", "all"):
+            tables.append("player_season_baserunning")
 
-    def sync_team_pitching_stats(self, year: int | None = None, batch_size: int = 10000) -> int:
-        """Sync team pitching stats to OCI."""
-        filters = [TeamSeasonPitching.season == year] if year else None
-        return self._sync_simple_table(
-            TeamSeasonPitching,
-            ["team_id", "season", "league"],
-            exclude_cols=["created_at", "id"],
-            filters=filters,
-            batch_size=batch_size
-        )
+        for table_name in tables:
+            # Most use 'season', some use 'year'
+            year_col = "year" if "fielding" in table_name or "baserunning" in table_name else "season"
+            self.target_session.execute(
+                text(f'DELETE FROM "{table_name}" WHERE "{year_col}" = :year'),
+                {"year": year}
+            )
+        self.target_session.commit()
+        print(f"🧹 Purged OCI season stats for {year} (type={type})")
 
     def close(self):
-
         """Close OCI session"""
         self.target_session.close()
         self.oci_engine.dispose()

@@ -25,7 +25,7 @@ from src.models.game import (
     GamePlayByPlay,
     GameSummary,
 )
-from src.models.player import PlayerBasic
+from src.models.player import PlayerBasic, PlayerSeasonBatting
 from src.models.season import KboSeason
 from src.validators.quality_gate import run_quality_gate
 from src.validators.standings_integrity import validate_standings_integrity
@@ -192,6 +192,48 @@ def get_daily_metrics(session, target_date_str: str) -> Dict[str, Any]:
     relay_integrity = get_relay_integrity_metrics(session, target_dt)
     standings_integrity = validate_standings_integrity(session, target_dt)
     
+    # 4. Sabermetrics Highlights
+    top_war_player = (
+        session.query(PlayerBasic.name, PlayerSeasonBatting.extra_stats)
+        .join(PlayerSeasonBatting, PlayerBasic.player_id == PlayerSeasonBatting.player_id)
+        .filter(PlayerSeasonBatting.season == target_dt.year)
+        .filter(PlayerSeasonBatting.league == 'REGULAR')
+        .all()
+    )
+    
+    # Simple extraction of best WAR player for that day (or season overall as a highlight)
+    # Actually, let's just get the top WAR for the season so far as a regular anchor.
+    best_player = None
+    if top_war_player:
+        valid_players = []
+        for name, extra in top_war_player:
+            if extra and isinstance(extra, dict) and extra.get("war") is not None:
+                valid_players.append({"name": name, "war": extra["war"]})
+        if valid_players:
+            best_player = max(valid_players, key=lambda x: x["war"])
+
+    # 5. Data Parity (Local vs OCI)
+    parity_info = {"ok": True, "local_count": 0, "oci_count": 0, "diff": 0}
+    try:
+        from sqlalchemy import create_engine, text
+        import os
+        
+        local_count = session.query(func.count(Game.game_id)).scalar()
+        parity_info["local_count"] = local_count
+        
+        target_url = os.getenv('OCI_DB_URL') or os.getenv('TARGET_DATABASE_URL')
+        if target_url:
+            oci_engine = create_engine(target_url)
+            with oci_engine.connect() as conn:
+                oci_count = conn.execute(text("SELECT count(*) FROM game")).scalar()
+                parity_info["oci_count"] = oci_count
+                parity_info["diff"] = oci_count - local_count
+                parity_info["ok"] = (parity_info["diff"] == 0)
+    except Exception as e:
+        _LOGGER.error(f"Parity check failed: {e}")
+        parity_info["ok"] = False
+        parity_info["error"] = str(e)
+    
     return {
         "date": target_date_str,
         "status_counts": status_map,
@@ -199,6 +241,8 @@ def get_daily_metrics(session, target_date_str: str) -> Dict[str, Any]:
         "new_players": new_players,
         "relay_integrity": relay_integrity,
         "standings_integrity": standings_integrity,
+        "top_performer": best_player,
+        "parity": parity_info,
         "total_games": sum(status_map.values()),
         "completed_count": len(game_ids)
     }
@@ -206,7 +250,10 @@ def get_daily_metrics(session, target_date_str: str) -> Dict[str, Any]:
 
 def format_telegram_report(metrics: Dict[str, Any], gate_result: Dict[str, Any]) -> str:
     """Format the metrics and gate results into a readable Telegram message."""
-    lines = [f"<b>📊 KBO Quality Report ({metrics['date']})</b>\n"]
+    parity = metrics.get("parity") or {}
+    parity_icon = "✅" if parity.get("ok", True) else "🚨"
+    
+    lines = [f"{parity_icon} <b>KBO Quality Report ({metrics['date']})</b>\n"]
     
     # Collection Status
     total = metrics["total_games"]
@@ -214,6 +261,10 @@ def format_telegram_report(metrics: Dict[str, Any], gate_result: Dict[str, Any])
     status_summary = ", ".join([f"{s}: {c}" for s, c in metrics["status_counts"].items()])
     lines.append(f"📡 <b>Collection</b>: {comp}/{total} games finished")
     lines.append(f"   ({status_summary})")
+
+    # Parity Check
+    if not parity.get("ok", True):
+        lines.append(f"❓ <b>Parity</b>: Local {parity.get('local_count')} / OCI {parity.get('oci_count')} (Diff: {parity.get('diff')})")
     
     # Detail Integrity
     incomplete = [d["game_id"] for d in metrics["detail_integrity"] if not d["is_complete"]]
@@ -233,6 +284,11 @@ def format_telegram_report(metrics: Dict[str, Any], gate_result: Dict[str, Any])
         lines.append(f"❌ <b>Stats</b>: {bat_miss + pit_miss} mismatches detected")
         if bat_miss: lines.append(f"   - Batting: {bat_miss} issues")
         if pit_miss: lines.append(f"   - Pitching: {pit_miss} issues")
+
+    # Sabermetrics highlight
+    top = metrics.get("top_performer")
+    if top:
+        lines.append(f"🔥 <b>Top Performer</b>: {top['name']} (WAR: {top['war']})")
 
     relay_integrity = metrics.get("relay_integrity") or {}
     if relay_integrity.get("ok", True):

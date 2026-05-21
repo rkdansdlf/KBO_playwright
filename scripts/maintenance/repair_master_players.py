@@ -46,8 +46,10 @@ def repair_master():
         if player:
             # Update existing master record
             player.status = calc_status
-            if not player.photo_url and pb.photo_url:
-                player.photo_url = pb.photo_url
+            # Propagate photo_url if basic has a valid one, especially if master has a placeholder or None
+            if pb.photo_url and pb.photo_url != 'NOT_FOUND':
+                if not player.photo_url or 'no-Image.png' in player.photo_url or player.photo_url == 'NOT_FOUND' or pb.photo_url != player.photo_url:
+                    player.photo_url = pb.photo_url
             
             # Enrich with available detailed data
             if pb.salary_original: player.salary_original = pb.salary_original

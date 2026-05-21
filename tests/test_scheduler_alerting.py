@@ -143,6 +143,9 @@ def test_main_registers_morning_jobs_with_expected_cron(monkeypatch):
         def add_job(self, func, trigger, **kwargs):
             scheduled.append((getattr(func, "__name__", str(func)), trigger, kwargs))
 
+        def add_listener(self, callback, mask):
+            pass
+
         def start(self):
             return None
 

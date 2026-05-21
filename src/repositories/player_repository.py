@@ -89,6 +89,18 @@ class PlayerRepository:
             if profile.signing_bonus_original:
                 basic.signing_bonus_original = profile.signing_bonus_original
 
+            # Synchronize Draft Info
+            if profile.draft_year:
+                draft_parts = [str(profile.draft_year)[2:], profile.draft_team_code or ""]
+                if profile.draft_type: draft_parts.append(profile.draft_type)
+                if profile.draft_round: draft_parts.append(f"{profile.draft_round}라운드")
+                if profile.draft_pick_overall: draft_parts.append(f"{profile.draft_pick_overall}순위")
+                basic.draft_info = " ".join(filter(None, draft_parts))
+            
+            # Synchronize Career Path (출신교)
+            if profile.education_or_career_path:
+                basic.career = "-".join(profile.education_or_career_path)
+
     def _get_or_create_player(self, session: Session, kbo_player_id: str) -> Player:
         player_basic_id = self._canonical_player_basic_id(session, kbo_player_id)
         player = session.execute(
@@ -129,16 +141,22 @@ class PlayerRepository:
         if profile.is_active is not None:
             player.status = "ACTIVE" if profile.is_active else "RETIRED"
             
-        # New enriched fields
+        # Enriched fields
         player.photo_url = profile.photo_url or player.photo_url
         player.salary_original = profile.salary_original or player.salary_original
         player.signing_bonus_original = profile.signing_bonus_original or player.signing_bonus_original
         
-        # We can reconstruct draft_info or just store it if passed. 
-        # For retired players, it's often in the profile text and parsed into components.
+        # Reconstruct draft_info for relational model if components exist
         if profile.draft_year:
-            # Reconstruct for consistency with PlayerBasic if needed, or just skip if we have components
-            pass
+            draft_parts = [str(profile.draft_year)[2:], profile.draft_team_code or ""]
+            if profile.draft_type: draft_parts.append(profile.draft_type)
+            if profile.draft_round: draft_parts.append(f"{profile.draft_round}라운드")
+            if profile.draft_pick_overall: draft_parts.append(f"{profile.draft_pick_overall}순위")
+            player.draft_info = " ".join(filter(None, draft_parts))
+
+        # Reconstruct career path for notes
+        if profile.education_or_career_path:
+            player.notes = " -> ".join(profile.education_or_career_path)
 
     def _upsert_identity(
         self, session: Session, player: Player, profile: PlayerProfileParsed

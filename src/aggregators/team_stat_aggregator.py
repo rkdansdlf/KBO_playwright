@@ -1,165 +1,163 @@
+"""
+Service to aggregate player season stats into team-level season stats.
+Acts as a fallback when KBO's team cumulative record pages are unavailable.
+"""
 from typing import Dict, Any, List, Optional
 from sqlalchemy.orm import Session
-from sqlalchemy import func, Integer
-from src.models.game import Game, GameBattingStat, GamePitchingStat
-from src.models.season import KboSeason
+from sqlalchemy import func
+from src.models.player import PlayerSeasonBatting, PlayerSeasonPitching
+from src.models.team import Team
+from src.models.standings import TeamStandingsDaily
 from src.services.stat_calculator import BattingStatCalculator, PitchingStatCalculator
 
 class TeamStatAggregator:
     """
-    Service to aggregate transactional game stats into team-level season stats.
-    Acts as a fallback when KBO's team record pages are unavailable.
+    Aggregates individual player season statistics into team-level season statistics.
     """
 
     @staticmethod
-    def _get_league_name_pattern(series: str) -> str:
-        series_map = {
-            'regular': '정규시즌',
-            'wildcard': '와일드카드',
-            'semi_playoff': '준플레이오프',
-            'playoff': '플레이오프',
-            'korean_series': '한국시리즈'
-        }
-        return series_map.get(series.lower(), series)
+    def _get_team_games(session: Session, team_id: str, year: int) -> int:
+        """
+        Get the total games played by a team in a season from standings,
+        falling back to max games by an individual player.
+        """
+        # Try standings first (latest record in that year)
+        latest_standings = (
+            session.query(TeamStandingsDaily)
+            .filter(TeamStandingsDaily.team_code == team_id)
+            .filter(func.strftime('%Y', TeamStandingsDaily.standings_date) == str(year))
+            .order_by(TeamStandingsDaily.standings_date.desc())
+            .first()
+        )
+        if latest_standings:
+            return latest_standings.games_played
+        return 0
 
     @staticmethod
-    def aggregate_team_batting(session: Session, year: int, series: str, source: str = 'FALLBACK') -> List[Dict[str, Any]]:
+    def aggregate_team_batting(session: Session, year: int, league: str = "REGULAR") -> List[Dict[str, Any]]:
         """
-        Aggregate team batting stats for a season/series.
+        Aggregate batting stats for all teams in a given season/league.
         """
-        pattern = TeamStatAggregator._get_league_name_pattern(series)
-        print(f"🚀 Aggregating team batting stats for {year} {series}...")
+        league = league.upper()
         
-        # We aggregate from GameBattingStat to get accurate team totals
+        # Query counting stats grouped by team_id
         query = (
             session.query(
-                GameBattingStat.team_code.label('team_id'),
-                func.count(func.distinct(GameBattingStat.game_id)).label('games'),
-                func.sum(GameBattingStat.plate_appearances).label('plate_appearances'),
-                func.sum(GameBattingStat.at_bats).label('at_bats'),
-                func.sum(GameBattingStat.runs).label('runs'),
-                func.sum(GameBattingStat.hits).label('hits'),
-                func.sum(GameBattingStat.doubles).label('doubles'),
-                func.sum(GameBattingStat.triples).label('triples'),
-                func.sum(GameBattingStat.home_runs).label('home_runs'),
-                func.sum(GameBattingStat.rbi).label('rbi'),
-                func.sum(GameBattingStat.walks).label('walks'),
-                func.sum(GameBattingStat.intentional_walks).label('intentional_walks'),
-                func.sum(GameBattingStat.hbp).label('hbp'),
-                func.sum(GameBattingStat.strikeouts).label('strikeouts'),
-                func.sum(GameBattingStat.stolen_bases).label('stolen_bases'),
-                func.sum(GameBattingStat.caught_stealing).label('caught_stealing'),
-                func.sum(GameBattingStat.sacrifice_hits).label('sacrifice_hits'),
-                func.sum(GameBattingStat.sacrifice_flies).label('sacrifice_flies'),
-                func.sum(GameBattingStat.gdp).label('gdp')
+                PlayerSeasonBatting.team_code.label('team_id'),
+                func.max(Team.team_name).label('team_name'),
+                func.count(PlayerSeasonBatting.id).label('player_count'),
+                func.sum(PlayerSeasonBatting.games).label('games_sum'),
+                func.sum(PlayerSeasonBatting.plate_appearances).label('plate_appearances'),
+                func.sum(PlayerSeasonBatting.at_bats).label('at_bats'),
+                func.sum(PlayerSeasonBatting.runs).label('runs'),
+                func.sum(PlayerSeasonBatting.hits).label('hits'),
+                func.sum(PlayerSeasonBatting.doubles).label('doubles'),
+                func.sum(PlayerSeasonBatting.triples).label('triples'),
+                func.sum(PlayerSeasonBatting.home_runs).label('home_runs'),
+                func.sum(PlayerSeasonBatting.rbi).label('rbi'),
+                func.sum(PlayerSeasonBatting.walks).label('walks'),
+                func.sum(PlayerSeasonBatting.intentional_walks).label('intentional_walks'),
+                func.sum(PlayerSeasonBatting.hbp).label('hbp'),
+                func.sum(PlayerSeasonBatting.strikeouts).label('strikeouts'),
+                func.sum(PlayerSeasonBatting.stolen_bases).label('stolen_bases'),
+                func.sum(PlayerSeasonBatting.caught_stealing).label('caught_stealing'),
+                func.sum(PlayerSeasonBatting.sacrifice_hits).label('sacrifice_hits'),
+                func.sum(PlayerSeasonBatting.sacrifice_flies).label('sacrifice_flies'),
+                func.sum(PlayerSeasonBatting.gdp).label('gdp')
             )
-            .join(Game, GameBattingStat.game_id == Game.game_id)
-            .join(KboSeason, Game.season_id == KboSeason.season_id)
-            .filter(KboSeason.season_year == year)
-            .filter(KboSeason.league_type_name.like(f"%{pattern}%"))
-            .group_by(GameBattingStat.team_code)
+            .outerjoin(Team, PlayerSeasonBatting.team_code == Team.team_id)
+            .filter(PlayerSeasonBatting.season == year)
+            .filter(PlayerSeasonBatting.league == league)
+            .group_by(PlayerSeasonBatting.team_code)
         )
         
         results = []
         for row in query.all():
             data = {k: (v if v is not None else 0) for k, v in row._asdict().items()}
-            # Calculate team ratios
+            
+            # Use standings for team games if available
+            team_games = TeamStatAggregator._get_team_games(session, data['team_id'], year)
+            if team_games == 0:
+                # Fallback to max games by a player
+                max_player_games = session.query(func.max(PlayerSeasonBatting.games)).filter(
+                    PlayerSeasonBatting.team_code == data['team_id'],
+                    PlayerSeasonBatting.season == year,
+                    PlayerSeasonBatting.league == league
+                ).scalar() or 0
+                team_games = max_player_games
+            
+            data['games'] = team_games
+
+            # Calculate ratios
             ratios = BattingStatCalculator.calculate_ratios(data)
             data.update(ratios)
-            data.update({
-                'season': year,
-                'league': series.upper(),
-                'source': source
-            })
+            
+            # Metadata
+            data['season'] = year
+            data['league'] = league
+            
             results.append(data)
-        
+            
         return results
 
     @staticmethod
-    def aggregate_team_pitching(session: Session, year: int, series: str, source: str = 'FALLBACK') -> List[Dict[str, Any]]:
+    def aggregate_team_pitching(session: Session, year: int, league: str = "REGULAR") -> List[Dict[str, Any]]:
         """
-        Aggregate team pitching stats for a season/series.
+        Aggregate pitching stats for all teams in a given season/league.
         """
-        pattern = TeamStatAggregator._get_league_name_pattern(series)
-        print(f"🚀 Aggregating team pitching stats for {year} {series}...")
-
-        # 1. Base counting stats from GamePitchingStat
+        league = league.upper()
+        
         query = (
             session.query(
-                GamePitchingStat.team_code.label('team_id'),
-                func.sum(GamePitchingStat.saves).label('saves'),
-                func.sum(GamePitchingStat.holds).label('holds'),
-                func.sum(GamePitchingStat.innings_outs).label('innings_outs'),
-                func.sum(GamePitchingStat.hits_allowed).label('hits_allowed'),
-                func.sum(GamePitchingStat.runs_allowed).label('runs_allowed'),
-                func.sum(GamePitchingStat.earned_runs).label('earned_runs'),
-                func.sum(GamePitchingStat.home_runs_allowed).label('home_runs_allowed'),
-                func.sum(GamePitchingStat.walks_allowed).label('walks_allowed'),
-                func.sum(GamePitchingStat.hit_batters).label('hit_batters'),
-                func.sum(GamePitchingStat.strikeouts).label('strikeouts'),
-                func.sum(GamePitchingStat.wild_pitches).label('wild_pitches'),
-                func.sum(GamePitchingStat.balks).label('balks'),
-                func.sum(GamePitchingStat.batters_faced).label('tbf'),
-                func.sum(GamePitchingStat.pitches).label('np')
+                PlayerSeasonPitching.team_code.label('team_id'),
+                func.max(Team.team_name).label('team_name'),
+                func.sum(PlayerSeasonPitching.games).label('games_sum'),
+                func.sum(PlayerSeasonPitching.wins).label('wins'),
+                func.sum(PlayerSeasonPitching.losses).label('losses'),
+                func.sum(PlayerSeasonPitching.saves).label('saves'),
+                func.sum(PlayerSeasonPitching.holds).label('holds'),
+                func.sum(PlayerSeasonPitching.innings_outs).label('innings_outs'),
+                func.sum(PlayerSeasonPitching.hits_allowed).label('hits_allowed'),
+                func.sum(PlayerSeasonPitching.runs_allowed).label('runs_allowed'),
+                func.sum(PlayerSeasonPitching.earned_runs).label('earned_runs'),
+                func.sum(PlayerSeasonPitching.home_runs_allowed).label('home_runs_allowed'),
+                func.sum(PlayerSeasonPitching.walks_allowed).label('walks_allowed'),
+                func.sum(PlayerSeasonPitching.intentional_walks).label('intentional_walks'),
+                func.sum(PlayerSeasonPitching.hit_batters).label('hit_batters'),
+                func.sum(PlayerSeasonPitching.strikeouts).label('strikeouts'),
             )
-            .join(Game, GamePitchingStat.game_id == Game.game_id)
-            .join(KboSeason, Game.season_id == KboSeason.season_id)
-            .filter(KboSeason.season_year == year)
-            .filter(KboSeason.league_type_name.like(f"%{pattern}%"))
-            .group_by(GamePitchingStat.team_code)
+            .outerjoin(Team, PlayerSeasonPitching.team_code == Team.team_id)
+            .filter(PlayerSeasonPitching.season == year)
+            .filter(PlayerSeasonPitching.league == league)
+            .group_by(PlayerSeasonPitching.team_code)
         )
         
-        pitching_stats_map = {row.team_id: row._asdict() for row in query.all()}
-
-        # 2. Wins/Losses/Ties from Game table
-        # We need to consider both home and away games for each team
-        game_results_query = (
-            session.query(
-                Game.game_id,
-                Game.home_team,
-                Game.away_team,
-                Game.winning_team,
-                Game.game_status
-            )
-            .join(KboSeason, Game.season_id == KboSeason.season_id)
-            .filter(KboSeason.season_year == year)
-            .filter(KboSeason.league_type_name.like(f"%{pattern}%"))
-            .filter(Game.game_status == 'COMPLETED')
-        )
-        
-        team_results = {}
-        for game in game_results_query.all():
-            for team in [game.home_team, game.away_team]:
-                if team not in team_results:
-                    team_results[team] = {'wins': 0, 'losses': 0, 'ties': 0, 'games': 0}
-                
-                res = team_results[team]
-                res['games'] += 1
-                if game.winning_team == team:
-                    res['wins'] += 1
-                elif game.winning_team == 'TIE' or (not game.winning_team and game.game_status == 'COMPLETED'):
-                    # Handle ties (some status might be COMPLETED but no winning_team)
-                    res['ties'] += 1
-                elif game.winning_team: # Someone else won, so this team lost
-                    res['losses'] += 1
-
         results = []
-        for team_id, p_data in pitching_stats_map.items():
-            data = {k: (v if v is not None else 0) for k, v in p_data.items()}
+        for row in query.all():
+            data = {k: (v if v is not None else 0) for k, v in row._asdict().items()}
             
-            # Merge W-L-T
-            res = team_results.get(team_id, {'wins': 0, 'losses': 0, 'ties': 0, 'games': 0})
-            data.update(res)
+            team_games = TeamStatAggregator._get_team_games(session, data['team_id'], year)
+            if team_games == 0:
+                max_player_games = session.query(func.max(PlayerSeasonPitching.games)).filter(
+                    PlayerSeasonPitching.team_code == data['team_id'],
+                    PlayerSeasonPitching.season == year,
+                    PlayerSeasonPitching.league == league
+                ).scalar() or 0
+                team_games = max_player_games
             
-            data['innings_pitched'] = round(data['innings_outs'] / 3.0, 1)
+            data['games'] = team_games
+
+            # IP formatting
+            data['innings_pitched'] = data['innings_outs'] / 3.0
+            
+            # Calculate ratios
             ratios = PitchingStatCalculator.calculate_ratios(data)
             data.update(ratios)
             
-            data.update({
-                'season': year,
-                'league': series.upper(),
-                'source': source
-            })
+            # Metadata
+            data['season'] = year
+            data['league'] = league
+            
             results.append(data)
-
+            
         return results

@@ -26,13 +26,35 @@ STANDINGS_FIELDS = (
 
 def validate_standings_integrity(session: Session, target_date: date) -> dict[str, Any]:
     """Compare one daily standings snapshot with an independent game-result rollup."""
+    # Find the last regular season game date for this year to skip post-season dates
+    last_reg_game = (
+        session.query(Game)
+        .join(KboSeason, Game.season_id == KboSeason.season_id)
+        .filter(
+            KboSeason.season_year == target_date.year,
+            _regular_season_filter(),
+            Game.game_status.in_(tuple(COMPLETED_LIKE_GAME_STATUSES))
+        )
+        .order_by(Game.game_date.desc())
+        .first()
+    )
+    if last_reg_game and target_date > last_reg_game.game_date:
+        return {
+            "ok": True,
+            "checked_date": target_date.isoformat(),
+            "checked_teams": 0,
+            "mismatches": [],
+            "missing_score_games": [],
+            "note": "Post-season date: skipped validation against regular season standings."
+        }
+
     expected, missing_score_games = _aggregate_regular_season_results(session, target_date)
     snapshot_rows = (
         session.query(TeamStandingsDaily)
         .filter(TeamStandingsDaily.standings_date == target_date)
         .all()
     )
-    actual = {row.team_code: row for row in snapshot_rows}
+    actual = {row.team_code: row for row in snapshot_rows if row.team_code not in ("EA", "WE")}
 
     mismatches: list[dict[str, Any]] = []
     for team_code, expected_values in sorted(expected.items()):
@@ -128,6 +150,8 @@ def _aggregate_regular_season_results(
             missing_score_games.append(game.game_id)
             continue
         if not game.home_team or not game.away_team:
+            continue
+        if game.home_team in ("EA", "WE") or game.away_team in ("EA", "WE"):
             continue
 
         home = standings.setdefault(game.home_team, _empty_team_state())
