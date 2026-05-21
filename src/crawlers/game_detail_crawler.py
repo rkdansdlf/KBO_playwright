@@ -106,6 +106,7 @@ class GameDetailCrawler:
         timeout: int = 30000,
         selector_timeout: int = 15000,
         extra_delay: float = 0,
+        wait_until: str = "domcontentloaded",
     ) -> tuple[bool, str, str]:
         url = self._section_url(game_id, game_date, section)
         if not await compliance.is_allowed(url):
@@ -114,7 +115,7 @@ class GameDetailCrawler:
 
         async def _navigate() -> None:
             await self.policy.delay_async(host="www.koreabaseball.com")
-            await page.goto(url, wait_until="load", timeout=timeout)
+            await page.goto(url, wait_until=wait_until, timeout=timeout)
             if extra_delay:
                 await asyncio.sleep(extra_delay)
             if required_selector:
@@ -237,21 +238,22 @@ class GameDetailCrawler:
             hitters = {'away': [], 'home': []}
             pitchers = {'away': [], 'home': []}
         else:
-            await self._navigate_section(
-                page,
-                game_id,
-                game_date,
-                "HITTER",
-                required_selector="#tblAwayHitter1, #tblHomeHitter1, #tblAwayHitter3, #tblHomeHitter3",
-                selector_timeout=15000,
-            )
+            # 1. Try to extract from the current REVIEW page directly first.
+            # This is extremely fast, avoids redirection/timeout errors, and minimizes KBO server load.
+            try:
+                review_tab = await page.query_selector("li[section='REVIEW']")
+                if review_tab:
+                    await review_tab.click()
+                    await asyncio.sleep(0.5)
+            except Exception:
+                pass
+
             away_hitters, away_total = await self._extract_hitters(
                 page,
                 'away',
                 team_info['away']['code'],
                 season_year,
                 roster_map,
-                use_hitter_section=True,
             )
             home_hitters, home_total = await self._extract_hitters(
                 page,
@@ -259,47 +261,31 @@ class GameDetailCrawler:
                 team_info['home']['code'],
                 season_year,
                 roster_map,
-                use_hitter_section=True,
-            )
-
-            await self._navigate_section(
-                page,
-                game_id,
-                game_date,
-                "PITCHER",
-                required_selector="#tblAwayPitcher, #tblHomePitcher, #tblAwayPitcher1, #tblHomePitcher1",
-                selector_timeout=15000,
             )
             pitchers = {
-                'away': await self._extract_pitchers(
-                    page,
-                    'away',
-                    team_info['away']['code'],
-                    season_year,
-                    roster_map,
-                    use_pitcher_section=True,
-                ),
-                'home': await self._extract_pitchers(
-                    page,
-                    'home',
-                    team_info['home']['code'],
-                    season_year,
-                    roster_map,
-                    use_pitcher_section=True,
-                ),
+                'away': await self._extract_pitchers(page, 'away', team_info['away']['code'], season_year, roster_map),
+                'home': await self._extract_pitchers(page, 'home', team_info['home']['code'], season_year, roster_map),
             }
 
+            # 2. Fallback: If no stats were found on the REVIEW page (e.g., for some legacy/weird games),
+            # try navigating to the dedicated HITTER and PITCHER tabs.
             if not any((away_hitters, home_hitters, pitchers['away'], pitchers['home'])):
-                ok, reason, _ = await self._navigate_section(page, game_id, game_date, "REVIEW")
-                if not ok:
-                    self._last_failure_reason[game_id] = reason
-                    return None
+                print(f"⚠️  No stats found on REVIEW page for {game_id}. Trying dedicated HITTER/PITCHER sections...")
+                await self._navigate_section(
+                    page,
+                    game_id,
+                    game_date,
+                    "HITTER",
+                    required_selector="#tblAwayHitter1, #tblHomeHitter1, #tblAwayHitter3, #tblHomeHitter3",
+                    selector_timeout=10000,
+                )
                 away_hitters, away_total = await self._extract_hitters(
                     page,
                     'away',
                     team_info['away']['code'],
                     season_year,
                     roster_map,
+                    use_hitter_section=True,
                 )
                 home_hitters, home_total = await self._extract_hitters(
                     page,
@@ -307,10 +293,34 @@ class GameDetailCrawler:
                     team_info['home']['code'],
                     season_year,
                     roster_map,
+                    use_hitter_section=True,
+                )
+
+                await self._navigate_section(
+                    page,
+                    game_id,
+                    game_date,
+                    "PITCHER",
+                    required_selector="#tblAwayPitcher, #tblHomePitcher, #tblAwayPitcher1, #tblHomePitcher1",
+                    selector_timeout=10000,
                 )
                 pitchers = {
-                    'away': await self._extract_pitchers(page, 'away', team_info['away']['code'], season_year, roster_map),
-                    'home': await self._extract_pitchers(page, 'home', team_info['home']['code'], season_year, roster_map),
+                    'away': await self._extract_pitchers(
+                        page,
+                        'away',
+                        team_info['away']['code'],
+                        season_year,
+                        roster_map,
+                        use_pitcher_section=True,
+                    ),
+                    'home': await self._extract_pitchers(
+                        page,
+                        'home',
+                        team_info['home']['code'],
+                        season_year,
+                        roster_map,
+                        use_pitcher_section=True,
+                    ),
                 }
 
             if not any((away_hitters, home_hitters, pitchers['away'], pitchers['home'])):
@@ -614,6 +624,17 @@ class GameDetailCrawler:
                 self._populate_hitter_stats(team_total_stats, {}, row['cells'])
                 continue
 
+            # Parse same-name suffix (e.g., "이승현(57)" or "김태훈(우)")
+            row_uniform = row.get('cells', {}).get('등번호')
+            uniform_no = row_uniform
+            import re
+            m = re.search(r'\(([^)]+)\)', player_name)
+            if m:
+                suffix = m.group(1).strip()
+                player_name = re.sub(r'\s*\([^)]*\)\s*$', '', player_name).strip()
+                if suffix.isdigit():
+                    uniform_no = suffix
+
             p_id = self._safe_int(row.get('playerId'))
 
             stats = {}
@@ -629,7 +650,7 @@ class GameDetailCrawler:
 
             # Key fix for Task 3: Use resolver for exhibition/missing IDs
             if p_id is None and self.resolver and team_code and season_year:
-                p_id = self.resolver.resolve_id(player_name, team_code, season_year, uniform_no=row.get('cells', {}).get('등번호'))
+                p_id = self.resolver.resolve_id(player_name, team_code, season_year, uniform_no=uniform_no)
                 if p_id:
                     print(f"   [RESOLVED] {player_name} ({team_code}) -> {p_id}")
 
@@ -659,8 +680,6 @@ class GameDetailCrawler:
             batting_order = self._parse_batting_order(row['cells'])
             position = self._parse_position(row['cells'])
             is_starter = batting_order is not None and batting_order <= 9
-
-            uniform_no = row.get('cells', {}).get('등번호')
 
             # Optimization: Check roster_map if ID is missing
             if not p_id and roster_map and player_name in roster_map:
@@ -720,9 +739,18 @@ class GameDetailCrawler:
             if not player_name or player_name in {'합계', '팀합계'}:
                 continue
 
-            p_id = self._safe_int(row.get('playerId'))
+            # Parse same-name suffix (e.g., "이승현(57)" or "김태훈(우)")
+            row_uniform = row.get('cells', {}).get('등번호')
+            uniform_no = row_uniform
+            import re
+            m = re.search(r'\(([^)]+)\)', player_name)
+            if m:
+                suffix = m.group(1).strip()
+                player_name = re.sub(r'\s*\([^)]*\)\s*$', '', player_name).strip()
+                if suffix.isdigit():
+                    uniform_no = suffix
 
-            uniform_no = row.get('cells', {}).get('등번호')
+            p_id = self._safe_int(row.get('playerId'))
 
             # Key fix for Task 3: Use resolver for exhibition/missing IDs
             # AND: Auto-search and register if still unknown
@@ -804,7 +832,7 @@ class GameDetailCrawler:
         (sel) => {
             const table = document.querySelector(sel);
             if (!table) return [];
-            const headers = Array.from(table.querySelectorAll('thead th')).map(th => th.innerText.trim());
+            const headers = Array.from(table.querySelectorAll('thead th')).map(th => th.textContent.trim());
 
             // Find '선수명' index
             let nameIndex = -1;
@@ -820,35 +848,42 @@ class GameDetailCrawler:
                 const values = {};
                 for (let i = 0; i < cells.length; i++) {
                     const header = headers[i] || `COL_${i}`;
-                    values[header] = cells[i].innerText.trim();
+                    values[header] = cells[i].textContent.trim();
                 }
-                const link = tr.querySelector('a[href*="playerId="], a[href*="p_id="]');
+                const link = tr.querySelector('a[href*="playerId="], a[href*="p_id="], a[href*="pCode="], a[href*="pcode="], a[href*="PlayerDetail"]');
                 let playerId = null;
                 let playerName = null;
                 let uniformNo = null;
 
                 // Try to find uniform number in the first cell or a cell with specific header
                 if (cells.length > 0) {
-                    const firstVal = cells[0].innerText.trim();
+                    const firstVal = cells[0].textContent.trim();
                     if (/^\d+$/.test(firstVal)) {
                         uniformNo = firstVal;
                     }
                 }
 
                 if (link) {
-                    playerName = link.innerText.trim();
+                    playerName = link.textContent.trim();
                     const href = link.getAttribute('href');
                     try {
                         const url = new URL(href, window.location.origin);
-                        playerId = url.searchParams.get('playerId') || url.searchParams.get('p_id');
+                        playerId = url.searchParams.get('playerId') || 
+                                   url.searchParams.get('p_id') || 
+                                   url.searchParams.get('pCode') || 
+                                   url.searchParams.get('pcode');
                     } catch (e) {
                         playerId = null;
+                    }
+                    if (!playerId && href) {
+                        const m = href.match(/(?:playerId|p_id|pCode|pcode|id)=(\d+)/i);
+                        playerId = m ? m[1] : null;
                     }
                 }
 
                 // Fallback: Use name column if link not found
                 if (!playerName && nameIndex !== -1 && cells.length > nameIndex) {
-                    playerName = cells[nameIndex].innerText.trim();
+                    playerName = cells[nameIndex].textContent.trim();
                 }
 
                 return { index, cells: values, playerId, playerName, uniformNo };
@@ -904,7 +939,11 @@ class GameDetailCrawler:
 
             async def _navigate_lineup():
                 await self.policy.delay_async()
-                await page.goto(lineup_url, wait_until="networkidle", timeout=20000)
+                await page.goto(lineup_url, wait_until="domcontentloaded", timeout=20000)
+                try:
+                    await page.wait_for_selector('a[href*="Player/PlayerDetail"], a[href*="playerId="], a[href*="p_id="]', timeout=5000)
+                except Exception:
+                    pass
 
             try:
                 await self.policy.run_with_retry_async(_navigate_lineup)
@@ -918,7 +957,7 @@ class GameDetailCrawler:
         try:
             async def _navigate_back():
                 await self.policy.delay_async()
-                await page.goto(review_url, wait_until="networkidle", timeout=30000)
+                await page.goto(review_url, wait_until="domcontentloaded", timeout=30000)
 
             await self.policy.run_with_retry_async(_navigate_back)
             await self._wait_for_boxscore(page)
@@ -1148,21 +1187,21 @@ class GameDetailCrawler:
             };
 
             // Find all anchor tags that look like player links
-            const links = document.querySelectorAll('a[href*="Player/PlayerDetail"], a[href*="playerId="], a[href*="p_id="]');
+            const links = document.querySelectorAll('a[href*="PlayerDetail"], a[href*="playerId="], a[href*="p_id="], a[href*="pCode="], a[href*="pcode="]');
 
             links.forEach(a => {
-                const name = a.innerText.trim();
+                const name = a.textContent.trim();
                 const href = a.getAttribute('href');
                 if (!href) return;
 
-                const idMatch = href.match(/playerId=(\d+)/) || href.match(/p_id=(\d+)/) || href.match(/id=(\d+)/);
+                const idMatch = href.match(/(?:playerId|p_id|pCode|pcode|id)=(\d+)/i);
                 if (name && idMatch) {
                     let uniform = null;
 
                     // strategy 1: Check nearby lists or text for "No.XX"
                     const parentLi = a.closest('li');
                     if (parentLi) {
-                        const text = parentLi.innerText;
+                        const text = parentLi.textContent;
                         const uniMatch = text.match(/No\.(\d+)/);
                         if (uniMatch) uniform = uniMatch[1];
                     }

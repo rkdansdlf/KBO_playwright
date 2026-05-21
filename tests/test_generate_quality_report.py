@@ -9,6 +9,7 @@ import src.cli.generate_quality_report as generate_quality_report
 from src.models.game import Game, GamePlayByPlay
 from src.models.season import KboSeason
 from src.models.standings import TeamStandingsDaily
+from src.models.player import PlayerSeasonBatting
 
 
 class _ReportTestBase(DeclarativeBase):
@@ -41,6 +42,7 @@ def _build_session_factory(*, player_created_at_column: bool):
         _PlayerBasicWithoutCreatedAt.__table__.create(bind=engine)
     GamePlayByPlay.__table__.create(bind=engine)
     TeamStandingsDaily.__table__.create(bind=engine)
+    PlayerSeasonBatting.__table__.create(bind=engine)
     return sessionmaker(bind=engine, autoflush=False, autocommit=False, expire_on_commit=False)
 
 

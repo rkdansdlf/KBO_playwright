@@ -3,6 +3,7 @@ import os
 from typing import List
 from src.db.engine import SessionLocal
 from src.models.player import PlayerSeasonBatting, PlayerSeasonPitching, PlayerBasic
+from src.models.team import Team
 from src.aggregators.sabermetrics_calculator import SabermetricsCalculator
 from src.cli.sync_oci import OCISync
 
@@ -22,7 +23,10 @@ def batch_calculate_sabermetrics(years: List[int], sync_oci: bool = False):
                 continue
 
             # 1. Update Batting Sabermetrics
-            batters = session.query(PlayerSeasonBatting).filter(PlayerSeasonBatting.season == year).all()
+            batters = session.query(PlayerSeasonBatting).filter(
+                PlayerSeasonBatting.season == year,
+                PlayerSeasonBatting.player_id >= 10000
+            ).all()
             for bat in batters:
                 metrics = SabermetricsCalculator.calculate_batting_metrics(bat, lg)
                 
@@ -34,7 +38,10 @@ def batch_calculate_sabermetrics(years: List[int], sync_oci: bool = False):
             print(f"   ✅ Updated {len(batters)} batters.")
 
             # 2. Update Pitching Sabermetrics
-            pitchers = session.query(PlayerSeasonPitching).filter(PlayerSeasonPitching.season == year).all()
+            pitchers = session.query(PlayerSeasonPitching).filter(
+                PlayerSeasonPitching.season == year,
+                PlayerSeasonPitching.player_id >= 10000
+            ).all()
             for pit in pitchers:
                 metrics = SabermetricsCalculator.calculate_pitching_metrics(pit, lg)
                 

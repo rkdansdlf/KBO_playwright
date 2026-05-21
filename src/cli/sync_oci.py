@@ -419,13 +419,20 @@ def main(argv: Iterable[str] | None = None) -> None:
             print("✅ Crawl Runs Sync Finished")
 
     elif args.season_stats:
-        print("🚀 Syncing Season Stats (Batting, Pitching, Fielding, Baserunning) using specialized OCISync...")
+        print("🚀 Syncing Season Stats (Batting, Pitching, Fielding, Baserunning, Team) using specialized OCISync...")
 
         def sync_season_stats_fn(syncer: OCISync, year: int | None, **kwargs):
-            print(f"  - [{year}] Syncing Batting stats...")
+            if kwargs.get("truncate") and year:
+                syncer.purge_season_stats(year)
+
+            print(f"  - [{year}] Syncing Player Batting stats...")
             syncer.sync_player_season_batting(year=year, batch_size=kwargs.get("batch_size"))
-            print(f"  - [{year}] Syncing Pitching stats...")
+            print(f"  - [{year}] Syncing Player Pitching stats...")
             syncer.sync_player_season_pitching(year=year, batch_size=kwargs.get("batch_size"))
+            print(f"  - [{year}] Syncing Team Batting stats...")
+            syncer.sync_team_season_batting(year=year, batch_size=kwargs.get("batch_size"))
+            print(f"  - [{year}] Syncing Team Pitching stats...")
+            syncer.sync_team_season_pitching(year=year, batch_size=kwargs.get("batch_size"))
             print(f"  - [{year}] Syncing Fielding stats...")
             syncer.sync_fielding_stats(year=year, batch_size=kwargs.get("copy_batch_size"))
             print(f"  - [{year}] Syncing Baserunning stats...")
@@ -443,19 +450,24 @@ def main(argv: Iterable[str] | None = None) -> None:
                 target_years,
                 args.workers,
                 batch_size=args.batch_size,
-                copy_batch_size=args.copy_batch_size
+                copy_batch_size=args.copy_batch_size,
+                truncate=args.truncate
             )
         else:
             with SessionLocal() as session:
                 syncer = OCISync(args.target_url, session)
-                print("  - Syncing Batting stats...")
-                syncer.sync_player_season_batting(year=args.year, batch_size=args.batch_size)
-                print("  - Syncing Pitching stats...")
-                syncer.sync_player_season_pitching(year=args.year, batch_size=args.batch_size)
-                print("  - Syncing Fielding stats...")
-                syncer.sync_fielding_stats(year=args.year, batch_size=args.copy_batch_size)
-                print("  - Syncing Baserunning stats...")
-                syncer.sync_baserunning_stats(year=args.year, batch_size=args.copy_batch_size)
+                try:
+                    years = [args.year] if args.year else [None]
+                    for year in years:
+                        sync_season_stats_fn(
+                            syncer, 
+                            year, 
+                            batch_size=args.batch_size, 
+                            copy_batch_size=args.copy_batch_size, 
+                            truncate=args.truncate
+                        )
+                finally:
+                    syncer.close()
         print("✅ Season Stats Sync Finished")
 
     elif args.matchups:

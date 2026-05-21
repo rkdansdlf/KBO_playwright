@@ -109,13 +109,16 @@ def parse_retired_hitter_tables(
     records: List[Dict[str, Any]] = []
 
     for row in base_rows:
-        season_label = row.get("연도") or row.get("년도")
+        season_label = (row.get("연도") or row.get("년도") or "").strip()
         if not season_label:
             continue
-        if any(marker in season_label for marker in ("통산", "합계", "Career", "Total")):
+            
+        # Strict exclusion of summary rows
+        if any(marker in season_label for marker in ("통산", "합계", "Career", "Total", "연도")):
             continue
+            
         season = _to_int(season_label)
-        if season is None:
+        if season is None or season < 1982 or season > 2030:
             continue
 
         team_name = row.get("팀명") or row.get("팀")
@@ -129,6 +132,11 @@ def parse_retired_hitter_tables(
         }
 
         _apply_stat(record, row, ("경기", "G", "출장", "출장수"), "games", _to_int)
+        
+        # Safety Guard: If a single season has > 165 games, it's likely a summary row we missed
+        if record.get("games", 0) > 165:
+            continue
+
         _apply_stat(record, row, ("타석", "PA"), "plate_appearances", _to_int)
         _apply_stat(record, row, ("타수", "AB"), "at_bats", _to_int)
         _apply_stat(record, row, ("득점", "R"), "runs", _to_int)
@@ -136,6 +144,11 @@ def parse_retired_hitter_tables(
         _apply_stat(record, row, ("2루타", "2B"), "doubles", _to_int)
         _apply_stat(record, row, ("3루타", "3B"), "triples", _to_int)
         _apply_stat(record, row, ("홈런", "HR"), "home_runs", _to_int)
+        
+        # Another Guard: KBO single season HR record is 56 (Lee Seung-yeop)
+        if record.get("home_runs", 0) > 65:
+            continue
+
         _apply_stat(record, row, ("타점", "RBI"), "rbi", _to_int)
         _apply_stat(record, row, ("볼넷", "BB"), "walks", _to_int)
         _apply_stat(record, row, ("고의4구", "IBB"), "intentional_walks", _to_int)
@@ -171,13 +184,16 @@ def parse_retired_pitcher_table(
     records: List[Dict[str, Any]] = []
 
     for row in rows:
-        season_label = row.get("연도") or row.get("년도")
+        season_label = (row.get("연도") or row.get("년도") or "").strip()
         if not season_label:
             continue
-        if any(marker in season_label for marker in ("통산", "합계", "Career", "Total")):
+            
+        # Strict exclusion
+        if any(marker in season_label for marker in ("통산", "합계", "Career", "Total", "연도")):
             continue
+            
         season = _to_int(season_label)
-        if season is None:
+        if season is None or season < 1982 or season > 2030:
             continue
 
         team_name = row.get("팀명") or row.get("팀")
@@ -191,8 +207,18 @@ def parse_retired_pitcher_table(
         }
 
         _apply_stat(record, row, ("경기", "G"), "games", _to_int)
+        
+        # Guard
+        if record.get("games", 0) > 165:
+            continue
+
         _apply_stat(record, row, ("선발", "GS"), "games_started", _to_int)
         _apply_stat(record, row, ("승", "W"), "wins", _to_int)
+        
+        # Guard: KBO single season win record is 30 (Jang Myeong-bu)
+        if record.get("wins", 0) > 35:
+            continue
+
         _apply_stat(record, row, ("패", "L"), "losses", _to_int)
         _apply_stat(record, row, ("세", "세이브", "SV"), "saves", _to_int)
         _apply_stat(record, row, ("홀드", "HLD"), "holds", _to_int)

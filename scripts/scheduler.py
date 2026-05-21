@@ -30,6 +30,7 @@ load_dotenv(PROJECT_ROOT / ".env")
 
 from apscheduler.schedulers.blocking import BlockingScheduler
 from apscheduler.triggers.cron import CronTrigger
+from apscheduler.events import EVENT_JOB_ERROR
 from sqlalchemy import text
 from tenacity import retry, stop_after_attempt, wait_exponential
 
@@ -424,6 +425,21 @@ def generate_daily_report_job():
         logger.info("=== Daily Quality Report Generation Completed ===")
 
 
+def job_error_listener(event):
+    """Listener for failed APScheduler jobs."""
+    if event.exception:
+        import traceback
+        job = event.job_id
+        exc = event.exception
+        tb = "".join(traceback.format_exception(type(exc), exc, exc.__traceback__))
+        
+        logger.error(f"Job {job} failed: {exc}")
+        try:
+            SlackWebhookClient.send_error_alert(f"🚨 <b>Scheduler Job Failed: {job}</b>\nError: {exc}\n\n{tb}")
+        except Exception:
+            logger.exception("Failed to send Slack alert for failed job %s", job)
+
+
 def main(argv: Sequence[str] | None = None):
     """Initialize and start the APScheduler."""
     parser = build_arg_parser()
@@ -437,6 +453,7 @@ def main(argv: Sequence[str] | None = None):
         return
 
     scheduler = BlockingScheduler(timezone='Asia/Seoul')
+    scheduler.add_listener(job_error_listener, EVENT_JOB_ERROR)
 
     # Job 1: Daily regular season games (03:00 KST)
     scheduler.add_job(
