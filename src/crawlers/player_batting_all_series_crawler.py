@@ -113,11 +113,11 @@ def _extract_rows_fast(page: Page, table_selector: str = "table") -> Optional[Li
                 const body = table.tBodies && table.tBodies.length ? table.tBodies[0] : table;
                 const rows = Array.from(body.querySelectorAll('tr'));
                 return rows.map((row) => {
-                    const cells = Array.from(row.querySelectorAll('td')).map(td => (td.innerText || '').trim());
+                    const cells = Array.from(row.querySelectorAll('td')).map(td => (td.textContent || '').trim());
                     const link = row.querySelector('td:nth-child(2) a');
                     return {
                         cells,
-                        linkText: link ? (link.innerText || '').trim() : null,
+                        linkText: link ? (link.textContent || '').trim() : null,
                         linkHref: link ? link.getAttribute('href') : null,
                     };
                 });
@@ -239,7 +239,7 @@ def _parse_batting_stats_table_fast(page: Page, series_key: str, year: int = 202
         const rows = table.querySelectorAll('tbody tr');
         if (rows.length === 0) return null;
 
-        const headers = Array.from(document.querySelectorAll('table thead th')).map(th => th.innerText.trim());
+        const headers = Array.from(document.querySelectorAll('table thead th')).map(th => th.textContent.trim());
         const basic2_indicators = ['BB', '볼넷', 'IBB', 'HBP', 'SLG', 'OBP', 'OPS'];
         const is_basic2 = basic2_indicators.some(ind => headers.join('').includes(ind));
 
@@ -251,18 +251,18 @@ def _parse_batting_stats_table_fast(page: Page, series_key: str, year: int = 202
             const nameLink = cells[1].querySelector('a');
             if (!nameLink) return;
 
-            const playerName = nameLink.innerText.trim();
+            const playerName = nameLink.textContent.trim();
             const href = nameLink.getAttribute('href');
             const idMatch = href ? href.match(/playerId=(\d+)/) : null;
             if (!idMatch) return;
             const playerId = parseInt(idMatch[1], 10);
 
-            const teamName = cells[2].innerText.trim();
+            const teamName = cells[2].textContent.trim();
             results.push({
                 player_id: playerId,
                 player_name: playerName,
                 team_name: teamName,
-                raw_cells: cells.map(c => c.innerText.trim()),
+                raw_cells: cells.map(c => c.textContent.trim()),
             });
         });
         return { is_basic2, results };
@@ -890,7 +890,7 @@ def crawl_series_batting_stats(year: int = 2025, series_key: str = 'regular',
             if by_team:
                 try:
                     team_selector = 'select[name="ctl00$ctl00$ctl00$cphContents$cphContents$cphContents$ddlTeam$ddlTeam"]'
-                    options = page.eval_on_selector_all(f'{team_selector} option', 'options => options.map(o => ({text: o.innerText, value: o.value}))')
+                    options = page.eval_on_selector_all(f'{team_selector} option', 'options => options.map(o => ({text: o.textContent, value: o.value}))')
                     team_options = [opt for opt in options if opt['value']] # Empty value is "Team Selection"
                     print(f"ℹ️ 팀별 순회 모드: {len(team_options)}개 팀 발견")
                 except Exception as e:

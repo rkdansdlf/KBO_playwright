@@ -99,8 +99,18 @@ async def run_advanced_update(
         print(f"   ❌ Error crawling team pitching stats: {exc}")
         any_error = True
 
+    # 5. Recalculate Rankings
+    print("\n🏷️ Step 5: Recalculating Stat Rankings...")
+    try:
+        from src.cli.calculate_rankings import rebuild_rankings
+        saved_rankings = await asyncio.to_thread(rebuild_rankings, year)
+        print(f"   ✅ Recalculated {saved_rankings} ranking records")
+    except Exception as exc:
+        print(f"   ❌ Error recalculating rankings: {exc}")
+        any_error = True
+
     if sync:
-        print("\n☁️ Step 5: Synchronizing to OCI...")
+        print("\n☁️ Step 6: Synchronizing to OCI...")
         oci_url = os.getenv("OCI_DB_URL")
         if not oci_url:
             print("   ⚠️ OCI_DB_URL not set, skipping sync")
@@ -110,8 +120,9 @@ async def run_advanced_update(
                 try:
                     syncer.sync_fielding_stats(year)
                     syncer.sync_baserunning_stats(year)
-                    syncer.sync_team_batting_stats(year)
-                    syncer.sync_team_pitching_stats(year)
+                    syncer.sync_team_season_batting(year)
+                    syncer.sync_team_season_pitching(year)
+                    syncer.sync_stat_rankings(year)
                     print("   ✅ OCI synchronization completed")
                 except Exception as exc:
                     print(f"   ❌ OCI sync error: {exc}")

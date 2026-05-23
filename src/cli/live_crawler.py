@@ -26,8 +26,8 @@ from src.utils.refresh_manifest import write_refresh_manifest
 from src.utils.safe_print import safe_print as print
 
 
-async def run_live_crawler_cycle(*, sync_to_oci: bool | None = None) -> bool:
-    """Run one live polling cycle. Returns True when at least one game was updated."""
+async def run_live_crawler_cycle(*, sync_to_oci: bool | None = None) -> tuple[bool, bool]:
+    """Run one live polling cycle. Returns (active, active_playing)."""
     seoul_tz = ZoneInfo("Asia/Seoul")
     now = datetime.now(seoul_tz)
     today_str = now.strftime("%Y%m%d")
@@ -40,7 +40,7 @@ async def run_live_crawler_cycle(*, sync_to_oci: bool | None = None) -> bool:
 
     if not today_games:
         print(f"[INFO] No games scheduled for today ({today_str}).")
-        return False
+        return False, False
 
     # Optimization: Fetch latest game statuses from Naver to skip unnecessary crawls
     relay_crawler = NaverRelayCrawler()
@@ -81,6 +81,7 @@ async def run_live_crawler_cycle(*, sync_to_oci: bool | None = None) -> bool:
 
     detail_crawler = GameDetailCrawler(request_delay=0.1)
     touched_game_ids: set[str] = set()
+    active_playing_flag = False
 
     for game in today_games:
         game_id = game["game_id"]
@@ -111,6 +112,19 @@ async def run_live_crawler_cycle(*, sync_to_oci: bool | None = None) -> bool:
         flat_events = list((relay_data or {}).get("events") or [])
         raw_pbp_rows = list((relay_data or {}).get("raw_pbp_rows") or [])
         
+        # Determine if actively playing (not inning change)
+        game_is_playing = True
+        if flat_events:
+            # If the last event is 3 outs, it's an inning change
+            if flat_events[-1].get("outs") == 3:
+                game_is_playing = False
+        elif raw_pbp_rows:
+            if "종료" in str(raw_pbp_rows[-1].get("play_description", "")):
+                game_is_playing = False
+        
+        if game_is_playing:
+            active_playing_flag = True
+        
         if flat_events or raw_pbp_rows:
             saved_rows = save_relay_data(
                 game_id,
@@ -136,7 +150,7 @@ async def run_live_crawler_cycle(*, sync_to_oci: bool | None = None) -> bool:
 
     if not touched_game_ids:
         print(f"[INFO] No live games currently active right now. manifest={manifest_path}")
-        return False
+        return False, False
 
     should_sync = sync_to_oci if sync_to_oci is not None else bool(os.getenv("OCI_DB_URL"))
     if should_sync:
@@ -152,7 +166,7 @@ async def run_live_crawler_cycle(*, sync_to_oci: bool | None = None) -> bool:
                     sync_engine.close()
 
     print(f"[INFO] Live cycle finished. updated={len(touched_game_ids)} manifest={manifest_path}")
-    return True
+    return True, active_playing_flag
 
 
 async def main_loop(base_interval_minutes: int, *, sync_to_oci: bool | None = None, dynamic: bool = False):
@@ -163,7 +177,7 @@ async def main_loop(base_interval_minutes: int, *, sync_to_oci: bool | None = No
             now = datetime.now(seoul_tz)
             
             # 1. Run the cycle
-            active = await run_live_crawler_cycle(sync_to_oci=sync_to_oci)
+            active, active_playing = await run_live_crawler_cycle(sync_to_oci=sync_to_oci)
             
             # 2. Determine next sleep interval
             if not dynamic:
@@ -172,8 +186,8 @@ async def main_loop(base_interval_minutes: int, *, sync_to_oci: bool | None = No
             else:
                 # Dynamic Interval Logic
                 if active:
-                    # Active games running: poll frequently (20 seconds for near real-time)
-                    sleep_seconds = 20
+                    # Active games running: poll frequently (5-10s playing, 30s inning change)
+                    sleep_seconds = 5 if active_playing else 30
                 elif 12 <= now.hour < 23:
                     # During game hours but no active games right now (e.g., between games or pre-game)
                     sleep_seconds = 120  # 2 minutes
