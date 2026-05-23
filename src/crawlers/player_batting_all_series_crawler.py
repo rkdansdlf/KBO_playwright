@@ -314,7 +314,7 @@ def _parse_batting_stats_table_legacy(page: Page, series_key: str, year: int = 2
         headers = []
         if thead:
             header_cells = thead.query_selector_all("th")
-            headers = [cell.inner_text().strip() for cell in header_cells]
+            headers = [cell.text_content().strip() for cell in header_cells]
         is_basic2 = _is_basic2_headers(headers) if headers else False
 
         tbody = table.query_selector("tbody")
@@ -328,14 +328,14 @@ def _parse_batting_stats_table_legacy(page: Page, series_key: str, year: int = 2
             if len(cell_nodes) < 10:
                 continue
 
-            cells = [cell.inner_text().strip() for cell in cell_nodes]
+            cells = [cell.text_content().strip() for cell in cell_nodes]
             name_link = cell_nodes[1].query_selector("a")
             href = name_link.get_attribute("href") if name_link else None
             player_id = _extract_player_id_from_href(href)
             if not player_id:
                 continue
 
-            player_name = name_link.inner_text().strip() if name_link else (cells[1] if len(cells) > 1 else "")
+            player_name = name_link.text_content().strip() if name_link else (cells[1] if len(cells) > 1 else "")
             team_name = cells[2] if len(cells) > 2 else ""
             team_code = resolve_team_code(team_name, year) or team_name
 
@@ -533,7 +533,7 @@ def _parse_basic2_header_data_legacy(
         thead = page.query_selector("thead")
         if thead:
             header_cells = thead.query_selector_all("th")
-            headers = [cell.inner_text().strip() for cell in header_cells]
+            headers = [cell.text_content().strip() for cell in header_cells]
             print(f"      🔍 {description} 기준 테이블 헤더: {headers}")
 
         # 첫 번째 행 샘플 확인 (디버깅용)
@@ -541,7 +541,7 @@ def _parse_basic2_header_data_legacy(
             first_row_cells = rows[0].query_selector_all("td")
             print(f"      🔍 {description} 기준 첫 행 데이터 ({len(first_row_cells)}개 컬럼):")
             for i, cell in enumerate(first_row_cells[:10]):  # 처음 10개만
-                content = cell.inner_text().strip()
+                content = cell.text_content().strip()
                 print(f"         [{i}]: '{content}'")
 
         for row_idx, row in enumerate(rows):
@@ -558,14 +558,14 @@ def _parse_basic2_header_data_legacy(
                 if not name_link:
                     continue
 
-                player_name = name_link.inner_text().strip()
+                player_name = name_link.text_content().strip()
                 href = name_link.get_attribute("href")
                 player_id = _extract_player_id_from_href(href)
                 if not player_id:
                     continue
 
                 # 팀명 추출 및 동적 매핑
-                team_name = cells[2].inner_text().strip()
+                team_name = cells[2].text_content().strip()
                 team_code = get_team_code(team_name, year)
                 if not team_code:
                     # 정적 매핑 폴백
@@ -585,33 +585,33 @@ def _parse_basic2_header_data_legacy(
 
                 # 헤더에 따른 정확한 컬럼 위치에서 데이터 추출
                 if current_header == 'BB' and len(cells) > 4:
-                    batting_data['walks'] = safe_parse_number(cells[4].inner_text().strip(), int)
+                    batting_data['walks'] = safe_parse_number(cells[4].text_content().strip(), int)
                 elif current_header == 'IBB' and len(cells) > 5:
-                    batting_data['intentional_walks'] = safe_parse_number(cells[5].inner_text().strip(), int)
+                    batting_data['intentional_walks'] = safe_parse_number(cells[5].text_content().strip(), int)
                 elif current_header == 'HBP' and len(cells) > 6:
-                    batting_data['hbp'] = safe_parse_number(cells[6].inner_text().strip(), int)
+                    batting_data['hbp'] = safe_parse_number(cells[6].text_content().strip(), int)
                 elif current_header == 'SO' and len(cells) > 7:
-                    batting_data['strikeouts'] = safe_parse_number(cells[7].inner_text().strip(), int)
+                    batting_data['strikeouts'] = safe_parse_number(cells[7].text_content().strip(), int)
                 elif current_header == 'GDP' and len(cells) > 8:
-                    batting_data['gdp'] = safe_parse_number(cells[8].inner_text().strip(), int)
+                    batting_data['gdp'] = safe_parse_number(cells[8].text_content().strip(), int)
                 elif current_header == 'SLG' and len(cells) > 9:
-                    batting_data['slg'] = safe_parse_number(cells[9].inner_text().strip(), float)
+                    batting_data['slg'] = safe_parse_number(cells[9].text_content().strip(), float)
                 elif current_header == 'OBP' and len(cells) > 10:
-                    batting_data['obp'] = safe_parse_number(cells[10].inner_text().strip(), float)
+                    batting_data['obp'] = safe_parse_number(cells[10].text_content().strip(), float)
                 elif current_header == 'OPS' and len(cells) > 11:
-                    batting_data['ops'] = safe_parse_number(cells[11].inner_text().strip(), float)
+                    batting_data['ops'] = safe_parse_number(cells[11].text_content().strip(), float)
                 elif current_header == 'MH' and len(cells) > 12:
                     if 'extra_stats' not in batting_data:
                         batting_data['extra_stats'] = {}
-                    batting_data['extra_stats']['multi_hits'] = safe_parse_number(cells[12].inner_text().strip(), int)
+                    batting_data['extra_stats']['multi_hits'] = safe_parse_number(cells[12].text_content().strip(), int)
                 elif current_header == 'RISP' and len(cells) > 13:
                     if 'extra_stats' not in batting_data:
                         batting_data['extra_stats'] = {}
-                    batting_data['extra_stats']['risp_avg'] = safe_parse_number(cells[13].inner_text().strip(), float)
+                    batting_data['extra_stats']['risp_avg'] = safe_parse_number(cells[13].text_content().strip(), float)
                 elif current_header == 'PH-BA' and len(cells) > 14:
                     if 'extra_stats' not in batting_data:
                         batting_data['extra_stats'] = {}
-                    batting_data['extra_stats']['pinch_hit_avg'] = safe_parse_number(cells[14].inner_text().strip(), float)
+                    batting_data['extra_stats']['pinch_hit_avg'] = safe_parse_number(cells[14].text_content().strip(), float)
 
                 players_data[player_id] = batting_data
 
@@ -652,7 +652,7 @@ def _parse_basic2_header_data_fast(
     thead = page.query_selector("thead")
     if thead:
         header_cells = thead.query_selector_all("th")
-        headers = [cell.inner_text().strip() for cell in header_cells]
+        headers = [cell.text_content().strip() for cell in header_cells]
         print(f"      🔍 {description} 기준 테이블 헤더: {headers}")
 
     if rows_data:

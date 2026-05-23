@@ -373,7 +373,7 @@ class GameDetailCrawler:
             # We look for specific cancellation text in the status badge of the active game item
             status_el = await page.query_selector('li.game-cont.on p.status, li.game-cont.on p.staus, li.game-cont.on .game-status.cancel')
             if status_el:
-                txt = (await status_el.inner_text()).strip()
+                txt = (await status_el.text_content()).strip()
                 # Must be a clear match for cancellation, not just containing the word
                 if any(cancel_word in txt for cancel_word in ["경기취소", "취소", "우천취소"]):
                     print(f"ℹ️ Game {page.url} is clearly marked as CANCELLED in badge: '{txt}'")
@@ -385,7 +385,7 @@ class GameDetailCrawler:
             if not hitter_table:
                 scoreboard = await page.query_selector('.sms-score, .score-board')
                 if scoreboard:
-                    sb_text = await scoreboard.inner_text()
+                    sb_text = await scoreboard.text_content()
                     if "취소" in sb_text:
                         print(f"ℹ️ Game {page.url} is marked as CANCELLED in scoreboard area")
                         return False, "cancelled"
@@ -398,7 +398,7 @@ class GameDetailCrawler:
                 # Only check for "경기취소" in the main content area, not the whole body
                 content_area = await page.query_selector('#contents, .box-score-area')
                 if content_area:
-                    txt = await content_area.inner_text()
+                    txt = await content_area.text_content()
                     if "취소" in txt:
                         return False, "cancelled"
 
@@ -427,12 +427,12 @@ class GameDetailCrawler:
             # 1. Try explicit ID selectors (common in older years)
             stadium_el = await page.query_selector('#txtStadium')
             if stadium_el:
-                metadata['stadium'] = (await stadium_el.inner_text()).replace('구장 :', '').strip()
+                metadata['stadium'] = (await stadium_el.text_content()).replace('구장 :', '').strip()
 
             crowd_el = await page.query_selector('#txtCrowd')
             if crowd_el:
                 try:
-                    val = (await crowd_el.inner_text()).replace('관중 :', '').replace(',', '').strip()
+                    val = (await crowd_el.text_content()).replace('관중 :', '').replace(',', '').strip()
                     metadata['attendance'] = int(val)
                 except: pass
 
@@ -441,7 +441,7 @@ class GameDetailCrawler:
             if not info_area:
                 return metadata
 
-            text = (await info_area.inner_text()).replace('\n', ' ')
+            text = (await info_area.text_content()).replace('\n', ' ')
 
             stadium_match = re.search(r'구장\s*[:：]\s*([^\s]+)', text)
             if stadium_match:
