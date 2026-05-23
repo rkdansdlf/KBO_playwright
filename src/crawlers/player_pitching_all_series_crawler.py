@@ -314,7 +314,7 @@ def apply_sort(page: Page, header_label: str, sort_code: Optional[str] = None, p
             # Re-check attachment
             if not anchor.is_visible(): continue
             
-            label = normalize_header(anchor.inner_text())
+            label = normalize_header(anchor.text_content())
             if label == header_label:
                 anchor.click()
                 page.wait_for_load_state("networkidle", timeout=60000)
@@ -617,7 +617,7 @@ def parse_basic2_page(
         print("⚠️  Basic2 테이블 헤더 파싱 실패 (타임아웃)")
         return 0
 
-    headers = [normalize_header(th.inner_text()) for th in page.query_selector_all("table.tData01 thead th")]
+    headers = [normalize_header(th.text_content()) for th in page.query_selector_all("table.tData01 thead th")]
     header_index = {name: idx for idx, name in enumerate(headers)}
     team_mapping = get_team_mapping_for_year(season)
     use_fast = os.getenv("KBO_FAST_PARSE", "1") != "0"
@@ -652,14 +652,14 @@ def parse_basic2_page(
                 continue
 
             def cell_text(idx: int) -> Optional[str]:
-                return cells[idx].inner_text() if len(cells) > idx else None
+                return cells[idx].text_content() if len(cells) > idx else None
 
             link = cells[header_index["선수명"]].query_selector("a")
             player_id = extract_player_id(link.get_attribute("href") if link else None)
             if not player_id:
                 continue
-            player_name = link.inner_text().strip() if link else cells[header_index["선수명"]].inner_text().strip()
-            team_name = cells[header_index["팀명"]].inner_text().strip()
+            player_name = link.text_content().strip() if link else cells[header_index["선수명"]].text_content().strip()
+            team_name = cells[header_index["팀명"]].text_content().strip()
 
         if max_players and player_id not in pitchers and len(pitchers) >= max_players:
             continue
