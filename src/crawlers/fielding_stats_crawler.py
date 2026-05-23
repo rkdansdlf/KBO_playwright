@@ -31,27 +31,14 @@ def build_fielding_crawl_summary(records):
 
 def crawl_all_fielding_stats(year=2025):
     """
-    포지션별 수비 랭킹 페이지에서 전체 선수의 수비 기록을 크롤링합니다.
+    KBO 공식 홈페이지에서 팀별 수비 기록을 크롤링하여 전체 선수의 수비 기록을 수집합니다.
+    팀별로 조회하여 전체 수비수(투수 포함)를 누락 없이 가져옵니다.
 
     Args:
         year: 시즌 연도
 
     Returns:
         list: 수비 기록 딕셔너리 리스트
-            - player_id: 선수 ID
-            - player_name: 선수명
-            - team_name: 팀명
-            - position: 포지션 (한글)
-            - position_id: 포지션 ID (영문)
-            - games: 경기수
-            - games_started: 선발 출장
-            - innings: 이닝
-            - errors: 실책
-            - pickoffs: 견제사
-            - putouts: 자살
-            - assists: 보살
-            - double_plays: 병살
-            - fielding_pct: 수비율
     """
     fielding_data = []
     policy = RequestPolicy()
@@ -77,37 +64,9 @@ def crawl_all_fielding_stats(year=2025):
                 time.sleep(2)
                 print(f"✅ {year}년 데이터 선택 완료")
 
-            # 페이지네이션 확인
-            pagination = page.query_selector('.paging')
-            total_pages = 1
-            if pagination:
-                page_links = pagination.query_selector_all('a')
-                # 숫자 링크만 카운트 (이전/다음 버튼 제외)
-                page_numbers = []
-                for link in page_links:
-                    text = link.inner_text().strip()
-                    if text.isdigit():
-                        page_numbers.append(int(text))
-                if page_numbers:
-                    total_pages = max(page_numbers)
-
-            print(f"📄 총 {total_pages}개 페이지 발견")
-
-            # 메인 테이블 크롤링
-            table = page.query_selector('table.tData01.tt')
-
-            if not table:
-                print("⚠️ 수비 기록 테이블을 찾을 수 없습니다.")
-                browser.close()
-                return fielding_data
-
-            # 헤더 확인 (첫 페이지에서만)
-            headers = table.query_selector_all('thead th')
-            header_texts = [h.inner_text().strip() for h in headers]
-            print(f"테이블 헤더: {header_texts}")
-
             # 포지션 한글 → ID 매핑
             position_mapping = {
+                '투수': 'P',
                 '포수': 'C',
                 '1루수': '1B',
                 '2루수': '2B',
@@ -121,136 +80,168 @@ def crawl_all_fielding_stats(year=2025):
                 '지명타자': 'DH'
             }
 
-            # 팀명 한글 → ID 매핑
-            team_mapping = {
-                'LG': 'LG',
-                '한화': 'HH',
-                'SSG': 'SK',
-                '삼성': 'SS',
-                'NC': 'NC',
-                'KT': 'KT',
-                '롯데': 'LT',
-                'KIA': 'HT',
-                '두산': 'OB',
-                '키움': 'WO'
-            }
+            # 팀 선택 드롭다운 가져오기
+            team_select = page.query_selector('select#cphContents_cphContents_cphContents_ddlTeam_ddlTeam')
+            if not team_select:
+                print("⚠️ 팀 선택 드롭다운을 찾을 수 없습니다.")
+                browser.close()
+                return fielding_data
 
-            # 모든 페이지 순회
-            for current_page in range(1, total_pages + 1):
-                print(f"\n📄 페이지 {current_page}/{total_pages} 크롤링 중...")
+            options = team_select.query_selector_all('option')
+            teams = []
+            for opt in options:
+                val = opt.get_attribute('value')
+                text = opt.inner_text().strip()
+                if val and val != "":
+                    teams.append((val, text))
 
-                # 2페이지 이상부터는 페이지 이동
-                if current_page > 1:
-                    # 페이지 번호 링크 클릭
-                    pagination = page.query_selector('.paging')
-                    if pagination:
-                        page_link = None
-                        for link in pagination.query_selector_all('a'):
-                            if link.inner_text().strip() == str(current_page):
-                                page_link = link
+            print(f"📋 발견된 팀 목록: {[t[1] for t in teams]}")
+
+            # 각 팀별 순회
+            for team_val, team_name in teams:
+                print(f"\n🏢 [{team_name}] 수비 기록 크롤링 중...")
+                page.select_option('select#cphContents_cphContents_cphContents_ddlTeam_ddlTeam', value=team_val)
+                page.wait_for_load_state('networkidle')
+                time.sleep(2)
+
+                # 페이지네이션 확인
+                pagination = page.query_selector('.paging')
+                total_pages = 1
+                if pagination:
+                    page_links = pagination.query_selector_all('a')
+                    # 숫자 링크만 카운트
+                    page_numbers = []
+                    for link in page_links:
+                        text_val = link.inner_text().strip()
+                        if text_val.isdigit():
+                            page_numbers.append(int(text_val))
+                    if page_numbers:
+                        total_pages = max(page_numbers)
+
+                print(f"   ✓ 총 {total_pages}개 페이지 발견")
+
+                # 모든 페이지 순회
+                for current_page in range(1, total_pages + 1):
+                    print(f"   📄 페이지 {current_page}/{total_pages} 크롤링 중...")
+
+                    if current_page > 1:
+                        # 페이지 번호 링크 클릭 (매번 다시 쿼리하여 DOM 변경 대응)
+                        try:
+                            page.wait_for_selector('.paging', timeout=5000)
+                            pagination = page.query_selector('.paging')
+                            if pagination:
+                                page_links = pagination.query_selector_all('a')
+                                page_link = None
+                                for link in page_links:
+                                    if link.inner_text().strip() == str(current_page):
+                                        page_link = link
+                                        break
+
+                                if page_link:
+                                    page_link.click()
+                                    page.wait_for_load_state('networkidle')
+                                    time.sleep(2)
+                                else:
+                                    print(f"   ⚠️ 페이지 {current_page} 링크를 찾을 수 없습니다. (종료)")
+                                    break
+                            else:
+                                print(f"   ⚠️ 페이징 영역을 찾을 수 없습니다. (종료)")
                                 break
-
-                        if page_link:
-                            page_link.click()
-                            page.wait_for_load_state('networkidle')
-                            time.sleep(2)
-                        else:
-                            print(f"⚠️ 페이지 {current_page} 링크를 찾을 수 없습니다.")
+                        except Exception as e:
+                            print(f"   ⚠️ 페이지 {current_page} 이동 중 오류: {e}")
                             break
 
-                # 현재 페이지 테이블 가져오기
-                table = page.query_selector('table.tData01.tt')
-                if not table:
-                    print(f"⚠️ 페이지 {current_page}에서 테이블을 찾을 수 없습니다.")
-                    continue
+                    # 현재 페이지 테이블 가져오기
+                    table = page.query_selector('table.tData01.tt')
+                    if not table:
+                        print(f"   ⚠️ 페이지 {current_page}에서 테이블을 찾을 수 없습니다.")
+                        continue
 
-                # 데이터 행 추출
-                tbody = table.query_selector('tbody')
-                if not tbody:
-                    print(f"⚠️ 페이지 {current_page}에 tbody가 없습니다.")
-                    continue
+                    # 데이터 행 추출
+                    tbody = table.query_selector('tbody')
+                    if not tbody:
+                        print(f"   ⚠️ 페이지 {current_page}에 tbody가 없습니다.")
+                        continue
 
-                rows = tbody.query_selector_all('tr')
-                print(f"   ✓ {len(rows)}개의 수비 기록 발견")
+                    rows = tbody.query_selector_all('tr')
+                    for row in rows:
+                        cells = row.query_selector_all('td')
 
-                for row in rows:
-                    cells = row.query_selector_all('td')
+                        if len(cells) >= 13:  # 최소 13개 컬럼 필요
+                            try:
+                                # 선수 링크에서 player_id 추출
+                                player_link = cells[1].query_selector('a')
+                                player_id = None
 
-                    if len(cells) >= 13:  # 최소 13개 컬럼 필요 (순위~FPCT)
-                        try:
-                            # 선수 링크에서 player_id 추출
-                            player_link = cells[1].query_selector('a')
-                            player_id = None
+                                if player_link:
+                                    href = player_link.get_attribute('href')
+                                    if href and 'playerId=' in href:
+                                        player_id = href.split('playerId=')[1].split('&')[0]
 
-                            if player_link:
-                                href = player_link.get_attribute('href')
-                                if href and 'playerId=' in href:
-                                    player_id = href.split('playerId=')[1].split('&')[0]
+                                # 기본 데이터 추출
+                                player_name = cells[1].inner_text().strip()
+                                row_team_name = cells[2].inner_text().strip()
+                                position = cells[3].inner_text().strip()
 
-                            # 기본 데이터 추출
-                            player_name = cells[1].inner_text().strip()
-                            team_name = cells[2].inner_text().strip()
-                            position = cells[3].inner_text().strip()
+                                # 포지션 ID 변환
+                                position_id = position_mapping.get(position, position)
 
-                            # 포지션 ID 변환
-                            position_id = position_mapping.get(position, position)
+                                # 팀 ID 변환 (시즌별 가변 대응)
+                                team_id = resolve_team_code(row_team_name, year) or row_team_name
 
-                            # 팀 ID 변환
-                            team_id = team_mapping.get(team_name, team_name)
+                                def safe_float(text_val):
+                                    if not text_val or text_val.strip() in ('-', ''): return 0.0
+                                    try: return float(text_val.strip().replace(',', ''))
+                                    except: return 0.0
 
-                            def safe_float(text):
-                                if not text or text.strip() in ('-', ''): return 0.0
-                                try: return float(text.strip().replace(',', ''))
-                                except: return 0.0
+                                def safe_int(text_val):
+                                    if not text_val or text_val.strip() in ('-', ''): return 0
+                                    try: return int(text_val.strip().replace(',', ''))
+                                    except: return 0
 
-                            def safe_int(text):
-                                if not text or text.strip() in ('-', ''): return 0
-                                try: return int(text.strip().replace(',', ''))
-                                except: return 0
+                                # 이닝 파싱 (예: "1262 1/3" → 1262.333)
+                                innings_text = cells[6].inner_text().strip().replace(',', '')
+                                innings_value = 0.0
 
-                            # 이닝 파싱 (예: "1262 1/3" → 1262.333)
-                            innings_text = cells[6].inner_text().strip().replace(',', '')
-                            innings_value = 0.0
+                                if innings_text and innings_text != '-':
+                                    if ' ' in innings_text:
+                                        parts = innings_text.split(' ')
+                                        innings_value = safe_float(parts[0])
 
-                            if innings_text and innings_text != '-':
-                                if ' ' in innings_text:
-                                    # 분수 형식 처리 (예: "1262 1/3")
-                                    parts = innings_text.split(' ')
-                                    innings_value = safe_float(parts[0])
+                                        if len(parts) > 1 and '/' in parts[1]:
+                                            fraction = parts[1].split('/')
+                                            try:
+                                                innings_value += float(fraction[0]) / float(fraction[1])
+                                            except: pass
+                                    else:
+                                        innings_value = safe_float(innings_text)
 
-                                    if len(parts) > 1 and '/' in parts[1]:
-                                        fraction = parts[1].split('/')
-                                        try:
-                                            innings_value += float(fraction[0]) / float(fraction[1])
-                                        except: pass
-                                else:
-                                    innings_value = safe_float(innings_text)
+                                # 수비 통계 추출
+                                fielding_record = {
+                                    'player_id': player_id,
+                                    'player_name': player_name,
+                                    'team_name': row_team_name,
+                                    'team_id': team_id,
+                                    'year': year,
+                                    'position': position,
+                                    'position_id': position_id,
+                                    'games': safe_int(cells[4].inner_text()),
+                                    'games_started': safe_int(cells[5].inner_text()),
+                                    'innings': innings_value,
+                                    'errors': safe_int(cells[7].inner_text()),
+                                    'pickoffs': safe_int(cells[8].inner_text()),
+                                    'putouts': safe_int(cells[9].inner_text()),
+                                    'assists': safe_int(cells[10].inner_text()),
+                                    'double_plays': safe_int(cells[11].inner_text()),
+                                    'fielding_pct': safe_float(cells[12].inner_text()),
+                                    'source': 'CRAWLER',
+                                }
 
-                            # 수비 통계 추출 (헤더: 순위, 선수명, 팀명, POS, G, GS, IP, E, PKO, PO, A, DP, FPCT, ...)
-                            fielding_record = {
-                                'player_id': player_id,
-                                'player_name': player_name,
-                                'team_name': team_name,
-                                'team_id': team_id,
-                                'year': year,
-                                'position': position,
-                                'position_id': position_id,
-                                'games': safe_int(cells[4].inner_text()),
-                                'games_started': safe_int(cells[5].inner_text()),
-                                'innings': innings_value,
-                                'errors': safe_int(cells[7].inner_text()),
-                                'pickoffs': safe_int(cells[8].inner_text()),
-                                'putouts': safe_int(cells[9].inner_text()),
-                                'assists': safe_int(cells[10].inner_text()),
-                                'double_plays': safe_int(cells[11].inner_text()),
-                                'fielding_pct': safe_float(cells[12].inner_text()),
-                            }
+                                fielding_data.append(fielding_record)
 
-                            fielding_data.append(fielding_record)
-
-                        except (ValueError, AttributeError) as e:
-                            print(f"   ⚠️ 데이터 파싱 오류: {e}")
-                            continue
+                            except (ValueError, AttributeError) as e:
+                                print(f"   ⚠️ 데이터 파싱 오류: {e}")
+                                continue
 
             summary, fielding_data = build_fielding_crawl_summary(fielding_data)
             if summary["filtered_rows"]:

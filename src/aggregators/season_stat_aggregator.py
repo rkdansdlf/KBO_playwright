@@ -1,7 +1,7 @@
 from typing import Dict, Any, List, Optional
 import re
 from sqlalchemy.orm import Session
-from sqlalchemy import func, Integer, or_
+from sqlalchemy import func, Integer, or_, case
 from src.models.game import Game, GameBattingStat, GamePitchingStat, GameEvent, GameLineup
 from src.models.season import KboSeason
 from src.models.player import PlayerBasic
@@ -138,10 +138,10 @@ class SeasonStatAggregator:
             session.query(
                 func.count(GamePitchingStat.id).label('games'),
                 func.sum(func.cast(GamePitchingStat.is_starting, Integer)).label('games_started'),
-                func.sum(GamePitchingStat.wins).label('wins'),
-                func.sum(GamePitchingStat.losses).label('losses'),
-                func.sum(GamePitchingStat.saves).label('saves'),
-                func.sum(GamePitchingStat.holds).label('holds'),
+                func.sum(case((GamePitchingStat.decision == 'W', 1), else_=0)).label('wins'),
+                func.sum(case((GamePitchingStat.decision == 'L', 1), else_=0)).label('losses'),
+                func.sum(case((GamePitchingStat.decision == 'S', 1), else_=0)).label('saves'),
+                func.sum(case((GamePitchingStat.decision == 'H', 1), else_=0)).label('holds'),
                 func.sum(GamePitchingStat.innings_outs).label('innings_outs'),
                 func.sum(GamePitchingStat.hits_allowed).label('hits_allowed'),
                 func.sum(GamePitchingStat.runs_allowed).label('runs_allowed'),
@@ -200,10 +200,10 @@ class SeasonStatAggregator:
                 func.max(GamePitchingStat.team_code).label('team_code'),
                 func.count(GamePitchingStat.id).label('games'),
                 func.sum(func.cast(GamePitchingStat.is_starting, Integer)).label('games_started'),
-                func.sum(GamePitchingStat.wins).label('wins'),
-                func.sum(GamePitchingStat.losses).label('losses'),
-                func.sum(GamePitchingStat.saves).label('saves'),
-                func.sum(GamePitchingStat.holds).label('holds'),
+                func.sum(case((GamePitchingStat.decision == 'W', 1), else_=0)).label('wins'),
+                func.sum(case((GamePitchingStat.decision == 'L', 1), else_=0)).label('losses'),
+                func.sum(case((GamePitchingStat.decision == 'S', 1), else_=0)).label('saves'),
+                func.sum(case((GamePitchingStat.decision == 'H', 1), else_=0)).label('holds'),
                 func.sum(GamePitchingStat.innings_outs).label('innings_outs'),
                 func.sum(GamePitchingStat.hits_allowed).label('hits_allowed'),
                 func.sum(GamePitchingStat.runs_allowed).label('runs_allowed'),

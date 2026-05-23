@@ -475,14 +475,57 @@ class GameDetailCrawler:
     async def _extract_team_info(self, page: Page, game_id: str, season_year: Optional[int]) -> Dict[str, Dict[str, Any]]:
         script = r"""
         () => {
+            const getRows = (t, extractTh) => Array.from(t.querySelectorAll('tbody tr')).map(tr =>
+                Array.from(tr.querySelectorAll(extractTh ? 'td, th' : 'td')).map(td => {
+                    const img = td.querySelector('img');
+                    if (img && img.alt) return img.alt;
+                    if (img && img.src && img.src.includes('team')) {
+                        const match = img.src.match(/\/([A-Z]{2})\.png/i);
+                        if (match) return match[1];
+                    }
+                    const clone = td.cloneNode(true);
+                    Array.from(clone.querySelectorAll('span, em, strong, p')).forEach(el => {
+                        const txt = (el.textContent || '').trim();
+                        if (['승', '패', '무', '세'].includes(txt)) {
+                            el.remove();
+                        }
+                    });
+                    let text = (clone.textContent || '').replace(/\u00a0/g, ' ').trim();
+                    text = text.replace(/^[승패무세]\s*/, '').replace(/\s*[승패무세]$/, '').trim();
+                    text = text.replace(/[\d]+승\s*[\d]+패\s*[\d]+무/, '').trim();
+                    return text;
+                }).filter(text => text !== '')
+            );
+
+            let teamTable = document.getElementById('tblScordboard1') || document.getElementById('tblScoreboard1');
+            let inningTable = document.getElementById('tblScordboard2') || document.getElementById('tblScoreboard2');
+            let totalTable = document.getElementById('tblScordboard3') || document.getElementById('tblScoreboard3');
+
+            if (teamTable && inningTable && totalTable) {
+                const teamRows = getRows(teamTable, true);
+                const inningRows = getRows(inningTable, false);
+                const totalRows = getRows(totalTable, false);
+
+                if (teamRows.length >= 2 && inningRows.length >= 2 && totalRows.length >= 2) {
+                    const headers = ["TEAM", ...Array.from({length: inningRows[0].length}, (_,k)=>String(k+1)), "R", "H", "E"];
+                    const rows = [];
+                    for (let i=0; i<2; i++) {
+                        const teamName = teamRows[i][0] || "Unknown";
+                        const innings = inningRows[i];
+                        const totals = totalRows[i].slice(0, 3);
+                        rows.push([teamName, ...innings, ...totals]);
+                    }
+                    return { headers, rows };
+                }
+            }
+
             const tables = Array.from(document.querySelectorAll('table'));
-            let teamTable, inningTable, totalTable;
+            teamTable = null; inningTable = null; totalTable = null;
 
             for (const table of tables) {
-                const headers = Array.from(table.querySelectorAll('thead th')).map(th => th.innerText.replace(/\u00a0/g, ' ').trim().toUpperCase());
+                const headers = Array.from(table.querySelectorAll('thead th')).map(th => (th.textContent || '').replace(/\u00a0/g, ' ').trim().toUpperCase());
 
                 if (!teamTable && (headers.some(h => h.includes('TEAM')) || headers.includes('팀'))) {
-                    // Make sure it's not a stats table or something else
                     if (headers.length <= 4) teamTable = table;
                 }
                 if (!inningTable && headers.includes('1') && headers.includes('2') && headers.includes('3')) inningTable = table;
@@ -491,36 +534,30 @@ class GameDetailCrawler:
 
             if (!teamTable || !inningTable || !totalTable) return null;
 
-            const getRows = (t) => Array.from(t.querySelectorAll('tbody tr')).map(tr =>
+            const getRowsFallback = (t) => Array.from(t.querySelectorAll('tbody tr')).map(tr =>
                 Array.from(tr.querySelectorAll('td')).map(td => {
                     const img = td.querySelector('img');
                     if (img && img.alt) return img.alt;
                     if (img && img.src && img.src.includes('team')) {
-                        // Extract from src like .../SS.png
                         const match = img.src.match(/\/([A-Z]{2})\.png/i);
                         if (match) return match[1];
                     }
-
-                    // Clone to avoid modifying the actual page UI
                     const clone = td.cloneNode(true);
-                    // Remove labels like '승', '패', '무' often found in spans or other small tags
                     Array.from(clone.querySelectorAll('span, em, strong, p')).forEach(el => {
-                        const t = el.innerText.trim();
-                        if (['승', '패', '무', '세'].includes(t)) {
+                        const txt = (el.textContent || '').trim();
+                        if (['승', '패', '무', '세'].includes(txt)) {
                             el.remove();
                         }
                     });
-
-                    let text = clone.innerText.replace(/\u00a0/g, ' ').trim();
-                    // Additional cleanup if they are just text nodes
+                    let text = (clone.textContent || '').replace(/\u00a0/g, ' ').trim();
                     text = text.replace(/^[승패무세]\s*/, '').replace(/\s*[승패무세]$/, '').trim();
                     return text;
                 })
             );
 
-            const teamRows = getRows(teamTable);
-            const inningRows = getRows(inningTable);
-            const totalRows = getRows(totalTable);
+            const teamRows = getRowsFallback(teamTable);
+            const inningRows = getRowsFallback(inningTable);
+            const totalRows = getRowsFallback(totalTable);
 
             if (teamRows.length >= 2 && inningRows.length >= 2 && totalRows.length >= 2) {
                 const headers = ["TEAM", ...Array.from({length: inningRows[0].length}, (_,k)=>String(k+1)), "R", "H", "E"];
@@ -911,8 +948,8 @@ class GameDetailCrawler:
                 const th = tr.querySelector('th');
                 const td = tr.querySelector('td');
                 if (th && td) {
-                    const category = th.innerText.trim();
-                    const content = td.innerText.trim();
+                    const category = (th.textContent || '').trim();
+                    const content = (td.textContent || '').trim();
                     if (content && content !== '없음') {
                          results.push({
                              'summary_type': category,
@@ -994,7 +1031,7 @@ class GameDetailCrawler:
         derived = {"strikeouts": 0, "walks": 0, "hbp": 0, "sacrifice_hits": 0, "sacrifice_flies": 0}
         for val in cells.values():
             if not val or val == '&nbsp;': continue
-            if "삼진" in val:
+            if "삼진" in val or "스낫" in val or "루낫" in val or "낫아웃" in val:
                 derived["strikeouts"] += 1
             if "4구" in val or "볼넷" in val or "고의4구" in val:
                 derived["walks"] += 1

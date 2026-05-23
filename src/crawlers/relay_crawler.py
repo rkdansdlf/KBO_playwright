@@ -26,6 +26,9 @@ KBO_TO_NAVER_TEAM_CODE = {
     "KH": "WO",  # Kiwoom -> WO (Naver uses WO for Heroes franchise)
     "HT": "KIA", # KIA (HT) -> KIA (Naver)
     "SK": "SSG", # SSG (SK) -> SSG (Naver)
+    "DR": "DREAM", # Dream All-Star
+    "NA": "NANUM", # Nanum All-Star
+    "KR": "KOREA", # National Team
 }
 
 
@@ -215,14 +218,24 @@ class RelayCrawler:
                 score += 10
 
             if score > 0:
-                candidates.append((score, game))
+                g_start_time = str(game.get("gameStartTime") or game.get("startTime") or "00:00")
+                candidates.append((score, g_start_time, game))
 
         if not candidates:
             return None
 
-        # Sort by score descending
-        candidates.sort(key=lambda x: x[0], reverse=True)
-        best_score, best_game = candidates[0]
+        # Sort by score descending. For tie-breakers on double headers, use startTime.
+        # DH2 favors later time. DH1/normal favors earlier time.
+        def sort_key(item):
+            score, start_time, game = item
+            time_val = int(start_time.replace(":", "")) if ":" in start_time else 0
+            if dh_no == "2":
+                return (score, time_val)
+            else:
+                return (score, -time_val)
+
+        candidates.sort(key=sort_key, reverse=True)
+        best_score, best_time, best_game = candidates[0]
 
         # Safety: require a minimum score to avoid false positives during broad date scans
         # If we matched the suffix and at least one other field (or teams), we are likely good.
