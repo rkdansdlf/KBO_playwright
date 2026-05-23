@@ -207,11 +207,11 @@ def _extract_rows_fast(page: Page, table_selector: str = "table.tData01") -> Opt
                 const body = table.tBodies && table.tBodies.length ? table.tBodies[0] : table;
                 const rows = Array.from(body.querySelectorAll('tr'));
                 return rows.map((row) => {
-                    const cells = Array.from(row.querySelectorAll('td')).map(td => (td.innerText || '').trim());
+                    const cells = Array.from(row.querySelectorAll('td')).map(td => (td.textContent || '').trim());
                     const link = row.querySelector('a');
                     return {
                         cells,
-                        linkText: link ? (link.innerText || '').trim() : null,
+                        linkText: link ? (link.textContent || '').trim() : null,
                         linkHref: link ? link.getAttribute('href') : null,
                     };
                 });
@@ -448,7 +448,7 @@ def parse_basic1_page(
             const table = document.querySelector('table.tData01');
             if (!table) return [];
             const ths = table.querySelectorAll('thead th');
-            return Array.from(ths).map(th => th.innerText.trim());
+            return Array.from(ths).map(th => th.textContent.trim());
         }
     """)
     headers = [normalize_header(h) for h in headers]
@@ -463,7 +463,7 @@ def parse_basic1_page(
         if not headers:
             print("   🔍 Lenient header check (tData01)...")
             headers = page.evaluate("""
-                () => Array.from(document.querySelectorAll('table.tData01 thead th')).map(th => th.innerText.trim())
+                () => Array.from(document.querySelectorAll('table.tData01 thead th')).map(th => th.textContent.trim())
             """)
             print(f"   Lenient headers: {headers}")
             headers = [normalize_header(h) for h in headers]
@@ -481,7 +481,7 @@ def parse_basic1_page(
         const rows = document.querySelectorAll('table.tData01 tbody tr');
         if (rows.length === 0) return [];
         
-        const headers = Array.from(document.querySelectorAll('table.tData01 thead th')).map(th => th.innerText.trim());
+        const headers = Array.from(document.querySelectorAll('table.tData01 thead th')).map(th => th.textContent.trim());
         const headerIndex = {};
         headers.forEach((h, i) => headerIndex[h] = i);
         
@@ -504,13 +504,13 @@ def parse_basic1_page(
             if (!idMatch) return;
             
             const player_id = parseInt(idMatch[1]);
-            const player_name = link.innerText.trim();
-            const team_name = cells[headerIndex["팀명"]].innerText.trim();
+            const player_name = link.textContent.trim();
+            const team_name = cells[headerIndex["팀명"]].textContent.trim();
             
             // Extract raw text for mapping in Python
             const raw = {};
             for (const [key, idx] of Object.entries(headerIndex)) {
-                raw[key] = cells[idx].innerText.trim();
+                raw[key] = cells[idx].textContent.trim();
             }
             
             results.push({ player_id, player_name, team_name, raw });
@@ -743,6 +743,12 @@ def setup_pitcher_page(page: Page, url: str, year: int, series_value: str, polic
         page.wait_for_load_state("load", timeout=30000)
         page.wait_for_timeout(2000)
 
+        # KBO 페이지 에러 감지 (500 에러 등)
+        title = page.title()
+        if "에러" in title or "Error" in title:
+            print(f"   ❌ KBO 페이지 에러 감지: {title}")
+            return False
+
         return True
     except Exception as e:
         print(f"   ⚠️ 페이지 설정 중 오류: {e}")
@@ -884,7 +890,7 @@ def crawl_pitcher_series(
                 team_selector = 'select[name="ctl00$ctl00$ctl00$cphContents$cphContents$cphContents$ddlTeam$ddlTeam"]'
                 # Check if selector exists (it should)
                 if page.query_selector(team_selector):
-                    options = page.eval_on_selector_all(f'{team_selector} option', 'options => options.map(o => ({text: o.innerText, value: o.value}))')
+                    options = page.eval_on_selector_all(f'{team_selector} option', 'options => options.map(o => ({text: o.textContent, value: o.value}))')
                     team_options = [opt for opt in options if opt['value']] # Empty value is "Team Selection"
                     print(f"ℹ️ 팀별 순회 모드: {len(team_options)}개 팀 발견")
                 else:

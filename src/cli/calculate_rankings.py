@@ -1,96 +1,37 @@
-"""Rebuild supported stat_rankings from current season batting/pitching aggregates."""
+"""Rebuild supported stat_rankings from current season aggregates."""
 from __future__ import annotations
 
 import argparse
-from dataclasses import dataclass
-from typing import Dict, Iterable, List, Sequence
+from typing import Sequence
+from datetime import date, datetime
 
+from src.aggregators.ranking_aggregator import RankingAggregator
 from src.db.engine import SessionLocal
-from src.models.player import PlayerBasic, PlayerSeasonBatting, PlayerSeasonPitching
+from src.models.player import (
+    PlayerBasic,
+    PlayerSeasonBaserunning,
+    PlayerSeasonBatting,
+    PlayerSeasonFielding,
+    PlayerSeasonPitching,
+)
 from src.models.rankings import StatRanking
 from src.repositories.ranking_repository import RankingRepository
 
 
-@dataclass(frozen=True)
-class RankingMetric:
-    metric: str
-    value_attr: str
-    descending: bool = True
-    min_attr: str | None = None
-    min_value: float | int | None = None
-    source: str = "SEASON"
-    entity_type: str = "PLAYER"
-
-
-BATTING_METRICS: tuple[RankingMetric, ...] = (
-    RankingMetric("batting_avg", "avg", min_attr="at_bats", min_value=1, source="BATTING"),
-    RankingMetric("batting_ops", "ops", min_attr="plate_appearances", min_value=1, source="BATTING"),
-    RankingMetric("batting_home_runs", "home_runs", min_attr="games", min_value=1, source="BATTING"),
-    RankingMetric("batting_hits", "hits", min_attr="games", min_value=1, source="BATTING"),
-    RankingMetric("batting_rbi", "rbi", min_attr="games", min_value=1, source="BATTING"),
-    RankingMetric("batting_stolen_bases", "stolen_bases", min_attr="games", min_value=1, source="BATTING"),
-)
-
-PITCHING_METRICS: tuple[RankingMetric, ...] = (
-    RankingMetric("pitching_era", "era", descending=False, min_attr="innings_outs", min_value=1, source="PITCHING"),
-    RankingMetric("pitching_wins", "wins", min_attr="games", min_value=1, source="PITCHING"),
-    RankingMetric("pitching_saves", "saves", min_attr="games", min_value=1, source="PITCHING"),
-    RankingMetric("pitching_holds", "holds", min_attr="games", min_value=1, source="PITCHING"),
-    RankingMetric("pitching_strikeouts", "strikeouts", min_attr="innings_outs", min_value=1, source="PITCHING"),
-    RankingMetric("pitching_whip", "whip", descending=False, min_attr="innings_outs", min_value=1, source="PITCHING"),
-)
-
-
-def _rank_rows(
-    rows: Iterable[object],
-    metrics: Sequence[RankingMetric],
-    *,
-    season: int,
-    label_lookup: Dict[int, str],
-) -> List[dict]:
-    ranked_rows: List[dict] = []
-    for metric in metrics:
-        processed = []
-        for row in rows:
-            value = getattr(row, metric.value_attr, None)
-            if value is None:
-                continue
-            if metric.min_attr and metric.min_value is not None:
-                min_candidate = getattr(row, metric.min_attr, None)
-                if min_candidate is None or min_candidate < metric.min_value:
-                    continue
-            processed.append(
-                {
-                    "entity_id": str(row.player_id),
-                    "entity_label": label_lookup.get(row.player_id) or str(row.player_id),
-                    "team_id": row.canonical_team_code or row.team_code,
-                    "value": float(value),
-                }
-            )
-
-        processed.sort(key=lambda item: item["value"], reverse=metric.descending)
-        previous_value = None
-        current_rank = 0
-        for index, entry in enumerate(processed, start=1):
-            if previous_value is None or entry["value"] != previous_value:
-                current_rank = index
-            ranked_rows.append(
-                {
-                    "season": season,
-                    "metric": metric.metric,
-                    "entity_id": entry["entity_id"],
-                    "entity_label": entry["entity_label"],
-                    "entity_type": metric.entity_type,
-                    "team_id": entry["team_id"],
-                    "value": entry["value"],
-                    "rank": current_rank,
-                    "is_tie": previous_value is not None and entry["value"] == previous_value,
-                    "source": metric.source,
-                    "extra": None,
-                }
-            )
-            previous_value = entry["value"]
-    return ranked_rows
+def _dictify_rows(rows, label_lookup):
+    """Convert ORM rows to dicts and inject player names."""
+    result = []
+    for row in rows:
+        d = row.__dict__.copy()
+        # Ensure we don't accidentally pass SQLAlchemy internal state
+        d.pop("_sa_instance_state", None)
+        # Convert dates/datetimes to ISO strings for JSON serialization
+        for k, v in d.items():
+            if isinstance(v, (datetime, date)):
+                d[k] = v.isoformat()
+        d["player_name"] = label_lookup.get(row.player_id, str(row.player_id))
+        result.append(d)
+    return result
 
 
 def rebuild_rankings(season: int) -> int:
@@ -103,28 +44,56 @@ def rebuild_rankings(season: int) -> int:
             PlayerSeasonPitching.season == season,
             PlayerSeasonPitching.league == "REGULAR",
         ).all()
+        # Fielding and baserunning use 'year' instead of 'season'
+        fielding_rows = session.query(PlayerSeasonFielding).filter(
+            PlayerSeasonFielding.year == season,
+        ).all()
+        baserunning_rows = session.query(PlayerSeasonBaserunning).filter(
+            PlayerSeasonBaserunning.year == season,
+        ).all()
+
         player_ids = {row.player_id for row in batting_rows}
         player_ids.update(row.player_id for row in pitching_rows)
+        player_ids.update(row.player_id for row in fielding_rows)
+        player_ids.update(row.player_id for row in baserunning_rows)
+
         label_lookup = {
             row.player_id: row.name
             for row in session.query(PlayerBasic).filter(PlayerBasic.player_id.in_(player_ids)).all()
         } if player_ids else {}
 
-        rankings = []
-        rankings.extend(_rank_rows(batting_rows, BATTING_METRICS, season=season, label_lookup=label_lookup))
-        rankings.extend(_rank_rows(pitching_rows, PITCHING_METRICS, season=season, label_lookup=label_lookup))
+        batting_dicts = _dictify_rows(batting_rows, label_lookup)
+        pitching_dicts = _dictify_rows(pitching_rows, label_lookup)
+        fielding_dicts = _dictify_rows(fielding_rows, label_lookup)
+        baserunning_dicts = _dictify_rows(baserunning_rows, label_lookup)
 
+        # Assuming 144 games for standard qualifications
+        total_games = 144
+        min_pa = int(total_games * 3.1)
+        min_ip_outs = int(total_games * 3)
+
+        # Clear existing rankings for the season before regenerating
         session.query(StatRanking).filter(StatRanking.season == season).delete(synchronize_session=False)
         session.commit()
+
+    aggregator = RankingAggregator()
+    rankings = aggregator.generate_rankings(
+        season=season,
+        fielding_stats=fielding_dicts,
+        baserunning_stats=baserunning_dicts,
+        batting_stats=batting_dicts,
+        pitching_stats=pitching_dicts,
+        min_pa=min_pa,
+        min_ip_outs=min_ip_outs,
+        persist=True,  # Saves to DB inside RankingRepository
+    )
 
     if not rankings:
         print(f"[Rankings] ℹ️ No season stats available for {season}.")
         return 0
 
-    repo = RankingRepository()
-    saved = repo.save_rankings(rankings)
-    print(f"[Rankings] ✅ Rebuilt {saved} ranking rows for {season}")
-    return saved
+    print(f"[Rankings] ✅ Rebuilt {len(rankings)} ranking rows for {season}")
+    return len(rankings)
 
 
 def main(argv: Sequence[str] | None = None) -> int:

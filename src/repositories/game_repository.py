@@ -1995,12 +1995,14 @@ def _build_inning_scores(game_id: str, teams: Dict[str, Any], *, season_year: Op
         line_score = team_info.get("line_score") or []
         team_code = team_info.get("code")
         for idx, runs in enumerate(line_score, start=1):
+            if runs is None:
+                continue
             records.append({
                 "game_id": game_id,
                 "team_side": side,
                 "team_code": team_code,
                 "inning": idx,
-                "runs": runs if runs is not None else 0,
+                "runs": runs,
                 "is_extra": idx > 9,
             })
     _apply_team_identity_to_mappings(records, season_year)

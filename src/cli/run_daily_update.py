@@ -473,16 +473,16 @@ async def run_update(
     except Exception as exc:
         print(f"   ❌ Error generating relay events: {exc}")
 
-    print("\n🔍 Step 4.5: Proactive Relay Recovery (Last 14 days)...")
+    print("\n🔍 Step 4.5: Proactive Relay Recovery (Last 30 days)...")
     try:
         with SessionLocal() as session:
-            fourteen_days_ago = (datetime.now(KST).date() - timedelta(days=14))
+            thirty_days_ago = (datetime.now(KST).date() - timedelta(days=30))
             
             # Find games that are completed but have 0 PBP rows
             stmt = (
                 select(Game.game_id)
                 .where(
-                    Game.game_date >= fourteen_days_ago,
+                    Game.game_date >= thirty_days_ago,
                     Game.game_status.in_(["COMPLETED", "DRAW"])
                 )
                 .where(
@@ -509,20 +509,26 @@ async def run_update(
     except Exception as exc:
         print(f"   ❌ Error in proactive relay recovery: {exc}")
 
+    freshness_dates = sorted(
+        {target_date}
+        | set(reconciliation_dates)
+        | {item["game_date"] for item in healer_recovery_targets}
+    )
+
     print("\n📝 Step 5: Post-game review/WPA generation...")
     try:
-        review_args = ["-m", "src.cli.daily_review_batch", "--date", target_date]
-        review_args.append("--no-sync")
-        runner(review_args)
+        for f_date in freshness_dates:
+            review_args = ["-m", "src.cli.daily_review_batch", "--date", f_date, "--no-sync"]
+            runner(review_args)
         print("   ✅ Review context generation complete")
     except Exception as exc:
         print(f"   ❌ Error generating review context: {exc}")
 
     print("\n📚 Step 5.5: LLM-ready game story generation...")
     try:
-        story_args = ["-m", "src.cli.daily_story_batch", "--date", target_date]
-        story_args.append("--no-sync")
-        runner(story_args)
+        for f_date in freshness_dates:
+            story_args = ["-m", "src.cli.daily_story_batch", "--date", f_date, "--no-sync"]
+            runner(story_args)
         print("   ✅ Game story generation complete")
     except Exception as exc:
         print(f"   ❌ Error generating game stories: {exc}")
@@ -657,11 +663,7 @@ async def run_update(
         | {item["game_id"] for item in healer_recovery_targets}
         | relay_recovery_target_ids
     )
-    freshness_dates = sorted(
-        {target_date}
-        | set(reconciliation_dates)
-        | {item["game_date"] for item in healer_recovery_targets}
-    )
+    # Freshness dates already calculated before step 5
 
     if sync:
         print("\n🧪 Step 11: Freshness gate before OCI publish...")

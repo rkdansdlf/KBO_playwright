@@ -160,14 +160,22 @@ class DailyRosterCrawler:
             
             tables.forEach(table => {
                 let category = 'Unknown';
+                let positionColIdx = -1;
                 const headers = table.querySelectorAll('th');
-                if (headers.length >= 2) {
+                
+                headers.forEach((th, idx) => {
+                    if (th.innerText.trim() === '포지션') {
+                        positionColIdx = idx;
+                    }
+                });
+
+                if (positionColIdx === -1 && headers.length >= 2) {
                     category = headers[1].innerText.trim();
                     if (category === '선수명' && headers.length >= 3) {
                          category = headers[2].innerText.trim();
                     }
                 }
-                
+
                 const rows = table.querySelectorAll('tbody tr');
                 rows.forEach(tr => {
                     const cells = tr.querySelectorAll('td');
@@ -184,12 +192,17 @@ class DailyRosterCrawler:
                         playerId = url.searchParams.get('playerId');
                     }
                     
+                    let pos = category;
+                    if (positionColIdx !== -1 && cells.length > positionColIdx) {
+                        pos = cells[positionColIdx].innerText.trim();
+                    }
+                    
                     if (playerId) {
                         results.push({
                             'player_id': playerId,
                             'player_name': name,
                             'back_number': backNum,
-                            'category': category
+                            'category': pos
                         });
                     }
                 });
