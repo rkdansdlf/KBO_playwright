@@ -788,6 +788,54 @@ async def run_update(
         f"oci_skips={_format_counts(oci_skip_counts)}"
     )
 
+    print("\n📣 Step 14: PBP Recovery Alerting...")
+    if relay_recovery_target_ids:
+        try:
+            with SessionLocal() as session:
+                recovered_pbp_ids = session.execute(
+                    select(GamePlayByPlay.game_id)
+                    .where(GamePlayByPlay.game_id.in_(list(relay_recovery_target_ids)))
+                    .distinct()
+                ).scalars().all()
+                
+            failed_ids = set(relay_recovery_target_ids) - set(recovered_pbp_ids)
+            success_count = len(recovered_pbp_ids)
+            failed_count = len(failed_ids)
+            
+            from src.utils.alerting import SlackWebhookClient
+            msg = f"📊 *Daily PBP Recovery Report ({target_date})*"
+            blocks = [
+                {
+                    "type": "header",
+                    "text": {
+                        "type": "plain_text",
+                        "text": "📊 Daily PBP Recovery Report"
+                    }
+                },
+                {
+                    "type": "section",
+                    "fields": [
+                        {"type": "mrkdwn", "text": f"*Target Games:* {len(relay_recovery_target_ids)}"},
+                        {"type": "mrkdwn", "text": f"*Recovered:* {success_count} ✅"},
+                        {"type": "mrkdwn", "text": f"*Failed:* {failed_count} ❌"}
+                    ]
+                }
+            ]
+            if failed_ids:
+                blocks.append({
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": f"*Failed Game IDs:*\n```\n{', '.join(sorted(failed_ids))}\n```"
+                    }
+                })
+            SlackWebhookClient.send_alert(msg, blocks=blocks)
+            print(f"   ✅ Sent PBP recovery summary to Slack (Success: {success_count}, Failed: {failed_count})")
+        except Exception as exc:
+            print(f"   ❌ Error sending PBP recovery summary: {exc}")
+    else:
+        print("   ℹ️ No PBP recovery targets for today.")
+
     print(f"\n{'=' * 60}")
     print(f"🏁 Daily Finalize Finished for {target_date}")
     print(f"📄 Refresh Manifest: {manifest_path}")
