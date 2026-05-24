@@ -368,90 +368,89 @@ class PlayerRepository:
         season: int,
     ) -> Optional[int]:
         player_name, raw_position = self._split_movement_player_label(raw_player_name)
-        if not player_name:
+        if not player_name or player_name == "신인":
             return None
 
-        candidate_query = select(PlayerBasic.player_id).where(PlayerBasic.name == player_name)
-        candidate_ids = {int(row[0]) for row in session.execute(candidate_query).fetchall() if row[0] is not None}
+        # Base query for same-name candidates
+        candidate_query = select(PlayerBasic).where(PlayerBasic.name == player_name)
+        candidates = session.execute(candidate_query).scalars().all()
+        
+        if not candidates:
+            return None
+            
+        if len(candidates) == 1:
+            return candidates[0].player_id
+
+        # Ambiguity resolution strategy:
+        # 1. Filter by position if provided
+        if raw_position:
+            pos_matches = [c for c in candidates if c.position == raw_position]
+            if len(pos_matches) == 1:
+                return pos_matches[0].player_id
+            if pos_matches:
+                candidates = pos_matches
+
+        # 2. Filter by debut_year (allow ±2 years buffer for late debut/registration)
+        timeline_matches = [
+            c for c in candidates 
+            if c.debut_year and abs(c.debut_year - season) <= 5
+        ]
+        if len(timeline_matches) == 1:
+            return timeline_matches[0].player_id
+        if timeline_matches:
+            candidates = timeline_matches
+
+        # 3. Prefer records with profile mirrors (higher quality)
+        profile_matches = []
+        for c in candidates:
+            has_profile = session.execute(
+                select(Player.id).where(Player.player_basic_id == c.player_id)
+            ).scalar_one_or_none()
+            if has_profile:
+                profile_matches.append(c)
+        
+        if len(profile_matches) == 1:
+            return profile_matches[0].player_id
+        if profile_matches:
+            candidates = profile_matches
+
+        # 4. Check roster activity in that season
         roster_player_id = self._unique_roster_movement_player_id(
             session,
             player_name,
             canonical_team_id,
             season,
-            candidate_ids,
+            {c.player_id for c in candidates},
         )
+        if roster_player_id:
+            return roster_player_id
+
+        # 5. Check franchise activity
         franchise_season_player_id = self._unique_franchise_season_player_id(
             session,
             canonical_team_id,
             season,
-            candidate_ids,
+            {c.player_id for c in candidates},
         )
-        if len(candidate_ids) == 1:
-            return next(iter(candidate_ids))
-        if not candidate_ids:
-            return roster_player_id
-
-        position_ids: set[int] = set()
-        if raw_position:
-            position_ids = {
-                int(row[0])
-                for row in session.execute(
-                    candidate_query.where(PlayerBasic.position == raw_position)
-                ).fetchall()
-                if row[0] is not None
-            }
-            if len(position_ids) == 1:
-                return next(iter(position_ids))
-
-        mirror_scope_ids = position_ids or candidate_ids
-        profile_mirror_ids = {
-            int(row[0])
-            for row in session.execute(
-                select(Player.player_basic_id).where(Player.player_basic_id.in_(mirror_scope_ids))
-            ).fetchall()
-            if row[0] is not None
-        }
-        if len(profile_mirror_ids) == 1:
-            return next(iter(profile_mirror_ids))
-        if roster_player_id:
-            return roster_player_id
         if franchise_season_player_id:
             return franchise_season_player_id
 
-        if not canonical_team_id:
-            return None
+        # 6. Fallback to team name string matching in player_basic
+        if canonical_team_id:
+            team = session.execute(select(Team).where(Team.team_id == canonical_team_id)).scalar_one_or_none()
+            team_terms = [canonical_team_id]
+            if team:
+                team_terms.extend(filter(None, [team.team_short_name, team.team_name]))
+            
+            contextual_matches = []
+            for c in candidates:
+                if c.team and any(term in c.team for term in team_terms):
+                    contextual_matches.append(c)
+            
+            if len(contextual_matches) == 1:
+                return contextual_matches[0].player_id
 
-        team = session.execute(select(Team).where(Team.team_id == canonical_team_id)).scalar_one_or_none()
-        team_terms = [canonical_team_id]
-        if team:
-            team_terms.extend(
-                term
-                for term in (team.team_short_name, team.team_name)
-                if term and term not in team_terms
-            )
-
-        contextual_ids = set()
-        for term in team_terms:
-            rows = session.execute(
-                select(PlayerBasic.player_id).where(
-                    PlayerBasic.name == player_name,
-                    PlayerBasic.team.contains(term),
-                )
-            ).fetchall()
-            contextual_ids.update(int(row[0]) for row in rows if row[0] is not None)
-        if len(contextual_ids) == 1:
-            return next(iter(contextual_ids))
-
-        for model in (PlayerSeasonBatting, PlayerSeasonPitching):
-            rows = session.execute(
-                select(model.player_id).where(
-                    model.player_id.in_(candidate_ids),
-                    model.season == season,
-                    model.team_code == canonical_team_id,
-                )
-            ).fetchall()
-            contextual_ids.update(int(row[0]) for row in rows if row[0] is not None)
-        return next(iter(contextual_ids)) if len(contextual_ids) == 1 else None
+        return None
 
     def _unique_roster_movement_player_id(
         self,
