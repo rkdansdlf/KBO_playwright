@@ -92,6 +92,11 @@ class GameDetailCrawler:
     def get_last_failure_reason(self, game_id: str) -> Optional[str]:
         return self._last_failure_reason.get(game_id)
 
+    async def close(self) -> None:
+        if self.pool:
+            await self.pool.stop()
+            self.pool = None
+
     def _section_url(self, game_id: str, game_date: str, section: str) -> str:
         return f"{self.base_url}?gameDate={game_date}&gameId={game_id}&section={section}"
 
@@ -324,8 +329,14 @@ class GameDetailCrawler:
                 }
 
             if not any((away_hitters, home_hitters, pitchers['away'], pitchers['home'])):
-                self._last_failure_reason[game_id] = "incomplete_detail"
-                return None
+                # If we have at least inning scores or metadata, don't fail completely
+                if (team_info.get('away', {}).get('line_score') or team_info.get('home', {}).get('line_score') or
+                    metadata.get('stadium') or metadata.get('attendance')):
+                    print(f"ℹ️  No box scores found for {game_id}, but scoreboard/metadata available. Proceeding with partial recovery.")
+                else:
+                    self._last_failure_reason[game_id] = "incomplete_detail"
+                    return None
+
 
             # INTEGRITY CHECK: Sum of hits/AB must match team total
             for side, player_list, total_row in [('away', away_hitters, away_total), ('home', home_hitters, home_total)]:
@@ -525,7 +536,7 @@ class GameDetailCrawler:
             for (const table of tables) {
                 const headers = Array.from(table.querySelectorAll('thead th')).map(th => (th.textContent || '').replace(/\u00a0/g, ' ').trim().toUpperCase());
 
-                if (!teamTable && (headers.some(h => h.includes('TEAM')) || headers.includes('팀'))) {
+                if (!teamTable && (headers.some(h => h.includes('TEAM')) || headers.includes('팀') || headers.includes(' '))) {
                     if (headers.length <= 4) teamTable = table;
                 }
                 if (!inningTable && headers.includes('1') && headers.includes('2') && headers.includes('3')) inningTable = table;
@@ -550,6 +561,11 @@ class GameDetailCrawler:
                         }
                     });
                     let text = (clone.textContent || '').replace(/\u00a0/g, ' ').trim();
+                    // Keep the record part if it looks like "X승 Y패 Z무" to avoid total wipe
+                    if (text.includes('승') && text.includes('패')) {
+                         // Don't treat this as the team name if possible
+                         return "";
+                    }
                     text = text.replace(/^[승패무세]\s*/, '').replace(/\s*[승패무세]$/, '').trim();
                     return text;
                 })
@@ -563,7 +579,8 @@ class GameDetailCrawler:
                 const headers = ["TEAM", ...Array.from({length: inningRows[0].length}, (_,k)=>String(k+1)), "R", "H", "E"];
                 const rows = [];
                 for (let i=0; i<2; i++) {
-                    const teamName = teamRows[i][0] || "Unknown";
+                    let teamName = teamRows[i][0] || "";
+                    if (teamName === "TEAM") teamName = ""; // Skip header re-read
                     const innings = inningRows[i];
                     const totals = totalRows[i].slice(0, 3);
                     rows.push([teamName, ...innings, ...totals]);
@@ -584,41 +601,33 @@ class GameDetailCrawler:
             away_info = self._parse_scoreboard_row(headers, rows[0], season_year)
             home_info = self._parse_scoreboard_row(headers, rows[1], season_year)
         else:
-            # Fallback to gameId decoding
-            away_segment = game_id[8:10] if len(game_id) >= 10 else None
-            home_segment = game_id[10:12] if len(game_id) >= 12 else None
-            away_info = {
-                'name': away_segment,
+            away_info = home_info = None
+
+        # Fallback to gameId decoding for missing/generic team info (common in All-Star)
+        away_segment = game_id[8:10] if len(game_id) >= 10 else None
+        home_segment = game_id[10:12] if len(game_id) >= 12 else None
+        
+        if not away_info or not away_info.get('code') or away_info.get('name') in (None, "", "Unknown"):
+             away_info = {
+                'name': away_info.get('name') if away_info else away_segment,
                 'code': team_code_from_game_id_segment(away_segment, season_year),
-                'score': None,
-                'hits': None,
-                'errors': None,
-                'line_score': [],
+                'score': away_info.get('score') if away_info else None,
+                'hits': away_info.get('hits') if away_info else None,
+                'errors': away_info.get('errors') if away_info else None,
+                'line_score': away_info.get('line_score') if away_info else [],
             }
+        if not home_info or not home_info.get('code') or home_info.get('name') in (None, "", "Unknown"):
             home_info = {
-                'name': home_segment,
+                'name': home_info.get('name') if home_info else home_segment,
                 'code': team_code_from_game_id_segment(home_segment, season_year),
-                'score': None,
-                'hits': None,
-                'errors': None,
-                'line_score': [],
+                'score': home_info.get('score') if home_info else None,
+                'hits': home_info.get('hits') if home_info else None,
+                'errors': home_info.get('errors') if home_info else None,
+                'line_score': home_info.get('line_score') if home_info else [],
             }
-
-        # Ensure codes resolve via team names if available
-        for info in (away_info, home_info):
-            if info.get('name'):
-                resolved = resolve_team_code(info['name'], season_year)
-                if resolved:
-                    info['code'] = resolved
-
-        if not away_info.get('code'):
-            segment = game_id[8:10] if len(game_id) >= 10 else None
-            away_info['code'] = team_code_from_game_id_segment(segment, season_year)
-        if not home_info.get('code'):
-            segment = game_id[10:12] if len(game_id) >= 12 else None
-            home_info['code'] = team_code_from_game_id_segment(segment, season_year)
 
         return {'away': away_info, 'home': home_info}
+
 
     async def _extract_hitters(
         self,

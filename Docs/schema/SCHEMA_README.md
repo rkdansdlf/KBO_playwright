@@ -4,6 +4,7 @@
 | --- | --- | --- |
 | awards | 8 | id |
 | crawl_runs | 10 | id |
+| fa_contracts | 17 | id |
 | game | 15 | id |
 | game_batting_stats | 37 | id |
 | game_events | 26 | id |

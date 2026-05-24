@@ -23,9 +23,15 @@ class DetailCrawler(Protocol):
     ) -> List[Dict[str, Any]]:
         ...
 
+    async def close(self) -> None:
+        ...
+
 
 class RelayCrawler(Protocol):
     async def crawl_game_events(self, game_id: str) -> Optional[Dict[str, Any]]:
+        ...
+
+    async def close(self) -> None:
         ...
 
 
@@ -195,60 +201,79 @@ async def crawl_and_save_game_details(
                 result.items[target.game_id].detail_status = "skipped_existing"
 
     if detail_targets:
-        payloads = await detail_crawler.crawl_games(
-            [target.as_crawler_input() for target in detail_targets],
-            concurrency=concurrency,
-        )
-        payload_by_id = {
-            normalize_kbo_game_id(payload.get("game_id")): payload
-            for payload in payloads
-            if payload.get("game_id")
-        }
+        # High-stability batching: split targets and recycle crawler resources
+        batch_size = pause_every or 20
+        for b_idx in range(0, len(detail_targets), batch_size):
+            batch = detail_targets[b_idx : b_idx + batch_size]
+            batch_num = (b_idx // batch_size) + 1
+            total_batches = (len(detail_targets) + batch_size - 1) // batch_size
 
-        for index, target in enumerate(detail_targets, start=1):
-            payload = payload_by_id.get(target.game_id)
-            log(f"[DETAIL] {index}/{len(detail_targets)} {target.game_id}")
-            if not payload:
-                result.detail_failed += 1
-                item = result.items[target.game_id]
-                item.detail_status = "crawl_failed"
-                item.failure_reason = _get_failure_reason(detail_crawler, target.game_id) or "no_detail_payload"
-                log("   [WARN] No detail payload returned")
-                continue
-            if not _has_required_detail_rows(payload):
-                result.detail_failed += 1
-                item = result.items[target.game_id]
-                item.detail_status = "filtered"
-                item.failure_reason = _get_failure_reason(detail_crawler, target.game_id) or "incomplete_detail"
-                log("   [WARN] Detail payload is missing required hitter/pitcher rows")
-                continue
-            if should_save_detail and not should_save_detail(payload):
-                result.detail_failed += 1
-                item = result.items[target.game_id]
-                item.detail_status = "filtered"
-                item.failure_reason = "detail_payload_filtered"
-                log("   [WARN] Detail payload did not pass save predicate")
-                continue
-            if save_game_detail(
-                payload,
-                write_contract=contract,
-                source_stage=detail_source.stage,
-                source_crawler=detail_source.crawler,
-                source_reason=detail_source.reason,
-            ):
-                result.detail_saved += 1
-                result.processed_game_ids.append(target.game_id)
-                detail_ready_game_ids.add(target.game_id)
-                item = result.items[target.game_id]
-                item.detail_status = "saved"
-                item.detail_saved = True
-                log("   [DB] Detail saved")
-            else:
-                result.detail_failed += 1
-                item = result.items[target.game_id]
-                item.detail_status = "save_failed"
-                item.failure_reason = "detail_save_failed"
-                log("   [ERROR] Detail save failed")
+            if b_idx > 0:
+                if pause_seconds > 0:
+                    log(f"   [PAUSE] Sleeping for {pause_seconds}s between batches...")
+                    await asyncio.sleep(pause_seconds)
+                # Resource recycling: close and let the crawler restart pool on next batch
+                await detail_crawler.close()
+
+            log(f"[*] Processing detail batch {batch_num}/{total_batches} ({len(batch)} games)...")
+            
+            payloads = await detail_crawler.crawl_games(
+                [target.as_crawler_input() for target in batch],
+                concurrency=concurrency,
+            )
+            payload_by_id = {
+                normalize_kbo_game_id(payload.get("game_id")): payload
+                for payload in payloads
+                if payload.get("game_id")
+            }
+
+            for index, target in enumerate(batch, start=1):
+                payload = payload_by_id.get(target.game_id)
+                global_index = b_idx + index
+                log(f"[DETAIL] {global_index}/{len(detail_targets)} {target.game_id}")
+                if not payload:
+                    result.detail_failed += 1
+                    item = result.items[target.game_id]
+                    item.detail_status = "crawl_failed"
+                    item.failure_reason = _get_failure_reason(detail_crawler, target.game_id) or "no_detail_payload"
+                    log("   [WARN] No detail payload returned")
+                    continue
+                
+                # ... validation and saving logic (keeping it surgical)
+                if not _has_required_detail_rows(payload):
+                    result.detail_failed += 1
+                    item = result.items[target.game_id]
+                    item.detail_status = "filtered"
+                    item.failure_reason = _get_failure_reason(detail_crawler, target.game_id) or "incomplete_detail"
+                    log("   [WARN] Detail payload is missing required hitter/pitcher rows")
+                    continue
+                if should_save_detail and not should_save_detail(payload):
+                    result.detail_failed += 1
+                    item = result.items[target.game_id]
+                    item.detail_status = "filtered"
+                    item.failure_reason = "detail_payload_filtered"
+                    log("   [WARN] Detail payload did not pass save predicate")
+                    continue
+                if save_game_detail(
+                    payload,
+                    write_contract=contract,
+                    source_stage=detail_source.stage,
+                    source_crawler=detail_source.crawler,
+                    source_reason=detail_source.reason,
+                ):
+                    result.detail_saved += 1
+                    result.processed_game_ids.append(target.game_id)
+                    detail_ready_game_ids.add(target.game_id)
+                    item = result.items[target.game_id]
+                    item.detail_status = "saved"
+                    item.detail_saved = True
+                    log("   [DB] Detail saved")
+                else:
+                    result.detail_failed += 1
+                    item = result.items[target.game_id]
+                    item.detail_status = "save_failed"
+                    item.failure_reason = "detail_save_failed"
+                    log("   [ERROR] Detail save failed")
 
     if relay_crawler:
         relay_source = GameWriteSource("relay", relay_crawler.__class__.__name__, relay_source_reason)
@@ -357,12 +382,28 @@ def _get_failure_reason(crawler: Any, game_id: str) -> Optional[str]:
 def _has_required_detail_rows(payload: Dict[str, Any]) -> bool:
     hitters = payload.get("hitters") or {}
     pitchers = payload.get("pitchers") or {}
-    return (
+    has_full_box = (
         bool(hitters.get("away"))
         and bool(hitters.get("home"))
         and bool(pitchers.get("away"))
         and bool(pitchers.get("home"))
     )
+    if has_full_box:
+        return True
+
+    # Partial recovery check: must have at least team codes and SOME score or metadata info
+    teams = payload.get("teams") or {}
+    away = teams.get("away") or {}
+    home = teams.get("home") or {}
+    metadata = payload.get("metadata") or {}
+
+    has_teams = bool(away.get("code")) and bool(home.get("code"))
+    has_scores = bool(away.get("line_score")) or bool(home.get("line_score")) or \
+                 away.get("score") is not None or home.get("score") is not None
+    has_metadata = bool(metadata.get("stadium")) or bool(metadata.get("attendance"))
+
+    return has_teams and (has_scores or has_metadata)
+
 
 
 async def _maybe_pause(

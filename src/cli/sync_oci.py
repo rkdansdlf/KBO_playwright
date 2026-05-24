@@ -189,6 +189,11 @@ def build_arg_parser() -> argparse.ArgumentParser:
         help="선수 이동 현황(Trade, FA 등)을 동기화합니다.",
     )
     parser.add_argument(
+        "--fa-contracts",
+        action="store_true",
+        help="FA 계약 상세 정보(fa_contracts)를 동기화합니다.",
+    )
+    parser.add_argument(
         "--awards",
         action="store_true",
         help="수상 내역(Awards)을 동기화합니다.",
@@ -374,6 +379,13 @@ def main(argv: Iterable[str] | None = None) -> None:
             syncer = OCISync(args.target_url, session)
             syncer.sync_player_movements()
             print("✅ Player Movement Sync Finished")
+
+    elif args.fa_contracts:
+        print("🚀 Syncing FA Contracts using specialized OCISync...")
+        with SessionLocal() as session:
+            syncer = OCISync(args.target_url, session)
+            syncer.sync_fa_contracts()
+            print("✅ FA Contract Sync Finished")
 
     elif args.teams:
         print("🚀 Syncing Franchises & Teams using specialized OCISync...")

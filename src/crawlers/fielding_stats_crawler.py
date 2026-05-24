@@ -52,7 +52,11 @@ def crawl_all_fielding_stats(year=2025):
         # 포지션별 수비 랭킹 페이지
         url = 'https://www.koreabaseball.com/Record/Player/Defense/Basic.aspx'
         print(f"📊 수비 기록 페이지 접속: {url}")
-        page.goto(url, wait_until='networkidle')
+        try:
+            page.goto(url, wait_until='load', timeout=60000)
+            page.wait_for_load_state('networkidle', timeout=15000)
+        except Exception as e:
+            print(f"⚠️ 페이지 초기 대기 중 경고 (무시 가능): {e}")
         time.sleep(2)
 
         try:
@@ -60,7 +64,10 @@ def crawl_all_fielding_stats(year=2025):
             year_select = page.query_selector('select#cphContents_cphContents_cphContents_ddlSeason_ddlSeason')
             if year_select:
                 page.select_option('select#cphContents_cphContents_cphContents_ddlSeason_ddlSeason', str(year))
-                page.wait_for_load_state('networkidle')
+                try:
+                    page.wait_for_load_state('networkidle', timeout=15000)
+                except Exception:
+                    pass
                 time.sleep(2)
                 print(f"✅ {year}년 데이터 선택 완료")
 
@@ -100,9 +107,13 @@ def crawl_all_fielding_stats(year=2025):
             # 각 팀별 순회
             for team_val, team_name in teams:
                 print(f"\n🏢 [{team_name}] 수비 기록 크롤링 중...")
-                page.select_option('select#cphContents_cphContents_cphContents_ddlTeam_ddlTeam', value=team_val)
-                page.wait_for_load_state('networkidle')
-                time.sleep(2)
+                try:
+                    with page.expect_response("**/Record/Player/Defense/Basic.aspx", timeout=15000) as response_info:
+                        page.select_option('select#cphContents_cphContents_cphContents_ddlTeam_ddlTeam', value=team_val)
+                    page.wait_for_load_state('networkidle', timeout=15000)
+                except Exception as e:
+                    print(f"   ⚠️ 팀 선택 대기 실패: {e}")
+                time.sleep(1)
 
                 # 페이지네이션 확인
                 pagination = page.query_selector('.paging')
@@ -138,9 +149,13 @@ def crawl_all_fielding_stats(year=2025):
                                         break
 
                                 if page_link:
-                                    page_link.click()
-                                    page.wait_for_load_state('networkidle')
-                                    time.sleep(2)
+                                    try:
+                                        with page.expect_response("**/Record/Player/Defense/Basic.aspx", timeout=15000) as response_info:
+                                            page_link.click()
+                                        page.wait_for_load_state('networkidle', timeout=15000)
+                                    except Exception as e:
+                                        print(f"   ⚠️ 페이지 {current_page} 로딩 대기 실패: {e}")
+                                    time.sleep(1)
                                 else:
                                     print(f"   ⚠️ 페이지 {current_page} 링크를 찾을 수 없습니다. (종료)")
                                     break
@@ -263,7 +278,7 @@ def crawl_all_fielding_stats(year=2025):
     return fielding_data
 
 
-def save_fielding_stats(year=2025, db_path='kbo_2025.db'):
+def save_fielding_stats(year=2025, db_path='data/kbo_dev.db'):
     """
     수비 기록을 크롤링하여 DB에 저장합니다.
 
@@ -294,10 +309,10 @@ def save_fielding_stats(year=2025, db_path='kbo_2025.db'):
 
         try:
             cursor.execute('''
-                INSERT OR REPLACE INTO kbo_season_fielding_stats
+                INSERT OR REPLACE INTO player_season_fielding
                 (player_id, team_id, year, position_id, games, games_started,
-                 innings, putouts, assists, errors, double_plays, fielding_pct, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 innings, putouts, assists, errors, double_plays, fielding_pct, pickoffs, updated_at, source)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ''', (
                 record['player_id'],
                 record['team_id'],
@@ -311,18 +326,12 @@ def save_fielding_stats(year=2025, db_path='kbo_2025.db'):
                 record['errors'],
                 record['double_plays'],
                 record['fielding_pct'],
-                datetime.now()
+                record.get('pickoffs', 0),
+                datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                'CRAWLER'
             ))
 
             saved_count += 1
-
-            # participation 테이블 업데이트: has_fielding_record = 1
-            cursor.execute('''
-                UPDATE player_season_participation
-                SET has_fielding_record = 1,
-                    updated_at = ?
-                WHERE player_id = ? AND year = ? AND team_id = ?
-            ''', (datetime.now(), record['player_id'], year, record['team_id']))
 
         except Exception as e:
             print(f"⚠️ DB 저장 오류: {record['player_name']} - {e}")
@@ -336,6 +345,16 @@ def save_fielding_stats(year=2025, db_path='kbo_2025.db'):
 
 
 if __name__ == "__main__":
-    # 테스트용
-    print("🧪 수비 기록 크롤링 테스트")
-    save_fielding_stats(2025, 'kbo_test.db')
+    import argparse
+    parser = argparse.ArgumentParser(description="KBO Fielding stats crawler")
+    parser.add_argument("--year", type=int, default=2025, help="Season year (default: 2025)")
+    parser.add_argument("--save", action="store_true", help="Save to local database")
+    args = parser.parse_args()
+
+    print(f"📊 수비 크롤러 실행 (연도: {args.year}, 저장 여부: {args.save})")
+    if args.save:
+        save_fielding_stats(args.year, 'data/kbo_dev.db')
+    else:
+        data = crawl_all_fielding_stats(args.year)
+        print(f"🔍 Dry-run completed: {len(data)} records found.")
+
