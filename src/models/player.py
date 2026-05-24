@@ -54,7 +54,7 @@ class PlayerBasic(Base, TimestampMixin):
     career: Mapped[Optional[str]] = mapped_column(String(200), nullable=True, comment="School/origin (출신교)")
     status: Mapped[Optional[str]] = mapped_column(String(16), nullable=True, comment="active|retired|staff")
     staff_role: Mapped[Optional[str]] = mapped_column(String(32), nullable=True, comment="manager|coach|trainer")
-    status_source: Mapped[Optional[str]] = mapped_column(String(16), nullable=True, comment="heuristic|profile")
+    status_source: Mapped[Optional[str]] = mapped_column(String(16), nullable=True, comment="heuristic|profile|register")
 
     # Extended profile fields (from detail page)
     photo_url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True, comment="KBO CDN profile image URL")

@@ -1098,6 +1098,68 @@ class OCISync:
         print(f"✅ Synced {synced} player movement records to OCI")
         return synced
 
+    def sync_fa_contracts(self) -> int:
+        """Sync fa_contracts from SQLite to OCI"""
+        from src.models.base import Base
+        from src.models.fa_contract import FAContract
+        
+        # Ensure table exists on target database
+        Base.metadata.create_all(self.oci_engine)
+        
+        contracts = self.sqlite_session.query(FAContract).all()
+        synced = 0
+        
+        if not contracts:
+            print("ℹ️ No FA contract data to sync.")
+            return 0
+            
+        for c in contracts:
+            data = {
+                'player_name': c.player_name,
+                'player_basic_id': c.player_basic_id,
+                'year': c.year,
+                'fa_type': c.fa_type,
+                'old_team': c.old_team,
+                'new_team': c.new_team,
+                'team_code': c.team_code,
+                'contract_duration': c.contract_duration,
+                'total_amount': c.total_amount,
+                'total_amount_krw': c.total_amount_krw,
+                'signing_bonus': c.signing_bonus,
+                'annual_salary': c.annual_salary,
+                'remarks': c.remarks,
+                'source_url': c.source_url
+            }
+            
+            stmt = pg_insert(FAContract).values(**data)
+            
+            update_dict = {
+                'player_basic_id': stmt.excluded.player_basic_id,
+                'old_team': stmt.excluded.old_team,
+                'team_code': stmt.excluded.team_code,
+                'contract_duration': stmt.excluded.contract_duration,
+                'total_amount': stmt.excluded.total_amount,
+                'total_amount_krw': stmt.excluded.total_amount_krw,
+                'signing_bonus': stmt.excluded.signing_bonus,
+                'annual_salary': stmt.excluded.annual_salary,
+                'remarks': stmt.excluded.remarks,
+                'source_url': stmt.excluded.source_url,
+                'updated_at': text('CURRENT_TIMESTAMP')
+            }
+            
+            stmt = stmt.on_conflict_do_update(
+                constraint='uq_fa_contract_record',
+                set_=update_dict
+            )
+            
+            self.target_session.execute(stmt)
+            synced += 1
+            
+        self.target_session.commit()
+        print(f"✅ Synced {synced} FA contract records to OCI")
+        return synced
+
+
     def _get_table_signature(self, model: Type, year: int | None = None, year_col: str = "season") -> Dict[str, Any]:
         """
         Calculate a unique signature for a table/year combination to detect changes.

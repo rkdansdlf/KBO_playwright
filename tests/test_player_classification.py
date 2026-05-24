@@ -29,3 +29,15 @@ def test_classify_coach_keyword():
 def test_classify_staff_if_team_mentions_coach():
     entry = {"team": "두산 코치", "position": " "}
     assert classify_player(entry) == PlayerCategory.STAFF
+
+
+def test_classify_register_staff():
+    entry_manager = {"status_source": "register", "staff_role": "manager"}
+    assert classify_player(entry_manager) == PlayerCategory.MANAGER
+
+    entry_coach = {"status_source": "register", "staff_role": "coach"}
+    assert classify_player(entry_coach) == PlayerCategory.COACH
+
+    entry_other = {"status_source": "register", "staff_role": "trainer"}
+    assert classify_player(entry_other) == PlayerCategory.STAFF
+

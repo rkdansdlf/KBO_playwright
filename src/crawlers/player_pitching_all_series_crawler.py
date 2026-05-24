@@ -240,73 +240,65 @@ def wait_for_table(page: Page, timeout: int = 30000) -> None:
 def go_to_next_page(page: Page, current_page: int, policy: Optional[RequestPolicy] = None) -> bool:
     """
     다음 페이지로 이동 (1→2,3,4,5→다음→6,7,8,9,10→다음 반복)
-    타자 크롤러와 동일한 개선된 로직
     """
     try:
         # 1→2,3,4,5→다음→6,7,8,9,10→다음 패턴
         if current_page % 5 == 0:  # 5페이지마다 "다음" 버튼 클릭
-            # 다음 버튼 찾기
-            next_button_selector = 'a[href*="btnNext"]'
-            next_button = page.query_selector(next_button_selector)
-            
-            if not next_button:
-                return False
-            
-            # 버튼이 비활성화되어 있는지 확인
-            disabled_attr = next_button.get_attribute("disabled")
-            class_attr = next_button.get_attribute("class") or ""
-            if disabled_attr or "disabled" in class_attr:
-                return False
-            
-            if policy: policy.delay()
-            next_button.click()
-            page.wait_for_load_state('networkidle', timeout=30000)
-            
+            selector = 'a[href*="btnNext"]'
+            desc = f"다음 버튼 클릭 ({current_page}페이지 후)"
         else:
             # 5페이지 내에서 번호 버튼 클릭
             next_page = current_page + 1
             relative = ((next_page - 1) % 5) + 1
             selector = f'a[href*="btnNo{relative}"]'
-            page_button = page.query_selector(selector)
-            
-            if not page_button:
-                return False
-            
-            if policy: policy.delay()
-            page_button.click()
-            page.wait_for_load_state("networkidle", timeout=30000)
+            desc = f"{next_page}페이지로 이동 (btnNo{relative})"
+        
+        # 버튼 존재 여부 및 상태 확인
+        page.wait_for_selector(selector, state="visible", timeout=5000)
+        btn = page.query_selector(selector)
+        if not btn or btn.get_attribute("disabled") or "disabled" in (btn.get_attribute("class") or ""):
+            return False
+
+        if policy: policy.delay()
+        
+        # 직접 클릭 시도
+        page.click(selector, timeout=10000)
+        page.wait_for_load_state('networkidle', timeout=30000)
+        print(f"➡️ {desc}")
         
         # 페이지 이동 후 테이블 대기
         wait_for_table(page)
         return True
         
-    except PlaywrightTimeout as e:
-        print(f"   ⚠️ 페이지 이동 중 타임아웃: {e}")
-        return False
     except Exception as e:
-        print(f"   ⚠️ 페이지 이동 중 오류: {e}")
+        print(f"❌ 페이지 이동 실패 ({current_page}p -> next): {e}")
         return False
 
 
 def apply_sort(page: Page, header_label: str, sort_code: Optional[str] = None, policy: Optional[RequestPolicy] = None) -> bool:
     try:
         if sort_code:
-            # Use JS execution for robustness against DOM changes
-            # Check if 'sort' function exists
+            # Prioritize actual DOM click (safer postback triggers)
+            selector = f"a[href=\"javascript:sort('{sort_code}');\"]"
+            try:
+                page.wait_for_selector(selector, timeout=5000)
+                anchor = page.query_selector(selector)
+                if anchor:
+                    if policy: policy.delay()
+                    anchor.click()
+                    page.wait_for_load_state("networkidle", timeout=60000)
+                    import time; time.sleep(2)
+                    return True
+            except Exception:
+                pass
+            
+            # Fallback to direct JS execution if DOM is un-clickable
             has_sort_fn = page.evaluate("typeof sort === 'function'")
             if has_sort_fn:
                 if policy: policy.delay()
                 page.evaluate(f"sort('{sort_code}')")
                 page.wait_for_load_state("networkidle", timeout=60000)
-                return True
-            
-            # Fallback to selector
-            selector = f"a[href=\"javascript:sort('{sort_code}');\"]"
-            anchor = page.query_selector(selector)
-            if anchor:
-                if policy: policy.delay()
-                anchor.click()
-                page.wait_for_load_state("networkidle", timeout=60000)
+                import time; time.sleep(2)
                 return True
 
         anchors = page.query_selector_all("table.tData01 thead a")
@@ -722,12 +714,12 @@ def setup_pitcher_page(page: Page, url: str, year: int, series_value: str, polic
 
     print(f"   🌐 Navigating to {url}...")
     try:
-        page.goto(url, wait_until="load", timeout=60000)
+        page.goto(url, wait_until="networkidle", timeout=60000)
     except Exception as e:
         print(f"   ❌ {url} 페이지 로딩 실패: {e}")
         return False
 
-    page.wait_for_timeout(1000)
+    import time; time.sleep(2)
 
     try:
         season_selector = 'select[name*="ddlSeason"]'
@@ -735,13 +727,13 @@ def setup_pitcher_page(page: Page, url: str, year: int, series_value: str, polic
 
         print(f"   ⚙️  Selecting Season {year}...")
         page.select_option(season_selector, str(year))
-        page.wait_for_load_state("load", timeout=30000)
-        page.wait_for_timeout(2000)
+        page.wait_for_load_state("networkidle", timeout=30000)
+        import time; time.sleep(2)
 
         print(f"   ⚙️  Selecting Series {series_value}...")
         page.select_option(series_selector, value=series_value)
-        page.wait_for_load_state("load", timeout=30000)
-        page.wait_for_timeout(2000)
+        page.wait_for_load_state("networkidle", timeout=30000)
+        time.sleep(2)
 
         # KBO 페이지 에러 감지 (500 에러 등)
         title = page.title()
@@ -902,6 +894,7 @@ def crawl_pitcher_series(
         iteration_targets = team_options if team_options else [{'value': '', 'text': '전체'}]
 
         for tm in iteration_targets:
+            import time; time.sleep(2)
             if team_options:
                 print(f"🔍 팀 선택: {tm['text']} ({tm['value']})")
                 try:
@@ -913,16 +906,17 @@ def crawl_pitcher_series(
                     continue
 
             # 정렬 적용 (팀 선택 후 리셋될 수 있으므로 다시 적용)
-            primary_sort = PRIMARY_SORT_CONFIG.get(
-                series_key, PRIMARY_SORT_CONFIG["default"]
-            )
-            # 팀별 조회시는 굳이 정렬 안해도 되지만, 일관성을 위해 시도
-            apply_sort(
-                page,
-                header_label=primary_sort["label"],
-                sort_code=primary_sort["sort_code"],
-                policy=policy,
-            )
+            # 단, 중복 포스트백으로 인한 KBO 에러 발생을 방지하기 위해 apply_sort는 생략합니다.
+            if False:
+                primary_sort = PRIMARY_SORT_CONFIG.get(
+                    series_key, PRIMARY_SORT_CONFIG["default"]
+                )
+                apply_sort(
+                    page,
+                    header_label=primary_sort["label"],
+                    sort_code=primary_sort["sort_code"],
+                    policy=policy,
+                )
 
             wait_for_table(page)
 

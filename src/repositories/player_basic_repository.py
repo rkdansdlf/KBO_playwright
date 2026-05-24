@@ -57,9 +57,40 @@ class PlayerBasicRepository:
                 if not rows:
                     return 0
 
+                from sqlalchemy import case
+
                 if self.dialect == "sqlite":
                     stmt = sqlite_insert(PlayerBasic).values(rows)
-                    update_dict = {k: stmt.excluded[k] for k in rows[0].keys() if k != "player_id"}
+                    excluded = stmt.excluded
+                    status_case = case(
+                        (excluded.status_source.in_(["profile", "register"]), excluded.status),
+                        (PlayerBasic.status_source.in_(["profile", "register"]), PlayerBasic.status),
+                        else_=excluded.status
+                    )
+                    staff_role_case = case(
+                        (excluded.status_source.in_(["profile", "register"]), excluded.staff_role),
+                        (PlayerBasic.status_source.in_(["profile", "register"]), PlayerBasic.staff_role),
+                        else_=excluded.staff_role
+                    )
+                    status_source_case = case(
+                        (excluded.status_source.in_(["profile", "register"]), excluded.status_source),
+                        (PlayerBasic.status_source.in_(["profile", "register"]), PlayerBasic.status_source),
+                        else_=excluded.status_source
+                    )
+
+                    update_dict = {}
+                    for k in rows[0].keys():
+                        if k == "player_id":
+                            continue
+                        if k == "status":
+                            update_dict[k] = status_case
+                        elif k == "staff_role":
+                            update_dict[k] = staff_role_case
+                        elif k == "status_source":
+                            update_dict[k] = status_source_case
+                        else:
+                            update_dict[k] = excluded[k]
+
                     stmt = stmt.on_conflict_do_update(
                         index_elements=["player_id"],
                         set_=update_dict,
@@ -70,7 +101,36 @@ class PlayerBasicRepository:
                     stmt = stmt.on_duplicate_key_update(update_dict)
                 else:  # PostgreSQL
                     stmt = pg_insert(PlayerBasic).values(rows)
-                    update_dict = {k: stmt.excluded[k] for k in rows[0].keys() if k != "player_id"}
+                    excluded = stmt.excluded
+                    status_case = case(
+                        (excluded.status_source.in_(["profile", "register"]), excluded.status),
+                        (PlayerBasic.status_source.in_(["profile", "register"]), PlayerBasic.status),
+                        else_=excluded.status
+                    )
+                    staff_role_case = case(
+                        (excluded.status_source.in_(["profile", "register"]), excluded.staff_role),
+                        (PlayerBasic.status_source.in_(["profile", "register"]), PlayerBasic.staff_role),
+                        else_=excluded.staff_role
+                    )
+                    status_source_case = case(
+                        (excluded.status_source.in_(["profile", "register"]), excluded.status_source),
+                        (PlayerBasic.status_source.in_(["profile", "register"]), PlayerBasic.status_source),
+                        else_=excluded.status_source
+                    )
+
+                    update_dict = {}
+                    for k in rows[0].keys():
+                        if k == "player_id":
+                            continue
+                        if k == "status":
+                            update_dict[k] = status_case
+                        elif k == "staff_role":
+                            update_dict[k] = staff_role_case
+                        elif k == "status_source":
+                            update_dict[k] = status_source_case
+                        else:
+                            update_dict[k] = excluded[k]
+
                     stmt = stmt.on_conflict_do_update(
                         index_elements=["player_id"],
                         set_=update_dict,
@@ -92,11 +152,40 @@ class PlayerBasicRepository:
             return
 
         data = self._build_payload(player_data)
+        from sqlalchemy import case
 
         if self.dialect == "sqlite":
             stmt = sqlite_insert(PlayerBasic).values(**data)
-            # Update all columns except player_id on conflict
-            update_dict = {k: v for k, v in data.items() if k != 'player_id'}
+            excluded = stmt.excluded
+            status_case = case(
+                (excluded.status_source.in_(["profile", "register"]), excluded.status),
+                (PlayerBasic.status_source.in_(["profile", "register"]), PlayerBasic.status),
+                else_=excluded.status
+            )
+            staff_role_case = case(
+                (excluded.status_source.in_(["profile", "register"]), excluded.staff_role),
+                (PlayerBasic.status_source.in_(["profile", "register"]), PlayerBasic.staff_role),
+                else_=excluded.staff_role
+            )
+            status_source_case = case(
+                (excluded.status_source.in_(["profile", "register"]), excluded.status_source),
+                (PlayerBasic.status_source.in_(["profile", "register"]), PlayerBasic.status_source),
+                else_=excluded.status_source
+            )
+
+            update_dict = {}
+            for k in data.keys():
+                if k == "player_id":
+                    continue
+                if k == "status":
+                    update_dict[k] = status_case
+                elif k == "staff_role":
+                    update_dict[k] = staff_role_case
+                elif k == "status_source":
+                    update_dict[k] = status_source_case
+                else:
+                    update_dict[k] = excluded[k]
+
             stmt = stmt.on_conflict_do_update(
                 index_elements=['player_id'],
                 set_=update_dict
@@ -107,7 +196,36 @@ class PlayerBasicRepository:
             stmt = stmt.on_duplicate_key_update(update_dict)
         else:  # PostgreSQL
             stmt = pg_insert(PlayerBasic).values(**data)
-            update_dict = {k: stmt.excluded[k] for k in data.keys() if k != 'player_id'}
+            excluded = stmt.excluded
+            status_case = case(
+                (excluded.status_source.in_(["profile", "register"]), excluded.status),
+                (PlayerBasic.status_source.in_(["profile", "register"]), PlayerBasic.status),
+                else_=excluded.status
+            )
+            staff_role_case = case(
+                (excluded.status_source.in_(["profile", "register"]), excluded.staff_role),
+                (PlayerBasic.status_source.in_(["profile", "register"]), PlayerBasic.staff_role),
+                else_=excluded.staff_role
+            )
+            status_source_case = case(
+                (excluded.status_source.in_(["profile", "register"]), excluded.status_source),
+                (PlayerBasic.status_source.in_(["profile", "register"]), PlayerBasic.status_source),
+                else_=excluded.status_source
+            )
+
+            update_dict = {}
+            for k in data.keys():
+                if k == "player_id":
+                    continue
+                if k == "status":
+                    update_dict[k] = status_case
+                elif k == "staff_role":
+                    update_dict[k] = staff_role_case
+                elif k == "status_source":
+                    update_dict[k] = status_source_case
+                else:
+                    update_dict[k] = excluded[k]
+
             stmt = stmt.on_conflict_do_update(
                 index_elements=['player_id'],
                 set_=update_dict

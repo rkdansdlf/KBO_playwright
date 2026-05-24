@@ -41,6 +41,15 @@ def classify_player(entry: Dict[str, object]) -> PlayerCategory:
     - Empty team/position or explicit '은퇴' 키워드 → RETIRED
     - Otherwise treated as ACTIVE
     """
+    status_source = entry.get("status_source")
+    if status_source == "register":
+        role = entry.get("staff_role")
+        if role == "manager":
+            return PlayerCategory.MANAGER
+        elif role == "coach":
+            return PlayerCategory.COACH
+        return PlayerCategory.STAFF
+
     team = _normalize(entry.get("team"))
     position = _normalize(entry.get("position"))
 

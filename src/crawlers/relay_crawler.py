@@ -61,6 +61,10 @@ class RelayCrawler:
         self._last_failure_reason[normalized_id] = reason
         self.last_failure_reason = reason
 
+    async def close(self) -> None:
+        """API-based crawler doesn't need explicit resource release for now."""
+        pass
+
     async def crawl_game_events(self, game_id: str) -> Optional[Dict[str, Any]]:
         """Backward-compatible alias used by older CLI entrypoints."""
         return await self.crawl_game_relay(game_id)
