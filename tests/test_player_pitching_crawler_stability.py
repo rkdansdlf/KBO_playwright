@@ -13,6 +13,10 @@ class _Header:
     def inner_text(self):
         return self.text
 
+    def text_content(self):
+        return self.text
+
+
 
 class _FakePage:
     def query_selector_all(self, selector):

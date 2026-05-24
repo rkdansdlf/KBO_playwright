@@ -5,16 +5,78 @@ import json
 from typing import List, Dict, Any, Optional
 from datetime import date, datetime
 
-from playwright.async_api import async_playwright, Page, TimeoutError, BrowserContext
+from playwright.async_api import async_playwright, Page, TimeoutError
 from sqlalchemy.orm import Session
 
 from src.db.engine import SessionLocal
-from src.models.player import PlayerMovement
+from src.models.player import PlayerMovement, PlayerBasic
+from src.models.team import Team
+from src.models.fa_contract import FAContract
 from src.utils.team_codes import resolve_team_code
 from src.utils.safe_print import safe_print as print
 from src.utils.playwright_blocking import install_async_resource_blocking
 
 from playwright_stealth import Stealth
+
+
+def parse_amount_krw(amount_str: str | None) -> Optional[int]:
+    """
+    Parse Korean amount string to 만원 (10,000 KRW) units.
+    E.g. '75억원' -> 750000
+         '6억 5천만원' -> 65000
+         '5000만원' -> 5000
+    """
+    if not amount_str:
+        return None
+    amount_str = amount_str.replace(" ", "").replace(",", "")
+    
+    # Convert '천' to '000' (e.g. 5천 -> 5000)
+    amount_str = amount_str.replace("천", "000")
+    
+    billion = 0
+    ten_thousand = 0
+    
+    # Match X억
+    match_billion = re.search(r'(\d+)억', amount_str)
+    if match_billion:
+        billion = int(match_billion.group(1))
+        
+    # Match Y만
+    match_ten_thousand = re.search(r'(\d+)만', amount_str)
+    if match_ten_thousand:
+        ten_thousand = int(match_ten_thousand.group(1))
+        
+    total = (billion * 10000) + ten_thousand
+    return total if total > 0 else None
+
+
+def resolve_player_basic_id(session: Session, name: str, team_code: str) -> Optional[int]:
+    # Resolve team name from team_code
+    team = session.query(Team).filter_by(team_id=team_code).first()
+    team_names = [team_code]
+    if team:
+        if team.team_short_name:
+            team_names.append(team.team_short_name)
+        if team.team_name:
+            team_names.append(team.team_name)
+            
+    # Search players matching the name and team
+    from sqlalchemy import or_
+    query = session.query(PlayerBasic).filter(PlayerBasic.name == name)
+    filters = [PlayerBasic.team.contains(t) for t in team_names]
+    players = query.filter(or_(*filters)).all()
+    
+    if len(players) == 1:
+        return players[0].player_id
+    elif len(players) > 1:
+        return players[0].player_id
+        
+    # If not found by team, fall back to matching name only if it's unique in the entire DB
+    all_players_with_name = session.query(PlayerBasic).filter_by(name=name).all()
+    if len(all_players_with_name) == 1:
+        return all_players_with_name[0].player_id
+        
+    return None
 
 
 class FACrawler:
@@ -47,19 +109,13 @@ class FACrawler:
                 print(f"🌍 Navigating to {self.url}...")
                 await page.goto(self.url, wait_until="domcontentloaded", timeout=60000)
                 
-                # Wait for table or specific content wrapper as per user tip
+                # Wait for table or specific content wrapper
                 try:
                     await page.wait_for_selector(".wiki-table-wrap table, #content .table, table", timeout=30000)
                 except TimeoutError:
                     print("⚠️ Timeout waiting for table selector. Exploring content...")
 
                 # Extract data from 4 main sections
-                # 2.1 Retained Pitchers
-                # 2.2 Retained Fielders
-                # 3.1 Transferred Pitchers
-                # 3.2 Transferred Fielders
-                
-                # Selectors identified in planning
                 sections = [
                     {"id": "s-2.1", "type": "RETAINED", "pos": "PITCHER"},
                     {"id": "s-2.2", "type": "RETAINED", "pos": "FIELDER"},
@@ -69,7 +125,7 @@ class FACrawler:
                 
                 for section in sections:
                     print(f"🔍 Processing Section {section['id']} ({section['type']} - {section['pos']})...")
-                    section_data = await self._extract_section_table(page, section['id'], section['type'])
+                    section_data = await self._extract_section_table(page, section['type'], section['pos'])
                     
                     # Filter by year
                     if target_years:
@@ -89,161 +145,211 @@ class FACrawler:
                 
         return results
 
-    async def _extract_section_table(self, page: Page, section_anchor_id: str, section_type: str) -> List[Dict[str, Any]]:
+    async def _extract_section_table(self, page: Page, section_type: str, pos_type: str) -> List[Dict[str, Any]]:
         """
-        Extracts table data following a specific header anchor ID or Text.
+        Extracts table data by scanning the headers of all tables on the page.
+        Supports full colspan/rowspan grid expansion in javascript before parsing.
         """
-        # Search for Header by ID or Text
-        # The section_anchor_id is like 's-2.1', corresponding text '2.1. 투수' (approx)
-        
-        target_text = ""
-        if "2.1" in section_anchor_id: target_text = "2.1"
-        elif "2.2" in section_anchor_id: target_text = "2.2"
-        elif "3.1" in section_anchor_id: target_text = "3.1"
-        elif "3.2" in section_anchor_id: target_text = "3.2"
-        
-        # User tip: Table selector .wiki-table-wrap table or #content .table
-        
         full_script = f"""
         () => {{
-            const scanForTable = (startElem) => {{
-                let next = startElem.nextElementSibling;
-                while (next && next.tagName !== 'H2' && next.tagName !== 'H3' && next.tagName !== 'H1') {{
-                    if (next.tagName === 'TABLE') return next;
-                    const nestedTable = next.querySelector('div.wiki-table-wrap table');
-                    if (nestedTable) return nestedTable;
-                    const anyTable = next.querySelector('table');
-                    if (anyTable) return anyTable;
-                    
-                    next = next.nextElementSibling;
+            const tables = Array.from(document.querySelectorAll('table'));
+            const matchingTables = [];
+            
+            tables.forEach(t => {{
+                const cells = Array.from(t.querySelectorAll('tr td, tr th'));
+                const cellTexts = cells.map(c => c.innerText.trim());
+                
+                const hasOwnTeam = cellTexts.some(txt => txt.includes('소속팀'));
+                const hasOldTeam = cellTexts.some(txt => txt.includes('원 소속팀'));
+                const hasNewTeam = cellTexts.some(txt => txt.includes('이적팀'));
+                const hasAmount = cellTexts.some(txt => txt.includes('총액'));
+                const hasDuration = cellTexts.some(txt => txt.includes('계약기간'));
+                
+                if (hasAmount && hasDuration) {{
+                    if (hasOldTeam && hasNewTeam) {{
+                        matchingTables.push({{ type: 'TRANSFERRED', table: t }});
+                    }} else if (hasOwnTeam) {{
+                        matchingTables.push({{ type: 'RETAINED', table: t }});
+                    }}
                 }}
-                return null;
-            }};
+            }});
+            
+            const retainedTables = matchingTables.filter(m => m.type === 'RETAINED').map(m => m.table);
+            const transferredTables = matchingTables.filter(m => m.type === 'TRANSFERRED').map(m => m.table);
             
             let table = null;
-            
-            // 1. Try by ID
-            const anchor = document.getElementById("{section_anchor_id}");
-            if (anchor) {{
-                table = scanForTable(anchor.parentElement);
-            }}
-            
-            // 2. Try by Text (Backup)
-            if (!table) {{
-                const headers = Array.from(document.querySelectorAll('h1, h2, h3, h4, h5, h6'));
-                
-                // target_text like "2.1"
-                const specificHeader = headers.find(h => h.innerText.includes("{target_text}") && (h.innerText.includes("투수") || h.innerText.includes("야수") || h.innerText.includes("타자")));
-                if (specificHeader) {{
-                    table = scanForTable(specificHeader);
-                }}
+            if ("{section_type}" === "RETAINED") {{
+                if ("{pos_type}" === "PITCHER") table = retainedTables[0];
+                else table = retainedTables[1];
+            }} else if ("{section_type}" === "TRANSFERRED") {{
+                if ("{pos_type}" === "PITCHER") table = transferredTables[0];
+                else table = transferredTables[1];
             }}
             
             if (!table) return null;
             
-            // PARSE TABLE
+            // PARSE TABLE WITH ROWSPAN/COLSPAN EXPANSION
             const rows = Array.from(table.rows);
-            const data = [];
-            
-            rows.forEach(tr => {{
-                const cells = Array.from(tr.cells).map(c => {{
-                    return {{
-                        text: c.innerText.trim(),
-                        rowSpan: c.rowSpan || 1,
-                        colSpan: c.colSpan || 1
-                    }};
-                }});
-                data.push(cells);
+            const grid = [];
+            rows.forEach((tr, r) => {{
+                grid[r] = [];
             }});
             
-            return data;
+            rows.forEach((tr, r) => {{
+                let cIndex = 0;
+                Array.from(tr.cells).forEach(cell => {{
+                    while (grid[r][cIndex] !== undefined) {{
+                        cIndex++;
+                    }}
+                    
+                    const text = cell.innerText.trim();
+                    const rowSpan = cell.rowSpan || 1;
+                    const colSpan = cell.colSpan || 1;
+                    
+                    for (let rSpan = 0; rSpan < rowSpan; rSpan++) {{
+                        for (let cSpan = 0; cSpan < colSpan; cSpan++) {{
+                            if (grid[r + rSpan]) {{
+                                grid[r + rSpan][cIndex + cSpan] = text;
+                            }}
+                        }}
+                    }}
+                    cIndex += colSpan;
+                }});
+            }});
+            
+            return grid;
         }}
         """
         
         raw_rows = await page.evaluate(full_script)
         
-        if not raw_rows:
-            print(f"   ⚠️ No table found for section {section_anchor_id}")
+        if not raw_rows or len(raw_rows) < 2:
+            print(f"   ⚠️ No table found matching section {section_type} ({pos_type})")
+            return []
+            
+        header = raw_rows[0]
+        header = [h.strip() for h in header]
+        
+        # Helper to find column index by matching substring
+        def find_index(candidates):
+            for candidate in candidates:
+                for idx, col in enumerate(header):
+                    if candidate in col:
+                        return idx
+            return -1
+
+        year_idx = find_index(["년도", "연도"])
+        name_idx = find_index(["이름", "선수"])
+        
+        if section_type == "RETAINED":
+            team_idx = find_index(["소속팀", "팀"])
+            old_team_idx = -1
+            new_team_idx = -1
+        else:
+            old_team_idx = find_index(["원 소속팀", "원소속", "이전 소속팀", "이전팀"])
+            new_team_idx = find_index(["이적팀", "이적한 팀", "새 소속팀", "이적 구단"])
+            if old_team_idx == -1:
+                old_team_idx = find_index(["소속팀", "팀"])
+            if new_team_idx == -1:
+                new_team_idx = find_index(["소속팀", "팀"])
+            team_idx = new_team_idx
+
+        duration_idx = find_index(["계약기간", "기간"])
+        amount_idx = find_index(["총액", "금액"])
+        if amount_idx == -1:
+            amount_idx = find_index(["계약조건", "조건"])
+            
+        remarks_idx = find_index(["비고", "기타", "상세", "옵션"])
+        
+        print(f"   [Header Mapping] Section: {section_type} ({pos_type})")
+        print(f"   => Header: {header}")
+        print(f"   => Indices - year: {year_idx}, name: {name_idx}, team: {team_idx}, old_team: {old_team_idx}, new_team: {new_team_idx}, duration: {duration_idx}, amount: {amount_idx}, remarks: {remarks_idx}")
+
+        if name_idx == -1 or amount_idx == -1:
+            print("   ⚠️ Critical columns (이름, 총액) not found in header. Skipping table.")
             return []
             
         parsed_data = []
-        current_year = None
-        
-        if not raw_rows: return []
-        
-        for row_idx, row in enumerate(raw_rows):
-            # Check for header
-            texts = [c['text'] for c in row]
-            if "이름" in texts and "계약기간" in texts: continue
-            if "팀" in texts and "총액" in texts: continue
-            
-            row_texts = [cell['text'] for cell in row]
-            if not row_texts: continue
-            
-            year_candidate = None
-            is_new_year_group = False
-            
-            # Try to find year in first few columns
-            for i in range(min(2, len(row_texts))):
-                val = row_texts[i]
-                if re.match(r'^\d{4}$', val) or re.match(r'^\d{4}년$', val):
-                    try:
-                        year_candidate = int(re.sub(r'\D', '', val))
-                        is_new_year_group = True
-                        break
-                    except: pass
-            
-            if year_candidate:
-                current_year = year_candidate
-                
-            if not current_year: continue
-            
-            # Determine Name Index
-            name_idx = -1
-            if is_new_year_group:
-                for i in range(min(2, len(row_texts))):
-                    val = row_texts[i]
-                    if re.match(r'^\d{4}(\D|$)', val):
-                         name_idx = i + 1
-                         break
-            else:
-                 if re.match(r'^\d+$', row_texts[0]):
-                     name_idx = 1
-                 else:
-                     name_idx = 0
-            
-            if name_idx == -1 or name_idx >= len(row_texts): continue
-            
-            item = {}
-            item['year'] = current_year
-            
-            try:
-                if section_type == "RETAINED":
-                    item['player_name'] = row_texts[name_idx]
-                    item['team'] = row_texts[name_idx + 1]
-                    item['duration'] = row_texts[name_idx + 2]
-                    item['amount'] = row_texts[name_idx + 3]
-                    item['remarks'] = row_texts[name_idx + 4] if len(row_texts) > name_idx + 4 else ""
-                    
-                elif section_type == "TRANSFERRED":
-                    item['player_name'] = row_texts[name_idx]
-                    item['old_team'] = row_texts[name_idx + 1]
-                    item['new_team'] = row_texts[name_idx + 2]
-                    item['team'] = row_texts[name_idx + 2] 
-                    item['duration'] = row_texts[name_idx + 3]
-                    item['amount'] = row_texts[name_idx + 4]
-                    item['remarks'] = row_texts[name_idx + 5] if len(row_texts) > name_idx + 5 else ""
-
-                # Cleanup
-                for k, v in item.items():
-                    if isinstance(v, str):
-                        item[k] = re.sub(r'\[[^\]]+\]', '', v).strip()
-            
-                parsed_data.append(item)
-            
-            except IndexError:
+        for row in raw_rows[1:]:
+            if len(row) < len(header):
                 continue
+                
+            # Skip any duplicated header rows nested in table
+            if "이름" in row or "총액" in row:
+                continue
+                
+            # Parse Year
+            year_val = None
+            if year_idx != -1:
+                year_str = row[year_idx]
+                digits = re.sub(r'\D', '', year_str)
+                if len(digits) == 4:
+                    try:
+                        year_val = int(digits)
+                    except ValueError:
+                        pass
+            
+            if not year_val:
+                continue
+                
+            name_val = row[name_idx].strip()
+            if not name_val or name_val in ["이름", "선수명", "선수"]:
+                continue
+                
+            item = {
+                'year': year_val,
+                'player_name': name_val,
+                'fa_type': section_type.lower()
+            }
+            
+            if duration_idx != -1:
+                item['duration'] = row[duration_idx].strip()
+            else:
+                item['duration'] = ""
+                
+            item['amount'] = row[amount_idx].strip()
+            
+            remarks_parts = []
+            if remarks_idx != -1:
+                remarks_parts.append(row[remarks_idx].strip())
+            
+            # Additional column checks to collect details if they exist in separate columns
+            def check_and_add_col(candidates, prefix):
+                idx = find_index(candidates)
+                if idx != -1 and idx not in [remarks_idx, amount_idx, name_idx, year_idx]:
+                    val = row[idx].strip()
+                    if val and val not in ["-", "0", "비공개"]:
+                        remarks_parts.append(f"{prefix}: {val}")
 
+            check_and_add_col(["옵션", "인센티브"], "옵션")
+            check_and_add_col(["연봉"], "연봉")
+            check_and_add_col(["계약금"], "계약금")
+            
+            item['remarks'] = " | ".join([p for p in remarks_parts if p])
+            
+            if section_type == "RETAINED":
+                if team_idx != -1:
+                    item['team'] = row[team_idx].strip()
+                else:
+                    item['team'] = ""
+            else: # TRANSFERRED
+                if old_team_idx != -1:
+                    item['old_team'] = row[old_team_idx].strip()
+                else:
+                    item['old_team'] = ""
+                if new_team_idx != -1:
+                    item['new_team'] = row[new_team_idx].strip()
+                    item['team'] = row[new_team_idx].strip()
+                else:
+                    item['new_team'] = ""
+                    item['team'] = ""
+                    
+            for k, v in item.items():
+                if isinstance(v, str):
+                    item[k] = re.sub(r'\[[^\]]+\]', '', v).strip()
+                    
+            parsed_data.append(item)
+            
         return parsed_data
 
     def load_from_json(self, filepath: str) -> List[Dict[str, Any]]:
@@ -265,6 +371,10 @@ class FACrawler:
         new_records = 0
         updates = 0
         
+        # New fa_contracts counts
+        new_fa_contracts = 0
+        updated_fa_contracts = 0
+        
         print(f"💾 processing {len(data)} records for Database...")
         
         for item in data:
@@ -276,9 +386,7 @@ class FACrawler:
             team_code = resolve_team_code(team_raw)
             
             if not team_code:
-                # Special case for split contracts or unknown teams
                 if item.get('type') == 'transfer' and not item.get('new_team'):
-                     # Likely split contract details like Hwang Jae-gyun 2017
                      print(f"   ⚠️ Skipping record for {name} ({year}): No valid team (likely overseas split).")
                      continue
 
@@ -291,23 +399,47 @@ class FACrawler:
             if remarks and remarks != "-" and remarks != "비공개":
                  contract_info += f", {remarks}"
             
-            # Matching Logic
-            # Find existing record in player_movements
-            # Range: Nov of (Year-1) to Mar of (Year)
+            # Matching Logic for player_movements
             start_date = date(year - 1, 11, 1)
             end_date = date(year, 3, 31)
             
             existing = session.query(PlayerMovement).filter(
                 PlayerMovement.player_name == name,
                 PlayerMovement.team_code == team_code,
-                PlayerMovement.date >= start_date,
-                PlayerMovement.date <= end_date
+                PlayerMovement.movement_date >= start_date,
+                PlayerMovement.movement_date <= end_date
+            ).first()
+            
+            # FAContract Upsert Logic
+            fa_type = "transferred"
+            if item.get('fa_type'):
+                fa_type = item['fa_type']
+            elif item.get('type') == 'retained' or item.get('type') == 'RETAINED':
+                fa_type = "retained"
+            elif not item.get('old_team'):
+                fa_type = "retained"
+                
+            old_team_val = item.get('old_team')
+            new_team_val = item.get('new_team', item.get('team'))
+            duration_val = item.get('contract_duration', item.get('duration'))
+            amount_val = item.get('total_amount', item.get('amount'))
+            
+            amount_krw = parse_amount_krw(amount_val)
+            player_basic_id = resolve_player_basic_id(session, name, team_code)
+            
+            existing_contract = session.query(FAContract).filter(
+                FAContract.player_name == name,
+                FAContract.year == year,
+                FAContract.fa_type == fa_type,
+                FAContract.new_team == new_team_val
             ).first()
             
             if dry_run:
-                print(f"   [DRY RUN] {name} ({year}): {'MATCH FOUND' if existing else 'NEW RECORD'} -> {contract_info}")
+                print(f"   [DRY RUN] player_movements: {name} ({year}): {'MATCH FOUND' if existing else 'NEW RECORD'} -> {contract_info}")
+                print(f"   [DRY RUN] fa_contracts: {name} ({year}, {fa_type}): {'MATCH FOUND' if existing_contract else 'NEW RECORD'} -> {amount_val} ({amount_krw}만 원)")
                 continue
                 
+            # 1. Update player_movements
             if existing:
                 if existing.remarks:
                     if "FA계약" not in existing.remarks:
@@ -320,7 +452,7 @@ class FACrawler:
                 # Insert new record
                 default_date = date(year, 1, 15)
                 new_move = PlayerMovement(
-                    date=default_date,
+                    movement_date=default_date,
                     section="FA",
                     team_code=team_code,
                     player_name=name,
@@ -328,14 +460,45 @@ class FACrawler:
                 )
                 session.add(new_move)
                 new_records += 1
+ 
+            # 2. Update fa_contracts
+            if existing_contract:
+                existing_contract.player_basic_id = player_basic_id
+                existing_contract.old_team = old_team_val
+                existing_contract.team_code = team_code
+                existing_contract.contract_duration = duration_val
+                existing_contract.total_amount = amount_val
+                existing_contract.total_amount_krw = amount_krw
+                existing_contract.remarks = remarks
+                existing_contract.source_url = self.url
+                updated_fa_contracts += 1
+            else:
+                new_contract = FAContract(
+                    player_name=name,
+                    player_basic_id=player_basic_id,
+                    year=year,
+                    fa_type=fa_type,
+                    old_team=old_team_val,
+                    new_team=new_team_val,
+                    team_code=team_code,
+                    contract_duration=duration_val,
+                    total_amount=amount_val,
+                    total_amount_krw=amount_krw,
+                    remarks=remarks,
+                    source_url=self.url
+                )
+                session.add(new_contract)
+                new_fa_contracts += 1
         
         if not dry_run:
             try:
                 session.commit()
-                print(f"✅ DB Update Complete: {new_records} Inserted, {updates} Updated.")
+                print(f"✅ player_movements Update Complete: {new_records} Inserted, {updates} Updated.")
+                print(f"✅ fa_contracts Update Complete: {new_fa_contracts} Inserted, {updated_fa_contracts} Updated.")
             except Exception as e:
                 session.rollback()
                 print(f"❌ DB Error: {e}")
+
 
 async def main():
     parser = argparse.ArgumentParser(description="Crawl KBO FA Contracts from Namu Wiki")
@@ -346,7 +509,7 @@ async def main():
     
     args = parser.parse_args()
     
-    crawler = FACrawler(headless=False) # Configured to False by default per tip
+    crawler = FACrawler(headless=False)  # Headless false helps bypass Namuwiki protection if run interactively, though we support it
     
     data = []
     if args.file:
@@ -364,10 +527,10 @@ async def main():
         finally:
             session.close()
     else:
-        # Just print raw data
         print(f"Fetched {len(data)} records.")
         for d in data[:5]:
             print(d)
+
 
 if __name__ == "__main__":
     asyncio.run(main())

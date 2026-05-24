@@ -12,9 +12,10 @@ import argparse
 import asyncio
 import json
 from collections import Counter
-from typing import Sequence, Set, Dict
+from typing import Sequence, Dict
 from datetime import datetime
 
+from src.db.engine import SessionLocal
 from src.crawlers.player_list_crawler import PlayerListCrawler
 from src.crawlers.futures.futures_batting import fetch_and_parse_futures_batting
 from src.crawlers.futures.futures_pitching import fetch_and_parse_futures_pitching
@@ -22,9 +23,25 @@ from src.repositories.player_repository import PlayerRepository
 from src.repositories.save_futures_batting import save_futures_batting
 from src.repositories.player_season_pitching_repository import save_pitching_stats_to_db
 from src.parsers.player_profile_parser import PlayerProfileParsed
+from src.models.player import PlayerBasic
 from src.utils.safe_print import safe_print as print
 from src.utils.playwright_pool import AsyncPlaywrightPool
 from src.utils.player_validation import normalize_player_id
+
+
+def _has_player_basic(player_id: str) -> bool:
+    try:
+        player_id_db = int(str(player_id).strip())
+    except (TypeError, ValueError):
+        return False
+
+    with SessionLocal() as session:
+        return (
+            session.query(PlayerBasic.player_id)
+            .filter(PlayerBasic.player_id == player_id_db)
+            .scalar_one_or_none()
+            is not None
+        )
 
 
 async def gather_active_player_ids(season_year: int, delay: float) -> Dict[str, Dict[str, str]]:
@@ -95,14 +112,20 @@ async def process_player_result(
 
     # Resolve player name if not provided
     if not player_name:
-        from src.db.engine import SessionLocal
-        from src.models.player import PlayerBasic
         with SessionLocal() as session:
             basic = session.query(PlayerBasic).filter(PlayerBasic.player_id == int(player_id)).first()
             if basic:
                 player_name = basic.name
             else:
                 player_name = "Unknown"
+
+    if not _has_player_basic(player_id):
+        return {
+            "player_id": player_id,
+            "status": "skipped",
+            "saved": 0,
+            "failure_reason": "missing_player_basic",
+        }
 
     batting_rows = []
     pitching_rows = []
@@ -273,7 +296,16 @@ async def crawl_futures(args: argparse.Namespace) -> dict:
         async with semaphore:
             pos = meta["position"]
             name = meta["name"]
-            result = await process_player_result(pid, pos, name, repository, args.delay, pool)
+            try:
+                result = await process_player_result(pid, pos, name, repository, args.delay, pool)
+            except Exception as exc:
+                print(f"[ERROR] Unhandled exception for player {pid} ({pos}): {exc}")
+                result = {
+                    "player_id": pid,
+                    "status": "failed",
+                    "saved": 0,
+                    "failure_reason": "exception",
+                }
             results.append(result)
 
             player_id = result["player_id"]

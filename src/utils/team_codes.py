@@ -99,6 +99,8 @@ def resolve_team_code(name: Optional[str], season_year: Optional[int] = None) ->
         return None
     key = " ".join(name.replace("\n", " ").split())
     raw_code = TEAM_NAME_TO_CODE.get(key)
+    if not raw_code:
+        raw_code = TEAM_NAME_TO_CODE.get(key.upper())
     
     if raw_code and season_year:
         # If we have a year, try to resolve the specific brand code for that franchise
@@ -182,6 +184,7 @@ GAME_ID_SEGMENT_TO_CODE = {
     "SK": "SSG", # KBO uses SK for SSG franchise, we use SSG for current
     "SSG": "SSG",
     "WO": "KH", # KBO uses WO (Woori) for Kiwoom franchise, we use KH for current
+    "NX": "KH", # KBO uses NX (Nexen) for Kiwoom franchise
     "KI": "KH",
     "KH": "KH",
     "HD": "HU",
@@ -267,6 +270,7 @@ KBO_GAME_ID_TEAM_CODES = tuple(
             "WO",
             "OB",
             "HT",
+            "NX",
         },
         key=lambda code: (-len(code), code),
     )

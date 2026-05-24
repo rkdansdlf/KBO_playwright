@@ -57,6 +57,7 @@ def test_process_player_result_marks_empty_futures_as_skip(monkeypatch):
         return []
 
     monkeypatch.setattr(module, "fetch_and_parse_futures_batting", empty_rows)
+    monkeypatch.setattr(module, "_has_player_basic", lambda _pid: True)
 
     result = asyncio.run(
         module.process_player_result("1001", "hitter", "PlayerA", _FakeRepository(), delay=0, pool=None)
@@ -79,6 +80,7 @@ def test_process_player_result_does_not_save_when_profile_upsert_fails(monkeypat
 
     monkeypatch.setattr(module, "fetch_and_parse_futures_batting", rows)
     monkeypatch.setattr(module, "save_futures_batting", fail_if_called)
+    monkeypatch.setattr(module, "_has_player_basic", lambda _pid: True)
 
     result = asyncio.run(
         module.process_player_result("1001", "hitter", "PlayerA", _FakeRepository(player=None), delay=0, pool=None)
@@ -86,6 +88,45 @@ def test_process_player_result_does_not_save_when_profile_upsert_fails(monkeypat
 
     assert result["status"] == "failed"
     assert result["failure_reason"] == "profile_upsert_failed"
+
+
+def test_process_player_result_skips_when_player_basic_missing(monkeypatch):
+    async def rows(*_args, **_kwargs):
+        return [{"season": 2026, "G": 10, "AB": 40, "AVG": 0.25}]
+
+    monkeypatch.setattr(module, "fetch_and_parse_futures_batting", rows)
+    monkeypatch.setattr(module, "save_futures_batting", lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("save_futures_batting should be skipped")))
+    monkeypatch.setattr(module, "save_pitching_stats_to_db", lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("save_pitching_stats_to_db should be skipped")))
+    monkeypatch.setattr(module, "_has_player_basic", lambda _pid: False)
+
+    result = asyncio.run(
+        module.process_player_result("5669", "hitter", "PlayerA", _FakeRepository(), delay=0, pool=None)
+    )
+
+    assert result == {
+        "player_id": "5669",
+        "status": "skipped",
+        "saved": 0,
+        "failure_reason": "missing_player_basic",
+    }
+
+
+def test_crawl_futures_continues_when_player_processing_raises(monkeypatch):
+    async def ids(_season, _delay):
+        return {"1001": {"position": "hitter", "name": "PlayerA"}}
+
+    async def fail_on_player(*_args, **_kwargs):
+        raise RuntimeError("processor exploded")
+
+    monkeypatch.setattr(module, "gather_active_player_ids", ids)
+    monkeypatch.setattr(module, "process_player_result", fail_on_player)
+    monkeypatch.setattr(module, "AsyncPlaywrightPool", _FakePool)
+
+    summary = asyncio.run(module.crawl_futures(_args()))
+
+    assert summary["ok"] is False
+    assert summary["processed"] == 1
+    assert summary["failure_counts"] == {"exception": 1}
 
 
 def test_crawl_futures_summary_groups_failure_reasons(monkeypatch):

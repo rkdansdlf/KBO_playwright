@@ -386,39 +386,30 @@ def go_to_next_page(page: Page, current_page_num: int, policy: Optional[RequestP
     """
     try:
         if current_page_num % 5 == 0:  # 5페이지마다 "다음" 버튼 클릭
-            next_button_selector = 'a[href*="btnNext"]'
-            next_button = page.query_selector(next_button_selector)
-
-            if not next_button:
-                return False
-
-            if next_button.get_attribute("disabled") or "disabled" in (next_button.get_attribute("class") or ""):
-                return False
-
-            if policy: policy.delay()
-            next_button.click()
-            page.wait_for_load_state('networkidle', timeout=30000)
-            print(f"➡️ 다음 버튼 클릭 ({current_page_num}페이지 후)")
-
+            selector = 'a[href*="btnNext"]'
+            desc = f"다음 버튼 클릭 ({current_page_num}페이지 후)"
         else:  # 개별 페이지 번호 클릭
             next_page_num = current_page_num + 1
             relative_page_num = ((next_page_num - 1) % 5) + 1
+            selector = f'a[href*="btnNo{relative_page_num}"]'
+            desc = f"{next_page_num}페이지로 이동 (btnNo{relative_page_num})"
 
-            page_button_selector = f'a[href*="btnNo{relative_page_num}"]'
-            page_button = page.query_selector(page_button_selector)
+        # 버튼 존재 여부 및 상태 확인
+        page.wait_for_selector(selector, state="visible", timeout=5000)
+        btn = page.query_selector(selector)
+        if not btn or btn.get_attribute("disabled") or "disabled" in (btn.get_attribute("class") or ""):
+            return False
 
-            if page_button:
-                if policy: policy.delay()
-                page_button.click()
-                page.wait_for_load_state('networkidle', timeout=30000)
-                print(f"➡️ {next_page_num}페이지로 이동 (btnNo{relative_page_num})")
-            else:
-                return False
-
+        if policy: policy.delay()
+        
+        # 직접 클릭 시도 (Attached 여부 확인하며)
+        page.click(selector, timeout=10000)
+        page.wait_for_load_state('networkidle', timeout=30000)
+        print(f"➡️ {desc}")
         return True
 
     except Exception as e:
-        print(f"❌ 페이지 이동 실패: {e}")
+        print(f"❌ 페이지 이동 실패 ({current_page_num}p -> next): {e}")
         return False
 
 
