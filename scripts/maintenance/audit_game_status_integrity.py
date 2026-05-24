@@ -34,6 +34,7 @@ from src.utils.game_status import (
 
 def audit_game_status() -> List[Dict[str, Any]]:
     today = date.today()
+    current_year_start = date(today.year, 1, 1)
     violations = []
 
     with SessionLocal() as session:
@@ -62,21 +63,20 @@ def audit_game_status() -> List[Dict[str, Any]]:
             })
 
         # 2. LIVE games without evidence
-        # Excluding today's games for a short grace period (e.g., if they just started)
         live_no_evidence = session.execute(
             text("""
                 SELECT g.game_id, g.game_date, g.game_status
                 FROM game g
                 WHERE g.game_status = :live
+                  AND g.game_date >= :start_date
                   AND NOT EXISTS (SELECT 1 FROM game_inning_scores gis WHERE gis.game_id = g.game_id)
                   AND NOT EXISTS (SELECT 1 FROM game_events ge WHERE ge.game_id = g.game_id)
                   AND NOT EXISTS (SELECT 1 FROM game_play_by_play pbp WHERE pbp.game_id = g.game_id)
             """),
-            {"live": GAME_STATUS_LIVE}
+            {"live": GAME_STATUS_LIVE, "start_date": current_year_start}
         ).mappings().all()
 
         for row in live_no_evidence:
-            # If it's today, we might skip if it's within game time, but for audit, flagging is good
             violations.append({
                 "game_id": row["game_id"],
                 "game_date": row["game_date"],
@@ -90,9 +90,10 @@ def audit_game_status() -> List[Dict[str, Any]]:
                 SELECT game_id, game_date, game_status
                 FROM game
                 WHERE game_status IN (:completed, :draw)
+                  AND game_date >= :start_date
                   AND (home_score IS NULL OR away_score IS NULL)
             """),
-            {"completed": GAME_STATUS_COMPLETED, "draw": GAME_STATUS_DRAW}
+            {"completed": GAME_STATUS_COMPLETED, "draw": GAME_STATUS_DRAW, "start_date": current_year_start}
         ).mappings().all()
 
         for row in completed_no_scores:
@@ -109,9 +110,10 @@ def audit_game_status() -> List[Dict[str, Any]]:
                 SELECT game_id, game_date, game_status
                 FROM game
                 WHERE game_date < :today
+                  AND game_date >= :start_date
                   AND game_status = :live
             """),
-            {"today": today, "live": GAME_STATUS_LIVE}
+            {"today": today, "live": GAME_STATUS_LIVE, "start_date": current_year_start}
         ).mappings().all()
 
         for row in past_live:
