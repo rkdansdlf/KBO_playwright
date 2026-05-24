@@ -24,6 +24,7 @@ KBO_TO_NAVER_TEAM_CODE = {
     "PA": "PN",  # Panama -> PN (Naver)
     "DB": "DO",  # Doosan (OB) -> DO (Naver)
     "KH": "WO",  # Kiwoom -> WO (Naver uses WO for Heroes franchise)
+    "NX": "WO",  # Nexen -> WO
     "HT": "KIA", # KIA (HT) -> KIA (Naver)
     "SK": "SSG", # SSG (SK) -> SSG (Naver)
     "DR": "DREAM", # Dream All-Star
@@ -171,36 +172,60 @@ class RelayCrawler:
         # Format: MMDDAWAYHOME{DH}{YEAR} e.g. 0510SSHH02024
         exact_suffix = f"{game_date_str[4:8]}{away_code}{home_code}{dh_no}{season_year}"
         team_suffix = f"{away_code}{home_code}{dh_no}{season_year}"
+        legacy_suffix = f"{game_date_str[4:8]}{away_code}{home_code}{dh_no}"
 
         candidates = []
         for game in games:
             game_id = str(game.get("gameId") or "").strip()
-            score = 0
             
             # Normalize Naver-provided team codes for comparison
-            g_away = self._naver_team_code(str(game.get("awayTeamCode") or "").strip())
-            g_home = self._naver_team_code(str(game.get("homeTeamCode") or "").strip())
+            g_away_raw = self._naver_team_code(str(game.get("awayTeamCode") or "").strip())
+            g_home_raw = self._naver_team_code(str(game.get("homeTeamCode") or "").strip())
             
-            # 1. ID Suffix Match (Very Strong)
-            # We also check if the game_id contains the teams at all to avoid false suffix matches
-            id_has_teams = self._is_team_in_id(away_code, game_id) and self._is_team_in_id(home_code, game_id)
-            if game_id.endswith(exact_suffix):
-                score += 100
-            elif game_id.endswith(team_suffix):
-                score += 80
-            elif id_has_teams and dh_no in game_id:
-                score += 20
+            is_reversed = bool(game.get("reversedHomeAway"))
+            
+            # Try both normal and swapped matching
+            best_iter_score = -1000
+            for swapped in [False, True]:
+                score = 0
+                g_away = g_home_raw if swapped else g_away_raw
+                g_home = g_away_raw if swapped else g_home_raw
                 
-            # 2. Team Code Match (Strong)
-            teams_match = (g_away == away_code and g_home == home_code)
-            if teams_match:
-                score += 50
-            elif g_away == away_code or g_home == home_code:
-                score += 10
-            
-            # Penalty for ANY explicit mismatch to prevent false positives from similar IDs
-            if (g_away and g_away != away_code) or (g_home and g_home != home_code):
-                score -= 150
+                # 1. ID Suffix Match (Very Strong)
+                id_has_teams = self._is_team_in_id(away_code, game_id) and self._is_team_in_id(home_code, game_id)
+                
+                # Suffixes might be flipped if teams are flipped
+                cur_exact = f"{game_date_str[4:8]}{home_code}{away_code}{dh_no}{season_year}" if swapped else exact_suffix
+                cur_legacy = f"{game_date_str[4:8]}{home_code}{away_code}{dh_no}" if swapped else legacy_suffix
+                
+                if game_id.endswith(cur_exact):
+                    score += 100
+                elif game_id.endswith(cur_legacy):
+                    score += 90
+                elif game_id.endswith(team_suffix):
+                    score += 80
+                elif id_has_teams and dh_no in game_id:
+                    score += 20
+                    
+                # 2. Team Code Match (Strong)
+                teams_match = (g_away == away_code and g_home == home_code)
+                if teams_match:
+                    score += 50
+                elif g_away == away_code or g_home == home_code:
+                    score += 10
+                
+                # Penalty for ANY explicit mismatch
+                if (g_away and g_away != away_code) or (g_home and g_home != home_code):
+                    score -= 150
+                
+                # Bonus for matching the reversed flag
+                if swapped == is_reversed and teams_match:
+                    score += 10
+                
+                best_iter_score = max(best_iter_score, score)
+
+            score = best_iter_score
+            # 3. Doubleheader Match
                 
             # 3. Doubleheader Match
             # Some Naver payloads have 'doubleHeader' field
