@@ -94,29 +94,46 @@ def _apply_heal_outcome(game_id: str, item) -> str:
     return "unresolved"
 
 
-async def run_healer_async(dry_run: bool = False, reset_checkpoint: bool = False) -> int:
+async def run_healer_async(
+    dry_run: bool = False,
+    reset_checkpoint: bool = False,
+    target_game_ids: Optional[List[str]] = None,
+) -> int:
     print("\n🩺 Running KBO Pipeline Auto-Healer...")
 
     recovery_mgr = RecoveryManager()
     if reset_checkpoint:
         recovery_mgr.clear()
 
-    stuck_games = _find_stuck_games()
-    inconsistent_games = _find_inconsistent_games()
+    all_found = []
+    if target_game_ids:
+        # Targeted recovery mode
+        with SessionLocal() as session:
+            stmt = select(Game).where(Game.game_id.in_(target_game_ids))
+            all_found = list(session.execute(stmt).scalars().all())
+            print(f"🎯 Target recovery requested for {len(all_found)} specific game(s).")
+    else:
+        # Standard anomaly detection mode
+        stuck_games = _find_stuck_games()
+        inconsistent_games = _find_inconsistent_games()
 
-    if not stuck_games and not inconsistent_games:
-        print("✅ No anomalies detected. Pipeline is healthy.")
-        recovery_mgr.clear()
+        if not stuck_games and not inconsistent_games:
+            print("✅ No anomalies detected. Pipeline is healthy.")
+            recovery_mgr.clear()
+            return 0
+
+        all_found = sorted(
+            list({g.game_id: g for g in (stuck_games + inconsistent_games)}.values()),
+            key=lambda x: x.game_id,
+        )
+
+    if not all_found:
+        print("✅ No games found for recovery.")
         return 0
 
-    all_found = sorted(
-        list({g.game_id: g for g in (stuck_games + inconsistent_games)}.values()),
-        key=lambda x: x.game_id,
-    )
-    
     # Initialize or resume checkpoint
     recovery_mgr.initialize_run("default_healer_run", [g.game_id for g in all_found])
-    
+
     pending_ids = set(recovery_mgr.get_pending_targets())
     recovery_candidates = [g for g in all_found if g.game_id in pending_ids]
 
@@ -127,8 +144,11 @@ async def run_healer_async(dry_run: bool = False, reset_checkpoint: bool = False
     total = len(recovery_candidates)
     anomaly_dates = sorted({g.game_date for g in recovery_candidates})
     
-    if stuck_games:
-        stuck_count = len([g for g in stuck_games if g.game_id in pending_ids])
+    # Initialize variables for summary check
+    stuck_games_filtered = [g for g in all_found if g.game_status == GAME_STATUS_SCHEDULED]
+    
+    if stuck_games_filtered:
+        stuck_count = len([g for g in stuck_games_filtered if g.game_id in pending_ids])
         if stuck_count:
             print(f"⚠️  Anomaly Detected: {stuck_count} past game(s) stuck in SCHEDULED state!")
     if inconsistent_games:
