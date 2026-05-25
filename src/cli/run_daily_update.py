@@ -650,10 +650,27 @@ async def run_update(
 
     print("\n🕵️  Step 10.8: Deep statistical logic audit (cross-table invariants)...")
     try:
-        runner(["scripts/verification/audit_game_logic.py", "--year", str(year)])
-        print("   ✅ Deep statistical logic audit complete")
+        from scripts.verification.audit_game_logic import audit_game_logic
+        violations = audit_game_logic(year=year)
+
+        if violations:
+            inconsistent_ids = sorted({v["game_id"] for v in violations})
+            print(f"   ⚠️  Audit found {len(violations)} inconsistencies in {len(inconsistent_ids)} games.")
+            print(f"   🚀 Triggering targeted self-healing for: {', '.join(inconsistent_ids[:5])}...")
+
+            await run_healer_async(target_game_ids=inconsistent_ids)
+
+            print("   🔍 Re-auditing after repair...")
+            violations_after = audit_game_logic(year=year)
+            if not violations_after:
+                print("   ✅ All inconsistencies resolved automatically.")
+            else:
+                remaining_ids = sorted({v["game_id"] for v in violations_after})
+                print(f"   ❌ {len(violations_after)} inconsistencies still remain in {len(remaining_ids)} games.")
+        else:
+            print("   ✅ Deep statistical logic audit complete (No issues found)")
     except Exception as exc:
-        print(f"   ⚠️ Deep statistical audit found logical inconsistencies (see logs): {exc}")
+        print(f"   ⚠️  Deep statistical audit/heal process failed: {exc}")
 
     candidate_sync_game_ids = sorted(
         {game["game_id"] for game in daily_games}
