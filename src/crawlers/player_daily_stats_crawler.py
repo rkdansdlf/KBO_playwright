@@ -6,9 +6,12 @@ This is used to backfill missing or corrupted data in the game_stats tables.
 
 from __future__ import annotations
 import asyncio
+import logging
 from typing import Dict, List, Any, Optional
 from datetime import datetime
 from playwright.async_api import Page, async_playwright
+
+logger = logging.getLogger(__name__)
 
 class PlayerDailyStatsCrawler:
     def __init__(self, headless: bool = True):
@@ -33,8 +36,8 @@ class PlayerDailyStatsCrawler:
                     await page.select_option(year_selector, value=str(season))
                     await page.wait_for_load_state("networkidle")
                     await asyncio.sleep(1.5) # Wait for AJAX/Postback
-                except Exception as e:
-                    print(f"   ❌ Failed to select year {season}: {e}")
+                except Exception:
+                    logger.exception(f"   ❌ Failed to select year {season}")
                     return []
 
                 # 2. Parse All Tables
@@ -68,8 +71,8 @@ class PlayerDailyStatsCrawler:
                 
                 return all_games
 
-            except Exception as e:
-                print(f"   ❌ Error crawling player {player_id}: {e}")
+            except Exception:
+                logger.exception(f"   ❌ Error crawling player {player_id}")
                 return []
             finally:
                 await browser.close()

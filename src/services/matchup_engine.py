@@ -1,4 +1,7 @@
+import logging
 from typing import List, Dict, Any
+
+logger = logging.getLogger(__name__)
 from sqlalchemy import select, func, and_, case
 from src.db.engine import SessionLocal
 from src.models.game import Game, GameBattingStat, GamePitchingStat
@@ -28,9 +31,9 @@ class MatchupEngine:
 
             sess.commit()
             print(f"✅ Matchup metrics recalculated for season {season_year}")
-        except Exception as e:
+        except Exception:
             sess.rollback()
-            print(f"❌ Matchup engine failed: {e}")
+            logger.exception("❌ Matchup engine failed")
             raise
         finally:
             if not self.session:

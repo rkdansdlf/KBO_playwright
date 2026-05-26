@@ -1,9 +1,13 @@
+import logging
 import asyncio
 import argparse
 import re
 import json
 from typing import List, Dict, Any, Optional
 from datetime import date, datetime
+
+
+logger = logging.getLogger(__name__)
 
 from playwright.async_api import async_playwright, Page, TimeoutError
 from sqlalchemy.orm import Session
@@ -136,8 +140,8 @@ class FACrawler:
                         print(f"   => Found {len(section_data)} records total.")
                         results.extend(section_data)
                         
-            except Exception as e:
-                print(f"❌ Error during crawling: {e}")
+            except Exception:
+                logger.exception("❌ Error during crawling")
                 import traceback
                 traceback.print_exc()
             finally:
@@ -360,8 +364,8 @@ class FACrawler:
                 data = json.load(f)
             print(f"   => Loaded {len(data)} records.")
             return data
-        except Exception as e:
-            print(f"❌ Error loading JSON: {e}")
+        except Exception:
+            logger.exception("❌ Error loading JSON")
             return []
 
     def save_to_db(self, data: List[Dict[str, Any]], session: Session, dry_run: bool = False):
@@ -495,9 +499,9 @@ class FACrawler:
                 session.commit()
                 print(f"✅ player_movements Update Complete: {new_records} Inserted, {updates} Updated.")
                 print(f"✅ fa_contracts Update Complete: {new_fa_contracts} Inserted, {updated_fa_contracts} Updated.")
-            except Exception as e:
+            except Exception:
                 session.rollback()
-                print(f"❌ DB Error: {e}")
+                logger.exception("❌ DB Error")
 
 
 async def main():

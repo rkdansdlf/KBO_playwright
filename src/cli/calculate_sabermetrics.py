@@ -1,3 +1,4 @@
+import logging
 import argparse
 import os
 from typing import List
@@ -6,6 +7,8 @@ from src.models.player import PlayerSeasonBatting, PlayerSeasonPitching, PlayerB
 from src.models.team import Team
 from src.aggregators.sabermetrics_calculator import SabermetricsCalculator
 from src.cli.sync_oci import OCISync
+
+logger = logging.getLogger(__name__)
 
 def batch_calculate_sabermetrics(years: List[int], sync_oci: bool = False):
     """
@@ -18,8 +21,8 @@ def batch_calculate_sabermetrics(years: List[int], sync_oci: bool = False):
             try:
                 lg = SabermetricsCalculator.get_league_constants(session, year)
                 print(f"   League Constants: wOBA={lg['lg_woba']:.3f}, FIP_C={lg['fip_constant']:.2f}, R/PA={lg['lg_r_per_pa']:.3f}")
-            except Exception as e:
-                print(f"   ⚠️ Could not calculate league constants for {year}: {e}")
+            except Exception:
+                logger.exception(f"   ⚠️ Could not calculate league constants for {year}")
                 continue
 
             # 1. Update Batting Sabermetrics

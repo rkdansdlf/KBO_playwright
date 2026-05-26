@@ -9,6 +9,7 @@
 """
 from __future__ import annotations
 
+import logging
 import argparse
 import asyncio
 from typing import Sequence, Set
@@ -24,6 +25,8 @@ from src.repositories.player_repository import PlayerRepository
 # Ensure all models are loaded to resolve foreign keys
 from src.models.player import Player, PlayerSeasonBatting, PlayerSeasonPitching  # noqa: F401
 from src.models.team import Team  # noqa: F401
+
+logger = logging.getLogger(__name__)
 
 
 async def determine_inactive_ids(
@@ -128,8 +131,8 @@ async def crawl_retired_players(args: argparse.Namespace) -> None:
                 print(f"📡 Processing player {pid}...")
                 await process_player(pid, detail_crawler, repository)
                 print(f"✅ Processed retired player {pid}")
-            except Exception as exc:
-                print(f"❌ Failed to process player {pid}: {exc}")
+            except Exception:
+                logger.exception(f"❌ Failed to process player {pid}")
 
     try:
         await asyncio.gather(*(runner(pid) for pid in inactive_list))

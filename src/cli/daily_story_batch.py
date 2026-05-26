@@ -1,6 +1,7 @@
 """Generate post-game LLM-ready story timelines from game_events."""
 from __future__ import annotations
 
+import logging
 import argparse
 import asyncio
 import json
@@ -16,6 +17,8 @@ from src.sync.oci_sync import OCISync
 from src.utils.game_status import COMPLETED_LIKE_GAME_STATUSES
 from src.utils.refresh_manifest import write_refresh_manifest
 from src.utils.safe_print import safe_print as print
+
+logger = logging.getLogger(__name__)
 
 
 def dump_story_json(story_data: dict) -> str:
@@ -109,9 +112,9 @@ async def run_story_batch(target_date: str, *, sync_to_oci: bool | None = None) 
 
         try:
             session.commit()
-        except Exception as exc:
+        except Exception:
             session.rollback()
-            print(f"❌ Failed to save game stories to DB: {exc}")
+            logger.exception("❌ Failed to save game stories to DB")
             raise
 
     should_sync = sync_to_oci if sync_to_oci is not None else bool(os.getenv("OCI_DB_URL"))

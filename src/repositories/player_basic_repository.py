@@ -2,8 +2,11 @@
 Player Basic Repository
 UPSERT operations for player_basic table
 """
+import logging
 from collections import Counter
 from typing import List, Dict, Any
+
+logger = logging.getLogger(__name__)
 from sqlalchemy.orm import Session
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.dialects.postgresql import insert as pg_insert
@@ -139,9 +142,9 @@ class PlayerBasicRepository:
                 session.execute(stmt)
                 session.commit()
                 return len(rows)
-            except Exception as e:
+            except Exception:
                 session.rollback()
-                print(f"[ERROR] Error upserting players: {e}")
+                logger.exception("[ERROR] Error upserting players")
                 raise
 
     def _upsert_one(self, session: Session, player_data: Dict[str, Any]):

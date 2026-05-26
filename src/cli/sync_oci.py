@@ -7,6 +7,7 @@
 """
 from __future__ import annotations
 
+import logging
 import argparse
 import os
 from typing import Iterable, List, Type, Callable, Any
@@ -24,6 +25,8 @@ from src.models.season import KboSeason
 from src.models.team import Team
 from src.sync.oci_sync import OCISync
 from src.db.engine import SessionLocal
+
+logger = logging.getLogger(__name__)
 
 
 # 외래 키 제약 조건을 고려한 모델 처리 순서
@@ -58,8 +61,8 @@ def run_parallel_sync(
                 syncer = OCISync(target_url, session)
                 sync_fn(syncer, year, **kwargs)
                 print(f"✅ Worker finished for year {year}")
-            except Exception as e:
-                print(f"❌ Worker failed for year {year}: {e}")
+            except Exception:
+                logger.exception(f"❌ Worker failed for year {year}")
 
     with ThreadPoolExecutor(max_workers=workers) as executor:
         executor.map(sync_worker, years)
@@ -79,8 +82,8 @@ def sync_databases(source_url: str, target_url: str, truncate: bool = False, bat
     # 대상 데이터베이스에 테이블이 없으면 생성합니다.
     try:
         Base.metadata.create_all(bind=target_engine)
-    except Exception as e:
-        print(f"⚠️ Table creation failed (might already exist or schema issue): {e}")
+    except Exception:
+        logger.exception("⚠️ Table creation failed (might already exist or schema issue)")
 
     SourceSession = sessionmaker(bind=source_engine, autoflush=False, autocommit=False)
     TargetSession = sessionmaker(bind=target_engine, autoflush=False, autocommit=False)
@@ -202,6 +205,21 @@ def build_arg_parser() -> argparse.ArgumentParser:
         "--crawl-runs",
         action="store_true",
         help="크롤링 실행 기록(Crawl Runs)을 동기화합니다.",
+    )
+    parser.add_argument(
+        "--rag-chunks",
+        action="store_true",
+        help="RAG 텍스트 청크 데이터를 동기화합니다.",
+    )
+    parser.add_argument(
+        "--ticket-schedules",
+        action="store_true",
+        help="경기 예매 오픈 일정 데이터를 동기화합니다.",
+    )
+    parser.add_argument(
+        "--stadium-foods",
+        action="store_true",
+        help="구장별 먹거리 추천 데이터(stadium_foods)를 동기화합니다.",
     )
     parser.add_argument(
         "--season-stats",
@@ -430,6 +448,27 @@ def main(argv: Iterable[str] | None = None) -> None:
             syncer.sync_crawl_runs()
             print("✅ Crawl Runs Sync Finished")
 
+    elif args.rag_chunks:
+        print("🚀 Syncing RAG Chunks using specialized OCISync...")
+        with SessionLocal() as session:
+            syncer = OCISync(args.target_url, session)
+            synced = syncer.sync_rag_chunks(batch_size=args.copy_batch_size)
+            print(f"✅ RAG Chunks Sync Finished ({synced} rows)")
+
+    elif args.ticket_schedules:
+        print("🚀 Syncing Ticket Schedules using specialized OCISync...")
+        with SessionLocal() as session:
+            syncer = OCISync(args.target_url, session)
+            synced = syncer.sync_ticket_schedules(batch_size=args.copy_batch_size)
+            print(f"✅ Ticket Schedules Sync Finished ({synced} rows)")
+
+    elif args.stadium_foods:
+        print("🚀 Syncing Stadium Foods using specialized OCISync...")
+        with SessionLocal() as session:
+            syncer = OCISync(args.target_url, session)
+            synced = syncer.sync_stadium_foods(batch_size=args.copy_batch_size)
+            print(f"✅ Stadium Foods Sync Finished ({synced} rows)")
+
     elif args.season_stats:
         print("🚀 Syncing Season Stats (Batting, Pitching, Fielding, Baserunning, Team) using specialized OCISync...")
 
@@ -524,8 +563,8 @@ def main(argv: Iterable[str] | None = None) -> None:
     try:
         from scripts.maintenance.reset_oci_sequences import reset_sequences
         reset_sequences(args.target_url)
-    except Exception as e:
-        print(f"⚠️ Failed to call reset_sequences: {e}")
+    except Exception:
+        logger.exception("⚠️ Failed to call reset_sequences")
 
 
 if __name__ == "__main__":  # pragma: no cover

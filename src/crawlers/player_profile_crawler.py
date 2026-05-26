@@ -3,11 +3,15 @@ KBO Player Profile Crawler (Enhanced)
 Collects extended player profile: photo_url, bats, throws, salary, draft info, debut_year.
 Source: KBO HitterDetail/PitcherDetail Basic.aspx
 """
+import logging
 import asyncio
 import re
 from typing import Dict, Optional
 
 from playwright.async_api import Page
+
+
+logger = logging.getLogger(__name__)
 from src.utils.playwright_pool import AsyncPlaywrightPool
 from src.utils.safe_print import safe_print as print
 from src.utils.compliance import compliance
@@ -215,8 +219,8 @@ class PlayerProfileCrawler:
             page = await pool.acquire()
             try:
                 return await self._fetch_profile(page, player_id, position)
-            except Exception as e:
-                print(f"❌ Profile crawl failed for {player_id}: {e}")
+            except Exception:
+                logger.exception(f"❌ Profile crawl failed for {player_id}")
                 return None
             finally:
                 await pool.release(page)
@@ -283,8 +287,8 @@ class PlayerProfileCrawler:
                 }
                 self._last_failure_reason.pop(str(player_id), None)
                 return result
-            except Exception as e:
-                print(f"   (Failed attempt at {url}: {e})")
+            except Exception:
+                logger.exception(f"   (Failed attempt at {url})")
                 last_reason = "selector_timeout"
                 continue
         
@@ -298,7 +302,7 @@ class PlayerProfileCrawler:
 
         # Wait for any name element to be attached
         try:
-            await page.wait_for_selector('[id$="lblName"], .player_basic, .player_info', timeout=5000)
+            await page.wait_for_selector('[id$="lblName"], .player_basic, .player_info', timeout=15000)
         except Exception:
             pass
 

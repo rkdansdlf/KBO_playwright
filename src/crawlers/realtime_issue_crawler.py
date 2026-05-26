@@ -3,12 +3,17 @@ Crawler for real-time issue text: Naver Sports baseball news headlines and MLBPa
 """
 from __future__ import annotations
 
+import logging
+import re
 from datetime import datetime
 from typing import Dict, List, Any
 import httpx
 from bs4 import BeautifulSoup
 
 from src.utils.safe_print import safe_print as print
+
+
+logger = logging.getLogger(__name__)
 
 class RealtimeIssueCrawler:
     """
@@ -28,31 +33,35 @@ class RealtimeIssueCrawler:
         Fetches latest baseball news headlines from Naver Sports GW API (JSON)
         with fallback to web scraping if API is down.
         """
-        api_url = "https://api-gw.sports.naver.com/news/list?category=kbaseball&page=1&pageSize=20"
+        date_str = datetime.now().strftime("%Y%m%d")
+        api_url = f"https://api-gw.sports.naver.com/news/articles/kbaseball?sort=latest&date={date_str}&page=1&pageSize=20&isPhoto=N"
         print(f"📰 Fetching Naver news from API: {api_url}")
         
         articles = []
         try:
-            with httpx.Client(headers=self.headers, timeout=self.timeout) as client:
+            custom_headers = self.headers.copy()
+            custom_headers["Referer"] = "https://sports.news.naver.com/kbaseball/news/index"
+            custom_headers["Origin"] = "https://sports.news.naver.com"
+            with httpx.Client(headers=custom_headers, timeout=self.timeout) as client:
                 res = client.get(api_url)
                 if res.status_code == 200:
                     data = res.json()
-                    # Naver Sports news JSON structures vary; typically result or list
                     result_data = data.get("result", {})
-                    news_list = result_data.get("list", [])
+                    news_list = result_data.get("newsList", [])
                     
                     for item in news_list:
                         title = item.get("title", "")
+                        sub_content = item.get("subContent", "")
                         oid = item.get("oid", "")
-                        aid = item.get("aid", "")
+                        offset_id = item.get("aid", "")
                         office_name = item.get("officeName", "")
                         dt_str = item.get("datetime", "")
                         
-                        url = f"https://sports.news.naver.com/kbaseball/news/read?oid={oid}&aid={aid}"
+                        url = f"https://sports.news.naver.com/kbaseball/news/read?oid={oid}&aid={offset_id}"
                         
                         articles.append({
                             "title": title,
-                            "content": f"[{office_name}] {title}", # Placeholder or short summary
+                            "content": sub_content if sub_content else title,
                             "meta": {
                                 "source": url,
                                 "office_name": office_name,
@@ -63,8 +72,10 @@ class RealtimeIssueCrawler:
                         })
                     print(f"   Fetched {len(articles)} headlines from JSON API.")
                     return articles
-        except Exception as e:
-            print(f"⚠️ Naver news API failed ({e}). Falling back to HTML scraping...")
+                else:
+                    print(f"⚠️ Naver news API returned status code {res.status_code}")
+        except Exception:
+            logger.exception("⚠️ Naver news API failed. Falling back to HTML scraping...")
 
         # HTML Scraping Fallback
         fallback_url = "https://sports.news.naver.com/kbaseball/news/index"
@@ -73,16 +84,20 @@ class RealtimeIssueCrawler:
                 res = client.get(fallback_url)
                 if res.status_code == 200:
                     soup = BeautifulSoup(res.text, "lxml")
-                    # Naver News elements list
-                    links = soup.select(".news_list a")
-                    for a in links[:15]:
+                    links = []
+                    for a in soup.find_all("a"):
+                        href = a.get("href", "")
                         title = a.get("title") or a.text.strip()
-                        href = a.get("href")
-                        if not href:
+                        if href and ("read" in href or "read.nhn" in href) and title:
+                            if href.startswith("/"):
+                                href = "https://sports.news.naver.com" + href
+                            links.append((title, href))
+                            
+                    seen = set()
+                    for title, href in links:
+                        if href in seen:
                             continue
-                        if href.startswith("/"):
-                            href = "https://sports.news.naver.com" + href
-                        
+                        seen.add(href)
                         articles.append({
                             "title": title,
                             "content": title,
@@ -93,14 +108,14 @@ class RealtimeIssueCrawler:
                             }
                         })
             print(f"   Fetched {len(articles)} headlines from HTML fallback.")
-        except Exception as ex:
-            print(f"⚠️ Naver News HTML fallback also failed: {ex}")
+        except Exception:
+            logger.exception("⚠️ Naver News HTML fallback also failed")
             
         return articles
 
     def fetch_mlbpark_bullpen_posts(self) -> List[Dict[str, Any]]:
         """
-        Crawls popular titles and post preview contents from MLBPark Bullpen forum.
+        Crawls popular titles and post details from MLBPark Bullpen forum.
         """
         url = "https://mlbpark.donga.com/mp/b.php?b=bullpen"
         print(f"💬 Fetching posts from MLBPark Bullpen: {url}")
@@ -112,37 +127,36 @@ class RealtimeIssueCrawler:
                 if res.status_code == 200:
                     soup = BeautifulSoup(res.text, "lxml")
                     
-                    # MLBPark bullpen list items
-                    # Typical elements are tr, inside td class 'tit'
-                    rows = soup.select("table.tbl_type01 tbody tr")
-                    
-                    for r in rows:
-                        # Skip notice rows
-                        if r.select_one(".notice"):
-                            continue
-                            
-                        tit_el = r.select_one("td.tit a")
-                        if not tit_el:
-                            continue
-                            
-                        title = tit_el.text.strip()
-                        href = tit_el.get("href", "")
+                    seen_urls = set()
+                    for a in soup.find_all("a"):
+                        href = a.get("href", "")
+                        title = a.text.strip()
                         
-                        # Filter to baseball-related or generic popular posts
-                        # (Many posts are non-baseball, but bullpen contains baseball issues during season)
-                        # We capture them as general community trends.
-                        
-                        posts.append({
-                            "title": title,
-                            "content": f"MLBPark Bullpen Post: {title}",
-                            "meta": {
-                                "source": href,
-                                "crawled_at": datetime.now().isoformat(),
-                                "category": "mlbpark"
-                            }
-                        })
+                        if "id=" in href and "b=bullpen" in href and "m=view" in href:
+                            if "pos=reply" in href or not title or (title.startswith("[") and title.endswith("]")):
+                                continue
+                            
+                            # Clean up comment/reply counts (e.g. Title [15] -> Title)
+                            title = re.sub(r'\s*\[\d+\]$', '', title)
+                            
+                            if href.startswith("/"):
+                                href = "https://mlbpark.donga.com" + href
+                            
+                            if href in seen_urls:
+                                continue
+                            seen_urls.add(href)
+                            
+                            posts.append({
+                                "title": title,
+                                "content": f"MLBPark Bullpen popular discussion thread: {title}",
+                                "meta": {
+                                    "source": href,
+                                    "crawled_at": datetime.now().isoformat(),
+                                    "category": "mlbpark"
+                                }
+                            })
             print(f"   Fetched {len(posts)} posts from MLBPark.")
-        except Exception as e:
-            print(f"⚠️ Error fetching MLBPark bullpen posts: {e}")
+        except Exception:
+            logger.exception("⚠️ Error fetching MLBPark bullpen posts")
             
         return posts

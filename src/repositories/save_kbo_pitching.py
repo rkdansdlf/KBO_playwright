@@ -2,11 +2,14 @@
 KBO 투수 기록 저장 (타자 크롤러 방식과 동일한 단순 구조)
 외래키 제약조건 없이 직접 저장
 """
+import logging
 from typing import List, Dict, Any
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 
 from src.db.engine import SessionLocal
+
+logger = logging.getLogger(__name__)
 
 
 def save_pitching_stats(pitching_stats: List[Dict[str, Any]]) -> int:
@@ -52,9 +55,9 @@ def save_pitching_stats(pitching_stats: List[Dict[str, Any]]) -> int:
             session.commit()
             return saved_count
 
-        except Exception as e:
+        except Exception:
             session.rollback()
-            print(f"[ERROR] 투수 기록 저장 실패: {e}")
+            logger.exception("[ERROR] 투수 기록 저장 실패")
             raise
 
 

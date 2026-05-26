@@ -1,7 +1,10 @@
+import logging
 import argparse
 from typing import List
 from src.db.engine import SessionLocal
 from src.services.matchup_engine import MatchupEngine
+
+logger = logging.getLogger(__name__)
 
 def batch_calculate_matchups(years: List[int], sync_oci: bool = False):
     """
@@ -12,8 +15,8 @@ def batch_calculate_matchups(years: List[int], sync_oci: bool = False):
     for year in years:
         try:
             engine.execute_all(year)
-        except Exception as e:
-            print(f"⚠️ Failed to calculate matchups for {year}: {e}")
+        except Exception:
+            logger.exception(f"⚠️ Failed to calculate matchups for {year}")
 
     if sync_oci:
         print("🚀 Syncing Matchups to OCI...")

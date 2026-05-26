@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import logging
 import os
 import time
 from datetime import datetime
@@ -15,6 +16,8 @@ from typing import Sequence
 
 import httpx
 from zoneinfo import ZoneInfo
+
+logger = logging.getLogger(__name__)
 
 from src.crawlers.game_detail_crawler import GameDetailCrawler
 from src.crawlers.naver_relay_crawler import NaverRelayCrawler
@@ -75,8 +78,8 @@ async def run_live_crawler_cycle(*, sync_to_oci: bool | None = None) -> tuple[bo
                 }
             else:
                 naver_status_map = {}
-    except Exception as e:
-        print(f"[WARN] Failed to fetch Naver live statuses: {e}")
+    except Exception:
+        logger.exception("[WARN] Failed to fetch Naver live statuses")
         naver_status_map = {}
 
     detail_crawler = GameDetailCrawler(request_delay=0.1)
@@ -198,8 +201,8 @@ async def main_loop(base_interval_minutes: int, *, sync_to_oci: bool | None = No
             print(f"[WAIT] Next check in {sleep_seconds} seconds...")
             await asyncio.sleep(sleep_seconds)
 
-        except Exception as exc:
-            print(f"[CRITICAL ERROR] Live loop crashed: {exc}")
+        except Exception:
+            logger.exception("[CRITICAL ERROR] Live loop crashed")
             await asyncio.sleep(60)
 
 

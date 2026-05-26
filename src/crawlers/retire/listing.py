@@ -4,8 +4,12 @@ Determine retired/inactive player IDs by comparing historical rosters with curre
 from __future__ import annotations
 
 import asyncio
+import logging
 import sys
 from typing import Iterable, List, Set, Dict, Optional
+
+
+logger = logging.getLogger(__name__)
 
 from src.utils.playwright_pool import AsyncPlaywrightPool
 from src.utils.compliance import compliance
@@ -215,8 +219,8 @@ class RetiredPlayerListingCrawler:
                 print(f"  Fetching IDs for {season}...", file=sys.stderr)
                 try:
                     return await self.collect_player_ids_for_year(season)
-                except Exception as e:
-                    print(f"  ❌ Error fetching IDs for {season}: {e}", file=sys.stderr)
+                except Exception:
+                    logger.exception(f"  ❌ Error fetching IDs for {season}")
                     return {}
 
         results = await asyncio.gather(*(fetch_year(s) for s in seasons_list))

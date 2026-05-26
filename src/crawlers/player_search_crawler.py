@@ -138,7 +138,7 @@ class PlayerSearchCrawler:
                 await page.locator(SEARCH_INPUT).fill(clean_name)
                 await page.locator(SEARCH_BTN).click()
                 try:
-                    await page.wait_for_selector(TABLE_ROWS, timeout=5000)
+                    await page.wait_for_selector(TABLE_ROWS, timeout=TIMEOUT_MS)
                 except Exception:
                     return []
                 rows = await self._paginate_current_tab(page)

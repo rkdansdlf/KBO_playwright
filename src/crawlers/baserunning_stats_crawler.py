@@ -1,6 +1,7 @@
 """
 선수의 시즌별 주루 기록을 크롤링하고 DB에 저장합니다.
 """
+import logging
 from playwright.sync_api import sync_playwright
 import sqlite3
 import sys
@@ -9,6 +10,9 @@ from datetime import datetime
 from pathlib import Path
 
 from src.utils.playwright_blocking import install_sync_resource_blocking
+
+
+logger = logging.getLogger(__name__)
 from src.utils.team_codes import resolve_team_code
 from src.utils.request_policy import RequestPolicy
 
@@ -44,13 +48,13 @@ def crawl_baserunning_stats(year=2025, max_retries=3, timeout=60000):
                 page.wait_for_load_state('networkidle', timeout=timeout)
                 time.sleep(1)
                 break
-            except Exception as e:
+            except Exception:
                 if attempt < max_retries - 1:
                     wait_time = (attempt + 1) * 2
-                    print(f"   ⚠️  재시도 {attempt + 1}/{max_retries} (오류: {type(e).__name__}, {wait_time}초 후 재시도)")
+                    print(f"   ⚠️  재시도 {attempt + 1}/{max_retries} ({wait_time}초 후 재시도)")
                     time.sleep(wait_time)
                 else:
-                    print(f"   ❌ 최대 재시도 횟수 초과: {e}")
+                    logger.exception("   ❌ 최대 재시도 횟수 초과")
                     browser.close()
                     return baserunning_data
 
@@ -116,8 +120,8 @@ def crawl_baserunning_stats(year=2025, max_retries=3, timeout=60000):
                             print(f"   ⚠️  선수 데이터 파싱 오류 ({player_name if 'player_name' in locals() else '알 수 없음'}): {e}")
                             continue
 
-        except Exception as e:
-            print(f"⚠️ 주루 기록 크롤링 중 오류: {e}")
+        except Exception:
+            logger.exception("⚠️ 주루 기록 크롤링 중 오류")
 
         browser.close()
 
@@ -212,9 +216,9 @@ def save_baserunning_stats(player_list, year=2025, db_path='kbo_2025.db'):
                 if idx % 10 == 0:
                     print(f"[{idx}/{len(baserunning_data)}] {player_name} 저장 완료")
 
-            except Exception as e:
+            except Exception:
                 fail_count += 1
-                print(f"   ❌ {player_name} 저장 실패: {e}")
+                logger.exception(f"   ❌ {player_name} 저장 실패")
         else:
             fail_count += 1
             print(f"   ⚠️  {player_name}: player_id를 찾을 수 없음")

@@ -2,6 +2,7 @@
 Player Season Batting Repository
 UPSERT operations for player_season_batting table
 """
+import logging
 from typing import List, Dict, Any, Optional
 from sqlalchemy.orm import Session
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
@@ -9,6 +10,8 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from src.db.engine import SessionLocal, Engine
 from src.models.player import PlayerSeasonBatting
+
+logger = logging.getLogger(__name__)
 
 
 class PlayerSeasonBattingRepository:
@@ -43,9 +46,9 @@ class PlayerSeasonBattingRepository:
                     self._upsert_one(session, stats_data)
                 session.commit()
                 return len(batting_stats)
-            except Exception as e:
+            except Exception:
                 session.rollback()
-                print(f"[ERROR] Error upserting batting stats: {e}")
+                logger.exception("[ERROR] Error upserting batting stats")
                 raise
 
     def _upsert_one(self, session: Session, stats_data: Dict[str, Any]):
@@ -176,7 +179,7 @@ class PlayerSeasonBattingRepository:
                 ).delete()
                 session.commit()
                 return deleted > 0
-            except Exception as e:
+            except Exception:
                 session.rollback()
-                print(f"[ERROR] Error deleting batting stats: {e}")
+                logger.exception("[ERROR] Error deleting batting stats")
                 raise

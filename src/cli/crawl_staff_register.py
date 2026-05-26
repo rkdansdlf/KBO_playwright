@@ -5,6 +5,7 @@ upserts them to the local SQLite DB (player_basic table), and optionally synchro
 """
 from __future__ import annotations
 
+import logging
 import argparse
 import asyncio
 import os
@@ -13,6 +14,8 @@ from typing import Sequence
 
 from src.crawlers.staff_register_crawler import StaffRegisterCrawler, KBO_TEAM_MAP
 from src.utils.safe_print import safe_print as print
+
+logger = logging.getLogger(__name__)
 
 
 async def run_crawler(args: argparse.Namespace) -> int:
@@ -57,8 +60,8 @@ async def run_crawler(args: argparse.Namespace) -> int:
                     try:
                         synced_count = syncer.sync_player_basic_by_ids(player_ids)
                         print(f"✅ Successfully synchronized {synced_count} player_basic records to OCI.")
-                    except Exception as e:
-                        print(f"❌ Failed to sync player basic records to OCI: {e}")
+                    except Exception:
+                        logger.exception("❌ Failed to sync player basic records to OCI")
                     finally:
                         syncer.close()
             else:

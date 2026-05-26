@@ -3,6 +3,7 @@ Crawler for dynamic structured data: schedules, ticket open times, and rosters.
 """
 from __future__ import annotations
 
+import logging
 from datetime import datetime, date, timedelta
 from typing import Dict, List, Any, Optional
 from sqlalchemy.orm import Session
@@ -12,6 +13,9 @@ from src.models.game import Game
 from src.models.ticket_schedule import TicketSchedule
 from src.crawlers.daily_roster_crawler import DailyRosterCrawler
 from src.utils.safe_print import safe_print as print
+
+
+logger = logging.getLogger(__name__)
 
 # Team ticketing rules mapping
 # (home_team) -> (days_before_game, hour_of_day, platform, default_url)
@@ -47,7 +51,7 @@ class DynamicDataCrawler:
             print(f"   Collected {len(records)} roster movements.")
             return records
         except Exception as e:
-            print(f"⚠️ Error crawling roster: {e}")
+            logger.exception("⚠️ Error crawling roster")
             raise e
 
     def crawl_and_update_ticket_times(self, lookahead_days: int = 14) -> List[TicketSchedule]:
