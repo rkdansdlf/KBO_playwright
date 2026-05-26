@@ -18,11 +18,15 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import logging
 import os
 import re
 import time
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Tuple
+
+
+logger = logging.getLogger(__name__)
 
 from playwright.sync_api import sync_playwright, Page, TimeoutError as PlaywrightTimeout
 
@@ -253,8 +257,9 @@ def go_to_next_page(page: Page, current_page: int, policy: Optional[RequestPolic
             selector = f'a[href*="btnNo{relative}"]'
             desc = f"{next_page}페이지로 이동 (btnNo{relative})"
         
-        # 버튼 존재 여부 및 상태 확인
-        page.wait_for_selector(selector, state="visible", timeout=5000)
+        # 버튼 존재 여부 및 상태 확인 (reload+retry 포함)
+        if not retry_wait_for_selector(page, selector, timeout=15000, state="visible"):
+            return False
         btn = page.query_selector(selector)
         if not btn or btn.get_attribute("disabled") or "disabled" in (btn.get_attribute("class") or ""):
             return False
@@ -262,7 +267,7 @@ def go_to_next_page(page: Page, current_page: int, policy: Optional[RequestPolic
         if policy: policy.delay()
         
         # 직접 클릭 시도
-        page.click(selector, timeout=10000)
+        page.click(selector, timeout=15000)
         page.wait_for_load_state('networkidle', timeout=30000)
         print(f"➡️ {desc}")
         
@@ -270,8 +275,8 @@ def go_to_next_page(page: Page, current_page: int, policy: Optional[RequestPolic
         wait_for_table(page)
         return True
         
-    except Exception as e:
-        print(f"❌ 페이지 이동 실패 ({current_page}p -> next): {e}")
+    except Exception:
+        logger.exception(f"❌ 페이지 이동 실패 ({current_page}p -> next)")
         return False
 
 
@@ -281,7 +286,7 @@ def apply_sort(page: Page, header_label: str, sort_code: Optional[str] = None, p
             # Prioritize actual DOM click (safer postback triggers)
             selector = f"a[href=\"javascript:sort('{sort_code}');\"]"
             try:
-                page.wait_for_selector(selector, timeout=5000)
+                page.wait_for_selector(selector, timeout=15000)
                 anchor = page.query_selector(selector)
                 if anchor:
                     if policy: policy.delay()
@@ -315,8 +320,8 @@ def apply_sort(page: Page, header_label: str, sort_code: Optional[str] = None, p
 
         print(f"⚠️  '{header_label}' 정렬 링크를 찾지 못했습니다.")
         return False
-    except Exception as e:
-        print(f"⚠️ 정렬 적용 실패: {e}")
+    except Exception:
+        logger.exception("⚠️ 정렬 적용 실패")
         return False
 
 
@@ -592,8 +597,8 @@ def parse_basic1_page(
             
         return processed
         
-    except Exception as e:
-        print(f"❌ Basic1 파싱 오류 (JS): {e}")
+    except Exception:
+        logger.exception("❌ Basic1 파싱 오류 (JS)")
         return 0
 
 
@@ -715,8 +720,8 @@ def setup_pitcher_page(page: Page, url: str, year: int, series_value: str, polic
     print(f"   🌐 Navigating to {url}...")
     try:
         page.goto(url, wait_until="networkidle", timeout=60000)
-    except Exception as e:
-        print(f"   ❌ {url} 페이지 로딩 실패: {e}")
+    except Exception:
+        logger.exception(f"   ❌ {url} 페이지 로딩 실패")
         return False
 
     import time; time.sleep(2)
@@ -742,8 +747,8 @@ def setup_pitcher_page(page: Page, url: str, year: int, series_value: str, polic
             return False
 
         return True
-    except Exception as e:
-        print(f"   ⚠️ 페이지 설정 중 오류: {e}")
+    except Exception:
+        logger.exception("   ⚠️ 페이지 설정 중 오류")
         return False
 
 
@@ -887,8 +892,8 @@ def crawl_pitcher_series(
                     print(f"ℹ️ 팀별 순회 모드: {len(team_options)}개 팀 발견")
                 else:
                     print("⚠️ 팀 선택 드롭다운을 찾을 수 없습니다. 전체 모드로 진행.")
-            except Exception as e:
-                print(f"⚠️ 팀 목록 추출 실패, 전체 모드로 진행: {e}")
+            except Exception:
+                logger.exception("⚠️ 팀 목록 추출 실패, 전체 모드로 진행")
                 team_options = []
 
         iteration_targets = team_options if team_options else [{'value': '', 'text': '전체'}]
@@ -901,8 +906,8 @@ def crawl_pitcher_series(
                     page.select_option('select[name="ctl00$ctl00$ctl00$cphContents$cphContents$cphContents$ddlTeam$ddlTeam"]', tm['value'])
                     page.wait_for_load_state('networkidle', timeout=60000)
                     time.sleep(1)
-                except Exception as e:
-                    print(f"⚠️ 팀 선택 실패 ({tm['text']}): {e}")
+                except Exception:
+                    logger.exception(f"⚠️ 팀 선택 실패 ({tm['text']})")
                     continue
 
             # 정렬 적용 (팀 선택 후 리셋될 수 있으므로 다시 적용)
@@ -1008,8 +1013,8 @@ def crawl_pitcher_series(
             saved_count = save_pitching_stats_to_db(payloads)
             print(f"✅ 투수 데이터 저장 완료: {saved_count}명")
             print(f"📌 다음 단계: ./venv/bin/python3 -m src.cli.sync_oci --season-stats --year {year} 실행하여 OCI 동기화")
-        except Exception as e:
-            print(f"❌ 투수 데이터 저장 실패: {e}")
+        except Exception:
+            logger.exception("❌ 투수 데이터 저장 실패")
 
     return stats_list
 

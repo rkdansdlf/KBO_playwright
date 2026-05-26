@@ -219,7 +219,7 @@ async def fetch_and_parse_futures_pitching(
             await throttle.wait()
 
             try:
-                futures_tab = await page.wait_for_selector('text="퓨처스"', timeout=3000)
+                futures_tab = await page.wait_for_selector('text="퓨처스"', timeout=10000)
                 if futures_tab:
                     await futures_tab.click()
                     await throttle.wait()

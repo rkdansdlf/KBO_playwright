@@ -2,10 +2,14 @@
 KBO Schedule Crawler POC
 Collects game IDs from the KBO schedule page
 """
+import logging
 import asyncio
 from datetime import datetime
 from typing import List, Dict, Optional, Any
 from playwright.async_api import Page
+
+
+logger = logging.getLogger(__name__)
 
 from src.utils.team_codes import team_code_from_game_id_segment, resolve_team_code, normalize_kbo_game_id
 from src.utils.playwright_pool import AsyncPlaywrightPool
@@ -76,8 +80,8 @@ class ScheduleCrawler:
                 games = await self._crawl_month(page, year, month, series_id=series_id)
                 print(f"✅ Found {len(games)} games")
                 return games
-            except Exception as e:
-                print(f"❌ Error crawling schedule: {e}")
+            except Exception:
+                logger.exception("❌ Error crawling schedule")
                 return []
             finally:
                 await pool.release(page)
@@ -135,8 +139,8 @@ class ScheduleCrawler:
 
         try:
             await self.policy.run_with_retry_async(_navigate)
-        except Exception as exc:
-            print(f"[WARN] Schedule page navigation failed: {exc}")
+        except Exception:
+            logger.exception("[WARN] Schedule page navigation failed")
             return False, "schedule_navigation_failed"
 
         return True, "ok"
@@ -145,8 +149,8 @@ class ScheduleCrawler:
         try:
             await page.wait_for_selector(".tbl tbody tr", timeout=timeout)
             return True, "ok"
-        except Exception as exc:
-            print(f"[WARN] Schedule table wait failed: {exc}")
+        except Exception:
+            logger.exception("[WARN] Schedule table wait failed")
             return False, "schedule_empty"
 
     async def _select_option_with_retry(
@@ -160,14 +164,14 @@ class ScheduleCrawler:
         async def _select() -> None:
             await self.policy.delay_async(host="www.koreabaseball.com")
             await page.select_option(selector, value)
-            await page.wait_for_load_state("networkidle", timeout=5000)
+            await page.wait_for_load_state("networkidle", timeout=15000)
             await page.wait_for_timeout(500)
             await page.wait_for_selector(".tbl", timeout=10000)
 
         try:
             await self.policy.run_with_retry_async(_select)
-        except Exception as exc:
-            print(f"[WARN] Schedule {label} select failed ({value}): {exc}")
+        except Exception:
+            logger.exception(f"[WARN] Schedule {label} select failed ({value})")
             return False, "schedule_navigation_failed"
 
         return True, "ok"
@@ -237,8 +241,8 @@ class ScheduleCrawler:
                     if gid and gid not in seen_game_ids:
                         all_games.append(g)
                         seen_game_ids.add(gid)
-            except Exception as e:
-                print(f"[WARN] Error crawling series {sid}: {e}")
+            except Exception:
+                logger.exception(f"[WARN] Error crawling series {sid}")
 
         if not all_games and not self._last_failure_reason.get(crawl_key):
             self._last_failure_reason[crawl_key] = "schedule_empty"
@@ -542,8 +546,8 @@ class ScheduleCrawler:
                 games.append(schedule_game)
             
             
-        except Exception as e:
-            print(f"[WARN] Error extracting game (JS): {e}")
+        except Exception:
+            logger.exception("[WARN] Error extracting game (JS)")
             return []
             
         if not games:

@@ -1,9 +1,13 @@
 
+import logging
 import asyncio
 from typing import List, Dict, Optional
 from playwright.async_api import async_playwright, Page, Locator
 
 from src.utils.playwright_blocking import install_async_resource_blocking
+
+
+logger = logging.getLogger(__name__)
 
 from src.models.franchise import Franchise
 from src.db.engine import SessionLocal
@@ -111,8 +115,8 @@ class TeamInfoCrawler:
                     
                     await self.page.locator("div[id^='layerPop']").wait_for(state="hidden", timeout=3000)
                     
-                except Exception as e:
-                    print(f"⚠️ Failed to parse modal for {team_name}: {e}")
+                except Exception:
+                    logger.exception(f"⚠️ Failed to parse modal for {team_name}")
                     # Force close if stuck
                     await self.page.keyboard.press("Escape")
                     owner, ceo, address, phone, homepage = None, None, None, None, None

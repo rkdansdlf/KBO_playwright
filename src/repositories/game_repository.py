@@ -3,11 +3,14 @@ Repository for saving game details, box scores, and normalized relay data.
 """
 from __future__ import annotations
 
+import logging
 import os
 from datetime import date, datetime
 from decimal import Decimal
 from typing import Dict, Any, List, Iterable, Optional
 from zoneinfo import ZoneInfo
+
+logger = logging.getLogger(__name__)
 
 from sqlalchemy import text
 
@@ -501,9 +504,9 @@ def save_schedule_game(
 
             session.commit()
             return True
-        except Exception as exc:
+        except Exception:
             session.rollback()
-            print(f"[ERROR] DB Error (Schedule): {exc}")
+            logger.exception("[ERROR] DB Error (Schedule)")
             return False
 
 
@@ -820,9 +823,9 @@ def save_game_detail(
             if changed:
                 _auto_sync_to_oci(game_id)
             return True
-        except Exception as exc:
+        except Exception:
             session.rollback()
-            print(f"[ERROR] DB Error (Detail): {exc}")
+            logger.exception("[ERROR] DB Error (Detail)")
             return False
 
 
@@ -927,9 +930,9 @@ def save_game_snapshot(game_data: Dict[str, Any], *, status: Optional[str] = Non
             session.commit()
             _auto_sync_to_oci(game_id)
             return True
-        except Exception as exc:
+        except Exception:
             session.rollback()
-            print(f"[ERROR] DB Error (Snapshot): {exc}")
+            logger.exception("[ERROR] DB Error (Snapshot)")
             return False
 
 
@@ -1058,9 +1061,9 @@ def save_pregame_lineups(preview_data: Dict[str, Any]) -> bool:
             session.commit()
             _auto_sync_to_oci(game_id)
             return True
-        except Exception as exc:
+        except Exception:
             session.rollback()
-            print(f"[ERROR] DB Error (Pregame): {exc}")
+            logger.exception("[ERROR] DB Error (Pregame)")
             return False
 
 
@@ -1077,9 +1080,9 @@ def update_game_status(game_id: str, status: str) -> bool:
             game.game_status = status
             session.commit()
             return True
-        except Exception as exc:
+        except Exception:
             session.rollback()
-            print(f"[ERROR] DB Error (Status): {exc}")
+            logger.exception("[ERROR] DB Error (Status)")
             return False
 
 
@@ -1137,9 +1140,9 @@ def refresh_game_status_for_date(target_date: str, today: Optional[date] = None)
                 "updated_game_ids": sorted(updated_game_ids),
                 "game_ids_by_status": {status: sorted(ids) for status, ids in game_ids_by_status.items()},
             }
-        except Exception as exc:
+        except Exception:
             session.rollback()
-            print(f"[ERROR] DB Error (Status Refresh): {exc}")
+            logger.exception("[ERROR] DB Error (Status Refresh)")
             return {"target_date": target_date, "total": 0, "updated": 0, "status_counts": {}}
 
 
@@ -1198,9 +1201,9 @@ def backfill_game_play_by_play_from_existing_events(game_id: str) -> int:
             session.commit()
             _auto_sync_to_oci(game_id)
             return len(pbp_mappings)
-        except Exception as exc:
+        except Exception:
             session.rollback()
-            print(f"[ERROR] DB Error (Derived Relay Backfill): {exc}")
+            logger.exception("[ERROR] DB Error (Derived Relay Backfill)")
             return 0
 
 
@@ -1237,9 +1240,9 @@ def backfill_missing_game_stubs_for_relays(
                 _ensure_game_stub(session, game_id)
 
             session.commit()
-        except Exception as exc:
+        except Exception:
             session.rollback()
-            print(f"[ERROR] DB Error (Game Stub Backfill): {exc}")
+            logger.exception("[ERROR] DB Error (Game Stub Backfill)")
             return 0
 
     if sync_to_oci:
@@ -1336,9 +1339,9 @@ def repair_game_parent_from_existing_children(
             _apply_game_team_identity(game, season_year)
             _enrich_existing_child_team_identity(session, game_id, season_year)
             session.commit()
-        except Exception as exc:
+        except Exception:
             session.rollback()
-            print(f"[ERROR] DB Error (Game Parent Repair): {exc}")
+            logger.exception("[ERROR] DB Error (Game Parent Repair)")
             return False
 
     if sync_to_oci:
@@ -1470,9 +1473,9 @@ def save_relay_data(
             if events and not valid_event_rows:
                 print(f"[WARN] Skipped game_events save for {game_id}: insufficient relay state")
             return len(event_rows) if event_rows else len(pbp_rows)
-        except Exception as exc:
+        except Exception:
             session.rollback()
-            print(f"[ERROR] DB Error (Relay): {exc}")
+            logger.exception("[ERROR] DB Error (Relay)")
             return 0
 
 
@@ -2386,5 +2389,5 @@ def _auto_sync_to_oci(game_id: str):
                     syncer.sync_specific_game(game_id)
                     syncer.close()
                 print(f" ✨ Auto-synced {game_id} to OCI")
-        except Exception as e:
-            print(f" ⚠️ Auto-sync OCI failed: {e}")
+        except Exception:
+            logger.exception(" ⚠️ Auto-sync OCI failed")

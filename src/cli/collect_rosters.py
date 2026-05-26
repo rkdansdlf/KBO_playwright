@@ -2,6 +2,7 @@
 """
 Daily Roster Collector CLI
 """
+import logging
 import asyncio
 import argparse
 from datetime import date, timedelta
@@ -11,14 +12,16 @@ from src.utils.safe_print import safe_print as print
 
 from src.db.engine import SessionLocal
 
+logger = logging.getLogger(__name__)
+
 def save_chunk(chunk):
     session = SessionLocal()
     try:
         repo = TeamRepository(session)
         count = repo.save_daily_rosters(chunk)
         print(f"   💾 Saved chunk of {len(chunk)} records (New/Updated: {count})")
-    except Exception as e:
-        print(f"   ⚠️ Error saving chunk: {e}")
+    except Exception:
+        logger.exception("   ⚠️ Error saving chunk")
     finally:
         session.close()
 

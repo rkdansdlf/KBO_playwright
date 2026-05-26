@@ -4,6 +4,7 @@ Fetches fielding, baserunning, and team-level cumulative stats.
 """
 from __future__ import annotations
 
+import logging
 import argparse
 import asyncio
 import os
@@ -19,6 +20,8 @@ from src.repositories.player_stats_repository import PlayerSeasonFieldingReposit
 from src.db.engine import SessionLocal
 from src.sync.oci_sync import OCISync
 from src.utils.safe_print import safe_print as print
+
+logger = logging.getLogger(__name__)
 
 KST = ZoneInfo("Asia/Seoul")
 
@@ -53,8 +56,8 @@ async def run_advanced_update(
             fielding_repo = PlayerSeasonFieldingRepository()
             saved = fielding_repo.upsert_many(processed)
             print(f"   ✅ Saved {saved} fielding records")
-    except Exception as exc:
-        print(f"   ❌ Error crawling fielding stats: {exc}")
+    except Exception:
+        logger.exception("   ❌ Error crawling fielding stats")
         any_error = True
 
     # 2. Baserunning Stats
@@ -75,8 +78,8 @@ async def run_advanced_update(
             baserunning_repo = PlayerSeasonBaserunningRepository()
             saved = baserunning_repo.upsert_many(processed)
             print(f"   ✅ Saved {saved} baserunning records")
-    except Exception as exc:
-        print(f"   ❌ Error crawling baserunning stats: {exc}")
+    except Exception:
+        logger.exception("   ❌ Error crawling baserunning stats")
         any_error = True
 
     # 3. Team Batting Stats
@@ -85,8 +88,8 @@ async def run_advanced_update(
         batting_crawler = TeamBattingStatsCrawler()
         batting_stats = await asyncio.to_thread(batting_crawler.crawl, year, persist=True, headless=headless)
         print(f"   ✅ Saved {len(batting_stats)} team batting records")
-    except Exception as exc:
-        print(f"   ❌ Error crawling team batting stats: {exc}")
+    except Exception:
+        logger.exception("   ❌ Error crawling team batting stats")
         any_error = True
 
     # 4. Team Pitching Stats
@@ -95,8 +98,8 @@ async def run_advanced_update(
         pitching_crawler = TeamPitchingStatsCrawler()
         pitching_stats = await asyncio.to_thread(pitching_crawler.crawl, year, persist=True, headless=headless)
         print(f"   ✅ Saved {len(pitching_stats)} team pitching records")
-    except Exception as exc:
-        print(f"   ❌ Error crawling team pitching stats: {exc}")
+    except Exception:
+        logger.exception("   ❌ Error crawling team pitching stats")
         any_error = True
 
     # 5. Recalculate Rankings
@@ -105,8 +108,8 @@ async def run_advanced_update(
         from src.cli.calculate_rankings import rebuild_rankings
         saved_rankings = await asyncio.to_thread(rebuild_rankings, year)
         print(f"   ✅ Recalculated {saved_rankings} ranking records")
-    except Exception as exc:
-        print(f"   ❌ Error recalculating rankings: {exc}")
+    except Exception:
+        logger.exception("   ❌ Error recalculating rankings")
         any_error = True
 
     if sync:
@@ -124,8 +127,8 @@ async def run_advanced_update(
                     syncer.sync_team_season_pitching(year)
                     syncer.sync_stat_rankings(year)
                     print("   ✅ OCI synchronization completed")
-                except Exception as exc:
-                    print(f"   ❌ OCI sync error: {exc}")
+                except Exception:
+                    logger.exception("   ❌ OCI sync error")
                     any_error = True
                 finally:
                     syncer.close()

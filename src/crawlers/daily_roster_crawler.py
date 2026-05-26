@@ -5,8 +5,12 @@ Source: https://www.koreabaseball.com/Player/Register.aspx
 from __future__ import annotations
 
 import asyncio
+import logging
 from typing import Dict, List, Optional, Any
 from datetime import datetime, date
+
+
+logger = logging.getLogger(__name__)
 
 from tenacity import AsyncRetrying, stop_after_attempt, wait_exponential, retry_if_exception_type
 from playwright.async_api import Page, TimeoutError as PlaywrightTimeoutError
@@ -59,8 +63,8 @@ class DailyRosterCrawler:
                                     await save_callback(roster)
                                 else:
                                     save_callback(roster)
-                            except Exception as e:
-                                print(f"⚠️ Callback error: {e}")
+                            except Exception:
+                                logger.exception("⚠️ Callback error")
 
                         results.extend(roster)
             finally:
@@ -141,8 +145,8 @@ class DailyRosterCrawler:
                 # Extract data
                 records = await self._extract_table(page, t_code, target_date)
                 daily_records.extend(records)
-            except Exception as e:
-                print(f"⚠️ Error crawling team {t_code}: {e}")
+            except Exception:
+                logger.exception(f"⚠️ Error crawling team {t_code}")
                 
         return daily_records
 
@@ -222,7 +226,7 @@ class DailyRosterCrawler:
         for item in data:
             cleaned.append({
                 "roster_date": roster_date,
-                "team_code": self._normalize_team(team_code),
+                "team_code": self._normalize_team(team_code, roster_date.year),
                 "player_id": int(item['player_id']),
                 "player_name": item['player_name'],
                 "position": self._clean_category(item['category']),
@@ -230,7 +234,7 @@ class DailyRosterCrawler:
             })
         return cleaned
 
-    def _normalize_team(self, code: str) -> str:
+    def _normalize_team(self, code: str, season_year: Optional[int] = None) -> str:
         # Map website code to our DB code
         # 'OB' -> we used 'OB' for Doosan? Or 'DO'?
         # In our DB we have 'OB' as historical? Check `src/utils/team_codes.py`
@@ -240,7 +244,7 @@ class DailyRosterCrawler:
         # But wait, 'SK' is 'SSG' now?
         # Site uses 'SK' for SSG (Landers).
         # We should map to canonical if we want consistency with `teams` table.
-        resolved = resolve_team_code(code)
+        resolved = resolve_team_code(code, season_year)
         return resolved if resolved else code
 
     def _clean_category(self, cat: str) -> str:

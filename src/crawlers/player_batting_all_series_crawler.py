@@ -10,12 +10,16 @@ Usage:
     python -m src.crawlers.player_batting_all_series_crawler --year 2025 --series regular --save
     python -m src.crawlers.player_batting_all_series_crawler --year 2025 --series exhibition --save
 """
+import logging
 import argparse
 import os
 import re
 import time
 from datetime import datetime
 from typing import Dict, List, Optional
+
+
+logger = logging.getLogger(__name__)
 
 from playwright.sync_api import sync_playwright, Page
 
@@ -298,8 +302,8 @@ def _parse_batting_stats_table_fast(page: Page, series_key: str, year: int = 202
             players_data.append(batting_data)
 
         return players_data
-    except Exception as exc:
-        print(f"❌ 테이블 파싱 오류 (JS): {exc}")
+    except Exception:
+        logger.exception("❌ 테이블 파싱 오류 (JS)")
         return []
 
 
@@ -351,8 +355,8 @@ def _parse_batting_stats_table_legacy(page: Page, series_key: str, year: int = 2
             players_data.append(batting_data)
 
         return players_data
-    except Exception as exc:
-        print(f"❌ 테이블 파싱 오류 (Legacy): {exc}")
+    except Exception:
+        logger.exception("❌ 테이블 파싱 오류 (Legacy)")
         return []
 
 
@@ -394,8 +398,9 @@ def go_to_next_page(page: Page, current_page_num: int, policy: Optional[RequestP
             selector = f'a[href*="btnNo{relative_page_num}"]'
             desc = f"{next_page_num}페이지로 이동 (btnNo{relative_page_num})"
 
-        # 버튼 존재 여부 및 상태 확인
-        page.wait_for_selector(selector, state="visible", timeout=5000)
+        # 버튼 존재 여부 및 상태 확인 (reload+retry 포함)
+        if not retry_wait_for_selector(page, selector, timeout=15000, state="visible"):
+            return False
         btn = page.query_selector(selector)
         if not btn or btn.get_attribute("disabled") or "disabled" in (btn.get_attribute("class") or ""):
             return False
@@ -403,13 +408,13 @@ def go_to_next_page(page: Page, current_page_num: int, policy: Optional[RequestP
         if policy: policy.delay()
         
         # 직접 클릭 시도 (Attached 여부 확인하며)
-        page.click(selector, timeout=10000)
+        page.click(selector, timeout=15000)
         page.wait_for_load_state('networkidle', timeout=30000)
         print(f"➡️ {desc}")
         return True
 
-    except Exception as e:
-        print(f"❌ 페이지 이동 실패 ({current_page_num}p -> next): {e}")
+    except Exception:
+        logger.exception(f"❌ 페이지 이동 실패 ({current_page_num}p -> next)")
         return False
 
 
@@ -438,8 +443,8 @@ def crawl_basic2_with_headers(page: Page, year: int, series_info: dict, policy: 
                 if policy: policy.delay()
                 page.select_option(season_selector, str(year))
                 page.wait_for_load_state('networkidle', timeout=30000)
-        except Exception as e:
-            print(f"   ⚠️ 연도 선택 중 오류 (무시): {e}")
+        except Exception:
+            logger.exception("   ⚠️ 연도 선택 중 오류 (무시)")
 
         # 3. 정규시즌 선택
         try:
@@ -448,8 +453,8 @@ def crawl_basic2_with_headers(page: Page, year: int, series_info: dict, policy: 
                 if policy: policy.delay()
                 page.select_option(series_selector, value=series_info['value'])
                 page.wait_for_load_state('networkidle', timeout=30000)
-        except Exception as e:
-            print(f"   ⚠️ 시리즈 선택 중 오류 (무시): {e}")
+        except Exception:
+            logger.exception("   ⚠️ 시리즈 선택 중 오류 (무시)")
 
         # 4. "다음" 링크 클릭하여 Basic2로 이동
         try:
@@ -461,8 +466,8 @@ def crawl_basic2_with_headers(page: Page, year: int, series_info: dict, policy: 
             else:
                 print(f"   ❌ Basic2 이동 링크를 찾을 수 없습니다.")
                 return {}
-        except Exception as e:
-            print(f"   ❌ Basic2 이동 중 오류: {e}")
+        except Exception:
+            logger.exception("   ❌ Basic2 이동 중 오류")
             return {}
 
         # 5. Basic2 페이지 전체 순회
@@ -487,8 +492,8 @@ def crawl_basic2_with_headers(page: Page, year: int, series_info: dict, policy: 
 
         print(f"   ✅ Basic2 전체 수집 완료: {len(all_player_data)}명")
 
-    except Exception as e:
-        print(f"   ❌ Basic2 크롤링 중 오류: {e}")
+    except Exception:
+        logger.exception("   ❌ Basic2 크롤링 중 오류")
 
     return all_player_data
 
@@ -621,8 +626,8 @@ def _parse_basic2_header_data_legacy(
                 print(f"      ⚠️ {description} 행 파싱 오류: {e}")
                 continue
 
-    except Exception as e:
-        print(f"      ❌ {description} 테이블 파싱 오류: {e}")
+    except Exception:
+        logger.exception(f"      ❌ {description} 테이블 파싱 오류")
 
     return players_data
 
@@ -884,8 +889,8 @@ def crawl_series_batting_stats(year: int = 2025, series_key: str = 'regular',
                     options = page.eval_on_selector_all(f'{team_selector} option', 'options => options.map(o => ({text: o.textContent, value: o.value}))')
                     team_options = [opt for opt in options if opt['value']] # Empty value is "Team Selection"
                     print(f"ℹ️ 팀별 순회 모드: {len(team_options)}개 팀 발견")
-                except Exception as e:
-                    print(f"⚠️ 팀 목록 추출 실패, 전체 모드로 진행: {e}")
+                except Exception:
+                    logger.exception("⚠️ 팀 목록 추출 실패, 전체 모드로 진행")
                     team_options = []
 
             # 순회 대상 설정 (팀 옵션이 있으면 팀별, 없으면 전체 1회)
@@ -899,8 +904,8 @@ def crawl_series_batting_stats(year: int = 2025, series_key: str = 'regular',
                         page.select_option('select[name="ctl00$ctl00$ctl00$cphContents$cphContents$cphContents$ddlTeam$ddlTeam"]', tm['value'])
                         page.wait_for_load_state('networkidle', timeout=30000)
                         time.sleep(1)
-                    except Exception as e:
-                        print(f"⚠️ 팀 선택 실패 ({tm['text']}): {e}")
+                    except Exception:
+                        logger.exception(f"⚠️ 팀 선택 실패 ({tm['text']})")
                         continue
 
                 # 타석(PA) 기준 정렬 (팀 선택 후 다시 적용)
@@ -967,8 +972,8 @@ def crawl_series_batting_stats(year: int = 2025, series_key: str = 'regular',
 
             print(f"✅ {series_info['name']} 데이터 수집 완료")
 
-        except Exception as e:
-            print(f"❌ 크롤링 중 오류: {e}")
+        except Exception:
+            logger.exception("❌ 크롤링 중 오류")
 
         finally:
             browser.close()
@@ -990,8 +995,8 @@ def crawl_series_batting_stats(year: int = 2025, series_key: str = 'regular',
         try:
             saved_count = save_batting_stats_safe(all_players_data)
             print(f"✅ 타자 데이터 저장 완료: {saved_count}명")
-        except Exception as e:
-            print(f"❌ 타자 데이터 저장 실패: {e}")
+        except Exception:
+            logger.exception("❌ 타자 데이터 저장 실패")
 
     return all_players_data
 

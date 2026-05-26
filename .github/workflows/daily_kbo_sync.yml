@@ -62,6 +62,8 @@ jobs:
       - name: Run Postgame Finalize & Sync
         env:
           OCI_DB_URL: ${{ secrets.OCI_DB_URL }}
+          KBO_USER_ID: ${{ secrets.KBO_USER_ID }}
+          KBO_USER_PWD: ${{ secrets.KBO_USER_PWD }}
           AUTO_SYNC_OCI: 'false'
         run: |
           python3 -m src.cli.run_daily_update --date ${{ env.KST_DATE }} --sync

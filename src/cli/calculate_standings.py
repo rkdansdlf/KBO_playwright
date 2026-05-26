@@ -4,6 +4,7 @@ KBO 순위 자동 연산 엔진 (Standings Calculator)
 승률, 승차(Games Behind), 연승/연패(Streak) 등을 계산해 DB 물리 테이블에 저장합니다.
 """
 
+import logging
 import argparse
 from datetime import datetime
 from collections import defaultdict
@@ -14,6 +15,8 @@ from src.models.game import Game
 from src.models.season import KboSeason
 from src.models.standings import TeamStandingsDaily
 from src.utils.game_status import COMPLETED_LIKE_GAME_STATUSES
+
+logger = logging.getLogger(__name__)
 
 def calculate_games_behind(target_wins, target_losses, leader_wins, leader_losses):
     """승차 계산 공식: {(1위 승수 - 내 승수) + (내 패수 - 1위 패수)} / 2.0"""
@@ -154,8 +157,8 @@ def main():
                 calc.calculate_year(y)
         else:
             calc.calculate_year(args.year)
-    except Exception as e:
-        print(f"❌ 계산 중 오류 발생: {e}")
+    except Exception:
+        logger.exception("❌ 계산 중 오류 발생")
         session.rollback()
     finally:
         session.close()

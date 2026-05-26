@@ -1,9 +1,12 @@
 
+import logging
 import csv
 import os
 from typing import Optional, Dict
 from sqlalchemy.orm import Session
 from sqlalchemy import select, and_, or_
+
+logger = logging.getLogger(__name__)
 
 from src.models.player import Player, PlayerBasic, PlayerSeasonBatting, PlayerSeasonPitching
 
@@ -384,9 +387,9 @@ class PlayerIdResolver:
             self.session.add(new_player)
             self.session.commit()
             return new_id
-        except Exception as e:
+        except Exception:
             self.session.rollback()
-            print(f"   ❌ Error auto-registering player: {e}")
+            logger.exception("   ❌ Error auto-registering player")
             return None
 
     def _resolve_relaxed(self, player_name: str, team_code: str, season: int) -> Optional[int]:
