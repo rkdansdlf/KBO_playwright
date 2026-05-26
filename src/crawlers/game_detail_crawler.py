@@ -2,10 +2,14 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import os
 import re
 from typing import Dict, List, Optional, Any
 from urllib.parse import urljoin, urlparse, parse_qs
+
+
+logger = logging.getLogger(__name__)
 
 from datetime import datetime
 from playwright.async_api import Page
@@ -128,8 +132,8 @@ class GameDetailCrawler:
 
         try:
             await self.policy.run_with_retry_async(_navigate)
-        except Exception as exc:
-            print(f"❌ Failed to navigate {section} for {game_id}: {exc}")
+        except Exception:
+            logger.exception(f"❌ Failed to navigate {section} for {game_id}")
             return False, "navigation_error", url
 
         return True, "ok", url
@@ -200,9 +204,9 @@ class GameDetailCrawler:
                         try:
                             payload = await self._crawl_single(page, game_id, game_date, lightweight)
                             results[idx] = payload
-                        except Exception as exc:  # pragma: no cover - resilience path
+                        except Exception:  # pragma: no cover - resilience path
                             self._last_failure_reason[game_id] = "exception"
-                            print(f"❌ Error crawling {game_id}: {exc}")
+                            logger.exception(f"❌ Error crawling {game_id}")
                         finally:
                             queue.task_done()
                 finally:
@@ -478,8 +482,8 @@ class GameDetailCrawler:
                 metadata['game_time'] = duration_match.group(1).strip()
                 metadata['duration_minutes'] = self._parse_duration_minutes(metadata['game_time'])
 
-        except Exception as exc:  # pragma: no cover - resilience path
-            print(f"⚠️  Error extracting metadata: {exc}")
+        except Exception:  # pragma: no cover - resilience path
+            logger.exception("⚠️  Error extracting metadata")
 
         return metadata
 
@@ -987,7 +991,7 @@ class GameDetailCrawler:
                 await self.policy.delay_async()
                 await page.goto(lineup_url, wait_until="domcontentloaded", timeout=20000)
                 try:
-                    await page.wait_for_selector('a[href*="Player/PlayerDetail"], a[href*="playerId="], a[href*="p_id="]', timeout=5000)
+                    await page.wait_for_selector('a[href*="Player/PlayerDetail"], a[href*="playerId="], a[href*="p_id="]', timeout=15000)
                 except Exception:
                     pass
 
@@ -996,8 +1000,8 @@ class GameDetailCrawler:
                 roster_map = await self._extract_roster_from_lineup(page)
                 if roster_map:
                     break
-            except Exception as exc:
-                print(f"⚠️  Failed lineup roster crawl for {game_id} ({section}): {exc}")
+            except Exception:
+                logger.exception(f"⚠️  Failed lineup roster crawl for {game_id} ({section})")
 
         # Always return to REVIEW page for box score extraction.
         try:
@@ -1007,8 +1011,8 @@ class GameDetailCrawler:
 
             await self.policy.run_with_retry_async(_navigate_back)
             await self._wait_for_boxscore(page)
-        except Exception as exc:
-            print(f"⚠️  Failed to return to review page for {game_id}: {exc}")
+        except Exception:
+            logger.exception(f"⚠️  Failed to return to review page for {game_id}")
         return roster_map
 
     def _log_unresolved_player_ids(

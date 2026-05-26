@@ -2,18 +2,25 @@
 from __future__ import annotations
 
 import logging
+import os
 import time
 
 from playwright.sync_api import Page, TimeoutError as PlaywrightTimeout
 
 logger = logging.getLogger(__name__)
 
+# Environment-variable defaults (set in .env, evaluated once at import)
+_SELECTOR_TIMEOUT = int(os.getenv("KBO_PLAYWRIGHT_SELECTOR_TIMEOUT", "15000"))
+_NAVIGATION_TIMEOUT = int(os.getenv("KBO_PLAYWRIGHT_NAVIGATION_TIMEOUT", "30000"))
+_CLICK_TIMEOUT = int(os.getenv("KBO_PLAYWRIGHT_CLICK_TIMEOUT", "15000"))
+_MAX_RETRIES = int(os.getenv("KBO_PLAYWRIGHT_MAX_RETRIES", "3"))
+
 
 def retry_navigation(
     page: Page,
     url: str,
-    max_retries: int = 3,
-    timeout: int = 30000,
+    max_retries: int = _MAX_RETRIES,
+    timeout: int = _NAVIGATION_TIMEOUT,
     wait_until: str = "load",
 ) -> bool:
     """Retry page.goto with simple incremental backoff."""
@@ -36,11 +43,36 @@ def retry_navigation(
     return False
 
 
+def retry_click(
+    page: Page,
+    selector: str,
+    max_retries: int = _MAX_RETRIES,
+    timeout: int = _CLICK_TIMEOUT,
+    pre_wait_timeout: int = _SELECTOR_TIMEOUT,
+) -> bool:
+    """Retry page.click with wait_for_selector pre-check, reloading on timeout."""
+    for attempt in range(1, max_retries + 1):
+        try:
+            page.wait_for_selector(selector, timeout=pre_wait_timeout, state="visible")
+            page.click(selector, timeout=timeout)
+            return True
+        except PlaywrightTimeout:
+            if attempt == max_retries:
+                return False
+            logger.warning(f"Click on {selector} timed out on attempt {attempt}, retrying...")
+            try:
+                page.reload(wait_until="networkidle", timeout=timeout)
+            except Exception:
+                pass
+            time.sleep(2)
+    return False
+
+
 def retry_wait_for_selector(
     page: Page,
     selector: str,
-    max_retries: int = 2,
-    timeout: int = 15000,
+    max_retries: int = _MAX_RETRIES,
+    timeout: int = _SELECTOR_TIMEOUT,
     state: str = "visible",
 ) -> bool:
     """Retry wait_for_selector, reloading between timeout attempts."""

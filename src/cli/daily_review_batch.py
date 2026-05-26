@@ -4,6 +4,7 @@ Generates post-game review context from game_events/WPA and persists it locally.
 """
 from __future__ import annotations
 
+import logging
 import argparse
 import asyncio
 import json
@@ -20,6 +21,8 @@ from src.utils.game_status import COMPLETED_LIKE_GAME_STATUSES
 from src.utils.refresh_manifest import write_refresh_manifest
 from src.utils.safe_print import safe_print as print
 from src.utils.team_codes import team_code_from_game_id_segment
+
+logger = logging.getLogger(__name__)
 
 
 REVIEW_SUMMARY_TYPE = "리뷰_WPA"
@@ -123,9 +126,9 @@ async def run_review_batch(target_date: str, *, sync_to_oci: bool | None = None)
 
         try:
             session.commit()
-        except Exception as exc:
+        except Exception:
             session.rollback()
-            print(f"❌ Failed to save reviews to DB: {exc}")
+            logger.exception("❌ Failed to save reviews to DB")
             raise
 
     should_sync = sync_to_oci if sync_to_oci is not None else bool(os.getenv("OCI_DB_URL"))

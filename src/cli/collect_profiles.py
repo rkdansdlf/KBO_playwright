@@ -3,6 +3,7 @@
 Player Profile Enrichment CLI
 Identifies players with missing basic info (e.g. birth_date, debut_year) and crawls them.
 """
+import logging
 import asyncio
 import argparse
 from typing import List, Optional
@@ -15,6 +16,8 @@ from src.crawlers.player_profile_crawler import PlayerProfileCrawler
 from src.utils.playwright_pool import AsyncPlaywrightPool
 from src.repositories.player_repository import PlayerRepository
 from src.utils.safe_print import safe_print as print
+
+logger = logging.getLogger(__name__)
 
 async def collect_profiles(limit: int = 100, target_ids: Optional[List[str]] = None):
     session = SessionLocal()
@@ -78,8 +81,8 @@ async def collect_profiles(limit: int = 100, target_ids: Optional[List[str]] = N
                 if idx % 5 == 0:
                     await asyncio.sleep(1)
 
-    except Exception as e:
-        print(f"❌ Critical Error: {e}")
+    except Exception:
+        logger.exception("❌ Critical Error")
     finally:
         session.close()
 

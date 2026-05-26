@@ -4,8 +4,12 @@ Team-level pitching stats crawler.
 from __future__ import annotations
 
 import argparse
+import logging
 import time
 from typing import List, Dict, Any, Optional
+
+
+logger = logging.getLogger(__name__)
 
 from bs4 import BeautifulSoup
 from playwright.sync_api import sync_playwright, Page
@@ -105,8 +109,8 @@ class TeamPitchingStatsCrawler:
                     from src.cli.calculate_standings import StandingsCalculator
                     calc = StandingsCalculator(session)
                     calc.calculate_year(season)
-                except Exception as e:
-                    print(f"[ERROR] 순위 연산 폴백 중 오류 발생: {e}")
+                except Exception:
+                    logger.exception("[ERROR] 순위 연산 폴백 중 오류 발생")
         
         if persist and stats:
             self.repo.upsert_many(stats)
@@ -131,8 +135,8 @@ class TeamPitchingStatsCrawler:
                         context.close()
                         browser.close()
                         return stats
-                except Exception as exc:
-                    print(f"[WARN] Failed to parse {url}: {exc}")
+                except Exception:
+                    logger.exception(f"[WARN] Failed to parse {url}")
             context.close()
             browser.close()
         return []

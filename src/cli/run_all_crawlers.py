@@ -1,0 +1,365 @@
+"""
+CLI entrypoint and scheduler daemon to execute KBO crawlers, transform text, generate embeddings, and load to database.
+"""
+from __future__ import annotations
+
+import logging
+import argparse
+import asyncio
+import os
+import sys
+import traceback
+from datetime import datetime, timedelta
+from typing import List, Dict, Any, Optional
+
+from apscheduler.schedulers.blocking import BlockingScheduler
+from dotenv import load_dotenv
+
+from src.db.engine import get_db_session
+from src.crawlers.static_text_crawler import StaticTextCrawler
+from src.crawlers.dynamic_data_crawler import DynamicDataCrawler
+from src.crawlers.realtime_issue_crawler import RealtimeIssueCrawler
+from src.parsers.text_transformer import TextTransformer
+from src.services.embedding_service import EmbeddingService
+from src.repositories.rag_chunk_repository import RagChunkRepository
+from src.utils.alerting import SlackWebhookClient
+from src.utils.safe_print import safe_print as print
+
+# Load environment variables
+load_dotenv()
+
+logger = logging.getLogger(__name__)
+
+
+def enrich_and_prepare_contents(all_chunks: List[Dict[str, Any]]) -> List[str]:
+    """
+    Enriches chunk metadata using LLM and prepares content strings for vector embedding.
+    """
+    from src.services.metadata_enrichment_service import MetadataEnrichmentService
+    enrich_svc = MetadataEnrichmentService()
+    
+    if enrich_svc.enabled:
+        print(f"✨ LLM Metadata Enrichment enabled. Processing {len(all_chunks)} chunks...")
+        for idx, chunk in enumerate(all_chunks):
+            print(f"   [{idx+1}/{len(all_chunks)}] Analyzing chunk...")
+            enrichment = enrich_svc.enrich_chunk(chunk["content"])
+            chunk["meta"].update(enrichment)
+            
+    # Form content strings for embedding
+    contents_to_embed = []
+    for c in all_chunks:
+        meta = c["meta"]
+        if meta.get("keywords") or meta.get("questions"):
+            kw_str = ", ".join(meta.get("keywords", []))
+            q_str = " ".join(meta.get("questions", []))
+            enriched_text = f"Summary: {meta.get('summary', '')}\nKeywords: {kw_str}\nQuestions: {q_str}\n\nContent: {c['content']}"
+            contents_to_embed.append(enriched_text)
+        else:
+            contents_to_embed.append(c["content"])
+            
+    return contents_to_embed
+
+
+async def run_static_pipeline(pdf_path: Optional[str] = None):
+    """
+    Runs extraction, chunking, and embedding for static rulebooks and wikis.
+    """
+    print("\n🏁 Starting Static Text Pipeline...")
+    
+    crawler = StaticTextCrawler()
+    transformer = TextTransformer()
+    embedding_svc = EmbeddingService()
+    repo = RagChunkRepository()
+    
+    raw_docs = []
+
+    # 1. Parse PDF if provided/exists
+    if pdf_path:
+        if os.path.exists(pdf_path):
+            pdf_docs = crawler.parse_local_pdf(pdf_path)
+            raw_docs.extend(pdf_docs)
+        else:
+            print(f"⚠️ Specified PDF path does not exist: {pdf_path}")
+    
+    # Check if there are local rules markdown files under Docs/baseball to load as fallback/addition
+    rules_dir = "Docs/baseball"
+    if os.path.exists(rules_dir):
+        print(f"📁 Scanning directory '{rules_dir}' for static markdown files...")
+        for root, _, files in os.walk(rules_dir):
+            for file in files:
+                if file.endswith(".md"):
+                    full_path = os.path.join(root, file)
+                    try:
+                        with open(full_path, "r", encoding="utf-8") as f:
+                            content = f.read()
+                        raw_docs.append({
+                            "title": f"Local Doc - {file}",
+                            "content": content,
+                            "meta": {
+                                "source": full_path,
+                                "crawled_at": datetime.now().isoformat(),
+                                "category": "rulebook"
+                            }
+                        })
+                    except Exception:
+                        logger.exception(f"⚠️ Error reading local markdown {file}")
+
+    # 2. Crawl Namuwiki pages (e.g. KBO rule list or history)
+    # We use a default page for Namuwiki, or mock if offline/anti-scrape triggers
+    wiki_urls = [
+        "https://namu.wiki/w/KBO%20%EB%A6%AC%EA%B7%B8",
+        # "https://namu.wiki/w/%EC%95%BC%EA%B5%AC%20%EA%B2%BD%EA%B8%B0%20%EA%B7%9C%EC%B9%99"
+    ]
+    for url in wiki_urls:
+        try:
+            wiki_doc = await crawler.crawl_namuwiki(url)
+            raw_docs.append(wiki_doc)
+        except Exception:
+            logger.exception(f"⚠️ Namuwiki crawl skipped/failed for {url}")
+
+    if not raw_docs:
+        print("ℹ️ No static documents found to process.")
+        return
+
+    # 3. Transform & Chunk
+    print(f"🔄 Cleansing and chunking {len(raw_docs)} documents...")
+    all_chunks = []
+    for doc in raw_docs:
+        chunks = transformer.chunk_document(doc)
+        all_chunks.extend(chunks)
+    print(f"   Generated {len(all_chunks)} semantic chunks.")
+
+    # 4. Generate Embeddings & Load to Database
+    if all_chunks:
+        print(f"⚡ Fetching vector embeddings for {len(all_chunks)} chunks...")
+        # Extract and enrich contents to batch embed
+        contents_to_embed = enrich_and_prepare_contents(all_chunks)
+        embeddings = embedding_svc.get_embeddings_batch(contents_to_embed)
+        
+        # Map embeddings back to chunks
+        for idx, emb in enumerate(embeddings):
+            all_chunks[idx]["embedding"] = emb
+
+        print("💾 Saving chunks to local database...")
+        with get_db_session() as session:
+            upserted = repo.upsert_chunks(session, all_chunks)
+            print(f"✅ Upserted {upserted} RAG chunks to local DB.")
+            
+            # Automatically sync to OCI if config allows
+            if os.getenv("RUN_SYNC_SUPABASE") == "1" or os.getenv("RUN_SYNC_OCI") == "1":
+                print("🚚 Syncing new static RAG chunks to OCI...")
+                from src.sync.oci_sync import OCISync
+                oci_url = os.getenv("OCI_DB_URL") or os.getenv("TARGET_DATABASE_URL")
+                if oci_url:
+                    syncer = OCISync(oci_url, session)
+                    try:
+                        synced = syncer.sync_rag_chunks()
+                        print(f"✅ Synced {synced} static RAG chunks to OCI.")
+                    finally:
+                        syncer.close()
+
+async def run_dynamic_pipeline():
+    """
+    Runs extraction and DB updates for schedules, rosters, and ticket times.
+    """
+    print("\n🏁 Starting Dynamic Data Pipeline...")
+    
+    with get_db_session() as session:
+        crawler = DynamicDataCrawler(session)
+        
+        # 1. Update/Calculate ticket open schedules (next 14 days)
+        ticket_records = crawler.crawl_and_update_ticket_times(lookahead_days=14)
+        
+        # 2. Crawl player rosters changes for today and yesterday
+        today_str = datetime.now().strftime("%Y-%m-%d")
+        yesterday_str = (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d")
+        try:
+            roster_records = await crawler.crawl_roster_changes(start_date=yesterday_str, end_date=today_str)
+            # Save roster records to team_daily_roster table using repository to resolve player_basic_id/person_type
+            from src.repositories.team_repository import TeamRepository
+            r_repo = TeamRepository(session)
+            inserted_count = r_repo.save_daily_rosters(roster_records)
+            print(f"✅ Dynamic rosters updated successfully ({inserted_count} records processed).")
+        except Exception:
+            logger.exception("⚠️ Roster crawler execution failure")
+
+        # 3. Automatically sync to OCI if config allows
+        if os.getenv("RUN_SYNC_SUPABASE") == "1" or os.getenv("RUN_SYNC_OCI") == "1":
+            print("🚚 Syncing ticket schedules and daily rosters to OCI...")
+            from src.sync.oci_sync import OCISync
+            oci_url = os.getenv("OCI_DB_URL") or os.getenv("TARGET_DATABASE_URL")
+            if oci_url:
+                syncer = OCISync(oci_url, session)
+                try:
+                    synced_tickets = syncer.sync_ticket_schedules()
+                    synced_rosters = syncer.sync_daily_rosters()
+                    print(f"✅ Synced {synced_tickets} ticket schedules and {synced_rosters} rosters to OCI.")
+                finally:
+                    syncer.close()
+
+async def run_realtime_pipeline():
+    """
+    Runs news and community thread crawler, transforms text, embeds and loads.
+    """
+    print("\n🏁 Starting Realtime Issue Pipeline...")
+    
+    crawler = RealtimeIssueCrawler()
+    transformer = TextTransformer()
+    embedding_svc = EmbeddingService()
+    repo = RagChunkRepository()
+    
+    raw_docs = []
+
+    # 1. Fetch Naver news headlines
+    try:
+        news_docs = crawler.fetch_naver_news_headlines()
+        raw_docs.extend(news_docs)
+    except Exception:
+        logger.exception("⚠️ Naver news crawler error")
+
+    # 2. Fetch MLBPark bullpen threads
+    try:
+        forum_docs = crawler.fetch_mlbpark_bullpen_posts()
+        raw_docs.extend(forum_docs)
+    except Exception:
+        logger.exception("⚠️ MLBPark crawler error")
+
+    if not raw_docs:
+        print("ℹ_ No realtime news or forum documents found to process.")
+        return
+
+    # 3. Transform & Chunk
+    print(f"🔄 Cleansing and chunking {len(raw_docs)} articles...")
+    all_chunks = []
+    for doc in raw_docs:
+        chunks = transformer.chunk_document(doc)
+        all_chunks.extend(chunks)
+    print(f"   Generated {len(all_chunks)} news chunks.")
+
+    # 4. Generate Embeddings & Load to Database
+    if all_chunks:
+        print(f"⚡ Fetching vector embeddings for {len(all_chunks)} chunks...")
+        contents_to_embed = enrich_and_prepare_contents(all_chunks)
+        embeddings = embedding_svc.get_embeddings_batch(contents_to_embed)
+        
+        for idx, emb in enumerate(embeddings):
+            all_chunks[idx]["embedding"] = emb
+
+        print("💾 Saving chunks to local database...")
+        with get_db_session() as session:
+            upserted = repo.upsert_chunks(session, all_chunks)
+            print(f"✅ Upserted {upserted} realtime RAG chunks to local DB.")
+            
+            # Automatically sync to OCI if config allows
+            if os.getenv("RUN_SYNC_SUPABASE") == "1" or os.getenv("RUN_SYNC_OCI") == "1":
+                print("🚚 Syncing realtime RAG chunks to OCI...")
+                from src.sync.oci_sync import OCISync
+                oci_url = os.getenv("OCI_DB_URL") or os.getenv("TARGET_DATABASE_URL")
+                if oci_url:
+                    syncer = OCISync(oci_url, session)
+                    try:
+                        synced = syncer.sync_rag_chunks()
+                        print(f"✅ Synced {synced} realtime RAG chunks to OCI.")
+                    finally:
+                        syncer.close()
+
+def run_pipeline_sync(pipeline_type: str, pdf_path: Optional[str] = None):
+    """
+    Helper to run async pipeline synchronously and catch errors for Telegram alerts.
+    """
+    try:
+        if pipeline_type == "static":
+            asyncio.run(run_static_pipeline(pdf_path))
+        elif pipeline_type == "dynamic":
+            asyncio.run(run_dynamic_pipeline())
+        elif pipeline_type == "realtime":
+            asyncio.run(run_realtime_pipeline())
+        else:
+            print(f"❌ Unknown pipeline type: {pipeline_type}")
+    except Exception:
+        err_msg = traceback.format_exc()
+        print(f"❌ Critical Pipeline Failure:\n{err_msg}")
+        # Send Telegram Bot Warning Webhook alert
+        SlackWebhookClient.send_error_alert(err_msg)
+
+def start_scheduler():
+    """
+    Starts APScheduler daemon in the background to execute pipelines periodically.
+    """
+    print("\n⏰ Starting background scheduler daemon...")
+    scheduler = BlockingScheduler()
+    
+    # 1. Realtime Pipeline: Runs every 2 hours
+    scheduler.add_job(
+        run_pipeline_sync,
+        'interval',
+        hours=2,
+        args=["realtime"],
+        id="realtime_pipeline",
+        name="Realtime News and Forum Crawler"
+    )
+
+    # 2. Dynamic Pipeline: Runs daily at 3:00 AM
+    scheduler.add_job(
+        run_pipeline_sync,
+        'cron',
+        hour=3,
+        minute=0,
+        args=["dynamic"],
+        id="dynamic_pipeline",
+        name="Daily Schedule & Roster Crawler"
+    )
+
+    # 3. Static Pipeline: Runs quarterly (e.g. Day 1 of Jan, Apr, Jul, Oct at 4:00 AM)
+    scheduler.add_job(
+        run_pipeline_sync,
+        'cron',
+        month='1,4,7,10',
+        day=1,
+        hour=4,
+        minute=0,
+        args=["static"],
+        id="static_pipeline",
+        name="Quarterly Rules & Wiki Crawler"
+    )
+
+    print("   Jobs scheduled:")
+    for job in scheduler.get_jobs():
+        print(f"   - [{job.id}] {job.name} (Next run: {job.next_run_time})")
+
+    try:
+        scheduler.start()
+    except (KeyboardInterrupt, SystemExit):
+        print("⏰ Scheduler stopped.")
+
+def main():
+    parser = argparse.ArgumentParser(description="KBO Knowledge & Issue Crawler Pipeline Orchestrator")
+    parser.add_argument(
+        "--type",
+        choices=["static", "dynamic", "realtime"],
+        help="Execute specific crawler pipeline type immediately."
+    )
+    parser.add_argument(
+        "--pdf",
+        type=str,
+        help="Local KBO rules PDF file path. (Used only with --type static)"
+    )
+    parser.add_argument(
+        "--daemon",
+        action="store_true",
+        help="Run scheduler daemon in background to execute jobs periodically."
+    )
+    
+    args = parser.parse_args()
+
+    if not args.type and not args.daemon:
+        parser.print_help()
+        sys.exit(1)
+
+    if args.type:
+        run_pipeline_sync(args.type, args.pdf)
+    elif args.daemon:
+        start_scheduler()
+
+if __name__ == "__main__":
+    main()

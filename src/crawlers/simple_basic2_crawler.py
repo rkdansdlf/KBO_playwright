@@ -3,11 +3,15 @@
 OCI 동기화 전 SQLite 저장 테스트용
 """
 
+import logging
 import sys
 import os
 import time
 from typing import Dict, List, Optional, Union
 from datetime import datetime
+
+
+logger = logging.getLogger(__name__)
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
@@ -135,8 +139,8 @@ def crawl_bb_basic2_data(page: Page, year: int) -> Dict[int, Dict]:
         print(f"   ✅ BB 헤더 기준 데이터 수집 완료: {len(all_player_data)}명")
         return all_player_data
         
-    except Exception as e:
-        print(f"   ❌ Basic2 BB 데이터 수집 중 오류: {e}")
+    except Exception:
+        logger.exception("   ❌ Basic2 BB 데이터 수집 중 오류")
         return {}
 
 def collect_current_page_bb_data(page: Page) -> Dict[int, Dict]:
@@ -216,13 +220,13 @@ def collect_current_page_bb_data(page: Page) -> Dict[int, Dict]:
                     
                     player_data['extra_stats'] = extra_stats
                     
-            except Exception as e:
-                print(f"         ⚠️ {player_name} 스탯 파싱 오류: {e}")
+            except Exception:
+                logger.exception(f"         ⚠️ {player_name} 스탯 파싱 오류")
             
             page_data[player_id] = player_data
     
-    except Exception as e:
-        print(f"         ⚠️ 페이지 데이터 수집 중 오류: {e}")
+    except Exception:
+        logger.exception("         ⚠️ 페이지 데이터 수집 중 오류")
     
     return page_data
 
@@ -248,8 +252,8 @@ def goto_next_page(page: Page) -> bool:
         
         return False
         
-    except Exception as e:
-        print(f"      ⚠️ 페이지 이동 중 오류: {e}")
+    except Exception:
+        logger.exception("      ⚠️ 페이지 이동 중 오류")
         return False
 
 def main():
@@ -289,8 +293,8 @@ def main():
             else:
                 print(f"❌ 데이터를 수집하지 못했습니다.")
             
-        except Exception as e:
-            print(f"❌ 크롤링 중 오류 발생: {e}")
+        except Exception:
+            logger.exception("❌ 크롤링 중 오류 발생")
         
         finally:
             browser.close()

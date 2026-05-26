@@ -2,7 +2,10 @@
 Safe batting data repository with foreign key constraint bypass
 타자 데이터를 외래키 제약조건 우회하여 안전하게 저장
 """
+import logging
 from collections import Counter
+
+logger = logging.getLogger(__name__)
 from typing import List, Dict, Any, Optional
 from sqlalchemy.orm import Session
 from sqlalchemy import text, func
@@ -124,7 +127,7 @@ def save_batting_stats_safe(payloads: List[Dict[str, Any]]) -> int:
                     saved_count = len(rows)
                 except Exception as e:
                     session.rollback()
-                    print(f"⚠️ 배치 UPSERT 실패, 개별 처리로 전환합니다: {e}")
+                    logger.exception("⚠️ 배치 UPSERT 실패, 개별 처리로 전환합니다")
                     for data in rows:
                         row_stmt = sqlite_insert(PlayerSeasonBatting).values(**data)
                         row_update = {
@@ -139,8 +142,8 @@ def save_batting_stats_safe(payloads: List[Dict[str, Any]]) -> int:
                         try:
                             session.execute(row_stmt)
                             saved_count += 1
-                        except Exception as row_exc:
-                            print(f"⚠️ UPSERT 실패 (player_id={data.get('player_id')}): {row_exc}")
+                        except Exception:
+                            logger.exception(f"⚠️ UPSERT 실패 (player_id={data.get('player_id')})")
                             session.rollback()
             elif db_type == 'mysql':
                 stmt = mysql_insert(PlayerSeasonBatting).values(rows)
@@ -153,9 +156,9 @@ def save_batting_stats_safe(payloads: List[Dict[str, Any]]) -> int:
                 try:
                     session.execute(stmt)
                     saved_count = len(rows)
-                except Exception as e:
+                except Exception:
                     session.rollback()
-                    print(f"⚠️ 배치 UPSERT 실패, 개별 처리로 전환합니다: {e}")
+                    logger.exception("⚠️ 배치 UPSERT 실패, 개별 처리로 전환합니다")
                     for data in rows:
                         row_stmt = mysql_insert(PlayerSeasonBatting).values(**data)
                         row_update = {
@@ -167,8 +170,8 @@ def save_batting_stats_safe(payloads: List[Dict[str, Any]]) -> int:
                         try:
                             session.execute(row_stmt)
                             saved_count += 1
-                        except Exception as row_exc:
-                            print(f"⚠️ UPSERT 실패 (player_id={data.get('player_id')}): {row_exc}")
+                        except Exception:
+                            logger.exception(f"⚠️ UPSERT 실패 (player_id={data.get('player_id')})")
                             session.rollback()
             elif db_type == 'postgresql':
                 stmt = postgresql_insert(PlayerSeasonBatting).values(rows)
@@ -184,9 +187,9 @@ def save_batting_stats_safe(payloads: List[Dict[str, Any]]) -> int:
                 try:
                     session.execute(stmt)
                     saved_count = len(rows)
-                except Exception as e:
+                except Exception:
                     session.rollback()
-                    print(f"⚠️ 배치 UPSERT 실패, 개별 처리로 전환합니다: {e}")
+                    logger.exception("⚠️ 배치 UPSERT 실패, 개별 처리로 전환합니다")
                     for data in rows:
                         row_stmt = postgresql_insert(PlayerSeasonBatting).values(**data)
                         row_update = {
@@ -201,8 +204,8 @@ def save_batting_stats_safe(payloads: List[Dict[str, Any]]) -> int:
                         try:
                             session.execute(row_stmt)
                             saved_count += 1
-                        except Exception as row_exc:
-                            print(f"⚠️ UPSERT 실패 (player_id={data.get('player_id')}): {row_exc}")
+                        except Exception:
+                            logger.exception(f"⚠️ UPSERT 실패 (player_id={data.get('player_id')})")
                             session.rollback()
             else:
                 for data in rows:
@@ -231,9 +234,9 @@ def save_batting_stats_safe(payloads: List[Dict[str, Any]]) -> int:
             session.commit()
             print(f"✅ 타자 데이터 {saved_count}건 저장 완료 (player_season_batting 테이블)")
             
-        except Exception as e:
+        except Exception:
             session.rollback()
-            print(f"❌ 타자 데이터 저장 실패: {e}")
+            logger.exception("❌ 타자 데이터 저장 실패")
             return 0
         
         return saved_count
@@ -273,10 +276,10 @@ def cleanup_invalid_batting_data(session: Optional[Session] = None) -> int:
         
         return deleted
         
-    except Exception as e:
+    except Exception:
         if not session:
             cleanup_session.rollback()
-        print(f"⚠️ 타자 데이터 정리 실패: {e}")
+        logger.exception("⚠️ 타자 데이터 정리 실패")
         return 0
     finally:
         if not session:

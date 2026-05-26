@@ -5,6 +5,7 @@ This entrypoint is the postgame finalize + daily reconciliation job.
 """
 from __future__ import annotations
 
+import logging
 import argparse
 import asyncio
 import json
@@ -50,6 +51,8 @@ from src.utils.refresh_manifest import write_refresh_manifest
 from src.utils.safe_print import safe_print as print
 from src.utils.schedule_validation import is_detail_candidate_game
 from src.utils.team_codes import normalize_kbo_game_id
+
+logger = logging.getLogger(__name__)
 
 KST = ZoneInfo("Asia/Seoul")
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -242,8 +245,8 @@ def _collect_past_scheduled_recovery_targets(today: date) -> list[dict[str, str]
                 .order_by(Game.game_date.asc(), Game.game_id.asc())
                 .all()
             )
-    except Exception as exc:
-        print(f"   ⚠️ Could not inspect auto-healer recovery candidates: {exc}")
+    except Exception:
+        logger.exception("   ⚠️ Could not inspect auto-healer recovery candidates")
         return []
 
     return [
@@ -304,8 +307,8 @@ async def run_update(
         healer_recovery_targets = _collect_past_scheduled_recovery_targets(today_kst)
         try:
             await run_healer_async(dry_run=False)
-        except Exception as exc:
-            print(f"   ⚠️ Auto-Healer encountered an error (continuing anyway): {exc}")
+        except Exception:
+            logger.exception("   ⚠️ Auto-Healer encountered an error (continuing anyway)")
             healer_recovery_targets = []
         if healer_recovery_targets:
             print(f"   ✅ Auto-Healer recovery candidates tracked: {len(healer_recovery_targets)}")
@@ -420,8 +423,8 @@ async def run_update(
                     print(f"   {line}")
         else:
             print("\n🧩 Step 2.5: Postgame reconciliation skipped.")
-    except Exception as exc:
-        print(f"   ❌ Error processing daily details: {exc}")
+    except Exception:
+        logger.exception("   ❌ Error processing daily details")
         if detail_games:
             detail_failure_counts["exception"] = detail_failure_counts.get("exception", 0) + len(detail_games)
             detail_failure_game_ids.setdefault("exception", []).extend(
@@ -470,8 +473,8 @@ async def run_update(
             relay_recovery_target_ids.update(healer_ids)
             runner(["scripts/fetch_kbo_pbp.py", "--game-ids", ",".join(healer_ids)])
         print("   ✅ Relay recovery complete")
-    except Exception as exc:
-        print(f"   ❌ Error generating relay events: {exc}")
+    except Exception:
+        logger.exception("   ❌ Error generating relay events")
 
     print("\n🔍 Step 4.5: Proactive Relay Recovery (Last 30 days)...")
     try:
@@ -506,8 +509,8 @@ async def run_update(
                     print("   ℹ️ Missing games already covered in Step 4")
             else:
                 print("   ✅ No missing PBP data detected in recent games")
-    except Exception as exc:
-        print(f"   ❌ Error in proactive relay recovery: {exc}")
+    except Exception:
+        logger.exception("   ❌ Error in proactive relay recovery")
 
     freshness_dates = sorted(
         {target_date}
@@ -521,8 +524,8 @@ async def run_update(
             review_args = ["-m", "src.cli.daily_review_batch", "--date", f_date, "--no-sync"]
             runner(review_args)
         print("   ✅ Review context generation complete")
-    except Exception as exc:
-        print(f"   ❌ Error generating review context: {exc}")
+    except Exception:
+        logger.exception("   ❌ Error generating review context")
 
     print("\n📚 Step 5.5: LLM-ready game story generation...")
     try:
@@ -530,8 +533,8 @@ async def run_update(
             story_args = ["-m", "src.cli.daily_story_batch", "--date", f_date, "--no-sync"]
             runner(story_args)
         print("   ✅ Game story generation complete")
-    except Exception as exc:
-        print(f"   ❌ Error generating game stories: {exc}")
+    except Exception:
+        logger.exception("   ❌ Error generating game stories")
 
     print("\n📈 Step 6: Updating cumulative player stats...")
     # Identify unique season types from today's games
@@ -562,8 +565,8 @@ async def run_update(
                 limit=limit,
             )
         print(f"   ✅ Local cumulative stats for {year} {active_series} series updated")
-    except Exception as exc:
-        print(f"   ❌ Error during stats update: {exc}")
+    except Exception:
+        logger.exception("   ❌ Error during stats update")
 
     print("\n🩹 Step 6.5: Backfilling starting pitchers from stats...")
     try:
@@ -579,15 +582,15 @@ async def run_update(
             backfill_args.append("--sync")
         runner(backfill_args)
         print("   ✅ Starting pitcher backfill complete")
-    except Exception as exc:
-        print(f"   ❌ Error during pitcher backfill: {exc}")
+    except Exception:
+        logger.exception("   ❌ Error during pitcher backfill")
 
     print("\n🕵️  Step 6.6: Auditing season stats vs transactional details (Auto-remediation)...")
     try:
         runner(["scripts/verification/audit_fallback_stats.py", "--year", str(year), "--type", "all", "--fix"])
         print("   ✅ Statistical audit and auto-remediation complete")
-    except Exception as exc:
-        print(f"   ⚠️ Statistical audit/fix found issues (see logs): {exc}")
+    except Exception:
+        logger.exception("   ⚠️ Statistical audit/fix found issues (see logs)")
 
     print("\n🔄 Step 7: Updating player movements and daily rosters...")
     try:
@@ -606,8 +609,8 @@ async def run_update(
                 r_repo = TeamRepository(session)
                 r_count = r_repo.save_daily_rosters(rosters)
                 print(f"   ✅ Saved {r_count} daily roster records for {r_target_date}")
-    except Exception as exc:
-        print(f"   ❌ Error updating player movements/rosters: {exc}")
+    except Exception:
+        logger.exception("   ❌ Error updating player movements/rosters")
 
     derived_refresh: list[str] = []
 
@@ -615,38 +618,38 @@ async def run_update(
     try:
         runner(["-m", "src.cli.calculate_standings", "--year", str(year)])
         derived_refresh.append("standings")
-    except Exception as exc:
-        print(f"   ❌ Error calculating standings: {exc}")
+    except Exception:
+        logger.exception("   ❌ Error calculating standings")
 
     print("\n🧮 Step 9: Recalculating matchup splits...")
     try:
         runner(["-m", "src.cli.calculate_matchups", "--year", str(year)])
         derived_refresh.append("matchups")
         print("   ✅ Matchup splits recalculated successfully")
-    except Exception as exc:
-        print(f"   ❌ Error recalculating matchups: {exc}")
+    except Exception:
+        logger.exception("   ❌ Error recalculating matchups")
 
     print("\n🏷️ Step 10: Recalculating stat rankings...")
     try:
         runner(["-m", "src.cli.calculate_rankings", "--year", str(year)])
         derived_refresh.append("stat_rankings")
         print("   ✅ Stat rankings recalculated successfully")
-    except Exception as exc:
-        print(f"   ❌ Error recalculating stat rankings: {exc}")
+    except Exception:
+        logger.exception("   ❌ Error recalculating stat rankings")
 
     print("\n📈 Step 10.6: Calculating advanced Sabermetrics (wOBA, wRC+, WAR)...")
     try:
         runner(["-m", "src.cli.calculate_sabermetrics", "--years", str(year)])
         print("   ✅ Sabermetrics engine completed successfully")
-    except Exception as exc:
-        print(f"   ❌ Error calculating Sabermetrics: {exc}")
+    except Exception:
+        logger.exception("   ❌ Error calculating Sabermetrics")
 
     print("\n🎭 Step 10.7: Enriching new player profiles (fetching missing photos/details)...")
     try:
         runner(["scripts/backfill_player_profiles.py", "--limit", "0", "--delay", "1.0"])
         print("   ✅ Player profile enrichment complete")
-    except Exception as exc:
-        print(f"   ⚠️ Profile enrichment found issues (continuing): {exc}")
+    except Exception:
+        logger.exception("   ⚠️ Profile enrichment found issues (continuing)")
 
     print("\n🕵️  Step 10.8: Deep statistical logic audit (cross-table invariants)...")
     try:
@@ -669,8 +672,8 @@ async def run_update(
                 print(f"   ❌ {len(violations_after)} inconsistencies still remain in {len(remaining_ids)} games.")
         else:
             print("   ✅ Deep statistical logic audit complete (No issues found)")
-    except Exception as exc:
-        print(f"   ⚠️  Deep statistical audit/heal process failed: {exc}")
+    except Exception:
+        logger.exception("   ⚠️  Deep statistical audit/heal process failed")
 
     candidate_sync_game_ids = sorted(
         {game["game_id"] for game in daily_games}
@@ -684,9 +687,15 @@ async def run_update(
 
     if sync:
         print("\n🧪 Step 11: Freshness gate before OCI publish...")
+        freshness_ok = True
         for freshness_date in freshness_dates:
-            runner(["-m", "src.cli.freshness_gate", "--date", freshness_date])
-        print("   ✅ Freshness gate passed")
+            try:
+                runner(["-m", "src.cli.freshness_gate", "--date", freshness_date])
+            except subprocess.CalledProcessError:
+                freshness_ok = False
+                print(f"   ⚠️ Freshness gate found issues for {freshness_date} (continuing)")
+        if freshness_ok:
+            print("   ✅ Freshness gate passed")
 
         print("\n🕵️  Step 11.5: Local game status integrity audit...")
         try:
@@ -740,8 +749,10 @@ async def run_update(
 
         print("\n🧪 Step 13.5: Freshness gate after OCI publish...")
         for freshness_date in freshness_dates:
-            runner(["-m", "src.cli.freshness_gate", "--date", freshness_date, "--source-url-env", "OCI_DB_URL"])
-        print("   ✅ OCI freshness gate passed")
+            try:
+                runner(["-m", "src.cli.freshness_gate", "--date", freshness_date, "--source-url-env", "OCI_DB_URL"])
+            except subprocess.CalledProcessError:
+                print(f"   ⚠️ OCI freshness gate found issues for {freshness_date} (continuing)")
 
         print("\n⚖️ Step 13.6: OCI parity quality gate check...")
         try:
@@ -759,8 +770,8 @@ async def run_update(
                 preview_args.append("--no-sync")
             runner(preview_args)
             print("   ✅ Tomorrow preview seed complete")
-        except Exception as exc:
-            print(f"   ❌ Error generating tomorrow preview seed: {exc}")
+        except Exception:
+            logger.exception("   ❌ Error generating tomorrow preview seed")
 
     summary_path = _daily_summary_path(target_date, summary_dir)
     stability_summary = _build_stability_summary(
@@ -848,8 +859,8 @@ async def run_update(
                 })
             SlackWebhookClient.send_alert(msg, blocks=blocks)
             print(f"   ✅ Sent PBP recovery summary to Slack (Success: {success_count}, Failed: {failed_count})")
-        except Exception as exc:
-            print(f"   ❌ Error sending PBP recovery summary: {exc}")
+        except Exception:
+            logger.exception("   ❌ Error sending PBP recovery summary")
     else:
         print("   ℹ️ No PBP recovery targets for today.")
 

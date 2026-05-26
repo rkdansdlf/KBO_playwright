@@ -6,8 +6,12 @@ Source: https://www.koreabaseball.com/Player/Trade.aspx
 from __future__ import annotations
 
 import asyncio
+import logging
 from typing import Dict, List, Any, Optional
 from datetime import datetime, date
+
+
+logger = logging.getLogger(__name__)
 
 from tenacity import AsyncRetrying, stop_after_attempt, wait_exponential, retry_if_exception_type
 from playwright.async_api import Page, TimeoutError as PlaywrightTimeoutError
@@ -136,8 +140,8 @@ class PlayerMovementCrawler:
                 
                 page_num += 1
                 
-        except Exception as e:
-            print(f"⚠️ Error processing year {year}: {e}")
+        except Exception:
+            logger.exception(f"⚠️ Error processing year {year}")
             import traceback
             traceback.print_exc()
 

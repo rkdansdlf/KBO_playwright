@@ -112,7 +112,7 @@ class FuturesProfileCrawler:
         futures_clicked = False
         for selector in tab_selectors:
             try:
-                tab = await page.wait_for_selector(selector, timeout=3000)
+                tab = await page.wait_for_selector(selector, timeout=10000)
             except Exception:
                 continue
             if tab:

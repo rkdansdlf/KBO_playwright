@@ -7,9 +7,13 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 from typing import Any, Dict, List, Optional
 
 import httpx
+
+
+logger = logging.getLogger(__name__)
 
 from src.utils.playwright_pool import AsyncPlaywrightPool
 from src.utils.safe_print import safe_print as print
@@ -106,9 +110,9 @@ class PreviewCrawler:
                 if isinstance(payload, (dict, list)):
                     return payload
                 print(f"⚠️ Unexpected response type from {url}: {type(payload).__name__}")
-        except Exception as exc:
+        except Exception:
             # Keep logs concise; caller may still recover via Playwright.
-            print(f"⚠️ HTTP API call failed for {url}: {exc}")
+            logger.exception(f"⚠️ HTTP API call failed for {url}")
 
         # 2) Fallback via Playwright request, when a page is available.
         if page is None:
@@ -121,8 +125,8 @@ class PreviewCrawler:
                 if isinstance(payload, (dict, list)):
                     return payload
                 print(f"⚠️ Unexpected Playwright response type from {url}: {type(payload).__name__}")
-        except Exception as exc:
-            print(f"⚠️ Playwright API call failed for {url}: {exc}")
+        except Exception:
+            logger.exception(f"⚠️ Playwright API call failed for {url}")
         return None
 
     async def crawl_preview_for_date(self, game_date: str) -> List[Dict[str, Any]]:
@@ -151,8 +155,8 @@ class PreviewCrawler:
                     owns_pool = True
                 try:
                     await pool.start()
-                except Exception as exc:
-                    print(f"⚠️ Playwright fallback failed: {exc}")
+                except Exception:
+                    logger.exception("⚠️ Playwright fallback failed")
                     return []
                 page = await pool.acquire()
                 await page.goto(self.BASE_REFERER, wait_until="domcontentloaded", timeout=30000)
@@ -242,8 +246,8 @@ class PreviewCrawler:
                         # Parse Away Lineup (Index 4 is Away)
                         if len(lineup_rows) > 4:
                             preview_data["away_lineup"] = self._parse_lineup_grid(lineup_rows[4])
-                    except Exception as e:
-                        print(f"⚠️ Error parsing lineup for {game_id}: {e}")
+                    except Exception:
+                        logger.exception(f"⚠️ Error parsing lineup for {game_id}")
 
                 results.append(preview_data)
                 print(
@@ -254,8 +258,8 @@ class PreviewCrawler:
 
             return results
 
-        except Exception as e:
-            print(f"❌ PreviewCrawler error: {e}")
+        except Exception:
+            logger.exception("❌ PreviewCrawler error")
             return []
         finally:
             if page is not None and pool is not None:

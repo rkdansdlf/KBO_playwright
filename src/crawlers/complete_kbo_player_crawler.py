@@ -6,16 +6,20 @@ Docs/schema/player_season_data.md 스키마를 기반으로 구현
 기타시리즈: Basic1 기본 데이터만 수집
 """
 
+import logging
 import sys
 import os
 import time
 from typing import Dict, List, Optional, Union
 from datetime import datetime
 
+
+logger = logging.getLogger(__name__)
+
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
 from playwright.sync_api import sync_playwright, Page
-from src.repositories.save_futures_batting import save_futures_batting_stats
+from src.repositories.save_futures_batting import save_futures_batting
 from src.db.engine import create_engine_for_url
 from src.utils.playwright_blocking import install_sync_resource_blocking
 
@@ -181,8 +185,8 @@ def crawl_basic1_data(page: Page, year: int, series_info: Dict) -> Dict[int, Dic
         
         return all_player_data
         
-    except Exception as e:
-        print(f"   ❌ Basic1 데이터 수집 중 오류: {e}")
+    except Exception:
+        logger.exception("   ❌ Basic1 데이터 수집 중 오류")
         return {}
 
 def parse_regular_season_basic1_stats(cells: List) -> Dict:
@@ -205,8 +209,8 @@ def parse_regular_season_basic1_stats(cells: List) -> Dict:
                 'sacrifice_bunts': safe_parse_number(cells[14].inner_text().strip(), int),
                 'sacrifice_flies': safe_parse_number(cells[15].inner_text().strip(), int)
             })
-    except Exception as e:
-        print(f"      ⚠️ 정규시즌 Basic1 통계 파싱 오류: {e}")
+    except Exception:
+        logger.exception("      ⚠️ 정규시즌 Basic1 통계 파싱 오류")
     
     return stats
 
@@ -233,8 +237,8 @@ def parse_other_series_stats(cells: List) -> Dict:
                 'gdp': safe_parse_number(cells[17].inner_text().strip(), int),
                 'errors': safe_parse_number(cells[18].inner_text().strip(), int) if len(cells) > 18 else None
             })
-    except Exception as e:
-        print(f"      ⚠️ 기타시리즈 통계 파싱 오류: {e}")
+    except Exception:
+        logger.exception("      ⚠️ 기타시리즈 통계 파싱 오류")
     
     return stats
 
@@ -314,15 +318,15 @@ def crawl_basic2_with_headers(page: Page, year: int, series_info: Dict) -> Dict[
                 
                 print(f"         ✅ {len(page_data)}명 데이터 수집")
                 
-            except Exception as e:
-                print(f"         ❌ {header_name} 헤더 처리 중 오류: {e}")
+            except Exception:
+                logger.exception(f"         ❌ {header_name} 헤더 처리 중 오류")
                 continue
         
         print(f"   ✅ Basic2 헤더별 데이터 수집 완료: {len(all_player_data)}명")
         return all_player_data
         
-    except Exception as e:
-        print(f"   ❌ Basic2 데이터 수집 중 오류: {e}")
+    except Exception:
+        logger.exception("   ❌ Basic2 데이터 수집 중 오류")
         return {}
 
 def collect_current_page_data(page: Page, sort_field: str) -> Dict[int, Dict]:
@@ -381,8 +385,8 @@ def collect_current_page_data(page: Page, sort_field: str) -> Dict[int, Dict]:
             page_num += 1
             time.sleep(1)
     
-    except Exception as e:
-        print(f"         ⚠️ 페이지 데이터 수집 중 오류: {e}")
+    except Exception:
+        logger.exception("         ⚠️ 페이지 데이터 수집 중 오류")
     
     return page_data
 
@@ -427,8 +431,8 @@ def extract_basic2_stats(cells: List, sort_field: str) -> Dict:
                 if parsed_value is not None:
                     stats[field_name] = parsed_value
                 
-    except Exception as e:
-        print(f"         ⚠️ Basic2 통계 추출 오류: {e}")
+    except Exception:
+        logger.exception("         ⚠️ Basic2 통계 추출 오류")
     
     return stats
 
@@ -453,8 +457,8 @@ def goto_next_page(page: Page) -> bool:
         
         return False
         
-    except Exception as e:
-        print(f"      ⚠️ 페이지 이동 중 오류: {e}")
+    except Exception:
+        logger.exception("      ⚠️ 페이지 이동 중 오류")
         return False
 
 def crawl_other_series_data(page: Page, year: int, series_list: List[Dict]) -> Dict[str, Dict[int, Dict]]:
@@ -520,18 +524,18 @@ def save_to_database(player_data: Dict[int, Dict], series_name: str):
                     }
                 }
                 
-                save_futures_batting_stats(save_data)
+                save_futures_batting(save_data)
                 saved_count += 1
                 
-            except Exception as e:
-                print(f"   ⚠️ {data['player_name']} 저장 실패: {e}")
+            except Exception:
+                logger.exception(f"   ⚠️ {data['player_name']} 저장 실패")
                 continue
         
         print(f"   ✅ {saved_count}/{len(player_data)}명 저장 완료")
         return saved_count
         
-    except Exception as e:
-        print(f"   ❌ 데이터베이스 저장 중 오류: {e}")
+    except Exception:
+        logger.exception("   ❌ 데이터베이스 저장 중 오류")
         return 0
 
 def main():
@@ -587,8 +591,8 @@ def main():
             print(f"📊 총 저장된 레코드: {total_saved}개")
             print(f"📅 크롤링 시간: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
             
-        except Exception as e:
-            print(f"❌ 크롤링 중 오류 발생: {e}")
+        except Exception:
+            logger.exception("❌ 크롤링 중 오류 발생")
         
         finally:
             browser.close()

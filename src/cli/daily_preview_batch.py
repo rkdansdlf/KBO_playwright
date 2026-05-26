@@ -4,6 +4,7 @@ Fetches pre-game context and persists both preview JSON and core pregame tables.
 """
 from __future__ import annotations
 
+import logging
 import argparse
 import asyncio
 import os
@@ -18,6 +19,8 @@ from src.sync.oci_sync import OCISync
 from src.utils.refresh_manifest import write_refresh_manifest
 from src.utils.safe_print import safe_print as print
 from src.utils.team_codes import resolve_team_code
+
+logger = logging.getLogger(__name__)
 
 
 async def run_preview_batch(target_date: str, *, sync_to_oci: bool | None = None) -> List[str]:
@@ -65,8 +68,8 @@ async def run_preview_batch(target_date: str, *, sync_to_oci: bool | None = None
                     series_context = agg.get_postseason_series_summary(away_code, home_code, season_year, target_dt_obj)
                     if series_context:
                         preview["series_context"] = series_context
-                except Exception as exc:
-                    print(f"⚠️ Context aggregation failed for {game_id}: {exc}")
+                except Exception:
+                    logger.exception(f"⚠️ Context aggregation failed for {game_id}")
 
             away_starter_id = preview.get("away_starter_id")
             home_starter_id = preview.get("home_starter_id")
@@ -75,8 +78,8 @@ async def run_preview_batch(target_date: str, *, sync_to_oci: bool | None = None
                     preview["away_starter_stats"] = agg.get_pitcher_season_stats(away_starter_id, season_year)
                 if home_starter_id:
                     preview["home_starter_stats"] = agg.get_pitcher_season_stats(home_starter_id, season_year)
-            except Exception as exc:
-                print(f"⚠️ Pitcher stats aggregation failed for {game_id}: {exc}")
+            except Exception:
+                logger.exception(f"⚠️ Pitcher stats aggregation failed for {game_id}")
 
             if save_pregame_lineups(preview):
                 saved_ids.append(game_id)

@@ -2,7 +2,10 @@
 Save KBO player season batting stats to database with UPSERT logic.
 Compatible with SQLite, PostgreSQL, and MySQL.
 """
+import logging
 from typing import Dict, Any
+
+logger = logging.getLogger(__name__)
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.dialects.mysql import insert as mysql_insert
 from sqlalchemy.dialects.postgresql import insert as postgresql_insert
@@ -99,8 +102,8 @@ def save_kbo_player_season_batting(player_data: Dict[str, Any]) -> bool:
             
             return True
             
-    except Exception as e:
-        print(f"   ❌ 데이터 저장 중 오류: {e}")
+    except Exception:
+        logger.exception("   ❌ 데이터 저장 중 오류")
         return False
 
 
@@ -126,8 +129,8 @@ def save_kbo_batting_batch(players_data: Dict[int, Dict[str, Any]], series_name:
                 saved_count += 1
                 if saved_count % 50 == 0:  # 50명마다 진행상황 출력
                     print(f"   📊 진행상황: {saved_count}/{total_count}명 저장 완료")
-        except Exception as e:
-            print(f"   ⚠️ {player_data.get('player_name', 'Unknown')} 저장 실패: {e}")
+        except Exception:
+            logger.exception(f"   ⚠️ {player_data.get('player_name', 'Unknown')} 저장 실패")
             continue
     
     print(f"   ✅ {saved_count}/{total_count}명 저장 완료")

@@ -2,7 +2,10 @@
 PlayerSeasonPitching 전용 리포지토리
 투수 시즌 데이터를 player_season_pitching 테이블에 올바르게 저장
 """
+import logging
 from collections import Counter
+
+logger = logging.getLogger(__name__)
 from typing import List, Dict, Any, Optional
 from sqlalchemy.orm import Session
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
@@ -182,17 +185,17 @@ def save_pitching_stats_to_db(payloads: List[Dict[str, Any]]) -> int:
             try:
                 session.execute(stmt)
                 saved_count += 1
-            except Exception as e:
-                print(f"⚠️ UPSERT 실패 (player_id={data.get('player_id')}): {e}")
+            except Exception:
+                logger.exception(f"⚠️ UPSERT 실패 (player_id={data.get('player_id')})")
                 session.rollback()
                 continue
         
         try:
             session.commit()
             print(f"✅ 투수 데이터 {saved_count}건 저장 완료 (player_season_pitching 테이블)")
-        except Exception as e:
+        except Exception:
             session.rollback()
-            print(f"❌ 커밋 실패: {e}")
+            logger.exception("❌ 커밋 실패")
             return 0
         
         return saved_count
@@ -232,10 +235,10 @@ def cleanup_invalid_pitching_data(session: Optional[Session] = None) -> int:
         
         return deleted
         
-    except Exception as e:
+    except Exception:
         if not session:
             cleanup_session.rollback()
-        print(f"⚠️ 투수 데이터 정리 실패: {e}")
+        logger.exception("⚠️ 투수 데이터 정리 실패")
         return 0
     finally:
         if not session:

@@ -4,6 +4,7 @@ Fetches Futures league data and retired player listings.
 """
 from __future__ import annotations
 
+import logging
 import argparse
 import asyncio
 import os
@@ -13,6 +14,8 @@ from zoneinfo import ZoneInfo
 from src.db.engine import SessionLocal
 from src.sync.oci_sync import OCISync
 from src.utils.safe_print import safe_print as print
+
+logger = logging.getLogger(__name__)
 
 KST = ZoneInfo("Asia/Seoul")
 
@@ -36,8 +39,8 @@ async def run_periodic_extras(
             print(f"   ✅ Futures Hitter output:\n{result.stdout}")
         else:
             print(f"   ❌ Futures Hitter failed:\n{result.stderr}")
-    except Exception as exc:
-        print(f"   ❌ Error crawling futures stats: {exc}")
+    except Exception:
+        logger.exception("   ❌ Error crawling futures stats")
 
     # 2. Retired Player Listing
     print("\n👴 Step 2: Crawling Retired Player Listings...")
@@ -49,8 +52,8 @@ async def run_periodic_extras(
             print(f"   ✅ Retired Listing output:\n{result.stdout}")
         else:
             print(f"   ❌ Retired Listing failed:\n{result.stderr}")
-    except Exception as exc:
-        print(f"   ❌ Error crawling retired players: {exc}")
+    except Exception:
+        logger.exception("   ❌ Error crawling retired players")
 
     if sync:
         print("\n☁️ Step 3: Synchronizing to OCI...")
@@ -67,8 +70,8 @@ async def run_periodic_extras(
                     syncer.sync_player_season_batting(year=year)
                     syncer.sync_player_season_pitching(year=year)
                     print("   ✅ OCI synchronization completed")
-                except Exception as exc:
-                    print(f"   ❌ OCI sync error: {exc}")
+                except Exception:
+                    logger.exception("   ❌ OCI sync error")
                 finally:
                     syncer.close()
 

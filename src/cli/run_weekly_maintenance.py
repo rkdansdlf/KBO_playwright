@@ -4,6 +4,7 @@ Performs player profile enrichment, DB health checks, and OCI cleanup.
 """
 from __future__ import annotations
 
+import logging
 import argparse
 import asyncio
 import os
@@ -17,6 +18,8 @@ from src.cli.db_healthcheck import main as healthcheck_main
 from src.db.engine import SessionLocal
 from src.sync.oci_sync import OCISync
 from src.utils.safe_print import safe_print as print
+
+logger = logging.getLogger(__name__)
 
 KST = ZoneInfo("Asia/Seoul")
 
@@ -33,16 +36,16 @@ async def run_weekly_maintenance(
     try:
         await collect_profiles(limit=profile_limit)
         print("   ✅ Profile enrichment complete")
-    except Exception as exc:
-        print(f"   ❌ Error during profile enrichment: {exc}")
+    except Exception:
+        logger.exception("   ❌ Error during profile enrichment")
 
     # 2. Database Healthcheck
     print("\n🩺 Step 2: Running Database Healthcheck...")
     try:
         healthcheck_main([])
         print("   ✅ Healthcheck complete")
-    except Exception as exc:
-        print(f"   ❌ Error during healthcheck: {exc}")
+    except Exception:
+        logger.exception("   ❌ Error during healthcheck")
 
     # 3. OCI Cleanup (Duplicates)
     print("\n🧹 Step 3: Cleaning up OCI Duplicates...")
@@ -60,8 +63,8 @@ async def run_weekly_maintenance(
                 print(f"   ✅ OCI Cleanup output:\n{result.stdout}")
             else:
                 print(f"   ❌ OCI Cleanup failed:\n{result.stderr}")
-        except Exception as exc:
-            print(f"   ❌ Error during OCI cleanup: {exc}")
+        except Exception:
+            logger.exception("   ❌ Error during OCI cleanup")
 
     if sync:
         print("\n☁️ Step 4: Synchronizing Updated Profiles to OCI...")
@@ -75,8 +78,8 @@ async def run_weekly_maintenance(
                     syncer.sync_player_basic()
                     syncer.sync_players()
                     print("   ✅ OCI synchronization completed")
-                except Exception as exc:
-                    print(f"   ❌ OCI sync error: {exc}")
+                except Exception:
+                    logger.exception("   ❌ OCI sync error")
                 finally:
                     syncer.close()
 

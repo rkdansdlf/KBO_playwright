@@ -1,10 +1,14 @@
 
+import logging
 import asyncio
 import re
 from typing import List, Dict, Optional
 from playwright.async_api import async_playwright, Page, Locator
 
 from src.utils.playwright_blocking import install_async_resource_blocking
+
+
+logger = logging.getLogger(__name__)
 
 from src.models.team_history import TeamHistory
 from src.db.engine import SessionLocal

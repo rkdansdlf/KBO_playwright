@@ -78,19 +78,19 @@ class RelayCrawler:
         return f"{kbo_game_id}{year}"
 
     def _schedule_query_context(self, kbo_game_id: str, query_date: str | None = None) -> dict[str, str]:
-        date = query_date or f"{kbo_game_id[:4]}-{kbo_game_id[4:6]}-{kbo_game_id[6:8]}"
+        query_date_str = query_date or f"{kbo_game_id[:4]}-{kbo_game_id[4:6]}-{kbo_game_id[6:8]}"
         if "20241110" <= kbo_game_id[:8] <= "20241124":
             return {
                 "sectionId": "worldbaseball",
                 "categoryId": "premier12",
                 "seasonYear": kbo_game_id[:4],
-                "date": date,
+                "date": query_date_str,
             }
         return {
             "sectionId": "kbaseball",
             "categoryId": "kbo",
             "seasonYear": kbo_game_id[:4],
-            "date": date,
+            "date": query_date_str,
         }
 
     def _naver_team_code(self, code: str) -> str:
@@ -225,6 +225,13 @@ class RelayCrawler:
                 best_iter_score = max(best_iter_score, score)
 
             score = best_iter_score
+            # If the MMDD in Naver's gameId does not match the MMDD of the KBO game, penalize heavily.
+            if len(game_id) >= 8:
+                g_mmdd = game_id[4:8]
+                k_mmdd = game_date_str[4:8]
+                if g_mmdd.isdigit() and g_mmdd != k_mmdd:
+                    score -= 100
+
             # 3. Doubleheader Match
                 
             # 3. Doubleheader Match

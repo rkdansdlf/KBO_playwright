@@ -14,9 +14,13 @@ Usage:
 from __future__ import annotations
 
 import asyncio
+import logging
 import re
 from datetime import datetime, date as date_type
 from typing import Dict, List, Optional, Tuple
+
+
+logger = logging.getLogger(__name__)
 
 from playwright.async_api import async_playwright, Page, BrowserContext
 
@@ -264,8 +268,8 @@ class StaffRegisterCrawler:
                     try:
                         records = await self.crawl_team(page, code)
                         all_records.extend(records)
-                    except Exception as exc:
-                        print(f"  ⚠️  Error crawling team {code}: {exc}")
+                    except Exception:
+                        logger.exception(f"  ⚠️  Error crawling team {code}")
 
             finally:
                 await browser.close()
