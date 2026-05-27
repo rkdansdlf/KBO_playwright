@@ -279,7 +279,7 @@ class PlayerSearchCrawler:
 
     async def _get_first_player_name(self, page):
         try: return (await page.locator(TABLE_ROWS).first.locator("td").nth(1).inner_text()).strip()
-        except: return ""
+        except Exception: return ""
 
     async def _trigger_postback(self, page, anchor):
         try:
@@ -299,15 +299,15 @@ class PlayerSearchCrawler:
                             await page.evaluate(POSTBACK_EVAL, [m.group(1), m.group(2)])
                             await page.wait_for_load_state("load", timeout=10000)
                             return True
-                        except:
+                        except Exception:
                             pass
-            except:
+            except Exception:
                 pass
             return False
 
     async def _wait_after_nav(self, page, prev_v, first_b):
         try: await page.wait_for_function("([s, v]) => document.querySelector(s)?.value !== v", [HFPAGE, prev_v], timeout=5000)
-        except: pass
+        except Exception: pass
         await asyncio.sleep(self.request_delay)
 
     async def _list_initial_links(self, page):

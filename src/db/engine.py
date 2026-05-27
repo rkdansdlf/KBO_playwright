@@ -27,7 +27,7 @@ def create_engine_for_url(url: str, *, disable_sqlite_wal: bool = False):
                 cursor.execute("PRAGMA busy_timeout = 120000;")
                 cursor.execute("PRAGMA synchronous = NORMAL;")
                 cursor.close()
-            except: pass
+            except Exception: pass
         return engine
     return create_engine(url, pool_pre_ping=True, pool_size=10, max_overflow=20, echo=False)
 
@@ -283,7 +283,7 @@ def _migrate_game_summary_table(conn):
 
 def init_db():
     from src.models.base import Base
-    from src.models import team, player, season, game, team_stats, rankings, crawl, award, standings, matchup, fa_contract, rag_chunk, ticket_schedule
+    from src.models import team, player, season, game, team_stats, rankings, crawl, award, standings, matchup, fa_contract, rag_chunk, ticket_schedule, stadium_food, embedding_cache
     Base.metadata.create_all(bind=Engine)
     _ensure_player_batting_team_code_column()
     _ensure_player_basic_status_columns()
@@ -291,3 +291,4 @@ def init_db():
     _ensure_game_status_column()
     _ensure_game_identity_columns()
     print(f"[DB] Database initialized: {DATABASE_URL}")
+

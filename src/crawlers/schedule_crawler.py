@@ -572,9 +572,9 @@ class ScheduleCrawler:
                  try:
                      rows_text = await page.evaluate(debug_script)
                      print(f"[DEBUG] Table Rows Sample: {rows_text}")
-                 except:
+                 except Exception:
                      pass
-                 
+                  
         return games
 
     def _extract_game_id(self, href: str) -> str:
@@ -583,7 +583,7 @@ class ScheduleCrawler:
             if 'gameId=' in href:
                 game_id = href.split('gameId=')[1].split('&')[0]
                 return game_id
-        except:
+        except Exception:
             pass
         return ""
 

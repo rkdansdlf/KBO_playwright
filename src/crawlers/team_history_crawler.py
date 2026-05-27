@@ -75,7 +75,7 @@ class TeamHistoryCrawler:
             year_text = await year_th.inner_text()
             try:
                 year = int(year_text.strip())
-            except:
+            except Exception:
                 print(f"⚠️ Skipping invalid year: {year_text}")
                 continue
                 
@@ -99,7 +99,7 @@ class TeamHistoryCrawler:
                 if await rank_el.count() > 0:
                     try:
                         rank = int((await rank_el.inner_text()).strip())
-                    except: pass
+                    except Exception: pass
                 
                 # Parse Name/Logo (Updates identity if present)
                 # Look for img or name span

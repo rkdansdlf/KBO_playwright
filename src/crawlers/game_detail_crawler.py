@@ -449,7 +449,7 @@ class GameDetailCrawler:
                 try:
                     val = (await crowd_el.text_content()).replace('관중 :', '').replace(',', '').strip()
                     metadata['attendance'] = int(val)
-                except: pass
+                except Exception: pass
 
             # 2. Try generic area search
             info_area = await page.query_selector('.box-score-area, .game-info, .score-board, .record-etc')
@@ -700,7 +700,7 @@ class GameDetailCrawler:
 
             # Key fix for Task 3: Use resolver for exhibition/missing IDs
             if p_id is None and self.resolver and team_code and season_year:
-                p_id = self.resolver.resolve_id(player_name, team_code, season_year, uniform_no=uniform_no)
+                p_id = self.resolver.resolve_id(player_name, team_code, season_year, uniform_no=uniform_no, is_pitcher=False)
                 if p_id:
                     print(f"   [RESOLVED] {player_name} ({team_code}) -> {p_id}")
 
@@ -805,7 +805,7 @@ class GameDetailCrawler:
             # Key fix for Task 3: Use resolver for exhibition/missing IDs
             # AND: Auto-search and register if still unknown
             if p_id is None and self.resolver and team_code and season_year:
-                p_id = self.resolver.resolve_id(player_name, team_code, season_year, uniform_no=uniform_no)
+                p_id = self.resolver.resolve_id(player_name, team_code, season_year, uniform_no=uniform_no, is_pitcher=True)
 
                 can_register_from_search = not getattr(self.resolver, "strict_game_resolution", False) and getattr(
                     self.resolver,

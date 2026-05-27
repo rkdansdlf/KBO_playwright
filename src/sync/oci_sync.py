@@ -427,13 +427,21 @@ class OCISync:
         self.sqlite_session = sqlite_session
 
         # Create OCI engine
+        # pool_recycle: force connection refresh every 5 min to beat cloud DB idle-timeout (OCI typically kills
+        # idle TCP sockets after ~5-10 min). pool_pre_ping alone is not enough when the engine is long-lived.
         self.oci_engine = create_engine(
             oci_url,
             echo=False,
             pool_pre_ping=True,
+            pool_recycle=240,          # recycle connections every 4 minutes
+            pool_timeout=30,
             connect_args={
                 "connect_timeout": 60,
-                "application_name": "KBO_Crawler_Sync"
+                "application_name": "KBO_Crawler_Sync",
+                "keepalives": 1,           # enable TCP keepalives
+                "keepalives_idle": 60,     # send keepalive after 60s idle
+                "keepalives_interval": 10, # retry keepalive every 10s
+                "keepalives_count": 5,     # drop connection after 5 failed keepalives
             }
         )
 
@@ -595,6 +603,7 @@ class OCISync:
     def sync_daily_rosters(self) -> int:
         """Sync team_daily_roster from SQLite to OCI"""
         from src.models.team import TeamDailyRoster
+        from src.utils.team_history import resolve_team_code_for_season
         
         # Check if table exists (SQLite)
         try:
@@ -608,17 +617,43 @@ class OCISync:
             print("ℹ️ No daily roster data to sync.")
             return 0
             
-        print(f"INFO: Found {len(rosters)} rosters to sync. Batching...")
+        print(f"INFO: Found {len(rosters)} rosters to sync. Resolving team codes and deduplicating...")
         
+        # Deduplicate rosters by resolving team codes for their respective seasons
+        seen_keys = set()
+        unique_rosters = []
+        for r in rosters:
+            season_year = r.roster_date.year if r.roster_date else None
+            resolved_code = r.team_code
+            if r.team_code and season_year:
+                raw = r.team_code.strip().upper()
+                if raw == 'LOT':
+                    raw = 'LT'
+                elif raw == 'KW':
+                    raw = 'KH'
+                resolved = resolve_team_code_for_season(raw, season_year)
+                if resolved:
+                    resolved_code = resolved
+                else:
+                    resolved_code = raw
+
+            key = (r.roster_date, resolved_code, r.player_id)
+            if key in seen_keys:
+                continue
+            seen_keys.add(key)
+            unique_rosters.append((r, resolved_code))
+
+        print(f"INFO: {len(rosters)} rows deduped to {len(unique_rosters)} unique daily roster records. Syncing...")
+
         batch_size = 1000
-        for i in range(0, len(rosters), batch_size):
-            batch = rosters[i:i+batch_size]
+        for i in range(0, len(unique_rosters), batch_size):
+            batch = unique_rosters[i:i+batch_size]
             values_list = []
             
-            for r in batch:
+            for r, resolved_code in batch:
                 data = {
                     'roster_date': r.roster_date,
-                    'team_code': r.team_code,
+                    'team_code': resolved_code,
                     'player_id': r.player_id,
                     'player_basic_id': r.player_basic_id,
                     'person_type': r.person_type,
@@ -700,7 +735,7 @@ class OCISync:
             elif isinstance(clone.aliases, str):
                 try:
                     clone.aliases = json.loads(clone.aliases)
-                except:
+                except Exception:
                     clone.aliases = [clone.aliases]
 
             self.target_session.merge(clone)
@@ -814,53 +849,64 @@ class OCISync:
         return mapping
 
     def sync_players(self) -> int:
-        """Sync master player records (players table) from SQLite to OCI"""
+        """Sync master player records (players table) from SQLite to OCI (batched upsert)"""
         from src.models.player import Player
         players = self.sqlite_session.query(Player).all()
         synced = 0
+        batch_size = 500
 
         print(f"🚚 Syncing Master Players ({len(players)} rows)...")
 
-        for player in players:
-            # Map all relevant fields including the new photo_url and profile details
-            data = {
-                'kbo_person_id': player.kbo_person_id,
-                'player_basic_id': player.player_basic_id,
-                'birth_date': player.birth_date,
-                'birth_place': player.birth_place,
-                'height_cm': player.height_cm,
-                'weight_kg': player.weight_kg,
-                'bats': player.bats,
-                'throws': player.throws,
-                'is_foreign_player': player.is_foreign_player,
-                'debut_year': player.debut_year,
-                'retire_year': player.retire_year,
-                'status': player.status,
-                'notes': player.notes,
-                'photo_url': player.photo_url,
-                'salary_original': player.salary_original,
-                'signing_bonus_original': player.signing_bonus_original,
-                'draft_info': player.draft_info,
-            }
+        for batch_start in range(0, len(players), batch_size):
+            batch = players[batch_start : batch_start + batch_size]
+            values_list = [
+                {
+                    'kbo_person_id': p.kbo_person_id,
+                    'player_basic_id': p.player_basic_id,
+                    'birth_date': p.birth_date,
+                    'birth_place': p.birth_place,
+                    'height_cm': p.height_cm,
+                    'weight_kg': p.weight_kg,
+                    'bats': p.bats,
+                    'throws': p.throws,
+                    'is_foreign_player': p.is_foreign_player,
+                    'debut_year': p.debut_year,
+                    'retire_year': p.retire_year,
+                    'status': p.status,
+                    'notes': p.notes,
+                    'photo_url': p.photo_url,
+                    'salary_original': p.salary_original,
+                    'signing_bonus_original': p.signing_bonus_original,
+                    'draft_info': p.draft_info,
+                }
+                for p in batch
+            ]
 
-            stmt = pg_insert(Player).values(**data)
-            
-            # Update all fields on conflict except kbo_person_id
-            update_dict = {k: v for k, v in data.items() if k != 'kbo_person_id'}
+            if not values_list:
+                continue
+
+            stmt = pg_insert(Player).values(values_list)
+            update_dict = {
+                col: getattr(stmt.excluded, col)
+                for col in (
+                    'player_basic_id', 'birth_date', 'birth_place', 'height_cm',
+                    'weight_kg', 'bats', 'throws', 'is_foreign_player', 'debut_year',
+                    'retire_year', 'status', 'notes', 'photo_url', 'salary_original',
+                    'signing_bonus_original', 'draft_info',
+                )
+            }
             update_dict['updated_at'] = text('CURRENT_TIMESTAMP')
-            
+
             stmt = stmt.on_conflict_do_update(
                 index_elements=['kbo_person_id'],
                 set_=update_dict
             )
 
             self.target_session.execute(stmt)
-            synced += 1
-            if synced % 500 == 0:
-                self.target_session.commit()
-                print(f"   Synced {synced} players...")
+            self.target_session.commit()
+            synced += len(values_list)
+            print(f"   Synced {synced}/{len(players)} players...")
 
-        self.target_session.commit()
         print(f"✅ Synced {synced} players to OCI")
         return synced
 
@@ -1926,8 +1972,10 @@ class OCISync:
         elif 'id' not in exclude_cols:
             exclude_cols.append('id')
 
-        # Use all columns except those explicitly excluded
-        columns = [c.key for c in model.__table__.columns if c.key not in exclude_cols]
+        # Use all columns except those explicitly excluded and not present in target DB
+        from sqlalchemy import inspect
+        target_columns = {c["name"] for c in inspect(self.oci_engine).get_columns(model.__tablename__)}
+        columns = [c.key for c in model.__table__.columns if c.key not in exclude_cols and c.key in target_columns]
 
         query = self.sqlite_session.query(model)
         if filters:
@@ -2304,6 +2352,86 @@ class OCISync:
             )
         self.target_session.commit()
         print(f"🧹 Purged OCI season stats for {year} (type={type})")
+
+    def sync_rag_chunks(self, batch_size: int = 1000) -> int:
+        """Sync RAG chunks from SQLite to OCI Postgres"""
+        from src.models.rag_chunk import RagChunk
+        from src.models.base import Base
+        print("📁 Ensure RAG chunks table exists on OCI...")
+        try:
+            Base.metadata.create_all(self.oci_engine)
+        except Exception as e:
+            print(f"⚠️ Warning: metadata create_all error (might already exist): {e}")
+
+        def transform_rag_chunk(data: Dict[str, Any]) -> Dict[str, Any]:
+            embedding = data.get("embedding")
+            if embedding is not None:
+                if isinstance(embedding, str):
+                    try:
+                        import json
+                        embedding = json.loads(embedding)
+                    except Exception:
+                        pass
+                if isinstance(embedding, list):
+                    target_dim = 256
+                    current_dim = len(embedding)
+                    if current_dim != target_dim:
+                        if current_dim > target_dim:
+                            truncated = embedding[:target_dim]
+                            import math
+                            norm = math.sqrt(sum(x * x for x in truncated))
+                            if norm > 1e-9:
+                                adjusted = [x / norm for x in truncated]
+                            else:
+                                adjusted = truncated
+                        else:
+                            adjusted = embedding + [0.0] * (target_dim - current_dim)
+                        data["embedding"] = adjusted
+            return data
+        
+        return self._sync_simple_table(
+            RagChunk,
+            ["source_table", "source_row_id"],
+            exclude_cols=["created_at", "id"],
+            transform_fn=transform_rag_chunk,
+            batch_size=batch_size
+        )
+
+
+    def sync_ticket_schedules(self, batch_size: int = 1000) -> int:
+        """Sync ticket schedules from SQLite to OCI Postgres"""
+        from src.models.ticket_schedule import TicketSchedule
+        from src.models.base import Base
+        print("📁 Ensure Ticket schedules table exists on OCI...")
+        try:
+            Base.metadata.create_all(self.oci_engine)
+        except Exception as e:
+            print(f"⚠️ Warning: metadata create_all error (might already exist): {e}")
+        
+        return self._sync_simple_table(
+            TicketSchedule,
+            ["game_date", "home_team", "platform"],
+            exclude_cols=["created_at", "id"],
+            batch_size=batch_size
+        )
+
+    def sync_stadium_foods(self, batch_size: int = 1000) -> int:
+        """Sync stadium foods from SQLite to OCI Postgres"""
+        from src.models.stadium_food import StadiumFood
+        from src.models.base import Base
+        print("📁 Ensure Stadium foods table exists on OCI...")
+        try:
+            Base.metadata.create_all(self.oci_engine)
+        except Exception as e:
+            print(f"⚠️ Warning: metadata create_all error (might already exist): {e}")
+        
+        return self._sync_simple_table(
+            StadiumFood,
+            ["stadium_name", "restaurant_name", "menu_item"],
+            exclude_cols=["created_at", "id"],
+            batch_size=batch_size
+        )
+
 
     def close(self):
         """Close OCI session"""
