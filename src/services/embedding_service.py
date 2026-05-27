@@ -92,7 +92,7 @@ class EmbeddingService:
                     if isinstance(emb, str):
                         try:
                             emb = json.loads(emb)
-                        except:
+                        except Exception:
                             pass
                     cached_map[row.text_hash] = emb
         except Exception:

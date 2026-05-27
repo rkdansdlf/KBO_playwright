@@ -117,7 +117,7 @@ class RetiredPlayerListingCrawler:
         await page.evaluate("el => { if (el.onchange) el.onchange(); else el.dispatchEvent(new Event('change', { bubbles: true })); }", await page.query_selector(season_selector))
         try:
             await page.wait_for_load_state("load", timeout=10000)
-        except:
+        except Exception:
             pass
         await page.wait_for_timeout(1000)
 
@@ -141,7 +141,7 @@ class RetiredPlayerListingCrawler:
             await page.evaluate("el => { if (el.onchange) el.onchange(); else el.dispatchEvent(new Event('change', { bubbles: true })); }", await page.query_selector(team_selector))
             try:
                 await page.wait_for_load_state("load", timeout=10000)
-            except:
+            except Exception:
                 pass
             await page.wait_for_timeout(500)
             

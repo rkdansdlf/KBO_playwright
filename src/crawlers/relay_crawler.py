@@ -440,7 +440,7 @@ class RelayCrawler:
                 # Naver fields are often strings
                 def to_int(val, default=0):
                     try: return int(val) if val is not None else default
-                    except: return default
+                    except Exception: return default
 
                 home_score = to_int(state.get("homeScore"))
                 away_score = to_int(state.get("awayScore"))
