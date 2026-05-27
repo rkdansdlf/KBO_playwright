@@ -93,12 +93,12 @@ def crawl_baserunning_stats(year=2025, max_retries=3, timeout=60000):
                             def safe_int(text):
                                 if not text or text.strip() in ('-', ''): return 0
                                 try: return int(text.strip().replace(',', ''))
-                                except: return 0
-                            
+                                except Exception: return 0
+
                             def safe_float(text):
                                 if not text or text.strip() in ('-', ''): return 0.0
                                 try: return float(text.strip().replace(',', ''))
-                                except: return 0.0
+                                except Exception: return 0.0
 
                             stats = {
                                 'player_id': player_id,  # 링크가 있으면 player_id 포함

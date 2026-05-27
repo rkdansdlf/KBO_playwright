@@ -111,7 +111,7 @@ class TeamInfoCrawler:
                             close_btn = self.page.locator("a.btn_close, img[alt='닫기']").first
                             if await close_btn.count() > 0:
                                 await close_btn.click()
-                    except: pass
+                    except Exception: pass
                     
                     await self.page.locator("div[id^='layerPop']").wait_for(state="hidden", timeout=3000)
                     

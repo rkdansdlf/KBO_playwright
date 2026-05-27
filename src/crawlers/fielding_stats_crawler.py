@@ -175,11 +175,11 @@ def crawl_all_fielding_stats(year=2025):
 
                                     def s_int(cell_el):
                                         try: return int(cell_el.inner_text().strip().replace(',', ''))
-                                        except: return 0
+                                        except Exception: return 0
                                     
                                     def s_float(cell_el):
                                         try: return float(cell_el.inner_text().strip().replace(',', ''))
-                                        except: return 0.0
+                                        except Exception: return 0.0
 
                                     record = {
                                         'player_id': player_id,
@@ -262,10 +262,10 @@ def crawl_all_fielding_stats(year=2025):
                             if key in fielding_data_map:
                                 def s_int(cell_el):
                                     try: return int(cell_el.inner_text().strip().replace(',', ''))
-                                    except: return 0
+                                    except Exception: return 0
                                 def s_float(cell_el):
                                     try: return float(cell_el.inner_text().strip().replace(',', ''))
-                                    except: return 0.0
+                                    except Exception: return 0.0
 
                                 fielding_data_map[key].update({
                                     'passed_balls': s_int(cells[13]),

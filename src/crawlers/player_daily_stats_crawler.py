@@ -103,7 +103,7 @@ class PlayerDailyStatsCrawler:
                     'gdp': int(row[16])
                 }
             }
-        except:
+        except Exception:
             return None
 
     def _parse_pitcher_row(self, row: List[str], season: int) -> Optional[Dict[str, Any]]:
@@ -143,7 +143,7 @@ class PlayerDailyStatsCrawler:
                     'earned_runs': int(row[13])
                 }
             }
-        except:
+        except Exception:
             return None
 
     def _parse_innings_to_outs(self, ip_str: str) -> int:
@@ -161,7 +161,7 @@ class PlayerDailyStatsCrawler:
                     if '2/3' in ip_str: return 2
                     return 0
                 return int(ip_str) * 3
-        except:
+        except Exception:
             return 0
 
 if __name__ == "__main__":
