@@ -64,7 +64,7 @@ def repair_batting_collisions():
         logger.info(f"Found {len(collisions)} batting collision groups.")
 
         repaired_count = 0
-        for game_id, current_player_id, name, count in collisions:
+        for game_id, current_player_id, name, _count in collisions:
             season = int(game_id[:4])
 
             # Get all rows for this collision
@@ -136,7 +136,7 @@ def repair_batting_collisions():
         logger.info(f"Found {len(lineup_collisions)} lineup collision groups.")
 
         repaired_lineup_count = 0
-        for game_id, current_player_id, name, count in lineup_collisions:
+        for game_id, current_player_id, name, _count in lineup_collisions:
             season = int(game_id[:4])
             rows = session.execute(
                 text("""

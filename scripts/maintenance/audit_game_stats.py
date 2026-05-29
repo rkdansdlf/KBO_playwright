@@ -65,7 +65,6 @@ def audit_game_stats(year: int = None):
         game_id = row.game_id
         team_side = row.team_side  # 'home' or 'away'
         calc_runs = row.total_runs
-        calc_hits = row.total_hits
 
         processed_games.add(game_id)
 
@@ -90,7 +89,7 @@ def audit_game_stats(year: int = None):
 
     # 4. Ghost Players (NULL player_id)
     ghost_query = session.query(GameBattingStat.game_id, GameBattingStat.player_name, GameBattingStat.team_code).filter(
-        GameBattingStat.player_id == None
+        GameBattingStat.player_id is None
     )
 
     if year:

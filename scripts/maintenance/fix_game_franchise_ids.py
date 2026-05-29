@@ -29,7 +29,7 @@ def update_franchise_ids():
     rows = cursor.fetchall()
 
     updates = []
-    for game_id, home_team, away_team, game_date in rows:
+    for game_id, home_team, away_team, _game_date in rows:
         h_fid = team_to_franchise.get(home_team.upper()) if home_team else None
         a_fid = team_to_franchise.get(away_team.upper()) if away_team else None
 

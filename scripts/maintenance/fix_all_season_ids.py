@@ -25,7 +25,7 @@ def fix_all_season_ids():
     }
 
     updates = 0
-    for sid, year, league_code, start_date, end_date in seasons:
+    for sid, year, league_code, _start_date, end_date in seasons:
         if league_code == 0:  # Regular
             start, end = REGULAR_DATES.get(year, (f"{year}-03-20", f"{year}-11-30"))
 

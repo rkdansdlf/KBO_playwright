@@ -85,13 +85,13 @@ def resolve_by_roster(apply: bool = False, since: str = "2024-01-01"):
             print(f"  Skipped (ambiguous roster): {ambiguous_count}")
 
             if not apply:
-                for i, (row_id, g_date, t_code, p_name, res_id, _) in enumerate(matches[:5]):
+                for _i, (_row_id, g_date, t_code, p_name, res_id, _) in enumerate(matches[:5]):
                     print(f"  [DRY-RUN] {g_date} {t_code} {p_name} -> {res_id}")
                 print(f"🔍 Would update {len(matches)} rows in {table}.")
                 continue
 
             updated = 0
-            for row_id, g_date, t_code, p_name, res_id, _ in matches:
+            for row_id, _g_date, _t_code, _p_name, res_id, _ in matches:
                 session.execute(
                     text(f"UPDATE {table} SET player_id = :pid WHERE id = :id"), {"pid": res_id, "id": row_id}
                 )

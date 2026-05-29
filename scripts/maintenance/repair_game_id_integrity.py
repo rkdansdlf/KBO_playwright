@@ -480,7 +480,7 @@ def choose_primary_game_id(
 
     normalized = {game_id: normalize_kbo_game_id(game_id) for game_id in game_ids}
     existing_ids = set(game_ids)
-    for game_id, canonical in normalized.items():
+    for _game_id, canonical in normalized.items():
         if canonical in existing_ids:
             return canonical
     best_source = max(game_ids, key=lambda gid: (child_counts.get(gid, 0), gid))

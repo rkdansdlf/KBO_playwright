@@ -248,7 +248,7 @@ def test_cleanup_oci_duplicates_defaults_to_rollback(monkeypatch):
 
     assert counts["non_primary_games_before"] == 3
     assert counts["non_primary_games_after"] == 3
-    for (label, _sql), rowcount in zip(cleanup_oci.DELETE_STEPS, DELETE_ROWCOUNTS):
+    for (label, _sql), rowcount in zip(cleanup_oci.DELETE_STEPS, DELETE_ROWCOUNTS, strict=False):
         assert counts[label] == rowcount
     assert conn.rolled_back is True
     assert conn.committed is False

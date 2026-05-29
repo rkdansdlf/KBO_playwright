@@ -82,10 +82,7 @@ def _is_protected(path: Path, protected_patterns: list[str]) -> bool:
 
     rel_text = rel.as_posix()
 
-    for pattern in protected_patterns:
-        if fnmatch.fnmatch(rel_text, pattern):
-            return True
-    return False
+    return any(fnmatch.fnmatch(rel_text, pattern) for pattern in protected_patterns)
 
 
 def _collect_refresh_manifests(cutoff: datetime) -> list[ArtifactPlan]:

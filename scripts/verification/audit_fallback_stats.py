@@ -41,9 +41,7 @@ class StatAudit:
             return True  # Minor diff
         if diff > max_diff:
             return False  # Too large
-        if off_val > 0 and (diff / off_val) > max_ratio:
-            return False  # Too much relative change
-        return True
+        return not (off_val > 0 and (diff / off_val) > max_ratio)
 
     @staticmethod
     def audit_batting(year: int, series: str, fix: bool = False):
@@ -104,9 +102,7 @@ class StatAudit:
                         try:
                             # Backup
                             original_dict = {
-                                key: getattr(off, key)
-                                for key in off.__table__.columns.keys()
-                                if not key.startswith("_")
+                                key: getattr(off, key) for key in off.__table__.columns if not key.startswith("_")
                             }
                             backup_path_str = FallbackMonitor.save_audit_backup(
                                 player_id=str(off.player_id),
@@ -125,6 +121,7 @@ class StatAudit:
                             fix_count += 1
                         except Exception as e:
                             print(f"      ⚠️ Failed to fix {name}: {e}")
+                            logger.error(f"Failed to fix {name} batting: {e}")
 
             summary_msg = f"Audited {len(official_stats)} records. Mismatches: {mismatches}, Fixed: {fix_count}"
             print(f"   📊 {summary_msg}")
@@ -190,9 +187,7 @@ class StatAudit:
                         try:
                             # Backup
                             original_dict = {
-                                key: getattr(off, key)
-                                for key in off.__table__.columns.keys()
-                                if not key.startswith("_")
+                                key: getattr(off, key) for key in off.__table__.columns if not key.startswith("_")
                             }
                             backup_path_str = FallbackMonitor.save_audit_backup(
                                 player_id=str(off.player_id),
@@ -211,6 +206,7 @@ class StatAudit:
                             fix_count += 1
                         except Exception as e:
                             print(f"      ⚠️ Failed to fix {name}: {e}")
+                            logger.error(f"Failed to fix {name} pitching: {e}")
 
             summary_msg = f"Audited {len(official_stats)} records. Mismatches: {mismatches}, Fixed: {fix_count}"
             print(f"   📊 {summary_msg}")
@@ -264,9 +260,7 @@ class StatAudit:
                             try:
                                 # Backup
                                 original_dict = {
-                                    key: getattr(off, key)
-                                    for key in off.__table__.columns.keys()
-                                    if not key.startswith("_")
+                                    key: getattr(off, key) for key in off.__table__.columns if not key.startswith("_")
                                 }
                                 backup_path_str = FallbackMonitor.save_audit_backup(
                                     player_id=str(pid),
@@ -282,6 +276,7 @@ class StatAudit:
                                 fix_count += 1
                             except Exception as e:
                                 print(f"      ⚠️ Failed to fix {name}: {e}")
+                                logger.error(f"Failed to fix {name} fielding: {e}")
 
             print(f"   Done. Mismatches: {mismatches}, Fixed: {fix_count}")
 
@@ -329,9 +324,7 @@ class StatAudit:
                         try:
                             # Backup
                             original_dict = {
-                                key: getattr(off, key)
-                                for key in off.__table__.columns.keys()
-                                if not key.startswith("_")
+                                key: getattr(off, key) for key in off.__table__.columns if not key.startswith("_")
                             }
                             backup_path_str = FallbackMonitor.save_audit_backup(
                                 player_id=str(off.player_id),
@@ -347,6 +340,7 @@ class StatAudit:
                             fix_count += 1
                         except Exception as e:
                             print(f"      ⚠️ Failed to fix {name}: {e}")
+                            logger.error(f"Failed to fix {name} baserunning: {e}")
 
             print(f"   Done. Mismatches: {mismatches}, Fixed: {fix_count}")
 
