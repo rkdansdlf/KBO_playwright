@@ -24,6 +24,18 @@ async def run_fetcher(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--game-id", type=str, help="Specific Game ID to fetch (e.g. 20240323SSHH0)")
     parser.add_argument("--concurrency", type=int, default=1, help="Deprecated compatibility option")
     parser.add_argument("--force", action="store_true", help="Process games even if relay rows already exist")
+    parser.add_argument(
+        "--validate-final-score",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Validate final event score against game boxscore (defaults to True)",
+    )
+    parser.add_argument(
+        "--validate-inning-continuity",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Validate inning continuity (defaults to True)",
+    )
     args = parser.parse_args(argv)
 
     print(
@@ -53,7 +65,12 @@ async def run_fetcher(argv: Sequence[str] | None = None) -> int:
         print("[INFO] No games found to process.")
         return 0
 
-    await recover_relay_data(targets, log=print)
+    await recover_relay_data(
+        targets,
+        validate_final_score=args.validate_final_score,
+        validate_inning_continuity=args.validate_inning_continuity,
+        log=print,
+    )
     print("\n[INFO] Relay recovery run completed.")
     return 0
 
