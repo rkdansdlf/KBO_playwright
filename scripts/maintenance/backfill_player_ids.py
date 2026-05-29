@@ -55,7 +55,7 @@ def backfill_year(session, resolver: PlayerIdResolver, year: int, dry_run: bool 
         resolved = 0
         updates = []
 
-        for row_id, game_id, player_name, team_code in rows:
+        for row_id, _game_id, player_name, team_code in rows:
             if not player_name:
                 stats["skipped"] += 1
                 continue

@@ -6,7 +6,6 @@ from src.db.engine import Engine
 
 
 def diagnose_1982():
-    local_url = "sqlite:///data/kbo_dev.db"  # Or use Engine
     oci_url = os.getenv("OCI_DB_URL", "postgresql://postgres:rkdansdlf@134.185.107.178:5432/bega_backend")
 
     oci_engine = create_engine(oci_url)

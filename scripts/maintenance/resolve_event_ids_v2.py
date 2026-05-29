@@ -14,7 +14,7 @@ def resolve_ids_v2():
 
         print(f"🔍 Processing {len(games)} games...")
 
-        for g_id, home_team, away_team, home_starter, away_starter in games:
+        for g_id, _home_team, _away_team, home_starter, away_starter in games:
             # 1. Map names to IDs for this game
             bat_map = {
                 row.player_name: row.player_id for row in session.query(GameBattingStat).filter_by(game_id=g_id).all()

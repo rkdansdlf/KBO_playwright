@@ -1,8 +1,6 @@
 from datetime import datetime
 from types import SimpleNamespace
 
-import pytest
-
 import scripts.scheduler as scheduler
 import src.cli.generate_quality_report as generate_quality_report
 
@@ -23,7 +21,7 @@ def _retry_state(exc):
     )
 
 
-def test_alert_failure_sends_alert_and_reraises_original(monkeypatch):
+def test_alert_failure_sends_alert_and_does_not_raise(monkeypatch):
     sent = []
     exc = RuntimeError("boom")
 
@@ -33,16 +31,15 @@ def test_alert_failure_sends_alert_and_reraises_original(monkeypatch):
         lambda message: sent.append(message) or True,
     )
 
-    with pytest.raises(RuntimeError) as raised:
-        scheduler.alert_failure(_retry_state(exc))
+    result = scheduler.alert_failure(_retry_state(exc))
 
-    assert raised.value is exc
+    assert result is None
     assert len(sent) == 1
     assert "sample_job" in sent[0]
     assert "boom" in sent[0]
 
 
-def test_alert_failure_preserves_job_failure_when_alerting_fails(monkeypatch):
+def test_alert_failure_handles_alert_error_gracefully(monkeypatch):
     exc = ValueError("alert transport failed too")
 
     def _raise_alert(_message):
@@ -50,10 +47,9 @@ def test_alert_failure_preserves_job_failure_when_alerting_fails(monkeypatch):
 
     monkeypatch.setattr(scheduler.SlackWebhookClient, "send_error_alert", _raise_alert)
 
-    with pytest.raises(ValueError) as raised:
-        scheduler.alert_failure(_retry_state(exc))
+    result = scheduler.alert_failure(_retry_state(exc))
 
-    assert raised.value is exc
+    assert result is None
 
 
 def test_alert_success_is_optional_and_non_blocking(monkeypatch):

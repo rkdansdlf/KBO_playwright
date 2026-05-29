@@ -99,7 +99,7 @@ def _export_duplicate_groups(
     """
     path = output_dir / f"{table_name}_duplicate_rows_{stamp}.csv"
     rows = _rows(conn, sql)
-    fieldnames = sorted({key for row in rows for key in row.keys()})
+    fieldnames = sorted({key for row in rows for key in row})
     if not fieldnames:
         fieldnames = ["table_name"]
     count = _write_csv(path, rows, fieldnames)
@@ -129,7 +129,7 @@ def _export_team_collisions(conn, output_dir: Path, stamp: str, table_name: str)
     """
     path = output_dir / f"{table_name}_team_collisions_{stamp}.csv"
     rows = _rows(conn, sql)
-    fieldnames = sorted({key for row in rows for key in row.keys()})
+    fieldnames = sorted({key for row in rows for key in row})
     if not fieldnames:
         fieldnames = ["table_name"]
     count = _write_csv(path, rows, fieldnames)
