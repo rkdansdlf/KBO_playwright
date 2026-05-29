@@ -450,7 +450,15 @@ async def run_update(
         if relay_game_ids:
             relay_recovery_target_ids.update(relay_game_ids)
             print(f"   ℹ️ Relay candidates={len(relay_game_ids)}")
-            runner(["scripts/fetch_kbo_pbp.py", "--game-ids", ",".join(relay_game_ids)])
+            runner(
+                [
+                    "scripts/fetch_kbo_pbp.py",
+                    "--game-ids",
+                    ",".join(relay_game_ids),
+                    "--report-out",
+                    f"logs/daily_update_summary/pbp_report_daily_{target_date}.csv",
+                ]
+            )
         else:
             print("   ℹ️ No detail-success relay candidates for target date")
 
@@ -463,7 +471,15 @@ async def run_update(
         for recovery_date in sorted(healer_ids_by_date):
             healer_ids = sorted(healer_ids_by_date[recovery_date])
             relay_recovery_target_ids.update(healer_ids)
-            runner(["scripts/fetch_kbo_pbp.py", "--game-ids", ",".join(healer_ids)])
+            runner(
+                [
+                    "scripts/fetch_kbo_pbp.py",
+                    "--game-ids",
+                    ",".join(healer_ids),
+                    "--report-out",
+                    f"logs/daily_update_summary/pbp_report_healer_{target_date}.csv",
+                ]
+            )
         print("   ✅ Relay recovery complete")
     except Exception:
         logger.exception("   ❌ Error generating relay events")
@@ -487,7 +503,15 @@ async def run_update(
                 # (though fetch_kbo_pbp handles it, cleaner to show accurate count here)
                 to_recover = [gid for gid in missing_pbp_game_ids if gid not in relay_recovery_target_ids]
                 if to_recover:
-                    runner(["scripts/fetch_kbo_pbp.py", "--game-ids", ",".join(to_recover)])
+                    runner(
+                        [
+                            "scripts/fetch_kbo_pbp.py",
+                            "--game-ids",
+                            ",".join(to_recover),
+                            "--report-out",
+                            f"logs/daily_update_summary/pbp_report_proactive_{target_date}.csv",
+                        ]
+                    )
                     relay_recovery_target_ids.update(to_recover)
                     print(f"   ✅ Proactive recovery initiated for {len(to_recover)} games")
                 else:
@@ -818,6 +842,48 @@ async def run_update(
             success_count = len(recovered_pbp_ids)
             failed_count = len(failed_ids)
 
+            # Load detailed failure explanations from CSV reports
+            import csv
+            import glob
+
+            report_files = glob.glob(f"logs/daily_update_summary/pbp_report_*_{target_date}.csv")
+            attempts_by_game: dict[str, list[dict[str, str]]] = {}
+            for file_path in report_files:
+                try:
+                    with open(file_path, encoding="utf-8") as f:
+                        reader = csv.DictReader(f)
+                        for row in reader:
+                            gid = row.get("game_id")
+                            if gid:
+                                attempts_by_game.setdefault(gid, []).append(row)
+                except Exception:
+                    logger.exception("Failed to read PBP report file: %s", file_path)
+
+            failed_details = []
+            for gid in sorted(failed_ids):
+                game_attempts = attempts_by_game.get(gid) or []
+                if not game_attempts:
+                    failed_details.append(f"- `{gid}`: No logs found")
+                    continue
+
+                attempt_summaries = []
+                for att in game_attempts:
+                    source = att.get("source_name", "unknown")
+                    status = att.get("status", "unknown")
+                    notes = att.get("notes") or ""
+
+                    if "final_score_mismatch" in notes:
+                        notes = "score_mismatch"
+                    elif "missing_middle_inning" in notes:
+                        notes = "inning_gap"
+
+                    summary = f"*{source}*:{status}"
+                    if notes:
+                        summary += f" ({notes})"
+                    attempt_summaries.append(summary)
+
+                failed_details.append(f"- `{gid}`: " + " → ".join(attempt_summaries))
+
             from src.utils.alerting import SlackWebhookClient
 
             msg = f"📊 *Daily PBP Recovery Report ({target_date})*"
@@ -832,13 +898,16 @@ async def run_update(
                     ],
                 },
             ]
-            if failed_ids:
+            if failed_details:
+                failed_text = "\n".join(failed_details)
+                if len(failed_text) > 2900:
+                    failed_text = failed_text[:2800] + "\n... (truncated)"
                 blocks.append(
                     {
                         "type": "section",
                         "text": {
                             "type": "mrkdwn",
-                            "text": f"*Failed Game IDs:*\n```\n{', '.join(sorted(failed_ids))}\n```",
+                            "text": f"*Detailed Failures:*\n{failed_text}",
                         },
                     }
                 )
