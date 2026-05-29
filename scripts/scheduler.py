@@ -92,9 +92,10 @@ def alert_failure(retry_state):
     except Exception:
         logger.exception("Failed to send failure alert for job %s", func_name)
 
+    # Do NOT re-raise — let retry_error_callback suppress so the scheduler survives.
     if exc:
-        raise exc
-    raise RuntimeError(f"Job {func_name} failed permanently without an attached exception")
+        logger.warning(f"Job {func_name} permanently failed but scheduler continues: {error_text}")
+    return None
 
 
 def alert_success(func_name: str, details: str | None = None):
@@ -241,6 +242,11 @@ def _run_hydration(year: int, target_date: str | None = None):
     logger.info("Hydration completed successfully")
 
 
+@retry(
+    stop=stop_after_attempt(3),
+    wait=wait_exponential(multiplier=1, min=30, max=300),
+    retry_error_callback=alert_failure,
+)
 def crawl_daily_games():
     """
     Daily job: Run unified daily update entrypoint.
@@ -264,10 +270,47 @@ def crawl_daily_games():
 
             logger.info("=== Daily Games Crawl Completed Successfully ===")
             alert_success("crawl_daily_games", format_stability_alert_summary(update_result))
-
         except Exception as e:
             logger.error(f"Daily games crawl attempt failed: {e}")
             raise
+
+
+def backfill_missed_daily_crawls(lookback_days: int = 7) -> list[str]:
+    """Check recent days for COMPLETED games missing detail data and re-collect."""
+    from sqlalchemy import text as sa_text
+
+    from src.db.engine import SessionLocal
+
+    start = datetime.now(KST).date() - timedelta(days=lookback_days)
+    backfilled: list[str] = []
+    with SessionLocal() as session:
+        rows = session.execute(
+            sa_text("""
+                SELECT g.game_date
+                FROM game g
+                LEFT JOIN game_batting_stats b ON g.game_id = b.game_id
+                WHERE g.game_date >= :start
+                  AND g.game_status IN ('COMPLETED', 'DRAW')
+                GROUP BY g.game_date
+                HAVING COUNT(DISTINCT g.game_id) > 0
+                   AND COUNT(b.game_id) = 0
+                ORDER BY g.game_date
+            """),
+            {"start": start},
+        ).fetchall()
+    for (game_date_str,) in rows:
+        date_compact = (
+            game_date_str.strftime("%Y%m%d")
+            if hasattr(game_date_str, "strftime")
+            else str(game_date_str).replace("-", "")
+        )
+        logger.info("Backfilling missed daily crawl for %s", date_compact)
+        try:
+            run_daily_update_main(["--date", date_compact])
+            backfilled.append(date_compact)
+        except Exception:
+            logger.exception("Backfill failed for %s", date_compact)
+    return backfilled
 
 
 @retry(
@@ -692,7 +735,7 @@ def main(argv: Sequence[str] | None = None):
     )
     logger.info("Registered job: crawl_live_refresh (Every 2m, 12:00-23:30 KST)")
 
-    # Optional one-time startup backfill
+    # Optional one-time startup backfill for missed days
     startup_run = os.getenv("STARTUP_RUN", "1") == "1" and not args.no_startup_run
     if startup_run:
         try:
@@ -700,6 +743,13 @@ def main(argv: Sequence[str] | None = None):
             crawl_daily_games()
         except Exception:
             logger.exception("Startup crawl failed; scheduler will continue with cron jobs")
+
+        try:
+            backfilled = backfill_missed_daily_crawls()
+            if backfilled:
+                logger.info("Startup backfill completed for dates: %s", backfilled)
+        except Exception:
+            logger.exception("Startup backfill failed; scheduler will continue with cron jobs")
 
     print("\n" + "=" * 60)
     print(" KBO Crawler Scheduler Started")

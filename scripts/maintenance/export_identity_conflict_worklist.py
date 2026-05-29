@@ -302,7 +302,7 @@ def export_identity_conflict_worklist(
         "current_player_birth_date",
         "current_player_debut_year",
         *sorted(
-            {key for row in detail_rows for key in row.keys()}
+            {key for row in detail_rows for key in row}
             - {
                 "table_name",
                 "group_key",

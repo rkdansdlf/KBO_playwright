@@ -678,7 +678,7 @@ def _update_fact_identity(
         )
     ).fetchall()
     changed = 0
-    for season_year, team_code, row_count in pairs:
+    for season_year, team_code, _row_count in pairs:
         franchise_id, canonical = _identity_for_code(team_code, season_year)
         if franchise_id is None:
             continue
@@ -762,7 +762,7 @@ def _update_game_franchise_ids(conn, *, apply: bool) -> int:
                 """
             )
         ).fetchall()
-        for season_year, team_code, row_count in pairs:
+        for season_year, team_code, _row_count in pairs:
             franchise_id, _canonical = _identity_for_code(team_code, season_year)
             if franchise_id is None:
                 continue

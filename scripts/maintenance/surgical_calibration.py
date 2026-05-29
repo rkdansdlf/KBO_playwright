@@ -26,7 +26,7 @@ def surgical_calibration():
         top_players = cursor.execute(query_top_players, (year,)).fetchall()
 
         corrected_count = 0
-        for pid, s_hits, s_games, s_ab, team in top_players:
+        for pid, s_hits, s_games, _s_ab, _team in top_players:
             # 2. Get ALL available records for this player in this year (ignoring is_primary for a moment)
             cursor.execute(
                 """

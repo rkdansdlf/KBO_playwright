@@ -1,6 +1,7 @@
 import argparse
 
 from sqlalchemy import delete, select, update
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from src.db.engine import SessionLocal
@@ -19,19 +20,13 @@ def merge_player(session: Session, source_id: int, target_id: int):
     print(f"Merging temporary ID {source_id} -> Official KBO ID {target_id}")
 
     # 1. Update Game Batting Stats
-    b_updated = session.execute(
-        update(GameBattingStat).where(GameBattingStat.player_id == source_id).values(player_id=target_id)
-    ).rowcount
+    session.execute(update(GameBattingStat).where(GameBattingStat.player_id == source_id).values(player_id=target_id))
 
     # 2. Update Game Pitching Stats
-    p_updated = session.execute(
-        update(GamePitchingStat).where(GamePitchingStat.player_id == source_id).values(player_id=target_id)
-    ).rowcount
+    session.execute(update(GamePitchingStat).where(GamePitchingStat.player_id == source_id).values(player_id=target_id))
 
     # 3. Update Game Lineups
-    l_updated = session.execute(
-        update(GameLineup).where(GameLineup.player_id == source_id).values(player_id=target_id)
-    ).rowcount
+    session.execute(update(GameLineup).where(GameLineup.player_id == source_id).values(player_id=target_id))
 
     # 4. Update Season Stats (Batting, Pitching, Fielding, Baserunning)
     # If update fails due to UniqueConstraint, it means official profile already has that season record.
@@ -47,7 +42,7 @@ def merge_player(session: Session, source_id: int, target_id: int):
                 update(model).where(model.player_id == source_id).values(player_id=target_id)
             ).rowcount
             print(f"  - Season {label} updated: {updated}")
-        except Exception:
+        except SQLAlchemyError:
             deleted = session.execute(delete(model).where(model.player_id == source_id)).rowcount
             print(f"  - Season {label} merged (deleted pseudo): {deleted}")
 
@@ -109,6 +104,7 @@ def run_merge(auto_confirm: bool = False):
     except Exception as e:
         session.rollback()
         print(f"❌ Fatal Error during merge: {e}")
+        raise
     finally:
         session.close()
 

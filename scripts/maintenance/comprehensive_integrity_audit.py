@@ -182,7 +182,7 @@ def run_audit(target_db="local"):
     print("👻 Part 3: Ghost Player Detection...")
     ghost_batters = (
         session.query(GameBattingStat.game_id, GameBattingStat.player_name)
-        .filter(GameBattingStat.player_id == None)
+        .filter(GameBattingStat.player_id is None)
         .all()
     )
     for gid, name in ghost_batters:
@@ -199,7 +199,7 @@ def run_audit(target_db="local"):
 
     ghost_pitchers = (
         session.query(GamePitchingStat.game_id, GamePitchingStat.player_name)
-        .filter(GamePitchingStat.player_id == None)
+        .filter(GamePitchingStat.player_id is None)
         .all()
     )
     for gid, name in ghost_pitchers:

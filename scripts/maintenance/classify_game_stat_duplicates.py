@@ -296,7 +296,7 @@ def classify_game_stat_duplicates(
             "keeper_id",
             "delete_ids",
         ]
-        detail_fieldnames = sorted({key for row in detail_rows for key in row.keys()}) or ["table_name"]
+        detail_fieldnames = sorted({key for row in detail_rows for key in row}) or ["table_name"]
         groups_csv = output_dir / f"game_stat_duplicate_groups_{stamp}.csv"
         details_csv = output_dir / f"game_stat_duplicate_rows_{stamp}.csv"
         _write_csv(groups_csv, group_rows, group_fieldnames)
