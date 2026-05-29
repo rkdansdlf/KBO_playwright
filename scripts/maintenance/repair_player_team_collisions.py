@@ -5,6 +5,7 @@ The repair only updates a row when same-name, same-season, same-team season
 tables identify exactly one existing player_id for that row's team. Ambiguous
 or missing candidates are reported and left unchanged.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -15,7 +16,6 @@ from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Iterable
-
 
 DEFAULT_DB_PATH = Path("data/kbo_dev.db")
 DEFAULT_OUTPUT_DIR = Path("data/player_team_collision_worklists")
@@ -128,10 +128,13 @@ def _write_csv(path: Path, rows: Iterable[dict[str, Any]], fieldnames: list[str]
 
 
 def _table_exists(conn: sqlite3.Connection, table_name: str) -> bool:
-    return conn.execute(
-        "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?",
-        (table_name,),
-    ).fetchone() is not None
+    return (
+        conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?",
+            (table_name,),
+        ).fetchone()
+        is not None
+    )
 
 
 def _candidate_tables(table_name: str) -> tuple[str, ...]:

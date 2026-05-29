@@ -5,8 +5,8 @@ from sqlalchemy import create_engine, text
 from scripts.maintenance.repair_game_id_integrity import (
     _load_tables,
     apply_duplicate_group,
-    collect_conflicts,
     collect_2024_backfill_candidates,
+    collect_conflicts,
     collect_duplicate_groups,
     is_actionable_backfill_candidate,
     standardize_game_franchise_ids,
@@ -219,7 +219,9 @@ def test_duplicate_repair_merges_identical_child_rows_and_records_alias():
 
         remaining_games = conn.execute(text("SELECT game_id FROM game ORDER BY game_id")).fetchall()
         batting_count = conn.execute(text("SELECT COUNT(*) FROM game_batting_stats")).scalar()
-        alias = conn.execute(text("SELECT canonical_game_id FROM game_id_aliases WHERE alias_game_id = '20250315LGSSG0'")).scalar()
+        alias = conn.execute(
+            text("SELECT canonical_game_id FROM game_id_aliases WHERE alias_game_id = '20250315LGSSG0'")
+        ).scalar()
 
         assert remaining_games == [("20250315LGSK0",)]
         assert batting_count == 1
@@ -249,15 +251,19 @@ def test_duplicate_repair_merges_enrichment_without_losing_identity_columns():
 
         apply_duplicate_group(conn, tables, groups[0])
 
-        row = conn.execute(
-            text(
-                """
+        row = (
+            conn.execute(
+                text(
+                    """
                 SELECT extra_stats, uniform_no, franchise_id, canonical_team_code
                 FROM game_batting_stats
                 WHERE game_id = '20250315LGSK0'
                 """
+                )
             )
-        ).mappings().one()
+            .mappings()
+            .one()
+        )
 
         assert row["extra_stats"] == '{"xr": -0.09}'
         assert row["uniform_no"] == "8"
@@ -298,14 +304,18 @@ def test_duplicate_repair_resolves_metadata_stadium_and_start_time_drift():
 
         apply_duplicate_group(conn, tables, groups[0])
 
-        metadata = conn.execute(
-            text(
-                """
+        metadata = (
+            conn.execute(
+                text(
+                    """
                 SELECT game_id, stadium_name, start_time, attendance, game_time_minutes
                 FROM game_metadata
                 """
+                )
             )
-        ).mappings().one()
+            .mappings()
+            .one()
+        )
 
         assert metadata["game_id"] == "20250315LGSK0"
         assert metadata["stadium_name"] == "인천 SSG 랜더스필드"
@@ -686,8 +696,16 @@ def test_duplicate_repair_prefers_derived_legacy_id_and_retargets_aliases():
                 """
             )
         )
-        conn.execute(text("INSERT INTO game_lineups (game_id, team_side, appearance_seq, player_name) VALUES ('20260403SSSGT0', 'away', 1, '타자')"))
-        conn.execute(text("INSERT INTO game_inning_scores (game_id, team_side, inning, runs) VALUES ('20260403SSSGT0', 'away', 1, 1)"))
+        conn.execute(
+            text(
+                "INSERT INTO game_lineups (game_id, team_side, appearance_seq, player_name) VALUES ('20260403SSSGT0', 'away', 1, '타자')"
+            )
+        )
+        conn.execute(
+            text(
+                "INSERT INTO game_inning_scores (game_id, team_side, inning, runs) VALUES ('20260403SSSGT0', 'away', 1, 1)"
+            )
+        )
         conn.execute(
             text(
                 """
@@ -749,8 +767,12 @@ def test_duplicate_repair_prefers_derived_legacy_id_and_retargets_aliases():
             "game_events",
             "game_play_by_play",
         ):
-            assert conn.execute(text(f"SELECT COUNT(*) FROM {table_name} WHERE game_id = '20260403SSKT0'")).scalar() == 1
-            assert conn.execute(text(f"SELECT COUNT(*) FROM {table_name} WHERE game_id = '20260403SSSGT0'")).scalar() == 0
+            assert (
+                conn.execute(text(f"SELECT COUNT(*) FROM {table_name} WHERE game_id = '20260403SSKT0'")).scalar() == 1
+            )
+            assert (
+                conn.execute(text(f"SELECT COUNT(*) FROM {table_name} WHERE game_id = '20260403SSSGT0'")).scalar() == 0
+            )
 
         aliases = conn.execute(
             text("SELECT alias_game_id, canonical_game_id FROM game_id_aliases ORDER BY alias_game_id")

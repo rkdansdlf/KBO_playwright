@@ -7,6 +7,7 @@ For missing player IDs:
   2) Try KBO profile pages by player_id
   3) Fallback to minimal payload from overrides (name/team_code) when needed
 """
+
 from __future__ import annotations
 
 import argparse
@@ -16,7 +17,7 @@ import sys
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Optional, Sequence, Set
+from typing import Any, Sequence
 from urllib.parse import parse_qs, urlparse
 
 import httpx
@@ -43,16 +44,16 @@ PROFILE_URLS = (
 @dataclass
 class OverrideGroup:
     player_id: int
-    names: Set[str]
-    team_codes: Set[str]
-    source_tables: Set[str]
+    names: set[str]
+    team_codes: set[str]
+    source_tables: set[str]
 
 
 def normalize_text(value: Any) -> str:
     return str(value or "").strip()
 
 
-def normalize_date(value: str) -> Optional[str]:
+def normalize_date(value: str) -> str | None:
     text_value = normalize_text(value)
     if not text_value:
         return None
@@ -67,7 +68,7 @@ def normalize_date(value: str) -> Optional[str]:
     return None
 
 
-def parse_height_weight(value: str) -> tuple[Optional[int], Optional[int]]:
+def parse_height_weight(value: str) -> tuple[int | None, int | None]:
     if not value:
         return None, None
     compact = value.replace(" ", "")
@@ -80,7 +81,7 @@ def parse_height_weight(value: str) -> tuple[Optional[int], Optional[int]]:
     return None, None
 
 
-def extract_player_id_from_href(href: str) -> Optional[int]:
+def extract_player_id_from_href(href: str) -> int | None:
     try:
         query = parse_qs(urlparse(href).query)
         raw = normalize_text(query.get("playerId", [None])[0])
@@ -94,8 +95,8 @@ def extract_player_id_from_href(href: str) -> Optional[int]:
     return None
 
 
-def load_override_groups(path: Path) -> Dict[int, OverrideGroup]:
-    groups: Dict[int, OverrideGroup] = {}
+def load_override_groups(path: Path) -> dict[int, OverrideGroup]:
+    groups: dict[int, OverrideGroup] = {}
     if not path.exists():
         return groups
 
@@ -122,7 +123,7 @@ def load_override_groups(path: Path) -> Dict[int, OverrideGroup]:
     return groups
 
 
-def fetch_existing_player_ids(player_ids: Sequence[int]) -> Set[int]:
+def fetch_existing_player_ids(player_ids: Sequence[int]) -> set[int]:
     if not player_ids:
         return set()
     query = text("SELECT player_id FROM player_basic WHERE player_id IN :player_ids").bindparams(
@@ -133,7 +134,7 @@ def fetch_existing_player_ids(player_ids: Sequence[int]) -> Set[int]:
     return {int(row[0]) for row in rows}
 
 
-def fetch_from_search(client: httpx.Client, player_name: str, player_id: int) -> Dict[str, Any]:
+def fetch_from_search(client: httpx.Client, player_name: str, player_id: int) -> dict[str, Any]:
     if not player_name:
         return {}
     response = client.get(SEARCH_URL, params={"searchWord": player_name}, timeout=30.0)
@@ -170,7 +171,7 @@ def fetch_from_search(client: httpx.Client, player_name: str, player_id: int) ->
     return {}
 
 
-def fetch_from_profile(client: httpx.Client, player_id: int) -> Dict[str, Any]:
+def fetch_from_profile(client: httpx.Client, player_id: int) -> dict[str, Any]:
     for template in PROFILE_URLS:
         url = template.format(player_id=player_id)
         try:
@@ -211,9 +212,9 @@ def fetch_from_profile(client: httpx.Client, player_id: int) -> Dict[str, Any]:
 
 def choose_best_player_payload(
     group: OverrideGroup,
-    search_data: Dict[str, Any],
-    profile_data: Dict[str, Any],
-) -> Dict[str, Any]:
+    search_data: dict[str, Any],
+    profile_data: dict[str, Any],
+) -> dict[str, Any]:
     preferred_name = sorted(group.names)[0] if group.names else ""
     preferred_team_code = sorted(group.team_codes)[0] if group.team_codes else ""
     source_table_hint = sorted(group.source_tables)[0] if group.source_tables else ""
@@ -253,7 +254,7 @@ def choose_best_player_payload(
     }
 
 
-def _write_report(path: Path, rows: List[Dict[str, Any]]) -> None:
+def _write_report(path: Path, rows: list[dict[str, Any]]) -> None:
     columns = (
         "player_id",
         "name",
@@ -276,14 +277,14 @@ def enrich_missing_players(
     *,
     overrides_csv: Path = DEFAULT_OVERRIDES_CSV,
     report_dir: Path = DEFAULT_REPORT_DIR,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     groups = load_override_groups(overrides_csv)
     all_ids = sorted(groups.keys())
     existing_ids = fetch_existing_player_ids(all_ids)
     missing_ids = [pid for pid in all_ids if pid not in existing_ids]
 
-    report_rows: List[Dict[str, Any]] = []
-    payloads: List[Dict[str, Any]] = []
+    report_rows: list[dict[str, Any]] = []
+    payloads: list[dict[str, Any]] = []
     headers = {
         "user-agent": (
             "Mozilla/5.0 (Macintosh; Intel Mac OS X 13_0) "
@@ -295,7 +296,7 @@ def enrich_missing_players(
     with httpx.Client(headers=headers) as client:
         for player_id in missing_ids:
             group = groups[player_id]
-            search_data: Dict[str, Any] = {}
+            search_data: dict[str, Any] = {}
             for candidate_name in sorted(group.names):
                 try:
                     search_data = fetch_from_search(client, candidate_name, player_id)

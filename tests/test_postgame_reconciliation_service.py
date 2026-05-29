@@ -7,7 +7,8 @@ from types import SimpleNamespace
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-import src.repositories.game_repository as game_repository
+import src.repositories.game_relay as game_relay_module
+import src.repositories.game_save as game_save_module
 import src.services.postgame_reconciliation_service as service
 from src.models.game import Game, GameBattingStat, GamePitchingStat
 from src.models.player import PlayerBasic
@@ -98,7 +99,8 @@ def test_find_postgame_reconciliation_targets_can_force_include_game_id(monkeypa
 def test_reconcile_postgame_range_reports_status_and_score_changes(monkeypatch):
     SessionLocal = _build_session_factory()
     monkeypatch.setattr(service, "SessionLocal", SessionLocal)
-    monkeypatch.setattr(game_repository, "SessionLocal", SessionLocal)
+    monkeypatch.setattr(game_save_module, "SessionLocal", SessionLocal)
+    monkeypatch.setattr(game_relay_module, "SessionLocal", SessionLocal)
     monkeypatch.setattr(service, "repair_game_parent_from_existing_children", lambda _game_id: True)
 
     with SessionLocal() as session:

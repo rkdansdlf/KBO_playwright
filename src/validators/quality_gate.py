@@ -1,7 +1,8 @@
 """Statistical quality gate for KBO data."""
+
 from __future__ import annotations
 
-from typing import Any, Dict, List
+from typing import Any
 
 from sqlalchemy import func, select, text
 from sqlalchemy.orm import Session
@@ -17,7 +18,7 @@ class QualityGate:
     def __init__(self, session: Session):
         self.session = session
 
-    def _get_regular_season_ids(self, year: int) -> List[int]:
+    def _get_regular_season_ids(self, year: int) -> list[int]:
         """Fetch season_ids that correspond to Regular Season (league_type_code=0)."""
         stmt = text("SELECT season_id FROM kbo_seasons WHERE season_year = :year AND league_type_code = 0")
         result = self.session.execute(stmt, {"year": year}).scalars().all()
@@ -29,9 +30,9 @@ class QualityGate:
         season: int,
         league: str,
         checked_players: int = 0,
-        mismatches: List[Dict[str, Any]] | None = None,
+        mismatches: list[dict[str, Any]] | None = None,
         error: str | None = None,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         mismatches = mismatches or []
         return {
             "season": season,
@@ -42,7 +43,7 @@ class QualityGate:
             "error": error,
         }
 
-    def validate_season_batting(self, season: int, league: str = "REGULAR") -> Dict[str, Any]:
+    def validate_season_batting(self, season: int, league: str = "REGULAR") -> dict[str, Any]:
         """
         Compare PlayerSeasonBatting (cumulative) with GameBattingStat sum (transactional).
         """
@@ -72,18 +73,24 @@ class QualityGate:
         cumulative_map = {row.player_id: row for row in cumulative_data}
 
         # 2. Get transactional totals per player
-        transactional_stmt = select(
-            GameBattingStat.player_id,
-            func.sum(GameBattingStat.plate_appearances).label("pa"),
-            func.sum(GameBattingStat.hits).label("hits"),
-            func.sum(GameBattingStat.runs).label("runs"),
-            func.sum(GameBattingStat.home_runs).label("hr"),
-        ).join(
-            Game, Game.game_id == GameBattingStat.game_id,
-        ).where(
-            Game.game_status.in_(tuple(COMPLETED_LIKE_GAME_STATUSES)),
-            Game.season_id.in_(reg_season_ids),
-        ).group_by(GameBattingStat.player_id)
+        transactional_stmt = (
+            select(
+                GameBattingStat.player_id,
+                func.sum(GameBattingStat.plate_appearances).label("pa"),
+                func.sum(GameBattingStat.hits).label("hits"),
+                func.sum(GameBattingStat.runs).label("runs"),
+                func.sum(GameBattingStat.home_runs).label("hr"),
+            )
+            .join(
+                Game,
+                Game.game_id == GameBattingStat.game_id,
+            )
+            .where(
+                Game.game_status.in_(tuple(COMPLETED_LIKE_GAME_STATUSES)),
+                Game.season_id.in_(reg_season_ids),
+            )
+            .group_by(GameBattingStat.player_id)
+        )
 
         transactional_data = self.session.execute(transactional_stmt).all()
         mismatches = []
@@ -120,7 +127,7 @@ class QualityGate:
             mismatches=mismatches,
         )
 
-    def validate_season_pitching(self, season: int, league: str = "REGULAR") -> Dict[str, Any]:
+    def validate_season_pitching(self, season: int, league: str = "REGULAR") -> dict[str, Any]:
         """
         Compare PlayerSeasonPitching (cumulative) with GamePitchingStat sum (transactional).
         """
@@ -149,17 +156,23 @@ class QualityGate:
         cumulative_data = self.session.execute(cumulative_stmt).all()
         cumulative_map = {row.player_id: row for row in cumulative_data}
 
-        transactional_stmt = select(
-            GamePitchingStat.player_id,
-            func.sum(GamePitchingStat.innings_outs).label("outs"),
-            func.sum(GamePitchingStat.wins).label("wins"),
-            func.sum(GamePitchingStat.strikeouts).label("so"),
-        ).join(
-            Game, Game.game_id == GamePitchingStat.game_id,
-        ).where(
-            Game.game_status.in_(tuple(COMPLETED_LIKE_GAME_STATUSES)),
-            Game.season_id.in_(reg_season_ids),
-        ).group_by(GamePitchingStat.player_id)
+        transactional_stmt = (
+            select(
+                GamePitchingStat.player_id,
+                func.sum(GamePitchingStat.innings_outs).label("outs"),
+                func.sum(GamePitchingStat.wins).label("wins"),
+                func.sum(GamePitchingStat.strikeouts).label("so"),
+            )
+            .join(
+                Game,
+                Game.game_id == GamePitchingStat.game_id,
+            )
+            .where(
+                Game.game_status.in_(tuple(COMPLETED_LIKE_GAME_STATUSES)),
+                Game.season_id.in_(reg_season_ids),
+            )
+            .group_by(GamePitchingStat.player_id)
+        )
 
         transactional_data = self.session.execute(transactional_stmt).all()
         mismatches = []
@@ -213,7 +226,7 @@ class QualityGate:
         )
 
 
-def run_quality_gate(session: Session, season: int) -> Dict[str, Any]:
+def run_quality_gate(session: Session, season: int) -> dict[str, Any]:
     gate = QualityGate(session)
     batting_result = gate.validate_season_batting(season)
     pitching_result = gate.validate_season_pitching(season)

@@ -1,24 +1,26 @@
 import sqlite3
+
 import pandas as pd
+
 
 def verify_pitching_integrity():
     conn = sqlite3.connect("data/kbo_dev.db")
-    
+
     # Yearly Regular Season Windows (Match with batting verification)
     SEASONS = {
-        2024: (253, '2024-03-23', '2024-10-01'), 
-        2025: (259, '2025-03-22', '2025-10-31'), 
-        2026: (2026, '2026-03-28', '2026-04-19')
+        2024: (253, "2024-03-23", "2024-10-01"),
+        2025: (259, "2025-03-22", "2025-10-31"),
+        2026: (2026, "2026-03-28", "2026-04-19"),
     }
-    
+
     print("=== PITCHING STATS INTEGRITY VERIFICATION (2024-2026) ===")
-    
+
     for year, (sid, start, end) in SEASONS.items():
         print(f"\n--- {year} Regular Season (ID: {sid}) ---")
-        
+
         query = f"""
         WITH game_agg AS (
-            SELECT 
+            SELECT
                 p.player_id,
                 COUNT(DISTINCT p.game_id) as g_games,
                 SUM(p.innings_outs) as g_outs,
@@ -31,7 +33,7 @@ def verify_pitching_integrity():
             GROUP BY p.player_id
         ),
         season_agg AS (
-            SELECT 
+            SELECT
                 player_id,
                 games as s_games,
                 innings_outs as s_outs,
@@ -40,7 +42,7 @@ def verify_pitching_integrity():
             FROM player_season_pitching
             WHERE season = {year} AND league = 'REGULAR'
         )
-        SELECT 
+        SELECT
             pb.name,
             s.s_games, g.g_games,
             s.s_outs, g.g_outs,
@@ -52,16 +54,18 @@ def verify_pitching_integrity():
         ORDER BY ABS(s.s_outs - COALESCE(g.g_outs, 0)) DESC
         LIMIT 10;
         """
-        
+
         df = pd.read_sql_query(query, conn)
-        
+
         # Stats
-        total_p = conn.execute(f"SELECT COUNT(*) FROM player_season_pitching WHERE season={year} AND league='REGULAR'").fetchone()[0]
-        
+        total_p = conn.execute(
+            f"SELECT COUNT(*) FROM player_season_pitching WHERE season={year} AND league='REGULAR'"
+        ).fetchone()[0]
+
         # Mismatch count
         m_query = f"""
             SELECT COUNT(*) FROM (
-                SELECT s.player_id FROM player_season_pitching s 
+                SELECT s.player_id FROM player_season_pitching s
                 JOIN (
                     SELECT p.player_id, SUM(p.innings_outs) as g_outs, SUM(p.earned_runs) as g_er
                     FROM game_pitching_stats p JOIN game g ON p.game_id = g.game_id
@@ -72,7 +76,7 @@ def verify_pitching_integrity():
             )
         """
         mismatches = conn.execute(m_query).fetchone()[0]
-        
+
         if mismatches == 0:
             print(f"✅ PERFECT MATCH: All {total_p} pitchers match 100%!")
         else:
@@ -82,6 +86,7 @@ def verify_pitching_integrity():
             print(df.to_string(index=False))
 
     conn.close()
+
 
 if __name__ == "__main__":
     verify_pitching_integrity()

@@ -2,34 +2,36 @@
 KBO PBP (Relay) Crawler - Powered by Naver Sports API
 Fetches play-by-play data from Naver Sports API instead of KBO website due to access restrictions.
 """
+
 from __future__ import annotations
-import httpx
+
 import re
 from datetime import datetime, timedelta
-from typing import List, Dict, Any, Optional
+from typing import Any
+
+import httpx
 
 from src.services.wpa_calculator import WPACalculator
+from src.utils.compliance import compliance
+from src.utils.playwright_pool import AsyncPlaywrightPool
 from src.utils.relay_text import (
     detect_relay_event_type,
     is_relay_result_event_text,
 )
-from src.utils.safe_print import safe_print as print
-from src.utils.playwright_pool import AsyncPlaywrightPool
-from src.utils.compliance import compliance
 from src.utils.request_policy import RequestPolicy
+from src.utils.safe_print import safe_print as print
 from src.utils.team_codes import normalize_kbo_game_id
-
 
 KBO_TO_NAVER_TEAM_CODE = {
     "PA": "PN",  # Panama -> PN (Naver)
     "DB": "DO",  # Doosan (OB) -> DO (Naver)
     "KH": "WO",  # Kiwoom -> WO (Naver uses WO for Heroes franchise)
     "NX": "WO",  # Nexen -> WO
-    "HT": "KIA", # KIA (HT) -> KIA (Naver)
-    "SK": "SSG", # SSG (SK) -> SSG (Naver)
-    "DR": "DREAM", # Dream All-Star
-    "NA": "NANUM", # Nanum All-Star
-    "KR": "KOREA", # National Team
+    "HT": "KIA",  # KIA (HT) -> KIA (Naver)
+    "SK": "SSG",  # SSG (SK) -> SSG (Naver)
+    "DR": "DREAM",  # Dream All-Star
+    "NA": "NANUM",  # Nanum All-Star
+    "KR": "KOREA",  # National Team
 }
 
 
@@ -45,7 +47,7 @@ class RelayCrawler:
         self.headers = {
             "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 13_2_3 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/13.0.3 Mobile/15E148 Safari/604.1",
             "Accept": "application/json, text/plain, */*",
-            "Origin": "https://m.sports.naver.com"
+            "Origin": "https://m.sports.naver.com",
         }
         self.schedule_api_base_url = "https://api-gw.sports.naver.com/schedule/today-games"
         self.last_resolved_naver_game_id: str | None = None
@@ -66,7 +68,7 @@ class RelayCrawler:
         """API-based crawler doesn't need explicit resource release for now."""
         pass
 
-    async def crawl_game_events(self, game_id: str) -> Optional[Dict[str, Any]]:
+    async def crawl_game_events(self, game_id: str) -> dict[str, Any] | None:
         """Backward-compatible alias used by older CLI entrypoints."""
         return await self.crawl_game_relay(game_id)
 
@@ -106,14 +108,14 @@ class RelayCrawler:
         return game_date, away_code, home_code, doubleheader_no, season_year
 
     @staticmethod
-    def _schedule_game_has_team_match(game: Dict[str, Any], away_code: str, home_code: str) -> bool:
+    def _schedule_game_has_team_match(game: dict[str, Any], away_code: str, home_code: str) -> bool:
         away_field = str(game.get("awayTeamCode") or "").strip()
         home_field = str(game.get("homeTeamCode") or "").strip()
         if not away_field and not home_field:
             return True
         return away_field == away_code and home_field == home_code
 
-    def _schedule_query_dates(self, kbo_game_id: str) -> List[str]:
+    def _schedule_query_dates(self, kbo_game_id: str) -> list[str]:
         base_date = datetime.strptime(kbo_game_id[:8], "%Y%m%d").date()
         query_dates = [base_date.isoformat()]
         for offset in range(1, self.schedule_fallback_window_days + 1):
@@ -159,15 +161,15 @@ class RelayCrawler:
     def _match_schedule_game(
         self,
         kbo_game_id: str,
-        games: List[Dict[str, Any]],
+        games: list[dict[str, Any]],
         *,
         allow_team_fallback: bool = True,
-    ) -> Optional[Dict[str, Any]]:
+    ) -> dict[str, Any] | None:
         """
         Match a KBO game ID to a Naver schedule game object using a scoring system.
         """
         game_date_str, away_code, home_code, dh_no, season_year = self._expected_match_values(kbo_game_id)
-        
+
         # Suffix matching is the strongest signal for Naver's internal ID scheme
         # Format: MMDDAWAYHOME{DH}{YEAR} e.g. 0510SSHH02024
         exact_suffix = f"{game_date_str[4:8]}{away_code}{home_code}{dh_no}{season_year}"
@@ -177,27 +179,29 @@ class RelayCrawler:
         candidates = []
         for game in games:
             game_id = str(game.get("gameId") or "").strip()
-            
+
             # Normalize Naver-provided team codes for comparison
             g_away_raw = self._naver_team_code(str(game.get("awayTeamCode") or "").strip())
             g_home_raw = self._naver_team_code(str(game.get("homeTeamCode") or "").strip())
-            
+
             is_reversed = bool(game.get("reversedHomeAway"))
-            
+
             # Try both normal and swapped matching
             best_iter_score = -1000
             for swapped in [False, True]:
                 score = 0
                 g_away = g_home_raw if swapped else g_away_raw
                 g_home = g_away_raw if swapped else g_home_raw
-                
+
                 # 1. ID Suffix Match (Very Strong)
                 id_has_teams = self._is_team_in_id(away_code, game_id) and self._is_team_in_id(home_code, game_id)
-                
+
                 # Suffixes might be flipped if teams are flipped
-                cur_exact = f"{game_date_str[4:8]}{home_code}{away_code}{dh_no}{season_year}" if swapped else exact_suffix
+                cur_exact = (
+                    f"{game_date_str[4:8]}{home_code}{away_code}{dh_no}{season_year}" if swapped else exact_suffix
+                )
                 cur_legacy = f"{game_date_str[4:8]}{home_code}{away_code}{dh_no}" if swapped else legacy_suffix
-                
+
                 if game_id.endswith(cur_exact):
                     score += 100
                 elif game_id.endswith(cur_legacy):
@@ -206,22 +210,22 @@ class RelayCrawler:
                     score += 80
                 elif id_has_teams and dh_no in game_id:
                     score += 20
-                    
+
                 # 2. Team Code Match (Strong)
-                teams_match = (g_away == away_code and g_home == home_code)
+                teams_match = g_away == away_code and g_home == home_code
                 if teams_match:
                     score += 50
                 elif g_away == away_code or g_home == home_code:
                     score += 10
-                
+
                 # Penalty for ANY explicit mismatch
                 if (g_away and g_away != away_code) or (g_home and g_home != home_code):
                     score -= 150
-                
+
                 # Bonus for matching the reversed flag
                 if swapped == is_reversed and teams_match:
                     score += 10
-                
+
                 best_iter_score = max(best_iter_score, score)
 
             score = best_iter_score
@@ -233,13 +237,13 @@ class RelayCrawler:
                     score -= 100
 
             # 3. Doubleheader Match
-                
+
             # 3. Doubleheader Match
             # Some Naver payloads have 'doubleHeader' field
             g_dh = str(game.get("doubleHeader") or game.get("doubleHeaderNo") or "0").strip()
             if g_dh == dh_no:
                 score += 20
-            
+
             # 4. Date Match (if we are scanning nearby dates)
             g_date = str(game.get("gameDate") or "").replace("-", "").strip()
             if not g_date and len(game_id) >= 8:
@@ -290,7 +294,7 @@ class RelayCrawler:
         legacy = legacy_map.get(team_code)
         return bool(legacy and legacy in game_id)
 
-    async def _resolve_naver_game_id(self, client: httpx.AsyncClient, kbo_game_id: str) -> Optional[str]:
+    async def _resolve_naver_game_id(self, client: httpx.AsyncClient, kbo_game_id: str) -> str | None:
         query_dates = self._schedule_query_dates(kbo_game_id)
         saw_schedule_games = False
         for index, query_date in enumerate(query_dates):
@@ -323,7 +327,7 @@ class RelayCrawler:
         self,
         client: httpx.AsyncClient,
         naver_id: str,
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         all_text_relays: list[dict[str, Any]] = []
         self._last_fetch_failure_reason = None
         for inn in range(1, 16):
@@ -354,7 +358,7 @@ class RelayCrawler:
             all_text_relays.extend(text_relays)
         return all_text_relays
 
-    async def crawl_game_relay(self, kbo_game_id: str) -> Optional[Dict[str, Any]]:
+    async def crawl_game_relay(self, kbo_game_id: str) -> dict[str, Any] | None:
         """
         Fetch and parse ALL PBP events for a given KBO game ID by iterating innings.
         Supports both LIVE and COMPLETED games natively through the API.
@@ -364,7 +368,7 @@ class RelayCrawler:
         self.last_failure_reason = None
         self.last_resolved_naver_game_id = None
         direct_naver_id = self._map_to_naver_id(kbo_game_id)
-        
+
         try:
             async with httpx.AsyncClient() as client:
                 naver_id = direct_naver_id
@@ -377,10 +381,12 @@ class RelayCrawler:
                         naver_id = resolved_naver_id
 
             if not all_text_relays:
-                reason = self.get_last_failure_reason(kbo_game_id) or self._last_fetch_failure_reason or "relay_not_found"
+                reason = (
+                    self.get_last_failure_reason(kbo_game_id) or self._last_fetch_failure_reason or "relay_not_found"
+                )
                 self._set_failure_reason(kbo_game_id, reason)
                 return None
-            
+
             parsed_payload = self._parse_naver_payload(all_text_relays)
             events = parsed_payload["events"]
             raw_pbp_rows = parsed_payload["raw_pbp_rows"]
@@ -390,10 +396,10 @@ class RelayCrawler:
             # Determine status by heuristic: if 9+ innings and 3 outs recorded, it's completed, but we can just say completed if events exist
             # since game status is handled by GameDetailCrawler anyway.
             return {
-                "game_id": kbo_game_id, 
+                "game_id": kbo_game_id,
                 "naver_game_id": naver_id,
-                "game_date": kbo_game_id[:8], 
-                "status": "completed", # Assume completed or live, upstream handles the real status
+                "game_date": kbo_game_id[:8],
+                "status": "completed",  # Assume completed or live, upstream handles the real status
                 "events": events,
                 "raw_pbp_rows": raw_pbp_rows,
             }
@@ -402,10 +408,10 @@ class RelayCrawler:
             self._set_failure_reason(kbo_game_id, "relay_api_error")
             return None
 
-    def _parse_naver_data(self, text_relays: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    def _parse_naver_data(self, text_relays: list[dict[str, Any]]) -> list[dict[str, Any]]:
         return self._parse_naver_payload(text_relays)["events"]
 
-    def _parse_naver_payload(self, text_relays: List[Dict[str, Any]]) -> Dict[str, List[Dict[str, Any]]]:
+    def _parse_naver_payload(self, text_relays: list[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
         parsed_events = []
         raw_pbp_rows = []
         sequence = 1
@@ -436,21 +442,26 @@ class RelayCrawler:
             for log in logs:
                 state = log.get("currentGameState") or {}
                 batter_record = log.get("batterRecord") or {}
-                
+
                 # Naver fields are often strings
                 def to_int(val, default=0):
-                    try: return int(val) if val is not None else default
-                    except Exception: return default
+                    try:
+                        return int(val) if val is not None else default
+                    except Exception:
+                        return default
 
                 home_score = to_int(state.get("homeScore"))
                 away_score = to_int(state.get("awayScore"))
                 outs = to_int(state.get("out"))
-                
+
                 base_state = 0
-                if to_int(state.get("base1")) > 0: base_state |= 1
-                if to_int(state.get("base2")) > 0: base_state |= 2
-                if to_int(state.get("base3")) > 0: base_state |= 4
-                
+                if to_int(state.get("base1")) > 0:
+                    base_state |= 1
+                if to_int(state.get("base2")) > 0:
+                    base_state |= 2
+                if to_int(state.get("base3")) > 0:
+                    base_state |= 4
+
                 # Ensure description length fits DB column (usually text, but to be safe)
                 description = str(log.get("text") or "")
                 if not description.strip():
@@ -475,7 +486,7 @@ class RelayCrawler:
 
                 if not is_relay_result_event_text(description):
                     continue
-                
+
                 event = {
                     "event_seq": sequence,
                     "inning": inning,
@@ -489,25 +500,25 @@ class RelayCrawler:
                     "score_diff": home_score - away_score,
                     "base_state": base_state,
                     "outs": outs,
-                    "bases_before": "-", 
+                    "bases_before": "-",
                     "bases_after": self._format_base_string(base_state),
                     "wpa": 0.0,
                     "win_expectancy_before": 0.5,
-                    "win_expectancy_after": 0.5
+                    "win_expectancy_after": 0.5,
                 }
-                
-                # Try to emulate the old structure fields if needed, 
-                event['batter'] = event['batter_name']
-                event['pitcher'] = event['pitcher_name']
-                event['result'] = description.split(":", 1)[-1].strip() if ":" in description else None
-                
+
+                # Try to emulate the old structure fields if needed,
+                event["batter"] = event["batter_name"]
+                event["pitcher"] = event["pitcher_name"]
+                event["result"] = description.split(":", 1)[-1].strip() if ":" in description else None
+
                 parsed_events.append(event)
                 sequence += 1
-                
+
         self._apply_wpa_transitions(parsed_events)
         return {"events": parsed_events, "raw_pbp_rows": raw_pbp_rows}
 
-    def _parse_segment_inning_half(self, segment: Dict[str, Any]) -> tuple[int, str | None]:
+    def _parse_segment_inning_half(self, segment: dict[str, Any]) -> tuple[int, str | None]:
         title = str(segment.get("title") or "")
         match = re.search(r"(\d+)회\s*(초|말)", title)
         if match:
@@ -532,32 +543,40 @@ class RelayCrawler:
     def _format_base_string(self, runners: int) -> str:
         return f"{'1' if (runners & 1) else '-'}{'2' if (runners & 2) else '-'}{'3' if (runners & 4) else '-'}"
 
-    def _apply_wpa_transitions(self, events: List[Dict[str, Any]]):
+    def _apply_wpa_transitions(self, events: list[dict[str, Any]]):
         for i, event in enumerate(events):
-            is_bottom = (event["inning_half"] == "bottom")
+            is_bottom = event["inning_half"] == "bottom"
             if i == 0:
                 outs_before, runners_before, score_diff_before = 0, 0, 0
             else:
-                prev = events[i-1]
+                prev = events[i - 1]
                 if prev["inning"] != event["inning"] or prev["inning_half"] != event["inning_half"]:
                     outs_before, runners_before = 0, 0
                 else:
                     outs_before, runners_before = prev["outs"], prev["base_state"]
                 score_diff_before = prev["home_score"] - prev["away_score"]
 
-            we_before = self.wpa_calc.get_win_probability(event["inning"], is_bottom, outs_before, runners_before, score_diff_before)
-            we_after = self.wpa_calc.get_win_probability(event["inning"], is_bottom, event["outs"], event["base_state"], event["home_score"] - event["away_score"])
-            
+            we_before = self.wpa_calc.get_win_probability(
+                event["inning"], is_bottom, outs_before, runners_before, score_diff_before
+            )
+            we_after = self.wpa_calc.get_win_probability(
+                event["inning"],
+                is_bottom,
+                event["outs"],
+                event["base_state"],
+                event["home_score"] - event["away_score"],
+            )
+
             event["win_expectancy_before"] = we_before
             event["win_expectancy_after"] = we_after
             event["wpa"] = round(we_after - we_before if is_bottom else we_before - we_after, 4)
             event["bases_before"] = self._format_base_string(runners_before)
 
 
-def _events_to_legacy_innings(events: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    innings: List[Dict[str, Any]] = []
+def _events_to_legacy_innings(events: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    innings: list[dict[str, Any]] = []
     current_key = None
-    current_bucket: Dict[str, Any] | None = None
+    current_bucket: dict[str, Any] | None = None
     for event in events:
         key = (event.get("inning"), event.get("inning_half"))
         if key != current_key:
@@ -582,10 +601,10 @@ def _events_to_legacy_innings(events: List[Dict[str, Any]]) -> List[Dict[str, An
     return innings
 
 
-def _pbp_rows_to_legacy_innings(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    innings: List[Dict[str, Any]] = []
+def _pbp_rows_to_legacy_innings(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    innings: list[dict[str, Any]] = []
     current_key = None
-    current_bucket: Dict[str, Any] | None = None
+    current_bucket: dict[str, Any] | None = None
     for row in rows:
         key = (row.get("inning"), row.get("inning_half"))
         if key != current_key:
@@ -610,7 +629,7 @@ def _pbp_rows_to_legacy_innings(rows: List[Dict[str, Any]]) -> List[Dict[str, An
     return innings
 
 
-async def fetch_and_parse_relay(game_id: str, game_date: str | None = None) -> Optional[Dict[str, Any]]:
+async def fetch_and_parse_relay(game_id: str, game_date: str | None = None) -> dict[str, Any] | None:
     """
     Compatibility helper for older tests and scripts that expect inning-grouped output.
     """
@@ -623,9 +642,5 @@ async def fetch_and_parse_relay(game_id: str, game_date: str | None = None) -> O
     return {
         "game_id": game_id,
         "game_date": game_date or game_id[:8],
-        "innings": (
-            _pbp_rows_to_legacy_innings(raw_pbp_rows)
-            if raw_pbp_rows
-            else _events_to_legacy_innings(events)
-        ),
+        "innings": (_pbp_rows_to_legacy_innings(raw_pbp_rows) if raw_pbp_rows else _events_to_legacy_innings(events)),
     }

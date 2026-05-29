@@ -1,9 +1,10 @@
 from __future__ import annotations
 
+import asyncio
+
 import src.crawlers.relay_crawler as relay_module
 from src.crawlers.relay_crawler import RelayCrawler
 from src.sources.relay.base import default_source_order_for_bucket
-import asyncio
 
 
 class _FakePolicy:
@@ -463,9 +464,7 @@ def test_relay_request_helper_uses_compliance_delay_and_retry(monkeypatch):
     assert reason is None
     assert policy.retry_calls == 1
     assert policy.delay_hosts == ["api-gw.sports.naver.com"]
-    assert compliance.urls == [
-        "https://api-gw.sports.naver.com/schedule/today-games?date=2025-04-01"
-    ]
+    assert compliance.urls == ["https://api-gw.sports.naver.com/schedule/today-games?date=2025-04-01"]
 
 
 def test_match_schedule_game_rejects_team_mismatch_even_when_id_suffix_matches():

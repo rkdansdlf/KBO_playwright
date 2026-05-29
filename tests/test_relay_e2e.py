@@ -2,13 +2,16 @@
 End-to-end test for RELAY crawler.
 Tests fetching and saving play-by-play data.
 """
+
 import sys
 from pathlib import Path
+
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import asyncio
+
 from src.crawlers.relay_crawler import fetch_and_parse_relay
-from src.repositories.relay_repository import save_relay_data, get_game_relay_summary
+from src.repositories.relay_repository import get_game_relay_summary, save_relay_data
 from src.utils.safe_print import safe_print as print
 
 
@@ -27,7 +30,7 @@ async def main():
         print("No RELAY data returned. Test failed.")
         return
 
-    innings = relay_data.get('innings', [])
+    innings = relay_data.get("innings", [])
     print(f"Parsed {len(innings)} innings\n")
 
     # Show sample
@@ -36,12 +39,12 @@ async def main():
         sample = innings[0]
         print(f"  Inning {sample['inning']} {sample['half']}")
         print(f"  Plays: {len(sample['plays'])}")
-        if sample['plays']:
+        if sample["plays"]:
             print(f"  First play: {sample['plays'][0].get('description', '')[:50]}...")
     print()
 
     # Step 2: Save to database
-    print(f"Step 2: Saving RELAY data to database...")
+    print("Step 2: Saving RELAY data to database...")
     saved = save_relay_data(game_id, innings)
     print(f"Saved {saved} plays\n")
 
@@ -53,7 +56,7 @@ async def main():
     print(f"Total plays: {summary['total_plays']}")
     print(f"Innings recorded: {summary['innings']}")
     print("\nEvent types:")
-    for event_type, count in summary['event_types'].items():
+    for event_type, count in summary["event_types"].items():
         if count > 0:
             print(f"  {event_type}: {count}")
 

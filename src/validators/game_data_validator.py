@@ -1,12 +1,13 @@
 """
 Validation helpers for parsed game detail payloads.
 """
+
 from __future__ import annotations
 
-from typing import Dict, Any, List, Tuple
+from typing import Any
 
 
-def validate_game_data(game_data: Dict[str, Any]) -> Tuple[bool, List[str], List[str]]:
+def validate_game_data(game_data: dict[str, Any]) -> tuple[bool, list[str], list[str]]:
     """
     Validate parsed game data prior to persistence.
 
@@ -15,8 +16,8 @@ def validate_game_data(game_data: Dict[str, Any]) -> Tuple[bool, List[str], List
         - errors: Critical issues that prevent saving
         - warnings: Non-critical issues that should be logged
     """
-    errors: List[str] = []
-    warnings: List[str] = []
+    errors: list[str] = []
+    warnings: list[str] = []
 
     # Critical validations (will block save)
     if not game_data.get("game_id"):
@@ -39,12 +40,12 @@ def validate_game_data(game_data: Dict[str, Any]) -> Tuple[bool, List[str], List
 
     # Team code standardization check
     from src.utils.team_codes import STANDARD_TEAM_CODES
+
     for side, code in [("home", home_code), ("away", away_code)]:
         if code and code not in STANDARD_TEAM_CODES:
             # Check if it's a known international code (warnings only)
             # For now, following user request to enforce standard 10
             errors.append(f"Invalid {side} team code: '{code}'. Must be one of {sorted(list(STANDARD_TEAM_CODES))}")
-
 
     hitters = game_data.get("hitters") or {}
     pitchers = game_data.get("pitchers") or {}
@@ -63,7 +64,7 @@ def validate_game_data(game_data: Dict[str, Any]) -> Tuple[bool, List[str], List
     return (len(errors) == 0, errors, warnings)
 
 
-def _validate_score_totals(team: Dict[str, Any], label: str, errors: List[str]) -> None:
+def _validate_score_totals(team: dict[str, Any], label: str, errors: list[str]) -> None:
     score = team.get("score")
     line_score = team.get("line_score")
     if score is None or not line_score:
@@ -76,7 +77,7 @@ def _validate_score_totals(team: Dict[str, Any], label: str, errors: List[str]) 
         errors.append(f"{label} line score ({computed}) != total score ({score})")
 
 
-def _validate_runs_match_scores(game_data: Dict[str, Any], errors: List[str]) -> None:
+def _validate_runs_match_scores(game_data: dict[str, Any], errors: list[str]) -> None:
     teams = game_data.get("teams") or {}
     hitters = game_data.get("hitters") or {}
     for side in ("home", "away"):
@@ -88,10 +89,7 @@ def _validate_runs_match_scores(game_data: Dict[str, Any], errors: List[str]) ->
             stats = entry.get("stats") or {}
             total_runs += int(stats.get("runs") or 0)
         if total_runs != team["score"]:
-            errors.append(
-                f"{side} hitter runs ({total_runs}) != team score ({team['score']})"
-            )
+            errors.append(f"{side} hitter runs ({total_runs}) != team score ({team['score']})")
 
 
 __all__ = ["validate_game_data"]
-

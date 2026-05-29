@@ -1,7 +1,8 @@
-import os
 import json
+import os
 import urllib.request
-from typing import Dict, Any, List, Optional
+from typing import Any
+
 
 class TelegramBotClient:
     """Sends notifications via Telegram Bot API."""
@@ -19,19 +20,11 @@ class TelegramBotClient:
             return False
 
         # Prepare payload
-        payload = {
-            "chat_id": chat_id,
-            "text": message,
-            "parse_mode": "HTML"
-        }
+        payload = {"chat_id": chat_id, "text": message, "parse_mode": "HTML"}
 
         url = f"https://api.telegram.org/bot{token}/sendMessage"
-        data = json.dumps(payload).encode('utf-8')
-        req = urllib.request.Request(
-            url,
-            data=data,
-            headers={'Content-Type': 'application/json'}
-        )
+        data = json.dumps(payload).encode("utf-8")
+        req = urllib.request.Request(url, data=data, headers={"Content-Type": "application/json"})
 
         try:
             with urllib.request.urlopen(req, timeout=10) as response:
@@ -40,13 +33,14 @@ class TelegramBotClient:
             print(f"[TELEGRAM-ERROR] Failed to send message: {e}")
             return False
 
+
 class SlackWebhookClient:
     """Sends notifications. Now prioritizes Telegram if configured."""
-    
+
     @staticmethod
     def send_alert(message: str, blocks: list = None) -> bool:
         """
-        Sends an alert message. 
+        Sends an alert message.
         Tries Telegram first, falls back to Slack if configured.
         """
         # Try Telegram first
@@ -59,18 +53,14 @@ class SlackWebhookClient:
             if not os.getenv("TELEGRAM_BOT_TOKEN"):
                 print(f"[ALERT-SKIP] No alerting (Slack/Telegram) configured. Message: {message}")
             return True
-            
-        payload: Dict[str, Any] = {"text": message}
+
+        payload: dict[str, Any] = {"text": message}
         if blocks:
             payload["blocks"] = blocks
 
-        data = json.dumps(payload).encode('utf-8')
-        req = urllib.request.Request(
-            webhook_url, 
-            data=data, 
-            headers={'Content-Type': 'application/json'}
-        )
-        
+        data = json.dumps(payload).encode("utf-8")
+        req = urllib.request.Request(webhook_url, data=data, headers={"Content-Type": "application/json"})
+
         try:
             with urllib.request.urlopen(req, timeout=5) as response:
                 return response.status in (200, 204)
@@ -87,19 +77,7 @@ class SlackWebhookClient:
 
         # Slack legacy fallback
         blocks = [
-            {
-                "type": "header",
-                "text": {
-                    "type": "plain_text",
-                    "text": "🚨 KBO Pipeline Critical Error"
-                }
-            },
-            {
-                "type": "section",
-                "text": {
-                    "type": "mrkdwn",
-                    "text": f"```\n{traceback_msg[:2000]}\n```"
-                }
-            }
+            {"type": "header", "text": {"type": "plain_text", "text": "🚨 KBO Pipeline Critical Error"}},
+            {"type": "section", "text": {"type": "mrkdwn", "text": f"```\n{traceback_msg[:2000]}\n```"}},
         ]
         return SlackWebhookClient.send_alert("🚨 KBO Pipeline Error encountered", blocks=blocks)

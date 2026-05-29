@@ -1,4 +1,4 @@
-from src.utils.player_classification import classify_player, PlayerCategory
+from src.utils.player_classification import PlayerCategory, classify_player
 
 
 def test_classify_active_defaults():
@@ -40,4 +40,3 @@ def test_classify_register_staff():
 
     entry_other = {"status_source": "register", "staff_role": "trainer"}
     assert classify_player(entry_other) == PlayerCategory.STAFF
-

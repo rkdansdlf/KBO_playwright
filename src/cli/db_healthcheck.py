@@ -8,19 +8,18 @@
 사용법:
   python -m src.cli.db_healthcheck
 """
+
 from __future__ import annotations
 
 import os
-from contextlib import contextmanager
-from typing import List
 
-from sqlalchemy import text, inspect
+from sqlalchemy import inspect, text
 
-from src.db.engine import Engine, DATABASE_URL
+from src.db.engine import DATABASE_URL, Engine
 from src.utils.safe_print import safe_print as print
 
 
-def main(argv: List[str] | None = None) -> None:
+def main(argv: list[str] | None = None) -> None:
     """데이터베이스 상태 점검을 수행하는 메인 함수."""
     url = os.getenv("DATABASE_URL", DATABASE_URL)
     dialect = Engine.url.get_backend_name()

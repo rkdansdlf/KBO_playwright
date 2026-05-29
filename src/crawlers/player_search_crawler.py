@@ -3,21 +3,23 @@ Player Search Crawler
 Collects comprehensive player information from KBO Player Search page.
 Now refactored into a class as expected by GameDetailCrawler.
 """
+
 import asyncio
+import contextlib
 import os
 import re
 from collections import Counter
 from dataclasses import dataclass
-from datetime import datetime, date as date_type
-from typing import List, Optional, Set
+from datetime import date as date_type
+from datetime import datetime
 
-from playwright.async_api import Locator, Page
+from playwright.async_api import Page
 
-from src.utils.playwright_pool import AsyncPlaywrightPool
-from src.utils.player_classification import classify_player, PlayerCategory
 from src.services.player_status_confirmer import PlayerStatusConfirmer
 from src.utils.compliance import compliance
+from src.utils.player_classification import PlayerCategory, classify_player
 from src.utils.player_validation import normalize_player_name, validate_player_payload
+from src.utils.playwright_pool import AsyncPlaywrightPool
 from src.utils.request_policy import RequestPolicy
 
 # URL and selectors
@@ -35,7 +37,7 @@ TIMEOUT_MS = 15000
 
 POSTBACK_RE = re.compile(r"__doPostBack\('([^']+)'\s*,\s*'([^']*)'\)")
 INITIAL_CH_RE = re.compile(r"^[가-힣A-Z]$")
-NAME_CLEAN_RE = re.compile(r'[^가-힣a-zA-Z]')
+NAME_CLEAN_RE = re.compile(r"[^가-힣a-zA-Z]")
 
 POSTBACK_EVAL = """
 ([target, arg]) => {
@@ -62,22 +64,24 @@ POSTBACK_EVAL = """
 }
 """
 
+
 @dataclass
 class PlayerRow:
     player_id: int
-    uniform_no: Optional[str]
+    uniform_no: str | None
     name: str
-    team: Optional[str]
-    position: Optional[str]
-    birth_date: Optional[str]
-    height_cm: Optional[int]
-    weight_kg: Optional[int]
-    career: Optional[str]
+    team: str | None
+    position: str | None
+    birth_date: str | None
+    height_cm: int | None
+    weight_kg: int | None
+    career: str | None
+
 
 class PlayerSearchCrawler:
     def __init__(
         self,
-        pool: Optional[AsyncPlaywrightPool] = None,
+        pool: AsyncPlaywrightPool | None = None,
         request_delay: float = REQUEST_DELAY_SEC,
         headless: bool = True,
     ):
@@ -98,7 +102,7 @@ class PlayerSearchCrawler:
         page: Page,
         *,
         url: str = SEARCH_URL,
-        required_selector: Optional[str] = None,
+        required_selector: str | None = None,
         timeout: int = TIMEOUT_MS,
         selector_timeout: int = TIMEOUT_MS,
     ) -> tuple[bool, str]:
@@ -120,14 +124,16 @@ class PlayerSearchCrawler:
             self._record_failure(reason)
             return False, reason
 
-    async def search_player(self, player_name: str) -> List[dict]:
+    async def search_player(self, player_name: str) -> list[dict]:
         """Searches for a player and returns matching profiles as dicts."""
-        clean_name = NAME_CLEAN_RE.sub('', player_name)
-        if not clean_name: return []
+        clean_name = NAME_CLEAN_RE.sub("", player_name)
+        if not clean_name:
+            return []
 
         active_pool = self.pool or AsyncPlaywrightPool(max_pages=1, headless=self.headless)
         owns_pool = self.pool is None
-        if owns_pool: await active_pool.start()
+        if owns_pool:
+            await active_pool.start()
 
         try:
             page = await active_pool.acquire()
@@ -146,12 +152,14 @@ class PlayerSearchCrawler:
             finally:
                 await active_pool.release(page)
         finally:
-            if owns_pool: await active_pool.close()
+            if owns_pool:
+                await active_pool.close()
 
-    async def crawl_all_players(self, max_pages: Optional[int] = None) -> List[PlayerRow]:
+    async def crawl_all_players(self, max_pages: int | None = None) -> list[PlayerRow]:
         active_pool = self.pool or AsyncPlaywrightPool(max_pages=1, headless=self.headless)
         owns_pool = self.pool is None
-        if owns_pool: await active_pool.start()
+        if owns_pool:
+            await active_pool.start()
         try:
             page = await active_pool.acquire()
             try:
@@ -162,31 +170,36 @@ class PlayerSearchCrawler:
                 await page.locator(SEARCH_BTN).click()
                 await page.wait_for_selector(TABLE_ROWS, timeout=TIMEOUT_MS)
 
-                all_rows: List[PlayerRow] = []
-                seen_ids: Set[int] = set()
+                all_rows: list[PlayerRow] = []
+                seen_ids: set[int] = set()
                 limit = max_pages * 20 if max_pages is not None else None
 
                 initial_links = await self._list_initial_links(page)
                 if not initial_links:
                     await self._merge_rows(page, all_rows, seen_ids, limit)
                 else:
-                    if await self._merge_rows(page, all_rows, seen_ids, limit): return all_rows
+                    if await self._merge_rows(page, all_rows, seen_ids, limit):
+                        return all_rows
                     index = 0
                     while True:
                         current_links = await self._list_initial_links(page)
-                        if index >= len(current_links): break
+                        if index >= len(current_links):
+                            break
                         prev_v = await self._get_hfpage_value(page)
                         first_b = await self._get_first_player_name(page)
                         if not await self._trigger_postback(page, current_links[index]):
-                            index += 1; continue
+                            index += 1
+                            continue
                         await self._wait_after_nav(page, prev_v, first_b)
-                        if await self._merge_rows(page, all_rows, seen_ids, limit): return all_rows
+                        if await self._merge_rows(page, all_rows, seen_ids, limit):
+                            return all_rows
                         index += 1
                 return all_rows
             finally:
                 await active_pool.release(page)
         finally:
-            if owns_pool: await active_pool.close()
+            if owns_pool:
+                await active_pool.close()
 
     async def _merge_rows(self, page, all_rows, seen_ids, limit):
         rows = await self._paginate_current_tab(page)
@@ -194,44 +207,56 @@ class PlayerSearchCrawler:
             if r.player_id not in seen_ids:
                 seen_ids.add(r.player_id)
                 all_rows.append(r)
-                if limit and len(all_rows) >= limit: return True
+                if limit and len(all_rows) >= limit:
+                    return True
             else:
                 self._record_failure("duplicate_player_id")
         return False
 
-    async def _paginate_current_tab(self, page: Page) -> List[PlayerRow]:
-        collected: List[PlayerRow] = []
-        seen: Set[int] = set()
+    async def _paginate_current_tab(self, page: Page) -> list[PlayerRow]:
+        collected: list[PlayerRow] = []
+        seen: set[int] = set()
 
         async def add_current():
             for r in await self._collect_page_rows(page):
                 if r.player_id not in seen:
-                    seen.add(r.player_id); collected.append(r)
+                    seen.add(r.player_id)
+                    collected.append(r)
                 else:
                     self._record_failure("duplicate_player_id")
 
         await add_current()
         while True:
             pager = page.locator(PAGER_CONTAINER).last
-            if await pager.count() == 0: break
+            if await pager.count() == 0:
+                break
             nums = pager.locator(":is(a, span)").filter(has_text=re.compile(r"^\d+$"))
             count = await nums.count()
-            if count == 0: break
+            if count == 0:
+                break
 
             curr_idx = 0
             for i in range(count):
                 if "on" in (await nums.nth(i).get_attribute("class") or "").lower():
-                    curr_idx = i; break
+                    curr_idx = i
+                    break
 
             moved = False
             for i in range(curr_idx + 1, count):
-                target = page.locator(PAGER_CONTAINER).last.locator(":is(a, span)").filter(has_text=re.compile(r"^\d+$")).nth(i)
-                if (await target.evaluate("el => el.tagName")).lower() != "a": continue
+                target = (
+                    page.locator(PAGER_CONTAINER)
+                    .last.locator(":is(a, span)")
+                    .filter(has_text=re.compile(r"^\d+$"))
+                    .nth(i)
+                )
+                if (await target.evaluate("el => el.tagName")).lower() != "a":
+                    continue
                 prev_v = await self._get_hfpage_value(page)
                 first_b = await self._get_first_player_name(page)
                 if await self._trigger_postback(page, target):
                     await self._wait_after_nav(page, prev_v, first_b)
-                    await add_current(); moved = True
+                    await add_current()
+                    moved = True
 
             # Next block
             next_btn = page.locator(PAGER_CONTAINER).last.locator(PAGER_NEXT_BTNS).first
@@ -240,34 +265,52 @@ class PlayerSearchCrawler:
                 first_b = await self._get_first_player_name(page)
                 if await self._trigger_postback(page, next_btn):
                     await self._wait_after_nav(page, prev_v, first_b)
-                    await add_current(); moved = True
+                    await add_current()
+                    moved = True
                 else:
                     self._record_failure("pagination_failed")
                     break
-            if not moved: break
+            if not moved:
+                break
         return collected
 
-    async def _collect_page_rows(self, page: Page) -> List[PlayerRow]:
-        payload = await page.evaluate("(sel) => Array.from(document.querySelectorAll(sel)).map(r => ({cells: Array.from(r.querySelectorAll('td')).map(td => td.innerText.trim()), linkHref: r.querySelector('td:nth-child(2) a')?.getAttribute('href')}))", TABLE_ROWS)
+    async def _collect_page_rows(self, page: Page) -> list[PlayerRow]:
+        payload = await page.evaluate(
+            "(sel) => Array.from(document.querySelectorAll(sel)).map(r => ({cells: Array.from(r.querySelectorAll('td')).map(td => td.innerText.trim()), linkHref: r.querySelector('td:nth-child(2) a')?.getAttribute('href')}))",
+            TABLE_ROWS,
+        )
         res = []
         for r in payload or []:
-            cells = r['cells']
+            cells = r["cells"]
             if len(cells) < 7:
                 self._record_failure("insufficient_columns")
                 continue
-            pid = self._extract_pid(r['linkHref'])
+            pid = self._extract_pid(r["linkHref"])
             name = normalize_player_name(cells[1] if len(cells) > 1 else None)
             ok, reason = validate_player_payload({"player_id": pid, "name": name})
             if not ok:
                 self._record_failure(reason or "invalid_player_payload")
                 continue
             h, w = self._parse_hw(cells[5])
-            res.append(PlayerRow(player_id=pid, uniform_no=cells[0] if cells[0] != "-" else None, name=name, team=cells[2] if cells[2] != "-" else None, position=cells[3], birth_date=cells[4], height_cm=h, weight_kg=w, career=cells[6]))
+            res.append(
+                PlayerRow(
+                    player_id=pid,
+                    uniform_no=cells[0] if cells[0] != "-" else None,
+                    name=name,
+                    team=cells[2] if cells[2] != "-" else None,
+                    position=cells[3],
+                    birth_date=cells[4],
+                    height_cm=h,
+                    weight_kg=w,
+                    career=cells[6],
+                )
+            )
         return res
 
     def _extract_pid(self, href):
-        if not href: return None
-        m = re.search(r"playerId=(\d+)", href.replace(',', ''))
+        if not href:
+            return None
+        m = re.search(r"playerId=(\d+)", href.replace(",", ""))
         return int(m.group(1)) if m else None
 
     def _parse_hw(self, s):
@@ -278,8 +321,10 @@ class PlayerSearchCrawler:
         return await page.evaluate("(sel) => document.querySelector(sel)?.value || ''", HFPAGE)
 
     async def _get_first_player_name(self, page):
-        try: return (await page.locator(TABLE_ROWS).first.locator("td").nth(1).inner_text()).strip()
-        except Exception: return ""
+        try:
+            return (await page.locator(TABLE_ROWS).first.locator("td").nth(1).inner_text()).strip()
+        except Exception:
+            return ""
 
     async def _trigger_postback(self, page, anchor):
         try:
@@ -288,7 +333,7 @@ class PlayerSearchCrawler:
             await anchor.click(timeout=10000)
             await page.wait_for_load_state("load", timeout=10000)
             return True
-        except Exception as e:
+        except Exception:
             # Fallback to manual postback if click fails or times out
             try:
                 href = await anchor.get_attribute("href", timeout=5000)
@@ -306,8 +351,10 @@ class PlayerSearchCrawler:
             return False
 
     async def _wait_after_nav(self, page, prev_v, first_b):
-        try: await page.wait_for_function("([s, v]) => document.querySelector(s)?.value !== v", [HFPAGE, prev_v], timeout=5000)
-        except Exception: pass
+        with contextlib.suppress(Exception):
+            await page.wait_for_function(
+                "([s, v]) => document.querySelector(s)?.value !== v", [HFPAGE, prev_v], timeout=5000
+            )
         await asyncio.sleep(self.request_delay)
 
     async def _list_initial_links(self, page):
@@ -315,7 +362,8 @@ class PlayerSearchCrawler:
         res = []
         for i in range(await links.count()):
             txt = (await links.nth(i).inner_text()).strip()
-            if INITIAL_CH_RE.match(txt): res.append(links.nth(i))
+            if INITIAL_CH_RE.match(txt):
+                res.append(links.nth(i))
         return res
 
     @staticmethod
@@ -323,7 +371,7 @@ class PlayerSearchCrawler:
         return player_row_to_dict(row)
 
 
-def parse_birth_date(raw: Optional[str]) -> Optional[date_type]:
+def parse_birth_date(raw: str | None) -> date_type | None:
     if not raw:
         return None
 
@@ -382,12 +430,12 @@ def player_row_to_dict(row: PlayerRow) -> dict:
 
 
 async def crawl_all_players(
-    max_pages: Optional[int] = None,
+    max_pages: int | None = None,
     headless: bool = False,
     slow_mo=200,
     request_delay: float = REQUEST_DELAY_SEC,
-    pool: Optional[AsyncPlaywrightPool] = None,
-) -> List[PlayerRow]:
+    pool: AsyncPlaywrightPool | None = None,
+) -> list[PlayerRow]:
     crawler = PlayerSearchCrawler(
         pool=pool,
         request_delay=request_delay,
@@ -453,8 +501,7 @@ async def main():
             confirmer = PlayerStatusConfirmer()
             confirm_stats = await confirmer.confirm_entries(suspects)
             print(
-                "\nProfile-confirmed statuses: "
-                f"{confirm_stats['confirmed']} (attempted {confirm_stats['attempted']})"
+                f"\nProfile-confirmed statuses: {confirm_stats['confirmed']} (attempted {confirm_stats['attempted']})"
             )
 
         parsed_dates = sum(1 for player in player_dicts if player["birth_date_date"] is not None)

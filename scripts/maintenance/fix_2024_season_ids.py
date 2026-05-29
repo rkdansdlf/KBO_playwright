@@ -2,6 +2,7 @@
 
 Defaults to dry-run and requires --apply before committing updates.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -12,10 +13,8 @@ from typing import Callable
 from dotenv import load_dotenv
 from sqlalchemy import text
 
-
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 from src.db.engine import SessionLocal
-
 
 SEASON_RULES = (
     ("2024-03-09", "2024-03-19", "시범경기"),

@@ -1,0 +1,47 @@
+[tool.ruff]
+line-length = 120
+target-version = "py310"
+
+[tool.ruff.lint]
+select = [
+    "E",       # pycodestyle errors
+    "W",       # pycodestyle warnings
+    "F",       # pyflakes
+    "I",       # isort
+    "UP",      # pyupgrade (Python 3.10+)
+    "B",       # flake8-bugbear (limited)
+    "SIM",     # flake8-simplify (limited)
+]
+ignore = [
+    "E402",    # module-import-not-at-top (lazy imports intentional)
+    "E501",    # line-too-long (handled by formatter)
+    "E701",    # multiple-statements-on-one-line-colon (legacy style)
+    "E702",    # multiple-statements-on-one-line-semicolon
+    "E731",    # lambda assignment (permissive)
+    "UP035",   # deprecated typing (Dict→dict etc — too many existing)
+    "B023",    # function-uses-loop-variable (common closure pattern)
+    "B904",    # raise-without-from-inside-except (too many existing)
+    "SIM102",  # collapsible-if (readability preference)
+    "SIM105",  # suppressible-exception (explicit try/except clearer)
+    "SIM108",  # simplify-if-else (ternary, not always clearer)
+    "SIM113",  # enumerate-for-loop (manual counter ok)
+    "SIM117",  # merge-with-statements (nested contexts fine)
+]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+line-ending = "lf"
+
+[tool.pytest.ini_options]
+minversion = "7.4"
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+markers = [
+    "slow: slow tests (deselect with '-m \"not slow\"')",
+    "oci: tests requiring OCI database",
+]
+filterwarnings = [
+    "ignore::DeprecationWarning",
+    "ignore::sqlalchemy.exc.SADeprecationWarning",
+]

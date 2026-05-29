@@ -5,6 +5,7 @@ This tool is intentionally read-only. It does not choose a replacement
 ``player_id`` unless the row already carries durable evidence; current game
 stat rows generally do not, so most rows are marked for source review.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -20,8 +21,8 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from scripts.maintenance.classify_game_stat_duplicates import (  # noqa: E402
-    DUPLICATE_CONFIGS,
     DEFAULT_DB_PATH,
+    DUPLICATE_CONFIGS,
     _classify_group,
     _columns,
     _duplicate_groups,
@@ -183,8 +184,7 @@ def export_identity_conflict_worklist(
 
                 first = rows[0]
                 group_key = "|".join(
-                    f"{column}={classified.get(column, first.get(column, ''))}"
-                    for column in config.group_columns
+                    f"{column}={classified.get(column, first.get(column, ''))}" for column in config.group_columns
                 )
                 candidate_profiles = _candidate_profiles(conn, str(classified["candidate_ids"]))
                 game_date = _game_date(conn, str(first.get("game_id") or ""))
@@ -202,7 +202,9 @@ def export_identity_conflict_worklist(
                             "candidate_ids": classified["candidate_ids"],
                             "candidate_profiles": candidate_profiles,
                             "row_identity_summary": _row_identity_summary(row),
-                            "current_player_birth_date": profile.get("birth_date_date") or profile.get("birth_date") or "",
+                            "current_player_birth_date": profile.get("birth_date_date")
+                            or profile.get("birth_date")
+                            or "",
                             "current_player_debut_year": profile.get("debut_year") or "",
                             **suggestion,
                             **row,
@@ -299,26 +301,29 @@ def export_identity_conflict_worklist(
         "row_identity_summary",
         "current_player_birth_date",
         "current_player_debut_year",
-        *sorted({key for row in detail_rows for key in row.keys()} - {
-            "table_name",
-            "group_key",
-            "game_date",
-            "id",
-            "game_id",
-            "team_side",
-            "team_code",
-            "player_id",
-            "player_name",
-            "candidate_ids",
-            "candidate_profiles",
-            "suggestion_status",
-            "suggested_player_id",
-            "needs_source_review",
-            "suggestion_reason",
-            "row_identity_summary",
-            "current_player_birth_date",
-            "current_player_debut_year",
-        }),
+        *sorted(
+            {key for row in detail_rows for key in row.keys()}
+            - {
+                "table_name",
+                "group_key",
+                "game_date",
+                "id",
+                "game_id",
+                "team_side",
+                "team_code",
+                "player_id",
+                "player_name",
+                "candidate_ids",
+                "candidate_profiles",
+                "suggestion_status",
+                "suggested_player_id",
+                "needs_source_review",
+                "suggestion_reason",
+                "row_identity_summary",
+                "current_player_birth_date",
+                "current_player_debut_year",
+            }
+        ),
     ]
     _write_csv(groups_csv, group_rows, group_fieldnames)
     _write_csv(rows_csv, detail_rows, detail_fieldnames or ["table_name"])
@@ -377,10 +382,7 @@ def main() -> None:
         team_code=args.team_code,
         table_name=args.table,
     )
-    print(
-        f"[REPORT] groups={result['groups']} rows={result['rows']} "
-        f"source_review_rows={result['source_review_rows']}"
-    )
+    print(f"[REPORT] groups={result['groups']} rows={result['rows']} source_review_rows={result['source_review_rows']}")
     for key in sorted(result["summary"]):
         print(f"  {key}={result['summary'][key]}")
     print(f"[REPORT] groups_csv={result['groups_csv']}")

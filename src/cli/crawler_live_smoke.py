@@ -1,4 +1,5 @@
 """Opt-in live smoke checks for crawler release verification."""
+
 from __future__ import annotations
 
 import argparse
@@ -69,9 +70,7 @@ def _row_count(payload: Mapping[str, Any] | None, section: str, side: str) -> in
 
 def _detail_complete(payload: Mapping[str, Any] | None) -> bool:
     return all(
-        _row_count(payload, section, side) > 0
-        for section in ("hitters", "pitchers")
-        for side in ("away", "home")
+        _row_count(payload, section, side) > 0 for section in ("hitters", "pitchers") for side in ("away", "home")
     )
 
 

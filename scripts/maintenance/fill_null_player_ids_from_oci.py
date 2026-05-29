@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Fill remaining local NULL player_id values from matching OCI rows."""
+
 from __future__ import annotations
 
 import argparse
@@ -20,7 +21,6 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from src.db.engine import DATABASE_URL, SessionLocal
-
 
 DEFAULT_TABLES = ("game_batting_stats", "game_pitching_stats", "game_lineups")
 MATCH_COLUMNS = {
@@ -73,15 +73,10 @@ def _local_null_rows(session, table_name: str, years: tuple[int, ...]) -> list[d
 def _remote_candidate_ids(conn, table_name: str, row: dict[str, Any]) -> list[int]:
     match_columns = MATCH_COLUMNS[table_name]
     where = " AND ".join(
-        f"COALESCE(CAST({column} AS TEXT), '') = :{column}"
-        if column == "team_code"
-        else f"{column} = :{column}"
+        f"COALESCE(CAST({column} AS TEXT), '') = :{column}" if column == "team_code" else f"{column} = :{column}"
         for column in match_columns
     )
-    params = {
-        column: str(row[column] or "") if column == "team_code" else row[column]
-        for column in match_columns
-    }
+    params = {column: str(row[column] or "") if column == "team_code" else row[column] for column in match_columns}
     rows = conn.execute(
         text(
             f"""
@@ -107,7 +102,7 @@ def _match_key(table_name: str, row: dict[str, Any]) -> tuple[Any, ...]:
 
 
 def _batches(values: list[str], size: int = 500) -> list[list[str]]:
-    return [values[index:index + size] for index in range(0, len(values), size)]
+    return [values[index : index + size] for index in range(0, len(values), size)]
 
 
 def _remote_candidate_map(conn, table_name: str, local_rows: list[dict[str, Any]]) -> dict[tuple[Any, ...], list[int]]:
@@ -188,7 +183,9 @@ def fill_from_oci(
                     if resolved_player_id is not None:
                         if apply:
                             result = local_session.execute(
-                                text(f"UPDATE {table_name} SET player_id = :player_id WHERE id = :id AND player_id IS NULL"),
+                                text(
+                                    f"UPDATE {table_name} SET player_id = :player_id WHERE id = :id AND player_id IS NULL"
+                                ),
                                 {"player_id": resolved_player_id, "id": row["id"]},
                             )
                             updated_rows += int(result.rowcount or 0)

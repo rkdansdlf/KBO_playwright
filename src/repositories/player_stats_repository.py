@@ -1,12 +1,15 @@
 """
 Repositories for player-level advanced season statistics (Fielding, Baserunning).
 """
+
 from __future__ import annotations
 
 from collections import Counter
-from typing import List, Dict, Any
-from src.models.player import PlayerSeasonFielding, PlayerSeasonBaserunning
+from typing import Any
+
+from src.models.player import PlayerSeasonBaserunning, PlayerSeasonFielding
 from src.utils.player_season_stat_validation import filter_valid_season_stat_payloads
+
 from .team_stats_repository import BaseStatsUpsertRepository
 
 
@@ -17,7 +20,7 @@ class PlayerSeasonFieldingRepository(BaseStatsUpsertRepository):
         super().__init__(PlayerSeasonFielding, ["player_id", "team_id", "year", "position_id"])
         self.last_filter_counts: Counter = Counter()
 
-    def upsert_many(self, records: List[Dict[str, Any]]) -> int:
+    def upsert_many(self, records: list[dict[str, Any]]) -> int:
         valid_records, filter_counts = filter_valid_season_stat_payloads(
             records,
             stat_type="fielding",

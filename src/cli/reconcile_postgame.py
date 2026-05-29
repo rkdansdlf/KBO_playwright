@@ -1,4 +1,5 @@
 """CLI for postgame status/score reconciliation."""
+
 from __future__ import annotations
 
 import argparse

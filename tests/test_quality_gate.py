@@ -10,7 +10,6 @@ from scripts.maintenance.quality_gate import (
     run_quality_gate,
 )
 
-
 BASELINE = {
     "past_missing_runs_max": 717,
     "batting_null_player_id_max": 0,

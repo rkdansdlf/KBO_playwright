@@ -4,17 +4,17 @@ verify_sync_consistency.py
 CLI tool to verify data consistency between the local SQLite database
 and the remote OCI PostgreSQL database.
 """
+
 from __future__ import annotations
 
-import logging
 import argparse
+import logging
 import os
 import sys
-from typing import List, Dict, Any, Tuple
+from typing import Any
 
-from sqlalchemy import create_engine, text, inspect
-from sqlalchemy.orm import sessionmaker
 from dotenv import load_dotenv
+from sqlalchemy import inspect, text
 
 # Add project root to sys.path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
@@ -40,7 +40,8 @@ TABLES_TO_VERIFY = [
     ("player_basic", ["player_id"]),
 ]
 
-def check_table_counts(sqlite_conn, oci_conn) -> List[Dict[str, Any]]:
+
+def check_table_counts(sqlite_conn, oci_conn) -> list[dict[str, Any]]:
     """Compares row counts for verified tables between SQLite and OCI."""
     results = []
     for table_name, pk_cols in TABLES_TO_VERIFY:
@@ -53,13 +54,15 @@ def check_table_counts(sqlite_conn, oci_conn) -> List[Dict[str, Any]]:
             continue
         if not oci_exists:
             print(f"⚠️  Table {table_name} does not exist in remote OCI.")
-            results.append({
-                "table_name": table_name,
-                "sqlite_count": get_row_count(sqlite_conn, table_name),
-                "oci_count": -1,
-                "delta": -1,
-                "status": "MISSING_ON_OCI"
-            })
+            results.append(
+                {
+                    "table_name": table_name,
+                    "sqlite_count": get_row_count(sqlite_conn, table_name),
+                    "oci_count": -1,
+                    "delta": -1,
+                    "status": "MISSING_ON_OCI",
+                }
+            )
             continue
 
         sqlite_count = get_row_count(sqlite_conn, table_name)
@@ -72,16 +75,19 @@ def check_table_counts(sqlite_conn, oci_conn) -> List[Dict[str, Any]]:
         else:
             status = "MISMATCH"
 
-        results.append({
-            "table_name": table_name,
-            "sqlite_count": sqlite_count,
-            "oci_count": oci_count,
-            "delta": delta,
-            "status": status,
-            "pk_cols": pk_cols
-        })
+        results.append(
+            {
+                "table_name": table_name,
+                "sqlite_count": sqlite_count,
+                "oci_count": oci_count,
+                "delta": delta,
+                "status": status,
+                "pk_cols": pk_cols,
+            }
+        )
 
     return results
+
 
 def get_row_count(conn, table_name: str) -> int:
     try:
@@ -91,24 +97,22 @@ def get_row_count(conn, table_name: str) -> int:
         logger.exception(f"Error getting count for {table_name}")
         return 0
 
-def check_deep_ids(sqlite_conn, oci_conn, table_name: str, pk_cols: List[str]) -> Tuple[int, List[Any]]:
+
+def check_deep_ids(sqlite_conn, oci_conn, table_name: str, pk_cols: list[str]) -> tuple[int, list[Any]]:
     """Performs deep ID-level matching to identify SQLite rows missing in OCI."""
     try:
         cols_str = ", ".join(pk_cols)
-        
+
         # Fetch all primary keys from SQLite
         res_sqlite = sqlite_conn.execute(text(f"SELECT {cols_str} FROM {table_name}"))
         sqlite_rows = res_sqlite.fetchall()
-        
+
         # Fetch all primary keys from OCI
         res_oci = oci_conn.execute(text(f"SELECT {cols_str} FROM {table_name}"))
         oci_rows = res_oci.fetchall()
 
         def stringify_row(row):
-            return tuple(
-                val.isoformat() if hasattr(val, "isoformat") else str(val)
-                for val in row
-            )
+            return tuple(val.isoformat() if hasattr(val, "isoformat") else str(val) for val in row)
 
         sqlite_ids = {stringify_row(row) for row in sqlite_rows}
         oci_ids = {stringify_row(row) for row in oci_rows}
@@ -128,6 +132,7 @@ def check_deep_ids(sqlite_conn, oci_conn, table_name: str, pk_cols: List[str]) -
     except Exception:
         logger.exception(f"Error performing deep check for {table_name}")
         return 0, []
+
 
 def run_consistency_audit(deep: bool = False, trigger_alert: bool = True) -> bool:
     source_url = os.getenv("SOURCE_DATABASE_URL", "sqlite:///./data/kbo_dev.db")
@@ -165,7 +170,9 @@ def run_consistency_audit(deep: bool = False, trigger_alert: bool = True) -> boo
                 if not deep:
                     if res["status"] in ("MISMATCH", "MISSING_ON_OCI"):
                         mismatches.append(res)
-                        alert_lines.append(f"• <b>{res['table_name']}</b>: SQLite={res['sqlite_count']} vs OCI={res['oci_count']} (Delta={res['delta']})")
+                        alert_lines.append(
+                            f"• <b>{res['table_name']}</b>: SQLite={res['sqlite_count']} vs OCI={res['oci_count']} (Delta={res['delta']})"
+                        )
                 else:
                     if res["status"] == "MISSING_ON_OCI":
                         mismatches.append(res)
@@ -178,20 +185,22 @@ def run_consistency_audit(deep: bool = False, trigger_alert: bool = True) -> boo
                 for res in count_results:
                     if res["status"] == "MISSING_ON_OCI":
                         continue
-                    
+
                     table_name = res["table_name"]
                     pk_cols = res["pk_cols"]
-                    
+
                     match_rate, missing_sample = check_deep_ids(sqlite_conn, oci_conn, table_name, pk_cols)
                     print(f"  - {table_name}: Match Rate = {match_rate}%")
-                    
+
                     if match_rate < 100.0:
                         sample_str = ", ".join(str(k) for k in missing_sample)
                         print(f"    ⚠️  Missing sample IDs in OCI: {sample_str}")
                         mismatches.append(res)
-                        alert_lines.append(f"• <b>{table_name}</b>: Key ID match rate is {match_rate}% (Sample missing keys: {sample_str})")
+                        alert_lines.append(
+                            f"• <b>{table_name}</b>: Key ID match rate is {match_rate}% (Sample missing keys: {sample_str})"
+                        )
 
-    except Exception:
+    except Exception as e:
         logger.exception("❌ Error during consistency check")
         if trigger_alert:
             SlackWebhookClient.send_error_alert(f"Database Consistency Checker failed with error:\n{e}")
@@ -208,22 +217,20 @@ def run_consistency_audit(deep: bool = False, trigger_alert: bool = True) -> boo
         print("\n✅ All databases are fully synchronized and consistent!")
         return True
 
+
 def main():
     parser = argparse.ArgumentParser(description="KBO SQLite to OCI PostgreSQL consistency auditor")
     parser.add_argument(
-        "--deep",
-        action="store_true",
-        help="Perform deep ID-level matching to catch record discrepancies."
+        "--deep", action="store_true", help="Perform deep ID-level matching to catch record discrepancies."
     )
     parser.add_argument(
-        "--no-alert",
-        action="store_true",
-        help="Disable sending slack/telegram notifications on mismatch."
+        "--no-alert", action="store_true", help="Disable sending slack/telegram notifications on mismatch."
     )
     args = parser.parse_args()
 
     success = run_consistency_audit(deep=args.deep, trigger_alert=not args.no_alert)
     sys.exit(0 if success else 1)
+
 
 if __name__ == "__main__":
     main()

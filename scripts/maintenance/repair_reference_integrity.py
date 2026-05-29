@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Repair reference-data integrity issues that are safe to normalize locally."""
+
 from __future__ import annotations
 
 import argparse
@@ -159,7 +160,7 @@ def _variant_candidates(game_id: str, existing_game_ids: set[str]) -> list[str]:
     for away_token in TEAM_TOKENS:
         if not team_part.startswith(away_token):
             continue
-        home_token = team_part[len(away_token):]
+        home_token = team_part[len(away_token) :]
         home_variants = CODE_VARIANTS.get(home_token) or MALFORMED_HOME_TOKENS.get(home_token)
         if not home_variants:
             continue
@@ -179,7 +180,7 @@ def _parsed_team_codes(game_id: str) -> tuple[str, str, str] | None:
     for away_token in TEAM_TOKENS:
         if not team_part.startswith(away_token):
             continue
-        home_token = team_part[len(away_token):]
+        home_token = team_part[len(away_token) :]
         home_variants = CODE_VARIANTS.get(home_token) or MALFORMED_HOME_TOKENS.get(home_token)
         if home_variants:
             return date_part, CODE_VARIANTS[away_token][0], home_variants[0]
@@ -228,17 +229,25 @@ def _is_blank(value: Any) -> bool:
 
 
 def _merge_metadata(conn, source_game_id: str, target_game_id: str) -> str:
-    source_row = conn.execute(
-        text("SELECT * FROM game_metadata WHERE game_id = :game_id"),
-        {"game_id": source_game_id},
-    ).mappings().first()
+    source_row = (
+        conn.execute(
+            text("SELECT * FROM game_metadata WHERE game_id = :game_id"),
+            {"game_id": source_game_id},
+        )
+        .mappings()
+        .first()
+    )
     if not source_row:
         return "source_missing"
 
-    target_row = conn.execute(
-        text("SELECT * FROM game_metadata WHERE game_id = :game_id"),
-        {"game_id": target_game_id},
-    ).mappings().first()
+    target_row = (
+        conn.execute(
+            text("SELECT * FROM game_metadata WHERE game_id = :game_id"),
+            {"game_id": target_game_id},
+        )
+        .mappings()
+        .first()
+    )
     if not target_row:
         conn.execute(
             text("UPDATE game_metadata SET game_id = :target_id WHERE game_id = :source_id"),
@@ -286,10 +295,7 @@ def repair_orphan_metadata(conn, inspector, *, apply: bool) -> list[RepairAction
         _ensure_alias_table(conn, inspector)
         inspector = inspect(conn)
 
-    existing_game_ids = {
-        str(row[0])
-        for row in conn.execute(text("SELECT game_id FROM game")).fetchall()
-    }
+    existing_game_ids = {str(row[0]) for row in conn.execute(text("SELECT game_id FROM game")).fetchall()}
     orphan_ids = [
         str(row[0])
         for row in conn.execute(
@@ -406,10 +412,14 @@ def run(*, db_url: str, apply: bool, only: str, output_dir: Path) -> dict[str, A
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Repair KBO reference integrity issues.")
-    parser.add_argument("--db-url", default=None, help="SQLAlchemy database URL. Defaults to DATABASE_URL or local SQLite.")
+    parser.add_argument(
+        "--db-url", default=None, help="SQLAlchemy database URL. Defaults to DATABASE_URL or local SQLite."
+    )
     parser.add_argument("--output-dir", default="data/reference_integrity_repair", help="CSV report output directory.")
     parser.add_argument("--apply", action="store_true", help="Apply repairs. Default is dry-run.")
-    parser.add_argument("--only", choices=("team-codes", "metadata", "all"), default="all", help="Repair subset to run.")
+    parser.add_argument(
+        "--only", choices=("team-codes", "metadata", "all"), default="all", help="Repair subset to run."
+    )
     return parser.parse_args()
 
 

@@ -3,12 +3,12 @@
 Repair historical Earned Run (ER) violations (ER > Opponent Runs).
 Identifies and fixes impossible pitching stats.
 """
+
 from __future__ import annotations
 
 import argparse
 import sys
 from pathlib import Path
-from typing import Any, Dict, List
 
 from sqlalchemy import text
 
@@ -18,12 +18,13 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from src.db.engine import SessionLocal
 
+
 def repair_historical_er(dry_run: bool = True):
     with SessionLocal() as session:
         # Find games where team_er > opp_runs
         query = """
-            SELECT 
-                g.game_id, 
+            SELECT
+                g.game_id,
                 g.game_date,
                 gps.team_side,
                 SUM(gps.earned_runs) as team_er,
@@ -41,30 +42,41 @@ def repair_historical_er(dry_run: bool = True):
             gid = v["game_id"]
             side = v["team_side"]
             print(f"   - Processing {gid} ({side})...")
-            
+
             # For these historical games, the most likely error is that 'runs_allowed' was put into 'earned_runs'
             # OR there was a duplicate entry.
             # We will cap ER at Runs for these specific cases if we can't find a better fix.
             # But wait! A better fix is to re-crawl if it's recent, or manually fix if old.
-            
+
             # Let's check individual pitchers
-            pitchers = session.execute(
-                text("SELECT id, player_name, earned_runs, runs_allowed FROM game_pitching_stats WHERE game_id = :gid AND team_side = :side"),
-                {"gid": gid, "side": side}
-            ).mappings().all()
-            
+            pitchers = (
+                session.execute(
+                    text(
+                        "SELECT id, player_name, earned_runs, runs_allowed FROM game_pitching_stats WHERE game_id = :gid AND team_side = :side"
+                    ),
+                    {"gid": gid, "side": side},
+                )
+                .mappings()
+                .all()
+            )
+
             for p in pitchers:
                 if p["earned_runs"] > p["runs_allowed"]:
-                    print(f"     Pitcher {p['player_name']} has ER({p['earned_runs']}) > Runs({p['runs_allowed']}). Fixing.")
+                    print(
+                        f"     Pitcher {p['player_name']} has ER({p['earned_runs']}) > Runs({p['runs_allowed']}). Fixing."
+                    )
                     if not dry_run:
                         session.execute(
-                            text("UPDATE game_pitching_stats SET earned_runs = runs_allowed, updated_at = CURRENT_TIMESTAMP WHERE id = :pid"),
-                            {"id": p["id"]}
+                            text(
+                                "UPDATE game_pitching_stats SET earned_runs = runs_allowed, updated_at = CURRENT_TIMESTAMP WHERE id = :pid"
+                            ),
+                            {"id": p["id"]},
                         )
-            
+
             if not dry_run:
                 session.commit()
                 print(f"     ✅ Repaired {gid}")
+
 
 def main():
     parser = argparse.ArgumentParser(description="Repair historical ER violations")
@@ -72,6 +84,7 @@ def main():
     args = parser.parse_args()
 
     repair_historical_er(dry_run=not args.execute)
+
 
 if __name__ == "__main__":
     main()

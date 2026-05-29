@@ -2,15 +2,16 @@
 Daily Review Batch Script
 Generates post-game review context from game_events/WPA and persists it locally.
 """
+
 from __future__ import annotations
 
-import logging
 import argparse
 import asyncio
 import json
+import logging
 import os
 from datetime import datetime
-from typing import List, Sequence
+from typing import Sequence
 
 from src.db.engine import SessionLocal
 from src.models.game import Game, GameSummary
@@ -29,10 +30,14 @@ REVIEW_SUMMARY_TYPE = "리뷰_WPA"
 
 
 def _upsert_review_summary(session, game_id: str, review_json: str) -> None:
-    existing_summaries = session.query(GameSummary).filter(
-        GameSummary.game_id == game_id,
-        GameSummary.summary_type == REVIEW_SUMMARY_TYPE,
-    ).all()
+    existing_summaries = (
+        session.query(GameSummary)
+        .filter(
+            GameSummary.game_id == game_id,
+            GameSummary.summary_type == REVIEW_SUMMARY_TYPE,
+        )
+        .all()
+    )
     if existing_summaries:
         for summary in existing_summaries:
             summary.detail_text = review_json
@@ -72,7 +77,7 @@ def _build_review_data(agg: ContextAggregator, game: Game) -> dict:
     return review_data
 
 
-async def run_review_batch(target_date: str, *, sync_to_oci: bool | None = None) -> List[str]:
+async def run_review_batch(target_date: str, *, sync_to_oci: bool | None = None) -> list[str]:
     print(f"🚀 Starting Post-game Review Data Batch for {target_date}...")
 
     target_dt_obj = datetime.strptime(target_date, "%Y%m%d").date()
@@ -83,14 +88,18 @@ async def run_review_batch(target_date: str, *, sync_to_oci: bool | None = None)
             f"updated={status_result.get('updated', 0)} "
             f"counts={status_result.get('status_counts', {})}"
         )
-    saved_ids: List[str] = []
+    saved_ids: list[str] = []
 
     with SessionLocal() as session:
         agg = ContextAggregator(session)
-        games = session.query(Game).filter(
-            Game.game_date == target_dt_obj,
-            Game.game_status.in_(tuple(COMPLETED_LIKE_GAME_STATUSES)),
-        ).all()
+        games = (
+            session.query(Game)
+            .filter(
+                Game.game_date == target_dt_obj,
+                Game.game_status.in_(tuple(COMPLETED_LIKE_GAME_STATUSES)),
+            )
+            .all()
+        )
 
         if not games:
             manifest_path = write_refresh_manifest(
@@ -116,8 +125,7 @@ async def run_review_batch(target_date: str, *, sync_to_oci: bool | None = None)
 
             if not review_data["crucial_moments"]:
                 print(
-                    f"  ⚠️ No WPA-backed game_events found for {game_id}. "
-                    "Raw event crawl may be missing or incomplete."
+                    f"  ⚠️ No WPA-backed game_events found for {game_id}. Raw event crawl may be missing or incomplete."
                 )
 
             review_json = json.dumps(review_data, ensure_ascii=False)

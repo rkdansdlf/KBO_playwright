@@ -1,6 +1,7 @@
 """
 Tests for preview crawler API payload normalization logic.
 """
+
 from src.crawlers.preview_crawler import PreviewCrawler
 
 
@@ -40,7 +41,7 @@ def test_parse_lineup_grid_empty_and_ordered_rows():
             '{"rows":['
             '{"row":[{"Text":"1"},{"Text":"2루수"},{"Text":"박찬호"}]},'
             '{"row":[{"Text":"2"},{"Text":"유격수"},{"Text":"김도영"}]}'
-            ']}'
+            "]}"
         )
     ]
     parsed = crawler._parse_lineup_grid(grid)

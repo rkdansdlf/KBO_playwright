@@ -2,16 +2,20 @@
 Robots.txt compliance checker for KBO Data Crawler.
 Ensures that we follow Disallow rules from koreabaseball.com.
 """
-import urllib.robotparser
+
 import asyncio
 import time
+import urllib.robotparser
 from typing import Optional
+
 import httpx
+
 
 class ComplianceChecker:
     """
     Fetches and parses robots.txt to check crawling permissions.
     """
+
     _instance: Optional["ComplianceChecker"] = None
 
     def __init__(self, robots_url: str = "https://www.koreabaseball.com/robots.txt"):
@@ -47,6 +51,7 @@ class ComplianceChecker:
                                 try:
                                     import os
                                     from datetime import datetime
+
                                     snapshot_dir = "Docs/robots"
                                     os.makedirs(snapshot_dir, exist_ok=True)
                                     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -61,7 +66,9 @@ class ComplianceChecker:
 
                                 print("[COMPLIANCE] robots.txt loaded successfully.")
                             else:
-                                print(f"[COMPLIANCE] Failed to fetch robots.txt (Status {response.status_code}). Using fallback.")
+                                print(
+                                    f"[COMPLIANCE] Failed to fetch robots.txt (Status {response.status_code}). Using fallback."
+                                )
                                 # Fallback: assume everything is allowed or use a default
                                 self.parser.parse(["User-agent: *", "Disallow:"])
                                 self.last_fetch_time = now
@@ -87,6 +94,7 @@ class ComplianceChecker:
             print(f"[COMPLIANCE] Sync fetching robots.txt from {self.robots_url}")
             try:
                 import httpx
+
                 response = httpx.get(self.robots_url, timeout=10.0)
                 if response.status_code == 200:
                     self.parser.parse(response.text.splitlines())
@@ -103,6 +111,7 @@ class ComplianceChecker:
         if not allowed:
             print(f"[COMPLIANCE] BLOCKED (sync): {url} is DISALLOWED by robots.txt")
         return allowed
+
 
 # Global instance
 compliance = ComplianceChecker.get_instance()

@@ -5,14 +5,15 @@ Usage:
     ./venv/bin/python scripts/maintenance/check_missing_oci_teams.py
 Ensure OCI_DB_URL (or TARGET_DATABASE_URL) is set in your environment.
 """
+
 from __future__ import annotations
 
 import os
-from dotenv import load_dotenv
-from sqlalchemy import create_engine, text
-
 import pathlib
 import sys
+
+from dotenv import load_dotenv
+from sqlalchemy import create_engine, text
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:

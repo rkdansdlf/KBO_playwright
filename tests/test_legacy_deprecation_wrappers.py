@@ -23,9 +23,7 @@ def test_crawl_and_save_games_only_delegates_schedule(monkeypatch, capsys):
 
     monkeypatch.setattr(crawl_and_save, "_run_schedule_collection", _fake_run_schedule_collection)
 
-    result = crawl_and_save.main(
-        ["--games-only", "--year", "2025", "--months", "3,4", "--delay", "2.5"]
-    )
+    result = crawl_and_save.main(["--games-only", "--year", "2025", "--months", "3,4", "--delay", "2.5"])
 
     out = capsys.readouterr().out
     assert result == 0
@@ -41,5 +39,5 @@ def test_collect_detailed_data_stops_with_guidance(capsys):
     out = capsys.readouterr().out
     assert result == 2
     assert "DEPRECATED" in out
-    assert "src.cli.crawl_game_details" in out
+    assert "src.cli.collect_games" in out
     assert "src.cli.run_daily_update" in out

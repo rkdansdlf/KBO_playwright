@@ -2,6 +2,7 @@
 """
 Capture Basic1/Basic2 HTML snapshots for batting tables.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -11,7 +12,6 @@ from playwright.sync_api import sync_playwright
 
 from src.crawlers.player_batting_all_series_crawler import get_series_mapping
 from src.utils.playwright_blocking import install_sync_resource_blocking
-
 
 BASIC1_URL = "https://www.koreabaseball.com/Record/Player/HitterBasic/Basic1.aspx"
 BASIC2_URL = "https://www.koreabaseball.com/Record/Player/HitterBasic/Basic2.aspx"
@@ -32,12 +32,8 @@ BASIC2_SORT_CODES = {
 
 
 def _select_year_series(page, year: int, series_value: str) -> None:
-    season_selector = (
-        'select[name="ctl00$ctl00$ctl00$cphContents$cphContents$cphContents$ddlSeason$ddlSeason"]'
-    )
-    series_selector = (
-        'select[name="ctl00$ctl00$ctl00$cphContents$cphContents$cphContents$ddlSeries$ddlSeries"]'
-    )
+    season_selector = 'select[name="ctl00$ctl00$ctl00$cphContents$cphContents$cphContents$ddlSeason$ddlSeason"]'
+    series_selector = 'select[name="ctl00$ctl00$ctl00$cphContents$cphContents$cphContents$ddlSeries$ddlSeries"]'
     page.select_option(season_selector, str(year))
     page.wait_for_timeout(500)
     page.select_option(series_selector, value=series_value)
@@ -46,7 +42,7 @@ def _select_year_series(page, year: int, series_value: str) -> None:
 
 
 def _apply_sort(page, sort_code: str) -> None:
-    selector = f'a[href="javascript:sort(\'{sort_code}\');"]'
+    selector = f"a[href=\"javascript:sort('{sort_code}');\"]"
     link = page.query_selector(selector)
     if link:
         link.click()

@@ -2,7 +2,6 @@ from pathlib import Path
 
 from src.services.game_deduplication_service import DeduplicationWindow, mark_primary_games
 
-
 DB_PATH = Path("data/kbo_dev.db")
 
 REGULAR_SEASONS = [

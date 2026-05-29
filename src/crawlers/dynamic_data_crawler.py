@@ -1,27 +1,38 @@
 """
 Crawler for dynamic structured data: schedules, ticket open times, and rosters.
 """
+
 from __future__ import annotations
 
 import logging
-from datetime import datetime, date, timedelta
-from typing import Dict, List, Any, Optional
-from sqlalchemy.orm import Session
-from sqlalchemy import select
+from datetime import datetime, timedelta
+from typing import Any
 
+from sqlalchemy import select
+from sqlalchemy.orm import Session
+
+from src.crawlers.daily_roster_crawler import DailyRosterCrawler
 from src.models.game import Game
 from src.models.ticket_schedule import TicketSchedule
-from src.crawlers.daily_roster_crawler import DailyRosterCrawler
 from src.utils.safe_print import safe_print as print
-
 
 logger = logging.getLogger(__name__)
 
 # Team ticketing rules mapping
 # (home_team) -> (days_before_game, hour_of_day, platform, default_url)
 TEAM_TICKET_RULES = {
-    "두산": (10, 11, "인터파크", "https://ticket.interpark.com/Contents/Sports/GoodsInfo?SportsCode=07001&TeamCode=PB004"),
-    "키움": (7, 14, "인터파크", "https://ticket.interpark.com/Contents/Sports/GoodsInfo?SportsCode=07001&TeamCode=PB003"),
+    "두산": (
+        10,
+        11,
+        "인터파크",
+        "https://ticket.interpark.com/Contents/Sports/GoodsInfo?SportsCode=07001&TeamCode=PB004",
+    ),
+    "키움": (
+        7,
+        14,
+        "인터파크",
+        "https://ticket.interpark.com/Contents/Sports/GoodsInfo?SportsCode=07001&TeamCode=PB003",
+    ),
     "LG": (7, 11, "티켓링크", "https://www.ticketlink.co.kr/sports/baseball/59#reservation"),
     "KT": (7, 14, "티켓링크", "https://www.ticketlink.co.kr/sports/baseball/62#reservation"),
     "SSG": (7, 11, "티켓링크", "https://www.ticketlink.co.kr/sports/baseball/435#reservation"),
@@ -32,6 +43,7 @@ TEAM_TICKET_RULES = {
     "롯데": (7, 14, "티켓링크", "https://www.ticketlink.co.kr/sports/baseball/58#reservation"),
 }
 
+
 class DynamicDataCrawler:
     """
     Manages daily crawls of schedules, ticket open times, and roster entries.
@@ -41,7 +53,7 @@ class DynamicDataCrawler:
         self.db_session = db_session
         self.roster_crawler = DailyRosterCrawler()
 
-    async def crawl_roster_changes(self, start_date: str, end_date: str) -> List[Dict[str, Any]]:
+    async def crawl_roster_changes(self, start_date: str, end_date: str) -> list[dict[str, Any]]:
         """
         Crawls daily 1st team registration changes using the existing DailyRosterCrawler.
         """
@@ -54,7 +66,7 @@ class DynamicDataCrawler:
             logger.exception("⚠️ Error crawling roster")
             raise e
 
-    def crawl_and_update_ticket_times(self, lookahead_days: int = 14) -> List[TicketSchedule]:
+    def crawl_and_update_ticket_times(self, lookahead_days: int = 14) -> list[TicketSchedule]:
         """
         Calculates upcoming game ticketing open times based on KBO team rules
         and saves them to the ticket_schedules table.
@@ -72,7 +84,7 @@ class DynamicDataCrawler:
         for g in games:
             # Match home team to ticketing rule
             home_name = None
-            for key in TEAM_TICKET_RULES.keys():
+            for key in TEAM_TICKET_RULES:
                 if key in g.home_team:
                     home_name = key
                     break
@@ -81,7 +93,7 @@ class DynamicDataCrawler:
                 continue
 
             days_before, hour, platform, url = TEAM_TICKET_RULES[home_name]
-            
+
             # Open date calculation
             open_date = g.game_date - timedelta(days=days_before)
             open_time = datetime(open_date.year, open_date.month, open_date.day, hour, 0, 0)
@@ -91,7 +103,7 @@ class DynamicDataCrawler:
                 select(TicketSchedule).where(
                     TicketSchedule.game_date == g.game_date,
                     TicketSchedule.home_team == g.home_team,
-                    TicketSchedule.platform == platform
+                    TicketSchedule.platform == platform,
                 )
             )
 
@@ -112,7 +124,7 @@ class DynamicDataCrawler:
                     stadium=g.stadium or "",
                     open_time=open_time,
                     platform=platform,
-                    url=url
+                    url=url,
                 )
                 self.db_session.add(new_ticket)
                 ticket_records.append(new_ticket)

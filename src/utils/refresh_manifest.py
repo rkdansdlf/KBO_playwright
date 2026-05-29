@@ -1,11 +1,11 @@
 """Refresh manifest writer for downstream cache invalidation contracts."""
+
 from __future__ import annotations
 
 import json
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Iterable, Mapping, Sequence
-
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_MANIFEST_DIR = PROJECT_ROOT / "data" / "refresh_manifests"
@@ -19,9 +19,7 @@ def infer_topics(
     derived_set = {item for item in (derived_refresh or []) if item}
     topics: set[str] = set()
 
-    if {"game", "game_events", "game_summary"} & dataset_set:
-        topics.add("coach_review")
-    elif {"game", "game_events"} <= dataset_set:
+    if {"game", "game_events", "game_summary"} & dataset_set or {"game", "game_events"} <= dataset_set:
         topics.add("coach_review")
 
     if {"game_metadata", "game_lineups"} & dataset_set:

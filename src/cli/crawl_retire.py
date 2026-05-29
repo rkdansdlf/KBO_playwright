@@ -7,24 +7,25 @@
 2. 식별된 각 선수에 대해 은퇴 선수 기록 페이지(타자/투수)에 접근합니다.
 3. 선수의 프로필 정보와 연도별 시즌 기록을 파싱하여 데이터베이스에 저장합니다.
 """
+
 from __future__ import annotations
 
-import logging
 import argparse
 import asyncio
-from typing import Sequence, Set
+import logging
+from typing import Sequence
 
-from src.crawlers.retire import RetiredPlayerListingCrawler, RetiredPlayerDetailCrawler
-from src.parsers.player_profile_parser import parse_profile, PlayerProfileParsed
+from src.crawlers.retire import RetiredPlayerDetailCrawler, RetiredPlayerListingCrawler
+
+# Ensure all models are loaded to resolve foreign keys
+from src.models.player import Player, PlayerSeasonBatting, PlayerSeasonPitching  # noqa: F401
+from src.models.team import Team  # noqa: F401
+from src.parsers.player_profile_parser import PlayerProfileParsed, parse_profile
 from src.parsers.retired_player_parser import (
     parse_retired_hitter_tables,
     parse_retired_pitcher_table,
 )
 from src.repositories.player_repository import PlayerRepository
-
-# Ensure all models are loaded to resolve foreign keys
-from src.models.player import Player, PlayerSeasonBatting, PlayerSeasonPitching  # noqa: F401
-from src.models.team import Team  # noqa: F401
 
 logger = logging.getLogger(__name__)
 
@@ -34,7 +35,7 @@ async def determine_inactive_ids(
     end_year: int,
     active_year: int,
     request_delay: float,
-) -> Set[str]:
+) -> set[str]:
     """과거 시즌과 현재 시즌의 선수 명단을 비교하여 은퇴/비활동 선수 ID를 식별합니다."""
     listing_crawler = RetiredPlayerListingCrawler(request_delay=request_delay)
     return await listing_crawler.determine_inactive_player_ids(
@@ -66,7 +67,7 @@ async def process_player(
         parsed_profile = parse_profile(profile_text, is_active=False)
     else:
         parsed_profile = PlayerProfileParsed(is_active=False)
-    
+
     # Add photo_url if captured
     hitter_photo = hitter_payload.get("photo_url") if hitter_payload else None
     pitcher_photo = pitcher_payload.get("photo_url") if pitcher_payload else None
@@ -102,7 +103,7 @@ async def crawl_retired_players(args: argparse.Namespace) -> None:
     # 1단계: 은퇴/비활동 선수 ID 목록을 결정합니다.
     if args.seed_file:
         print(f"📂 Loading seed IDs from {args.seed_file}...")
-        with open(args.seed_file, "r") as f:
+        with open(args.seed_file) as f:
             inactive_ids = {line.strip() for line in f if line.strip()}
     else:
         inactive_ids = await determine_inactive_ids(

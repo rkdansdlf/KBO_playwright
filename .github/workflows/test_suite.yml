@@ -1,0 +1,53 @@
+name: Test Suite
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: test-suite-${{ github.ref_name }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+          cache: pip
+      - name: Install dependencies
+        run: pip install -r requirements.txt ruff pre-commit
+      - name: Ruff lint check
+        run: ruff check --output-format=github src/ --exit-zero 2>&1
+      - name: Ruff format check
+        run: ruff format --check src/ --exit-zero 2>&1
+      - name: Bare except lint check
+        run: python scripts/lint_bare_except.py 2>&1
+
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      matrix:
+        python-version: ["3.10", "3.11"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          playwright install chromium
+      - name: Initialize test DB
+        run: python init_db.py
+        env:
+          DATABASE_URL: sqlite:///./data/kbo_dev.db
+      - name: Run tests
+        run: pytest --tb=short -v --durations=10 2>&1

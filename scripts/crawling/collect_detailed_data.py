@@ -4,18 +4,18 @@ The original script used a removed pending-game queue and stale repository
 classes. Keep this file import-safe so old automation fails with actionable
 guidance instead of crashing before the deprecation notice is printed.
 """
+
 from __future__ import annotations
 
 import argparse
 from typing import Sequence
-
 
 DEPRECATION_MESSAGE = """
 [DEPRECATED] scripts/crawling/collect_detailed_data.py is a legacy workflow.
 
 Supported replacements:
   - Completed game details: python -m src.cli.collect_games --year 2025 --month 3
-  - Single date detail:     python -m src.cli.crawl_game_details --date YYYYMMDD
+  - Single date detail:     python -m src.cli.collect_games --year YYYY --month MM
   - Daily finalization:     python -m src.cli.run_daily_update --date YYYYMMDD
   - OCI sync:               python -m src.cli.sync_oci --truncate
 """

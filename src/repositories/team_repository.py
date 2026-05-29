@@ -1,12 +1,14 @@
 """
 Repository for Team related data (Roster, Info, etc.)
 """
-from typing import List, Dict, Any
-from sqlalchemy.orm import Session
+
+from typing import Any
+
 from sqlalchemy import text
-from sqlalchemy.dialects.sqlite import insert as sqlite_insert
-from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.dialects.mysql import insert as mysql_insert
+from sqlalchemy.dialects.postgresql import insert as pg_insert
+from sqlalchemy.dialects.sqlite import insert as sqlite_insert
+from sqlalchemy.orm import Session
 
 from src.models.player import PlayerBasic
 from src.models.team import TeamDailyRoster
@@ -14,23 +16,24 @@ from src.models.team import TeamDailyRoster
 PLAYER_ROSTER_POSITIONS = {"투수", "포수", "내야수", "외야수", "선수"}
 STAFF_ROSTER_POSITIONS = {"감독", "코치"}
 
+
 class TeamRepository:
     def __init__(self, session: Session):
         self.session = session
 
-    def save_daily_rosters(self, rosters: List[Dict[str, Any]]) -> int:
+    def save_daily_rosters(self, rosters: list[dict[str, Any]]) -> int:
         """
         Save daily roster records with UPSERT logic.
         """
-        
+
         # Deduplicate input list by unique key (date, team, player)
         # to prevent IntegrityError if the list contains duplicates
         unique_rosters = {}
         for r in rosters:
-            key = (r['roster_date'], r['team_code'], r['player_id'])
+            key = (r["roster_date"], r["team_code"], r["player_id"])
             # If duplicate, keep the last one (arbitrary decision, or first?)
             unique_rosters[key] = r
-            
+
         rows = list(unique_rosters.values())
         if not rows:
             return 0

@@ -1,4 +1,5 @@
 """Shared service for completed-game relay and play-by-play recovery."""
+
 from __future__ import annotations
 
 import asyncio
@@ -31,7 +32,6 @@ from src.sources.relay import (
 from src.utils.game_status import COMPLETED_LIKE_GAME_STATUSES
 from src.utils.safe_print import safe_print as print
 
-
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_MANIFEST_PATH = PROJECT_ROOT / "data" / "recovery" / "source_manifest.csv"
 DEFAULT_CAPABILITY_PATH = PROJECT_ROOT / "data" / "recovery" / "source_capability.csv"
@@ -56,7 +56,7 @@ class RelayRecoveryTarget:
         bucket_id: str | None,
         has_events: bool,
         has_pbp: bool,
-    ) -> "RelayRecoveryTarget":
+    ) -> RelayRecoveryTarget:
         return cls(
             game_id=game_id,
             league_type_name=league_type_name,
@@ -140,10 +140,7 @@ def load_relay_recovery_targets(
 
         event_set = {
             row[0]
-            for row in session.query(GameEvent.game_id)
-            .filter(GameEvent.game_id.in_(row_game_ids))
-            .distinct()
-            .all()
+            for row in session.query(GameEvent.game_id).filter(GameEvent.game_id.in_(row_game_ids)).distinct().all()
         }
         pbp_set = {
             row[0]
@@ -212,11 +209,7 @@ async def recover_relay_data(
     if dry_run:
         log("[WARN] Dry-run mode activated. No data will be saved.")
 
-    final_scores = (
-        _load_final_scores([target.game_id for target in target_list])
-        if validate_final_score
-        else {}
-    )
+    final_scores = _load_final_scores([target.game_id for target in target_list]) if validate_final_score else {}
 
     for bucket_id, bucket_targets in bucket_map.items():
         source_order = orchestrator.source_order_for_bucket(
@@ -267,10 +260,7 @@ async def recover_relay_data(
                 )
 
             relay_result, attempts = await orchestrator.fetch_game(
-                target.game_id,
-                bucket_id,
-                source_order,
-                validator=_validator
+                target.game_id, bucket_id, source_order, validator=_validator
             )
             run_result.report_rows.extend(attempts)
             if relay_result.is_empty:
@@ -310,10 +300,7 @@ async def recover_relay_data(
                 allow_derived_pbp=allow_derived_pbp,
             )
             if dry_run:
-                log(
-                    f"[DRY-RUN] Would save {saved_rows} rows from {relay_result.source_name} "
-                    f"for {target.game_id}"
-                )
+                log(f"[DRY-RUN] Would save {saved_rows} rows from {relay_result.source_name} for {target.game_id}")
             else:
                 log(f"[SUCCESS] Saved {saved_rows} rows for {target.game_id} via {relay_result.source_name}")
 
@@ -441,9 +428,7 @@ def _load_final_scores(game_ids: Sequence[str]) -> dict[str, tuple[int | None, i
         return {}
     with SessionLocal() as session:
         rows = (
-            session.query(Game.game_id, Game.away_score, Game.home_score)
-            .filter(Game.game_id.in_(list(game_ids)))
-            .all()
+            session.query(Game.game_id, Game.away_score, Game.home_score).filter(Game.game_id.in_(list(game_ids))).all()
         )
     return {game_id: (away_score, home_score) for game_id, away_score, home_score in rows}
 
@@ -471,8 +456,8 @@ def _validate_relay_result(
             if innings[0] != 1:
                 return f"missing_starting_inning:first={innings[0]}"
             for i in range(len(innings) - 1):
-                if innings[i+1] != innings[i] + 1:
-                    return f"missing_middle_inning:gap_between_{innings[i]}_and_{innings[i+1]}"
+                if innings[i + 1] != innings[i] + 1:
+                    return f"missing_middle_inning:gap_between_{innings[i]}_and_{innings[i + 1]}"
 
     if not validate_final_score:
         return None
@@ -487,25 +472,16 @@ def _validate_relay_result(
         return "missing_event_final_score"
 
     if actual != expected:
-        return (
-            "final_score_mismatch:"
-            f"events={actual[0]}-{actual[1]} game={expected[0]}-{expected[1]}"
-        )
+        return f"final_score_mismatch:events={actual[0]}-{actual[1]} game={expected[0]}-{expected[1]}"
     return None
 
 
 def _sanitize_relay_result(
     relay_result: NormalizedRelayResult,
 ) -> tuple[NormalizedRelayResult, list[str], int]:
-    valid_events = [
-        event
-        for event in relay_result.events or []
-        if event_has_minimum_state(event)
-    ]
+    valid_events = [event for event in relay_result.events or [] if event_has_minimum_state(event)]
     valid_pbp_rows = [
-        row
-        for row in (_normalize_valid_pbp_row(row) for row in relay_result.raw_pbp_rows or [])
-        if row is not None
+        row for row in (_normalize_valid_pbp_row(row) for row in relay_result.raw_pbp_rows or []) if row is not None
     ]
 
     filtered_events = len(relay_result.events or []) - len(valid_events)

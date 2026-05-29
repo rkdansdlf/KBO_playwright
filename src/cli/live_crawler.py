@@ -4,18 +4,18 @@ Real-time KBO live crawler.
 Polls today's schedule, captures relay events plus a lightweight scoreboard snapshot,
 then explicitly syncs changed games to OCI.
 """
+
 from __future__ import annotations
 
 import argparse
 import asyncio
 import logging
 import os
-import time
 from datetime import datetime
 from typing import Sequence
+from zoneinfo import ZoneInfo
 
 import httpx
-from zoneinfo import ZoneInfo
 
 logger = logging.getLogger(__name__)
 
@@ -47,11 +47,10 @@ async def run_live_crawler_cycle(*, sync_to_oci: bool | None = None) -> tuple[bo
 
     # Optimization: Fetch latest game statuses from Naver to skip unnecessary crawls
     relay_crawler = NaverRelayCrawler()
-    active_game_ids: set[str] = set()
     try:
         async with httpx.AsyncClient() as client:
             # We use RelayCrawler's internal methods to get the schedule context
-            query = relay_crawler._schedule_query_context(today_str + "XXXXX") 
+            query = relay_crawler._schedule_query_context(today_str + "XXXXX")
             response = await client.get(
                 relay_crawler.schedule_api_base_url,
                 params=query,
@@ -69,7 +68,7 @@ async def run_live_crawler_cycle(*, sync_to_oci: bool | None = None) -> tuple[bo
                         # but for simplicity, we'll just trust Naver's 'RUNNING' status
                         # to filter our today_games list in the loop below.
                         pass
-                    
+
                 # Store naver status mapping for quick lookup
                 naver_status_map = {
                     (ng.get("awayTeamCode"), ng.get("homeTeamCode")): status
@@ -88,7 +87,7 @@ async def run_live_crawler_cycle(*, sync_to_oci: bool | None = None) -> tuple[bo
 
     for game in today_games:
         game_id = game["game_id"]
-        
+
         # Heuristic matching for Naver status
         away_nav = relay_crawler._naver_team_code(game["away_team_code"])
         home_nav = relay_crawler._naver_team_code(game["home_team_code"])
@@ -102,32 +101,31 @@ async def run_live_crawler_cycle(*, sync_to_oci: bool | None = None) -> tuple[bo
             continue
         if nav_status == "RESULT":
             # If it's already COMPLETED in our DB, skip it.
-            # We can check this via a quick repository call if needed, 
+            # We can check this via a quick repository call if needed,
             # but for a simple 'live' loop, skipping 'RESULT' is generally safe
             # as run_daily_update will finalize it later.
             print(f"[SKIP] {game_id} is already finished (RESULT).")
             continue
-        
+
         # Default to crawl if status is RUNNING or unknown
         print(f"[LIVE] 🔍 Crawling active game: {game_id} (Status: {nav_status or 'UNKNOWN'})")
-        
+
         relay_data = await relay_crawler.crawl_game_events(game_id)
         flat_events = list((relay_data or {}).get("events") or [])
         raw_pbp_rows = list((relay_data or {}).get("raw_pbp_rows") or [])
-        
+
         # Determine if actively playing (not inning change)
         game_is_playing = True
         if flat_events:
             # If the last event is 3 outs, it's an inning change
             if flat_events[-1].get("outs") == 3:
                 game_is_playing = False
-        elif raw_pbp_rows:
-            if "종료" in str(raw_pbp_rows[-1].get("play_description", "")):
-                game_is_playing = False
-        
+        elif raw_pbp_rows and "종료" in str(raw_pbp_rows[-1].get("play_description", "")):
+            game_is_playing = False
+
         if game_is_playing:
             active_playing_flag = True
-        
+
         if flat_events or raw_pbp_rows:
             saved_rows = save_relay_data(
                 game_id,
@@ -178,10 +176,10 @@ async def main_loop(base_interval_minutes: int, *, sync_to_oci: bool | None = No
             # Use seoul time for window logic
             seoul_tz = ZoneInfo("Asia/Seoul")
             now = datetime.now(seoul_tz)
-            
+
             # 1. Run the cycle
             active, active_playing = await run_live_crawler_cycle(sync_to_oci=sync_to_oci)
-            
+
             # 2. Determine next sleep interval
             if not dynamic:
                 # Traditional fixed interval
@@ -196,7 +194,7 @@ async def main_loop(base_interval_minutes: int, *, sync_to_oci: bool | None = No
                     sleep_seconds = 120  # 2 minutes
                 else:
                     # Outside game hours
-                    sleep_seconds = 1800 # 30 minutes
+                    sleep_seconds = 1800  # 30 minutes
 
             print(f"[WAIT] Next check in {sleep_seconds} seconds...")
             await asyncio.sleep(sleep_seconds)
@@ -208,8 +206,12 @@ async def main_loop(base_interval_minutes: int, *, sync_to_oci: bool | None = No
 
 def main(argv: Sequence[str] | None = None):
     parser = argparse.ArgumentParser(description="KBO Live Score & PBP Daemon")
-    parser.add_argument("--interval", type=int, default=2, help="Crawling polling interval in minutes (default for fixed mode)")
-    parser.add_argument("--dynamic", action="store_true", help="Enable dynamic polling (20s when active, 2m pre-game, 30m off-hours)")
+    parser.add_argument(
+        "--interval", type=int, default=2, help="Crawling polling interval in minutes (default for fixed mode)"
+    )
+    parser.add_argument(
+        "--dynamic", action="store_true", help="Enable dynamic polling (20s when active, 2m pre-game, 30m off-hours)"
+    )
     parser.add_argument("--run-once", action="store_true", help="Run precisely one cycle and exit")
     parser.add_argument("--no-sync", action="store_true", help="Skip explicit OCI sync after local writes")
     args = parser.parse_args(argv)

@@ -7,13 +7,14 @@ Checks for:
 3. COMPLETED games without scores
 4. Past games still marked as LIVE
 """
+
 from __future__ import annotations
 
 import argparse
-from datetime import date, datetime
-from pathlib import Path
 import sys
-from typing import Any, Dict, List
+from datetime import date
+from pathlib import Path
+from typing import Any
 
 from sqlalchemy import text
 
@@ -23,48 +24,55 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from src.db.engine import SessionLocal
 from src.utils.game_status import (
+    GAME_STATUS_CANCELLED,
     GAME_STATUS_COMPLETED,
     GAME_STATUS_DRAW,
     GAME_STATUS_LIVE,
-    GAME_STATUS_SCHEDULED,
-    GAME_STATUS_CANCELLED,
     GAME_STATUS_POSTPONED,
-    TERMINAL_GAME_STATUSES,
+    GAME_STATUS_SCHEDULED,
 )
 
-def audit_game_status() -> List[Dict[str, Any]]:
+
+def audit_game_status() -> list[dict[str, Any]]:
     today = date.today()
     current_year_start = date(today.year, 1, 1)
     violations = []
 
     with SessionLocal() as session:
         # 1. Future games check
-        future_violations = session.execute(
-            text("""
-                SELECT game_id, game_date, game_status 
-                FROM game 
-                WHERE game_date > :today 
+        future_violations = (
+            session.execute(
+                text("""
+                SELECT game_id, game_date, game_status
+                FROM game
+                WHERE game_date > :today
                   AND game_status NOT IN (:scheduled, :cancelled, :postponed)
             """),
-            {
-                "today": today, 
-                "scheduled": GAME_STATUS_SCHEDULED,
-                "cancelled": GAME_STATUS_CANCELLED,
-                "postponed": GAME_STATUS_POSTPONED
-            }
-        ).mappings().all()
-        
+                {
+                    "today": today,
+                    "scheduled": GAME_STATUS_SCHEDULED,
+                    "cancelled": GAME_STATUS_CANCELLED,
+                    "postponed": GAME_STATUS_POSTPONED,
+                },
+            )
+            .mappings()
+            .all()
+        )
+
         for row in future_violations:
-            violations.append({
-                "game_id": row["game_id"],
-                "game_date": row["game_date"],
-                "status": row["game_status"],
-                "reason": "Future game with non-scheduled status"
-            })
+            violations.append(
+                {
+                    "game_id": row["game_id"],
+                    "game_date": row["game_date"],
+                    "status": row["game_status"],
+                    "reason": "Future game with non-scheduled status",
+                }
+            )
 
         # 2. LIVE games without evidence
-        live_no_evidence = session.execute(
-            text("""
+        live_no_evidence = (
+            session.execute(
+                text("""
                 SELECT g.game_id, g.game_date, g.game_status
                 FROM game g
                 WHERE g.game_status = :live
@@ -73,58 +81,76 @@ def audit_game_status() -> List[Dict[str, Any]]:
                   AND NOT EXISTS (SELECT 1 FROM game_events ge WHERE ge.game_id = g.game_id)
                   AND NOT EXISTS (SELECT 1 FROM game_play_by_play pbp WHERE pbp.game_id = g.game_id)
             """),
-            {"live": GAME_STATUS_LIVE, "start_date": current_year_start}
-        ).mappings().all()
+                {"live": GAME_STATUS_LIVE, "start_date": current_year_start},
+            )
+            .mappings()
+            .all()
+        )
 
         for row in live_no_evidence:
-            violations.append({
-                "game_id": row["game_id"],
-                "game_date": row["game_date"],
-                "status": row["game_status"],
-                "reason": "LIVE game without progress evidence (inning scores, events, pbp)"
-            })
+            violations.append(
+                {
+                    "game_id": row["game_id"],
+                    "game_date": row["game_date"],
+                    "status": row["game_status"],
+                    "reason": "LIVE game without progress evidence (inning scores, events, pbp)",
+                }
+            )
 
         # 3. COMPLETED games without scores
-        completed_no_scores = session.execute(
-            text("""
+        completed_no_scores = (
+            session.execute(
+                text("""
                 SELECT game_id, game_date, game_status
                 FROM game
                 WHERE game_status IN (:completed, :draw)
                   AND game_date >= :start_date
                   AND (home_score IS NULL OR away_score IS NULL)
             """),
-            {"completed": GAME_STATUS_COMPLETED, "draw": GAME_STATUS_DRAW, "start_date": current_year_start}
-        ).mappings().all()
+                {"completed": GAME_STATUS_COMPLETED, "draw": GAME_STATUS_DRAW, "start_date": current_year_start},
+            )
+            .mappings()
+            .all()
+        )
 
         for row in completed_no_scores:
-            violations.append({
-                "game_id": row["game_id"],
-                "game_date": row["game_date"],
-                "status": row["game_status"],
-                "reason": "COMPLETED/DRAW game missing scores"
-            })
+            violations.append(
+                {
+                    "game_id": row["game_id"],
+                    "game_date": row["game_date"],
+                    "status": row["game_status"],
+                    "reason": "COMPLETED/DRAW game missing scores",
+                }
+            )
 
         # 4. Past games still marked as LIVE
-        past_live = session.execute(
-            text("""
+        past_live = (
+            session.execute(
+                text("""
                 SELECT game_id, game_date, game_status
                 FROM game
                 WHERE game_date < :today
                   AND game_date >= :start_date
                   AND game_status = :live
             """),
-            {"today": today, "live": GAME_STATUS_LIVE, "start_date": current_year_start}
-        ).mappings().all()
+                {"today": today, "live": GAME_STATUS_LIVE, "start_date": current_year_start},
+            )
+            .mappings()
+            .all()
+        )
 
         for row in past_live:
-            violations.append({
-                "game_id": row["game_id"],
-                "game_date": row["game_date"],
-                "status": row["game_status"],
-                "reason": "Past game still marked as LIVE"
-            })
+            violations.append(
+                {
+                    "game_id": row["game_id"],
+                    "game_date": row["game_date"],
+                    "status": row["game_status"],
+                    "reason": "Past game still marked as LIVE",
+                }
+            )
 
     return violations
+
 
 def main():
     parser = argparse.ArgumentParser(description="Audit game status integrity")
@@ -144,6 +170,7 @@ def main():
 
     if args.fail:
         sys.exit(1)
+
 
 if __name__ == "__main__":
     main()

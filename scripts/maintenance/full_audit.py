@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Comprehensive, schema-aware data integrity audit for KBO databases."""
+
 from __future__ import annotations
 
 import argparse
@@ -165,7 +166,9 @@ def _count_condition(conn, table_name: str, required_columns: tuple[str, ...], c
     return _execute_scalar(conn, f"SELECT COUNT(*) FROM {table_name} WHERE {condition}")
 
 
-def _distribution(conn, table_name: str, group_column: str, condition_columns: tuple[str, ...], condition: str) -> dict[str, int]:
+def _distribution(
+    conn, table_name: str, group_column: str, condition_columns: tuple[str, ...], condition: str
+) -> dict[str, int]:
     required = (group_column, *condition_columns)
     if not _has_columns(conn, table_name, required):
         return {}
@@ -478,31 +481,17 @@ def flatten_gate_metrics(report: Mapping[str, Any]) -> dict[str, int]:
         "orphaned_batting_stats": int(orphans.get("game_batting_stats.game_id", 0) or 0),
         "orphaned_pitching_stats": int(orphans.get("game_pitching_stats.game_id", 0) or 0),
         "orphaned_lineups": int(orphans.get("game_lineups.game_id", 0) or 0),
-        "game_batting_duplicate_player_groups": int(
-            duplicates.get("game_batting_duplicate_player_groups", 0) or 0
-        ),
-        "game_pitching_duplicate_player_groups": int(
-            duplicates.get("game_pitching_duplicate_player_groups", 0) or 0
-        ),
+        "game_batting_duplicate_player_groups": int(duplicates.get("game_batting_duplicate_player_groups", 0) or 0),
+        "game_pitching_duplicate_player_groups": int(duplicates.get("game_pitching_duplicate_player_groups", 0) or 0),
         "game_lineups_duplicate_player_team_groups": int(
             duplicates.get("game_lineups_duplicate_player_team_groups", 0) or 0
         ),
-        "game_batting_player_team_collisions": int(
-            collisions.get("game_batting_player_team_collisions", 0) or 0
-        ),
-        "game_pitching_player_team_collisions": int(
-            collisions.get("game_pitching_player_team_collisions", 0) or 0
-        ),
-        "game_lineups_player_team_collisions": int(
-            collisions.get("game_lineups_player_team_collisions", 0) or 0
-        ),
+        "game_batting_player_team_collisions": int(collisions.get("game_batting_player_team_collisions", 0) or 0),
+        "game_pitching_player_team_collisions": int(collisions.get("game_pitching_player_team_collisions", 0) or 0),
+        "game_lineups_player_team_collisions": int(collisions.get("game_lineups_player_team_collisions", 0) or 0),
         "batting_hits_gt_at_bats": int(logical.get("batting_hits_gt_at_bats", 0) or 0),
-        "batting_at_bats_gt_plate_appearances": int(
-            logical.get("batting_at_bats_gt_plate_appearances", 0) or 0
-        ),
-        "pitching_earned_runs_gt_runs_allowed": int(
-            logical.get("pitching_earned_runs_gt_runs_allowed", 0) or 0
-        ),
+        "batting_at_bats_gt_plate_appearances": int(logical.get("batting_at_bats_gt_plate_appearances", 0) or 0),
+        "pitching_earned_runs_gt_runs_allowed": int(logical.get("pitching_earned_runs_gt_runs_allowed", 0) or 0),
         "pseudo_player_profiles": int(pseudo.get("player_basic_ge_900000", 0) or 0),
     }
     return {key: int(flat.get(key, 0)) for key in GATE_METRIC_KEYS}

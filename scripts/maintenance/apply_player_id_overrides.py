@@ -6,6 +6,7 @@ default, or generated local IDs when --include-generated is passed. Row
 overrides are exact game_id/appearance_seq patches and may correct non-null
 misassignments.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -26,7 +27,6 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from src.db.engine import DATABASE_URL
-
 
 DEFAULT_GROUP_OVERRIDES = PROJECT_ROOT / "data/player_id_overrides.csv"
 DEFAULT_ROW_OVERRIDES = PROJECT_ROOT / "data/player_id_row_overrides.csv"
@@ -158,7 +158,14 @@ def load_row_overrides(path: Path) -> list[RowOverride]:
             team_code = str(row.get("team_code") or "").strip()
             player_name = str(row.get("player_name") or "").strip()
             resolved_player_id = str(row.get("resolved_player_id") or "").strip()
-            if not table or not game_id or not appearance_seq or not team_code or not player_name or not resolved_player_id:
+            if (
+                not table
+                or not game_id
+                or not appearance_seq
+                or not team_code
+                or not player_name
+                or not resolved_player_id
+            ):
                 continue
             rows.append(
                 RowOverride(
@@ -272,9 +279,10 @@ def _row_conflict_count(conn, override: RowOverride, *, row_id: int) -> int:
 
 def _preflight_row(conn, override: RowOverride) -> dict[str, Any]:
     table_name = override.source_table
-    rows = conn.execute(
-        text(
-            f"""
+    rows = (
+        conn.execute(
+            text(
+                f"""
             SELECT id, player_id
             FROM {table_name}
             WHERE game_id = :game_id
@@ -283,9 +291,12 @@ def _preflight_row(conn, override: RowOverride) -> dict[str, Any]:
               AND player_name = :player_name
             ORDER BY id
             """
-        ),
-        _row_match_params(override),
-    ).mappings().all()
+            ),
+            _row_match_params(override),
+        )
+        .mappings()
+        .all()
+    )
 
     status = "needs_update"
     current_player_id: int | None = None
@@ -362,9 +373,7 @@ def _result_payload(
     backup_path: Path | None,
 ) -> dict[str, Any]:
     invalid_rows = sum(
-        1
-        for row in report_rows
-        if row.get("override_type") == "row" and row.get("status") in FAILED_ROW_STATUSES
+        1 for row in report_rows if row.get("override_type") == "row" and row.get("status") in FAILED_ROW_STATUSES
     )
     return {
         "dry_run": dry_run,
@@ -459,7 +468,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--group-overrides-csv", default=str(DEFAULT_GROUP_OVERRIDES))
     parser.add_argument("--row-overrides-csv", default=str(DEFAULT_ROW_OVERRIDES))
     parser.add_argument("--output-dir", default=str(DEFAULT_OUTPUT_DIR))
-    parser.add_argument("--include-generated", action="store_true", help="Group overrides may update player_id >= 900000.")
+    parser.add_argument(
+        "--include-generated", action="store_true", help="Group overrides may update player_id >= 900000."
+    )
     parser.add_argument("--apply", action="store_true", help="Persist updates. Default is dry-run only.")
     parser.add_argument("--no-backup", action="store_true", help="Skip SQLite backup before local --apply.")
     return parser.parse_args()

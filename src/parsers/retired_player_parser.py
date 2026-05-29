@@ -1,9 +1,10 @@
 """
 Parser utilities for retired/inactive player statistics tables.
 """
+
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 from src.utils.team_codes import resolve_kbo_legacy_team_code
 
@@ -12,11 +13,11 @@ def _clean_header(text: str) -> str:
     return (text or "").replace("\n", " ").replace("\r", " ").strip()
 
 
-def _clean_value(text: Optional[str]) -> str:
+def _clean_value(text: str | None) -> str:
     return (text or "").replace(",", "").strip()
 
 
-def _to_int(value: Optional[str]) -> Optional[int]:
+def _to_int(value: str | None) -> int | None:
     raw = _clean_value(value)
     if raw in ("", "-", "null"):
         return None
@@ -26,7 +27,7 @@ def _to_int(value: Optional[str]) -> Optional[int]:
         return None
 
 
-def _to_float(value: Optional[str]) -> Optional[float]:
+def _to_float(value: str | None) -> float | None:
     raw = _clean_value(value)
     if raw in ("", "-", "null"):
         return None
@@ -36,7 +37,7 @@ def _to_float(value: Optional[str]) -> Optional[float]:
         return None
 
 
-def _innings_to_outs(value: Optional[str]) -> Optional[int]:
+def _innings_to_outs(value: str | None) -> int | None:
     raw = _clean_value(value)
     if raw in ("", "-", "null"):
         return None
@@ -62,7 +63,7 @@ def _innings_to_outs(value: Optional[str]) -> Optional[int]:
         return None
 
 
-def _table_to_dicts(table: Dict[str, Any]) -> Tuple[List[str], List[Dict[str, str]]]:
+def _table_to_dicts(table: dict[str, Any]) -> tuple[list[str], list[dict[str, str]]]:
     headers = [_clean_header(h) for h in (table.get("headers") or [])]
     rows = table.get("rows") or []
 
@@ -70,7 +71,7 @@ def _table_to_dicts(table: Dict[str, Any]) -> Tuple[List[str], List[Dict[str, st
         headers = [_clean_header(h) for h in rows[0]]
         rows = rows[1:]
 
-    dict_rows: List[Dict[str, str]] = []
+    dict_rows: list[dict[str, str]] = []
     for row in rows:
         values = row
         if len(headers) != len(values):
@@ -79,9 +80,9 @@ def _table_to_dicts(table: Dict[str, Any]) -> Tuple[List[str], List[Dict[str, st
     return headers, dict_rows
 
 
-def _select_tables(tables: List[Dict[str, Any]]) -> Tuple[List[Dict[str, str]], List[Dict[str, str]]]:
-    base_rows: List[Dict[str, str]] = []
-    adv_rows: List[Dict[str, str]] = []
+def _select_tables(tables: list[dict[str, Any]]) -> tuple[list[dict[str, str]], list[dict[str, str]]]:
+    base_rows: list[dict[str, str]] = []
+    adv_rows: list[dict[str, str]] = []
 
     for table in tables:
         headers, dict_rows = _table_to_dicts(table)
@@ -102,27 +103,27 @@ def _select_tables(tables: List[Dict[str, Any]]) -> Tuple[List[Dict[str, str]], 
 
 
 def parse_retired_hitter_tables(
-    tables: List[Dict[str, Any]], *, league: str = "REGULAR", level: str = "KBO1"
-) -> List[Dict[str, Any]]:
+    tables: list[dict[str, Any]], *, league: str = "REGULAR", level: str = "KBO1"
+) -> list[dict[str, Any]]:
     base_rows, adv_rows = _select_tables(tables)
     advanced_map = {row.get("연도") or row.get("년도"): row for row in adv_rows}
-    records: List[Dict[str, Any]] = []
+    records: list[dict[str, Any]] = []
 
     for row in base_rows:
         season_label = (row.get("연도") or row.get("년도") or "").strip()
         if not season_label:
             continue
-            
+
         # Strict exclusion of summary rows
         if any(marker in season_label for marker in ("통산", "합계", "Career", "Total", "연도")):
             continue
-            
+
         season = _to_int(season_label)
         if season is None or season < 1982 or season > 2030:
             continue
 
         team_name = row.get("팀명") or row.get("팀")
-        record: Dict[str, Any] = {
+        record: dict[str, Any] = {
             "season": season,
             "league": league,
             "level": level,
@@ -132,7 +133,7 @@ def parse_retired_hitter_tables(
         }
 
         _apply_stat(record, row, ("경기", "G", "출장", "출장수"), "games", _to_int)
-        
+
         # Safety Guard: If a single season has > 165 games, it's likely a summary row we missed
         if record.get("games", 0) > 165:
             continue
@@ -144,7 +145,7 @@ def parse_retired_hitter_tables(
         _apply_stat(record, row, ("2루타", "2B"), "doubles", _to_int)
         _apply_stat(record, row, ("3루타", "3B"), "triples", _to_int)
         _apply_stat(record, row, ("홈런", "HR"), "home_runs", _to_int)
-        
+
         # Another Guard: KBO single season HR record is 56 (Lee Seung-yeop)
         if record.get("home_runs", 0) > 65:
             continue
@@ -178,26 +179,26 @@ def parse_retired_hitter_tables(
 
 
 def parse_retired_pitcher_table(
-    table: Dict[str, Any], *, league: str = "REGULAR", level: str = "KBO1"
-) -> List[Dict[str, Any]]:
+    table: dict[str, Any], *, league: str = "REGULAR", level: str = "KBO1"
+) -> list[dict[str, Any]]:
     _, rows = _table_to_dicts(table)
-    records: List[Dict[str, Any]] = []
+    records: list[dict[str, Any]] = []
 
     for row in rows:
         season_label = (row.get("연도") or row.get("년도") or "").strip()
         if not season_label:
             continue
-            
+
         # Strict exclusion
         if any(marker in season_label for marker in ("통산", "합계", "Career", "Total", "연도")):
             continue
-            
+
         season = _to_int(season_label)
         if season is None or season < 1982 or season > 2030:
             continue
 
         team_name = row.get("팀명") or row.get("팀")
-        record: Dict[str, Any] = {
+        record: dict[str, Any] = {
             "season": season,
             "league": league,
             "level": level,
@@ -207,14 +208,14 @@ def parse_retired_pitcher_table(
         }
 
         _apply_stat(record, row, ("경기", "G"), "games", _to_int)
-        
+
         # Guard
         if record.get("games", 0) > 165:
             continue
 
         _apply_stat(record, row, ("선발", "GS"), "games_started", _to_int)
         _apply_stat(record, row, ("승", "W"), "wins", _to_int)
-        
+
         # Guard: KBO single season win record is 30 (Jang Myeong-bu)
         if record.get("wins", 0) > 35:
             continue
@@ -248,9 +249,9 @@ def parse_retired_pitcher_table(
 
 
 def _apply_stat(
-    record: Dict[str, Any],
-    row: Dict[str, str],
-    keys: Tuple[str, ...],
+    record: dict[str, Any],
+    row: dict[str, str],
+    keys: tuple[str, ...],
     field: str,
     converter,
 ) -> None:
@@ -262,7 +263,7 @@ def _apply_stat(
             break
 
 
-def _merge_extra_stats(record: Dict[str, Any], row: Dict[str, str], consumed: set) -> None:
+def _merge_extra_stats(record: dict[str, Any], row: dict[str, str], consumed: set) -> None:
     extra = record.setdefault("extra_stats", {})
     for key, value in row.items():
         if key in consumed:
@@ -273,7 +274,7 @@ def _merge_extra_stats(record: Dict[str, Any], row: Dict[str, str], consumed: se
         extra[clean_key] = value.strip()
 
 
-def _cleanup_consumed(record: Dict[str, Any]) -> None:
+def _cleanup_consumed(record: dict[str, Any]) -> None:
     record.pop("_consumed_keys", None)
     if record.get("extra_stats") == {}:
         record["extra_stats"] = None

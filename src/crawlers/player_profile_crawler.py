@@ -3,26 +3,27 @@ KBO Player Profile Crawler (Enhanced)
 Collects extended player profile: photo_url, bats, throws, salary, draft info, debut_year.
 Source: KBO HitterDetail/PitcherDetail Basic.aspx
 """
-import logging
+
 import asyncio
+import logging
 import re
-from typing import Dict, Optional
 
 from playwright.async_api import Page
 
-
 logger = logging.getLogger(__name__)
-from src.utils.playwright_pool import AsyncPlaywrightPool
-from src.utils.safe_print import safe_print as print
+import contextlib
+
 from src.utils.compliance import compliance
 from src.utils.player_validation import validate_player_payload
+from src.utils.playwright_pool import AsyncPlaywrightPool
 from src.utils.request_policy import RequestPolicy
+from src.utils.safe_print import safe_print as print
 
 # KBO profile page selectors (common across Hitter/Pitcher detail pages)
 _PROFILE_PREFIXES = [
-    'cphContents_cphContents_cphContents_playerProfile',
-    'cphContents_cphContents_cphContents_ucPlayerProfile',
-    'cphContents_cphContents_cphContents_ucRetireInfo',
+    "cphContents_cphContents_cphContents_playerProfile",
+    "cphContents_cphContents_cphContents_ucPlayerProfile",
+    "cphContents_cphContents_cphContents_ucRetireInfo",
 ]
 
 _EXTRACT_JS = f"""
@@ -65,18 +66,18 @@ _EXTRACT_JS = f"""
     // Wait for img profile element to have a real source
     const photoSelector = '#' + prefix + '_imgProfile, #' + prefix + '_imgProgile';
     let photoEl = document.querySelector(photoSelector);
-    
+
     const infoEl = document.querySelector('.player-info, .playerInfo, #' + prefix);
     const rawText = infoEl ? infoEl.innerText : document.body.innerText;
 
     let photoUrl = photoEl ? (photoEl.src || photoEl.getAttribute('src')) : null;
-    
+
     // Final check for the specific person image pattern if the ID-based one is not found or is default
     if (!photoUrl || photoUrl.includes('no-Image.png') || photoUrl.includes('emblem')) {{
         const personImg = document.querySelector('.photo img[src*="person"], .photo img[src*="player"]');
         if (personImg) photoUrl = personImg.src || personImg.getAttribute('src');
     }}
-    
+
     // If still emblem, null it out
     if (photoUrl && photoUrl.includes('emblem')) photoUrl = null;
 
@@ -102,25 +103,25 @@ NO_IMAGE_SENTINEL = "no-Image.png"
 HAND_MAP = {"우": "R", "좌": "L", "양": "S"}
 
 
-def _parse_hands(text: str) -> Dict[str, Optional[str]]:
+def _parse_hands(text: str) -> dict[str, str | None]:
     """Parse throwing/batting hand from 포지션 텍스트 like '투수(우투우타)'."""
     result = {"bats": None, "throws": None}
-    m = re.search(r'\((.)[투](.)타\)', text)
+    m = re.search(r"\((.)[투](.)타\)", text)
     if m:
         result["throws"] = HAND_MAP.get(m.group(1))
         result["bats"] = HAND_MAP.get(m.group(2))
     return result
 
 
-def _parse_debut_year(text: Optional[str]) -> Optional[int]:
+def _parse_debut_year(text: str | None) -> int | None:
     """Extract 4-digit year from a text like '2015 두산' or '2015년'."""
     if not text:
         return None
     # Extract digits (2 to 4 digits)
-    m = re.search(r'(\d{2,4})', text)
+    m = re.search(r"(\d{2,4})", text)
     if not m:
         return None
-    
+
     year = int(m.group(1))
     if year < 100:
         # Assume 2000s for KBO entrants (founded 1982)
@@ -128,7 +129,7 @@ def _parse_debut_year(text: Optional[str]) -> Optional[int]:
     return year
 
 
-def _parse_height_weight(text: Optional[str]) -> Dict[str, Optional[int]]:
+def _parse_height_weight(text: str | None) -> dict[str, int | None]:
     """Parse height and weight from '185cm/92kg' format."""
     result = {"height_cm": None, "weight_kg": None}
     if not text:
@@ -140,7 +141,7 @@ def _parse_height_weight(text: Optional[str]) -> Dict[str, Optional[int]]:
     return result
 
 
-def _clean_photo_url(raw: Optional[str]) -> Optional[str]:
+def _clean_photo_url(raw: str | None) -> str | None:
     """Return None for missing/default images."""
     if not raw or NO_IMAGE_SENTINEL in raw:
         return None
@@ -166,19 +167,20 @@ class PlayerProfileCrawler:
     FUTURES_HITTER_URL = "https://www.koreabaseball.com/Futures/Player/HitterDetail.aspx"
     FUTURES_PITCHER_URL = "https://www.koreabaseball.com/Futures/Player/PitcherDetail.aspx"
 
-    def __init__(self, request_delay: float = 1.2, pool: Optional[AsyncPlaywrightPool] = None):
+    def __init__(self, request_delay: float = 1.2, pool: AsyncPlaywrightPool | None = None):
         self.request_delay = request_delay
         self.pool = pool
         self.policy = RequestPolicy(min_delay=request_delay, max_delay=request_delay)
         self._last_failure_reason: dict[str, str] = {}
 
-    def get_last_failure_reason(self, player_id: str) -> Optional[str]:
+    def get_last_failure_reason(self, player_id: str) -> str | None:
         return self._last_failure_reason.get(str(player_id))
 
-    def _select_urls(self, player_id: str, position: Optional[str]) -> list[str]:
+    def _select_urls(self, player_id: str, position: str | None) -> list[str]:
         """순차적으로 시도할 URL 후보 목록을 반환"""
-        is_pitcher = position and (position.strip() in PITCHER_POSITIONS or
-                                   any(p in (position or "") for p in ["투수", "P"]))
+        is_pitcher = position and (
+            position.strip() in PITCHER_POSITIONS or any(p in (position or "") for p in ["투수", "P"])
+        )
 
         candidates = []
         if is_pitcher:
@@ -205,8 +207,8 @@ class PlayerProfileCrawler:
         self,
         player_id: str,
         *,
-        position: Optional[str] = None,
-    ) -> Optional[Dict]:
+        position: str | None = None,
+    ) -> dict | None:
         """
         Crawl the profile detail page for player_id.
         Returns a dict with photo_url, bats, throws, debut_year,
@@ -228,12 +230,10 @@ class PlayerProfileCrawler:
             if owns_pool:
                 await pool.close()
 
-    async def _fetch_profile(
-        self, page: Page, player_id: str, position: Optional[str]
-    ) -> Optional[Dict]:
+    async def _fetch_profile(self, page: Page, player_id: str, position: str | None) -> dict | None:
         urls = self._select_urls(player_id, position)
         last_reason = "profile_not_found"
-        
+
         for url in urls:
             print(f"📡 Attempting profile [{player_id}]: {url}")
             if not await compliance.is_allowed(url):
@@ -247,19 +247,23 @@ class PlayerProfileCrawler:
                     page,
                     url,
                 )
-                
+
                 if raw.get("error"):
                     last_reason = "profile_element_missing"
                     continue
-                    
-                # If name is empty, this is a stub page. Try next URL if possible, 
+
+                # If name is empty, this is a stub page. Try next URL if possible,
                 # but usually stub means no data on any of them.
                 ok, reason = validate_player_payload({"player_id": player_id, "name": raw.get("name")})
                 if not ok:
                     print(f"⚠️  Stub profile detected at {url}")
-                    last_reason = "profile_stub" if reason in {"missing_player_name", "unknown_player_name"} else (reason or "profile_stub")
+                    last_reason = (
+                        "profile_stub"
+                        if reason in {"missing_player_name", "unknown_player_name"}
+                        else (reason or "profile_stub")
+                    )
                     continue
-                
+
                 # Success found data
                 hands = _parse_hands(raw.get("raw_text") or "")
                 hw = _parse_height_weight(raw.get("height_weight"))
@@ -268,9 +272,12 @@ class PlayerProfileCrawler:
                 # Heuristic: try current year CDN if still no photo or placeholder detected
                 if not photo_url or "no-Image.png" in photo_url:
                     from datetime import datetime
+
                     curr_year = datetime.now().year
                     # Fallback to current year's directory which often contains the latest photos
-                    photo_url = f"https://6ptotvmi5753.edge.naverncp.com/KBO_IMAGE/person/middle/{curr_year}/{player_id}.jpg"
+                    photo_url = (
+                        f"https://6ptotvmi5753.edge.naverncp.com/KBO_IMAGE/person/middle/{curr_year}/{player_id}.jpg"
+                    )
 
                 result = {
                     "player_id": player_id,
@@ -291,20 +298,18 @@ class PlayerProfileCrawler:
                 logger.exception(f"   (Failed attempt at {url})")
                 last_reason = "selector_timeout"
                 continue
-        
+
         self._last_failure_reason[str(player_id)] = last_reason
         return None
 
-    async def _load_profile_page(self, page: Page, url: str) -> Dict:
+    async def _load_profile_page(self, page: Page, url: str) -> dict:
         await self.policy.delay_async(host="www.koreabaseball.com")
         # domcontentloaded avoids networkidle timeout on KBO pages
         await page.goto(url, wait_until="domcontentloaded", timeout=20000)
 
         # Wait for any name element to be attached
-        try:
+        with contextlib.suppress(Exception):
             await page.wait_for_selector('[id$="lblName"], .player_basic, .player_info', timeout=15000)
-        except Exception:
-            pass
 
         # Wait for potential AJAX content or image source update
         try:
@@ -314,7 +319,7 @@ class PlayerProfileCrawler:
                     const img = document.querySelector('.photo img');
                     return img && img.src && !img.src.includes('no-Image.png') && !img.src.includes('about:blank');
                 }""",
-                timeout=2000
+                timeout=2000,
             )
         except Exception:
             # Continue even if no real image found (some players don't have one)
@@ -333,6 +338,7 @@ async def main():
             print(f"  {k}: {v}")
     else:
         print("❌ No result (Expected for stub/empty profiles)")
+
 
 if __name__ == "__main__":
     asyncio.run(main())

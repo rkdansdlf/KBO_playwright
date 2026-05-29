@@ -128,7 +128,9 @@ def test_repair_historical_team_metadata_splits_franchises_and_rebuilds_maps(tmp
         teams = {
             row["team_id"]: dict(row)
             for row in conn.execute(
-                text("SELECT team_id, franchise_id, is_active, aliases FROM teams WHERE team_id IN ('HU', 'KH', 'SL', 'SK', 'SSG')")
+                text(
+                    "SELECT team_id, franchise_id, is_active, aliases FROM teams WHERE team_id IN ('HU', 'KH', 'SL', 'SK', 'SSG')"
+                )
             ).mappings()
         }
         assert teams["HU"]["franchise_id"] == 6
@@ -140,16 +142,57 @@ def test_repair_historical_team_metadata_splits_franchises_and_rebuilds_maps(tmp
         assert teams["SK"]["franchise_id"] == 8
         assert teams["SSG"]["franchise_id"] == 8
 
-        assert conn.execute(text("SELECT COUNT(*) FROM team_history WHERE season = 1985 AND team_code = 'SM'")).scalar() == 0
-        assert conn.execute(text("SELECT franchise_id FROM team_history WHERE season = 1985 AND team_code = 'CB'")).scalar() == 6
-        assert conn.execute(text("SELECT franchise_id FROM team_history WHERE season = 1993 AND team_code = 'BE'")).scalar() == 7
-        assert conn.execute(text("SELECT COUNT(*) FROM team_history WHERE season = 1993 AND team_code = 'HH'")).scalar() == 0
-        assert conn.execute(text("SELECT franchise_id FROM team_history WHERE season = 2008 AND team_code = 'WO'")).scalar() == 11
-        assert conn.execute(text("SELECT franchise_id FROM team_history WHERE season = 1999 AND team_code = 'SL'")).scalar() == 12
+        assert (
+            conn.execute(text("SELECT COUNT(*) FROM team_history WHERE season = 1985 AND team_code = 'SM'")).scalar()
+            == 0
+        )
+        assert (
+            conn.execute(
+                text("SELECT franchise_id FROM team_history WHERE season = 1985 AND team_code = 'CB'")
+            ).scalar()
+            == 6
+        )
+        assert (
+            conn.execute(
+                text("SELECT franchise_id FROM team_history WHERE season = 1993 AND team_code = 'BE'")
+            ).scalar()
+            == 7
+        )
+        assert (
+            conn.execute(text("SELECT COUNT(*) FROM team_history WHERE season = 1993 AND team_code = 'HH'")).scalar()
+            == 0
+        )
+        assert (
+            conn.execute(
+                text("SELECT franchise_id FROM team_history WHERE season = 2008 AND team_code = 'WO'")
+            ).scalar()
+            == 11
+        )
+        assert (
+            conn.execute(
+                text("SELECT franchise_id FROM team_history WHERE season = 1999 AND team_code = 'SL'")
+            ).scalar()
+            == 12
+        )
 
-        assert conn.execute(text("SELECT canonical_code FROM team_code_map WHERE season = 1985 AND curr_code = 'CB'")).scalar() == "HU"
-        assert conn.execute(text("SELECT canonical_code FROM team_code_map WHERE season = 2008 AND curr_code = 'WO'")).scalar() == "KH"
-        assert conn.execute(text("SELECT canonical_code FROM team_code_map WHERE season = 1999 AND curr_code = 'SL'")).scalar() == "SL"
+        assert (
+            conn.execute(
+                text("SELECT canonical_code FROM team_code_map WHERE season = 1985 AND curr_code = 'CB'")
+            ).scalar()
+            == "HU"
+        )
+        assert (
+            conn.execute(
+                text("SELECT canonical_code FROM team_code_map WHERE season = 2008 AND curr_code = 'WO'")
+            ).scalar()
+            == "KH"
+        )
+        assert (
+            conn.execute(
+                text("SELECT canonical_code FROM team_code_map WHERE season = 1999 AND curr_code = 'SL'")
+            ).scalar()
+            == "SL"
+        )
 
         hu_fact = conn.execute(
             text("SELECT franchise_id, canonical_team_code FROM game_batting_stats WHERE game_id = '20010405LTHU0'")

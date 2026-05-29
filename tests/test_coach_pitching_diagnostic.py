@@ -6,8 +6,8 @@ from datetime import date
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-from src.crawlers.player_pitching_all_series_crawler import PitcherStats
 from src.cli.daily_review_batch import _upsert_review_summary
+from src.crawlers.player_pitching_all_series_crawler import PitcherStats
 from src.models.game import Game, GamePitchingStat, GameSummary
 from src.models.player import PlayerSeasonPitching
 from src.services.context_aggregator import ContextAggregator
@@ -132,9 +132,7 @@ def test_completed_pitching_breakdown_uses_game_rows_without_player_basic_join()
     with SessionLocal() as session:
         _seed_pitching_game(session)
 
-        payload = ContextAggregator(session).get_completed_game_pitching_breakdown(
-            "20250401LGSS0"
-        )
+        payload = ContextAggregator(session).get_completed_game_pitching_breakdown("20250401LGSS0")
 
     assert payload["raw_counts"]["game_pitching_rows"] == 4
     assert payload["raw_counts"]["starter_rows"] == 2

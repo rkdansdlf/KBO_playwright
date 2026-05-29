@@ -1,4 +1,5 @@
 """Validation helpers for player season stat payloads."""
+
 from __future__ import annotations
 
 from collections import Counter
@@ -50,7 +51,6 @@ NUMERIC_FIELDS = {
     "earned_runs",
     "home_runs_allowed",
     "walks_allowed",
-    "intentional_walks",
     "hit_batters",
     "wild_pitches",
     "balks",

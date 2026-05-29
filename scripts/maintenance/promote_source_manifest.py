@@ -12,7 +12,6 @@ if project_root not in sys.path:
 
 from src.sources.relay import read_manifest_entries
 
-
 FIELDNAMES = ["game_id", "source_type", "locator", "format", "priority", "notes"]
 
 
@@ -92,7 +91,9 @@ def promote_manifests(
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Promote generated recovery manifest rows into the active source manifest")
+    parser = argparse.ArgumentParser(
+        description="Promote generated recovery manifest rows into the active source manifest"
+    )
     parser.add_argument(
         "--target",
         default="data/recovery/source_manifest.csv",

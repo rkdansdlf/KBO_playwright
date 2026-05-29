@@ -1,11 +1,14 @@
 """Playwright navigation and selector retry utilities."""
+
 from __future__ import annotations
 
+import contextlib
 import logging
 import os
 import time
 
-from playwright.sync_api import Page, TimeoutError as PlaywrightTimeout
+from playwright.sync_api import Page
+from playwright.sync_api import TimeoutError as PlaywrightTimeout
 
 logger = logging.getLogger(__name__)
 
@@ -60,10 +63,8 @@ def retry_click(
             if attempt == max_retries:
                 return False
             logger.warning(f"Click on {selector} timed out on attempt {attempt}, retrying...")
-            try:
+            with contextlib.suppress(Exception):
                 page.reload(wait_until="networkidle", timeout=timeout)
-            except Exception:
-                pass
             time.sleep(2)
     return False
 
@@ -85,9 +86,7 @@ def retry_wait_for_selector(
                 return False
             logger.warning(f"Selector {selector} not found on attempt {attempt}, retrying...")
             # Try reloading if it's a transient issue
-            try:
+            with contextlib.suppress(Exception):
                 page.reload(wait_until="networkidle", timeout=timeout)
-            except Exception:
-                pass
             time.sleep(2)
     return False

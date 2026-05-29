@@ -1,9 +1,10 @@
 """Validation helpers for KBO schedule payloads."""
+
 from __future__ import annotations
 
 import re
 from datetime import date, datetime
-from typing import Any, Mapping, Optional
+from typing import Any, Mapping
 
 from src.utils.game_status import (
     COMPLETED_LIKE_GAME_STATUSES,
@@ -18,7 +19,7 @@ from src.utils.team_codes import KBO_GAME_ID_TEAM_CODES, normalize_kbo_game_id
 _GAME_ID_RE = re.compile(r"^(\d{8})([A-Z]+)(\d)$")
 
 
-def parse_schedule_date(value: Any) -> Optional[date]:
+def parse_schedule_date(value: Any) -> date | None:
     text = str(value or "").replace("-", "").strip()
     if len(text) != 8 or not text.isdigit():
         return None
@@ -28,7 +29,7 @@ def parse_schedule_date(value: Any) -> Optional[date]:
         return None
 
 
-def split_schedule_game_id(game_id: Any) -> Optional[tuple[str, str, str, str]]:
+def split_schedule_game_id(game_id: Any) -> tuple[str, str, str, str] | None:
     raw = str(game_id or "").strip().upper()
     if not raw:
         return None
@@ -42,7 +43,7 @@ def split_schedule_game_id(game_id: Any) -> Optional[tuple[str, str, str, str]]:
         for away_code in KBO_GAME_ID_TEAM_CODES:
             if not team_part.startswith(away_code):
                 continue
-            home_code = team_part[len(away_code):]
+            home_code = team_part[len(away_code) :]
             if home_code in KBO_GAME_ID_TEAM_CODES:
                 return game_date, away_code, home_code, doubleheader_no
     return None

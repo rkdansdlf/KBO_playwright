@@ -1,9 +1,10 @@
 import os
-from sqlalchemy import create_engine, text
+
 from dotenv import load_dotenv
+from sqlalchemy import create_engine, text
 
 load_dotenv()
-url = os.getenv('OCI_DB_URL')
+url = os.getenv("OCI_DB_URL")
 print(f"Connecting to {url}")
 engine = create_engine(url)
 
@@ -12,9 +13,9 @@ with engine.connect() as conn:
     res = conn.execute(text("SELECT table_name FROM information_schema.tables WHERE table_schema = 'public'"))
     for row in res:
         print(f" - {row[0]}")
-    
+
     print("\nCounts:")
-    tables = ['kbo_seasons', 'player_basic', 'player_season_batting', 'game']
+    tables = ["kbo_seasons", "player_basic", "player_season_batting", "game"]
     for t in tables:
         try:
             count = conn.execute(text(f"SELECT COUNT(*) FROM {t}")).fetchone()[0]

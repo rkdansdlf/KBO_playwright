@@ -8,6 +8,7 @@ This is intentionally conservative:
 - derived season/matchup rows that still point at OCI-only temporary ids are deleted;
 - player/player movement mirror links are cleared or set to the matching local value.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -28,7 +29,6 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from src.db.engine import DATABASE_URL
-
 
 PSEUDO_MIN_PLAYER_ID = 900000
 DEFAULT_OUTPUT_DIR = PROJECT_ROOT / "data" / "prune_oci_pseudo_players_to_local"
@@ -200,7 +200,9 @@ def _remote_unique_conflict(conn, spec: GameRefSpec, row: dict[str, Any], candid
     return conn.execute(select(table.c.id).where(and_(*clauses)).limit(1)).first() is not None
 
 
-def _update_or_delete_game_refs(local_conn, oci_conn, spec: GameRefSpec, extra_ids: set[int], apply: bool) -> list[dict[str, Any]]:
+def _update_or_delete_game_refs(
+    local_conn, oci_conn, spec: GameRefSpec, extra_ids: set[int], apply: bool
+) -> list[dict[str, Any]]:
     if not extra_ids or not _table_exists(oci_conn, spec.table_name):
         return []
     required = {"id", spec.player_column, *spec.match_columns}
@@ -237,20 +239,14 @@ def _update_or_delete_game_refs(local_conn, oci_conn, spec: GameRefSpec, extra_i
                 action = "retarget_to_local"
                 if apply:
                     oci_conn.execute(
-                        table.update()
-                        .where(table.c.id == row["id"])
-                        .values(**{spec.player_column: candidate_id})
+                        table.update().where(table.c.id == row["id"]).values(**{spec.player_column: candidate_id})
                     )
             resolved_id: int | str = candidate_id
         elif spec.missing_action == "set_null":
             action = "set_null_no_local_match"
             resolved_id = ""
             if apply:
-                oci_conn.execute(
-                    table.update()
-                    .where(table.c.id == row["id"])
-                    .values(**{spec.player_column: None})
-                )
+                oci_conn.execute(table.update().where(table.c.id == row["id"]).values(**{spec.player_column: None}))
         else:
             action = "delete_no_local_match"
             resolved_id = ""
@@ -299,7 +295,11 @@ def _delete_derived_refs(oci_conn, spec: DeleteRefSpec, extra_ids: set[int], app
 
 
 def _clear_players_refs(oci_conn, extra_ids: set[int], apply: bool) -> list[dict[str, Any]]:
-    if not extra_ids or not _table_exists(oci_conn, "players") or "player_basic_id" not in _columns(oci_conn, "players"):
+    if (
+        not extra_ids
+        or not _table_exists(oci_conn, "players")
+        or "player_basic_id" not in _columns(oci_conn, "players")
+    ):
         return []
     table = _load_table(oci_conn, "players")
     if table is None:
@@ -312,9 +312,7 @@ def _clear_players_refs(oci_conn, extra_ids: set[int], apply: bool) -> list[dict
     ]
     if apply and rows:
         oci_conn.execute(
-            table.update()
-            .where(table.c.player_basic_id.in_(sorted(extra_ids)))
-            .values(player_basic_id=None)
+            table.update().where(table.c.player_basic_id.in_(sorted(extra_ids))).values(player_basic_id=None)
         )
     return [
         {
@@ -331,7 +329,11 @@ def _clear_players_refs(oci_conn, extra_ids: set[int], apply: bool) -> list[dict
 
 
 def _retarget_player_movements(local_conn, oci_conn, extra_ids: set[int], apply: bool) -> list[dict[str, Any]]:
-    if not extra_ids or not _table_exists(oci_conn, "player_movements") or "player_basic_id" not in _columns(oci_conn, "player_movements"):
+    if (
+        not extra_ids
+        or not _table_exists(oci_conn, "player_movements")
+        or "player_basic_id" not in _columns(oci_conn, "player_movements")
+    ):
         return []
     remote = _load_table(oci_conn, "player_movements")
     local = _load_table(local_conn, "player_movements")
@@ -340,9 +342,7 @@ def _retarget_player_movements(local_conn, oci_conn, extra_ids: set[int], apply:
     match_columns = ("movement_date", "section", "team_code", "player_name")
     rows = [
         dict(row)
-        for row in oci_conn.execute(
-            select(remote).where(remote.c.player_basic_id.in_(sorted(extra_ids)))
-        ).mappings()
+        for row in oci_conn.execute(select(remote).where(remote.c.player_basic_id.in_(sorted(extra_ids)))).mappings()
     ]
     actions: list[dict[str, Any]] = []
     for row in rows:
@@ -357,11 +357,7 @@ def _retarget_player_movements(local_conn, oci_conn, extra_ids: set[int], apply:
             if found is not None:
                 candidate_id = found[0]
         if apply:
-            oci_conn.execute(
-                remote.update()
-                .where(remote.c.id == row["id"])
-                .values(player_basic_id=candidate_id)
-            )
+            oci_conn.execute(remote.update().where(remote.c.id == row["id"]).values(player_basic_id=candidate_id))
         actions.append(
             {
                 "table_name": "player_movements",
@@ -387,16 +383,14 @@ def _insert_missing_local_pseudo(local_conn, oci_conn, missing_ids: set[int], ap
     rows = [
         dict(row)
         for row in local_conn.execute(
-            select(*(local_table.c[column] for column in columns)).where(local_table.c.player_id.in_(sorted(missing_ids)))
+            select(*(local_table.c[column] for column in columns)).where(
+                local_table.c.player_id.in_(sorted(missing_ids))
+            )
         ).mappings()
     ]
     if apply and rows:
         stmt = pg_insert(oci_table).values(rows)
-        update_columns = {
-            column: getattr(stmt.excluded, column)
-            for column in columns
-            if column != "player_id"
-        }
+        update_columns = {column: getattr(stmt.excluded, column) for column in columns if column != "player_id"}
         stmt = stmt.on_conflict_do_update(index_elements=["player_id"], set_=update_columns)
         oci_conn.execute(stmt)
     return len(rows)
@@ -517,7 +511,9 @@ def prune_oci_pseudo_players_to_local(
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Prune OCI-only pseudo player rows using local SQLite as source of truth.")
+    parser = argparse.ArgumentParser(
+        description="Prune OCI-only pseudo player rows using local SQLite as source of truth."
+    )
     parser.add_argument("--oci-url", default=None, help="OCI/Postgres URL. Defaults to OCI_DB_URL.")
     parser.add_argument("--output-dir", default=str(DEFAULT_OUTPUT_DIR))
     parser.add_argument("--apply", action="store_true", help="Persist repairs. Default is dry-run only.")

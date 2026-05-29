@@ -2,11 +2,12 @@
 KBO Periodic Extras Orchestrator.
 Fetches Futures league data and retired player listings.
 """
+
 from __future__ import annotations
 
-import logging
 import argparse
 import asyncio
+import logging
 import os
 from datetime import datetime
 from zoneinfo import ZoneInfo
@@ -18,6 +19,7 @@ from src.utils.safe_print import safe_print as print
 logger = logging.getLogger(__name__)
 
 KST = ZoneInfo("Asia/Seoul")
+
 
 async def run_periodic_extras(
     year: int,
@@ -33,6 +35,7 @@ async def run_periodic_extras(
     try:
         import subprocess
         import sys
+
         cmd = [sys.executable, "-m", "src.crawlers.futures.futures_batting", "--year", str(year), "--save"]
         result = subprocess.run(cmd, capture_output=True, text=True)
         if result.returncode == 0:
@@ -76,7 +79,7 @@ async def run_periodic_extras(
                     syncer.close()
 
     print(f"\n{'=' * 60}")
-    print(f"🏁 Periodic Extras Finished")
+    print("🏁 Periodic Extras Finished")
     print(f"{'=' * 60}\n")
 
 
@@ -84,11 +87,12 @@ def main():
     parser = argparse.ArgumentParser(description="KBO Periodic Extras Orchestrator")
     parser.add_argument("--year", type=int, help="Target year. Defaults to current year.")
     parser.add_argument("--sync", action="store_true", help="Sync to OCI")
-    
+
     args = parser.parse_args()
-    
+
     year = args.year or datetime.now(KST).year
     asyncio.run(run_periodic_extras(year, sync=args.sync))
+
 
 if __name__ == "__main__":
     main()

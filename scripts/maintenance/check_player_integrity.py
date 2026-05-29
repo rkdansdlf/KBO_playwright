@@ -1,37 +1,42 @@
 """
 Player Data Integrity Audit Tool.
-Performs: 
+Performs:
 1. Stub detection (Missing metadata)
 2. Statistical Reconciliation (Game vs Season Totals)
 3. Retirement Audit (Stale 'ACTIVE' status)
 """
+
 import os
 import sys
-from sqlalchemy import text
+
 from dotenv import load_dotenv
+from sqlalchemy import text
 
 # Add project root to sys.path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
 from src.db.engine import SessionLocal
 
+
 def run_audit():
     load_dotenv()
     print("🔍 Starting Player Master Data Integrity Audit...")
-    
+
     with SessionLocal() as session:
         # 1. Stub Detection: Records with zero height or no photo_url
         print("\n[STUB DETECTION]")
-        stubs = session.execute(text("""
-            SELECT player_id, name, team FROM player_basic 
+        stubs = session.execute(
+            text("""
+            SELECT player_id, name, team FROM player_basic
             WHERE status = 'active' AND (photo_url IS NULL OR height_cm IS NULL)
-        """)).fetchall()
+        """)
+        ).fetchall()
         print(f"  ⚠️  Found {len(stubs)} active players with missing profile metadata.")
         if stubs:
             for s in stubs[:5]:
                 print(f"    - {s.player_id}: {s.name} ({s.team})")
             if len(stubs) > 5:
-                print(f"    ... and {len(stubs)-5} more.")
+                print(f"    ... and {len(stubs) - 5} more.")
 
         # 2. Statistical Reconciliation: 2024 Hits Check
         # Comparing sum of game_batting_stats with player_season_batting
@@ -63,7 +68,7 @@ def run_audit():
         # Players marked 'active' but no games played in 2025 or 2026
         print("\n[RETIREMENT AUDIT]")
         stale_query = """
-        SELECT player_id, name, team FROM player_basic 
+        SELECT player_id, name, team FROM player_basic
         WHERE status = 'active' AND player_id NOT IN (
             SELECT DISTINCT player_id FROM game_batting_stats WHERE game_id LIKE '2025%' OR game_id LIKE '2026%'
         ) AND player_id NOT IN (
@@ -76,6 +81,7 @@ def run_audit():
             print("     (These are likely retired but status hasn't been updated)")
 
     print("\n✨ Audit Finished.")
+
 
 if __name__ == "__main__":
     run_audit()

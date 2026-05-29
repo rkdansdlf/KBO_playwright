@@ -1,10 +1,12 @@
 """
 ORM model for normalized stat rankings.
 """
+
 from __future__ import annotations
 
-from typing import Optional, Dict, Any
-from sqlalchemy import Integer, String, Float, Boolean, UniqueConstraint, JSON
+from typing import Any
+
+from sqlalchemy import JSON, Boolean, Float, Integer, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from .base import Base, TimestampMixin
@@ -30,12 +32,12 @@ class StatRanking(Base, TimestampMixin):
     entity_id: Mapped[str] = mapped_column(String(64), nullable=False)
     entity_label: Mapped[str] = mapped_column(String(128), nullable=False)
     entity_type: Mapped[str] = mapped_column(String(16), nullable=False, default="PLAYER")
-    team_id: Mapped[Optional[str]] = mapped_column(String(10), nullable=True)
+    team_id: Mapped[str | None] = mapped_column(String(10), nullable=True)
     value: Mapped[float] = mapped_column(Float, nullable=False)
     rank: Mapped[int] = mapped_column(Integer, nullable=False)
     is_tie: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     source: Mapped[str] = mapped_column(String(32), nullable=False)
-    extra: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSON, nullable=True)
+    extra: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
 
     def __repr__(self) -> str:
         return f"<StatRanking(season={self.season}, metric='{self.metric}', entity_id='{self.entity_id}', rank={self.rank})>"

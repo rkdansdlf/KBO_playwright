@@ -1,4 +1,5 @@
 """Shared KBO game status constants and helpers."""
+
 from __future__ import annotations
 
 from datetime import date
@@ -84,18 +85,19 @@ def derive_stable_game_status(
     Ensures stability and prevents premature LIVE/COMPLETED transitions.
     """
     if today is None:
-        from zoneinfo import ZoneInfo
         from datetime import datetime
+        from zoneinfo import ZoneInfo
+
         today = datetime.now(ZoneInfo("Asia/Seoul")).date()
-    
+
     # 1. Future games are strictly SCHEDULED unless manually overridden (not handled here)
     if game_date > today:
         return GAME_STATUS_SCHEDULED
-        
+
     # 2. Normalize inputs
     current_status = normalize_game_status(current_status)
     new_status = normalize_game_status(new_status)
-    
+
     # 3. If we have scores and it's past or today, consider it terminal if context allows
     if home_score is not None and away_score is not None:
         # If it was already terminal, don't move it back unless the new status is also terminal
@@ -107,12 +109,12 @@ def derive_stable_game_status(
     if game_date == today:
         # Only allow LIVE if there is actual evidence of progress
         if has_progress_evidence or is_live_status(new_status):
-            # Even if new_status is LIVE, if we have NO evidence, be skeptical? 
-            # For now, if a crawler explicitly says LIVE, we might trust it, 
+            # Even if new_status is LIVE, if we have NO evidence, be skeptical?
+            # For now, if a crawler explicitly says LIVE, we might trust it,
             # but the goal is to be conservative.
             return new_status or GAME_STATUS_LIVE if has_progress_evidence else GAME_STATUS_SCHEDULED
-        
-        # If it's today and we had it as LIVE, but now have no evidence and no new status, 
+
+        # If it's today and we had it as LIVE, but now have no evidence and no new status,
         # keep it LIVE to avoid flickering, OR move back to SCHEDULED?
         # Decision: If no evidence and it's today, SCHEDULED is safer.
         return GAME_STATUS_SCHEDULED

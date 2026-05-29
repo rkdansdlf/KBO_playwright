@@ -79,10 +79,20 @@ def _build_db(tmp_path):
                 """
             )
         )
-        conn.execute(text("INSERT INTO player_basic (player_id, name, team, position) VALUES (1002, 'Unknown 1002', 'LG', '타자')"))
-        conn.execute(text("INSERT INTO player_basic (player_id, name, team, position) VALUES (2002, 'Unknown 2002', 'SS', '투수')"))
+        conn.execute(
+            text(
+                "INSERT INTO player_basic (player_id, name, team, position) VALUES (1002, 'Unknown 1002', 'LG', '타자')"
+            )
+        )
+        conn.execute(
+            text(
+                "INSERT INTO player_basic (player_id, name, team, position) VALUES (2002, 'Unknown 2002', 'SS', '투수')"
+            )
+        )
         conn.execute(text("INSERT INTO player_season_batting (player_id, team_code) VALUES (1001, 'LG'), (1002, 'LG')"))
-        conn.execute(text("INSERT INTO player_season_pitching (player_id, team_code) VALUES (2001, 'SS'), (2002, 'SS')"))
+        conn.execute(
+            text("INSERT INTO player_season_pitching (player_id, team_code) VALUES (2001, 'SS'), (2002, 'SS')")
+        )
     return sessionmaker(bind=engine)
 
 
@@ -157,9 +167,7 @@ def test_backfill_uses_local_canonical_profiles_before_crawler(monkeypatch, tmp_
             )
         )
         session.execute(
-            text(
-                "INSERT INTO player_identities (player_id, name_kor, is_primary) VALUES (2001, '캐논투수', 1)"
-            )
+            text("INSERT INTO player_identities (player_id, name_kor, is_primary) VALUES (2001, '캐논투수', 1)")
         )
         session.commit()
 
@@ -185,9 +193,7 @@ def test_backfill_uses_local_canonical_profiles_before_crawler(monkeypatch, tmp_
 def test_backfill_uses_kbo_person_profile_when_identity_is_missing(monkeypatch, tmp_path):
     session_factory = _patch_runtime(monkeypatch, tmp_path)
     with session_factory() as session:
-        session.execute(
-            text("INSERT INTO players (id, kbo_person_id, status) VALUES (2001, '92001', 'RETIRED')")
-        )
+        session.execute(text("INSERT INTO players (id, kbo_person_id, status) VALUES (2001, '92001', 'RETIRED')"))
         session.execute(
             text(
                 """

@@ -683,7 +683,7 @@ with SessionLocal() as session:
         PlayerSeasonBatting.league,
         func.count(PlayerSeasonBatting.id)
     ).group_by(PlayerSeasonBatting.league).all()
-    
+
     for league, count in stats:
         print(f'{league}: {count}건')
 "
@@ -794,7 +794,7 @@ docker-compose logs -f scheduler
 
 ### 연도별 시리즈 존재 여부
 - **1982-1985**: regular, korean_series
-- **1986-1999**: regular, korean_series, exhibition  
+- **1986-1999**: regular, korean_series, exhibition
 - **2000-2001**: regular, korean_series, exhibition (플레이오프 없음)
 - **2002-2006**: regular, korean_series, playoff, exhibition
 - **2007-2014**: regular, korean_series, playoff, semi_playoff, exhibition

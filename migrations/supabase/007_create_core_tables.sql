@@ -70,7 +70,7 @@ CREATE TABLE IF NOT EXISTS public.team_history (
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
--- Team History 테이블 코멘트  
+-- Team History 테이블 코멘트
 COMMENT ON TABLE public.team_history IS 'KBO 구단 역사 및 변천사';
 COMMENT ON COLUMN public.team_history.franchise_id IS '프랜차이즈 그룹 ID (1-10)';
 COMMENT ON COLUMN public.team_history.team_name IS '당시 구단명';

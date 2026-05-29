@@ -1,9 +1,10 @@
 """Hydrate a fresh local runtime SQLite cache from OCI/Postgres."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import date
-from typing import Any, Dict, Iterable, List, Sequence, Type
+from typing import Any, Iterable, Sequence
 
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.orm import Session
@@ -27,7 +28,7 @@ from src.models.team import TeamDailyRoster
 @dataclass(frozen=True)
 class HydrationSpec:
     label: str
-    model: Type
+    model: type
     source_filters: Sequence
     target_filters: Sequence
     replace_scope: bool = True
@@ -37,7 +38,7 @@ class HydrationSpec:
 class RuntimeHydrator:
     """Copy the minimum operational runtime dataset from OCI into local SQLite."""
 
-    SQLITE_UPSERT_KEYS: Dict[Type, Sequence[str]] = {
+    SQLITE_UPSERT_KEYS: dict[type, Sequence[str]] = {
         Game: ("game_id",),
         GameIdAlias: ("alias_game_id",),
         GameMetadata: ("game_id",),
@@ -58,7 +59,7 @@ class RuntimeHydrator:
         *,
         target_date: date | None = None,
         preserve_aliases: bool = False,
-    ) -> Dict[str, int]:
+    ) -> dict[str, int]:
         start_of_year = date(year, 1, 1)
         end_of_year = date(year, 12, 31)
         roster_since = start_of_year
@@ -181,8 +182,8 @@ class RuntimeHydrator:
             )
 
         try:
-            summary: Dict[str, int] = {}
-            preserved_aliases: List[Dict[str, Any]] = []
+            summary: dict[str, int] = {}
+            preserved_aliases: list[dict[str, Any]] = []
             if preserve_aliases:
                 preserved_aliases = self._snapshot_aliases(year)
                 self._delete_alias_scope(year)
@@ -200,11 +201,9 @@ class RuntimeHydrator:
             self.target_session.rollback()
             raise
 
-    def _snapshot_aliases(self, year: int) -> List[Dict[str, Any]]:
+    def _snapshot_aliases(self, year: int) -> list[dict[str, Any]]:
         columns = [
-            column.key
-            for column in GameIdAlias.__table__.columns
-            if column.key not in {"created_at", "updated_at"}
+            column.key for column in GameIdAlias.__table__.columns if column.key not in {"created_at", "updated_at"}
         ]
         return [
             {column: getattr(row, column) for column in columns}
@@ -214,17 +213,16 @@ class RuntimeHydrator:
         ]
 
     def _delete_alias_scope(self, year: int) -> None:
-        self.target_session.query(GameIdAlias).filter(
-            GameIdAlias.canonical_game_id.like(f"{year}%")
-        ).delete(synchronize_session=False)
+        self.target_session.query(GameIdAlias).filter(GameIdAlias.canonical_game_id.like(f"{year}%")).delete(
+            synchronize_session=False
+        )
 
-    def _restore_aliases(self, aliases: List[Dict[str, Any]]) -> int:
+    def _restore_aliases(self, aliases: list[dict[str, Any]]) -> int:
         if not aliases:
             return 0
         canonical_ids = sorted({str(alias["canonical_game_id"]) for alias in aliases})
         existing_ids = {
-            str(row[0])
-            for row in self.target_session.query(Game.game_id).filter(Game.game_id.in_(canonical_ids)).all()
+            str(row[0]) for row in self.target_session.query(Game.game_id).filter(Game.game_id.in_(canonical_ids)).all()
         }
         restored = 0
         for alias in aliases:
@@ -255,7 +253,7 @@ class RuntimeHydrator:
 
         excluded = {"id", *spec.exclude_columns}
         columns = [column.key for column in spec.model.__table__.columns if column.key not in excluded]
-        mappings: List[Dict[str, object]] = []
+        mappings: list[dict[str, object]] = []
         for row in rows:
             mappings.append({column: getattr(row, column) for column in columns})
 
@@ -273,7 +271,7 @@ class RuntimeHydrator:
         table = spec.model.__table__
         if spec.model is Game or "game_id" not in table.columns:
             return
-        game_ids = sorted({str(getattr(row, "game_id")) for row in rows if getattr(row, "game_id", None)})
+        game_ids = sorted({str(row.game_id) for row in rows if getattr(row, "game_id", None)})
         if not game_ids:
             return
         self.target_session.execute(table.delete().where(table.c.game_id.in_(game_ids)))
@@ -281,7 +279,7 @@ class RuntimeHydrator:
     def _insert_mappings(
         self,
         spec: HydrationSpec,
-        mappings: List[Dict[str, object]],
+        mappings: list[dict[str, object]],
         columns: Sequence[str],
     ) -> None:
         table = spec.model.__table__
@@ -301,20 +299,19 @@ class RuntimeHydrator:
             return
         self.target_session.execute(table.insert(), mappings)
 
-    def _filter_child_rows_with_parent_games(self, spec: HydrationSpec, rows: List[object]) -> List[object]:
+    def _filter_child_rows_with_parent_games(self, spec: HydrationSpec, rows: list[object]) -> list[object]:
         if spec.model is Game or "game_id" not in spec.model.__table__.columns:
             return rows
-        game_ids = sorted({str(getattr(row, "game_id")) for row in rows if getattr(row, "game_id", None)})
+        game_ids = sorted({str(row.game_id) for row in rows if getattr(row, "game_id", None)})
         if not game_ids:
             return rows
         existing_ids = {
-            str(row[0])
-            for row in self.target_session.query(Game.game_id).filter(Game.game_id.in_(game_ids)).all()
+            str(row[0]) for row in self.target_session.query(Game.game_id).filter(Game.game_id.in_(game_ids)).all()
         }
         return [row for row in rows if str(getattr(row, "game_id", "")) in existing_ids]
 
     def _ensure_player_basic_refs(self, rows: Iterable[object]) -> None:
-        refs: Dict[int, str] = {}
+        refs: dict[int, str] = {}
         for row in rows:
             player_id = getattr(row, "player_id", None)
             if player_id is None:

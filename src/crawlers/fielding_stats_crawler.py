@@ -2,21 +2,22 @@
 전체 선수의 수비 기록을 포지션별 랭킹 페이지에서 크롤링하고 DB에 저장합니다.
 (2025년 10월 업데이트: KBO 웹사이트에서 개별 선수 수비 페이지가 제거되어 포지션별 랭킹 페이지 사용)
 """
+
 import logging
-from playwright.sync_api import sync_playwright
 import sqlite3
-import sys
 import time
 from datetime import datetime
-from pathlib import Path
+
+from playwright.sync_api import sync_playwright
 
 from src.utils.playwright_blocking import install_sync_resource_blocking
 
-
 logger = logging.getLogger(__name__)
-from src.utils.team_codes import resolve_team_code
-from src.utils.request_policy import RequestPolicy
+import contextlib
+
 from src.utils.player_season_stat_validation import filter_valid_season_stat_payloads
+from src.utils.request_policy import RequestPolicy
+from src.utils.team_codes import resolve_team_code
 
 
 def build_fielding_crawl_summary(records):
@@ -46,7 +47,7 @@ def crawl_all_fielding_stats(year=2025):
         list: 수비 기록 딕셔너리 리스트
     """
     fielding_data = []
-    fielding_data_map = {} # (player_id, team_id, position_id) -> record
+    fielding_data_map = {}  # (player_id, team_id, position_id) -> record
     policy = RequestPolicy()
 
     with sync_playwright() as playwright:
@@ -56,54 +57,52 @@ def crawl_all_fielding_stats(year=2025):
         install_sync_resource_blocking(page)
 
         # 포지션별 수비 랭킹 페이지
-        url = 'https://www.koreabaseball.com/Record/Player/Defense/Basic.aspx'
+        url = "https://www.koreabaseball.com/Record/Player/Defense/Basic.aspx"
         print(f"📊 수비 기록 페이지 접속: {url}")
         try:
-            page.goto(url, wait_until='load', timeout=60000)
-            page.wait_for_load_state('networkidle', timeout=15000)
+            page.goto(url, wait_until="load", timeout=60000)
+            page.wait_for_load_state("networkidle", timeout=15000)
         except Exception:
             logger.exception("⚠️ 페이지 초기 대기 중 경고 (무시 가능)")
         time.sleep(2)
 
         try:
             # 연도 선택
-            year_select = page.query_selector('select#cphContents_cphContents_cphContents_ddlSeason_ddlSeason')
+            year_select = page.query_selector("select#cphContents_cphContents_cphContents_ddlSeason_ddlSeason")
             if year_select:
-                page.select_option('select#cphContents_cphContents_cphContents_ddlSeason_ddlSeason', str(year))
-                try:
-                    page.wait_for_load_state('networkidle', timeout=15000)
-                except Exception:
-                    pass
+                page.select_option("select#cphContents_cphContents_cphContents_ddlSeason_ddlSeason", str(year))
+                with contextlib.suppress(Exception):
+                    page.wait_for_load_state("networkidle", timeout=15000)
                 time.sleep(2)
                 print(f"✅ {year}년 데이터 선택 완료")
 
             # 포지션 한글 → ID 매핑
             position_mapping = {
-                '투수': 'P',
-                '포수': 'C',
-                '1루수': '1B',
-                '2루수': '2B',
-                '3루수': '3B',
-                '유격수': 'SS',
-                '좌익수': 'LF',
-                '중견수': 'CF',
-                '우익수': 'RF',
-                '외야수': 'OF',
-                '내야수': 'IF',
-                '지명타자': 'DH'
+                "투수": "P",
+                "포수": "C",
+                "1루수": "1B",
+                "2루수": "2B",
+                "3루수": "3B",
+                "유격수": "SS",
+                "좌익수": "LF",
+                "중견수": "CF",
+                "우익수": "RF",
+                "외야수": "OF",
+                "내야수": "IF",
+                "지명타자": "DH",
             }
 
             # 1. 기본 수집: 팀별 전체 선수 (13개 기본 컬럼)
-            team_select = page.query_selector('select#cphContents_cphContents_cphContents_ddlTeam_ddlTeam')
+            team_select = page.query_selector("select#cphContents_cphContents_cphContents_ddlTeam_ddlTeam")
             if not team_select:
                 print("⚠️ 팀 선택 드롭다운을 찾을 수 없습니다.")
                 browser.close()
                 return []
 
-            options = team_select.query_selector_all('option')
+            options = team_select.query_selector_all("option")
             teams = []
             for opt in options:
-                val = opt.get_attribute('value')
+                val = opt.get_attribute("value")
                 text = opt.inner_text().strip()
                 if val and val != "":
                     teams.append((val, text))
@@ -114,44 +113,62 @@ def crawl_all_fielding_stats(year=2025):
                 try:
                     print(f"\n🏢 [{team_name}] 수비 기록 크롤링 중...")
                     # 포지션 선택을 "전체"로 초기화 (중요)
-                    page.select_option('select#cphContents_cphContents_cphContents_ddlPos_ddlPos', value='')
+                    page.select_option("select#cphContents_cphContents_cphContents_ddlPos_ddlPos", value="")
                     time.sleep(1)
-                    
+
                     with page.expect_response("**/Record/Player/Defense/Basic.aspx", timeout=20000):
-                        page.select_option('select#cphContents_cphContents_cphContents_ddlTeam_ddlTeam', value=team_val)
-                    page.wait_for_load_state('networkidle', timeout=15000)
+                        page.select_option("select#cphContents_cphContents_cphContents_ddlTeam_ddlTeam", value=team_val)
+                    page.wait_for_load_state("networkidle", timeout=15000)
                     time.sleep(2)
 
-                    pagination = page.query_selector('.paging')
+                    pagination = page.query_selector(".paging")
                     total_pages = 1
                     if pagination:
-                        page_numbers = [int(link.inner_text().strip()) for link in pagination.query_selector_all('a') if link.inner_text().strip().isdigit()]
-                        if page_numbers: total_pages = max(page_numbers)
+                        page_numbers = [
+                            int(link.inner_text().strip())
+                            for link in pagination.query_selector_all("a")
+                            if link.inner_text().strip().isdigit()
+                        ]
+                        if page_numbers:
+                            total_pages = max(page_numbers)
 
                     for current_page in range(1, total_pages + 1):
                         if current_page > 1:
                             try:
-                                page_link = next((link for link in page.query_selector('.paging').query_selector_all('a') if link.inner_text().strip() == str(current_page)), None)
+                                page_link = next(
+                                    (
+                                        link
+                                        for link in page.query_selector(".paging").query_selector_all("a")
+                                        if link.inner_text().strip() == str(current_page)
+                                    ),
+                                    None,
+                                )
                                 if page_link:
                                     with page.expect_response("**/Record/Player/Defense/Basic.aspx", timeout=20000):
                                         page_link.click()
-                                    page.wait_for_load_state('networkidle', timeout=15000)
+                                    page.wait_for_load_state("networkidle", timeout=15000)
                                     time.sleep(2)
                             except Exception:
                                 logger.exception(f"   ⚠️ 페이지 {current_page} 이동 중 오류")
                                 break
 
-                        table = page.query_selector('table.tData01.tt')
-                        if not table or not table.query_selector('tbody'): continue
+                        table = page.query_selector("table.tData01.tt")
+                        if not table or not table.query_selector("tbody"):
+                            continue
 
-                        for row in table.query_selector('tbody').query_selector_all('tr'):
-                            cells = row.query_selector_all('td')
+                        for row in table.query_selector("tbody").query_selector_all("tr"):
+                            cells = row.query_selector_all("td")
                             if len(cells) >= 13:
                                 try:
-                                    player_link = cells[1].query_selector('a')
-                                    player_id = player_link.get_attribute('href').split('playerId=')[1].split('&')[0] if player_link else None
-                                    if not player_id: continue
-                                    
+                                    player_link = cells[1].query_selector("a")
+                                    player_id = (
+                                        player_link.get_attribute("href").split("playerId=")[1].split("&")[0]
+                                        if player_link
+                                        else None
+                                    )
+                                    if not player_id:
+                                        continue
+
                                     p_name = cells[1].inner_text().strip()
                                     row_team = cells[2].inner_text().strip()
                                     pos_text = cells[3].inner_text().strip()
@@ -159,44 +176,49 @@ def crawl_all_fielding_stats(year=2025):
                                     team_id = resolve_team_code(row_team, year) or row_team
 
                                     def parse_inns(txt):
-                                        txt = txt.strip().replace(',', '')
-                                        if not txt or txt == '-': return 0.0
-                                        if ' ' in txt:
-                                            parts = txt.split(' ')
+                                        txt = txt.strip().replace(",", "")
+                                        if not txt or txt == "-":
+                                            return 0.0
+                                        if " " in txt:
+                                            parts = txt.split(" ")
                                             val = float(parts[0])
-                                            if len(parts) > 1 and '/' in parts[1]:
-                                                frac = parts[1].split('/')
+                                            if len(parts) > 1 and "/" in parts[1]:
+                                                frac = parts[1].split("/")
                                                 val += float(frac[0]) / float(frac[1])
                                             return val
-                                        if '/' in txt:
-                                            frac = txt.split('/')
+                                        if "/" in txt:
+                                            frac = txt.split("/")
                                             return float(frac[0]) / float(frac[1])
                                         return float(txt)
 
                                     def s_int(cell_el):
-                                        try: return int(cell_el.inner_text().strip().replace(',', ''))
-                                        except Exception: return 0
-                                    
+                                        try:
+                                            return int(cell_el.inner_text().strip().replace(",", ""))
+                                        except Exception:
+                                            return 0
+
                                     def s_float(cell_el):
-                                        try: return float(cell_el.inner_text().strip().replace(',', ''))
-                                        except Exception: return 0.0
+                                        try:
+                                            return float(cell_el.inner_text().strip().replace(",", ""))
+                                        except Exception:
+                                            return 0.0
 
                                     record = {
-                                        'player_id': player_id,
-                                        'player_name': p_name,
-                                        'team_id': team_id,
-                                        'year': year,
-                                        'position_id': pos_id,
-                                        'games': s_int(cells[4]),
-                                        'games_started': s_int(cells[5]),
-                                        'innings': parse_inns(cells[6].inner_text()),
-                                        'errors': s_int(cells[7]),
-                                        'pickoffs': s_int(cells[8]),
-                                        'putouts': s_int(cells[9]),
-                                        'assists': s_int(cells[10]),
-                                        'double_plays': s_int(cells[11]),
-                                        'fielding_pct': s_float(cells[12]),
-                                        'source': 'CRAWLER',
+                                        "player_id": player_id,
+                                        "player_name": p_name,
+                                        "team_id": team_id,
+                                        "year": year,
+                                        "position_id": pos_id,
+                                        "games": s_int(cells[4]),
+                                        "games_started": s_int(cells[5]),
+                                        "innings": parse_inns(cells[6].inner_text()),
+                                        "errors": s_int(cells[7]),
+                                        "pickoffs": s_int(cells[8]),
+                                        "putouts": s_int(cells[9]),
+                                        "assists": s_int(cells[10]),
+                                        "double_plays": s_int(cells[11]),
+                                        "fielding_pct": s_float(cells[12]),
+                                        "source": "CRAWLER",
                                     }
                                     fielding_data_map[(player_id, team_id, pos_id)] = record
                                 except Exception:
@@ -210,69 +232,97 @@ def crawl_all_fielding_stats(year=2025):
             print("\n🏃 [상세] 포수 전문 지표 수집 중 (전체 팀)...")
             try:
                 # 페이지 초기화
-                page.goto(url, wait_until='load', timeout=60000)
-                page.wait_for_load_state('networkidle', timeout=15000)
+                page.goto(url, wait_until="load", timeout=60000)
+                page.wait_for_load_state("networkidle", timeout=15000)
                 time.sleep(2)
 
                 # 1단계: 포지션 "포수(2)" 선택
                 with page.expect_response("**/Record/Player/Defense/Basic.aspx", timeout=20000):
-                    page.select_option('select#cphContents_cphContents_cphContents_ddlPos_ddlPos', value='2')
-                page.wait_for_load_state('networkidle', timeout=15000)
+                    page.select_option("select#cphContents_cphContents_cphContents_ddlPos_ddlPos", value="2")
+                page.wait_for_load_state("networkidle", timeout=15000)
                 time.sleep(3)
 
                 # 2단계: 팀 "전체" 선택 (이미 전체일 수도 있으므로 확인 후 선택)
-                team_val = page.evaluate("document.querySelector('select#cphContents_cphContents_cphContents_ddlTeam_ddlTeam').value")
+                team_val = page.evaluate(
+                    "document.querySelector('select#cphContents_cphContents_cphContents_ddlTeam_ddlTeam').value"
+                )
                 if team_val != "":
                     with page.expect_response("**/Record/Player/Defense/Basic.aspx", timeout=20000):
-                        page.select_option('select#cphContents_cphContents_cphContents_ddlTeam_ddlTeam', value='')
-                    page.wait_for_load_state('networkidle', timeout=15000)
+                        page.select_option("select#cphContents_cphContents_cphContents_ddlTeam_ddlTeam", value="")
+                    page.wait_for_load_state("networkidle", timeout=15000)
                     time.sleep(3)
 
                 # 페이지네이션 (포수가 많을 경우 대비)
-                pagination = page.query_selector('.paging')
+                pagination = page.query_selector(".paging")
                 total_pages = 1
                 if pagination:
-                    p_nums = [int(link.inner_text().strip()) for link in pagination.query_selector_all('a') if link.inner_text().strip().isdigit()]
-                    if p_nums: total_pages = max(p_nums)
+                    p_nums = [
+                        int(link.inner_text().strip())
+                        for link in pagination.query_selector_all("a")
+                        if link.inner_text().strip().isdigit()
+                    ]
+                    if p_nums:
+                        total_pages = max(p_nums)
 
                 for current_page in range(1, total_pages + 1):
                     print(f"   📄 포수 상세 페이지 {current_page}/{total_pages} 크롤링 중...")
                     if current_page > 1:
-                        p_link = next((link for link in page.query_selector('.paging').query_selector_all('a') if link.inner_text().strip() == str(current_page)), None)
+                        p_link = next(
+                            (
+                                link
+                                for link in page.query_selector(".paging").query_selector_all("a")
+                                if link.inner_text().strip() == str(current_page)
+                            ),
+                            None,
+                        )
                         if p_link:
                             with page.expect_response("**/Record/Player/Defense/Basic.aspx", timeout=20000):
                                 p_link.click()
-                            page.wait_for_load_state('networkidle', timeout=15000)
+                            page.wait_for_load_state("networkidle", timeout=15000)
                             time.sleep(2)
 
-                    table = page.query_selector('table.tData01.tt')
-                    if not table or not table.query_selector('tbody'): continue
+                    table = page.query_selector("table.tData01.tt")
+                    if not table or not table.query_selector("tbody"):
+                        continue
 
-                    for row in table.query_selector('tbody').query_selector_all('tr'):
-                        cells = row.query_selector_all('td')
+                    for row in table.query_selector("tbody").query_selector_all("tr"):
+                        cells = row.query_selector_all("td")
                         if len(cells) >= 17:
-                            player_link = cells[1].query_selector('a')
-                            player_id = player_link.get_attribute('href').split('playerId=')[1].split('&')[0] if player_link else None
-                            if not player_id: continue
-                            
+                            player_link = cells[1].query_selector("a")
+                            player_id = (
+                                player_link.get_attribute("href").split("playerId=")[1].split("&")[0]
+                                if player_link
+                                else None
+                            )
+                            if not player_id:
+                                continue
+
                             row_team = cells[2].inner_text().strip()
                             team_id = resolve_team_code(row_team, year) or row_team
-                            key = (player_id, team_id, 'C')
+                            key = (player_id, team_id, "C")
 
                             if key in fielding_data_map:
-                                def s_int(cell_el):
-                                    try: return int(cell_el.inner_text().strip().replace(',', ''))
-                                    except Exception: return 0
-                                def s_float(cell_el):
-                                    try: return float(cell_el.inner_text().strip().replace(',', ''))
-                                    except Exception: return 0.0
 
-                                fielding_data_map[key].update({
-                                    'passed_balls': s_int(cells[13]),
-                                    'stolen_bases_allowed': s_int(cells[14]),
-                                    'caught_stealing': s_int(cells[15]),
-                                    'cs_pct': s_float(cells[16])
-                                })
+                                def s_int(cell_el):
+                                    try:
+                                        return int(cell_el.inner_text().strip().replace(",", ""))
+                                    except Exception:
+                                        return 0
+
+                                def s_float(cell_el):
+                                    try:
+                                        return float(cell_el.inner_text().strip().replace(",", ""))
+                                    except Exception:
+                                        return 0.0
+
+                                fielding_data_map[key].update(
+                                    {
+                                        "passed_balls": s_int(cells[13]),
+                                        "stolen_bases_allowed": s_int(cells[14]),
+                                        "caught_stealing": s_int(cells[15]),
+                                        "cs_pct": s_float(cells[16]),
+                                    }
+                                )
                                 # print(f"   ✓ {fielding_data_map[key]['player_name']} ({row_team}) 상세 추가 완료")
                             else:
                                 # 수비 데이터 맵에 없는 경우 (드문 케이스지만 추가)
@@ -287,6 +337,7 @@ def crawl_all_fielding_stats(year=2025):
         except Exception:
             logger.exception("⚠️ 수비 기록 크롤링 중 오류")
             import traceback
+
             traceback.print_exc()
 
         browser.close()
@@ -294,7 +345,7 @@ def crawl_all_fielding_stats(year=2025):
     return fielding_data
 
 
-def save_fielding_stats(year=2025, db_path='data/kbo_dev.db'):
+def save_fielding_stats(year=2025, db_path="data/kbo_dev.db"):
     """
     수비 기록을 크롤링하여 DB에 저장합니다.
 
@@ -317,39 +368,42 @@ def save_fielding_stats(year=2025, db_path='data/kbo_dev.db'):
     skipped_count = 0
 
     for record in fielding_records:
-        if not record['player_id']:
+        if not record["player_id"]:
             skipped_count += 1
             continue
 
         try:
-            cursor.execute('''
+            cursor.execute(
+                """
                 INSERT OR REPLACE INTO player_season_fielding
                 (player_id, team_id, year, position_id, games, games_started,
-                 innings, putouts, assists, errors, double_plays, fielding_pct, pickoffs, 
+                 innings, putouts, assists, errors, double_plays, fielding_pct, pickoffs,
                  passed_balls, stolen_bases_allowed, caught_stealing, cs_pct,
                  updated_at, source)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ''', (
-                record['player_id'],
-                record['team_id'],
-                year,
-                record['position_id'],
-                record['games'],
-                record['games_started'],
-                record['innings'],
-                record['putouts'],
-                record['assists'],
-                record['errors'],
-                record['double_plays'],
-                record['fielding_pct'],
-                record.get('pickoffs', 0),
-                record.get('passed_balls'),
-                record.get('stolen_bases_allowed'),
-                record.get('caught_stealing'),
-                record.get('cs_pct'),
-                datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
-                'CRAWLER'
-            ))
+            """,
+                (
+                    record["player_id"],
+                    record["team_id"],
+                    year,
+                    record["position_id"],
+                    record["games"],
+                    record["games_started"],
+                    record["innings"],
+                    record["putouts"],
+                    record["assists"],
+                    record["errors"],
+                    record["double_plays"],
+                    record["fielding_pct"],
+                    record.get("pickoffs", 0),
+                    record.get("passed_balls"),
+                    record.get("stolen_bases_allowed"),
+                    record.get("caught_stealing"),
+                    record.get("cs_pct"),
+                    datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                    "CRAWLER",
+                ),
+            )
 
             saved_count += 1
 
@@ -366,6 +420,7 @@ def save_fielding_stats(year=2025, db_path='data/kbo_dev.db'):
 
 if __name__ == "__main__":
     import argparse
+
     parser = argparse.ArgumentParser(description="KBO Fielding stats crawler")
     parser.add_argument("--year", type=int, default=2025, help="Season year (default: 2025)")
     parser.add_argument("--save", action="store_true", help="Save to local database")
@@ -373,8 +428,7 @@ if __name__ == "__main__":
 
     print(f"📊 수비 크롤러 실행 (연도: {args.year}, 저장 여부: {args.save})")
     if args.save:
-        save_fielding_stats(args.year, 'data/kbo_dev.db')
+        save_fielding_stats(args.year, "data/kbo_dev.db")
     else:
         data = crawl_all_fielding_stats(args.year)
         print(f"🔍 Dry-run completed: {len(data)} records found.")
-

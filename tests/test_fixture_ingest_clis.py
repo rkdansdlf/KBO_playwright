@@ -91,7 +91,9 @@ def test_run_pipeline_demo_fixture_ingest_uses_shared_save_paths(monkeypatch, tm
         "parse_game_detail_html",
         lambda html, game_id, game_date: detail_payload,
     )
-    monkeypatch.setattr(run_pipeline_demo, "save_game_detail", lambda payload: captured.setdefault("detail", payload) is payload)
+    monkeypatch.setattr(
+        run_pipeline_demo, "save_game_detail", lambda payload: captured.setdefault("detail", payload) is payload
+    )
 
     schedule_count = run_pipeline_demo.ingest_schedule_fixtures(schedule_dir, "regular", 2025)
     detail_count = run_pipeline_demo.ingest_game_fixtures(detail_dir)

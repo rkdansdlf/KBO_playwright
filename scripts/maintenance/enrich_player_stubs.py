@@ -3,6 +3,7 @@ Enrich Player Stubs
 Targets players in 'player_basic' with missing metadata and fills them using PlayerProfileCrawler.
 Focuses on 'active' players to ensure 100% integrity for current/recent seasons.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -17,8 +18,8 @@ from sqlalchemy import bindparam, text
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
-from src.db.engine import SessionLocal
 from src.crawlers.player_profile_crawler import PlayerProfileCrawler
+from src.db.engine import SessionLocal
 from src.repositories.player_basic_repository import PlayerBasicRepository
 from src.utils.playwright_pool import AsyncPlaywrightPool
 

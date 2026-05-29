@@ -1,25 +1,25 @@
 """
 Team-level pitching stats crawler.
 """
+
 from __future__ import annotations
 
 import argparse
 import logging
 import time
-from typing import List, Dict, Any, Optional
-
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
 from bs4 import BeautifulSoup
-from playwright.sync_api import sync_playwright, Page
+from playwright.sync_api import Page, sync_playwright
 
-from src.repositories.team_stats_repository import TeamSeasonPitchingRepository
-from src.db.engine import SessionLocal
 from src.aggregators.team_stat_aggregator import TeamStatAggregator
-from src.utils.team_mapping import get_team_mapping_for_year
-from src.utils.request_policy import RequestPolicy
+from src.db.engine import SessionLocal
+from src.repositories.team_stats_repository import TeamSeasonPitchingRepository
 from src.utils.playwright_blocking import install_sync_resource_blocking
+from src.utils.request_policy import RequestPolicy
+from src.utils.team_mapping import get_team_mapping_for_year
 
 TEAM_PITCHING_URLS = [
     "https://www.koreabaseball.com/Record/Team/Pitcher/Basic.aspx",
@@ -90,33 +90,34 @@ class TeamPitchingStatsCrawler:
         self.repo = TeamSeasonPitchingRepository()
         self.policy = policy or RequestPolicy()
 
-    def crawl(self, season: int, *, persist: bool = True, headless: bool = True) -> List[Dict[str, Any]]:
+    def crawl(self, season: int, *, persist: bool = True, headless: bool = True) -> list[dict[str, Any]]:
         mapping = get_team_mapping_for_year(season)
         stats = self._collect_from_site(season, mapping, headless=headless)
-        
+
         if not stats:
             print(f"⚠️ KBO 팀 투구 페이지 오류. DB에서 폴백 집계를 시작합니다 (시즌: {season})...")
             with SessionLocal() as session:
-                stats = TeamStatAggregator.aggregate_team_pitching(session, season, self.league, source='FALLBACK_AUTO')
+                stats = TeamStatAggregator.aggregate_team_pitching(session, season, self.league, source="FALLBACK_AUTO")
                 # 팀명 보충
                 reverse_mapping = {v: k for k, v in mapping.items()}
                 for s in stats:
-                    s['team_name'] = reverse_mapping.get(s['team_id'], s['team_id'])
+                    s["team_name"] = reverse_mapping.get(s["team_id"], s["team_id"])
 
                 # 순위 데이터도 함께 재계산 (통합 폴백 로직)
                 print(f"⚠️ 팀 순위 데이터도 함께 재계산합니다 (시즌: {season})...")
                 try:
                     from src.cli.calculate_standings import StandingsCalculator
+
                     calc = StandingsCalculator(session)
                     calc.calculate_year(season)
                 except Exception:
                     logger.exception("[ERROR] 순위 연산 폴백 중 오류 발생")
-        
+
         if persist and stats:
             self.repo.upsert_many(stats)
         return stats
 
-    def _collect_from_site(self, season: int, team_mapping: Dict[str, str], *, headless: bool) -> List[Dict[str, Any]]:
+    def _collect_from_site(self, season: int, team_mapping: dict[str, str], *, headless: bool) -> list[dict[str, Any]]:
         with sync_playwright() as p:
             browser = p.chromium.launch(headless=headless)
             context = browser.new_context(**self.policy.build_context_kwargs(locale="ko-KR"))
@@ -165,8 +166,8 @@ def parse_team_pitching_html(
     html: str,
     season: int,
     league: str,
-    team_mapping: Dict[str, str],
-) -> List[Dict[str, Any]]:
+    team_mapping: dict[str, str],
+) -> list[dict[str, Any]]:
     soup = BeautifulSoup(html, "lxml")
     table = soup.select_one("table.tData01") or soup.select_one("table")
     if not table:
@@ -184,7 +185,7 @@ def parse_team_pitching_html(
     if not rows:
         rows = [row for row in table.select("tr") if row.find_all("td")]
 
-    stats: List[Dict[str, Any]] = []
+    stats: list[dict[str, Any]] = []
     for row in rows:
         cells = row.find_all("td")
         if len(cells) < len(indexes):
@@ -193,14 +194,14 @@ def parse_team_pitching_html(
         if not team_name:
             continue
         team_id = _resolve_team_id(team_name, team_mapping)
-        payload: Dict[str, Any] = {
+        payload: dict[str, Any] = {
             "team_id": team_id or team_name,
             "team_name": team_name,
             "season": season,
             "league": league,
         }
 
-        extras: Dict[str, Any] = {}
+        extras: dict[str, Any] = {}
         for header_key, idx in indexes.items():
             if header_key == "team_name":
                 continue
@@ -224,8 +225,8 @@ def parse_team_pitching_html(
     return stats
 
 
-def _build_column_map(headers: List[str]) -> Dict[str, int]:
-    indexes: Dict[str, int] = {}
+def _build_column_map(headers: list[str]) -> dict[str, int]:
+    indexes: dict[str, int] = {}
     for idx, raw in enumerate(headers):
         key = raw.strip().lower()
         normalized = HEADER_MAP.get(key)
@@ -236,13 +237,13 @@ def _build_column_map(headers: List[str]) -> Dict[str, int]:
     return indexes
 
 
-def _get_cell_value(cells, index: int) -> Optional[str]:
+def _get_cell_value(cells, index: int) -> str | None:
     if index >= len(cells):
         return None
     return cells[index].get_text(strip=True)
 
 
-def _resolve_team_id(team_name: str, mapping: Dict[str, str]) -> Optional[str]:
+def _resolve_team_id(team_name: str, mapping: dict[str, str]) -> str | None:
     key = team_name.strip()
     if key in mapping:
         return mapping[key]
@@ -252,7 +253,7 @@ def _resolve_team_id(team_name: str, mapping: Dict[str, str]) -> Optional[str]:
     return None
 
 
-def _parse_numeric(value: str, as_float: bool) -> Optional[float | int]:
+def _parse_numeric(value: str, as_float: bool) -> float | int | None:
     cleaned = value.replace(",", "").replace("%", "")
     if cleaned in ("", "-", "N/A"):
         return None
@@ -265,7 +266,7 @@ def _parse_numeric(value: str, as_float: bool) -> Optional[float | int]:
             return None
 
 
-def _parse_innings(value: str) -> Optional[float]:
+def _parse_innings(value: str) -> float | None:
     cleaned = value.replace(",", "")
     if cleaned in ("", "-", "N/A"):
         return None

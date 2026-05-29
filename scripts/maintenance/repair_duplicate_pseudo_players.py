@@ -5,6 +5,7 @@ Temporary IDs are local profiles with player_id >= 900000. This tool only
 merges rows when evidence narrows duplicate names to one team and at most one
 uniform number. Ambiguous duplicate names are reported and left untouched.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -28,7 +29,6 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from src.db.engine import DATABASE_URL
 from src.utils.team_codes import resolve_team_code, team_code_from_game_id_segment
-
 
 PSEUDO_MIN_PLAYER_ID = 900000
 DEFAULT_OUTPUT_DIR = PROJECT_ROOT / "data" / "repair_duplicate_pseudo_players"
@@ -212,11 +212,7 @@ def _write_csv(path: Path, rows: Iterable[dict[str, Any]], fieldnames: list[str]
 
 
 def _parse_id_list(value: Any) -> list[int]:
-    return [
-        int(part.strip())
-        for part in str(value or "").split(",")
-        if part.strip()
-    ]
+    return [int(part.strip()) for part in str(value or "").split(",") if part.strip()]
 
 
 def _load_mergeable_worklist(path: Path) -> list[dict[str, Any]]:
@@ -360,9 +356,7 @@ def _season_from_row(row: dict[str, Any], spec: ReferenceSpec) -> int | None:
 
 def _load_pseudo_players(conn, tables: dict[str, Table]) -> list[dict[str, Any]]:
     player_basic = tables["player_basic"]
-    rows = conn.execute(
-        select(player_basic).where(player_basic.c.player_id >= PSEUDO_MIN_PLAYER_ID)
-    ).mappings()
+    rows = conn.execute(select(player_basic).where(player_basic.c.player_id >= PSEUDO_MIN_PLAYER_ID)).mappings()
     return [dict(row) for row in rows]
 
 
@@ -371,18 +365,13 @@ def _load_usage_evidence(
     tables: dict[str, Table],
     player_ids: list[int],
 ) -> dict[int, dict[str, Any]]:
-    evidence = {
-        int(player_id): {"teams": set(), "uniforms": set(), "reference_rows": 0}
-        for player_id in player_ids
-    }
+    evidence = {int(player_id): {"teams": set(), "uniforms": set(), "reference_rows": 0} for player_id in player_ids}
     if not player_ids:
         return evidence
 
     for spec in _available_reference_specs(tables):
         table = tables[spec.table_name]
-        rows = conn.execute(
-            select(table).where(table.c[spec.player_column].in_(player_ids))
-        ).mappings()
+        rows = conn.execute(select(table).where(table.c[spec.player_column].in_(player_ids))).mappings()
         for raw_row in rows:
             row = dict(raw_row)
             player_id = row.get(spec.player_column)
@@ -531,7 +520,9 @@ def _comparison_payload(row: dict[str, Any], table: Table, player_column: str) -
     }
 
 
-def _unique_key(row: dict[str, Any], unique_columns: tuple[str, ...], player_column: str, target_id: int) -> tuple[str, ...]:
+def _unique_key(
+    row: dict[str, Any], unique_columns: tuple[str, ...], player_column: str, target_id: int
+) -> tuple[str, ...]:
     values = []
     for column_name in unique_columns:
         value = target_id if column_name == player_column else row.get(column_name)
@@ -573,9 +564,7 @@ def detect_group_conflicts(
             continue
         rows = [
             dict(row)
-            for row in conn.execute(
-                select(table).where(table.c[spec.player_column].in_(player_ids))
-            ).mappings()
+            for row in conn.execute(select(table).where(table.c[spec.player_column].in_(player_ids))).mappings()
         ]
         rows_by_key: dict[tuple[str, ...], list[dict[str, Any]]] = defaultdict(list)
         for row in rows:
@@ -618,9 +607,7 @@ def _conflicted_group_keys(conflicts: list[dict[str, Any]]) -> set[tuple[int, tu
     for conflict in conflicts:
         source_ids = tuple(
             sorted(
-                int(part.strip())
-                for part in str(conflict.get("source_player_ids") or "").split(",")
-                if part.strip()
+                int(part.strip()) for part in str(conflict.get("source_player_ids") or "").split(",") if part.strip()
             )
         )
         if not source_ids:
@@ -643,12 +630,7 @@ def _apply_unique_reference_spec(
         return 0, 0, 0
 
     all_ids = [target_id, *source_ids]
-    rows = [
-        dict(row)
-        for row in conn.execute(
-            select(table).where(table.c[spec.player_column].in_(all_ids))
-        ).mappings()
-    ]
+    rows = [dict(row) for row in conn.execute(select(table).where(table.c[spec.player_column].in_(all_ids))).mappings()]
     rows.sort(key=lambda row: (0 if int(row[spec.player_column]) == target_id else 1, row.get("id") or 0))
     seen: dict[tuple[str, ...], dict[str, Any]] = {}
     updated = 0
@@ -690,9 +672,7 @@ def _apply_direct_reference_spec(
     source_ids: list[int],
 ) -> int:
     result = conn.execute(
-        table.update()
-        .where(table.c[spec.player_column].in_(source_ids))
-        .values(**{spec.player_column: target_id})
+        table.update().where(table.c[spec.player_column].in_(source_ids)).values(**{spec.player_column: target_id})
     )
     return int(result.rowcount or 0)
 
@@ -737,9 +717,7 @@ def apply_group(
             )
 
     player_basic = tables["player_basic"]
-    deleted = conn.execute(
-        player_basic.delete().where(player_basic.c.player_id.in_(source_ids))
-    ).rowcount
+    deleted = conn.execute(player_basic.delete().where(player_basic.c.player_id.in_(source_ids))).rowcount
     stats["deleted_player_basic_rows"] = int(deleted or 0)
     return stats
 
@@ -816,10 +794,7 @@ def repair_duplicate_pseudo_players(
                 safe_groups = groups
                 skipped_conflict_groups = 0
             else:
-                safe_groups = [
-                    group for group in groups
-                    if _group_conflict_key(group) not in conflicted_group_keys
-                ]
+                safe_groups = [group for group in groups if _group_conflict_key(group) not in conflicted_group_keys]
                 skipped_conflict_groups = len(conflicted_group_keys)
             if apply:
                 for group in safe_groups:

@@ -23,7 +23,6 @@ from src.services.game_collection_service import (
 )
 from src.utils.team_codes import normalize_kbo_game_id
 
-
 ACTIONABLE_CLASSIFICATIONS = {"pending_recrawl", "past_scheduled_missing_detail", "dry_run_target"}
 
 
@@ -83,7 +82,9 @@ async def run(args: argparse.Namespace) -> int:
         print("[BACKFILL] No targets found.")
         return 0
 
-    output_path = Path(args.output or f"data/repair_game_id_integrity/backfill_results_{datetime.now():%Y%m%d_%H%M%S}.csv")
+    output_path = Path(
+        args.output or f"data/repair_game_id_integrity/backfill_results_{datetime.now():%Y%m%d_%H%M%S}.csv"
+    )
     if not args.apply:
         _write_results(
             output_path,
@@ -190,7 +191,9 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Backfill missing game details from a repair manifest.")
     parser.add_argument("--manifest", required=True, help="CSV from repair_game_id_integrity.py")
     parser.add_argument("--output", help="Result CSV path")
-    parser.add_argument("--apply", action="store_true", help="Actually crawl and save. Default writes dry-run targets only.")
+    parser.add_argument(
+        "--apply", action="store_true", help="Actually crawl and save. Default writes dry-run targets only."
+    )
     parser.add_argument("--relay", action="store_true", help="Also fetch relay data after saving detail.")
     parser.add_argument("--limit", type=int, help="Limit number of manifest rows")
     parser.add_argument("--delay", type=float, default=1.2)

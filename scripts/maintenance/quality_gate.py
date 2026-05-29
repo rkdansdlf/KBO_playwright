@@ -11,6 +11,7 @@ Checks:
 CSV snapshots are written by default. Use --no-write for CI or agent
 sessions that should not create artifact directories.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -20,7 +21,7 @@ import os
 import sys
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Sequence, Set, Tuple
+from typing import Any, Sequence
 
 from dotenv import load_dotenv
 from sqlalchemy import create_engine, text
@@ -29,8 +30,8 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from src.db.engine import SessionLocal
 from scripts.maintenance.full_audit import collect_audit_metrics, flatten_gate_metrics
+from src.db.engine import SessionLocal
 
 BASELINE_KEYS = (
     "past_missing_runs_max",
@@ -57,7 +58,7 @@ BASELINE_KEYS = (
 STRICT_ZERO_KEYS = tuple(key.removesuffix("_max") for key in BASELINE_KEYS)
 
 
-def load_baseline(path: Path) -> Dict[str, int]:
+def load_baseline(path: Path) -> dict[str, int]:
     data = json.loads(path.read_text(encoding="utf-8"))
     missing = [key for key in BASELINE_KEYS if key not in data]
     if missing:
@@ -65,7 +66,7 @@ def load_baseline(path: Path) -> Dict[str, int]:
     return {k: int(v) for k, v in data.items()}
 
 
-def collect_metrics(session_or_conn) -> Dict[str, int]:
+def collect_metrics(session_or_conn) -> dict[str, int]:
     metrics_sql = {
         "past_missing_runs": """
             SELECT COUNT(*) FROM game
@@ -91,7 +92,7 @@ def collect_metrics(session_or_conn) -> Dict[str, int]:
                OR UPPER(TRIM(COALESCE(p.name, ''))) LIKE 'UNKNOWN %'
         """,
     }
-    metrics: Dict[str, int] = {}
+    metrics: dict[str, int] = {}
     for key, sql in metrics_sql.items():
         metrics[key] = int(session_or_conn.execute(text(sql)).scalar() or 0)
 
@@ -137,7 +138,7 @@ def collect_metrics(session_or_conn) -> Dict[str, int]:
     return metrics
 
 
-def fetch_past_missing_game_ids(session_or_conn) -> Set[str]:
+def fetch_past_missing_game_ids(session_or_conn) -> set[str]:
     rows = session_or_conn.execute(
         text(
             """
@@ -154,14 +155,14 @@ def fetch_past_missing_game_ids(session_or_conn) -> Set[str]:
 
 def evaluate_quality_gate(
     *,
-    local_metrics: Dict[str, int],
-    oci_metrics: Dict[str, int],
-    baseline: Dict[str, int],
-    local_missing_ids: Set[str],
-    oci_missing_ids: Set[str],
+    local_metrics: dict[str, int],
+    oci_metrics: dict[str, int],
+    baseline: dict[str, int],
+    local_missing_ids: set[str],
+    oci_missing_ids: set[str],
     strict_zero: bool = False,
-) -> List[str]:
-    failures: List[str] = []
+) -> list[str]:
+    failures: list[str] = []
 
     threshold_map = {
         "past_missing_runs_max": "past_missing_runs",
@@ -255,7 +256,7 @@ def evaluate_quality_gate(
     return failures
 
 
-def _write_snapshot(path: Path, rows: Sequence[Tuple[str, Any]]) -> None:
+def _write_snapshot(path: Path, rows: Sequence[tuple[str, Any]]) -> None:
     with path.open("w", newline="", encoding="utf-8") as fh:
         writer = csv.writer(fh)
         writer.writerow(("metric", "count"))
@@ -263,7 +264,7 @@ def _write_snapshot(path: Path, rows: Sequence[Tuple[str, Any]]) -> None:
             writer.writerow((key, value))
 
 
-def _write_set_diff(path: Path, local_only: Set[str], oci_only: Set[str]) -> None:
+def _write_set_diff(path: Path, local_only: set[str], oci_only: set[str]) -> None:
     with path.open("w", newline="", encoding="utf-8") as fh:
         writer = csv.writer(fh)
         writer.writerow(("scope", "game_id"))
@@ -282,7 +283,7 @@ def run_quality_gate(
     oci_only: bool = False,
     write_artifacts: bool = True,
     strict_zero: bool = False,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     baseline = load_baseline(baseline_path)
 
     if oci_only:

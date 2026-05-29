@@ -1,21 +1,23 @@
 import os
-from sqlalchemy import create_engine, text
+
 from dotenv import load_dotenv
+from sqlalchemy import create_engine, text
+
 
 def verify_oci_data():
     load_dotenv()
-    oci_url = os.getenv('OCI_DB_URL') or os.getenv('TARGET_DATABASE_URL')
+    oci_url = os.getenv("OCI_DB_URL") or os.getenv("TARGET_DATABASE_URL")
     if not oci_url:
         print("❌ OCI_DB_URL is not set.")
         return
 
     engine = create_engine(oci_url)
-    
+
     with engine.connect() as conn:
         print("🔍 Checking game_summary for large detail_text rows...")
         sql = """
             SELECT game_id, summary_type, LENGTH(detail_text) as len
-            FROM game_summary 
+            FROM game_summary
             WHERE summary_type = '리뷰_WPA'
             ORDER BY len DESC
             LIMIT 5;
@@ -38,6 +40,7 @@ def verify_oci_data():
             print(f"⚠️ Found {len(duplicates)} duplicate sets!")
 
     engine.dispose()
+
 
 if __name__ == "__main__":
     verify_oci_data()

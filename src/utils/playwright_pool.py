@@ -1,13 +1,14 @@
 """
 Async Playwright browser/page pool with optional resource blocking.
 """
+
 from __future__ import annotations
 
 import asyncio
-from contextlib import asynccontextmanager
-from typing import Any, Dict, Optional, List
+from contextlib import asynccontextmanager, suppress
+from typing import Any
 
-from playwright.async_api import async_playwright, Browser, BrowserContext, Page
+from playwright.async_api import Browser, BrowserContext, Page, async_playwright
 
 from src.utils.playwright_blocking import install_async_resource_blocking
 
@@ -19,9 +20,9 @@ class AsyncPlaywrightPool:
         max_pages: int = 1,
         headless: bool = True,
         browser_type: str = "chromium",
-        context_kwargs: Optional[Dict[str, Any]] = None,
+        context_kwargs: dict[str, Any] | None = None,
         block_resources: bool = True,
-        timeout_ms: Optional[int] = None,
+        timeout_ms: int | None = None,
         requires_auth: bool = False,
     ) -> None:
         self.max_pages = max_pages
@@ -33,13 +34,13 @@ class AsyncPlaywrightPool:
         self.requires_auth = requires_auth
 
         self._playwright = None
-        self._browser: Optional[Browser] = None
-        self._context: Optional[BrowserContext] = None
-        self._queue: Optional[asyncio.Queue[Page]] = None
-        self._pages: List[Page] = []
+        self._browser: Browser | None = None
+        self._context: BrowserContext | None = None
+        self._queue: asyncio.Queue[Page] | None = None
+        self._pages: list[Page] = []
         self._started = False
 
-    async def __aenter__(self) -> "AsyncPlaywrightPool":
+    async def __aenter__(self) -> AsyncPlaywrightPool:
         await self.start()
         return self
 
@@ -51,7 +52,7 @@ class AsyncPlaywrightPool:
             return
 
         from src.utils.kbo_auth import KboAuthenticator
-        
+
         # Automated Authentication if required
         if self.requires_auth:
             if not KboAuthenticator.is_authenticated():
@@ -60,28 +61,29 @@ class AsyncPlaywrightPool:
                 success = await auth.login(headless=self.headless)
                 if not success:
                     print("[POOL] Warning: Auto-login failed. Proceeding without auth.")
-            
+
             if KboAuthenticator.is_authenticated():
                 print("[POOL] Using saved session state.")
                 self.context_kwargs["storage_state"] = KboAuthenticator.get_auth_state_path()
 
         self._playwright = await async_playwright().start()
         browser_factory = getattr(self._playwright, self.browser_type)
-        
+
         # Add evasion arguments
         launch_args = [
             "--disable-blink-features=AutomationControlled",
         ]
         self._browser = await browser_factory.launch(headless=self.headless, args=launch_args)
-        
+
         # Dynamic User-Agent Rotation
         if "user_agent" not in self.context_kwargs:
             from src.utils.request_policy import RequestPolicy
+
             policy = RequestPolicy()
             self.context_kwargs["user_agent"] = policy.random_user_agent()
 
         self._context = await self._browser.new_context(**self.context_kwargs)
-        
+
         # Inject Stealth Script
         stealth_script = """
         () => {
@@ -101,7 +103,7 @@ class AsyncPlaywrightPool:
                 if (parameter === 37446) return 'Intel(R) Iris(TM) Plus Graphics 640';
                 return getParameter.apply(this, arguments);
             };
-            
+
             // 5. Hide direct automation clues
             delete navigator.__proto__.webdriver;
         }
@@ -149,26 +151,18 @@ class AsyncPlaywrightPool:
         if not self._started:
             return
         for page in self._pages:
-            try:
+            with suppress(Exception):
                 await page.close()
-            except Exception:
-                pass
         self._pages = []
         if self._context:
-            try:
+            with suppress(Exception):
                 await self._context.close()
-            except Exception:
-                pass
         if self._browser:
-            try:
+            with suppress(Exception):
                 await self._browser.close()
-            except Exception:
-                pass
         if self._playwright:
-            try:
+            with suppress(Exception):
                 await self._playwright.stop()
-            except Exception:
-                pass
         self._started = False
         self._context = None
         self._browser = None

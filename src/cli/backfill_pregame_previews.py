@@ -4,13 +4,14 @@ Backfill missing pregame preview data for scheduled games.
 This CLI finds scheduled game dates whose preview summaries or starting
 pitcher fields are incomplete, then runs daily_preview_batch for those dates.
 """
+
 from __future__ import annotations
 
 import argparse
 import asyncio
 import sys
 from dataclasses import dataclass
-from datetime import date, datetime, timedelta
+from datetime import datetime, timedelta
 from typing import Sequence
 from zoneinfo import ZoneInfo
 

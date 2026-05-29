@@ -1,9 +1,10 @@
 """Run-scoped write contract for overlapping game collection jobs."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Callable, Optional
+from typing import Any, Callable
 
 
 @dataclass(frozen=True)
@@ -25,8 +26,8 @@ class GameWriteContract:
     def __init__(
         self,
         *,
-        run_label: Optional[str] = None,
-        log: Optional[Callable[[str], None]] = None,
+        run_label: str | None = None,
+        log: Callable[[str], None] | None = None,
         log_duplicate_fields: bool = False,
     ) -> None:
         self.run_label = run_label or f"game-write:{datetime.utcnow():%Y%m%dT%H%M%SZ}"
@@ -46,10 +47,7 @@ class GameWriteContract:
 
         if claims:
             previous = ", ".join(sorted(claim.label() for claim in claims))
-            self._emit(
-                f"[OVERLAP] run={self.run_label} game={game_id} "
-                f"previous={previous} current={source.label()}"
-            )
+            self._emit(f"[OVERLAP] run={self.run_label} game={game_id} previous={previous} current={source.label()}")
         claims.add(source)
         self._emit(
             f"[CLAIM] run={self.run_label} game={game_id} "

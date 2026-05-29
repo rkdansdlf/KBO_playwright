@@ -6,6 +6,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 import src.repositories.game_repository as game_repository
+import src.repositories.game_save as game_save_module
 from src.models.game import Game, GameIdAlias
 from src.models.season import KboSeason
 
@@ -20,7 +21,8 @@ def _build_session_factory():
 
 def test_save_schedule_game_preserves_existing_season_id_when_mapping_missing(monkeypatch):
     SessionLocal = _build_session_factory()
-    monkeypatch.setattr(game_repository, "SessionLocal", SessionLocal)
+    monkeypatch.setattr(game_save_module, "SessionLocal", SessionLocal)
+    monkeypatch.setattr(game_save_module, "_auto_sync_to_oci", lambda game_id: None)
 
     with SessionLocal() as session:
         session.add(
@@ -53,7 +55,8 @@ def test_save_schedule_game_preserves_existing_season_id_when_mapping_missing(mo
 
 def test_save_schedule_game_uses_official_kbo_season_id(monkeypatch):
     SessionLocal = _build_session_factory()
-    monkeypatch.setattr(game_repository, "SessionLocal", SessionLocal)
+    monkeypatch.setattr(game_save_module, "SessionLocal", SessionLocal)
+    monkeypatch.setattr(game_save_module, "_auto_sync_to_oci", lambda game_id: None)
 
     with SessionLocal() as session:
         # two mappings for same year/type -> official(min season_id) should be selected

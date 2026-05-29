@@ -16,7 +16,6 @@ from scripts.maintenance.export_identity_conflict_worklist import export_identit
 from scripts.maintenance.full_audit import collect_audit_metrics, flatten_gate_metrics
 from scripts.maintenance.propose_event_backed_split_repairs import propose_event_backed_split_repairs
 
-
 DELETE_ROWCOUNTS = tuple(range(10, 10 + len(cleanup_oci.DELETE_STEPS)))
 
 
@@ -238,11 +237,7 @@ def _build_full_audit_db():
 
 def _season_rows(engine):
     with engine.connect() as conn:
-        return dict(
-            conn.execute(
-                text("SELECT game_id, season_id FROM game ORDER BY game_id")
-            ).fetchall()
-        )
+        return dict(conn.execute(text("SELECT game_id, season_id FROM game ORDER BY game_id")).fetchall())
 
 
 def test_cleanup_oci_duplicates_defaults_to_rollback(monkeypatch):
@@ -575,28 +570,20 @@ def test_identity_conflict_proposal_uses_exact_source_row_match_without_db_write
     )
 
     assert {
-        (row["table_name"], row["row_id"], row["current_player_id"], row["proposed_player_id"])
-        for row in proposed
+        (row["table_name"], row["row_id"], row["current_player_id"], row["proposed_player_id"]) for row in proposed
     } == {
         ("game_batting_stats", 11, 76100, 97109),
         ("game_lineups", 21, 76100, 97109),
     }
-    assert {
-        (row["table_name"], row["row_id"], row["reason"], row["source_player_ids"])
-        for row in blocked
-    } == {
+    assert {(row["table_name"], row["row_id"], row["reason"], row["source_player_ids"]) for row in blocked} == {
         ("game_batting_stats", 10, "source_matches_current", "76100"),
         ("game_lineups", 20, "source_matches_current", "76100"),
     }
 
     verify_conn = sqlite3.connect(db_path)
     try:
-        assert verify_conn.execute(
-            "SELECT COUNT(*) FROM game_batting_stats WHERE player_id = 97109"
-        ).fetchone()[0] == 0
-        assert verify_conn.execute(
-            "SELECT COUNT(*) FROM game_lineups WHERE player_id = 97109"
-        ).fetchone()[0] == 0
+        assert verify_conn.execute("SELECT COUNT(*) FROM game_batting_stats WHERE player_id = 97109").fetchone()[0] == 0
+        assert verify_conn.execute("SELECT COUNT(*) FROM game_lineups WHERE player_id = 97109").fetchone()[0] == 0
     finally:
         verify_conn.close()
 
@@ -768,7 +755,7 @@ def test_apply_event_backed_split_repairs_merges_only_when_apply_is_set(tmp_path
         "\n".join(
             [
                 "game_id,team_side,team_code,player_name,player_id,row_count,row_ids,event_batter_ids,event_rows,computed_pa,reason,keeper_id,delete_ids,merged_plate_appearances,merged_at_bats,merged_runs,merged_hits,merged_doubles,merged_triples,merged_home_runs,merged_rbi,merged_walks,merged_intentional_walks,merged_hbp,merged_strikeouts,merged_stolen_bases,merged_caught_stealing,merged_sacrifice_hits,merged_sacrifice_flies,merged_gdp",
-                "G1,home,KH,이주형,50167,2,\"1,2\",50167,5,5,single_event_batter_id_matches_current_player_id,1,2,0,5,2,1,0,0,0,2,0,0,0,0,0,0,0,0,0",
+                'G1,home,KH,이주형,50167,2,"1,2",50167,5,5,single_event_batter_id_matches_current_player_id,1,2,0,5,2,1,0,0,0,2,0,0,0,0,0,0,0,0,0',
             ]
         ),
         encoding="utf-8",

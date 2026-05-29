@@ -4,11 +4,12 @@
 이 스크립트는 `ingest_mock_game_html.py`와 유사하지만, 경기 상세 정보가 아닌
 월별 경기 '일정' 페이지만을 처리하여 `game_schedules` 테이블에 저장합니다.
 """
+
 from __future__ import annotations
 
 import argparse
 from pathlib import Path
-from typing import Iterable, List, Dict, Any
+from typing import Any, Iterable
 
 from src.parsers.schedule_parser import parse_schedule_html
 from src.services.schedule_collection_service import save_schedule_games
@@ -20,7 +21,7 @@ def ingest_schedule_html(args: argparse.Namespace) -> None:
     if not fixtures_dir.exists():
         raise SystemExit(f"Fixture directory not found: {fixtures_dir}")
 
-    all_games: List[Dict[str, Any]] = []
+    all_games: list[dict[str, Any]] = []
 
     files = sorted(fixtures_dir.glob("*.html"))
     if not files:
@@ -80,4 +81,3 @@ def main(argv: Iterable[str] | None = None) -> None:
 
 if __name__ == "__main__":  # pragma: no cover
     main()
-

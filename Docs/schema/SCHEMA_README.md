@@ -21,6 +21,7 @@
 | player_season_batting | 34 | id |
 | player_season_pitching | 45 | id |
 | players | 16 | id |
+| stadium_foods | 10 | id |
 | stat_rankings | 14 | id |
 | team_daily_roster | 11 | id |
 | team_franchises | 8 | id |

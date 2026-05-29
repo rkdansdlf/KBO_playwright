@@ -2,6 +2,7 @@
 
 Defaults to dry-run and requires --apply before deleting rows.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -9,7 +10,6 @@ import os
 
 import psycopg2
 from dotenv import load_dotenv
-
 
 DELETE_STEPS = (
     (

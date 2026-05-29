@@ -1,0 +1,11 @@
+column_name,type,is_primary_key,foreign_key
+id,INTEGER,True,
+stadium_name,VARCHAR(50),False,
+restaurant_name,VARCHAR(100),False,
+menu_item,VARCHAR(200),False,
+location,VARCHAR(200),False,
+description,TEXT,False,
+is_famous,BOOLEAN,False,
+recommended_by,VARCHAR(100),False,
+created_at,DATETIME,False,
+updated_at,DATETIME,False,

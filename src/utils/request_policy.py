@@ -1,13 +1,14 @@
 """
 Shared request policy for throttling, UA rotation, and retries.
 """
+
 from __future__ import annotations
 
 import asyncio
 import os
 import random
 import time
-from typing import Callable, Iterable, Any, Dict, List, Optional
+from typing import Any, Callable, Iterable
 
 from src.utils.throttle import throttle
 
@@ -25,11 +26,11 @@ class RequestPolicy:
     def __init__(
         self,
         *,
-        min_delay: Optional[float] = None,
-        max_delay: Optional[float] = None,
-        user_agents: Optional[Iterable[str]] = None,
-        max_retries: Optional[int] = None,
-        backoff_factor: Optional[float] = None,
+        min_delay: float | None = None,
+        max_delay: float | None = None,
+        user_agents: Iterable[str] | None = None,
+        max_retries: int | None = None,
+        backoff_factor: float | None = None,
     ):
         env_min = float(os.getenv("KBO_REQUEST_DELAY_MIN", min_delay or 1.5))
         env_max = float(os.getenv("KBO_REQUEST_DELAY_MAX", max_delay or 2.5))
@@ -42,7 +43,7 @@ class RequestPolicy:
         self.backoff_factor = float(os.getenv("KBO_REQUEST_BACKOFF", backoff_factor or 1.5))
         self.user_agents = self._load_user_agents(user_agents)
 
-    def _load_user_agents(self, override: Optional[Iterable[str]]) -> List[str]:
+    def _load_user_agents(self, override: Iterable[str] | None) -> list[str]:
         if override:
             pool = [ua.strip() for ua in override if ua.strip()]
             if pool:
@@ -57,7 +58,7 @@ class RequestPolicy:
     def random_user_agent(self) -> str:
         return random.choice(self.user_agents)
 
-    def build_context_kwargs(self, **overrides) -> Dict[str, Any]:
+    def build_context_kwargs(self, **overrides) -> dict[str, Any]:
         kwargs = {"user_agent": self.random_user_agent()}
         kwargs.update(overrides)
         return kwargs
@@ -66,7 +67,7 @@ class RequestPolicy:
         return random.uniform(self.min_delay, self.max_delay)
 
     def delay(self, host: str = "koreabaseball.com"):
-        throttle.default_delay = self.min_delay # Dynamic adjustment based on policy
+        throttle.default_delay = self.min_delay  # Dynamic adjustment based on policy
         throttle.wait_sync(host)
 
     async def delay_async(self, host: str = "koreabaseball.com"):

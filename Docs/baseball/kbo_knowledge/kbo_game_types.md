@@ -144,13 +144,13 @@ def get_game_context(league_type_code):
     """
     if league_type_code == 0:
         return "REGULAR_SEASON" # 정규시즌 로직 (무승부 O, 12회)
-    
+
     elif league_type_code == 1:
         return "EXHIBITION" # 시범경기 로직 (무승부 O, 9회, 기록X)
-    
+
     elif league_type_code >= 2 and league_type_code <= 5:
         return "POST_SEASON" # 가을야구 로직 (무승부 O, 15회, 기록 별도)
-    
+
     else:
         return "UNKNOWN"
 ```
@@ -160,9 +160,9 @@ def get_game_context(league_type_code):
 
 ```sql
 -- 예시: 특정 선수의 통산 포스트시즌 홈런 수 조회
-SELECT SUM(hr) 
-FROM player_stats 
-WHERE player_id = 'kim_hyun_soo' 
+SELECT SUM(hr)
+FROM player_stats
+WHERE player_id = 'kim_hyun_soo'
   AND league_type_code IN (2, 3, 4, 5); -- 0(정규시즌)과 1(시범경기)은 제외
 ```
 

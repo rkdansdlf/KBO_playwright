@@ -227,9 +227,7 @@ def test_duplicate_pseudo_player_repair_dry_run_and_apply(tmp_path):
     engine = create_engine(db_url)
     with engine.connect() as conn:
         player_ids = conn.execute(text("SELECT player_id FROM player_basic")).fetchall()
-        batting_ids = conn.execute(
-            text("SELECT DISTINCT player_id FROM game_batting_stats")
-        ).fetchall()
+        batting_ids = conn.execute(text("SELECT DISTINCT player_id FROM game_batting_stats")).fetchall()
         season_count = conn.execute(text("SELECT COUNT(*) FROM player_season_batting")).scalar()
         movement_ids = conn.execute(text("SELECT DISTINCT player_basic_id FROM player_movements")).fetchall()
         event_batter_ids = conn.execute(text("SELECT DISTINCT batter_id FROM game_events")).fetchall()
@@ -372,14 +370,12 @@ def test_duplicate_pseudo_player_repair_applies_reviewed_worklist_and_reports_co
             "source_player_ids": "900102",
             "key": "900101",
             "reason": "conflicting_duplicate_reference_payload",
-        }
+        },
     ]
 
     with engine.connect() as conn:
         player_ids = conn.execute(text("SELECT player_id FROM player_basic ORDER BY player_id")).fetchall()
-        batting_rows = conn.execute(
-            text("SELECT player_id, hits FROM game_batting_stats ORDER BY id")
-        ).fetchall()
+        batting_rows = conn.execute(text("SELECT player_id, hits FROM game_batting_stats ORDER BY id")).fetchall()
 
     assert player_ids == [(900001,), (900101,)]
     assert batting_rows == [(900001, 1)]

@@ -1,0 +1,114 @@
+import argparse
+import asyncio
+import logging
+
+from playwright.async_api import async_playwright
+
+from src.db.engine import SessionLocal
+
+logger = logging.getLogger(__name__)
+from src.repositories.broadcast_repository import BroadcastRepository
+from src.utils.playwright_blocking import install_async_resource_blocking
+from src.utils.safe_print import safe_print as print
+
+
+class BroadcastCrawler:
+    def __init__(self):
+        self.url = "https://www.koreabaseball.com/Schedule/Schedule.aspx"
+
+    async def run(self, year: int = None, month: int = None, save: bool = False):
+        from datetime import datetime
+
+        year = year or datetime.now().year
+        month = month or datetime.now().month
+
+        async with async_playwright() as p:
+            browser = await p.chromium.launch(headless=True)
+            context = await browser.new_context()
+            await install_async_resource_blocking(context)
+            page = await context.new_page()
+
+            url = f"{self.url}?year={year}&month={month:02d}"
+            print(f"Loading {url}...")
+            await page.goto(url, wait_until="networkidle", timeout=30000)
+            await page.wait_for_timeout(2000)
+
+            data = await self._extract_broadcast_data(page, year)
+            print(f"Found {len(data)} broadcast entries.")
+
+            await browser.close()
+
+            if save:
+                self._save_to_db(data)
+            else:
+                for d in data[:10]:
+                    print(d)
+                    print("")
+
+    async def _extract_broadcast_data(self, page, year: int) -> list[dict]:
+        script = """
+        (args) => {
+            const year = args.year;
+            const results = [];
+            const TEAM_MAP = {"LG":"LG","KT":"KT","NC":"NC","두산":"DB","롯데":"LT","삼성":"SS","키움":"KH","한화":"HH","KIA":"KIA","SSG":"SSG"};
+            const BC_MAP = {"SPO":"SPOTV","SPO-2":"SPOTV2","SPO-2T":"SPOTV2","S-BS":"SBS Sports","SBS":"SBS Sports","K-BS":"KBS N Sports","MBC":"MBC SPORTS+","CPB":"CPBC TV"};
+            const rows = document.querySelectorAll('#tblScheduleList tbody tr');
+            rows.forEach(tr => {
+                const cells = tr.querySelectorAll('td');
+                if (cells.length < 9) return;
+                const dayText = cells[0]?.innerText?.trim();
+                if (!dayText || !dayText.match(/\\d+\\.\\d+\\(/)) return;
+                const playText = cells[2]?.innerText?.trim() || '';
+                const match = playText.match(/([A-Za-z가-힣]+)\\d*vs\\d*([A-Za-z가-힣]+)/);
+                if (!match) return;
+                const awayTeam = TEAM_MAP[match[1]] || null;
+                const homeTeam = TEAM_MAP[match[2]] || null;
+                if (!awayTeam || !homeTeam) return;
+                const dateParts = dayText.match(/(\\d+)\\.(\\d+)/);
+                if (!dateParts) return;
+                const m = String(dateParts[1]).padStart(2, '0');
+                const d = String(dateParts[2]).padStart(2, '0');
+                const gameDate = String(year) + m + d;
+                const gameId = gameDate + awayTeam + homeTeam + '0';
+                const tvText = cells[5]?.innerText?.trim() || '';
+                const radioText = cells[6]?.innerText?.trim() || '';
+                if (tvText && tvText !== '-') {
+                    const norm = BC_MAP[tvText] || tvText;
+                    results.push({game_id: gameId, broadcaster: norm, channel_name: norm, source: 'KBO'});
+                }
+                if (radioText && radioText !== '-') {
+                    results.push({game_id: gameId, broadcaster: 'RADIO_' + radioText, channel_name: radioText + ' (라디오)', source: 'KBO'});
+                }
+            });
+            return results;
+        }
+        """
+        return await page.evaluate(script, {"year": year})
+
+    def _save_to_db(self, data: list[dict]):
+        session = SessionLocal()
+        repo = BroadcastRepository(session)
+        count = 0
+        try:
+            for item in data:
+                try:
+                    repo.save_broadcast(item)
+                    count += 1
+                except Exception as ex:
+                    logger.warning(f"Broadcast save failed for item: {ex}")
+            session.commit()
+            print(f"Saved {count} broadcast records.")
+        except Exception as e:
+            session.rollback()
+            print(f"Error: {e}")
+        finally:
+            session.close()
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--year", type=int)
+    parser.add_argument("--month", type=int)
+    parser.add_argument("--save", action="store_true")
+    args = parser.parse_args()
+    asyncio.run(BroadcastCrawler().run(year=args.year, month=args.month, save=args.save))
