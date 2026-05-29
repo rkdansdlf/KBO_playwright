@@ -28,7 +28,7 @@ CREATE TABLE IF NOT EXISTS public.game_events (
 );
 
 -- 2. 상세 상태 및 WPA 컬럼 추가 (이미 있을 경우 무시)
-DO $$ 
+DO $$
 BEGIN
     IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='game_events' AND column_name='wpa') THEN
         ALTER TABLE public.game_events ADD COLUMN wpa FLOAT;

@@ -1,8 +1,9 @@
 """Shared helpers for schedule persistence workflows."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Callable, Iterable, List
+from typing import Any, Callable, Iterable
 
 from src.repositories.game_repository import save_schedule_game
 from src.services.game_write_contract import GameWriteContract
@@ -12,10 +13,10 @@ from src.utils.schedule_validation import validate_schedule_game_payload
 
 @dataclass
 class ScheduleSaveResult:
-    games: List[dict[str, Any]]
-    saved_games: List[dict[str, Any]]
-    failed_games: List[dict[str, Any]]
-    filtered_games: List[dict[str, Any]]
+    games: list[dict[str, Any]]
+    saved_games: list[dict[str, Any]]
+    failed_games: list[dict[str, Any]]
+    filtered_games: list[dict[str, Any]]
     saved: int = 0
     failed: int = 0
     filtered: int = 0

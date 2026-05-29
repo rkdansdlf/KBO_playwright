@@ -2,17 +2,20 @@
 Service to enrich text chunk metadata using Gemini API (via Google or OpenRouter).
 Extracts keywords, summaries, and expected questions to boost RAG search match rate.
 """
+
 from __future__ import annotations
 
+import json
 import logging
 import os
-import json
+from typing import Any
+
 import httpx
-from typing import Dict, List, Any, Optional
 
 from src.utils.safe_print import safe_print as print
 
 logger = logging.getLogger(__name__)
+
 
 class MetadataEnrichmentService:
     """
@@ -25,7 +28,7 @@ class MetadataEnrichmentService:
         if not self.api_key:
             self.enabled = False
 
-    def enrich_chunk(self, content: str) -> Dict[str, Any]:
+    def enrich_chunk(self, content: str) -> dict[str, Any]:
         """
         Enriches a text chunk with summary, keywords, and expected questions.
         Returns a dict with 'summary', 'keywords', and 'questions'.
@@ -51,19 +54,16 @@ class MetadataEnrichmentService:
         else:
             return self._call_google(prompt)
 
-    def _call_openrouter(self, prompt: str) -> Dict[str, Any]:
+    def _call_openrouter(self, prompt: str) -> dict[str, Any]:
         url = "https://openrouter.ai/api/v1/chat/completions"
-        headers = {
-            "Authorization": f"Bearer {self.api_key}",
-            "Content-Type": "application/json"
-        }
-        
+        headers = {"Authorization": f"Bearer {self.api_key}", "Content-Type": "application/json"}
+
         model = os.getenv("ENRICHMENT_MODEL", "google/gemini-flash-1.5")
-        
+
         payload = {
             "model": model,
             "messages": [{"role": "user", "content": prompt}],
-            "response_format": {"type": "json_object"}
+            "response_format": {"type": "json_object"},
         }
 
         try:
@@ -79,21 +79,13 @@ class MetadataEnrichmentService:
             logger.exception("⚠️ Exception in OpenRouter enrichment")
         return {"summary": "", "keywords": [], "questions": []}
 
-    def _call_google(self, prompt: str) -> Dict[str, Any]:
+    def _call_google(self, prompt: str) -> dict[str, Any]:
         url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={self.api_key}"
-        headers = {
-            "Content-Type": "application/json"
-        }
-        
+        headers = {"Content-Type": "application/json"}
+
         payload = {
-            "contents": [{
-                "parts": [{
-                    "text": prompt
-                }]
-            }],
-            "generationConfig": {
-                "responseMimeType": "application/json"
-            }
+            "contents": [{"parts": [{"text": prompt}]}],
+            "generationConfig": {"responseMimeType": "application/json"},
         }
 
         try:
@@ -101,7 +93,9 @@ class MetadataEnrichmentService:
                 res = client.post(url, json=payload)
                 if res.status_code == 200:
                     data = res.json()
-                    content_str = data.get("candidates", [{}])[0].get("content", {}).get("parts", [{}])[0].get("text", "")
+                    content_str = (
+                        data.get("candidates", [{}])[0].get("content", {}).get("parts", [{}])[0].get("text", "")
+                    )
                     return self._parse_json_response(content_str)
                 else:
                     print(f"⚠️ Google Gemini Enrichment API status {res.status_code}: {res.text}")
@@ -109,10 +103,10 @@ class MetadataEnrichmentService:
             logger.exception("⚠️ Exception in Gemini enrichment")
         return {"summary": "", "keywords": [], "questions": []}
 
-    def _parse_json_response(self, text: str) -> Dict[str, Any]:
+    def _parse_json_response(self, text: str) -> dict[str, Any]:
         if not text:
             return {"summary": "", "keywords": [], "questions": []}
-        
+
         # Strip markdown fences if present
         text = text.strip()
         if text.startswith("```"):
@@ -128,9 +122,9 @@ class MetadataEnrichmentService:
             return {
                 "summary": data.get("summary", ""),
                 "keywords": data.get("keywords", []) if isinstance(data.get("keywords"), list) else [],
-                "questions": data.get("questions", []) if isinstance(data.get("questions"), list) else []
+                "questions": data.get("questions", []) if isinstance(data.get("questions"), list) else [],
             }
         except Exception:
             logger.exception("⚠️ Error parsing enrichment JSON. Raw content: %s", text[:100])
-            
+
         return {"summary": "", "keywords": [], "questions": []}

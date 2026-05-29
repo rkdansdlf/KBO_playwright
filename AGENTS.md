@@ -13,6 +13,7 @@ This repository is a Playwright-based KBO data crawler with a two-track pipeline
 - `python3 -m venv venv && source venv/bin/activate`: Create and activate virtual environment.
 - `pip3 install -r requirements.txt`: Install Python dependencies.
 - `playwright install chromium`: Install Playwright browser binaries.
+- `python3 scripts/scheduler.py`: Run the automated scheduler.
 - `python3 -m src.cli.crawl_schedule --year 2025 --month 3`: Crawl schedule data.
 - `python3 -m src.cli.crawl_game_details --date 20241015` or `python3 -m src.cli.collect_games --year 2024 --month 10`: Collect game details.
 - `python3 -m src.cli.crawl_futures --season 2025 --concurrency 3`: Crawl Futures stats.
@@ -38,3 +39,7 @@ This repository is a Playwright-based KBO data crawler with a two-track pipeline
 ## Configuration & Secrets
 - Use `.env` for `DATABASE_URL`, `OCI_DB_URL`, and request throttling (e.g., `KBO_REQUEST_DELAY_MIN`).
 - Crawler stability depends on consistent delays; avoid reducing throttling without review.
+
+## Concurrency & Scheduling
+- Automated tasks (`scripts/scheduler.py`) use a **3-stage locking mechanism** (`LIVE_LOCK`, `DAILY_LOCK`, `MAINTENANCE_LOCK`) to prevent data corruption.
+- Always use the appropriate lock when adding new scheduled jobs or long-running maintenance tasks.

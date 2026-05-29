@@ -149,9 +149,21 @@ def _make_file_db(tmp_path: Path) -> str:
                 """
             )
         )
-        conn.execute(text("CREATE TABLE player_season_batting (id INTEGER PRIMARY KEY, player_id INTEGER, season INTEGER, team_code TEXT)"))
-        conn.execute(text("CREATE TABLE game_batting_stats (id INTEGER PRIMARY KEY, game_id TEXT, team_code TEXT, player_name TEXT, player_id INTEGER)"))
-        conn.execute(text("CREATE TABLE game_lineups (id INTEGER PRIMARY KEY, game_id TEXT, team_code TEXT, player_name TEXT, player_id INTEGER)"))
+        conn.execute(
+            text(
+                "CREATE TABLE player_season_batting (id INTEGER PRIMARY KEY, player_id INTEGER, season INTEGER, team_code TEXT)"
+            )
+        )
+        conn.execute(
+            text(
+                "CREATE TABLE game_batting_stats (id INTEGER PRIMARY KEY, game_id TEXT, team_code TEXT, player_name TEXT, player_id INTEGER)"
+            )
+        )
+        conn.execute(
+            text(
+                "CREATE TABLE game_lineups (id INTEGER PRIMARY KEY, game_id TEXT, team_code TEXT, player_name TEXT, player_id INTEGER)"
+            )
+        )
         conn.execute(text("INSERT INTO player_basic(player_id, name, uniform_no) VALUES (7001, '원격투수', '45')"))
         conn.execute(text("INSERT INTO player_season_pitching(player_id, season, team_code) VALUES (7001, 2025, 'LG')"))
         conn.execute(

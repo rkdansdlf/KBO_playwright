@@ -1,20 +1,21 @@
-import sqlite3
 import os
+import sqlite3
 import sys
 
 # Add project root to sys.path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from src.services.player_id_resolver import PlayerIdResolver
 from src.db.engine import SessionLocal
+from src.services.player_id_resolver import PlayerIdResolver
+
 
 def fix_null_ids():
     conn = sqlite3.connect("data/kbo_dev.db")
     cursor = conn.cursor()
-    
+
     with SessionLocal() as session:
         resolver = PlayerIdResolver(session)
-        
+
         print("Finding batting stats with NULL or Unknown (>=900000) player_id...")
         cursor.execute("""
             SELECT b.id, b.player_name, b.team_code, strftime('%Y', g.game_date) as year, b.uniform_no
@@ -23,10 +24,9 @@ def fix_null_ids():
             WHERE (b.player_id IS NULL OR b.player_id >= 900000) AND b.player_name IS NOT NULL
         """)
 
-        
         rows = cursor.fetchall()
         print(f"Found {len(rows)} records to fix.")
-        
+
         updates = []
         resolved_count = 0
         for b_id, name, team, year, uniform in rows:
@@ -50,10 +50,10 @@ def fix_null_ids():
             JOIN game g ON p.game_id = g.game_id
             WHERE p.player_id IS NULL AND p.player_name IS NOT NULL
         """)
-        
+
         rows_p = cursor.fetchall()
         print(f"Found {len(rows_p)} pitching records to fix.")
-        
+
         updates_p = []
         resolved_p = 0
         for p_id_db, name, team, year, uniform in rows_p:
@@ -61,13 +61,14 @@ def fix_null_ids():
             if p_id:
                 updates_p.append((p_id, p_id_db))
                 resolved_p += 1
-        
+
         if updates_p:
             cursor.executemany("UPDATE game_pitching_stats SET player_id = ? WHERE id = ?", updates_p)
             conn.commit()
             print(f"Successfully updated {len(updates_p)} player_ids in game_pitching_stats.")
 
     conn.close()
+
 
 if __name__ == "__main__":
     fix_null_ids()

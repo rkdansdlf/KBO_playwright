@@ -406,4 +406,3 @@ if __name__ == "__main__":
     print(parse_profile(raw_domestic, is_active=True, is_foreign=False))
     print(parse_profile(raw_retire1, is_active=False))
     print(parse_profile(raw_retire2, is_active=False))
-

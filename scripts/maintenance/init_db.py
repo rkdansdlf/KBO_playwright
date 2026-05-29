@@ -1,6 +1,7 @@
 """
 Initialize database (create all tables)
 """
+
 from src.db.engine import init_db
 
 if __name__ == "__main__":

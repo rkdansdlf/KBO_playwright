@@ -1,6 +1,5 @@
 from src.services.game_deduplication_service import DeduplicationWindow, mark_primary_games
 
-
 WINDOWS = [
     DeduplicationWindow("2024 regular", "2024-03-23", "2024-09-30"),
     DeduplicationWindow("2025 regular", "2025-03-22", "2025-10-31"),

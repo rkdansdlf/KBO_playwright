@@ -3,16 +3,17 @@ KBO Staff Register CLI
 Crawls the current day's manager and coaching staff registered on KBO Register.aspx,
 upserts them to the local SQLite DB (player_basic table), and optionally synchronizes to OCI.
 """
+
 from __future__ import annotations
 
-import logging
 import argparse
 import asyncio
+import logging
 import os
 import sys
 from typing import Sequence
 
-from src.crawlers.staff_register_crawler import StaffRegisterCrawler, KBO_TEAM_MAP
+from src.crawlers.staff_register_crawler import KBO_TEAM_MAP, StaffRegisterCrawler
 from src.utils.safe_print import safe_print as print
 
 logger = logging.getLogger(__name__)
@@ -34,15 +35,15 @@ async def run_crawler(args: argparse.Namespace) -> int:
 
     print(f"🚀 Starting KBO Staff Register Crawler for teams: {team_codes}")
     print(f"   Dry run: {args.dry_run}")
-    
+
     # 2. Instantiate and run crawler
     crawler = StaffRegisterCrawler(headless=True)
     records = await crawler.crawl_all_teams(team_codes=team_codes)
-    
+
     print(f"📊 Crawled {len(records)} staff records.")
 
     # 3. Save to local SQLite
-    upserted_count = crawler.save_to_db(records, dry_run=args.dry_run)
+    crawler.save_to_db(records, dry_run=args.dry_run)
 
     # 4. Optional OCI Synchronization
     if args.sync_oci and not args.dry_run:
@@ -55,6 +56,7 @@ async def run_crawler(args: argparse.Namespace) -> int:
                 print(f"🔄 Synchronizing {len(player_ids)} staff records to OCI...")
                 from src.db.engine import SessionLocal
                 from src.sync.oci_sync import OCISync
+
                 with SessionLocal() as session:
                     syncer = OCISync(oci_url, session)
                     try:
@@ -96,7 +98,7 @@ def main(argv: Sequence[str] | None = None) -> None:
     )
 
     args = parser.parse_args(argv)
-    
+
     # Run async main loop
     status = asyncio.run(run_crawler(args))
     sys.exit(status)

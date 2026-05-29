@@ -1,16 +1,17 @@
 """
 Fetch retired/inactive player detail pages (hitter & pitcher).
 """
+
 from __future__ import annotations
 
 import asyncio
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from playwright.async_api import Page
 
+from src.utils.compliance import compliance
 from src.utils.playwright_pool import AsyncPlaywrightPool
 from src.utils.throttle import throttle
-from src.utils.compliance import compliance
 
 
 class RetiredPlayerDetailCrawler:
@@ -19,7 +20,7 @@ class RetiredPlayerDetailCrawler:
     hitter_url = "https://www.koreabaseball.com/Record/Retire/Hitter.aspx"
     pitcher_url = "https://www.koreabaseball.com/Record/Retire/Pitcher.aspx"
 
-    def __init__(self, request_delay: float = 1.5, pool: Optional[AsyncPlaywrightPool] = None):
+    def __init__(self, request_delay: float = 1.5, pool: AsyncPlaywrightPool | None = None):
         self.request_delay = request_delay
         self.pool = pool
         self._internal_pool = None
@@ -34,7 +35,6 @@ class RetiredPlayerDetailCrawler:
                 await self._internal_pool.start()
         return self._internal_pool
 
-
     async def close(self) -> None:
         if self._internal_pool:
             await self._internal_pool.close()
@@ -45,7 +45,7 @@ class RetiredPlayerDetailCrawler:
         if self.request_delay > throttle.default_delay:
             await asyncio.sleep(self.request_delay - throttle.default_delay)
 
-    async def fetch_player(self, player_id: str, retries: int = 2) -> Dict[str, Any]:
+    async def fetch_player(self, player_id: str, retries: int = 2) -> dict[str, Any]:
         """
         Fetch hitter & pitcher pages for the given player ID.
         """
@@ -76,7 +76,7 @@ class RetiredPlayerDetailCrawler:
             "pitcher": pitcher_payload,
         }
 
-    async def _fetch_page(self, page: Page, base_url: str, player_id: str) -> Optional[Dict[str, Any]]:
+    async def _fetch_page(self, page: Page, base_url: str, player_id: str) -> dict[str, Any] | None:
         url = f"{base_url}?playerId={player_id}"
         if not await compliance.is_allowed(url):
             print(f"⚠️  BLOCKED by compliance: {url}")
@@ -100,7 +100,7 @@ class RetiredPlayerDetailCrawler:
             "tables": tables,
         }
 
-    async def _extract_profile_text(self, page: Page) -> Optional[str]:
+    async def _extract_profile_text(self, page: Page) -> str | None:
         selectors = [
             "#cphContents_cphContents_cphContents_playerProfile",
             "#cphContents_cphContents_cphContents_ucPlayerProfile_lblProfile",
@@ -117,7 +117,7 @@ class RetiredPlayerDetailCrawler:
                     return cleaned
         return None
 
-    async def _extract_photo_url(self, page: Page) -> Optional[str]:
+    async def _extract_photo_url(self, page: Page) -> str | None:
         # Retired pages often use different image structures
         selector = "div.photo img"
         element = await page.query_selector(selector)
@@ -135,7 +135,7 @@ class RetiredPlayerDetailCrawler:
                 return src
         return None
 
-    async def _extract_tables(self, page: Page) -> List[Dict[str, Any]]:
+    async def _extract_tables(self, page: Page) -> list[dict[str, Any]]:
         script = """
         (tables) => tables.map(table => {
             const headers = Array.from(table.querySelectorAll('thead th')).map(th => th.innerText.trim());

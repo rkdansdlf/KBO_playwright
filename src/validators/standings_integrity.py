@@ -1,4 +1,5 @@
 """Validate daily standings snapshots against completed game results."""
+
 from __future__ import annotations
 
 from datetime import date
@@ -11,7 +12,6 @@ from src.models.game import Game
 from src.models.season import KboSeason
 from src.models.standings import TeamStandingsDaily
 from src.utils.game_status import COMPLETED_LIKE_GAME_STATUSES
-
 
 REGULAR_SEASON_NAMES = ("정규시즌", "Regular Season", "regular")
 STANDINGS_FIELDS = (
@@ -33,7 +33,7 @@ def validate_standings_integrity(session: Session, target_date: date) -> dict[st
         .filter(
             KboSeason.season_year == target_date.year,
             _regular_season_filter(),
-            Game.game_status.in_(tuple(COMPLETED_LIKE_GAME_STATUSES))
+            Game.game_status.in_(tuple(COMPLETED_LIKE_GAME_STATUSES)),
         )
         .order_by(Game.game_date.desc())
         .first()
@@ -45,15 +45,11 @@ def validate_standings_integrity(session: Session, target_date: date) -> dict[st
             "checked_teams": 0,
             "mismatches": [],
             "missing_score_games": [],
-            "note": "Post-season date: skipped validation against regular season standings."
+            "note": "Post-season date: skipped validation against regular season standings.",
         }
 
     expected, missing_score_games = _aggregate_regular_season_results(session, target_date)
-    snapshot_rows = (
-        session.query(TeamStandingsDaily)
-        .filter(TeamStandingsDaily.standings_date == target_date)
-        .all()
-    )
+    snapshot_rows = session.query(TeamStandingsDaily).filter(TeamStandingsDaily.standings_date == target_date).all()
     actual = {row.team_code: row for row in snapshot_rows if row.team_code not in ("EA", "WE")}
 
     mismatches: list[dict[str, Any]] = []

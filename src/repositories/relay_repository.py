@@ -1,14 +1,15 @@
 """Legacy relay repository compatibility layer."""
+
 from __future__ import annotations
 
-from typing import Any, Dict, List
+from typing import Any
 
 from src.db.engine import SessionLocal
 from src.models.game import GamePlayByPlay
 from src.repositories.game_repository import save_relay_data as save_normalized_relay_data
 
 
-def save_relay_data(game_id: str, innings_data: List[Dict[str, Any]]) -> int:
+def save_relay_data(game_id: str, innings_data: list[dict[str, Any]]) -> int:
     """
     Backward-compatible wrapper that flattens inning-grouped relay payloads and
     forwards them to the canonical writer in game_repository.
@@ -32,13 +33,9 @@ def save_relay_data(game_id: str, innings_data: List[Dict[str, Any]]) -> int:
     return save_normalized_relay_data(game_id, events=None, raw_pbp_rows=flat_rows, allow_derived_pbp=False)
 
 
-def get_game_relay_summary(game_id: str) -> Dict[str, Any]:
+def get_game_relay_summary(game_id: str) -> dict[str, Any]:
     with SessionLocal() as session:
-        plays = (
-            session.query(GamePlayByPlay)
-            .filter(GamePlayByPlay.game_id == game_id)
-            .all()
-        )
+        plays = session.query(GamePlayByPlay).filter(GamePlayByPlay.game_id == game_id).all()
 
         if not plays:
             return {

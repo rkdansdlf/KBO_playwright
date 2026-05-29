@@ -2,20 +2,28 @@
 APScheduler-based automation for KBO data collection.
 
 Jobs:
-1. crawl_games_regular: Daily at 03:00 KST (run run_daily_update for previous KST day)
-2. crawl_pregame_refresh: Every 15 minutes, 10:00-23:45 KST (today + configurable lookahead)
-3. crawl_live_refresh: Every 2 minutes, 12:00-23:30 KST
-4. crawl_futures_profile: Weekly Sunday at 05:00 KST (sync all Futures stats)
+ 1. crawl_games_regular: Daily at 03:00 KST (run_daily_update)
+ 2. compute_standings: Daily at 03:30 KST (standings + home/away + trends)
+ 3. aggregate_team_defense: Daily at 03:45 KST (fielding/baserunning)
+ 4. compute_rankings: Daily at 04:00 KST (sabermetric rankings)
+ 5. sync_from_oci: Daily at 05:00 KST (OCI hydration)
+ 6. generate_quality_report: Daily at 05:15 KST
+ 7. crawl_phase1_extra: Daily at 06:00 KST (broadcast, MVP, injury, etc.)
+ 8. crawl_pregame_refresh: Every 15m, 10:00-23:45 KST
+ 9. crawl_live_refresh: Every 2m, 12:00-23:30 KST
+10. crawl_futures_profile: Weekly Sunday at 05:00 KST
+11. compute_park_factor: Weekly Sunday at 05:30 KST
 """
+
 from __future__ import annotations
 
 import argparse
 import asyncio
 import logging
-from logging.handlers import RotatingFileHandler
 import os
 import sys
 from datetime import datetime, timedelta
+from logging.handlers import RotatingFileHandler
 from pathlib import Path
 from threading import Lock
 from typing import Sequence
@@ -28,37 +36,40 @@ PROJECT_ROOT = Path(__file__).parent.parent
 sys.path.append(str(PROJECT_ROOT))
 load_dotenv(PROJECT_ROOT / ".env")
 
+from apscheduler.events import EVENT_JOB_ERROR
 from apscheduler.schedulers.blocking import BlockingScheduler
 from apscheduler.triggers.cron import CronTrigger
-from apscheduler.events import EVENT_JOB_ERROR
 from sqlalchemy import text
 from tenacity import retry, stop_after_attempt, wait_exponential
 
 from src.cli.crawl_futures import main as crawl_futures_main
 from src.cli.daily_preview_batch import run_preview_batch
 from src.cli.live_crawler import run_live_crawler_cycle
-from src.cli.run_daily_update import format_stability_alert_summary, main as run_daily_update_main
+from src.cli.run_daily_update import format_stability_alert_summary
+from src.cli.run_daily_update import main as run_daily_update_main
 from src.db.engine import SessionLocal
-from src.utils.safe_print import safe_print as print
 from src.utils.alerting import SlackWebhookClient
+from src.utils.safe_print import safe_print as print
 
 # Configure logging
-log_path = Path('logs/scheduler.log')
+log_path = Path("logs/scheduler.log")
 log_path.parent.mkdir(exist_ok=True)
 
-handler = RotatingFileHandler(log_path, maxBytes=10*1024*1024, backupCount=5, encoding='utf-8')
+handler = RotatingFileHandler(log_path, maxBytes=10 * 1024 * 1024, backupCount=5, encoding="utf-8")
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    handlers=[
-        handler,
-        logging.StreamHandler()
-    ]
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    handlers=[handler, logging.StreamHandler()],
 )
 logger = logging.getLogger(__name__)
 KST = ZoneInfo("Asia/Seoul")
 FALSE_ENV_VALUES = {"0", "false", "no", "off"}
-JOB_RUN_LOCK = Lock()
+
+# Granular locking to prevent long-running batch jobs from blocking real-time updates
+LIVE_LOCK = Lock()  # For live refresh and pregame refresh
+DAILY_LOCK = Lock()  # For daily update/finalize
+MAINTENANCE_LOCK = Lock()  # For weekly futures sync and OCI hydration/reports
+
 MISSING_PREGAME_ALERTED_DATES: set[str] = set()
 
 
@@ -99,12 +110,12 @@ def alert_success(func_name: str, details: str | None = None):
 
 
 # Ensure logs directory exists
-Path('logs').mkdir(exist_ok=True)
+Path("logs").mkdir(exist_ok=True)
 
 
 def _previous_day_kst() -> str:
     """Return yesterday in KST as YYYYMMDD."""
-    return (datetime.now(KST) - timedelta(days=1)).strftime('%Y%m%d')
+    return (datetime.now(KST) - timedelta(days=1)).strftime("%Y%m%d")
 
 
 def _pregame_target_dates(now: datetime | None = None) -> list[str]:
@@ -121,10 +132,7 @@ def _pregame_target_dates(now: datetime | None = None) -> list[str]:
         lookahead_days = 2
     lookahead_days = max(0, min(lookahead_days, 7))
 
-    return [
-        (current + timedelta(days=offset)).strftime("%Y%m%d")
-        for offset in range(lookahead_days + 1)
-    ]
+    return [(current + timedelta(days=offset)).strftime("%Y%m%d") for offset in range(lookahead_days + 1)]
 
 
 def _minutes_until_next_pregame_tick(now: datetime | None = None) -> float | None:
@@ -144,7 +152,7 @@ def _minutes_until_next_pregame_tick(now: datetime | None = None) -> float | Non
     else:
         next_minute = ((minute // 15) + 1) * 15
         if next_minute >= 60:
-            next_tick = (base.replace(minute=0) + timedelta(hours=1))
+            next_tick = base.replace(minute=0) + timedelta(hours=1)
         else:
             next_tick = base.replace(minute=next_minute)
 
@@ -224,6 +232,7 @@ def _pregame_sync_to_oci_enabled() -> bool:
 def _run_hydration(year: int, target_date: str | None = None):
     """Run OCI to Local hydration via CLI main."""
     from src.cli.hydrate_runtime_from_oci import main as hydrate_main
+
     logger.info("Starting hydration for year=%d, date=%s", year, target_date)
     args = ["--year", str(year)]
     if target_date:
@@ -239,18 +248,18 @@ def crawl_daily_games():
     Runs at 03:00 KST daily to collect previous KST day's schedule+details.
     Uses exponential backoff retry on failures (3 attempts max).
     """
-    with JOB_RUN_LOCK:
+    with DAILY_LOCK:
         logger.info("=== Starting Daily Games Crawl ===")
 
         try:
             target_date = _previous_day_kst()
             logger.info("Running run_daily_update for target_date=%s", target_date)
-            
-            args = ['--date', target_date, '--seed-tomorrow-preview']
+
+            args = ["--date", target_date, "--seed-tomorrow-preview"]
             if bool(os.getenv("OCI_DB_URL")):
                 logger.info("Enabling OCI sync for daily update")
-                args.append('--sync')
-                
+                args.append("--sync")
+
             update_result = run_daily_update_main(args)
 
             logger.info("=== Daily Games Crawl Completed Successfully ===")
@@ -267,7 +276,7 @@ def crawl_daily_games():
     retry_error_callback=alert_failure,
 )
 def crawl_pregame_refresh():
-    with JOB_RUN_LOCK:
+    with LIVE_LOCK:
         failures: list[str] = []
         refresh_only_missing = _env_enabled("PREGAME_REFRESH_ONLY_MISSING", "1")
         alert_on_missing = _env_enabled("PREGAME_MISSING_ALERT", "0")
@@ -333,7 +342,7 @@ def crawl_live_refresh():
         logger.info("Skipping live refresh because pregame refresh is due soon")
         return
 
-    with JOB_RUN_LOCK:
+    with LIVE_LOCK:
         logger.info("Running live refresh cycle")
         asyncio.run(run_live_crawler_cycle())
 
@@ -350,7 +359,7 @@ def crawl_all_futures_profiles():
     Runs on Sunday at 05:00 KST to sync season-cumulative Futures stats.
     Uses exponential backoff retry on failures (3 attempts max).
     """
-    with JOB_RUN_LOCK:
+    with MAINTENANCE_LOCK:
         logger.info("=== Starting Weekly Futures Profile Crawl ===")
 
         try:
@@ -358,11 +367,16 @@ def crawl_all_futures_profiles():
 
             # Crawl Futures stats with recommended settings
             logger.info(f"Crawling Futures stats for active players in {current_year}")
-            crawl_futures_main([
-                '--season', str(current_year),
-                '--concurrency', '2',  # Low concurrency to respect rate limits
-                '--delay', '2.0'  # 2-second delay between requests
-            ])
+            crawl_futures_main(
+                [
+                    "--season",
+                    str(current_year),
+                    "--concurrency",
+                    "2",  # Low concurrency to respect rate limits
+                    "--delay",
+                    "2.0",  # 2-second delay between requests
+                ]
+            )
 
             logger.info("=== Weekly Futures Profile Crawl Completed Successfully ===")
             alert_success("crawl_all_futures_profiles")
@@ -397,7 +411,7 @@ def sync_from_oci_job():
     Sync job: Hydrate local DB from OCI after GitHub Actions run window.
     Runs daily at 05:00 KST.
     """
-    with JOB_RUN_LOCK:
+    with MAINTENANCE_LOCK:
         logger.info("=== Starting OCI to Local Sync (Hydration) ===")
         current_year = datetime.now(KST).year
         # Hydrate for the current year
@@ -417,7 +431,7 @@ def generate_daily_report_job():
     """
     from src.cli.generate_quality_report import main as report_main
 
-    with JOB_RUN_LOCK:
+    with MAINTENANCE_LOCK:
         logger.info("=== Starting Daily Quality Report Generation ===")
         target_date = _previous_day_kst()
         # Run report and notify if issues found
@@ -425,14 +439,110 @@ def generate_daily_report_job():
         logger.info("=== Daily Quality Report Generation Completed ===")
 
 
+def crawl_phase1_extra_job():
+    """
+    Phase 1: Supplementary crawlers (broadcast, MVP, injury, foreign players, manager changes).
+    Runs daily at 06:00 KST (after daily game crawl and standings compute).
+    """
+    with MAINTENANCE_LOCK:
+        logger.info("=== Starting Phase 1 Extra Crawlers ===")
+        try:
+            from src.cli.crawl_phase1_extra import run_all_crawlers
+
+            asyncio.run(run_all_crawlers(save=True))
+            logger.info("=== Phase 1 Extra Crawlers Completed Successfully ===")
+        except Exception:
+            logger.exception("Phase 1 extra crawlers failed")
+
+
+def compute_standings_job():
+    """
+    Compute daily standings with home/away splits, recent 10, weekly trends.
+    Runs daily at 03:30 KST (after game crawl at 03:00).
+    """
+    with DAILY_LOCK:
+        logger.info("=== Starting Standings Computation ===")
+        try:
+            from src.cli.calculate_standings import main as standings_main
+
+            current_year = datetime.now(KST).year
+            standings_main(["--year", str(current_year)])
+            logger.info("=== Standings Computation Completed ===")
+        except Exception:
+            logger.exception("Standings computation failed")
+
+
+def compute_park_factor_job():
+    """
+    Compute park factor for all stadiums.
+    Runs weekly Sunday at 05:30 KST.
+    """
+    with MAINTENANCE_LOCK:
+        logger.info("=== Starting Park Factor Computation ===")
+        try:
+            from src.aggregators.park_factor_calculator import ParkFactorCalculator
+            from src.db.engine import SessionLocal
+
+            current_year = datetime.now(KST).year
+            with SessionLocal() as session:
+                calc = ParkFactorCalculator(session)
+                results = calc.calculate(current_year)
+                logger.info(f"Park Factor computed for {len(results)} stadiums")
+        except Exception:
+            logger.exception("Park Factor computation failed")
+
+
+def aggregate_team_defense_job():
+    """
+    Aggregate team-level fielding and baserunning stats.
+    Runs daily at 03:45 KST (after standings).
+    """
+    with MAINTENANCE_LOCK:
+        logger.info("=== Starting Team Defense Aggregation ===")
+        try:
+            from src.aggregators.team_fielding_aggregator import TeamFieldingAggregator
+            from src.db.engine import SessionLocal
+            from src.models.team import Team
+
+            current_year = datetime.now(KST).year
+            with SessionLocal() as session:
+                teams = [t.team_id for t in session.query(Team.team_id).filter(Team.is_active).all()]
+                agg = TeamFieldingAggregator(session)
+                agg.run_all(current_year, teams)
+                logger.info("=== Team Defense Aggregation Completed ===")
+        except Exception:
+            logger.exception("Team defense aggregation failed")
+
+
+def compute_rankings_job():
+    """
+    Compute sabermetric rankings (wOBA, wRC+, WAR, OPS+).
+    Runs daily at 04:00 KST.
+    """
+    with MAINTENANCE_LOCK:
+        logger.info("=== Starting Rankings Computation ===")
+        try:
+            from src.aggregators.ranking_aggregator import RankingAggregator
+            from src.db.engine import SessionLocal
+
+            current_year = datetime.now(KST).year
+            with SessionLocal() as session:
+                agg = RankingAggregator(session)
+                agg.run_for_season(current_year)
+                logger.info("=== Rankings Computation Completed ===")
+        except Exception:
+            logger.exception("Rankings computation failed")
+
+
 def job_error_listener(event):
     """Listener for failed APScheduler jobs."""
     if event.exception:
         import traceback
+
         job = event.job_id
         exc = event.exception
         tb = "".join(traceback.format_exception(type(exc), exc, exc.__traceback__))
-        
+
         logger.error(f"Job {job} failed: {exc}")
         try:
             SlackWebhookClient.send_error_alert(f"🚨 <b>Scheduler Job Failed: {job}</b>\nError: {exc}\n\n{tb}")
@@ -452,17 +562,17 @@ def main(argv: Sequence[str] | None = None):
         crawl_pregame_refresh()
         return
 
-    scheduler = BlockingScheduler(timezone='Asia/Seoul')
+    scheduler = BlockingScheduler(timezone="Asia/Seoul")
     scheduler.add_listener(job_error_listener, EVENT_JOB_ERROR)
 
     # Job 1: Daily regular season games (03:00 KST)
     scheduler.add_job(
         crawl_daily_games,
         trigger=CronTrigger(hour=3, minute=0),
-        id='crawl_games_regular',
-        name='Daily Regular Season Games Crawl',
+        id="crawl_games_regular",
+        name="Daily Regular Season Games Crawl",
         misfire_grace_time=3600,  # Allow 1 hour grace period
-        max_instances=1  # Prevent concurrent runs
+        max_instances=1,  # Prevent concurrent runs
     )
     logger.info("Registered job: crawl_games_regular (Daily 03:00 KST)")
 
@@ -470,40 +580,95 @@ def main(argv: Sequence[str] | None = None):
     scheduler.add_job(
         sync_from_oci_job,
         trigger=CronTrigger(hour=5, minute=0),
-        id='sync_from_oci',
-        name='OCI to Local Sync (Hydration)',
+        id="sync_from_oci",
+        name="OCI to Local Sync (Hydration)",
         misfire_grace_time=3600,
-        max_instances=1
+        max_instances=1,
     )
     logger.info("Registered job: sync_from_oci (Daily 05:00 KST)")
 
-    # Job 1.6: Daily Quality Report (05:15 KST)
+    # Job 1.5: Standings Computation (03:30 KST)
+    scheduler.add_job(
+        compute_standings_job,
+        trigger=CronTrigger(hour=3, minute=30),
+        id="compute_standings",
+        name="Daily Standings Computation",
+        misfire_grace_time=3600,
+        max_instances=1,
+    )
+    logger.info("Registered job: compute_standings (Daily 03:30 KST)")
+
+    # Job 1.6: Team Defense Aggregation (03:45 KST)
+    scheduler.add_job(
+        aggregate_team_defense_job,
+        trigger=CronTrigger(hour=3, minute=45),
+        id="aggregate_team_defense",
+        name="Daily Team Defense Aggregation",
+        misfire_grace_time=3600,
+        max_instances=1,
+    )
+    logger.info("Registered job: aggregate_team_defense (Daily 03:45 KST)")
+
+    # Job 1.7: Rankings Computation (04:00 KST)
+    scheduler.add_job(
+        compute_rankings_job,
+        trigger=CronTrigger(hour=4, minute=0),
+        id="compute_rankings",
+        name="Daily Rankings Computation",
+        misfire_grace_time=3600,
+        max_instances=1,
+    )
+    logger.info("Registered job: compute_rankings (Daily 04:00 KST)")
+
+    # Job 1.8: Phase 1 Extra Crawlers (06:00 KST)
+    scheduler.add_job(
+        crawl_phase1_extra_job,
+        trigger=CronTrigger(hour=6, minute=0),
+        id="crawl_phase1_extra",
+        name="Phase 1 Extra Crawlers",
+        misfire_grace_time=7200,
+        max_instances=1,
+    )
+    logger.info("Registered job: crawl_phase1_extra (Daily 06:00 KST)")
+
+    # Job 1.9: Daily Quality Report (05:15 KST)
     scheduler.add_job(
         generate_daily_report_job,
         trigger=CronTrigger(hour=5, minute=15),
-        id='generate_quality_report',
-        name='Daily Quality Report Generation',
+        id="generate_quality_report",
+        name="Daily Quality Report Generation",
         misfire_grace_time=3600,
-        max_instances=1
+        max_instances=1,
     )
     logger.info("Registered job: generate_quality_report (Daily 05:15 KST)")
 
     # Job 2: Weekly Futures profile sync (Sunday 05:00 KST)
     scheduler.add_job(
         crawl_all_futures_profiles,
-        trigger=CronTrigger(day_of_week='sun', hour=5, minute=0),
-        id='crawl_futures_profile',
-        name='Weekly Futures Profile Sync',
+        trigger=CronTrigger(day_of_week="sun", hour=5, minute=0),
+        id="crawl_futures_profile",
+        name="Weekly Futures Profile Sync",
         misfire_grace_time=7200,  # Allow 2 hour grace period
-        max_instances=1  # Prevent concurrent runs
+        max_instances=1,  # Prevent concurrent runs
     )
     logger.info("Registered job: crawl_futures_profile (Weekly Sunday 05:00 KST)")
+
+    # Job 2.5: Weekly Park Factor Computation (Sunday 05:30 KST)
+    scheduler.add_job(
+        compute_park_factor_job,
+        trigger=CronTrigger(day_of_week="sun", hour=5, minute=30),
+        id="compute_park_factor",
+        name="Weekly Park Factor Computation",
+        misfire_grace_time=7200,
+        max_instances=1,
+    )
+    logger.info("Registered job: compute_park_factor (Weekly Sunday 05:30 KST)")
 
     scheduler.add_job(
         crawl_pregame_refresh,
         trigger=CronTrigger(hour="10-23", minute="*/15"),
-        id='crawl_pregame_refresh',
-        name='Pregame Refresh',
+        id="crawl_pregame_refresh",
+        name="Pregame Refresh",
         misfire_grace_time=900,
         max_instances=1,
     )
@@ -512,23 +677,23 @@ def main(argv: Sequence[str] | None = None):
     scheduler.add_job(
         crawl_live_refresh,
         trigger=CronTrigger(hour="12-22", minute="*/2"),
-        id='crawl_live_refresh_day',
-        name='Live Refresh Day Window',
+        id="crawl_live_refresh_day",
+        name="Live Refresh Day Window",
         misfire_grace_time=180,
         max_instances=1,
     )
     scheduler.add_job(
         crawl_live_refresh,
         trigger=CronTrigger(hour=23, minute="0-30/2"),
-        id='crawl_live_refresh_night',
-        name='Live Refresh Night Window',
+        id="crawl_live_refresh_night",
+        name="Live Refresh Night Window",
         misfire_grace_time=180,
         max_instances=1,
     )
     logger.info("Registered job: crawl_live_refresh (Every 2m, 12:00-23:30 KST)")
 
     # Optional one-time startup backfill
-    startup_run = os.getenv('STARTUP_RUN', '1') == '1' and not args.no_startup_run
+    startup_run = os.getenv("STARTUP_RUN", "1") == "1" and not args.no_startup_run
     if startup_run:
         try:
             logger.info("Performing one-time startup crawl (run_daily_update)")
@@ -536,20 +701,25 @@ def main(argv: Sequence[str] | None = None):
         except Exception:
             logger.exception("Startup crawl failed; scheduler will continue with cron jobs")
 
-    print("\n" + "="*60)
+    print("\n" + "=" * 60)
     print(" KBO Crawler Scheduler Started")
-    print("="*60)
-    print(f" Timezone: Asia/Seoul")
+    print("=" * 60)
+    print(" Timezone: Asia/Seoul")
     print(f" Start Time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-    print("="*60)
+    print("=" * 60)
     print("\nScheduled Jobs:")
     print("  1. Daily Games Crawl: Every day at 03:00 KST")
-    print("  2. OCI to Local Sync: Every day at 05:00 KST")
-    print("  3. Daily Quality Report: Every day at 05:15 KST")
-    print("  4. Pregame Refresh: Every 15 minutes, 10:00-23:45 KST, today + lookahead")
-    print("  5. Live Refresh: Every 2 minutes, 12:00-23:30 KST")
-    print("  6. Futures Profile Sync: Every Sunday at 05:00 KST")
-    print("="*60 + "\n")
+    print("  2. Standings Computation: Every day at 03:30 KST")
+    print("  3. Team Defense Aggregation: Every day at 03:45 KST")
+    print("  4. Rankings Computation: Every day at 04:00 KST")
+    print("  5. OCI to Local Sync: Every day at 05:00 KST")
+    print("  6. Daily Quality Report: Every day at 05:15 KST")
+    print("  7. Phase 1 Extra Crawlers: Every day at 06:00 KST")
+    print("  8. Pregame Refresh: Every 15 minutes, 10:00-23:45 KST, today + lookahead")
+    print("  9. Live Refresh: Every 2 minutes, 12:00-23:30 KST")
+    print(" 10. Futures Profile Sync: Every Sunday at 05:00 KST")
+    print(" 11. Park Factor Computation: Every Sunday at 05:30 KST")
+    print("=" * 60 + "\n")
 
     logger.info("Scheduler started successfully")
 

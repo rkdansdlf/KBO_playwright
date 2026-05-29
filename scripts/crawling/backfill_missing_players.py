@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Backfill verified player_basic profiles referenced by season stats."""
+
 from __future__ import annotations
 
 import argparse
@@ -21,7 +22,6 @@ from src.crawlers.player_profile_crawler import PlayerProfileCrawler
 from src.db.engine import SessionLocal
 from src.repositories.player_basic_repository import PlayerBasicRepository
 from src.utils.player_validation import validate_player_payload
-
 
 DEFAULT_REPORT_DIR = Path("data/player_profile_backfill")
 
@@ -98,7 +98,7 @@ def _collect_unknown_stubs(session, table_names: list[tuple[str, str]], player_i
             SELECT DISTINCT p.player_id, COALESCE(t.team_code, p.team), p.name, p.position
             FROM player_basic p
             JOIN {table_name} t ON p.player_id = t.player_id
-            WHERE {_unknown_name_sql('p')}
+            WHERE {_unknown_name_sql("p")}
               {player_filter}
             ORDER BY p.player_id
             """,
@@ -372,10 +372,7 @@ async def backfill_players(
 
     report_path = report_dir / f"missing_player_backfill_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
     _write_report(report_path, report_rows)
-    print(
-        f"Backfill {'applied' if apply else 'dry-run'} complete: "
-        f"prepared={prepared} saved={saved} skipped={skipped}"
-    )
+    print(f"Backfill {'applied' if apply else 'dry-run'} complete: prepared={prepared} saved={saved} skipped={skipped}")
     print(f"report_csv={report_path}")
     return {
         "candidates": len(candidates),
@@ -389,7 +386,9 @@ async def backfill_players(
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Backfill verified player_basic profiles.")
     parser.add_argument("--include-pitching", action="store_true", help="Include player_season_pitching references.")
-    parser.add_argument("--include-unknown-stubs", action="store_true", help="Include player_basic rows named Unknown <id>.")
+    parser.add_argument(
+        "--include-unknown-stubs", action="store_true", help="Include player_basic rows named Unknown <id>."
+    )
     parser.add_argument("--apply", action="store_true", help="Persist verified profiles. Default is dry-run.")
     parser.add_argument("--limit", type=int, help="Maximum candidates to process.")
     parser.add_argument("--ids", help="Comma-separated player IDs to process.")

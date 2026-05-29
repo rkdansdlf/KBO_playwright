@@ -95,8 +95,16 @@ def test_process_player_result_skips_when_player_basic_missing(monkeypatch):
         return [{"season": 2026, "G": 10, "AB": 40, "AVG": 0.25}]
 
     monkeypatch.setattr(module, "fetch_and_parse_futures_batting", rows)
-    monkeypatch.setattr(module, "save_futures_batting", lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("save_futures_batting should be skipped")))
-    monkeypatch.setattr(module, "save_pitching_stats_to_db", lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("save_pitching_stats_to_db should be skipped")))
+    monkeypatch.setattr(
+        module,
+        "save_futures_batting",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("save_futures_batting should be skipped")),
+    )
+    monkeypatch.setattr(
+        module,
+        "save_pitching_stats_to_db",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("save_pitching_stats_to_db should be skipped")),
+    )
     monkeypatch.setattr(module, "_has_player_basic", lambda _pid: False)
 
     result = asyncio.run(
@@ -131,10 +139,7 @@ def test_crawl_futures_continues_when_player_processing_raises(monkeypatch):
 
 def test_crawl_futures_summary_groups_failure_reasons(monkeypatch):
     async def ids(_season, _delay):
-        return {
-            "1001": {"position": "hitter", "name": "PlayerA"},
-            "1002": {"position": "pitcher", "name": "PlayerB"}
-        }
+        return {"1001": {"position": "hitter", "name": "PlayerA"}, "1002": {"position": "pitcher", "name": "PlayerB"}}
 
     async def fake_process(pid, pos, name, *_args, **_kwargs):
         if pid == "1001":

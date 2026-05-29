@@ -88,7 +88,7 @@ python src/cli/crawl_retire.py --years 1982-2025 --concurrency 3
 ### Scheduler & Docker
 ```bash
 # Run automated scheduler locally (APScheduler)
-python scheduler.py
+python scripts/scheduler.py
 
 # Build and run with Docker
 docker-compose build
@@ -99,6 +99,12 @@ docker-compose logs -f scheduler
 ```
 
 ## Key Technical Considerations
+
+### Concurrency & Locking
+Automated tasks in `scripts/scheduler.py` use a **3-stage locking mechanism** to prevent collisions:
+- **`LIVE_LOCK`**: Protects high-frequency real-time updates (Live refresh, Pregame).
+- **`DAILY_LOCK`**: Protects the core daily update pipeline.
+- **`MAINTENANCE_LOCK`**: Protects long-running background tasks (Futures sync, OCI hydration, Reports).
 
 ### Database Management
 - **Engine**: `src/db/engine.py` provides a factory `create_engine_for_url` that configures SQLite, PostgreSQL, or MySQL based on the `DATABASE_URL` in `.env`.

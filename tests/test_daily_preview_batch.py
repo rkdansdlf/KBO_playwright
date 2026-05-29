@@ -6,7 +6,8 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 import src.cli.daily_preview_batch as daily_preview_batch
-import src.repositories.game_repository as game_repository
+import src.repositories.game_relay as game_relay_module
+import src.repositories.game_save as game_save_module
 from src.models.game import Game, GameIdAlias, GameLineup, GameMetadata, GameSummary
 from src.models.player import PlayerBasic, PlayerSeasonBatting, PlayerSeasonPitching
 from src.models.team import Team
@@ -99,8 +100,10 @@ def test_preview_sync_leaves_unresolved_player_lineup_null(monkeypatch):
     monkeypatch.setattr(daily_preview_batch, "SessionLocal", SessionLocal)
     monkeypatch.setattr(daily_preview_batch, "OCISync", _ForeignKeyCheckingSyncer)
     monkeypatch.setattr(daily_preview_batch, "write_refresh_manifest", lambda **_kwargs: "manifest.json")
-    monkeypatch.setattr(game_repository, "SessionLocal", SessionLocal)
-    monkeypatch.setattr(game_repository, "_auto_sync_to_oci", lambda _game_id: None)
+    monkeypatch.setattr(game_save_module, "SessionLocal", SessionLocal)
+    monkeypatch.setattr(game_relay_module, "SessionLocal", SessionLocal)
+    monkeypatch.setattr(game_save_module, "_auto_sync_to_oci", lambda _game_id: None)
+    monkeypatch.setattr(game_relay_module, "_auto_sync_to_oci", lambda _game_id: None)
     monkeypatch.setenv("OCI_DB_URL", "postgresql://example")
 
     saved_ids = asyncio.run(daily_preview_batch.run_preview_batch("20260515", sync_to_oci=True))

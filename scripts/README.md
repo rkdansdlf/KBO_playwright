@@ -89,6 +89,10 @@ Use the `src.cli` entrypoints for DB-writing schedule/detail collection, and the
 - `python -m src.cli.run_daily_update --date YYYYMMDD`
 - `python scripts/fetch_kbo_pbp.py --date YYYYMMDD`
 
+### Automation & Scheduling
+- `scheduler.py` - APScheduler-based automation for KBO data collection. Manages live refreshes, pregame checks, daily updates, and maintenance tasks.
+  - Uses a **3-stage locking mechanism** (`LIVE_LOCK`, `DAILY_LOCK`, `MAINTENANCE_LOCK`) to prevent concurrency issues between real-time, daily, and background jobs.
+
 ### Manual Debug and Manifest Scripts
 These scripts call crawlers directly for parser investigation or write JSON manifests only. They are not standard DB-writing collection paths:
 - `scripts/maintenance/init_data_collection.py`

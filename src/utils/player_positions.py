@@ -1,15 +1,15 @@
 """
 Utility to standardize KBO player positions from raw strings (Korean/Hanja) to standard codes.
 """
+
 from __future__ import annotations
 
 from enum import Enum
-from typing import List, Optional, Set
 
 
 class PositionCode(str, Enum):
-    P = "P"    # Pitcher (투)
-    C = "C"    # Catcher (포)
+    P = "P"  # Pitcher (투)
+    C = "C"  # Catcher (포)
     B1 = "1B"  # 1st Base (一)
     B2 = "2B"  # 2nd Base (二)
     B3 = "3B"  # 3rd Base (三)
@@ -50,11 +50,11 @@ RAW_MAP = {
 }
 
 
-def normalize_position(raw_pos: Optional[str]) -> List[PositionCode]:
+def normalize_position(raw_pos: str | None) -> list[PositionCode]:
     """
     Normalizes a KBO position string into a list of PositionCode.
     Handles composite strings like '타一', '주二', '유三'.
-    
+
     Examples:
         '타一' -> [PH, 1B]
         '주二' -> [PR, 2B]
@@ -69,21 +69,21 @@ def normalize_position(raw_pos: Optional[str]) -> List[PositionCode]:
         return []
 
     # Handle characters one by one or in recognized chunks
-    codes: List[PositionCode] = []
-    
+    codes: list[PositionCode] = []
+
     # We iterate through the string and check if each character or pair is in RAW_MAP
     # KBO position strings are usually short (1-3 chars).
     i = 0
     while i < len(raw_pos):
         char = raw_pos[i]
-        
+
         # Check if it's a known mapping
         if char in RAW_MAP:
             codes.append(RAW_MAP[char])
         else:
             # If not in map, but we want to be resilient
             pass
-            
+
         i += 1
 
     if not codes and raw_pos:
@@ -92,7 +92,7 @@ def normalize_position(raw_pos: Optional[str]) -> List[PositionCode]:
     return codes
 
 
-def get_primary_position(raw_pos: Optional[str]) -> PositionCode:
+def get_primary_position(raw_pos: str | None) -> PositionCode:
     """
     Returns the most 'final' position in a sequence.
     Example: '타一' -> 1B (since they entered as PH but played 1B)
@@ -102,7 +102,7 @@ def get_primary_position(raw_pos: Optional[str]) -> PositionCode:
     codes = normalize_position(raw_pos)
     if not codes:
         return PositionCode.UNKNOWN
-    
+
     # Heuristic: the LAST position in the string usually represents the final state
     # UNLESS it's just '타' or '주' followed by nothing else in the map.
     return codes[-1]
@@ -114,6 +114,7 @@ def is_infield(pos: PositionCode) -> bool:
 
 def is_outfield(pos: PositionCode) -> bool:
     return pos in {PositionCode.LF, PositionCode.CF, PositionCode.RF}
+
 
 def is_battery(pos: PositionCode) -> bool:
     return pos in {PositionCode.P, PositionCode.C}

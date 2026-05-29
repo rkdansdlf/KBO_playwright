@@ -2,17 +2,18 @@
 Player Basic Repository
 UPSERT operations for player_basic table
 """
+
 import logging
 from collections import Counter
-from typing import List, Dict, Any
+from typing import Any
 
 logger = logging.getLogger(__name__)
-from sqlalchemy.orm import Session
-from sqlalchemy.dialects.sqlite import insert as sqlite_insert
-from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.dialects.mysql import insert as mysql_insert
+from sqlalchemy.dialects.postgresql import insert as pg_insert
+from sqlalchemy.dialects.sqlite import insert as sqlite_insert
+from sqlalchemy.orm import Session
 
-from src.db.engine import SessionLocal, Engine
+from src.db.engine import Engine, SessionLocal
 from src.models.player import PlayerBasic
 from src.utils.player_validation import filter_valid_player_payloads, validate_player_payload
 
@@ -24,7 +25,7 @@ class PlayerBasicRepository:
         self.dialect = Engine.dialect.name
         self.last_filter_counts: Counter = Counter()
 
-    def upsert_players(self, players: List[Dict[str, Any]]) -> int:
+    def upsert_players(self, players: list[dict[str, Any]]) -> int:
         """
         UPSERT player_basic records (idempotent)
 
@@ -68,21 +69,21 @@ class PlayerBasicRepository:
                     status_case = case(
                         (excluded.status_source.in_(["profile", "register"]), excluded.status),
                         (PlayerBasic.status_source.in_(["profile", "register"]), PlayerBasic.status),
-                        else_=excluded.status
+                        else_=excluded.status,
                     )
                     staff_role_case = case(
                         (excluded.status_source.in_(["profile", "register"]), excluded.staff_role),
                         (PlayerBasic.status_source.in_(["profile", "register"]), PlayerBasic.staff_role),
-                        else_=excluded.staff_role
+                        else_=excluded.staff_role,
                     )
                     status_source_case = case(
                         (excluded.status_source.in_(["profile", "register"]), excluded.status_source),
                         (PlayerBasic.status_source.in_(["profile", "register"]), PlayerBasic.status_source),
-                        else_=excluded.status_source
+                        else_=excluded.status_source,
                     )
 
                     update_dict = {}
-                    for k in rows[0].keys():
+                    for k in rows[0]:
                         if k == "player_id":
                             continue
                         if k == "status":
@@ -100,7 +101,7 @@ class PlayerBasicRepository:
                     )
                 elif self.dialect == "mysql":
                     stmt = mysql_insert(PlayerBasic).values(rows)
-                    update_dict = {k: stmt.inserted[k] for k in rows[0].keys() if k != "player_id"}
+                    update_dict = {k: stmt.inserted[k] for k in rows[0] if k != "player_id"}
                     stmt = stmt.on_duplicate_key_update(update_dict)
                 else:  # PostgreSQL
                     stmt = pg_insert(PlayerBasic).values(rows)
@@ -108,21 +109,21 @@ class PlayerBasicRepository:
                     status_case = case(
                         (excluded.status_source.in_(["profile", "register"]), excluded.status),
                         (PlayerBasic.status_source.in_(["profile", "register"]), PlayerBasic.status),
-                        else_=excluded.status
+                        else_=excluded.status,
                     )
                     staff_role_case = case(
                         (excluded.status_source.in_(["profile", "register"]), excluded.staff_role),
                         (PlayerBasic.status_source.in_(["profile", "register"]), PlayerBasic.staff_role),
-                        else_=excluded.staff_role
+                        else_=excluded.staff_role,
                     )
                     status_source_case = case(
                         (excluded.status_source.in_(["profile", "register"]), excluded.status_source),
                         (PlayerBasic.status_source.in_(["profile", "register"]), PlayerBasic.status_source),
-                        else_=excluded.status_source
+                        else_=excluded.status_source,
                     )
 
                     update_dict = {}
-                    for k in rows[0].keys():
+                    for k in rows[0]:
                         if k == "player_id":
                             continue
                         if k == "status":
@@ -147,7 +148,7 @@ class PlayerBasicRepository:
                 logger.exception("[ERROR] Error upserting players")
                 raise
 
-    def _upsert_one(self, session: Session, player_data: Dict[str, Any]):
+    def _upsert_one(self, session: Session, player_data: dict[str, Any]):
         """UPSERT single player (SQLite/PostgreSQL compatible)"""
         ok, reason = validate_player_payload(player_data)
         if not ok:
@@ -163,21 +164,21 @@ class PlayerBasicRepository:
             status_case = case(
                 (excluded.status_source.in_(["profile", "register"]), excluded.status),
                 (PlayerBasic.status_source.in_(["profile", "register"]), PlayerBasic.status),
-                else_=excluded.status
+                else_=excluded.status,
             )
             staff_role_case = case(
                 (excluded.status_source.in_(["profile", "register"]), excluded.staff_role),
                 (PlayerBasic.status_source.in_(["profile", "register"]), PlayerBasic.staff_role),
-                else_=excluded.staff_role
+                else_=excluded.staff_role,
             )
             status_source_case = case(
                 (excluded.status_source.in_(["profile", "register"]), excluded.status_source),
                 (PlayerBasic.status_source.in_(["profile", "register"]), PlayerBasic.status_source),
-                else_=excluded.status_source
+                else_=excluded.status_source,
             )
 
             update_dict = {}
-            for k in data.keys():
+            for k in data:
                 if k == "player_id":
                     continue
                 if k == "status":
@@ -189,13 +190,10 @@ class PlayerBasicRepository:
                 else:
                     update_dict[k] = excluded[k]
 
-            stmt = stmt.on_conflict_do_update(
-                index_elements=['player_id'],
-                set_=update_dict
-            )
+            stmt = stmt.on_conflict_do_update(index_elements=["player_id"], set_=update_dict)
         elif self.dialect == "mysql":
             stmt = mysql_insert(PlayerBasic).values(**data)
-            update_dict = {k: stmt.inserted[k] for k in data.keys() if k != 'player_id'}
+            update_dict = {k: stmt.inserted[k] for k in data if k != "player_id"}
             stmt = stmt.on_duplicate_key_update(update_dict)
         else:  # PostgreSQL
             stmt = pg_insert(PlayerBasic).values(**data)
@@ -203,21 +201,21 @@ class PlayerBasicRepository:
             status_case = case(
                 (excluded.status_source.in_(["profile", "register"]), excluded.status),
                 (PlayerBasic.status_source.in_(["profile", "register"]), PlayerBasic.status),
-                else_=excluded.status
+                else_=excluded.status,
             )
             staff_role_case = case(
                 (excluded.status_source.in_(["profile", "register"]), excluded.staff_role),
                 (PlayerBasic.status_source.in_(["profile", "register"]), PlayerBasic.staff_role),
-                else_=excluded.staff_role
+                else_=excluded.staff_role,
             )
             status_source_case = case(
                 (excluded.status_source.in_(["profile", "register"]), excluded.status_source),
                 (PlayerBasic.status_source.in_(["profile", "register"]), PlayerBasic.status_source),
-                else_=excluded.status_source
+                else_=excluded.status_source,
             )
 
             update_dict = {}
-            for k in data.keys():
+            for k in data:
                 if k == "player_id":
                     continue
                 if k == "status":
@@ -229,38 +227,35 @@ class PlayerBasicRepository:
                 else:
                     update_dict[k] = excluded[k]
 
-            stmt = stmt.on_conflict_do_update(
-                index_elements=['player_id'],
-                set_=update_dict
-            )
+            stmt = stmt.on_conflict_do_update(index_elements=["player_id"], set_=update_dict)
 
         session.execute(stmt)
 
-    def _build_payload(self, player_data: Dict[str, Any]) -> Dict[str, Any]:
+    def _build_payload(self, player_data: dict[str, Any]) -> dict[str, Any]:
         return {
-            'player_id': player_data['player_id'],
-            'name': player_data['name'],
-            'uniform_no': player_data.get('uniform_no'),
-            'team': player_data.get('team'),
-            'position': player_data.get('position'),
-            'birth_date': player_data.get('birth_date'),
-            'birth_date_date': player_data.get('birth_date_date'),
-            'height_cm': player_data.get('height_cm'),
-            'weight_kg': player_data.get('weight_kg'),
-            'career': player_data.get('career'),
-            'status': player_data.get('status'),
-            'staff_role': player_data.get('staff_role'),
-            'status_source': player_data.get('status_source'),
-            'photo_url': player_data.get('photo_url'),
-            'bats': player_data.get('bats'),
-            'throws': player_data.get('throws'),
-            'debut_year': player_data.get('debut_year'),
-            'salary_original': player_data.get('salary_original'),
-            'signing_bonus_original': player_data.get('signing_bonus_original'),
-            'draft_info': player_data.get('draft_info'),
+            "player_id": player_data["player_id"],
+            "name": player_data["name"],
+            "uniform_no": player_data.get("uniform_no"),
+            "team": player_data.get("team"),
+            "position": player_data.get("position"),
+            "birth_date": player_data.get("birth_date"),
+            "birth_date_date": player_data.get("birth_date_date"),
+            "height_cm": player_data.get("height_cm"),
+            "weight_kg": player_data.get("weight_kg"),
+            "career": player_data.get("career"),
+            "status": player_data.get("status"),
+            "staff_role": player_data.get("staff_role"),
+            "status_source": player_data.get("status_source"),
+            "photo_url": player_data.get("photo_url"),
+            "bats": player_data.get("bats"),
+            "throws": player_data.get("throws"),
+            "debut_year": player_data.get("debut_year"),
+            "salary_original": player_data.get("salary_original"),
+            "signing_bonus_original": player_data.get("signing_bonus_original"),
+            "draft_info": player_data.get("draft_info"),
         }
 
-    def get_all(self, limit: int = None) -> List[PlayerBasic]:
+    def get_all(self, limit: int = None) -> list[PlayerBasic]:
         """Get all players (optionally limited)"""
         with SessionLocal() as session:
             query = session.query(PlayerBasic)
@@ -268,7 +263,7 @@ class PlayerBasicRepository:
                 query = query.limit(limit)
             return list(query.all())
 
-    def update_statuses(self, updates: List[Dict[str, Any]]) -> int:
+    def update_statuses(self, updates: list[dict[str, Any]]) -> int:
         """Update status/staff_role/status_source for existing players."""
         if not updates:
             return 0
@@ -296,7 +291,7 @@ class PlayerBasicRepository:
         with SessionLocal() as session:
             return session.query(PlayerBasic).filter_by(player_id=player_id).first()
 
-    def get_by_team(self, team: str, limit: int = None) -> List[PlayerBasic]:
+    def get_by_team(self, team: str, limit: int = None) -> list[PlayerBasic]:
         """Get players by team"""
         with SessionLocal() as session:
             query = session.query(PlayerBasic).filter_by(team=team)
@@ -304,7 +299,8 @@ class PlayerBasicRepository:
                 query = query.limit(limit)
             return list(query.all())
 
-def save_player_basic(player_data: Dict[str, Any]) -> int:
+
+def save_player_basic(player_data: dict[str, Any]) -> int:
     """Helper function to save a single player's basic profile."""
     repo = PlayerBasicRepository()
     return repo.upsert_players([player_data])

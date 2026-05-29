@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Repair historical team/franchise metadata from the canonical history map."""
+
 from __future__ import annotations
 
 import argparse
@@ -25,7 +26,6 @@ from src.models.team_history import TeamHistory
 from src.utils.team_codes import team_code_from_game_id_segment
 from src.utils.team_history import FRANCHISE_CANONICAL_CODE, find_team_history_entry, iter_team_history
 
-
 DEFAULT_DB_URL = "sqlite:///./data/kbo_dev.db"
 SOURCE_URL = "https://www.koreabaseball.com/Kbo/League/TeamHistory.aspx"
 
@@ -45,33 +45,249 @@ FRANCHISE_ROWS: dict[int, dict[str, Any]] = {
 }
 
 TEAM_ROWS: dict[str, dict[str, Any]] = {
-    "SS": {"team_name": "삼성 라이온즈", "team_short_name": "삼성", "city": "대구", "founded_year": 1982, "stadium_name": "대구 삼성 라이온즈 파크", "franchise_id": 1, "is_active": True, "aliases": []},
-    "LT": {"team_name": "롯데 자이언츠", "team_short_name": "롯데", "city": "부산", "founded_year": 1982, "stadium_name": "부산 사직 야구장", "franchise_id": 2, "is_active": True, "aliases": []},
-    "MBC": {"team_name": "MBC 청룡", "team_short_name": "MBC", "city": "서울", "founded_year": 1982, "stadium_name": "잠실야구장", "franchise_id": 3, "is_active": False, "aliases": []},
-    "LG": {"team_name": "LG 트윈스", "team_short_name": "LG", "city": "서울", "founded_year": 1990, "stadium_name": "잠실야구장", "franchise_id": 3, "is_active": True, "aliases": []},
-    "OB": {"team_name": "OB 베어스", "team_short_name": "OB", "city": "서울", "founded_year": 1982, "stadium_name": "잠실야구장", "franchise_id": 4, "is_active": False, "aliases": []},
-    "DB": {"team_name": "두산 베어스", "team_short_name": "두산", "city": "서울", "founded_year": 1999, "stadium_name": "잠실야구장", "franchise_id": 4, "is_active": True, "aliases": ["DO"]},
-    "HT": {"team_name": "해태 타이거즈", "team_short_name": "해태", "city": "광주", "founded_year": 1982, "stadium_name": "광주 무등경기장 야구장", "franchise_id": 5, "is_active": False, "aliases": []},
-    "KIA": {"team_name": "KIA 타이거즈", "team_short_name": "KIA", "city": "광주", "founded_year": 2001, "stadium_name": "광주-기아 챔피언스 필드", "franchise_id": 5, "is_active": True, "aliases": []},
-    "SM": {"team_name": "삼미 슈퍼스타즈", "team_short_name": "삼미", "city": "인천", "founded_year": 1982, "stadium_name": "인천공설운동장 야구장", "franchise_id": 6, "is_active": False, "aliases": []},
-    "CB": {"team_name": "청보 핀토스", "team_short_name": "청보", "city": "인천", "founded_year": 1985, "stadium_name": "인천공설운동장 야구장", "franchise_id": 6, "is_active": False, "aliases": []},
-    "TP": {"team_name": "태평양 돌핀스", "team_short_name": "태평양", "city": "인천", "founded_year": 1988, "stadium_name": "인천공설운동장 야구장", "franchise_id": 6, "is_active": False, "aliases": []},
-    "HU": {"team_name": "현대 유니콘스", "team_short_name": "현대", "city": "수원", "founded_year": 1996, "stadium_name": "수원야구장", "franchise_id": 6, "is_active": False, "aliases": ["HD"]},
-    "BE": {"team_name": "빙그레 이글스", "team_short_name": "빙그레", "city": "대전", "founded_year": 1986, "stadium_name": "대전한밭야구장", "franchise_id": 7, "is_active": False, "aliases": []},
-    "HH": {"team_name": "한화 이글스", "team_short_name": "한화", "city": "대전", "founded_year": 1994, "stadium_name": "대전 한화생명 이글스 파크", "franchise_id": 7, "is_active": True, "aliases": []},
-    "SK": {"team_name": "SK 와이번스", "team_short_name": "SK", "city": "인천", "founded_year": 2000, "stadium_name": "인천문학야구장", "franchise_id": 8, "is_active": False, "aliases": []},
-    "SSG": {"team_name": "SSG 랜더스", "team_short_name": "SSG", "city": "인천", "founded_year": 2021, "stadium_name": "인천SSG랜더스필드", "franchise_id": 8, "is_active": True, "aliases": []},
-    "NC": {"team_name": "NC 다이노스", "team_short_name": "NC", "city": "창원", "founded_year": 2011, "stadium_name": "창원NC파크", "franchise_id": 9, "is_active": True, "aliases": []},
-    "KT": {"team_name": "kt wiz", "team_short_name": "kt", "city": "수원", "founded_year": 2013, "stadium_name": "수원 kt wiz 파크", "franchise_id": 10, "is_active": True, "aliases": []},
-    "WO": {"team_name": "우리 히어로즈", "team_short_name": "우리", "city": "서울", "founded_year": 2008, "stadium_name": "목동야구장", "franchise_id": 11, "is_active": False, "aliases": []},
-    "NX": {"team_name": "넥센 히어로즈", "team_short_name": "넥센", "city": "서울", "founded_year": 2010, "stadium_name": "고척스카이돔", "franchise_id": 11, "is_active": False, "aliases": []},
-    "KH": {"team_name": "키움 히어로즈", "team_short_name": "키움", "city": "서울", "founded_year": 2019, "stadium_name": "고척스카이돔", "franchise_id": 11, "is_active": True, "aliases": ["KI"]},
-    "SL": {"team_name": "쌍방울 레이더스", "team_short_name": "쌍방울", "city": "전주", "founded_year": 1990, "stadium_name": "전주야구장", "franchise_id": 12, "is_active": False, "aliases": []},
+    "SS": {
+        "team_name": "삼성 라이온즈",
+        "team_short_name": "삼성",
+        "city": "대구",
+        "founded_year": 1982,
+        "stadium_name": "대구 삼성 라이온즈 파크",
+        "franchise_id": 1,
+        "is_active": True,
+        "aliases": [],
+    },
+    "LT": {
+        "team_name": "롯데 자이언츠",
+        "team_short_name": "롯데",
+        "city": "부산",
+        "founded_year": 1982,
+        "stadium_name": "부산 사직 야구장",
+        "franchise_id": 2,
+        "is_active": True,
+        "aliases": [],
+    },
+    "MBC": {
+        "team_name": "MBC 청룡",
+        "team_short_name": "MBC",
+        "city": "서울",
+        "founded_year": 1982,
+        "stadium_name": "잠실야구장",
+        "franchise_id": 3,
+        "is_active": False,
+        "aliases": [],
+    },
+    "LG": {
+        "team_name": "LG 트윈스",
+        "team_short_name": "LG",
+        "city": "서울",
+        "founded_year": 1990,
+        "stadium_name": "잠실야구장",
+        "franchise_id": 3,
+        "is_active": True,
+        "aliases": [],
+    },
+    "OB": {
+        "team_name": "OB 베어스",
+        "team_short_name": "OB",
+        "city": "서울",
+        "founded_year": 1982,
+        "stadium_name": "잠실야구장",
+        "franchise_id": 4,
+        "is_active": False,
+        "aliases": [],
+    },
+    "DB": {
+        "team_name": "두산 베어스",
+        "team_short_name": "두산",
+        "city": "서울",
+        "founded_year": 1999,
+        "stadium_name": "잠실야구장",
+        "franchise_id": 4,
+        "is_active": True,
+        "aliases": ["DO"],
+    },
+    "HT": {
+        "team_name": "해태 타이거즈",
+        "team_short_name": "해태",
+        "city": "광주",
+        "founded_year": 1982,
+        "stadium_name": "광주 무등경기장 야구장",
+        "franchise_id": 5,
+        "is_active": False,
+        "aliases": [],
+    },
+    "KIA": {
+        "team_name": "KIA 타이거즈",
+        "team_short_name": "KIA",
+        "city": "광주",
+        "founded_year": 2001,
+        "stadium_name": "광주-기아 챔피언스 필드",
+        "franchise_id": 5,
+        "is_active": True,
+        "aliases": [],
+    },
+    "SM": {
+        "team_name": "삼미 슈퍼스타즈",
+        "team_short_name": "삼미",
+        "city": "인천",
+        "founded_year": 1982,
+        "stadium_name": "인천공설운동장 야구장",
+        "franchise_id": 6,
+        "is_active": False,
+        "aliases": [],
+    },
+    "CB": {
+        "team_name": "청보 핀토스",
+        "team_short_name": "청보",
+        "city": "인천",
+        "founded_year": 1985,
+        "stadium_name": "인천공설운동장 야구장",
+        "franchise_id": 6,
+        "is_active": False,
+        "aliases": [],
+    },
+    "TP": {
+        "team_name": "태평양 돌핀스",
+        "team_short_name": "태평양",
+        "city": "인천",
+        "founded_year": 1988,
+        "stadium_name": "인천공설운동장 야구장",
+        "franchise_id": 6,
+        "is_active": False,
+        "aliases": [],
+    },
+    "HU": {
+        "team_name": "현대 유니콘스",
+        "team_short_name": "현대",
+        "city": "수원",
+        "founded_year": 1996,
+        "stadium_name": "수원야구장",
+        "franchise_id": 6,
+        "is_active": False,
+        "aliases": ["HD"],
+    },
+    "BE": {
+        "team_name": "빙그레 이글스",
+        "team_short_name": "빙그레",
+        "city": "대전",
+        "founded_year": 1986,
+        "stadium_name": "대전한밭야구장",
+        "franchise_id": 7,
+        "is_active": False,
+        "aliases": [],
+    },
+    "HH": {
+        "team_name": "한화 이글스",
+        "team_short_name": "한화",
+        "city": "대전",
+        "founded_year": 1994,
+        "stadium_name": "대전 한화생명 이글스 파크",
+        "franchise_id": 7,
+        "is_active": True,
+        "aliases": [],
+    },
+    "SK": {
+        "team_name": "SK 와이번스",
+        "team_short_name": "SK",
+        "city": "인천",
+        "founded_year": 2000,
+        "stadium_name": "인천문학야구장",
+        "franchise_id": 8,
+        "is_active": False,
+        "aliases": [],
+    },
+    "SSG": {
+        "team_name": "SSG 랜더스",
+        "team_short_name": "SSG",
+        "city": "인천",
+        "founded_year": 2021,
+        "stadium_name": "인천SSG랜더스필드",
+        "franchise_id": 8,
+        "is_active": True,
+        "aliases": [],
+    },
+    "NC": {
+        "team_name": "NC 다이노스",
+        "team_short_name": "NC",
+        "city": "창원",
+        "founded_year": 2011,
+        "stadium_name": "창원NC파크",
+        "franchise_id": 9,
+        "is_active": True,
+        "aliases": [],
+    },
+    "KT": {
+        "team_name": "kt wiz",
+        "team_short_name": "kt",
+        "city": "수원",
+        "founded_year": 2013,
+        "stadium_name": "수원 kt wiz 파크",
+        "franchise_id": 10,
+        "is_active": True,
+        "aliases": [],
+    },
+    "WO": {
+        "team_name": "우리 히어로즈",
+        "team_short_name": "우리",
+        "city": "서울",
+        "founded_year": 2008,
+        "stadium_name": "목동야구장",
+        "franchise_id": 11,
+        "is_active": False,
+        "aliases": [],
+    },
+    "NX": {
+        "team_name": "넥센 히어로즈",
+        "team_short_name": "넥센",
+        "city": "서울",
+        "founded_year": 2010,
+        "stadium_name": "고척스카이돔",
+        "franchise_id": 11,
+        "is_active": False,
+        "aliases": [],
+    },
+    "KH": {
+        "team_name": "키움 히어로즈",
+        "team_short_name": "키움",
+        "city": "서울",
+        "founded_year": 2019,
+        "stadium_name": "고척스카이돔",
+        "franchise_id": 11,
+        "is_active": True,
+        "aliases": ["KI"],
+    },
+    "SL": {
+        "team_name": "쌍방울 레이더스",
+        "team_short_name": "쌍방울",
+        "city": "전주",
+        "founded_year": 1990,
+        "stadium_name": "전주야구장",
+        "franchise_id": 12,
+        "is_active": False,
+        "aliases": [],
+    },
 }
 
 OPTIONAL_ALIAS_ROWS: dict[str, dict[str, Any]] = {
-    "DO": {"team_name": "두산 베어스", "team_short_name": "두산", "city": "서울", "founded_year": 1999, "stadium_name": "잠실야구장", "franchise_id": 4, "is_active": False, "aliases": ["DB"]},
-    "KI": {"team_name": "키움 히어로즈", "team_short_name": "키움", "city": "서울", "founded_year": 2019, "stadium_name": "고척스카이돔", "franchise_id": 11, "is_active": False, "aliases": ["KH"]},
+    "DO": {
+        "team_name": "두산 베어스",
+        "team_short_name": "두산",
+        "city": "서울",
+        "founded_year": 1999,
+        "stadium_name": "잠실야구장",
+        "franchise_id": 4,
+        "is_active": False,
+        "aliases": ["DB"],
+    },
+    "KI": {
+        "team_name": "키움 히어로즈",
+        "team_short_name": "키움",
+        "city": "서울",
+        "founded_year": 2019,
+        "stadium_name": "고척스카이돔",
+        "franchise_id": 11,
+        "is_active": False,
+        "aliases": ["KH"],
+    },
 }
 
 DIRECT_FACT_TABLES = (
@@ -215,7 +431,12 @@ def _merge_aliases(existing: Any, desired: list[str]) -> list[str]:
 
 
 def _source_metadata(franchise_id: int, status: str) -> dict[str, Any]:
-    return {"source": SOURCE_URL, "history_model": "historical_franchise_split", "status": status, "franchise_id": franchise_id}
+    return {
+        "source": SOURCE_URL,
+        "history_model": "historical_franchise_split",
+        "status": status,
+        "franchise_id": franchise_id,
+    }
 
 
 def _upsert_franchises(session) -> int:
@@ -408,17 +629,13 @@ def _update_fact_identity_postgres(
     if not assignments:
         return 0
 
-    match_clause = (
-        f"m.season = {year_expr} "
-        f"AND m.curr_code = f.{team_column} "
-        f"AND ({' OR '.join(distinct_predicates)})"
-    )
+    match_clause = f"m.season = {year_expr} AND m.curr_code = f.{team_column} AND ({' OR '.join(distinct_predicates)})"
     if apply:
         result = conn.execute(
             text(
                 f"""
                 UPDATE {table} AS f
-                SET {', '.join(assignments)}
+                SET {", ".join(assignments)}
                 FROM team_code_map AS m
                 WHERE {match_clause}
                 """
@@ -439,7 +656,9 @@ def _update_fact_identity_postgres(
     )
 
 
-def _update_fact_identity(conn, table: str, year_expr: str, team_column: str, *, apply: bool, postgres_year_expr: str | None = None) -> int:
+def _update_fact_identity(
+    conn, table: str, year_expr: str, team_column: str, *, apply: bool, postgres_year_expr: str | None = None
+) -> int:
     inspector = inspect(conn)
     columns = _table_columns(inspector, table)
     set_columns = [column for column in ("franchise_id", "canonical_team_code") if column in columns]
@@ -475,7 +694,9 @@ def _update_fact_identity(conn, table: str, year_expr: str, team_column: str, *,
             distinct_predicates.append(_distinct_predicate(conn, "canonical_team_code", "canonical_team_code"))
             params["canonical_team_code"] = canonical
 
-        where_clause = f"{year_expr} = :season_year AND {team_column} = :team_code AND ({' OR '.join(distinct_predicates)})"
+        where_clause = (
+            f"{year_expr} = :season_year AND {team_column} = :team_code AND ({' OR '.join(distinct_predicates)})"
+        )
         if apply:
             result = conn.execute(
                 text(f"UPDATE {table} SET {', '.join(assignments)} WHERE {where_clause}"),
@@ -483,7 +704,9 @@ def _update_fact_identity(conn, table: str, year_expr: str, team_column: str, *,
             )
             changed += int(result.rowcount or 0)
         else:
-            changed += int(conn.execute(text(f"SELECT COUNT(*) FROM {table} WHERE {where_clause}"), params).scalar() or 0)
+            changed += int(
+                conn.execute(text(f"SELECT COUNT(*) FROM {table} WHERE {where_clause}"), params).scalar() or 0
+            )
     return changed
 
 
@@ -555,7 +778,9 @@ def _update_game_franchise_ids(conn, *, apply: bool) -> int:
                 )
                 changed += int(result.rowcount or 0)
             else:
-                changed += int(conn.execute(text(f"SELECT COUNT(*) FROM game WHERE {where_clause}"), params).scalar() or 0)
+                changed += int(
+                    conn.execute(text(f"SELECT COUNT(*) FROM game WHERE {where_clause}"), params).scalar() or 0
+                )
     return changed
 
 
@@ -587,7 +812,9 @@ def _backfill_fact_identity(engine, *, apply: bool) -> int:
 
     for table, year_expr, postgres_year_expr, team_column in fact_specs:
         with engine.begin() as conn:
-            changed += _update_fact_identity(conn, table, year_expr, team_column, apply=apply, postgres_year_expr=postgres_year_expr)
+            changed += _update_fact_identity(
+                conn, table, year_expr, team_column, apply=apply, postgres_year_expr=postgres_year_expr
+            )
     with engine.begin() as conn:
         changed += _update_game_franchise_ids(conn, apply=apply)
     return changed
@@ -605,9 +832,7 @@ def _reset_postgres_sequences(engine) -> None:
             if not sequence_name:
                 continue
             conn.execute(
-                text(
-                    f"SELECT setval(:sequence_name, COALESCE((SELECT MAX({column}) FROM {table}), 1))"
-                ),
+                text(f"SELECT setval(:sequence_name, COALESCE((SELECT MAX({column}) FROM {table}), 1))"),
                 {"sequence_name": sequence_name},
             )
 
@@ -620,7 +845,9 @@ def _install_postgres_team_code_normalizer(engine, *, apply: bool) -> None:
         conn.execute(text(POSTGRES_NORMALIZE_TEAM_CODE_COLUMN_SQL))
 
 
-def run(*, db_url: str = DEFAULT_DB_URL, max_year: int | None = None, apply: bool = True, include_facts: bool = True) -> dict[str, int]:
+def run(
+    *, db_url: str = DEFAULT_DB_URL, max_year: int | None = None, apply: bool = True, include_facts: bool = True
+) -> dict[str, int]:
     max_year = max_year or datetime.now().year
     engine = create_engine(db_url, pool_pre_ping=True)
     _install_postgres_team_code_normalizer(engine, apply=apply)
@@ -679,7 +906,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--max-year", type=int, default=None)
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--skip-facts", action="store_true")
-    parser.add_argument("--include-oci", action="store_true", help="Also repair OCI_DB_URL after the local/default target.")
+    parser.add_argument(
+        "--include-oci", action="store_true", help="Also repair OCI_DB_URL after the local/default target."
+    )
     parser.add_argument("--oci-only", action="store_true", help="Repair only OCI_DB_URL.")
     return parser.parse_args()
 

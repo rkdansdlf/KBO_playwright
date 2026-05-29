@@ -1,30 +1,32 @@
 from sqlalchemy import (
-    Column,
-    String,
-    Integer,
-    Date,
-    Time,
-    ForeignKey,
     JSON,
     Boolean,
+    Column,
+    Date,
     Float,
-    Text,
-    UniqueConstraint,
+    ForeignKey,
+    Integer,
     Numeric,
+    String,
+    Text,
+    Time,
+    UniqueConstraint,
 )
 from sqlalchemy.orm import relationship
 
 from src.models.base import Base, TimestampMixin
 
+
 class Game(Base, TimestampMixin):
     """KBO Game basic information"""
+
     __tablename__ = "game"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     game_id = Column(String(20), nullable=False, unique=True, index=True)
     game_date = Column(Date, nullable=False)
     stadium = Column(String(50))
-    home_team = Column(String(20)) # Team Code
+    home_team = Column(String(20))  # Team Code
     away_team = Column(String(20))
     home_score = Column(Integer)
     away_score = Column(Integer)
@@ -35,12 +37,12 @@ class Game(Base, TimestampMixin):
     season_id = Column(Integer)
     game_status = Column(String(32), nullable=True)
     is_primary = Column(Boolean, nullable=False, default=True, server_default="1")
-    
+
     # Canonical/Franchise IDs for stable analysis
     home_franchise_id = Column(Integer, nullable=True)
     away_franchise_id = Column(Integer, nullable=True)
     winning_franchise_id = Column(Integer, nullable=True)
-    
+
     # Relationships
     summary = relationship("GameSummary", back_populates="game")
     plays = relationship("GamePlayByPlay", back_populates="game")
@@ -55,6 +57,7 @@ class Game(Base, TimestampMixin):
 
 class GameIdAlias(Base, TimestampMixin):
     """Alternate source IDs that resolve to the canonical KBO legacy game_id."""
+
     __tablename__ = "game_id_aliases"
 
     alias_game_id = Column(String(20), primary_key=True)
@@ -64,8 +67,10 @@ class GameIdAlias(Base, TimestampMixin):
 
     canonical_game = relationship("Game", back_populates="aliases")
 
+
 class GameSummary(Base, TimestampMixin):
     """Summary of game results (pitcher decisions, home runs, etc.)"""
+
     __tablename__ = "game_summary"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
@@ -80,12 +85,13 @@ class GameSummary(Base, TimestampMixin):
 
 class GamePlayByPlay(Base, TimestampMixin):
     """Detailed event logs (play-by-play)"""
+
     __tablename__ = "game_play_by_play"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     game_id = Column(String(20), ForeignKey("game.game_id", ondelete="CASCADE"), nullable=False)
     inning = Column(Integer)
-    inning_half = Column(String(10)) # "초" or "말"
+    inning_half = Column(String(10))  # "초" or "말"
     pitcher_name = Column(String(50))
     batter_name = Column(String(50))
     play_description = Column(String(1000))
@@ -97,6 +103,7 @@ class GamePlayByPlay(Base, TimestampMixin):
 
 class GameMetadata(Base, TimestampMixin):
     """Captured metadata for a game (attendance, times, etc.)."""
+
     __tablename__ = "game_metadata"
 
     game_id = Column(String(20), ForeignKey("game.game_id", ondelete="CASCADE"), primary_key=True)
@@ -114,10 +121,9 @@ class GameMetadata(Base, TimestampMixin):
 
 class GameInningScore(Base, TimestampMixin):
     """Line score broken down by inning for each side."""
+
     __tablename__ = "game_inning_scores"
-    __table_args__ = (
-        UniqueConstraint("game_id", "team_side", "inning", name="uq_game_inning_team"),
-    )
+    __table_args__ = (UniqueConstraint("game_id", "team_side", "inning", name="uq_game_inning_team"),)
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     game_id = Column(String(20), ForeignKey("game.game_id", ondelete="CASCADE"), nullable=False)
@@ -134,10 +140,9 @@ class GameInningScore(Base, TimestampMixin):
 
 class GameLineup(Base, TimestampMixin):
     """Lineup order and defensive position snapshot."""
+
     __tablename__ = "game_lineups"
-    __table_args__ = (
-        UniqueConstraint("game_id", "team_side", "appearance_seq", name="uq_game_lineup_entry"),
-    )
+    __table_args__ = (UniqueConstraint("game_id", "team_side", "appearance_seq", name="uq_game_lineup_entry"),)
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     game_id = Column(String(20), ForeignKey("game.game_id", ondelete="CASCADE"), nullable=False)
@@ -160,10 +165,9 @@ class GameLineup(Base, TimestampMixin):
 
 class GameBattingStat(Base, TimestampMixin):
     """Per-player batting metrics for a single game."""
+
     __tablename__ = "game_batting_stats"
-    __table_args__ = (
-        UniqueConstraint("game_id", "player_id", "appearance_seq", name="uq_game_batting_player"),
-    )
+    __table_args__ = (UniqueConstraint("game_id", "player_id", "appearance_seq", name="uq_game_batting_player"),)
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     game_id = Column(String(20), ForeignKey("game.game_id", ondelete="CASCADE"), nullable=False)
@@ -209,10 +213,9 @@ class GameBattingStat(Base, TimestampMixin):
 
 class GamePitchingStat(Base, TimestampMixin):
     """Per-player pitching stats per game."""
+
     __tablename__ = "game_pitching_stats"
-    __table_args__ = (
-        UniqueConstraint("game_id", "player_id", "appearance_seq", name="uq_game_pitching_player"),
-    )
+    __table_args__ = (UniqueConstraint("game_id", "player_id", "appearance_seq", name="uq_game_pitching_player"),)
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     game_id = Column(String(20), ForeignKey("game.game_id", ondelete="CASCADE"), nullable=False)
@@ -256,10 +259,9 @@ class GamePitchingStat(Base, TimestampMixin):
 
 class GameEvent(Base, TimestampMixin):
     """Normalized Play-by-Play events."""
+
     __tablename__ = "game_events"
-    __table_args__ = (
-        UniqueConstraint("game_id", "event_seq", name="uq_game_event_seq"),
-    )
+    __table_args__ = (UniqueConstraint("game_id", "event_seq", name="uq_game_event_seq"),)
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     game_id = Column(String(20), ForeignKey("game.game_id", ondelete="CASCADE"), nullable=False)
@@ -277,13 +279,13 @@ class GameEvent(Base, TimestampMixin):
     rbi = Column(Integer)
     bases_before = Column(String(3))
     bases_after = Column(String(3))
-    
+
     # WPA & State Columns
     wpa = Column(Float)
     win_expectancy_before = Column(Float)
     win_expectancy_after = Column(Float)
-    score_diff = Column(Integer) # Home - Away
-    base_state = Column(Integer) # Bitmask
+    score_diff = Column(Integer)  # Home - Away
+    base_state = Column(Integer)  # Bitmask
     home_score = Column(Integer)
     away_score = Column(Integer)
 

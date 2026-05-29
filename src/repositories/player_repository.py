@@ -1,16 +1,18 @@
 """
 Repository utilities for player domain (profiles, identities, seasons).
 """
+
 from __future__ import annotations
 
-from datetime import date, datetime
+import contextlib
 import re
-from typing import Optional, Dict, Any, List
+from datetime import date, datetime
+from typing import Any
 
 from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
-from src.db.engine import SessionLocal, Engine
+from src.db.engine import Engine, SessionLocal
 from src.models.player import (
     Player,
     PlayerBasic,
@@ -32,9 +34,7 @@ class PlayerRepository:
     # ------------------------------------------------------------------
     # Profile / identity handling
     # ------------------------------------------------------------------
-    def upsert_player_profile(
-        self, kbo_player_id: str, profile: PlayerProfileParsed
-    ) -> Optional[Player]:
+    def upsert_player_profile(self, kbo_player_id: str, profile: PlayerProfileParsed) -> Player | None:
         """
         Upsert player and primary identity based on parsed profile info.
         Also synchronizes status and key fields to PlayerBasic.
@@ -46,10 +46,10 @@ class PlayerRepository:
             player = self._get_or_create_player(session, kbo_player_id)
             self._apply_profile_fields(player, profile)
             self._upsert_identity(session, player, profile)
-            
+
             # Synchronize back to PlayerBasic
             self._sync_to_player_basic(session, kbo_player_id, profile)
-            
+
             session.commit()
             session.refresh(player)
             return player
@@ -65,7 +65,7 @@ class PlayerRepository:
             if profile.is_active is not None:
                 basic.status = "active" if profile.is_active else "retired"
                 basic.status_source = "profile"
-            
+
             if profile.photo_url:
                 basic.photo_url = profile.photo_url
             if profile.height_cm:
@@ -74,10 +74,8 @@ class PlayerRepository:
                 basic.weight_kg = profile.weight_kg
             if profile.birth_date:
                 basic.birth_date = profile.birth_date
-                try:
+                with contextlib.suppress(ValueError):
                     basic.birth_date_date = datetime.strptime(profile.birth_date, "%Y-%m-%d").date()
-                except ValueError:
-                    pass
             if profile.batting_hand:
                 basic.bats = profile.batting_hand
             if profile.throwing_hand:
@@ -92,20 +90,21 @@ class PlayerRepository:
             # Synchronize Draft Info
             if profile.draft_year:
                 draft_parts = [str(profile.draft_year)[2:], profile.draft_team_code or ""]
-                if profile.draft_type: draft_parts.append(profile.draft_type)
-                if profile.draft_round: draft_parts.append(f"{profile.draft_round}라운드")
-                if profile.draft_pick_overall: draft_parts.append(f"{profile.draft_pick_overall}순위")
+                if profile.draft_type:
+                    draft_parts.append(profile.draft_type)
+                if profile.draft_round:
+                    draft_parts.append(f"{profile.draft_round}라운드")
+                if profile.draft_pick_overall:
+                    draft_parts.append(f"{profile.draft_pick_overall}순위")
                 basic.draft_info = " ".join(filter(None, draft_parts))
-            
+
             # Synchronize Career Path (출신교)
             if profile.education_or_career_path:
                 basic.career = "-".join(profile.education_or_career_path)
 
     def _get_or_create_player(self, session: Session, kbo_player_id: str) -> Player:
         player_basic_id = self._canonical_player_basic_id(session, kbo_player_id)
-        player = session.execute(
-            select(Player).where(Player.kbo_person_id == kbo_player_id)
-        ).scalar_one_or_none()
+        player = session.execute(select(Player).where(Player.kbo_person_id == kbo_player_id)).scalar_one_or_none()
         if player is None:
             player = Player(kbo_person_id=kbo_player_id, player_basic_id=player_basic_id)
             session.add(player)
@@ -114,7 +113,7 @@ class PlayerRepository:
             player.player_basic_id = player_basic_id
         return player
 
-    def _canonical_player_basic_id(self, session: Session, kbo_player_id: str) -> Optional[int]:
+    def _canonical_player_basic_id(self, session: Session, kbo_player_id: str) -> int | None:
         try:
             candidate_id = int(str(kbo_player_id).strip())
         except (TypeError, ValueError):
@@ -126,10 +125,8 @@ class PlayerRepository:
 
     def _apply_profile_fields(self, player: Player, profile: PlayerProfileParsed) -> None:
         if profile.birth_date:
-            try:
+            with contextlib.suppress(ValueError):
                 player.birth_date = datetime.strptime(profile.birth_date, "%Y-%m-%d").date()
-            except ValueError:
-                pass
         player.height_cm = profile.height_cm if profile.height_cm else player.height_cm
         player.weight_kg = profile.weight_kg if profile.weight_kg else player.weight_kg
         player.bats = profile.batting_hand or player.bats
@@ -140,27 +137,28 @@ class PlayerRepository:
             player.debut_year = profile.entry_year
         if profile.is_active is not None:
             player.status = "ACTIVE" if profile.is_active else "RETIRED"
-            
+
         # Enriched fields
         player.photo_url = profile.photo_url or player.photo_url
         player.salary_original = profile.salary_original or player.salary_original
         player.signing_bonus_original = profile.signing_bonus_original or player.signing_bonus_original
-        
+
         # Reconstruct draft_info for relational model if components exist
         if profile.draft_year:
             draft_parts = [str(profile.draft_year)[2:], profile.draft_team_code or ""]
-            if profile.draft_type: draft_parts.append(profile.draft_type)
-            if profile.draft_round: draft_parts.append(f"{profile.draft_round}라운드")
-            if profile.draft_pick_overall: draft_parts.append(f"{profile.draft_pick_overall}순위")
+            if profile.draft_type:
+                draft_parts.append(profile.draft_type)
+            if profile.draft_round:
+                draft_parts.append(f"{profile.draft_round}라운드")
+            if profile.draft_pick_overall:
+                draft_parts.append(f"{profile.draft_pick_overall}순위")
             player.draft_info = " ".join(filter(None, draft_parts))
 
         # Reconstruct career path for notes
         if profile.education_or_career_path:
             player.notes = " -> ".join(profile.education_or_career_path)
 
-    def _upsert_identity(
-        self, session: Session, player: Player, profile: PlayerProfileParsed
-    ) -> None:
+    def _upsert_identity(self, session: Session, player: Player, profile: PlayerProfileParsed) -> None:
         if not profile.player_name:
             return
 
@@ -176,9 +174,7 @@ class PlayerRepository:
         else:
             # demote existing primaries
             session.execute(
-                update(PlayerIdentity)
-                .where(PlayerIdentity.player_id == player.id)
-                .values(is_primary=False)
+                update(PlayerIdentity).where(PlayerIdentity.player_id == player.id).values(is_primary=False)
             )
             identity = PlayerIdentity(
                 player_id=player.id,
@@ -190,17 +186,17 @@ class PlayerRepository:
     # ------------------------------------------------------------------
     # Season aggregates (batting/pitching)
     # ------------------------------------------------------------------
-    def upsert_season_batting(self, player_id: int, season_data: Dict[str, Any]) -> None:
+    def upsert_season_batting(self, player_id: int, season_data: dict[str, Any]) -> None:
         self._upsert_season_stats(PlayerSeasonBatting, player_id, season_data)
 
-    def upsert_season_pitching(self, player_id: int, season_data: Dict[str, Any]) -> None:
+    def upsert_season_pitching(self, player_id: int, season_data: dict[str, Any]) -> None:
         self._upsert_season_stats(PlayerSeasonPitching, player_id, season_data)
 
     def _upsert_season_stats(
         self,
         model,
         player_id: int,
-        payload: Dict[str, Any],
+        payload: dict[str, Any],
     ) -> None:
         if not payload:
             return
@@ -234,12 +230,12 @@ class PlayerRepository:
     # ------------------------------------------------------------------
     # Player Movements
     # ------------------------------------------------------------------
-    def save_player_movements(self, movements: List[Dict[str, Any]]) -> int:
+    def save_player_movements(self, movements: list[dict[str, Any]]) -> int:
         saved_count = 0
         with SessionLocal() as session:
             for item in movements:
                 # Convert date string to object if needed
-                d_val = item['date']
+                d_val = item["date"]
                 if isinstance(d_val, str):
                     d_val = datetime.strptime(d_val, "%Y-%m-%d").date()
 
@@ -268,22 +264,22 @@ class PlayerRepository:
                     PlayerMovement.section == item["section"],
                 )
                 existing = session.execute(stmt).scalar_one_or_none()
-                
+
                 if existing:
-                    existing.remarks = item.get('remarks')
+                    existing.remarks = item.get("remarks")
                     existing.canonical_team_id = canonical_team_id
                     existing.player_basic_id = player_basic_id
                     existing.resolution_status = resolution_status
                 else:
                     new_rec = PlayerMovement(
                         movement_date=d_val,
-                        section=item['section'],
+                        section=item["section"],
                         team_code=team_code,
                         canonical_team_id=canonical_team_id,
                         player_basic_id=player_basic_id,
                         resolution_status=resolution_status,
                         player_name=player_name,
-                        remarks=item.get('remarks'),
+                        remarks=item.get("remarks"),
                     )
                     session.add(new_rec)
                 saved_count += 1
@@ -317,7 +313,7 @@ class PlayerRepository:
         "MBC": "MBC",
     }
 
-    def _resolve_movement_team_id(self, session: Session, raw_team: str) -> Optional[str]:
+    def _resolve_movement_team_id(self, session: Session, raw_team: str) -> str | None:
         raw_team = str(raw_team or "").strip()
         candidates = [raw_team]
         mapped = self._TEAM_CODE_BY_NAME.get(raw_team)
@@ -326,22 +322,18 @@ class PlayerRepository:
         for candidate in candidates:
             if not candidate:
                 continue
-            exists = session.execute(
-                select(Team.team_id).where(Team.team_id == candidate)
-            ).scalar_one_or_none()
+            exists = session.execute(select(Team.team_id).where(Team.team_id == candidate)).scalar_one_or_none()
             if exists:
                 return str(exists)
         return None
 
-    def _infer_movement_team_from_history(self, session: Session, raw_player_name: str, season: int) -> Optional[str]:
+    def _infer_movement_team_from_history(self, session: Session, raw_player_name: str, season: int) -> str | None:
         player_name, _position = self._split_movement_player_label(raw_player_name)
         if not player_name:
             return None
         candidate_ids = {
             int(row[0])
-            for row in session.execute(
-                select(PlayerBasic.player_id).where(PlayerBasic.name == player_name)
-            ).fetchall()
+            for row in session.execute(select(PlayerBasic.player_id).where(PlayerBasic.name == player_name)).fetchall()
             if row[0] is not None
         }
         if not candidate_ids:
@@ -364,9 +356,9 @@ class PlayerRepository:
         self,
         session: Session,
         raw_player_name: str,
-        canonical_team_id: Optional[str],
+        canonical_team_id: str | None,
         season: int,
-    ) -> Optional[int]:
+    ) -> int | None:
         player_name, raw_position = self._split_movement_player_label(raw_player_name)
         if not player_name or player_name == "신인":
             return None
@@ -374,10 +366,10 @@ class PlayerRepository:
         # Base query for same-name candidates
         candidate_query = select(PlayerBasic).where(PlayerBasic.name == player_name)
         candidates = session.execute(candidate_query).scalars().all()
-        
+
         if not candidates:
             return None
-            
+
         if len(candidates) == 1:
             return candidates[0].player_id
 
@@ -391,10 +383,7 @@ class PlayerRepository:
                 candidates = pos_matches
 
         # 2. Filter by debut_year (allow ±2 years buffer for late debut/registration)
-        timeline_matches = [
-            c for c in candidates 
-            if c.debut_year and abs(c.debut_year - season) <= 5
-        ]
+        timeline_matches = [c for c in candidates if c.debut_year and abs(c.debut_year - season) <= 5]
         if len(timeline_matches) == 1:
             return timeline_matches[0].player_id
         if timeline_matches:
@@ -408,7 +397,7 @@ class PlayerRepository:
             ).scalar_one_or_none()
             if has_profile:
                 profile_matches.append(c)
-        
+
         if len(profile_matches) == 1:
             return profile_matches[0].player_id
         if profile_matches:
@@ -441,12 +430,12 @@ class PlayerRepository:
             team_terms = [canonical_team_id]
             if team:
                 team_terms.extend(filter(None, [team.team_short_name, team.team_name]))
-            
+
             contextual_matches = []
             for c in candidates:
                 if c.team and any(term in c.team for term in team_terms):
                     contextual_matches.append(c)
-            
+
             if len(contextual_matches) == 1:
                 return contextual_matches[0].player_id
 
@@ -456,10 +445,10 @@ class PlayerRepository:
         self,
         session: Session,
         player_name: str,
-        canonical_team_id: Optional[str],
+        canonical_team_id: str | None,
         season: int,
         candidate_ids: set[int],
-    ) -> Optional[int]:
+    ) -> int | None:
         if not player_name or not canonical_team_id or not season:
             return None
         start_date = date(season, 1, 1)
@@ -487,10 +476,10 @@ class PlayerRepository:
     def _unique_franchise_season_player_id(
         self,
         session: Session,
-        canonical_team_id: Optional[str],
+        canonical_team_id: str | None,
         season: int,
         candidate_ids: set[int],
-    ) -> Optional[int]:
+    ) -> int | None:
         if not canonical_team_id or not season or not candidate_ids:
             return None
         franchise_id = session.execute(
@@ -500,9 +489,7 @@ class PlayerRepository:
             return None
         franchise_team_ids = {
             str(row[0])
-            for row in session.execute(
-                select(Team.team_id).where(Team.franchise_id == franchise_id)
-            ).fetchall()
+            for row in session.execute(select(Team.team_id).where(Team.franchise_id == franchise_id)).fetchall()
             if row[0]
         }
         if not franchise_team_ids:
@@ -523,7 +510,7 @@ class PlayerRepository:
         return next(iter(season_ids)) if len(season_ids) == 1 else None
 
     @staticmethod
-    def _split_movement_player_label(raw_player_name: str) -> tuple[str, Optional[str]]:
+    def _split_movement_player_label(raw_player_name: str) -> tuple[str, str | None]:
         raw = str(raw_player_name or "").strip()
         match = re.search(r"\(([^)]*)\)\s*$", raw)
         position = match.group(1).strip() if match else None

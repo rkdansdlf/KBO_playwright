@@ -1,4 +1,5 @@
 """Backward-compatible Naver relay crawler shim."""
+
 from __future__ import annotations
 
 from src.crawlers.relay_crawler import RelayCrawler

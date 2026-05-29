@@ -1,6 +1,6 @@
 import sqlite3
-import pandas as pd
 from pathlib import Path
+
 
 def check_anomalies(db_path):
     conn = sqlite3.connect(db_path)
@@ -13,7 +13,7 @@ def check_anomalies(db_path):
         "player_season_pitching": ["player_id", "season", "league", "team_code"],
         "game": ["game_id", "game_date", "home_team", "away_team"],
         "game_batting_stats": ["game_id", "player_id", "team_code"],
-        "game_pitching_stats": ["game_id", "player_id", "team_code"]
+        "game_pitching_stats": ["game_id", "player_id", "team_code"],
     }
 
     print("\n--- NULL/Empty Check ---")
@@ -32,7 +32,7 @@ def check_anomalies(db_path):
     dup_checks = {
         "player_season_batting": ["player_id", "season", "league", "level"],
         "player_season_pitching": ["player_id", "season", "league", "level"],
-        "game": ["game_id"]
+        "game": ["game_id"],
     }
     for table, cols in dup_checks.items():
         cols_str = ", ".join(cols)
@@ -52,7 +52,8 @@ def check_anomalies(db_path):
     res = conn.execute(query).fetchall()
     if res:
         print(f"[WARN] player_season_batting has {len(res)} records with AVG > 1.0.")
-        for r in res[:3]: print(f"  {r}")
+        for r in res[:3]:
+            print(f"  {r}")
 
     # Negative stats
     stat_cols = ["games", "plate_appearances", "at_bats", "hits", "home_runs", "runs"]
@@ -66,7 +67,7 @@ def check_anomalies(db_path):
     print("\n--- Team Code Consistency Check ---")
     # Check if team codes in stats match those in game table
     query = """
-    SELECT DISTINCT team_code FROM game_batting_stats 
+    SELECT DISTINCT team_code FROM game_batting_stats
     WHERE team_code NOT IN (SELECT team_id FROM teams)
     """
     res = conn.execute(query).fetchall()
@@ -78,9 +79,9 @@ def check_anomalies(db_path):
     # 5. Player ID consistency between player_basic and stats
     print("\n--- Player ID Consistency Check ---")
     query = """
-    SELECT COUNT(DISTINCT t.player_id) 
-    FROM player_season_batting t 
-    LEFT JOIN player_basic p ON t.player_id = p.player_id 
+    SELECT COUNT(DISTINCT t.player_id)
+    FROM player_season_batting t
+    LEFT JOIN player_basic p ON t.player_id = p.player_id
     WHERE p.player_id IS NULL
     """
     count = conn.execute(query).fetchone()[0]
@@ -90,6 +91,7 @@ def check_anomalies(db_path):
         print("[PASS] player_season_batting player_ids all exist in player_basic.")
 
     conn.close()
+
 
 if __name__ == "__main__":
     db_path = Path("data/kbo_dev.db")

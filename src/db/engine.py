@@ -2,39 +2,51 @@
 Database engine configuration
 Supports both SQLite (dev) and MySQL (production)
 """
+
 import os
+
+from dotenv import load_dotenv
 from sqlalchemy import create_engine, event
 from sqlalchemy.orm import sessionmaker
-from dotenv import load_dotenv
 
 load_dotenv()
 
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./data/kbo_dev.db")
 DISABLE_SQLITE_WAL = os.getenv("DISABLE_SQLITE_WAL", "0") == "1"
 
+
 def _is_sqlite(url: str) -> bool:
     return url.startswith("sqlite:")
 
+
 def create_engine_for_url(url: str, *, disable_sqlite_wal: bool = False):
     if _is_sqlite(url):
-        engine = create_engine(url, connect_args={"check_same_thread": False, "timeout": 120}, pool_pre_ping=True, echo=False)
+        engine = create_engine(
+            url, connect_args={"check_same_thread": False, "timeout": 120}, pool_pre_ping=True, echo=False
+        )
+
         @event.listens_for(engine, "connect")
         def _sqlite_pragmas(dbapi_con, _):
             try:
                 cursor = dbapi_con.cursor()
                 cursor.execute("PRAGMA foreign_keys = ON;")
-                if not disable_sqlite_wal: cursor.execute("PRAGMA journal_mode = WAL;")
+                if not disable_sqlite_wal:
+                    cursor.execute("PRAGMA journal_mode = WAL;")
                 cursor.execute("PRAGMA busy_timeout = 120000;")
                 cursor.execute("PRAGMA synchronous = NORMAL;")
                 cursor.close()
-            except Exception: pass
+            except Exception:
+                pass
+
         return engine
     return create_engine(url, pool_pre_ping=True, pool_size=10, max_overflow=20, echo=False)
+
 
 Engine = create_engine_for_url(DATABASE_URL, disable_sqlite_wal=DISABLE_SQLITE_WAL)
 SessionLocal = sessionmaker(bind=Engine, autoflush=False, autocommit=False, expire_on_commit=False)
 
 from contextlib import contextmanager
+
 
 @contextmanager
 def get_db_session():
@@ -74,6 +86,7 @@ def _ensure_player_batting_team_code_column():
                 conn.exec_driver_sql("ALTER TABLE player_season_batting RENAME COLUMN team_id TO team_code;")
     except Exception as exc:
         print(f"[WARN] Could not migrate player_season_batting.team_id column: {exc}")
+
 
 def _ensure_player_basic_status_columns():
     """Ensure player_basic has status/staff_role/status_source columns (SQLite)."""
@@ -239,8 +252,6 @@ def _migrate_game_table(conn):
     conn.exec_driver_sql("PRAGMA foreign_keys=ON;")
 
 
-
-
 def _migrate_game_summary_table(conn):
     info_rows = conn.exec_driver_sql("PRAGMA table_info(game_summary);").fetchall()
     column_names = {row[1] for row in info_rows}
@@ -281,9 +292,11 @@ def _migrate_game_summary_table(conn):
     conn.exec_driver_sql("DROP TABLE game_summary_old;")
     conn.exec_driver_sql("PRAGMA foreign_keys=ON;")
 
+
 def init_db():
+    # Import all models to ensure they are registered in Base.metadata
     from src.models.base import Base
-    from src.models import team, player, season, game, team_stats, rankings, crawl, award, standings, matchup, fa_contract, rag_chunk, ticket_schedule, stadium_food, embedding_cache
+
     Base.metadata.create_all(bind=Engine)
     _ensure_player_batting_team_code_column()
     _ensure_player_basic_status_columns()
@@ -291,4 +304,3 @@ def init_db():
     _ensure_game_status_column()
     _ensure_game_identity_columns()
     print(f"[DB] Database initialized: {DATABASE_URL}")
-

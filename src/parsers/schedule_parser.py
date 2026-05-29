@@ -1,27 +1,25 @@
 """
 Parse offline schedule HTML into structured game schedule rows.
 """
+
 from __future__ import annotations
 
 import re
-from io import StringIO
-from typing import Dict, List, Optional, Any
+from typing import Any
 
-import pandas as pd
 from bs4 import BeautifulSoup
 
 from src.utils.schedule_validation import split_schedule_game_id
 from src.utils.team_codes import team_code_from_game_id_segment
-
 
 LINK_PATTERN = re.compile(r"gameId=([0-9A-Z]+)")
 
 
 def parse_schedule_html(
     html: str,
-    default_year: Optional[int] = None,
+    default_year: int | None = None,
     season_type: str = "regular",
-) -> List[Dict[str, Any]]:
+) -> list[dict[str, Any]]:
     """
     Extract schedule entries from a saved schedule page.
 
@@ -30,7 +28,7 @@ def parse_schedule_html(
         default_year: Optional year to fallback if it can't be inferred.
     """
     soup = BeautifulSoup(html, "html.parser")
-    games: Dict[str, Dict[str, Any]] = {}
+    games: dict[str, dict[str, Any]] = {}
 
     for anchor in soup.select("a[href*='gameId=']"):
         href = anchor.get("href") or ""
@@ -41,7 +39,7 @@ def parse_schedule_html(
         if game_id in games:
             continue
         year = default_year or int(game_id[:4])
-        month = int(game_id[4:6])
+        int(game_id[4:6])
 
         id_parts = split_schedule_game_id(game_id)
         if id_parts:

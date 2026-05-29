@@ -11,17 +11,18 @@ Usage:
     python scripts/maintenance/backfill_player_ids.py --start 2010 --end 2017
     python scripts/maintenance/backfill_player_ids.py --dry-run      # preview only
 """
+
 import argparse
-import sys
 import os
+import sys
 from collections import defaultdict
 
 sys.path.insert(0, os.getcwd())
 
 from sqlalchemy import text
+
 from src.db.engine import SessionLocal
 from src.services.player_id_resolver import PlayerIdResolver
-
 
 TABLES = [
     ("game_batting_stats", "id"),
@@ -37,12 +38,15 @@ def backfill_year(session, resolver: PlayerIdResolver, year: int, dry_run: bool 
     stats = defaultdict(int)  # resolved, skipped, failed
 
     for table_name, pk_col in TABLES:
-        rows = session.execute(text(f"""
+        rows = session.execute(
+            text(f"""
             SELECT {pk_col}, game_id, player_name, team_code
             FROM {table_name}
             WHERE player_id IS NULL
               AND game_id LIKE :prefix
-        """), {"prefix": f"{year}%"}).fetchall()
+        """),
+            {"prefix": f"{year}%"},
+        ).fetchall()
 
         if not rows:
             continue
@@ -68,11 +72,14 @@ def backfill_year(session, resolver: PlayerIdResolver, year: int, dry_run: bool 
         if updates and not dry_run:
             # Batch UPDATE in chunks of 500
             for i in range(0, len(updates), 500):
-                chunk = updates[i:i+500]
+                chunk = updates[i : i + 500]
                 for pid, rid in chunk:
-                    session.execute(text(f"""
+                    session.execute(
+                        text(f"""
                         UPDATE {table_name} SET player_id = :pid WHERE {pk_col} = :rid
-                    """), {"pid": pid, "rid": rid})
+                    """),
+                        {"pid": pid, "rid": rid},
+                    )
             session.commit()
 
         stats["resolved"] += resolved
@@ -103,9 +110,10 @@ def main():
 
         for year in years:
             # Quick check: any NULLs for this year?
-            cnt = session.execute(text(
-                "SELECT COUNT(*) FROM game_batting_stats WHERE player_id IS NULL AND game_id LIKE :p"
-            ), {"p": f"{year}%"}).scalar()
+            cnt = session.execute(
+                text("SELECT COUNT(*) FROM game_batting_stats WHERE player_id IS NULL AND game_id LIKE :p"),
+                {"p": f"{year}%"},
+            ).scalar()
             if cnt == 0:
                 continue
 

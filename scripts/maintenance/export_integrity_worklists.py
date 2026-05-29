@@ -4,6 +4,7 @@
 This tool is intentionally read-only. It creates CSVs that separate automated
 repair blockers from rows that need source recrawl or manual identity review.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -79,7 +80,9 @@ def _export_null_player_ids(conn, output_dir: Path, stamp: str) -> tuple[str, in
     return str(path), count
 
 
-def _export_duplicate_groups(conn, output_dir: Path, stamp: str, table_name: str, group_columns: str) -> tuple[str, int]:
+def _export_duplicate_groups(
+    conn, output_dir: Path, stamp: str, table_name: str, group_columns: str
+) -> tuple[str, int]:
     sql = f"""
         WITH duplicate_groups AS (
             SELECT {group_columns}, COUNT(*) AS row_count
@@ -91,7 +94,7 @@ def _export_duplicate_groups(conn, output_dir: Path, stamp: str, table_name: str
         SELECT '{table_name}' AS table_name, t.*
         FROM {table_name} t
         JOIN duplicate_groups d
-          ON {group_columns_join('t', 'd', group_columns)}
+          ON {group_columns_join("t", "d", group_columns)}
         ORDER BY t.game_id, t.player_id, t.id
     """
     path = output_dir / f"{table_name}_duplicate_rows_{stamp}.csv"
@@ -293,10 +296,14 @@ def export_integrity_worklists(*, db_url: str, output_dir: Path, deletion_anomal
                 ("player_movements_unresolved_players", _export_unresolved_player_movements),
                 ("players_without_player_basic_mirror", _export_players_without_mirror),
             )
-            standard_exporters = () if deletion_anomaly_only else (
-                ("null_player_ids", _export_null_player_ids),
-                ("impossible_batting", _export_impossible_batting),
-                ("impossible_pitching", _export_impossible_pitching),
+            standard_exporters = (
+                ()
+                if deletion_anomaly_only
+                else (
+                    ("null_player_ids", _export_null_player_ids),
+                    ("impossible_batting", _export_impossible_batting),
+                    ("impossible_pitching", _export_impossible_pitching),
+                )
             )
             for key, exporter in (*standard_exporters, *deletion_anomaly_exporters):
                 path, count = exporter(conn, output_dir, stamp)
@@ -324,7 +331,9 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Export read-only integrity cleanup worklists.")
     parser.add_argument("--db-url", default=None, help="Explicit SQLAlchemy DB URL. Defaults to DATABASE_URL/local DB.")
     parser.add_argument("--output-dir", default=str(DEFAULT_OUTPUT_DIR), help="Directory for CSV worklists.")
-    parser.add_argument("--deletion-anomaly-only", action="store_true", help="Export only deletion-anomaly follow-up worklists.")
+    parser.add_argument(
+        "--deletion-anomaly-only", action="store_true", help="Export only deletion-anomaly follow-up worklists."
+    )
     return parser.parse_args()
 
 

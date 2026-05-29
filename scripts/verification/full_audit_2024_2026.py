@@ -1,8 +1,10 @@
 import sqlite3
-import pandas as pd
 from pathlib import Path
 
+import pandas as pd
+
 DB_PATH = Path("data/kbo_dev.db")
+
 
 def run_audit():
     if not DB_PATH.exists():
@@ -10,18 +12,18 @@ def run_audit():
         return
 
     conn = sqlite3.connect(DB_PATH)
-    
-    years = ['2024', '2025', '2026']
-    
+
+    years = ["2024", "2025", "2026"]
+
     print("=== KBO Stats Audit (2024-2026) ===")
-    
+
     for year in years:
         print(f"\n--- Year: {year} ---")
-        
+
         # 1. Batting Mismatch
         query_batting = f"""
         WITH game_agg AS (
-            SELECT 
+            SELECT
                 b.player_id,
                 COUNT(DISTINCT b.game_id) as g_games,
                 SUM(b.hits) as g_hits,
@@ -34,7 +36,7 @@ def run_audit():
             GROUP BY b.player_id
         ),
         season_agg AS (
-            SELECT 
+            SELECT
                 player_id,
                 SUM(games) as s_games,
                 SUM(hits) as s_hits,
@@ -45,7 +47,7 @@ def run_audit():
             WHERE season = {year}
             GROUP BY player_id
         )
-        SELECT 
+        SELECT
             p.name,
             s.player_id,
             s.s_games, g.g_games,
@@ -54,21 +56,21 @@ def run_audit():
         FROM season_agg s
         LEFT JOIN game_agg g ON s.player_id = g.player_id
         JOIN player_basic p ON s.player_id = p.player_id
-        WHERE s.s_hits != COALESCE(g.g_hits, 0) 
+        WHERE s.s_hits != COALESCE(g.g_hits, 0)
            OR s.s_games != COALESCE(g.g_games, 0)
         LIMIT 10;
         """
-        
+
         df_batting = pd.read_sql_query(query_batting, conn)
-        print(f"Batting Mismatches (Top 10):")
+        print("Batting Mismatches (Top 10):")
         if df_batting.empty:
             print("  None found in this sample.")
         else:
             print(df_batting.to_string(index=False))
-            
+
         # Count total batting mismatches
         count_query = f"""
-        SELECT COUNT(*) 
+        SELECT COUNT(*)
         FROM player_season_batting s
         LEFT JOIN (
             SELECT player_id, SUM(hits) as g_hits, COUNT(DISTINCT b.game_id) as g_games
@@ -86,7 +88,7 @@ def run_audit():
         # 2. Pitching Mismatch
         query_pitching = f"""
         WITH game_agg AS (
-            SELECT 
+            SELECT
                 p_stats.player_id,
                 COUNT(DISTINCT p_stats.game_id) as g_games,
                 SUM(p_stats.innings_outs) as g_outs,
@@ -99,7 +101,7 @@ def run_audit():
             GROUP BY p_stats.player_id
         ),
         season_agg AS (
-            SELECT 
+            SELECT
                 player_id,
                 SUM(games) as s_games,
                 SUM(innings_outs) as s_outs,
@@ -110,7 +112,7 @@ def run_audit():
             WHERE season = {year}
             GROUP BY player_id
         )
-        SELECT 
+        SELECT
             pb.name,
             s.player_id,
             s.s_games, g.g_games,
@@ -119,20 +121,20 @@ def run_audit():
         FROM season_agg s
         LEFT JOIN game_agg g ON s.player_id = g.player_id
         JOIN player_basic pb ON s.player_id = pb.player_id
-        WHERE COALESCE(s.s_outs, 0) != COALESCE(g.g_outs, 0) 
+        WHERE COALESCE(s.s_outs, 0) != COALESCE(g.g_outs, 0)
            OR COALESCE(s.s_games, 0) != COALESCE(g.g_games, 0)
         LIMIT 10;
         """
         df_pitching = pd.read_sql_query(query_pitching, conn)
-        print(f"\nPitching Mismatches (Top 10):")
+        print("\nPitching Mismatches (Top 10):")
         if df_pitching.empty:
             print("  None found in this sample.")
         else:
             print(df_pitching.to_string(index=False))
-        
+
         # Count total pitching mismatches
         count_pitching_query = f"""
-        SELECT COUNT(*) 
+        SELECT COUNT(*)
         FROM player_season_pitching s
         LEFT JOIN (
             SELECT p_stats.player_id, SUM(p_stats.innings_outs) as g_outs, COUNT(DISTINCT p_stats.game_id) as g_games
@@ -144,11 +146,13 @@ def run_audit():
         WHERE s.season = {year} AND (COALESCE(s.innings_outs, 0) != COALESCE(g.g_outs, 0) OR COALESCE(s.games, 0) != COALESCE(g.g_games, 0));
         """
         total_p_mismatch = conn.execute(count_pitching_query).fetchone()[0]
-        total_p_players = conn.execute(f"SELECT COUNT(*) FROM player_season_pitching WHERE season = {year}").fetchone()[0]
+        total_p_players = conn.execute(f"SELECT COUNT(*) FROM player_season_pitching WHERE season = {year}").fetchone()[
+            0
+        ]
         print(f"Total Pitching Mismatches: {total_p_mismatch} / {total_p_players} players")
 
-
     conn.close()
+
 
 if __name__ == "__main__":
     run_audit()

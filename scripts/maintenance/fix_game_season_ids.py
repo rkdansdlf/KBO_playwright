@@ -1,4 +1,5 @@
 import sqlite3
+
 import psycopg2
 
 print("Fixing games in SQLite...")
@@ -16,4 +17,3 @@ pg_cur = pg_conn.cursor()
 pg_cur.execute("UPDATE game SET season_id = 2026 WHERE game_id LIKE '2026%' AND season_id = 265;")
 pg_conn.commit()
 print(f"✅ Updated {pg_cur.rowcount} rows in OCI Postgres.")
-

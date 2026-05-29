@@ -1,4 +1,3 @@
-
 import os
 import sys
 
@@ -23,6 +22,7 @@ FRANCHISES = [
     {"id": 12, "name": "쌍방울 레이더스", "original_code": "SL", "current_code": "SL"},
 ]
 
+
 def seed_franchises():
     print("🌱 Seeding Franchises...")
     with SessionLocal() as session:
@@ -39,6 +39,7 @@ def seed_franchises():
                 print(f"   Updated: {f_data['name']}")
         session.commit()
     print("✅ Franchise Seeding Complete.")
+
 
 if __name__ == "__main__":
     seed_franchises()

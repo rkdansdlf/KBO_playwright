@@ -2,14 +2,15 @@
 KBO Weekly Maintenance Orchestrator.
 Performs player profile enrichment, DB health checks, and OCI cleanup.
 """
+
 from __future__ import annotations
 
-import logging
 import argparse
 import asyncio
+import logging
 import os
-import sys
 import subprocess
+import sys
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
@@ -22,6 +23,7 @@ from src.utils.safe_print import safe_print as print
 logger = logging.getLogger(__name__)
 
 KST = ZoneInfo("Asia/Seoul")
+
 
 async def run_weekly_maintenance(
     profile_limit: int = 100,
@@ -84,7 +86,7 @@ async def run_weekly_maintenance(
                     syncer.close()
 
     print(f"\n{'=' * 60}")
-    print(f"🏁 Weekly Maintenance Finished")
+    print("🏁 Weekly Maintenance Finished")
     print(f"{'=' * 60}\n")
 
 
@@ -92,9 +94,10 @@ def main():
     parser = argparse.ArgumentParser(description="KBO Weekly Maintenance Orchestrator")
     parser.add_argument("--profile-limit", type=int, default=200, help="Max profiles to enrich")
     parser.add_argument("--sync", action="store_true", help="Sync updated profiles to OCI")
-    
+
     args = parser.parse_args()
     asyncio.run(run_weekly_maintenance(profile_limit=args.profile_limit, sync=args.sync))
+
 
 if __name__ == "__main__":
     main()

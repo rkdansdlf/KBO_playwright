@@ -30,7 +30,9 @@ def test_players_sync_runs_player_basic_before_master_players(monkeypatch):
 
     monkeypatch.setattr(sync_oci_cli, "SessionLocal", lambda: _SessionContext())
     monkeypatch.setattr(sync_oci_cli, "OCISync", _FakeOCISync)
-    monkeypatch.setattr(reset_oci_sequences, "reset_sequences", lambda target_url: calls.append(("reset_sequences", target_url)))
+    monkeypatch.setattr(
+        reset_oci_sequences, "reset_sequences", lambda target_url: calls.append(("reset_sequences", target_url))
+    )
 
     sync_oci_cli.main(["--target-url", "postgresql://oci.example/kbo", "--players"])
 
@@ -78,7 +80,9 @@ def test_teams_sync_runs_reference_tables_in_dependency_order(monkeypatch):
 
     monkeypatch.setattr(sync_oci_cli, "SessionLocal", lambda: _SessionContext())
     monkeypatch.setattr(sync_oci_cli, "OCISync", _FakeOCISync)
-    monkeypatch.setattr(reset_oci_sequences, "reset_sequences", lambda target_url: calls.append(("reset_sequences", target_url)))
+    monkeypatch.setattr(
+        reset_oci_sequences, "reset_sequences", lambda target_url: calls.append(("reset_sequences", target_url))
+    )
 
     sync_oci_cli.main(["--target-url", "postgresql://oci.example/kbo", "--teams"])
 

@@ -1,6 +1,7 @@
 """
 CLI tool for running statistical quality gate checks.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -37,6 +38,7 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     if not args.year:
         from datetime import datetime
+
         year = datetime.now().year
     else:
         year = args.year

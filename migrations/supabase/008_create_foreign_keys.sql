@@ -13,7 +13,7 @@ FOREIGN KEY (stadium_id) REFERENCES public.stadiums(stadium_id);
 
 -- 2. player_season_batting 테이블 외래키 추가
 
--- player_season_batting.team_code → teams.team_id  
+-- player_season_batting.team_code → teams.team_id
 ALTER TABLE public.player_season_batting
 ADD CONSTRAINT fk_player_season_batting_team
 FOREIGN KEY (team_code) REFERENCES public.teams(team_id);
@@ -33,12 +33,12 @@ ADD COLUMN season_id INTEGER;
 
 -- season_id 값을 기존 데이터에 기반하여 설정
 -- league와 season을 기반으로 kbo_seasons 테이블의 season_id를 매핑
-UPDATE public.player_season_batting 
+UPDATE public.player_season_batting
 SET season_id = (
-    SELECT s.season_id 
-    FROM public.kbo_seasons s 
-    WHERE s.season_year = player_season_batting.season 
-    AND s.league_type_code = CASE 
+    SELECT s.season_id
+    FROM public.kbo_seasons s
+    WHERE s.season_year = player_season_batting.season
+    AND s.league_type_code = CASE
         WHEN player_season_batting.league = 'REGULAR' THEN 0
         WHEN player_season_batting.league = 'EXHIBITION' THEN 1
         WHEN player_season_batting.league = 'WILDCARD' THEN 2

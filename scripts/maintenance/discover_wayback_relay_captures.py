@@ -18,7 +18,6 @@ if project_root not in sys.path:
 
 from src.sources.relay import derive_bucket_id
 
-
 WAYBACK_CDX_URL = "https://web.archive.org/cdx/search/cdx"
 WAYBACK_CAPTURE_URL = "https://web.archive.org/web/{timestamp}id_/{original}"
 USER_AGENT = "Mozilla/5.0 (compatible; KBORelayRecovery/1.0; +https://www.koreabaseball.com)"
@@ -29,7 +28,9 @@ def _load_rows(path: Path) -> list[dict[str, str]]:
         return list(csv.DictReader(handle))
 
 
-def _selected_rows(input_path: Path, game_ids: set[str] | None = None, limit: int | None = None) -> list[dict[str, str]]:
+def _selected_rows(
+    input_path: Path, game_ids: set[str] | None = None, limit: int | None = None
+) -> list[dict[str, str]]:
     rows = _load_rows(input_path)
     selected: list[dict[str, str]] = []
     for row in rows:
@@ -64,8 +65,7 @@ def _candidate_targets(game_id: str) -> list[dict[str, str]]:
         {
             "url_kind": "livetext",
             "search_url": (
-                "https://www.koreabaseball.com/Game/LiveText.aspx"
-                f"?leagueId=1&seriesId=0&gameId={game_id}&gyear={year}"
+                f"https://www.koreabaseball.com/Game/LiveText.aspx?leagueId=1&seriesId=0&gameId={game_id}&gyear={year}"
             ),
             "match_type": "exact",
         },
@@ -220,10 +220,7 @@ def discover_captures(
             report_rows.extend(_process_row(row))
     else:
         with ThreadPoolExecutor(max_workers=workers) as executor:
-            future_map = {
-                executor.submit(_process_row, row): str(row.get("game_id") or "").strip()
-                for row in rows
-            }
+            future_map = {executor.submit(_process_row, row): str(row.get("game_id") or "").strip() for row in rows}
             completed = 0
             for future in as_completed(future_map):
                 completed += 1
@@ -280,11 +277,7 @@ def main() -> None:
     parser.add_argument("--workers", type=int, default=4, help="Number of concurrent archive lookups")
     args = parser.parse_args()
 
-    requested_ids = {
-        token.strip()
-        for token in str(args.game_ids or "").split(",")
-        if token.strip()
-    } or None
+    requested_ids = {token.strip() for token in str(args.game_ids or "").split(",") if token.strip()} or None
 
     written = discover_captures(
         input_path=Path(args.input),

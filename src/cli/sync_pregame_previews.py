@@ -5,6 +5,7 @@ This is intentionally scoped to games that already have local preview summaries
 or registered starting pitchers, so backfilled pregame data can be published
 without pushing an entire season.
 """
+
 from __future__ import annotations
 
 import argparse

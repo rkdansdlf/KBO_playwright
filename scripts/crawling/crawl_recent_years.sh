@@ -72,7 +72,7 @@ crawl_year_data() {
     local data_type=$2  # "batting" or "pitching"
     local crawler_module=""
     local emoji=""
-    
+
     if [ "$data_type" == "batting" ]; then
         crawler_module="src.crawlers.player_batting_all_series_crawler"
         emoji="🏏"
@@ -80,34 +80,34 @@ crawl_year_data() {
         crawler_module="src.crawlers.player_pitching_all_series_crawler"
         emoji="⚾"
     fi
-    
+
     echo ""
     echo "${emoji} ${year}년 ${data_type} 데이터 크롤링..."
-    
+
     local year_success=0
     local year_total=${#all_series[@]}
-    
+
     for series in "${all_series[@]}"; do
         echo "  ▶ ${series} 시리즈..."
-        
+
         $PYTHON -m $crawler_module \
             --year $year \
             --series $series \
             --save \
             --headless > /dev/null 2>&1
-        
+
         if [ $? -eq 0 ]; then
             echo "    ✅ 성공"
             ((year_success++))
         else
             echo "    ⚠️ 실패"
         fi
-        
+
         sleep 1  # 시리즈 간 대기
     done
-    
+
     echo "  📊 ${year}년 ${data_type} 결과: ${year_success}/${year_total} 성공"
-    
+
     return $year_success
 }
 
@@ -124,19 +124,19 @@ for year in $(seq $START_YEAR $END_YEAR); do
     echo "=" * 50
     echo "📅 ${year}년 데이터 수집 (${completed_years}/${total_years} 완료)"
     echo "=" * 50
-    
+
     # 타자 데이터
     crawl_year_data $year "batting"
     batting_result=$?
-    
-    # 투수 데이터  
+
+    # 투수 데이터
     crawl_year_data $year "pitching"
     pitching_result=$?
-    
+
     # 년도 완료
     ((completed_years++))
     echo "  ✅ ${year}년 완료 (타자: ${batting_result}, 투수: ${pitching_result})"
-    
+
     # 년도별 대기 (마지막 년도가 아닌 경우)
     if [ $year -lt $END_YEAR ]; then
         echo "  ⏱️ 3초 대기 중..."
@@ -162,7 +162,7 @@ with SessionLocal() as session:
     # 전체 데이터
     batting_total = session.query(PlayerSeasonBatting).count()
     pitching_total = session.query(PlayerSeasonPitching).count()
-    
+
     # 크롤링 대상 기간 데이터
     batting_period = session.query(PlayerSeasonBatting).filter(
         and_(
@@ -170,14 +170,14 @@ with SessionLocal() as session:
             PlayerSeasonBatting.season <= $END_YEAR
         )
     ).count()
-    
+
     pitching_period = session.query(PlayerSeasonPitching).filter(
         and_(
             PlayerSeasonPitching.season >= $START_YEAR,
             PlayerSeasonPitching.season <= $END_YEAR
         )
     ).count()
-    
+
     print(f'📊 전체 데이터베이스:')
     print(f'  - 타자: {batting_total:,}건')
     print(f'  - 투수: {pitching_total:,}건')
@@ -187,22 +187,22 @@ with SessionLocal() as session:
     print(f'  - 타자: {batting_period:,}건')
     print(f'  - 투수: {pitching_period:,}건')
     print(f'  - 합계: {batting_period + pitching_period:,}건')
-    
+
     # 최신 데이터 샘플
     print(f'\\n🔍 최신 수집 데이터 샘플:')
     latest_batting = session.query(PlayerSeasonBatting).filter(
         PlayerSeasonBatting.season == $END_YEAR
     ).limit(3).all()
-    
+
     if latest_batting:
         print(f'  타자 ({END_YEAR}년):')
         for b in latest_batting:
             print(f'    - Player {b.player_id}: {b.league}, AVG {b.avg}, HR {b.home_runs}')
-    
+
     latest_pitching = session.query(PlayerSeasonPitching).filter(
         PlayerSeasonPitching.season == $END_YEAR
     ).limit(3).all()
-    
+
     if latest_pitching:
         print(f'  투수 ({END_YEAR}년):')
         for p in latest_pitching:

@@ -1,5 +1,4 @@
 import subprocess
-import sys
 
 for year in range(2001, 2026):
     print(f"🚀 Syncing year {year}...")

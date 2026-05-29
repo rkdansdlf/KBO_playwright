@@ -1,9 +1,9 @@
-
 import os
 import sys
-from sqlalchemy import create_engine, text
-from dotenv import load_dotenv
+
 import pytest
+from dotenv import load_dotenv
+from sqlalchemy import create_engine, text
 
 sys.path.insert(0, os.getcwd())
 from src.db.engine import SessionLocal
@@ -14,6 +14,7 @@ pytestmark = pytest.mark.skipif(
     reason="OCI purge integration test is disabled unless RUN_OCI_PURGE_TEST=1",
 )
 
+
 def test_purge_logic():
     load_dotenv()
     oci_url = os.getenv("OCI_DB_URL")
@@ -23,7 +24,7 @@ def test_purge_logic():
 
     year = 2010
     pattern = f"{year}%"
-    
+
     # 1. Check initial counts on OCI
     engine = create_engine(oci_url)
     with engine.connect() as conn:
@@ -38,7 +39,9 @@ def test_purge_logic():
         ]
         print(f"📊 Initial counts for Year {year}:")
         for t in tables:
-            count = conn.execute(text(f"SELECT COUNT(*) FROM {t} WHERE game_id LIKE :pattern"), {"pattern": pattern}).fetchone()[0]
+            count = conn.execute(
+                text(f"SELECT COUNT(*) FROM {t} WHERE game_id LIKE :pattern"), {"pattern": pattern}
+            ).fetchone()[0]
             initial_counts[t] = count
             print(f"  - {t}: {count}")
 
@@ -53,16 +56,19 @@ def test_purge_logic():
         final_counts = {}
         print(f"\n📊 Final counts for Year {year}:")
         for t in tables:
-            count = conn.execute(text(f"SELECT COUNT(*) FROM {t} WHERE game_id LIKE :pattern"), {"pattern": pattern}).fetchone()[0]
+            count = conn.execute(
+                text(f"SELECT COUNT(*) FROM {t} WHERE game_id LIKE :pattern"), {"pattern": pattern}
+            ).fetchone()[0]
             final_counts[t] = count
             print(f"  - {t}: {count}")
-            
+
             # Simple assertion: logic is correct if counts are restored (or very close if source changed slightly)
             # In this test environment, source shouldn't change, so counts should match perfectly if purge+sync works.
             if count != initial_counts[t]:
                 print(f"  ⚠️ Warning: Count mismatch for {t} (Initial: {initial_counts[t]} -> Final: {count})")
             else:
                 print(f"  ✅ Count matches for {t}")
+
 
 if __name__ == "__main__":
     test_purge_logic()

@@ -63,21 +63,21 @@ echo "🏏" + "=" * 60
 for year in $(seq $START_YEAR $END_YEAR); do
     echo ""
     echo "📊 ${year}년 타자 데이터 크롤링 시작..."
-    
+
     year_batting_count=0
     year_errors=0
-    
+
     for series in "${series_list[@]}"; do
         echo "  ▶ ${year}년 ${series} 시리즈 타자 크롤링..."
-        
+
         $PYTHON -m src.crawlers.player_batting_all_series_crawler \
             --year $year \
             --series $series \
             --save \
             --headless 2>/dev/null
-        
+
         exit_code=$?
-        
+
         if [ $exit_code -eq 0 ]; then
             echo "    ✅ ${year}년 ${series} 타자 완료"
             ((year_batting_count++))
@@ -85,26 +85,26 @@ for year in $(seq $START_YEAR $END_YEAR); do
             echo "    ⚠️ ${year}년 ${series} 타자 실패 (exit: $exit_code)"
             ((year_errors++))
         fi
-        
+
         # 시리즈 간 짧은 대기
         sleep 1
     done
-    
+
     echo "  📋 ${year}년 타자 결과: 성공 ${year_batting_count}/${#series_list[@]} 시리즈"
     total_batting_count=$((total_batting_count + year_batting_count))
     total_errors=$((total_errors + year_errors))
-    
+
     if [ $year_errors -gt 3 ]; then
         failed_years+=("${year}년 타자")
     fi
-    
+
     # 년도별 대기 (서버 부하 방지)
     echo "  ⏱️ 3초 대기 중..."
     sleep 3
 done
 
 echo ""
-echo "⚾" + "=" * 60  
+echo "⚾" + "=" * 60
 echo "⚾ 2단계: 투수 데이터 전체 크롤링"
 echo "⚾" + "=" * 60
 
@@ -112,21 +112,21 @@ echo "⚾" + "=" * 60
 for year in $(seq $START_YEAR $END_YEAR); do
     echo ""
     echo "📊 ${year}년 투수 데이터 크롤링 시작..."
-    
+
     year_pitching_count=0
     year_errors=0
-    
+
     for series in "${series_list[@]}"; do
         echo "  ▶ ${year}년 ${series} 시리즈 투수 크롤링..."
-        
+
         $PYTHON -m src.crawlers.player_pitching_all_series_crawler \
             --year $year \
             --series $series \
             --save \
             --headless 2>/dev/null
-        
+
         exit_code=$?
-        
+
         if [ $exit_code -eq 0 ]; then
             echo "    ✅ ${year}년 ${series} 투수 완료"
             ((year_pitching_count++))
@@ -134,19 +134,19 @@ for year in $(seq $START_YEAR $END_YEAR); do
             echo "    ⚠️ ${year}년 ${series} 투수 실패 (exit: $exit_code)"
             ((year_errors++))
         fi
-        
+
         # 시리즈 간 짧은 대기
         sleep 1
     done
-    
+
     echo "  📋 ${year}년 투수 결과: 성공 ${year_pitching_count}/${#series_list[@]} 시리즈"
     total_pitching_count=$((total_pitching_count + year_pitching_count))
     total_errors=$((total_errors + year_errors))
-    
+
     if [ $year_errors -gt 3 ]; then
         failed_years+=("${year}년 투수")
     fi
-    
+
     # 년도별 대기 (서버 부하 방지)
     echo "  ⏱️ 3초 대기 중..."
     sleep 3
@@ -170,47 +170,47 @@ with SessionLocal() as session:
     # 전체 데이터 수
     batting_total = session.query(PlayerSeasonBatting).count()
     pitching_total = session.query(PlayerSeasonPitching).count()
-    
+
     print(f'  📊 총 데이터:')
     print(f'    - 타자 기록: {batting_total:,}건')
     print(f'    - 투수 기록: {pitching_total:,}건')
     print(f'    - 전체 합계: {batting_total + pitching_total:,}건')
-    
+
     # 년도별 분포
     print(f'\\n  📅 년도별 타자 분포:')
     batting_by_year = session.query(
-        PlayerSeasonBatting.season, 
+        PlayerSeasonBatting.season,
         func.count(PlayerSeasonBatting.id)
     ).group_by(PlayerSeasonBatting.season).order_by(PlayerSeasonBatting.season).all()
-    
+
     for year, count in batting_by_year[-10:]:  # 최근 10년만
         print(f'    {year}년: {count:,}건')
-    
+
     print(f'\\n  📅 년도별 투수 분포:')
     pitching_by_year = session.query(
-        PlayerSeasonPitching.season, 
+        PlayerSeasonPitching.season,
         func.count(PlayerSeasonPitching.id)
     ).group_by(PlayerSeasonPitching.season).order_by(PlayerSeasonPitching.season).all()
-    
+
     for year, count in pitching_by_year[-10:]:  # 최근 10년만
         print(f'    {year}년: {count:,}건')
-    
+
     # 리그별 분포
     print(f'\\n  🏆 리그별 타자 분포:')
     batting_by_league = session.query(
-        PlayerSeasonBatting.league, 
+        PlayerSeasonBatting.league,
         func.count(PlayerSeasonBatting.id)
     ).group_by(PlayerSeasonBatting.league).all()
-    
+
     for league, count in batting_by_league:
         print(f'    {league}: {count:,}건')
-    
+
     print(f'\\n  🏆 리그별 투수 분포:')
     pitching_by_league = session.query(
-        PlayerSeasonPitching.league, 
+        PlayerSeasonPitching.league,
         func.count(PlayerSeasonPitching.id)
     ).group_by(PlayerSeasonPitching.league).all()
-    
+
     for league, count in pitching_by_league:
         print(f'    {league}: {count:,}건')
 "

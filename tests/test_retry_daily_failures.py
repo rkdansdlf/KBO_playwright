@@ -38,7 +38,7 @@ def test_build_retry_commands_groups_detail_candidates_by_month_and_adds_relay_a
         [
             "python",
             "-m",
-            "src.cli.crawl_game_details",
+            "src.cli.collect_games",
             "--year",
             "2025",
             "--month",
@@ -52,7 +52,7 @@ def test_build_retry_commands_groups_detail_candidates_by_month_and_adds_relay_a
         [
             "python",
             "-m",
-            "src.cli.crawl_game_details",
+            "src.cli.collect_games",
             "--year",
             "2025",
             "--month",
@@ -97,7 +97,7 @@ def test_run_retry_dry_run_does_not_execute_commands(tmp_path, capsys):
     assert code == 0
     assert calls == []
     assert "Dry run only" in output
-    assert "python -m src.cli.crawl_game_details" in output
+    assert "python -m src.cli.collect_games" in output
 
 
 def test_run_retry_apply_executes_commands_in_order(tmp_path):
@@ -120,7 +120,7 @@ def test_run_retry_apply_executes_commands_in_order(tmp_path):
 
     assert code == 0
     assert [command[:3] for command in calls] == [
-        ["python", "-m", "src.cli.crawl_game_details"],
+        ["python", "-m", "src.cli.collect_games"],
         ["python", "scripts/fetch_kbo_pbp.py", "--game-ids"],
         ["python", "-m", "src.cli.sync_oci"],
     ]

@@ -1,17 +1,18 @@
 import asyncio
+import logging
+import os
 import random
 import time
-import os
-import logging
-from typing import Dict, Any
 
 logger = logging.getLogger(__name__)
+
 
 class AsyncThrottle:
     """
     A centralized throttling service with random jitter to prevent IP blocks.
     Respects global delays configured via environment variables.
     """
+
     def __init__(self, delay: float = 1.0, jitter: float = 0.3):
         # Override with env vars if present
         env_delay = os.getenv("KBO_REQUEST_DELAY")
@@ -19,7 +20,7 @@ class AsyncThrottle:
 
         self._default_delay = float(env_delay) if env_delay is not None else delay
         self.jitter = float(env_jitter) if env_jitter is not None else jitter
-        self._last_request_times: Dict[str, float] = {}
+        self._last_request_times: dict[str, float] = {}
         self._lock = asyncio.Lock()
 
     @property
@@ -69,6 +70,7 @@ class AsyncThrottle:
             time.sleep(sleep_time)
 
         self._last_request_times[host] = time.monotonic()
+
 
 # Global instance for shared rate limiting across concurrent crawlers
 throttle = AsyncThrottle()

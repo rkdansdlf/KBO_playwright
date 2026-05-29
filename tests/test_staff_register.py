@@ -1,17 +1,17 @@
-import pytest
 from datetime import date
+
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-from src.models.player import PlayerBasic
-from src.models.team import Team
 from src.crawlers.staff_register_crawler import (
-    _parse_player_id,
-    _parse_hw,
+    StaffRegisterCrawler,
     _parse_birth_date,
     _parse_hands,
-    StaffRegisterCrawler
+    _parse_hw,
+    _parse_player_id,
 )
+from src.models.player import PlayerBasic
+from src.models.team import Team
 
 
 def test_parsing_helpers():
@@ -51,7 +51,7 @@ def test_staff_crawler_save_to_db(monkeypatch):
 
         # Mock PlayerBasicRepository to use our in-memory engine
         from src.repositories.player_basic_repository import PlayerBasicRepository
-        
+
         # We need to override the engine in the repository instance.
         # Let's patch PlayerBasicRepository properties or just monkeypatch the session mapping.
         # But wait, PlayerBasicRepository uses SessionLocal() or similar.
@@ -75,7 +75,7 @@ def test_staff_crawler_save_to_db(monkeypatch):
                         status=r["status"],
                         staff_role=r["staff_role"],
                         status_source=r["status_source"],
-                        career="Test School"
+                        career="Test School",
                     )
                     session.add(pb)
                 count += 1
@@ -100,7 +100,7 @@ def test_staff_crawler_save_to_db(monkeypatch):
                 "bats": "R",
                 "status": "staff",
                 "staff_role": "manager",
-                "status_source": "register"
+                "status_source": "register",
             },
             {
                 "player_id": 99999,
@@ -115,8 +115,8 @@ def test_staff_crawler_save_to_db(monkeypatch):
                 "bats": "L",
                 "status": "staff",
                 "staff_role": "coach",
-                "status_source": "register"
-            }
+                "status_source": "register",
+            },
         ]
 
         # Dry run shouldn't write to DB

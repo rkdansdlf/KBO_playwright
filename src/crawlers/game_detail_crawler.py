@@ -1,26 +1,25 @@
 """GameCenter box score crawler with structured outputs."""
+
 from __future__ import annotations
 
 import asyncio
 import logging
 import os
 import re
-from typing import Dict, List, Optional, Any
-from urllib.parse import urljoin, urlparse, parse_qs
-
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
+import contextlib
 from datetime import datetime
+
 from playwright.async_api import Page
-from sqlalchemy import text
 
 from src.db.engine import SessionLocal
-from src.utils.team_codes import normalize_kbo_game_id, resolve_team_code, team_code_from_game_id_segment
+from src.utils.compliance import compliance
 from src.utils.playwright_pool import AsyncPlaywrightPool
 from src.utils.request_policy import RequestPolicy
-from src.utils.compliance import compliance
-
+from src.utils.team_codes import normalize_kbo_game_id, resolve_team_code, team_code_from_game_id_segment
 
 HITTER_HEADER_MAP = {
     "타석": "plate_appearances",
@@ -83,17 +82,17 @@ class GameDetailCrawler:
 
     def __init__(
         self,
-        request_delay: Optional[float] = None,
-        resolver: Optional[Any] = None,
-        pool: Optional[AsyncPlaywrightPool] = None,
+        request_delay: float | None = None,
+        resolver: Any | None = None,
+        pool: AsyncPlaywrightPool | None = None,
     ):
         self.base_url = "https://www.koreabaseball.com/Schedule/GameCenter/Main.aspx"
         self.policy = RequestPolicy(min_delay=request_delay)
         self.resolver = resolver
         self.pool = pool
-        self._last_failure_reason: Dict[str, str] = {}
+        self._last_failure_reason: dict[str, str] = {}
 
-    def get_last_failure_reason(self, game_id: str) -> Optional[str]:
+    def get_last_failure_reason(self, game_id: str) -> str | None:
         return self._last_failure_reason.get(game_id)
 
     async def close(self) -> None:
@@ -111,7 +110,7 @@ class GameDetailCrawler:
         game_date: str,
         section: str,
         *,
-        required_selector: Optional[str] = None,
+        required_selector: str | None = None,
         timeout: int = 30000,
         selector_timeout: int = 15000,
         extra_delay: float = 0,
@@ -138,7 +137,7 @@ class GameDetailCrawler:
 
         return True, "ok", url
 
-    async def crawl_game(self, game_id: str, game_date: str, lightweight: bool = False) -> Optional[Dict[str, Any]]:
+    async def crawl_game(self, game_id: str, game_date: str, lightweight: bool = False) -> dict[str, Any] | None:
         game_id = normalize_kbo_game_id(game_id)
         self._last_failure_reason.pop(game_id, None)
 
@@ -146,6 +145,7 @@ class GameDetailCrawler:
         close_session = False
         if not self.resolver:
             from src.services.player_id_resolver import PlayerIdResolver
+
             session = SessionLocal()
             self.resolver = PlayerIdResolver(
                 session,
@@ -158,16 +158,16 @@ class GameDetailCrawler:
             result = await self.crawl_games([{"game_id": game_id, "game_date": game_date}], lightweight=lightweight)
             return result[0] if result else None
         finally:
-            if close_session and hasattr(self.resolver, 'session'):
+            if close_session and hasattr(self.resolver, "session"):
                 self.resolver.session.close()
                 self.resolver = None
 
     async def crawl_games(
         self,
-        games: List[Dict[str, str]],
-        concurrency: Optional[int] = None,
+        games: list[dict[str, str]],
+        concurrency: int | None = None,
         lightweight: bool = False,
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         if not games:
             return []
 
@@ -179,10 +179,10 @@ class GameDetailCrawler:
         if self.pool:
             max_concurrency = min(max_concurrency, self.pool.max_pages)
 
-        results: List[Optional[Dict[str, Any]]] = [None] * len(games)
+        results: list[dict[str, Any] | None] = [None] * len(games)
         await pool.start()
         try:
-            queue: asyncio.Queue[Optional[tuple[int, Dict[str, str]]]] = asyncio.Queue()
+            queue: asyncio.Queue[tuple[int, dict[str, str]] | None] = asyncio.Queue()
             for idx, entry in enumerate(games):
                 normalized_entry = dict(entry)
                 normalized_entry["game_id"] = normalize_kbo_game_id(entry["game_id"])
@@ -221,7 +221,9 @@ class GameDetailCrawler:
 
         return [payload for payload in results if payload]
 
-    async def _crawl_single(self, page: Page, game_id: str, game_date: str, lightweight: bool = False) -> Optional[Dict[str, Any]]:
+    async def _crawl_single(
+        self, page: Page, game_id: str, game_date: str, lightweight: bool = False
+    ) -> dict[str, Any] | None:
         review_url = self._section_url(game_id, game_date, "REVIEW")
         print(f"📡 Navigating to REVIEW: {review_url}")
 
@@ -244,8 +246,8 @@ class GameDetailCrawler:
         game_summary = await self._extract_game_summary(page)
 
         if lightweight:
-            hitters = {'away': [], 'home': []}
-            pitchers = {'away': [], 'home': []}
+            hitters = {"away": [], "home": []}
+            pitchers = {"away": [], "home": []}
         else:
             # 1. Try to extract from the current REVIEW page directly first.
             # This is extremely fast, avoids redirection/timeout errors, and minimizes KBO server load.
@@ -259,26 +261,26 @@ class GameDetailCrawler:
 
             away_hitters, away_total = await self._extract_hitters(
                 page,
-                'away',
-                team_info['away']['code'],
+                "away",
+                team_info["away"]["code"],
                 season_year,
                 roster_map,
             )
             home_hitters, home_total = await self._extract_hitters(
                 page,
-                'home',
-                team_info['home']['code'],
+                "home",
+                team_info["home"]["code"],
                 season_year,
                 roster_map,
             )
             pitchers = {
-                'away': await self._extract_pitchers(page, 'away', team_info['away']['code'], season_year, roster_map),
-                'home': await self._extract_pitchers(page, 'home', team_info['home']['code'], season_year, roster_map),
+                "away": await self._extract_pitchers(page, "away", team_info["away"]["code"], season_year, roster_map),
+                "home": await self._extract_pitchers(page, "home", team_info["home"]["code"], season_year, roster_map),
             }
 
             # 2. Fallback: If no stats were found on the REVIEW page (e.g., for some legacy/weird games),
             # try navigating to the dedicated HITTER and PITCHER tabs.
-            if not any((away_hitters, home_hitters, pitchers['away'], pitchers['home'])):
+            if not any((away_hitters, home_hitters, pitchers["away"], pitchers["home"])):
                 print(f"⚠️  No stats found on REVIEW page for {game_id}. Trying dedicated HITTER/PITCHER sections...")
                 await self._navigate_section(
                     page,
@@ -290,16 +292,16 @@ class GameDetailCrawler:
                 )
                 away_hitters, away_total = await self._extract_hitters(
                     page,
-                    'away',
-                    team_info['away']['code'],
+                    "away",
+                    team_info["away"]["code"],
                     season_year,
                     roster_map,
                     use_hitter_section=True,
                 )
                 home_hitters, home_total = await self._extract_hitters(
                     page,
-                    'home',
-                    team_info['home']['code'],
+                    "home",
+                    team_info["home"]["code"],
                     season_year,
                     roster_map,
                     use_hitter_section=True,
@@ -314,61 +316,69 @@ class GameDetailCrawler:
                     selector_timeout=10000,
                 )
                 pitchers = {
-                    'away': await self._extract_pitchers(
+                    "away": await self._extract_pitchers(
                         page,
-                        'away',
-                        team_info['away']['code'],
+                        "away",
+                        team_info["away"]["code"],
                         season_year,
                         roster_map,
                         use_pitcher_section=True,
                     ),
-                    'home': await self._extract_pitchers(
+                    "home": await self._extract_pitchers(
                         page,
-                        'home',
-                        team_info['home']['code'],
+                        "home",
+                        team_info["home"]["code"],
                         season_year,
                         roster_map,
                         use_pitcher_section=True,
                     ),
                 }
 
-            if not any((away_hitters, home_hitters, pitchers['away'], pitchers['home'])):
+            if not any((away_hitters, home_hitters, pitchers["away"], pitchers["home"])):
                 # If we have at least inning scores or metadata, don't fail completely
-                if (team_info.get('away', {}).get('line_score') or team_info.get('home', {}).get('line_score') or
-                    metadata.get('stadium') or metadata.get('attendance')):
-                    print(f"ℹ️  No box scores found for {game_id}, but scoreboard/metadata available. Proceeding with partial recovery.")
+                if (
+                    team_info.get("away", {}).get("line_score")
+                    or team_info.get("home", {}).get("line_score")
+                    or metadata.get("stadium")
+                    or metadata.get("attendance")
+                ):
+                    print(
+                        f"ℹ️  No box scores found for {game_id}, but scoreboard/metadata available. Proceeding with partial recovery."
+                    )
                 else:
                     self._last_failure_reason[game_id] = "incomplete_detail"
                     return None
 
-
             # INTEGRITY CHECK: Sum of hits/AB must match team total
-            for side, player_list, total_row in [('away', away_hitters, away_total), ('home', home_hitters, home_total)]:
-                if not total_row: continue # Some legacy games might miss total row
+            for side, player_list, total_row in [
+                ("away", away_hitters, away_total),
+                ("home", home_hitters, home_total),
+            ]:
+                if not total_row:
+                    continue  # Some legacy games might miss total row
 
-                sum_hits = sum(p['stats'].get('hits', 0) for p in player_list)
-                sum_ab = sum(p['stats'].get('at_bats', 0) for p in player_list)
+                sum_hits = sum(p["stats"].get("hits", 0) for p in player_list)
+                sum_ab = sum(p["stats"].get("at_bats", 0) for p in player_list)
 
-                if sum_hits != total_row.get('hits') or sum_ab != total_row.get('at_bats'):
+                if sum_hits != total_row.get("hits") or sum_ab != total_row.get("at_bats"):
                     error_msg = f"Integrity check FAILED for {game_id} ({side}): Players Sum({sum_hits}H, {sum_ab}AB) != Team Total({total_row.get('hits')}H, {total_row.get('at_bats')}AB)"
                     print(f"⚠️ {error_msg}")
                     # Capture debug screenshot
                     await page.screenshot(path=f"data/integrity_warning_{game_id}_{side}.png")
                     # DANGEROUS: Returning payload anyway for final calibration
 
-            hitters = {'away': away_hitters, 'home': home_hitters}
-
+            hitters = {"away": away_hitters, "home": home_hitters}
 
         game_data = {
-            'game_id': game_id,
-            'game_date': game_date,
-            'metadata': metadata,
-            'summary': game_summary, # Add to payload
-            'teams': team_info,
-            'home_team_code': team_info['home']['code'],
-            'away_team_code': team_info['away']['code'],
-            'hitters': hitters,
-            'pitchers': pitchers,
+            "game_id": game_id,
+            "game_date": game_date,
+            "metadata": metadata,
+            "summary": game_summary,  # Add to payload
+            "teams": team_info,
+            "home_team_code": team_info["home"]["code"],
+            "away_team_code": team_info["away"]["code"],
+            "hitters": hitters,
+            "pitchers": pitchers,
         }
 
         self._last_failure_reason.pop(game_id, None)
@@ -380,13 +390,18 @@ class GameDetailCrawler:
         """Wait for box score elements to be visible with fast-fail for cancelled games"""
         try:
             # Check for the boxscore tables or the cancellation status specifically for the current game
-            # Improved selector to include both correct 'status' and potential typo 'staus' just in case, 
+            # Improved selector to include both correct 'status' and potential typo 'staus' just in case,
             # and better targets for the actual score board area.
-            await page.wait_for_selector('#tblAwayHitter1, #tblHomeHitter1, #tblAwayPitcher, #tblHomePitcher, li.game-cont.on p.status, li.game-cont.on p.staus, .game-status.cancel', timeout=15000)
+            await page.wait_for_selector(
+                "#tblAwayHitter1, #tblHomeHitter1, #tblAwayPitcher, #tblHomePitcher, li.game-cont.on p.status, li.game-cont.on p.staus, .game-status.cancel",
+                timeout=15000,
+            )
 
             # Check the status of the CURRENTLY SELECTED game in the carousel
             # We look for specific cancellation text in the status badge of the active game item
-            status_el = await page.query_selector('li.game-cont.on p.status, li.game-cont.on p.staus, li.game-cont.on .game-status.cancel')
+            status_el = await page.query_selector(
+                "li.game-cont.on p.status, li.game-cont.on p.staus, li.game-cont.on .game-status.cancel"
+            )
             if status_el:
                 txt = (await status_el.text_content()).strip()
                 # Must be a clear match for cancellation, not just containing the word
@@ -396,9 +411,9 @@ class GameDetailCrawler:
 
             # Double check: if no boxscore tables are found but we didn't see a cancel badge
             # We check if the main scoreboard area says it's cancelled
-            hitter_table = await page.query_selector('#tblAwayHitter1')
+            hitter_table = await page.query_selector("#tblAwayHitter1")
             if not hitter_table:
-                scoreboard = await page.query_selector('.sms-score, .score-board')
+                scoreboard = await page.query_selector(".sms-score, .score-board")
                 if scoreboard:
                     sb_text = await scoreboard.text_content()
                     if "취소" in sb_text:
@@ -411,7 +426,7 @@ class GameDetailCrawler:
             print(f"⚠️  Timeout waiting for boxscore selectors. Page URL: {page.url}")
             try:
                 # Only check for "경기취소" in the main content area, not the whole body
-                content_area = await page.query_selector('#contents, .box-score-area')
+                content_area = await page.query_selector("#contents, .box-score-area")
                 if content_area:
                     txt = await content_area.text_content()
                     if "취소" in txt:
@@ -423,71 +438,70 @@ class GameDetailCrawler:
                 pass
             # Diagnostic screenshot
             debug_path = f"data/error_{datetime.now().strftime('%H%M%S')}.png"
-            os.makedirs('data', exist_ok=True)
+            os.makedirs("data", exist_ok=True)
             await page.screenshot(path=debug_path)
             print(f"📸 Debug screenshot saved to: {debug_path}")
             return False, "missing"
 
-    async def _extract_metadata(self, page: Page) -> Dict[str, Any]:
+    async def _extract_metadata(self, page: Page) -> dict[str, Any]:
         metadata = {
-            'stadium': None,
-            'attendance': None,
-            'start_time': None,
-            'end_time': None,
-            'game_time': None,
-            'duration_minutes': None,
+            "stadium": None,
+            "attendance": None,
+            "start_time": None,
+            "end_time": None,
+            "game_time": None,
+            "duration_minutes": None,
         }
 
         try:
             # 1. Try explicit ID selectors (common in older years)
-            stadium_el = await page.query_selector('#txtStadium')
+            stadium_el = await page.query_selector("#txtStadium")
             if stadium_el:
-                metadata['stadium'] = (await stadium_el.text_content()).replace('구장 :', '').strip()
+                metadata["stadium"] = (await stadium_el.text_content()).replace("구장 :", "").strip()
 
-            crowd_el = await page.query_selector('#txtCrowd')
+            crowd_el = await page.query_selector("#txtCrowd")
             if crowd_el:
                 try:
-                    val = (await crowd_el.text_content()).replace('관중 :', '').replace(',', '').strip()
-                    metadata['attendance'] = int(val)
-                except Exception: pass
+                    val = (await crowd_el.text_content()).replace("관중 :", "").replace(",", "").strip()
+                    metadata["attendance"] = int(val)
+                except Exception:
+                    pass
 
             # 2. Try generic area search
-            info_area = await page.query_selector('.box-score-area, .game-info, .score-board, .record-etc')
+            info_area = await page.query_selector(".box-score-area, .game-info, .score-board, .record-etc")
             if not info_area:
                 return metadata
 
-            text = (await info_area.text_content()).replace('\n', ' ')
+            text = (await info_area.text_content()).replace("\n", " ")
 
-            stadium_match = re.search(r'구장\s*[:：]\s*([^\s]+)', text)
+            stadium_match = re.search(r"구장\s*[:：]\s*([^\s]+)", text)
             if stadium_match:
-                metadata['stadium'] = stadium_match.group(1).strip()
+                metadata["stadium"] = stadium_match.group(1).strip()
 
-            attendance_match = re.search(r'관중\s*[:：]\s*([\d,]+)', text)
+            attendance_match = re.search(r"관중\s*[:：]\s*([\d,]+)", text)
             if attendance_match:
-                try:
-                    metadata['attendance'] = int(attendance_match.group(1).replace(',', '').strip())
-                except ValueError:
-                    pass
+                with contextlib.suppress(ValueError):
+                    metadata["attendance"] = int(attendance_match.group(1).replace(",", "").strip())
 
-            start_match = re.search(r'개시\s*[:：]\s*([\d:]+)', text)
+            start_match = re.search(r"개시\s*[:：]\s*([\d:]+)", text)
             if start_match:
-                metadata['start_time'] = start_match.group(1).strip()
+                metadata["start_time"] = start_match.group(1).strip()
 
-            end_match = re.search(r'종료\s*[:：]\s*([\d:]+)', text)
+            end_match = re.search(r"종료\s*[:：]\s*([\d:]+)", text)
             if end_match:
-                metadata['end_time'] = end_match.group(1).strip()
+                metadata["end_time"] = end_match.group(1).strip()
 
-            duration_match = re.search(r'경기시간\s*[:：]\s*([\d:]+)', text)
+            duration_match = re.search(r"경기시간\s*[:：]\s*([\d:]+)", text)
             if duration_match:
-                metadata['game_time'] = duration_match.group(1).strip()
-                metadata['duration_minutes'] = self._parse_duration_minutes(metadata['game_time'])
+                metadata["game_time"] = duration_match.group(1).strip()
+                metadata["duration_minutes"] = self._parse_duration_minutes(metadata["game_time"])
 
         except Exception:  # pragma: no cover - resilience path
             logger.exception("⚠️  Error extracting metadata")
 
         return metadata
 
-    async def _extract_team_info(self, page: Page, game_id: str, season_year: Optional[int]) -> Dict[str, Dict[str, Any]]:
+    async def _extract_team_info(self, page: Page, game_id: str, season_year: int | None) -> dict[str, dict[str, Any]]:
         script = r"""
         () => {
             const getRows = (t, extractTh) => Array.from(t.querySelectorAll('tbody tr')).map(tr =>
@@ -596,12 +610,12 @@ class GameDetailCrawler:
         """
 
         result = await page.evaluate(script)
-        away_info: Dict[str, Any]
-        home_info: Dict[str, Any]
+        away_info: dict[str, Any]
+        home_info: dict[str, Any]
 
-        if result and len(result['rows']) >= 2:
-            headers = result['headers']
-            rows = result['rows']
+        if result and len(result["rows"]) >= 2:
+            headers = result["headers"]
+            rows = result["rows"]
             away_info = self._parse_scoreboard_row(headers, rows[0], season_year)
             home_info = self._parse_scoreboard_row(headers, rows[1], season_year)
         else:
@@ -610,40 +624,41 @@ class GameDetailCrawler:
         # Fallback to gameId decoding for missing/generic team info (common in All-Star)
         away_segment = game_id[8:10] if len(game_id) >= 10 else None
         home_segment = game_id[10:12] if len(game_id) >= 12 else None
-        
-        if not away_info or not away_info.get('code') or away_info.get('name') in (None, "", "Unknown"):
-             away_info = {
-                'name': away_info.get('name') if away_info else away_segment,
-                'code': team_code_from_game_id_segment(away_segment, season_year),
-                'score': away_info.get('score') if away_info else None,
-                'hits': away_info.get('hits') if away_info else None,
-                'errors': away_info.get('errors') if away_info else None,
-                'line_score': away_info.get('line_score') if away_info else [],
+
+        if not away_info or not away_info.get("code") or away_info.get("name") in (None, "", "Unknown"):
+            away_info = {
+                "name": away_info.get("name") if away_info else away_segment,
+                "code": team_code_from_game_id_segment(away_segment, season_year),
+                "score": away_info.get("score") if away_info else None,
+                "hits": away_info.get("hits") if away_info else None,
+                "errors": away_info.get("errors") if away_info else None,
+                "line_score": away_info.get("line_score") if away_info else [],
             }
-        if not home_info or not home_info.get('code') or home_info.get('name') in (None, "", "Unknown"):
+        if not home_info or not home_info.get("code") or home_info.get("name") in (None, "", "Unknown"):
             home_info = {
-                'name': home_info.get('name') if home_info else home_segment,
-                'code': team_code_from_game_id_segment(home_segment, season_year),
-                'score': home_info.get('score') if home_info else None,
-                'hits': home_info.get('hits') if home_info else None,
-                'errors': home_info.get('errors') if home_info else None,
-                'line_score': home_info.get('line_score') if home_info else [],
+                "name": home_info.get("name") if home_info else home_segment,
+                "code": team_code_from_game_id_segment(home_segment, season_year),
+                "score": home_info.get("score") if home_info else None,
+                "hits": home_info.get("hits") if home_info else None,
+                "errors": home_info.get("errors") if home_info else None,
+                "line_score": home_info.get("line_score") if home_info else [],
             }
 
-        return {'away': away_info, 'home': home_info}
-
+        return {"away": away_info, "home": home_info}
 
     async def _extract_hitters(
         self,
         page: Page,
         team_side: str,
-        team_code: Optional[str],
-        season_year: Optional[int],
-        roster_map: Optional[Dict[str, List[Dict[str, Any]]]] = None,
+        team_code: str | None,
+        season_year: int | None,
+        roster_map: dict[str, list[dict[str, Any]]] | None = None,
         db_session=None,
         use_hitter_section: bool = False,
-    ) -> List[Dict[str, Any]]:
-        selectors = ['#tblAwayHitter1', '#tblAwayHitter3'] if team_side == 'away' else ['#tblHomeHitter1', '#tblHomeHitter3']
+    ) -> list[dict[str, Any]]:
+        selectors = (
+            ["#tblAwayHitter1", "#tblAwayHitter3"] if team_side == "away" else ["#tblHomeHitter1", "#tblHomeHitter3"]
+        )
         tables = []
         for selector in selectors:
             table_rows = await self._extract_table_rows(page, selector)
@@ -651,56 +666,61 @@ class GameDetailCrawler:
                 tables.append(table_rows)
 
         base_rows = tables[0] if tables else []
-        inning_rows = await self._extract_table_rows(page, '#tblAwayHitter2' if team_side == 'away' else '#tblHomeHitter2')
+        inning_rows = await self._extract_table_rows(
+            page, "#tblAwayHitter2" if team_side == "away" else "#tblHomeHitter2"
+        )
         extra_rows = tables[1] if len(tables) > 1 else []
 
         # KEY FIX: Legacy tables (e.g. 2018) might not have player name in the extra table (Table 3).
         # In that case, we must merge by INDEX, assuming 1:1 correspondence.
-        extra_has_names = any(r.get('playerName') for r in extra_rows)
+        extra_has_names = any(r.get("playerName") for r in extra_rows)
 
         extra_map = {}
         if extra_has_names:
-            extra_map = {row['playerName']: row for row in extra_rows if row['playerName']}
+            extra_map = {row["playerName"]: row for row in extra_rows if row["playerName"]}
 
-        results: List[Dict[str, Any]] = []
+        results: list[dict[str, Any]] = []
         team_total_stats = {}
 
         for idx, row in enumerate(base_rows, start=1):
-            player_name = row['playerName']
+            player_name = row["playerName"]
             if not player_name:
                 continue
 
-            if player_name in {'합계', '팀합계'}:
-                self._populate_hitter_stats(team_total_stats, {}, row['cells'])
+            if player_name in {"합계", "팀합계"}:
+                self._populate_hitter_stats(team_total_stats, {}, row["cells"])
                 continue
 
             # Parse same-name suffix (e.g., "이승현(57)" or "김태훈(우)")
-            row_uniform = row.get('cells', {}).get('등번호')
+            row_uniform = row.get("cells", {}).get("등번호")
             uniform_no = row_uniform
             import re
-            m = re.search(r'\(([^)]+)\)', player_name)
+
+            m = re.search(r"\(([^)]+)\)", player_name)
             if m:
                 suffix = m.group(1).strip()
-                player_name = re.sub(r'\s*\([^)]*\)\s*$', '', player_name).strip()
+                player_name = re.sub(r"\s*\([^)]*\)\s*$", "", player_name).strip()
                 if suffix.isdigit():
                     uniform_no = suffix
 
-            p_id = self._safe_int(row.get('playerId'))
+            p_id = self._safe_int(row.get("playerId"))
 
             stats = {}
             extras = {}
-            self._populate_hitter_stats(stats, extras, row['cells'])
+            self._populate_hitter_stats(stats, extras, row["cells"])
 
             # KEY FIX: Derive missing stats from inning breakdown if needed
             if inning_rows and idx - 1 < len(inning_rows):
-                derived = self._derive_hitter_stats_from_inning_cells(inning_rows[idx - 1]['cells'])
+                derived = self._derive_hitter_stats_from_inning_cells(inning_rows[idx - 1]["cells"])
                 for k, v in derived.items():
                     if stats.get(k) in (0, None):
                         stats[k] = v
 
             # Key fix for Task 3: Use resolver for exhibition/missing IDs
             if p_id is None and self.resolver and team_code and season_year:
-                p_id = self.resolver.resolve_id(player_name, team_code, season_year, uniform_no=uniform_no, is_pitcher=False)
+                p_id = self.resolver.resolve_id(
+                    player_name, team_code, season_year, uniform_no=uniform_no, is_pitcher=False
+                )
                 if p_id:
                     print(f"   [RESOLVED] {player_name} ({team_code}) -> {p_id}")
 
@@ -708,74 +728,77 @@ class GameDetailCrawler:
             if extra_has_names:
                 extra_row = extra_map.get(player_name)
             else:
-                base_idx = idx - 1 # idx starts at 1
+                base_idx = idx - 1  # idx starts at 1
                 if base_idx < len(extra_rows):
                     extra_row = extra_rows[base_idx]
                 else:
                     extra_row = None
 
             if extra_row:
-                 self._populate_hitter_stats(stats, extras, extra_row['cells'])
+                self._populate_hitter_stats(stats, extras, extra_row["cells"])
 
             # Formula-based PA backfill if still 0
-            if stats.get('plate_appearances') in (0, None):
-                stats['plate_appearances'] = (
-                    (stats.get('at_bats') or 0) +
-                    (stats.get('walks') or 0) +
-                    (stats.get('hbp') or 0) +
-                    (stats.get('sacrifice_hits') or 0) +
-                    (stats.get('sacrifice_flies') or 0)
+            if stats.get("plate_appearances") in (0, None):
+                stats["plate_appearances"] = (
+                    (stats.get("at_bats") or 0)
+                    + (stats.get("walks") or 0)
+                    + (stats.get("hbp") or 0)
+                    + (stats.get("sacrifice_hits") or 0)
+                    + (stats.get("sacrifice_flies") or 0)
                 )
 
-            batting_order = self._parse_batting_order(row['cells'])
-            position = self._parse_position(row['cells'])
+            batting_order = self._parse_batting_order(row["cells"])
+            position = self._parse_position(row["cells"])
             is_starter = batting_order is not None and batting_order <= 9
 
             # Optimization: Check roster_map if ID is missing
             if not p_id and roster_map and player_name in roster_map:
                 candidates = roster_map[player_name]
                 if len(candidates) == 1:
-                    p_id = candidates[0]['id']
+                    p_id = candidates[0]["id"]
                     # Use roster uniform if available and row uniform is missing
                     if not uniform_no:
-                        uniform_no = candidates[0]['uniform']
+                        uniform_no = candidates[0]["uniform"]
                 elif len(candidates) > 1:
                     # Ambiguity! If we have uniform_no in row, use it to match
                     if uniform_no:
                         for c in candidates:
-                            if c['uniform'] == str(uniform_no):
-                                p_id = c['id']
+                            if c["uniform"] == str(uniform_no):
+                                p_id = c["id"]
                                 break
 
             payload = {
-                'player_id': p_id,
-                'player_name': player_name,
-                'uniform_no': uniform_no,
-                'team_code': team_code,
-                'team_side': team_side,
-                'batting_order': batting_order,
-                'position': position,
-                'is_starter': is_starter,
-                'appearance_seq': idx,
-                'stats': stats,
-                'extras': extras or None,
+                "player_id": p_id,
+                "player_name": player_name,
+                "uniform_no": uniform_no,
+                "team_code": team_code,
+                "team_side": team_side,
+                "batting_order": batting_order,
+                "position": position,
+                "is_starter": is_starter,
+                "appearance_seq": idx,
+                "stats": stats,
+                "extras": extras or None,
             }
             results.append(payload)
 
         return results, team_total_stats
 
-
     async def _extract_pitchers(
         self,
         page: Page,
         team_side: str,
-        team_code: Optional[str],
-        season_year: Optional[int],
-        roster_map: Optional[Dict[str, List[Dict[str, Any]]]] = None,
+        team_code: str | None,
+        season_year: int | None,
+        roster_map: dict[str, list[dict[str, Any]]] | None = None,
         db_session=None,
         use_pitcher_section: bool = False,
-    ) -> List[Dict[str, Any]]:
-        selectors = ['#tblAwayPitcher', '#tblAwayPitcher1', '#tblAwayPitcher2'] if team_side == 'away' else ['#tblHomePitcher', '#tblHomePitcher1', '#tblHomePitcher2']
+    ) -> list[dict[str, Any]]:
+        selectors = (
+            ["#tblAwayPitcher", "#tblAwayPitcher1", "#tblAwayPitcher2"]
+            if team_side == "away"
+            else ["#tblHomePitcher", "#tblHomePitcher1", "#tblHomePitcher2"]
+        )
         rows = []
         for selector in selectors:
             table_rows = await self._extract_table_rows(page, selector)
@@ -783,29 +806,32 @@ class GameDetailCrawler:
                 rows = table_rows
                 break
 
-        results: List[Dict[str, Any]] = []
+        results: list[dict[str, Any]] = []
         for idx, row in enumerate(rows, start=1):
-            player_name = row['playerName']
-            if not player_name or player_name in {'합계', '팀합계'}:
+            player_name = row["playerName"]
+            if not player_name or player_name in {"합계", "팀합계"}:
                 continue
 
             # Parse same-name suffix (e.g., "이승현(57)" or "김태훈(우)")
-            row_uniform = row.get('cells', {}).get('등번호')
+            row_uniform = row.get("cells", {}).get("등번호")
             uniform_no = row_uniform
             import re
-            m = re.search(r'\(([^)]+)\)', player_name)
+
+            m = re.search(r"\(([^)]+)\)", player_name)
             if m:
                 suffix = m.group(1).strip()
-                player_name = re.sub(r'\s*\([^)]*\)\s*$', '', player_name).strip()
+                player_name = re.sub(r"\s*\([^)]*\)\s*$", "", player_name).strip()
                 if suffix.isdigit():
                     uniform_no = suffix
 
-            p_id = self._safe_int(row.get('playerId'))
+            p_id = self._safe_int(row.get("playerId"))
 
             # Key fix for Task 3: Use resolver for exhibition/missing IDs
             # AND: Auto-search and register if still unknown
             if p_id is None and self.resolver and team_code and season_year:
-                p_id = self.resolver.resolve_id(player_name, team_code, season_year, uniform_no=uniform_no, is_pitcher=True)
+                p_id = self.resolver.resolve_id(
+                    player_name, team_code, season_year, uniform_no=uniform_no, is_pitcher=True
+                )
 
                 can_register_from_search = not getattr(self.resolver, "strict_game_resolution", False) and getattr(
                     self.resolver,
@@ -816,16 +842,18 @@ class GameDetailCrawler:
                     # PROACTIVE SEARCH: If not found in DB, try to find on KBO site and register
                     print(f"🔍 Unknown player '{player_name}' ({team_code}) found. Searching KBO...")
                     from src.crawlers.player_search_crawler import PlayerSearchCrawler
+
                     search_crawler = PlayerSearchCrawler()
                     # Note: Using a simplified search to avoid infinite loops
                     new_profiles = await search_crawler.search_player(player_name)
                     if new_profiles:
                         # Register the first matching profile
                         for profile in new_profiles:
-                            if profile.get('name') == player_name:
-                                p_id = int(profile['player_id'])
+                            if profile.get("name") == player_name:
+                                p_id = int(profile["player_id"])
                                 # Save to DB immediately so resolver can find it next time
                                 from src.repositories.player_basic_repository import save_player_basic
+
                                 save_player_basic(profile)
                                 print(f"✅ Registered new player: {player_name} ({p_id})")
                                 break
@@ -837,44 +865,44 @@ class GameDetailCrawler:
             if not p_id and roster_map and player_name in roster_map:
                 candidates = roster_map[player_name]
                 if len(candidates) == 1:
-                    p_id = candidates[0]['id']
+                    p_id = candidates[0]["id"]
                     if not uniform_no:
-                        uniform_no = candidates[0]['uniform']
+                        uniform_no = candidates[0]["uniform"]
                 elif len(candidates) > 1:
                     if uniform_no:
                         for c in candidates:
-                            if c['uniform'] == str(uniform_no):
-                                p_id = c['id']
+                            if c["uniform"] == str(uniform_no):
+                                p_id = c["id"]
                                 break
 
             stats = {}
             extras = {}
-            self._populate_pitcher_stats(stats, extras, row['cells'])
+            self._populate_pitcher_stats(stats, extras, row["cells"])
 
-            innings_text = row['cells'].get('이닝') or row['cells'].get('IP')
+            innings_text = row["cells"].get("이닝") or row["cells"].get("IP")
             innings_outs = self._parse_innings_to_outs(innings_text)
 
-            result_text = row['cells'].get('결과') or row['cells'].get('결')
+            result_text = row["cells"].get("결과") or row["cells"].get("결")
             decision = self._parse_decision(result_text)
             if decision:
-                stats['decision'] = decision
+                stats["decision"] = decision
 
             payload = {
-                'player_id': p_id,
-                'player_name': player_name,
-                'uniform_no': uniform_no,
-                'team_code': team_code,
-                'team_side': team_side,
-                'is_starting': idx == 1,
-                'appearance_seq': idx,
-                'stats': {**stats, 'innings_outs': innings_outs},
-                'extras': extras or None,
+                "player_id": p_id,
+                "player_name": player_name,
+                "uniform_no": uniform_no,
+                "team_code": team_code,
+                "team_side": team_side,
+                "is_starting": idx == 1,
+                "appearance_seq": idx,
+                "stats": {**stats, "innings_outs": innings_outs},
+                "extras": extras or None,
             }
             results.append(payload)
 
         return results
 
-    async def _extract_table_rows(self, page: Page, selector: str) -> List[Dict[str, Any]]:
+    async def _extract_table_rows(self, page: Page, selector: str) -> list[dict[str, Any]]:
         if not selector:
             return []
 
@@ -918,9 +946,9 @@ class GameDetailCrawler:
                     const href = link.getAttribute('href');
                     try {
                         const url = new URL(href, window.location.origin);
-                        playerId = url.searchParams.get('playerId') || 
-                                   url.searchParams.get('p_id') || 
-                                   url.searchParams.get('pCode') || 
+                        playerId = url.searchParams.get('playerId') ||
+                                   url.searchParams.get('p_id') ||
+                                   url.searchParams.get('pCode') ||
                                    url.searchParams.get('pcode');
                     } catch (e) {
                         playerId = null;
@@ -943,7 +971,7 @@ class GameDetailCrawler:
 
         return await page.evaluate(script, selector)
 
-    async def _extract_game_summary(self, page: Page) -> List[Dict[str, str]]:
+    async def _extract_game_summary(self, page: Page) -> list[dict[str, str]]:
         """Extracts game summary details from #tblEtc (Winning hit, HR, Errors, Umpires, etc.)"""
         selector = "#tblEtc"
         if not await page.query_selector(selector):
@@ -982,18 +1010,18 @@ class GameDetailCrawler:
         game_id: str,
         game_date: str,
         review_url: str,
-    ) -> Dict[str, List[Dict[str, Any]]]:
-        roster_map: Dict[str, List[Dict[str, Any]]] = {}
+    ) -> dict[str, list[dict[str, Any]]]:
+        roster_map: dict[str, list[dict[str, Any]]] = {}
         for section in ("ENTRY", "LINEUP"):
             lineup_url = f"{self.base_url}?gameDate={game_date}&gameId={game_id}&section={section}"
 
             async def _navigate_lineup():
                 await self.policy.delay_async()
                 await page.goto(lineup_url, wait_until="domcontentloaded", timeout=20000)
-                try:
-                    await page.wait_for_selector('a[href*="Player/PlayerDetail"], a[href*="playerId="], a[href*="p_id="]', timeout=15000)
-                except Exception:
-                    pass
+                with contextlib.suppress(Exception):
+                    await page.wait_for_selector(
+                        'a[href*="Player/PlayerDetail"], a[href*="playerId="], a[href*="p_id="]', timeout=15000
+                    )
 
             try:
                 await self.policy.run_with_retry_async(_navigate_lineup)
@@ -1005,6 +1033,7 @@ class GameDetailCrawler:
 
         # Always return to REVIEW page for box score extraction.
         try:
+
             async def _navigate_back():
                 await self.policy.delay_async()
                 await page.goto(review_url, wait_until="domcontentloaded", timeout=30000)
@@ -1018,8 +1047,8 @@ class GameDetailCrawler:
     def _log_unresolved_player_ids(
         self,
         game_id: str,
-        hitters: Dict[str, List[Dict[str, Any]]],
-        pitchers: Dict[str, List[Dict[str, Any]]],
+        hitters: dict[str, list[dict[str, Any]]],
+        pitchers: dict[str, list[dict[str, Any]]],
     ) -> None:
         unresolved = []
         for team_side in ("away", "home"):
@@ -1033,17 +1062,14 @@ class GameDetailCrawler:
             return
         print(f"⚠️  Unresolved player_id entries for {game_id}: {len(unresolved)}")
         for name, team_code, uniform_no in unresolved:
-            print(
-                "   - "
-                f"name={name}, team_code={team_code or 'N/A'}, "
-                f"uniform_no={uniform_no or 'N/A'}"
-            )
+            print(f"   - name={name}, team_code={team_code or 'N/A'}, uniform_no={uniform_no or 'N/A'}")
 
-    def _derive_hitter_stats_from_inning_cells(self, cells: Dict[str, str]) -> Dict[str, int]:
+    def _derive_hitter_stats_from_inning_cells(self, cells: dict[str, str]) -> dict[str, int]:
         """Counts stats from inning breakdown cells (e.g. '삼진', '4구')."""
         derived = {"strikeouts": 0, "walks": 0, "hbp": 0, "sacrifice_hits": 0, "sacrifice_flies": 0}
         for val in cells.values():
-            if not val or val == '&nbsp;': continue
+            if not val or val == "&nbsp;":
+                continue
             if "삼진" in val or "스낫" in val or "루낫" in val or "낫아웃" in val:
                 derived["strikeouts"] += 1
             if "4구" in val or "볼넷" in val or "고의4구" in val:
@@ -1056,13 +1082,13 @@ class GameDetailCrawler:
                 derived["sacrifice_flies"] += 1
         return derived
 
-    def _populate_hitter_stats(self, stats: Dict[str, Any], extras: Dict[str, Any], cells: Dict[str, str]) -> None:
+    def _populate_hitter_stats(self, stats: dict[str, Any], extras: dict[str, Any], cells: dict[str, str]) -> None:
         for header, value in cells.items():
             key = HITTER_HEADER_MAP.get(header)
             if not key:
                 extras.setdefault(header, value)
                 continue
-            if value in ('', '-', None):
+            if value in ("", "-", None):
                 continue
             if key in HITTER_FLOAT_KEYS:
                 try:
@@ -1072,39 +1098,41 @@ class GameDetailCrawler:
             else:
                 stats[key] = self._safe_int(value)
 
-    def _populate_pitcher_stats(self, stats: Dict[str, Any], extras: Dict[str, Any], cells: Dict[str, str]) -> None:
+    def _populate_pitcher_stats(self, stats: dict[str, Any], extras: dict[str, Any], cells: dict[str, str]) -> None:
         for header, value in cells.items():
             key = PITCHER_HEADER_MAP.get(header)
             if not key:
                 extras.setdefault(header, value)
                 continue
-            if value in ('', '-', None):
+            if value in ("", "-", None):
                 continue
             if key in PITCHER_FLOAT_KEYS:
                 try:
                     stats[key] = float(value)
                 except ValueError:
                     continue
-            elif key == 'innings':
-                stats['innings_outs'] = self._parse_innings_to_outs(value)
+            elif key == "innings":
+                stats["innings_outs"] = self._parse_innings_to_outs(value)
             else:
                 stats[key] = self._safe_int(value)
 
-    def _parse_scoreboard_row(self, headers: List[str], row: List[str], season_year: Optional[int] = None) -> Dict[str, Any]:
+    def _parse_scoreboard_row(
+        self, headers: list[str], row: list[str], season_year: int | None = None
+    ) -> dict[str, Any]:
         if not row:
             return {
-                'name': None,
-                'code': None,
-                'line_score': [],
-                'score': None,
-                'hits': None,
-                'errors': None,
+                "name": None,
+                "code": None,
+                "line_score": [],
+                "score": None,
+                "hits": None,
+                "errors": None,
             }
 
         name = row[0]
         if name:
             # Python-side fallback cleanup for result labels
-            name = name.replace('승', '').replace('패', '').replace('무', '').replace('세', '').strip()
+            name = name.replace("승", "").replace("패", "").replace("무", "").replace("세", "").strip()
 
         line = row[1:-3] if len(row) > 4 else []
         totals = row[-3:] if len(row) >= 3 else []
@@ -1116,59 +1144,59 @@ class GameDetailCrawler:
         line_numeric = [self._safe_int(item) for item in line]
 
         return {
-            'name': name,
-            'code': resolve_team_code(name, season_year),
-            'line_score': line_numeric,
-            'score': score,
-            'hits': hits,
-            'errors': errors,
+            "name": name,
+            "code": resolve_team_code(name, season_year),
+            "line_score": line_numeric,
+            "score": score,
+            "hits": hits,
+            "errors": errors,
         }
 
-    def _parse_batting_order(self, cells: Dict[str, str]) -> Optional[int]:
-        for key in ('타순', 'NO', 'No', '순', '타순(교체)', 'COL_0'):
+    def _parse_batting_order(self, cells: dict[str, str]) -> int | None:
+        for key in ("타순", "NO", "No", "순", "타순(교체)", "COL_0"):
             if key in cells:
                 value = re.search(r"\d+", cells[key])
                 if value:
                     return int(value.group())
         return None
 
-    def _parse_position(self, cells: Dict[str, str]) -> Optional[str]:
-        for key in ('POS', '포지션', '수비위치', 'COL_1'):
+    def _parse_position(self, cells: dict[str, str]) -> str | None:
+        for key in ("POS", "포지션", "수비위치", "COL_1"):
             if key in cells:
                 return cells[key] or None
         return None
 
-    def _parse_decision(self, text: Optional[str]) -> Optional[str]:
+    def _parse_decision(self, text: str | None) -> str | None:
         if not text:
             return None
         text = text.strip()
-        if '승' in text:
-            return 'W'
-        if '패' in text:
-            return 'L'
-        if '세' in text:
-            return 'S'
-        if '홀드' in text or 'H' in text:
-            return 'H'
+        if "승" in text:
+            return "W"
+        if "패" in text:
+            return "L"
+        if "세" in text:
+            return "S"
+        if "홀드" in text or "H" in text:
+            return "H"
         return None
 
-    def _parse_innings_to_outs(self, text: Optional[str]) -> Optional[int]:
+    def _parse_innings_to_outs(self, text: str | None) -> int | None:
         if not text:
             return None
         cleaned = text.strip()
-        if cleaned in ('', '-', '0'):
+        if cleaned in ("", "-", "0"):
             return self._safe_int(cleaned) or 0
 
-        cleaned = cleaned.replace('⅓', '.1').replace('⅔', '.2').replace('⅔', '.2')
-        match = re.match(r'^(\d+)(?:\s*(\d)/3)?$', cleaned)
+        cleaned = cleaned.replace("⅓", ".1").replace("⅔", ".2").replace("⅔", ".2")
+        match = re.match(r"^(\d+)(?:\s*(\d)/3)?$", cleaned)
         if match:
             whole = int(match.group(1))
             frac = int(match.group(2)) if match.group(2) else 0
             return whole * 3 + frac
 
-        if '.' in cleaned:
+        if "." in cleaned:
             try:
-                whole, frac = cleaned.split('.', 1)
+                whole, frac = cleaned.split(".", 1)
                 outs = int(whole) * 3 + int(frac[:1])
                 return outs
             except ValueError:
@@ -1181,19 +1209,19 @@ class GameDetailCrawler:
             return None
 
     @staticmethod
-    def _safe_int(value: Any) -> Optional[int]:
-        if value in (None, '', '-', 'null'):
+    def _safe_int(value: Any) -> int | None:
+        if value in (None, "", "-", "null"):
             return None
         try:
-            return int(str(value).replace(',', ''))
+            return int(str(value).replace(",", ""))
         except ValueError:
             return None
 
     @staticmethod
-    def _parse_duration_minutes(duration: Optional[str]) -> Optional[int]:
+    def _parse_duration_minutes(duration: str | None) -> int | None:
         if not duration:
             return None
-        parts = duration.strip().split(':')
+        parts = duration.strip().split(":")
         if len(parts) != 2:
             return None
         try:
@@ -1204,8 +1232,8 @@ class GameDetailCrawler:
             return None
 
     @staticmethod
-    def _parse_season_year(game_date: str) -> Optional[int]:
-        digits = ''.join(ch for ch in str(game_date) if ch.isdigit())
+    def _parse_season_year(game_date: str) -> int | None:
+        digits = "".join(ch for ch in str(game_date) if ch.isdigit())
         if len(digits) >= 4:
             try:
                 return int(digits[:4])
@@ -1213,7 +1241,7 @@ class GameDetailCrawler:
                 return None
         return None
 
-    async def _extract_roster_from_lineup(self, page: Page) -> Dict[str, List[Dict[str, Any]]]:
+    async def _extract_roster_from_lineup(self, page: Page) -> dict[str, list[dict[str, Any]]]:
         """
         Extracts a map of {PlayerName: [{id, uniform_no}, ...]} from the LINEUP page.
         Used to resolve player IDs when the Review page boxscore lacks links (legacy games).
@@ -1274,6 +1302,7 @@ class GameDetailCrawler:
 
 async def main():  # pragma: no cover
     import argparse
+
     parser = argparse.ArgumentParser()
     parser.add_argument("--game_id", help="KBO Game ID (e.g., 20251013SKSS0)")
     parser.add_argument("--date", help="Game Date (YYYYMMDD)")
@@ -1296,6 +1325,7 @@ async def main():  # pragma: no cover
             "Operational collection should use src.cli.collect_games or src.cli.run_daily_update."
         )
         from src.repositories.game_repository import save_game_detail
+
         success = save_game_detail(game_data)
         if success:
             print(f"✅ Successfully saved and triggered sync for {game_id}")
@@ -1306,6 +1336,8 @@ async def main():  # pragma: no cover
     else:
         print(game_data)
 
+
 if __name__ == "__main__":  # pragma: no cover
     import asyncio
+
     asyncio.run(main())

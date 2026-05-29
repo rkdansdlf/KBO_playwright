@@ -127,9 +127,7 @@ def test_retired_listing_blocks_navigation_when_compliance_disallows(monkeypatch
     )
 
     assert ids == {}
-    assert compliance.urls == [
-        "https://www.koreabaseball.com/Record/Player/HitterBasic/Basic1.aspx"
-    ]
+    assert compliance.urls == ["https://www.koreabaseball.com/Record/Player/HitterBasic/Basic1.aspx"]
     assert page.goto_called is False
     assert throttle.calls == 0
 
@@ -159,9 +157,7 @@ def test_retired_listing_uses_flexible_selectors_and_paginates(monkeypatch):
             30000,
         )
     ]
-    assert page.selector_waits == [
-        ('select[id$="ddlSeason_ddlSeason"], select[name*="ddlSeason"]', 15000)
-    ]
+    assert page.selector_waits == [('select[id$="ddlSeason_ddlSeason"], select[name*="ddlSeason"]', 15000)]
     assert page.select_options == [
         ('select[id$="ddlSeason_ddlSeason"], select[name*="ddlSeason"]', "2024"),
         ('select[id$="ddlSeries_ddlSeries"], select[name*="ddlSeries"]', "0"),
@@ -224,9 +220,7 @@ def test_retired_detail_blocks_navigation_when_compliance_disallows(monkeypatch)
     )
 
     assert payload is None
-    assert compliance.urls == [
-        "https://www.koreabaseball.com/Record/Retire/Hitter.aspx?playerId=12345"
-    ]
+    assert compliance.urls == ["https://www.koreabaseball.com/Record/Retire/Hitter.aspx?playerId=12345"]
     assert page.goto_called is False
     assert throttle.calls == 0
 

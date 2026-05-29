@@ -10,6 +10,7 @@ Evidence status mapping:
   - text contains "취소" -> CANCELLED
   - text contains "순연" or "연기" -> POSTPONED
 """
+
 from __future__ import annotations
 
 import argparse
@@ -20,7 +21,7 @@ import re
 import sys
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Optional, Sequence
+from typing import Any, Iterable, Sequence
 
 import httpx
 from sqlalchemy import text
@@ -55,11 +56,11 @@ class ScheduleStatusRow:
     raw_row: str
 
 
-def parse_months(months_arg: Optional[str]) -> List[int]:
+def parse_months(months_arg: str | None) -> list[int]:
     if not months_arg:
         return list(range(3, 11))
 
-    months: List[int] = []
+    months: list[int] = []
     for token in (x.strip() for x in months_arg.split(",") if x.strip()):
         if "-" in token:
             left, right = token.split("-", 1)
@@ -103,7 +104,7 @@ def _detect_status(status_blob: str) -> str:
     return ""
 
 
-def _extract_payload_rows(response_text: str) -> List[Any]:
+def _extract_payload_rows(response_text: str) -> list[Any]:
     outer = json.loads(response_text)
     payload: Any = outer.get("d", outer)
     if isinstance(payload, str):
@@ -121,7 +122,7 @@ def _extract_payload_rows(response_text: str) -> List[Any]:
     return []
 
 
-def _load_unresolved_games(year: int) -> Dict[str, str]:
+def _load_unresolved_games(year: int) -> dict[str, str]:
     with SessionLocal() as session:
         rows = session.execute(
             text(
@@ -145,7 +146,7 @@ def _fetch_month_rows(
     month: int,
     league_id: str,
     series_ids: str,
-) -> List[ScheduleStatusRow]:
+) -> list[ScheduleStatusRow]:
     params = {
         "leId": str(league_id),
         "srIdList": str(series_ids),
@@ -156,7 +157,7 @@ def _fetch_month_rows(
     response.raise_for_status()
     rows = _extract_payload_rows(response.text)
 
-    collected: List[ScheduleStatusRow] = []
+    collected: list[ScheduleStatusRow] = []
     current_date_text = ""
     evidence_source = f"{SCHEDULE_API_URL}?leId={league_id}&srIdList={series_ids}&season={year}&month={month}"
     for item in rows:
@@ -201,7 +202,7 @@ def _fetch_month_rows(
     return collected
 
 
-def _write_csv(path: Path, columns: Iterable[str], rows: List[Dict[str, Any]]) -> None:
+def _write_csv(path: Path, columns: Iterable[str], rows: list[dict[str, Any]]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", newline="", encoding="utf-8") as fh:
         writer = csv.DictWriter(fh, fieldnames=list(columns))
@@ -217,13 +218,13 @@ def collect_schedule_status_evidence(
     series_ids: str = "0,9,6",
     evidence_csv: Path = DEFAULT_EVIDENCE_CSV,
     unmatched_csv: Path = DEFAULT_UNMATCHED_CSV,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     unresolved_games = _load_unresolved_games(year)
     unresolved_ids = set(unresolved_games.keys())
 
-    all_rows: List[ScheduleStatusRow] = []
-    unmatched_rows: List[Dict[str, Any]] = []
-    error_months: List[str] = []
+    all_rows: list[ScheduleStatusRow] = []
+    unmatched_rows: list[dict[str, Any]] = []
+    error_months: list[str] = []
     headers = {
         "user-agent": (
             "Mozilla/5.0 (Macintosh; Intel Mac OS X 13_0) "
@@ -246,7 +247,7 @@ def collect_schedule_status_evidence(
             except Exception as exc:
                 error_months.append(f"{year}-{int(month):02d}: {exc}")
 
-    evidence_by_game_id: Dict[str, ScheduleStatusRow] = {}
+    evidence_by_game_id: dict[str, ScheduleStatusRow] = {}
     for row in all_rows:
         if not row.game_id:
             unmatched_rows.append(
@@ -304,7 +305,7 @@ def collect_schedule_status_evidence(
             continue
         evidence_by_game_id[row.game_id] = row
 
-    evidence_rows: List[Dict[str, Any]] = []
+    evidence_rows: list[dict[str, Any]] = []
     for game_id in sorted(evidence_by_game_id.keys()):
         row = evidence_by_game_id[game_id]
         evidence_rows.append(

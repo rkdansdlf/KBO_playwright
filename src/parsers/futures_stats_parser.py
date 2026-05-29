@@ -1,23 +1,23 @@
 """
 Parsing helpers for Futures League season tables on player profile pages.
 """
+
 from __future__ import annotations
 
-from typing import Any, Dict, List, Tuple
+from typing import Any
 
 from src.parsers.retired_player_parser import (
     parse_retired_hitter_tables,
     parse_retired_pitcher_table,
 )
 
-
 _HITTER_KEYWORDS = {"타수", "안타", "AVG", "타율", "타점"}
 _PITCHER_KEYWORDS = {"ERA", "평균자책", "WHIP", "이닝", "승", "패"}
 
 
-def _classify_tables(tables: List[Dict[str, Any]]) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
-    hitter_tables: List[Dict[str, Any]] = []
-    pitcher_tables: List[Dict[str, Any]] = []
+def _classify_tables(tables: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    hitter_tables: list[dict[str, Any]] = []
+    pitcher_tables: list[dict[str, Any]] = []
 
     for table in tables:
         # Priority 1: Check for explicit type marker (set by crawler)
@@ -55,24 +55,17 @@ def _classify_tables(tables: List[Dict[str, Any]]) -> Tuple[List[Dict[str, Any]]
     return hitter_tables, pitcher_tables
 
 
-def parse_futures_tables(tables: List[Dict[str, Any]]) -> Dict[str, List[Dict[str, Any]]]:
+def parse_futures_tables(tables: list[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
     """Split futures tables into batting/pitching aggregates and parse them."""
     hitter_tables, pitcher_tables = _classify_tables(tables)
 
-    batting = (
-        parse_retired_hitter_tables(hitter_tables, league="FUTURES", level="KBO2")
-        if hitter_tables
-        else []
-    )
+    batting = parse_retired_hitter_tables(hitter_tables, league="FUTURES", level="KBO2") if hitter_tables else []
 
-    pitching: List[Dict[str, Any]] = []
+    pitching: list[dict[str, Any]] = []
     for table in pitcher_tables:
-        pitching.extend(
-            parse_retired_pitcher_table(table, league="FUTURES", level="KBO2")
-        )
+        pitching.extend(parse_retired_pitcher_table(table, league="FUTURES", level="KBO2"))
 
     return {"batting": batting, "pitching": pitching}
 
 
 __all__ = ["parse_futures_tables"]
-

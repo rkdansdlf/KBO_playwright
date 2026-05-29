@@ -23,10 +23,10 @@ WHERE a.id > b.id
 -- COALESCE is used to ensure NULL values don't bypass uniqueness where not intended.
 CREATE UNIQUE INDEX IF NOT EXISTS uq_game_summary_hash
     ON game_summary (
-        game_id, 
-        summary_type, 
-        COALESCE(player_id, 0), 
-        COALESCE(player_name, ''), 
+        game_id,
+        summary_type,
+        COALESCE(player_id, 0),
+        COALESCE(player_name, ''),
         md5(COALESCE(detail_text, ''))
     );
 

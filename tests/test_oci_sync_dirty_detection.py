@@ -6,7 +6,7 @@ import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-import src.sync.oci_sync as oci_sync_module
+import src.sync.sync_games as sync_games_module
 from src.models.game import (
     Game,
     GameBattingStat,
@@ -20,10 +20,10 @@ from src.models.game import (
     GameSummary,
 )
 from src.models.player import PlayerBasic
-from src.sync.oci_sync import (
-    OCISync,
-    build_game_sync_eligibility,
+from src.sync.oci_sync import OCISync
+from src.sync.sync_base import (
     _dedupe_records_for_conflict_keys,
+    build_game_sync_eligibility,
     detect_dirty_game_ids,
     filter_game_ids_by_year,
     filter_publishable_game_ids,
@@ -222,10 +222,12 @@ def test_sync_game_play_by_play_resets_target_sequence_before_replace(monkeypatc
         syncer = object.__new__(OCISync)
         syncer.sqlite_session = session
         syncer.target_session = _TargetSession()
+        syncer.oci_engine = session.bind
         monkeypatch.setattr(OCISync, "_reset_target_sequence_for_table", _reset_sequence)
 
         def _fake_bulk_copy_upsert(_self, table_name, records, unique_cols, **kwargs):
             calls.append(("insert", len(records)))
+
         monkeypatch.setattr(OCISync, "_bulk_copy_upsert", _fake_bulk_copy_upsert)
 
         assert syncer._sync_game_play_by_play() == 1
@@ -445,8 +447,8 @@ def test_sync_specific_game_syncs_player_basic_before_child_replacement(monkeypa
         calls.append("game_summary")
         return 1
 
-    monkeypatch.setattr(oci_sync_module, "build_game_sync_eligibility", lambda *_args, **_kwargs: _Eligibility())
-    monkeypatch.setattr(OCISync, "_log_sync_eligibility", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(sync_games_module, "build_game_sync_eligibility", lambda *_args, **_kwargs: _Eligibility())
+    monkeypatch.setattr(sync_games_module, "_log_sync_eligibility", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(OCISync, "_sync_simple_table", _sync_simple_table)
     monkeypatch.setattr(OCISync, "_sync_referenced_player_basic_for_games", _sync_refs)
     monkeypatch.setattr(OCISync, "_sync_game_play_by_play", _sync_pbp)

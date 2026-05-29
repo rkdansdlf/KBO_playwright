@@ -2,6 +2,7 @@
 Pytest configuration shared across test modules.
 Ensures the repository root is importable so `import src` works consistently.
 """
+
 from __future__ import annotations
 
 import sys

@@ -1,12 +1,12 @@
-
 """Collect international schedule pages.
 
 International fixtures do not use the regular KBO season schedule pages, so
 this script keeps a dedicated crawler. DB writes still go through the shared
 game snapshot persistence path instead of direct ORM upserts.
 """
-import asyncio
+
 import argparse
+import asyncio
 
 from src.crawlers.international_crawler import InternationalScheduleCrawler
 from src.repositories.game_repository import save_game_snapshot
@@ -20,23 +20,25 @@ TARGET_URLS = [
     # "https://www.koreabaseball.com/Schedule/International/Etc/APBC2023.aspx"
 ]
 
+
 async def collect_international_games(save: bool = False):
     crawler = InternationalScheduleCrawler()
     total_games = []
-    
+
     try:
         for url in TARGET_URLS:
             games = await crawler.crawl_schedule(url)
             total_games.extend(games)
-            
+
         print(f"\n📊 Collected {len(total_games)} total international games.")
-        
+
         if save:
             saved_count = save_games(total_games)
             print(f"✅ Saved/Updated {saved_count}/{len(total_games)} international games.")
-            
+
     finally:
         await crawler.close()
+
 
 def _normalize_status(status: str | None) -> str:
     value = str(status or "").strip().lower()
@@ -87,9 +89,10 @@ def save_games(games_data: list) -> int:
             print(f"❌ Failed to save international game {data.get('game_id')}")
     return saved_count
 
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Collect International KBO Games")
     parser.add_argument("--save", action="store_true", help="Save collected games to SQLite DB")
     args = parser.parse_args()
-    
+
     asyncio.run(collect_international_games(save=args.save))

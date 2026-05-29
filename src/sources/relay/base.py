@@ -5,14 +5,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Iterable, Optional
-
-from src.utils.relay_text import (
-    RELAY_RESULT_KEYWORDS,
-    detect_relay_event_type,
-    is_relay_noise_text,
-    is_relay_result_event_text,
-)
+from typing import Any, Iterable
 
 ALLOWED_SOURCE_TYPES = {
     "naver",
@@ -293,8 +286,7 @@ def upsert_capability_record(capability_path: str | Path, record: CapabilityReco
                     "source_name": row.source_name,
                     "sample_size": row.sample_size,
                     "supported": str(bool(row.supported)).lower(),
-                    "last_checked_at": row.last_checked_at
-                    or datetime.now(timezone.utc).isoformat(),
+                    "last_checked_at": row.last_checked_at or datetime.now(timezone.utc).isoformat(),
                     "notes": row.notes or "",
                 }
             )

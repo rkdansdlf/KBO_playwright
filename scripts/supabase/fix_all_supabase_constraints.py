@@ -3,17 +3,19 @@
 Supabase 모든 테이블 제약조건 문제 해결 스크립트
 타자/투수 테이블 모두 확인 및 수정
 """
+
 import os
+
 import psycopg2
 from psycopg2.extensions import ISOLATION_LEVEL_AUTOCOMMIT
 
 
 def get_supabase_connection():
     """Supabase 연결 생성"""
-    supabase_url = os.getenv('SUPABASE_DB_URL')
+    supabase_url = os.getenv("SUPABASE_DB_URL")
     if not supabase_url:
         raise ValueError("SUPABASE_DB_URL 환경변수가 설정되지 않았습니다.")
-    
+
     return psycopg2.connect(supabase_url)
 
 
@@ -22,33 +24,36 @@ def check_table_constraints(table_name):
     with get_supabase_connection() as conn:
         conn.set_isolation_level(ISOLATION_LEVEL_AUTOCOMMIT)
         cursor = conn.cursor()
-        
+
         print(f"🔍 {table_name} 테이블 제약조건 확인 중...")
-        
+
         # 제약조건 조회
-        cursor.execute("""
-            SELECT 
+        cursor.execute(
+            """
+            SELECT
                 tc.constraint_name,
                 tc.constraint_type,
                 string_agg(kcu.column_name, ', ' ORDER BY kcu.ordinal_position) as columns
-            FROM 
-                information_schema.table_constraints AS tc 
+            FROM
+                information_schema.table_constraints AS tc
                 JOIN information_schema.key_column_usage AS kcu
                   ON tc.constraint_name = kcu.constraint_name
                   AND tc.table_schema = kcu.table_schema
-            WHERE 
+            WHERE
                 tc.table_name = %s
                 AND tc.table_schema = 'public'
             GROUP BY tc.constraint_name, tc.constraint_type
             ORDER BY tc.constraint_type, tc.constraint_name;
-        """, (table_name,))
-        
+        """,
+            (table_name,),
+        )
+
         constraints = cursor.fetchall()
-        
+
         print(f"📊 {table_name} 제약조건: {len(constraints)}개")
         for name, ctype, columns in constraints:
             print(f"  - {name} ({ctype}): {columns}")
-        
+
         return constraints
 
 
@@ -57,15 +62,18 @@ def check_table_exists(table_name):
     with get_supabase_connection() as conn:
         conn.set_isolation_level(ISOLATION_LEVEL_AUTOCOMMIT)
         cursor = conn.cursor()
-        
-        cursor.execute("""
+
+        cursor.execute(
+            """
             SELECT EXISTS (
-                SELECT FROM information_schema.tables 
-                WHERE table_schema = 'public' 
+                SELECT FROM information_schema.tables
+                WHERE table_schema = 'public'
                 AND table_name = %s
             );
-        """, (table_name,))
-        
+        """,
+            (table_name,),
+        )
+
         exists = cursor.fetchone()[0]
         print(f"📊 {table_name} 테이블: {'존재' if exists else '존재하지 않음'}")
         return exists
@@ -76,53 +84,55 @@ def fix_batting_table_constraints():
     with get_supabase_connection() as conn:
         conn.set_isolation_level(ISOLATION_LEVEL_AUTOCOMMIT)
         cursor = conn.cursor()
-        
+
         print("\n🔧 player_season_batting 테이블 제약조건 수정 중...")
-        
+
         try:
             # 1. 기존 유니크 제약조건 확인 및 삭제
             cursor.execute("""
-                SELECT constraint_name 
-                FROM information_schema.table_constraints 
-                WHERE table_name = 'player_season_batting' 
+                SELECT constraint_name
+                FROM information_schema.table_constraints
+                WHERE table_name = 'player_season_batting'
                 AND constraint_type = 'UNIQUE'
                 AND constraint_name = 'uq_player_season_batting';
             """)
-            
+
             existing_constraint = cursor.fetchone()
             if existing_constraint:
                 print(f"   ⚠️ 기존 제약조건 발견: {existing_constraint[0]}")
-                cursor.execute("ALTER TABLE public.player_season_batting DROP CONSTRAINT IF EXISTS uq_player_season_batting;")
+                cursor.execute(
+                    "ALTER TABLE public.player_season_batting DROP CONSTRAINT IF EXISTS uq_player_season_batting;"
+                )
                 print("   ✅ 기존 제약조건 삭제 완료")
             else:
                 print("   ℹ️ 기존 유니크 제약조건 없음")
-            
+
             # 2. 새 유니크 제약조건 추가
             print("   🔗 새 유니크 제약조건 추가...")
             cursor.execute("""
-                ALTER TABLE public.player_season_batting 
-                ADD CONSTRAINT uq_player_season_batting 
+                ALTER TABLE public.player_season_batting
+                ADD CONSTRAINT uq_player_season_batting
                 UNIQUE (player_id, season, league, level);
             """)
             print("   ✅ 타자 테이블 유니크 제약조건 추가 완료")
-            
+
             # 3. 인덱스 추가
             cursor.execute("""
-                SELECT indexname 
-                FROM pg_indexes 
-                WHERE tablename = 'player_season_batting' 
+                SELECT indexname
+                FROM pg_indexes
+                WHERE tablename = 'player_season_batting'
                 AND indexname = 'idx_player_season_batting_lookup';
             """)
-            
+
             if not cursor.fetchone():
                 cursor.execute("""
-                    CREATE INDEX idx_player_season_batting_lookup 
+                    CREATE INDEX idx_player_season_batting_lookup
                     ON public.player_season_batting (player_id, season, league);
                 """)
                 print("   ✅ 타자 테이블 조회용 인덱스 추가 완료")
             else:
                 print("   ℹ️ 타자 테이블 조회용 인덱스 이미 존재")
-            
+
         except Exception as e:
             print(f"   ❌ 타자 테이블 제약조건 수정 실패: {e}")
             raise
@@ -133,53 +143,55 @@ def fix_pitching_table_constraints():
     with get_supabase_connection() as conn:
         conn.set_isolation_level(ISOLATION_LEVEL_AUTOCOMMIT)
         cursor = conn.cursor()
-        
+
         print("\n🔧 player_season_pitching 테이블 제약조건 수정 중...")
-        
+
         try:
             # 1. 기존 유니크 제약조건 확인 및 삭제
             cursor.execute("""
-                SELECT constraint_name 
-                FROM information_schema.table_constraints 
-                WHERE table_name = 'player_season_pitching' 
+                SELECT constraint_name
+                FROM information_schema.table_constraints
+                WHERE table_name = 'player_season_pitching'
                 AND constraint_type = 'UNIQUE'
                 AND constraint_name = 'uq_player_season_pitching';
             """)
-            
+
             existing_constraint = cursor.fetchone()
             if existing_constraint:
                 print(f"   ⚠️ 기존 제약조건 발견: {existing_constraint[0]}")
-                cursor.execute("ALTER TABLE public.player_season_pitching DROP CONSTRAINT IF EXISTS uq_player_season_pitching;")
+                cursor.execute(
+                    "ALTER TABLE public.player_season_pitching DROP CONSTRAINT IF EXISTS uq_player_season_pitching;"
+                )
                 print("   ✅ 기존 제약조건 삭제 완료")
             else:
                 print("   ℹ️ 기존 유니크 제약조건 없음")
-            
+
             # 2. 새 유니크 제약조건 추가
             print("   🔗 새 유니크 제약조건 추가...")
             cursor.execute("""
-                ALTER TABLE public.player_season_pitching 
-                ADD CONSTRAINT uq_player_season_pitching 
+                ALTER TABLE public.player_season_pitching
+                ADD CONSTRAINT uq_player_season_pitching
                 UNIQUE (player_id, season, league, level);
             """)
             print("   ✅ 투수 테이블 유니크 제약조건 추가 완료")
-            
+
             # 3. 인덱스 추가
             cursor.execute("""
-                SELECT indexname 
-                FROM pg_indexes 
-                WHERE tablename = 'player_season_pitching' 
+                SELECT indexname
+                FROM pg_indexes
+                WHERE tablename = 'player_season_pitching'
                 AND indexname = 'idx_player_season_pitching_lookup';
             """)
-            
+
             if not cursor.fetchone():
                 cursor.execute("""
-                    CREATE INDEX idx_player_season_pitching_lookup 
+                    CREATE INDEX idx_player_season_pitching_lookup
                     ON public.player_season_pitching (player_id, season, league);
                 """)
                 print("   ✅ 투수 테이블 조회용 인덱스 추가 완료")
             else:
                 print("   ℹ️ 투수 테이블 조회용 인덱스 이미 존재")
-            
+
         except Exception as e:
             print(f"   ❌ 투수 테이블 제약조건 수정 실패: {e}")
             raise
@@ -188,30 +200,30 @@ def fix_pitching_table_constraints():
 def verify_all_constraints():
     """모든 테이블 제약조건 최종 확인"""
     print("\n🔍 최종 제약조건 확인...")
-    
-    tables = ['player_season_batting', 'player_season_pitching']
+
+    tables = ["player_season_batting", "player_season_pitching"]
     all_good = True
-    
+
     for table in tables:
         if not check_table_exists(table):
             print(f"❌ {table} 테이블이 존재하지 않습니다!")
             all_good = False
             continue
-        
+
         constraints = check_table_constraints(table)
-        
+
         # 유니크 제약조건 확인
-        unique_constraints = [c for c in constraints if c[1] == 'UNIQUE']
-        expected_unique = f'uq_{table}'
-        
+        unique_constraints = [c for c in constraints if c[1] == "UNIQUE"]
+        expected_unique = f"uq_{table}"
+
         found_expected = any(c[0] == expected_unique for c in unique_constraints)
-        
+
         if found_expected:
             print(f"   ✅ {table}: 유니크 제약조건 정상")
         else:
             print(f"   ❌ {table}: 유니크 제약조건 없음")
             all_good = False
-    
+
     return all_good
 
 
@@ -219,41 +231,45 @@ def main():
     try:
         print("🚀 Supabase 모든 테이블 제약조건 문제 해결")
         print("=" * 60)
-        
+
         # 1. 현재 상태 확인
-        tables = ['player_season_batting', 'player_season_pitching']
+        tables = ["player_season_batting", "player_season_pitching"]
         for table in tables:
             if check_table_exists(table):
                 check_table_constraints(table)
             else:
                 print(f"❌ {table} 테이블이 존재하지 않습니다!")
                 return
-        
+
         # 2. 타자 테이블 제약조건 수정
         fix_batting_table_constraints()
-        
+
         # 3. 투수 테이블 제약조건 수정
         fix_pitching_table_constraints()
-        
+
         # 4. 최종 확인
         success = verify_all_constraints()
-        
+
         if success:
             print("\n🎉 모든 테이블 제약조건 문제 해결 완료!")
             print("\n💡 이제 다음 명령으로 데이터 동기화를 시도해보세요:")
             print("   ./venv/bin/python3 -m src.sync.supabase_sync")
         else:
             print("\n⚠️ 일부 테이블에 문제가 있을 수 있습니다.")
-            
+
     except Exception as e:
         print(f"\n❌ 오류 발생: {e}")
-        print(f"\n💡 수동 해결 방법:")
+        print("\n💡 수동 해결 방법:")
         print("   1. Supabase 대시보드에서 SQL 편집기 열기")
         print("   2. 다음 SQL 실행:")
         print("      -- 타자 테이블")
-        print("      ALTER TABLE player_season_batting ADD CONSTRAINT uq_player_season_batting UNIQUE (player_id, season, league, level);")
+        print(
+            "      ALTER TABLE player_season_batting ADD CONSTRAINT uq_player_season_batting UNIQUE (player_id, season, league, level);"
+        )
         print("      -- 투수 테이블")
-        print("      ALTER TABLE player_season_pitching ADD CONSTRAINT uq_player_season_pitching UNIQUE (player_id, season, league, level);")
+        print(
+            "      ALTER TABLE player_season_pitching ADD CONSTRAINT uq_player_season_pitching UNIQUE (player_id, season, league, level);"
+        )
 
 
 if __name__ == "__main__":

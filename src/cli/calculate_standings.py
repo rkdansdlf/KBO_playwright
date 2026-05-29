@@ -1,13 +1,15 @@
 """
 KBO 순위 자동 연산 엔진 (Standings Calculator)
-크롤링된 경기 결과(Game) 데이터를 시간순으로 읽어들이며, 매일매일의 
-승률, 승차(Games Behind), 연승/연패(Streak) 등을 계산해 DB 물리 테이블에 저장합니다.
+경기 결과 데이터로부터 일일 순위, 5강, 최근10경기, 홈/원정, 주차별 승률추이 계산.
 """
 
-import logging
+from __future__ import annotations
+
 import argparse
-from datetime import datetime
-from collections import defaultdict
+import logging
+from collections import defaultdict, deque
+from datetime import date, datetime
+
 from sqlalchemy import extract
 
 from src.db.engine import SessionLocal
@@ -18,29 +20,39 @@ from src.utils.game_status import COMPLETED_LIKE_GAME_STATUSES
 
 logger = logging.getLogger(__name__)
 
-def calculate_games_behind(target_wins, target_losses, leader_wins, leader_losses):
-    """승차 계산 공식: {(1위 승수 - 내 승수) + (내 패수 - 1위 패수)} / 2.0"""
-    return ((leader_wins - target_wins) + (target_losses - leader_losses)) / 2.0
+
+def calculate_games_behind(wins, losses, leader_wins, leader_losses):
+    return ((leader_wins - wins) + (losses - leader_losses)) / 2.0
+
+
+def iso_week_number(d: date) -> str:
+    iso = d.isocalendar()
+    return f"{iso[0]}-W{iso[1]:02d}"
+
 
 class StandingsCalculator:
     def __init__(self, session):
         self.session = session
-        
+
     def calculate_year(self, year: int):
-        games = self.session.query(Game).join(
-            KboSeason, Game.season_id == KboSeason.season_id
-        ).filter(
-            KboSeason.season_year == year,
-            KboSeason.league_type_name.in_(["정규시즌", "Regular Season"]),
-            Game.game_status.in_(tuple(COMPLETED_LIKE_GAME_STATUSES))
-        ).order_by(Game.game_date, Game.game_id).all()
-        
+        games = (
+            self.session.query(Game)
+            .join(KboSeason, Game.season_id == KboSeason.season_id)
+            .filter(
+                KboSeason.season_year == year,
+                KboSeason.league_type_name.in_(["정규시즌", "Regular Season"]),
+                Game.game_status.in_(tuple(COMPLETED_LIKE_GAME_STATUSES)),
+            )
+            .order_by(Game.game_date, Game.game_id)
+            .all()
+        )
+
         if not games:
-            print(f"[Standings] {year} 시즌에 완료된 정규시즌 경기가 없습니다.")
+            print(f"[Standings] {year} 시즌 완료 경기 없음.")
             return
-            
-        print(f"[Standings] 📊 {year}년 정규시즌 총 {len(games)}경기 로드 완료. 순위 연산 시작...")
-        
+
+        print(f"[Standings] {year}년 {len(games)}경기 로드. 순위 연산 시작...")
+
         class TeamState:
             def __init__(self, team_code):
                 self.team_code = team_code
@@ -50,71 +62,115 @@ class StandingsCalculator:
                 self.runs_scored = 0
                 self.runs_allowed = 0
                 self.current_streak = 0
-                
+                self.home_wins = 0
+                self.home_losses = 0
+                self.away_wins = 0
+                self.away_losses = 0
+                self.recent_games: deque = deque(maxlen=10)
+                self.weekly_wins: dict[str, int] = defaultdict(int)
+                self.weekly_losses: dict[str, int] = defaultdict(int)
+
             @property
             def games_played(self):
                 return self.wins + self.losses + self.draws
-                
+
             @property
             def win_pct(self):
                 total = self.wins + self.losses
                 return self.wins / total if total > 0 else 0.0
 
-            def add_game(self, is_win, is_loss, is_draw, runs_for, runs_against):
+            @property
+            def recent_10_wins(self):
+                return sum(1 for r in self.recent_games if r == "W")
+
+            @property
+            def recent_10_losses(self):
+                return sum(1 for r in self.recent_games if r == "L")
+
+            @property
+            def recent_10_draws(self):
+                return sum(1 for r in self.recent_games if r == "D")
+
+            def add_game(self, is_win, is_loss, is_draw, runs_for, runs_against, is_home, game_date):
                 self.runs_scored += runs_for
                 self.runs_allowed += runs_against
-                
+
                 if is_win:
                     self.wins += 1
                     self.current_streak = self.current_streak + 1 if self.current_streak > 0 else 1
+                    self.recent_games.append("W")
+                    if is_home:
+                        self.home_wins += 1
+                    else:
+                        self.away_wins += 1
                 elif is_loss:
                     self.losses += 1
                     self.current_streak = self.current_streak - 1 if self.current_streak < 0 else -1
+                    self.recent_games.append("L")
+                    if is_home:
+                        self.home_losses += 1
+                    else:
+                        self.away_losses += 1
                 elif is_draw:
                     self.draws += 1
-                    # KBO 룰: 무승부는 연승/연패를 끊지 않음 (그대로 유지)
-                
+                    self.recent_games.append("D")
+
+                week_key = iso_week_number(game_date)
+                if is_win:
+                    self.weekly_wins[week_key] += 1
+                elif is_loss:
+                    self.weekly_losses[week_key] += 1
+
         games_by_date = defaultdict(list)
         for g in games:
             games_by_date[g.game_date].append(g)
-            
-        dates = sorted(list(games_by_date.keys()))
-        teams = {}
+
+        dates = sorted(games_by_date.keys())
+        teams: dict[str, TeamState] = {}
         daily_snapshots = []
-        
+
         for d in dates:
             day_games = games_by_date[d]
-            
-            # 당일 경기 결과 반영
+
             for g in day_games:
                 home = g.home_team
                 away = g.away_team
                 h_score = g.home_score if g.home_score is not None else 0
                 a_score = g.away_score if g.away_score is not None else 0
-                
-                if home not in teams: teams[home] = TeamState(home)
-                if away not in teams: teams[away] = TeamState(away)
-                
+
+                if home not in teams:
+                    teams[home] = TeamState(home)
+                if away not in teams:
+                    teams[away] = TeamState(away)
+
                 if h_score > a_score:
-                    teams[home].add_game(True, False, False, h_score, a_score)
-                    teams[away].add_game(False, True, False, a_score, h_score)
+                    teams[home].add_game(True, False, False, h_score, a_score, True, d)
+                    teams[away].add_game(False, True, False, a_score, h_score, False, d)
                 elif a_score > h_score:
-                    teams[home].add_game(False, True, False, h_score, a_score)
-                    teams[away].add_game(True, False, False, a_score, h_score)
+                    teams[home].add_game(False, True, False, h_score, a_score, True, d)
+                    teams[away].add_game(True, False, False, a_score, h_score, False, d)
                 else:
-                    teams[home].add_game(False, False, True, h_score, a_score)
-                    teams[away].add_game(False, False, True, a_score, h_score)
-                    
-            # 해당일 종료 시점의 순위 산출
-            # 승률 > 승수 순서로 정렬 (KBO 기준)
+                    teams[home].add_game(False, False, True, h_score, a_score, True, d)
+                    teams[away].add_game(False, False, True, a_score, h_score, False, d)
+
             sorted_teams = sorted(teams.values(), key=lambda t: (t.win_pct, t.wins), reverse=True)
-            leader_wins = sorted_teams[0].wins if sorted_teams else 0
-            leader_losses = sorted_teams[0].losses if sorted_teams else 0
-                
-            for t in sorted_teams:
+            leader = sorted_teams[0] if sorted_teams else None
+            leader_wins = leader.wins if leader else 0
+            leader_losses = leader.losses if leader else 0
+
+            for rank_idx, t in enumerate(sorted_teams, start=1):
                 gb = calculate_games_behind(t.wins, t.losses, leader_wins, leader_losses)
-                if gb < 0: gb = 0.0 
-                
+                if gb < 0:
+                    gb = 0.0
+
+                weekly_pcts = {}
+                all_weeks = sorted(set(t.weekly_wins.keys()) | set(t.weekly_losses.keys()))
+                for wk in all_weeks:
+                    wk_w = t.weekly_wins.get(wk, 0)
+                    wk_l = t.weekly_losses.get(wk, 0)
+                    total = wk_w + wk_l
+                    weekly_pcts[wk] = round(wk_w / total, 3) if total > 0 else None
+
                 snapshot = TeamStandingsDaily(
                     standings_date=d,
                     team_code=t.team_code,
@@ -127,41 +183,148 @@ class StandingsCalculator:
                     current_streak=t.current_streak,
                     runs_scored=t.runs_scored,
                     runs_allowed=t.runs_allowed,
-                    run_differential=t.runs_scored - t.runs_allowed
+                    run_differential=t.runs_scored - t.runs_allowed,
+                    rank=rank_idx,
+                    top_5=1 if rank_idx <= 5 else 0,
+                    recent_10_wins=t.recent_10_wins,
+                    recent_10_losses=t.recent_10_losses,
+                    recent_10_draws=t.recent_10_draws,
+                    weekly_win_pcts=weekly_pcts if weekly_pcts else None,
+                    home_wins=t.home_wins,
+                    home_losses=t.home_losses,
+                    away_wins=t.away_wins,
+                    away_losses=t.away_losses,
                 )
                 daily_snapshots.append(snapshot)
-                
-        print(f"[Standings] 💾 {year}년도 일자별 스냅샷 {len(daily_snapshots)}건을 로컬 DB에 병합합니다...")
-        
-        # 기존 데이터 폭파 및 재충전 (안전한 Replace 전략)
+
+        print(f"[Standings] {len(daily_snapshots)}건 스냅샷 DB 저장 중...")
         self.session.query(TeamStandingsDaily).filter(
-            extract('year', TeamStandingsDaily.standings_date) == year
+            extract("year", TeamStandingsDaily.standings_date) == year
         ).delete(synchronize_session=False)
-        
         self.session.bulk_save_objects(daily_snapshots)
         self.session.commit()
-        print(f"[Standings] ✅ {year} 시즌 순위표 계산 완료!")
+        print(f"[Standings] {year} 시즌 순위표 계산 완료!")
+
+    def print_report(self, year: int, target_date: date = None):
+        query = self.session.query(TeamStandingsDaily).filter(
+            extract("year", TeamStandingsDaily.standings_date) == year
+        )
+        if target_date:
+            query = query.filter(TeamStandingsDaily.standings_date <= target_date)
+
+        latest_date = query.order_by(TeamStandingsDaily.standings_date.desc()).first()
+        if not latest_date:
+            print(f"[Report] {year}년 순위 데이터 없음.")
+            return
+
+        d = latest_date.standings_date
+        rows = (
+            self.session.query(TeamStandingsDaily)
+            .filter(TeamStandingsDaily.standings_date == d)
+            .order_by(TeamStandingsDaily.rank)
+            .all()
+        )
+
+        print(f"\n{'=' * 70}")
+        print(f"  KBO {year}년 순위표 (기준: {d})")
+        print(f"{'=' * 70}")
+        print(
+            f"{'순위':>4} {'팀':<6} {'승':>4} {'패':>4} {'무':>3} {'승률':>7} {'승차':>5} {'최근10':>8} {'연속':>4} {'홈':>8} {'원정':>8}"
+        )
+        print(f"{'-' * 70}")
+
+        top_5_rows = [r for r in rows if r.top_5]
+        bottom_5_rows = [r for r in rows if not r.top_5]
+
+        for r in top_5_rows:
+            recent = f"{r.recent_10_wins}승{r.recent_10_losses}패"
+            streak_s = f"{abs(r.current_streak)}{'연승' if r.current_streak >= 0 else '연패'}"
+            home_s = f"{r.home_wins}승{r.home_losses}패"
+            away_s = f"{r.away_wins}승{r.away_losses}패"
+            print(
+                f"  ★{r.rank:>2}  {r.team_code:<6} {r.wins:>4} {r.losses:>4} {r.draws:>3}  {r.win_pct:.3f}  {r.games_behind:>4.1f}  {recent:>8} {streak_s:>4} {home_s:>8} {away_s:>8}"
+            )
+
+        if bottom_5_rows:
+            print(f"  {'─' * 68}")
+            for r in bottom_5_rows:
+                recent = f"{r.recent_10_wins}승{r.recent_10_losses}패"
+                streak_s = f"{abs(r.current_streak)}{'연승' if r.current_streak >= 0 else '연패'}"
+                home_s = f"{r.home_wins}승{r.home_losses}패"
+                away_s = f"{r.away_wins}승{r.away_losses}패"
+                print(
+                    f"    {r.rank:>2}  {r.team_code:<6} {r.wins:>4} {r.losses:>4} {r.draws:>3}  {r.win_pct:.3f}  {r.games_behind:>4.1f}  {recent:>8} {streak_s:>4} {home_s:>8} {away_s:>8}"
+                )
+
+        print(f"{'=' * 70}")
+        print("  ★ 상위 5팀 (5강)" if top_5_rows else "")
+
+    def print_trend(self, year: int, team_code: str = None):
+        rows = (
+            self.session.query(TeamStandingsDaily)
+            .filter(extract("year", TeamStandingsDaily.standings_date) == year)
+            .order_by(TeamStandingsDaily.standings_date)
+            .all()
+        )
+
+        team_rows = defaultdict(list)
+        for r in rows:
+            team_rows[r.team_code].append(r)
+
+        teams_to_show = [team_code] if team_code else sorted(team_rows.keys())
+
+        for tc in teams_to_show:
+            if tc not in team_rows:
+                continue
+            data = team_rows[tc]
+            print(f"\n[{tc}] 승률 추이 ({year})")
+            print(f"{'날짜':<12} {'승':>3} {'패':>3} {'승률':>7} {'순위':>4} {'최근10':>8}")
+            print(f"{'-' * 45}")
+            step = max(1, len(data) // 15)
+            for r in data[::step]:
+                recent = f"{r.recent_10_wins}승{r.recent_10_losses}패"
+                print(f"  {r.standings_date}  {r.wins:>3} {r.losses:>3}  {r.win_pct:.3f}  {r.rank:>3}위  {recent:>8}")
+            if data:
+                last = data[-1]
+                recent = f"{last.recent_10_wins}승{last.recent_10_losses}패"
+                print(
+                    f"  {last.standings_date}  {last.wins:>3} {last.losses:>3}  {last.win_pct:.3f}  {last.rank:>3}위  {recent:>8}"
+                )
+
 
 def main():
-    parser = argparse.ArgumentParser(description="KBO Standings / Win Percentage Calculator")
-    parser.add_argument("--year", type=int, default=datetime.now().year, help="계산할 타겟 년도 지정")
-    parser.add_argument("--all", action="store_true", help="수집된 모든 년도 전체 스냅샷 재계산")
+    parser = argparse.ArgumentParser(description="KBO Standings Calculator")
+    parser.add_argument("--year", type=int, default=datetime.now().year, help="대상 년도")
+    parser.add_argument("--all", action="store_true", help="전체 년도 재계산")
+    parser.add_argument("--report", action="store_true", help="순위 리포트 출력")
+    parser.add_argument("--trend", type=str, nargs="?", const="__all__", help="승률추이 (팀코드 지정 또는 전체)")
+    parser.add_argument("--date", type=str, help="리포트 기준일 (YYYY-MM-DD)")
+
     args = parser.parse_args()
-    
+
     session = SessionLocal()
     try:
         calc = StandingsCalculator(session)
-        if args.all:
+
+        if args.report:
+            target_date = date.fromisoformat(args.date) if args.date else None
+            calc.print_report(args.year, target_date)
+        elif args.trend:
+            team_code = None if args.trend == "__all__" else args.trend
+            calc.print_trend(args.year, team_code)
+        elif args.all:
             years = [y[0] for y in session.query(KboSeason.season_year).distinct().all()]
             for y in sorted(years):
                 calc.calculate_year(y)
         else:
             calc.calculate_year(args.year)
+
     except Exception:
-        logger.exception("❌ 계산 중 오류 발생")
+        logger.exception("오류 발생")
         session.rollback()
     finally:
         session.close()
+
 
 if __name__ == "__main__":
     main()

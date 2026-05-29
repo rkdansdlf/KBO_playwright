@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Fill OCI NULL player_id values from matching local rows."""
+
 from __future__ import annotations
 
 import argparse
@@ -19,7 +20,6 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from src.db.engine import SessionLocal
-
 
 DEFAULT_TABLES = ("game_batting_stats", "game_pitching_stats", "game_lineups")
 DEFAULT_START_YEAR = 2001
@@ -57,7 +57,7 @@ def _match_key(table_name: str, row: dict[str, Any]) -> tuple[Any, ...]:
 
 
 def _batches(values: list[str], size: int = 500) -> list[list[str]]:
-    return [values[index:index + size] for index in range(0, len(values), size)]
+    return [values[index : index + size] for index in range(0, len(values), size)]
 
 
 def _remote_null_rows(conn, table_name: str, years: tuple[int, ...]) -> list[dict[str, Any]]:
@@ -74,7 +74,9 @@ def _remote_null_rows(conn, table_name: str, years: tuple[int, ...]) -> list[dic
     return [dict(row) for row in conn.execute(stmt, {"years": [str(year) for year in years]}).mappings()]
 
 
-def _local_candidate_map(local_session, table_name: str, remote_rows: list[dict[str, Any]]) -> dict[tuple[Any, ...], list[int]]:
+def _local_candidate_map(
+    local_session, table_name: str, remote_rows: list[dict[str, Any]]
+) -> dict[tuple[Any, ...], list[int]]:
     if not remote_rows:
         return {}
     game_ids = sorted({str(row["game_id"]) for row in remote_rows})
@@ -147,7 +149,9 @@ def fill_oci_from_local(
                         continue
                     if apply:
                         result = remote_conn.execute(
-                            text(f"UPDATE {table_name} SET player_id = :player_id WHERE id = :id AND player_id IS NULL"),
+                            text(
+                                f"UPDATE {table_name} SET player_id = :player_id WHERE id = :id AND player_id IS NULL"
+                            ),
                             {"player_id": resolved_player_id, "id": row["id"]},
                         )
                         updated_rows += int(result.rowcount or 0)

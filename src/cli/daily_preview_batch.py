@@ -2,14 +2,15 @@
 Daily Preview Batch Script
 Fetches pre-game context and persists both preview JSON and core pregame tables.
 """
+
 from __future__ import annotations
 
-import logging
 import argparse
 import asyncio
+import logging
 import os
 from datetime import datetime
-from typing import List, Sequence
+from typing import Sequence
 
 from src.crawlers.preview_crawler import PreviewCrawler
 from src.db.engine import SessionLocal
@@ -23,7 +24,7 @@ from src.utils.team_codes import resolve_team_code
 logger = logging.getLogger(__name__)
 
 
-async def run_preview_batch(target_date: str, *, sync_to_oci: bool | None = None) -> List[str]:
+async def run_preview_batch(target_date: str, *, sync_to_oci: bool | None = None) -> list[str]:
     print(f"🚀 Starting Preview Data Batch for {target_date}...")
 
     crawler = PreviewCrawler(request_delay=1.0)
@@ -38,7 +39,7 @@ async def run_preview_batch(target_date: str, *, sync_to_oci: bool | None = None
         print(f"ℹ️ No preview data found. manifest={manifest_path}")
         return []
 
-    saved_ids: List[str] = []
+    saved_ids: list[str] = []
     target_dt_obj = datetime.strptime(target_date, "%Y%m%d").date()
     season_year = target_dt_obj.year
 
@@ -55,7 +56,9 @@ async def run_preview_batch(target_date: str, *, sync_to_oci: bool | None = None
             if away_code and home_code:
                 try:
                     print(f"📊 Aggregating pregame context for {game_id}...")
-                    preview["matchup_h2h"] = agg.get_head_to_head_summary(away_code, home_code, season_year, target_dt_obj)
+                    preview["matchup_h2h"] = agg.get_head_to_head_summary(
+                        away_code, home_code, season_year, target_dt_obj
+                    )
                     preview["away_recent_l10"] = agg.get_team_l10_summary(away_code, target_dt_obj)
                     preview["home_recent_l10"] = agg.get_team_l10_summary(home_code, target_dt_obj)
                     preview["away_metrics"] = agg.get_team_recent_metrics(away_code, target_dt_obj)

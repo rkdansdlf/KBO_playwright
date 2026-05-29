@@ -1,5 +1,7 @@
-from src.db.engine import Engine
 from sqlalchemy import text
+
+from src.db.engine import Engine
+
 
 def check_counts():
     with Engine.connect() as conn:
@@ -12,10 +14,11 @@ def check_counts():
         print("\n--- 2001 Season Games ---")
         game_count = conn.execute(text("SELECT COUNT(*) FROM game WHERE game_id LIKE '2001%'")).scalar()
         print(f"Games Saved: {game_count}")
-        
+
         # Check for errors in game_inning_scores
         score_count = conn.execute(text("SELECT COUNT(*) FROM game_inning_scores WHERE game_id LIKE '2001%'")).scalar()
         print(f"Inning Scores Saved: {score_count}")
+
 
 if __name__ == "__main__":
     check_counts()

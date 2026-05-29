@@ -3,28 +3,30 @@
 Robust migration script to normalize team codes in both SQLite and Postgres.
 Handles unique constraint conflicts by deleting legacy duplicates before updating.
 """
+
+import argparse
 import os
 import sys
-import argparse
-from sqlalchemy import create_engine, text
+
 from dotenv import load_dotenv
+from sqlalchemy import create_engine, text
 
 # Add project root to path
 sys.path.append(os.getcwd())
 
 # Legacy to Canonical Mapping (Modern default)
 CANONICAL_TARGETS = {
-    'HT': 'KIA',
-    'SK': 'SSG',
-    'OB': 'DB',
-    'WO': 'KH',
-    'KI': 'KH', # Sometimes appears in old game IDs
-    'NX': 'KH', # Nexen -> Kiwoom Franchise
-    'HU': 'KH', # Hyundai -> Kiwoom Franchise (approx)
-    'BE': 'HH', # Binggre -> Hanwha
-    'MBC': 'LG', # MBC -> LG
-    'PC': 'TP', # Pacific -> Taepyeongyang (Normalized to TP)
-    'SW': 'SL', # Ssangbangwool -> Ssangbangwool (Normalized to SL)
+    "HT": "KIA",
+    "SK": "SSG",
+    "OB": "DB",
+    "WO": "KH",
+    "KI": "KH",  # Sometimes appears in old game IDs
+    "NX": "KH",  # Nexen -> Kiwoom Franchise
+    "HU": "KH",  # Hyundai -> Kiwoom Franchise (approx)
+    "BE": "HH",  # Binggre -> Hanwha
+    "MBC": "LG",  # MBC -> LG
+    "PC": "TP",  # Pacific -> Taepyeongyang (Normalized to TP)
+    "SW": "SL",  # Ssangbangwool -> Ssangbangwool (Normalized to SL)
 }
 
 # Tables and their unique columns (excluding team_code) for conflict check
@@ -39,14 +41,15 @@ TABLE_CONSTRAINTS = {
     "team_history": ["season", "team_code"],
 }
 
+
 def resolve_conflicts(conn, table_name, team_col, legacy, canonical, unique_cols):
     """Delete legacy rows if a canonical row already exists to avoid UniqueConstraint errors."""
     if not unique_cols:
         return 0
-    
+
     where_clauses = [f"t1.{col} = t2.{col}" for col in unique_cols]
     where_str = " AND ".join(where_clauses)
-    
+
     # Generic SQL: Use table alias and EXISTS
     delete_sql = f"""
     DELETE FROM {table_name}
@@ -54,27 +57,29 @@ def resolve_conflicts(conn, table_name, team_col, legacy, canonical, unique_cols
     AND EXISTS (
         SELECT 1 FROM {table_name} t2
         WHERE t2.{team_col} = :canonical
-        AND {where_str.replace('t1.', table_name + '.')}
+        AND {where_str.replace("t1.", table_name + ".")}
     )
     """
     result = conn.execute(text(delete_sql), {"legacy": legacy, "canonical": canonical})
     return result.rowcount
 
+
 def migrate_table(conn, table_name, team_col, dry_run=False):
     print(f"  Processing table '{table_name}' on column '{team_col}'...")
-    
+
     total_updated = 0
     total_deleted = 0
-    
+
     unique_cols = TABLE_CONSTRAINTS.get(table_name, [])
-    
+
     for legacy, canonical in CANONICAL_TARGETS.items():
-        if legacy == canonical: continue
-        
+        if legacy == canonical:
+            continue
+
         # 1. Check for rows to update
         count_query = text(f"SELECT COUNT(*) FROM {table_name} WHERE {team_col} = :legacy")
         count = conn.execute(count_query, {"legacy": legacy}).scalar()
-        
+
         if count > 0:
             if not dry_run:
                 # 2. Resolve conflicts if any
@@ -82,7 +87,7 @@ def migrate_table(conn, table_name, team_col, dry_run=False):
                 if deleted > 0:
                     print(f"    - Cleaned up {deleted} duplicates for '{legacy}' -> '{canonical}'")
                     total_deleted += deleted
-                
+
                 # 3. Update
                 update_query = text(f"UPDATE {table_name} SET {team_col} = :canonical WHERE {team_col} = :legacy")
                 result = conn.execute(update_query, {"canonical": canonical, "legacy": legacy})
@@ -91,8 +96,9 @@ def migrate_table(conn, table_name, team_col, dry_run=False):
             else:
                 print(f"    - Potential: {count} rows with '{legacy}' (To be '{canonical}')")
                 total_updated += count
-                
+
     return total_updated, total_deleted
+
 
 def main():
     load_dotenv()
@@ -113,7 +119,7 @@ def main():
             oci_url = os.getenv("OCI_DB_URL") or os.getenv("TARGET_DATABASE_URL")
             if oci_url:
                 urls.append(oci_url)
-    
+
     if not urls:
         print("❌ Error: No target database specified. Use --oci or --sqlite.")
         sys.exit(1)
@@ -137,27 +143,27 @@ def main():
         print(f"\n🚀 Processing Database: {url}")
         is_sqlite = url.startswith("sqlite:")
         engine = create_engine(url)
-        
+
         try:
             with engine.begin() as conn:
                 if args.dry_run:
                     print("⚠️  DRY RUN MODE - No changes will be saved.")
-                
+
                 total_rows_updated = 0
                 total_rows_deleted = 0
-                
+
                 for table, col in tables_to_migrate:
                     # Generic table existence check
                     if is_sqlite:
                         check_table = text("SELECT name FROM sqlite_master WHERE type='table' AND name=:table")
                     else:
                         check_table = text("SELECT table_name FROM information_schema.tables WHERE table_name = :table")
-                    
+
                     exists = conn.execute(check_table, {"table": table}).scalar()
                     if not exists:
                         # print(f"  ⚠️  Table '{table}' does not exist, skipping.")
                         continue
-                    
+
                     updated, deleted = migrate_table(conn, table, col, args.dry_run)
                     total_rows_updated += updated
                     total_rows_deleted += deleted
@@ -173,6 +179,7 @@ def main():
         except Exception as e:
             print(f"❌ Error during migration of {url}: {e}")
             continue
+
 
 if __name__ == "__main__":
     main()

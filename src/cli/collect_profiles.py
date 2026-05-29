@@ -1,25 +1,25 @@
-
 """
 Player Profile Enrichment CLI
 Identifies players with missing basic info (e.g. birth_date, debut_year) and crawls them.
 """
-import logging
-import asyncio
+
 import argparse
-from typing import List, Optional
+import asyncio
+import logging
 
-from sqlalchemy import select, or_
+from sqlalchemy import or_, select
 
+from src.crawlers.player_profile_crawler import PlayerProfileCrawler
 from src.db.engine import SessionLocal
 from src.models.player import Player
-from src.crawlers.player_profile_crawler import PlayerProfileCrawler
-from src.utils.playwright_pool import AsyncPlaywrightPool
 from src.repositories.player_repository import PlayerRepository
+from src.utils.playwright_pool import AsyncPlaywrightPool
 from src.utils.safe_print import safe_print as print
 
 logger = logging.getLogger(__name__)
 
-async def collect_profiles(limit: int = 100, target_ids: Optional[List[str]] = None):
+
+async def collect_profiles(limit: int = 100, target_ids: list[str] | None = None):
     session = SessionLocal()
     repo = PlayerRepository()
     pool = AsyncPlaywrightPool(max_pages=1)
@@ -30,15 +30,10 @@ async def collect_profiles(limit: int = 100, target_ids: Optional[List[str]] = N
             stmt = select(Player).where(Player.kbo_person_id.in_(target_ids))
             print(f"🎯 Targeted processing for {len(target_ids)} IDs")
         else:
-            stmt = select(Player).where(
-                or_(
-                    Player.birth_date == None,
-                    Player.debut_year == None
-                )
-            ).limit(limit)
-        
+            stmt = select(Player).where(or_(Player.birth_date is None, Player.debut_year is None)).limit(limit)
+
         target_players = session.execute(stmt).scalars().all()
-        
+
         if not target_players:
             print("✅ No matching players found for profile collection.")
             return
@@ -51,27 +46,29 @@ async def collect_profiles(limit: int = 100, target_ids: Optional[List[str]] = N
                 if not pid:
                     continue
 
-                print(f"[{idx}/{len(target_players)}] Crawling profile for {pid} ({getattr(player, 'name_kor', 'Unknown')})")
+                print(
+                    f"[{idx}/{len(target_players)}] Crawling profile for {pid} ({getattr(player, 'name_kor', 'Unknown')})"
+                )
 
                 data = await crawler.crawl_player_profile(str(pid))
                 if data:
                     print(f"   ✅ Fetched profile for {pid}")
                     from src.parsers.player_profile_parser import PlayerProfileParsed
-                    
+
                     # Manually populate parsed object since we already have parsed data
                     parsed = PlayerProfileParsed(
                         player_id=int(pid) if pid.isdigit() else None,
-                        player_name=data.get('name'),
-                        photo_url=data.get('photo_url'),
-                        batting_hand=data.get('bats'),
-                        throwing_hand=data.get('throws'),
-                        height_cm=data.get('height_cm'),
-                        weight_kg=data.get('weight_kg'),
-                        entry_year=data.get('debut_year'),
-                        salary_original=data.get('salary_original'),
-                        signing_bonus_original=data.get('signing_bonus_original')
+                        player_name=data.get("name"),
+                        photo_url=data.get("photo_url"),
+                        batting_hand=data.get("bats"),
+                        throwing_hand=data.get("throws"),
+                        height_cm=data.get("height_cm"),
+                        weight_kg=data.get("weight_kg"),
+                        entry_year=data.get("debut_year"),
+                        salary_original=data.get("salary_original"),
+                        signing_bonus_original=data.get("signing_bonus_original"),
                     )
-                    
+
                     # The repo.upsert_player_profile expects a PlayerProfileParsed object
                     repo.upsert_player_profile(str(pid), parsed)
                     print(f"   ✅ Saved profile metadata for {pid}")
@@ -86,17 +83,19 @@ async def collect_profiles(limit: int = 100, target_ids: Optional[List[str]] = N
     finally:
         session.close()
 
+
 def main():
     parser = argparse.ArgumentParser(description="Collect Missing Player Profiles")
     parser.add_argument("--limit", type=int, default=1000, help="Max players to process")
     parser.add_argument("--ids", type=str, help="Comma-separated List of KBO Player IDs")
     args = parser.parse_args()
-    
+
     target_ids = None
     if args.ids:
         target_ids = [i.strip() for i in args.ids.split(",")]
-    
+
     asyncio.run(collect_profiles(args.limit, target_ids))
+
 
 if __name__ == "__main__":
     main()

@@ -8,6 +8,7 @@ not remapped to another same-name candidate.
 
 This script is read-only. It writes merge proposals and blocked rows.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -68,10 +69,13 @@ def _norm_int(value: Any) -> int:
 
 
 def _table_exists(conn: sqlite3.Connection, table_name: str) -> bool:
-    return conn.execute(
-        "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?",
-        (table_name,),
-    ).fetchone() is not None
+    return (
+        conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?",
+            (table_name,),
+        ).fetchone()
+        is not None
+    )
 
 
 def _columns(conn: sqlite3.Connection, table_name: str) -> set[str]:
@@ -147,14 +151,9 @@ def _event_rows(conn: sqlite3.Connection, *, game_id: str, team_side: str, playe
 
 
 def _computed_pa(row: dict[str, Any]) -> int:
-    return (
-        _norm_int(row.get("plate_appearances"))
-        or _norm_int(row.get("at_bats"))
-        + _norm_int(row.get("walks"))
-        + _norm_int(row.get("hbp"))
-        + _norm_int(row.get("sacrifice_hits"))
-        + _norm_int(row.get("sacrifice_flies"))
-    )
+    return _norm_int(row.get("plate_appearances")) or _norm_int(row.get("at_bats")) + _norm_int(
+        row.get("walks")
+    ) + _norm_int(row.get("hbp")) + _norm_int(row.get("sacrifice_hits")) + _norm_int(row.get("sacrifice_flies"))
 
 
 def _merge_values(rows: list[dict[str, Any]]) -> dict[str, int]:
@@ -294,10 +293,7 @@ def main() -> None:
         player_name=args.player_name,
         team_code=args.team_code,
     )
-    print(
-        f"[REPORT] proposed_groups={result['proposed_groups']} "
-        f"blocked_groups={result['blocked_groups']}"
-    )
+    print(f"[REPORT] proposed_groups={result['proposed_groups']} blocked_groups={result['blocked_groups']}")
     print(f"[REPORT] proposed_csv={result['proposed_csv']}")
     print(f"[REPORT] blocked_csv={result['blocked_csv']}")
 

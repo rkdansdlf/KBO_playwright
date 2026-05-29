@@ -1,7 +1,7 @@
 import asyncio
 
 import src.crawlers.player_search_crawler as module
-from src.crawlers.player_search_crawler import PlayerSearchCrawler, PlayerRow
+from src.crawlers.player_search_crawler import PlayerRow, PlayerSearchCrawler
 
 
 class _FakeCompliance:
@@ -75,7 +75,10 @@ def test_collect_page_rows_filters_invalid_player_payloads():
         {"cells": ["1"], "linkHref": "x?playerId=1001"},
         {"cells": ["1", "정상", "LG", "투수", "2000.01.01", "180cm/80kg", "고교"], "linkHref": None},
         {"cells": ["1", "", "LG", "투수", "2000.01.01", "180cm/80kg", "고교"], "linkHref": "x?playerId=1002"},
-        {"cells": ["1", "Unknown Player", "LG", "투수", "2000.01.01", "180cm/80kg", "고교"], "linkHref": "x?playerId=1003"},
+        {
+            "cells": ["1", "Unknown Player", "LG", "투수", "2000.01.01", "180cm/80kg", "고교"],
+            "linkHref": "x?playerId=1003",
+        },
         {"cells": ["1", "홍길동", "LG", "투수", "2000.01.01", "180cm/80kg", "고교"], "linkHref": "x?playerId=1004"},
     ]
     crawler = PlayerSearchCrawler(request_delay=0)

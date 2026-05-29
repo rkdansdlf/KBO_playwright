@@ -68,3 +68,5 @@ data/kbo_auth_state.json
 /*.png
 /*.html
 /logs
+/debug_shots
+/.antigravitycli

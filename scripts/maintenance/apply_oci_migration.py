@@ -7,7 +7,7 @@ from urllib.parse import unquote, urlparse
 from dotenv import load_dotenv
 
 # Add project root to path
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../../')))
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../")))
 
 
 def _psql_command(database_url: str, file_path: str) -> tuple[list[str], dict[str, str]]:
@@ -47,7 +47,7 @@ def _psql_command(database_url: str, file_path: str) -> tuple[list[str], dict[st
 
 def apply_migration(file_path: str):
     load_dotenv()
-    oci_url = os.getenv('OCI_DB_URL')
+    oci_url = os.getenv("OCI_DB_URL")
     if not oci_url:
         print("❌ OCI_DB_URL environment variable not set")
         return
@@ -57,7 +57,7 @@ def apply_migration(file_path: str):
         return
 
     print(f"🔌 Connecting to OCI for migration: {file_path}")
-    
+
     try:
         command, env = _psql_command(oci_url, file_path)
         print(f"📜 Executing SQL from {file_path}...")
@@ -68,8 +68,10 @@ def apply_migration(file_path: str):
         print(f"❌ Migration failed: {e}")
         raise SystemExit(1) from e
 
+
 if __name__ == "__main__":
     import argparse
+
     parser = argparse.ArgumentParser()
     parser.add_argument("file", help="SQL migration file path")
     args = parser.parse_args()

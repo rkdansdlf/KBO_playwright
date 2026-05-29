@@ -6,7 +6,7 @@
 
 ### 주요 테이블
 - **player_basic**: 선수 기본 정보 (이름, 포지션, 생년월일 등)
-- **player_season_batting**: 선수별 시즌 타격 기록 
+- **player_season_batting**: 선수별 시즌 타격 기록
 - **player_season_pitching**: 선수별 시즌 투구 기록
 - **teams**: 팀 정보 (팀명, 창단연도, 연고지 등)
 
@@ -31,11 +31,11 @@
 ### 실제 존재하는 타격 지표 (DB 컬럼명 기준)
 - **games**: 출전 경기 수
 - **plate_appearances**: 타석 (PA)
-- **at_bats**: 타수 (AB) 
+- **at_bats**: 타수 (AB)
 - **runs**: 득점 (R)
 - **hits**: 안타 (H)
 - **doubles**: 2루타 (2B)
-- **triples**: 3루타 (3B) 
+- **triples**: 3루타 (3B)
 - **home_runs**: 홈런 (HR)
 - **rbi**: 타점 (RBI)
 - **walks**: 볼넷 (BB)
@@ -133,7 +133,7 @@
 
 ### 팀 코드 매핑 (실제 데이터베이스 기준)
 - **HT**: 기아 타이거즈
-- **LG**: LG 트윈스  
+- **LG**: LG 트윈스
 - **SS**: 삼성 라이온즈
 - **LT**: 롯데 자이언츠
 - **OB**: 두산 베어스
@@ -157,7 +157,7 @@
 - wrc_plus (extra_stats JSON에서 확인 필요)
 - war (extra_stats JSON에서 확인 필요)
 
-### 투수 관련  
+### 투수 관련
 - player_name (대신 player_basic.name과 JOIN)
 - team_name (대신 teams.team_name과 JOIN)
 - tbf (상대한 타자수 - 컬럼 없음)
@@ -170,7 +170,7 @@
 ### 올바른 JOIN 패턴
 ```sql
 -- 선수 타격 성적 조회 예시
-SELECT 
+SELECT
     pb.name as player_name,
     t.team_name,
     psb.season,
@@ -178,8 +178,8 @@ SELECT
 FROM player_season_batting psb
 JOIN player_basic pb ON psb.player_id = pb.player_id
 LEFT JOIN teams t ON psb.team_code = t.team_id
-WHERE pb.name LIKE '%김도영%' 
-AND psb.season = 2024 
+WHERE pb.name LIKE '%김도영%'
+AND psb.season = 2024
 AND psb.league = '정규시즌';
 ```
 

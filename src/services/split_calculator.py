@@ -4,9 +4,11 @@ Situational Splits Calculator Service.
 Computes RISP (Runners In Scoring Position) and L/R splits
 by querying the game_events PBP data with game_batting_stats.
 """
+
 import os
 import sys
-from typing import Dict, Any, Optional, List
+from typing import Any
+
 from sqlalchemy import text
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
@@ -31,17 +33,14 @@ class SituationalSplitCalculator:
     # RISP: Runners In Scoring Position (base_state & 6 > 0)
     # base_state bitmask: 1=1B, 2=2B, 4=3B  → RISP = 2B or 3B set → & 6
     # ------------------------------------------------------------------ #
-    def _resolve_name(self, player_id: int, session) -> Optional[str]:
+    def _resolve_name(self, player_id: int, session) -> str | None:
         """Returns the Korean name for a given player_id."""
         row = session.execute(
-            text("SELECT name FROM player_basic WHERE player_id = :pid"),
-            {"pid": player_id}
+            text("SELECT name FROM player_basic WHERE player_id = :pid"), {"pid": player_id}
         ).fetchone()
         return row.name if row else None
 
-    def get_risp_stats(
-        self, player_id: int, season: int
-    ) -> Dict[str, Any]:
+    def get_risp_stats(self, player_id: int, season: int) -> dict[str, Any]:
         """Returns RISP batting stats for a player in a given season."""
         query = """
         SELECT
@@ -58,9 +57,7 @@ class SituationalSplitCalculator:
             name = self._resolve_name(player_id, session)
             if not name:
                 return {"risp_avg": None, "risp_ab": 0, "risp_hits": 0}
-            row = session.execute(
-                text(query), {"name": name, "season": str(season)}
-            ).fetchone()
+            row = session.execute(text(query), {"name": name, "season": str(season)}).fetchone()
 
         if not row or not row.risp_ab:
             return {"risp_avg": None, "risp_ab": 0, "risp_hits": 0}
@@ -79,9 +76,7 @@ class SituationalSplitCalculator:
     # ------------------------------------------------------------------ #
     # L/R Splits: vs Left-handed / Right-handed Pitcher
     # ------------------------------------------------------------------ #
-    def get_lr_splits(
-        self, player_id: int, season: int
-    ) -> Dict[str, Any]:
+    def get_lr_splits(self, player_id: int, season: int) -> dict[str, Any]:
         """
         Returns batting splits vs LHP and RHP.
         Joins game_events → game_pitching_stats → player_basic (throws).
@@ -106,15 +101,13 @@ class SituationalSplitCalculator:
             AND pb.throws IN ('L', 'R')
         GROUP BY pb.throws
         """
-        results: Dict[str, Any] = {"vs_lhp": {}, "vs_rhp": {}}
+        results: dict[str, Any] = {"vs_lhp": {}, "vs_rhp": {}}
 
         with self._session_ctx() as session:
             name = self._resolve_name(player_id, session)
             if not name:
                 return results
-            rows = session.execute(
-                text(query), {"name": name, "season": str(season)}
-            ).fetchall()
+            rows = session.execute(text(query), {"name": name, "season": str(season)}).fetchall()
 
         for row in rows:
             key = "vs_lhp" if row.throws == "L" else "vs_rhp"
@@ -128,9 +121,7 @@ class SituationalSplitCalculator:
     # ------------------------------------------------------------------ #
     # Two-Out RBI: Clutch situational stat
     # ------------------------------------------------------------------ #
-    def get_two_out_stats(
-        self, player_id: int, season: int
-    ) -> Dict[str, Any]:
+    def get_two_out_stats(self, player_id: int, season: int) -> dict[str, Any]:
         """Returns batting stats with 2 outs."""
         query = """
         SELECT
@@ -147,9 +138,7 @@ class SituationalSplitCalculator:
             name = self._resolve_name(player_id, session)
             if not name:
                 return {"two_out_avg": None, "two_out_ab": 0, "two_out_rbi": 0}
-            row = session.execute(
-                text(query), {"name": name, "season": str(season)}
-            ).fetchone()
+            row = session.execute(text(query), {"name": name, "season": str(season)}).fetchone()
 
         if not row or not row.ab:
             return {"two_out_avg": None, "two_out_ab": 0, "two_out_rbi": 0}
@@ -163,9 +152,7 @@ class SituationalSplitCalculator:
     # ------------------------------------------------------------------ #
     # Full profile helper
     # ------------------------------------------------------------------ #
-    def get_full_splits(
-        self, player_id: int, season: int
-    ) -> Dict[str, Any]:
+    def get_full_splits(self, player_id: int, season: int) -> dict[str, Any]:
         return {
             "player_id": player_id,
             "season": season,
@@ -179,11 +166,12 @@ class SituationalSplitCalculator:
 # CLI: Quick test on a given player
 # --------------------------------------------------------------------------- #
 if __name__ == "__main__":
-    import argparse, json
+    import argparse
+    import json
 
     parser = argparse.ArgumentParser(description="Situational Splits Calculator")
     parser.add_argument("--player_id", type=int, required=True, help="KBO Player ID")
-    parser.add_argument("--season",    type=int, default=2025,   help="Season year")
+    parser.add_argument("--season", type=int, default=2025, help="Season year")
     args = parser.parse_args()
 
     calc = SituationalSplitCalculator()

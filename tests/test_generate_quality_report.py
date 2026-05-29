@@ -7,9 +7,9 @@ from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, sessionmaker
 
 import src.cli.generate_quality_report as generate_quality_report
 from src.models.game import Game, GamePlayByPlay
+from src.models.player import PlayerSeasonBatting
 from src.models.season import KboSeason
 from src.models.standings import TeamStandingsDaily
-from src.models.player import PlayerSeasonBatting
 
 
 class _ReportTestBase(DeclarativeBase):

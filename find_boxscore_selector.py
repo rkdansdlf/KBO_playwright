@@ -1,15 +1,17 @@
 import asyncio
+
 from playwright.async_api import async_playwright
+
 
 async def find_boxscore_selector():
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=True)
         page = await browser.new_page()
-        
+
         url = "https://www.koreabaseball.com/Schedule/GameCenter/Main.aspx?gameDate=20240323&gameId=20240323HHLG0&section=REVIEW"
         await page.goto(url, wait_until="networkidle")
         await page.wait_for_timeout(5000)
-        
+
         # Find all elements that contain "박스스코어"
         matches = await page.evaluate("""
             () => {
@@ -30,11 +32,12 @@ async def find_boxscore_selector():
                 return results;
             }
         """)
-        
+
         for m in matches:
             print(f"Match: {m['tagName']} id='{m['id']}' class='{m['className']}' text='{m['innerText'][:50]}'")
-            
+
         await browser.close()
+
 
 if __name__ == "__main__":
     asyncio.run(find_boxscore_selector())

@@ -1,4 +1,5 @@
 """Retry daily finalize soft-failure candidates from the stability summary."""
+
 from __future__ import annotations
 
 import argparse
@@ -13,7 +14,6 @@ from typing import Any, Callable, Iterable, Mapping, Sequence
 from src.cli.run_daily_update import DEFAULT_DAILY_SUMMARY_DIR
 from src.utils.safe_print import safe_print as print
 from src.utils.team_codes import normalize_kbo_game_id
-
 
 Command = list[str]
 Runner = Callable[[Sequence[str]], None]
@@ -91,7 +91,7 @@ def build_retry_commands(
             [
                 python_bin,
                 "-m",
-                "src.cli.crawl_game_details",
+                "src.cli.collect_games",
                 "--year",
                 str(year),
                 "--month",

@@ -1,15 +1,15 @@
 """Freshness gate for operational KBO game data."""
+
 from __future__ import annotations
 
 import argparse
 import json
 import os
 from datetime import datetime, timedelta
-from typing import Dict, List, Sequence
+from typing import Sequence
 
 from sqlalchemy import create_engine
-from sqlalchemy.orm import Session
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy.orm import Session, sessionmaker
 
 from src.db.engine import SessionLocal
 from src.models.game import (
@@ -24,7 +24,6 @@ from src.models.game import (
 )
 from src.utils.game_status import COMPLETED_LIKE_GAME_STATUSES
 from src.utils.relay_text import is_relay_noise_text
-
 
 KBO_FRESHNESS_TEAM_CODES = {
     "DB",
@@ -51,14 +50,12 @@ def collect_freshness_issues(
     *,
     target_date: str | None = None,
     days: int | None = None,
-) -> Dict[str, List[str]]:
+) -> dict[str, list[str]]:
     query = session.query(Game).filter(
         Game.game_status.in_(tuple(COMPLETED_LIKE_GAME_STATUSES)),
         Game.away_team.in_(KBO_FRESHNESS_TEAM_CODES),
         Game.home_team.in_(KBO_FRESHNESS_TEAM_CODES),
-        ~session.query(GameIdAlias.alias_game_id)
-        .filter(GameIdAlias.alias_game_id == Game.game_id)
-        .exists(),
+        ~session.query(GameIdAlias.alias_game_id).filter(GameIdAlias.alias_game_id == Game.game_id).exists(),
     )
 
     if target_date:
@@ -69,7 +66,7 @@ def collect_freshness_issues(
         query = query.filter(Game.game_date >= since_date)
 
     games = query.order_by(Game.game_date, Game.game_id).all()
-    issues: Dict[str, List[str]] = {
+    issues: dict[str, list[str]] = {
         "missing_start_time": [],
         "missing_lineups": [],
         "missing_inning_scores": [],
@@ -99,9 +96,12 @@ def collect_freshness_issues(
         else:
             away_sum = sum((row.runs or 0) for row in inning_rows if row.team_side == "away")
             home_sum = sum((row.runs or 0) for row in inning_rows if row.team_side == "home")
-            if game.away_score is not None and away_sum != game.away_score:
-                issues["inning_score_mismatch"].append(game.game_id)
-            elif game.home_score is not None and home_sum != game.home_score:
+            if (
+                game.away_score is not None
+                and away_sum != game.away_score
+                or game.home_score is not None
+                and home_sum != game.home_score
+            ):
                 issues["inning_score_mismatch"].append(game.game_id)
 
         events = session.query(GameEvent).filter(GameEvent.game_id == game.game_id).all()
@@ -120,9 +120,7 @@ def collect_freshness_issues(
             issues["missing_pitching_stats"].append(game.game_id)
         else:
             starter_sides = {
-                row.team_side
-                for row in pitching_rows
-                if row.is_starting and row.team_side in {"away", "home"}
+                row.team_side for row in pitching_rows if row.is_starting and row.team_side in {"away", "home"}
             }
             if starter_sides != {"away", "home"}:
                 issues["missing_pitching_starters"].append(game.game_id)
@@ -166,10 +164,7 @@ def _review_moments_have_noise(detail_text: str | None) -> bool:
     moments = payload.get("crucial_moments")
     if not isinstance(moments, list):
         return False
-    for moment in moments:
-        if isinstance(moment, dict) and is_relay_noise_text(moment.get("description")):
-            return True
-    return False
+    return any(isinstance(moment, dict) and is_relay_noise_text(moment.get("description")) for moment in moments)
 
 
 def evaluate_freshness_gate(
@@ -177,9 +172,9 @@ def evaluate_freshness_gate(
     *,
     target_date: str | None = None,
     days: int | None = None,
-) -> List[str]:
+) -> list[str]:
     issues = collect_freshness_issues(session, target_date=target_date, days=days)
-    failures: List[str] = []
+    failures: list[str] = []
     for key, game_ids in issues.items():
         if game_ids:
             failures.append(f"{key}: {len(game_ids)} game(s) -> {', '.join(sorted(game_ids))}")
@@ -190,7 +185,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Validate operational freshness requirements for completed games")
     parser.add_argument("--date", type=str, help="Target date in YYYYMMDD format")
     parser.add_argument("--days", type=int, help="Validate completed games from the last N days")
-    parser.add_argument("--source-url", type=str, help="Optional database URL to validate instead of local DATABASE_URL")
+    parser.add_argument(
+        "--source-url", type=str, help="Optional database URL to validate instead of local DATABASE_URL"
+    )
     parser.add_argument(
         "--source-url-env",
         type=str,

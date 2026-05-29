@@ -1,29 +1,30 @@
 import sqlalchemy
 from sqlalchemy import text
 
+
 def check_oci_orphans():
-    engine = sqlalchemy.create_engine('postgresql://postgres:rkdansdlf@134.185.107.178:5432/bega_backend')
+    engine = sqlalchemy.create_engine("postgresql://postgres:rkdansdlf@134.185.107.178:5432/bega_backend")
     with engine.connect() as conn:
         print("=== OCI Orphan Data Check ===\n")
-        
+
         # Pitching orphans
         pitching_query = text("""
-            SELECT COUNT(DISTINCT player_id) FROM player_season_pitching 
+            SELECT COUNT(DISTINCT player_id) FROM player_season_pitching
             WHERE player_id NOT IN (SELECT player_id FROM player_basic)
             AND player_id IS NOT NULL
         """)
         pitching_orphans = conn.execute(pitching_query).scalar()
         print(f"Pitching orphans: {pitching_orphans}")
-        
+
         # Batting orphans
         batting_query = text("""
-            SELECT COUNT(DISTINCT player_id) FROM player_season_batting 
+            SELECT COUNT(DISTINCT player_id) FROM player_season_batting
             WHERE player_id NOT IN (SELECT player_id FROM player_basic)
             AND player_id IS NOT NULL
         """)
         batting_orphans = conn.execute(batting_query).scalar()
         print(f"Batting orphans: {batting_orphans}")
-        
+
         # Team orphans (Game)
         home_team_query = text("""
             SELECT COUNT(*) FROM game g LEFT JOIN teams t ON g.home_team = t.team_id WHERE t.team_id IS NULL AND g.home_team IS NOT NULL
@@ -48,6 +49,7 @@ def check_oci_orphans():
         franchise_count_query = text("SELECT COUNT(*) FROM team_franchises")
         franchise_count = conn.execute(franchise_count_query).scalar()
         print(f"Team Franchises: {franchise_count}")
+
 
 if __name__ == "__main__":
     check_oci_orphans()

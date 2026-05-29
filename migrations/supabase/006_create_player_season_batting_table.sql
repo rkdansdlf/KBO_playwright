@@ -48,8 +48,8 @@ COMMENT ON COLUMN public.player_season_batting.team_code IS 'Team code (LG, NC, 
 COMMENT ON COLUMN public.player_season_batting.extra_stats IS 'Additional statistics in JSON format';
 
 -- Create unique constraint
-ALTER TABLE public.player_season_batting 
-ADD CONSTRAINT uq_player_season_batting 
+ALTER TABLE public.player_season_batting
+ADD CONSTRAINT uq_player_season_batting
 UNIQUE (player_id, season, league, level);
 
 -- Create indexes

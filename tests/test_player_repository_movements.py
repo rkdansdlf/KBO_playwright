@@ -10,7 +10,14 @@ from src.repositories.player_repository import PlayerRepository
 
 def test_resolve_movement_player_uses_position_for_ambiguous_names():
     engine = create_engine("sqlite:///:memory:")
-    for table in (Team.__table__, PlayerBasic.__table__, Player.__table__, TeamDailyRoster.__table__, PlayerSeasonBatting.__table__, PlayerSeasonPitching.__table__):
+    for table in (
+        Team.__table__,
+        PlayerBasic.__table__,
+        Player.__table__,
+        TeamDailyRoster.__table__,
+        PlayerSeasonBatting.__table__,
+        PlayerSeasonPitching.__table__,
+    ):
         table.create(engine)
 
     Session = sessionmaker(bind=engine)
@@ -32,7 +39,14 @@ def test_resolve_movement_player_uses_position_for_ambiguous_names():
 
 def test_resolve_movement_player_uses_unique_profile_mirror():
     engine = create_engine("sqlite:///:memory:")
-    for table in (Team.__table__, PlayerBasic.__table__, Player.__table__, TeamDailyRoster.__table__, PlayerSeasonBatting.__table__, PlayerSeasonPitching.__table__):
+    for table in (
+        Team.__table__,
+        PlayerBasic.__table__,
+        Player.__table__,
+        TeamDailyRoster.__table__,
+        PlayerSeasonBatting.__table__,
+        PlayerSeasonPitching.__table__,
+    ):
         table.create(engine)
 
     Session = sessionmaker(bind=engine)
@@ -54,7 +68,14 @@ def test_resolve_movement_player_uses_unique_profile_mirror():
 
 def test_resolve_movement_player_uses_same_year_roster_link():
     engine = create_engine("sqlite:///:memory:")
-    for table in (Team.__table__, PlayerBasic.__table__, Player.__table__, TeamDailyRoster.__table__, PlayerSeasonBatting.__table__, PlayerSeasonPitching.__table__):
+    for table in (
+        Team.__table__,
+        PlayerBasic.__table__,
+        Player.__table__,
+        TeamDailyRoster.__table__,
+        PlayerSeasonBatting.__table__,
+        PlayerSeasonPitching.__table__,
+    ):
         table.create(engine)
 
     Session = sessionmaker(bind=engine)
@@ -84,7 +105,14 @@ def test_resolve_movement_player_uses_same_year_roster_link():
 
 def test_resolve_movement_player_uses_franchise_season_history():
     engine = create_engine("sqlite:///:memory:")
-    for table in (Team.__table__, PlayerBasic.__table__, Player.__table__, TeamDailyRoster.__table__, PlayerSeasonBatting.__table__, PlayerSeasonPitching.__table__):
+    for table in (
+        Team.__table__,
+        PlayerBasic.__table__,
+        Player.__table__,
+        TeamDailyRoster.__table__,
+        PlayerSeasonBatting.__table__,
+        PlayerSeasonPitching.__table__,
+    ):
         table.create(engine)
 
     Session = sessionmaker(bind=engine)

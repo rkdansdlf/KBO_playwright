@@ -1,5 +1,9 @@
 name: KBO Data Quality Check
 
+concurrency:
+  group: kbo-quality-check
+  cancel-in-progress: false
+
 on:
   schedule:
     # Runs at 19:00 UTC which is 04:00 KST the next day.
@@ -12,7 +16,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       PYTHONPATH: ${{ github.workspace }}
-    
+
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -48,19 +52,8 @@ jobs:
           # Audit the last 14 days of completed games for missing stats or relay data.
           python3 scripts/verification/audit_daily_completeness.py --db-url env:OCI_DB_URL --days 14
 
-      - name: Notify Telegram on Failure
-        if: failure()
-        env:
-          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-        run: |
-          MESSAGE="❌ <b>KBO Data Quality Gate Failed</b>%0ARepo: ${{ github.repository }}%0AWorkflow: ${{ github.workflow }}%0A<a href=\"https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}\">View Run Details</a>"
-          
-          if [ -n "$TELEGRAM_BOT_TOKEN" ] && [ -n "$TELEGRAM_CHAT_ID" ]; then
-            curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
-              -d "chat_id=${TELEGRAM_CHAT_ID}" \
-              -d "text=${MESSAGE}" \
-              -d "parse_mode=HTML"
-          else
-            echo "⚠️ Telegram credentials not set, skipping notification."
-          fi
+      - name: Notify Telegram on Status
+        if: always()
+        uses: ./.github/actions/notify-telegram
+        with:
+          status: ${{ job.status }}

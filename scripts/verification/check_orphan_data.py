@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Verify referential integrity gaps that SQLite FK checks can miss."""
+
 from __future__ import annotations
 
 import argparse
@@ -15,7 +16,6 @@ from urllib.parse import urlsplit, urlunsplit
 from dotenv import load_dotenv
 from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.engine import Connection
-
 
 DEFAULT_DB_PATH = Path("data/kbo_dev.db")
 
@@ -239,10 +239,7 @@ def _cascade_fk_report(conn: sqlite3.Connection) -> CheckResult:
             continue
         fk_rows = conn.execute(f"PRAGMA foreign_key_list({child_table})").fetchall()
         has_cascade = any(
-            row[2] == parent_table
-            and row[3] == child_col
-            and row[4] == parent_col
-            and str(row[6]).upper() == "CASCADE"
+            row[2] == parent_table and row[3] == child_col and row[4] == parent_col and str(row[6]).upper() == "CASCADE"
             for row in fk_rows
         )
         if not has_cascade:
@@ -274,10 +271,7 @@ def _integrity_column_report(conn: sqlite3.Connection) -> CheckResult:
 
 
 def _unknown_player_predicate(alias: str) -> str:
-    return (
-        f"UPPER(TRIM({alias}.name)) LIKE 'UNKNOWN %' "
-        f"AND SUBSTR(UPPER(TRIM({alias}.name)), 9) GLOB '[0-9]*'"
-    )
+    return f"UPPER(TRIM({alias}.name)) LIKE 'UNKNOWN %' AND SUBSTR(UPPER(TRIM({alias}.name)), 9) GLOB '[0-9]*'"
 
 
 def _sa_table_exists(conn: Connection, table_name: str) -> bool:
@@ -467,8 +461,7 @@ def _sa_targeted_checks(conn: Connection, sample_limit: int) -> list[CheckResult
         required={"canonical_game_id"},
         name="game_id_aliases -> game",
         base_sql=(
-            "FROM game_id_aliases AS t LEFT JOIN game AS p "
-            "ON t.canonical_game_id = p.game_id WHERE p.game_id IS NULL"
+            "FROM game_id_aliases AS t LEFT JOIN game AS p ON t.canonical_game_id = p.game_id WHERE p.game_id IS NULL"
         ),
         distinct_expr="t.canonical_game_id",
         sample_expr="t.canonical_game_id",
@@ -542,7 +535,11 @@ def _sa_targeted_checks(conn: Connection, sample_limit: int) -> list[CheckResult
             sample_expr=f"t.{column}",
         )
 
-    for column, name in (("home_team", "Game home_team -> teams"), ("away_team", "Game away_team -> teams"), ("winning_team", "Game winning_team -> teams")):
+    for column, name in (
+        ("home_team", "Game home_team -> teams"),
+        ("away_team", "Game away_team -> teams"),
+        ("winning_team", "Game winning_team -> teams"),
+    ):
         _sa_add_check(
             checks,
             conn,
@@ -611,8 +608,7 @@ def _sa_targeted_checks(conn: Connection, sample_limit: int) -> list[CheckResult
             {
                 "name": "player_movements unresolved player links",
                 "base_sql": (
-                    "FROM player_movements AS t "
-                    "WHERE t.resolution_status IN ('unresolved', 'unresolved_player')"
+                    "FROM player_movements AS t WHERE t.resolution_status IN ('unresolved', 'unresolved_player')"
                 ),
                 "distinct_expr": "t.id",
                 "sample_expr": "t.id",
@@ -724,8 +720,7 @@ def _targeted_checks(conn: sqlite3.Connection, sample_limit: int) -> list[CheckR
         required={"canonical_game_id"},
         name="game_id_aliases -> game",
         base_sql=(
-            "FROM game_id_aliases AS t LEFT JOIN game AS p "
-            "ON t.canonical_game_id = p.game_id WHERE p.game_id IS NULL"
+            "FROM game_id_aliases AS t LEFT JOIN game AS p ON t.canonical_game_id = p.game_id WHERE p.game_id IS NULL"
         ),
         distinct_expr="t.canonical_game_id",
         sample_expr="t.canonical_game_id",
@@ -801,7 +796,11 @@ def _targeted_checks(conn: sqlite3.Connection, sample_limit: int) -> list[CheckR
             sample_expr=f"t.{column}",
         )
 
-    game_team_columns = (("home_team", "Game home_team -> teams"), ("away_team", "Game away_team -> teams"), ("winning_team", "Game winning_team -> teams"))
+    game_team_columns = (
+        ("home_team", "Game home_team -> teams"),
+        ("away_team", "Game away_team -> teams"),
+        ("winning_team", "Game winning_team -> teams"),
+    )
     for column, name in game_team_columns:
         _add_check(
             checks,
@@ -871,8 +870,7 @@ def _targeted_checks(conn: sqlite3.Connection, sample_limit: int) -> list[CheckR
             {
                 "name": "player_movements unresolved player links",
                 "base_sql": (
-                    "FROM player_movements AS t "
-                    "WHERE t.resolution_status IN ('unresolved', 'unresolved_player')"
+                    "FROM player_movements AS t WHERE t.resolution_status IN ('unresolved', 'unresolved_player')"
                 ),
                 "distinct_expr": "t.id",
                 "sample_expr": "t.id",
@@ -984,10 +982,7 @@ def print_human_report(report: dict[str, Any]) -> None:
     print(f"Database: {report['database']}\n")
     for check in report["checks"]:
         status = check["status"]
-        print(
-            f"[{status}] {check['name']}: "
-            f"rows={check['row_count']} distinct={check['distinct_count']}"
-        )
+        print(f"[{status}] {check['name']}: rows={check['row_count']} distinct={check['distinct_count']}")
         if check.get("error"):
             print(f"  error: {check['error']}")
         samples = check.get("samples") or []

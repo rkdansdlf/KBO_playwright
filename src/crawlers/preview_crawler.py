@@ -3,21 +3,22 @@ KBO Preview Crawler
 Fetches Pre-game information (Starting Pitchers, Lineups) for LLM context generation.
 Uses KBO's internal XHR APIs (GetKboGameList, GetLineUpAnalysis) for stability.
 """
+
 from __future__ import annotations
 
 import asyncio
 import json
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 import httpx
 
-
 logger = logging.getLogger(__name__)
+
+import contextlib
 
 from src.utils.playwright_pool import AsyncPlaywrightPool
 from src.utils.safe_print import safe_print as print
-
 from src.utils.team_codes import normalize_kbo_game_id
 
 
@@ -27,18 +28,18 @@ class PreviewCrawler:
     BASE_REFERER = "https://www.koreabaseball.com/"
     BASE_HEADERS = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-                      "(KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+        "(KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
         "Accept": "application/json, text/javascript, */*; q=0.01",
         "Accept-Language": "ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7",
         "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
         "X-Requested-With": "XMLHttpRequest",
     }
 
-    def __init__(self, request_delay: float = 1.0, pool: Optional[AsyncPlaywrightPool] = None):
+    def __init__(self, request_delay: float = 1.0, pool: AsyncPlaywrightPool | None = None):
         self.request_delay = request_delay
         self.pool = pool
 
-    def _coerce_api_payload(self, payload: Any) -> Optional[Any]:
+    def _coerce_api_payload(self, payload: Any) -> Any | None:
         """Normalize API payloads from ASP.NET/JSON wrappers to a Python object."""
         if payload is None:
             return None
@@ -54,7 +55,7 @@ class PreviewCrawler:
             return self._coerce_api_payload(payload.get("d"))
         return payload
 
-    def _extract_list_payload(self, payload: Any) -> List[Any]:
+    def _extract_list_payload(self, payload: Any) -> list[Any]:
         """Get list-like payload from various KBO API shapes."""
         payload = self._coerce_api_payload(payload)
         if isinstance(payload, list):
@@ -85,10 +86,10 @@ class PreviewCrawler:
     async def _fetch_api_json(
         self,
         url: str,
-        form: Dict[str, Any],
+        form: dict[str, Any],
         referer: str,
-        page: Optional[Any] = None,
-    ) -> Optional[Any]:
+        page: Any | None = None,
+    ) -> Any | None:
         """
         Try direct HTTP first (fast/fewer dependencies), then fallback to Playwright
         request when a page is available.
@@ -129,7 +130,7 @@ class PreviewCrawler:
             logger.exception(f"⚠️ Playwright API call failed for {url}")
         return None
 
-    async def crawl_preview_for_date(self, game_date: str) -> List[Dict[str, Any]]:
+    async def crawl_preview_for_date(self, game_date: str) -> list[dict[str, Any]]:
         """
         주어진 날짜(game_date: 'YYYYMMDD')의 모든 경기에 대해
         선발투수와 선발 라인업(발표되었을 경우) 정보를 수집합니다.
@@ -139,7 +140,7 @@ class PreviewCrawler:
         pool = self.pool
         owns_pool = False
         page = None
-        results: List[Dict[str, Any]] = []
+        results: list[dict[str, Any]] = []
 
         try:
             # 1. Fetch Game List and Starting Pitchers
@@ -263,17 +264,13 @@ class PreviewCrawler:
             return []
         finally:
             if page is not None and pool is not None:
-                try:
+                with contextlib.suppress(Exception):
                     await pool.release(page)
-                except Exception:
-                    pass
             if owns_pool and pool is not None:
-                try:
+                with contextlib.suppress(Exception):
                     await pool.close()
-                except Exception:
-                    pass
 
-    def _parse_lineup_grid(self, grid_str_list: List[str]) -> List[Dict[str, str]]:
+    def _parse_lineup_grid(self, grid_str_list: list[str]) -> list[dict[str, str]]:
         """Parses the nested KBO Lineup grid JSON string into a structured list."""
         lineup = []
         if not grid_str_list or not isinstance(grid_str_list, list):
@@ -290,11 +287,13 @@ class PreviewCrawler:
                     name = str(cells[2].get("Text", "")).strip()
 
                     if order.isdigit():
-                        lineup.append({
-                            "batting_order": int(order),
-                            "position": pos,
-                            "player_name": name,
-                        })
+                        lineup.append(
+                            {
+                                "batting_order": int(order),
+                                "position": pos,
+                                "player_name": name,
+                            }
+                        )
         except Exception:
             pass
         return lineup

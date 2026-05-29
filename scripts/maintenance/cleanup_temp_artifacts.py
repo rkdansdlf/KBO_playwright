@@ -11,15 +11,15 @@ from __future__ import annotations
 
 import argparse
 import fnmatch
+import re
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
-import re
 from typing import Iterable
-
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_DAYS = 7
+
 
 @dataclass(frozen=True)
 class ArtifactPlan:
@@ -100,22 +100,16 @@ def _collect_refresh_manifests(cutoff: datetime) -> list[ArtifactPlan]:
 def _collect_quality_gate(cutoff: datetime) -> list[ArtifactPlan]:
     base = PROJECT_ROOT / "data"
     pattern = re.compile(r"quality_gate_(?:.*_)?(\d{8}_\d{6})\.csv$")
-    files = [
-        p
-        for p in _candidate_files(base, ["quality_gate_*.csv"])
-        if _is_stale(p, cutoff, [pattern])
-    ]
+    files = [p for p in _candidate_files(base, ["quality_gate_*.csv"]) if _is_stale(p, cutoff, [pattern])]
     if not files:
         return []
     return [ArtifactPlan(name="quality_gate", paths=files, reason="timestamp/mtime older than cutoff")]
 
 
-def _collect_csv_dir(cutoff: datetime, base: Path, glob_patterns: list[str], name: str, use_recursive: bool = False) -> list[ArtifactPlan]:
-    files = [
-        p
-        for p in _candidate_files(base, glob_patterns, recursive=use_recursive)
-        if _is_stale(p, cutoff, None)
-    ]
+def _collect_csv_dir(
+    cutoff: datetime, base: Path, glob_patterns: list[str], name: str, use_recursive: bool = False
+) -> list[ArtifactPlan]:
+    files = [p for p in _candidate_files(base, glob_patterns, recursive=use_recursive) if _is_stale(p, cutoff, None)]
     if not files:
         return []
     return [ArtifactPlan(name=name, paths=files, reason="mtime older than cutoff")]
@@ -123,9 +117,7 @@ def _collect_csv_dir(cutoff: datetime, base: Path, glob_patterns: list[str], nam
 
 def _collect_snapshots(cutoff: datetime) -> list[ArtifactPlan]:
     base = PROJECT_ROOT / "snapshots"
-    files = [
-        p for p in _candidate_files(base, ["*"], recursive=True) if _is_stale(p, cutoff, None)
-    ]
+    files = [p for p in _candidate_files(base, ["*"], recursive=True) if _is_stale(p, cutoff, None)]
     if not files:
         return []
     return [ArtifactPlan(name="snapshots", paths=files, reason="mtime older than cutoff")]
@@ -148,11 +140,7 @@ def _collect_root_temp_files(cutoff: datetime, include_json: bool = False) -> li
     if include_json:
         patterns.append("*.json")
 
-    files = [
-        p
-        for p in _candidate_files(PROJECT_ROOT, patterns, recursive=False)
-        if _is_stale(p, cutoff, None)
-    ]
+    files = [p for p in _candidate_files(PROJECT_ROOT, patterns, recursive=False) if _is_stale(p, cutoff, None)]
     if not files:
         return []
     return [ArtifactPlan(name="root", paths=files, reason="mtime older than cutoff")]
@@ -344,11 +332,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.only != "all":
         all_plans = {args.only: all_plans[args.only]} if args.only in all_plans else {}
 
-    candidates = _flatten([
-        plan
-        for plans in all_plans.values()
-        for plan in plans
-    ])
+    candidates = _flatten([plan for plans in all_plans.values() for plan in plans])
 
     eligible = []
     protected = 0
@@ -379,7 +363,7 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.dry_run:
         print(f"Dry-run finished. Candidates: {len(eligible)}")
-        print(f"No files were deleted.")
+        print("No files were deleted.")
         return 0
 
     print(f"Deleted: {removed}")

@@ -6,6 +6,7 @@ pages from an identity-conflict manifest, writes source hitter rows, and
 generates proposed row-level remaps only when a current DB row matches exactly
 one source row with a concrete source player id.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -159,10 +160,13 @@ def flatten_hitter_evidence(
 
 
 def _table_exists(conn: sqlite3.Connection, table_name: str) -> bool:
-    return conn.execute(
-        "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?",
-        (table_name,),
-    ).fetchone() is not None
+    return (
+        conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?",
+            (table_name,),
+        ).fetchone()
+        is not None
+    )
 
 
 def _columns(conn: sqlite3.Connection, table_name: str) -> set[str]:
@@ -334,7 +338,13 @@ def propose_identity_conflict_updates(
                     "reason": "no_source_match" if not matches else "multiple_source_matches",
                     "match_count": len(matches),
                     "source_player_ids": ",".join(
-                        sorted({_norm_text(match.get("source_player_id")) for match in matches if match.get("source_player_id")})
+                        sorted(
+                            {
+                                _norm_text(match.get("source_player_id"))
+                                for match in matches
+                                if match.get("source_player_id")
+                            }
+                        )
                     ),
                 }
             )

@@ -1,10 +1,13 @@
 import datetime
+
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
-from src.models.game import Game, GamePitchingStat
-from src.models.season import KboSeason
-from src.models.player import PlayerBasic
+
 from src.aggregators.season_stat_aggregator import SeasonStatAggregator
+from src.models.game import Game, GamePitchingStat
+from src.models.player import PlayerBasic
+from src.models.season import KboSeason
+
 
 def test_aggregate_pitching_season_decisions(tmp_path):
     # Setup test database
@@ -16,20 +19,20 @@ def test_aggregate_pitching_season_decisions(tmp_path):
         PlayerBasic.__table__,
     ):
         table.create(bind=engine)
-        
+
     SessionLocal = sessionmaker(bind=engine)
-    
+
     with SessionLocal() as session:
         # Seed Season
         season = KboSeason(season_id=1, season_year=2025, league_type_code=1, league_type_name="KBO 정규시즌")
         session.add(season)
-        
+
         # Seed Games
         g1 = Game(game_id="20250401OBWO0", season_id=1, game_date=datetime.date(2025, 4, 1))
         g2 = Game(game_id="20250402OBWO0", season_id=1, game_date=datetime.date(2025, 4, 2))
         g3 = Game(game_id="20250403OBWO0", season_id=1, game_date=datetime.date(2025, 4, 3))
         session.add_all([g1, g2, g3])
-        
+
         # Seed Pitching Stats
         # Pitcher has 3 games:
         # Game 1: decision='W', wins=1
@@ -78,7 +81,7 @@ def test_aggregate_pitching_season_decisions(tmp_path):
         )
         session.add_all([p1, p2, p3])
         session.commit()
-        
+
         # Test aggregate_pitching_season
         stats = SeasonStatAggregator.aggregate_pitching_season(session, 9999, 2025, "regular")
         assert stats is not None
@@ -89,7 +92,7 @@ def test_aggregate_pitching_season_decisions(tmp_path):
         assert stats["holds"] == 0
         assert stats["innings_outs"] == 39
         assert stats["innings_pitched"] == 13.0
-        
+
         # Test aggregate_pitching_season_bulk
         bulk_stats = SeasonStatAggregator.aggregate_pitching_season_bulk(session, 2025, "regular")
         assert len(bulk_stats) == 1

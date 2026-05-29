@@ -2,18 +2,16 @@
 KBO Schedule Crawler POC
 Collects game IDs from the KBO schedule page
 """
-import logging
-import asyncio
-from datetime import datetime
-from typing import List, Dict, Optional, Any
-from playwright.async_api import Page
 
+import asyncio
+import logging
+from datetime import datetime
+from typing import Any
+
+from playwright.async_api import Page
 
 logger = logging.getLogger(__name__)
 
-from src.utils.team_codes import team_code_from_game_id_segment, resolve_team_code, normalize_kbo_game_id
-from src.utils.playwright_pool import AsyncPlaywrightPool
-from src.utils.request_policy import RequestPolicy
 from src.utils.compliance import compliance
 from src.utils.game_status import (
     GAME_STATUS_CANCELLED,
@@ -25,7 +23,10 @@ from src.utils.game_status import (
     GAME_STATUS_SUSPENDED,
     normalize_game_status,
 )
+from src.utils.playwright_pool import AsyncPlaywrightPool
+from src.utils.request_policy import RequestPolicy
 from src.utils.schedule_validation import validate_schedule_game_payload
+from src.utils.team_codes import normalize_kbo_game_id, resolve_team_code, team_code_from_game_id_segment
 
 
 class ScheduleCrawler:
@@ -41,23 +42,23 @@ class ScheduleCrawler:
     def __init__(
         self,
         request_delay: float = 1.5,
-        pool: Optional[AsyncPlaywrightPool] = None,
-        policy: Optional[RequestPolicy] = None,
+        pool: AsyncPlaywrightPool | None = None,
+        policy: RequestPolicy | None = None,
     ):
         self.base_url = "https://www.koreabaseball.com/Schedule/Schedule.aspx"
         self.request_delay = request_delay
         self.pool = pool
         self.policy = policy or RequestPolicy(min_delay=request_delay)
-        self._last_failure_reason: Dict[str, str] = {}
+        self._last_failure_reason: dict[str, str] = {}
 
-    def get_last_failure_reason(self, key: str) -> Optional[str]:
+    def get_last_failure_reason(self, key: str) -> str | None:
         return self._last_failure_reason.get(key)
 
     def _schedule_key(self, year: int, month: int, series_id: str | None = None) -> str:
         suffix = series_id if series_id is not None else "all"
         return f"{year}-{month:02d}:{suffix}"
 
-    async def crawl_schedule(self, year: int, month: int, series_id: str = None) -> List[Dict]:
+    async def crawl_schedule(self, year: int, month: int, series_id: str = None) -> list[dict]:
         """
         지정된 연도와 월의 경기 일정을 크롤링하는 메인 메서드.
 
@@ -89,7 +90,7 @@ class ScheduleCrawler:
             if owns_pool:
                 await pool.close()
 
-    async def crawl_season(self, year: int, months: Optional[List[int]] = None, series_id: str = None) -> List[Dict]:
+    async def crawl_season(self, year: int, months: list[int] | None = None, series_id: str = None) -> list[dict]:
         """
         주어진 시즌의 여러 달에 걸쳐 경기 일정을 크롤링합니다.
 
@@ -99,7 +100,7 @@ class ScheduleCrawler:
             series_id: 시리즈 ID (옵션)
         """
         months = months or list(range(3, 11))
-        all_games: List[Dict] = []
+        all_games: list[dict] = []
 
         pool = self.pool or AsyncPlaywrightPool(max_pages=1)
         owns_pool = self.pool is None
@@ -117,7 +118,6 @@ class ScheduleCrawler:
         finally:
             if owns_pool:
                 await pool.close()
-
 
     async def _navigate_schedule_page(
         self,
@@ -176,7 +176,7 @@ class ScheduleCrawler:
 
         return True, "ok"
 
-    async def _crawl_month(self, page: Page, year: int, month: int, series_id: str = None) -> List[Dict]:
+    async def _crawl_month(self, page: Page, year: int, month: int, series_id: str = None) -> list[dict]:
         """특정 월의 경기 일정 페이지에서 정보를 추출합니다.
         series_id가 지정되지 않은 경우 전 시리즈(시범/정규/포스트)를 순회합니다.
         """
@@ -187,7 +187,7 @@ class ScheduleCrawler:
         if not ok:
             self._last_failure_reason[crawl_key] = failure_reason
             return []
-        
+
         # 1. 연도 및 월 선택 (Postback 발생 가능)
         ok, failure_reason = await self._select_year_month(page, year, month)
         if not ok:
@@ -198,46 +198,45 @@ class ScheduleCrawler:
         if not ok:
             self._last_failure_reason[crawl_key] = failure_reason
             return []
-        
+
         # 2. 시리즈 목록 확인
         all_series_options = await page.eval_on_selector_all(
-            '#ddlSeries option', 
-            'elements => elements.map(el => ({text: el.innerText, value: el.value}))'
+            "#ddlSeries option", "elements => elements.map(el => ({text: el.innerText, value: el.value}))"
         )
-        
-        target_series = [series_id] if series_id else [opt['value'] for opt in all_series_options if opt['value']]
-        
+
+        target_series = [series_id] if series_id else [opt["value"] for opt in all_series_options if opt["value"]]
+
         all_games = []
         seen_game_ids = set()
-        
+
         # Mapping from numeric series ID to canonical season_type
         # Source: src/crawlers/player_batting_all_series_crawler.py
         series_id_to_key = {
-            '0': 'regular',
-            '1': 'exhibition',
-            '3': 'semi_playoff',
-            '4': 'wildcard',
-            '5': 'playoff',
-            '7': 'korean_series'
+            "0": "regular",
+            "1": "exhibition",
+            "3": "semi_playoff",
+            "4": "wildcard",
+            "5": "playoff",
+            "7": "korean_series",
         }
-        
+
         for sid in target_series:
             print(f"[NAV] Selecting Series: {sid} for {year}-{month:02d}")
             try:
                 ok, failure_reason = await self._select_option_with_retry(
                     page,
-                    '#ddlSeries',
+                    "#ddlSeries",
                     sid,
                     label="series",
                 )
                 if not ok:
                     self._last_failure_reason[crawl_key] = failure_reason
                     continue
-                
-                season_type = series_id_to_key.get(sid, 'regular')
+
+                season_type = series_id_to_key.get(sid, "regular")
                 month_games = await self._extract_games(page, year, month, season_type=season_type)
                 for g in month_games:
-                    gid = g.get('game_id')
+                    gid = g.get("game_id")
                     if gid and gid not in seen_game_ids:
                         all_games.append(g)
                         seen_game_ids.add(gid)
@@ -246,28 +245,28 @@ class ScheduleCrawler:
 
         if not all_games and not self._last_failure_reason.get(crawl_key):
             self._last_failure_reason[crawl_key] = "schedule_empty"
-                
+
         return all_games
 
     async def _select_year_month(self, page: Page, year: int, month: int) -> tuple[bool, str]:
         """연도와 월 드롭다운을 선택하고 페이지 갱신을 기다립니다."""
-        current_year = await page.eval_on_selector('#ddlYear', 'el => el.value')
+        current_year = await page.eval_on_selector("#ddlYear", "el => el.value")
         if current_year != str(year):
             ok, failure_reason = await self._select_option_with_retry(
                 page,
-                '#ddlYear',
+                "#ddlYear",
                 str(year),
                 label="year",
             )
             if not ok:
                 return False, failure_reason
-            
-        current_month = await page.eval_on_selector('#ddlMonth', 'el => el.value')
+
+        current_month = await page.eval_on_selector("#ddlMonth", "el => el.value")
         target_month_str = f"{month:02d}"
         if current_month != target_month_str:
             ok, failure_reason = await self._select_option_with_retry(
                 page,
-                '#ddlMonth',
+                "#ddlMonth",
                 target_month_str,
                 label="month",
             )
@@ -298,12 +297,12 @@ class ScheduleCrawler:
         text = str(status or "").strip()
         return labels.get(text, GAME_STATUS_SCHEDULED)
 
-    async def _extract_games(self, page: Page, year: int, month: int, season_type: str = 'regular') -> List[Dict]:
+    async def _extract_games(self, page: Page, year: int, month: int, season_type: str = "regular") -> list[dict]:
         """페이지에서 경기 관련 데이터를 추출합니다. (JS Fast Path)
 
         `gameId`가 포함된 모든 링크를 찾아, 각 링크에서 경기 ID, 날짜, 팀 정보 등을 파싱합니다.
         """
-        
+
         # JS를 사용하여 모든 게임 정보를 한 번에 추출
         extraction_script = r"""
         ({year, season_type}) => {
@@ -369,7 +368,7 @@ class ScheduleCrawler:
                     matchCellIndex = 1;
                     stadiumCellIndex = 6;
                 }
-                
+
                 if (!currentDateString) return;
 
                 const timeText = cells[timeCellIndex] ? cells[timeCellIndex].innerText.trim() : "";
@@ -380,14 +379,14 @@ class ScheduleCrawler:
 
                 const teams = matchText.split("vs");
                 if (teams.length !== 2) return;
-                
+
                 // Strip trailing/leading numbers and whitespace (e.g., "삼성 0" -> "삼성")
                 const awayName = teams[0].replace(/[\d\s]+$/, "").replace(/^[\d\s]+/, "").trim();
                 const homeName = teams[1].replace(/[\d\s]+$/, "").replace(/^[\d\s]+/, "").trim();
 
                 const stadium = findStadium(cells, matchCellIndex);
                 const status = inferStatus(tr.innerText);
-                
+
                 // Construct Game ID only if link is missing
                 const link = tr.querySelector('a[href*="gameId="]');
                 if (link) return;
@@ -405,7 +404,7 @@ class ScheduleCrawler:
                     doubleheader_no: 0,
                     game_status: status,
                     crawl_status: 'text_parsed',
-                    url_suffix: '', 
+                    url_suffix: '',
                     game_time: timeText,
                     stadium: stadium
                 });
@@ -420,9 +419,9 @@ class ScheduleCrawler:
                 const gameId = match[1];
                 if (linkSet.has(gameId)) return;
                 linkSet.add(gameId);
-                
+
                 const gameDate = gameId.substring(0, 8);
-                
+
                 // Flexible segment extraction: search for team codes in the remaining string
                 const suffix = gameId.substring(8);
                 let away_segment = "";
@@ -456,7 +455,7 @@ class ScheduleCrawler:
                     game_date: gameDate,
                     season_year: year,
                     season_type: season_type,
-                    away_segment: away_segment, 
+                    away_segment: away_segment,
                     home_segment: home_segment,
                     doubleheader_no: dh,
                     game_status: status,
@@ -476,59 +475,61 @@ class ScheduleCrawler:
             games = []
 
             for g in raw_games:
-                away_code = team_code_from_game_id_segment(g.get('away_segment'), year)
-                home_code = team_code_from_game_id_segment(g.get('home_segment'), year)
-                
+                away_code = team_code_from_game_id_segment(g.get("away_segment"), year)
+                home_code = team_code_from_game_id_segment(g.get("home_segment"), year)
+
                 # Fallback Construction if game_id is missing (future games or link not found)
-                if not g.get('game_id'):
-                    away_name = g.get('away_name')
-                    home_name = g.get('home_name')
-                    
+                if not g.get("game_id"):
+                    away_name = g.get("away_name")
+                    home_name = g.get("home_name")
+
                     # Pass 'year' to ensure history-aware resolution
                     away_code = resolve_team_code(away_name, year)
                     home_code = resolve_team_code(home_name, year)
-                    
+
                     if not away_code or not home_code:
                         print(f"[WARN] Skipping game due to unresolved team names: {away_name} vs {home_name}")
                         continue
-                    
+
                     # KBO Website uses LEGACY codes in Game IDs.
                     # We must map our canonical codes (KH, DB, SSG, KIA) to KBO legacy (WO, OB, SK, HT).
                     KBO_LEGACY_CODES = {
                         "KH": "WO",  # Kiwoom -> Woori
                         "DB": "OB",  # Doosan -> OB
-                        "SSG": "SK", # SSG -> SK (Wyverns)
-                        "KIA": "HT", # KIA -> Haitai
+                        "SSG": "SK",  # SSG -> SK (Wyverns)
+                        "KIA": "HT",  # KIA -> Haitai
                         "LT": "LT",
                         "LG": "LG",
                         "NC": "NC",
                         "HH": "HH",
                         "KT": "KT",
-                        "SS": "SS"
+                        "SS": "SS",
                     }
-                    
+
                     kbo_away_code = KBO_LEGACY_CODES.get(away_code, away_code)
                     kbo_home_code = KBO_LEGACY_CODES.get(home_code, home_code)
 
-                    if g.get('game_date') and kbo_away_code and kbo_home_code:
+                    if g.get("game_date") and kbo_away_code and kbo_home_code:
                         # Construct ID: YYYYMMDD + AWAY + HOME + DH
-                        dh = g.get('doubleheader_no', 0)
+                        dh = g.get("doubleheader_no", 0)
                         constructed_id = f"{g['game_date']}{kbo_away_code}{kbo_home_code}{dh}"
-                        g['game_id'] = constructed_id                
-                
+                        g["game_id"] = constructed_id
+
                 schedule_game = {
-                    'game_id': normalize_kbo_game_id(g['game_id']),
-                    'game_date': g['game_date'],
-                    'season_year': g['season_year'],
-                    'season_type': g['season_type'],
-                    'away_team_code': away_code,
-                    'home_team_code': home_code,
-                    'doubleheader_no': g['doubleheader_no'],
-                    'game_status': self._normalize_schedule_status(g.get('game_status')),
-                    'crawl_status': g['crawl_status'],
-                    'game_time': g.get('game_time'),
-                    'stadium': g.get('stadium'),
-                    'url': f"https://www.koreabaseball.com{g['url_suffix']}" if g.get('url_suffix') and g['url_suffix'].startswith('/') else g.get('url_suffix')
+                    "game_id": normalize_kbo_game_id(g["game_id"]),
+                    "game_date": g["game_date"],
+                    "season_year": g["season_year"],
+                    "season_type": g["season_type"],
+                    "away_team_code": away_code,
+                    "home_team_code": home_code,
+                    "doubleheader_no": g["doubleheader_no"],
+                    "game_status": self._normalize_schedule_status(g.get("game_status")),
+                    "crawl_status": g["crawl_status"],
+                    "game_time": g.get("game_time"),
+                    "stadium": g.get("stadium"),
+                    "url": f"https://www.koreabaseball.com{g['url_suffix']}"
+                    if g.get("url_suffix") and g["url_suffix"].startswith("/")
+                    else g.get("url_suffix"),
                 }
                 is_valid, failure_reason = validate_schedule_game_payload(
                     schedule_game,
@@ -544,22 +545,21 @@ class ScheduleCrawler:
                     continue
 
                 games.append(schedule_game)
-            
-            
+
         except Exception:
             logger.exception("[WARN] Error extracting game (JS)")
             return []
-            
+
         if not games:
-             # Debugging: Check if table exists or content
-             content = await page.content()
-             print(f"[DEBUG] No games found. Page content len: {len(content)}")
-             if "gameId=" in content:
-                 print("[DEBUG] 'gameId=' string FOUND in HTML but extraction failed.")
-             else:
-                 print("[DEBUG] 'gameId=' string NOT found in HTML.")
-                 # Dump first few rows of the table to see structure
-                 debug_script = """
+            # Debugging: Check if table exists or content
+            content = await page.content()
+            print(f"[DEBUG] No games found. Page content len: {len(content)}")
+            if "gameId=" in content:
+                print("[DEBUG] 'gameId=' string FOUND in HTML but extraction failed.")
+            else:
+                print("[DEBUG] 'gameId=' string NOT found in HTML.")
+                # Dump first few rows of the table to see structure
+                debug_script = """
                  () => {
                      const rows = document.querySelectorAll('.tbl tbody tr');
                      const data = [];
@@ -569,19 +569,19 @@ class ScheduleCrawler:
                      return data;
                  }
                  """
-                 try:
-                     rows_text = await page.evaluate(debug_script)
-                     print(f"[DEBUG] Table Rows Sample: {rows_text}")
-                 except Exception:
-                     pass
-                  
+                try:
+                    rows_text = await page.evaluate(debug_script)
+                    print(f"[DEBUG] Table Rows Sample: {rows_text}")
+                except Exception:
+                    pass
+
         return games
 
     def _extract_game_id(self, href: str) -> str:
         """URL(href)에서 game_id를 안전하게 추출합니다."""
         try:
-            if 'gameId=' in href:
-                game_id = href.split('gameId=')[1].split('&')[0]
+            if "gameId=" in href:
+                game_id = href.split("gameId=")[1].split("&")[0]
                 return game_id
         except Exception:
             pass
@@ -596,11 +596,11 @@ async def main():
     now = datetime.now()
     games = await crawler.crawl_schedule(now.year, now.month)
 
-    print(f"\n📊 Schedule Summary:")
+    print("\n📊 Schedule Summary:")
     print(f"Total games found: {len(games)}")
 
     if games:
-        print(f"\n📝 First 5 games:")
+        print("\n📝 First 5 games:")
         for game in games[:5]:
             print(f"  - {game['game_id']} | {game['game_date']}")
 

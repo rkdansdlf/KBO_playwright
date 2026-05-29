@@ -1,12 +1,12 @@
 """
 Resource blocking helpers for Playwright (sync + async).
 """
+
 from __future__ import annotations
 
-from typing import Iterable, Set
+from typing import Iterable
 
-
-DEFAULT_BLOCKED_RESOURCE_TYPES: Set[str] = {"image", "media", "font"}
+DEFAULT_BLOCKED_RESOURCE_TYPES: set[str] = {"image", "media", "font"}
 
 
 async def install_async_resource_blocking(target, blocked_types: Iterable[str] | None = None) -> None:

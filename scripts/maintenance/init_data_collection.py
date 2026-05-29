@@ -14,16 +14,17 @@ Deprecated for operational DB writes:
 5. Season Game Schedule - Collect game IDs
 6. Game Detail - Collect box scores, player stats
 """
+
 import argparse
 import asyncio
 import json
-from pathlib import Path
 from datetime import datetime
+from pathlib import Path
 
+from src.crawlers.game_detail_crawler import GameDetailCrawler
 from src.crawlers.player_list_crawler import PlayerListCrawler
 from src.crawlers.player_profile_crawler import PlayerProfileCrawler
 from src.crawlers.schedule_crawler import ScheduleCrawler
-from src.crawlers.game_detail_crawler import GameDetailCrawler
 from src.repositories.crawl_run_repository import CrawlRunRepository
 from src.repositories.player_basic_repository import PlayerBasicRepository
 from src.services.player_status_confirmer import PlayerStatusConfirmer
@@ -45,7 +46,7 @@ async def step1_collect_player_list(season_year: int = 2024, confirm_limit: int 
     output_dir.mkdir(parents=True, exist_ok=True)
 
     output_file = output_dir / f"player_list_{season_year}.json"
-    with open(output_file, 'w', encoding='utf-8') as f:
+    with open(output_file, "w", encoding="utf-8") as f:
         json.dump(result, f, ensure_ascii=False, indent=2)
 
     print(f"\n💾 Saved player list to: {output_file}")
@@ -71,11 +72,11 @@ async def step2_collect_player_profiles(player_list: dict, limit: int = 5, concu
     crawler = PlayerProfileCrawler()
     profiles = []
 
-    all_players = player_list['hitters'][:limit] + player_list['pitchers'][:limit]
+    all_players = player_list["hitters"][:limit] + player_list["pitchers"][:limit]
     semaphore = asyncio.Semaphore(max(1, concurrency))
 
     async def fetch(idx: int, player: dict):
-        player_id = player.get('player_id')
+        player_id = player.get("player_id")
         if not player_id:
             print(f"⚠️  Skipping {player.get('player_name')} - no player ID")
             return None
@@ -92,7 +93,7 @@ async def step2_collect_player_profiles(player_list: dict, limit: int = 5, concu
     output_dir.mkdir(parents=True, exist_ok=True)
 
     output_file = output_dir / f"player_profiles_{datetime.now().strftime('%Y%m%d')}.json"
-    with open(output_file, 'w', encoding='utf-8') as f:
+    with open(output_file, "w", encoding="utf-8") as f:
         json.dump(profiles, f, ensure_ascii=False, indent=2)
 
     print(f"\n💾 Saved {len(profiles)} player profiles to: {output_file}")
@@ -137,7 +138,7 @@ async def step5_collect_schedule(year: int, month: int):
     output_dir.mkdir(parents=True, exist_ok=True)
 
     output_file = output_dir / f"schedule_{year}_{month:02d}.json"
-    with open(output_file, 'w', encoding='utf-8') as f:
+    with open(output_file, "w", encoding="utf-8") as f:
         json.dump(games, f, ensure_ascii=False, indent=2)
 
     print(f"\n💾 Saved schedule to: {output_file}")
@@ -161,7 +162,7 @@ async def step6_collect_game_details(games: list, limit: int = 3, concurrency: i
     async def fetch(idx: int, game: dict):
         async with semaphore:
             print(f"\n[{idx}/{len(targets)}] Crawling game: {game['game_id']}")
-            return await crawler.crawl_game(game['game_id'], game['game_date'])
+            return await crawler.crawl_game(game["game_id"], game["game_date"])
 
     tasks = [fetch(i + 1, game) for i, game in enumerate(targets)]
     results = await asyncio.gather(*tasks)
@@ -172,7 +173,7 @@ async def step6_collect_game_details(games: list, limit: int = 3, concurrency: i
     output_dir.mkdir(parents=True, exist_ok=True)
 
     output_file = output_dir / f"game_details_{datetime.now().strftime('%Y%m%d')}.json"
-    with open(output_file, 'w', encoding='utf-8') as f:
+    with open(output_file, "w", encoding="utf-8") as f:
         json.dump(game_details, f, ensure_ascii=False, indent=2)
 
     print(f"\n💾 Saved {len(game_details)} game details to: {output_file}")
@@ -218,7 +219,7 @@ async def run_pipeline(args: argparse.Namespace):
 
         # Step 2: Player Profiles (limited to 5 players for POC)
         profiles = []
-        if not args.skip_profiles and (player_list['hitters'] or player_list['pitchers']):
+        if not args.skip_profiles and (player_list["hitters"] or player_list["pitchers"]):
             profiles = await step2_collect_player_profiles(
                 player_list,
                 limit=args.profile_limit,
@@ -255,22 +256,22 @@ async def run_pipeline(args: argparse.Namespace):
         # Summary
         print("\n=== Player Classification Summary ===")
         all_entries = (
-            player_list.get('hitters', [])
-            + player_list.get('pitchers', [])
-            + player_list.get('retired', [])
-            + player_list.get('staff', [])
+            player_list.get("hitters", [])
+            + player_list.get("pitchers", [])
+            + player_list.get("retired", [])
+            + player_list.get("staff", [])
         )
         confirmed_profiles = sum(1 for entry in all_entries if entry.get("status_source") == "profile")
         heuristic_only = len(all_entries) - confirmed_profiles
-        active_total = len(player_list.get('hitters', [])) + len(player_list.get('pitchers', []))
-        retired_total = len(player_list.get('retired', []))
-        staff_total = len(player_list.get('staff', []))
+        active_total = len(player_list.get("hitters", [])) + len(player_list.get("pitchers", []))
+        retired_total = len(player_list.get("retired", []))
+        staff_total = len(player_list.get("staff", []))
         print(f"Active players: {active_total}")
         print(f"Retired players: {retired_total}")
         print(f"Staff entries: {staff_total}")
         print(f"Confirmed by profile: {confirmed_profiles}")
         print(f"Heuristic only: {heuristic_only}")
-        print(f"\n📊 Collection Summary:")
+        print("\n📊 Collection Summary:")
         print(f"  Profiles collected: {len(profiles)}")
         print(f"  Games scheduled: {len(games)}")
         print(f"  Game details collected: {len(game_details)}")
@@ -290,6 +291,7 @@ async def run_pipeline(args: argparse.Namespace):
     except Exception as e:
         print(f"\n❌ Error during data collection: {e}")
         import traceback
+
         traceback.print_exc()
 
 

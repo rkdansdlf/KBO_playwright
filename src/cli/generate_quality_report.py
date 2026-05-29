@@ -2,18 +2,20 @@
 KBO Daily Data Quality Report Generator.
 Analyzes daily data integrity and statistical consistency.
 """
+
 from __future__ import annotations
 
 import argparse
 import json
 import logging
-from datetime import datetime, date, timedelta
+from datetime import date, datetime, timedelta
 from pathlib import Path
-from typing import Any, Dict, Sequence
+from typing import Any, Sequence
 from zoneinfo import ZoneInfo
 
 from sqlalchemy import MetaData, Table, func, inspect, or_, select
 from sqlalchemy.exc import SQLAlchemyError
+
 from src.db.engine import SessionLocal
 from src.models.game import (
     Game,
@@ -23,15 +25,13 @@ from src.models.game import (
     GameMetadata,
     GamePitchingStat,
     GamePlayByPlay,
-    GameSummary,
 )
 from src.models.player import PlayerBasic, PlayerSeasonBatting
 from src.models.season import KboSeason
-from src.validators.quality_gate import run_quality_gate
-from src.validators.standings_integrity import validate_standings_integrity
 from src.utils.alerting import SlackWebhookClient
 from src.utils.game_status import COMPLETED_LIKE_GAME_STATUSES
-
+from src.validators.quality_gate import run_quality_gate
+from src.validators.standings_integrity import validate_standings_integrity
 
 _KST = ZoneInfo("Asia/Seoul")
 _LOGGER = logging.getLogger(__name__)
@@ -83,15 +83,12 @@ def _get_new_players(session, target_dt: date) -> list[dict[str, Any]]:
 
     day_start = datetime.combine(target_dt, datetime.min.time())
     day_end = datetime.combine(target_dt, datetime.max.time())
-    rows = (
-        session.execute(
-            select(table.c.player_id, table.c.name)
-            .where(table.c.created_at >= day_start)
-            .where(table.c.created_at <= day_end)
-            .order_by(table.c.player_id)
-        )
-        .all()
-    )
+    rows = session.execute(
+        select(table.c.player_id, table.c.name)
+        .where(table.c.created_at >= day_start)
+        .where(table.c.created_at <= day_end)
+        .order_by(table.c.player_id)
+    ).all()
     return [{"id": player_id, "name": name} for player_id, name in rows]
 
 
@@ -151,10 +148,10 @@ def get_relay_integrity_metrics(
     }
 
 
-def get_daily_metrics(session, target_date_str: str) -> Dict[str, Any]:
+def get_daily_metrics(session, target_date_str: str) -> dict[str, Any]:
     """Calculate core collection metrics for a specific date."""
     target_dt = datetime.strptime(target_date_str, "%Y%m%d").date()
-    
+
     # 1. Game Status Counts
     status_counts = (
         session.query(Game.game_status, func.count(Game.game_id))
@@ -163,7 +160,7 @@ def get_daily_metrics(session, target_date_str: str) -> Dict[str, Any]:
         .all()
     )
     status_map = {status: count for status, count in status_counts}
-    
+
     # 2. Detail Completion Analysis
     completed_games = (
         session.query(Game.game_id)
@@ -172,7 +169,7 @@ def get_daily_metrics(session, target_date_str: str) -> Dict[str, Any]:
         .all()
     )
     game_ids = [g[0] for g in completed_games]
-    
+
     detail_integrity = []
     for gid in game_ids:
         metrics = {
@@ -186,21 +183,21 @@ def get_daily_metrics(session, target_date_str: str) -> Dict[str, Any]:
         }
         metrics["is_complete"] = all(metrics.values())
         detail_integrity.append(metrics)
-    
+
     # 3. New Players
     new_players = _get_new_players(session, target_dt)
     relay_integrity = get_relay_integrity_metrics(session, target_dt)
     standings_integrity = validate_standings_integrity(session, target_dt)
-    
+
     # 4. Sabermetrics Highlights
     top_war_player = (
         session.query(PlayerBasic.name, PlayerSeasonBatting.extra_stats)
         .join(PlayerSeasonBatting, PlayerBasic.player_id == PlayerSeasonBatting.player_id)
         .filter(PlayerSeasonBatting.season == target_dt.year)
-        .filter(PlayerSeasonBatting.league == 'REGULAR')
+        .filter(PlayerSeasonBatting.league == "REGULAR")
         .all()
     )
-    
+
     # Simple extraction of best WAR player for that day (or season overall as a highlight)
     # Actually, let's just get the top WAR for the season so far as a regular anchor.
     best_player = None
@@ -215,25 +212,26 @@ def get_daily_metrics(session, target_date_str: str) -> Dict[str, Any]:
     # 5. Data Parity (Local vs OCI)
     parity_info = {"ok": True, "local_count": 0, "oci_count": 0, "diff": 0}
     try:
-        from sqlalchemy import create_engine, text
         import os
-        
+
+        from sqlalchemy import create_engine, text
+
         local_count = session.query(func.count(Game.game_id)).scalar()
         parity_info["local_count"] = local_count
-        
-        target_url = os.getenv('OCI_DB_URL') or os.getenv('TARGET_DATABASE_URL')
+
+        target_url = os.getenv("OCI_DB_URL") or os.getenv("TARGET_DATABASE_URL")
         if target_url:
             oci_engine = create_engine(target_url)
             with oci_engine.connect() as conn:
                 oci_count = conn.execute(text("SELECT count(*) FROM game")).scalar()
                 parity_info["oci_count"] = oci_count
                 parity_info["diff"] = oci_count - local_count
-                parity_info["ok"] = (parity_info["diff"] == 0)
+                parity_info["ok"] = parity_info["diff"] == 0
     except Exception as e:
         _LOGGER.error(f"Parity check failed: {e}")
         parity_info["ok"] = False
         parity_info["error"] = str(e)
-    
+
     return {
         "date": target_date_str,
         "status_counts": status_map,
@@ -244,17 +242,17 @@ def get_daily_metrics(session, target_date_str: str) -> Dict[str, Any]:
         "top_performer": best_player,
         "parity": parity_info,
         "total_games": sum(status_map.values()),
-        "completed_count": len(game_ids)
+        "completed_count": len(game_ids),
     }
 
 
-def format_telegram_report(metrics: Dict[str, Any], gate_result: Dict[str, Any]) -> str:
+def format_telegram_report(metrics: dict[str, Any], gate_result: dict[str, Any]) -> str:
     """Format the metrics and gate results into a readable Telegram message."""
     parity = metrics.get("parity") or {}
     parity_icon = "✅" if parity.get("ok", True) else "🚨"
-    
+
     lines = [f"{parity_icon} <b>KBO Quality Report ({metrics['date']})</b>\n"]
-    
+
     # Collection Status
     total = metrics["total_games"]
     comp = metrics["completed_count"]
@@ -264,8 +262,10 @@ def format_telegram_report(metrics: Dict[str, Any], gate_result: Dict[str, Any])
 
     # Parity Check
     if not parity.get("ok", True):
-        lines.append(f"❓ <b>Parity</b>: Local {parity.get('local_count')} / OCI {parity.get('oci_count')} (Diff: {parity.get('diff')})")
-    
+        lines.append(
+            f"❓ <b>Parity</b>: Local {parity.get('local_count')} / OCI {parity.get('oci_count')} (Diff: {parity.get('diff')})"
+        )
+
     # Detail Integrity
     incomplete = [d["game_id"] for d in metrics["detail_integrity"] if not d["is_complete"]]
     if not incomplete:
@@ -274,7 +274,7 @@ def format_telegram_report(metrics: Dict[str, Any], gate_result: Dict[str, Any])
         lines.append(f"⚠️ <b>Integrity</b>: {len(incomplete)} games missing details")
         for gid in incomplete[:3]:
             lines.append(f"   - {gid}")
-    
+
     # Statistical Consistency
     if gate_result["ok"]:
         lines.append("✅ <b>Stats</b>: Consistent with cumulative totals")
@@ -282,8 +282,10 @@ def format_telegram_report(metrics: Dict[str, Any], gate_result: Dict[str, Any])
         bat_miss = len(gate_result["batting"].get("mismatches", []))
         pit_miss = len(gate_result["pitching"].get("mismatches", []))
         lines.append(f"❌ <b>Stats</b>: {bat_miss + pit_miss} mismatches detected")
-        if bat_miss: lines.append(f"   - Batting: {bat_miss} issues")
-        if pit_miss: lines.append(f"   - Pitching: {pit_miss} issues")
+        if bat_miss:
+            lines.append(f"   - Batting: {bat_miss} issues")
+        if pit_miss:
+            lines.append(f"   - Pitching: {pit_miss} issues")
 
     # Sabermetrics highlight
     top = metrics.get("top_performer")
@@ -296,10 +298,7 @@ def format_telegram_report(metrics: Dict[str, Any], gate_result: Dict[str, Any])
     else:
         recent_count = relay_integrity.get("recent_missing_count", 0)
         season_count = relay_integrity.get("current_season_missing_count", 0)
-        lines.append(
-            "⚠️ <b>PBP</b>: "
-            f"{recent_count} recent / {season_count} current-season games missing"
-        )
+        lines.append(f"⚠️ <b>PBP</b>: {recent_count} recent / {season_count} current-season games missing")
         for gid in list(relay_integrity.get("missing_game_ids") or [])[:5]:
             lines.append(f"   - {gid}")
 
@@ -309,21 +308,18 @@ def format_telegram_report(metrics: Dict[str, Any], gate_result: Dict[str, Any])
     else:
         mismatch_count = len(standings_integrity.get("mismatches") or [])
         missing_score_count = len(standings_integrity.get("missing_score_games") or [])
-        lines.append(
-            "❌ <b>Standings</b>: "
-            f"{mismatch_count} mismatches / {missing_score_count} score gaps"
-        )
+        lines.append(f"❌ <b>Standings</b>: {mismatch_count} mismatches / {missing_score_count} score gaps")
         for item in list(standings_integrity.get("mismatches") or [])[:5]:
             team_code = item.get("team_code", "unknown")
             issue = item.get("issue", "mismatch")
             lines.append(f"   - {team_code}: {issue}")
-        
+
     # New Players
     if metrics["new_players"]:
         p_names = ", ".join([p["name"] for p in metrics["new_players"][:5]])
         count = len(metrics["new_players"])
         lines.append(f"🆕 <b>New Players</b>: {count} found ({p_names})")
-    
+
     return "\n".join(lines)
 
 
@@ -345,39 +341,36 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     target_date = args.date if args.date else datetime.now(_KST).strftime("%Y%m%d")
     year = int(target_date[:4])
-    
+
     with SessionLocal() as session:
         metrics = get_daily_metrics(session, target_date)
         gate_result = run_quality_gate(session, year)
-        
-    report_json = {
-        "metrics": metrics,
-        "quality_gate": gate_result,
-        "generated_at": datetime.now(_KST).isoformat()
-    }
-    
+
+    report_json = {"metrics": metrics, "quality_gate": gate_result, "generated_at": datetime.now(_KST).isoformat()}
+
     # Save to logs
     log_dir = Path("logs/quality_reports")
     log_dir.mkdir(parents=True, exist_ok=True)
     with open(log_dir / f"{target_date}.json", "w", encoding="utf-8") as f:
         json.dump(report_json, f, indent=2, ensure_ascii=False)
-        
+
     print(f"✅ Quality report saved to {log_dir}/{target_date}.json")
-    
+
     # Telegram Notification
     telegram_msg = format_telegram_report(metrics, gate_result)
-    
+
     should_notify = args.force_notify or (args.notify and _has_report_issues(metrics, gate_result))
-    
+
     if should_notify:
         print("🚀 Sending report to Telegram...")
         SlackWebhookClient.send_alert(telegram_msg)
     else:
         print("\n" + telegram_msg.replace("<b>", "").replace("</b>", ""))
-        
+
     return 0
 
 
 if __name__ == "__main__":
     import sys
+
     sys.exit(main())

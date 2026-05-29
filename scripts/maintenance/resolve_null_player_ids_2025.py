@@ -1,19 +1,21 @@
 #!/usr/bin/env python3
 """Resolve remaining 2025 NULL player_id values in game stats tables."""
+
 from __future__ import annotations
 
-import os
-import sys
 import shutil
+import sys
 from datetime import datetime
 from pathlib import Path
+
 from sqlalchemy import text
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from src.db.engine import SessionLocal, DATABASE_URL
+from src.db.engine import DATABASE_URL, SessionLocal
+
 
 def backup_db():
     if not DATABASE_URL.startswith("sqlite:///"):
@@ -27,6 +29,7 @@ def backup_db():
     backup_path.parent.mkdir(parents=True, exist_ok=True)
     shutil.copy2(db_path, backup_path)
     print(f"✅ DB backed up to: {backup_path}")
+
 
 def run_resolution():
     backup_db()
@@ -187,6 +190,7 @@ def run_resolution():
         # Commit all overrides so conservative resolver doesn't mix them up
         session.commit()
         print("🎉 Custom mappings committed successfully.")
+
 
 if __name__ == "__main__":
     run_resolution()

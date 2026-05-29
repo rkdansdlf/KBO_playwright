@@ -3,6 +3,7 @@
 주로 오프라인 테스트나 디버깅 목적으로 사용됩니다. 지정된 디렉터리에서 HTML 파일을
 읽어와 파싱한 후, 그 결과를 데이터베이스에 저장합니다.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -32,10 +33,10 @@ def ingest_mock_html(args: argparse.Namespace) -> None:
         with html_file.open("r", encoding="utf-8") as f:
             html = f.read()
         game_date = game_id[:8]
-        
+
         # HTML 내용을 파싱하여 구조화된 데이터로 변환합니다.
         payload = parse_game_detail_html(html, game_id, game_date)
-        
+
         # 변환된 데이터를 데이터베이스에 저장합니다.
         success = save_game_detail(payload)
         if success:
@@ -47,7 +48,9 @@ def ingest_mock_html(args: argparse.Namespace) -> None:
 def build_arg_parser() -> argparse.ArgumentParser:
     """CLI 인자 파서를 생성합니다."""
     parser = argparse.ArgumentParser(description="Ingest saved GameCenter HTML fixtures")
-    parser.add_argument("--fixtures-dir", type=str, default="tests/fixtures/game_details", help="HTML fixture 파일이 있는 디렉터리")
+    parser.add_argument(
+        "--fixtures-dir", type=str, default="tests/fixtures/game_details", help="HTML fixture 파일이 있는 디렉터리"
+    )
     parser.add_argument("--limit", type=int, default=None, help="처리할 최대 파일 수")
     return parser
 

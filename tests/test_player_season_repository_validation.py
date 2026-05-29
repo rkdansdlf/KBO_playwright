@@ -4,8 +4,7 @@ from sqlalchemy.orm import sessionmaker
 import src.repositories.player_season_pitching_repository as pitching_repo
 import src.repositories.safe_batting_repository as batting_repo
 import src.repositories.team_stats_repository as team_stats_repo
-from src.models.player import PlayerBasic, PlayerSeasonBatting, PlayerSeasonPitching
-from src.models.player import PlayerSeasonFielding
+from src.models.player import PlayerBasic, PlayerSeasonBatting, PlayerSeasonFielding, PlayerSeasonPitching
 from src.models.team import Team
 from src.repositories.player_stats_repository import PlayerSeasonFieldingRepository
 

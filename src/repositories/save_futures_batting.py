@@ -2,21 +2,15 @@
 Save Futures batting stats to database with UPSERT logic.
 Compatible with SQLite and MySQL.
 """
-from typing import List, Dict
-from sqlalchemy import create_engine
-from sqlalchemy.dialects.sqlite import insert as sqlite_insert
+
 from sqlalchemy.dialects.mysql import insert as mysql_insert
+from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 
 from src.db.engine import Engine, SessionLocal
 from src.models.player import PlayerSeasonBatting
 
 
-def save_futures_batting(
-    player_id_db: int,
-    rows: List[Dict],
-    league: str = "FUTURES",
-    level: str = "KBO2"
-) -> int:
+def save_futures_batting(player_id_db: int, rows: list[dict], league: str = "FUTURES", level: str = "KBO2") -> int:
     """
     Save Futures batting stats to player_season_batting table.
 
@@ -71,11 +65,24 @@ def save_futures_batting(
                     set_={
                         k: stmt.excluded[k]
                         for k in [
-                            "games", "at_bats", "runs", "hits", "doubles", "triples",
-                            "home_runs", "rbi", "walks", "hbp", "strikeouts",
-                            "stolen_bases", "avg", "obp", "slg", "source"
+                            "games",
+                            "at_bats",
+                            "runs",
+                            "hits",
+                            "doubles",
+                            "triples",
+                            "home_runs",
+                            "rbi",
+                            "walks",
+                            "hbp",
+                            "strikeouts",
+                            "stolen_bases",
+                            "avg",
+                            "obp",
+                            "slg",
+                            "source",
                         ]
-                    }
+                    },
                 )
             else:  # MySQL
                 stmt = mysql_insert(PlayerSeasonBatting).values(**values)
@@ -83,9 +90,22 @@ def save_futures_batting(
                     **{
                         k: stmt.inserted[k]
                         for k in [
-                            "games", "at_bats", "runs", "hits", "doubles", "triples",
-                            "home_runs", "rbi", "walks", "hbp", "strikeouts",
-                            "stolen_bases", "avg", "obp", "slg", "source"
+                            "games",
+                            "at_bats",
+                            "runs",
+                            "hits",
+                            "doubles",
+                            "triples",
+                            "home_runs",
+                            "rbi",
+                            "walks",
+                            "hbp",
+                            "strikeouts",
+                            "stolen_bases",
+                            "avg",
+                            "obp",
+                            "slg",
+                            "source",
                         ]
                     }
                 )

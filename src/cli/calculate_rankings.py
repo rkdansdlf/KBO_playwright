@@ -1,9 +1,10 @@
 """Rebuild supported stat_rankings from current season aggregates."""
+
 from __future__ import annotations
 
 import argparse
-from typing import Sequence
 from datetime import date, datetime
+from typing import Sequence
 
 from src.aggregators.ranking_aggregator import RankingAggregator
 from src.db.engine import SessionLocal
@@ -15,7 +16,6 @@ from src.models.player import (
     PlayerSeasonPitching,
 )
 from src.models.rankings import StatRanking
-from src.repositories.ranking_repository import RankingRepository
 
 
 def _dictify_rows(rows, label_lookup):
@@ -36,31 +36,51 @@ def _dictify_rows(rows, label_lookup):
 
 def rebuild_rankings(season: int) -> int:
     with SessionLocal() as session:
-        batting_rows = session.query(PlayerSeasonBatting).filter(
-            PlayerSeasonBatting.season == season,
-            PlayerSeasonBatting.league == "REGULAR",
-        ).all()
-        pitching_rows = session.query(PlayerSeasonPitching).filter(
-            PlayerSeasonPitching.season == season,
-            PlayerSeasonPitching.league == "REGULAR",
-        ).all()
+        batting_rows = (
+            session.query(PlayerSeasonBatting)
+            .filter(
+                PlayerSeasonBatting.season == season,
+                PlayerSeasonBatting.league == "REGULAR",
+            )
+            .all()
+        )
+        pitching_rows = (
+            session.query(PlayerSeasonPitching)
+            .filter(
+                PlayerSeasonPitching.season == season,
+                PlayerSeasonPitching.league == "REGULAR",
+            )
+            .all()
+        )
         # Fielding and baserunning use 'year' instead of 'season'
-        fielding_rows = session.query(PlayerSeasonFielding).filter(
-            PlayerSeasonFielding.year == season,
-        ).all()
-        baserunning_rows = session.query(PlayerSeasonBaserunning).filter(
-            PlayerSeasonBaserunning.year == season,
-        ).all()
+        fielding_rows = (
+            session.query(PlayerSeasonFielding)
+            .filter(
+                PlayerSeasonFielding.year == season,
+            )
+            .all()
+        )
+        baserunning_rows = (
+            session.query(PlayerSeasonBaserunning)
+            .filter(
+                PlayerSeasonBaserunning.year == season,
+            )
+            .all()
+        )
 
         player_ids = {row.player_id for row in batting_rows}
         player_ids.update(row.player_id for row in pitching_rows)
         player_ids.update(row.player_id for row in fielding_rows)
         player_ids.update(row.player_id for row in baserunning_rows)
 
-        label_lookup = {
-            row.player_id: row.name
-            for row in session.query(PlayerBasic).filter(PlayerBasic.player_id.in_(player_ids)).all()
-        } if player_ids else {}
+        label_lookup = (
+            {
+                row.player_id: row.name
+                for row in session.query(PlayerBasic).filter(PlayerBasic.player_id.in_(player_ids)).all()
+            }
+            if player_ids
+            else {}
+        )
 
         batting_dicts = _dictify_rows(batting_rows, label_lookup)
         pitching_dicts = _dictify_rows(pitching_rows, label_lookup)

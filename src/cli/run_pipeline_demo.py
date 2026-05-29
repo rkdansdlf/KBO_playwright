@@ -7,24 +7,25 @@
 3. (선택 사항) 실제 퓨처스리그 크롤러를 실행합니다.
 4. 처리된 데이터의 요약 정보를 출력합니다.
 """
+
 from __future__ import annotations
 
 import argparse
 import asyncio
 from pathlib import Path
-from typing import Sequence, Optional
+from typing import Sequence
 
 from sqlalchemy import func
 
 from src.db.engine import SessionLocal
 from src.models.game import Game, GameBattingStat, GamePitchingStat
-from src.parsers.schedule_parser import parse_schedule_html
 from src.parsers.game_detail_parser import parse_game_detail_html
+from src.parsers.schedule_parser import parse_schedule_html
 from src.repositories.game_repository import save_game_detail
 from src.services.schedule_collection_service import save_schedule_games
 
 
-def ingest_schedule_fixtures(fixtures_dir: Path, season_type: str, default_year: Optional[int]) -> int:
+def ingest_schedule_fixtures(fixtures_dir: Path, season_type: str, default_year: int | None) -> int:
     """경기 일정 fixture 파일들을 데이터베이스로 가져옵니다."""
     total = 0
     for html_file in sorted(fixtures_dir.glob("*.html")):
@@ -51,7 +52,7 @@ def ingest_game_fixtures(fixtures_dir: Path) -> int:
     return count
 
 
-async def run_futures(limit: Optional[int], season: int, delay: float, concurrency: int) -> None:
+async def run_futures(limit: int | None, season: int, delay: float, concurrency: int) -> None:
     """퓨처스리그 크롤러를 실행하는 래퍼(wrapper) 함수."""
     from src.cli.crawl_futures import crawl_futures
 
@@ -109,7 +110,13 @@ def build_arg_parser() -> argparse.ArgumentParser:
     """CLI 인자 파서를 생성합니다."""
     parser = argparse.ArgumentParser(description="End-to-end pipeline demo using saved fixtures.")
     parser.add_argument("--schedule-fixtures", type=str, default=None, help="경기 일정 HTML fixture가 있는 디렉터리")
-    parser.add_argument("--schedule-season-type", type=str, default="regular", choices=["preseason", "regular", "postseason"], help="적용할 시즌 유형")
+    parser.add_argument(
+        "--schedule-season-type",
+        type=str,
+        default="regular",
+        choices=["preseason", "regular", "postseason"],
+        help="적용할 시즌 유형",
+    )
     parser.add_argument("--schedule-year", type=int, default=None, help="적용할 시즌 연도")
     parser.add_argument("--game-fixtures", type=str, default=None, help="경기 상세 HTML fixture가 있는 디렉터리")
     parser.add_argument("--report-game-id", action="append", default=[], help="요약 보고서를 출력할 게임 ID")

@@ -1,11 +1,8 @@
-
 from sqlalchemy import text
-from src.db.engine import Engine
+
 from src.db.engine import Engine
 from src.models.base import Base
-from src.models.franchise import Franchise  # Required for FK
-from src.models.team import Team # Required for FK
-from src.models.team_history import TeamHistory  # Import to register table
+
 
 def run_migration():
     print("🛠️  Starting Team Schema Verification & Migration...")
@@ -33,7 +30,7 @@ def run_migration():
             if "duplicate column" in str(e).lower():
                 print("ℹ️  web_url already exists")
             else:
-                 print(f"⚠️  Alter error (web_url): {e}")
+                print(f"⚠️  Alter error (web_url): {e}")
 
         # 2. Alter teams
         try:
@@ -44,8 +41,8 @@ def run_migration():
             if "duplicate column" in str(e).lower():
                 print("ℹ️  is_active already exists")
             else:
-                 print(f"⚠️  Alter error (is_active): {e}")
-                 
+                print(f"⚠️  Alter error (is_active): {e}")
+
         try:
             conn.execute(text("ALTER TABLE teams ADD COLUMN aliases JSON"))
             print("✅ Added aliases to teams")
@@ -53,13 +50,14 @@ def run_migration():
             if "duplicate column" in str(e).lower():
                 print("ℹ️  aliases already exists")
             else:
-                 print(f"⚠️  Alter error (aliases): {e}")
+                print(f"⚠️  Alter error (aliases): {e}")
 
     # 3. Create team_history table
     # Using SQLAlchemy create_all feature which only creates missing tables
     print("Creating missing tables (team_history)...")
     Base.metadata.create_all(bind=Engine)
     print("✅ Schema Migration Complete.")
+
 
 if __name__ == "__main__":
     run_migration()

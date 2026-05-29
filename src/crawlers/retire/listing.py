@@ -1,18 +1,20 @@
 """
 Determine retired/inactive player IDs by comparing historical rosters with current active rosters.
 """
+
 from __future__ import annotations
 
 import asyncio
 import logging
 import sys
-from typing import Iterable, List, Set, Dict, Optional
-
+from typing import Iterable
 
 logger = logging.getLogger(__name__)
 
-from src.utils.playwright_pool import AsyncPlaywrightPool
+import contextlib
+
 from src.utils.compliance import compliance
+from src.utils.playwright_pool import AsyncPlaywrightPool
 from src.utils.throttle import throttle
 
 
@@ -21,7 +23,7 @@ class RetiredPlayerListingCrawler:
     Fetch player ID sets for historical seasons and compute inactive (retired) candidates.
     """
 
-    def __init__(self, request_delay: float = 1.5, pool: Optional[AsyncPlaywrightPool] = None):
+    def __init__(self, request_delay: float = 1.5, pool: AsyncPlaywrightPool | None = None):
         self.request_delay = request_delay
         self.pool = pool
         self.hitter_url = "https://www.koreabaseball.com/Record/Player/HitterBasic/Basic1.aspx"
@@ -32,7 +34,7 @@ class RetiredPlayerListingCrawler:
         if self.request_delay > throttle.default_delay:
             await asyncio.sleep(self.request_delay - throttle.default_delay)
 
-    async def collect_player_ids_for_year(self, season_year: int) -> Dict[str, str]:
+    async def collect_player_ids_for_year(self, season_year: int) -> dict[str, str]:
         """Collect all player IDs and names (hitters + pitchers) for a given season."""
         pool = self.pool or AsyncPlaywrightPool(max_pages=1)
         owns_pool = self.pool is None
@@ -50,7 +52,7 @@ class RetiredPlayerListingCrawler:
             if owns_pool:
                 await pool.close()
 
-    async def _crawl_record_page_ids(self, page, base_url: str, year: int) -> Dict[str, str]:
+    async def _crawl_record_page_ids(self, page, base_url: str, year: int) -> dict[str, str]:
         """Navigate to one record page and collect IDs across its pagination.
 
         Kept as the stable no-team-filter path used by compatibility tests and
@@ -68,10 +70,8 @@ class RetiredPlayerListingCrawler:
         series_selector = 'select[id$="ddlSeries_ddlSeries"], select[name*="ddlSeries"]'
         await page.wait_for_selector(season_selector, timeout=15000)
         await self._select_option_and_dispatch(page, season_selector, str(year))
-        try:
+        with contextlib.suppress(Exception):
             await page.wait_for_load_state("load", timeout=10000)
-        except Exception:
-            pass
         await page.wait_for_timeout(1000)
 
         try:
@@ -101,7 +101,7 @@ class RetiredPlayerListingCrawler:
             selector,
         )
 
-    async def _crawl_record_page_ids_with_teams(self, page, base_url: str, year: int) -> Dict[str, str]:
+    async def _crawl_record_page_ids_with_teams(self, page, base_url: str, year: int) -> dict[str, str]:
         """Navigate to record page, select year, and iterate through all teams to collect IDs and names."""
         if not await compliance.is_allowed(base_url):
             print(f"[COMPLIANCE] Blocked record listing: {base_url}", file=sys.stderr)
@@ -114,11 +114,12 @@ class RetiredPlayerListingCrawler:
         season_selector = 'select[id$="ddlSeason_ddlSeason"]'
         await page.wait_for_selector(season_selector, timeout=15000)
         await page.select_option(season_selector, str(year))
-        await page.evaluate("el => { if (el.onchange) el.onchange(); else el.dispatchEvent(new Event('change', { bubbles: true })); }", await page.query_selector(season_selector))
-        try:
+        await page.evaluate(
+            "el => { if (el.onchange) el.onchange(); else el.dispatchEvent(new Event('change', { bubbles: true })); }",
+            await page.query_selector(season_selector),
+        )
+        with contextlib.suppress(Exception):
             await page.wait_for_load_state("load", timeout=10000)
-        except Exception:
-            pass
         await page.wait_for_timeout(1000)
 
         # Get all team codes
@@ -129,29 +130,30 @@ class RetiredPlayerListingCrawler:
             val = await opt.get_attribute("value")
             if val and val != "" and val != "9999":
                 team_codes.append(val)
-        
+
         if not team_codes:
             # Fallback to no team selection (current page)
             return await self._collect_ids_from_pages(page, year)
 
-        all_players: Dict[str, str] = {}
+        all_players: dict[str, str] = {}
         for code in team_codes:
             print(f"    [Year {year}] Fetching team {code}", file=sys.stderr)
             await page.select_option(team_selector, code)
-            await page.evaluate("el => { if (el.onchange) el.onchange(); else el.dispatchEvent(new Event('change', { bubbles: true })); }", await page.query_selector(team_selector))
-            try:
+            await page.evaluate(
+                "el => { if (el.onchange) el.onchange(); else el.dispatchEvent(new Event('change', { bubbles: true })); }",
+                await page.query_selector(team_selector),
+            )
+            with contextlib.suppress(Exception):
                 await page.wait_for_load_state("load", timeout=10000)
-            except Exception:
-                pass
             await page.wait_for_timeout(500)
-            
+
             team_players = await self._collect_ids_from_pages(page, year)
             all_players.update(team_players)
-            
+
         return all_players
 
-    async def _collect_ids_from_pages(self, page, year: int) -> Dict[str, str]:
-        players: Dict[str, str] = {}
+    async def _collect_ids_from_pages(self, page, year: int) -> dict[str, str]:
+        players: dict[str, str] = {}
         page_num = 1
         while True:
             # Extract IDs and Names from current page
@@ -181,14 +183,9 @@ class RetiredPlayerListingCrawler:
                 current_page_val = int(current_active_text.strip())
 
                 next_page_btn = await page.query_selector(f"div.paging a:has-text('{current_page_val + 1}')")
-                
+
                 if not next_page_btn:
-                    next_selectors = [
-                        "a[id$='btnNext']",
-                        "a:has(img[alt='다음'])",
-                        "a:has-text('다음')",
-                        "a.next"
-                    ]
+                    next_selectors = ["a[id$='btnNext']", "a:has(img[alt='다음'])", "a:has-text('다음')", "a.next"]
                     for sel in next_selectors:
                         btn = await page.query_selector(f"div.paging {sel}")
                         if btn and await btn.is_visible():
@@ -207,8 +204,8 @@ class RetiredPlayerListingCrawler:
                 break
         return players
 
-    async def collect_historical_player_ids(self, seasons: Iterable[int]) -> Dict[str, str]:
-        historical_players: Dict[str, str] = {}
+    async def collect_historical_player_ids(self, seasons: Iterable[int]) -> dict[str, str]:
+        historical_players: dict[str, str] = {}
         seasons_list = list(seasons)
         print(f"🔍 Collecting historical player IDs for {len(seasons_list)} seasons in parallel...", file=sys.stderr)
 
@@ -235,7 +232,7 @@ class RetiredPlayerListingCrawler:
         start_year: int,
         end_year: int,
         active_year: int,
-    ) -> Set[str]:
+    ) -> set[str]:
         """
         Determine inactive player IDs by diffing historical seasons with active roster.
         Returns ONLY the set of IDs for backward compatibility.
@@ -247,16 +244,18 @@ class RetiredPlayerListingCrawler:
         historical_players = await self.collect_historical_player_ids(seasons)
         print(f"📡 Fetching active player IDs for {active_year}...", file=sys.stderr)
         active_players = await self.collect_player_ids_for_year(active_year)
-        
+
         historical_ids = set(historical_players.keys())
         active_ids = set(active_players.keys())
-        
+
         inactive = {pid for pid in historical_ids if pid and pid not in active_ids}
-        print(f"✨ Found {len(inactive)} inactive players out of {len(historical_ids)} total unique IDs.", file=sys.stderr)
+        print(
+            f"✨ Found {len(inactive)} inactive players out of {len(historical_ids)} total unique IDs.", file=sys.stderr
+        )
         return inactive
 
-    def _extract_ids(self, data: Dict[str, List[Dict]]) -> Set[str]:
-        ids: Set[str] = set()
+    def _extract_ids(self, data: dict[str, list[dict]]) -> set[str]:
+        ids: set[str] = set()
         for key in ("hitters", "pitchers"):
             for player in data.get(key, []):
                 player_id = player.get("player_id")
@@ -267,9 +266,7 @@ class RetiredPlayerListingCrawler:
 
 async def main():
     crawler = RetiredPlayerListingCrawler(request_delay=1.0)
-    inactive_ids = await crawler.determine_inactive_player_ids(
-        start_year=1982, end_year=2023, active_year=2024
-    )
+    inactive_ids = await crawler.determine_inactive_player_ids(start_year=1982, end_year=2023, active_year=2024)
     print(f"Inactive player IDs discovered: {len(inactive_ids)}")
 
 

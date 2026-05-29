@@ -19,9 +19,9 @@ ALTER TABLE public.franchises ADD CONSTRAINT uq_franchises_original_code UNIQUE 
 ALTER TABLE public.teams ADD COLUMN IF NOT EXISTS franchise_id INTEGER;
 
 -- 4. Add FK constraint
-ALTER TABLE public.teams 
-    ADD CONSTRAINT fk_teams_franchise 
-    FOREIGN KEY (franchise_id) 
+ALTER TABLE public.teams
+    ADD CONSTRAINT fk_teams_franchise
+    FOREIGN KEY (franchise_id)
     REFERENCES public.franchises(id);
 
 -- 5. Seed initial franchise data (Idempotent)

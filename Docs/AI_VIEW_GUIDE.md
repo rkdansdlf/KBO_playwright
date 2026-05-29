@@ -49,7 +49,7 @@
 경기 전/후에 필요한 모든 데이터를 한 번에 가져와서 LLM 프롬프트에 주입할 때 사용합니다.
 
 ```sql
-SELECT 
+SELECT
     game_id,
     game_status,
     preview_data,
@@ -62,7 +62,7 @@ WHERE game_id = '20250412SKLG0';
 특정 팀(예: 'LG')의 최근 경기 결과와 당시의 팀 지표(Metrics)를 분석할 때 유용합니다.
 
 ```sql
-SELECT 
+SELECT
     game_date,
     away_team,
     home_team,
@@ -81,7 +81,7 @@ LIMIT 5;
 어제 진행된 모든 경기의 주요 승부처 리스트를 가져와 요약 뉴스를 생성할 때 사용합니다.
 
 ```sql
-SELECT 
+SELECT
     game_id,
     review_wpa_data->'crucial_moments' as moments
 FROM v_ai_game_context
