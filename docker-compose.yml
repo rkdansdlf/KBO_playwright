@@ -1,5 +1,3 @@
-version: "3.9"
-
 services:
   crawler:
     build: .
@@ -22,4 +20,26 @@ services:
     volumes:
       - ./tests/fixtures:/app/tests/fixtures:ro
       - ./data:/app/data
+      - ./logs:/app/logs
     command: ["python", "-m", "src.cli.run_pipeline_demo", "--help"]
+
+  scheduler:
+    build: .
+    restart: always
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: sqlite:////app/data/kbo_dev.db
+      OCI_DB_URL: ${OCI_DB_URL:-}
+      TARGET_DATABASE_URL: ${TARGET_DATABASE_URL:-}
+      SOURCE_DATABASE_URL: sqlite:////app/data/kbo_dev.db
+    volumes:
+      - ./tests/fixtures:/app/tests/fixtures:ro
+      - ./data:/app/data
+      - ./logs:/app/logs
+    command: ["python", "scripts/scheduler.py"]
