@@ -123,7 +123,7 @@ def _resolve_schedule_season_id(session, game_data: dict[str, Any], existing_sea
             if mapped is not None:
                 return mapped
         except Exception:
-            pass
+            logger.warning("Failed to query season_id from database")
 
         # 2. Fallback to hardcoded historical rules for 2023, 2024, and 2025
         SEASON_DATE_RULES = {
@@ -173,7 +173,7 @@ def _resolve_schedule_season_id(session, game_data: dict[str, Any], existing_sea
                     if mapped is not None:
                         return mapped
             except Exception:
-                pass
+                logger.warning("Failed to apply season date rule")
 
     if season_year is None:
         return existing_season_id
@@ -195,6 +195,7 @@ def _resolve_schedule_season_id(session, game_data: dict[str, Any], existing_sea
             ).scalar()
         )
     except Exception:
+        logger.warning("Failed to query season_id from kbo_seasons")
         mapped = None
 
     if mapped is not None:
@@ -332,6 +333,7 @@ def _values_equal(left: Any, right: Any) -> bool:
         try:
             return Decimal(str(left)) == Decimal(str(right))
         except Exception:
+            logger.info("Decimal comparison fallback to equality")
             return left == right
     return left == right
 
@@ -446,6 +448,7 @@ def _ensure_game_stub(session, game_id: str) -> None:
     try:
         game_date = datetime.strptime(game_id[:8], "%Y%m%d").date()
     except Exception:
+        logger.warning("Failed to parse game date from game_id")
         game_date = datetime.now().date()
 
     away_team = None
@@ -458,6 +461,7 @@ def _ensure_game_stub(session, game_id: str) -> None:
     try:
         season_year = int(game_id[:4])
     except Exception:
+        logger.warning("Failed to parse season year from game_id")
         season_year = None
     if season_year is not None:
         try:
@@ -475,6 +479,7 @@ def _ensure_game_stub(session, game_id: str) -> None:
                 ).scalar()
             )
         except Exception:
+            logger.warning("Failed to query min season_id for year")
             season_id = None
         if season_id is None:
             season_id = season_year
@@ -918,6 +923,7 @@ def _safe_time(value: Any):
         if len(parts) >= 2:
             return datetime.strptime(":".join(parts[:2]), "%H:%M").time()
     except Exception:
+        logger.info("Failed to parse start_time value")
         return None
     return None
 
@@ -1161,7 +1167,10 @@ def _build_pregame_lineup_rows(
             continue
         batting_order = _coerce_int(entry.get("batting_order")) or idx
         position = entry.get("position")
-        player_id = resolver.resolve_id(player_name, team_code, season_year) if team_code else None
+        is_pitcher = position == "투수" or position == "P"
+        player_id = (
+            resolver.resolve_id(player_name, team_code, season_year, is_pitcher=is_pitcher) if team_code else None
+        )
         rows.append(
             {
                 "game_id": game_id,

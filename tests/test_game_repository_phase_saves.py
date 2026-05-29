@@ -29,7 +29,7 @@ class _FakeResolver:
     def __init__(self, session, **_kwargs):
         self.session = session
 
-    def resolve_id(self, player_name: str, team_code: str, season: int):
+    def resolve_id(self, player_name: str, team_code: str, season: int, **kwargs):
         return {
             ("홍길동", "LG"): 1001,
             ("이승엽", "SS"): 2001,
