@@ -102,7 +102,9 @@ class StatAudit:
                         try:
                             # Backup
                             original_dict = {
-                                key: getattr(off, key) for key in off.__table__.columns if not key.startswith("_")
+                                col.name: getattr(off, col.name)
+                                for col in off.__table__.columns
+                                if not col.name.startswith("_")
                             }
                             backup_path_str = FallbackMonitor.save_audit_backup(
                                 player_id=str(off.player_id),
@@ -187,7 +189,9 @@ class StatAudit:
                         try:
                             # Backup
                             original_dict = {
-                                key: getattr(off, key) for key in off.__table__.columns if not key.startswith("_")
+                                col.name: getattr(off, col.name)
+                                for col in off.__table__.columns
+                                if not col.name.startswith("_")
                             }
                             backup_path_str = FallbackMonitor.save_audit_backup(
                                 player_id=str(off.player_id),
@@ -260,7 +264,9 @@ class StatAudit:
                             try:
                                 # Backup
                                 original_dict = {
-                                    key: getattr(off, key) for key in off.__table__.columns if not key.startswith("_")
+                                    col.name: getattr(off, col.name)
+                                    for col in off.__table__.columns
+                                    if not col.name.startswith("_")
                                 }
                                 backup_path_str = FallbackMonitor.save_audit_backup(
                                     player_id=str(pid),
@@ -324,7 +330,9 @@ class StatAudit:
                         try:
                             # Backup
                             original_dict = {
-                                key: getattr(off, key) for key in off.__table__.columns if not key.startswith("_")
+                                col.name: getattr(off, col.name)
+                                for col in off.__table__.columns
+                                if not col.name.startswith("_")
                             }
                             backup_path_str = FallbackMonitor.save_audit_backup(
                                 player_id=str(off.player_id),
