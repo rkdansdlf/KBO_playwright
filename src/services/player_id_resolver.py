@@ -114,7 +114,7 @@ class PlayerIdResolver:
                     if old and new and old != new:
                         aliases[old] = new
         except Exception:
-            pass
+            logger.warning("Failed to load aliases from CSV")
         return aliases
 
     def _return_ambiguous(
@@ -243,6 +243,8 @@ class PlayerIdResolver:
             ("위재영", "HU", 2001, True): 95318,
             ("테일러", "HU", 2001, True): 2943,
             # 2026 Season unresolved active players
+            ("김민수", "KT", 2026, True): 65048,
+            ("김민수", "KT", 2026, False): 52303,
             ("최재영", "KH", 2026, False): 56338,
             ("최재영", "KH", 2026, True): 56338,
             ("최원준", "KT", 2026, False): 66606,
@@ -256,8 +258,10 @@ class PlayerIdResolver:
             ("오재원", "HH", 2026, True): 56754,
             ("박시원", "NC", 2026, False): 50996,
             ("박시원", "NC", 2026, True): 50996,
+            ("박시원", "NC", 2026, None): 50996,
             ("신재인", "NC", 2026, False): 56909,
             ("신재인", "NC", 2026, True): 56909,
+            ("신재인", "NC", 2026, None): 56909,
             ("안우진", "KH", 2026, True): 68341,
             ("안우진", "KH", 2026, False): 68341,
             ("보쉴리", "KT", 2026, True): 56036,
@@ -266,6 +270,12 @@ class PlayerIdResolver:
             ("박세진", "LT", 2026, True): 66047,
             ("김민", "SSG", 2026, True): 68043,
             ("최용준", "SSG", 2026, True): 50650,
+            ("왕옌청", "HH", 2026, True): 56719,
+            ("왕옌청", "HH", 2026, False): 56719,
+            ("왕옌청", "HH", 2026, None): 56719,
+            ("박채울", "KH", 2026, False): 54303,
+            ("박채울", "KH", 2026, True): 54303,
+            ("박채울", "KH", 2026, None): 54303,
             # 2022 Season KIA unresolved players
             ("류지혁", "KIA", 2022, False): 62234,
             ("류지혁", "KIA", 2022, True): 62234,
@@ -309,7 +319,16 @@ class PlayerIdResolver:
         # 1. Try Seasonal Data (Most accurate)
         is_allstar = team_code in self.ALL_STAR_TEAMS
         season_candidate_ids = set()
-        for model in [PlayerSeasonBatting, PlayerSeasonPitching]:
+
+        models = []
+        if is_pitcher is True:
+            models = [PlayerSeasonPitching]
+        elif is_pitcher is False:
+            models = [PlayerSeasonBatting]
+        else:
+            models = [PlayerSeasonBatting, PlayerSeasonPitching]
+
+        for model in models:
             stmt = (
                 select(PlayerBasic.player_id)
                 .select_from(model)

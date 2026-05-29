@@ -1,7 +1,7 @@
 import csv
 import os
 import sys
-from datetime import datetime
+from datetime import date, datetime
 from pathlib import Path
 
 # Ensure project root is on sys.path when run as a script
@@ -371,7 +371,7 @@ def to_int_or_none(value: str) -> int | None:
         return None
 
 
-def to_date_or_none(value: str, fmt: str = "%Y-%m-%d") -> datetime.date | None:
+def to_date_or_none(value: str, fmt: str = "%Y-%m-%d") -> date | None:
     """Convert a string to a date object, returning None if conversion fails."""
     if not value:
         return None
