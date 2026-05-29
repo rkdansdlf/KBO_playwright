@@ -17,7 +17,6 @@ class _Header:
         return self.text
 
 
-
 class _FakePage:
     def query_selector_all(self, selector):
         if selector == "table.tData01 thead th":

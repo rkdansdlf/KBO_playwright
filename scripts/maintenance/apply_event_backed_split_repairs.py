@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Apply event-backed same-player split batting merge proposals."""
+
 from __future__ import annotations
 
 import argparse
@@ -111,10 +112,7 @@ def apply_event_backed_split_repairs(
 
         for proposal in proposals:
             keeper_id, delete_ids = _validate_current_rows(conn, proposal)
-            assignments = {
-                column: _safe_int(proposal.get(f"merged_{column}")) or 0
-                for column in update_columns
-            }
+            assignments = {column: _safe_int(proposal.get(f"merged_{column}")) or 0 for column in update_columns}
             if "updated_at" in columns:
                 assignments["updated_at"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
@@ -155,7 +153,9 @@ def apply_event_backed_split_repairs(
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Apply event-backed same-player batting split merge proposals.")
     parser.add_argument("--db-path", default=str(DEFAULT_DB_PATH), help="SQLite database path.")
-    parser.add_argument("--proposals-csv", required=True, help="Proposal CSV from propose_event_backed_split_repairs.py.")
+    parser.add_argument(
+        "--proposals-csv", required=True, help="Proposal CSV from propose_event_backed_split_repairs.py."
+    )
     parser.add_argument("--output-dir", default=str(DEFAULT_OUTPUT_DIR), help="Backup/report output directory.")
     parser.add_argument("--apply", action="store_true", help="Apply the merge proposals. Defaults to dry-run.")
     parser.add_argument("--no-backup", action="store_true", help="Skip SQLite backup before --apply.")

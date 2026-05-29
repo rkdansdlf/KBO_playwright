@@ -4,12 +4,12 @@ The original implementation depended on removed repository/model classes
 (`GameRepository`, `GameSchedule`) and duplicated schedule/detail collection
 logic that now lives behind the supported CLI entry points.
 """
+
 from __future__ import annotations
 
 import argparse
 import asyncio
 from typing import Sequence
-
 
 DEPRECATION_MESSAGE = """
 [DEPRECATED] scripts/crawling/crawl_and_save.py is a legacy workflow.
@@ -31,7 +31,9 @@ def build_arg_parser() -> argparse.ArgumentParser:
 
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument("--players-only", action="store_true", help="Legacy player collection mode; no longer supported")
-    mode.add_argument("--games-only", action="store_true", help="Delegate schedule collection to src.cli.crawl_schedule")
+    mode.add_argument(
+        "--games-only", action="store_true", help="Delegate schedule collection to src.cli.crawl_schedule"
+    )
     return parser
 
 

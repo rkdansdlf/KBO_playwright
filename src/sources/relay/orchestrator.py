@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Callable, Iterable, Optional
+from typing import Any, Callable, Iterable
 
 from .base import (
     CapabilityRecord,
@@ -40,10 +40,7 @@ class RelayRecoveryOrchestrator:
     ) -> bool:
         if capability is None or capability.supported or adapter is None:
             return False
-        return bool(
-            getattr(adapter, "supports_bucket_probe", True)
-            and getattr(adapter, "cache_negative_probe", True)
-        )
+        return bool(getattr(adapter, "supports_bucket_probe", True) and getattr(adapter, "cache_negative_probe", True))
 
     async def _fetch_with_timeout(
         self,
@@ -86,9 +83,7 @@ class RelayRecoveryOrchestrator:
         for source_name in source_order:
             adapter = self.adapters.get(source_name)
             cached = self.get_capability(bucket_id, source_name)
-            if cached is not None and (
-                cached.supported or self._can_skip_from_capability(adapter, cached)
-            ):
+            if cached is not None and (cached.supported or self._can_skip_from_capability(adapter, cached)):
                 records[source_name] = cached
                 continue
 
@@ -129,7 +124,7 @@ class RelayRecoveryOrchestrator:
         bucket_id: str,
         source_order: Iterable[str],
         *,
-        validator: Optional[Callable[[NormalizedRelayResult], Optional[str]]] = None,
+        validator: Callable[[NormalizedRelayResult], str | None] | None = None,
     ) -> tuple[NormalizedRelayResult, list[dict[str, Any]]]:
         attempts: list[dict[str, Any]] = []
         for source_name in source_order:

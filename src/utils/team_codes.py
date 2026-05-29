@@ -1,10 +1,10 @@
 """
 Utility helpers for mapping KBO team names to canonical short codes.
 """
+
 from __future__ import annotations
 
 import re
-from typing import Optional
 
 # Canonical KBO short codes (aligned with modern franchise IDs)
 TEAM_NAME_TO_CODE = {
@@ -22,6 +22,8 @@ TEAM_NAME_TO_CODE = {
     "LG 트윈스": "LG",
     "KIA": "KIA",
     "KIA 타이거즈": "KIA",
+    "HT": "HT",
+    "WO": "WO",
     "기아": "KIA",
     "기아 타이거즈": "KIA",
     "한화": "HH",
@@ -36,15 +38,14 @@ TEAM_NAME_TO_CODE = {
     "SSG 랜더스": "SSG",
     "SK": "SK",
     "SK 와이번스": "SK",
-    
     # Historical brands
     "넥센": "NX",
     "넥센 히어로즈": "NX",
-    "히어로즈": "WO", # Usually refers to Woori/Heroes era
+    "히어로즈": "WO",  # Usually refers to Woori/Heroes era
     "우리": "WO",
     "우리 히어로즈": "WO",
     "HD": "HU",
-    "현대": "HU", 
+    "현대": "HU",
     "현대 유니콘스": "HU",
     "태평양": "TP",
     "태평양 돌핀스": "TP",
@@ -52,7 +53,6 @@ TEAM_NAME_TO_CODE = {
     "청보 핀토스": "CB",
     "삼미": "SM",
     "삼미 슈퍼스타즈": "SM",
-    
     # Historical names
     "해태": "HT",
     "해태 타이거즈": "HT",
@@ -60,11 +60,9 @@ TEAM_NAME_TO_CODE = {
     "MBC 청룡": "MBC",
     "빙그레": "BE",
     "빙그레 이글스": "BE",
-    
     # Dissolved
     "쌍방울": "SL",
     "쌍방울 레이더스": "SL",
-    
     # Special / National (same)
     "나눔": "EA",
     "드림": "WE",
@@ -94,30 +92,32 @@ KBO_LEGACY_TECHNICAL_CODE = {
     "KIA": "HT",
 }
 
-def resolve_team_code(name: Optional[str], season_year: Optional[int] = None) -> Optional[str]:
+
+def resolve_team_code(name: str | None, season_year: int | None = None) -> str | None:
     if not name:
         return None
     key = " ".join(name.replace("\n", " ").split())
     raw_code = TEAM_NAME_TO_CODE.get(key)
     if not raw_code:
         raw_code = TEAM_NAME_TO_CODE.get(key.upper())
-    
+
     if raw_code and season_year:
         # If we have a year, try to resolve the specific brand code for that franchise
         from src.utils.team_history import resolve_team_code_for_season
+
         resolved = resolve_team_code_for_season(raw_code, season_year)
         if resolved:
             return resolved
-            
+
     return raw_code
 
 
-def resolve_kbo_legacy_team_code(name: Optional[str], season_year: Optional[int] = None) -> Optional[str]:
+def resolve_kbo_legacy_team_code(name: str | None, season_year: int | None = None) -> str | None:
     code = resolve_team_code(name, season_year)
     return KBO_LEGACY_TECHNICAL_CODE.get(code or "", code)
 
 
-def kbo_game_id_team_code(team_code: Optional[str], season_year: Optional[int] = None) -> Optional[str]:
+def kbo_game_id_team_code(team_code: str | None, season_year: int | None = None) -> str | None:
     """Return the KBO GameCenter team-code token for a team code."""
     if not team_code:
         return None
@@ -136,13 +136,13 @@ def kbo_game_id_team_code(team_code: Optional[str], season_year: Optional[int] =
 
 
 def build_kbo_game_id(
-    game_date: Optional[str],
-    away_team_code: Optional[str],
-    home_team_code: Optional[str],
+    game_date: str | None,
+    away_team_code: str | None,
+    home_team_code: str | None,
     *,
-    doubleheader_no: Optional[object] = 0,
-    season_year: Optional[int] = None,
-) -> Optional[str]:
+    doubleheader_no: object | None = 0,
+    season_year: int | None = None,
+) -> str | None:
     """Build a canonical KBO legacy GameCenter ID from explicit game fields."""
     if not game_date:
         return None
@@ -177,20 +177,20 @@ GAME_ID_SEGMENT_TO_CODE = {
     "KT": "KT",
     "SS": "SS",
     "NC": "NC",
-    "OB": "DB", # KBO uses OB for Doosan franchise, we use DB for current
+    "OB": "DB",  # KBO uses OB for Doosan franchise, we use DB for current
     "DO": "DB",
     "HH": "HH",
     "LT": "LT",
-    "SK": "SSG", # KBO uses SK for SSG franchise, we use SSG for current
+    "SK": "SSG",  # KBO uses SK for SSG franchise, we use SSG for current
     "SSG": "SSG",
-    "WO": "KH", # KBO uses WO (Woori) for Kiwoom franchise, we use KH for current
-    "NX": "KH", # KBO uses NX (Nexen) for Kiwoom franchise
+    "WO": "KH",  # KBO uses WO (Woori) for Kiwoom franchise, we use KH for current
+    "NX": "KH",  # KBO uses NX (Nexen) for Kiwoom franchise
     "KI": "KH",
     "KH": "KH",
     "HD": "HU",
     "HU": "HU",
     "DB": "DB",
-    "HT": "KIA", # KBO uses HT (Haitai) for KIA franchise, we use KIA for current
+    "HT": "KIA",  # KBO uses HT (Haitai) for KIA franchise, we use KIA for current
     "KIA": "KIA",
     "SA": "SS",
     "AN": "HH",
@@ -198,31 +198,34 @@ GAME_ID_SEGMENT_TO_CODE = {
     "WE": "WE",
 }
 
-def team_code_from_game_id_segment(segment: Optional[str], season_year: Optional[int] = None) -> Optional[str]:
+
+def team_code_from_game_id_segment(segment: str | None, season_year: int | None = None) -> str | None:
     if not segment:
         return None
     segment = segment.upper()
-    
+
     # 1. Map to modern canonical code if it's a known KBO segment
     mapped = GAME_ID_SEGMENT_TO_CODE.get(segment, segment)
-    
+
     # 2. If year is provided, use history to find the EXACT brand code for that year
     if season_year:
         from src.utils.team_history import resolve_team_code_for_season
+
         resolved = resolve_team_code_for_season(mapped, season_year)
         if resolved:
             return resolved
-            
+
     return mapped
+
 
 def normalize_kbo_game_id(game_id: str) -> str:
     """
     Normalize KBO game IDs to always use legacy franchise codes (SK, WO, OB, HT).
-    
+
     Some KBO internal APIs (like GetKboGameList) have started returning modern codes
-    (SSG, KH, DB, KIA) in the G_ID field for 2026, while the public GameCenter 
+    (SSG, KH, DB, KIA) in the G_ID field for 2026, while the public GameCenter
     HTML links and boxscore parameters still expect legacy codes.
-    
+
     Format: YYYYMMDD + AWAY(2-3) + HOME(2-3) + DH(0-2)
     Example: 20260418SSGNC0 -> 20260418SKNC0
     """
@@ -235,10 +238,10 @@ def normalize_kbo_game_id(game_id: str) -> str:
         return game_id
 
     date_part, team_part, dh = match.groups()
-    
+
     # IMPORTANT: Only normalize for 2024 and later.
-    # Legacy data (2001-2023) in the database often uses modern or mixed codes 
-    # and shouldn't be forcefully normalized to legacy codes which might not 
+    # Legacy data (2001-2023) in the database often uses modern or mixed codes
+    # and shouldn't be forcefully normalized to legacy codes which might not
     # match existing records.
     try:
         year = int(date_part[:4])
@@ -277,15 +280,16 @@ KBO_GAME_ID_TEAM_CODES = tuple(
 )
 
 
-def _split_game_id_team_part(team_part: str) -> tuple[Optional[str], Optional[str]]:
+def _split_game_id_team_part(team_part: str) -> tuple[str | None, str | None]:
     """Split AWAY+HOME team code suffix using known KBO game-id code tokens."""
     for away_code in KBO_GAME_ID_TEAM_CODES:
         if not team_part.startswith(away_code):
             continue
-        home_code = team_part[len(away_code):]
+        home_code = team_part[len(away_code) :]
         if home_code in KBO_GAME_ID_TEAM_CODES:
             return away_code, home_code
     return None, None
+
 
 # Standard codes for the 10 current franchises
 STANDARD_TEAM_CODES = {"HH", "KIA", "KT", "LG", "LT", "NC", "DB", "SSG", "SS", "KH"}

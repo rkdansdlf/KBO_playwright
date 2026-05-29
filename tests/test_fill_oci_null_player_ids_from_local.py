@@ -82,9 +82,7 @@ def _build_databases(tmp_path: Path):
 def _remote_player_ids(remote_url: str) -> list[int | None]:
     engine = create_engine(remote_url)
     with engine.connect() as conn:
-        rows = conn.execute(
-            text("SELECT player_id FROM game_batting_stats ORDER BY id")
-        ).fetchall()
+        rows = conn.execute(text("SELECT player_id FROM game_batting_stats ORDER BY id")).fetchall()
     return [row[0] for row in rows]
 
 

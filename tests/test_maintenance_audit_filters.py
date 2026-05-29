@@ -62,10 +62,7 @@ def test_2026_audit_excludes_cancelled_and_postponed_games(monkeypatch):
 
     filters = [_compile_condition(condition) for condition in session.queries[0].filters]
     assert any("game.game_date LIKE '2026%'" in condition for condition in filters)
-    assert any(
-        "game.game_status NOT IN ('CANCELLED', 'POSTPONED')" in condition
-        for condition in filters
-    )
+    assert any("game.game_status NOT IN ('CANCELLED', 'POSTPONED')" in condition for condition in filters)
 
 
 def test_player_integrity_reconciles_regular_season_only(monkeypatch):
@@ -74,10 +71,6 @@ def test_player_integrity_reconciles_regular_season_only(monkeypatch):
 
     player_integrity.run_audit()
 
-    reconciliation_query = next(
-        statement
-        for statement in session.statements
-        if "WITH game_sums AS" in statement
-    )
+    reconciliation_query = next(statement for statement in session.statements if "WITH game_sums AS" in statement)
     assert "s.season = 2024" in reconciliation_query
     assert "s.league = 'REGULAR'" in reconciliation_query

@@ -1,32 +1,48 @@
-
 """
 Unified Game Data Collector (Details + optional direct relay fallback)
 """
-import asyncio
+
+from __future__ import annotations
+
 import argparse
-from typing import Optional
+import asyncio
+from typing import Sequence
 
 from src.crawlers.game_detail_crawler import GameDetailCrawler
 from src.crawlers.naver_relay_crawler import NaverRelayCrawler
 from src.db.engine import SessionLocal
 from src.services.game_collection_service import (
     crawl_and_save_game_details,
+    load_game_targets_by_ids,
     load_game_targets_from_db,
 )
 from src.utils.safe_print import safe_print as print
+from src.utils.team_codes import normalize_kbo_game_id
 
 
-async def collect_games(year: int, month: Optional[int] = None, force: bool = False, concurrency: Optional[int] = None):
-    """
-    Collects game details and relay data for a given year/month.
-    Iterates through games in the database for that period.
-    """
-    targets = load_game_targets_from_db(year, month)
-    print(f"🎯 Target: {len(targets)} games for {year}" + (f"-{month}" if month else ""))
+def _parse_game_ids(value: str | None) -> list[str]:
+    if not value:
+        return []
+    return [normalize_kbo_game_id(t.strip()) for t in value.split(",") if t.strip()]
+
+
+async def collect_games(
+    year: int,
+    month: int | None = None,
+    game_ids: list[str] | None = None,
+    force: bool = False,
+    concurrency: int | None = None,
+):
+    if game_ids:
+        targets = load_game_targets_by_ids(game_ids)
+    else:
+        targets = load_game_targets_from_db(year, month)
+    print(f"Target: {len(targets)} games" + (f" for {year}" + (f"-{month}" if month else "") if not game_ids else ""))
 
     session = SessionLocal()
     try:
         from src.services.player_id_resolver import PlayerIdResolver
+
         resolver = PlayerIdResolver(
             session,
             strict_game_resolution=True,
@@ -57,7 +73,8 @@ async def collect_games(year: int, month: Optional[int] = None, force: bool = Fa
     finally:
         session.close()
 
-def main():
+
+def main(argv: Sequence[str] | None = None) -> None:
     parser = argparse.ArgumentParser(
         description=(
             "Collect game details and direct Naver relay fallback rows. "
@@ -66,11 +83,16 @@ def main():
     )
     parser.add_argument("--year", type=int, required=True, help="Target Year (e.g. 2024)")
     parser.add_argument("--month", type=int, help="Target Month (Optional)")
+    parser.add_argument("--game-ids", type=str, help="Specific game IDs to crawl, comma separated")
     parser.add_argument("--concurrency", type=int, default=None, help="Max concurrent game detail crawls")
     parser.add_argument("--force", action="store_true", help="Recrawl and overwrite existing detail/relay rows")
-    args = parser.parse_args()
-    
-    asyncio.run(collect_games(args.year, args.month, force=args.force, concurrency=args.concurrency))
+    args = parser.parse_args(argv)
+
+    game_ids = _parse_game_ids(args.game_ids)
+    asyncio.run(
+        collect_games(args.year, month=args.month, game_ids=game_ids, force=args.force, concurrency=args.concurrency)
+    )
+
 
 if __name__ == "__main__":
     main()

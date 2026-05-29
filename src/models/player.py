@@ -5,12 +5,14 @@ Aligns with Docs/schema/playerProfileSchemaGuide.md design
 PlayerBasic: Simple table from player search crawler (Docs/PLAYERID_CRAWLING.md)
 Player: Complex relational model for detailed player data
 """
+
 from __future__ import annotations
 
-from typing import Optional, Dict, Any
 from datetime import date as date_type
-from sqlalchemy import Integer, String, Text, Boolean, ForeignKey, Date, UniqueConstraint, Index, JSON, Float
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+from typing import Any
+
+from sqlalchemy import JSON, Boolean, Date, Float, ForeignKey, Index, Integer, String, Text, UniqueConstraint
+from sqlalchemy.orm import Mapped, mapped_column
 
 from .base import Base, TimestampMixin
 
@@ -34,36 +36,43 @@ class PlayerBasic(Base, TimestampMixin):
     Design rationale: Keep original string values for verification,
     add parsed columns for querying.
     """
+
     __tablename__ = "player_basic"
 
     player_id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=False, comment="KBO player ID")
     name: Mapped[str] = mapped_column(String(100), nullable=False, comment="Player name (Korean)")
-    uniform_no: Mapped[Optional[str]] = mapped_column(String(10), nullable=True, comment="Current uniform number")
-    team: Mapped[Optional[str]] = mapped_column(String(50), nullable=True, comment="Current team")
-    position: Mapped[Optional[str]] = mapped_column(String(50), nullable=True, comment="Primary position")
+    uniform_no: Mapped[str | None] = mapped_column(String(10), nullable=True, comment="Current uniform number")
+    team: Mapped[str | None] = mapped_column(String(50), nullable=True, comment="Current team")
+    position: Mapped[str | None] = mapped_column(String(50), nullable=True, comment="Primary position")
 
     # Birth date: keep original string + parsed date
-    birth_date: Mapped[Optional[str]] = mapped_column(String(20), nullable=True, comment="Birth date (original string)")
-    birth_date_date: Mapped[Optional[date_type]] = mapped_column(Date, nullable=True, comment="Parsed birth date")
+    birth_date: Mapped[str | None] = mapped_column(String(20), nullable=True, comment="Birth date (original string)")
+    birth_date_date: Mapped[date_type | None] = mapped_column(Date, nullable=True, comment="Parsed birth date")
 
     # Physical stats
-    height_cm: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, comment="Height in cm")
-    weight_kg: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, comment="Weight in kg")
+    height_cm: Mapped[int | None] = mapped_column(Integer, nullable=True, comment="Height in cm")
+    weight_kg: Mapped[int | None] = mapped_column(Integer, nullable=True, comment="Weight in kg")
 
     # Career/origin
-    career: Mapped[Optional[str]] = mapped_column(String(200), nullable=True, comment="School/origin (출신교)")
-    status: Mapped[Optional[str]] = mapped_column(String(16), nullable=True, comment="active|retired|staff")
-    staff_role: Mapped[Optional[str]] = mapped_column(String(32), nullable=True, comment="manager|coach|trainer")
-    status_source: Mapped[Optional[str]] = mapped_column(String(16), nullable=True, comment="heuristic|profile|register")
+    career: Mapped[str | None] = mapped_column(String(200), nullable=True, comment="School/origin (출신교)")
+    status: Mapped[str | None] = mapped_column(String(16), nullable=True, comment="active|retired|staff")
+    staff_role: Mapped[str | None] = mapped_column(String(32), nullable=True, comment="manager|coach|trainer")
+    status_source: Mapped[str | None] = mapped_column(String(16), nullable=True, comment="heuristic|profile|register")
 
     # Extended profile fields (from detail page)
-    photo_url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True, comment="KBO CDN profile image URL")
-    bats: Mapped[Optional[str]] = mapped_column(String(4), nullable=True, comment="Batting hand: R/L/S")
-    throws: Mapped[Optional[str]] = mapped_column(String(4), nullable=True, comment="Throwing hand: R/L")
-    debut_year: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, comment="Year of entry/debut")
-    salary_original: Mapped[Optional[str]] = mapped_column(String(50), nullable=True, comment="Salary as shown on KBO site (e.g. '1억 5천만원')")
-    signing_bonus_original: Mapped[Optional[str]] = mapped_column(String(50), nullable=True, comment="Signing bonus original string")
-    draft_info: Mapped[Optional[str]] = mapped_column(String(100), nullable=True, comment="Draft info string (e.g. '23 KT 2라운드 10순위')")
+    photo_url: Mapped[str | None] = mapped_column(String(500), nullable=True, comment="KBO CDN profile image URL")
+    bats: Mapped[str | None] = mapped_column(String(4), nullable=True, comment="Batting hand: R/L/S")
+    throws: Mapped[str | None] = mapped_column(String(4), nullable=True, comment="Throwing hand: R/L")
+    debut_year: Mapped[int | None] = mapped_column(Integer, nullable=True, comment="Year of entry/debut")
+    salary_original: Mapped[str | None] = mapped_column(
+        String(50), nullable=True, comment="Salary as shown on KBO site (e.g. '1억 5천만원')"
+    )
+    signing_bonus_original: Mapped[str | None] = mapped_column(
+        String(50), nullable=True, comment="Signing bonus original string"
+    )
+    draft_info: Mapped[str | None] = mapped_column(
+        String(100), nullable=True, comment="Draft info string (e.g. '23 KT 2라운드 10순위')"
+    )
 
     __table_args__ = (
         Index("idx_player_basic_name", "name"),
@@ -84,8 +93,8 @@ class Player(Base, TimestampMixin):
     __tablename__ = "players"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    kbo_person_id: Mapped[Optional[str]] = mapped_column(String(32), unique=True)
-    player_basic_id: Mapped[Optional[int]] = mapped_column(
+    kbo_person_id: Mapped[str | None] = mapped_column(String(32), unique=True)
+    player_basic_id: Mapped[int | None] = mapped_column(
         Integer,
         ForeignKey("player_basic.player_id", ondelete="RESTRICT"),
         unique=True,
@@ -93,25 +102,23 @@ class Player(Base, TimestampMixin):
         index=True,
         comment="Canonical player_basic.player_id mirror when this row represents a KBO player",
     )
-    birth_date: Mapped[Optional[Date]] = mapped_column(Date, nullable=True)
-    birth_place: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
-    height_cm: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
-    weight_kg: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
-    bats: Mapped[Optional[str]] = mapped_column(String(1), nullable=True)  # R/L/S
-    throws: Mapped[Optional[str]] = mapped_column(String(1), nullable=True)  # R/L
+    birth_date: Mapped[Date | None] = mapped_column(Date, nullable=True)
+    birth_place: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    height_cm: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    weight_kg: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    bats: Mapped[str | None] = mapped_column(String(1), nullable=True)  # R/L/S
+    throws: Mapped[str | None] = mapped_column(String(1), nullable=True)  # R/L
     is_foreign_player: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
-    debut_year: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
-    retire_year: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    debut_year: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    retire_year: Mapped[int | None] = mapped_column(Integer, nullable=True)
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="ACTIVE")
-    notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     # Extended profile fields (relational mirror of PlayerBasic)
-    photo_url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
-    salary_original: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
-    signing_bonus_original: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
-    draft_info: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
-
-
+    photo_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    salary_original: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    signing_bonus_original: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    draft_info: Mapped[str | None] = mapped_column(String(100), nullable=True)
 
     def __repr__(self) -> str:
         return f"<Player(id={self.id}, status={self.status})>"
@@ -127,12 +134,12 @@ class PlayerIdentity(Base, TimestampMixin):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     player_id: Mapped[int] = mapped_column(Integer, ForeignKey("players.id"), nullable=False)
-    name_kor: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
-    name_eng: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
-    start_date: Mapped[Optional[Date]] = mapped_column(Date, nullable=True)
-    end_date: Mapped[Optional[Date]] = mapped_column(Date, nullable=True)
+    name_kor: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    name_eng: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    start_date: Mapped[Date | None] = mapped_column(Date, nullable=True)
+    end_date: Mapped[Date | None] = mapped_column(Date, nullable=True)
     is_primary: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
-    notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     __table_args__ = (
         Index("idx_player_identity_player", "player_id"),
@@ -165,34 +172,36 @@ class PlayerSeasonBatting(Base, TimestampMixin):
     league: Mapped[str] = mapped_column(String(16), nullable=False, default="REGULAR")
     level: Mapped[str] = mapped_column(String(16), nullable=False, default="KBO1")
     source: Mapped[str] = mapped_column(String(16), nullable=False, default="ROLLUP")
-    team_code: Mapped[Optional[str]] = mapped_column(String(10), ForeignKey("teams.team_id"), nullable=True)
-    franchise_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, comment="Canonical franchise ID")
-    canonical_team_code: Mapped[Optional[str]] = mapped_column(String(10), nullable=True, comment="Modern canonical team code")
-    games: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
-    plate_appearances: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
-    at_bats: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
-    runs: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
-    hits: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
-    doubles: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
-    triples: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
-    home_runs: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
-    rbi: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
-    walks: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
-    intentional_walks: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
-    hbp: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
-    strikeouts: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
-    stolen_bases: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
-    caught_stealing: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
-    sacrifice_hits: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
-    sacrifice_flies: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
-    gdp: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
-    avg: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
-    obp: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
-    slg: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
-    ops: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
-    iso: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
-    babip: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
-    extra_stats: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSON, nullable=True)
+    team_code: Mapped[str | None] = mapped_column(String(10), ForeignKey("teams.team_id"), nullable=True)
+    franchise_id: Mapped[int | None] = mapped_column(Integer, nullable=True, comment="Canonical franchise ID")
+    canonical_team_code: Mapped[str | None] = mapped_column(
+        String(10), nullable=True, comment="Modern canonical team code"
+    )
+    games: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    plate_appearances: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    at_bats: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    runs: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    hits: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    doubles: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    triples: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    home_runs: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    rbi: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    walks: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    intentional_walks: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    hbp: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    strikeouts: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    stolen_bases: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    caught_stealing: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    sacrifice_hits: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    sacrifice_flies: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    gdp: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    avg: Mapped[float | None] = mapped_column(Float, nullable=True)
+    obp: Mapped[float | None] = mapped_column(Float, nullable=True)
+    slg: Mapped[float | None] = mapped_column(Float, nullable=True)
+    ops: Mapped[float | None] = mapped_column(Float, nullable=True)
+    iso: Mapped[float | None] = mapped_column(Float, nullable=True)
+    babip: Mapped[float | None] = mapped_column(Float, nullable=True)
+    extra_stats: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
 
 
 class PlayerSeasonPitching(Base, TimestampMixin):
@@ -221,57 +230,59 @@ class PlayerSeasonPitching(Base, TimestampMixin):
     league: Mapped[str] = mapped_column(String(16), nullable=False, default="REGULAR")
     level: Mapped[str] = mapped_column(String(16), nullable=False, default="KBO1")
     source: Mapped[str] = mapped_column(String(16), nullable=False, default="CRAWLER")
-    team_code: Mapped[Optional[str]] = mapped_column(String(10), ForeignKey("teams.team_id"), nullable=True)
-    franchise_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, comment="Canonical franchise ID")
-    canonical_team_code: Mapped[Optional[str]] = mapped_column(String(10), nullable=True, comment="Modern canonical team code")
-    
+    team_code: Mapped[str | None] = mapped_column(String(10), ForeignKey("teams.team_id"), nullable=True)
+    franchise_id: Mapped[int | None] = mapped_column(Integer, nullable=True, comment="Canonical franchise ID")
+    canonical_team_code: Mapped[str | None] = mapped_column(
+        String(10), nullable=True, comment="Modern canonical team code"
+    )
+
     # Basic pitching stats
-    games: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
-    games_started: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
-    wins: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
-    losses: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
-    saves: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
-    holds: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
-    
+    games: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    games_started: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    wins: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    losses: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    saves: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    holds: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
     # Innings and outs
-    innings_pitched: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
-    innings_outs: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
-    
+    innings_pitched: Mapped[float | None] = mapped_column(Float, nullable=True)
+    innings_outs: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
     # Pitching results
-    hits_allowed: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
-    runs_allowed: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
-    earned_runs: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
-    home_runs_allowed: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
-    walks_allowed: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
-    intentional_walks: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
-    hit_batters: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
-    strikeouts: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
-    wild_pitches: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
-    balks: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
-    
+    hits_allowed: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    runs_allowed: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    earned_runs: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    home_runs_allowed: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    walks_allowed: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    intentional_walks: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    hit_batters: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    strikeouts: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    wild_pitches: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    balks: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
     # Advanced stats
-    era: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
-    whip: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
-    fip: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
-    k_per_nine: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
-    bb_per_nine: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
-    kbb: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
-    
+    era: Mapped[float | None] = mapped_column(Float, nullable=True)
+    whip: Mapped[float | None] = mapped_column(Float, nullable=True)
+    fip: Mapped[float | None] = mapped_column(Float, nullable=True)
+    k_per_nine: Mapped[float | None] = mapped_column(Float, nullable=True)
+    bb_per_nine: Mapped[float | None] = mapped_column(Float, nullable=True)
+    kbb: Mapped[float | None] = mapped_column(Float, nullable=True)
+
     # Extended stats from Basic2 (promoted from extra_stats)
-    complete_games: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
-    shutouts: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
-    quality_starts: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
-    blown_saves: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
-    tbf: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, comment="Total batters faced")
-    np: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, comment="Number of pitches")
-    avg_against: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
-    doubles_allowed: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
-    triples_allowed: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
-    sacrifices_allowed: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
-    sacrifice_flies_allowed: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
-    
+    complete_games: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    shutouts: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    quality_starts: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    blown_saves: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    tbf: Mapped[int | None] = mapped_column(Integer, nullable=True, comment="Total batters faced")
+    np: Mapped[int | None] = mapped_column(Integer, nullable=True, comment="Number of pitches")
+    avg_against: Mapped[float | None] = mapped_column(Float, nullable=True)
+    doubles_allowed: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    triples_allowed: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    sacrifices_allowed: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    sacrifice_flies_allowed: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
     # Additional metadata
-    extra_stats: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSON, nullable=True)
+    extra_stats: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
 
 
 class PlayerMovement(Base, TimestampMixin):
@@ -279,19 +290,20 @@ class PlayerMovement(Base, TimestampMixin):
     Records player status changes (Trade, FA, Waiver, etc.).
     Source: https://www.koreabaseball.com/Player/Trade.aspx
     """
+
     __tablename__ = "player_movements"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     movement_date: Mapped[Date] = mapped_column(Date, nullable=False, comment="Event date")
     section: Mapped[str] = mapped_column(String(50), nullable=False, comment="Movement type (e.g. Trade)")
     team_code: Mapped[str] = mapped_column(String(20), nullable=False, comment="Related team")
-    canonical_team_id: Mapped[Optional[str]] = mapped_column(
+    canonical_team_id: Mapped[str | None] = mapped_column(
         String(10),
         ForeignKey("teams.team_id", ondelete="RESTRICT"),
         nullable=True,
         comment="Resolved teams.team_id; raw team_code is retained as source snapshot",
     )
-    player_basic_id: Mapped[Optional[int]] = mapped_column(
+    player_basic_id: Mapped[int | None] = mapped_column(
         Integer,
         ForeignKey("player_basic.player_id", ondelete="RESTRICT"),
         nullable=True,
@@ -305,7 +317,7 @@ class PlayerMovement(Base, TimestampMixin):
         comment="resolved|unresolved|unresolved_player|unresolved_team",
     )
     player_name: Mapped[str] = mapped_column(String(100), nullable=False, comment="Player name (with position info)")
-    remarks: Mapped[Optional[str]] = mapped_column(Text, nullable=True, comment="Detailed remarks")
+    remarks: Mapped[str | None] = mapped_column(Text, nullable=True, comment="Detailed remarks")
 
     __table_args__ = (
         UniqueConstraint("movement_date", "team_code", "player_name", "section", name="uq_player_movement"),
@@ -324,6 +336,7 @@ class PlayerSeasonFielding(Base, TimestampMixin):
     Season-level fielding stats.
     Source: https://www.koreabaseball.com/Record/Player/Defense/Basic.aspx
     """
+
     __tablename__ = "player_season_fielding"
     __table_args__ = (
         UniqueConstraint("player_id", "team_id", "year", "position_id", name="uq_player_season_fielding"),
@@ -335,17 +348,24 @@ class PlayerSeasonFielding(Base, TimestampMixin):
     team_id: Mapped[str] = mapped_column(String(10), ForeignKey("teams.team_id"), nullable=False)
     year: Mapped[int] = mapped_column(Integer, nullable=False)
     position_id: Mapped[str] = mapped_column(String(10), nullable=False, comment="POS (e.g. C, 1B, SS)")
-    
-    games: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
-    games_started: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
-    innings: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
-    putouts: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
-    assists: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
-    errors: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
-    double_plays: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
-    fielding_pct: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
-    pickoffs: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
-    source: Mapped[Optional[str]] = mapped_column(String(20), nullable=True, default='CRAWLER')
+
+    games: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    games_started: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    innings: Mapped[float | None] = mapped_column(Float, nullable=True)
+    putouts: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    assists: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    errors: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    double_plays: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    fielding_pct: Mapped[float | None] = mapped_column(Float, nullable=True)
+    pickoffs: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+    # Specialized catcher metrics
+    caught_stealing: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    stolen_bases_allowed: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    passed_balls: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    cs_pct: Mapped[float | None] = mapped_column(Float, nullable=True, comment="Caught Stealing Percentage")
+
+    source: Mapped[str | None] = mapped_column(String(20), nullable=True, default="CRAWLER")
 
     def __repr__(self) -> str:
         return f"<PlayerSeasonFielding(player_id={self.player_id}, year={self.year}, pos='{self.position_id}')>"
@@ -356,6 +376,7 @@ class PlayerSeasonBaserunning(Base, TimestampMixin):
     Season-level baserunning stats.
     Source: https://www.koreabaseball.com/Record/Player/Runner/Basic.aspx
     """
+
     __tablename__ = "player_season_baserunning"
     __table_args__ = (
         UniqueConstraint("player_id", "team_id", "year", name="uq_player_season_baserunning"),
@@ -366,16 +387,16 @@ class PlayerSeasonBaserunning(Base, TimestampMixin):
     player_id: Mapped[int] = mapped_column(Integer, ForeignKey("player_basic.player_id"), nullable=False)
     team_id: Mapped[str] = mapped_column(String(10), ForeignKey("teams.team_id"), nullable=False)
     year: Mapped[int] = mapped_column(Integer, nullable=False)
-    player_name: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
-    
-    games: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
-    stolen_base_attempts: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
-    stolen_bases: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
-    caught_stealing: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
-    stolen_base_percentage: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
-    out_on_base: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
-    picked_off: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
-    source: Mapped[Optional[str]] = mapped_column(String(20), nullable=True, default='CRAWLER')
+    player_name: Mapped[str | None] = mapped_column(String(100), nullable=True)
+
+    games: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    stolen_base_attempts: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    stolen_bases: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    caught_stealing: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    stolen_base_percentage: Mapped[float | None] = mapped_column(Float, nullable=True)
+    out_on_base: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    picked_off: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    source: Mapped[str | None] = mapped_column(String(20), nullable=True, default="CRAWLER")
 
     def __repr__(self) -> str:
         return f"<PlayerSeasonBaserunning(player_id={self.player_id}, year={self.year})>"

@@ -4,6 +4,7 @@
 The resolver only applies a group when the evidence narrows to exactly one
 existing player_basic row. It never auto-registers placeholder players.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -25,7 +26,6 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from src.db.engine import DATABASE_URL, SessionLocal
-
 
 DEFAULT_OVERRIDES_CSV = PROJECT_ROOT / "data/player_id_overrides.csv"
 DEFAULT_OUTPUT_DIR = PROJECT_ROOT / "data"
@@ -376,10 +376,7 @@ def update_null_player_ids_for_group(
         "player_name": player_name,
     }
     if dry_run:
-        return int(
-            session.execute(text(f"SELECT COUNT(*) FROM {table_name} {where_sql}"), params).scalar()
-            or 0
-        )
+        return int(session.execute(text(f"SELECT COUNT(*) FROM {table_name} {where_sql}"), params).scalar() or 0)
     result = session.execute(
         text(f"UPDATE {table_name} SET player_id = :player_id {where_sql}"),
         params,
@@ -421,10 +418,7 @@ def delete_duplicate_null_player_id_rows_for_group(
         "player_name": player_name,
     }
     if dry_run:
-        return int(
-            session.execute(text(f"SELECT COUNT(*) FROM {table_name} {where_sql}"), params).scalar()
-            or 0
-        )
+        return int(session.execute(text(f"SELECT COUNT(*) FROM {table_name} {where_sql}"), params).scalar() or 0)
     result = session.execute(text(f"DELETE FROM {table_name} {where_sql}"), params)
     return int(result.rowcount or 0)
 
@@ -433,9 +427,8 @@ def _collect_null_groups(session, *, tables: tuple[str, ...], years: tuple[int, 
     groups: list[dict[str, Any]] = []
     years_as_text = [str(year) for year in years]
     for table_name in tables:
-        stmt = (
-            text(
-                f"""
+        stmt = text(
+            f"""
                 SELECT
                     substr(game_id, 1, 4) AS year,
                     COALESCE(team_code, '') AS team_code,
@@ -447,8 +440,7 @@ def _collect_null_groups(session, *, tables: tuple[str, ...], years: tuple[int, 
                 GROUP BY substr(game_id, 1, 4), COALESCE(team_code, ''), player_name
                 ORDER BY year, team_code, player_name
                 """
-            ).bindparams(bindparam("years", expanding=True))
-        )
+        ).bindparams(bindparam("years", expanding=True))
         for row in session.execute(stmt, {"years": years_as_text}).mappings():
             groups.append(
                 {

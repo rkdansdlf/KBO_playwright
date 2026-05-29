@@ -1,12 +1,11 @@
 from __future__ import annotations
 
 import asyncio
-from typing import Dict, List, Optional
 
 from playwright.async_api import Page
 
-from src.utils.status_parser import parse_status_from_text
 from src.utils.playwright_pool import AsyncPlaywrightPool
+from src.utils.status_parser import parse_status_from_text
 
 
 class PlayerStatusConfirmer:
@@ -18,7 +17,7 @@ class PlayerStatusConfirmer:
         request_delay: float = 1.5,
         max_confirmations: int = 200,
         headless: bool = True,
-        pool: Optional[AsyncPlaywrightPool] = None,
+        pool: AsyncPlaywrightPool | None = None,
     ):
         self.base_url = "https://www.koreabaseball.com/Record/Player/HitterDetail/Basic.aspx"
         self.request_delay = request_delay
@@ -26,7 +25,7 @@ class PlayerStatusConfirmer:
         self.headless = headless
         self.pool = pool
 
-    async def confirm_entries(self, entries: List[Dict[str, object]]) -> Dict[str, int]:
+    async def confirm_entries(self, entries: list[dict[str, object]]) -> dict[str, int]:
         """Mutates entries in-place when profile confirmation succeeds."""
         suspects = [entry for entry in entries if entry.get("status") in {"retired", "staff"}]
         attempts = 0
@@ -58,7 +57,7 @@ class PlayerStatusConfirmer:
                 await pool.close()
         return {"attempted": attempts, "confirmed": confirmed}
 
-    async def _confirm_single(self, page: Page, player_id: str) -> Optional[Dict[str, str]]:
+    async def _confirm_single(self, page: Page, player_id: str) -> dict[str, str] | None:
         url = f"{self.base_url}?playerId={player_id}"
         await page.goto(url, wait_until="domcontentloaded", timeout=30000)
         await asyncio.sleep(self.request_delay)

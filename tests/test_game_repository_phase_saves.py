@@ -5,7 +5,10 @@ from datetime import date, time
 from sqlalchemy import create_engine, event
 from sqlalchemy.orm import sessionmaker
 
+import src.repositories.game_helpers as game_helpers_module
+import src.repositories.game_relay as game_relay_module
 import src.repositories.game_repository as game_repository
+import src.repositories.game_save as game_save_module
 from src.models.game import (
     Game,
     GameBattingStat,
@@ -153,9 +156,11 @@ def _seed_existing_detail(SessionLocal, game_id: str):
 
 def test_save_pregame_lineups_updates_start_time_and_preserves_existing_detail(monkeypatch):
     SessionLocal = _build_session_factory()
-    monkeypatch.setattr(game_repository, "SessionLocal", SessionLocal)
-    monkeypatch.setattr(game_repository, "PlayerIdResolver", _FakeResolver)
-    monkeypatch.setattr(game_repository, "_auto_sync_to_oci", lambda game_id: None)
+    monkeypatch.setattr(game_save_module, "SessionLocal", SessionLocal)
+    monkeypatch.setattr(game_save_module, "_auto_sync_to_oci", lambda _game_id: None)
+    monkeypatch.setattr(game_helpers_module, "PlayerIdResolver", _FakeResolver)
+    monkeypatch.setattr(game_save_module, "_auto_sync_to_oci", lambda game_id: None)
+    monkeypatch.setattr(game_relay_module, "_auto_sync_to_oci", lambda game_id: None)
 
     _seed_existing_detail(SessionLocal, "20250401LGSS0")
 
@@ -177,7 +182,9 @@ def test_save_pregame_lineups_updates_start_time_and_preserves_existing_detail(m
     with SessionLocal() as session:
         game = session.query(Game).filter(Game.game_id == "20250401LGSS0").one()
         metadata = session.query(GameMetadata).filter(GameMetadata.game_id == "20250401LGSS0").one()
-        lineups = session.query(GameLineup).filter(GameLineup.game_id == "20250401LGSS0").order_by(GameLineup.team_side).all()
+        lineups = (
+            session.query(GameLineup).filter(GameLineup.game_id == "20250401LGSS0").order_by(GameLineup.team_side).all()
+        )
 
         assert game.game_status == GAME_STATUS_SCHEDULED
         assert game.away_pitcher == "임찬규"
@@ -191,16 +198,23 @@ def test_save_pregame_lineups_updates_start_time_and_preserves_existing_detail(m
             ("away", 1001, "LG", 3),
             ("home", 2001, "SS", 1),
         }
-        assert session.query(GameSummary).filter(
-            GameSummary.game_id == "20250401LGSS0",
-            GameSummary.summary_type == "프리뷰",
-        ).count() == 1
+        assert (
+            session.query(GameSummary)
+            .filter(
+                GameSummary.game_id == "20250401LGSS0",
+                GameSummary.summary_type == "프리뷰",
+            )
+            .count()
+            == 1
+        )
 
 
 def test_save_game_snapshot_preserves_detail_rows_and_start_time(monkeypatch):
     SessionLocal = _build_session_factory()
-    monkeypatch.setattr(game_repository, "SessionLocal", SessionLocal)
-    monkeypatch.setattr(game_repository, "_auto_sync_to_oci", lambda game_id: None)
+    monkeypatch.setattr(game_save_module, "SessionLocal", SessionLocal)
+    monkeypatch.setattr(game_relay_module, "SessionLocal", SessionLocal)
+    monkeypatch.setattr(game_save_module, "_auto_sync_to_oci", lambda game_id: None)
+    monkeypatch.setattr(game_relay_module, "_auto_sync_to_oci", lambda game_id: None)
 
     _seed_existing_detail(SessionLocal, "20250401LGSS0")
 
@@ -247,8 +261,10 @@ def test_save_game_snapshot_preserves_detail_rows_and_start_time(monkeypatch):
 
 def test_save_game_snapshot_marks_cancelled_alias_and_sets_season(monkeypatch):
     SessionLocal = _build_session_factory()
-    monkeypatch.setattr(game_repository, "SessionLocal", SessionLocal)
-    monkeypatch.setattr(game_repository, "_auto_sync_to_oci", lambda game_id: None)
+    monkeypatch.setattr(game_save_module, "SessionLocal", SessionLocal)
+    monkeypatch.setattr(game_relay_module, "SessionLocal", SessionLocal)
+    monkeypatch.setattr(game_save_module, "_auto_sync_to_oci", lambda game_id: None)
+    monkeypatch.setattr(game_relay_module, "_auto_sync_to_oci", lambda game_id: None)
 
     saved = game_repository.save_game_snapshot(
         {
@@ -278,7 +294,8 @@ def test_save_game_snapshot_marks_cancelled_alias_and_sets_season(monkeypatch):
 
 def test_schedule_write_contract_logs_duplicate_field_skips(monkeypatch):
     SessionLocal = _build_session_factory()
-    monkeypatch.setattr(game_repository, "SessionLocal", SessionLocal)
+    monkeypatch.setattr(game_save_module, "SessionLocal", SessionLocal)
+    monkeypatch.setattr(game_relay_module, "SessionLocal", SessionLocal)
 
     logs: list[str] = []
     contract = GameWriteContract(run_label="unit-schedule", log=logs.append, log_duplicate_fields=True)
@@ -312,8 +329,10 @@ def test_schedule_write_contract_logs_duplicate_field_skips(monkeypatch):
 
 def test_save_game_detail_skips_identical_child_rewrites(monkeypatch):
     SessionLocal = _build_session_factory()
-    monkeypatch.setattr(game_repository, "SessionLocal", SessionLocal)
-    monkeypatch.setattr(game_repository, "_auto_sync_to_oci", lambda game_id: None)
+    monkeypatch.setattr(game_save_module, "SessionLocal", SessionLocal)
+    monkeypatch.setattr(game_relay_module, "SessionLocal", SessionLocal)
+    monkeypatch.setattr(game_save_module, "_auto_sync_to_oci", lambda game_id: None)
+    monkeypatch.setattr(game_relay_module, "_auto_sync_to_oci", lambda game_id: None)
 
     logs: list[str] = []
     contract = GameWriteContract(run_label="unit-detail", log=logs.append)
@@ -387,8 +406,10 @@ def test_save_game_detail_skips_identical_child_rewrites(monkeypatch):
 
 def test_save_game_detail_honors_explicit_cancelled_status(monkeypatch):
     SessionLocal = _build_session_factory()
-    monkeypatch.setattr(game_repository, "SessionLocal", SessionLocal)
-    monkeypatch.setattr(game_repository, "_auto_sync_to_oci", lambda game_id: None)
+    monkeypatch.setattr(game_save_module, "SessionLocal", SessionLocal)
+    monkeypatch.setattr(game_relay_module, "SessionLocal", SessionLocal)
+    monkeypatch.setattr(game_save_module, "_auto_sync_to_oci", lambda game_id: None)
+    monkeypatch.setattr(game_relay_module, "_auto_sync_to_oci", lambda game_id: None)
 
     saved = game_repository.save_game_detail(
         {
@@ -414,8 +435,10 @@ def test_save_game_detail_honors_explicit_cancelled_status(monkeypatch):
 
 def test_save_game_detail_creates_player_basic_stubs_for_new_payload_ids(monkeypatch):
     SessionLocal = _build_fk_session_factory()
-    monkeypatch.setattr(game_repository, "SessionLocal", SessionLocal)
-    monkeypatch.setattr(game_repository, "_auto_sync_to_oci", lambda game_id: None)
+    monkeypatch.setattr(game_save_module, "SessionLocal", SessionLocal)
+    monkeypatch.setattr(game_relay_module, "SessionLocal", SessionLocal)
+    monkeypatch.setattr(game_save_module, "_auto_sync_to_oci", lambda game_id: None)
+    monkeypatch.setattr(game_relay_module, "_auto_sync_to_oci", lambda game_id: None)
 
     saved = game_repository.save_game_detail(
         {
@@ -496,8 +519,10 @@ def test_save_game_detail_creates_player_basic_stubs_for_new_payload_ids(monkeyp
 
 def test_save_game_detail_rejects_same_player_id_on_both_teams(monkeypatch):
     SessionLocal = _build_session_factory()
-    monkeypatch.setattr(game_repository, "SessionLocal", SessionLocal)
-    monkeypatch.setattr(game_repository, "_auto_sync_to_oci", lambda game_id: None)
+    monkeypatch.setattr(game_save_module, "SessionLocal", SessionLocal)
+    monkeypatch.setattr(game_relay_module, "SessionLocal", SessionLocal)
+    monkeypatch.setattr(game_save_module, "_auto_sync_to_oci", lambda game_id: None)
+    monkeypatch.setattr(game_relay_module, "_auto_sync_to_oci", lambda game_id: None)
 
     saved = game_repository.save_game_detail(
         {
@@ -540,8 +565,10 @@ def test_save_game_detail_rejects_same_player_id_on_both_teams(monkeypatch):
 
 def test_repair_game_parent_from_existing_children_uses_child_scores(monkeypatch):
     SessionLocal = _build_session_factory()
-    monkeypatch.setattr(game_repository, "SessionLocal", SessionLocal)
-    monkeypatch.setattr(game_repository, "_auto_sync_to_oci", lambda game_id: None)
+    monkeypatch.setattr(game_save_module, "SessionLocal", SessionLocal)
+    monkeypatch.setattr(game_relay_module, "SessionLocal", SessionLocal)
+    monkeypatch.setattr(game_save_module, "_auto_sync_to_oci", lambda game_id: None)
+    monkeypatch.setattr(game_relay_module, "_auto_sync_to_oci", lambda game_id: None)
 
     with SessionLocal() as session:
         session.add_all(
@@ -579,10 +606,14 @@ def test_repair_game_parent_from_existing_children_uses_child_scores(monkeypatch
 
     with SessionLocal() as session:
         game = session.query(Game).filter(Game.game_id == "20250404LGSS0").one()
-        inning = session.query(GameInningScore).filter(
-            GameInningScore.game_id == "20250404LGSS0",
-            GameInningScore.team_side == "away",
-        ).one()
+        inning = (
+            session.query(GameInningScore)
+            .filter(
+                GameInningScore.game_id == "20250404LGSS0",
+                GameInningScore.team_side == "away",
+            )
+            .one()
+        )
 
         assert game.away_team == "LG"
         assert game.home_team == "SS"

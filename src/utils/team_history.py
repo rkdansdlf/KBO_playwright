@@ -1,11 +1,12 @@
 """
 Team history helpers loaded from Docs/team_history definitions.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
-from functools import lru_cache
-from typing import Iterable, Optional
+from functools import cache
+from typing import Iterable
 
 
 @dataclass(frozen=True)
@@ -13,7 +14,7 @@ class TeamHistoryEntry:
     franchise_id: int
     team_code: str
     start_season: int
-    end_season: Optional[int]
+    end_season: int | None
 
 
 # This list mirrors the KBO Team History page and is the source of truth for
@@ -49,7 +50,7 @@ FRANCHISE_CANONICAL_CODE = {
     1: "SS",
     2: "LT",
     3: "LG",
-    4: "DB", # Modern canonical is DB
+    4: "DB",  # Modern canonical is DB
     5: "KIA",
     6: "HU",
     7: "HH",
@@ -70,8 +71,8 @@ def _entry_is_active_in_season(entry: TeamHistoryEntry, season_year: int) -> boo
     return entry.start_season <= season_year <= end_season
 
 
-@lru_cache(maxsize=None)
-def find_team_history_entry(raw_code: str, season_year: Optional[int] = None) -> Optional[TeamHistoryEntry]:
+@cache
+def find_team_history_entry(raw_code: str, season_year: int | None = None) -> TeamHistoryEntry | None:
     """Return the season-correct history entry for a raw or legacy team code."""
     raw = raw_code.upper()
     if raw == "HD":
@@ -102,19 +103,19 @@ def find_team_history_entry(raw_code: str, season_year: Optional[int] = None) ->
     return None
 
 
-def franchise_id_for_team_code(raw_code: str, season_year: Optional[int] = None) -> Optional[int]:
+def franchise_id_for_team_code(raw_code: str, season_year: int | None = None) -> int | None:
     entry = find_team_history_entry(raw_code, season_year)
     return entry.franchise_id if entry else None
 
 
-def canonical_code_for_team_code(raw_code: str, season_year: Optional[int] = None) -> Optional[str]:
+def canonical_code_for_team_code(raw_code: str, season_year: int | None = None) -> str | None:
     entry = find_team_history_entry(raw_code, season_year)
     if not entry:
         return None
     return FRANCHISE_CANONICAL_CODE.get(entry.franchise_id)
 
 
-@lru_cache(maxsize=None)
-def resolve_team_code_for_season(raw_code: str, season_year: int) -> Optional[str]:
+@cache
+def resolve_team_code_for_season(raw_code: str, season_year: int) -> str | None:
     entry = find_team_history_entry(raw_code, season_year)
     return entry.team_code.upper() if entry else None

@@ -2,15 +2,16 @@
 Compatibility wrapper around the new player search crawler.
 Old pipelines expect a PlayerListCrawler that returns hitters/pitchers buckets.
 """
+
 from __future__ import annotations
 
-from typing import Dict, List, Any, Optional
+from typing import Any
 
-from src.crawlers.player_search_crawler import crawl_all_players, PlayerRow
-from src.utils.player_classification import classify_player, PlayerCategory
+from src.crawlers.player_search_crawler import PlayerRow, crawl_all_players
+from src.utils.player_classification import PlayerCategory, classify_player
 
 
-def _is_pitcher(position: Optional[str]) -> bool:
+def _is_pitcher(position: str | None) -> bool:
     if not position:
         return False
     pos = position.strip().upper()
@@ -19,7 +20,7 @@ def _is_pitcher(position: Optional[str]) -> bool:
     return pos in {"P", "SP", "RP", "CP"}
 
 
-def _row_to_dict(row: PlayerRow) -> Dict[str, Any]:
+def _row_to_dict(row: PlayerRow) -> dict[str, Any]:
     category = classify_player({"team": row.team, "position": row.position})
     status = "active"
     staff_role = None
@@ -48,21 +49,21 @@ def _row_to_dict(row: PlayerRow) -> Dict[str, Any]:
 class PlayerListCrawler:
     """Legacy API wrapper used by init_data_collection.py and futures crawler."""
 
-    def __init__(self, *, request_delay: float = 1.5, headless: bool = True, max_pages: Optional[int] = None):
+    def __init__(self, *, request_delay: float = 1.5, headless: bool = True, max_pages: int | None = None):
         self.request_delay = request_delay
         self.headless = headless
         self.max_pages = max_pages
 
-    async def crawl_all_players(self, season_year: int | None = None) -> Dict[str, List[Dict[str, Any]]]:
+    async def crawl_all_players(self, season_year: int | None = None) -> dict[str, list[dict[str, Any]]]:
         rows = await crawl_all_players(
             max_pages=self.max_pages,
             headless=self.headless,
             request_delay=self.request_delay,
         )
-        hitters: List[Dict[str, Any]] = []
-        pitchers: List[Dict[str, Any]] = []
-        retired: List[Dict[str, Any]] = []
-        staff: List[Dict[str, Any]] = []
+        hitters: list[dict[str, Any]] = []
+        pitchers: list[dict[str, Any]] = []
+        retired: list[dict[str, Any]] = []
+        staff: list[dict[str, Any]] = []
         for row in rows:
             data = _row_to_dict(row)
             category = classify_player(data)

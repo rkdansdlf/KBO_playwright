@@ -29,9 +29,7 @@ def test_game_delete_cascades_to_game_children():
         table.create(bind=engine)
 
     with engine.begin() as conn:
-        conn.execute(
-            text("INSERT INTO player_basic (player_id, name) VALUES (1001, '홍길동'), (2001, '투수')")
-        )
+        conn.execute(text("INSERT INTO player_basic (player_id, name) VALUES (1001, '홍길동'), (2001, '투수')"))
         conn.execute(
             text(
                 """
@@ -66,7 +64,13 @@ def test_game_delete_cascades_to_game_children():
 
 def test_player_and_team_deletes_are_restricted_when_referenced():
     engine = _engine_with_foreign_keys()
-    for table in (Team.__table__, PlayerBasic.__table__, Game.__table__, GameSummary.__table__, TeamDailyRoster.__table__):
+    for table in (
+        Team.__table__,
+        PlayerBasic.__table__,
+        Game.__table__,
+        GameSummary.__table__,
+        TeamDailyRoster.__table__,
+    ):
         table.create(bind=engine)
 
     with engine.begin() as conn:

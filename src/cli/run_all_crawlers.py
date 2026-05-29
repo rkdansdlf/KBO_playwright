@@ -1,27 +1,29 @@
 """
 CLI entrypoint and scheduler daemon to execute KBO crawlers, transform text, generate embeddings, and load to database.
 """
+
 from __future__ import annotations
 
-import logging
 import argparse
 import asyncio
+import logging
 import os
 import sys
 import traceback
 from datetime import datetime, timedelta
-from typing import List, Dict, Any, Optional
+from typing import Any
 
 from apscheduler.schedulers.blocking import BlockingScheduler
 from dotenv import load_dotenv
 
-from src.db.engine import get_db_session
-from src.crawlers.static_text_crawler import StaticTextCrawler
+from src.cli.verify_sync_consistency import run_consistency_audit
 from src.crawlers.dynamic_data_crawler import DynamicDataCrawler
 from src.crawlers.realtime_issue_crawler import RealtimeIssueCrawler
+from src.crawlers.static_text_crawler import StaticTextCrawler
+from src.db.engine import get_db_session
 from src.parsers.text_transformer import TextTransformer
-from src.services.embedding_service import EmbeddingService
 from src.repositories.rag_chunk_repository import RagChunkRepository
+from src.services.embedding_service import EmbeddingService
 from src.utils.alerting import SlackWebhookClient
 from src.utils.safe_print import safe_print as print
 
@@ -30,21 +32,36 @@ load_dotenv()
 
 logger = logging.getLogger(__name__)
 
+# Directory-to-category mapping for Docs/baseball subdirectories
+_CATEGORY_MAP: dict[str, str] = {
+    "baseball_rules": "game_rules",
+    "glossary": "glossary",
+    "bylaws": "bylaws",
+    "league_regulations": "league_regulations",
+    "player_regulations": "player_regulations",
+    "scoring_rules": "scoring_rules",
+    "disciplinary_regulations": "disciplinary_regulations",
+    "supplementary_regulations": "supplementary_regulations",
+    "kbo_knowledge": "kbo_knowledge",
+    "kbo_rulebook": "rulebook",
+}
 
-def enrich_and_prepare_contents(all_chunks: List[Dict[str, Any]]) -> List[str]:
+
+def enrich_and_prepare_contents(all_chunks: list[dict[str, Any]]) -> list[str]:
     """
     Enriches chunk metadata using LLM and prepares content strings for vector embedding.
     """
     from src.services.metadata_enrichment_service import MetadataEnrichmentService
+
     enrich_svc = MetadataEnrichmentService()
-    
+
     if enrich_svc.enabled:
         print(f"✨ LLM Metadata Enrichment enabled. Processing {len(all_chunks)} chunks...")
         for idx, chunk in enumerate(all_chunks):
-            print(f"   [{idx+1}/{len(all_chunks)}] Analyzing chunk...")
+            print(f"   [{idx + 1}/{len(all_chunks)}] Analyzing chunk...")
             enrichment = enrich_svc.enrich_chunk(chunk["content"])
             chunk["meta"].update(enrichment)
-            
+
     # Form content strings for embedding
     contents_to_embed = []
     for c in all_chunks:
@@ -52,25 +69,27 @@ def enrich_and_prepare_contents(all_chunks: List[Dict[str, Any]]) -> List[str]:
         if meta.get("keywords") or meta.get("questions"):
             kw_str = ", ".join(meta.get("keywords", []))
             q_str = " ".join(meta.get("questions", []))
-            enriched_text = f"Summary: {meta.get('summary', '')}\nKeywords: {kw_str}\nQuestions: {q_str}\n\nContent: {c['content']}"
+            enriched_text = (
+                f"Summary: {meta.get('summary', '')}\nKeywords: {kw_str}\nQuestions: {q_str}\n\nContent: {c['content']}"
+            )
             contents_to_embed.append(enriched_text)
         else:
             contents_to_embed.append(c["content"])
-            
+
     return contents_to_embed
 
 
-async def run_static_pipeline(pdf_path: Optional[str] = None):
+async def run_static_pipeline(pdf_path: str | None = None):
     """
     Runs extraction, chunking, and embedding for static rulebooks and wikis.
     """
     print("\n🏁 Starting Static Text Pipeline...")
-    
+
     crawler = StaticTextCrawler()
     transformer = TextTransformer()
     embedding_svc = EmbeddingService()
     repo = RagChunkRepository()
-    
+
     raw_docs = []
 
     # 1. Parse PDF if provided/exists
@@ -80,29 +99,58 @@ async def run_static_pipeline(pdf_path: Optional[str] = None):
             raw_docs.extend(pdf_docs)
         else:
             print(f"⚠️ Specified PDF path does not exist: {pdf_path}")
-    
+
     # Check if there are local rules markdown files under Docs/baseball to load as fallback/addition
     rules_dir = "Docs/baseball"
     if os.path.exists(rules_dir):
         print(f"📁 Scanning directory '{rules_dir}' for static markdown files...")
+        md_count = 0
         for root, _, files in os.walk(rules_dir):
             for file in files:
-                if file.endswith(".md"):
-                    full_path = os.path.join(root, file)
-                    try:
-                        with open(full_path, "r", encoding="utf-8") as f:
-                            content = f.read()
-                        raw_docs.append({
-                            "title": f"Local Doc - {file}",
+                if not file.endswith(".md"):
+                    continue
+                full_path = os.path.join(root, file)
+                try:
+                    with open(full_path, encoding="utf-8") as f:
+                        content = f.read()
+
+                    # Derive category from directory path using CATEGORY_MAP
+                    rel_path = os.path.relpath(full_path, rules_dir)
+                    path_parts = rel_path.replace("\\", "/").split("/")
+                    category = "rulebook"
+                    subcategory = None
+                    for part in path_parts[:-1]:  # skip filename
+                        mapped = _CATEGORY_MAP.get(part)
+                        if mapped:
+                            if category == "rulebook":
+                                category = mapped
+                            else:
+                                subcategory = mapped
+
+                    # Extract H1 title from first line of markdown
+                    first_line = content.lstrip().split("\n")[0]
+                    if first_line.startswith("#"):
+                        doc_title = first_line.lstrip("#").strip()
+                    else:
+                        doc_title = os.path.splitext(file)[0].replace("_", " ").title()
+
+                    raw_docs.append(
+                        {
+                            "title": doc_title,
                             "content": content,
                             "meta": {
                                 "source": full_path,
+                                "source_file": file,
                                 "crawled_at": datetime.now().isoformat(),
-                                "category": "rulebook"
-                            }
-                        })
-                    except Exception:
-                        logger.exception(f"⚠️ Error reading local markdown {file}")
+                                "category": category,
+                                **({"subcategory": subcategory} if subcategory else {}),
+                            },
+                        }
+                    )
+                    md_count += 1
+                except Exception:
+                    logger.exception(f"⚠️ Error reading local markdown {file}")
+        print(f"   Loaded {md_count} markdown documents from '{rules_dir}'.")
 
     # 2. Crawl Namuwiki pages (e.g. KBO rule list or history)
     # We use a default page for Namuwiki, or mock if offline/anti-scrape triggers
@@ -135,7 +183,7 @@ async def run_static_pipeline(pdf_path: Optional[str] = None):
         # Extract and enrich contents to batch embed
         contents_to_embed = enrich_and_prepare_contents(all_chunks)
         embeddings = embedding_svc.get_embeddings_batch(contents_to_embed)
-        
+
         # Map embeddings back to chunks
         for idx, emb in enumerate(embeddings):
             all_chunks[idx]["embedding"] = emb
@@ -144,11 +192,12 @@ async def run_static_pipeline(pdf_path: Optional[str] = None):
         with get_db_session() as session:
             upserted = repo.upsert_chunks(session, all_chunks)
             print(f"✅ Upserted {upserted} RAG chunks to local DB.")
-            
+
             # Automatically sync to OCI if config allows
             if os.getenv("RUN_SYNC_SUPABASE") == "1" or os.getenv("RUN_SYNC_OCI") == "1":
                 print("🚚 Syncing new static RAG chunks to OCI...")
                 from src.sync.oci_sync import OCISync
+
                 oci_url = os.getenv("OCI_DB_URL") or os.getenv("TARGET_DATABASE_URL")
                 if oci_url:
                     syncer = OCISync(oci_url, session)
@@ -158,18 +207,19 @@ async def run_static_pipeline(pdf_path: Optional[str] = None):
                     finally:
                         syncer.close()
 
+
 async def run_dynamic_pipeline():
     """
     Runs extraction and DB updates for schedules, rosters, and ticket times.
     """
     print("\n🏁 Starting Dynamic Data Pipeline...")
-    
+
     with get_db_session() as session:
         crawler = DynamicDataCrawler(session)
-        
+
         # 1. Update/Calculate ticket open schedules (next 14 days)
-        ticket_records = crawler.crawl_and_update_ticket_times(lookahead_days=14)
-        
+        crawler.crawl_and_update_ticket_times(lookahead_days=14)
+
         # 2. Crawl player rosters changes for today and yesterday
         today_str = datetime.now().strftime("%Y-%m-%d")
         yesterday_str = (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d")
@@ -177,6 +227,7 @@ async def run_dynamic_pipeline():
             roster_records = await crawler.crawl_roster_changes(start_date=yesterday_str, end_date=today_str)
             # Save roster records to team_daily_roster table using repository to resolve player_basic_id/person_type
             from src.repositories.team_repository import TeamRepository
+
             r_repo = TeamRepository(session)
             inserted_count = r_repo.save_daily_rosters(roster_records)
             print(f"✅ Dynamic rosters updated successfully ({inserted_count} records processed).")
@@ -187,6 +238,7 @@ async def run_dynamic_pipeline():
         if os.getenv("RUN_SYNC_SUPABASE") == "1" or os.getenv("RUN_SYNC_OCI") == "1":
             print("🚚 Syncing ticket schedules and daily rosters to OCI...")
             from src.sync.oci_sync import OCISync
+
             oci_url = os.getenv("OCI_DB_URL") or os.getenv("TARGET_DATABASE_URL")
             if oci_url:
                 syncer = OCISync(oci_url, session)
@@ -197,17 +249,18 @@ async def run_dynamic_pipeline():
                 finally:
                     syncer.close()
 
+
 async def run_realtime_pipeline():
     """
     Runs news and community thread crawler, transforms text, embeds and loads.
     """
     print("\n🏁 Starting Realtime Issue Pipeline...")
-    
+
     crawler = RealtimeIssueCrawler()
     transformer = TextTransformer()
     embedding_svc = EmbeddingService()
     repo = RagChunkRepository()
-    
+
     raw_docs = []
 
     # 1. Fetch Naver news headlines
@@ -241,7 +294,7 @@ async def run_realtime_pipeline():
         print(f"⚡ Fetching vector embeddings for {len(all_chunks)} chunks...")
         contents_to_embed = enrich_and_prepare_contents(all_chunks)
         embeddings = embedding_svc.get_embeddings_batch(contents_to_embed)
-        
+
         for idx, emb in enumerate(embeddings):
             all_chunks[idx]["embedding"] = emb
 
@@ -249,11 +302,12 @@ async def run_realtime_pipeline():
         with get_db_session() as session:
             upserted = repo.upsert_chunks(session, all_chunks)
             print(f"✅ Upserted {upserted} realtime RAG chunks to local DB.")
-            
+
             # Automatically sync to OCI if config allows
             if os.getenv("RUN_SYNC_SUPABASE") == "1" or os.getenv("RUN_SYNC_OCI") == "1":
                 print("🚚 Syncing realtime RAG chunks to OCI...")
                 from src.sync.oci_sync import OCISync
+
                 oci_url = os.getenv("OCI_DB_URL") or os.getenv("TARGET_DATABASE_URL")
                 if oci_url:
                     syncer = OCISync(oci_url, session)
@@ -263,10 +317,36 @@ async def run_realtime_pipeline():
                     finally:
                         syncer.close()
 
-def run_pipeline_sync(pipeline_type: str, pdf_path: Optional[str] = None):
+
+def run_consistency_check(deep: bool = False):
+    """
+    Runs a post-sync consistency audit between local SQLite and OCI.
+    Sends an alert if mismatches are found. Skips silently if OCI is not configured.
+    """
+    oci_url = os.getenv("OCI_DB_URL") or os.getenv("TARGET_DATABASE_URL")
+    if not oci_url:
+        print("ℹ️  OCI URL not configured — skipping consistency check.")
+        return
+
+    print("\n🔍 Running post-sync consistency audit...")
+    try:
+        success = run_consistency_audit(deep=deep, trigger_alert=True)
+        if success:
+            print("✅ Consistency audit passed — databases are in sync.")
+        else:
+            print("🚨 Consistency audit found mismatches — alert sent.")
+    except Exception:
+        err_msg = traceback.format_exc()
+        logger.error(f"Consistency audit raised an unexpected error:\n{err_msg}")
+        SlackWebhookClient.send_error_alert(f"Consistency audit error:\n{err_msg}")
+
+
+def run_pipeline_sync(pipeline_type: str, pdf_path: str | None = None):
     """
     Helper to run async pipeline synchronously and catch errors for Telegram alerts.
+    After OCI sync completes, automatically runs a count-level consistency audit.
     """
+    run_sync = os.getenv("RUN_SYNC_SUPABASE") == "1" or os.getenv("RUN_SYNC_OCI") == "1"
     try:
         if pipeline_type == "static":
             asyncio.run(run_static_pipeline(pdf_path))
@@ -276,11 +356,18 @@ def run_pipeline_sync(pipeline_type: str, pdf_path: Optional[str] = None):
             asyncio.run(run_realtime_pipeline())
         else:
             print(f"❌ Unknown pipeline type: {pipeline_type}")
+            return
     except Exception:
         err_msg = traceback.format_exc()
         print(f"❌ Critical Pipeline Failure:\n{err_msg}")
         # Send Telegram Bot Warning Webhook alert
         SlackWebhookClient.send_error_alert(err_msg)
+        return
+
+    # Run a lightweight (count-level) consistency audit after each successful sync
+    if run_sync:
+        run_consistency_check(deep=False)
+
 
 def start_scheduler():
     """
@@ -288,39 +375,51 @@ def start_scheduler():
     """
     print("\n⏰ Starting background scheduler daemon...")
     scheduler = BlockingScheduler()
-    
+
     # 1. Realtime Pipeline: Runs every 2 hours
     scheduler.add_job(
         run_pipeline_sync,
-        'interval',
+        "interval",
         hours=2,
         args=["realtime"],
         id="realtime_pipeline",
-        name="Realtime News and Forum Crawler"
+        name="Realtime News and Forum Crawler",
     )
 
     # 2. Dynamic Pipeline: Runs daily at 3:00 AM
     scheduler.add_job(
         run_pipeline_sync,
-        'cron',
+        "cron",
         hour=3,
         minute=0,
         args=["dynamic"],
         id="dynamic_pipeline",
-        name="Daily Schedule & Roster Crawler"
+        name="Daily Schedule & Roster Crawler",
     )
 
     # 3. Static Pipeline: Runs quarterly (e.g. Day 1 of Jan, Apr, Jul, Oct at 4:00 AM)
     scheduler.add_job(
         run_pipeline_sync,
-        'cron',
-        month='1,4,7,10',
+        "cron",
+        month="1,4,7,10",
         day=1,
         hour=4,
         minute=0,
         args=["static"],
         id="static_pipeline",
-        name="Quarterly Rules & Wiki Crawler"
+        name="Quarterly Rules & Wiki Crawler",
+    )
+
+    # 4. Deep Consistency Audit: Runs daily at 05:00 AM (after dynamic pipeline at 03:00 AM)
+    #    Only active when OCI sync is enabled via environment variable.
+    scheduler.add_job(
+        run_consistency_check,
+        "cron",
+        hour=5,
+        minute=0,
+        kwargs={"deep": True},
+        id="consistency_audit",
+        name="Daily Deep Consistency Audit (SQLite ↔ OCI)",
     )
 
     print("   Jobs scheduled:")
@@ -332,24 +431,17 @@ def start_scheduler():
     except (KeyboardInterrupt, SystemExit):
         print("⏰ Scheduler stopped.")
 
+
 def main():
     parser = argparse.ArgumentParser(description="KBO Knowledge & Issue Crawler Pipeline Orchestrator")
     parser.add_argument(
-        "--type",
-        choices=["static", "dynamic", "realtime"],
-        help="Execute specific crawler pipeline type immediately."
+        "--type", choices=["static", "dynamic", "realtime"], help="Execute specific crawler pipeline type immediately."
     )
+    parser.add_argument("--pdf", type=str, help="Local KBO rules PDF file path. (Used only with --type static)")
     parser.add_argument(
-        "--pdf",
-        type=str,
-        help="Local KBO rules PDF file path. (Used only with --type static)"
+        "--daemon", action="store_true", help="Run scheduler daemon in background to execute jobs periodically."
     )
-    parser.add_argument(
-        "--daemon",
-        action="store_true",
-        help="Run scheduler daemon in background to execute jobs periodically."
-    )
-    
+
     args = parser.parse_args()
 
     if not args.type and not args.daemon:
@@ -360,6 +452,7 @@ def main():
         run_pipeline_sync(args.type, args.pdf)
     elif args.daemon:
         start_scheduler()
+
 
 if __name__ == "__main__":
     main()

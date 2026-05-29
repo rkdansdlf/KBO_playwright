@@ -3,30 +3,31 @@ KBO Daily Data Update Orchestrator.
 
 This entrypoint is the postgame finalize + daily reconciliation job.
 """
+
 from __future__ import annotations
 
-import logging
 import argparse
 import asyncio
 import json
+import logging
 import os
 import subprocess
 import sys
 from collections import Counter
 from datetime import date, datetime, timedelta
 from pathlib import Path
-from typing import Any, Callable, Mapping, Optional, Sequence
+from typing import Any, Callable, Mapping, Sequence
 from zoneinfo import ZoneInfo
 
+from sqlalchemy import select
+
 from src.cli.auto_healer import run_healer_async
-from src.cli.sync_oci import main as sync_main
 from src.crawlers.daily_roster_crawler import DailyRosterCrawler
 from src.crawlers.game_detail_crawler import GameDetailCrawler
 from src.crawlers.player_batting_all_series_crawler import crawl_series_batting_stats
 from src.crawlers.player_movement_crawler import PlayerMovementCrawler
 from src.crawlers.player_pitching_all_series_crawler import crawl_pitcher_series
 from src.crawlers.schedule_crawler import ScheduleCrawler
-from sqlalchemy import select, func
 from src.db.engine import SessionLocal
 from src.models.game import Game, GamePlayByPlay
 from src.repositories.game_repository import (
@@ -39,13 +40,13 @@ from src.repositories.game_repository import (
 from src.repositories.player_repository import PlayerRepository
 from src.repositories.team_repository import TeamRepository
 from src.services.game_collection_service import crawl_and_save_game_details
+from src.services.game_write_contract import GameWriteContract
 from src.services.player_id_resolver import PlayerIdResolver
 from src.services.postgame_reconciliation_service import (
     format_reconciliation_report,
     reconcile_postgame_range,
 )
 from src.services.schedule_collection_service import save_schedule_games
-from src.services.game_write_contract import GameWriteContract
 from src.sync.oci_sync import OCISync
 from src.utils.refresh_manifest import write_refresh_manifest
 from src.utils.safe_print import safe_print as print
@@ -149,8 +150,7 @@ def _build_stability_summary(
         "detail": {
             "failure_counts": dict(sorted(detail_failure_counts.items())),
             "failure_game_ids": {
-                reason: sorted(set(game_ids))
-                for reason, game_ids in sorted(detail_failure_game_ids.items())
+                reason: sorted(set(game_ids)) for reason, game_ids in sorted(detail_failure_game_ids.items())
             },
         },
         "relay": {
@@ -159,10 +159,7 @@ def _build_stability_summary(
         },
         "oci": {
             "skip_counts": dict(sorted(oci_skip_counts.items())),
-            "skip_game_ids": {
-                reason: sorted(set(game_ids))
-                for reason, game_ids in sorted(oci_skip_game_ids.items())
-            },
+            "skip_game_ids": {reason: sorted(set(game_ids)) for reason, game_ids in sorted(oci_skip_game_ids.items())},
         },
         "retry_candidates": {
             "detail": detail_retry_candidates,
@@ -213,7 +210,7 @@ def format_stability_alert_summary(result: object) -> str | None:
     )
 
 
-def _failure_status(target_date: str, failure_reason: Optional[str], today: date) -> Optional[str]:
+def _failure_status(target_date: str, failure_reason: str | None, today: date) -> str | None:
     if failure_reason == "cancelled":
         return GAME_STATUS_CANCELLED
     try:
@@ -274,7 +271,7 @@ async def run_update(
     headless: bool = True,
     limit: int | None = None,
     *,
-    step_runner: Optional[Callable[[Sequence[str]], None]] = None,
+    step_runner: Callable[[Sequence[str]], None] | None = None,
     summary_dir: str | Path | None = None,
     seed_tomorrow_preview: bool = False,
     run_auto_healer: bool = True,
@@ -375,33 +372,34 @@ async def run_update(
                 print(f"   ❌ Failed to save {game_id} to local DB")
             else:
                 print(f"   ⚠️ Could not fetch details for {game_id} (reason={reason or 'unknown'})")
-            
+
             # 🛡️ Protection: If the game is already marked as terminal in the DB (e.g. by Auto-Healer),
             # don't overwrite it with a generic fallback status unless the reason is specifically 'cancelled'.
             fallback = _failure_status(target_date, reason, today_kst)
             if fallback:
                 with SessionLocal() as status_check_session:
-                    current_game = status_check_session.query(Game).filter(Game.game_id == normalize_kbo_game_id(game_id)).one_or_none()
-                    if current_game and current_game.game_status in {GAME_STATUS_CANCELLED, "POSTPONED"} and fallback != GAME_STATUS_CANCELLED:
+                    current_game = (
+                        status_check_session.query(Game)
+                        .filter(Game.game_id == normalize_kbo_game_id(game_id))
+                        .one_or_none()
+                    )
+                    if (
+                        current_game
+                        and current_game.game_status in {GAME_STATUS_CANCELLED, "POSTPONED"}
+                        and fallback != GAME_STATUS_CANCELLED
+                    ):
                         print(f"   ℹ️ Preservation: Keeping terminal status '{current_game.game_status}' for {game_id}")
                     else:
                         update_game_status(game_id, fallback)
-        print(
-            f"   ✅ Detail result success={collection_result.detail_saved} "
-            f"failed={collection_result.detail_failed}"
-        )
+        print(f"   ✅ Detail result success={collection_result.detail_saved} failed={collection_result.detail_failed}")
         if detail_failure_counts:
             print(f"   ℹ️ Detail failure reasons: {_format_counts(detail_failure_counts)}")
 
         if run_postgame_reconciliation:
             reconcile_start = (
-                datetime.strptime(target_date, "%Y%m%d")
-                - timedelta(days=max(0, postgame_reconcile_lookback_days))
+                datetime.strptime(target_date, "%Y%m%d") - timedelta(days=max(0, postgame_reconcile_lookback_days))
             ).strftime("%Y%m%d")
-            print(
-                "\n🧩 Step 2.5: Reconciling recently started games "
-                f"({reconcile_start}~{target_date})..."
-            )
+            print(f"\n🧩 Step 2.5: Reconciling recently started games ({reconcile_start}~{target_date})...")
             reconciliation_result = await reconcile_postgame_range(
                 reconcile_start,
                 target_date,
@@ -413,11 +411,7 @@ async def run_update(
             )
             reconciliation_changed_ids = reconciliation_result.changed_game_ids
             reconciliation_dates = sorted({change.game_date for change in reconciliation_result.changes})
-            print(
-                "   ✅ "
-                f"candidates={reconciliation_result.candidates} "
-                f"changed={len(reconciliation_result.changes)}"
-            )
+            print(f"   ✅ candidates={reconciliation_result.candidates} changed={len(reconciliation_result.changes)}")
             if reconciliation_result.changes:
                 for line in format_reconciliation_report(reconciliation_result.changes).splitlines():
                     print(f"   {line}")
@@ -441,9 +435,7 @@ async def run_update(
     print("\n🧭 Step 3: Refreshing game status for target date...")
     status_result = refresh_game_status_for_date(target_date, today=today_kst)
     status_refresh_game_ids = [
-        normalized
-        for game_id in status_result.get("game_ids", [])
-        if (normalized := normalize_kbo_game_id(game_id))
+        normalized for game_id in status_result.get("game_ids", []) if (normalized := normalize_kbo_game_id(game_id))
     ]
     print(
         "   ✅ "
@@ -479,26 +471,19 @@ async def run_update(
     print("\n🔍 Step 4.5: Proactive Relay Recovery (Last 30 days)...")
     try:
         with SessionLocal() as session:
-            thirty_days_ago = (datetime.now(KST).date() - timedelta(days=30))
-            
+            thirty_days_ago = datetime.now(KST).date() - timedelta(days=30)
+
             # Find games that are completed but have 0 PBP rows
             stmt = (
                 select(Game.game_id)
-                .where(
-                    Game.game_date >= thirty_days_ago,
-                    Game.game_status.in_(["COMPLETED", "DRAW"])
-                )
-                .where(
-                    ~Game.game_id.in_(
-                        select(GamePlayByPlay.game_id).distinct()
-                    )
-                )
+                .where(Game.game_date >= thirty_days_ago, Game.game_status.in_(["COMPLETED", "DRAW"]))
+                .where(~Game.game_id.in_(select(GamePlayByPlay.game_id).distinct()))
             )
             missing_pbp_game_ids = session.execute(stmt).scalars().all()
-            
+
             if missing_pbp_game_ids:
                 print(f"   ⚠️ Found {len(missing_pbp_game_ids)} games missing PBP data. Attempting recovery...")
-                # Filter out ones already in relay_recovery_target_ids to avoid redundant runs 
+                # Filter out ones already in relay_recovery_target_ids to avoid redundant runs
                 # (though fetch_kbo_pbp handles it, cleaner to show accurate count here)
                 to_recover = [gid for gid in missing_pbp_game_ids if gid not in relay_recovery_target_ids]
                 if to_recover:
@@ -513,9 +498,7 @@ async def run_update(
         logger.exception("   ❌ Error in proactive relay recovery")
 
     freshness_dates = sorted(
-        {target_date}
-        | set(reconciliation_dates)
-        | {item["game_date"] for item in healer_recovery_targets}
+        {target_date} | set(reconciliation_dates) | {item["game_date"] for item in healer_recovery_targets}
     )
 
     print("\n📝 Step 5: Post-game review/WPA generation...")
@@ -540,7 +523,7 @@ async def run_update(
     # Identify unique season types from today's games
     active_series = sorted({g.get("season_type", "regular") for g in daily_games if g.get("season_type")})
     if not active_series:
-        active_series = ["regular"] # Fallback
+        active_series = ["regular"]  # Fallback
 
     print(f"   🔍 Active series detected: {active_series}")
 
@@ -654,6 +637,7 @@ async def run_update(
     print("\n🕵️  Step 10.8: Deep statistical logic audit (cross-table invariants)...")
     try:
         from scripts.verification.audit_game_logic import audit_game_logic
+
         violations = audit_game_logic(year=year)
 
         if violations:
@@ -820,43 +804,44 @@ async def run_update(
     if relay_recovery_target_ids:
         try:
             with SessionLocal() as session:
-                recovered_pbp_ids = session.execute(
-                    select(GamePlayByPlay.game_id)
-                    .where(GamePlayByPlay.game_id.in_(list(relay_recovery_target_ids)))
-                    .distinct()
-                ).scalars().all()
-                
+                recovered_pbp_ids = (
+                    session.execute(
+                        select(GamePlayByPlay.game_id)
+                        .where(GamePlayByPlay.game_id.in_(list(relay_recovery_target_ids)))
+                        .distinct()
+                    )
+                    .scalars()
+                    .all()
+                )
+
             failed_ids = set(relay_recovery_target_ids) - set(recovered_pbp_ids)
             success_count = len(recovered_pbp_ids)
             failed_count = len(failed_ids)
-            
+
             from src.utils.alerting import SlackWebhookClient
+
             msg = f"📊 *Daily PBP Recovery Report ({target_date})*"
             blocks = [
-                {
-                    "type": "header",
-                    "text": {
-                        "type": "plain_text",
-                        "text": "📊 Daily PBP Recovery Report"
-                    }
-                },
+                {"type": "header", "text": {"type": "plain_text", "text": "📊 Daily PBP Recovery Report"}},
                 {
                     "type": "section",
                     "fields": [
                         {"type": "mrkdwn", "text": f"*Target Games:* {len(relay_recovery_target_ids)}"},
                         {"type": "mrkdwn", "text": f"*Recovered:* {success_count} ✅"},
-                        {"type": "mrkdwn", "text": f"*Failed:* {failed_count} ❌"}
-                    ]
-                }
+                        {"type": "mrkdwn", "text": f"*Failed:* {failed_count} ❌"},
+                    ],
+                },
             ]
             if failed_ids:
-                blocks.append({
-                    "type": "section",
-                    "text": {
-                        "type": "mrkdwn",
-                        "text": f"*Failed Game IDs:*\n```\n{', '.join(sorted(failed_ids))}\n```"
+                blocks.append(
+                    {
+                        "type": "section",
+                        "text": {
+                            "type": "mrkdwn",
+                            "text": f"*Failed Game IDs:*\n```\n{', '.join(sorted(failed_ids))}\n```",
+                        },
                     }
-                })
+                )
             SlackWebhookClient.send_alert(msg, blocks=blocks)
             print(f"   ✅ Sent PBP recovery summary to Slack (Success: {success_count}, Failed: {failed_count})")
         except Exception:

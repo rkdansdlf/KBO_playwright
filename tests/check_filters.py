@@ -1,10 +1,13 @@
 """
 Check if there are any filters applied on the search page
 """
+
 import asyncio
+
 from playwright.async_api import async_playwright
 
 SEARCH_URL = "https://www.koreabaseball.com/Player/Search.aspx?searchWord=%25"
+
 
 async def check_filters():
     async with async_playwright() as p:
@@ -58,7 +61,8 @@ async def check_filters():
             print("\n\n=== Search result count ===")
             body_text = await page.locator("body").inner_text()
             import re
-            match = re.search(r'검색결과\s*:\s*(\d+[,\d]*)\s*건', body_text)
+
+            match = re.search(r"검색결과\s*:\s*(\d+[,\d]*)\s*건", body_text)
             if match:
                 count_text = match.group(1)
                 print(f"검색결과: {count_text}건")
@@ -68,6 +72,7 @@ async def check_filters():
 
         finally:
             await browser.close()
+
 
 if __name__ == "__main__":
     asyncio.run(check_filters())

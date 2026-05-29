@@ -7,7 +7,9 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 import src.cli.daily_review_batch as review_batch
-import src.repositories.game_repository as game_repository
+import src.repositories.game_relay as game_relay_module
+import src.repositories.game_save as game_save_module
+import src.repositories.game_status as game_status_module
 from src.models.game import (
     Game,
     GameBattingStat,
@@ -57,7 +59,9 @@ class _FakeContextAggregator:
 def test_review_batch_refreshes_stale_scheduled_completed_game(monkeypatch, tmp_path):
     SessionLocal = _build_session_factory()
     monkeypatch.setattr(review_batch, "SessionLocal", SessionLocal)
-    monkeypatch.setattr(game_repository, "SessionLocal", SessionLocal)
+    monkeypatch.setattr(game_save_module, "SessionLocal", SessionLocal)
+    monkeypatch.setattr(game_relay_module, "SessionLocal", SessionLocal)
+    monkeypatch.setattr(game_status_module, "SessionLocal", SessionLocal)
     monkeypatch.setattr(review_batch, "ContextAggregator", _FakeContextAggregator)
     monkeypatch.setattr(review_batch, "write_refresh_manifest", lambda **_kwargs: tmp_path / "manifest.json")
 
@@ -96,9 +100,13 @@ def test_review_batch_refreshes_stale_scheduled_completed_game(monkeypatch, tmp_
     assert saved_ids == ["20240516LGSS0"]
     with SessionLocal() as session:
         game = session.query(Game).filter(Game.game_id == "20240516LGSS0").one()
-        summary = session.query(GameSummary).filter(
-            GameSummary.game_id == "20240516LGSS0",
-            GameSummary.summary_type == review_batch.REVIEW_SUMMARY_TYPE,
-        ).one()
+        summary = (
+            session.query(GameSummary)
+            .filter(
+                GameSummary.game_id == "20240516LGSS0",
+                GameSummary.summary_type == review_batch.REVIEW_SUMMARY_TYPE,
+            )
+            .one()
+        )
         assert game.game_status == GAME_STATUS_COMPLETED
         assert "go-ahead run" in summary.detail_text

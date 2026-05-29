@@ -1,10 +1,12 @@
 """
 End-to-end test: Fetch Futures stats and save to database.
 """
+
 import asyncio
+
 from src.crawlers.futures.futures_batting import fetch_and_parse_futures_batting
-from src.repositories.save_futures_batting import save_futures_batting
 from src.repositories.player_repository import PlayerRepository
+from src.repositories.save_futures_batting import save_futures_batting
 from src.utils.safe_print import safe_print as print
 
 PLAYER_ID = "51868"  # KBO player ID (string)
@@ -12,7 +14,7 @@ PLAYER_URL = f"https://www.koreabaseball.com/Futures/Player/HitterTotal.aspx?pla
 
 
 async def main():
-    print(f"=== Futures Batting E2E Test ===\n")
+    print("=== Futures Batting E2E Test ===\n")
 
     # Step 1: Crawl and parse
     print(f"Step 1: Crawling Futures stats for player {PLAYER_ID}...")
@@ -34,10 +36,8 @@ async def main():
 
     # Try to get existing player
     from src.parsers.player_profile_parser import PlayerProfileParsed
-    player = repo.upsert_player_profile(
-        PLAYER_ID,
-        PlayerProfileParsed(is_active=True, player_name="고명준")
-    )
+
+    player = repo.upsert_player_profile(PLAYER_ID, PlayerProfileParsed(is_active=True, player_name="고명준"))
 
     if not player:
         print("Failed to create player record")
@@ -53,14 +53,16 @@ async def main():
     # Step 4: Verify
     print("Step 4: Verifying records in database...")
     from sqlalchemy import select
+
     from src.db.engine import SessionLocal
     from src.models.player import PlayerSeasonBatting
 
     with SessionLocal() as session:
-        stmt = select(PlayerSeasonBatting).where(
-            PlayerSeasonBatting.player_id == player.player_basic_id,
-            PlayerSeasonBatting.league == "FUTURES"
-        ).order_by(PlayerSeasonBatting.season)
+        stmt = (
+            select(PlayerSeasonBatting)
+            .where(PlayerSeasonBatting.player_id == player.player_basic_id, PlayerSeasonBatting.league == "FUTURES")
+            .order_by(PlayerSeasonBatting.season)
+        )
 
         results = session.execute(stmt).scalars().all()
 

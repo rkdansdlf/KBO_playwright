@@ -6,7 +6,6 @@ import pytest
 from dotenv import load_dotenv
 from sqlalchemy import create_engine, text
 
-
 load_dotenv()
 
 

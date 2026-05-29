@@ -11,22 +11,21 @@ Usage:
     python3 -m src.cli.crawl_staff_register --all-teams
     python3 -m src.cli.crawl_staff_register --team LG
 """
+
 from __future__ import annotations
 
 import asyncio
 import logging
 import re
-from datetime import datetime, date as date_type
-from typing import Dict, List, Optional, Tuple
-
+from datetime import date as date_type
 
 logger = logging.getLogger(__name__)
 
-from playwright.async_api import async_playwright, Page, BrowserContext
+from playwright.async_api import BrowserContext, Page, async_playwright
 
+from src.utils.request_policy import RequestPolicy
 from src.utils.safe_print import safe_print as print
 from src.utils.team_codes import resolve_team_code
-from src.utils.request_policy import RequestPolicy
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -34,7 +33,7 @@ from src.utils.request_policy import RequestPolicy
 REGISTER_URL = "https://www.koreabaseball.com/Player/Register.aspx"
 
 # Team codes used by KBO site -> canonical team code mapping seed
-KBO_TEAM_MAP: Dict[str, str] = {
+KBO_TEAM_MAP: dict[str, str] = {
     "SS": "SS",  # 삼성
     "KT": "KT",
     "LG": "LG",
@@ -48,7 +47,7 @@ KBO_TEAM_MAP: Dict[str, str] = {
 }
 
 # Tables: index 0 = 감독, index 1 = 코치
-TABLE_ROLE_MAP: Dict[int, str] = {0: "manager", 1: "coach"}
+TABLE_ROLE_MAP: dict[int, str] = {0: "manager", 1: "coach"}
 
 # Regex to extract playerId from URLs like
 # /Record/Player/HitterDetail/Basic.aspx?playerId=91350
@@ -64,21 +63,21 @@ HAND_MAP = {"우": "R", "좌": "L", "양": "S"}
 HAND_RE = re.compile(r"(.)[투](.)타")
 
 
-def _parse_player_id(href: Optional[str]) -> Optional[int]:
+def _parse_player_id(href: str | None) -> int | None:
     if not href:
         return None
     m = PLAYERID_RE.search(href)
     return int(m.group(1)) if m else None
 
 
-def _parse_hw(text: str) -> Tuple[Optional[int], Optional[int]]:
+def _parse_hw(text: str) -> tuple[int | None, int | None]:
     m = HW_RE.search(text.replace(" ", ""))
     if m:
         return int(m.group(1)), int(m.group(2))
     return None, None
 
 
-def _parse_birth_date(text: str) -> Optional[date_type]:
+def _parse_birth_date(text: str) -> date_type | None:
     m = BIRTH_RE.search(text)
     if m:
         try:
@@ -88,7 +87,7 @@ def _parse_birth_date(text: str) -> Optional[date_type]:
     return None
 
 
-def _parse_hands(text: str) -> Tuple[Optional[str], Optional[str]]:
+def _parse_hands(text: str) -> tuple[str | None, str | None]:
     """Parse throws/bats from '우투우타' style string."""
     m = HAND_RE.search(text)
     if m:
@@ -184,8 +183,8 @@ class StaffRegisterCrawler:
         self,
         page: Page,
         kbo_team_code: str,
-        team_display_name: Optional[str] = None,
-    ) -> List[Dict]:
+        team_display_name: str | None = None,
+    ) -> list[dict]:
         """Crawl a single team's staff registration page."""
         await self.policy.delay_async(host="www.koreabaseball.com")
         await page.evaluate(f"fnSearchChange('{kbo_team_code}')")
@@ -231,17 +230,14 @@ class StaffRegisterCrawler:
             )
 
         print(
-            f"  [{kbo_team_code}] Found {len(records)} staff "
-            f"({'→'.join(str(r['player_id']) for r in records[:3])}...)"
+            f"  [{kbo_team_code}] Found {len(records)} staff ({'→'.join(str(r['player_id']) for r in records[:3])}...)"
         )
         return records
 
-    async def crawl_all_teams(
-        self, team_codes: Optional[List[str]] = None
-    ) -> List[Dict]:
+    async def crawl_all_teams(self, team_codes: list[str] | None = None) -> list[dict]:
         """Crawl all (or specified) teams and return combined staff records."""
         targets = team_codes or list(KBO_TEAM_MAP.keys())
-        all_records: List[Dict] = []
+        all_records: list[dict] = []
 
         async with async_playwright() as p:
             browser = await p.chromium.launch(headless=self.headless)
@@ -259,9 +255,7 @@ class StaffRegisterCrawler:
 
             try:
                 print(f"🌍 Navigating to {REGISTER_URL} ...")
-                await page.goto(
-                    REGISTER_URL, wait_until="domcontentloaded", timeout=30000
-                )
+                await page.goto(REGISTER_URL, wait_until="domcontentloaded", timeout=30000)
                 await page.wait_for_timeout(1500)
 
                 for code in targets:
@@ -278,7 +272,7 @@ class StaffRegisterCrawler:
 
     def save_to_db(
         self,
-        records: List[Dict],
+        records: list[dict],
         *,
         dry_run: bool = False,
     ) -> int:
@@ -295,10 +289,7 @@ class StaffRegisterCrawler:
         skipped = [r for r in records if not r.get("player_id")]
 
         if skipped:
-            print(
-                f"  ⚠️  {len(skipped)} record(s) skipped (no player_id): "
-                + ", ".join(r["name"] for r in skipped)
-            )
+            print(f"  ⚠️  {len(skipped)} record(s) skipped (no player_id): " + ", ".join(r["name"] for r in skipped))
 
         if dry_run:
             print(f"  [DRY-RUN] Would upsert {len(valid)} staff record(s) into player_basic.")

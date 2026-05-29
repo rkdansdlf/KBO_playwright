@@ -4,21 +4,21 @@
 데이터베이스에 저장된 경기 일정, 선수, 퓨처스리그 데이터 등의 상태를 확인하고,
 예상 수치와 비교하여 잠재적인 문제를 경고합니다.
 """
+
 from __future__ import annotations
 
 import argparse
 import os
-from typing import Sequence
-from sqlalchemy import select, func, text
 from datetime import datetime
+from typing import Sequence
 
 from dotenv import load_dotenv
+from sqlalchemy import func, select, text
 
 from src.db.engine import SessionLocal
 from src.models.game import Game
 from src.models.player import Player, PlayerSeasonBatting, PlayerSeasonPitching
 from src.utils.safe_print import safe_print as print
-
 
 FALSE_ENV_VALUES = {"0", "false", "no", "off"}
 
@@ -40,15 +40,18 @@ def check_schedules(session) -> dict:
 
     try:
         operational_total = session.execute(text("SELECT COUNT(*) FROM game")).scalar() or 0
-        operational_scheduled = session.execute(
-            text(
-                """
+        operational_scheduled = (
+            session.execute(
+                text(
+                    """
                 SELECT COUNT(*)
                 FROM game
                 WHERE UPPER(COALESCE(game_status, '')) = 'SCHEDULED'
                 """
-            )
-        ).scalar() or 0
+                )
+            ).scalar()
+            or 0
+        )
     except Exception:
         operational_total = 0
         operational_scheduled = 0
@@ -57,11 +60,7 @@ def check_schedules(session) -> dict:
     type_counts = {}
     results = []
     try:
-        stmt = text(
-            "SELECT season_type, COUNT(*) "
-            "FROM game_schedules "
-            "GROUP BY season_type"
-        )
+        stmt = text("SELECT season_type, COUNT(*) FROM game_schedules GROUP BY season_type")
         results = session.execute(stmt).all()
     except Exception:
         results = []
@@ -74,12 +73,7 @@ def check_schedules(session) -> dict:
 
     # 연도별 집계
     try:
-        stmt = text(
-            "SELECT season_year, COUNT(*) "
-            "FROM game_schedules "
-            "GROUP BY season_year "
-            "ORDER BY season_year DESC"
-        )
+        stmt = text("SELECT season_year, COUNT(*) FROM game_schedules GROUP BY season_year ORDER BY season_year DESC")
         results = session.execute(stmt).all()
     except Exception:
         results = []
@@ -94,10 +88,7 @@ def check_schedules(session) -> dict:
 
     # 데이터의 날짜 범위 확인
     try:
-        stmt = text(
-            "SELECT MIN(game_date), MAX(game_date) "
-            "FROM game_schedules"
-        )
+        stmt = text("SELECT MIN(game_date), MAX(game_date) FROM game_schedules")
         min_date, max_date = session.execute(stmt).first()
     except Exception:
         min_date, max_date = None, None
@@ -118,9 +109,9 @@ def check_schedules(session) -> dict:
     # 예상 데이터 수와 비교하여 검증 (2025 시즌 기준)
     warnings = []
     expected = {
-        "preseason": 42,    # Based on Progress.md
-        "regular": 720,     # 10 teams * 144 games / 2
-        "postseason": 7     # Initial fixtures
+        "preseason": 42,  # Based on Progress.md
+        "regular": 720,  # 10 teams * 144 games / 2
+        "postseason": 7,  # Initial fixtures
     }
 
     print("\nValidation:")
@@ -144,7 +135,7 @@ def check_schedules(session) -> dict:
         "operational_scheduled": operational_scheduled,
         "source": "game_schedules" if total > 0 else "game",
         "by_type": type_counts,
-        "warnings": warnings
+        "warnings": warnings,
     }
 
 
@@ -157,10 +148,7 @@ def check_players(session) -> dict:
     print(f"Total players: {total}")
 
     # 선수 상태(현역, 은퇴 등)별 집계
-    stmt = select(
-        Player.status,
-        func.count(Player.id)
-    ).group_by(Player.status)
+    stmt = select(Player.status, func.count(Player.id)).group_by(Player.status)
 
     results = session.execute(stmt).all()
     print("\nBy status:")
@@ -176,19 +164,17 @@ def check_futures_data(session) -> dict:
     print("\n=== Futures League Data ===")
 
     # 퓨처스리그 타자 기록 수
-    batting_stmt = select(func.count(PlayerSeasonBatting.id)).where(
-        PlayerSeasonBatting.league == "FUTURES"
-    )
+    batting_stmt = select(func.count(PlayerSeasonBatting.id)).where(PlayerSeasonBatting.league == "FUTURES")
     batting_count = session.execute(batting_stmt).scalar()
     print(f"Batting records: {batting_count}")
 
     # 시즌별 타자 기록 집계
-    stmt = select(
-        PlayerSeasonBatting.season,
-        func.count(PlayerSeasonBatting.id)
-    ).where(
-        PlayerSeasonBatting.league == "FUTURES"
-    ).group_by(PlayerSeasonBatting.season).order_by(PlayerSeasonBatting.season.desc())
+    stmt = (
+        select(PlayerSeasonBatting.season, func.count(PlayerSeasonBatting.id))
+        .where(PlayerSeasonBatting.league == "FUTURES")
+        .group_by(PlayerSeasonBatting.season)
+        .order_by(PlayerSeasonBatting.season.desc())
+    )
 
     results = session.execute(stmt).all()
     if results:
@@ -197,16 +183,11 @@ def check_futures_data(session) -> dict:
             print(f"  {season}: {count}")
 
     # 퓨처스리그 투수 기록 수
-    pitching_stmt = select(func.count(PlayerSeasonPitching.id)).where(
-        PlayerSeasonPitching.league == "FUTURES"
-    )
+    pitching_stmt = select(func.count(PlayerSeasonPitching.id)).where(PlayerSeasonPitching.league == "FUTURES")
     pitching_count = session.execute(pitching_stmt).scalar()
     print(f"\nPitching records: {pitching_count}")
 
-    return {
-        "batting": batting_count,
-        "pitching": pitching_count
-    }
+    return {"batting": batting_count, "pitching": pitching_count}
 
 
 def check_game_data(session) -> dict:
@@ -222,16 +203,10 @@ def check_game_data(session) -> dict:
         pitching_count = session.execute(select(func.count(PlayerGamePitching.id))).scalar()
         print(f"Player game pitching records: {pitching_count}")
 
-        return {
-            "batting": batting_count,
-            "pitching": pitching_count
-        }
+        return {"batting": batting_count, "pitching": pitching_count}
     except (ImportError, AttributeError):
         print("Player game stats models not found (expected for early development)")
-        return {
-            "batting": 0,
-            "pitching": 0
-        }
+        return {"batting": 0, "pitching": 0}
 
 
 def check_pregame_pitcher_coverage(session, *, verbose: bool = False) -> dict:
@@ -299,20 +274,24 @@ def check_pregame_pitcher_coverage(session, *, verbose: bool = False) -> dict:
             (Game.home_pitcher.is_(None) | (Game.home_pitcher == "")),
         )
     ).scalar()
-    preview_rows = session.execute(
-        text(
-            """
+    preview_rows = (
+        session.execute(
+            text(
+                """
             SELECT COUNT(DISTINCT g.game_id)
             FROM game g
             JOIN game_summary gs ON gs.game_id = g.game_id
             WHERE UPPER(g.game_status) = 'SCHEDULED'
               AND gs.summary_type = '프리뷰'
             """
-        )
-    ).scalar() or 0
-    preview_missing_starters = session.execute(
-        text(
-            """
+            )
+        ).scalar()
+        or 0
+    )
+    preview_missing_starters = (
+        session.execute(
+            text(
+                """
             SELECT COUNT(DISTINCT g.game_id)
             FROM game g
             JOIN game_summary gs ON gs.game_id = g.game_id
@@ -323,11 +302,14 @@ def check_pregame_pitcher_coverage(session, *, verbose: bool = False) -> dict:
                 OR g.home_pitcher IS NULL OR g.home_pitcher = ''
               )
             """
-        )
-    ).scalar() or 0
-    sync_candidate_games = session.execute(
-        text(
-            """
+            )
+        ).scalar()
+        or 0
+    )
+    sync_candidate_games = (
+        session.execute(
+            text(
+                """
             SELECT COUNT(DISTINCT g.game_id)
             FROM game g
             LEFT JOIN (
@@ -342,11 +324,14 @@ def check_pregame_pitcher_coverage(session, *, verbose: bool = False) -> dict:
                 OR (g.home_pitcher IS NOT NULL AND g.home_pitcher != '')
               )
             """
-        )
-    ).scalar() or 0
-    sync_complete_starters = session.execute(
-        text(
-            """
+            )
+        ).scalar()
+        or 0
+    )
+    sync_complete_starters = (
+        session.execute(
+            text(
+                """
             SELECT COUNT(DISTINCT g.game_id)
             FROM game g
             LEFT JOIN (
@@ -363,8 +348,10 @@ def check_pregame_pitcher_coverage(session, *, verbose: bool = False) -> dict:
               AND g.away_pitcher IS NOT NULL AND g.away_pitcher != ''
               AND g.home_pitcher IS NOT NULL AND g.home_pitcher != ''
             """
-        )
-    ).scalar() or 0
+            )
+        ).scalar()
+        or 0
+    )
 
     pregame_sync_enabled = _env_enabled("PREGAME_SYNC_TO_OCI")
     oci_url_present = bool(os.getenv("OCI_DB_URL"))
@@ -419,10 +406,7 @@ def check_pregame_pitcher_coverage(session, *, verbose: bool = False) -> dict:
 
         print("\nScheduled pregame by date:")
         for game_date, date_total, date_both_ok, date_preview_rows in rows:
-            print(
-                f"  {game_date}: starters={date_both_ok}/{date_total}, "
-                f"preview={date_preview_rows}/{date_total}"
-            )
+            print(f"  {game_date}: starters={date_both_ok}/{date_total}, preview={date_preview_rows}/{date_total}")
 
     return {
         "scheduled_total": total,
@@ -442,21 +426,14 @@ def check_pregame_pitcher_coverage(session, *, verbose: bool = False) -> dict:
 def main(argv: Sequence[str] | None = None) -> None:
     """데이터 점검 스크립트의 메인 실행 함수."""
     load_dotenv()
-    parser = argparse.ArgumentParser(
-        description="Check KBO database status and data integrity"
-    )
-    parser.add_argument(
-        "--verbose",
-        "-v",
-        action="store_true",
-        help="Show detailed information"
-    )
+    parser = argparse.ArgumentParser(description="Check KBO database status and data integrity")
+    parser.add_argument("--verbose", "-v", action="store_true", help="Show detailed information")
     args = parser.parse_args(argv)
 
-    print(f"\n{'='*60}")
-    print(f" KBO Data Status Check")
+    print(f"\n{'=' * 60}")
+    print(" KBO Data Status Check")
     print(f" Timestamp: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-    print(f"{'='*60}")
+    print(f"{'=' * 60}")
 
     with SessionLocal() as session:
         schedule_stats = check_schedules(session)
@@ -466,9 +443,9 @@ def main(argv: Sequence[str] | None = None) -> None:
         pregame_pitcher_stats = check_pregame_pitcher_coverage(session, verbose=args.verbose)
 
     # 최종 요약 출력
-    print(f"\n{'='*60}")
+    print(f"\n{'=' * 60}")
     print(" Summary")
-    print(f"{'='*60}")
+    print(f"{'=' * 60}")
     print(f"  Schedules: {schedule_stats['total']}")
     print(f"  Players: {player_stats['total']}")
     print(f"  Futures batting: {futures_stats['batting']}")
@@ -496,25 +473,21 @@ def main(argv: Sequence[str] | None = None) -> None:
     # 경고 목록 취합 및 출력
     all_warnings = []
 
-    if schedule_stats['total'] == 0:
+    if schedule_stats["total"] == 0:
         all_warnings.append("No schedules found")
-    all_warnings.extend(schedule_stats.get('warnings', []))
+    all_warnings.extend(schedule_stats.get("warnings", []))
 
-    if futures_stats['batting'] == 0:
+    if futures_stats["batting"] == 0:
         all_warnings.append("No Futures batting data found")
     if pregame_pitcher_stats.get("preview_missing_starters", 0) > 0:
-        all_warnings.append(
-            "Scheduled preview summaries exist but pitcher fields are missing"
-        )
+        all_warnings.append("Scheduled preview summaries exist but pitcher fields are missing")
     if pregame_pitcher_stats.get("sync_candidate_games", 0) > 0 and not pregame_pitcher_stats.get("oci_sync_ready"):
-        all_warnings.append(
-            "Pregame sync candidates exist but OCI sync is not ready"
-        )
+        all_warnings.append("Pregame sync candidates exist but OCI sync is not ready")
 
     if all_warnings:
-        print(f"\n{'='*60}")
+        print(f"\n{'=' * 60}")
         print(" WARNINGS")
-        print(f"{'='*60}")
+        print(f"{'=' * 60}")
         for warning in all_warnings:
             print(f"  - {warning}")
 

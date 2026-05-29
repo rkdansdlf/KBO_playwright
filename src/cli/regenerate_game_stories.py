@@ -1,4 +1,5 @@
 """Regenerate LLM-ready game story summaries for selected games."""
+
 from __future__ import annotations
 
 import argparse
@@ -8,7 +9,7 @@ import os
 from dataclasses import dataclass
 from datetime import date, datetime
 from pathlib import Path
-from typing import Iterable, List, Sequence
+from typing import Iterable, Sequence
 
 from sqlalchemy import and_, or_
 
@@ -17,7 +18,7 @@ from src.cli.daily_story_batch import (
 )
 from src.db.engine import SessionLocal
 from src.models.game import Game, GameEvent, GameSummary
-from src.services.game_story_builder import GameStoryBuilder, STORY_SUMMARY_TYPE
+from src.services.game_story_builder import STORY_SUMMARY_TYPE, GameStoryBuilder
 from src.sync.oci_sync import OCISync
 from src.utils.game_status import COMPLETED_LIKE_GAME_STATUSES
 from src.utils.safe_print import safe_print as print
@@ -75,8 +76,8 @@ def _parse_date(value: str) -> date:
     return datetime.strptime(value, "%Y%m%d").date()
 
 
-def _load_game_ids_file(path: Path) -> List[str]:
-    ids: List[str] = []
+def _load_game_ids_file(path: Path) -> list[str]:
+    ids: list[str] = []
     for line in path.read_text(encoding="utf-8").splitlines():
         value = line.strip()
         if value and not value.startswith("#"):
@@ -122,7 +123,7 @@ def _query_target_games(session, *, game_ids: Sequence[str], dates: Sequence[str
 
 def _game_batches(games: Sequence[Game], batch_size: int = 250):
     for index in range(0, len(games), batch_size):
-        yield games[index:index + batch_size]
+        yield games[index : index + batch_size]
 
 
 def _events_by_game(session, game_ids: Sequence[str]) -> dict[str, list[GameEvent]]:
@@ -217,13 +218,13 @@ def regenerate_game_stories(
     report_out: Path | None = None,
     backup_out: Path | None = None,
     log=print,
-) -> List[StoryRegenReportRow]:
+) -> list[StoryRegenReportRow]:
     target_game_ids = list(game_ids or [])
     target_dates = list(dates or [])
     target_seasons = list(seasons or [])
     report_path = report_out or _default_report_path()
-    rows: List[StoryRegenReportRow] = []
-    sync_game_ids: List[str] = []
+    rows: list[StoryRegenReportRow] = []
+    sync_game_ids: list[str] = []
 
     with SessionLocal() as session:
         games = _query_target_games(
@@ -345,7 +346,7 @@ def regenerate_game_stories(
     return rows
 
 
-def _collect_game_ids(args) -> List[str]:
+def _collect_game_ids(args) -> list[str]:
     game_ids = list(args.game_id or [])
     if args.game_ids_file:
         game_ids.extend(_load_game_ids_file(Path(args.game_ids_file)))
@@ -358,7 +359,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--game-ids-file", type=str, help="Newline-delimited file of game_ids")
     parser.add_argument("--date", action="append", default=[], help="Target date YYYYMMDD. May be repeated.")
     parser.add_argument("--season", action="append", type=int, default=[], help="Target season. May be repeated.")
-    parser.add_argument("--dry-run", action="store_true", help="Report only. This is the default unless --apply is set.")
+    parser.add_argument(
+        "--dry-run", action="store_true", help="Report only. This is the default unless --apply is set."
+    )
     parser.add_argument("--apply", action="store_true", help="Persist regenerated game story summaries locally.")
     parser.add_argument("--sync-oci", action="store_true", help="Sync successful game story rows to OCI.")
     parser.add_argument("--report-out", type=Path, help="CSV report path")

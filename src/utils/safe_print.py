@@ -1,5 +1,4 @@
 """Safe print utility for Windows console encoding issues."""
-import sys
 
 
 def safe_print(*args, **kwargs):
@@ -14,7 +13,7 @@ def safe_print(*args, **kwargs):
         safe_args = []
         for arg in args:
             try:
-                safe_args.append(str(arg).encode('ascii', 'replace').decode('ascii'))
+                safe_args.append(str(arg).encode("ascii", "replace").decode("ascii"))
             except Exception:
                 safe_args.append(repr(arg))
         print(*safe_args, **kwargs)

@@ -1,10 +1,10 @@
 """
 Utility helpers to classify player rows into active/retired/staff buckets.
 """
+
 from __future__ import annotations
 
 from enum import Enum
-from typing import Dict, Optional
 
 
 class PlayerCategory(str, Enum):
@@ -30,11 +30,11 @@ STAFF_KEYWORDS = (
 )
 
 
-def _normalize(value: Optional[str]) -> str:
+def _normalize(value: str | None) -> str:
     return (value or "").strip()
 
 
-def classify_player(entry: Dict[str, object]) -> PlayerCategory:
+def classify_player(entry: dict[str, object]) -> PlayerCategory:
     """
     Rough heuristic to classify player search rows.
     - Position strings with 감독/코치 계열 → staff categories
@@ -53,7 +53,7 @@ def classify_player(entry: Dict[str, object]) -> PlayerCategory:
     team = _normalize(entry.get("team"))
     position = _normalize(entry.get("position"))
 
-    position_lower = position.lower()
+    position.lower()
     team_lower = team.lower()
 
     if "감독" in position:

@@ -1,10 +1,11 @@
 """Postgame reconciliation for games left in started-like states."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import date, datetime
 from pathlib import Path
-from typing import Any, Callable, Iterable, Optional, Protocol
+from typing import Any, Callable, Iterable, Protocol
 
 from sqlalchemy import and_, func, or_
 
@@ -32,22 +33,21 @@ class DetailCrawler(Protocol):
     async def crawl_games(
         self,
         games: list[dict[str, str]],
-        concurrency: Optional[int] = None,
+        concurrency: int | None = None,
         lightweight: bool = False,
-    ) -> list[dict[str, Any]]:
-        ...
+    ) -> list[dict[str, Any]]: ...
 
 
 @dataclass(frozen=True)
 class GameScoreStatusSnapshot:
     game_id: str
     game_date: str
-    game_status: Optional[str]
-    away_score: Optional[int]
-    home_score: Optional[int]
+    game_status: str | None
+    away_score: int | None
+    home_score: int | None
 
     @property
-    def score_tuple(self) -> tuple[Optional[int], Optional[int]]:
+    def score_tuple(self) -> tuple[int | None, int | None]:
         return self.away_score, self.home_score
 
 
@@ -55,14 +55,14 @@ class GameScoreStatusSnapshot:
 class PostgameReconciliationChange:
     game_id: str
     game_date: str
-    before_status: Optional[str]
-    after_status: Optional[str]
-    before_away_score: Optional[int]
-    before_home_score: Optional[int]
-    after_away_score: Optional[int]
-    after_home_score: Optional[int]
+    before_status: str | None
+    after_status: str | None
+    before_away_score: int | None
+    before_home_score: int | None
+    after_away_score: int | None
+    after_home_score: int | None
     detail_status: str
-    failure_reason: Optional[str] = None
+    failure_reason: str | None = None
 
     @property
     def status_changed(self) -> bool:
@@ -81,7 +81,7 @@ class PostgameReconciliationResult:
     start_date: str
     end_date: str
     candidates: int = 0
-    detail_result: Optional[GameCollectionResult] = None
+    detail_result: GameCollectionResult | None = None
     changes: list[PostgameReconciliationChange] = field(default_factory=list)
 
     @property
@@ -93,7 +93,7 @@ def find_postgame_reconciliation_targets(
     start_date: str,
     end_date: str,
     *,
-    extra_game_ids: Optional[Iterable[str]] = None,
+    extra_game_ids: Iterable[str] | None = None,
 ) -> list[GameCollectionTarget]:
     """Find recent games worth revisiting after a live/detail miss."""
     start_day = _parse_yyyymmdd(start_date)
@@ -103,11 +103,7 @@ def find_postgame_reconciliation_targets(
 
     live_statuses = tuple(sorted(LIVE_GAME_STATUSES))
     completed_like = (GAME_STATUS_COMPLETED, GAME_STATUS_DRAW)
-    extra_ids = {
-        normalized
-        for game_id in (extra_game_ids or [])
-        if (normalized := normalize_kbo_game_id(game_id))
-    }
+    extra_ids = {normalized for game_id in (extra_game_ids or []) if (normalized := normalize_kbo_game_id(game_id))}
 
     with SessionLocal() as session:
         status_expr = func.upper(func.coalesce(Game.game_status, ""))
@@ -125,11 +121,7 @@ def find_postgame_reconciliation_targets(
             .all()
         )
         if extra_ids:
-            rows.extend(
-                session.query(Game.game_id, Game.game_date)
-                .filter(Game.game_id.in_(extra_ids))
-                .all()
-            )
+            rows.extend(session.query(Game.game_id, Game.game_date).filter(Game.game_id.in_(extra_ids)).all())
 
     targets: list[GameCollectionTarget] = []
     seen: set[str] = set()
@@ -156,10 +148,10 @@ async def reconcile_postgame_range(
     end_date: str,
     *,
     detail_crawler: DetailCrawler,
-    concurrency: Optional[int] = 1,
-    extra_game_ids: Optional[Iterable[str]] = None,
+    concurrency: int | None = 1,
+    extra_game_ids: Iterable[str] | None = None,
     log: Callable[[str], None] = print,
-    write_contract: Optional[GameWriteContract] = None,
+    write_contract: GameWriteContract | None = None,
     source_reason: str = "postgame_reconciliation",
 ) -> PostgameReconciliationResult:
     """Re-crawl started-like games and return status/score changes."""
@@ -358,7 +350,7 @@ def _format_game_date(value: object, *, fallback_game_id: str) -> str:
     return str(fallback_game_id)[:8]
 
 
-def _score(away_score: Optional[int], home_score: Optional[int]) -> str:
+def _score(away_score: int | None, home_score: int | None) -> str:
     return f"{_display(away_score)}-{_display(home_score)}"
 
 

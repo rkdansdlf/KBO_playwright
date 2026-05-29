@@ -41,7 +41,7 @@ CREATE TABLE IF NOT EXISTS public.team_history (
     color VARCHAR(50),
     created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
-    
+
     CONSTRAINT fk_team_history_franchise FOREIGN KEY (franchise_id) REFERENCES public.team_franchises(id)
 );
 

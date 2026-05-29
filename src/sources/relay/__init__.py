@@ -39,4 +39,3 @@ __all__ = [
     "read_manifest_entries",
     "upsert_capability_record",
 ]
-

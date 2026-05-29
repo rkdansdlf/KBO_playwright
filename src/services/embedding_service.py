@@ -1,16 +1,19 @@
 """
 Service to fetch vector embeddings from Gemini API or OpenRouter API.
 """
+
 from __future__ import annotations
 
+import contextlib
 import logging
 import os
+
 import httpx
-from typing import List, Optional
 
 from src.utils.safe_print import safe_print as print
 
 logger = logging.getLogger(__name__)
+
 
 class EmbeddingService:
     """
@@ -22,21 +25,22 @@ class EmbeddingService:
         if not self.api_key:
             print("⚠️ Warning: GEMINI_API_KEY is not configured in environment.")
 
-    def adjust_embedding_dimension(self, embedding: List[float], target_dim: int = 256) -> List[float]:
+    def adjust_embedding_dimension(self, embedding: list[float], target_dim: int = 256) -> list[float]:
         """
         Truncates or pads embedding list to target_dim.
         If truncating, L2 normalization is applied.
         """
         if not embedding:
             return [0.0] * target_dim
-        
+
         current_dim = len(embedding)
         if current_dim == target_dim:
             return embedding
-            
+
         if current_dim > target_dim:
             truncated = embedding[:target_dim]
             import math
+
             norm = math.sqrt(sum(x * x for x in truncated))
             if norm > 1e-9:
                 return [x / norm for x in truncated]
@@ -46,18 +50,19 @@ class EmbeddingService:
 
     def _compute_hash(self, text: str) -> str:
         import hashlib
+
         # Normalize whitespace to make hash robust to minor formatting changes
         cleaned = " ".join(text.split()).strip()
         return hashlib.sha256(cleaned.encode("utf-8")).hexdigest()
 
-    def get_embedding(self, text: str) -> List[float]:
+    def get_embedding(self, text: str) -> list[float]:
         """
         Generates embedding for a single text string.
         """
         results = self.get_embeddings_batch([text])
         return results[0] if results else [0.0] * 256
 
-    def get_embeddings_batch(self, texts: List[str]) -> List[List[float]]:
+    def get_embeddings_batch(self, texts: list[str]) -> list[list[float]]:
         """
         Generates embeddings for a batch of text strings, utilizing a local SQLite cache.
         """
@@ -72,28 +77,27 @@ class EmbeddingService:
 
         # 2. Compute hashes
         hashes = [self._compute_hash(t) for t in texts]
-        
+
         # 3. Try to fetch from SQLite cache
         cached_map = {}
         try:
+            from sqlalchemy import select
+
             from src.db.engine import SessionLocal
             from src.models.embedding_cache import EmbeddingCache
-            from sqlalchemy import select
-            
+
             with SessionLocal() as session:
                 stmt = select(EmbeddingCache).where(
-                    EmbeddingCache.text_hash.in_(hashes),
-                    EmbeddingCache.model_name == model_name
+                    EmbeddingCache.text_hash.in_(hashes), EmbeddingCache.model_name == model_name
                 )
                 cache_rows = session.scalars(stmt).all()
                 for row in cache_rows:
                     import json
+
                     emb = row.embedding
                     if isinstance(emb, str):
-                        try:
+                        with contextlib.suppress(Exception):
                             emb = json.loads(emb)
-                        except Exception:
-                            pass
                     cached_map[row.text_hash] = emb
         except Exception:
             logger.exception("⚠️ Warning: Embedding cache lookup error (continuing without cache)")
@@ -123,18 +127,14 @@ class EmbeddingService:
             try:
                 from src.db.engine import SessionLocal
                 from src.models.embedding_cache import EmbeddingCache
-                
+
                 with SessionLocal() as session:
                     for idx, emb in enumerate(new_embeddings):
                         text_hash = hashes[missing_indices[idx]]
                         # Prevent duplicate insert if somehow triggered
                         existing = session.get(EmbeddingCache, (text_hash, model_name))
                         if not existing:
-                            cache_entry = EmbeddingCache(
-                                text_hash=text_hash,
-                                model_name=model_name,
-                                embedding=emb
-                            )
+                            cache_entry = EmbeddingCache(text_hash=text_hash, model_name=model_name, embedding=emb)
                             session.add(cache_entry)
                     session.commit()
             except Exception:
@@ -147,25 +147,17 @@ class EmbeddingService:
         # 7. Construct final list in original order
         return [cached_map[h] for h in hashes]
 
-
-    def _fetch_openrouter_embeddings(self, texts: List[str]) -> List[List[float]]:
+    def _fetch_openrouter_embeddings(self, texts: list[str]) -> list[list[float]]:
         """
         Calls OpenRouter's OpenAI-compatible embeddings endpoint.
         """
         url = "https://openrouter.ai/api/v1/embeddings"
-        headers = {
-            "Authorization": f"Bearer {self.api_key}",
-            "Content-Type": "application/json"
-        }
-        
+        headers = {"Authorization": f"Bearer {self.api_key}", "Content-Type": "application/json"}
+
         # Default to openai/text-embedding-3-small which returns 1536-dimensional vectors
         model = os.getenv("EMBEDDING_MODEL", "openai/text-embedding-3-small")
-        
-        payload = {
-            "model": model,
-            "input": texts,
-            "dimensions": 256
-        }
+
+        payload = {"model": model, "input": texts, "dimensions": 256}
 
         try:
             with httpx.Client(headers=headers, timeout=30.0) as client:
@@ -186,27 +178,23 @@ class EmbeddingService:
         # Fallback empty vectors
         return [[0.0] * 256 for _ in texts]
 
-    def _fetch_google_embeddings(self, texts: List[str]) -> List[List[float]]:
+    def _fetch_google_embeddings(self, texts: list[str]) -> list[list[float]]:
         """
         Calls standard Google Gemini AI Studio Embeddings API.
         """
         # Google text-embedding-004 supports batching via batchEmbedContents
         url = f"https://generativelanguage.googleapis.com/v1beta/models/text-embedding-004:batchEmbedContents?key={self.api_key}"
-        headers = {
-            "Content-Type": "application/json"
-        }
+        headers = {"Content-Type": "application/json"}
 
         requests_payload = []
         for text in texts:
-            requests_payload.append({
-                "model": "models/text-embedding-004",
-                "content": {
-                    "parts": [{
-                        "text": text
-                    }]
-                },
-                "outputDimensionality": 256
-            })
+            requests_payload.append(
+                {
+                    "model": "models/text-embedding-004",
+                    "content": {"parts": [{"text": text}]},
+                    "outputDimensionality": 256,
+                }
+            )
 
         payload = {"requests": requests_payload}
 
@@ -225,4 +213,3 @@ class EmbeddingService:
 
         # Fallback empty vectors (Google text-embedding-004 dimensions = 768, target = 256)
         return [[0.0] * 256 for _ in texts]
-

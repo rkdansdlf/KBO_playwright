@@ -238,9 +238,7 @@ def test_apply_overrides_dry_run_writes_report_without_mutating_rows(tmp_path):
 
     engine = create_engine(db_url)
     with engine.connect() as conn:
-        ids = conn.execute(
-            text("SELECT id, player_id FROM game_pitching_stats ORDER BY id")
-        ).fetchall()
+        ids = conn.execute(text("SELECT id, player_id FROM game_pitching_stats ORDER BY id")).fetchall()
     assert ids == [(1, None), (2, 901403), (3, 55855), (4, 60146), (5, 900003)]
 
 
@@ -376,7 +374,5 @@ def test_row_override_conflict_aborts_apply_without_partial_mutation(tmp_path):
     assert result["row_status_counts"] == {"conflict": 1}
     assert _report_statuses(result) == ["conflict"]
     with engine.connect() as conn:
-        ids = conn.execute(
-            text("SELECT id, player_id FROM game_batting_stats ORDER BY id")
-        ).fetchall()
+        ids = conn.execute(text("SELECT id, player_id FROM game_batting_stats ORDER BY id")).fetchall()
     assert ids == [(1, 76100), (2, 97109)]

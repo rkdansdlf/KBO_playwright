@@ -1,10 +1,13 @@
 """
 Check if there's a total count indicator on the player search page
 """
+
 import asyncio
+
 from playwright.async_api import async_playwright
 
 SEARCH_URL = "https://www.koreabaseball.com/Player/Search.aspx?searchWord=%25"
+
 
 async def check_total():
     async with async_playwright() as p:
@@ -20,7 +23,8 @@ async def check_total():
 
             # Search for number patterns that might be total count
             import re
-            numbers = re.findall(r'(\d{1,3}[,\d]*)\s*(?:건|명|개|players?|results?)', html, re.IGNORECASE)
+
+            numbers = re.findall(r"(\d{1,3}[,\d]*)\s*(?:건|명|개|players?|results?)", html, re.IGNORECASE)
             print("Potential count indicators:")
             for num in set(numbers):
                 print(f"  - {num}")
@@ -51,7 +55,7 @@ async def check_total():
                 print("\n✅ Found '5120' or '5,120' in page body")
                 # Find context around it
                 idx = body_text.find("5120") if "5120" in body_text else body_text.find("5,120")
-                context = body_text[max(0, idx-50):idx+50]
+                context = body_text[max(0, idx - 50) : idx + 50]
                 print(f"Context: ...{context}...")
             else:
                 print("\n❌ '5120' or '5,120' not found in page body")
@@ -61,6 +65,7 @@ async def check_total():
 
         finally:
             await browser.close()
+
 
 if __name__ == "__main__":
     asyncio.run(check_total())

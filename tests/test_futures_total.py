@@ -1,8 +1,11 @@
 """Check Futures total (year-by-year) page."""
+
 import asyncio
+from pathlib import Path
+
 from bs4 import BeautifulSoup
 from playwright.async_api import async_playwright
-from pathlib import Path
+
 
 async def main():
     player_id = "51868"
@@ -11,7 +14,7 @@ async def main():
 
     async with async_playwright() as p:
         br = await p.chromium.launch(headless=True)
-        context = await br.new_context(locale='ko-KR')
+        context = await br.new_context(locale="ko-KR")
         page = await context.new_page()
 
         try:
@@ -20,7 +23,7 @@ async def main():
             await asyncio.sleep(1)
 
             html = await page.content()
-            Path("futures_total_debug.html").write_text(html, encoding='utf-8')
+            Path("futures_total_debug.html").write_text(html, encoding="utf-8")
             print(f"Saved HTML ({len(html)} bytes)")
 
         finally:
@@ -38,7 +41,7 @@ async def main():
             if first_row:
                 headers = [cell.get_text(strip=True) for cell in first_row.find_all(["th", "td"])]
 
-        print(f"\nTable {i+1}:")
+        print(f"\nTable {i + 1}:")
         print(f"  Headers: {headers[:15]}")
 
         rows = t.select("tbody tr")
@@ -47,7 +50,8 @@ async def main():
         if rows:
             for j, row in enumerate(rows[:3]):
                 cells = [cell.get_text(strip=True) for cell in row.find_all(["td", "th"])]
-                print(f"  Row {j+1}: {cells[:10]}")
+                print(f"  Row {j + 1}: {cells[:10]}")
+
 
 if __name__ == "__main__":
     asyncio.run(main())

@@ -113,12 +113,27 @@ def test_repair_reference_integrity_normalizes_teams_and_repairs_metadata(tmp_pa
     assert result["applied"] >= 4
     assert result["skipped"] == 0
     with engine.connect() as conn:
-        assert conn.execute(text("SELECT COUNT(*) FROM game WHERE home_team='HD' OR away_team='HD' OR winning_team='HD'")).scalar() == 0
+        assert (
+            conn.execute(
+                text("SELECT COUNT(*) FROM game WHERE home_team='HD' OR away_team='HD' OR winning_team='HD'")
+            ).scalar()
+            == 0
+        )
         assert conn.execute(text("SELECT COUNT(*) FROM game_lineups WHERE team_code='HD'")).scalar() == 0
-        assert conn.execute(text("SELECT stadium_name FROM game_metadata WHERE game_id='20250315LGSK0'")).scalar() == "문학"
+        assert (
+            conn.execute(text("SELECT stadium_name FROM game_metadata WHERE game_id='20250315LGSK0'")).scalar()
+            == "문학"
+        )
         assert conn.execute(text("SELECT COUNT(*) FROM game_metadata WHERE game_id='20250315LGSSG0'")).scalar() == 0
-        assert conn.execute(text("SELECT canonical_game_id FROM game_id_aliases WHERE alias_game_id='20250315LGSSG0'")).scalar() == "20250315LGSK0"
-        created = conn.execute(text("SELECT away_team, home_team, game_status FROM game WHERE game_id='20250316SSKT0'")).fetchone()
+        assert (
+            conn.execute(
+                text("SELECT canonical_game_id FROM game_id_aliases WHERE alias_game_id='20250315LGSSG0'")
+            ).scalar()
+            == "20250315LGSK0"
+        )
+        created = conn.execute(
+            text("SELECT away_team, home_team, game_status FROM game WHERE game_id='20250316SSKT0'")
+        ).fetchone()
         assert tuple(created) == ("SS", "KT", "CANCELLED")
         assert conn.execute(text("PRAGMA foreign_key_check")).fetchall() == []
 

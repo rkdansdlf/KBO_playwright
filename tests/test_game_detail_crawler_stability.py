@@ -130,14 +130,18 @@ def test_crawl_single_uses_review_fallback_when_direct_sections_are_empty(monkey
     async def fake_summary(*_args):
         return []
 
-    async def fake_hitters(page, team_side, team_code, season_year, roster_map=None, use_hitter_section=False, db_session=None):
+    async def fake_hitters(
+        page, team_side, team_code, season_year, roster_map=None, use_hitter_section=False, db_session=None
+    ):
         if not use_hitter_section:
             # First try on REVIEW page is mocked empty
             return [], {}
         # Fallback to dedicated section returns actual data
         return [_hitter(team_side)], {"hits": 1, "at_bats": 3}
 
-    async def fake_pitchers(page, team_side, team_code, season_year, roster_map=None, use_pitcher_section=False, db_session=None):
+    async def fake_pitchers(
+        page, team_side, team_code, season_year, roster_map=None, use_pitcher_section=False, db_session=None
+    ):
         if not use_pitcher_section:
             # First try on REVIEW page is mocked empty
             return []
@@ -177,7 +181,10 @@ def test_crawl_single_marks_incomplete_detail_when_fallback_is_empty(monkeypatch
         return {}
 
     async def fake_team_info(*_args):
-        return _team_info()
+        return {
+            "away": {"code": "LG", "score": None, "line_score": [], "hits": None, "errors": None},
+            "home": {"code": "SS", "score": None, "line_score": [], "hits": None, "errors": None},
+        }
 
     async def fake_metadata(*_args):
         return {}

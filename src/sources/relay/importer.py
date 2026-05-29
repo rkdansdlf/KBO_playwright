@@ -12,7 +12,6 @@ from .base import (
     ManifestEntry,
     NormalizedRelayResult,
     RelaySourceAdapter,
-    event_to_pbp_row,
     events_have_minimum_state,
     normalize_inning_half,
     normalize_pbp_row,
@@ -127,11 +126,7 @@ class ImportRelayAdapter(RelaySourceAdapter):
     def _parse_naver_json(self, entry: ManifestEntry) -> NormalizedRelayResult:
         payload = self._read_json(entry.locator)
         if isinstance(payload, dict):
-            relays = (
-                payload.get("result", {})
-                .get("textRelayData", {})
-                .get("textRelays", [])
-            )
+            relays = payload.get("result", {}).get("textRelayData", {}).get("textRelays", [])
             if not relays and isinstance(payload.get("textRelays"), list):
                 relays = payload.get("textRelays") or []
         elif isinstance(payload, list):
@@ -139,9 +134,7 @@ class ImportRelayAdapter(RelaySourceAdapter):
         else:
             relays = []
         parsed_payload = (
-            self._relay_parser._parse_naver_payload(relays)
-            if relays
-            else {"events": [], "raw_pbp_rows": []}
+            self._relay_parser._parse_naver_payload(relays) if relays else {"events": [], "raw_pbp_rows": []}
         )
         events = parsed_payload["events"]
         raw_pbp_rows = parsed_payload["raw_pbp_rows"]

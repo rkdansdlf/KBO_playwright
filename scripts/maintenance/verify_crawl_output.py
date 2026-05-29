@@ -2,24 +2,23 @@
 """
 Compare crawler outputs by producing a stable hash.
 """
+
 from __future__ import annotations
 
 import argparse
 import hashlib
 import json
-import sys
-from typing import Any, Iterable, List
-
+from typing import Any, Iterable
 
 DEFAULT_EXCLUDE_KEYS = {"created_at", "updated_at"}
 
 
 def load_payload(path: str) -> Any:
-    with open(path, "r", encoding="utf-8") as handle:
+    with open(path, encoding="utf-8") as handle:
         return json.load(handle)
 
 
-def normalize_items(payload: Any) -> List[Any]:
+def normalize_items(payload: Any) -> list[Any]:
     if isinstance(payload, dict):
         if isinstance(payload.get("data"), list):
             return payload["data"]
@@ -44,16 +43,13 @@ def normalize_value(value: Any, *, float_digits: int, exclude_keys: set[str]) ->
             )
         return normalized
     if isinstance(value, list):
-        return [
-            normalize_value(item, float_digits=float_digits, exclude_keys=exclude_keys)
-            for item in value
-        ]
+        return [normalize_value(item, float_digits=float_digits, exclude_keys=exclude_keys) for item in value]
     if isinstance(value, float):
         return round(value, float_digits)
     return value
 
 
-def sort_items(items: Iterable[Any], sort_keys: List[str]) -> List[Any]:
+def sort_items(items: Iterable[Any], sort_keys: list[str]) -> list[Any]:
     if not sort_keys:
         return list(items)
 
@@ -68,16 +64,13 @@ def sort_items(items: Iterable[Any], sort_keys: List[str]) -> List[Any]:
 def hash_payload(
     payload: Any,
     *,
-    sort_keys: List[str],
+    sort_keys: list[str],
     float_digits: int,
     exclude_keys: set[str],
 ) -> tuple[str, int]:
     items = normalize_items(payload)
     items = sort_items(items, sort_keys)
-    normalized = [
-        normalize_value(item, float_digits=float_digits, exclude_keys=exclude_keys)
-        for item in items
-    ]
+    normalized = [normalize_value(item, float_digits=float_digits, exclude_keys=exclude_keys) for item in items]
     packed = json.dumps(
         {"count": len(items), "items": normalized},
         sort_keys=True,

@@ -1,5 +1,7 @@
-from src.db.engine import Engine
 from sqlalchemy import text
+
+from src.db.engine import Engine
+
 
 def check_schema():
     with Engine.connect() as conn:
@@ -17,6 +19,7 @@ def check_schema():
         fks = conn.execute(text("PRAGMA foreign_key_list(game)")).fetchall()
         for fk in fks:
             print(fk)
+
 
 if __name__ == "__main__":
     check_schema()

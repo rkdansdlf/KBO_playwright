@@ -1,9 +1,10 @@
 """Parse KBO GameCenter REVIEW HTML into structured box scores."""
+
 from __future__ import annotations
 
 import re
 from io import StringIO
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 import pandas as pd
 from bs4 import BeautifulSoup
@@ -12,7 +13,7 @@ from sqlalchemy import text
 from src.utils.team_codes import resolve_team_code, team_code_from_game_id_segment
 
 
-def parse_game_detail_html(html: str, game_id: str, game_date: str, db_session=None) -> Dict[str, Any]:
+def parse_game_detail_html(html: str, game_id: str, game_date: str, db_session=None) -> dict[str, Any]:
     soup = BeautifulSoup(html, "html.parser")
     dataframes = pd.read_html(StringIO(html))
 
@@ -39,7 +40,7 @@ def parse_game_detail_html(html: str, game_id: str, game_date: str, db_session=N
     }
 
 
-def _extract_scoreboard(tables: List[pd.DataFrame]) -> Optional[pd.DataFrame]:
+def _extract_scoreboard(tables: list[pd.DataFrame]) -> pd.DataFrame | None:
     for df in tables:
         headers = [str(col) for col in df.columns]
         if {"팀", "R", "H", "E"}.issubset(headers):
@@ -47,7 +48,7 @@ def _extract_scoreboard(tables: List[pd.DataFrame]) -> Optional[pd.DataFrame]:
     return None
 
 
-def _extract_hitter_tables(tables: List[pd.DataFrame]) -> List[pd.DataFrame]:
+def _extract_hitter_tables(tables: list[pd.DataFrame]) -> list[pd.DataFrame]:
     hitters = []
     for df in tables:
         headers = [str(col) for col in df.columns]
@@ -56,7 +57,7 @@ def _extract_hitter_tables(tables: List[pd.DataFrame]) -> List[pd.DataFrame]:
     return hitters
 
 
-def _extract_pitcher_tables(tables: List[pd.DataFrame]) -> List[pd.DataFrame]:
+def _extract_pitcher_tables(tables: list[pd.DataFrame]) -> list[pd.DataFrame]:
     pitchers = []
     for df in tables:
         headers = [str(col) for col in df.columns]
@@ -65,7 +66,9 @@ def _extract_pitcher_tables(tables: List[pd.DataFrame]) -> List[pd.DataFrame]:
     return pitchers
 
 
-def _build_team_info(scoreboard: Optional[pd.DataFrame], game_id: str, season_year: Optional[int]) -> Dict[str, Dict[str, Any]]:
+def _build_team_info(
+    scoreboard: pd.DataFrame | None, game_id: str, season_year: int | None
+) -> dict[str, dict[str, Any]]:
     away_info = {
         "name": None,
         "code": team_code_from_game_id_segment(game_id[8:10] if len(game_id) >= 10 else None, season_year),
@@ -88,7 +91,7 @@ def _build_team_info(scoreboard: Optional[pd.DataFrame], game_id: str, season_ye
         away_row = df.iloc[0]
         home_row = df.iloc[1] if len(df) > 1 else None
 
-        def parse_row(row: pd.Series, info: Dict[str, Any]) -> None:
+        def parse_row(row: pd.Series, info: dict[str, Any]) -> None:
             name = str(row.get("팀", "")).strip()
             if name:
                 info["name"] = name
@@ -108,7 +111,9 @@ def _build_team_info(scoreboard: Optional[pd.DataFrame], game_id: str, season_ye
     return {"away": away_info, "home": home_info}
 
 
-def _build_hitter_payload(tables: List[pd.DataFrame], teams: Dict[str, Dict[str, Any]], db_session=None) -> Dict[str, List[Dict[str, Any]]]:
+def _build_hitter_payload(
+    tables: list[pd.DataFrame], teams: dict[str, dict[str, Any]], db_session=None
+) -> dict[str, list[dict[str, Any]]]:
     results = {"away": [], "home": []}
     team_cycle = ["away", "home"]
     team_index = 0
@@ -122,7 +127,7 @@ def _build_hitter_payload(tables: List[pd.DataFrame], teams: Dict[str, Dict[str,
             name = str(row.get("선수", "") or row.get("선수명", "")).strip()
             if not name or name in {"팀합계", "합계"}:
                 continue
-            
+
             p_id = _safe_player_id(row.get("선수ID") or row.get("playerId"))
             team_code = teams[team_side]["code"]
             if p_id is None and db_session:
@@ -167,7 +172,9 @@ def _build_hitter_payload(tables: List[pd.DataFrame], teams: Dict[str, Dict[str,
     return results
 
 
-def _build_pitcher_payload(tables: List[pd.DataFrame], teams: Dict[str, Dict[str, Any]], db_session=None) -> Dict[str, List[Dict[str, Any]]]:
+def _build_pitcher_payload(
+    tables: list[pd.DataFrame], teams: dict[str, dict[str, Any]], db_session=None
+) -> dict[str, list[dict[str, Any]]]:
     results = {"away": [], "home": []}
     team_cycle = ["away", "home"]
     team_index = 0
@@ -227,9 +234,9 @@ def _build_pitcher_payload(tables: List[pd.DataFrame], teams: Dict[str, Dict[str
     return results
 
 
-def _parse_metadata(soup: BeautifulSoup) -> Dict[str, Any]:
+def _parse_metadata(soup: BeautifulSoup) -> dict[str, Any]:
     info_text = ""
-    info_area = soup.select_one('.box-score-area, .game-info, .score-board')
+    info_area = soup.select_one(".box-score-area, .game-info, .score-board")
     if info_area:
         info_text = info_area.get_text(" ", strip=True)
 
@@ -243,31 +250,31 @@ def _parse_metadata(soup: BeautifulSoup) -> Dict[str, Any]:
     }
 
     if info_text:
-        stadium_match = re.search(r'구장\s*[:：]\s*([^\s]+)', info_text)
+        stadium_match = re.search(r"구장\s*[:：]\s*([^\s]+)", info_text)
         if stadium_match:
-            metadata['stadium'] = stadium_match.group(1)
+            metadata["stadium"] = stadium_match.group(1)
 
-        attendance_match = re.search(r'관중\s*[:：]\s*([\d,]+)', info_text)
+        attendance_match = re.search(r"관중\s*[:：]\s*([\d,]+)", info_text)
         if attendance_match:
-            metadata['attendance'] = _safe_int(attendance_match.group(1))
+            metadata["attendance"] = _safe_int(attendance_match.group(1))
 
-        time_match = re.search(r'개시\s*[:：]\s*([\d:]+)', info_text)
+        time_match = re.search(r"개시\s*[:：]\s*([\d:]+)", info_text)
         if time_match:
-            metadata['start_time'] = time_match.group(1)
+            metadata["start_time"] = time_match.group(1)
 
-        end_match = re.search(r'종료\s*[:：]\s*([\d:]+)', info_text)
+        end_match = re.search(r"종료\s*[:：]\s*([\d:]+)", info_text)
         if end_match:
-            metadata['end_time'] = end_match.group(1)
+            metadata["end_time"] = end_match.group(1)
 
-        duration_match = re.search(r'경기시간\s*[:：]\s*([\d:]+)', info_text)
+        duration_match = re.search(r"경기시간\s*[:：]\s*([\d:]+)", info_text)
         if duration_match:
-            metadata['game_time'] = duration_match.group(1)
-            metadata['duration_minutes'] = _parse_duration_minutes(metadata['game_time'])
+            metadata["game_time"] = duration_match.group(1)
+            metadata["duration_minutes"] = _parse_duration_minutes(metadata["game_time"])
 
     return metadata
 
 
-def _safe_int(value: Any) -> Optional[int]:
+def _safe_int(value: Any) -> int | None:
     if value in (None, "", "-", "null"):
         return None
     try:
@@ -276,7 +283,7 @@ def _safe_int(value: Any) -> Optional[int]:
         return None
 
 
-def _safe_float(value: Any) -> Optional[float]:
+def _safe_float(value: Any) -> float | None:
     if value in (None, "", "-", "null"):
         return None
     try:
@@ -285,8 +292,8 @@ def _safe_float(value: Any) -> Optional[float]:
         return None
 
 
-def _season_year_from_game(game_date: str) -> Optional[int]:
-    digits = ''.join(ch for ch in str(game_date) if ch.isdigit())
+def _season_year_from_game(game_date: str) -> int | None:
+    digits = "".join(ch for ch in str(game_date) if ch.isdigit())
     if len(digits) >= 4:
         try:
             return int(digits[:4])
@@ -295,14 +302,14 @@ def _season_year_from_game(game_date: str) -> Optional[int]:
     return None
 
 
-def _parse_innings_to_outs(text: Optional[str]) -> Optional[int]:
+def _parse_innings_to_outs(text: str | None) -> int | None:
     if not text:
         return None
     cleaned = str(text).strip()
     if cleaned in ("", "-"):
         return None
-    cleaned = cleaned.replace('⅓', '.1').replace('⅔', '.2')
-    match = re.match(r'^(\d+)(?:\.(\d))?$', cleaned)
+    cleaned = cleaned.replace("⅓", ".1").replace("⅔", ".2")
+    match = re.match(r"^(\d+)(?:\.(\d))?$", cleaned)
     if match:
         whole = int(match.group(1))
         frac = int(match.group(2)) if match.group(2) else 0
@@ -314,22 +321,22 @@ def _parse_innings_to_outs(text: Optional[str]) -> Optional[int]:
         return None
 
 
-def _parse_decision(text: Any) -> Optional[str]:
+def _parse_decision(text: Any) -> str | None:
     if not text:
         return None
     text = str(text)
-    if '승' in text:
-        return 'W'
-    if '패' in text:
-        return 'L'
-    if '세' in text:
-        return 'S'
-    if '홀드' in text or 'H' in text:
-        return 'H'
+    if "승" in text:
+        return "W"
+    if "패" in text:
+        return "L"
+    if "세" in text:
+        return "S"
+    if "홀드" in text or "H" in text:
+        return "H"
     return None
 
 
-def _safe_player_id(value: Any) -> Optional[int]:
+def _safe_player_id(value: Any) -> int | None:
     if value is None:
         return None
     value = str(value).strip()
@@ -341,10 +348,10 @@ def _safe_player_id(value: Any) -> Optional[int]:
         return None
 
 
-def _parse_duration_minutes(duration: Optional[str]) -> Optional[int]:
+def _parse_duration_minutes(duration: str | None) -> int | None:
     if not duration:
         return None
-    parts = duration.split(':')
+    parts = duration.split(":")
     if len(parts) != 2:
         return None
     try:
@@ -355,7 +362,7 @@ def _parse_duration_minutes(duration: Optional[str]) -> Optional[int]:
         return None
 
 
-def _resolve_missing_player_id(db_session, player_name: str, team_code: str) -> Optional[int]:
+def _resolve_missing_player_id(db_session, player_name: str, team_code: str) -> int | None:
     """
     Fallback resolution of player_id via name and team search.
     Useful for exhibition games where IDs are missing from the HTML.
@@ -365,39 +372,49 @@ def _resolve_missing_player_id(db_session, player_name: str, team_code: str) -> 
 
     # Try name + team match (team name in player_basic is often Korean)
     # Mapping team_code to Korean name fragment might help but let's try direct first
-    query = text("""
-        SELECT player_id FROM player_basic 
-        WHERE (name = :name OR name = :name_space) 
+    text("""
+        SELECT player_id FROM player_basic
+        WHERE (name = :name OR name = :name_space)
           AND (team LIKE :team OR team IS NULL OR :team_empty = 1)
         LIMIT 2
     """)
     # Handle space variations (e.g. '김 태연' vs '김태연')
     name_no_space = player_name.replace(" ", "")
-    name_with_space = player_name if " " in player_name else f"{player_name[0]} {player_name[1:]}" if len(player_name) > 2 else player_name
+    name_with_space = (
+        player_name
+        if " " in player_name
+        else f"{player_name[0]} {player_name[1:]}"
+        if len(player_name) > 2
+        else player_name
+    )
 
     try:
         # We don't have a reliable code -> Korean name mapping here easily
         # but let's try searching by name first and if multiple, filter by team
-        rows = db_session.execute(text("SELECT player_id, team FROM player_basic WHERE name = :n1 OR name = :n2"), 
-                                 {"n1": name_no_space, "n2": name_with_space}).fetchall()
-        
+        rows = db_session.execute(
+            text("SELECT player_id, team FROM player_basic WHERE name = :n1 OR name = :n2"),
+            {"n1": name_no_space, "n2": name_with_space},
+        ).fetchall()
+
         if not rows:
             return None
         if len(rows) == 1:
             return rows[0][0]
-        
+
         # If multiple, try to find a team match
         # This is a heuristic - KBO team names in player_basic vary (e.g. '한화 이글스')
         for r_id, r_team in rows:
-            if not r_team: continue
+            if not r_team:
+                continue
             # Check if team_code (e.g. 'HH') is represented in Korean team name (e.g. '한화')
             # This requires some knowledge of team mapping, but 'LIKE' is a start
             from src.utils.team_codes import STANDARD_TEAM_CODES
+
             team_meta = STANDARD_TEAM_CODES.get(team_code, {})
-            k_name = team_meta.get('name', '')
+            k_name = team_meta.get("name", "")
             if k_name and k_name in r_team:
                 return r_id
-                
+
         # Last resort: just return first if we have to, but better to be safe
         return rows[0][0]
     except Exception:

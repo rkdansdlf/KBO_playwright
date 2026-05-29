@@ -1,8 +1,10 @@
 """
 Test navigation to page 52 to see why pagination stopped
 """
+
 import asyncio
 import os
+
 import pytest
 from playwright.async_api import async_playwright
 
@@ -14,6 +16,7 @@ pytestmark = pytest.mark.skipif(
 SEARCH_URL = "https://www.koreabaseball.com/Player/Search.aspx?searchWord=%25"
 TABLE_ROWS = "table.tEx tbody tr"
 NEXT_BTN = "a[id$='ucPager_btnNext']"
+
 
 async def test_page_52():
     async with async_playwright() as p:
@@ -30,16 +33,16 @@ async def test_page_52():
                 count = await next_btn.count()
 
                 if count == 0:
-                    print(f"❌ Next button not found at page {i+1}")
+                    print(f"❌ Next button not found at page {i + 1}")
                     break
 
                 # Check visibility
                 try:
                     is_visible = await next_btn.first.is_visible()
                     is_enabled = await next_btn.first.is_enabled()
-                    print(f"Page {i+1}: Next button visible={is_visible}, enabled={is_enabled}")
+                    print(f"Page {i + 1}: Next button visible={is_visible}, enabled={is_enabled}")
                 except Exception as e:
-                    print(f"Page {i+1}: Error checking button state: {e}")
+                    print(f"Page {i + 1}: Error checking button state: {e}")
                     break
 
                 # Click next
@@ -47,7 +50,7 @@ async def test_page_52():
                     await next_btn.first.click(timeout=5000)
                     await asyncio.sleep(2)  # Wait for page load
                 except Exception as e:
-                    print(f"❌ Click failed at page {i+1}: {e}")
+                    print(f"❌ Click failed at page {i + 1}: {e}")
                     break
 
             # Wait for manual inspection
@@ -56,6 +59,7 @@ async def test_page_52():
 
         finally:
             await browser.close()
+
 
 if __name__ == "__main__":
     asyncio.run(test_page_52())

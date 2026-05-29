@@ -1,18 +1,19 @@
 """Generate post-game LLM-ready story timelines from game_events."""
+
 from __future__ import annotations
 
-import logging
 import argparse
 import asyncio
 import json
+import logging
 import os
 from datetime import datetime
-from typing import List, Sequence
+from typing import Sequence
 
 from src.db.engine import SessionLocal
 from src.models.game import Game, GameEvent, GameSummary
 from src.repositories.game_repository import refresh_game_status_for_date
-from src.services.game_story_builder import GameStoryBuilder, STORY_SUMMARY_TYPE
+from src.services.game_story_builder import STORY_SUMMARY_TYPE, GameStoryBuilder
 from src.sync.oci_sync import OCISync
 from src.utils.game_status import COMPLETED_LIKE_GAME_STATUSES
 from src.utils.refresh_manifest import write_refresh_manifest
@@ -26,10 +27,14 @@ def dump_story_json(story_data: dict) -> str:
 
 
 def _upsert_story_summary(session, game_id: str, story_json: str) -> None:
-    existing_summaries = session.query(GameSummary).filter(
-        GameSummary.game_id == game_id,
-        GameSummary.summary_type == STORY_SUMMARY_TYPE,
-    ).all()
+    existing_summaries = (
+        session.query(GameSummary)
+        .filter(
+            GameSummary.game_id == game_id,
+            GameSummary.summary_type == STORY_SUMMARY_TYPE,
+        )
+        .all()
+    )
     if existing_summaries:
         for summary in existing_summaries:
             summary.detail_text = story_json
@@ -69,7 +74,7 @@ def _sync_story_summaries(game_ids: Sequence[str]) -> None:
             syncer.close()
 
 
-async def run_story_batch(target_date: str, *, sync_to_oci: bool | None = None) -> List[str]:
+async def run_story_batch(target_date: str, *, sync_to_oci: bool | None = None) -> list[str]:
     print(f"🚀 Starting Post-game Story Data Batch for {target_date}...")
 
     target_dt_obj = datetime.strptime(target_date, "%Y%m%d").date()
@@ -81,13 +86,18 @@ async def run_story_batch(target_date: str, *, sync_to_oci: bool | None = None) 
             f"counts={status_result.get('status_counts', {})}"
         )
 
-    saved_ids: List[str] = []
+    saved_ids: list[str] = []
     with SessionLocal() as session:
         builder = GameStoryBuilder()
-        games = session.query(Game).filter(
-            Game.game_date == target_dt_obj,
-            Game.game_status.in_(tuple(COMPLETED_LIKE_GAME_STATUSES)),
-        ).order_by(Game.game_id.asc()).all()
+        games = (
+            session.query(Game)
+            .filter(
+                Game.game_date == target_dt_obj,
+                Game.game_status.in_(tuple(COMPLETED_LIKE_GAME_STATUSES)),
+            )
+            .order_by(Game.game_id.asc())
+            .all()
+        )
 
         if not games:
             manifest_path = write_refresh_manifest(

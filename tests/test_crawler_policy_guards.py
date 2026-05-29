@@ -1,8 +1,8 @@
 import asyncio
 
 from src.crawlers.futures import futures_batting
-from src.crawlers.futures.profile import FuturesProfileCrawler
 from src.crawlers.futures import profile as futures_profile
+from src.crawlers.futures.profile import FuturesProfileCrawler
 
 
 class _FakeCompliance:
@@ -73,9 +73,7 @@ def test_futures_batting_returns_empty_when_compliance_blocks(monkeypatch):
     )
 
     assert rows == []
-    assert compliance.urls == [
-        "https://www.koreabaseball.com/Futures/Player/HitterTotal.aspx?playerId=12345"
-    ]
+    assert compliance.urls == ["https://www.koreabaseball.com/Futures/Player/HitterTotal.aspx?playerId=12345"]
     assert page.goto_called is False
     assert throttle.calls == 0
     assert pool.started is True
@@ -101,9 +99,7 @@ def test_futures_profile_returns_none_when_compliance_blocks(monkeypatch):
     )
 
     assert result is None
-    assert compliance.urls == [
-        "https://www.koreabaseball.com/Futures/Player/HitterDetail.aspx?playerId=12345"
-    ]
+    assert compliance.urls == ["https://www.koreabaseball.com/Futures/Player/HitterDetail.aspx?playerId=12345"]
     assert page.goto_called is False
     assert throttle.calls == 0
 

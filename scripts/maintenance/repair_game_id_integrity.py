@@ -20,11 +20,17 @@ ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from src.utils.team_codes import build_kbo_game_id, normalize_kbo_game_id, resolve_team_code, team_code_from_game_id_segment
+from src.utils.team_codes import (
+    build_kbo_game_id,
+    normalize_kbo_game_id,
+    resolve_team_code,
+    team_code_from_game_id_segment,
+)
 from src.utils.team_history import find_team_history_entry, iter_team_history
 
-
 DEFAULT_DB_URL = "sqlite:///./data/kbo_dev.db"
+
+
 def _default_years() -> tuple[int, ...]:
     return tuple(range(2001, datetime.now().year + 1))
 
@@ -87,7 +93,7 @@ def _decode_json_repeated(value: str) -> Any:
         stripped = decoded.strip()
         if stripped == "null":
             return None
-        if not stripped or stripped[0] not in "[{\"":
+        if not stripped or stripped[0] not in '[{"':
             break
         try:
             decoded = json.loads(stripped)
@@ -108,11 +114,7 @@ def _is_zeroish_raw(value: Any) -> bool:
 
 def _prune_zeroish_json(value: Any) -> Any:
     if isinstance(value, dict):
-        pruned = {
-            key: _prune_zeroish_json(item)
-            for key, item in value.items()
-            if not _is_zeroish_raw(item)
-        }
+        pruned = {key: _prune_zeroish_json(item) for key, item in value.items() if not _is_zeroish_raw(item)}
         return {key: item for key, item in pruned.items() if not _is_zeroish_raw(item)}
     if isinstance(value, list):
         pruned = [_prune_zeroish_json(item) for item in value if not _is_zeroish_raw(item)]
@@ -174,11 +176,7 @@ def _backup_affected_rows(
     stamp: str,
 ) -> Path | None:
     year_game_ids = {str(row["game_id"]) for row in _game_rows(conn, tables, years)}
-    duplicate_game_ids = {
-        str(game_id)
-        for group in groups
-        for game_id in group["game_ids"]
-    }
+    duplicate_game_ids = {str(game_id) for group in groups for game_id in group["game_ids"]}
     if not year_game_ids and not duplicate_game_ids:
         return None
 
@@ -189,8 +187,7 @@ def _backup_affected_rows(
     game = tables.get("game")
     if game is not None and year_game_ids:
         rows = [
-            dict(row)
-            for row in conn.execute(select(game).where(game.c.game_id.in_(sorted(year_game_ids)))).mappings()
+            dict(row) for row in conn.execute(select(game).where(game.c.game_id.in_(sorted(year_game_ids)))).mappings()
         ]
         if rows:
             _write_csv(backup_dir / "game.csv", rows, [col.name for col in game.columns])
@@ -204,10 +201,7 @@ def _backup_affected_rows(
         if "canonical_game_id" in alias_table.c:
             clauses.append(alias_table.c.canonical_game_id.in_(sorted(year_game_ids)))
         if clauses:
-            rows = [
-                dict(row)
-                for row in conn.execute(select(alias_table).where(or_(*clauses))).mappings()
-            ]
+            rows = [dict(row) for row in conn.execute(select(alias_table).where(or_(*clauses))).mappings()]
             if rows:
                 _write_csv(backup_dir / "game_id_aliases.csv", rows, [col.name for col in alias_table.columns])
                 wrote_file = True
@@ -333,10 +327,8 @@ def _child_counts(conn, tables: dict[str, Table], game_ids: Iterable[str]) -> di
         if table is None or "game_id" not in table.c:
             continue
         for start in range(0, len(ids), 900):
-            chunk = ids[start:start + 900]
-            rows = conn.execute(
-                select(table.c.game_id).where(table.c.game_id.in_(chunk))
-            ).all()
+            chunk = ids[start : start + 900]
+            rows = conn.execute(select(table.c.game_id).where(table.c.game_id.in_(chunk))).all()
             for row in rows:
                 counts[row[0]] = counts.get(row[0], 0) + 1
     return counts
@@ -497,11 +489,7 @@ def choose_primary_game_id(
 
 def _comparison_payload(row: dict[str, Any], table: Table) -> dict[str, str]:
     ignored = {"id", "game_id", *TIMESTAMP_COLUMNS}
-    return {
-        col.name: _normalized_compare_value(row.get(col.name))
-        for col in table.columns
-        if col.name not in ignored
-    }
+    return {col.name: _normalized_compare_value(row.get(col.name)) for col in table.columns if col.name not in ignored}
 
 
 def _payload_score(payload: dict[str, str]) -> int:
@@ -712,8 +700,7 @@ def _payload_resolution(source_row: dict[str, Any], target_row: dict[str, Any], 
         if metadata_resolution:
             return metadata_resolution
     if diff_keys and all(
-        _mergeable_payload_diff(key, source_payload.get(key, ""), target_payload.get(key, ""))
-        for key in diff_keys
+        _mergeable_payload_diff(key, source_payload.get(key, ""), target_payload.get(key, "")) for key in diff_keys
     ):
         return "merge"
     if all(
@@ -744,7 +731,7 @@ def _decode_json_object(value: Any) -> dict[str, Any] | None:
         stripped = decoded.strip()
         if stripped in {"", "null"}:
             return None
-        if stripped[0] not in "{\"":
+        if stripped[0] not in '{"':
             return None
         try:
             decoded = json.loads(stripped)
@@ -762,9 +749,7 @@ def _merge_extra_stats(source_value: Any, target_value: Any) -> Any:
         return json.dumps(source_dict, ensure_ascii=False, sort_keys=True)
     merged = dict(target_dict)
     for key, value in source_dict.items():
-        if not _is_zeroish_raw(value):
-            merged[key] = value
-        elif key not in merged:
+        if not _is_zeroish_raw(value) or key not in merged:
             merged[key] = value
     return json.dumps(merged, ensure_ascii=False, sort_keys=True)
 
@@ -852,11 +837,7 @@ def _where_source_row(table: Table, row: dict[str, Any], unique_columns: tuple[s
 def _unique_columns_for_table(table: Table, spec: ChildSpec) -> tuple[str, ...]:
     if spec.unique_columns is not None:
         return tuple(col for col in spec.unique_columns if col in table.c)
-    return tuple(
-        col.name
-        for col in table.columns
-        if col.name not in {"id", *TIMESTAMP_COLUMNS}
-    )
+    return tuple(col.name for col in table.columns if col.name not in {"id", *TIMESTAMP_COLUMNS})
 
 
 def detect_child_conflicts(
@@ -871,14 +852,12 @@ def detect_child_conflicts(
         if table is None or "game_id" not in table.c:
             continue
         source_rows = [
-            dict(row)
-            for row in conn.execute(select(table).where(table.c.game_id == source_game_id)).mappings()
+            dict(row) for row in conn.execute(select(table).where(table.c.game_id == source_game_id)).mappings()
         ]
         if not source_rows:
             continue
         target_rows = [
-            dict(row)
-            for row in conn.execute(select(table).where(table.c.game_id == canonical_game_id)).mappings()
+            dict(row) for row in conn.execute(select(table).where(table.c.game_id == canonical_game_id)).mappings()
         ]
         conflicts.extend(
             _detect_child_conflicts_from_rows(
@@ -911,10 +890,7 @@ def _detect_child_conflicts_from_rows(
         if resolution in {"source", "target", "same"}:
             return []
 
-    target_by_key = {
-        _row_key(row, unique_columns, canonical_game_id): row
-        for row in target_rows
-    }
+    target_by_key = {_row_key(row, unique_columns, canonical_game_id): row for row in target_rows}
     for source_row in source_rows:
         key = _row_key(source_row, unique_columns, canonical_game_id)
         target_row = target_by_key.get(key)
@@ -937,9 +913,7 @@ def _upsert_alias(conn, tables: dict[str, Table], alias_game_id: str, canonical_
     if alias_game_id == canonical_game_id:
         return
     alias_table = tables["game_id_aliases"]
-    existing = conn.execute(
-        select(alias_table).where(alias_table.c.alias_game_id == alias_game_id)
-    ).mappings().first()
+    existing = conn.execute(select(alias_table).where(alias_table.c.alias_game_id == alias_game_id)).mappings().first()
     values = {
         "canonical_game_id": canonical_game_id,
         "source": "repair_game_id_integrity",
@@ -948,11 +922,7 @@ def _upsert_alias(conn, tables: dict[str, Table], alias_game_id: str, canonical_
     if "updated_at" in alias_table.c:
         values["updated_at"] = datetime.utcnow()
     if existing:
-        conn.execute(
-            alias_table.update()
-            .where(alias_table.c.alias_game_id == alias_game_id)
-            .values(**values)
-        )
+        conn.execute(alias_table.update().where(alias_table.c.alias_game_id == alias_game_id).values(**values))
     else:
         insert_values = {"alias_game_id": alias_game_id, **values}
         if "created_at" in alias_table.c:
@@ -967,9 +937,7 @@ def _retarget_aliases(conn, tables: dict[str, Table], source_game_id: str, canon
 
     source_alias_rows = [
         dict(row)
-        for row in conn.execute(
-            select(alias_table).where(alias_table.c.canonical_game_id == source_game_id)
-        ).mappings()
+        for row in conn.execute(select(alias_table).where(alias_table.c.canonical_game_id == source_game_id)).mappings()
     ]
     for row in source_alias_rows:
         alias_game_id = str(row["alias_game_id"])
@@ -979,15 +947,9 @@ def _retarget_aliases(conn, tables: dict[str, Table], source_game_id: str, canon
         values = {"canonical_game_id": canonical_game_id}
         if "updated_at" in alias_table.c:
             values["updated_at"] = datetime.utcnow()
-        conn.execute(
-            alias_table.update()
-            .where(alias_table.c.alias_game_id == alias_game_id)
-            .values(**values)
-        )
+        conn.execute(alias_table.update().where(alias_table.c.alias_game_id == alias_game_id).values(**values))
 
-    conn.execute(
-        alias_table.delete().where(alias_table.c.alias_game_id == alias_table.c.canonical_game_id)
-    )
+    conn.execute(alias_table.delete().where(alias_table.c.alias_game_id == alias_table.c.canonical_game_id))
 
 
 def _ensure_canonical_game_row(
@@ -1005,11 +967,7 @@ def _ensure_canonical_game_row(
     source = conn.execute(select(game).where(game.c.game_id == source_id)).mappings().first()
     if not source:
         return
-    values = {
-        col.name: source.get(col.name)
-        for col in game.columns
-        if col.name != "id"
-    }
+    values = {col.name: source.get(col.name) for col in game.columns if col.name != "id"}
     values["game_id"] = canonical_id
     if "is_primary" in game.c:
         values["is_primary"] = True
@@ -1049,14 +1007,12 @@ def _move_child_rows(conn, tables: dict[str, Table], source_game_id: str, canoni
             continue
         unique_columns = _unique_columns_for_table(table, spec)
         source_rows = [
-            dict(row)
-            for row in conn.execute(select(table).where(table.c.game_id == source_game_id)).mappings()
+            dict(row) for row in conn.execute(select(table).where(table.c.game_id == source_game_id)).mappings()
         ]
         if not source_rows:
             continue
         target_rows = [
-            dict(row)
-            for row in conn.execute(select(table).where(table.c.game_id == canonical_game_id)).mappings()
+            dict(row) for row in conn.execute(select(table).where(table.c.game_id == canonical_game_id)).mappings()
         ]
         if spec.table_name == "game_events" and target_rows:
             resolution = _event_dataset_resolution(source_rows, target_rows)
@@ -1067,10 +1023,7 @@ def _move_child_rows(conn, tables: dict[str, Table], source_game_id: str, canoni
             if resolution in {"target", "same"}:
                 conn.execute(table.delete().where(table.c.game_id == source_game_id))
                 continue
-        target_by_key = {
-            _row_key(row, unique_columns, canonical_game_id): row
-            for row in target_rows
-        }
+        target_by_key = {_row_key(row, unique_columns, canonical_game_id): row for row in target_rows}
         move_source_ids: list[Any] = []
         delete_source_ids: list[Any] = []
         for source_row in source_rows:
@@ -1085,11 +1038,19 @@ def _move_child_rows(conn, tables: dict[str, Table], source_game_id: str, canoni
                         for col in table.columns
                         if col.name not in {"id", "game_id", *TIMESTAMP_COLUMNS}
                     }
-                    conn.execute(table.update().where(_where_source_row(table, target_row, unique_columns)).values(**update_values))
+                    conn.execute(
+                        table.update()
+                        .where(_where_source_row(table, target_row, unique_columns))
+                        .values(**update_values)
+                    )
                 elif resolution == "merge":
                     update_values = _merged_child_values(source_row, target_row, table)
                     if update_values:
-                        conn.execute(table.update().where(_where_source_row(table, target_row, unique_columns)).values(**update_values))
+                        conn.execute(
+                            table.update()
+                            .where(_where_source_row(table, target_row, unique_columns))
+                            .values(**update_values)
+                        )
                 if "id" in table.c and source_row.get("id") is not None:
                     delete_source_ids.append(source_row["id"])
                 else:
@@ -1125,11 +1086,7 @@ def apply_duplicate_group(conn, tables: dict[str, Table], group: dict[str, Any])
 
 def collect_conflicts(conn, tables: dict[str, Table], groups: list[dict[str, Any]]) -> list[dict[str, Any]]:
     target_game_ids = sorted(
-        {
-            str(game_id)
-            for group in groups
-            for game_id in [group["primary_game_id"], *group["game_ids"]]
-        }
+        {str(game_id) for group in groups for game_id in [group["primary_game_id"], *group["game_ids"]]}
     )
     rows_by_table: dict[str, dict[str, list[dict[str, Any]]]] = {}
     if target_game_ids:
@@ -1139,7 +1096,7 @@ def collect_conflicts(conn, tables: dict[str, Table], groups: list[dict[str, Any
                 continue
             by_game_id: dict[str, list[dict[str, Any]]] = defaultdict(list)
             for start in range(0, len(target_game_ids), 900):
-                chunk = target_game_ids[start:start + 900]
+                chunk = target_game_ids[start : start + 900]
                 for row in conn.execute(select(table).where(table.c.game_id.in_(chunk))).mappings():
                     row_dict = dict(row)
                     by_game_id[str(row_dict.get("game_id"))].append(row_dict)
@@ -1189,7 +1146,9 @@ def collect_coverage(conn, tables: dict[str, Table], years: Iterable[int]) -> li
                 "with_batting": len(ids & batting_ids),
                 "with_pitching": len(ids & pitching_ids),
                 "with_any_detail": len(ids & detail_ids),
-                "non_primary": sum(1 for row in year_rows if row.get("is_primary") is False or row.get("is_primary") == 0),
+                "non_primary": sum(
+                    1 for row in year_rows if row.get("is_primary") is False or row.get("is_primary") == 0
+                ),
             }
         )
     return coverage
@@ -1200,8 +1159,7 @@ def _ids_with_rows(conn, tables: dict[str, Table], table_name: str, game_ids: li
     if table is None or not game_ids:
         return set()
     return {
-        row[0]
-        for row in conn.execute(select(table.c.game_id).where(table.c.game_id.in_(game_ids)).distinct()).all()
+        row[0] for row in conn.execute(select(table.c.game_id).where(table.c.game_id.in_(game_ids)).distinct()).all()
     }
 
 
@@ -1244,9 +1202,7 @@ def collect_2024_backfill_candidates(conn, tables: dict[str, Table]) -> list[dic
         status = row.get("game_status")
         game_date = row.get("game_date")
         is_past_game = str(game_date) < date.today().isoformat()
-        if status not in {"COMPLETED", "DRAW"} and not (
-            is_past_game and status not in {"CANCELLED", "POSTPONED"}
-        ):
+        if status not in {"COMPLETED", "DRAW"} and not (is_past_game and status not in {"CANCELLED", "POSTPONED"}):
             continue
         missing_batting = game_id not in batting_ids
         missing_pitching = game_id not in pitching_ids
@@ -1350,13 +1306,34 @@ def run(
             output_dir / f"game_identity_duplicate_groups_{stamp}.csv",
             [
                 {
-                    **{k: group[k] for k in ("season_year", "league_type_code", "game_date", "away_franchise_id", "home_franchise_id", "doubleheader_no", "primary_game_id")},
+                    **{
+                        k: group[k]
+                        for k in (
+                            "season_year",
+                            "league_type_code",
+                            "game_date",
+                            "away_franchise_id",
+                            "home_franchise_id",
+                            "doubleheader_no",
+                            "primary_game_id",
+                        )
+                    },
                     "game_ids": ",".join(group["game_ids"]),
                     "child_counts": repr(group["child_counts"]),
                 }
                 for group in groups
             ],
-            ["season_year", "league_type_code", "game_date", "away_franchise_id", "home_franchise_id", "doubleheader_no", "primary_game_id", "game_ids", "child_counts"],
+            [
+                "season_year",
+                "league_type_code",
+                "game_date",
+                "away_franchise_id",
+                "home_franchise_id",
+                "doubleheader_no",
+                "primary_game_id",
+                "game_ids",
+                "child_counts",
+            ],
         )
         _write_csv(
             output_dir / f"game_identity_conflicts_{stamp}.csv",
@@ -1371,12 +1348,22 @@ def run(
         _write_csv(
             output_dir / f"game_identity_2024_backfill_manifest_{stamp}.csv",
             backfill_2024,
-            ["game_id", "game_date", "game_status", "league_type_code", "missing_batting", "missing_pitching", "classification"],
+            [
+                "game_id",
+                "game_date",
+                "game_status",
+                "league_type_code",
+                "missing_batting",
+                "missing_pitching",
+                "classification",
+            ],
         )
 
         if not apply:
             actionable_backfill_2024 = sum(1 for row in backfill_2024 if is_actionable_backfill_candidate(row))
-            print(f"[DRY-RUN] duplicate_groups={len(groups)} conflicts={len(conflicts)} 2024_backfill={actionable_backfill_2024}")
+            print(
+                f"[DRY-RUN] duplicate_groups={len(groups)} conflicts={len(conflicts)} 2024_backfill={actionable_backfill_2024}"
+            )
             print(f"[DRY-RUN] reports written to {output_dir}")
             return 0 if not conflicts else 2
 
@@ -1406,14 +1393,18 @@ def run(
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Audit and repair KBO game_id identity duplicates.")
-    parser.add_argument("--db-url", default=None, help="SQLAlchemy database URL. Defaults to DATABASE_URL or local SQLite.")
+    parser.add_argument(
+        "--db-url", default=None, help="SQLAlchemy database URL. Defaults to DATABASE_URL or local SQLite."
+    )
     parser.add_argument("--oci", action="store_true", help="Use OCI_DB_URL as target database.")
     parser.add_argument(
         "--years",
         default=",".join(str(year) for year in DEFAULT_YEARS),
         help="Comma-separated years to inspect/repair.",
     )
-    parser.add_argument("--output-dir", default="data/repair_game_id_integrity", help="Directory for CSV reports and backups.")
+    parser.add_argument(
+        "--output-dir", default="data/repair_game_id_integrity", help="Directory for CSV reports and backups."
+    )
     parser.add_argument("--apply", action="store_true", help="Apply repairs. Default is dry-run only.")
     parser.add_argument("--no-backup", action="store_true", help="Skip SQLite backup before --apply.")
     return parser.parse_args()

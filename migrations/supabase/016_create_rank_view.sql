@@ -40,9 +40,9 @@ team_game_results AS (
         END AS losses
     FROM
         season_games g
-    
+
     UNION ALL
-    
+
     -- 원정팀 관점
     SELECT
         g.season_year,
@@ -71,7 +71,7 @@ team_season_agg AS (
         SUM(r.draws) AS draws,
         SUM(r.wins + r.losses + r.draws) AS games_played,
         CASE
-            WHEN SUM(r.wins + r.losses) > 0 THEN 
+            WHEN SUM(r.wins + r.losses) > 0 THEN
                 ROUND(SUM(r.wins)::numeric / SUM(r.wins + r.losses)::numeric, 3)
             ELSE 0
         END AS win_pct

@@ -3,7 +3,6 @@ from __future__ import annotations
 import re
 from typing import Any
 
-
 RELAY_RESULT_KEYWORDS = (
     "안타",
     "1루타",

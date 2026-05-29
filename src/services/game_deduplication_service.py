@@ -1,11 +1,11 @@
 """Shared SQLite helpers for selecting primary game rows."""
+
 from __future__ import annotations
 
 import sqlite3
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable, Sequence
-
 
 DEFAULT_DB_PATH = Path("data/kbo_dev.db")
 DEFAULT_PRIMARY_CODE_PREFERENCES = ("SSG", "KH", "DB", "KIA")

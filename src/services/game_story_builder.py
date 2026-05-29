@@ -1,4 +1,5 @@
 """Build LLM-ready game story timelines from normalized game events."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -7,7 +8,6 @@ from typing import Any, Iterable, Sequence
 
 from src.models.game import Game, GameEvent
 from src.utils.relay_text import compact_relay_text, is_relay_noise_text
-
 
 STORY_SCHEMA_VERSION = "game_story.v1"
 STORY_TIMELINE_LIMIT = 8
@@ -244,11 +244,7 @@ class GameStoryBuilder:
         for context in contexts:
             before_sign = self._sign(context.score_diff_before)
             after_sign = self._sign(context.score_diff_after)
-            if (
-                context.runs_scored > 0
-                and after_sign == final_sign
-                and before_sign != final_sign
-            ):
+            if context.runs_scored > 0 and after_sign == final_sign and before_sign != final_sign:
                 candidate = context
         if candidate is not None:
             candidate.tags.add("decisive_score")

@@ -2,36 +2,55 @@
 Futures League Batting Stats Crawler
 Fetches year-by-year Futures batting statistics from player profile pages.
 """
+
 import asyncio
 import re
-from typing import List, Dict, Optional
+
 from bs4 import BeautifulSoup
-from src.utils.playwright_pool import AsyncPlaywrightPool
+
 from src.utils.compliance import compliance
+from src.utils.playwright_pool import AsyncPlaywrightPool
 from src.utils.throttle import throttle
 
-FUTURES_KEYS = [
-    "season", "AVG", "G", "AB", "R", "H", "2B", "3B", "HR", "RBI", "SB", "BB", "HBP", "SO", "SLG", "OBP"
-]
+FUTURES_KEYS = ["season", "AVG", "G", "AB", "R", "H", "2B", "3B", "HR", "RBI", "SB", "BB", "HBP", "SO", "SLG", "OBP"]
 
 HEADER_MAP = {
     # Korean/English mixed → standardized keys
-    "연도": "season", "년도": "season", "시즌": "season", "year": "season",
-    "경기": "G", "g": "G",
-    "타수": "AB", "ab": "AB",
-    "득점": "R", "r": "R",
-    "안타": "H", "h": "H",
-    "2루타": "2B", "2b": "2B",
-    "3루타": "3B", "3b": "3B",
-    "홈런": "HR", "hr": "HR",
-    "타점": "RBI", "rbi": "RBI",
-    "도루": "SB", "sb": "SB",
-    "볼넷": "BB", "bb": "BB",
-    "사구": "HBP", "hbp": "HBP", "죽사구": "HBP",
-    "삼진": "SO", "so": "SO",
-    "타율": "AVG", "avg": "AVG",
-    "장타율": "SLG", "slg": "SLG",
-    "출루율": "OBP", "obp": "OBP",
+    "연도": "season",
+    "년도": "season",
+    "시즌": "season",
+    "year": "season",
+    "경기": "G",
+    "g": "G",
+    "타수": "AB",
+    "ab": "AB",
+    "득점": "R",
+    "r": "R",
+    "안타": "H",
+    "h": "H",
+    "2루타": "2B",
+    "2b": "2B",
+    "3루타": "3B",
+    "3b": "3B",
+    "홈런": "HR",
+    "hr": "HR",
+    "타점": "RBI",
+    "rbi": "RBI",
+    "도루": "SB",
+    "sb": "SB",
+    "볼넷": "BB",
+    "bb": "BB",
+    "사구": "HBP",
+    "hbp": "HBP",
+    "죽사구": "HBP",
+    "삼진": "SO",
+    "so": "SO",
+    "타율": "AVG",
+    "avg": "AVG",
+    "장타율": "SLG",
+    "slg": "SLG",
+    "출루율": "OBP",
+    "obp": "OBP",
 }
 
 
@@ -41,7 +60,7 @@ def _norm_header(txt: str) -> str:
     return HEADER_MAP.get(t, txt.strip())
 
 
-def _to_int(x: Optional[str]) -> Optional[int]:
+def _to_int(x: str | None) -> int | None:
     """Convert string to integer, handling commas and dashes."""
     if x is None:
         return None
@@ -54,7 +73,7 @@ def _to_int(x: Optional[str]) -> Optional[int]:
         return None
 
 
-def _to_float(x: Optional[str]) -> Optional[float]:
+def _to_float(x: str | None) -> float | None:
     """Convert string to float, handling commas and dashes."""
     if x is None:
         return None
@@ -69,7 +88,7 @@ def _to_float(x: Optional[str]) -> Optional[float]:
         return None
 
 
-def _compute_missing(row: Dict) -> Dict:
+def _compute_missing(row: dict) -> dict:
     """Compute missing derived stats (SLG, OBP) if possible."""
     H = row.get("H")
     _2B = row.get("2B")
@@ -81,11 +100,10 @@ def _compute_missing(row: Dict) -> Dict:
     SF = row.get("SF")
 
     # Compute SLG if missing
-    if "SLG" not in row or row.get("SLG") is None:
-        if None not in (H, _2B, _3B, HR, AB) and AB and AB > 0:
-            _1B = H - sum(v or 0 for v in [_2B, _3B, HR])
-            tb = (_1B or 0) + 2 * (_2B or 0) + 3 * (_3B or 0) + 4 * (HR or 0)
-            row["SLG"] = round(tb / AB, 3)
+    if ("SLG" not in row or row.get("SLG") is None) and None not in (H, _2B, _3B, HR, AB) and AB and AB > 0:
+        _1B = H - sum(v or 0 for v in [_2B, _3B, HR])
+        tb = (_1B or 0) + 2 * (_2B or 0) + 3 * (_3B or 0) + 4 * (HR or 0)
+        row["SLG"] = round(tb / AB, 3)
 
     # Compute OBP if missing
     if "OBP" not in row or row.get("OBP") is None:
@@ -96,7 +114,7 @@ def _compute_missing(row: Dict) -> Dict:
     return row
 
 
-def _parse_table(table) -> List[Dict]:
+def _parse_table(table) -> list[dict]:
     """Parse a table element into list of season records."""
     # Extract headers from thead
     headers = [_norm_header(th.get_text(strip=True)) for th in table.select("thead th, thead td")]
@@ -118,7 +136,7 @@ def _parse_table(table) -> List[Dict]:
             continue
 
         row = {}
-        for h, v in zip(headers, cells):
+        for h, v in zip(headers, cells, strict=False):
             key = _norm_header(h)
 
             if key == "season":
@@ -149,8 +167,9 @@ def _pick_futures_table(soup: BeautifulSoup):
     2. Fallback: find table with season, AVG, OBP, SLG headers
     """
     # Method 1: Find '퓨처스' label and get next table
-    label = soup.find(lambda tag: tag.name in ["h2", "h3", "h4", "button", "a", "li", "span"]
-                      and "퓨처스" in tag.get_text())
+    label = soup.find(
+        lambda tag: tag.name in ["h2", "h3", "h4", "button", "a", "li", "span"] and "퓨처스" in tag.get_text()
+    )
     if label:
         nxt = label.find_next("table")
         if nxt:
@@ -170,8 +189,8 @@ def _pick_futures_table(soup: BeautifulSoup):
 async def fetch_and_parse_futures_batting(
     player_id: str,
     profile_url: str,
-    pool: Optional[AsyncPlaywrightPool] = None,
-) -> List[Dict]:
+    pool: AsyncPlaywrightPool | None = None,
+) -> list[dict]:
     """
     Fetch Futures batting stats from player profile page.
 

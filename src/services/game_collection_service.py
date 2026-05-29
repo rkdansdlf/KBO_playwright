@@ -1,10 +1,11 @@
 """Shared helpers for game detail and relay collection workflows."""
+
 from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass, field
 from datetime import date, datetime
-from typing import Any, Callable, Dict, Iterable, List, Optional, Protocol
+from typing import Any, Callable, Iterable, Protocol
 
 from src.db.engine import SessionLocal
 from src.models.game import Game, GameBattingStat, GameEvent, GamePitchingStat, GamePlayByPlay
@@ -17,22 +18,18 @@ from src.utils.team_codes import normalize_kbo_game_id
 class DetailCrawler(Protocol):
     async def crawl_games(
         self,
-        games: List[Dict[str, str]],
-        concurrency: Optional[int] = None,
+        games: list[dict[str, str]],
+        concurrency: int | None = None,
         lightweight: bool = False,
-    ) -> List[Dict[str, Any]]:
-        ...
+    ) -> list[dict[str, Any]]: ...
 
-    async def close(self) -> None:
-        ...
+    async def close(self) -> None: ...
 
 
 class RelayCrawler(Protocol):
-    async def crawl_game_events(self, game_id: str) -> Optional[Dict[str, Any]]:
-        ...
+    async def crawl_game_events(self, game_id: str) -> dict[str, Any] | None: ...
 
-    async def close(self) -> None:
-        ...
+    async def close(self) -> None: ...
 
 
 @dataclass(frozen=True)
@@ -40,7 +37,7 @@ class GameCollectionTarget:
     game_id: str
     game_date: str
 
-    def as_crawler_input(self) -> Dict[str, str]:
+    def as_crawler_input(self) -> dict[str, str]:
         return {"game_id": self.game_id, "game_date": self.game_date}
 
 
@@ -62,8 +59,8 @@ class GameCollectionResult:
     relay_rows_saved: int = 0
     relay_missing: int = 0
     relay_skipped_existing: int = 0
-    processed_game_ids: List[str] = field(default_factory=list)
-    items: Dict[str, "GameCollectionItemResult"] = field(default_factory=dict)
+    processed_game_ids: list[str] = field(default_factory=list)
+    items: dict[str, GameCollectionItemResult] = field(default_factory=dict)
 
 
 @dataclass
@@ -74,10 +71,10 @@ class GameCollectionItemResult:
     relay_status: str = "not_requested"
     detail_saved: bool = False
     relay_rows_saved: int = 0
-    failure_reason: Optional[str] = None
+    failure_reason: str | None = None
 
 
-def build_game_id_range(year: int, month: Optional[int]) -> tuple[str, str]:
+def build_game_id_range(year: int, month: int | None) -> tuple[str, str]:
     if month:
         start = date(year, month, 1)
         if month == 12:
@@ -90,7 +87,7 @@ def build_game_id_range(year: int, month: Optional[int]) -> tuple[str, str]:
     return start.strftime("%Y%m%d"), end.strftime("%Y%m%d")
 
 
-def load_game_targets_from_db(year: int, month: Optional[int] = None) -> List[GameCollectionTarget]:
+def load_game_targets_from_db(year: int, month: int | None = None) -> list[GameCollectionTarget]:
     start_id, end_id = build_game_id_range(year, month)
     with SessionLocal() as session:
         rows = (
@@ -108,8 +105,26 @@ def load_game_targets_from_db(year: int, month: Optional[int] = None) -> List[Ga
     ]
 
 
-def normalize_game_targets(games: Iterable[Any]) -> List[GameCollectionTarget]:
-    targets: List[GameCollectionTarget] = []
+def load_game_targets_by_ids(game_ids: list[str]) -> list[GameCollectionTarget]:
+    """game_id 목록으로 GameCollectionTarget 리스트를 조회합니다."""
+    with SessionLocal() as session:
+        rows = (
+            session.query(Game.game_id, Game.game_date)
+            .filter(Game.game_id.in_(game_ids))
+            .order_by(Game.game_id.asc())
+            .all()
+        )
+    return [
+        GameCollectionTarget(
+            game_id=normalize_kbo_game_id(game_id),
+            game_date=_format_game_date(game_date, fallback_game_id=game_id),
+        )
+        for game_id, game_date in rows
+    ]
+
+
+def normalize_game_targets(games: Iterable[Any]) -> list[GameCollectionTarget]:
+    targets: list[GameCollectionTarget] = []
     seen: set[str] = set()
     for game in games:
         game_id = _get_value(game, "game_id")
@@ -124,7 +139,7 @@ def normalize_game_targets(games: Iterable[Any]) -> List[GameCollectionTarget]:
     return targets
 
 
-def inspect_existing_game_data(targets: Iterable[GameCollectionTarget]) -> Dict[str, ExistingGameData]:
+def inspect_existing_game_data(targets: Iterable[GameCollectionTarget]) -> dict[str, ExistingGameData]:
     target_list = list(targets)
     game_ids = [target.game_id for target in target_list]
     if not game_ids:
@@ -150,17 +165,17 @@ async def crawl_and_save_game_details(
     games: Iterable[Any],
     *,
     detail_crawler: DetailCrawler,
-    relay_crawler: Optional[RelayCrawler] = None,
+    relay_crawler: RelayCrawler | None = None,
     force: bool = False,
-    concurrency: Optional[int] = None,
+    concurrency: int | None = None,
     relay_requires_detail: bool = True,
-    should_save_detail: Optional[Callable[[Dict[str, Any]], bool]] = None,
-    pause_every: Optional[int] = None,
+    should_save_detail: Callable[[dict[str, Any]], bool] | None = None,
+    pause_every: int | None = None,
     pause_seconds: float = 0.0,
     log: Callable[[str], None] = print,
-    write_contract: Optional[GameWriteContract] = None,
+    write_contract: GameWriteContract | None = None,
     source_stage: str = "detail",
-    source_crawler: Optional[str] = None,
+    source_crawler: str | None = None,
     source_reason: str = "detail_recovery",
     relay_source_reason: str = "relay_recovery",
 ) -> GameCollectionResult:
@@ -184,9 +199,7 @@ async def crawl_and_save_game_details(
 
     existing = inspect_existing_game_data(targets)
     detail_ready_game_ids = {
-        target.game_id
-        for target in targets
-        if existing.get(target.game_id, ExistingGameData()).has_detail
+        target.game_id for target in targets if existing.get(target.game_id, ExistingGameData()).has_detail
     }
     detail_targets = [
         target for target in targets if force or not existing.get(target.game_id, ExistingGameData()).has_detail
@@ -216,15 +229,13 @@ async def crawl_and_save_game_details(
                 await detail_crawler.close()
 
             log(f"[*] Processing detail batch {batch_num}/{total_batches} ({len(batch)} games)...")
-            
+
             payloads = await detail_crawler.crawl_games(
                 [target.as_crawler_input() for target in batch],
                 concurrency=concurrency,
             )
             payload_by_id = {
-                normalize_kbo_game_id(payload.get("game_id")): payload
-                for payload in payloads
-                if payload.get("game_id")
+                normalize_kbo_game_id(payload.get("game_id")): payload for payload in payloads if payload.get("game_id")
             }
 
             for index, target in enumerate(batch, start=1):
@@ -238,7 +249,7 @@ async def crawl_and_save_game_details(
                     item.failure_reason = _get_failure_reason(detail_crawler, target.game_id) or "no_detail_payload"
                     log("   [WARN] No detail payload returned")
                     continue
-                
+
                 # ... validation and saving logic (keeping it surgical)
                 if not _has_required_detail_rows(payload):
                     result.detail_failed += 1
@@ -329,9 +340,7 @@ async def crawl_and_save_game_details(
                 result.relay_missing += 1
                 item.relay_status = "missing"
                 item.failure_reason = (
-                    item.failure_reason
-                    or _get_failure_reason(relay_crawler, target.game_id)
-                    or "no_relay_payload"
+                    item.failure_reason or _get_failure_reason(relay_crawler, target.game_id) or "no_relay_payload"
                 )
                 log("   [INFO] No relay data available")
             await _maybe_pause(index, pause_every, pause_seconds, log)
@@ -359,17 +368,11 @@ def _format_game_date(value: Any, *, fallback_game_id: str) -> str:
     return str(fallback_game_id)[:8]
 
 
-def _ids_with_rows(session, model, game_ids: List[str]) -> set[str]:
-    return {
-        row[0]
-        for row in session.query(model.game_id)
-        .filter(model.game_id.in_(game_ids))
-        .distinct()
-        .all()
-    }
+def _ids_with_rows(session, model, game_ids: list[str]) -> set[str]:
+    return {row[0] for row in session.query(model.game_id).filter(model.game_id.in_(game_ids)).distinct().all()}
 
 
-def _get_failure_reason(crawler: Any, game_id: str) -> Optional[str]:
+def _get_failure_reason(crawler: Any, game_id: str) -> str | None:
     getter = getattr(crawler, "get_last_failure_reason", None)
     if not callable(getter):
         return None
@@ -379,7 +382,7 @@ def _get_failure_reason(crawler: Any, game_id: str) -> Optional[str]:
         return None
 
 
-def _has_required_detail_rows(payload: Dict[str, Any]) -> bool:
+def _has_required_detail_rows(payload: dict[str, Any]) -> bool:
     hitters = payload.get("hitters") or {}
     pitchers = payload.get("pitchers") or {}
     has_full_box = (
@@ -398,17 +401,20 @@ def _has_required_detail_rows(payload: Dict[str, Any]) -> bool:
     metadata = payload.get("metadata") or {}
 
     has_teams = bool(away.get("code")) and bool(home.get("code"))
-    has_scores = bool(away.get("line_score")) or bool(home.get("line_score")) or \
-                 away.get("score") is not None or home.get("score") is not None
+    has_scores = (
+        bool(away.get("line_score"))
+        or bool(home.get("line_score"))
+        or away.get("score") is not None
+        or home.get("score") is not None
+    )
     has_metadata = bool(metadata.get("stadium")) or bool(metadata.get("attendance"))
 
     return has_teams and (has_scores or has_metadata)
 
 
-
 async def _maybe_pause(
     index: int,
-    pause_every: Optional[int],
+    pause_every: int | None,
     pause_seconds: float,
     log: Callable[[str], None],
 ) -> None:

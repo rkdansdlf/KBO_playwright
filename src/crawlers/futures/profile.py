@@ -1,21 +1,23 @@
 """Fetch Futures League stats from player profile pages."""
+
 from __future__ import annotations
 
 import asyncio
-from typing import Any, Dict, Optional, List
+from typing import Any
 
-from playwright.async_api import Page
 from bs4 import BeautifulSoup
+from playwright.async_api import Page
 
-from src.utils.playwright_pool import AsyncPlaywrightPool
 from src.utils.compliance import compliance
+from src.utils.playwright_pool import AsyncPlaywrightPool
 from src.utils.throttle import throttle
+
 
 class FuturesProfileCrawler:
     hitter_profile_url = "https://www.koreabaseball.com/Futures/Player/HitterDetail.aspx"
     pitcher_profile_url = "https://www.koreabaseball.com/Futures/Player/PitcherDetail.aspx"
 
-    def __init__(self, request_delay: float = 1.5, pool: Optional[AsyncPlaywrightPool] = None) -> None:
+    def __init__(self, request_delay: float = 1.5, pool: AsyncPlaywrightPool | None = None) -> None:
         self.request_delay = request_delay
         self.pool = pool
 
@@ -24,15 +26,15 @@ class FuturesProfileCrawler:
         if self.request_delay > throttle.default_delay:
             await asyncio.sleep(self.request_delay - throttle.default_delay)
 
-    async def fetch_player_futures(self, player_id: str) -> Dict[str, Any]:
+    async def fetch_player_futures(self, player_id: str) -> dict[str, Any]:
         """Fetch futures profile data (tables + profile text) for a player."""
         pool = self.pool or AsyncPlaywrightPool(max_pages=1, context_kwargs={"locale": "ko-KR"})
         owns_pool = self.pool is None
         await pool.start()
         try:
             page = await pool.acquire()
-            profile_text: Optional[str] = None
-            tables: List[Dict[str, Any]] = []
+            profile_text: str | None = None
+            tables: list[dict[str, Any]] = []
             try:
                 payload = await self._scrape_profile(page, self.hitter_profile_url, player_id)
                 if payload:
@@ -55,7 +57,7 @@ class FuturesProfileCrawler:
             "tables": tables,
         }
 
-    async def _scrape_profile(self, page: Page, base_url: str, player_id: str) -> Optional[Dict[str, Any]]:
+    async def _scrape_profile(self, page: Page, base_url: str, player_id: str) -> dict[str, Any] | None:
         url = f"{base_url}?playerId={player_id}"
         if not await compliance.is_allowed(url):
             print(f"[COMPLIANCE] Blocked futures profile: {url}")
@@ -81,7 +83,7 @@ class FuturesProfileCrawler:
             "tables": futures_tables,
         }
 
-    async def _extract_profile_text(self, page: Page) -> Optional[str]:
+    async def _extract_profile_text(self, page: Page) -> str | None:
         selectors = [
             "#cphContents_cphContents_cphContents_playerProfile",
             "#cphContents_cphContents_cphContents_ucPlayerProfile_lblProfile",
@@ -102,9 +104,9 @@ class FuturesProfileCrawler:
                     return text.strip()
         return None
 
-    async def _extract_futures_tables(self, page: Page) -> List[Dict[str, Any]]:
+    async def _extract_futures_tables(self, page: Page) -> list[dict[str, Any]]:
         tab_selectors = [
-            "a:has-text(\"퓨처스\")",
+            'a:has-text("퓨처스")',
             "#cphContents_cphContents_cphContents_ucPlayerYearTabs a[href*='Futures']",
             "#cphContents_cphContents_cphContents_ucPlayerRecord_tabList a[href*='Futures']",
         ]
@@ -132,61 +134,61 @@ class FuturesProfileCrawler:
 
         # Get HTML content and parse with BeautifulSoup for proper encoding
         html_content = await page.content()
-        soup = BeautifulSoup(html_content, 'lxml')
+        soup = BeautifulSoup(html_content, "lxml")
 
         tables = []
 
         # Look for specific Futures tables by ID and mark their type
-        hitter_table = soup.find('table', id='tblHitterRecord')
+        hitter_table = soup.find("table", id="tblHitterRecord")
         if hitter_table:
             table_data = self._parse_table_with_bs4(hitter_table)
             if table_data:
-                table_data['_table_type'] = 'HITTER'  # Add explicit type marker
+                table_data["_table_type"] = "HITTER"  # Add explicit type marker
                 tables.append(table_data)
 
-        pitcher_table = soup.find('table', id='tblPitcherRecord')
+        pitcher_table = soup.find("table", id="tblPitcherRecord")
         if pitcher_table:
             table_data = self._parse_table_with_bs4(pitcher_table)
             if table_data:
-                table_data['_table_type'] = 'PITCHER'  # Add explicit type marker
+                table_data["_table_type"] = "PITCHER"  # Add explicit type marker
                 tables.append(table_data)
 
         # If no tables found by ID, try other methods
         if not tables:
-            futures_divs = soup.find_all('div', id=lambda x: x and 'Futures' in x if x else False)
+            futures_divs = soup.find_all("div", id=lambda x: x and "Futures" in x if x else False)
             for div in futures_divs:
-                for table_elem in div.find_all('table'):
+                for table_elem in div.find_all("table"):
                     table_data = self._parse_table_with_bs4(table_elem)
                     if table_data:
                         tables.append(table_data)
 
         return tables
 
-    def _parse_table_with_bs4(self, table_elem) -> Optional[Dict[str, Any]]:
+    def _parse_table_with_bs4(self, table_elem) -> dict[str, Any] | None:
         """Parse a table element using BeautifulSoup for proper Korean encoding."""
         try:
             # Extract caption
-            caption_elem = table_elem.find('caption')
+            caption_elem = table_elem.find("caption")
             caption = caption_elem.get_text(strip=True) if caption_elem else None
 
             # Extract summary attribute
-            summary = table_elem.get('summary', '')
+            summary = table_elem.get("summary", "")
 
             # Extract headers
             headers = []
-            thead = table_elem.find('thead')
+            thead = table_elem.find("thead")
             if thead:
-                header_row = thead.find('tr')
+                header_row = thead.find("tr")
                 if header_row:
-                    headers = [th.get_text(strip=True) for th in header_row.find_all(['th', 'td'])]
+                    headers = [th.get_text(strip=True) for th in header_row.find_all(["th", "td"])]
 
             # Extract rows
             rows = []
-            tbody = table_elem.find('tbody')
+            tbody = table_elem.find("tbody")
             row_container = tbody if tbody else table_elem
 
-            for tr in row_container.find_all('tr'):
-                cells = [cell.get_text(strip=True) for cell in tr.find_all(['th', 'td'])]
+            for tr in row_container.find_all("tr"):
+                cells = [cell.get_text(strip=True) for cell in tr.find_all(["th", "td"])]
                 if cells and any(cell for cell in cells):  # Skip empty rows
                     rows.append(cells)
 
@@ -196,12 +198,7 @@ class FuturesProfileCrawler:
                 rows = rows[1:]
 
             if headers or rows:
-                return {
-                    'caption': caption,
-                    'summary': summary,
-                    'headers': headers,
-                    'rows': rows
-                }
+                return {"caption": caption, "summary": summary, "headers": headers, "rows": rows}
         except Exception:
             pass
 

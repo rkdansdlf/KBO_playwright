@@ -1,8 +1,10 @@
 """
 Migration: Add extended profile fields to the relational 'players' table.
 """
-import sqlite3
+
 import os
+import sqlite3
+
 
 def run():
     db_path = "data/kbo_dev.db"
@@ -30,6 +32,7 @@ def run():
     conn.commit()
     conn.close()
     print("Migration complete.")
+
 
 if __name__ == "__main__":
     run()

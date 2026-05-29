@@ -1,9 +1,6 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Optional
-
-from sqlalchemy.orm import Session
 
 from src.db.engine import SessionLocal
 from src.models.crawl import CrawlRun
@@ -13,7 +10,7 @@ class CrawlRunRepository:
     def create_run(
         self,
         *,
-        label: Optional[str],
+        label: str | None,
         started_at: datetime,
         finished_at: datetime,
         active_count: int,

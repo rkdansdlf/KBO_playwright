@@ -1,11 +1,10 @@
-
-path = 'src/models/game.py'
-with open(path, 'r') as f:
+path = "src/models/game.py"
+with open(path) as f:
     lines = f.readlines()
 
 new_lines_content = [
-    '    franchise_id = Column(Integer, nullable=True)\n',
-    '    canonical_team_code = Column(String(10), nullable=True)\n'
+    "    franchise_id = Column(Integer, nullable=True)\n",
+    "    canonical_team_code = Column(String(10), nullable=True)\n",
 ]
 
 # Insert in reverse order to maintain indices
@@ -18,7 +17,7 @@ insert_indices = [201, 154, 130]
 for idx in insert_indices:
     lines[idx:idx] = new_lines_content
 
-with open(path, 'w') as f:
+with open(path, "w") as f:
     f.writelines(lines)
 
 print(f"Patched {path} at indices {insert_indices}")

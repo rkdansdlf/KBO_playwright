@@ -1,6 +1,7 @@
 """
 Generate a KBO win expectancy matrix from historical game events.
 """
+
 from __future__ import annotations
 
 import argparse

@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import date
 
 from src.models.game import Game, GameEvent
-from src.services.game_story_builder import GameStoryBuilder, STORY_SCHEMA_VERSION
+from src.services.game_story_builder import STORY_SCHEMA_VERSION, GameStoryBuilder
 
 
 def _story_payload():

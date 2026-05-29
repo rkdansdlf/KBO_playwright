@@ -6,6 +6,7 @@ very different risks: exact duplicate rows, same-name identity collisions, or
 conflicting stat payloads. This tool separates those cases and can delete only
 provably exact duplicates when explicitly requested.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -16,7 +17,6 @@ from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Iterable
-
 
 DEFAULT_DB_PATH = Path("data/kbo_dev.db")
 DEFAULT_OUTPUT_DIR = Path("data/duplicate_worklists")
@@ -52,9 +52,13 @@ class DuplicateConfig:
 
 
 DUPLICATE_CONFIGS = (
-    DuplicateConfig("game_batting_stats", ("game_id", "player_id"), ("player_season_batting", "player_season_pitching")),
+    DuplicateConfig(
+        "game_batting_stats", ("game_id", "player_id"), ("player_season_batting", "player_season_pitching")
+    ),
     DuplicateConfig("game_pitching_stats", ("game_id", "player_id"), ("player_season_pitching",)),
-    DuplicateConfig("game_lineups", ("game_id", "player_id", "team_code"), ("player_season_batting", "player_season_pitching")),
+    DuplicateConfig(
+        "game_lineups", ("game_id", "player_id", "team_code"), ("player_season_batting", "player_season_pitching")
+    ),
 )
 
 
@@ -79,10 +83,13 @@ def _write_csv(path: Path, rows: Iterable[dict[str, Any]], fieldnames: list[str]
 
 
 def _table_exists(conn: sqlite3.Connection, table_name: str) -> bool:
-    return conn.execute(
-        "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?",
-        (table_name,),
-    ).fetchone() is not None
+    return (
+        conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?",
+            (table_name,),
+        ).fetchone()
+        is not None
+    )
 
 
 def _columns(conn: sqlite3.Connection, table_name: str) -> list[str]:
@@ -202,7 +209,9 @@ def _classify_group(
         classification = "metadata_or_lineup_conflict"
 
     keeper_id = min(int(row["id"]) for row in rows)
-    delete_ids = [int(row["id"]) for row in rows if int(row["id"]) != keeper_id] if classification == "exact_duplicate" else []
+    delete_ids = (
+        [int(row["id"]) for row in rows if int(row["id"]) != keeper_id] if classification == "exact_duplicate" else []
+    )
     group_values = {column: first.get(column) for column in config.group_columns}
     return {
         "table_name": config.table_name,
@@ -329,10 +338,7 @@ def main() -> None:
         backup=not args.no_backup,
     )
     mode = "APPLY-EXACT" if args.apply_exact else "DRY-RUN"
-    print(
-        f"[{mode}] groups={result['groups']} rows={result['rows']} "
-        f"deleted_rows={result['deleted_rows']}"
-    )
+    print(f"[{mode}] groups={result['groups']} rows={result['rows']} deleted_rows={result['deleted_rows']}")
     for key in sorted(result["summary"]):
         print(f"  {key}={result['summary'][key]}")
     if result["backup_path"]:

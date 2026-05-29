@@ -2,12 +2,12 @@
 """
 Fetch and validate koreabaseball.com robots.txt before running crawlers.
 """
+
 from __future__ import annotations
 
 import argparse
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import List
 from urllib.robotparser import RobotFileParser
 
 import httpx
@@ -37,7 +37,7 @@ def save_snapshot(content: str) -> Path:
     return snapshot_path
 
 
-def validate_paths(content: str, paths: List[str]) -> List[str]:
+def validate_paths(content: str, paths: list[str]) -> list[str]:
     parser = RobotFileParser()
     parser.parse(content.splitlines())
 

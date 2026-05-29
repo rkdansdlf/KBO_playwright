@@ -93,4 +93,3 @@ def test_parse_profile_examples(raw_text, expected):
     parsed = parse_profile(raw_text)
     for key, value in expected.items():
         assert getattr(parsed, key) == value
-

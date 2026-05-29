@@ -9,19 +9,19 @@ Resolution logic per game:
   - failure_reason=cancelled → update status → CANCELLED
   - failure_reason=missing   → update status → UNRESOLVED_MISSING
 """
+
 from __future__ import annotations
 
 import argparse
 import asyncio
 from datetime import datetime, timedelta
-from typing import List, Optional, Sequence
+from typing import Sequence
 
 from sqlalchemy import select
 
 from src.crawlers.game_detail_crawler import GameDetailCrawler
 from src.db.engine import SessionLocal
 from src.models.game import Game
-from src.services.player_id_resolver import PlayerIdResolver
 from src.repositories.game_repository import (
     GAME_STATUS_CANCELLED,
     GAME_STATUS_SCHEDULED,
@@ -30,12 +30,13 @@ from src.repositories.game_repository import (
 )
 from src.services.game_collection_service import crawl_and_save_game_details
 from src.services.game_write_contract import GameWriteContract
+from src.services.player_id_resolver import PlayerIdResolver
 from src.services.recovery_manager import RecoveryManager
 from src.utils.alerting import SlackWebhookClient
 from src.utils.safe_print import safe_print as print
 
 
-def _find_stuck_games() -> List[Game]:
+def _find_stuck_games() -> list[Game]:
     """Return all past games whose status is still SCHEDULED (no scores yet)."""
     yesterday = datetime.now().date() - timedelta(days=1)
     with SessionLocal() as session:
@@ -46,7 +47,7 @@ def _find_stuck_games() -> List[Game]:
         return list(session.execute(stmt).scalars().all())
 
 
-def _find_inconsistent_games() -> List[Game]:
+def _find_inconsistent_games() -> list[Game]:
     """Return games where total score does not match sum of inning scores."""
     from sqlalchemy import text
 
@@ -97,7 +98,7 @@ def _apply_heal_outcome(game_id: str, item) -> str:
 async def run_healer_async(
     dry_run: bool = False,
     reset_checkpoint: bool = False,
-    target_game_ids: Optional[List[str]] = None,
+    target_game_ids: list[str] | None = None,
 ) -> int:
     print("\n🩺 Running KBO Pipeline Auto-Healer...")
 
@@ -106,6 +107,8 @@ async def run_healer_async(
         recovery_mgr.clear()
 
     all_found = []
+    stuck_games = []
+    inconsistent_games = []
     if target_game_ids:
         # Targeted recovery mode
         with SessionLocal() as session:
@@ -143,10 +146,10 @@ async def run_healer_async(
 
     total = len(recovery_candidates)
     anomaly_dates = sorted({g.game_date for g in recovery_candidates})
-    
+
     # Initialize variables for summary check
     stuck_games_filtered = [g for g in all_found if g.game_status == GAME_STATUS_SCHEDULED]
-    
+
     if stuck_games_filtered:
         stuck_count = len([g for g in stuck_games_filtered if g.game_id in pending_ids])
         if stuck_count:
@@ -155,20 +158,20 @@ async def run_healer_async(
         incon_count = len([g for g in inconsistent_games if g.game_id in pending_ids])
         if incon_count:
             print(f"⚠️  Anomaly Detected: {incon_count} game(s) with score inconsistencies!")
-    
+
     for d in anomaly_dates:
         print(f"  - {d}")
 
     # Slack alert
     if not dry_run:
         summary_parts = []
-        if stuck_games: summary_parts.append(f"*{len(stuck_games)}* stuck games")
-        if inconsistent_games: summary_parts.append(f"*{len(inconsistent_games)}* inconsistent games")
-        
+        if stuck_games:
+            summary_parts.append(f"*{len(stuck_games)}* stuck games")
+        if inconsistent_games:
+            summary_parts.append(f"*{len(inconsistent_games)}* inconsistent games")
+
         date_range = (
-            f"`{anomaly_dates[0]}`"
-            if len(anomaly_dates) == 1
-            else f"`{anomaly_dates[0]}` ~ `{anomaly_dates[-1]}`"
+            f"`{anomaly_dates[0]}`" if len(anomaly_dates) == 1 else f"`{anomaly_dates[0]}` ~ `{anomaly_dates[-1]}`"
         )
         SlackWebhookClient.send_alert(
             f"Pipeline Anomaly: {total} games detected for auto-healing.",
@@ -192,7 +195,7 @@ async def run_healer_async(
         )
 
     print(f"\n🚀 Initiating self-recovery for {total} game(s)...")
-    
+
     with SessionLocal() as db_session:
         resolver = PlayerIdResolver(
             db_session,
@@ -203,7 +206,7 @@ async def run_healer_async(
         years = {d.year for d in anomaly_dates}
         for y in years:
             resolver.preload_season_index(y)
-            
+
         crawler = GameDetailCrawler(request_delay=1.0, resolver=resolver)
         write_contract = GameWriteContract(
             run_label=f"auto_healer:{datetime.now():%Y%m%dT%H%M%S}",
@@ -235,7 +238,7 @@ async def run_healer_async(
                 item = collection_result.items.get(game.game_id)
                 outcome = _apply_heal_outcome(game.game_id, item)
                 results[outcome] = results.get(outcome, 0) + 1
-                
+
                 if outcome == "completed":
                     recovery_mgr.mark_completed(game.game_id)
                 elif outcome == "unresolved":
@@ -254,12 +257,14 @@ async def run_healer_async(
         if unresolved_count == 0:
             SlackWebhookClient.send_alert(f"✅ Auto-healing complete. {results['completed']} games recovered.")
         else:
-            SlackWebhookClient.send_alert(f"⚠️ Auto-healing complete. {results['completed']} recovered, {unresolved_count} failed.")
+            SlackWebhookClient.send_alert(
+                f"⚠️ Auto-healing complete. {results['completed']} recovered, {unresolved_count} failed."
+            )
 
     return results["unresolved"]
 
 
-def run_healer(argv: Optional[Sequence[str]] = None) -> int:
+def run_healer(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="KBO Data Auto-Healer daemon")
     parser.add_argument(
         "--dry-run",
@@ -277,4 +282,5 @@ def run_healer(argv: Optional[Sequence[str]] = None) -> int:
 
 if __name__ == "__main__":
     import sys
+
     sys.exit(run_healer())

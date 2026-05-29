@@ -2,19 +2,20 @@
 """
 Compare batting parsers on the same Basic1/Basic2 HTML snapshot.
 """
+
 from __future__ import annotations
 
 import argparse
 import hashlib
 import json
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Optional, Tuple
+from typing import Any
 
 from playwright.sync_api import sync_playwright
 
 from src.crawlers.player_batting_all_series_crawler import (
-    parse_batting_stats_table,
     parse_basic2_header_data,
+    parse_batting_stats_table,
 )
 
 
@@ -28,8 +29,8 @@ def _normalize_value(value: Any, float_digits: int) -> Any:
     return value
 
 
-def _hash_items(items: List[Dict[str, Any]], sort_keys: List[str], float_digits: int) -> Tuple[str, int]:
-    def sort_key(item: Dict[str, Any]) -> Tuple[str, ...]:
+def _hash_items(items: list[dict[str, Any]], sort_keys: list[str], float_digits: int) -> tuple[str, int]:
+    def sort_key(item: dict[str, Any]) -> tuple[str, ...]:
         return tuple(str(item.get(k, "")) for k in sort_keys)
 
     ordered = sorted(items, key=sort_key) if sort_keys else list(items)
@@ -44,11 +45,11 @@ def _hash_items(items: List[Dict[str, Any]], sort_keys: List[str], float_digits:
 
 
 def _first_diff(
-    left: List[Dict[str, Any]],
-    right: List[Dict[str, Any]],
-    sort_keys: List[str],
-) -> Optional[str]:
-    def key(item: Dict[str, Any]) -> Tuple[str, ...]:
+    left: list[dict[str, Any]],
+    right: list[dict[str, Any]],
+    sort_keys: list[str],
+) -> str | None:
+    def key(item: dict[str, Any]) -> tuple[str, ...]:
         return tuple(str(item.get(k, "")) for k in sort_keys)
 
     left_map = {key(item): item for item in left}

@@ -1,16 +1,15 @@
-
-import sys
-import os
 from sqlalchemy import text
+
 from src.db.engine import SessionLocal
+
 
 def validate_starting_pitchers():
     session = SessionLocal()
-    
+
     # 1. Total games by year
     print("--- Game Summary by Year ---")
     query_summary = text("""
-        SELECT strftime('%Y', game_date) as year, 
+        SELECT strftime('%Y', game_date) as year,
                COUNT(*) as total,
                SUM(CASE WHEN away_pitcher IS NOT NULL AND away_pitcher != '' THEN 1 ELSE 0 END) as with_away_pitcher,
                SUM(CASE WHEN home_pitcher IS NOT NULL AND home_pitcher != '' THEN 1 ELSE 0 END) as with_home_pitcher
@@ -26,7 +25,7 @@ def validate_starting_pitchers():
     # 2. Inconsistency: Completed games with NO pitcher info in game table but WITH stats in game_pitching_stats
     print("\n--- Inconsistency: Game table missing pitchers but stats exist ---")
     query_inconsistent = text("""
-        SELECT g.game_id, g.game_status, 
+        SELECT g.game_id, g.game_status,
                (SELECT COUNT(*) FROM game_pitching_stats WHERE game_id = g.game_id AND is_starting = 1) as starter_stats_count
         FROM game g
         WHERE g.game_status IN ('정식', '종료', 'COMPLETED')
@@ -57,6 +56,7 @@ def validate_starting_pitchers():
         print(f"{str(row[0]):<15} | {row[1]:<6} | {row[2]}")
 
     session.close()
+
 
 if __name__ == "__main__":
     validate_starting_pitchers()

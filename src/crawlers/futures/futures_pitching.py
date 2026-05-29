@@ -2,41 +2,82 @@
 Futures League Pitching Stats Crawler
 Fetches year-by-year Futures pitching statistics from player profile pages.
 """
-import asyncio
+
 import re
-from typing import List, Dict, Optional
+
 from bs4 import BeautifulSoup
-from src.utils.playwright_pool import AsyncPlaywrightPool
+
 from src.utils.compliance import compliance
-from src.utils.throttle import throttle
+from src.utils.playwright_pool import AsyncPlaywrightPool
 from src.utils.team_codes import resolve_kbo_legacy_team_code
+from src.utils.throttle import throttle
 
 FUTURES_PITCHER_KEYS = [
-    "season", "era", "games", "complete_games", "shutouts", "wins", "losses", "saves", "holds",
-    "tbf", "innings_pitched", "innings_outs", "hits_allowed", "home_runs_allowed",
-    "walks_allowed", "hit_batters", "strikeouts", "runs_allowed", "earned_runs", "team_code"
+    "season",
+    "era",
+    "games",
+    "complete_games",
+    "shutouts",
+    "wins",
+    "losses",
+    "saves",
+    "holds",
+    "tbf",
+    "innings_pitched",
+    "innings_outs",
+    "hits_allowed",
+    "home_runs_allowed",
+    "walks_allowed",
+    "hit_batters",
+    "strikeouts",
+    "runs_allowed",
+    "earned_runs",
+    "team_code",
 ]
 
 HEADER_MAP = {
-    "연도": "season", "년도": "season", "시즌": "season", "year": "season",
-    "팀명": "team_name", "팀": "team_name",
-    "era": "era", "평균자책": "era", "평균자책점": "era",
-    "경기": "games", "g": "games",
-    "완투": "complete_games", "cg": "complete_games",
-    "완봉": "shutouts", "sho": "shutouts",
-    "승": "wins", "w": "wins",
-    "패": "losses", "l": "losses",
-    "세": "saves", "sv": "saves", "세이브": "saves",
-    "홀드": "holds", "hld": "holds",
-    "타자": "tbf", "tbf": "tbf",
-    "이닝": "IP", "ip": "IP",
-    "피안타": "hits_allowed", "h": "hits_allowed",
-    "피홈런": "home_runs_allowed", "hr": "home_runs_allowed",
-    "볼넷": "walks_allowed", "bb": "walks_allowed",
-    "사구": "hit_batters", "hbp": "hit_batters",
-    "삼진": "strikeouts", "so": "strikeouts",
-    "실점": "runs_allowed", "r": "runs_allowed",
-    "자책": "earned_runs", "er": "earned_runs",
+    "연도": "season",
+    "년도": "season",
+    "시즌": "season",
+    "year": "season",
+    "팀명": "team_name",
+    "팀": "team_name",
+    "era": "era",
+    "평균자책": "era",
+    "평균자책점": "era",
+    "경기": "games",
+    "g": "games",
+    "완투": "complete_games",
+    "cg": "complete_games",
+    "완봉": "shutouts",
+    "sho": "shutouts",
+    "승": "wins",
+    "w": "wins",
+    "패": "losses",
+    "l": "losses",
+    "세": "saves",
+    "sv": "saves",
+    "세이브": "saves",
+    "홀드": "holds",
+    "hld": "holds",
+    "타자": "tbf",
+    "tbf": "tbf",
+    "이닝": "IP",
+    "ip": "IP",
+    "피안타": "hits_allowed",
+    "h": "hits_allowed",
+    "피홈런": "home_runs_allowed",
+    "hr": "home_runs_allowed",
+    "볼넷": "walks_allowed",
+    "bb": "walks_allowed",
+    "사구": "hit_batters",
+    "hbp": "hit_batters",
+    "삼진": "strikeouts",
+    "so": "strikeouts",
+    "실점": "runs_allowed",
+    "r": "runs_allowed",
+    "자책": "earned_runs",
+    "er": "earned_runs",
 }
 
 
@@ -46,7 +87,7 @@ def _norm_header(txt: str) -> str:
     return HEADER_MAP.get(t, txt.strip())
 
 
-def _to_int(x: Optional[str]) -> Optional[int]:
+def _to_int(x: str | None) -> int | None:
     """Convert string to integer, handling commas and dashes."""
     if x is None:
         return None
@@ -59,7 +100,7 @@ def _to_int(x: Optional[str]) -> Optional[int]:
         return None
 
 
-def _to_float(x: Optional[str]) -> Optional[float]:
+def _to_float(x: str | None) -> float | None:
     """Convert string to float, handling commas and dashes."""
     if x is None:
         return None
@@ -73,7 +114,7 @@ def _to_float(x: Optional[str]) -> Optional[float]:
         return None
 
 
-def parse_innings_to_outs(text: Optional[str]) -> Optional[int]:
+def parse_innings_to_outs(text: str | None) -> int | None:
     """
     Parse pitching innings string to total outs.
     Supports fractions (e.g. "4 2/3", "2/3"), unicode ("4 ⅓"), decimals ("4.1", "4.2") or integers ("4").
@@ -85,7 +126,7 @@ def parse_innings_to_outs(text: Optional[str]) -> Optional[int]:
         return None
 
     # Replace unicode fractions with spaces
-    cleaned = cleaned.replace('⅓', ' 1/3').replace('⅔', ' 2/3')
+    cleaned = cleaned.replace("⅓", " 1/3").replace("⅔", " 2/3")
 
     # 1. Match whole number + fraction: e.g. "4 2/3"
     m_frac = re.match(r"^(\d+)\s+(\d+)/(\d+)$", cleaned)
@@ -118,7 +159,7 @@ def parse_innings_to_outs(text: Optional[str]) -> Optional[int]:
         return None
 
 
-def _parse_table(table) -> List[Dict]:
+def _parse_table(table) -> list[dict]:
     """Parse a table element into list of season pitching records."""
     headers = [_norm_header(th.get_text(strip=True)) for th in table.select("thead th, thead td")]
 
@@ -138,7 +179,7 @@ def _parse_table(table) -> List[Dict]:
             continue
 
         row = {}
-        for h, v in zip(headers, cells):
+        for h, v in zip(headers, cells, strict=False):
             key = _norm_header(h)
 
             if key == "season":
@@ -153,9 +194,23 @@ def _parse_table(table) -> List[Dict]:
                 row["era"] = _to_float(v)
             elif key == "IP":
                 row["IP"] = v
-            elif key in ("games", "complete_games", "shutouts", "wins", "losses", "saves", "holds",
-                         "tbf", "hits_allowed", "home_runs_allowed", "walks_allowed", "hit_batters",
-                         "strikeouts", "runs_allowed", "earned_runs"):
+            elif key in (
+                "games",
+                "complete_games",
+                "shutouts",
+                "wins",
+                "losses",
+                "saves",
+                "holds",
+                "tbf",
+                "hits_allowed",
+                "home_runs_allowed",
+                "walks_allowed",
+                "hit_batters",
+                "strikeouts",
+                "runs_allowed",
+                "earned_runs",
+            ):
                 row[key] = _to_int(v)
 
         # Skip rows without valid season
@@ -199,8 +254,8 @@ def _pick_futures_pitching_table(soup: BeautifulSoup):
 async def fetch_and_parse_futures_pitching(
     player_id: str,
     profile_url: str,
-    pool: Optional[AsyncPlaywrightPool] = None,
-) -> List[Dict]:
+    pool: AsyncPlaywrightPool | None = None,
+) -> list[dict]:
     """
     Fetch Futures pitching stats from player profile page.
     """

@@ -20,8 +20,8 @@ COMMENT ON COLUMN public.player_movements.player_name IS 'Player name (with posi
 COMMENT ON COLUMN public.player_movements.remarks IS 'Detailed remarks';
 
 -- Constraints: Ensure uniqueness
-ALTER TABLE public.player_movements 
-    ADD CONSTRAINT uq_player_movement 
+ALTER TABLE public.player_movements
+    ADD CONSTRAINT uq_player_movement
     UNIQUE (date, team_code, player_name, section);
 
 -- Indexes

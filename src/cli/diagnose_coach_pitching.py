@@ -5,6 +5,7 @@ Shows, per game, where starter and bullpen data is present or missing across:
 2. repository payload construction,
 3. final postgame Coach review JSON (game_summary / 리뷰_WPA).
 """
+
 from __future__ import annotations
 
 import argparse
@@ -69,16 +70,13 @@ def _print_text_report(rows: list[dict]) -> None:
             print(f"  warnings: {', '.join(row['warnings'])}")
         if repo["unmatched_season_stats"]:
             examples = ", ".join(
-                f"{item.get('player_name')}({item.get('player_id')})"
-                for item in repo["unmatched_season_stats"][:5]
+                f"{item.get('player_name')}({item.get('player_id')})" for item in repo["unmatched_season_stats"][:5]
             )
             print(f"  unmatched_examples: {examples}")
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(
-        description="Trace completed-game Coach starter/bullpen data by game."
-    )
+    parser = argparse.ArgumentParser(description="Trace completed-game Coach starter/bullpen data by game.")
     parser.add_argument("--date", help="Completed game date to inspect (YYYYMMDD)")
     parser.add_argument(
         "--game-id",

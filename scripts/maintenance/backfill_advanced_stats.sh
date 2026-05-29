@@ -23,13 +23,13 @@ for YEAR in $(seq $START_YEAR $END_YEAR); do
     echo "----------------------------------------------------"
     echo "📅 Processing Year: $YEAR"
     echo "----------------------------------------------------"
-    
+
     python3 -m src.cli.run_advanced_daily --year $YEAR $SYNC_FLAG
-    
+
     if [ $? -ne 0 ]; then
         echo "❌ Error processing year $YEAR. Continuing to next..."
     fi
-    
+
     # Sleep a bit to avoid overwhelming the KBO site
     sleep 2
 done

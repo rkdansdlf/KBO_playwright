@@ -21,7 +21,6 @@ from src.utils.relay_text import (
 )
 from src.utils.safe_print import safe_print as print
 
-
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_REPORT_DIR = PROJECT_ROOT / "data" / "recovery"
 DEFAULT_SEASONS = (2024, 2025, 2026)
@@ -461,7 +460,9 @@ def run(argv: Sequence[str] | None = None) -> int:
         default="events",
         help="OCI sync mode for applied games. Default only replaces game_events.",
     )
-    parser.add_argument("--min-events", type=int, default=DEFAULT_MIN_EVENTS, help="Minimum rebuilt event rows required")
+    parser.add_argument(
+        "--min-events", type=int, default=DEFAULT_MIN_EVENTS, help="Minimum rebuilt event rows required"
+    )
     parser.add_argument("--report-out", type=str, help="CSV report output path")
     parser.add_argument("--backup-out", type=str, help="CSV backup output path used with --apply")
     args = parser.parse_args(argv)

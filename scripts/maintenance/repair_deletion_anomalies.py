@@ -4,6 +4,7 @@
 Default mode is a dry-run. Use --apply to mutate data and --schema to rebuild
 affected SQLite tables with declared FKs and game-child ON DELETE CASCADE.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -13,8 +14,6 @@ import sqlite3
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Iterable
-
 
 DEFAULT_DB_PATH = Path("data/kbo_dev.db")
 PLAYER_ROSTER_POSITIONS = {"투수", "포수", "내야수", "외야수", "선수"}
@@ -210,10 +209,13 @@ REBUILD_TABLES = (
 
 
 def _table_exists(conn: sqlite3.Connection, table_name: str) -> bool:
-    return conn.execute(
-        "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?",
-        (table_name,),
-    ).fetchone() is not None
+    return (
+        conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?",
+            (table_name,),
+        ).fetchone()
+        is not None
+    )
 
 
 def _columns(conn: sqlite3.Connection, table_name: str) -> set[str]:
@@ -222,7 +224,9 @@ def _columns(conn: sqlite3.Connection, table_name: str) -> set[str]:
     return {str(row[1]) for row in conn.execute(f"PRAGMA table_info({table_name})")}
 
 
-def _add_column(conn: sqlite3.Connection, table_name: str, column_name: str, definition: str, actions: list[Action], apply: bool) -> None:
+def _add_column(
+    conn: sqlite3.Connection, table_name: str, column_name: str, definition: str, actions: list[Action], apply: bool
+) -> None:
     if not _table_exists(conn, table_name) or column_name in _columns(conn, table_name):
         return
     if apply:
@@ -388,11 +392,7 @@ def _unique_player_id_by_name(
         terms = [team_id]
         if team_row:
             terms.extend([term for term in team_row if term])
-        contextual_ids = {
-            int(row[0])
-            for row in rows
-            if any(term and term in str(row[1] or "") for term in terms)
-        }
+        contextual_ids = {int(row[0]) for row in rows if any(term and term in str(row[1] or "") for term in terms)}
         if len(contextual_ids) == 1:
             return next(iter(contextual_ids))
         if season:
@@ -402,7 +402,7 @@ def _unique_player_id_by_name(
                     season_rows = conn.execute(
                         f"""
                         SELECT player_id FROM {table_name}
-                        WHERE player_id IN ({','.join('?' for _ in ids)})
+                        WHERE player_id IN ({",".join("?" for _ in ids)})
                           AND season = ?
                           AND team_code = ?
                         """,
@@ -519,7 +519,11 @@ def _repair_roster(conn: sqlite3.Connection, actions: list[Action], apply: bool)
             WHERE position = '포지션'
             """
         )
-    actions.append(Action("normalize team_daily_roster parser artifact positions", artifact_count, "applied" if apply else "dry_run"))
+    actions.append(
+        Action(
+            "normalize team_daily_roster parser artifact positions", artifact_count, "applied" if apply else "dry_run"
+        )
+    )
 
     if not {"person_type", "player_basic_id", "position", "player_id"} <= _columns(conn, "team_daily_roster"):
         return
@@ -559,9 +563,24 @@ def _repair_roster(conn: sqlite3.Connection, actions: list[Action], apply: bool)
             )
         )
     else:
-        player_count = int(conn.execute(f"SELECT COUNT(*) FROM team_daily_roster WHERE position IN ({player_marks})", tuple(PLAYER_ROSTER_POSITIONS)).fetchone()[0])
-        staff_count = int(conn.execute(f"SELECT COUNT(*) FROM team_daily_roster WHERE position IN ({staff_marks})", tuple(STAFF_ROSTER_POSITIONS)).fetchone()[0])
-        unknown_count = int(conn.execute(f"SELECT COUNT(*) FROM team_daily_roster WHERE position NOT IN ({player_marks},{staff_marks})", (*PLAYER_ROSTER_POSITIONS, *STAFF_ROSTER_POSITIONS)).fetchone()[0])
+        player_count = int(
+            conn.execute(
+                f"SELECT COUNT(*) FROM team_daily_roster WHERE position IN ({player_marks})",
+                tuple(PLAYER_ROSTER_POSITIONS),
+            ).fetchone()[0]
+        )
+        staff_count = int(
+            conn.execute(
+                f"SELECT COUNT(*) FROM team_daily_roster WHERE position IN ({staff_marks})",
+                tuple(STAFF_ROSTER_POSITIONS),
+            ).fetchone()[0]
+        )
+        unknown_count = int(
+            conn.execute(
+                f"SELECT COUNT(*) FROM team_daily_roster WHERE position NOT IN ({player_marks},{staff_marks})",
+                (*PLAYER_ROSTER_POSITIONS, *STAFF_ROSTER_POSITIONS),
+            ).fetchone()[0]
+        )
         link_count = int(
             conn.execute(
                 """
@@ -581,7 +600,9 @@ def _repair_roster(conn: sqlite3.Connection, actions: list[Action], apply: bool)
     )
 
 
-def _repair_game_player_refs(conn: sqlite3.Connection, table_name: str, id_column: str, name_column: str, actions: list[Action], apply: bool) -> None:
+def _repair_game_player_refs(
+    conn: sqlite3.Connection, table_name: str, id_column: str, name_column: str, actions: list[Action], apply: bool
+) -> None:
     if not {id_column, name_column} <= _columns(conn, table_name):
         return
     rows = conn.execute(
@@ -596,15 +617,29 @@ def _repair_game_player_refs(conn: sqlite3.Connection, table_name: str, id_colum
     nulled = 0
     if apply:
         for rowid, _bad_id, raw_name in rows:
-            resolved_id = _unique_player_id_by_name(conn, _normalize_name(raw_name), position=_extract_position(raw_name))
+            resolved_id = _unique_player_id_by_name(
+                conn, _normalize_name(raw_name), position=_extract_position(raw_name)
+            )
             if resolved_id:
                 conn.execute(f"UPDATE {table_name} SET {id_column} = ? WHERE rowid = ?", (resolved_id, rowid))
                 remapped += 1
             else:
                 conn.execute(f"UPDATE {table_name} SET {id_column} = NULL WHERE rowid = ?", (rowid,))
                 nulled += 1
-    actions.append(Action(f"repair {table_name}.{id_column} remap", remapped if apply else len(rows), "applied" if apply else "dry_run"))
-    actions.append(Action(f"repair {table_name}.{id_column} null unresolved", nulled if apply else len(rows), "applied" if apply else "dry_run"))
+    actions.append(
+        Action(
+            f"repair {table_name}.{id_column} remap",
+            remapped if apply else len(rows),
+            "applied" if apply else "dry_run",
+        )
+    )
+    actions.append(
+        Action(
+            f"repair {table_name}.{id_column} null unresolved",
+            nulled if apply else len(rows),
+            "applied" if apply else "dry_run",
+        )
+    )
 
 
 def _delete_invalid_matchups(conn: sqlite3.Connection, actions: list[Action], apply: bool) -> None:
@@ -640,7 +675,15 @@ def _delete_invalid_matchups(conn: sqlite3.Connection, actions: list[Action], ap
 
 
 def _repair_movements(conn: sqlite3.Connection, actions: list[Action], apply: bool) -> None:
-    required = {"id", "movement_date", "team_code", "player_name", "canonical_team_id", "player_basic_id", "resolution_status"}
+    required = {
+        "id",
+        "movement_date",
+        "team_code",
+        "player_name",
+        "canonical_team_id",
+        "player_basic_id",
+        "resolution_status",
+    }
     if not required <= _columns(conn, "player_movements"):
         return
     rows = conn.execute("SELECT id, movement_date, team_code, player_name FROM player_movements").fetchall()
@@ -661,7 +704,9 @@ def _repair_movements(conn: sqlite3.Connection, actions: list[Action], apply: bo
         else:
             unresolved_team += 1
         player_id = (
-            _unique_player_id_by_name(conn, _normalize_name(raw_name), canonical_team, year, _extract_position(raw_name))
+            _unique_player_id_by_name(
+                conn, _normalize_name(raw_name), canonical_team, year, _extract_position(raw_name)
+            )
             if canonical_team
             else None
         )

@@ -1,9 +1,11 @@
-import sys
 import os
+import sys
+
 from sqlalchemy import create_engine, text
 
 # Add the project root to the python path
 sys.path.append(os.getcwd())
+
 
 def migrate():
     db_url = "sqlite:///./data/kbo_dev.db"
@@ -13,10 +15,10 @@ def migrate():
 
     print(f"Connecting to database: {db_url}")
     engine = create_engine(db_url)
-    
+
     with engine.connect() as conn:
         print("Starting team code renaming migration (KI->KH, DO->DB)...")
-        
+
         # 1. Update teams table
         print("Updating teams table...")
         res = conn.execute(text("UPDATE teams SET team_id = 'KH' WHERE team_id = 'KI'"))
@@ -45,9 +47,9 @@ def migrate():
             "player_basic",
             "stat_rankings",
             "team_daily_roster",
-            "player_movements"
+            "player_movements",
         ]
-        
+
         for table in team_code_tables:
             print(f"Updating {table} table...")
             try:
@@ -60,6 +62,7 @@ def migrate():
 
         conn.commit()
         print("\nMigration completed successfully.")
+
 
 if __name__ == "__main__":
     migrate()

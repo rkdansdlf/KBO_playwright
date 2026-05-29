@@ -4,7 +4,6 @@ import ast
 import warnings
 from pathlib import Path
 
-
 REPO_ROOT = Path(__file__).resolve().parents[1]
 DIRECT_SAVE_NAMES = {"save_game_detail", "save_relay_data"}
 ALLOWED_DIRECT_SAVE_FILES = {
@@ -27,11 +26,7 @@ def test_db_writing_collection_paths_stay_allowlisted():
         if names:
             offenders[_repo_path(path)] = names
 
-    unexpected = {
-        path: names
-        for path, names in offenders.items()
-        if path not in ALLOWED_DIRECT_SAVE_FILES
-    }
+    unexpected = {path: names for path, names in offenders.items() if path not in ALLOWED_DIRECT_SAVE_FILES}
 
     assert unexpected == {}
     assert "src/services/game_collection_service.py" in offenders

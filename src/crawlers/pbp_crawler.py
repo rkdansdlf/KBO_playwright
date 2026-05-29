@@ -3,17 +3,21 @@ PBP Crawler - Historical Play-by-play data collection (`LiveTextView2.aspx`).
 Navigaes directly to the Live Text View page to collect events.
 Computes WPA transitions based on the events.
 """
+
 from __future__ import annotations
+
 import asyncio
-import os
-from typing import List, Dict, Any, Optional
+from typing import Any
+
 from playwright.async_api import Page
-from src.utils.safe_print import safe_print as print
-from src.utils.request_policy import RequestPolicy
-from src.utils.playwright_pool import AsyncPlaywrightPool
+
 from src.services.wpa_calculator import WPACalculator
-from src.utils.text_parser import KBOTextParser
 from src.utils.compliance import compliance
+from src.utils.playwright_pool import AsyncPlaywrightPool
+from src.utils.request_policy import RequestPolicy
+from src.utils.safe_print import safe_print as print
+from src.utils.text_parser import KBOTextParser
+
 
 class PBPCrawler:
     def __init__(
@@ -26,11 +30,11 @@ class PBPCrawler:
         self.base_url = "https://www.koreabaseball.com/Game/LiveText.aspx"
         self.policy = policy or RequestPolicy(min_delay=request_delay, max_delay=request_delay + 0.5)
         self.pool = pool
-        self._context_kwargs = self.policy.build_context_kwargs(locale='ko-KR')
+        self._context_kwargs = self.policy.build_context_kwargs(locale="ko-KR")
         self.wpa_calc = WPACalculator()
         self.last_failure_reason: str | None = None
 
-    async def crawl_game_events(self, game_id: str) -> Optional[Dict[str, Any]]:
+    async def crawl_game_events(self, game_id: str) -> dict[str, Any] | None:
         """
         Loads the LiveText page for a specific game and extracts PBP data.
         """
@@ -44,8 +48,9 @@ class PBPCrawler:
 
         if owns_pool:
             await pool.start()
-            
+
         try:
+
             async def do_crawl(retry_count=0):
                 try:
                     page = await pool.acquire()
@@ -54,9 +59,9 @@ class PBPCrawler:
                         if not await compliance.is_allowed(url):
                             print(f"[COMPLIANCE] Navigation to {url} aborted.")
                             return None
-                            
+
                         await self.policy.delay_async(host="www.koreabaseball.com")
-                        
+
                         # Step 1: Warm up the session by visiting the Scoreboard page
                         parent_url = f"https://www.koreabaseball.com/Schedule/ScoreBoard.aspx?gameDate={game_date}"
                         print(f"[AUTH] Warming up session on Scoreboard: {parent_url}")
@@ -88,19 +93,15 @@ class PBPCrawler:
                             if "데이터가 없습니다" in body or "취소" in body:
                                 self.last_failure_reason = "empty"
                                 return None
-                        
+
                         print("[INFO] Extracting Relay Data...")
                         events = await self._extract_flat_events_legacy(page)
-                        
+
                         if not events:
                             self.last_failure_reason = "empty"
                             return None
-                            
-                        return {
-                            'game_id': game_id,
-                            'game_date': game_date,
-                            'events': events
-                        }
+
+                        return {"game_id": game_id, "game_date": game_date, "events": events}
 
                     except Exception as e:
                         print(f"[ERROR] PBP crawl failed for {game_id}: {e}")
@@ -119,7 +120,7 @@ class PBPCrawler:
             if owns_pool:
                 await pool.close()
 
-    async def _extract_flat_events_legacy(self, page: Page) -> List[Dict[str, Any]]:
+    async def _extract_flat_events_legacy(self, page: Page) -> list[dict[str, Any]]:
         """Extract events from LiveText.aspx which are in reverse chronological order."""
         extraction_script = """
         () => {
@@ -133,7 +134,7 @@ class PBPCrawler:
 
             const mainContainer = document.querySelector('#numCont11');
             let results = getSpans(mainContainer);
-            
+
             if (results.length === 0) {
                 // If #numCont11 is empty, try individual innings 1-12
                 for (let i = 1; i <= 12; i++) {
@@ -149,51 +150,54 @@ class PBPCrawler:
 
         try:
             raw_spans = await page.evaluate(extraction_script)
-            if not raw_spans: return []
-            
+            if not raw_spans:
+                return []
+
             # Since the page is reverse chronological, we REVERSE the list to process it forward.
             raw_spans.reverse()
-            
+
             # State for parsing
             current_inning = 0
-            current_half = 'unknown'
+            current_half = "unknown"
             home_score = 0
             away_score = 0
             current_outs = 0
             current_runners = 0
             sequence = 1
             events = []
-            
+
             for item in raw_spans:
-                text = item['text']
-                cls = item['class']
-                
+                text = item["text"]
+                cls = item["class"]
+
                 # Inning Header Detection (span.blue)
                 # Example: "9회초 한화 공격"
-                if 'blue' in cls and '회' in text:
+                if "blue" in cls and "회" in text:
                     import re
-                    match = re.search(r'(\d+)회(초|말)', text)
+
+                    match = re.search(r"(\d+)회(초|말)", text)
                     if match:
                         current_inning = int(match.group(1))
-                        current_half = 'top' if match.group(2) == '초' else 'bottom'
+                        current_half = "top" if match.group(2) == "초" else "bottom"
                         current_outs = 0
                         current_runners = 0
                     continue
-                
+
                 # Metadata line (often just "------")
                 if "---" in text and len(text) > 10:
                     continue
-                    
+
                 # Actual Event (span.normaiflTxt or span.red)
-                if 'normaiflTxt' in cls or 'red' in cls:
+                if "normaiflTxt" in cls or "red" in cls:
                     # Skip administrative messages
-                    if "경기 준비중" in text or "경기 시작" in text: continue
-                    
-                    is_bottom = (current_half == 'bottom')
+                    if "경기 준비중" in text or "경기 시작" in text:
+                        continue
+
+                    is_bottom = current_half == "bottom"
                     outs_before = current_outs
                     runners_before = current_runners
                     score_diff_before = home_score - away_score
-                    
+
                     # Basic parser logic
                     parsed_outs = KBOTextParser.parse_outs(text)
                     parsed_runners = KBOTextParser.parse_runners(text)
@@ -204,48 +208,57 @@ class PBPCrawler:
                         if parsed_runners >= 0:
                             runners_before = parsed_runners
                             current_runners = runners_before
-                    
+
                     runs_scored = KBOTextParser.parse_score_change(text)
-                    if is_bottom: home_score += runs_scored
-                    else: away_score += runs_scored
-                    
+                    if is_bottom:
+                        home_score += runs_scored
+                    else:
+                        away_score += runs_scored
+
                     # Out tracking
                     if any(kw in text for kw in ["삼진", "아웃", "플라이", "땅볼", "범타"]):
-                         if "병살" in text: current_outs += 2
-                         elif "삼중살" in text: current_outs += 3
-                         else: current_outs += 1
-                    
+                        if "병살" in text:
+                            current_outs += 2
+                        elif "삼중살" in text:
+                            current_outs += 3
+                        else:
+                            current_outs += 1
+
                     current_outs = min(current_outs, 3)
                     outs_after = current_outs
-                    runners_after = 0 if current_outs >= 3 else 0 # Placeholder
-                    
+                    runners_after = 0 if current_outs >= 3 else 0  # Placeholder
+
                     # WPA
-                    wp_before = self.wpa_calc.get_win_probability(current_inning, is_bottom, outs_before, runners_before, score_diff_before)
-                    wp_after = self.wpa_calc.get_win_probability(current_inning, is_bottom, outs_after, runners_after, home_score - away_score)
+                    wp_before = self.wpa_calc.get_win_probability(
+                        current_inning, is_bottom, outs_before, runners_before, score_diff_before
+                    )
+                    wp_after = self.wpa_calc.get_win_probability(
+                        current_inning, is_bottom, outs_after, runners_after, home_score - away_score
+                    )
                     wpa = round(wp_after - wp_before if is_bottom else wp_before - wp_after, 4)
 
                     event = {
-                        'event_seq': sequence,
-                        'inning': current_inning,
-                        'inning_half': current_half,
-                        'description': text,
-                        'event_type': 'batting' if '타자' in text or '전환' in text else 'unknown',
-                        'batter': text.split(':')[0].replace('타자', '').strip() if ':' in text else None,
-                        'result': text.split(':')[1].strip() if ':' in text else None,
-                        'wpa': wpa,
-                        'win_expectancy_before': wp_before,
-                        'win_expectancy_after': wp_after,
-                        'home_score': home_score,
-                        'away_score': away_score,
-                        'score_diff': score_diff_before,
-                        'base_state': runners_before,
-                        'outs': outs_before,
-                        'bases_before': self._format_base_string(runners_before),
-                        'bases_after': self._format_base_string(runners_after)
+                        "event_seq": sequence,
+                        "inning": current_inning,
+                        "inning_half": current_half,
+                        "description": text,
+                        "event_type": "batting" if "타자" in text or "전환" in text else "unknown",
+                        "batter": text.split(":")[0].replace("타자", "").strip() if ":" in text else None,
+                        "result": text.split(":")[1].strip() if ":" in text else None,
+                        "wpa": wpa,
+                        "win_expectancy_before": wp_before,
+                        "win_expectancy_after": wp_after,
+                        "home_score": home_score,
+                        "away_score": away_score,
+                        "score_diff": score_diff_before,
+                        "base_state": runners_before,
+                        "outs": outs_before,
+                        "bases_before": self._format_base_string(runners_before),
+                        "bases_after": self._format_base_string(runners_after),
                     }
                     events.append(event)
                     sequence += 1
-                    
+
             return events
         except Exception as e:
             print(f"[WARN] Error extracting PBP legacy (JS): {e}")
@@ -257,13 +270,14 @@ class PBPCrawler:
         s += "2" if (runners & 2) else "-"
         s += "3" if (runners & 4) else "-"
         return s
-            
-    def _parse_inning_header(self, text: str, idx: int) -> Dict[str, Any]:
+
+    def _parse_inning_header(self, text: str, idx: int) -> dict[str, Any]:
         import re
-        match = re.search(r'(\d+)회(초|말)', text)
+
+        match = re.search(r"(\d+)회(초|말)", text)
         if match:
-            return {'inning': int(match.group(1)), 'half': 'top' if match.group(2) == '초' else 'bottom'}
-        return {'inning': idx + 1, 'half': 'unknown'}
+            return {"inning": int(match.group(1)), "half": "top" if match.group(2) == "초" else "bottom"}
+        return {"inning": idx + 1, "half": "unknown"}
 
     def _format_base_string(self, runners: int) -> str:
         s = ""

@@ -8,7 +8,7 @@ CREATE TABLE IF NOT EXISTS awards (
     team_name VARCHAR(50) NOT NULL,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    
+
     CONSTRAINT uq_award_record UNIQUE (year, award_type, category, player_name, team_name)
 );
 

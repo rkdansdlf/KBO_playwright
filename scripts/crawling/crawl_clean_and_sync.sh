@@ -52,7 +52,7 @@ if [ -z "$OCI_DB_URL" ]; then
 else
     echo "🔄 OCI 동기화 중..."
     $PYTHON -m src.cli.sync_oci --game-details --unsynced-only
-    
+
     if [ $? -eq 0 ]; then
         echo "✅ OCI 동기화 완료"
     else
@@ -75,18 +75,18 @@ with SessionLocal() as session:
             PlayerSeasonBatting.season <= $END_YEAR
         )
     ).count()
-    
+
     pitching_range = session.query(PlayerSeasonPitching).filter(
         and_(
             PlayerSeasonPitching.season >= $START_YEAR,
             PlayerSeasonPitching.season <= $END_YEAR
         )
     ).count()
-    
+
     # 전체 데이터
     batting_total = session.query(PlayerSeasonBatting).count()
     pitching_total = session.query(PlayerSeasonPitching).count()
-    
+
     print(f'📊 크롤링 결과 ({START_YEAR}-{END_YEAR}년):')
     print(f'  - 타자: {batting_range:,}명')
     print(f'  - 투수: {pitching_range:,}명')

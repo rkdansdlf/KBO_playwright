@@ -36,6 +36,22 @@ The core functionalities include:
 -   **`data/`**: Stores the local SQLite database file (`kbo_dev.db`) and CSV files for seeding.
 -   **`Docs/`**: Project documentation, including database schema definitions.
 
+## Scheduling & Concurrency Control
+
+Automated tasks are managed via `scripts/scheduler.py`. To prevent resource contention and data corruption during concurrent execution, the system employs a **3-stage locking mechanism**:
+
+1.  **`LIVE_LOCK`**: For high-frequency, real-time updates.
+    *   *Tasks:* Live game refresh (`crawl_live_refresh`), Pregame starter/preview checks (`crawl_pregame_refresh`).
+    *   *Goal:* Ensures lightweight, time-sensitive updates don't collide.
+2.  **`DAILY_LOCK`**: For the core daily data pipeline.
+    *   *Tasks:* Daily update and finalization (`crawl_daily_games`).
+    *   *Goal:* Protects the primary data collection process for the previous day's results.
+3.  **`MAINTENANCE_LOCK`**: For long-running or resource-intensive background tasks.
+    *   *Tasks:* Weekly Futures sync (`crawl_all_futures_profiles`), OCI-to-Local hydration (`sync_from_oci_job`), Daily quality reports (`generate_daily_report_job`).
+    *   *Goal:* Prevents heavy background synchronization and reporting from impacting real-time or daily operations.
+
+Developers adding new scheduled tasks must use the appropriate lock via `with LOCK_NAME:` blocks to maintain system integrity.
+
 ## Building and Running
 
 ### 1. Environment Setup

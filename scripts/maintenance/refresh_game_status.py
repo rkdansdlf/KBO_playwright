@@ -9,15 +9,16 @@ Status rules:
   - CANCELLED: missing score, past, has metadata, and has no detail rows
   - UNRESOLVED_MISSING: missing score, past, and does not meet CANCELLED rule
 """
+
 from __future__ import annotations
 
 import argparse
 import csv
+import sys
 from collections import Counter
 from datetime import date, datetime
 from pathlib import Path
-import sys
-from typing import Any, Dict, Iterable, List, Optional
+from typing import Any, Iterable
 
 from sqlalchemy import text
 
@@ -28,14 +29,26 @@ if str(PROJECT_ROOT) not in sys.path:
 from src.db.engine import SessionLocal
 from src.utils.game_status import (
     GAME_STATUS_CANCELLED as STATUS_CANCELLED,
-    GAME_STATUS_COMPLETED as STATUS_COMPLETED,
-    GAME_STATUS_DRAW as STATUS_DRAW,
-    GAME_STATUS_LIVE as STATUS_LIVE,
-    GAME_STATUS_POSTPONED as STATUS_POSTPONED,
-    GAME_STATUS_SCHEDULED as STATUS_SCHEDULED,
-    GAME_STATUS_UNRESOLVED as STATUS_UNRESOLVED,
-    LIVE_GAME_STATUSES,
 )
+from src.utils.game_status import (
+    GAME_STATUS_COMPLETED as STATUS_COMPLETED,
+)
+from src.utils.game_status import (
+    GAME_STATUS_DRAW as STATUS_DRAW,
+)
+from src.utils.game_status import (
+    GAME_STATUS_LIVE as STATUS_LIVE,
+)
+from src.utils.game_status import (
+    GAME_STATUS_POSTPONED as STATUS_POSTPONED,
+)
+from src.utils.game_status import (
+    GAME_STATUS_SCHEDULED as STATUS_SCHEDULED,
+)
+from src.utils.game_status import (
+    GAME_STATUS_UNRESOLVED as STATUS_UNRESOLVED,
+)
+
 MANUAL_STATUS_ALLOWED = {STATUS_CANCELLED, STATUS_POSTPONED}
 DEFAULT_OVERRIDES_CSV = PROJECT_ROOT / "data/game_status_overrides.csv"
 DEFAULT_EVIDENCE_CSV = PROJECT_ROOT / "data/game_status_schedule_evidence.csv"
@@ -61,33 +74,38 @@ def derive_game_status(
     has_pitching: bool,
     has_events: bool = False,
     has_pbp: bool = False,
-    manual_status: Optional[str] = None,
+    manual_status: str | None = None,
     today: date | None = None,
 ) -> str:
     today = today or date.today()
-    if home_score is not None and away_score is not None and (has_batting or has_pitching or (game_date < today and has_inning_scores)):
+    if (
+        home_score is not None
+        and away_score is not None
+        and (has_batting or has_pitching or (game_date < today and has_inning_scores))
+    ):
         return STATUS_DRAW if home_score == away_score else STATUS_COMPLETED
     if game_date > today:
         return STATUS_SCHEDULED
     if manual_status in MANUAL_STATUS_ALLOWED:
         return manual_status
-    
+
     # LIVE detection needs to be robust against pre-game data (like lineups)
     # If it's today, we only mark as LIVE if there's actual game progress evidence.
     has_progress_evidence = has_inning_scores or has_events or has_pbp or has_batting or has_pitching
-    
+
     if game_date == today:
         return STATUS_LIVE if has_progress_evidence else STATUS_SCHEDULED
-    
+
     if has_metadata and not (has_lineups or has_progress_evidence):
         return STATUS_CANCELLED
     return STATUS_UNRESOLVED
 
 
-def _load_games_with_flags(session) -> List[Dict[str, Any]]:
-    rows = session.execute(
-        text(
-            """
+def _load_games_with_flags(session) -> list[dict[str, Any]]:
+    rows = (
+        session.execute(
+            text(
+                """
             SELECT
                 g.game_id,
                 g.game_date,
@@ -103,20 +121,23 @@ def _load_games_with_flags(session) -> List[Dict[str, Any]]:
             FROM game g
             ORDER BY g.game_id
             """
+            )
         )
-    ).mappings().all()
+        .mappings()
+        .all()
+    )
     return [dict(row) for row in rows]
 
 
-def _normalize_manual_status(raw_status: Any) -> Optional[str]:
+def _normalize_manual_status(raw_status: Any) -> str | None:
     status = str(raw_status or "").strip().upper()
     if status in MANUAL_STATUS_ALLOWED:
         return status
     return None
 
 
-def _load_manual_status_map(path: Path, source_label: str) -> Dict[str, Dict[str, str]]:
-    mapping: Dict[str, Dict[str, str]] = {}
+def _load_manual_status_map(path: Path, source_label: str) -> dict[str, dict[str, str]]:
+    mapping: dict[str, dict[str, str]] = {}
     if not path.exists():
         return mapping
 
@@ -126,9 +147,7 @@ def _load_manual_status_map(path: Path, source_label: str) -> Dict[str, Dict[str
             game_id = str(row.get("game_id") or "").strip()
             if not game_id:
                 continue
-            status = _normalize_manual_status(
-                row.get("resolved_status") or row.get("game_status") or row.get("status")
-            )
+            status = _normalize_manual_status(row.get("resolved_status") or row.get("game_status") or row.get("status"))
             if status is None:
                 continue
             mapping[game_id] = {
@@ -167,7 +186,7 @@ def refresh_game_statuses(
     output_dir: str = "data",
     overrides_csv: str = str(DEFAULT_OVERRIDES_CSV),
     evidence_csv: str = str(DEFAULT_EVIDENCE_CSV),
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     now = datetime.now()
     today = now.date()
     output_path = Path(output_dir)
@@ -175,14 +194,14 @@ def refresh_game_statuses(
     stamp = now.strftime("%Y%m%d_%H%M%S")
     evidence_map = _load_manual_status_map(Path(evidence_csv), "evidence")
     overrides_map = _load_manual_status_map(Path(overrides_csv), "override")
-    manual_map: Dict[str, Dict[str, str]] = dict(evidence_map)
+    manual_map: dict[str, dict[str, str]] = dict(evidence_map)
     manual_map.update(overrides_map)
 
     with SessionLocal() as session:
         _ensure_game_status_column(session)
         games = _load_games_with_flags(session)
-        updates: List[Dict[str, Any]] = []
-        detail_rows: List[Dict[str, Any]] = []
+        updates: list[dict[str, Any]] = []
+        detail_rows: list[dict[str, Any]] = []
         status_counts: Counter = Counter()
         manual_source_counts: Counter = Counter()
         past_scheduled = 0
@@ -305,7 +324,7 @@ def refresh_game_statuses(
     }
 
 
-def _write_csv(path: Path, columns: Iterable[str], rows: List[Dict[str, Any]]) -> None:
+def _write_csv(path: Path, columns: Iterable[str], rows: list[dict[str, Any]]) -> None:
     with path.open("w", newline="", encoding="utf-8") as fh:
         writer = csv.DictWriter(fh, fieldnames=list(columns))
         writer.writeheader()

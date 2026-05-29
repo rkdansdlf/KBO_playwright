@@ -6,27 +6,28 @@
 2. 각 선수에 대해 퓨처스리그 기록 페이지로 이동하여 연도별 타격 데이터를 크롤링하고 파싱합니다.
 3. 파싱된 데이터를 데이터베이스에 UPSERT(존재하면 업데이트, 없으면 삽입)하여 저장합니다.
 """
+
 from __future__ import annotations
 
 import argparse
 import asyncio
 import json
 from collections import Counter
-from typing import Sequence, Dict
 from datetime import datetime
+from typing import Sequence
 
-from src.db.engine import SessionLocal
-from src.crawlers.player_list_crawler import PlayerListCrawler
 from src.crawlers.futures.futures_batting import fetch_and_parse_futures_batting
 from src.crawlers.futures.futures_pitching import fetch_and_parse_futures_pitching
-from src.repositories.player_repository import PlayerRepository
-from src.repositories.save_futures_batting import save_futures_batting
-from src.repositories.player_season_pitching_repository import save_pitching_stats_to_db
-from src.parsers.player_profile_parser import PlayerProfileParsed
+from src.crawlers.player_list_crawler import PlayerListCrawler
+from src.db.engine import SessionLocal
 from src.models.player import PlayerBasic
-from src.utils.safe_print import safe_print as print
-from src.utils.playwright_pool import AsyncPlaywrightPool
+from src.parsers.player_profile_parser import PlayerProfileParsed
+from src.repositories.player_repository import PlayerRepository
+from src.repositories.player_season_pitching_repository import save_pitching_stats_to_db
+from src.repositories.save_futures_batting import save_futures_batting
 from src.utils.player_validation import normalize_player_id
+from src.utils.playwright_pool import AsyncPlaywrightPool
+from src.utils.safe_print import safe_print as print
 
 
 def _has_player_basic(player_id: str) -> bool:
@@ -37,20 +38,18 @@ def _has_player_basic(player_id: str) -> bool:
 
     with SessionLocal() as session:
         return (
-            session.query(PlayerBasic.player_id)
-            .filter(PlayerBasic.player_id == player_id_db)
-            .scalar_one_or_none()
+            session.query(PlayerBasic.player_id).filter(PlayerBasic.player_id == player_id_db).scalar_one_or_none()
             is not None
         )
 
 
-async def gather_active_player_ids(season_year: int, delay: float) -> Dict[str, Dict[str, str]]:
+async def gather_active_player_ids(season_year: int, delay: float) -> dict[str, dict[str, str]]:
     """지정된 시즌의 모든 현역 선수 ID와 메타정보(포지션, 이름)를 수집합니다."""
     print(f"Gathering active player list for {season_year}...")
     crawler = PlayerListCrawler(request_delay=delay)
     result = await crawler.crawl_all_players(season_year=season_year)
 
-    player_positions: Dict[str, Dict[str, str]] = {}
+    player_positions: dict[str, dict[str, str]] = {}
     for player in result.get("hitters", []):
         pid = player.get("player_id")
         name = player.get("player_name") or ""
@@ -69,7 +68,9 @@ async def gather_active_player_ids(season_year: int, delay: float) -> Dict[str, 
     hitters_cnt = sum(1 for m in player_positions.values() if m["position"] == "hitter")
     pitchers_cnt = sum(1 for m in player_positions.values() if m["position"] == "pitcher")
     both_cnt = sum(1 for m in player_positions.values() if m["position"] == "both")
-    print(f"Found {len(player_positions)} active players (hitters: {hitters_cnt}, pitchers: {pitchers_cnt}, both: {both_cnt})")
+    print(
+        f"Found {len(player_positions)} active players (hitters: {hitters_cnt}, pitchers: {pitchers_cnt}, both: {both_cnt})"
+    )
     return player_positions
 
 
@@ -156,9 +157,7 @@ async def process_player_result(
 
     # 데이터베이스에 선수 정보가 없으면 새로 생성
     player = await asyncio.to_thread(
-        repository.upsert_player_profile,
-        player_id,
-        PlayerProfileParsed(is_active=True, player_name=player_name)
+        repository.upsert_player_profile, player_id, PlayerProfileParsed(is_active=True, player_name=player_name)
     )
 
     if not player:
@@ -171,15 +170,11 @@ async def process_player_result(
         }
 
     saved = 0
-    
+
     # Save Hitter stats if any
     if batting_rows:
         try:
-            saved_batting = await asyncio.to_thread(
-                save_futures_batting,
-                player_id,
-                batting_rows
-            )
+            saved_batting = await asyncio.to_thread(save_futures_batting, player_id, batting_rows)
             saved += saved_batting
         except Exception as exc:
             print(f"[ERROR] Exception saving batting stats for player {player_id}: {exc}")
@@ -189,37 +184,36 @@ async def process_player_result(
         try:
             payloads = []
             for row in pitching_rows:
-                payloads.append({
-                    "player_id": int(player_id),
-                    "player_name": player_name,
-                    "season": row.get("season"),
-                    "league": "FUTURES",
-                    "level": "KBO2",
-                    "source": "PROFILE",
-                    "team_code": row.get("team_code"),
-                    "games": row.get("games"),
-                    "complete_games": row.get("complete_games"),
-                    "shutouts": row.get("shutouts"),
-                    "wins": row.get("wins"),
-                    "losses": row.get("losses"),
-                    "saves": row.get("saves"),
-                    "holds": row.get("holds"),
-                    "innings_pitched": row.get("innings_pitched"),
-                    "innings_outs": row.get("innings_outs"),
-                    "hits_allowed": row.get("hits_allowed"),
-                    "runs_allowed": row.get("runs_allowed"),
-                    "earned_runs": row.get("earned_runs"),
-                    "home_runs_allowed": row.get("home_runs_allowed"),
-                    "walks_allowed": row.get("walks_allowed"),
-                    "hit_batters": row.get("hit_batters"),
-                    "strikeouts": row.get("strikeouts"),
-                    "era": row.get("era"),
-                    "tbf": row.get("tbf"),
-                })
-            saved_pitching = await asyncio.to_thread(
-                save_pitching_stats_to_db,
-                payloads
-            )
+                payloads.append(
+                    {
+                        "player_id": int(player_id),
+                        "player_name": player_name,
+                        "season": row.get("season"),
+                        "league": "FUTURES",
+                        "level": "KBO2",
+                        "source": "PROFILE",
+                        "team_code": row.get("team_code"),
+                        "games": row.get("games"),
+                        "complete_games": row.get("complete_games"),
+                        "shutouts": row.get("shutouts"),
+                        "wins": row.get("wins"),
+                        "losses": row.get("losses"),
+                        "saves": row.get("saves"),
+                        "holds": row.get("holds"),
+                        "innings_pitched": row.get("innings_pitched"),
+                        "innings_outs": row.get("innings_outs"),
+                        "hits_allowed": row.get("hits_allowed"),
+                        "runs_allowed": row.get("runs_allowed"),
+                        "earned_runs": row.get("earned_runs"),
+                        "home_runs_allowed": row.get("home_runs_allowed"),
+                        "walks_allowed": row.get("walks_allowed"),
+                        "hit_batters": row.get("hit_batters"),
+                        "strikeouts": row.get("strikeouts"),
+                        "era": row.get("era"),
+                        "tbf": row.get("tbf"),
+                    }
+                )
+            saved_pitching = await asyncio.to_thread(save_pitching_stats_to_db, payloads)
             saved += saved_pitching
         except Exception as exc:
             print(f"[ERROR] Exception saving pitching stats for player {player_id}: {exc}")
@@ -242,7 +236,7 @@ async def process_player_result(
 
 async def crawl_futures(args: argparse.Namespace) -> dict:
     """퓨처스리그 크롤링 메인 로직."""
-    print(f"\n=== Futures League Stats Crawler ===")
+    print("\n=== Futures League Stats Crawler ===")
     print(f"Season: {args.season}")
     print(f"Concurrency: {args.concurrency}")
     print(f"Delay: {args.delay}s\n")
@@ -258,7 +252,7 @@ async def crawl_futures(args: argparse.Namespace) -> dict:
         player_positions = await gather_active_player_ids(args.season, args.delay)
 
     if args.limit:
-        limited_pids = sorted(player_positions.keys())[:args.limit]
+        limited_pids = sorted(player_positions.keys())[: args.limit]
         player_positions = {pid: player_positions[pid] for pid in limited_pids}
         print(f"Limited to {len(player_positions)} players\n")
 
@@ -324,7 +318,7 @@ async def crawl_futures(args: argparse.Namespace) -> dict:
         await asyncio.gather(*(runner(pid, meta) for pid, meta in sorted(player_positions.items())))
 
     # 3단계: 결과 요약
-    print(f"\n=== Summary ===")
+    print("\n=== Summary ===")
     total_saved = sum(result["saved"] for result in results)
     success_count = sum(1 for result in results if result["status"] == "success")
 
@@ -355,9 +349,7 @@ async def crawl_futures(args: argparse.Namespace) -> dict:
 
 def build_arg_parser() -> argparse.ArgumentParser:
     """CLI 인자 파서를 생성합니다."""
-    parser = argparse.ArgumentParser(
-        description="Crawl year-by-year Futures batting stats for active players"
-    )
+    parser = argparse.ArgumentParser(description="Crawl year-by-year Futures batting stats for active players")
     parser.add_argument(
         "--season",
         type=int,

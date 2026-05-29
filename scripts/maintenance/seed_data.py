@@ -1,64 +1,358 @@
-
 import csv
 import os
 import sys
-from pathlib import Path
-from typing import Optional, Union
 from datetime import datetime
+from pathlib import Path
 
 # Ensure project root is on sys.path when run as a script
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
 
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
-from src.db.engine import SessionLocal, Engine
-from src.models.team import Team
+from src.db.engine import Engine, SessionLocal
 from src.models.season import KboSeason
+from src.models.stadium_food import StadiumFood
+from src.models.team import Team
 
 DEFAULT_TEAMS = [
-    {"team_id": "SS", "team_name": "삼성 라이온즈", "team_short_name": "삼성", "city": "대구", "founded_year": 1982, "stadium_name": "대구 삼성 라이온즈 파크"},
-    {"team_id": "LT", "team_name": "롯데 자이언츠", "team_short_name": "롯데", "city": "부산", "founded_year": 1982, "stadium_name": "부산 사직 야구장"},
-    {"team_id": "MBC", "team_name": "MBC 청룡", "team_short_name": "MBC", "city": "서울", "founded_year": 1982, "stadium_name": "잠실야구장"},
-    {"team_id": "LG", "team_name": "LG 트윈스", "team_short_name": "LG", "city": "서울", "founded_year": 1990, "stadium_name": "잠실야구장"},
-    {"team_id": "OB", "team_name": "OB 베어스", "team_short_name": "OB", "city": "서울", "founded_year": 1982, "stadium_name": "잠실야구장"},
-    {"team_id": "DO", "team_name": "두산 베어스", "team_short_name": "두산", "city": "서울", "founded_year": 1996, "stadium_name": "잠실야구장"},
-    {"team_id": "DB", "team_name": "두산 베어스", "team_short_name": "두산", "city": "서울", "founded_year": 2015, "stadium_name": "잠실야구장"},
-    {"team_id": "HT", "team_name": "해태 타이거즈", "team_short_name": "해태", "city": "광주", "founded_year": 1982, "stadium_name": "광주 무등경기장 야구장"},
-    {"team_id": "KIA", "team_name": "KIA 타이거즈", "team_short_name": "KIA", "city": "광주", "founded_year": 2001, "stadium_name": "광주-기아 챔피언스 필드"},
-    {"team_id": "SM", "team_name": "삼미 슈퍼스타즈", "team_short_name": "삼미", "city": "인천", "founded_year": 1982, "stadium_name": "인천공설운동장 야구장"},
-    {"team_id": "CB", "team_name": "청보 핀토스", "team_short_name": "청보", "city": "인천", "founded_year": 1985, "stadium_name": "인천공설운동장 야구장"},
-    {"team_id": "TP", "team_name": "태평양 돌핀스", "team_short_name": "태평양", "city": "인천", "founded_year": 1988, "stadium_name": "인천공설운동장 야구장"},
-    {"team_id": "HU", "team_name": "현대 유니콘스", "team_short_name": "현대", "city": "수원", "founded_year": 1996, "stadium_name": "수원야구장"},
-    {"team_id": "WO", "team_name": "우리 히어로즈", "team_short_name": "우리", "city": "서울", "founded_year": 2008, "stadium_name": "목동야구장"},
-    {"team_id": "NX", "team_name": "넥센 히어로즈", "team_short_name": "넥센", "city": "서울", "founded_year": 2010, "stadium_name": "고척스카이돔"},
-    {"team_id": "KI", "team_name": "키움 히어로즈", "team_short_name": "키움", "city": "서울", "founded_year": 2019, "stadium_name": "고척스카이돔"},
-    {"team_id": "KH", "team_name": "키움 히어로즈", "team_short_name": "키움", "city": "서울", "founded_year": 2024, "stadium_name": "고척스카이돔"},
-    {"team_id": "BE", "team_name": "빙그레 이글스", "team_short_name": "빙그레", "city": "대전", "founded_year": 1986, "stadium_name": "대전한밭야구장"},
-    {"team_id": "HH", "team_name": "한화 이글스", "team_short_name": "한화", "city": "대전", "founded_year": 1993, "stadium_name": "대전 한화생명 이글스 파크"},
-    {"team_id": "SL", "team_name": "쌍방울 레이더스", "team_short_name": "쌍방울", "city": "전주", "founded_year": 1990, "stadium_name": "전주야구장"},
-    {"team_id": "SK", "team_name": "SK 와이번스", "team_short_name": "SK", "city": "인천", "founded_year": 2000, "stadium_name": "인천문학야구장"},
-    {"team_id": "SSG", "team_name": "SSG 랜더스", "team_short_name": "SSG", "city": "인천", "founded_year": 2021, "stadium_name": "인천SSG랜더스필드"},
-    {"team_id": "NC", "team_name": "NC 다이노스", "team_short_name": "NC", "city": "창원", "founded_year": 2011, "stadium_name": "창원NC파크"},
-    {"team_id": "KT", "team_name": "kt wiz", "team_short_name": "kt", "city": "수원", "founded_year": 2013, "stadium_name": "수원 kt wiz 파크"},
-    {"team_id": "EA", "team_name": "나눔 올스타", "team_short_name": "나눔", "city": "KBO", "founded_year": 1982, "stadium_name": "-"},
-    {"team_id": "WE", "team_name": "드림 올스타", "team_short_name": "드림", "city": "KBO", "founded_year": 1982, "stadium_name": "-"},
+    {
+        "team_id": "SS",
+        "team_name": "삼성 라이온즈",
+        "team_short_name": "삼성",
+        "city": "대구",
+        "founded_year": 1982,
+        "stadium_name": "대구 삼성 라이온즈 파크",
+    },
+    {
+        "team_id": "LT",
+        "team_name": "롯데 자이언츠",
+        "team_short_name": "롯데",
+        "city": "부산",
+        "founded_year": 1982,
+        "stadium_name": "부산 사직 야구장",
+    },
+    {
+        "team_id": "MBC",
+        "team_name": "MBC 청룡",
+        "team_short_name": "MBC",
+        "city": "서울",
+        "founded_year": 1982,
+        "stadium_name": "잠실야구장",
+    },
+    {
+        "team_id": "LG",
+        "team_name": "LG 트윈스",
+        "team_short_name": "LG",
+        "city": "서울",
+        "founded_year": 1990,
+        "stadium_name": "잠실야구장",
+    },
+    {
+        "team_id": "OB",
+        "team_name": "OB 베어스",
+        "team_short_name": "OB",
+        "city": "서울",
+        "founded_year": 1982,
+        "stadium_name": "잠실야구장",
+    },
+    {
+        "team_id": "DO",
+        "team_name": "두산 베어스",
+        "team_short_name": "두산",
+        "city": "서울",
+        "founded_year": 1996,
+        "stadium_name": "잠실야구장",
+    },
+    {
+        "team_id": "DB",
+        "team_name": "두산 베어스",
+        "team_short_name": "두산",
+        "city": "서울",
+        "founded_year": 2015,
+        "stadium_name": "잠실야구장",
+    },
+    {
+        "team_id": "HT",
+        "team_name": "해태 타이거즈",
+        "team_short_name": "해태",
+        "city": "광주",
+        "founded_year": 1982,
+        "stadium_name": "광주 무등경기장 야구장",
+    },
+    {
+        "team_id": "KIA",
+        "team_name": "KIA 타이거즈",
+        "team_short_name": "KIA",
+        "city": "광주",
+        "founded_year": 2001,
+        "stadium_name": "광주-기아 챔피언스 필드",
+    },
+    {
+        "team_id": "SM",
+        "team_name": "삼미 슈퍼스타즈",
+        "team_short_name": "삼미",
+        "city": "인천",
+        "founded_year": 1982,
+        "stadium_name": "인천공설운동장 야구장",
+    },
+    {
+        "team_id": "CB",
+        "team_name": "청보 핀토스",
+        "team_short_name": "청보",
+        "city": "인천",
+        "founded_year": 1985,
+        "stadium_name": "인천공설운동장 야구장",
+    },
+    {
+        "team_id": "TP",
+        "team_name": "태평양 돌핀스",
+        "team_short_name": "태평양",
+        "city": "인천",
+        "founded_year": 1988,
+        "stadium_name": "인천공설운동장 야구장",
+    },
+    {
+        "team_id": "HU",
+        "team_name": "현대 유니콘스",
+        "team_short_name": "현대",
+        "city": "수원",
+        "founded_year": 1996,
+        "stadium_name": "수원야구장",
+    },
+    {
+        "team_id": "WO",
+        "team_name": "우리 히어로즈",
+        "team_short_name": "우리",
+        "city": "서울",
+        "founded_year": 2008,
+        "stadium_name": "목동야구장",
+    },
+    {
+        "team_id": "NX",
+        "team_name": "넥센 히어로즈",
+        "team_short_name": "넥센",
+        "city": "서울",
+        "founded_year": 2010,
+        "stadium_name": "고척스카이돔",
+    },
+    {
+        "team_id": "KI",
+        "team_name": "키움 히어로즈",
+        "team_short_name": "키움",
+        "city": "서울",
+        "founded_year": 2019,
+        "stadium_name": "고척스카이돔",
+    },
+    {
+        "team_id": "KH",
+        "team_name": "키움 히어로즈",
+        "team_short_name": "키움",
+        "city": "서울",
+        "founded_year": 2024,
+        "stadium_name": "고척스카이돔",
+    },
+    {
+        "team_id": "BE",
+        "team_name": "빙그레 이글스",
+        "team_short_name": "빙그레",
+        "city": "대전",
+        "founded_year": 1986,
+        "stadium_name": "대전한밭야구장",
+    },
+    {
+        "team_id": "HH",
+        "team_name": "한화 이글스",
+        "team_short_name": "한화",
+        "city": "대전",
+        "founded_year": 1993,
+        "stadium_name": "대전 한화생명 이글스 파크",
+    },
+    {
+        "team_id": "SL",
+        "team_name": "쌍방울 레이더스",
+        "team_short_name": "쌍방울",
+        "city": "전주",
+        "founded_year": 1990,
+        "stadium_name": "전주야구장",
+    },
+    {
+        "team_id": "SK",
+        "team_name": "SK 와이번스",
+        "team_short_name": "SK",
+        "city": "인천",
+        "founded_year": 2000,
+        "stadium_name": "인천문학야구장",
+    },
+    {
+        "team_id": "SSG",
+        "team_name": "SSG 랜더스",
+        "team_short_name": "SSG",
+        "city": "인천",
+        "founded_year": 2021,
+        "stadium_name": "인천SSG랜더스필드",
+    },
+    {
+        "team_id": "NC",
+        "team_name": "NC 다이노스",
+        "team_short_name": "NC",
+        "city": "창원",
+        "founded_year": 2011,
+        "stadium_name": "창원NC파크",
+    },
+    {
+        "team_id": "KT",
+        "team_name": "kt wiz",
+        "team_short_name": "kt",
+        "city": "수원",
+        "founded_year": 2013,
+        "stadium_name": "수원 kt wiz 파크",
+    },
+    {
+        "team_id": "EA",
+        "team_name": "나눔 올스타",
+        "team_short_name": "나눔",
+        "city": "KBO",
+        "founded_year": 1982,
+        "stadium_name": "-",
+    },
+    {
+        "team_id": "WE",
+        "team_name": "드림 올스타",
+        "team_short_name": "드림",
+        "city": "KBO",
+        "founded_year": 1982,
+        "stadium_name": "-",
+    },
     # National Teams
-    {"team_id": "KR", "team_name": "대한민국", "team_short_name": "한국", "city": "Seoul", "founded_year": None, "stadium_name": None},
-    {"team_id": "JP", "team_name": "Japan", "team_short_name": "일본", "city": "Tokyo", "founded_year": None, "stadium_name": None},
-    {"team_id": "TW", "team_name": "Taiwan", "team_short_name": "대만", "city": "Taipei", "founded_year": None, "stadium_name": None},
-    {"team_id": "CU", "team_name": "Cuba", "team_short_name": "쿠바", "city": "Havana", "founded_year": None, "stadium_name": None},
-    {"team_id": "AU", "team_name": "Australia", "team_short_name": "호주", "city": "Canberra", "founded_year": None, "stadium_name": None},
-    {"team_id": "DOM", "team_name": "Dominican Rep.", "team_short_name": "도미니카", "city": "Santo Domingo", "founded_year": None, "stadium_name": None},
-    {"team_id": "PA", "team_name": "Panama", "team_short_name": "파나마", "city": "Panama City", "founded_year": None, "stadium_name": None},
-    {"team_id": "NL", "team_name": "Netherlands", "team_short_name": "네덜란드", "city": "Amsterdam", "founded_year": None, "stadium_name": None},
-    {"team_id": "US", "team_name": "USA", "team_short_name": "미국", "city": "Washington, D.C.", "founded_year": None, "stadium_name": None},
-    {"team_id": "VE", "team_name": "Venezuela", "team_short_name": "베네수엘라", "city": "Caracas", "founded_year": None, "stadium_name": None},
-    {"team_id": "MX", "team_name": "Mexico", "team_short_name": "멕시코", "city": "Mexico City", "founded_year": None, "stadium_name": None},
-    {"team_id": "PR", "team_name": "Puerto Rico", "team_short_name": "푸에르토리코", "city": "San Juan", "founded_year": None, "stadium_name": None},
-    {"team_id": "CN", "team_name": "China", "team_short_name": "중국", "city": "Beijing", "founded_year": None, "stadium_name": None},
-    {"team_id": "CA", "team_name": "Canada", "team_short_name": "캐나다", "city": "Ottawa", "founded_year": None, "stadium_name": None},
-    {"team_id": "IT", "team_name": "Italy", "team_short_name": "이탈리아", "city": "Rome", "founded_year": None, "stadium_name": None},
-    {"team_id": "CZ", "team_name": "Czechia", "team_short_name": "체코", "city": "Prague", "founded_year": None, "stadium_name": None},
+    {
+        "team_id": "KR",
+        "team_name": "대한민국",
+        "team_short_name": "한국",
+        "city": "Seoul",
+        "founded_year": None,
+        "stadium_name": None,
+    },
+    {
+        "team_id": "JP",
+        "team_name": "Japan",
+        "team_short_name": "일본",
+        "city": "Tokyo",
+        "founded_year": None,
+        "stadium_name": None,
+    },
+    {
+        "team_id": "TW",
+        "team_name": "Taiwan",
+        "team_short_name": "대만",
+        "city": "Taipei",
+        "founded_year": None,
+        "stadium_name": None,
+    },
+    {
+        "team_id": "CU",
+        "team_name": "Cuba",
+        "team_short_name": "쿠바",
+        "city": "Havana",
+        "founded_year": None,
+        "stadium_name": None,
+    },
+    {
+        "team_id": "AU",
+        "team_name": "Australia",
+        "team_short_name": "호주",
+        "city": "Canberra",
+        "founded_year": None,
+        "stadium_name": None,
+    },
+    {
+        "team_id": "DOM",
+        "team_name": "Dominican Rep.",
+        "team_short_name": "도미니카",
+        "city": "Santo Domingo",
+        "founded_year": None,
+        "stadium_name": None,
+    },
+    {
+        "team_id": "PA",
+        "team_name": "Panama",
+        "team_short_name": "파나마",
+        "city": "Panama City",
+        "founded_year": None,
+        "stadium_name": None,
+    },
+    {
+        "team_id": "NL",
+        "team_name": "Netherlands",
+        "team_short_name": "네덜란드",
+        "city": "Amsterdam",
+        "founded_year": None,
+        "stadium_name": None,
+    },
+    {
+        "team_id": "US",
+        "team_name": "USA",
+        "team_short_name": "미국",
+        "city": "Washington, D.C.",
+        "founded_year": None,
+        "stadium_name": None,
+    },
+    {
+        "team_id": "VE",
+        "team_name": "Venezuela",
+        "team_short_name": "베네수엘라",
+        "city": "Caracas",
+        "founded_year": None,
+        "stadium_name": None,
+    },
+    {
+        "team_id": "MX",
+        "team_name": "Mexico",
+        "team_short_name": "멕시코",
+        "city": "Mexico City",
+        "founded_year": None,
+        "stadium_name": None,
+    },
+    {
+        "team_id": "PR",
+        "team_name": "Puerto Rico",
+        "team_short_name": "푸에르토리코",
+        "city": "San Juan",
+        "founded_year": None,
+        "stadium_name": None,
+    },
+    {
+        "team_id": "CN",
+        "team_name": "China",
+        "team_short_name": "중국",
+        "city": "Beijing",
+        "founded_year": None,
+        "stadium_name": None,
+    },
+    {
+        "team_id": "CA",
+        "team_name": "Canada",
+        "team_short_name": "캐나다",
+        "city": "Ottawa",
+        "founded_year": None,
+        "stadium_name": None,
+    },
+    {
+        "team_id": "IT",
+        "team_name": "Italy",
+        "team_short_name": "이탈리아",
+        "city": "Rome",
+        "founded_year": None,
+        "stadium_name": None,
+    },
+    {
+        "team_id": "CZ",
+        "team_name": "Czechia",
+        "team_short_name": "체코",
+        "city": "Prague",
+        "founded_year": None,
+        "stadium_name": None,
+    },
 ]
 
 
@@ -67,7 +361,7 @@ def get_project_root() -> Path:
     return Path(__file__).resolve().parent.parent.parent
 
 
-def to_int_or_none(value: str) -> Optional[int]:
+def to_int_or_none(value: str) -> int | None:
     """Convert a string to an integer, returning None if conversion fails."""
     if not value:
         return None
@@ -77,7 +371,7 @@ def to_int_or_none(value: str) -> Optional[int]:
         return None
 
 
-def to_date_or_none(value: str, fmt: str = "%Y-%m-%d") -> Optional[datetime.date]:
+def to_date_or_none(value: str, fmt: str = "%Y-%m-%d") -> datetime.date | None:
     """Convert a string to a date object, returning None if conversion fails."""
     if not value:
         return None
@@ -96,12 +390,10 @@ def _is_valid_team_row(row: dict) -> bool:
     if not team_id or not team_name:
         return False
     lowered = team_id.lower()
-    if lowered in INVALID_TOKENS or "varchar" in lowered:
-        return False
     lowered_name = team_name.lower()
-    if lowered_name in INVALID_TOKENS or "varchar" in lowered_name:
-        return False
-    return True
+    return not (
+        lowered in INVALID_TOKENS or "varchar" in lowered or lowered_name in INVALID_TOKENS or "varchar" in lowered_name
+    )
 
 
 def _seed_default_teams(session: Session):
@@ -112,14 +404,14 @@ def _seed_default_teams(session: Session):
     print(f"✅ Upserted {len(DEFAULT_TEAMS)} default teams.")
 
 
-def seed_teams(session: Session, csv_path: Union[str, Path]):
+def seed_teams(session: Session, csv_path: str | Path):
     """Seed the teams table from a CSV file."""
     print(f"\n🌱 Seeding teams from {csv_path}...")
     teams_to_upsert = []
     csv_path = Path(csv_path)
 
     if csv_path.exists():
-        with open(csv_path, "r", encoding="utf-8") as f:
+        with open(csv_path, encoding="utf-8") as f:
             reader = csv.DictReader(f)
             for row in reader:
                 if not _is_valid_team_row(row):
@@ -157,28 +449,32 @@ LEAGUE_TYPES = [
 def _seed_default_seasons(session: Session):
     """Programmatically seed KBO season entries (1982-2030) using INSERT OR IGNORE."""
     from sqlalchemy import text
+
     count = 0
     for year in range(1982, 2031):
         for code, name in LEAGUE_TYPES:
             sid = (year - 1982) * len(LEAGUE_TYPES) + code + 1
-            session.execute(text(
-                "INSERT OR IGNORE INTO kbo_seasons "
-                "(season_id, season_year, league_type_code, league_type_name, created_at, updated_at) "
-                "VALUES (:sid, :year, :code, :name, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)"
-            ), {"sid": sid, "year": year, "code": code, "name": name})
+            session.execute(
+                text(
+                    "INSERT OR IGNORE INTO kbo_seasons "
+                    "(season_id, season_year, league_type_code, league_type_name, created_at, updated_at) "
+                    "VALUES (:sid, :year, :code, :name, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)"
+                ),
+                {"sid": sid, "year": year, "code": code, "name": name},
+            )
             count += 1
     session.commit()
     print(f"   ✅ Upserted {count} default season entries.")
 
 
-def seed_kbo_seasons(session: Session, csv_path: Union[str, Path]):
+def seed_kbo_seasons(session: Session, csv_path: str | Path):
     """Seed the kbo_seasons table from a CSV file, with programmatic fallback."""
     print(f"\n🌱 Seeding KBO seasons from {csv_path}...")
     csv_path = Path(csv_path)
     seasons_to_add = []
 
     if csv_path.exists():
-        with open(csv_path, "r", encoding="utf-8") as f:
+        with open(csv_path, encoding="utf-8") as f:
             reader = csv.DictReader(f)
             for row in reader:
                 season_id = to_int_or_none(row.get("season_id") or row.get("필드명"))
@@ -212,6 +508,61 @@ def seed_kbo_seasons(session: Session, csv_path: Union[str, Path]):
         print("✅ No new seasons to add.")
 
 
+def seed_stadium_foods(session: Session, csv_path: str | Path):
+    """Seed the stadium_foods table from a CSV file."""
+    print(f"\n🌱 Seeding stadium foods from {csv_path}...")
+    csv_path = Path(csv_path)
+    foods_to_upsert = []
+
+    if csv_path.exists():
+        with open(csv_path, encoding="utf-8") as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                stadium_name = (row.get("stadium_name") or "").strip()
+                restaurant_name = (row.get("restaurant_name") or "").strip()
+                menu_item = (row.get("menu_item") or "").strip()
+                if not stadium_name or not restaurant_name or not menu_item:
+                    continue
+
+                # Lookup existing record to avoid duplicate INSERT causing UNIQUE constraint error
+                existing = (
+                    session.query(StadiumFood)
+                    .filter_by(stadium_name=stadium_name, restaurant_name=restaurant_name, menu_item=menu_item)
+                    .first()
+                )
+
+                is_famous_val = row.get("is_famous", "False").strip().lower() in ("true", "1", "yes")
+                location_val = (row.get("location") or "").strip() or None
+                description_val = (row.get("description") or "").strip() or None
+                rec_by_val = (row.get("recommended_by") or "").strip() or None
+
+                if existing:
+                    existing.location = location_val
+                    existing.description = description_val
+                    existing.is_famous = is_famous_val
+                    existing.recommended_by = rec_by_val
+                    existing.updated_at = datetime.now()
+                    foods_to_upsert.append(existing)
+                else:
+                    food = StadiumFood(
+                        stadium_name=stadium_name,
+                        restaurant_name=restaurant_name,
+                        menu_item=menu_item,
+                        location=location_val,
+                        description=description_val,
+                        is_famous=is_famous_val,
+                        recommended_by=rec_by_val,
+                    )
+                    session.add(food)
+                    foods_to_upsert.append(food)
+
+    if foods_to_upsert:
+        session.commit()
+        print(f"✅ Upserted {len(foods_to_upsert)} stadium foods from CSV.")
+    else:
+        print("⚠️ No valid stadium foods found in CSV.")
+
+
 def drop_raw_table(engine, table_name: str):
     """Drop a table if it exists."""
     print(f"\n🗑️ Attempting to drop raw table: {table_name}...")
@@ -219,14 +570,14 @@ def drop_raw_table(engine, table_name: str):
         with engine.connect() as connection:
             connection.execute(f"DROP TABLE IF EXISTS {table_name}")
             print(f"✅ Table {table_name} dropped successfully (if it existed).")
-    except Exception as e:
+    except SQLAlchemyError as e:
         print(f"⚠️ Could not drop table {table_name}. It might not exist. Error: {e}")
 
 
 if __name__ == "__main__":
     print("--- Starting Database Seeding ---")
     project_root = get_project_root()
-    
+
     # Define paths to CSV files
     teams_csv = project_root / "Docs" / "schema" / "teams (구단 정보).csv"
     seasons_csv = project_root / "Docs" / "schema" / "KBO_시즌별 메타 테이블 제약조건.csv"
@@ -239,6 +590,9 @@ if __name__ == "__main__":
         seed_teams(db_session, teams_csv)
         seed_kbo_seasons(db_session, seasons_csv)
 
+        stadium_foods_csv = project_root / "data" / "stadium_foods.csv"
+        seed_stadium_foods(db_session, stadium_foods_csv)
+
         # Drop the old raw table
         drop_raw_table(Engine, "kbo_season_pitching_raw")
         # Also drop batting raw table if it exists
@@ -247,6 +601,7 @@ if __name__ == "__main__":
     except Exception as e:
         print(f"\n❌ An error occurred during seeding: {e}")
         db_session.rollback()
+        raise
     finally:
         db_session.close()
         print("\n--- Database Seeding Complete ---")

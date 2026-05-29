@@ -3,21 +3,23 @@ Migration: Add extended profile fields to player_basic table.
 Adds: photo_url, bats, throws, debut_year, salary_original,
       signing_bonus_original, draft_info
 """
-import sqlite3
+
 import os
+import sqlite3
 import sys
 
 DB_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "kbo_dev.db")
 
 NEW_COLUMNS = [
-    ("photo_url",               "VARCHAR(500)"),
-    ("bats",                    "VARCHAR(4)"),
-    ("throws",                  "VARCHAR(4)"),
-    ("debut_year",              "INTEGER"),
-    ("salary_original",         "VARCHAR(50)"),
-    ("signing_bonus_original",  "VARCHAR(50)"),
-    ("draft_info",              "VARCHAR(100)"),
+    ("photo_url", "VARCHAR(500)"),
+    ("bats", "VARCHAR(4)"),
+    ("throws", "VARCHAR(4)"),
+    ("debut_year", "INTEGER"),
+    ("salary_original", "VARCHAR(50)"),
+    ("signing_bonus_original", "VARCHAR(50)"),
+    ("draft_info", "VARCHAR(100)"),
 ]
+
 
 def run():
     if not os.path.exists(DB_PATH):
@@ -43,6 +45,7 @@ def run():
     conn.commit()
     conn.close()
     print(f"\n✅ Migration complete. {added} column(s) added.")
+
 
 if __name__ == "__main__":
     run()

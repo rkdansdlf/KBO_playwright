@@ -1,19 +1,21 @@
 #!/usr/bin/env python3
 """Resolve NULL player_id values using team_daily_roster context."""
+
 from __future__ import annotations
 
 import argparse
-import os
 import sys
 from pathlib import Path
-from sqlalchemy import text
+
 from dotenv import load_dotenv
+from sqlalchemy import text
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from src.db.engine import SessionLocal
+
 
 def resolve_by_roster(apply: bool = False, since: str = "2024-01-01"):
     tables = ["game_batting_stats", "game_pitching_stats", "game_lineups"]
@@ -91,13 +93,13 @@ def resolve_by_roster(apply: bool = False, since: str = "2024-01-01"):
             updated = 0
             for row_id, g_date, t_code, p_name, res_id, _ in matches:
                 session.execute(
-                    text(f"UPDATE {table} SET player_id = :pid WHERE id = :id"),
-                    {"pid": res_id, "id": row_id}
+                    text(f"UPDATE {table} SET player_id = :pid WHERE id = :id"), {"pid": res_id, "id": row_id}
                 )
                 updated += 1
 
             session.commit()
             print(f"✅ Updated {updated} rows in {table}.")
+
 
 if __name__ == "__main__":
     load_dotenv()

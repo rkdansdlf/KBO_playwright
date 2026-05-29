@@ -1,10 +1,10 @@
-from types import SimpleNamespace
 from datetime import datetime
+from types import SimpleNamespace
 
 import pytest
 
-import src.cli.generate_quality_report as generate_quality_report
 import scripts.scheduler as scheduler
+import src.cli.generate_quality_report as generate_quality_report
 
 
 class _Outcome:
@@ -93,9 +93,7 @@ def test_alert_success_includes_optional_details(monkeypatch):
 
     scheduler.alert_success("sample_job", "detail_failures=incomplete_detail=1")
 
-    assert calls == [
-        "✅ KBO Job sample_job completed successfully.\ndetail_failures=incomplete_detail=1"
-    ]
+    assert calls == ["✅ KBO Job sample_job completed successfully.\ndetail_failures=incomplete_detail=1"]
 
 
 def test_sync_from_oci_job_runs_hydration_for_current_year(monkeypatch):
@@ -161,11 +159,7 @@ def test_main_registers_morning_jobs_with_expected_cron(monkeypatch):
 
     scheduler.main(["--no-startup-run"])
 
-    ids_to_trigger = {
-        kwargs["id"]: trigger.kwargs
-        for _, trigger, kwargs in scheduled
-        if "id" in kwargs
-    }
+    ids_to_trigger = {kwargs["id"]: trigger.kwargs for _, trigger, kwargs in scheduled if "id" in kwargs}
 
     assert ids_to_trigger["sync_from_oci"] == {"hour": 5, "minute": 0}
     assert ids_to_trigger["generate_quality_report"] == {"hour": 5, "minute": 15}

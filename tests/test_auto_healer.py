@@ -5,7 +5,7 @@ from datetime import date
 from types import SimpleNamespace
 
 import src.cli.auto_healer as auto_healer
-from src.repositories.game_repository import GAME_STATUS_CANCELLED, GAME_STATUS_UNRESOLVED
+from src.repositories.game_repository import GAME_STATUS_CANCELLED, GAME_STATUS_SCHEDULED, GAME_STATUS_UNRESOLVED
 
 
 class _FakeSession:
@@ -14,6 +14,16 @@ class _FakeSession:
 
     def __exit__(self, exc_type, exc, tb):
         return False
+
+    def execute(self, *args, **kwargs):
+        class _Result:
+            def scalars(self):
+                return self
+
+            def all(self):
+                return []
+
+        return _Result()
 
 
 class _FakeResolver:
@@ -44,17 +54,24 @@ def test_run_healer_async_uses_shared_collection_and_applies_statuses(monkeypatc
     alerts = []
     seen = {}
     stuck_games = [
-        SimpleNamespace(game_id="20250101LGSS0", game_date=date(2025, 1, 1)),
-        SimpleNamespace(game_id="20250102LGSS0", game_date=date(2025, 1, 2)),
-        SimpleNamespace(game_id="20250103LGSS0", game_date=date(2025, 1, 3)),
+        SimpleNamespace(game_id="20250101LGSS0", game_date=date(2025, 1, 1), game_status=GAME_STATUS_SCHEDULED),
+        SimpleNamespace(game_id="20250102LGSS0", game_date=date(2025, 1, 2), game_status=GAME_STATUS_SCHEDULED),
+        SimpleNamespace(game_id="20250103LGSS0", game_date=date(2025, 1, 3), game_status=GAME_STATUS_SCHEDULED),
     ]
 
     monkeypatch.setattr(auto_healer, "_find_stuck_games", lambda: stuck_games)
+    monkeypatch.setattr(auto_healer, "_find_inconsistent_games", lambda: [])
     monkeypatch.setattr(auto_healer, "SessionLocal", lambda: _FakeSession())
     monkeypatch.setattr(auto_healer, "PlayerIdResolver", _FakeResolver)
     monkeypatch.setattr(auto_healer, "GameDetailCrawler", _FakeDetailCrawler)
-    monkeypatch.setattr(auto_healer, "update_game_status", lambda game_id, status: updates.append((game_id, status)) or True)
-    monkeypatch.setattr(auto_healer.SlackWebhookClient, "send_alert", lambda *args, **kwargs: alerts.append((args, kwargs)))
+    monkeypatch.setattr(auto_healer.RecoveryManager, "load", lambda self: None)
+    monkeypatch.setattr(auto_healer.RecoveryManager, "save", lambda self: None)
+    monkeypatch.setattr(
+        auto_healer, "update_game_status", lambda game_id, status: updates.append((game_id, status)) or True
+    )
+    monkeypatch.setattr(
+        auto_healer.SlackWebhookClient, "send_alert", lambda *args, **kwargs: alerts.append((args, kwargs))
+    )
 
     async def _fake_collect(games, *, detail_crawler, force, concurrency, log, **_kwargs):
         seen["games"] = list(games)
@@ -93,13 +110,20 @@ def test_run_healer_async_uses_shared_collection_and_applies_statuses(monkeypatc
 def test_run_healer_async_dry_run_skips_collection_and_updates(monkeypatch):
     collect_called = False
     updates = []
-    stuck_games = [SimpleNamespace(game_id="20250101LGSS0", game_date=date(2025, 1, 1))]
+    stuck_games = [
+        SimpleNamespace(game_id="20250101LGSS0", game_date=date(2025, 1, 1), game_status=GAME_STATUS_SCHEDULED)
+    ]
 
     monkeypatch.setattr(auto_healer, "_find_stuck_games", lambda: stuck_games)
+    monkeypatch.setattr(auto_healer, "_find_inconsistent_games", lambda: [])
     monkeypatch.setattr(auto_healer, "SessionLocal", lambda: _FakeSession())
     monkeypatch.setattr(auto_healer, "PlayerIdResolver", _FakeResolver)
     monkeypatch.setattr(auto_healer, "GameDetailCrawler", _FakeDetailCrawler)
-    monkeypatch.setattr(auto_healer, "update_game_status", lambda game_id, status: updates.append((game_id, status)) or True)
+    monkeypatch.setattr(auto_healer.RecoveryManager, "load", lambda self: None)
+    monkeypatch.setattr(auto_healer.RecoveryManager, "save", lambda self: None)
+    monkeypatch.setattr(
+        auto_healer, "update_game_status", lambda game_id, status: updates.append((game_id, status)) or True
+    )
     monkeypatch.setattr(auto_healer.SlackWebhookClient, "send_alert", lambda *args, **kwargs: None)
 
     async def _fake_collect(*args, **kwargs):

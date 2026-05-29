@@ -132,7 +132,7 @@ show_progress() {
     local percent=$((completed_tasks * 100 / total_tasks))
     local filled=$((percent / 2))
     local empty=$((50 - filled))
-    
+
     printf "\r🔄 진행률: ["
     printf "%*s" $filled | tr ' ' '█'
     printf "%*s" $empty | tr ' ' '░'
@@ -150,23 +150,23 @@ start_time=$(date +%s)
 # 년도별 크롤링
 for year in $(seq $START_YEAR $END_YEAR); do
     year_start_time=$(date +%s)
-    
+
     echo ""
     echo "📅 ${year}년 크롤링 중..."
-    
+
     # 해당 연도에 존재하는 시리즈 확인
     available_series_output=$($PYTHON -c "
 from src.utils.series_validation import filter_series_for_year
 available = filter_series_for_year($year, ['${series_list[*]}'])
 print(' '.join(available))
 " 2>/dev/null)
-    
+
     if [ -n "$available_series_output" ]; then
         read -a available_series_array <<< "$available_series_output"
     else
         available_series_array=("${series_list[@]}")  # 폴백
     fi
-    
+
     # 시리즈별 크롤링
     for series in "${available_series_array[@]}"; do
         # 연도별 크롤러 선택
@@ -179,14 +179,14 @@ print(' '.join(available))
             batting_crawler="src.crawlers.player_batting_all_series_crawler"
             pitching_crawler="src.crawlers.player_pitching_all_series_crawler"
         fi
-        
+
         # 타자 크롤링
         batting_output=$($PYTHON -m $batting_crawler \
             --year $year \
             --series $series \
             --save \
             --headless 2>&1)
-        
+
         batting_exit_code=$?
         # 출력에서 성공 메시지 확인
         if [ $batting_exit_code -eq 0 ] && echo "$batting_output" | grep -q "크롤링 완료"; then
@@ -199,14 +199,14 @@ print(' '.join(available))
         fi
         ((completed_tasks++))
         show_progress
-        
+
         # 투수 크롤링
         pitching_output=$($PYTHON -m $pitching_crawler \
             --year $year \
             --series $series \
             --save \
             --headless 2>&1)
-        
+
         pitching_exit_code=$?
         # 출력에서 성공 메시지 확인
         if [ $pitching_exit_code -eq 0 ] && echo "$pitching_output" | grep -q "크롤링 완료"; then
@@ -219,16 +219,16 @@ print(' '.join(available))
         fi
         ((completed_tasks++))
         show_progress
-        
+
         sleep 1  # 시리즈 간 대기
     done
-    
+
     year_end_time=$(date +%s)
     year_duration=$((year_end_time - year_start_time))
-    
+
     echo ""
     echo "  ✅ ${year}년 완료 (소요시간: ${year_duration}초)"
-    
+
     # 년도 간 대기 (마지막 년도 제외)
     if [ $year -lt $END_YEAR ]; then
         sleep 3
@@ -274,21 +274,21 @@ with SessionLocal() as session:
     # 전체 및 기간별 통계
     batting_total = session.query(PlayerSeasonBatting).count()
     pitching_total = session.query(PlayerSeasonPitching).count()
-    
+
     batting_range = session.query(PlayerSeasonBatting).filter(
         and_(
             PlayerSeasonBatting.season >= $START_YEAR,
             PlayerSeasonBatting.season <= $END_YEAR
         )
     ).count()
-    
+
     pitching_range = session.query(PlayerSeasonPitching).filter(
         and_(
             PlayerSeasonPitching.season >= $START_YEAR,
             PlayerSeasonPitching.season <= $END_YEAR
         )
     ).count()
-    
+
     print(f'  📊 전체 데이터베이스:')
     print(f'    - 타자: {batting_total:,}건')
     print(f'    - 투수: {pitching_total:,}건')
@@ -298,11 +298,11 @@ with SessionLocal() as session:
     print(f'    - 타자: {batting_range:,}건')
     print(f'    - 투수: {pitching_range:,}건')
     print(f'    - 합계: {batting_range + pitching_range:,}건')
-    
+
     # 성공률 계산
     success_rate = round((success_count / total_tasks) * 100, 1) if total_tasks > 0 else 0
     print(f'\\n  📈 크롤링 성공률: {success_rate}%')
-    
+
     if batting_range > 0 or pitching_range > 0:
         print(f'\\n  ✅ 크롤링이 성공적으로 완료되었습니다!')
     else:

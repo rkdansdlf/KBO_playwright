@@ -19,7 +19,6 @@ from sqlalchemy import create_engine, text
 
 from src.db.engine import SessionLocal
 
-
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 
@@ -39,9 +38,7 @@ def _is_blank(value: Any) -> bool:
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(
-        description="Fill missing game starting pitchers from game_pitching_stats."
-    )
+    parser = argparse.ArgumentParser(description="Fill missing game starting pitchers from game_pitching_stats.")
     parser.add_argument("--start-date", help="Start date, YYYYMMDD or YYYY-MM-DD")
     parser.add_argument("--end-date", help="End date, YYYYMMDD or YYYY-MM-DD")
     parser.add_argument(
@@ -75,13 +72,17 @@ def parse_args() -> argparse.Namespace:
 def load_candidates(session, args: argparse.Namespace) -> list[dict[str, Any]]:
     start_date = _normalize_date(args.start_date)
     end_date = _normalize_date(args.end_date)
-    overwrite_filter = "1 = 1" if args.overwrite else """
+    overwrite_filter = (
+        "1 = 1"
+        if args.overwrite
+        else """
         (
             (coalesce(trim(g.away_pitcher), '') = '' AND coalesce(trim(s.away_start), '') <> '')
             OR
             (coalesce(trim(g.home_pitcher), '') = '' AND coalesce(trim(s.home_start), '') <> '')
         )
     """
+    )
     limit_clause = "LIMIT :limit" if args.limit else ""
 
     query = text(
@@ -265,7 +266,9 @@ def find_target_missing_ready_games(session, args: argparse.Namespace) -> list[d
         for row in session.execute(
             local_query,
             {"start_date": start_date, "end_date": end_date},
-        ).mappings().all()
+        )
+        .mappings()
+        .all()
     ]
 
     return sorted(
@@ -319,10 +322,7 @@ def main() -> int:
         )
 
     action = "would update" if args.dry_run else "updated"
-    print(
-        f"{action}: games={len(updated_game_ids)}, "
-        f"away_pitcher={away_updates}, home_pitcher={home_updates}"
-    )
+    print(f"{action}: games={len(updated_game_ids)}, away_pitcher={away_updates}, home_pitcher={home_updates}")
 
     if args.sync_target_missing:
         with SessionLocal() as session:
@@ -332,8 +332,7 @@ def main() -> int:
             return 0
         updated_target_rows = update_target_pitcher_fields(target_missing_ready_rows)
         print(
-            f"target_missing_pitcher_update: "
-            f"candidates={len(target_missing_ready_rows)}, updated={updated_target_rows}"
+            f"target_missing_pitcher_update: candidates={len(target_missing_ready_rows)}, updated={updated_target_rows}"
         )
         return 0
 

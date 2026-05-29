@@ -1,13 +1,26 @@
 """Validation helpers for player identity payloads."""
+
 from __future__ import annotations
 
-from collections import Counter
 import re
+from collections import Counter
 from typing import Any, Iterable, Mapping
 
 INVALID_PLAYER_NAMES = {
-    "", "-", "N/A", "NA", "UNKNOWN", "UNKNOWN PLAYER", "Unknown", "Unknown Player",
-    "타자", "투수", "은퇴선수(타자)", "은퇴선수(투수)", "은퇴선수", "선수"
+    "",
+    "-",
+    "N/A",
+    "NA",
+    "UNKNOWN",
+    "UNKNOWN PLAYER",
+    "Unknown",
+    "Unknown Player",
+    "타자",
+    "투수",
+    "은퇴선수(타자)",
+    "은퇴선수(투수)",
+    "은퇴선수",
+    "선수",
 }
 UNKNOWN_ID_NAME_RE = re.compile(r"^unknown\s+\d+$", re.IGNORECASE)
 

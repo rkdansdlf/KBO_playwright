@@ -1,4 +1,5 @@
 """Check database schema and tables."""
+
 import sqlite3
 from pathlib import Path
 

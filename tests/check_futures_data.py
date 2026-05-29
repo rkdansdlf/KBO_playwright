@@ -1,4 +1,5 @@
 """Quick script to check Futures league data in database."""
+
 import sqlite3
 from pathlib import Path
 

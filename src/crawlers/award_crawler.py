@@ -2,15 +2,17 @@
 Crawler for KBO Awards (MVP, Golden Glove, Defense, Series).
 Source: https://www.koreabaseball.com/Player/Awards/PlayerPrize.aspx
 """
-import asyncio
+
 import argparse
-from typing import List, Dict, Any
-from playwright.async_api import async_playwright, Page
+import asyncio
+
+from playwright.async_api import Page, async_playwright
 
 from src.db.engine import SessionLocal
 from src.repositories.award_repository import AwardRepository
-from src.utils.safe_print import safe_print as print
 from src.utils.playwright_blocking import install_async_resource_blocking
+from src.utils.safe_print import safe_print as print
+
 
 class AwardCrawler:
     def __init__(self):
@@ -21,7 +23,7 @@ class AwardCrawler:
             "series_prize": "https://www.koreabaseball.com/Player/Awards/SeriesPrize.aspx",
         }
 
-    async def run(self, award_types: List[str] = None, save: bool = False):
+    async def run(self, award_types: list[str] = None, save: bool = False):
         if not award_types or "all" in award_types:
             award_types = list(self.base_url_map.keys())
 
@@ -37,10 +39,10 @@ class AwardCrawler:
                 if not url:
                     print(f"Unknown award type: {atype}")
                     continue
-                
+
                 print(f"Crawling {atype} from {url}...")
                 await page.goto(url, wait_until="networkidle")
-                
+
                 try:
                     if atype == "player_prize":
                         data = await self.crawl_player_prize(page)
@@ -55,23 +57,24 @@ class AwardCrawler:
                 except Exception as e:
                     print(f"Error crawling {atype}: {e}")
                     import traceback
+
                     traceback.print_exc()
                     data = []
-                
+
                 all_data.extend(data)
                 print(f"  > Found {len(data)} records for {atype}")
 
             await browser.close()
-            
+
             if save:
                 self.save_to_db(all_data)
             else:
                 # Dry run print
                 for d in all_data[:5]:
                     print(d)
-                print(f"... and {len(all_data)-5} more.")
+                print(f"... and {len(all_data) - 5} more.")
 
-    async def crawl_player_prize(self, page: Page) -> List[Dict]:
+    async def crawl_player_prize(self, page: Page) -> list[dict]:
         """
         Parses MVP and Rookie of the Year table.
         Cols: Year | MVP Cell | Rookie Cell
@@ -125,7 +128,7 @@ class AwardCrawler:
         """
         return await page.evaluate(script)
 
-    async def crawl_golden_glove(self, page: Page) -> List[Dict]:
+    async def crawl_golden_glove(self, page: Page) -> list[dict]:
         """
         Parses Golden Glove table.
         Cols: Year | P | C | 1B | 2B | 3B | SS | OF | DH
@@ -135,7 +138,7 @@ class AwardCrawler:
             const rows = document.querySelectorAll('table tbody tr');
             const results = [];
             const categories = ['P', 'C', '1B', '2B', '3B', 'SS', 'OF', 'DH'];
-            
+
             rows.forEach(tr => {
                 const cells = tr.querySelectorAll('td');
                 let year = parseInt(cells[0].innerText.trim());
@@ -150,7 +153,7 @@ class AwardCrawler:
                     const cellIdx = idx + 1;
                     if (cellIdx < cells.length) {
                         const cell = cells[cellIdx];
-                        
+
                         // Check for <p> tags (Outfielders often have multiple)
                         const paragraphs = cell.querySelectorAll('p');
                         if (paragraphs.length > 0) {
@@ -187,7 +190,7 @@ class AwardCrawler:
         """
         return await page.evaluate(script)
 
-    async def crawl_defense_prize(self, page: Page) -> List[Dict]:
+    async def crawl_defense_prize(self, page: Page) -> list[dict]:
         """
         Parses Defense Prize.
         Cols: Year | P | C | 1B | 2B | 3B | SS | LF | CF | RF
@@ -197,7 +200,7 @@ class AwardCrawler:
             const rows = document.querySelectorAll('table tbody tr');
             const results = [];
             const categories = ['P', 'C', '1B', '2B', '3B', 'SS', 'LF', 'CF', 'RF'];
-            
+
             rows.forEach(tr => {
                 const cells = tr.querySelectorAll('td');
                 let year = parseInt(cells[0].innerText.trim());
@@ -245,7 +248,7 @@ class AwardCrawler:
         """
         return await page.evaluate(script)
 
-    async def crawl_series_prize(self, page: Page) -> List[Dict]:
+    async def crawl_series_prize(self, page: Page) -> list[dict]:
         """
         Parses Series Prize.
         Cols: Year | All-Star MVP | KS MVP
@@ -254,7 +257,7 @@ class AwardCrawler:
         () => {
             const rows = document.querySelectorAll('table tbody tr');
             const results = [];
-            
+
             rows.forEach(tr => {
                 const cells = tr.querySelectorAll('td');
                 let year = parseInt(cells[0].innerText.trim());
@@ -263,7 +266,7 @@ class AwardCrawler:
                     if (th) year = parseInt(th.innerText.trim());
                 }
                 if (isNaN(year)) return;
-                
+
                 // AS MVP (Idx 1)
                 if (cells.length > 1) {
                      const spans = cells[1].querySelectorAll('span');
@@ -271,7 +274,7 @@ class AwardCrawler:
                          results.push({
                             year: year,
                             award_type: 'All-Star MVP',
-                            category: null, 
+                            category: null,
                             player_name: spans[0].innerText.trim(),
                             team_name: spans[1].innerText.trim()
                          });
@@ -289,7 +292,7 @@ class AwardCrawler:
                          results.push({
                             year: year,
                             award_type: 'Korean Series MVP',
-                            category: null, 
+                            category: null,
                             player_name: spans[0].innerText.trim(),
                             team_name: spans[1].innerText.trim()
                          });
@@ -301,7 +304,7 @@ class AwardCrawler:
         """
         return await page.evaluate(script)
 
-    def save_to_db(self, data: List[Dict]):
+    def save_to_db(self, data: list[dict]):
         session = SessionLocal()
         repo = AwardRepository(session)
         count = 0
@@ -320,13 +323,18 @@ class AwardCrawler:
         finally:
             session.close()
 
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Crawl KBO Awards")
-    parser.add_argument("--types", nargs="+", help="Award types to crawl", 
-                        choices=["player_prize", "golden_glove", "defense_prize", "series_prize", "all"])
+    parser.add_argument(
+        "--types",
+        nargs="+",
+        help="Award types to crawl",
+        choices=["player_prize", "golden_glove", "defense_prize", "series_prize", "all"],
+    )
     parser.add_argument("--save", action="store_true", help="Save to database")
-    
+
     args = parser.parse_args()
-    
+
     crawler = AwardCrawler()
     asyncio.run(crawler.run(args.types, args.save))

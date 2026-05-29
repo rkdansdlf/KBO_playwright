@@ -1,18 +1,19 @@
-
 """
 Daily Roster Collector CLI
 """
-import logging
-import asyncio
+
 import argparse
+import asyncio
+import logging
 from datetime import date, timedelta
+
 from src.crawlers.daily_roster_crawler import DailyRosterCrawler
+from src.db.engine import SessionLocal
 from src.repositories.team_repository import TeamRepository
 from src.utils.safe_print import safe_print as print
 
-from src.db.engine import SessionLocal
-
 logger = logging.getLogger(__name__)
+
 
 def save_chunk(chunk):
     session = SessionLocal()
@@ -25,9 +26,10 @@ def save_chunk(chunk):
     finally:
         session.close()
 
+
 async def collect_rosters(year: int, month: int = None):
     crawler = DailyRosterCrawler()
-    
+
     # Define date range
     if month:
         start_date = date(year, month, 1)
@@ -40,24 +42,24 @@ async def collect_rosters(year: int, month: int = None):
         # Full year (Regular season roughly Mar-Nov)
         start_date = date(year, 3, 1)
         end_date = date(year, 11, 30)
-    
+
     print(f"🗓️  Collecting Daily Rosters: {start_date} ~ {end_date}")
-    
-    data = await crawler.crawl_date_range(
-        start_date=start_date.strftime("%Y-%m-%d"), 
-        end_date=end_date.strftime("%Y-%m-%d"),
-        save_callback=save_chunk
+
+    await crawler.crawl_date_range(
+        start_date=start_date.strftime("%Y-%m-%d"), end_date=end_date.strftime("%Y-%m-%d"), save_callback=save_chunk
     )
-    
+
     print(f"✅ Finished Roster Collection for {year}" + (f"-{month}" if month else ""))
+
 
 def main():
     parser = argparse.ArgumentParser(description="Collect Daily Rosters")
     parser.add_argument("--year", type=int, required=True, help="Target Year")
     parser.add_argument("--month", type=int, help="Target Month (Optional)")
     args = parser.parse_args()
-    
+
     asyncio.run(collect_rosters(args.year, args.month))
+
 
 if __name__ == "__main__":
     main()

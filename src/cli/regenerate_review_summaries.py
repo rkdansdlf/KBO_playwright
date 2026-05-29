@@ -1,4 +1,5 @@
 """Regenerate postgame Coach review summaries for selected games."""
+
 from __future__ import annotations
 
 import argparse
@@ -9,7 +10,7 @@ import os
 from dataclasses import dataclass
 from datetime import date, datetime
 from pathlib import Path
-from typing import Iterable, List, Sequence
+from typing import Iterable, Sequence
 
 from sqlalchemy import and_, or_
 
@@ -79,8 +80,8 @@ def _parse_date(value: str) -> date:
     return datetime.strptime(value, "%Y%m%d").date()
 
 
-def _load_game_ids_file(path: Path) -> List[str]:
-    ids: List[str] = []
+def _load_game_ids_file(path: Path) -> list[str]:
+    ids: list[str] = []
     for line in path.read_text(encoding="utf-8").splitlines():
         value = line.strip()
         if value and not value.startswith("#"):
@@ -128,11 +129,7 @@ def _count_noise_moments(review_data: dict) -> int:
     moments = review_data.get("crucial_moments")
     if not isinstance(moments, list):
         return 0
-    return sum(
-        1
-        for moment in moments
-        if isinstance(moment, dict) and is_relay_noise_text(moment.get("description"))
-    )
+    return sum(1 for moment in moments if isinstance(moment, dict) and is_relay_noise_text(moment.get("description")))
 
 
 def _count_crucial_moments(review_data: dict) -> int:
@@ -214,13 +211,13 @@ def regenerate_review_summaries(
     report_out: Path | None = None,
     backup_out: Path | None = None,
     log=print,
-) -> List[ReviewRegenReportRow]:
+) -> list[ReviewRegenReportRow]:
     target_game_ids = list(game_ids or [])
     target_dates = list(dates or [])
     target_seasons = list(seasons or [])
     report_path = report_out or _default_report_path()
-    rows: List[ReviewRegenReportRow] = []
-    sync_game_ids: List[str] = []
+    rows: list[ReviewRegenReportRow] = []
+    sync_game_ids: list[str] = []
 
     with SessionLocal() as session:
         games = _query_target_games(
@@ -326,7 +323,7 @@ def regenerate_review_summaries(
     return rows
 
 
-def _collect_game_ids(args) -> List[str]:
+def _collect_game_ids(args) -> list[str]:
     game_ids = list(args.game_id or [])
     if args.game_ids_file:
         game_ids.extend(_load_game_ids_file(Path(args.game_ids_file)))
@@ -339,7 +336,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--game-ids-file", type=str, help="Newline-delimited file of game_ids")
     parser.add_argument("--date", action="append", default=[], help="Target date YYYYMMDD. May be repeated.")
     parser.add_argument("--season", action="append", type=int, default=[], help="Target season. May be repeated.")
-    parser.add_argument("--dry-run", action="store_true", help="Report only. This is the default unless --apply is set.")
+    parser.add_argument(
+        "--dry-run", action="store_true", help="Report only. This is the default unless --apply is set."
+    )
     parser.add_argument("--apply", action="store_true", help="Persist regenerated review summaries locally.")
     parser.add_argument("--sync-oci", action="store_true", help="Sync successful review summary rows to OCI.")
     parser.add_argument("--report-out", type=Path, help="CSV report path")

@@ -10,75 +10,46 @@ Usage:
     python -m src.crawlers.player_batting_all_series_crawler --year 2025 --series regular --save
     python -m src.crawlers.player_batting_all_series_crawler --year 2025 --series exhibition --save
 """
-import logging
+
 import argparse
+import logging
 import os
 import re
 import time
-from datetime import datetime
-from typing import Dict, List, Optional
-
 
 logger = logging.getLogger(__name__)
 
-from playwright.sync_api import sync_playwright, Page
+from playwright.sync_api import Page, sync_playwright
 
-from src.repositories.safe_batting_repository import save_batting_stats_safe
-from src.db.engine import SessionLocal
 from src.aggregators.season_stat_aggregator import SeasonStatAggregator
-from src.utils.fallback_monitor import FallbackMonitor
+from src.db.engine import SessionLocal
+from src.models.game import Game, GameBattingStat
 from src.models.player import PlayerBasic
-from src.models.game import GameBattingStat, Game
 from src.models.season import KboSeason
-from src.utils.team_codes import resolve_team_code
-from src.utils.team_mapping import get_team_mapping_for_year, get_team_code
-from src.utils.playwright_blocking import install_sync_resource_blocking
-from src.utils.request_policy import RequestPolicy
+from src.repositories.safe_batting_repository import save_batting_stats_safe
 from src.utils.compliance import compliance
-from src.utils.playwright_retry import retry_navigation, retry_wait_for_selector
+from src.utils.fallback_monitor import FallbackMonitor
 from src.utils.player_season_stat_validation import filter_valid_season_stat_payloads
+from src.utils.playwright_blocking import install_sync_resource_blocking
+from src.utils.playwright_retry import retry_navigation, retry_wait_for_selector
+from src.utils.request_policy import RequestPolicy
+from src.utils.team_codes import resolve_team_code
+from src.utils.team_mapping import get_team_code, get_team_mapping_for_year
 
 
-
-
-
-def get_series_mapping() -> Dict[str, Dict[str, str]]:
+def get_series_mapping() -> dict[str, dict[str, str]]:
     """시리즈 이름과 선택 값 매핑 (실제 페이지에서 확인된 값)"""
     return {
-        'regular': {
-            'name': 'KBO 정규시즌',
-            'value': '0',
-            'league': 'REGULAR'
-        },
-        'exhibition': {
-            'name': 'KBO 시범경기',
-            'value': '1',
-            'league': 'EXHIBITION'
-        },
-        'wildcard': {
-            'name': 'KBO 와일드카드',
-            'value': '4',
-            'league': 'WILDCARD'
-        },
-        'semi_playoff': {
-            'name': 'KBO 준플레이오프',
-            'value': '3',
-            'league': 'SEMI_PLAYOFF'
-        },
-        'playoff': {
-            'name': 'KBO 플레이오프',
-            'value': '5',
-            'league': 'PLAYOFF'
-        },
-        'korean_series': {
-            'name': 'KBO 한국시리즈',
-            'value': '7',
-            'league': 'KOREAN_SERIES'
-        }
+        "regular": {"name": "KBO 정규시즌", "value": "0", "league": "REGULAR"},
+        "exhibition": {"name": "KBO 시범경기", "value": "1", "league": "EXHIBITION"},
+        "wildcard": {"name": "KBO 와일드카드", "value": "4", "league": "WILDCARD"},
+        "semi_playoff": {"name": "KBO 준플레이오프", "value": "3", "league": "SEMI_PLAYOFF"},
+        "playoff": {"name": "KBO 플레이오프", "value": "5", "league": "PLAYOFF"},
+        "korean_series": {"name": "KBO 한국시리즈", "value": "7", "league": "KOREAN_SERIES"},
     }
 
 
-def safe_parse_number(value_str: str, data_type: type, allow_zero: bool = True) -> Optional[int | float]:
+def safe_parse_number(value_str: str, data_type: type, allow_zero: bool = True) -> int | float | None:
     """
     안전하게 숫자를 파싱하는 함수
 
@@ -96,7 +67,7 @@ def safe_parse_number(value_str: str, data_type: type, allow_zero: bool = True) 
     value_str = value_str.strip()
 
     # 빈 문자열, "-", "N/A" 등은 None으로 처리
-    if not value_str or value_str in ['-', 'N/A', '']:
+    if not value_str or value_str in ["-", "N/A", ""]:
         return None
 
     try:
@@ -107,7 +78,7 @@ def safe_parse_number(value_str: str, data_type: type, allow_zero: bool = True) 
         return None
 
 
-def _extract_rows_fast(page: Page, table_selector: str = "table") -> Optional[List[Dict[str, object]]]:
+def _extract_rows_fast(page: Page, table_selector: str = "table") -> list[dict[str, object]] | None:
     try:
         payload = page.evaluate(
             """
@@ -134,31 +105,32 @@ def _extract_rows_fast(page: Page, table_selector: str = "table") -> Optional[Li
         return None
 
 
-def _extract_player_id_from_href(href: Optional[str]) -> Optional[int]:
+def _extract_player_id_from_href(href: str | None) -> int | None:
     if not href:
         return None
     match = re.search(r"playerId=(\d+)", href)
     return int(match.group(1)) if match else None
 
 
-def _is_basic2_headers(headers: List[str]) -> bool:
+def _is_basic2_headers(headers: list[str]) -> bool:
     basic2_indicators = ["BB", "볼넷", "IBB", "HBP", "SLG", "OBP", "OPS"]
     combined = "".join(headers)
     return any(indicator in combined for indicator in basic2_indicators)
 
 
 def _build_batting_data(
-    cells: List[str],
+    cells: list[str],
     player_id: int,
     player_name: str,
     team_code: str,
     series_key: str,
     is_basic2: bool,
     year: int = 2026,
-) -> Dict:
+) -> dict:
     series_map = get_series_mapping()
     league_name = series_map.get(series_key, {}).get("league", "REGULAR")
-    def cell(idx: int) -> Optional[str]:
+
+    def cell(idx: int) -> str | None:
         return cells[idx] if len(cells) > idx else None
 
     if series_key == "regular":
@@ -230,11 +202,11 @@ def _build_batting_data(
     }
 
 
-def _parse_batting_stats_table_fast(page: Page, series_key: str, year: int = 2025) -> List[Dict]:
+def _parse_batting_stats_table_fast(page: Page, series_key: str, year: int = 2025) -> list[dict]:
     """
     Parse batting table using JS extraction for reduced RPC.
     """
-    team_mapping = get_team_mapping_for_year(year)
+    get_team_mapping_for_year(year)
 
     extraction_script = r"""
     () => {
@@ -307,8 +279,8 @@ def _parse_batting_stats_table_fast(page: Page, series_key: str, year: int = 202
         return []
 
 
-def _parse_batting_stats_table_legacy(page: Page, series_key: str, year: int = 2025) -> List[Dict]:
-    team_mapping = get_team_mapping_for_year(year)
+def _parse_batting_stats_table_legacy(page: Page, series_key: str, year: int = 2025) -> list[dict]:
+    get_team_mapping_for_year(year)
     try:
         table = page.query_selector("table")
         if not table:
@@ -364,8 +336,8 @@ def parse_batting_stats_table(
     page: Page,
     series_key: str,
     year: int = 2025,
-    use_fast: Optional[bool] = None,
-) -> List[Dict]:
+    use_fast: bool | None = None,
+) -> list[dict]:
     if use_fast is None:
         use_fast = os.getenv("KBO_FAST_PARSE", "1") != "0"
     if use_fast:
@@ -373,7 +345,7 @@ def parse_batting_stats_table(
     return _parse_batting_stats_table_legacy(page, series_key, year)
 
 
-def build_batting_crawl_summary(rows: List[Dict]) -> tuple[Dict[str, object], List[Dict]]:
+def build_batting_crawl_summary(rows: list[dict]) -> tuple[dict[str, object], list[dict]]:
     valid_rows, failure_counts = filter_valid_season_stat_payloads(rows, stat_type="batting")
     summary = {
         "processed_rows": len(rows),
@@ -384,7 +356,7 @@ def build_batting_crawl_summary(rows: List[Dict]) -> tuple[Dict[str, object], Li
     return summary, valid_rows
 
 
-def go_to_next_page(page: Page, current_page_num: int, policy: Optional[RequestPolicy] = None) -> bool:
+def go_to_next_page(page: Page, current_page_num: int, policy: RequestPolicy | None = None) -> bool:
     """
     다음 페이지로 이동 (1→2,3,4,5→다음→6,7,8,9,10→다음 반복)
     """
@@ -405,11 +377,12 @@ def go_to_next_page(page: Page, current_page_num: int, policy: Optional[RequestP
         if not btn or btn.get_attribute("disabled") or "disabled" in (btn.get_attribute("class") or ""):
             return False
 
-        if policy: policy.delay()
-        
+        if policy:
+            policy.delay()
+
         # 직접 클릭 시도 (Attached 여부 확인하며)
         page.click(selector, timeout=15000)
-        page.wait_for_load_state('networkidle', timeout=30000)
+        page.wait_for_load_state("networkidle", timeout=30000)
         print(f"➡️ {desc}")
         return True
 
@@ -418,31 +391,35 @@ def go_to_next_page(page: Page, current_page_num: int, policy: Optional[RequestP
         return False
 
 
-def crawl_basic2_with_headers(page: Page, year: int, series_info: dict, policy: Optional[RequestPolicy] = None) -> Dict[int, Dict]:
+def crawl_basic2_with_headers(
+    page: Page, year: int, series_info: dict, policy: RequestPolicy | None = None
+) -> dict[int, dict]:
     """
     정규시즌용 Basic2 페이지에서 각 헤더를 클릭하여 고급 통계 데이터 수집
     """
     all_player_data = {}
 
     try:
-        print(f"   🔍 Basic2 접근을 위해 Basic1에서 시작...")
+        print("   🔍 Basic2 접근을 위해 Basic1에서 시작...")
 
         # 1. Basic1 페이지로 이동
         url = "https://www.koreabaseball.com/Record/Player/HitterBasic/Basic1.aspx"
-        if policy: policy.delay()
+        if policy:
+            policy.delay()
         if not retry_navigation(page, url, timeout=45000):
-            print(f"   ❌ Basic1 페이지 로딩 실패")
+            print("   ❌ Basic1 페이지 로딩 실패")
             return {}
 
         # 2. 연도 선택
         try:
             season_selector = 'select[name="ctl00$ctl00$ctl00$cphContents$cphContents$cphContents$ddlSeason$ddlSeason"]'
             if not retry_wait_for_selector(page, season_selector):
-                print(f"   ⚠️ 연도 선택기를 찾을 수 없습니다.")
+                print("   ⚠️ 연도 선택기를 찾을 수 없습니다.")
             else:
-                if policy: policy.delay()
+                if policy:
+                    policy.delay()
                 page.select_option(season_selector, str(year))
-                page.wait_for_load_state('networkidle', timeout=30000)
+                page.wait_for_load_state("networkidle", timeout=30000)
         except Exception:
             logger.exception("   ⚠️ 연도 선택 중 오류 (무시)")
 
@@ -450,9 +427,10 @@ def crawl_basic2_with_headers(page: Page, year: int, series_info: dict, policy: 
         try:
             series_selector = 'select[name="ctl00$ctl00$ctl00$cphContents$cphContents$cphContents$ddlSeries$ddlSeries"]'
             if retry_wait_for_selector(page, series_selector):
-                if policy: policy.delay()
-                page.select_option(series_selector, value=series_info['value'])
-                page.wait_for_load_state('networkidle', timeout=30000)
+                if policy:
+                    policy.delay()
+                page.select_option(series_selector, value=series_info["value"])
+                page.wait_for_load_state("networkidle", timeout=30000)
         except Exception:
             logger.exception("   ⚠️ 시리즈 선택 중 오류 (무시)")
 
@@ -460,11 +438,12 @@ def crawl_basic2_with_headers(page: Page, year: int, series_info: dict, policy: 
         try:
             next_link_selector = 'a[href="/Record/Player/HitterBasic/Basic2.aspx"]'
             if retry_wait_for_selector(page, next_link_selector):
-                if policy: policy.delay()
+                if policy:
+                    policy.delay()
                 page.click(next_link_selector)
-                page.wait_for_load_state('networkidle', timeout=30000)
+                page.wait_for_load_state("networkidle", timeout=30000)
             else:
-                print(f"   ❌ Basic2 이동 링크를 찾을 수 없습니다.")
+                print("   ❌ Basic2 이동 링크를 찾을 수 없습니다.")
                 return {}
         except Exception:
             logger.exception("   ❌ Basic2 이동 중 오류")
@@ -480,7 +459,7 @@ def crawl_basic2_with_headers(page: Page, year: int, series_info: dict, policy: 
 
             current_page_data = parse_batting_stats_table(page, "regular", year)
             for player_stat in current_page_data:
-                pid = player_stat['player_id']
+                pid = player_stat["player_id"]
                 if pid not in all_player_data:
                     all_player_data[pid] = player_stat
                 else:
@@ -503,7 +482,7 @@ def _parse_basic2_header_data_legacy(
     current_header: str,
     description: str,
     year: int = 2025,
-) -> Dict[int, Dict]:
+) -> dict[int, dict]:
     """
     Basic2 페이지에서 특정 헤더 클릭 후 데이터 파싱
     각 헤더 클릭시 해당 기준으로 정렬된 선수 데이터를 수집
@@ -570,9 +549,9 @@ def _parse_basic2_header_data_legacy(
 
                 # 헤더별로 해당 데이터만 추출
                 batting_data = {
-                    'player_id': player_id,
-                    'player_name': player_name,
-                    'team_code': team_code,
+                    "player_id": player_id,
+                    "player_name": player_name,
+                    "team_code": team_code,
                 }
 
                 # Basic2 테이블의 실제 구조에 맞게 데이터 추출
@@ -580,45 +559,47 @@ def _parse_basic2_header_data_legacy(
                 #       [0]    [1]    [2]    [3]   [4]   [5]   [6]    [7]   [8]    [9]    [10]   [11]   [12]   [13]    [14]
 
                 # 헤더에 따른 정확한 컬럼 위치에서 데이터 추출
-                if current_header == 'BB' and len(cells) > 4:
-                    batting_data['walks'] = safe_parse_number(cells[4].text_content().strip(), int)
-                elif current_header == 'IBB' and len(cells) > 5:
-                    batting_data['intentional_walks'] = safe_parse_number(cells[5].text_content().strip(), int)
-                elif current_header == 'HBP' and len(cells) > 6:
-                    batting_data['hbp'] = safe_parse_number(cells[6].text_content().strip(), int)
-                elif current_header == 'SO' and len(cells) > 7:
-                    batting_data['strikeouts'] = safe_parse_number(cells[7].text_content().strip(), int)
-                elif current_header == 'GDP' and len(cells) > 8:
-                    batting_data['gdp'] = safe_parse_number(cells[8].text_content().strip(), int)
-                elif current_header == 'SLG' and len(cells) > 9:
-                    batting_data['slg'] = safe_parse_number(cells[9].text_content().strip(), float)
-                elif current_header == 'OBP' and len(cells) > 10:
-                    batting_data['obp'] = safe_parse_number(cells[10].text_content().strip(), float)
-                elif current_header == 'OPS' and len(cells) > 11:
-                    batting_data['ops'] = safe_parse_number(cells[11].text_content().strip(), float)
-                elif current_header == 'MH' and len(cells) > 12:
-                    if 'extra_stats' not in batting_data:
-                        batting_data['extra_stats'] = {}
-                    batting_data['extra_stats']['multi_hits'] = safe_parse_number(cells[12].text_content().strip(), int)
-                elif current_header == 'RISP' and len(cells) > 13:
-                    if 'extra_stats' not in batting_data:
-                        batting_data['extra_stats'] = {}
-                    batting_data['extra_stats']['risp_avg'] = safe_parse_number(cells[13].text_content().strip(), float)
-                elif current_header == 'PH-BA' and len(cells) > 14:
-                    if 'extra_stats' not in batting_data:
-                        batting_data['extra_stats'] = {}
-                    batting_data['extra_stats']['pinch_hit_avg'] = safe_parse_number(cells[14].text_content().strip(), float)
+                if current_header == "BB" and len(cells) > 4:
+                    batting_data["walks"] = safe_parse_number(cells[4].text_content().strip(), int)
+                elif current_header == "IBB" and len(cells) > 5:
+                    batting_data["intentional_walks"] = safe_parse_number(cells[5].text_content().strip(), int)
+                elif current_header == "HBP" and len(cells) > 6:
+                    batting_data["hbp"] = safe_parse_number(cells[6].text_content().strip(), int)
+                elif current_header == "SO" and len(cells) > 7:
+                    batting_data["strikeouts"] = safe_parse_number(cells[7].text_content().strip(), int)
+                elif current_header == "GDP" and len(cells) > 8:
+                    batting_data["gdp"] = safe_parse_number(cells[8].text_content().strip(), int)
+                elif current_header == "SLG" and len(cells) > 9:
+                    batting_data["slg"] = safe_parse_number(cells[9].text_content().strip(), float)
+                elif current_header == "OBP" and len(cells) > 10:
+                    batting_data["obp"] = safe_parse_number(cells[10].text_content().strip(), float)
+                elif current_header == "OPS" and len(cells) > 11:
+                    batting_data["ops"] = safe_parse_number(cells[11].text_content().strip(), float)
+                elif current_header == "MH" and len(cells) > 12:
+                    if "extra_stats" not in batting_data:
+                        batting_data["extra_stats"] = {}
+                    batting_data["extra_stats"]["multi_hits"] = safe_parse_number(cells[12].text_content().strip(), int)
+                elif current_header == "RISP" and len(cells) > 13:
+                    if "extra_stats" not in batting_data:
+                        batting_data["extra_stats"] = {}
+                    batting_data["extra_stats"]["risp_avg"] = safe_parse_number(cells[13].text_content().strip(), float)
+                elif current_header == "PH-BA" and len(cells) > 14:
+                    if "extra_stats" not in batting_data:
+                        batting_data["extra_stats"] = {}
+                    batting_data["extra_stats"]["pinch_hit_avg"] = safe_parse_number(
+                        cells[14].text_content().strip(), float
+                    )
 
                 players_data[player_id] = batting_data
 
                 if row_idx < 3:  # 첫 3개 행만 출력
                     sort_value = "N/A"
-                    if current_header in ['BB', 'IBB', 'HBP', 'SO', 'GDP']:
+                    if current_header in ["BB", "IBB", "HBP", "SO", "GDP"] or current_header in ["SLG", "OBP", "OPS"]:
                         sort_value = batting_data.get(current_header.lower(), "N/A")
-                    elif current_header in ['SLG', 'OBP', 'OPS']:
-                        sort_value = batting_data.get(current_header.lower(), "N/A")
-                    elif current_header in ['MH', 'RISP', 'PH-BA']:
-                        sort_value = batting_data.get('extra_stats', {}).get(current_header.lower().replace('-', '_'), "N/A")
+                    elif current_header in ["MH", "RISP", "PH-BA"]:
+                        sort_value = batting_data.get("extra_stats", {}).get(
+                            current_header.lower().replace("-", "_"), "N/A"
+                        )
 
                     print(f"      ✅ {player_name} ({team_name}) - {current_header}: {sort_value}")
 
@@ -637,8 +618,8 @@ def _parse_basic2_header_data_fast(
     current_header: str,
     description: str,
     year: int = 2025,
-) -> Dict[int, Dict]:
-    players_data: Dict[int, Dict] = {}
+) -> dict[int, dict]:
+    players_data: dict[int, dict] = {}
     team_mapping = get_team_mapping_for_year(year)
 
     rows_data = _extract_rows_fast(page)
@@ -716,8 +697,8 @@ def parse_basic2_header_data(
     current_header: str,
     description: str,
     year: int = 2025,
-    use_fast: Optional[bool] = None,
-) -> Dict[int, Dict]:
+    use_fast: bool | None = None,
+) -> dict[int, dict]:
     if use_fast is None:
         use_fast = os.getenv("KBO_FAST_PARSE", "1") != "0"
     if use_fast:
@@ -725,24 +706,23 @@ def parse_basic2_header_data(
     return _parse_basic2_header_data_legacy(page, current_header, description, year)
 
 
-
-
 # ---------------------------------------------------------------------------
 # Fallback logic
 # ---------------------------------------------------------------------------
 
-def fallback_batting_from_db(year: int, series_key: str, reason: str = "Manual Trigger") -> List[Dict]:
+
+def fallback_batting_from_db(year: int, series_key: str, reason: str = "Manual Trigger") -> list[dict]:
     """
     KBO 페이지 장애 시 로컬 DB의 상세 기록을 합산하여 타자 시즌 기록을 생성합니다.
     """
     FallbackMonitor.log_fallback(year, series_key, "BATTING", reason)
     print(f"🔄 로컬 DB 기반 타자 기록 집계 시작 (연도: {year}, 시리즈: {series_key})...")
     all_players_data = []
-    
+
     with SessionLocal() as session:
         # 1. 해당 시즌/시리즈에 경기를 뛴 모든 타자 ID 조회
         pattern = SeasonStatAggregator._get_league_name_pattern(series_key)
-        
+
         player_ids_query = (
             session.query(GameBattingStat.player_id)
             .join(Game, GameBattingStat.game_id == Game.game_id)
@@ -751,35 +731,35 @@ def fallback_batting_from_db(year: int, series_key: str, reason: str = "Manual T
             .filter(KboSeason.league_type_name.like(f"%{pattern}%"))
             .distinct()
         )
-        
+
         player_ids = [p[0] for p in player_ids_query.all() if p[0]]
         print(f"🔍 DB에서 {len(player_ids)}명의 타자를 발견했습니다.")
-        
+
         series_mapping = get_series_mapping()
         series_info = series_mapping.get(series_key, {})
         league_name = series_info.get("league", "REGULAR")
-        
+
         for pid in player_ids:
             # 2. 개별 타자별 집계
             agg_data = SeasonStatAggregator.aggregate_batting_season(session, pid, year, series_key)
             if not agg_data:
                 continue
-                
+
             # 3. 선수 기본 정보 조회
             player_basic = session.query(PlayerBasic).filter_by(player_id=pid).first()
-            
+
             # 4. 데이터 딕셔너리 생성
             player_data = {
-                'player_id': pid,
-                'player_name': player_basic.name if player_basic else f"Player_{pid}",
-                'season': year,
-                'league': league_name,
-                'source': 'FALLBACK',
+                "player_id": pid,
+                "player_name": player_basic.name if player_basic else f"Player_{pid}",
+                "season": year,
+                "league": league_name,
+                "source": "FALLBACK",
             }
-            
+
             # 데이터 매핑
             player_data.update(agg_data)
-            
+
             # 팀 정보 보정
             last_game_stat = (
                 session.query(GameBattingStat.team_code)
@@ -791,17 +771,22 @@ def fallback_batting_from_db(year: int, series_key: str, reason: str = "Manual T
                 .first()
             )
             if last_game_stat:
-                player_data['team_code'] = last_game_stat[0]
-            
+                player_data["team_code"] = last_game_stat[0]
+
             all_players_data.append(player_data)
-            
+
     print(f"✅ DB 집계 완료: 총 {len(all_players_data)}명")
     return all_players_data
 
 
-def crawl_series_batting_stats(year: int = 2025, series_key: str = 'regular',
-                             limit: int = None, save_to_db: bool = False,
-                             headless: bool = False, by_team: bool = False) -> List[Dict]:
+def crawl_series_batting_stats(
+    year: int = 2025,
+    series_key: str = "regular",
+    limit: int = None,
+    save_to_db: bool = False,
+    headless: bool = False,
+    by_team: bool = False,
+) -> list[dict]:
     """
     특정 시리즈의 타자 기록을 크롤링
 
@@ -822,15 +807,15 @@ def crawl_series_batting_stats(year: int = 2025, series_key: str = 'regular',
         return []
 
     series_info = series_mapping[series_key]
-    all_players_data = [] # List of dicts
-    unique_players = set() # Track by ID
+    all_players_data = []  # List of dicts
+    unique_players = set()  # Track by ID
 
     policy = RequestPolicy()
 
     with sync_playwright() as playwright:
         browser = playwright.chromium.launch(headless=headless)
         # Apply UA rotation via context
-        context = browser.new_context(**policy.build_context_kwargs(locale='ko-KR'))
+        context = browser.new_context(**policy.build_context_kwargs(locale="ko-KR"))
         page = context.new_page()
         page.set_default_timeout(30000)
         install_sync_resource_blocking(page)
@@ -846,25 +831,29 @@ def crawl_series_batting_stats(year: int = 2025, series_key: str = 'regular',
                 return []
 
             policy.delay(host="www.koreabaseball.com")
-            page.goto(url, wait_until='load', timeout=30000)
-            page.wait_for_load_state('networkidle', timeout=30000)
+            page.goto(url, wait_until="load", timeout=30000)
+            page.wait_for_load_state("networkidle", timeout=30000)
 
             # 시즌과 시리즈 설정
             try:
                 # 시즌 연도 선택
-                season_selector = 'select[name="ctl00$ctl00$ctl00$cphContents$cphContents$cphContents$ddlSeason$ddlSeason"]'
+                season_selector = (
+                    'select[name="ctl00$ctl00$ctl00$cphContents$cphContents$cphContents$ddlSeason$ddlSeason"]'
+                )
                 policy.delay()
                 page.select_option(season_selector, str(year))
                 print(f"✅ {year}년 시즌 선택")
-                page.wait_for_load_state('networkidle', timeout=30000)
+                page.wait_for_load_state("networkidle", timeout=30000)
 
                 # 시리즈 선택
-                series_selector = 'select[name="ctl00$ctl00$ctl00$cphContents$cphContents$cphContents$ddlSeries$ddlSeries"]'
+                series_selector = (
+                    'select[name="ctl00$ctl00$ctl00$cphContents$cphContents$cphContents$ddlSeries$ddlSeries"]'
+                )
 
                 policy.delay()
-                page.select_option(series_selector, value=series_info['value'])
+                page.select_option(series_selector, value=series_info["value"])
                 print(f"✅ {series_info['name']} 선택")
-                page.wait_for_load_state('networkidle', timeout=30000)
+                page.wait_for_load_state("networkidle", timeout=30000)
 
             except Exception as e:
                 reason = f"Season/Series selection error: {e}"
@@ -873,9 +862,11 @@ def crawl_series_batting_stats(year: int = 2025, series_key: str = 'regular',
                 all_players_data = fallback_batting_from_db(year, series_key, reason=reason)
                 # Set source to FALLBACK_AUTO
                 for s in all_players_data:
-                    s['source'] = 'FALLBACK_AUTO'
-                
-                FallbackMonitor.log_fallback(year, series_key, "BATTING", f"Fallback completed via {reason}", player_count=len(all_players_data))
+                    s["source"] = "FALLBACK_AUTO"
+
+                FallbackMonitor.log_fallback(
+                    year, series_key, "BATTING", f"Fallback completed via {reason}", player_count=len(all_players_data)
+                )
                 if save_to_db and all_players_data:
                     save_batting_stats_safe(all_players_data)
                 return all_players_data
@@ -885,35 +876,43 @@ def crawl_series_batting_stats(year: int = 2025, series_key: str = 'regular',
             page_num = 1
             if by_team:
                 try:
-                    team_selector = 'select[name="ctl00$ctl00$ctl00$cphContents$cphContents$cphContents$ddlTeam$ddlTeam"]'
-                    options = page.eval_on_selector_all(f'{team_selector} option', 'options => options.map(o => ({text: o.textContent, value: o.value}))')
-                    team_options = [opt for opt in options if opt['value']] # Empty value is "Team Selection"
+                    team_selector = (
+                        'select[name="ctl00$ctl00$ctl00$cphContents$cphContents$cphContents$ddlTeam$ddlTeam"]'
+                    )
+                    options = page.eval_on_selector_all(
+                        f"{team_selector} option",
+                        "options => options.map(o => ({text: o.textContent, value: o.value}))",
+                    )
+                    team_options = [opt for opt in options if opt["value"]]  # Empty value is "Team Selection"
                     print(f"ℹ️ 팀별 순회 모드: {len(team_options)}개 팀 발견")
                 except Exception:
                     logger.exception("⚠️ 팀 목록 추출 실패, 전체 모드로 진행")
                     team_options = []
 
             # 순회 대상 설정 (팀 옵션이 있으면 팀별, 없으면 전체 1회)
-            iteration_targets = team_options if team_options else [{'value': '', 'text': '전체'}]
+            iteration_targets = team_options if team_options else [{"value": "", "text": "전체"}]
             total_collected = 0
 
             for tm in iteration_targets:
-                if team_options: # 팀 선택 모드면 팀 선택
+                if team_options:  # 팀 선택 모드면 팀 선택
                     print(f"🔍 팀 선택: {tm['text']} ({tm['value']})")
                     try:
-                        page.select_option('select[name="ctl00$ctl00$ctl00$cphContents$cphContents$cphContents$ddlTeam$ddlTeam"]', tm['value'])
-                        page.wait_for_load_state('networkidle', timeout=30000)
+                        page.select_option(
+                            'select[name="ctl00$ctl00$ctl00$cphContents$cphContents$cphContents$ddlTeam$ddlTeam"]',
+                            tm["value"],
+                        )
+                        page.wait_for_load_state("networkidle", timeout=30000)
                         time.sleep(1)
                     except Exception:
                         logger.exception(f"⚠️ 팀 선택 실패 ({tm['text']})")
                         continue
 
                 # 타석(PA) 기준 정렬 (팀 선택 후 다시 적용)
-                pa_sort_link = 'a[href="javascript:sort(\'PA_CN\');"]'
+                pa_sort_link = "a[href=\"javascript:sort('PA_CN');\"]"
                 if page.query_selector(pa_sort_link):
                     page.click(pa_sort_link)
-                    print(f"✅ 타석(PA) 기준 정렬 적용")
-                    page.wait_for_load_state('networkidle', timeout=30000)
+                    print("✅ 타석(PA) 기준 정렬 적용")
+                    page.wait_for_load_state("networkidle", timeout=30000)
                     time.sleep(2)
                 else:
                     print("⚠️ 타석 정렬 버튼을 찾을 수 없습니다.")
@@ -923,7 +922,7 @@ def crawl_series_batting_stats(year: int = 2025, series_key: str = 'regular',
                     current_page_data = parse_batting_stats_table(page, series_key, year)
 
                     for player_stat in current_page_data:
-                        pid = player_stat['player_id']
+                        pid = player_stat["player_id"]
                         if pid not in unique_players:
                             unique_players.add(pid)
                             all_players_data.append(player_stat)
@@ -931,7 +930,7 @@ def crawl_series_batting_stats(year: int = 2025, series_key: str = 'regular',
                         else:
                             # 이미 존재하면 업데이트
                             for i, p in enumerate(all_players_data):
-                                if p['player_id'] == pid:
+                                if p["player_id"] == pid:
                                     all_players_data[i].update(player_stat)
                                     break
 
@@ -949,26 +948,34 @@ def crawl_series_batting_stats(year: int = 2025, series_key: str = 'regular',
                     time.sleep(1)
 
             # 정규시즌인 경우 Basic2 페이지에서 추가 데이터 수집
-            if series_key == 'regular' and all_players_data:
-                print(f"\n🔍 정규시즌 Basic2 추가 데이터 수집 시작...")
+            if series_key == "regular" and all_players_data:
+                print("\n🔍 정규시즌 Basic2 추가 데이터 수집 시작...")
                 basic2_data = crawl_basic2_with_headers(page, year, series_info, policy)
 
                 # Basic1과 Basic2 데이터 병합
                 if basic2_data:
-                    basic1_dict = {p['player_id']: p for p in all_players_data}
+                    basic1_dict = {p["player_id"]: p for p in all_players_data}
 
                     for player_id, basic2_player in basic2_data.items():
                         if player_id in basic1_dict:
                             # Basic1 데이터에 Basic2 데이터 병합
                             for key, value in basic2_player.items():
-                                if value is not None and key not in ['player_id', 'player_name', 'team_code', 'season', 'league', 'level', 'source']:
+                                if value is not None and key not in [
+                                    "player_id",
+                                    "player_name",
+                                    "team_code",
+                                    "season",
+                                    "league",
+                                    "level",
+                                    "source",
+                                ]:
                                     basic1_dict[player_id][key] = value
 
                     # 리스트로 다시 변환
                     all_players_data = list(basic1_dict.values())
-                    print(f"✅ Basic1 + Basic2 데이터 병합 완료")
+                    print("✅ Basic1 + Basic2 데이터 병합 완료")
                 else:
-                    print(f"⚠️ Basic2 데이터 수집 실패, Basic1 데이터만 사용")
+                    print("⚠️ Basic2 데이터 수집 실패, Basic1 데이터만 사용")
 
             print(f"✅ {series_info['name']} 데이터 수집 완료")
 
@@ -982,16 +989,12 @@ def crawl_series_batting_stats(year: int = 2025, series_key: str = 'regular',
     print(f"✅ {series_info['name']} 크롤링 완료! 총 {len(all_players_data)}명 수집")
     summary, valid_players_data = build_batting_crawl_summary(all_players_data)
     if summary["filtered_rows"]:
-        print(
-            "⚠️ 타자 시즌 row 필터링: "
-            f"{summary['filtered_rows']}건 "
-            f"({summary['failure_counts']})"
-        )
+        print(f"⚠️ 타자 시즌 row 필터링: {summary['filtered_rows']}건 ({summary['failure_counts']})")
     all_players_data = valid_players_data
 
     # DB 저장 (안전한 외래키 제약조건 우회)
     if save_to_db and all_players_data:
-        print(f"\n💾 타자 데이터 DB 저장 시작 (외래키 제약조건 임시 비활성화)...")
+        print("\n💾 타자 데이터 DB 저장 시작 (외래키 제약조건 임시 비활성화)...")
         try:
             saved_count = save_batting_stats_safe(all_players_data)
             print(f"✅ 타자 데이터 저장 완료: {saved_count}명")
@@ -1001,7 +1004,9 @@ def crawl_series_batting_stats(year: int = 2025, series_key: str = 'regular',
     return all_players_data
 
 
-def crawl_all_series(year: int = 2025, limit: int = None, save_to_db: bool = False, headless: bool = False, by_team: bool = False) -> Dict[str, List[Dict]]:
+def crawl_all_series(
+    year: int = 2025, limit: int = None, save_to_db: bool = False, headless: bool = False, by_team: bool = False
+) -> dict[str, list[dict]]:
     """
     모든 시리즈의 타자 기록을 크롤링
 
@@ -1042,11 +1047,11 @@ def main():
         all_data = crawl_all_series(args.year, args.limit, args.save, args.headless, by_team=args.by_team)
 
         # 전체 요약
-        print(f"\n" + "=" * 60)
+        print("\n" + "=" * 60)
         print(f"📈 전체 수집 요약 ({args.year}년)")
         print("=" * 60)
         for series_key, data in all_data.items():
-            series_name = get_series_mapping()[series_key]['name']
+            series_name = get_series_mapping()[series_key]["name"]
             print(f"  {series_name}: {len(data)}명")
 
         total_players = sum(len(data) for data in all_data.values())

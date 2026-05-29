@@ -1,14 +1,16 @@
 import asyncio
-from playwright.async_api import async_playwright
 import json
+
+from playwright.async_api import async_playwright
+
 
 async def inspect_game(page, url, year_label):
     print(f"\n--- Inspecting {year_label}: {url} ---")
     await page.goto(url, wait_until="networkidle", timeout=60000)
-    await asyncio.sleep(5) # Wait for potential JS rendering
-    
+    await asyncio.sleep(5)  # Wait for potential JS rendering
+
     results = {}
-    
+
     # Check Hitter 3 tables
     for tid in ["tblAwayHitter3", "tblHomeHitter3"]:
         table = await page.query_selector(f"table#{tid}")
@@ -29,7 +31,7 @@ async def inspect_game(page, url, year_label):
         tid = await t.get_attribute("id")
         tclass = await t.get_attribute("class")
         table_sequence.append({"id": tid, "class": tclass})
-    
+
     results["sequence"] = table_sequence
 
     # Check Pitcher tables
@@ -48,26 +50,28 @@ async def inspect_game(page, url, year_label):
 
     return results
 
+
 async def main():
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=True)
         page = await browser.new_page()
-        
+
         # Game 1 (2019)
         url1 = "https://www.koreabaseball.com/Schedule/GameCenter/Main.aspx?gameDate=20190323&gameId=20190323KTSK0&section=REVIEW"
         res1 = await inspect_game(page, url1, "2019")
-        
+
         # Game 2 (2024)
         url2 = "https://www.koreabaseball.com/Schedule/GameCenter/Main.aspx?gameDate=20240323&gameId=20240323HHLG0&section=REVIEW"
         res2 = await inspect_game(page, url2, "2024")
-        
+
         print("\n=== Comparison Results ===")
         print("2019 Results:")
         print(json.dumps(res1, indent=2, ensure_ascii=False))
         print("\n2024 Results:")
         print(json.dumps(res2, indent=2, ensure_ascii=False))
-        
+
         await browser.close()
+
 
 if __name__ == "__main__":
     asyncio.run(main())
