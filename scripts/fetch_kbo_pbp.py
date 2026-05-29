@@ -59,19 +59,17 @@ async def run_fetcher(argv: list[str] | None = None) -> int:
         help="Skip saving fetched relay data when result event count is below this threshold",
     )
     parser.add_argument(
-        "--no-validate-score",
-        action="store_false",
-        dest="validate_final_score",
-        help="Disable final event score validation against game boxscore",
+        "--validate-final-score",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Validate final event score against game boxscore (defaults to True)",
     )
-    parser.set_defaults(validate_final_score=True)
     parser.add_argument(
-        "--no-validate-continuity",
-        action="store_false",
-        dest="validate_inning_continuity",
-        help="Disable inning continuity validation",
+        "--validate-inning-continuity",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Validate inning continuity (defaults to True)",
     )
-    parser.set_defaults(validate_inning_continuity=True)
     parser.add_argument("--report-out", type=str, help="CSV report output path")
     args = parser.parse_args(argv)
 

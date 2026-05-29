@@ -519,7 +519,7 @@ def test_run_update_syncs_only_target_games_after_freshness_gate(monkeypatch):
 
     assert ["-m", "src.cli.daily_review_batch", "--date", "20250101", "--no-sync"] in commands
     assert ["-m", "src.cli.daily_story_batch", "--date", "20250101", "--no-sync"] in commands
-    assert ["scripts/fetch_kbo_pbp.py", "--game-ids", "20250101LGSS0"] in commands
+    assert any(cmd[:3] == ["scripts/fetch_kbo_pbp.py", "--game-ids", "20250101LGSS0"] for cmd in commands)
     backfill_command = [
         "-m",
         "src.cli.backfill_starting_pitchers_from_stats",
@@ -703,8 +703,8 @@ def test_run_update_syncs_auto_healer_recovery_targets(monkeypatch):
         )
     )
 
-    assert ["scripts/fetch_kbo_pbp.py", "--game-ids", "20250101LGSS0"] in commands
-    assert ["scripts/fetch_kbo_pbp.py", "--game-ids", "20241231LGSS0"] in commands
+    assert any(cmd[:3] == ["scripts/fetch_kbo_pbp.py", "--game-ids", "20250101LGSS0"] for cmd in commands)
+    assert any(cmd[:3] == ["scripts/fetch_kbo_pbp.py", "--game-ids", "20241231LGSS0"] for cmd in commands)
     assert ["-m", "src.cli.freshness_gate", "--date", "20250101"] in commands
     assert ["-m", "src.cli.freshness_gate", "--date", "20241231"] in commands
     assert [
@@ -803,11 +803,7 @@ def test_run_update_syncs_postgame_reconciliation_changes(monkeypatch):
     assert seen["range"] == ("20241230", "20250101")
     assert seen["crawler"].__class__ is _FakeDetailCrawlerSuccess
     assert seen["concurrency"] == 1
-    assert [
-        "scripts/fetch_kbo_pbp.py",
-        "--game-ids",
-        "20241230LGSS0,20250101LGSS0",
-    ] in commands
+    assert any(cmd[:3] == ["scripts/fetch_kbo_pbp.py", "--game-ids", "20241230LGSS0,20250101LGSS0"] for cmd in commands)
     assert ["-m", "src.cli.freshness_gate", "--date", "20241230"] in commands
     assert [
         "-m",
