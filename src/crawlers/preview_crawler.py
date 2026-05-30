@@ -49,7 +49,8 @@ class PreviewCrawler:
                 return None
             try:
                 return self._coerce_api_payload(json.loads(payload))
-            except Exception:
+            except (json.JSONDecodeError, TypeError) as e:
+                logger.debug("Failed to parse JSON payload: %s", e)
                 return None
         if isinstance(payload, dict) and "d" in payload:
             return self._coerce_api_payload(payload.get("d"))
@@ -156,9 +157,9 @@ class PreviewCrawler:
                     owns_pool = True
                 try:
                     await pool.start()
-                except Exception:
+                except Exception as e:
                     logger.exception("⚠️ Playwright fallback failed")
-                    return []
+                    raise RuntimeError("Failed to start Playwright fallback pool") from e
                 page = await pool.acquire()
                 await page.goto(self.BASE_REFERER, wait_until="domcontentloaded", timeout=30000)
                 await asyncio.sleep(self.request_delay)
@@ -169,8 +170,7 @@ class PreviewCrawler:
                     page=page,
                 )
             if list_data is None:
-                print(f"⚠️ HTTP preview API call returned no data for {game_date}.")
-                return []
+                raise RuntimeError(f"HTTP API and Playwright fallback both failed to fetch game list for {game_date}")
 
             games = self._extract_list_payload(list_data)
             if not games:
@@ -294,6 +294,6 @@ class PreviewCrawler:
                                 "player_name": name,
                             }
                         )
-        except Exception:
-            pass
+        except (json.JSONDecodeError, TypeError, KeyError, IndexError) as e:
+            logger.debug("Failed to parse lineup grid row: %s", e)
         return lineup
