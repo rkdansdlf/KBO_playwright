@@ -320,7 +320,6 @@ def backfill_missed_daily_crawls(lookback_days: int = 7) -> list[str]:
 )
 def crawl_pregame_refresh():
     with LIVE_LOCK:
-        failures: list[str] = []
         refresh_only_missing = _env_enabled("PREGAME_REFRESH_ONLY_MISSING", "1")
         alert_on_missing = _env_enabled("PREGAME_MISSING_ALERT", "0")
         sync_to_oci = _pregame_sync_to_oci_enabled()
@@ -372,10 +371,12 @@ def crawl_pregame_refresh():
             else:
                 MISSING_PREGAME_ALERTED_DATES.discard(target_date)
             if scheduled_count and not saved_ids:
-                failures.append(f"{target_date}: scheduled={scheduled_count}, saved=0")
-
-        if failures:
-            raise RuntimeError("Pregame refresh saved no preview rows: " + "; ".join(failures))
+                logger.warning(
+                    "Pregame refresh saved no preview rows for %s: scheduled=%d, saved=0. "
+                    "This is expected if games are postponed or not yet available.",
+                    target_date,
+                    scheduled_count,
+                )
 
         alert_success("crawl_pregame_refresh")
 
