@@ -38,7 +38,7 @@ class TeamStatAggregator:
         return 0
 
     @staticmethod
-    def aggregate_team_batting(session: Session, year: int, league: str = "REGULAR") -> list[dict[str, Any]]:
+    def aggregate_team_batting(session: Session, year: int, league: str = "REGULAR", **kwargs) -> list[dict[str, Any]]:
         """
         Aggregate batting stats for all teams in a given season/league.
         """
@@ -110,7 +110,7 @@ class TeamStatAggregator:
         return results
 
     @staticmethod
-    def aggregate_team_pitching(session: Session, year: int, league: str = "REGULAR") -> list[dict[str, Any]]:
+    def aggregate_team_pitching(session: Session, year: int, league: str = "REGULAR", **kwargs) -> list[dict[str, Any]]:
         """
         Aggregate pitching stats for all teams in a given season/league.
         """
