@@ -218,6 +218,16 @@ class PlayerIdResolver:
         if not player_name:
             return None
 
+        # Standardize team_code to database canonical code (e.g. SK -> SSG, WO/NX -> KH)
+        canonical_team_map = {
+            "SK": "SSG",
+            "WO": "KH",
+            "NX": "KH",
+            "HT": "KIA",
+        }
+        if team_code in canonical_team_map:
+            team_code = canonical_team_map[team_code]
+
         # Static overrides to resolve ambiguity/discrepancies in historical data
         overrides = {
             ("전준호", "HU", 2001, False): 91511,
@@ -292,6 +302,22 @@ class PlayerIdResolver:
             # 2018 Season Nexen unresolved player
             ("김태혁", "NX", 2018, True): 76430,
             ("김태혁", "NX", 2018, False): 76430,
+            # 2026 Season Kiwoom/SSG unresolved active players
+            ("이주형", "KH", 2026, False): 50167,
+            ("이주형", "KH", 2026, True): 50167,
+            ("이주형", "KH", 2026, None): 50167,
+            ("양현종", "KH", 2026, False): 55370,
+            ("양현종", "KH", 2026, True): 55370,
+            ("양현종", "KH", 2026, None): 55370,
+            ("브룩스", "KH", 2026, False): 56322,
+            ("브룩스", "KH", 2026, True): 56322,
+            ("브룩스", "KH", 2026, None): 56322,
+            ("정다훈", "KH", 2026, True): 56345,
+            ("정다훈", "KH", 2026, False): 56345,
+            ("정다훈", "KH", 2026, None): 56345,
+            ("타케다", "SSG", 2026, True): 56823,
+            ("타케다", "SSG", 2026, False): 56823,
+            ("타케다", "SSG", 2026, None): 56823,
         }
 
         override_key = (player_name, team_code, season, is_pitcher)
@@ -308,6 +334,16 @@ class PlayerIdResolver:
             resolved_id = overrides[override_key_no_pitcher]
             print(f"   [OVERRIDE RESOLVED (relaxed)] {player_name} ({team_code}, {season}) -> {resolved_id}")
             return resolved_id
+
+        # 2026 Season Samsung Lee Seung-hyun disambiguation
+        if player_name == "이승현" and team_code == "SS" and season == 2026 and is_pitcher is True:
+            if uniform_no == "57":
+                return 51454  # Left-handed pitcher
+            elif uniform_no in ("20", "26"):
+                return 60146  # Right-handed pitcher
+            elif not uniform_no:
+                # Default to 60146 (right-handed) as he pitched in 22 games while 51454 pitched only 3 games.
+                return 60146
 
         if player_name in self.NAME_ALIASES:
             player_name = self.NAME_ALIASES[player_name]
