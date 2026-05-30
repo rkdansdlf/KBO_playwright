@@ -13,6 +13,7 @@ Jobs:
  9. crawl_live_refresh: Every 2m, 12:00-23:30 KST
 10. crawl_futures_profile: Weekly Sunday at 05:00 KST
 11. compute_park_factor: Weekly Sunday at 05:30 KST
+12. crawl_retired_players: Monthly 1st at 02:00 KST (crawl_retire)
 """
 
 from __future__ import annotations
@@ -43,6 +44,7 @@ from sqlalchemy import text
 from tenacity import retry, stop_after_attempt, wait_exponential
 
 from src.cli.crawl_futures import main as crawl_futures_main
+from src.cli.crawl_retire import main as crawl_retire_main
 from src.cli.daily_preview_batch import run_preview_batch
 from src.cli.live_crawler import run_live_crawler_cycle
 from src.cli.run_daily_update import format_stability_alert_summary
@@ -430,6 +432,52 @@ def crawl_all_futures_profiles():
             raise
 
 
+@retry(
+    stop=stop_after_attempt(3),
+    wait=wait_exponential(multiplier=1, min=120, max=600),
+    retry_error_callback=alert_failure,
+)
+def crawl_retired_players_job(limit: int | None = None):
+    """
+    Monthly job: Crawl retired/inactive player statistics.
+
+    Runs on the 1st of every month at 02:00 KST.
+    Uses exponential backoff retry on failures (3 attempts max).
+    """
+    with MAINTENANCE_LOCK:
+        logger.info("=== Starting Monthly Retired Player Crawl ===")
+
+        try:
+            current_year = datetime.now(KST).year
+            start_year = 1982
+            end_year = current_year - 1
+
+            logger.info("Crawling retired players from %d to %d (active_year=%d)", start_year, end_year, current_year)
+            args = [
+                "--start-year",
+                str(start_year),
+                "--end-year",
+                str(end_year),
+                "--active-year",
+                str(current_year),
+                "--concurrency",
+                "2",
+                "--delay",
+                "2.0",
+            ]
+            if limit is not None:
+                args.extend(["--limit", str(limit)])
+
+            crawl_retire_main(args)
+
+            logger.info("=== Monthly Retired Player Crawl Completed Successfully ===")
+            alert_success("crawl_retired_players_job")
+
+        except Exception as e:
+            logger.error(f"Retired player crawl attempt failed: {e}")
+            raise
+
+
 def build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="APScheduler for KBO daily/futures jobs")
     parser.add_argument(
@@ -441,6 +489,17 @@ def build_arg_parser() -> argparse.ArgumentParser:
         "--run-pregame-once",
         action="store_true",
         help="Run only one pregame refresh job immediately and exit.",
+    )
+    parser.add_argument(
+        "--run-retire-once",
+        action="store_true",
+        help="Run only one retired player crawl job immediately and exit.",
+    )
+    parser.add_argument(
+        "--limit",
+        type=int,
+        default=None,
+        help="Limit number of players for run-retire-once (useful for testing).",
     )
     parser.add_argument(
         "--no-startup-run",
@@ -605,6 +664,9 @@ def main(argv: Sequence[str] | None = None):
     if args.run_pregame_once:
         crawl_pregame_refresh()
         return
+    if args.run_retire_once:
+        crawl_retired_players_job(limit=args.limit)
+        return
 
     scheduler = BlockingScheduler(timezone="Asia/Seoul")
     scheduler.add_listener(job_error_listener, EVENT_JOB_ERROR)
@@ -708,6 +770,17 @@ def main(argv: Sequence[str] | None = None):
     )
     logger.info("Registered job: compute_park_factor (Weekly Sunday 05:30 KST)")
 
+    # Job 2.6: Monthly Retired Player Crawl (1st of every month at 02:00 KST)
+    scheduler.add_job(
+        crawl_retired_players_job,
+        trigger=CronTrigger(day=1, hour=2, minute=0),
+        id="crawl_retired_players",
+        name="Monthly Retired Player Crawl",
+        misfire_grace_time=7200,
+        max_instances=1,
+    )
+    logger.info("Registered job: crawl_retired_players (Monthly 1st 02:00 KST)")
+
     scheduler.add_job(
         crawl_pregame_refresh,
         trigger=CronTrigger(hour="10-23", minute="*/15"),
@@ -770,6 +843,7 @@ def main(argv: Sequence[str] | None = None):
     print("  9. Live Refresh: Every 2 minutes, 12:00-23:30 KST")
     print(" 10. Futures Profile Sync: Every Sunday at 05:00 KST")
     print(" 11. Park Factor Computation: Every Sunday at 05:30 KST")
+    print(" 12. Retired Player Crawl: 1st of every month at 02:00 KST")
     print("=" * 60 + "\n")
 
     logger.info("Scheduler started successfully")
