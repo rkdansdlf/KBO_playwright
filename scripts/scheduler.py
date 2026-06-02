@@ -6,20 +6,25 @@ Jobs:
  2. compute_standings: Daily at 03:30 KST (standings + home/away + trends)
  3. aggregate_team_defense: Daily at 03:45 KST (fielding/baserunning)
  4. compute_rankings: Daily at 04:00 KST (sabermetric rankings)
- 5. sync_from_oci: Daily at 05:00 KST (OCI hydration)
- 6. generate_quality_report: Daily at 05:15 KST
- 7. crawl_phase1_extra: Daily at 06:00 KST (broadcast, MVP, injury, etc.)
- 8. crawl_pregame_refresh: Every 15m, 10:00-23:45 KST
- 9. crawl_live_refresh: Every 2m, 12:00-23:30 KST
-10. crawl_futures_profile: Weekly Sunday at 05:00 KST
-11. compute_park_factor: Weekly Sunday at 05:30 KST
-12. crawl_retired_players: Monthly 1st at 02:00 KST (crawl_retire)
+ 5. heal_unverified_pbp: Daily at 04:30 KST (PBP auto-healer)
+  6. batch_parse_snapshots: Daily at 04:45 KST (parse pending raw snapshots)
+  7. sync_from_oci: Daily at 05:00 KST (OCI hydration)
+  8. generate_quality_report: Daily at 05:15 KST
+ 8. crawl_phase1_extra: Daily at 06:00 KST (broadcast, MVP, injury, etc.)
+ 9. crawl_pregame_refresh: Every 15m, 10:00-23:45 KST
+10. crawl_live_refresh: Every 2m, 12:00-23:30 KST
+11. crawl_futures_profile: Weekly Sunday at 05:00 KST
+12. compute_park_factor: Weekly Sunday at 05:30 KST
+ 13. crawl_retired_players: Monthly 1st at 02:00 KST (crawl_retire)
+ 14. crawl_p1p2_data: Daily at 06:30 KST (seat + parking + food crawlers)
+ 15. monitor_data_freshness: Daily at 07:00 KST (stale source + table completeness)
 """
 
 from __future__ import annotations
 
 import argparse
 import asyncio
+import json
 import logging
 import os
 import sys
@@ -73,6 +78,18 @@ DAILY_LOCK = Lock()  # For daily update/finalize
 MAINTENANCE_LOCK = Lock()  # For weekly futures sync and OCI hydration/reports
 
 MISSING_PREGAME_ALERTED_DATES: set[str] = set()
+
+
+def _live_refresh_max_games_per_cycle() -> int | None:
+    raw_value = os.getenv("LIVE_REFRESH_MAX_GAMES_PER_CYCLE", "1").strip().lower()
+    if raw_value in FALSE_ENV_VALUES or raw_value == "all":
+        return None
+    try:
+        max_games = int(raw_value)
+    except ValueError:
+        logger.warning("Invalid LIVE_REFRESH_MAX_GAMES_PER_CYCLE=%r; defaulting to 1", raw_value)
+        return 1
+    return max_games if max_games > 0 else None
 
 
 def alert_failure(retry_state):
@@ -186,20 +203,20 @@ def _pregame_refresh_summary(target_date: str) -> tuple[int, int, int]:
     query = text(
         """
         SELECT
-            COUNT(*) AS scheduled_total,
-            SUM(
-                CASE
-                    WHEN (g.away_pitcher IS NULL OR g.away_pitcher = '')
-                      OR (g.home_pitcher IS NULL OR g.home_pitcher = '')
-                    THEN 1 ELSE 0
-                END
-            ) AS starters_missing,
-            SUM(CASE WHEN p.game_id IS NULL THEN 1 ELSE 0 END) AS preview_missing
+            g.game_id,
+            g.away_pitcher,
+            g.home_pitcher,
+            p.detail_text AS preview_detail_text
         FROM game g
         LEFT JOIN (
-            SELECT DISTINCT game_id
-            FROM game_summary
-            WHERE summary_type = '프리뷰'
+            SELECT gs.game_id, gs.detail_text
+            FROM game_summary gs
+            JOIN (
+                SELECT game_id, MAX(id) AS id
+                FROM game_summary
+                WHERE summary_type = '프리뷰'
+                GROUP BY game_id
+            ) latest ON latest.id = gs.id
         ) p ON p.game_id = g.game_id
         WHERE UPPER(g.game_status) = 'SCHEDULED'
           AND REPLACE(CAST(g.game_date AS TEXT), '-', '') = :target_date
@@ -207,15 +224,34 @@ def _pregame_refresh_summary(target_date: str) -> tuple[int, int, int]:
     )
 
     with SessionLocal() as session:
-        row = session.execute(query, {"target_date": target_date}).first()
+        rows = session.execute(query, {"target_date": target_date}).all()
 
-    if row is None:
+    if not rows:
         return 0, 0, 0
 
-    return (
-        int(row.scheduled_total or 0),
-        int(row.starters_missing or 0),
-        int(row.preview_missing or 0),
+    scheduled_total = len(rows)
+    starters_missing = 0
+    preview_missing = 0
+    for row in rows:
+        if not str(row.away_pitcher or "").strip() or not str(row.home_pitcher or "").strip():
+            starters_missing += 1
+        if row.preview_detail_text is None or not _pregame_preview_detail_has_starters(row.preview_detail_text):
+            preview_missing += 1
+
+    return scheduled_total, starters_missing, preview_missing
+
+
+def _pregame_preview_detail_has_starters(detail_text: str | None) -> bool:
+    if not detail_text:
+        return False
+    try:
+        payload = json.loads(detail_text)
+    except (TypeError, json.JSONDecodeError):
+        return False
+    if not isinstance(payload, dict):
+        return False
+    return bool(str(payload.get("away_starter") or "").strip()) and bool(
+        str(payload.get("home_starter") or "").strip()
     )
 
 
@@ -267,6 +303,21 @@ def crawl_daily_games():
             if bool(os.getenv("OCI_DB_URL")):
                 logger.info("Enabling OCI sync for daily update")
                 args.append("--sync")
+
+            if _env_enabled("DAILY_SKIP_SEASON_STATS", "0"):
+                logger.info("Skipping season stat crawl for daily update (DAILY_SKIP_SEASON_STATS=1)")
+                args.append("--skip-season-stats")
+
+            if _env_enabled("DAILY_SKIP_OCI_SUPPORTING_SYNC", "0"):
+                logger.info("Skipping non-P0 OCI supporting sync for daily update (DAILY_SKIP_OCI_SUPPORTING_SYNC=1)")
+                args.append("--skip-oci-supporting-sync")
+
+            # Auto-remediation: fix stats discrepancies detected by the audit step
+            if _env_enabled("DAILY_AUTO_REMEDIATION", "1"):
+                logger.info("Auto-remediation enabled for daily update (DAILY_AUTO_REMEDIATION=1)")
+                args.append("--fix")
+            else:
+                logger.info("Auto-remediation disabled (DAILY_AUTO_REMEDIATION=0)")
 
             update_result = run_daily_update_main(args)
 
@@ -390,7 +441,7 @@ def crawl_live_refresh():
 
     with LIVE_LOCK:
         logger.info("Running live refresh cycle")
-        asyncio.run(run_live_crawler_cycle())
+        asyncio.run(run_live_crawler_cycle(max_active_games=_live_refresh_max_games_per_cycle()))
 
 
 @retry(
@@ -478,6 +529,62 @@ def crawl_retired_players_job(limit: int | None = None):
             raise
 
 
+@retry(
+    stop=stop_after_attempt(2),
+    wait=wait_exponential(multiplier=1, min=60, max=300),
+    retry_error_callback=alert_failure,
+)
+def crawl_p1p2_data_job():
+    """
+    P1/P2 Crawlers: seat sections, parking, stadium food.
+    Runs daily at 06:30 KST (after Phase 1 extra crawlers).
+    """
+    with DAILY_LOCK:
+        logger.info("=== Starting P1/P2 Data Crawlers ===")
+        try:
+            from src.cli.crawl_parking import main as parking_main
+            from src.cli.crawl_seat_sections import main as seat_main
+            from src.cli.crawl_stadium_food import main as food_main
+
+            logger.info("Running seat sections crawler...")
+            seat_main(["--save"])
+            logger.info("Running parking crawler...")
+            parking_main(["--save"])
+            logger.info("Running stadium food crawler...")
+            food_main(["--save"])
+            logger.info("=== P1/P2 Data Crawlers Completed Successfully ===")
+            alert_success("crawl_p1p2_data_job")
+        except Exception:
+            logger.exception("P1/P2 data crawlers failed")
+
+
+def monitor_data_freshness_job():
+    """
+    Data freshness monitor: check for stale DataSources and empty tables.
+    Runs daily at 07:00 KST (after all crawlers).
+    """
+    with MAINTENANCE_LOCK:
+        logger.info("=== Starting Data Freshness Monitor ===")
+        try:
+            from src.cli.monitor_data_freshness import run_monitor
+
+            result = run_monitor(alert=True)
+            stale = result.get("stale", [])
+            table_issues = result.get("table_issues", [])
+            p0_issues = result.get("p0_issues", [])
+            if stale or table_issues or p0_issues:
+                logger.warning(
+                    "Freshness issues: %d stale sources, %d table issues, %d P0 issues",
+                    len(stale),
+                    len(table_issues),
+                    len(p0_issues),
+                )
+            else:
+                logger.info("All data sources and tables healthy")
+        except Exception:
+            logger.exception("Data freshness monitor failed")
+
+
 def build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="APScheduler for KBO daily/futures jobs")
     parser.add_argument(
@@ -533,13 +640,39 @@ def generate_daily_report_job():
     Runs daily at 05:15 KST.
     """
     from src.cli.generate_quality_report import main as report_main
+    from src.monitoring.trend_tracker import TrendTracker
 
     with MAINTENANCE_LOCK:
         logger.info("=== Starting Daily Quality Report Generation ===")
         target_date = _previous_day_kst()
         # Run report and notify if issues found
         report_main(["--date", target_date, "--force-notify"])
+
+        # Detect metric degradation
+        try:
+            logger.info("=== Starting Trend Tracker Check ===")
+            tracker = TrendTracker()
+            tracker.send_degradation_alert(days=14)
+            logger.info("=== Trend Tracker Check Completed ===")
+        except Exception as e:
+            logger.exception("Failed to run TrendTracker alert: %s", e)
+
         logger.info("=== Daily Quality Report Generation Completed ===")
+
+
+def weekly_sla_report_job():
+    """
+    Weekly SLA report job: computes past 7 days SLA and alerts.
+    Runs weekly on Monday at 06:00 KST.
+    """
+    from src.monitoring.sla_tracker import SlaTracker
+
+    with MAINTENANCE_LOCK:
+        logger.info("=== Starting Weekly SLA Report Generation ===")
+        with SessionLocal() as session:
+            tracker = SlaTracker(session)
+            tracker.send_weekly_sla_report()
+        logger.info("=== Weekly SLA Report Generation Completed ===")
 
 
 def crawl_phase1_extra_job():
@@ -637,6 +770,62 @@ def compute_rankings_job():
             logger.exception("Rankings computation failed")
 
 
+@retry(
+    stop=stop_after_attempt(2),
+    wait=wait_exponential(multiplier=1, min=60, max=300),
+    retry_error_callback=alert_failure,
+)
+def batch_parse_snapshots_job():
+    """
+    Batch parser: process pending RawSourceSnapshot records.
+    Runs daily at 04:45 KST (after PBP healer, before OCI sync).
+    """
+    with MAINTENANCE_LOCK:
+        logger.info("=== Starting Batch Parse Snapshots ===")
+        try:
+            from scripts.batch_parse_snapshots import run_batch_parse
+
+            stats = run_batch_parse(limit=200)
+            logger.info(
+                "Batch parse completed: processed=%d, done=%d, failed=%d, skipped=%d",
+                stats["processed"],
+                stats["done"],
+                stats["failed"],
+                stats["skipped"],
+            )
+            if stats.get("failed", 0) > 0:
+                logger.warning("Batch parse had %d failures", stats["failed"])
+            alert_success(
+                "batch_parse_snapshots_job",
+                f"processed={stats['processed']}, done={stats['done']}, failed={stats['failed']}",
+            )
+        except Exception:
+            logger.exception("Batch parse snapshots job failed")
+
+
+def heal_unverified_pbp_job():
+    """
+    PBP Healer: scan for unverified PBP games and re-crawl from KBO official site.
+    Runs daily at 04:30 KST (after rankings, before OCI sync).
+    Uses MAINTENANCE_LOCK to avoid overlapping with other heavy jobs.
+    """
+    with MAINTENANCE_LOCK:
+        logger.info("=== Starting PBP Auto-Healer ===")
+        try:
+            import os
+
+            from src.cli.auto_healer import run_pbp_healer
+
+            lookback = os.getenv("PBP_HEALER_LOOKBACK_DAYS", "3")
+            exit_code = run_pbp_healer(["--lookback-days", lookback])
+            if exit_code == 0:
+                logger.info("=== PBP Auto-Healer Completed (no failures) ===")
+            else:
+                logger.warning("=== PBP Auto-Healer Completed with some failures (exit_code=%d) ===", exit_code)
+        except Exception:
+            logger.exception("PBP Auto-Healer job failed")
+
+
 def job_error_listener(event):
     """Listener for failed APScheduler jobs."""
     if event.exception:
@@ -682,7 +871,7 @@ def main(argv: Sequence[str] | None = None):
     )
     logger.info("Registered job: crawl_games_regular (Daily 03:00 KST)")
 
-    # Job 1.5: Sync from OCI (05:00 KST) - After GitHub Actions finish
+    # Job 1.6: Sync from OCI (05:00 KST) - After GitHub Actions finish
     scheduler.add_job(
         sync_from_oci_job,
         trigger=CronTrigger(hour=5, minute=0),
@@ -726,7 +915,29 @@ def main(argv: Sequence[str] | None = None):
     )
     logger.info("Registered job: compute_rankings (Daily 04:00 KST)")
 
-    # Job 1.8: Phase 1 Extra Crawlers (06:00 KST)
+    # Job 1.75: PBP Auto-Healer (04:30 KST)
+    scheduler.add_job(
+        heal_unverified_pbp_job,
+        trigger=CronTrigger(hour=4, minute=30),
+        id="heal_unverified_pbp",
+        name="PBP Auto-Healer (unverified re-crawl)",
+        misfire_grace_time=3600,
+        max_instances=1,
+    )
+    logger.info("Registered job: heal_unverified_pbp (Daily 04:30 KST)")
+
+    # Job 1.8: Batch Parse Snapshots (04:45 KST) — after PBP healer, before OCI sync
+    scheduler.add_job(
+        batch_parse_snapshots_job,
+        trigger=CronTrigger(hour=4, minute=45),
+        id="batch_parse_snapshots",
+        name="Batch Parse Pending Raw Snapshots",
+        misfire_grace_time=3600,
+        max_instances=1,
+    )
+    logger.info("Registered job: batch_parse_snapshots (Daily 04:45 KST)")
+
+    # Job 1.9: Phase 1 Extra Crawlers (06:00 KST)
     scheduler.add_job(
         crawl_phase1_extra_job,
         trigger=CronTrigger(hour=6, minute=0),
@@ -737,7 +948,29 @@ def main(argv: Sequence[str] | None = None):
     )
     logger.info("Registered job: crawl_phase1_extra (Daily 06:00 KST)")
 
-    # Job 1.9: Daily Quality Report (05:15 KST)
+    # Job 1.10: P1/P2 Data Crawlers (06:30 KST) — after Phase 1 extra
+    scheduler.add_job(
+        crawl_p1p2_data_job,
+        trigger=CronTrigger(hour=6, minute=30),
+        id="crawl_p1p2_data",
+        name="P1/P2 Seat/Parking/Food Crawlers",
+        misfire_grace_time=7200,
+        max_instances=1,
+    )
+    logger.info("Registered job: crawl_p1p2_data (Daily 06:30 KST)")
+
+    # Job 1.11: Data Freshness Monitor (07:00 KST) — after all crawlers
+    scheduler.add_job(
+        monitor_data_freshness_job,
+        trigger=CronTrigger(hour=7, minute=0),
+        id="monitor_data_freshness",
+        name="Data Freshness Monitor",
+        misfire_grace_time=3600,
+        max_instances=1,
+    )
+    logger.info("Registered job: monitor_data_freshness (Daily 07:00 KST)")
+
+    # Job 1.12: Daily Quality Report (05:15 KST)
     scheduler.add_job(
         generate_daily_report_job,
         trigger=CronTrigger(hour=5, minute=15),
@@ -747,6 +980,17 @@ def main(argv: Sequence[str] | None = None):
         max_instances=1,
     )
     logger.info("Registered job: generate_quality_report (Daily 05:15 KST)")
+
+    # Job 1.13: Weekly SLA Report (Monday 06:00 KST)
+    scheduler.add_job(
+        weekly_sla_report_job,
+        trigger=CronTrigger(day_of_week="mon", hour=6, minute=0),
+        id="weekly_sla_report",
+        name="Weekly SLA Report Generation",
+        misfire_grace_time=3600,
+        max_instances=1,
+    )
+    logger.info("Registered job: weekly_sla_report (Weekly Monday 06:00 KST)")
 
     # Job 2: Weekly Futures profile sync (Sunday 05:00 KST)
     scheduler.add_job(
@@ -836,14 +1080,19 @@ def main(argv: Sequence[str] | None = None):
     print("  2. Standings Computation: Every day at 03:30 KST")
     print("  3. Team Defense Aggregation: Every day at 03:45 KST")
     print("  4. Rankings Computation: Every day at 04:00 KST")
-    print("  5. OCI to Local Sync: Every day at 05:00 KST")
-    print("  6. Daily Quality Report: Every day at 05:15 KST")
-    print("  7. Phase 1 Extra Crawlers: Every day at 06:00 KST")
-    print("  8. Pregame Refresh: Every 15 minutes, 10:00-23:45 KST, today + lookahead")
-    print("  9. Live Refresh: Every 2 minutes, 12:00-23:30 KST")
-    print(" 10. Futures Profile Sync: Every Sunday at 05:00 KST")
-    print(" 11. Park Factor Computation: Every Sunday at 05:30 KST")
-    print(" 12. Retired Player Crawl: 1st of every month at 02:00 KST")
+    print("  5. PBP Auto-Healer: Every day at 04:30 KST")
+    print("  6. Batch Parse Snapshots: Every day at 04:45 KST")
+    print("  7. OCI to Local Sync: Every day at 05:00 KST")
+    print("  8. Daily Quality Report: Every day at 05:15 KST")
+    print("  9. Phase 1 Extra Crawlers: Every day at 06:00 KST")
+    print(" 10. P1/P2 Seat/Parking/Food: Every day at 06:30 KST")
+    print(" 11. Data Freshness Monitor: Every day at 07:00 KST")
+    print(" 12. Pregame Refresh: Every 15 minutes, 10:00-23:45 KST, today + lookahead")
+    print(" 13. Live Refresh: Every 2 minutes, 12:00-23:30 KST")
+    print(" 14. Futures Profile Sync: Every Sunday at 05:00 KST")
+    print(" 15. Park Factor Computation: Every Sunday at 05:30 KST")
+    print(" 16. Retired Player Crawl: 1st of every month at 02:00 KST")
+    print(" 17. Weekly SLA Report: Every Monday at 06:00 KST")
     print("=" * 60 + "\n")
 
     logger.info("Scheduler started successfully")
