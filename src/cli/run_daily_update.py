@@ -19,7 +19,7 @@ from pathlib import Path
 from typing import Any, Callable, Mapping, Sequence
 from zoneinfo import ZoneInfo
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 
 from src.cli.auto_healer import run_healer_async
 from src.crawlers.daily_roster_crawler import DailyRosterCrawler
@@ -27,9 +27,10 @@ from src.crawlers.game_detail_crawler import GameDetailCrawler
 from src.crawlers.player_batting_all_series_crawler import crawl_series_batting_stats
 from src.crawlers.player_movement_crawler import PlayerMovementCrawler
 from src.crawlers.player_pitching_all_series_crawler import crawl_pitcher_series
+from src.crawlers.roster_transaction_crawler import RosterTransactionCrawler
 from src.crawlers.schedule_crawler import ScheduleCrawler
 from src.db.engine import SessionLocal
-from src.models.game import Game, GamePlayByPlay
+from src.models.game import Game, GameEvent, GamePlayByPlay
 from src.repositories.game_repository import (
     GAME_STATUS_CANCELLED,
     GAME_STATUS_SCHEDULED,
@@ -46,6 +47,7 @@ from src.services.postgame_reconciliation_service import (
     format_reconciliation_report,
     reconcile_postgame_range,
 )
+from src.services.p0_readiness import build_p0_readiness, format_p0_readiness_summary
 from src.services.schedule_collection_service import save_schedule_games
 from src.sync.oci_sync import OCISync
 from src.utils.refresh_manifest import write_refresh_manifest
@@ -130,6 +132,8 @@ def _build_stability_summary(
     relay_recovery_target_ids: Sequence[str],
     oci_skip_counts: Mapping[str, int],
     oci_skip_game_ids: Mapping[str, list[str]],
+    non_p0_quality_gate_counts: Mapping[str, int],
+    non_p0_quality_gate_ids: Mapping[str, list[str]],
     summary_path: Path,
 ) -> dict[str, Any]:
     detail_retry_candidates = sorted(
@@ -161,6 +165,12 @@ def _build_stability_summary(
             "skip_counts": dict(sorted(oci_skip_counts.items())),
             "skip_game_ids": {reason: sorted(set(game_ids)) for reason, game_ids in sorted(oci_skip_game_ids.items())},
         },
+        "quality_gates": {
+            "non_p0_failure_counts": dict(sorted(non_p0_quality_gate_counts.items())),
+            "non_p0_failure_ids": {
+                reason: sorted(set(ids)) for reason, ids in sorted(non_p0_quality_gate_ids.items())
+            },
+        },
         "retry_candidates": {
             "detail": detail_retry_candidates,
             "relay": relay_retry_candidates,
@@ -173,6 +183,7 @@ def _write_daily_update_summary(
     *,
     target_date: str,
     stability: Mapping[str, Any],
+    p0_readiness: Mapping[str, Any],
     manifest_path: Path | str,
     summary_path: Path,
 ) -> Path:
@@ -183,6 +194,7 @@ def _write_daily_update_summary(
         "generated_at": datetime.now(KST).isoformat(),
         "manifest_path": str(manifest_path),
         "stability": dict(stability),
+        "p0_readiness": dict(p0_readiness),
     }
     summary_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
     return summary_path
@@ -198,15 +210,19 @@ def format_stability_alert_summary(result: object) -> str | None:
     detail = stability.get("detail") if isinstance(stability.get("detail"), dict) else {}
     relay = stability.get("relay") if isinstance(stability.get("relay"), dict) else {}
     oci = stability.get("oci") if isinstance(stability.get("oci"), dict) else {}
+    quality_gates = stability.get("quality_gates") if isinstance(stability.get("quality_gates"), dict) else {}
     detail_counts = detail.get("failure_counts") if isinstance(detail, dict) else {}
     oci_counts = oci.get("skip_counts") if isinstance(oci, dict) else {}
+    non_p0_counts = quality_gates.get("non_p0_failure_counts") if isinstance(quality_gates, dict) else {}
     relay_targets = relay.get("target_count", 0) if isinstance(relay, dict) else 0
 
     return (
         f"target_date={result.get('target_date', 'unknown')} "
         f"detail_failures={_format_counts(detail_counts if isinstance(detail_counts, dict) else {})} "
         f"relay_targets={relay_targets} "
-        f"oci_skips={_format_counts(oci_counts if isinstance(oci_counts, dict) else {})}"
+        f"oci_skips={_format_counts(oci_counts if isinstance(oci_counts, dict) else {})} "
+        f"non_p0_quality_gates={_format_counts(non_p0_counts if isinstance(non_p0_counts, dict) else {})} "
+        f"{format_p0_readiness_summary(result.get('p0_readiness'))}"
     )
 
 
@@ -277,8 +293,12 @@ async def run_update(
     run_auto_healer: bool = True,
     run_postgame_reconciliation: bool = True,
     postgame_reconcile_lookback_days: int = 3,
+    fix: bool = False,
+    skip_season_stats: bool = False,
+    skip_oci_supporting_sync: bool = False,
 ):
     """Main orchestration logic for postgame finalize and daily reconciliation."""
+    global run_healer_async
     runner = step_runner or _run_python_step
 
     print(f"\n{'=' * 60}")
@@ -296,6 +316,8 @@ async def run_update(
     relay_recovery_target_ids: set[str] = set()
     oci_skip_counts: dict[str, int] = {}
     oci_skip_game_ids: dict[str, list[str]] = {}
+    non_p0_quality_gate_counts: dict[str, int] = {}
+    non_p0_quality_gate_ids: dict[str, list[str]] = {}
     status_refresh_game_ids: list[str] = []
     write_contract = GameWriteContract(run_label=f"daily_update:{target_date}", log=print)
 
@@ -489,19 +511,42 @@ async def run_update(
         with SessionLocal() as session:
             thirty_days_ago = datetime.now(KST).date() - timedelta(days=30)
 
-            # Find games that are completed but have 0 PBP rows
+            valid_wpa_event_ids = (
+                select(GameEvent.game_id)
+                .where(
+                    GameEvent.wpa.isnot(None),
+                    GameEvent.win_expectancy_before.isnot(None),
+                    GameEvent.win_expectancy_after.isnot(None),
+                    GameEvent.home_score.isnot(None),
+                    GameEvent.away_score.isnot(None),
+                    GameEvent.outs.isnot(None),
+                    or_(GameEvent.base_state.isnot(None), GameEvent.bases_after.isnot(None)),
+                )
+                .distinct()
+            )
+
+            # Find completed games missing PBP, event rows, or WPA-backed event state.
             stmt = (
                 select(Game.game_id)
                 .where(Game.game_date >= thirty_days_ago, Game.game_status.in_(["COMPLETED", "DRAW"]))
-                .where(~Game.game_id.in_(select(GamePlayByPlay.game_id).distinct()))
+                .where(
+                    or_(
+                        ~Game.game_id.in_(select(GamePlayByPlay.game_id).distinct()),
+                        ~Game.game_id.in_(select(GameEvent.game_id).distinct()),
+                        ~Game.game_id.in_(valid_wpa_event_ids),
+                    )
+                )
             )
-            missing_pbp_game_ids = session.execute(stmt).scalars().all()
+            missing_relay_game_ids = session.execute(stmt).scalars().all()
 
-            if missing_pbp_game_ids:
-                print(f"   ⚠️ Found {len(missing_pbp_game_ids)} games missing PBP data. Attempting recovery...")
+            if missing_relay_game_ids:
+                print(
+                    f"   ⚠️ Found {len(missing_relay_game_ids)} games missing PBP/event/WPA data. "
+                    "Attempting recovery..."
+                )
                 # Filter out ones already in relay_recovery_target_ids to avoid redundant runs
                 # (though fetch_kbo_pbp handles it, cleaner to show accurate count here)
-                to_recover = [gid for gid in missing_pbp_game_ids if gid not in relay_recovery_target_ids]
+                to_recover = [gid for gid in missing_relay_game_ids if gid not in relay_recovery_target_ids]
                 if to_recover:
                     runner(
                         [
@@ -517,7 +562,7 @@ async def run_update(
                 else:
                     print("   ℹ️ Missing games already covered in Step 4")
             else:
-                print("   ✅ No missing PBP data detected in recent games")
+                print("   ✅ No missing PBP/event/WPA data detected in recent games")
     except Exception:
         logger.exception("   ❌ Error in proactive relay recovery")
 
@@ -544,36 +589,39 @@ async def run_update(
         logger.exception("   ❌ Error generating game stories")
 
     print("\n📈 Step 6: Updating cumulative player stats...")
-    # Identify unique season types from today's games
-    active_series = sorted({g.get("season_type", "regular") for g in daily_games if g.get("season_type")})
-    if not active_series:
-        active_series = ["regular"]  # Fallback
+    if skip_season_stats:
+        print("   ⏭️ Season stats update skipped by operator flag")
+    else:
+        # Identify unique season types from today's games
+        active_series = sorted({g.get("season_type", "regular") for g in daily_games if g.get("season_type")})
+        if not active_series:
+            active_series = ["regular"]  # Fallback
 
-    print(f"   🔍 Active series detected: {active_series}")
+        print(f"   🔍 Active series detected: {active_series}")
 
-    try:
-        for series_key in active_series:
-            print(f"   [{series_key}] Updating Batting Stats...")
-            await asyncio.to_thread(
-                crawl_series_batting_stats,
-                year=year,
-                series_key=series_key,
-                save_to_db=True,
-                headless=headless,
-                limit=limit,
-            )
-            print(f"   [{series_key}] Updating Pitching Stats...")
-            await asyncio.to_thread(
-                crawl_pitcher_series,
-                year=year,
-                series_key=series_key,
-                save_to_db=True,
-                headless=headless,
-                limit=limit,
-            )
-        print(f"   ✅ Local cumulative stats for {year} {active_series} series updated")
-    except Exception:
-        logger.exception("   ❌ Error during stats update")
+        try:
+            for series_key in active_series:
+                print(f"   [{series_key}] Updating Batting Stats...")
+                await asyncio.to_thread(
+                    crawl_series_batting_stats,
+                    year=year,
+                    series_key=series_key,
+                    save_to_db=True,
+                    headless=headless,
+                    limit=limit,
+                )
+                print(f"   [{series_key}] Updating Pitching Stats...")
+                await asyncio.to_thread(
+                    crawl_pitcher_series,
+                    year=year,
+                    series_key=series_key,
+                    save_to_db=True,
+                    headless=headless,
+                    limit=limit,
+                )
+            print(f"   ✅ Local cumulative stats for {year} {active_series} series updated")
+        except Exception:
+            logger.exception("   ❌ Error during stats update")
 
     print("\n🩹 Step 6.5: Backfilling starting pitchers from stats...")
     try:
@@ -594,7 +642,10 @@ async def run_update(
 
     print("\n🕵️  Step 6.6: Auditing season stats vs transactional details (Auto-remediation)...")
     try:
-        runner(["scripts/verification/audit_fallback_stats.py", "--year", str(year), "--type", "all", "--fix"])
+        audit_cmd = ["scripts/verification/audit_fallback_stats.py", "--year", str(year), "--type", "all"]
+        if fix:
+            audit_cmd.append("--fix")
+        runner(audit_cmd)
         print("   ✅ Statistical audit and auto-remediation complete")
     except Exception:
         logger.exception("   ⚠️ Statistical audit/fix found issues (see logs)")
@@ -616,6 +667,10 @@ async def run_update(
                 r_repo = TeamRepository(session)
                 r_count = r_repo.save_daily_rosters(rosters)
                 print(f"   ✅ Saved {r_count} daily roster records for {r_target_date}")
+
+        rt_crawler = RosterTransactionCrawler()
+        roster_transactions = await rt_crawler.run(save=True, target_date=r_target_date)
+        print(f"   ✅ Roster transactions checked for {r_target_date}: {len(roster_transactions)} rows")
     except Exception:
         logger.exception("   ❌ Error updating player movements/rosters")
 
@@ -718,7 +773,10 @@ async def run_update(
             runner(["-m", "src.cli.quality_gate_check", "--year", str(year)])
             print("   ✅ Statistical quality gate passed")
         except subprocess.CalledProcessError as exc:
-            print(f"   ⚠️ Statistical quality gate failed (continuing OCI game publish): {exc}")
+            reason = "non_p0_statistical_quality_gate_failed"
+            non_p0_quality_gate_counts[reason] = non_p0_quality_gate_counts.get(reason, 0) + 1
+            non_p0_quality_gate_ids.setdefault(reason, []).append(f"season:{year}")
+            print(f"   ⚠️ Non-P0 statistical quality gate failed (continuing OCI game publish): {exc}")
 
         print("\n☁️ Step 13: Synchronizing to OCI...")
         oci_url = os.getenv("OCI_DB_URL")
@@ -738,17 +796,30 @@ async def run_update(
                     sync_result = syncer.sync_specific_game(game_id)
                     _merge_oci_skip_summary(oci_skip_counts, oci_skip_game_ids, sync_result, game_id)
 
-                # 2. Sync all parent games for the year (to ensure future schedules are pushed)
-                # This fixes the issue where D+1 games are present locally but missing in OCI.
-                syncer.sync_games(filters=[Game.game_id.like(f"{year}%")])
-
-                syncer.sync_standings(year=year)
-                syncer.sync_matchups(year=year)
-                syncer.sync_stat_rankings(year=year)
-                syncer.sync_player_season_batting(year=year)
-                syncer.sync_player_season_pitching(year=year)
-                syncer.sync_player_movements()
-                syncer.sync_daily_rosters()
+                if skip_oci_supporting_sync:
+                    oci_skip_counts["oci_supporting_sync_skipped"] = (
+                        oci_skip_counts.get("oci_supporting_sync_skipped", 0) + 1
+                    )
+                    oci_skip_game_ids.setdefault("oci_supporting_sync_skipped", []).append(f"season:{year}")
+                    print("   ⏭️ Non-P0 OCI supporting dataset sync skipped by operator flag")
+                else:
+                    try:
+                        # 2. Sync year-level supporting datasets after P0 game publish.
+                        syncer.sync_games(filters=[Game.game_id.like(f"{year}%")])
+                        syncer.sync_standings(year=year)
+                        syncer.sync_matchups(year=year)
+                        syncer.sync_stat_rankings(year=year)
+                        syncer.sync_player_season_batting(year=year)
+                        syncer.sync_player_season_pitching(year=year)
+                        syncer.sync_player_movements()
+                        syncer.sync_daily_rosters(start_date=r_target_date, end_date=r_target_date)
+                    except Exception:
+                        logger.exception("   ⚠️ Non-P0 OCI supporting dataset sync failed")
+                        oci_skip_counts["non_p0_supporting_sync_failed"] = (
+                            oci_skip_counts.get("non_p0_supporting_sync_failed", 0) + 1
+                        )
+                        oci_skip_game_ids.setdefault("non_p0_supporting_sync_failed", []).append(f"season:{year}")
+                        print("   ⚠️ Non-P0 OCI supporting dataset sync failed; continuing P0 summary generation")
                 print("   ✅ OCI synchronization completed")
                 if oci_skip_counts:
                     print(f"   ℹ️ OCI skip summary: {_format_counts(oci_skip_counts)}")
@@ -767,7 +838,10 @@ async def run_update(
             runner(["scripts/maintenance/quality_gate.py"])
             print("   ✅ OCI parity check complete")
         except subprocess.CalledProcessError as exc:
-            print(f"   ⚠️ OCI parity check found mismatches (see logs): {exc}")
+            reason = "non_p0_oci_parity_quality_gate_failed"
+            non_p0_quality_gate_counts[reason] = non_p0_quality_gate_counts.get(reason, 0) + 1
+            non_p0_quality_gate_ids.setdefault(reason, []).append("oci")
+            print(f"   ⚠️ Non-P0 OCI parity quality gate found mismatches (see logs): {exc}")
 
     if seed_tomorrow_preview:
         tomorrow_date = (datetime.strptime(target_date, "%Y%m%d") + timedelta(days=1)).strftime("%Y%m%d")
@@ -788,8 +862,43 @@ async def run_update(
         relay_recovery_target_ids=sorted(relay_recovery_target_ids),
         oci_skip_counts=oci_skip_counts,
         oci_skip_game_ids=oci_skip_game_ids,
+        non_p0_quality_gate_counts=non_p0_quality_gate_counts,
+        non_p0_quality_gate_ids=non_p0_quality_gate_ids,
         summary_path=summary_path,
     )
+    try:
+        with SessionLocal() as p0_session:
+            p0_readiness = build_p0_readiness(
+                p0_session,
+                target_date=target_date,
+                lookback_days=0,
+                lookahead_days=0,
+                oci_skip_counts=oci_skip_counts,
+                oci_skip_game_ids=oci_skip_game_ids,
+            )
+    except Exception:
+        logger.exception("   ❌ Error building P0 readiness summary")
+        p0_readiness = {
+            "target_date": target_date,
+            "schedule": {},
+            "pregame": {},
+            "live": {},
+            "postgame": {},
+            "relay": {},
+            "roster": {},
+            "broadcast": {},
+            "oci": {"skip_counts": dict(oci_skip_counts), "skip_game_ids": dict(oci_skip_game_ids)},
+            "failures": [
+                {
+                    "dataset": "p0_readiness",
+                    "game_id": None,
+                    "game_date": target_date,
+                    "reason": "readiness_build_failed",
+                    "severity": "critical",
+                }
+            ],
+            "summary": {"ok": False, "failure_count": 1, "critical_failure_count": 1, "warning_count": 0},
+        }
 
     manifest_path = write_refresh_manifest(
         phase="postgame_finalize",
@@ -812,6 +921,7 @@ async def run_update(
     _write_daily_update_summary(
         target_date=target_date,
         stability=stability_summary,
+        p0_readiness=p0_readiness,
         manifest_path=manifest_path,
         summary_path=summary_path,
     )
@@ -821,8 +931,10 @@ async def run_update(
         "🔎 Stability summary: "
         f"detail_failures={_format_counts(detail_failure_counts)} "
         f"relay_targets={len(relay_recovery_target_ids)} "
-        f"oci_skips={_format_counts(oci_skip_counts)}"
+        f"oci_skips={_format_counts(oci_skip_counts)} "
+        f"non_p0_quality_gates={_format_counts(non_p0_quality_gate_counts)}"
     )
+    print(f"🎯 P0 readiness: {format_p0_readiness_summary(p0_readiness)}")
 
     print("\n📣 Step 14: PBP Recovery Alerting...")
     if relay_recovery_target_ids:
@@ -930,6 +1042,7 @@ async def run_update(
         "manifest_path": str(manifest_path),
         "summary_path": str(summary_path),
         "stability": stability_summary,
+        "p0_readiness": p0_readiness,
     }
 
 
@@ -988,6 +1101,21 @@ def build_arg_parser() -> argparse.ArgumentParser:
         default=3,
         help="Number of days before --date to revisit for started-game reconciliation.",
     )
+    parser.add_argument(
+        "--fix",
+        action="store_true",
+        help="Enable auto-remediation (self-healing) during season stats audit",
+    )
+    parser.add_argument(
+        "--skip-season-stats",
+        action="store_true",
+        help="Skip cumulative season stat crawling for scoped P0 recovery/finalize runs.",
+    )
+    parser.add_argument(
+        "--skip-oci-supporting-sync",
+        action="store_true",
+        help="Skip year-level non-P0 OCI supporting dataset sync after targeted game publish.",
+    )
     return parser
 
 
@@ -1013,6 +1141,9 @@ def main(argv: Sequence[str] | None = None):
             run_auto_healer=not args.skip_auto_healer,
             run_postgame_reconciliation=not args.skip_postgame_reconciliation,
             postgame_reconcile_lookback_days=args.postgame_reconcile_lookback_days,
+            fix=args.fix or os.getenv("DAILY_AUTO_REMEDIATION", "0") == "1",
+            skip_season_stats=args.skip_season_stats,
+            skip_oci_supporting_sync=args.skip_oci_supporting_sync,
         )
     )
 
