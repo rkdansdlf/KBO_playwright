@@ -247,8 +247,11 @@ def test_parse_naver_payload_splits_raw_pbp_from_result_events():
 
     assert [event["description"] for event in payload["events"]] == ["박성한 : 중견수 플라이 아웃"]
     assert payload["events"][0]["event_type"] == "batting"
-    assert len(payload["raw_pbp_rows"]) == 7
+    assert len(payload["raw_pbp_rows"]) == 8
     assert "=====================================" in [row["play_description"] for row in payload["raw_pbp_rows"]]
+    assert "9회 말" in [
+        row["play_description"] for row in payload["raw_pbp_rows"] if row["event_type"] == "inning_header"
+    ]
 
 
 def test_parse_naver_payload_promotes_scoring_runner_homein_rows():
@@ -402,7 +405,10 @@ def test_parse_naver_payload_keeps_all_batter_segments_in_chronological_order():
         "홈타자 : 유격수 땅볼 아웃",
     ]
     assert [event["inning_half"] for event in payload["events"]] == ["top", "top", "bottom", "bottom"]
-    assert len(payload["raw_pbp_rows"]) == 6
+    assert len(payload["raw_pbp_rows"]) == 12
+    header_titles = [row["play_description"] for row in payload["raw_pbp_rows"] if row["event_type"] == "inning_header"]
+    assert len(header_titles) == 6
+    assert all(t for t in header_titles)
 
 
 def test_fetch_text_relays_handles_null_result_payload(monkeypatch):
@@ -495,3 +501,71 @@ def test_match_schedule_game_uses_doubleheader_number():
 
     assert matched is not None
     assert matched["gameId"] == "77770401LGSS12025"
+
+
+def test_match_schedule_game_doubleheader_mismatch_penalty():
+    crawler = RelayCrawler(policy=_FakePolicy())
+    games = [
+        {"gameId": "77770401LGSS12025", "awayTeamCode": "LG", "homeTeamCode": "SS", "doubleHeader": "1"},
+    ]
+    # We want game with DH number 0, but games only has doubleheader 1
+    matched = crawler._match_schedule_game("20250401LGSS0", games)
+    assert matched is None  # Should be rejected due to heavy doubleheader penalty
+
+
+def test_match_schedule_game_stadium_and_start_time_matching():
+    crawler = RelayCrawler(policy=_FakePolicy())
+    games = [
+        {
+            "gameId": "77770401LGSS02025",
+            "awayTeamCode": "LG",
+            "homeTeamCode": "SS",
+            "stadiumName": "인천 SSG 랜더스필드",
+            "gameStartTime": "18:30",
+        },
+        {
+            "gameId": "99990401LGSS02025",
+            "awayTeamCode": "LG",
+            "homeTeamCode": "SS",
+            "stadiumName": "잠실",
+            "gameStartTime": "14:00",
+        },
+    ]
+
+    # Test stadium synonym match and exact time match
+    matched_landers = crawler._match_schedule_game("20250401LGSS0", games, stadium="문학", game_time="18:30")
+    assert matched_landers is not None
+    assert matched_landers["gameId"] == "77770401LGSS02025"
+
+    # Test other stadium match
+    matched_jamsil = crawler._match_schedule_game("20250401LGSS0", games, stadium="잠실", game_time="14:00")
+    assert matched_jamsil is not None
+    assert matched_jamsil["gameId"] == "99990401LGSS02025"
+
+
+def test_match_schedule_game_doubleheader_boolean_normalization():
+    crawler = RelayCrawler(policy=_FakePolicy())
+    games = [
+        {
+            "gameId": "77770401LGSS12025",
+            "awayTeamCode": "LG",
+            "homeTeamCode": "SS",
+            "doubleHeader": True,
+            "gameStartTime": "14:00",
+        },
+        {
+            "gameId": "77770401LGSS22025",
+            "awayTeamCode": "LG",
+            "homeTeamCode": "SS",
+            "doubleHeader": True,
+            "gameStartTime": "18:30",
+        },
+    ]
+
+    matched_1 = crawler._match_schedule_game("20250401LGSS1", games)
+    assert matched_1 is not None
+    assert matched_1["gameId"] == "77770401LGSS12025"
+
+    matched_2 = crawler._match_schedule_game("20250401LGSS2", games)
+    assert matched_2 is not None
+    assert matched_2["gameId"] == "77770401LGSS22025"

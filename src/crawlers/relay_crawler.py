@@ -5,6 +5,9 @@ Fetches play-by-play data from Naver Sports API instead of KBO website due to ac
 
 from __future__ import annotations
 
+import hashlib
+import json
+import logging
 import re
 from datetime import datetime, timedelta
 from typing import Any
@@ -12,15 +15,31 @@ from typing import Any
 import httpx
 
 from src.services.wpa_calculator import WPACalculator
+from src.services.wpa_transitions import apply_wpa_transitions, format_base_string
 from src.utils.compliance import compliance
 from src.utils.playwright_pool import AsyncPlaywrightPool
 from src.utils.relay_text import (
+    advance_pitch_count,
     detect_relay_event_type,
     is_relay_result_event_text,
 )
 from src.utils.request_policy import RequestPolicy
 from src.utils.safe_print import safe_print as print
 from src.utils.team_codes import normalize_kbo_game_id
+
+logger = logging.getLogger(__name__)
+
+PARSER_VERSION = "2026-05-31-v1"
+SOURCE_SCHEMA_VERSION = "naver-relay-v1"
+
+
+class _PermanentStatusError(Exception):
+    """Raised when the HTTP response indicates a permanent (non-retryable) error."""
+
+    def __init__(self, status_code: int):
+        self.status_code = status_code
+        super().__init__(f"permanent_http_{status_code}")
+
 
 KBO_TO_NAVER_TEAM_CODE = {
     "PA": "PN",  # Panama -> PN (Naver)
@@ -79,19 +98,28 @@ class RelayCrawler:
         year = kbo_game_id[:4]
         return f"{kbo_game_id}{year}"
 
-    def _schedule_query_context(self, kbo_game_id: str, query_date: str | None = None) -> dict[str, str]:
-        query_date_str = query_date or f"{kbo_game_id[:4]}-{kbo_game_id[4:6]}-{kbo_game_id[6:8]}"
-        if "20241110" <= kbo_game_id[:8] <= "20241124":
+    def _schedule_query_context(
+        self, kbo_game_id: str | None = None, *, query_date: str | None = None
+    ) -> dict[str, str]:
+        if kbo_game_id and len(kbo_game_id) >= 8:
+            date_part = kbo_game_id[:8]
+            year_part = date_part[:4]
+        else:
+            date_part = (query_date or "").replace("-", "")
+            year_part = date_part[:4] if len(date_part) >= 4 else str(datetime.now().year)
+
+        query_date_str = query_date or f"{date_part[:4]}-{date_part[4:6]}-{date_part[6:8]}"
+        if "20241110" <= date_part <= "20241124":
             return {
                 "sectionId": "worldbaseball",
                 "categoryId": "premier12",
-                "seasonYear": kbo_game_id[:4],
+                "seasonYear": year_part,
                 "date": query_date_str,
             }
         return {
             "sectionId": "kbaseball",
             "categoryId": "kbo",
-            "seasonYear": kbo_game_id[:4],
+            "seasonYear": year_part,
             "date": query_date_str,
         }
 
@@ -123,6 +151,8 @@ class RelayCrawler:
             query_dates.append((base_date - timedelta(days=offset)).isoformat())
         return query_dates
 
+    PERMANENT_HTTP_ERRORS = frozenset({400, 401, 403, 404, 405, 410, 422})
+
     async def _request_json(
         self,
         client: httpx.AsyncClient,
@@ -146,7 +176,10 @@ class RelayCrawler:
                 timeout=timeout,
             )
             if response.status_code != 200:
-                raise RuntimeError(f"status_{response.status_code}")
+                status = response.status_code
+                if status in self.PERMANENT_HTTP_ERRORS:
+                    raise _PermanentStatusError(status)
+                raise RuntimeError(f"status_{status}")
             payload = response.json()
             if not isinstance(payload, dict):
                 raise RuntimeError("non_object_json")
@@ -154,6 +187,9 @@ class RelayCrawler:
 
         try:
             return await self.policy.run_with_retry_async(_fetch), None
+        except _PermanentStatusError as exc:
+            print(f"[INFO] Relay API permanent error: {full_url} status={exc.status_code}")
+            return None, f"http_{exc.status_code}"
         except Exception as exc:
             print(f"[WARN] Relay API request failed: {full_url} reason={exc}")
             return None, "relay_api_error"
@@ -164,6 +200,8 @@ class RelayCrawler:
         games: list[dict[str, Any]],
         *,
         allow_team_fallback: bool = True,
+        stadium: str | None = None,
+        game_time: str | None = None,
     ) -> dict[str, Any] | None:
         """
         Match a KBO game ID to a Naver schedule game object using a scoring system.
@@ -237,12 +275,71 @@ class RelayCrawler:
                     score -= 100
 
             # 3. Doubleheader Match
+            # Normalize g_dh.
+            # doubleHeader can be boolean, string (e.g., "True"/"False", "1"/"2"), or None.
+            # doubleHeaderNo can be "1"/"2" or other strings.
+            dh_val = game.get("doubleHeader")
+            dh_no_val = game.get("doubleHeaderNo")
 
-            # 3. Doubleheader Match
-            # Some Naver payloads have 'doubleHeader' field
-            g_dh = str(game.get("doubleHeader") or game.get("doubleHeaderNo") or "0").strip()
+            def is_dh_truthy(v) -> bool:
+                if isinstance(v, bool):
+                    return v
+                if v is None:
+                    return False
+                v_str = str(v).strip().lower()
+                return v_str in {"true", "y", "yes", "1", "2"}
+
+            is_dh = is_dh_truthy(dh_val) or is_dh_truthy(dh_no_val)
+
+            g_dh = "0"
+            if is_dh:
+                dh_no_str = str(dh_no_val or "").strip()
+                if dh_no_str in {"1", "2"}:
+                    g_dh = dh_no_str
+                else:
+                    # Let's resolve via chronological sequence if there are multiple matches
+                    # between the same teams on this day
+                    same_team_games = []
+                    for g in games:
+                        g_away_t = self._naver_team_code(str(g.get("awayTeamCode") or "").strip())
+                        g_home_t = self._naver_team_code(str(g.get("homeTeamCode") or "").strip())
+                        if (g_away_t == away_code and g_home_t == home_code) or (g_away_t == home_code and g_home_t == away_code):
+                            # Check date
+                            g_date = str(g.get("gameDate") or "").replace("-", "").strip()
+                            if not g_date:
+                                g_id_temp = str(g.get("gameId") or "").strip()
+                                if len(g_id_temp) >= 8:
+                                    date_match = re.search(r"(\d{8})", g_id_temp)
+                                    if date_match:
+                                        g_date = date_match.group(1)
+                            if g_date == game_date_str:
+                                same_team_games.append(g)
+
+                    if len(same_team_games) > 1:
+                        def get_time_mins(g_item) -> int:
+                            t = str(g_item.get("gameStartTime") or g_item.get("startTime") or "").strip()
+                            t_clean = re.sub(r"[^\d:]", "", t)
+                            if ":" in t_clean:
+                                try:
+                                    h, m = map(int, t_clean.split(":"))
+                                    return h * 60 + m
+                                except Exception:
+                                    pass
+                            return 0
+
+                        same_team_games.sort(key=get_time_mins)
+                        try:
+                            idx = same_team_games.index(game)
+                            g_dh = str(idx + 1)
+                        except ValueError:
+                            g_dh = "1"
+                    else:
+                        g_dh = "1"
+
             if g_dh == dh_no:
-                score += 20
+                score += 30
+            else:
+                score -= 50
 
             # 4. Date Match (if we are scanning nearby dates)
             g_date = str(game.get("gameDate") or "").replace("-", "").strip()
@@ -257,9 +354,56 @@ class RelayCrawler:
             elif g_date and g_date[4:8] == game_date_str[4:8]:
                 score += 10
 
+            # 5. Start Time Match
+            g_start_time = str(game.get("gameStartTime") or game.get("startTime") or "").strip()
+            if game_time and g_start_time:
+                k_time_clean = re.sub(r"[^\d:]", "", game_time)
+                g_time_clean = re.sub(r"[^\d:]", "", g_start_time)
+                if ":" in k_time_clean and ":" in g_time_clean:
+                    try:
+                        k_hours, k_mins = map(int, k_time_clean.split(":"))
+                        g_hours, g_mins = map(int, g_time_clean.split(":"))
+                        diff_mins = abs((k_hours * 60 + k_mins) - (g_hours * 60 + g_mins))
+                        if diff_mins == 0:
+                            score += 25
+                        elif diff_mins <= 30:
+                            score += 15
+                        elif diff_mins > 120:
+                            score -= 30
+                    except Exception:
+                        pass
+
+            # 6. Stadium Match
+            g_stadium = str(game.get("stadiumName") or game.get("stadium") or "").strip()
+            if stadium and g_stadium:
+                k_clean = stadium.strip()
+                g_clean = g_stadium.strip()
+                if k_clean == g_clean or k_clean in g_clean or g_clean in k_clean:
+                    score += 20
+                else:
+                    stadium_synonyms = [
+                        {"문학", "인천", "랜더스필드"},
+                        {"대구", "라이온즈파크", "라팍"},
+                        {"고척", "돔", "스카이돔"},
+                        {"광주", "챔피언스필드", "기아챔피언스필드"},
+                        {"수원", "위즈파크", "케이티위즈파크"},
+                        {"창원", "NC파크", "엔씨파크"},
+                        {"대전", "이글스파크", "한화생명"},
+                        {"잠실", "서울"},
+                    ]
+                    matched_synonym = False
+                    for syn_set in stadium_synonyms:
+                        if any(s in k_clean for s in syn_set) and any(s in g_clean for s in syn_set):
+                            matched_synonym = True
+                            break
+                    if matched_synonym:
+                        score += 20
+                    else:
+                        score -= 15
+
             if score > 0:
-                g_start_time = str(game.get("gameStartTime") or game.get("startTime") or "00:00")
-                candidates.append((score, g_start_time, game))
+                g_start_time_val = str(game.get("gameStartTime") or game.get("startTime") or "00:00")
+                candidates.append((score, g_start_time_val, game))
 
         if not candidates:
             return None
@@ -268,7 +412,8 @@ class RelayCrawler:
         # DH2 favors later time. DH1/normal favors earlier time.
         def sort_key(item):
             score, start_time, game = item
-            time_val = int(start_time.replace(":", "")) if ":" in start_time else 0
+            time_digits = re.sub(r"\D", "", start_time)
+            time_val = int(time_digits) if time_digits else 0
             if dh_no == "2":
                 return (score, time_val)
             else:
@@ -294,7 +439,14 @@ class RelayCrawler:
         legacy = legacy_map.get(team_code)
         return bool(legacy and legacy in game_id)
 
-    async def _resolve_naver_game_id(self, client: httpx.AsyncClient, kbo_game_id: str) -> str | None:
+    async def _resolve_naver_game_id(
+        self,
+        client: httpx.AsyncClient,
+        kbo_game_id: str,
+        *,
+        stadium: str | None = None,
+        game_time: str | None = None,
+    ) -> str | None:
         query_dates = self._schedule_query_dates(kbo_game_id)
         saw_schedule_games = False
         for index, query_date in enumerate(query_dates):
@@ -317,6 +469,8 @@ class RelayCrawler:
                 kbo_game_id,
                 games,
                 allow_team_fallback=(index == 0),
+                stadium=stadium,
+                game_time=game_time,
             )
             if matched:
                 return str(matched.get("gameId") or "").strip() or None
@@ -358,7 +512,12 @@ class RelayCrawler:
             all_text_relays.extend(text_relays)
         return all_text_relays
 
-    async def crawl_game_relay(self, kbo_game_id: str) -> dict[str, Any] | None:
+    async def crawl_game_relay(
+        self,
+        kbo_game_id: str,
+        stadium: str | None = None,
+        game_time: str | None = None,
+    ) -> dict[str, Any] | None:
         """
         Fetch and parse ALL PBP events for a given KBO game ID by iterating innings.
         Supports both LIVE and COMPLETED games natively through the API.
@@ -369,12 +528,42 @@ class RelayCrawler:
         self.last_resolved_naver_game_id = None
         direct_naver_id = self._map_to_naver_id(kbo_game_id)
 
+        # Resolve stadium and game_time from DB if not explicitly provided
+        if not stadium or not game_time:
+            try:
+                from src.db.engine import SessionLocal
+                from src.models.game import Game, GameMetadata
+
+                with SessionLocal() as session:
+                    g_row = session.query(Game).filter(Game.game_id == kbo_game_id).first()
+                    if g_row:
+                        if not game_time:
+                            game_time = getattr(g_row, "game_time", None)
+                        meta_row = session.query(GameMetadata).filter(GameMetadata.game_id == kbo_game_id).first()
+                        if meta_row:
+                            if not stadium:
+                                stadium = getattr(meta_row, "stadium_name", None)
+                            if not game_time:
+                                game_time = getattr(meta_row, "start_time", None)
+                                if hasattr(game_time, "strftime"):
+                                    game_time = game_time.strftime("%H:%M")
+            except Exception:
+                pass
+
+        if game_time and not isinstance(game_time, str):
+            try:
+                game_time = game_time.strftime("%H:%M")
+            except AttributeError:
+                game_time = str(game_time)
+
         try:
             async with httpx.AsyncClient() as client:
                 naver_id = direct_naver_id
                 all_text_relays = await self._fetch_text_relays(client, naver_id)
                 if not all_text_relays:
-                    resolved_naver_id = await self._resolve_naver_game_id(client, kbo_game_id)
+                    resolved_naver_id = await self._resolve_naver_game_id(
+                        client, kbo_game_id, stadium=stadium, game_time=game_time
+                    )
                     if resolved_naver_id and resolved_naver_id != direct_naver_id:
                         self.last_resolved_naver_game_id = resolved_naver_id
                         all_text_relays = await self._fetch_text_relays(client, resolved_naver_id)
@@ -399,9 +588,12 @@ class RelayCrawler:
                 "game_id": kbo_game_id,
                 "naver_game_id": naver_id,
                 "game_date": kbo_game_id[:8],
-                "status": "completed",  # Assume completed or live, upstream handles the real status
+                "status": "completed",
                 "events": events,
                 "raw_pbp_rows": raw_pbp_rows,
+                "parser_version": parsed_payload.get("parser_version", PARSER_VERSION),
+                "source_schema_version": parsed_payload.get("source_schema_version", SOURCE_SCHEMA_VERSION),
+                "payload_hash": parsed_payload.get("payload_hash"),
             }
         except Exception as e:
             print(f"[ERROR] Relay API crawl failed for {kbo_game_id}: {e}")
@@ -411,14 +603,63 @@ class RelayCrawler:
     def _parse_naver_data(self, text_relays: list[dict[str, Any]]) -> list[dict[str, Any]]:
         return self._parse_naver_payload(text_relays)["events"]
 
-    def _parse_naver_payload(self, text_relays: list[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
+    @staticmethod
+    def _compute_payload_hash(text_relays: list[dict[str, Any]]) -> str:
+        raw = json.dumps(text_relays, sort_keys=True, ensure_ascii=False, default=str)
+        return hashlib.sha256(raw.encode()).hexdigest()[:12]
+
+    @staticmethod
+    def _provider_log_id(
+        *,
+        payload_hash: str,
+        inning: int | None,
+        half: str | None,
+        segment_index: int,
+        log_index: int,
+        text: str,
+    ) -> str:
+        text_hash = hashlib.sha1(str(text or "").encode("utf-8")).hexdigest()[:10]
+        half_token = (half or "x")[:1]
+        inning_token = inning if inning is not None else "x"
+        return f"naver:{payload_hash}:{inning_token}{half_token}:{segment_index}:{log_index}:{text_hash}"
+
+    def _parse_naver_payload(self, text_relays: list[dict[str, Any]]) -> dict[str, Any]:
         parsed_events = []
         raw_pbp_rows = []
         sequence = 1
         processed_segments = []
+        payload_hash = self._compute_payload_hash(text_relays)
+
         for index, segment in enumerate(text_relays):
             inn, half = self._parse_segment_inning_half(segment)
             if not inn or not half:
+                # Graceful degradation: if we can't parse inning/half but segment has
+                # a title-like field, still preserve it in raw_pbp_rows
+                title = str(segment.get("title", "") or "")
+                if title:
+                    raw_pbp_rows.append(
+                        {
+                            "inning": None,
+                            "inning_half": None,
+                            "pitcher_name": None,
+                            "batter_name": None,
+                            "play_description": title,
+                            "event_type": "unclassified",
+                            "result": None,
+                            "provider_log_id": self._provider_log_id(
+                                payload_hash=payload_hash,
+                                inning=None,
+                                half=None,
+                                segment_index=index,
+                                log_index=-1,
+                                text=title,
+                            ),
+                            "source_row_index": len(raw_pbp_rows),
+                            "source_name": "naver",
+                        }
+                    )
+                else:
+                    logger.debug("Skipping segment with unparseable inning/half and no title at index=%d", index)
                 continue
             segment["_parsed_index"] = index
             segment["_parsed_inn"] = inn
@@ -434,12 +675,43 @@ class RelayCrawler:
             ),
         )
 
+        pbp_raw_index = 0
         for segment in sorted_segments:
             inning, half = segment["_parsed_inn"], segment["_parsed_half"]
+            segment_index = int(segment["_parsed_index"])
+            segment_title = str(segment.get("title", "") or "")
+            header_index = pbp_raw_index
+            pbp_raw_index += 1
+            # Insert an explicit inning header marker into the raw PBP stream
+            raw_pbp_rows.append(
+                {
+                    "inning": inning,
+                    "inning_half": half,
+                    "pitcher_name": None,
+                    "batter_name": None,
+                    "play_description": segment_title or f"{inning}회{'초' if half == 'top' else '말'}",
+                    "event_type": "inning_header",
+                    "result": None,
+                    "provider_log_id": self._provider_log_id(
+                        payload_hash=payload_hash,
+                        inning=inning,
+                        half=half,
+                        segment_index=segment_index,
+                        log_index=-1,
+                        text=segment_title,
+                    ),
+                    "source_row_index": header_index,
+                    "source_name": "naver",
+                }
+            )
+
             logs = segment.get("textOptions") or []
+            count_key = None
+            balls = 0
+            strikes = 0
             # Naver returns batter segments newest-first within each half-inning,
             # while logs inside a segment are chronological.
-            for log in logs:
+            for log_index, log in enumerate(logs):
                 state = log.get("currentGameState") or {}
                 batter_record = log.get("batterRecord") or {}
 
@@ -462,15 +734,42 @@ class RelayCrawler:
                 if to_int(state.get("base3")) > 0:
                     base_state |= 4
 
-                # Ensure description length fits DB column (usually text, but to be safe)
+                # Graceful degradation: default to 0 if state fields are missing
+                if not state:
+                    home_score = 0
+                    away_score = 0
+                    outs = 0
+                    base_state = 0
+
                 description = str(log.get("text") or "")
                 if not description.strip():
                     continue
 
-                batter_name = batter_record.get("name") or log.get("batterName")
-                if not batter_name and ":" in description:
-                    batter_name = description.split(":", 1)[0].strip() or None
+                # Graceful degradation for batter/pitcher names: try multiple sources
+                batter_name = batter_record.get("name") if isinstance(batter_record, dict) else None
+                if not batter_name:
+                    batter_name = log.get("batterName")
+                if not batter_name and isinstance(log.get("text"), str) and ":" in log["text"]:
+                    batter_name = log["text"].split(":", 1)[0].strip() or None
                 pitcher_name = log.get("pitcherName")
+
+                batter_key = (inning, half, batter_name or segment_title or segment_index)
+                if batter_key != count_key:
+                    count_key = batter_key
+                    balls = 0
+                    strikes = 0
+                balls, strikes, _matched_pitch = advance_pitch_count(description, balls, strikes)
+
+                current_pbp_index = pbp_raw_index
+                pbp_raw_index += 1
+                provider_log_id = self._provider_log_id(
+                    payload_hash=payload_hash,
+                    inning=inning,
+                    half=half,
+                    segment_index=segment_index,
+                    log_index=log_index,
+                    text=description,
+                )
 
                 raw_pbp_rows.append(
                     {
@@ -481,13 +780,16 @@ class RelayCrawler:
                         "play_description": description,
                         "event_type": self._detect_event_type(description),
                         "result": description.split(":", 1)[-1].strip() if ":" in description else None,
+                        "provider_log_id": provider_log_id,
+                        "source_row_index": current_pbp_index,
+                        "source_name": "naver",
                     }
                 )
 
                 if not is_relay_result_event_text(description):
                     continue
 
-                event = {
+                event: dict[str, Any] = {
                     "event_seq": sequence,
                     "inning": inning,
                     "inning_half": half,
@@ -507,16 +809,35 @@ class RelayCrawler:
                     "win_expectancy_after": 0.5,
                 }
 
-                # Try to emulate the old structure fields if needed,
                 event["batter"] = event["batter_name"]
                 event["pitcher"] = event["pitcher_name"]
                 event["result"] = description.split(":", 1)[-1].strip() if ":" in description else None
+                event["provider_log_id"] = provider_log_id
+                event["source_row_index"] = current_pbp_index
+                event["balls"] = balls
+                event["strikes"] = strikes
 
                 parsed_events.append(event)
                 sequence += 1
+                count_key = None
+                balls = 0
+                strikes = 0
 
         self._apply_wpa_transitions(parsed_events)
-        return {"events": parsed_events, "raw_pbp_rows": raw_pbp_rows}
+
+        # Phase 2: At-bat grouping + ball/strike accumulation
+        from src.utils.at_bat_grouper import compute_at_bat_pitch_count, group_events_into_at_bats
+
+        group_events_into_at_bats(parsed_events)
+        compute_at_bat_pitch_count(parsed_events)
+
+        return {
+            "events": parsed_events,
+            "raw_pbp_rows": raw_pbp_rows,
+            "parser_version": PARSER_VERSION,
+            "source_schema_version": SOURCE_SCHEMA_VERSION,
+            "payload_hash": payload_hash,
+        }
 
     def _parse_segment_inning_half(self, segment: dict[str, Any]) -> tuple[int, str | None]:
         title = str(segment.get("title") or "")
@@ -541,36 +862,10 @@ class RelayCrawler:
         return detect_relay_event_type(text)
 
     def _format_base_string(self, runners: int) -> str:
-        return f"{'1' if (runners & 1) else '-'}{'2' if (runners & 2) else '-'}{'3' if (runners & 4) else '-'}"
+        return format_base_string(runners)
 
     def _apply_wpa_transitions(self, events: list[dict[str, Any]]):
-        for i, event in enumerate(events):
-            is_bottom = event["inning_half"] == "bottom"
-            if i == 0:
-                outs_before, runners_before, score_diff_before = 0, 0, 0
-            else:
-                prev = events[i - 1]
-                if prev["inning"] != event["inning"] or prev["inning_half"] != event["inning_half"]:
-                    outs_before, runners_before = 0, 0
-                else:
-                    outs_before, runners_before = prev["outs"], prev["base_state"]
-                score_diff_before = prev["home_score"] - prev["away_score"]
-
-            we_before = self.wpa_calc.get_win_probability(
-                event["inning"], is_bottom, outs_before, runners_before, score_diff_before
-            )
-            we_after = self.wpa_calc.get_win_probability(
-                event["inning"],
-                is_bottom,
-                event["outs"],
-                event["base_state"],
-                event["home_score"] - event["away_score"],
-            )
-
-            event["win_expectancy_before"] = we_before
-            event["win_expectancy_after"] = we_after
-            event["wpa"] = round(we_after - we_before if is_bottom else we_before - we_after, 4)
-            event["bases_before"] = self._format_base_string(runners_before)
+        apply_wpa_transitions(events, calculator=self.wpa_calc)
 
 
 def _events_to_legacy_innings(events: list[dict[str, Any]]) -> list[dict[str, Any]]:
