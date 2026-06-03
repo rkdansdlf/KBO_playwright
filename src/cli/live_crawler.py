@@ -12,12 +12,14 @@ import asyncio
 import logging
 import os
 from datetime import datetime
-from typing import Sequence
+from typing import Any, Sequence
 from zoneinfo import ZoneInfo
 
 import httpx
 
 logger = logging.getLogger(__name__)
+
+_LIVE_SHARD_CURSOR_BY_DATE: dict[str, int] = {}
 
 from src.crawlers.game_detail_crawler import GameDetailCrawler
 from src.crawlers.naver_relay_crawler import NaverRelayCrawler
@@ -25,12 +27,152 @@ from src.crawlers.schedule_crawler import ScheduleCrawler
 from src.db.engine import SessionLocal
 from src.repositories.game_repository import GAME_STATUS_LIVE, save_game_snapshot, save_relay_data
 from src.sync.oci_sync import OCISync
+from src.utils.game_state import (
+    TERMINAL_STATES,
+    derive_lifecycle_from_naver_status,
+)
 from src.utils.refresh_manifest import write_refresh_manifest
 from src.utils.safe_print import safe_print as print
 
 
-async def run_live_crawler_cycle(*, sync_to_oci: bool | None = None) -> tuple[bool, bool]:
-    """Run one live polling cycle. Returns (active, active_playing)."""
+def _has_ending_header(raw_pbp_rows: list[dict[str, Any]]) -> bool:
+    """Check if the last inning_header contains game-ending keywords."""
+    for row in reversed(raw_pbp_rows):
+        if row.get("event_type") == "inning_header":
+            return False
+        desc = str(row.get("play_description") or "")
+        if any(term in desc for term in ["경기 종료", "게임 종료", "경기종료"]):
+            return True
+    return False
+
+
+def _select_live_shard(items: list[Any], *, shard_key: str, max_items: int | None) -> list[Any]:
+    if max_items is None or max_items <= 0 or len(items) <= max_items:
+        return list(items)
+
+    cursor = _LIVE_SHARD_CURSOR_BY_DATE.get(shard_key, 0) % len(items)
+    doubled = items + items
+    selected = doubled[cursor : cursor + max_items]
+    _LIVE_SHARD_CURSOR_BY_DATE[shard_key] = (cursor + max_items) % len(items)
+
+    for key in list(_LIVE_SHARD_CURSOR_BY_DATE):
+        if key != shard_key:
+            _LIVE_SHARD_CURSOR_BY_DATE.pop(key, None)
+
+    return selected
+
+
+def _query_enriched_game_state(
+    game_ids: list[str],
+) -> dict[str, dict[str, int]]:
+    """Query DB for event count and max inning per game_id.
+
+    Returns {game_id: {"event_count": int, "max_inning": int}}.
+    """
+    if not game_ids:
+        return {}
+    try:
+        from sqlalchemy import func
+
+        from src.db.engine import SessionLocal
+        from src.models.game import GameEvent, GamePlayByPlay
+
+        state: dict[str, dict[str, int]] = {}
+        with SessionLocal() as session:
+            # Batch query event counts
+            ec_rows = (
+                session.query(
+                    GameEvent.game_id,
+                    func.count(GameEvent.id),
+                )
+                .filter(GameEvent.game_id.in_(game_ids))
+                .group_by(GameEvent.game_id)
+                .all()
+            )
+            ec_map = {r[0]: r[1] for r in ec_rows}
+
+            # Batch query max innings
+            mi_rows = (
+                session.query(
+                    GamePlayByPlay.game_id,
+                    func.max(GamePlayByPlay.inning),
+                )
+                .filter(GamePlayByPlay.game_id.in_(game_ids))
+                .group_by(GamePlayByPlay.game_id)
+                .all()
+            )
+            mi_map = {r[0]: r[1] or 0 for r in mi_rows}
+
+            for gid in game_ids:
+                state[gid] = {
+                    "event_count": ec_map.get(gid, 0),
+                    "max_inning": mi_map.get(gid, 0),
+                }
+        return state
+    except Exception:
+        logger.exception("[WARN] Failed to query enriched game state")
+        return {}
+
+
+def _compute_enriched_interval(
+    base_interval: int,
+    game_ids_playing: list[str],
+    last_event_counts: dict[str, int],
+    enriched_state: dict[str, dict[str, int]] | None = None,
+) -> tuple[int, str, dict[str, int]]:
+    """Improve the base dynamic interval using at-bat/inning/event-density awareness.
+
+    Returns (sleep_seconds, extra_note, updated_last_event_counts).
+    """
+    MIN_POLLING_INTERVAL = 10
+    if not game_ids_playing or not enriched_state:
+        return max(MIN_POLLING_INTERVAL, base_interval), "", dict(last_event_counts)
+
+    updated_counts = dict(last_event_counts)
+    multipliers: list[float] = []
+
+    for gid in game_ids_playing:
+        gs = enriched_state.get(gid)
+        if gs is None:
+            continue
+
+        ec = gs["event_count"]
+        prev = last_event_counts.get(gid)
+        updated_counts[gid] = ec
+
+        # Idle detection: no new events since last cycle
+        if prev is not None and ec == prev and ec > 0:
+            multipliers.append(1.8)
+        elif prev is not None and ec > prev:
+            multipliers.append(0.6)
+
+        # Late-game acceleration: inning >= 7
+        if gs["max_inning"] >= 7:
+            multipliers.append(0.7)
+
+    if not multipliers:
+        return max(MIN_POLLING_INTERVAL, base_interval), "", updated_counts
+
+    # Apply the most aggressive (lowest) multiplier among active games
+    combined = min(multipliers)
+    final = max(MIN_POLLING_INTERVAL, min(120, int(round(base_interval * combined))))
+
+    note_parts = []
+    if any(m < 1.0 for m in multipliers):
+        note_parts.append("accelerated")
+    if any(m > 1.0 for m in multipliers):
+        note_parts.append("idle_backoff")
+    extra_note = f"(enriched:{','.join(note_parts)} base={base_interval}s→{final}s)" if note_parts else ""
+
+    return final, extra_note, updated_counts
+
+
+async def run_live_crawler_cycle(
+    *,
+    sync_to_oci: bool | None = None,
+    max_active_games: int | None = None,
+) -> dict[str, Any]:
+    """Run one live polling cycle. Returns status dictionary."""
     seoul_tz = ZoneInfo("Asia/Seoul")
     now = datetime.now(seoul_tz)
     today_str = now.strftime("%Y%m%d")
@@ -43,14 +185,19 @@ async def run_live_crawler_cycle(*, sync_to_oci: bool | None = None) -> tuple[bo
 
     if not today_games:
         print(f"[INFO] No games scheduled for today ({today_str}).")
-        return False, False
+        return {
+            "active": False,
+            "active_playing": False,
+            "active_suspended": False,
+            "all_finished": True,
+            "game_ids_playing": [],
+        }
 
     # Optimization: Fetch latest game statuses from Naver to skip unnecessary crawls
     relay_crawler = NaverRelayCrawler()
     try:
         async with httpx.AsyncClient() as client:
-            # We use RelayCrawler's internal methods to get the schedule context
-            query = relay_crawler._schedule_query_context(today_str + "XXXXX")
+            query = relay_crawler._schedule_query_context(query_date=today_str)
             response = await client.get(
                 relay_crawler.schedule_api_base_url,
                 params=query,
@@ -60,20 +207,11 @@ async def run_live_crawler_cycle(*, sync_to_oci: bool | None = None) -> tuple[bo
             if response.status_code == 200:
                 payload = response.json()
                 naver_games = list((payload.get("result") or {}).get("games") or [])
-                for ng in naver_games:
-                    status = str(ng.get("status") or "").upper()
-                    # Statuses: 'BEFORE', 'RUNNING', 'RESULT', 'CANCEL'
-                    if status == "RUNNING":
-                        # Match Naver game to KBO game ID using team codes if possible
-                        # but for simplicity, we'll just trust Naver's 'RUNNING' status
-                        # to filter our today_games list in the loop below.
-                        pass
-
                 # Store naver status mapping for quick lookup
                 naver_status_map = {
-                    (ng.get("awayTeamCode"), ng.get("homeTeamCode")): status
+                    (ng.get("awayTeamCode"), ng.get("homeTeamCode")): ng.get("status")
                     for ng in naver_games
-                    if (status := ng.get("status"))
+                    if ng.get("status")
                 }
             else:
                 naver_status_map = {}
@@ -84,46 +222,111 @@ async def run_live_crawler_cycle(*, sync_to_oci: bool | None = None) -> tuple[bo
     detail_crawler = GameDetailCrawler(request_delay=0.1)
     touched_game_ids: set[str] = set()
     active_playing_flag = False
+    active_suspended_flag = False
+    all_finished = True
+    active_candidates: list[tuple[dict[str, Any], str | None, str | None]] = []
 
     for game in today_games:
         game_id = game["game_id"]
 
-        # Heuristic matching for Naver status
+        # Resolve Naver schedule status to lifecycle state
         away_nav = relay_crawler._naver_team_code(game["away_team_code"])
         home_nav = relay_crawler._naver_team_code(game["home_team_code"])
-        nav_status = str(naver_status_map.get((away_nav, home_nav)) or "").upper()
+        nav_status_raw = naver_status_map.get((away_nav, home_nav))
+        lifecycle_state = derive_lifecycle_from_naver_status(nav_status_raw)
 
-        if nav_status == "CANCEL":
+        if lifecycle_state == "cancelled":
             print(f"[SKIP] {game_id} is CANCELLED.")
             continue
-        if nav_status == "BEFORE":
+        if lifecycle_state == "before":
             print(f"[SKIP] {game_id} has not started yet.")
+            all_finished = False
             continue
-        if nav_status == "RESULT":
-            # If it's already COMPLETED in our DB, skip it.
-            # We can check this via a quick repository call if needed,
-            # but for a simple 'live' loop, skipping 'RESULT' is generally safe
-            # as run_daily_update will finalize it later.
-            print(f"[SKIP] {game_id} is already finished (RESULT).")
-            continue
+        if lifecycle_state == "result_pending_stabilization":
+            from src.models.game import Game
 
-        # Default to crawl if status is RUNNING or unknown
-        print(f"[LIVE] 🔍 Crawling active game: {game_id} (Status: {nav_status or 'UNKNOWN'})")
+            terminal_state = None
+            with SessionLocal() as session:
+                g_row = session.query(Game).filter(Game.game_id == game_id).first()
+                if g_row and g_row.game_lifecycle_state in TERMINAL_STATES:
+                    terminal_state = g_row.game_lifecycle_state
+            if terminal_state:
+                print(f"[SKIP] {game_id} is already final in DB (game_lifecycle_state={terminal_state}).")
+                continue
+            else:
+                print(f"[LIVE] Game {game_id} transitioned to RESULT. Crawling final state to finalize...")
+
+        all_finished = False
+        active_candidates.append((game, lifecycle_state, nav_status_raw))
+
+    selected_candidates = _select_live_shard(
+        active_candidates,
+        shard_key=today_str,
+        max_items=max_active_games,
+    )
+    if len(selected_candidates) < len(active_candidates):
+        selected_ids = [item[0]["game_id"] for item in selected_candidates]
+        print(
+            "[LIVE] Sharding active games: "
+            f"processing {len(selected_candidates)}/{len(active_candidates)} this cycle "
+            f"(max_active_games={max_active_games}, selected={','.join(selected_ids)})"
+        )
+
+    # Dynamic request delay scaling based on the number of active games
+    num_active_games = len(selected_candidates)
+    if num_active_games > 0:
+        scale_factor = 1.0 + max(0, num_active_games - 1) * 0.5
+        relay_crawler.policy.min_delay *= scale_factor
+        relay_crawler.policy.max_delay *= scale_factor
+        print(
+            f"[LIVE] Dynamic request delay scaling: factor {scale_factor:.2f}x for {num_active_games} active games "
+            f"(min_delay={relay_crawler.policy.min_delay:.2f}s)"
+        )
+
+    for game, lifecycle_state, nav_status_raw in selected_candidates:
+        game_id = game["game_id"]
+
+        # Crawl live relay data
+        print(
+            f"[LIVE] 🔍 Crawling active game: {game_id} (lifecycle={lifecycle_state}, nav_status={nav_status_raw or 'UNKNOWN'})"
+        )
 
         relay_data = await relay_crawler.crawl_game_events(game_id)
         flat_events = list((relay_data or {}).get("events") or [])
         raw_pbp_rows = list((relay_data or {}).get("raw_pbp_rows") or [])
 
-        # Determine if actively playing (not inning change)
-        game_is_playing = True
+        # Determine lifecycle state from relay data + Naver status
+        last_desc = ""
         if flat_events:
-            # If the last event is 3 outs, it's an inning change
-            if flat_events[-1].get("outs") == 3:
-                game_is_playing = False
-        elif raw_pbp_rows and "종료" in str(raw_pbp_rows[-1].get("play_description", "")):
-            game_is_playing = False
+            last_desc = flat_events[-1].get("description", "")
+        elif raw_pbp_rows:
+            last_desc = raw_pbp_rows[-1].get("play_description", "")
 
-        if game_is_playing:
+        # Detect suspension from relay text
+        detected_suspension = any(term in last_desc for term in ["중단", "지연", "우천", "서스펜디드"])
+
+        # Detect game ending text
+        detected_game_end = _has_ending_header(raw_pbp_rows) or any(
+            term in last_desc for term in ["경기 종료", "게임 종료", "경기종료"]
+        )
+
+        # Resolve final lifecycle state:
+        # Priority: Naver status > text detection > default
+        if lifecycle_state == "result_pending_stabilization" or detected_game_end:
+            resolved_lifecycle = "result_pending_stabilization"
+        elif lifecycle_state == "suspended" or detected_suspension:
+            resolved_lifecycle = "suspended"
+        elif lifecycle_state == "delayed":
+            resolved_lifecycle = "delayed"
+        elif lifecycle_state == "running":
+            resolved_lifecycle = "running"
+        else:
+            resolved_lifecycle = "running"
+
+        # Track active flags for dynamic polling
+        if resolved_lifecycle == "suspended":
+            active_suspended_flag = True
+        elif resolved_lifecycle == "running":
             active_playing_flag = True
 
         if flat_events or raw_pbp_rows:
@@ -132,6 +335,10 @@ async def run_live_crawler_cycle(*, sync_to_oci: bool | None = None) -> tuple[bo
                 flat_events,
                 raw_pbp_rows=raw_pbp_rows,
                 source_name="naver_live",
+                parser_version=(relay_data or {}).get("parser_version"),
+                source_schema_version=(relay_data or {}).get("source_schema_version"),
+                payload_hash=(relay_data or {}).get("payload_hash"),
+                game_lifecycle_state=resolved_lifecycle,
             )
             if saved_rows:
                 touched_game_ids.add(game_id)
@@ -142,6 +349,57 @@ async def run_live_crawler_cycle(*, sync_to_oci: bool | None = None) -> tuple[bo
                 touched_game_ids.add(game_id)
                 print(f"[LIVE] 📊 Updated scoreboard snapshot for {game_id}")
 
+            # Fallback auto-healing trigger: if the game is finished but validation failed
+            if resolved_lifecycle == "result_pending_stabilization":
+                from src.models.game import GameMetadata
+
+                with SessionLocal() as session:
+                    meta = session.query(GameMetadata).filter(GameMetadata.game_id == game_id).first()
+                    val_status = (
+                        meta.source_payload.get("pbp_validation_status")
+                        if meta and isinstance(meta.source_payload, dict)
+                        else None
+                    )
+                    if val_status == "unverified":
+                        print(f"[FALLBACK TRIGGER] PBP for {game_id} is unverified. Triggering KBO website re-crawl...")
+                        from src.crawlers.pbp_crawler import PBPCrawler
+                        from src.utils.alerting import SlackWebhookClient
+
+                        kbo_crawler = PBPCrawler()
+                        kbo_data = None
+                        max_attempts = 3
+                        for attempt in range(1, max_attempts + 1):
+                            try:
+                                print(f"[FALLBACK TRIGGER] Attempt {attempt} to crawl KBO PBP for {game_id}...")
+                                kbo_data = await kbo_crawler.crawl_game_events(game_id)
+                                if kbo_data and kbo_data.get("events"):
+                                    break
+                                else:
+                                    raise ValueError("KBO PBP crawl returned no events")
+                            except Exception as fallback_err:
+                                print(f"[FALLBACK WARNING] KBO fallback attempt {attempt} failed for {game_id}: {fallback_err}")
+                                if attempt == max_attempts:
+                                    print(f"[FALLBACK ERROR] KBO fallback failed all {max_attempts} attempts for {game_id}")
+                                else:
+                                    backoff = 2.0 ** attempt
+                                    print(f"[FALLBACK INFO] Sleeping for {backoff:.1f}s before retry...")
+                                    await asyncio.sleep(backoff)
+
+                        if kbo_data and kbo_data.get("events"):
+                            try:
+                                saved = save_relay_data(
+                                    game_id,
+                                    events=kbo_data["events"],
+                                    source_name="kbo_fallback",
+                                    notes="Automatically re-crawled due to Naver validation failure.",
+                                )
+                                if saved:
+                                    msg = f"✅ KBO Fallback Success: Recovered {saved} unverified Naver PBP events from KBO for game {game_id}"
+                                    print(f"[FALLBACK SUCCESS] {msg}")
+                                    SlackWebhookClient.send_alert(msg)
+                            except Exception as db_err:
+                                print(f"[FALLBACK ERROR] Failed to save KBO fallback data for {game_id}: {db_err}")
+
     manifest_path = write_refresh_manifest(
         phase="live",
         target_date=today_str,
@@ -151,7 +409,13 @@ async def run_live_crawler_cycle(*, sync_to_oci: bool | None = None) -> tuple[bo
 
     if not touched_game_ids:
         print(f"[INFO] No live games currently active right now. manifest={manifest_path}")
-        return False, False
+        return {
+            "active": False,
+            "active_playing": False,
+            "active_suspended": False,
+            "all_finished": all_finished,
+            "game_ids_playing": [],
+        }
 
     should_sync = sync_to_oci if sync_to_oci is not None else bool(os.getenv("OCI_DB_URL"))
     if should_sync:
@@ -167,41 +431,102 @@ async def run_live_crawler_cycle(*, sync_to_oci: bool | None = None) -> tuple[bo
                     sync_engine.close()
 
     print(f"[INFO] Live cycle finished. updated={len(touched_game_ids)} manifest={manifest_path}")
-    return True, active_playing_flag
+    return {
+        "active": True,
+        "active_playing": active_playing_flag,
+        "active_suspended": active_suspended_flag,
+        "all_finished": all_finished,
+        "game_ids_playing": list(touched_game_ids),
+    }
 
 
 async def main_loop(base_interval_minutes: int, *, sync_to_oci: bool | None = None, dynamic: bool = False):
+    last_active_time = None
+    last_event_counts: dict[str, int] = {}
     while True:
         try:
-            # Use seoul time for window logic
             seoul_tz = ZoneInfo("Asia/Seoul")
             now = datetime.now(seoul_tz)
 
             # 1. Run the cycle
-            active, active_playing = await run_live_crawler_cycle(sync_to_oci=sync_to_oci)
+            cycle_result = await run_live_crawler_cycle(sync_to_oci=sync_to_oci)
+            active = cycle_result["active"]
+            active_playing = cycle_result["active_playing"]
+            active_suspended = cycle_result["active_suspended"]
+            game_ids_playing: list[str] = cycle_result.get("game_ids_playing", [])
+
+            if active:
+                last_active_time = now
 
             # 2. Determine next sleep interval
             if not dynamic:
-                # Traditional fixed interval
                 sleep_seconds = base_interval_minutes * 60 if active else 300
+                mode_str = "FIXED"
+                extra_note = ""
             else:
-                # Dynamic Interval Logic
-                if active:
-                    # Active games running: poll frequently (5-10s playing, 30s inning change)
-                    sleep_seconds = 5 if active_playing else 30
-                elif 12 <= now.hour < 23:
-                    # During game hours but no active games right now (e.g., between games or pre-game)
-                    sleep_seconds = 120  # 2 minutes
-                else:
-                    # Outside game hours
-                    sleep_seconds = 1800  # 30 minutes
+                base_interval, mode_str = _compute_base_dynamic_interval(
+                    active,
+                    active_playing,
+                    active_suspended,
+                    last_active_time,
+                    now,
+                    base_interval_minutes,
+                )
 
-            print(f"[WAIT] Next check in {sleep_seconds} seconds...")
+                # Phase 4: Enriched interval using at-bat/pitch/inning state
+                if game_ids_playing:
+                    enriched_state = _query_enriched_game_state(game_ids_playing)
+                    sleep_seconds, extra_note, last_event_counts = _compute_enriched_interval(
+                        base_interval,
+                        game_ids_playing,
+                        last_event_counts,
+                        enriched_state,
+                    )
+                else:
+                    sleep_seconds = base_interval
+                    extra_note = ""
+
+            log_parts = [f"[WAIT] Next check in {sleep_seconds}s"]
+            if mode_str:
+                log_parts.append(f"[{mode_str}]")
+            if extra_note:
+                log_parts.append(extra_note)
+            print(" ".join(log_parts))
             await asyncio.sleep(sleep_seconds)
 
         except Exception:
             logger.exception("[CRITICAL ERROR] Live loop crashed")
             await asyncio.sleep(60)
+
+
+def _compute_base_dynamic_interval(
+    active: bool,
+    active_playing: bool,
+    active_suspended: bool,
+    last_active_time: datetime | None,
+    now: datetime,
+    base_interval_minutes: int,
+) -> tuple[int, str]:
+    """Return (base_sleep_seconds, mode_label) for the existing dynamic logic."""
+    if active:
+        if active_playing:
+            return 10, "ACTIVE (Inning playing)"
+        elif active_suspended:
+            return 60, "DELAYED (Rain delay/Stoppage)"
+        else:
+            return 30, "CHANGE (Inning change)"
+    else:
+        recently_active = False
+        if last_active_time is not None:
+            elapsed = (now - last_active_time).total_seconds()
+            if elapsed < 600:
+                recently_active = True
+        if recently_active:
+            return 60, "COOLDOWN (Recently finished)"
+        elif 12 <= now.hour < 23:
+            return 120, "GAME HOURS (No active games)"
+        else:
+            return 1800, "OFF HOURS"
 
 
 def main(argv: Sequence[str] | None = None):
@@ -210,7 +535,9 @@ def main(argv: Sequence[str] | None = None):
         "--interval", type=int, default=2, help="Crawling polling interval in minutes (default for fixed mode)"
     )
     parser.add_argument(
-        "--dynamic", action="store_true", help="Enable dynamic polling (20s when active, 2m pre-game, 30m off-hours)"
+        "--dynamic",
+        action="store_true",
+        help="Enable enriched dynamic polling (10s playing, 60s delayed, 120s game-hours, 30m off-hours)",
     )
     parser.add_argument("--run-once", action="store_true", help="Run precisely one cycle and exit")
     parser.add_argument("--no-sync", action="store_true", help="Skip explicit OCI sync after local writes")
