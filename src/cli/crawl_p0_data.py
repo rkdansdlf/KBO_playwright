@@ -4,38 +4,90 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+from datetime import datetime
 from typing import Sequence
 
 from src.utils.safe_print import safe_print as print
 
 
-async def run_events(save: bool = False):
+async def run_events(save: bool = False, *, days: int = 30, team: str | None = None) -> int:
     from src.crawlers.team_event_crawler import TeamEventCrawler
 
-    crawler = TeamEventCrawler(days_back=30)
-    await crawler.run(save=save)
+    crawler = TeamEventCrawler(days_back=days)
+    events = await crawler.run(save=save, team_filter=team)
+    return len(events)
 
 
-async def run_roster(save: bool = False):
+async def run_roster(save: bool = False, *, target_date: str | None = None) -> int:
     from src.crawlers.roster_transaction_crawler import RosterTransactionCrawler
 
     crawler = RosterTransactionCrawler()
-    await crawler.run(save=save)
+    transactions = await crawler.run(save=save, target_date=target_date)
+    return len(transactions)
 
 
-async def run_ticket(save: bool = False):
+async def run_ticket(save: bool = False, *, season: int | None = None) -> int:
     from src.crawlers.ticket_crawler import TicketCrawler
 
     crawler = TicketCrawler()
-    await crawler.run(save=save)
+    prices = await crawler.run(save=save, season=season)
+    return len(prices)
 
 
-async def run_all(save: bool = False):
+async def run_all(
+    save: bool = False,
+    *,
+    days: int = 30,
+    team: str | None = None,
+    season: int | None = None,
+    target_date: str | None = None,
+) -> dict[str, int]:
     print("=== P0 data collection ===")
-    await run_events(save=save)
-    await run_roster(save=save)
-    await run_ticket(save=save)
-    print("=== P0 complete ===")
+    counts = {
+        "events": await run_events(save=save, days=days, team=team),
+        "roster": await run_roster(save=save, target_date=target_date),
+        "ticket": await run_ticket(save=save, season=season),
+    }
+    print(
+        "=== P0 complete: "
+        f"events={counts['events']} roster={counts['roster']} ticket={counts['ticket']} ==="
+    )
+    return counts
+
+
+def _normalize_target_date(value: str | None) -> str | None:
+    if value is None:
+        return None
+    raw = value.strip()
+    if not raw:
+        return None
+    for date_format in ("%Y-%m-%d", "%Y%m%d"):
+        try:
+            return datetime.strptime(raw, date_format).strftime("%Y-%m-%d")
+        except ValueError:
+            continue
+    raise ValueError(f"Invalid --target-date: {value!r}. Use YYYYMMDD or YYYY-MM-DD.")
+
+
+async def run_from_args(args: argparse.Namespace) -> dict[str, int]:
+    target_date = _normalize_target_date(args.target_date)
+    runner_map = {
+        "events": lambda: run_events(save=args.save, days=args.days, team=args.team),
+        "roster": lambda: run_roster(save=args.save, target_date=target_date),
+        "ticket": lambda: run_ticket(save=args.save, season=args.season),
+        "all": lambda: run_all(
+            save=args.save,
+            days=args.days,
+            team=args.team,
+            season=args.season,
+            target_date=target_date,
+        ),
+    }
+
+    result = await runner_map[args.type]()
+    if isinstance(result, dict):
+        return result
+    return {args.type: int(result)}
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
@@ -47,24 +99,17 @@ def build_arg_parser() -> argparse.ArgumentParser:
         help="Data type to collect",
     )
     parser.add_argument("--save", action="store_true", help="Save results to database")
+    parser.add_argument("--days", type=int, default=30, help="Days back to crawl for team events")
+    parser.add_argument("--team", type=str, default=None, help="Team code filter for team events (e.g. LG)")
+    parser.add_argument("--season", type=int, default=None, help="Season year for ticket prices")
+    parser.add_argument("--target-date", type=str, default=None, help="Roster target date (YYYYMMDD or YYYY-MM-DD)")
     return parser
 
 
-def main(argv: Sequence[str] | None = None) -> None:
+def main(argv: Sequence[str] | None = None) -> dict[str, int]:
     parser = build_arg_parser()
     args = parser.parse_args(argv)
-
-    runner_map = {
-        "events": lambda: run_events(save=args.save),
-        "roster": lambda: run_roster(save=args.save),
-        "ticket": lambda: run_ticket(save=args.save),
-        "all": lambda: run_all(save=args.save),
-    }
-
-    runner = runner_map[args.type]
-    result = runner()
-    if asyncio.iscoroutine(result):
-        asyncio.run(result)
+    return asyncio.run(run_from_args(args))
 
 
 if __name__ == "__main__":

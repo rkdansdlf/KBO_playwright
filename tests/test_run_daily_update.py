@@ -155,6 +155,31 @@ class _FakeRosterTransactionCrawler:
         return []
 
 
+class _FakeTeamEventCrawler:
+    created = []
+
+    def __init__(self, days_back: int = 30):
+        self.days_back = days_back
+        self.calls = []
+        _FakeTeamEventCrawler.created.append(self)
+
+    async def run(self, save: bool = False, team_filter: str | None = None):
+        self.calls.append({"save": save, "team_filter": team_filter})
+        return [{"title": "event-1"}, {"title": "event-2"}]
+
+
+class _FakeTicketCrawler:
+    created = []
+
+    def __init__(self):
+        self.calls = []
+        _FakeTicketCrawler.created.append(self)
+
+    async def run(self, save: bool = False, season: int | None = None):
+        self.calls.append({"save": save, "season": season})
+        return [{"seat_grade": "blue"}]
+
+
 async def _noop_async(*_args, **_kwargs):
     return None
 
@@ -275,6 +300,8 @@ class _FakeSyncerWithSupportingFailure(_FakeSyncer):
 
 
 def _patch_common(monkeypatch):
+    _FakeTeamEventCrawler.created = []
+    _FakeTicketCrawler.created = []
     monkeypatch.setattr(run_daily_update, "ScheduleCrawler", _FakeScheduleCrawler)
     monkeypatch.setattr(run_daily_update, "SessionLocal", lambda: _FakeSession())
     monkeypatch.setattr(run_daily_update, "PlayerIdResolver", _FakeResolver)
@@ -290,6 +317,8 @@ def _patch_common(monkeypatch):
     monkeypatch.setattr(run_daily_update, "PlayerMovementCrawler", _FakeMovementCrawler)
     monkeypatch.setattr(run_daily_update, "DailyRosterCrawler", _FakeRosterCrawler)
     monkeypatch.setattr(run_daily_update, "RosterTransactionCrawler", _FakeRosterTransactionCrawler)
+    monkeypatch.setattr(run_daily_update, "TeamEventCrawler", _FakeTeamEventCrawler)
+    monkeypatch.setattr(run_daily_update, "TicketCrawler", _FakeTicketCrawler)
     monkeypatch.setattr(
         run_daily_update,
         "DEFAULT_DAILY_SUMMARY_DIR",
@@ -834,8 +863,112 @@ def test_run_update_writes_empty_stability_summary_for_clean_run(monkeypatch, tm
     assert stability["detail"]["failure_game_ids"] == {}
     assert stability["oci"]["skip_counts"] == {}
     assert stability["quality_gates"] == {"non_p0_failure_counts": {}, "non_p0_failure_ids": {}}
+    assert stability["p0_non_game"] == {
+        "counts": {"roster_transactions": 0, "team_events": 2, "ticket_prices": 1},
+        "errors": {},
+    }
     assert stability["retry_candidates"] == {"detail": [], "relay": []}
     assert stability["affected_game_ids"] == []
+
+
+def test_run_update_runs_p0_non_game_crawlers_and_records_manifest(monkeypatch, tmp_path):
+    manifest_kwargs = {}
+
+    _patch_common(monkeypatch)
+    monkeypatch.setattr(run_daily_update, "GameDetailCrawler", _FakeDetailCrawlerSuccess)
+    monkeypatch.setattr(run_daily_update, "update_game_status", lambda *_args, **_kwargs: True)
+    monkeypatch.setattr(
+        run_daily_update,
+        "write_refresh_manifest",
+        lambda **kwargs: manifest_kwargs.update(kwargs) or tmp_path / "manifest.json",
+    )
+
+    result = asyncio.run(
+        run_daily_update.run_update(
+            "20250101",
+            sync=False,
+            headless=True,
+            limit=None,
+            step_runner=lambda _argv: None,
+            summary_dir=tmp_path,
+        )
+    )
+
+    assert len(_FakeTeamEventCrawler.created) == 1
+    assert _FakeTeamEventCrawler.created[0].days_back == 3
+    assert _FakeTeamEventCrawler.created[0].calls == [{"save": True, "team_filter": None}]
+    assert len(_FakeTicketCrawler.created) == 1
+    assert _FakeTicketCrawler.created[0].calls == [{"save": True, "season": 2025}]
+    assert result["stability"]["p0_non_game"] == {
+        "counts": {"roster_transactions": 0, "team_events": 2, "ticket_prices": 1},
+        "errors": {},
+    }
+    assert "team_events" in manifest_kwargs["datasets"]
+    assert "ticket_prices" in manifest_kwargs["datasets"]
+    assert "ticket_open_rules" in manifest_kwargs["datasets"]
+    assert "roster_transactions" in manifest_kwargs["datasets"]
+
+
+def test_run_update_records_p0_non_game_errors_without_aborting(monkeypatch, tmp_path):
+    class _FailingTeamEventCrawler:
+        def __init__(self, days_back: int = 30):
+            self.days_back = days_back
+
+        async def run(self, save: bool = False, team_filter: str | None = None):
+            raise RuntimeError("event source down")
+
+    class _FailingTicketCrawler:
+        async def run(self, save: bool = False, season: int | None = None):
+            raise RuntimeError("ticket source down")
+
+    _patch_common(monkeypatch)
+    monkeypatch.setattr(run_daily_update, "TeamEventCrawler", _FailingTeamEventCrawler)
+    monkeypatch.setattr(run_daily_update, "TicketCrawler", _FailingTicketCrawler)
+    monkeypatch.setattr(run_daily_update, "GameDetailCrawler", _FakeDetailCrawlerSuccess)
+    monkeypatch.setattr(run_daily_update, "update_game_status", lambda *_args, **_kwargs: True)
+
+    result = asyncio.run(
+        run_daily_update.run_update(
+            "20250101",
+            sync=False,
+            headless=True,
+            limit=None,
+            step_runner=lambda _argv: None,
+            summary_dir=tmp_path,
+        )
+    )
+
+    assert result["phase"] == "postgame_finalize"
+    assert result["stability"]["p0_non_game"]["counts"] == {"roster_transactions": 0}
+    assert result["stability"]["p0_non_game"]["errors"] == {
+        "team_events": "event source down",
+        "ticket_prices": "ticket source down",
+    }
+
+
+def test_run_update_can_skip_p0_non_game_crawlers(monkeypatch, tmp_path):
+    _patch_common(monkeypatch)
+    monkeypatch.setattr(run_daily_update, "GameDetailCrawler", _FakeDetailCrawlerSuccess)
+    monkeypatch.setattr(run_daily_update, "update_game_status", lambda *_args, **_kwargs: True)
+
+    result = asyncio.run(
+        run_daily_update.run_update(
+            "20250101",
+            sync=False,
+            headless=True,
+            limit=None,
+            step_runner=lambda _argv: None,
+            summary_dir=tmp_path,
+            run_p0_non_game=False,
+        )
+    )
+
+    assert _FakeTeamEventCrawler.created == []
+    assert _FakeTicketCrawler.created == []
+    assert result["stability"]["p0_non_game"] == {
+        "counts": {"roster_transactions": 0, "skipped": 1},
+        "errors": {},
+    }
 
 
 def test_run_update_records_non_p0_quality_gate_failures(monkeypatch):

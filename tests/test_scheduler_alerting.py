@@ -139,6 +139,44 @@ def test_generate_daily_report_job_forces_morning_summary_notify(monkeypatch):
     assert calls == [["--date", "20260513", "--force-notify"]]
 
 
+def test_crawl_p0_non_game_job_invokes_unified_cli(monkeypatch):
+    from src.cli import crawl_p0_data
+
+    calls = []
+    fixed_now = datetime(2026, 6, 5, 6, 20, tzinfo=scheduler.KST)
+
+    class _FrozenDateTime:
+        @staticmethod
+        def now(tz=None):
+            return fixed_now
+
+    monkeypatch.setattr(scheduler, "datetime", _FrozenDateTime)
+    monkeypatch.setattr(crawl_p0_data, "main", lambda argv: calls.append(list(argv)) or {"events": 1})
+    monkeypatch.setattr(scheduler, "alert_success", lambda *_args, **_kwargs: None)
+
+    scheduler.crawl_p0_non_game_job()
+
+    assert calls == [["--type", "all", "--save", "--days", "3", "--season", "2026"]]
+
+
+def test_health_and_freshness_checks_use_canonical_table_names():
+    from src.cli import health_check, monitor_data_freshness
+    from src.models.roster_transaction import RosterTransaction
+    from src.models.team_event import TeamEvent
+    from src.models.ticket_open_rule import TicketOpenRule
+    from src.models.ticket_price import TicketPrice
+
+    assert monitor_data_freshness.DOMAIN_TABLE_CHECKS["event"][0] == TeamEvent.__tablename__
+    assert monitor_data_freshness.DOMAIN_TABLE_CHECKS["roster"][0] == RosterTransaction.__tablename__
+    assert monitor_data_freshness.DOMAIN_TABLE_CHECKS["ticket"][0] == TicketPrice.__tablename__
+
+    health_tables = {table for table, _date_col in health_check.TABLE_CHECKS}
+    assert TeamEvent.__tablename__ in health_tables
+    assert RosterTransaction.__tablename__ in health_tables
+    assert TicketPrice.__tablename__ in health_tables
+    assert TicketOpenRule.__tablename__ in health_tables
+
+
 def test_main_registers_morning_jobs_with_expected_cron(monkeypatch):
     scheduled = []
 
@@ -177,6 +215,7 @@ def test_main_registers_morning_jobs_with_expected_cron(monkeypatch):
     assert ids_to_trigger["sync_from_oci"] == {"hour": 5, "minute": 0}
     assert ids_to_trigger["generate_quality_report"] == {"hour": 5, "minute": 15}
     assert ids_to_trigger["crawl_games_regular"] == {"hour": 3, "minute": 0}
+    assert ids_to_trigger["crawl_p0_non_game"] == {"hour": 6, "minute": 20}
     assert ids_to_trigger["crawl_futures_profile"] == {"day_of_week": "sun", "hour": 5, "minute": 0}
     assert ids_to_trigger["crawl_pregame_refresh"] == {"hour": "10-23", "minute": "*/15"}
     assert ids_to_trigger["crawl_live_refresh_day"] == {"hour": "12-22", "minute": "*/2"}
