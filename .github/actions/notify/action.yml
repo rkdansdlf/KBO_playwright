@@ -1,0 +1,91 @@
+name: 'Notify'
+description: 'Send workflow status notification to Telegram and/or Slack'
+inputs:
+  status:
+    description: 'Job status (success/failure/cancelled)'
+    required: true
+  workflow:
+    description: 'Workflow name (defaults to github.workflow)'
+    required: false
+    default: ''
+  channels:
+    description: 'Comma-separated list of channels (telegram, slack, both)'
+    required: false
+    default: 'telegram'
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Send Telegram notification
+      if: ${{ contains(inputs.channels, 'telegram') || inputs.channels == 'both' }}
+      shell: bash
+      env:
+        TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+        TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+      run: |
+        STATUS_INPUT="${{ inputs.status }}"
+        WF_NAME="${{ inputs.workflow }}"
+        if [ -z "$WF_NAME" ]; then
+          WF_NAME="${{ github.workflow }}"
+        fi
+
+        case "$STATUS_INPUT" in
+          success) EMOJI="✅"; STATUS="Success" ;;
+          failure) EMOJI="❌"; STATUS="Failure" ;;
+          cancelled) EMOJI="⚠️"; STATUS="Cancelled" ;;
+          *) EMOJI="❓"; STATUS="$STATUS_INPUT" ;;
+        esac
+
+        MESSAGE="${EMOJI} <b>KBO ${WF_NAME} ${STATUS}</b>%0ARepo: ${{ github.repository }}%0ARun: <a href=\"https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}\">View Details</a>"
+
+        if [ -n "$TELEGRAM_BOT_TOKEN" ] && [ -n "$TELEGRAM_CHAT_ID" ]; then
+          curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+            -d "chat_id=${TELEGRAM_CHAT_ID}" \
+            -d "text=${MESSAGE}" \
+            -d "parse_mode=HTML" || echo "Telegram notification failed"
+        else
+          echo "Telegram credentials not set, skipping."
+        fi
+
+    - name: Send Slack notification
+      if: ${{ contains(inputs.channels, 'slack') || inputs.channels == 'both' }}
+      shell: bash
+      env:
+        SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+      run: |
+        STATUS_INPUT="${{ inputs.status }}"
+        WF_NAME="${{ inputs.workflow }}"
+        if [ -z "$WF_NAME" ]; then
+          WF_NAME="${{ github.workflow }}"
+        fi
+
+        case "$STATUS_INPUT" in
+          success) EMOJI="✅"; STATUS="Success" ;;
+          failure) EMOJI="❌"; STATUS="Failure" ;;
+          cancelled) EMOJI="⚠️"; STATUS="Cancelled" ;;
+          *) EMOJI="❓"; STATUS="$STATUS_INPUT" ;;
+        esac
+
+        PAYLOAD=$(cat <<EOF
+        {
+          "text": "${EMOJI} KBO ${WF_NAME} ${STATUS}",
+          "attachments": [
+            {
+              "color": "$([ "$STATUS_INPUT" = "success" ] && echo "good" || echo "danger")",
+              "fields": [
+                {"title": "Repository", "value": "${{ github.repository }}", "short": true},
+                {"title": "Run", "value": "<https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Details>", "short": true}
+              ]
+            }
+          ]
+        }
+        EOF
+        )
+
+        if [ -n "$SLACK_WEBHOOK_URL" ]; then
+          curl -s -X POST "$SLACK_WEBHOOK_URL" \
+            -H "Content-Type: application/json" \
+            -d "$PAYLOAD" || echo "Slack notification failed"
+        else
+          echo "Slack webhook URL not set, skipping."
+        fi

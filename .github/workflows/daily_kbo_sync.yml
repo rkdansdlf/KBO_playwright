@@ -1,81 +1,221 @@
-name: KBO Postgame Finalize
+name: KBO Daily Pipeline
 
 on:
   schedule:
-    # Runs at 18:00 UTC which is 03:00 KST the next day.
-    - cron: '0 18 * * *'
+    - cron: '0 18 * * *'  # 03:00 KST
   workflow_dispatch:
     inputs:
       target_date:
-        description: 'Target date to finalize (YYYYMMDD). Defaults to previous day in KST.'
+        description: 'Target date (YYYYMMDD). Defaults to previous day in KST.'
         required: false
         default: ''
 
 concurrency:
-  group: kbo-postgame-finalize
+  group: kbo-daily-pipeline
   cancel-in-progress: false
 
+env:
+  PYTHONPATH: ${{ github.workspace }}
+
 jobs:
-  postgame-finalize:
+  # ──────────────────────────────────────────────────────────────────────────
+  # JOB 1 — Postgame Finalize (03:00 KST) + Standings + Defense + Rankings
+  # ──────────────────────────────────────────────────────────────────────────
+  finalize:
     runs-on: ubuntu-latest
-    env:
-      PYTHONPATH: ${{ github.workspace }}
-
+    outputs:
+      date: ${{ steps.date.outputs.KST_DATE }}
+      year: ${{ steps.date.outputs.KST_YEAR }}
     steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
-
-      - name: Set up Python 3.12
-        uses: actions/setup-python@v5
+      - uses: ./.github/actions/python-env
         with:
-          python-version: '3.12'
-          cache: 'pip'
-
-      - name: Install dependencies
-        run: |
-          pip install -r requirements.txt
-          playwright install --with-deps chromium
+          playwright: 'true'
+          init-db: 'true'
 
       - name: Resolve target date in KST
         id: date
         run: |
-          if [ "${{ github.event.inputs.target_date }}" != "" ]; then
+          if [ -n "${{ github.event.inputs.target_date }}" ]; then
             KST_DATE="${{ github.event.inputs.target_date }}"
           else
             KST_DATE="$(TZ='Asia/Seoul' date -d 'yesterday' +'%Y%m%d')"
           fi
-          echo "KST_DATE=${KST_DATE}" >> $GITHUB_ENV
-          echo "KST_YEAR=${KST_DATE:0:4}" >> $GITHUB_ENV
-
-      - name: Initialize Database & Seed Metadata
-        run: |
-          # Ensure SQLite schemas and static FK references (Teams/Seasons) exist
-          python3 -c "from src.db.engine import init_db; init_db()"
-          python3 scripts/maintenance/seed_data.py
+          echo "KST_DATE=${KST_DATE}" | tee -a $GITHUB_OUTPUT
+          echo "KST_YEAR=${KST_DATE:0:4}" | tee -a $GITHUB_OUTPUT
 
       - name: Hydrate Runtime Cache From OCI
         env:
           OCI_DB_URL: ${{ secrets.OCI_DB_URL }}
         run: |
-          python3 -m src.cli.hydrate_runtime_from_oci --year "${{ env.KST_YEAR }}" --date "${{ env.KST_DATE }}"
+          python3 -m src.cli.hydrate_runtime_from_oci \
+            --year "${{ steps.date.outputs.KST_YEAR }}" \
+            --date "${{ steps.date.outputs.KST_DATE }}"
 
       - name: Run Postgame Finalize & Sync
         env:
           OCI_DB_URL: ${{ secrets.OCI_DB_URL }}
           KBO_USER_ID: ${{ secrets.KBO_USER_ID }}
           KBO_USER_PWD: ${{ secrets.KBO_USER_PWD }}
-          AUTO_SYNC_OCI: 'false'
         run: |
-          python3 -m src.cli.run_daily_update --date ${{ env.KST_DATE }} --sync --fix
+          python3 -m src.cli.run_daily_update \
+            --date ${{ steps.date.outputs.KST_DATE }} \
+            --sync --fix
 
-      - name: Run OCI Freshness Gate
+      - name: Compute Standings
+        run: |
+          python3 -m src.cli.calculate_standings \
+            --year ${{ steps.date.outputs.KST_YEAR }}
+
+      - name: Aggregate Team Defense
+        run: |
+          python3 -c "
+          from src.aggregators.team_fielding_aggregator import TeamFieldingAggregator
+          from src.db.engine import SessionLocal
+          from src.models.team import Team
+          year = ${{ steps.date.outputs.KST_YEAR }}
+          with SessionLocal() as session:
+              teams = [t.team_id for t in session.query(Team.team_id).filter(Team.is_active).all()]
+              TeamFieldingAggregator(session).run_all(year, teams)
+          "
+
+      - name: Compute Rankings
+        run: |
+          python3 -c "
+          from src.aggregators.ranking_aggregator import RankingAggregator
+          from src.db.engine import SessionLocal
+          year = ${{ steps.date.outputs.KST_YEAR }}
+          with SessionLocal() as session:
+              RankingAggregator(session).run_for_season(year)
+          "
+
+      - name: OCI Freshness Gate
         env:
           OCI_DB_URL: ${{ secrets.OCI_DB_URL }}
         run: |
-          python3 -m src.cli.freshness_gate --date "${KST_DATE}" --source-url-env OCI_DB_URL
+          python3 -m src.cli.freshness_gate \
+            --date ${{ steps.date.outputs.KST_DATE }} \
+            --source-url-env OCI_DB_URL
 
-      - name: Notify Telegram on Status
+      - uses: ./.github/actions/notify
         if: always()
-        uses: ./.github/actions/notify-telegram
         with:
           status: ${{ job.status }}
+          workflow: 'Postgame Finalize'
+          channels: telegram
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # JOB 2 — PBP Healer + Batch Parse (04:30-05:00 KST)
+  # ──────────────────────────────────────────────────────────────────────────
+  post-process:
+    needs: finalize
+    runs-on: ubuntu-latest
+    steps:
+      - uses: ./.github/actions/python-env
+        with:
+          playwright: 'true'
+          init-db: 'true'
+
+      - name: Heal Unverified PBP
+        env:
+          OCI_DB_URL: ${{ secrets.OCI_DB_URL }}
+        run: |
+          python3 -m src.cli.auto_healer --lookback-days 3
+
+      - name: Batch Parse Snapshots
+        run: |
+          python3 scripts/batch_parse_snapshots.py
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # JOB 3 — Quality Report + Gap Report (05:15-05:30 KST)
+  # ──────────────────────────────────────────────────────────────────────────
+  quality:
+    needs: post-process
+    runs-on: ubuntu-latest
+    steps:
+      - uses: ./.github/actions/python-env
+        with:
+          init-db: 'true'
+
+      - name: Generate Quality Report
+        env:
+          OCI_DB_URL: ${{ secrets.OCI_DB_URL }}
+        run: |
+          python3 -m src.cli.generate_quality_report \
+            --date ${{ needs.finalize.outputs.date }} \
+            --force-notify
+
+      - name: Trend Tracker Check
+        env:
+          OCI_DB_URL: ${{ secrets.OCI_DB_URL }}
+        run: |
+          python3 -c "
+          from src.monitoring.trend_tracker import TrendTracker
+          TrendTracker().send_degradation_alert(days=14)
+          "
+
+      - name: Run Gap Report
+        env:
+          OCI_DB_URL: ${{ secrets.OCI_DB_URL }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID_RELAY: ${{ secrets.TELEGRAM_CHAT_ID_RELAY }}
+          TELEGRAM_CHAT_ID_STANDINGS: ${{ secrets.TELEGRAM_CHAT_ID_STANDINGS }}
+          TELEGRAM_CHAT_ID_PROFILE: ${{ secrets.TELEGRAM_CHAT_ID_PROFILE }}
+          TELEGRAM_CHAT_ID_FRESHNESS: ${{ secrets.TELEGRAM_CHAT_ID_FRESHNESS }}
+        run: |
+          python3 -m src.cli.gap_report
+
+      - name: Data Freshness Monitor
+        run: |
+          python3 -m src.cli.monitor_data_freshness
+
+      - uses: ./.github/actions/notify
+        if: always()
+        with:
+          status: ${{ job.status }}
+          workflow: 'Quality & Gap Report'
+          channels: telegram
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # JOB 4 — Advanced Daily Sync (기존 advanced_daily_sync)
+  # ──────────────────────────────────────────────────────────────────────────
+  advanced-sync:
+    needs: quality
+    runs-on: ubuntu-latest
+    steps:
+      - uses: ./.github/actions/python-env
+        with:
+          init-db: 'true'
+
+      - name: Run Advanced Daily & Sync
+        env:
+          OCI_DB_URL: ${{ secrets.OCI_DB_URL }}
+        run: |
+          python3 -m src.cli.run_advanced_daily \
+            --year ${{ needs.finalize.outputs.year }} \
+            --sync
+
+      - name: Reference Integrity Gate
+        env:
+          OCI_DB_URL: ${{ secrets.OCI_DB_URL }}
+        run: |
+          python3 scripts/verification/check_orphan_data.py \
+            --db-url env:OCI_DB_URL --strict --json --sample-limit 20
+
+      - name: Quality Gate (OCI Only)
+        env:
+          OCI_DB_URL: ${{ secrets.OCI_DB_URL }}
+        run: |
+          python3 scripts/maintenance/quality_gate.py --oci-only --no-write
+
+      - name: Completeness Audit
+        env:
+          OCI_DB_URL: ${{ secrets.OCI_DB_URL }}
+        run: |
+          python3 scripts/verification/audit_daily_completeness.py \
+            --db-url env:OCI_DB_URL --days 14
+
+      - uses: ./.github/actions/notify
+        if: always()
+        with:
+          status: ${{ job.status }}
+          channels: telegram

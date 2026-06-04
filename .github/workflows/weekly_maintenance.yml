@@ -2,7 +2,6 @@ name: KBO Weekly Maintenance
 
 on:
   schedule:
-    # Runs at 20:00 UTC on Sunday, which is 05:00 KST on Monday.
     - cron: '0 20 * * 0'
   workflow_dispatch:
     inputs:
@@ -15,42 +14,28 @@ concurrency:
   group: kbo-weekly-maintenance
   cancel-in-progress: false
 
+env:
+  PYTHONPATH: ${{ github.workspace }}
+
 jobs:
   maintenance:
     runs-on: ubuntu-latest
-    env:
-      PYTHONPATH: ${{ github.workspace }}
-
     steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
-
-      - name: Set up Python 3.12
-        uses: actions/setup-python@v5
+      - uses: ./.github/actions/python-env
         with:
-          python-version: '3.12'
-          cache: 'pip'
-
-      - name: Install dependencies
-        run: |
-          pip install -r requirements.txt
-          playwright install --with-deps chromium
-
-      - name: Initialize Database & Seed Metadata
-        run: |
-          python3 -c "from src.db.engine import init_db; init_db()"
-          python3 scripts/maintenance/seed_data.py
+          playwright: 'true'
+          init-db: 'true'
 
       - name: Run Weekly Maintenance & Sync
         env:
           OCI_DB_URL: ${{ secrets.OCI_DB_URL }}
         run: |
-          LIMIT="${{ github.event.inputs.profile_limit }}"
-          if [ -z "$LIMIT" ]; then LIMIT="500"; fi
-          python3 -m src.cli.run_weekly_maintenance --profile-limit "$LIMIT" --sync
+          LIMIT="${{ github.event.inputs.profile_limit || '500' }}"
+          python3 -m src.cli.run_weekly_maintenance \
+            --profile-limit "$LIMIT" --sync
 
-      - name: Notify Telegram on Status
+      - uses: ./.github/actions/notify
         if: always()
-        uses: ./.github/actions/notify-telegram
         with:
           status: ${{ job.status }}
+          channels: telegram
