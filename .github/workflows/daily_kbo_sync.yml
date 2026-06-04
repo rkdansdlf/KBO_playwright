@@ -214,6 +214,13 @@ jobs:
           python3 scripts/verification/audit_daily_completeness.py \
             --db-url env:OCI_DB_URL --days 14
 
+      - name: Freshness Gate (Extended Window)
+        env:
+          OCI_DB_URL: ${{ secrets.OCI_DB_URL }}
+        run: |
+          python3 -m src.cli.freshness_gate \
+            --days 14 --source-url-env OCI_DB_URL
+
       - uses: ./.github/actions/notify
         if: always()
         with:
