@@ -14,7 +14,7 @@
 
 ### 2.2 FallbackMonitor (`src/utils/fallback_monitor.py`)
 - **역할:** 폴백 이벤트 로깅 및 외부 알림 전송.
-- **알림 채널:** Slack Webhook (환경변수 `SLACK_WEBHOOK_URL` 필요).
+- **알림 채널:** Telegram (환경변수 `TELEGRAM_BOT_TOKEN` + `TELEGRAM_CHAT_ID` 필요). Slack은 레거시 폴백으로 유지됨.
 
 ### 2.3 Audit System (`scripts/verification/audit_fallback_stats.py`)
 - **역할:** 공식 수집 데이터와 자체 집계 데이터를 비교하여 오차(Mismatch) 감지.
@@ -35,10 +35,12 @@ python -m src.cli.recalc_season_stats --year 2025 --series regular --type all --
 ```
 
 ### 3.3 일일 정합성 검사
-`run_daily_update.py` 파이프라인의 10.5단계에서 자동으로 수행됩니다. 결과는 로그와 Slack으로 전송됩니다.
+`run_daily_update.py` 파이프라인의 10.5단계에서 자동으로 수행됩니다. 결과는 로그와 Telegram으로 전송됩니다.
 
 ## 4. 환경 설정
 알림 기능을 활성화하려면 `.env` 파일에 다음을 추가하십시오:
 ```env
-SLACK_WEBHOOK_URL=https://hooks.slack.com/services/...
+TELEGRAM_BOT_TOKEN=your_bot_token
+TELEGRAM_CHAT_ID=your_chat_id
+# Slack은 레거시 폴백: SLACK_WEBHOOK_URL=https://hooks.slack.com/services/...
 ```

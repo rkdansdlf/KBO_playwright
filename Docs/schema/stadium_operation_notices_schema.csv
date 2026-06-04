@@ -1,0 +1,16 @@
+column_name,type,is_primary_key,foreign_key,nullable,description
+id,INTEGER,True,,False,자동 증가 PK
+stadium_code,VARCHAR(10),False,stadium_info.stadium_code,False,구장 코드 (e.g. JAMSIL)
+notice_type,VARCHAR(30),False,,False,"공지 유형: GATE_CHANGE / CANCEL / DELAY / ENTRY_RULE / WEATHER / EVENT / PARKING / GENERAL"
+title,VARCHAR(500),False,,False,공지 제목
+content,TEXT,False,,True,공지 본문 내용
+published_at,DATETIME,False,,True,원본 발행 일시
+game_date,DATE,False,,True,해당 경기일 (적용 가능한 경우)
+source_name,VARCHAR(100),False,,False,"출처 이름 (e.g. LG트윈스공식 / 두산베어스공식 / naver_search_LG / KBO)"
+source_url,VARCHAR(500),False,,True,원본 URL
+external_id,VARCHAR(200),False,,True,"외부 시스템 ID (게시물 번호 / 기사 URL 등)"
+is_urgent,BOOLEAN,False,,False,"긴급 공지 여부 (True: [긴급] 등 키워드 포함)"
+is_confirmed,BOOLEAN,False,,False,"공식 확인 여부 (False: Naver 검색 결과 등 미확인 출처)"
+raw_snapshot,JSON,False,,True,원본 크롤링/API 응답 스냅샷
+created_at,DATETIME,False,,False,레코드 생성 시각
+updated_at,DATETIME,False,,False,레코드 마지막 수정 시각

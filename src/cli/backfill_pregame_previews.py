@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import json
 import sys
 from dataclasses import dataclass
 from datetime import datetime, timedelta
@@ -30,6 +31,7 @@ class PregameBackfillDate:
     scheduled_total: int
     starters_complete: int
     preview_rows: int
+    preview_missing_starters: int
 
 
 def _yyyymmdd(value: str) -> str:
@@ -48,6 +50,20 @@ def _default_end_date(days_ahead: int) -> str:
     return (datetime.now(KST).date() + timedelta(days=days_ahead)).strftime("%Y%m%d")
 
 
+def _preview_detail_has_starters(detail_text: str | None) -> bool:
+    if not detail_text:
+        return False
+    try:
+        payload = json.loads(detail_text)
+    except (TypeError, json.JSONDecodeError):
+        return False
+    if not isinstance(payload, dict):
+        return False
+    return bool(str(payload.get("away_starter") or "").strip()) and bool(
+        str(payload.get("home_starter") or "").strip()
+    )
+
+
 def find_missing_pregame_dates(
     *,
     start_date: str,
@@ -58,53 +74,74 @@ def find_missing_pregame_dates(
     query = """
         SELECT
             REPLACE(CAST(g.game_date AS TEXT), '-', '') AS target_date,
-            COUNT(*) AS scheduled_total,
-            SUM(
-                CASE
-                    WHEN g.away_pitcher IS NOT NULL AND g.away_pitcher != ''
-                     AND g.home_pitcher IS NOT NULL AND g.home_pitcher != ''
-                    THEN 1 ELSE 0
-                END
-            ) AS starters_complete,
-            SUM(CASE WHEN p.game_id IS NOT NULL THEN 1 ELSE 0 END) AS preview_rows
+            g.game_id,
+            g.away_pitcher,
+            g.home_pitcher,
+            p.detail_text AS preview_detail_text
         FROM game g
         LEFT JOIN (
-            SELECT DISTINCT game_id
-            FROM game_summary
-            WHERE summary_type = '프리뷰'
+            SELECT gs.game_id, gs.detail_text
+            FROM game_summary gs
+            JOIN (
+                SELECT game_id, MAX(id) AS id
+                FROM game_summary
+                WHERE summary_type = '프리뷰'
+                GROUP BY game_id
+            ) latest ON latest.id = gs.id
         ) p ON p.game_id = g.game_id
         WHERE UPPER(g.game_status) = 'SCHEDULED'
           AND REPLACE(CAST(g.game_date AS TEXT), '-', '') BETWEEN :start_date AND :end_date
-        GROUP BY g.game_date
     """
-    if not include_complete:
-        query += """
-        HAVING starters_complete < scheduled_total
-            OR preview_rows < scheduled_total
-        """
     query += " ORDER BY g.game_date"
-    if limit_dates is not None:
-        query += " LIMIT :limit_dates"
 
     params: dict[str, object] = {
         "start_date": start_date,
         "end_date": end_date,
     }
-    if limit_dates is not None:
-        params["limit_dates"] = limit_dates
 
     with SessionLocal() as session:
         rows = session.execute(text(query), params).all()
 
-    return [
-        PregameBackfillDate(
-            target_date=str(row.target_date),
-            scheduled_total=int(row.scheduled_total or 0),
-            starters_complete=int(row.starters_complete or 0),
-            preview_rows=int(row.preview_rows or 0),
+    by_date: dict[str, PregameBackfillDate] = {}
+    for row in rows:
+        target_date = str(row.target_date)
+        current = by_date.get(target_date)
+        if current is None:
+            current = PregameBackfillDate(
+                target_date=target_date,
+                scheduled_total=0,
+                starters_complete=0,
+                preview_rows=0,
+                preview_missing_starters=0,
+            )
+
+        has_preview = row.preview_detail_text is not None
+        starters_complete = bool(str(row.away_pitcher or "").strip()) and bool(
+            str(row.home_pitcher or "").strip()
         )
-        for row in rows
-    ]
+        preview_has_starters = _preview_detail_has_starters(row.preview_detail_text)
+
+        by_date[target_date] = PregameBackfillDate(
+            target_date=target_date,
+            scheduled_total=current.scheduled_total + 1,
+            starters_complete=current.starters_complete + int(starters_complete),
+            preview_rows=current.preview_rows + int(has_preview),
+            preview_missing_starters=current.preview_missing_starters
+            + int(has_preview and not preview_has_starters),
+        )
+
+    targets = list(by_date.values())
+    if not include_complete:
+        targets = [
+            target
+            for target in targets
+            if target.starters_complete < target.scheduled_total
+            or target.preview_rows < target.scheduled_total
+            or target.preview_missing_starters > 0
+        ]
+    if limit_dates is not None:
+        targets = targets[:limit_dates]
+    return targets
 
 
 def get_pregame_date_status(target_date: str) -> PregameBackfillDate | None:
@@ -136,7 +173,8 @@ async def run_backfill(args: argparse.Namespace) -> int:
         print(
             f"  {target.target_date}: "
             f"starters={target.starters_complete}/{target.scheduled_total}, "
-            f"preview={target.preview_rows}/{target.scheduled_total}"
+            f"preview={target.preview_rows}/{target.scheduled_total}, "
+            f"preview_missing_starters={target.preview_missing_starters}"
         )
 
     if args.dry_run:
@@ -155,11 +193,15 @@ async def run_backfill(args: argparse.Namespace) -> int:
             failed.append(target.target_date)
         if args.fail_on_incomplete:
             refreshed = get_pregame_date_status(target.target_date)
-            if refreshed and refreshed.starters_complete < refreshed.scheduled_total:
+            if refreshed and (
+                refreshed.starters_complete < refreshed.scheduled_total
+                or refreshed.preview_missing_starters > 0
+            ):
                 incomplete.append(
                     f"{target.target_date}: "
                     f"starters={refreshed.starters_complete}/{refreshed.scheduled_total}, "
-                    f"preview={refreshed.preview_rows}/{refreshed.scheduled_total}"
+                    f"preview={refreshed.preview_rows}/{refreshed.scheduled_total}, "
+                    f"preview_missing_starters={refreshed.preview_missing_starters}"
                 )
 
     print(

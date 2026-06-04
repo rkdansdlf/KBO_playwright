@@ -253,6 +253,15 @@ class PlayerBasicRepository:
             "salary_original": player_data.get("salary_original"),
             "signing_bonus_original": player_data.get("signing_bonus_original"),
             "draft_info": player_data.get("draft_info"),
+            "salary_amount": player_data.get("salary_amount"),
+            "salary_currency": player_data.get("salary_currency"),
+            "signing_bonus_amount": player_data.get("signing_bonus_amount"),
+            "signing_bonus_currency": player_data.get("signing_bonus_currency"),
+            "draft_year": player_data.get("draft_year"),
+            "draft_round": player_data.get("draft_round"),
+            "draft_pick_overall": player_data.get("draft_pick_overall"),
+            "draft_type": player_data.get("draft_type"),
+            "education_path": player_data.get("education_path"),
         }
 
     def get_all(self, limit: int = None) -> list[PlayerBasic]:

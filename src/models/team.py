@@ -4,7 +4,7 @@ Team-related ORM models
 
 from __future__ import annotations
 
-from sqlalchemy import JSON, Boolean, Date, ForeignKey, Integer, String, UniqueConstraint
+from sqlalchemy import JSON, Boolean, Date, Float, ForeignKey, Integer, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from .base import Base, TimestampMixin
@@ -132,9 +132,9 @@ class TeamSeasonFielding(Base, TimestampMixin):
     assists: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
 
     # Advanced
-    def_innings: Mapped[float | None] = mapped_column(Integer, nullable=True, comment="Total defensive innings")
-    fielding_pct: Mapped[float | None] = mapped_column(Integer, nullable=True)
-    range_factor_per_game: Mapped[float | None] = mapped_column(Integer, nullable=True)
+    def_innings: Mapped[float | None] = mapped_column(Float, nullable=True, comment="Total defensive innings")
+    fielding_pct: Mapped[float | None] = mapped_column(Float, nullable=True)
+    range_factor_per_game: Mapped[float | None] = mapped_column(Float, nullable=True)
 
 
 class TeamSeasonBaserunning(Base, TimestampMixin):
@@ -152,7 +152,7 @@ class TeamSeasonBaserunning(Base, TimestampMixin):
     # Stolen base attempts
     stolen_bases: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     caught_stealing: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
-    sb_success_rate: Mapped[float | None] = mapped_column(Integer, nullable=True)
+    sb_success_rate: Mapped[float | None] = mapped_column(Float, nullable=True)
 
     # Extra base running
     extra_bases_taken: Mapped[int] = mapped_column(

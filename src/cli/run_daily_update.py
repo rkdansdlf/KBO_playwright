@@ -298,7 +298,6 @@ async def run_update(
     skip_oci_supporting_sync: bool = False,
 ):
     """Main orchestration logic for postgame finalize and daily reconciliation."""
-    global run_healer_async
     runner = step_runner or _run_python_step
 
     print(f"\n{'=' * 60}")
@@ -578,6 +577,15 @@ async def run_update(
         print("   ✅ Review context generation complete")
     except Exception:
         logger.exception("   ❌ Error generating review context")
+
+    print("\n🎬 Step 5.2: Daily highlight generation...")
+    try:
+        for f_date in freshness_dates:
+            highlight_args = ["-m", "src.cli.daily_highlight_batch", "--date", f_date, "--no-sync"]
+            runner(highlight_args)
+        print("   ✅ Daily highlight generation complete")
+    except Exception:
+        logger.exception("   ❌ Error generating daily highlights")
 
     print("\n📚 Step 5.5: LLM-ready game story generation...")
     try:

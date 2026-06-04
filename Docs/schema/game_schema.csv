@@ -13,6 +13,7 @@ winning_team,VARCHAR(20),False,teams(team_id)
 winning_score,INTEGER,False,
 season_id,INTEGER,False,kbo_seasons(season_id)
 game_status,VARCHAR(32),False,
+game_lifecycle_state,VARCHAR(32),False,
 home_franchise_id,INTEGER,False,team_franchises(id)
 away_franchise_id,INTEGER,False,team_franchises(id)
 winning_franchise_id,INTEGER,False,team_franchises(id)

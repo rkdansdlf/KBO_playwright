@@ -1,0 +1,16 @@
+column_name,type,is_primary_key,foreign_key,nullable,description
+id,INTEGER,True,,False,자동 증가 PK
+stadium_code,VARCHAR(10),False,stadium_info.stadium_code,False,구장 코드 (e.g. JAMSIL)
+origin_label,VARCHAR(100),False,,False,"출발지 레이블 (e.g. 잠실역_2호선_7번출구)"
+origin_lat,FLOAT,False,,True,출발지 위도
+origin_lng,FLOAT,False,,True,출발지 경도
+transport_mode,VARCHAR(20),False,,False,"교통 수단: subway / bus / walk / car / mixed"
+measured_at,DATETIME,False,,False,실측 시각 (KST)
+game_date,DATE,False,,True,대상 경기일
+duration_minutes,INTEGER,False,,True,소요 시간 (분)
+distance_meters,INTEGER,False,,True,이동 거리 (m)
+congestion_factor,FLOAT,False,,True,혼잡 배율 (1.0=평상시)
+source_api,VARCHAR(30),False,,True,"API 소스: kakao / naver / tmap / google"
+raw_response,JSON,False,,True,원본 API 응답 스냅샷
+created_at,DATETIME,False,,False,레코드 생성 시각
+updated_at,DATETIME,False,,False,레코드 마지막 수정 시각

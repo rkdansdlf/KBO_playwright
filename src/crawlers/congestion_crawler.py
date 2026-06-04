@@ -1,0 +1,135 @@
+"""
+Congestion crawler for Jamsil Stadium area.
+
+Collects real-time congestion data from:
+  1. 서울시 실시간 도시데이터 API (Seoul Open Data) — primary
+  2. Naver/Kakao place popular times — secondary (scraping)
+
+Coverage:
+  - 잠실 야구장 권역 (overall area)
+  - 잠실역 2호선 (subway station)
+  - 잠실역 8호선 (subway station)
+  - 몽촌토성역 8호선 (subway station)
+  - 주요 게이트 구역 (gate zones, via proxied area codes)
+
+Scheduling recommendation:
+  - Run every 5 minutes between D-3h and D+2h on game days.
+"""
+from __future__ import annotations
+
+import logging
+from datetime import date, datetime
+
+from src.db.engine import SessionLocal
+from src.repositories.congestion_repository import CongestionRepository
+from src.utils.safe_print import safe_print as print
+from src.utils.seoul_api_client import JAMSIL_AREA_CODES, CongestionSnapshot, get_jamsil_congestion_batch
+
+logger = logging.getLogger(__name__)
+
+STADIUM_CODE = "JAMSIL"
+
+# Additional location metadata for DB records
+AREA_LOCATION_META: dict[str, dict] = {
+    "잠실 야구장": {"location_type": "area", "location_label": "잠실야구장_권역"},
+    "잠실역(2호선)": {"location_type": "subway_station", "location_label": "잠실역_2호선"},
+    "석촌호수(동호)": {"location_type": "area", "location_label": "석촌호수_동호"},
+}
+
+
+def _snapshot_to_record(
+    snap: CongestionSnapshot,
+    game_date: date,
+    measured_at: datetime,
+) -> dict:
+    meta = AREA_LOCATION_META.get(
+        snap.location_label,
+        {"location_type": "area", "location_label": snap.location_label},
+    )
+    return {
+        "stadium_code": STADIUM_CODE,
+        "location_type": meta["location_type"],
+        "location_label": meta["location_label"],
+        "measured_at": measured_at,
+        "game_date": game_date,
+        "congestion_level": snap.congestion_level,
+        "congestion_index": snap.congestion_index,
+        "people_count": snap.people_count,
+        "source": snap.source,
+        "raw_data": snap.raw_data,
+    }
+
+
+class CongestionCrawler:
+    """
+    Orchestrates congestion data collection from multiple sources.
+    """
+
+    def __init__(self, stadium_code: str = STADIUM_CODE) -> None:
+        self.stadium_code = stadium_code
+
+    async def run(
+        self,
+        game_date: date | None = None,
+        save: bool = False,
+    ) -> list[dict]:
+        game_date = game_date or date.today()
+        measured_at = datetime.utcnow()
+
+        print(f"[Congestion] Collecting for {game_date} at {measured_at.strftime('%H:%M')} UTC")
+
+        # Source 1: Seoul Open Data API
+        snapshots = await self._collect_seoul_api()
+        print(f"[Congestion] Seoul API: {len(snapshots)} zones")
+
+        records = [
+            _snapshot_to_record(snap, game_date, measured_at)
+            for snap in snapshots
+        ]
+
+        print(f"[Congestion] Total records: {len(records)}")
+
+        if save:
+            self._save_to_db(records)
+        else:
+            for rec in records:
+                print(
+                    f"  {rec['location_label']} | {rec['location_type']} | "
+                    f"level={rec['congestion_level']} | index={rec['congestion_index']}"
+                )
+
+        return records
+
+    async def _collect_seoul_api(self) -> list[CongestionSnapshot]:
+        try:
+            return await get_jamsil_congestion_batch()
+        except Exception:
+            logger.exception("[Congestion] Seoul API batch failed")
+            return []
+
+    def _save_to_db(self, records: list[dict]) -> None:
+        with SessionLocal() as session:
+            try:
+                repo = CongestionRepository(session)
+                created, updated = repo.bulk_upsert(records)
+                session.commit()
+                print(f"[Congestion] Saved: {created} new, {updated} updated.")
+            except Exception as e:
+                session.rollback()
+                print(f"[Congestion] Error: {e}")
+
+
+if __name__ == "__main__":
+    import argparse
+    import asyncio
+
+    parser = argparse.ArgumentParser(description="Collect congestion data for Jamsil Stadium")
+    parser.add_argument("--save", action="store_true", help="Save to DB")
+    parser.add_argument("--game-date", type=str, default=None, help="Game date YYYYMMDD")
+    args = parser.parse_args()
+
+    gdate = None
+    if args.game_date:
+        gdate = datetime.strptime(args.game_date, "%Y%m%d").date()
+
+    asyncio.run(CongestionCrawler().run(game_date=gdate, save=args.save))

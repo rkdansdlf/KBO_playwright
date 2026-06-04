@@ -124,7 +124,7 @@ def _compute_enriched_interval(
 
     Returns (sleep_seconds, extra_note, updated_last_event_counts).
     """
-    MIN_POLLING_INTERVAL = 10
+    MIN_POLLING_INTERVAL = 5
     if not game_ids_playing or not enriched_state:
         return max(MIN_POLLING_INTERVAL, base_interval), "", dict(last_event_counts)
 
@@ -276,11 +276,16 @@ async def run_live_crawler_cycle(
     num_active_games = len(selected_candidates)
     if num_active_games > 0:
         scale_factor = 1.0 + max(0, num_active_games - 1) * 0.5
-        relay_crawler.policy.min_delay *= scale_factor
-        relay_crawler.policy.max_delay *= scale_factor
+        relay_policy = getattr(relay_crawler, "policy", None)
+        if relay_policy is not None:
+            relay_policy.min_delay *= scale_factor
+            relay_policy.max_delay *= scale_factor
+            min_delay = relay_policy.min_delay
+        else:
+            min_delay = 0.0
         print(
             f"[LIVE] Dynamic request delay scaling: factor {scale_factor:.2f}x for {num_active_games} active games "
-            f"(min_delay={relay_crawler.policy.min_delay:.2f}s)"
+            f"(min_delay={min_delay:.2f}s)"
         )
 
     for game, lifecycle_state, nav_status_raw in selected_candidates:
@@ -418,6 +423,7 @@ async def run_live_crawler_cycle(
         }
 
     should_sync = sync_to_oci if sync_to_oci is not None else bool(os.getenv("OCI_DB_URL"))
+    oci_sync_failures: list[dict[str, str]] = []
     if should_sync:
         oci_url = os.getenv("OCI_DB_URL")
         if oci_url:
@@ -425,10 +431,36 @@ async def run_live_crawler_cycle(
                 sync_engine = OCISync(oci_url, sync_session)
                 try:
                     for game_id in sorted(touched_game_ids):
-                        sync_engine.sync_specific_game(game_id)
-                        print(f"[SYNC] ✅ Synced {game_id} to OCI.")
+                        try:
+                            sync_engine.sync_specific_game(game_id)
+                            print(f"[SYNC] ✅ Synced {game_id} to OCI.")
+                        except Exception as exc:
+                            oci_sync_failures.append(
+                                {
+                                    "game_id": game_id,
+                                    "phase": "sync_specific_game",
+                                    "error": str(exc),
+                                }
+                            )
+                            logger.exception(
+                                "[SYNC] OCI sync failed game_id=%s phase=sync_specific_game",
+                                game_id,
+                            )
+                            print(f"[SYNC] ⚠️ OCI sync failed for {game_id}: {exc}")
                 finally:
                     sync_engine.close()
+
+    if oci_sync_failures:
+        failed_ids = [failure["game_id"] for failure in oci_sync_failures]
+        logger.warning(
+            "Live cycle completed with OCI partial failures phase=sync_specific_game failed=%d game_ids=%s",
+            len(oci_sync_failures),
+            ",".join(failed_ids),
+        )
+        print(
+            "[SYNC] ⚠️ Live crawl succeeded with OCI partial failures: "
+            f"failed={len(oci_sync_failures)} game_ids={','.join(failed_ids)}"
+        )
 
     print(f"[INFO] Live cycle finished. updated={len(touched_game_ids)} manifest={manifest_path}")
     return {
@@ -437,6 +469,8 @@ async def run_live_crawler_cycle(
         "active_suspended": active_suspended_flag,
         "all_finished": all_finished,
         "game_ids_playing": list(touched_game_ids),
+        "oci_sync_failure_count": len(oci_sync_failures),
+        "oci_sync_failed_game_ids": [failure["game_id"] for failure in oci_sync_failures],
     }
 
 

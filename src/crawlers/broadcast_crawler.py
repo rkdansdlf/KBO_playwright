@@ -8,6 +8,7 @@ from src.db.engine import SessionLocal
 
 logger = logging.getLogger(__name__)
 from src.repositories.broadcast_repository import BroadcastRepository
+from src.utils.team_codes import build_kbo_game_id
 from src.utils.playwright_blocking import install_async_resource_blocking
 from src.utils.safe_print import safe_print as print
 
@@ -69,21 +70,43 @@ class BroadcastCrawler:
                 const m = String(dateParts[1]).padStart(2, '0');
                 const d = String(dateParts[2]).padStart(2, '0');
                 const gameDate = String(year) + m + d;
-                const gameId = gameDate + awayTeam + homeTeam + '0';
                 const tvText = cells[5]?.innerText?.trim() || '';
                 const radioText = cells[6]?.innerText?.trim() || '';
                 if (tvText && tvText !== '-') {
                     const norm = BC_MAP[tvText] || tvText;
-                    results.push({game_id: gameId, broadcaster: norm, channel_name: norm, source: 'KBO'});
+                    results.push({game_date: gameDate, away_team_code: awayTeam, home_team_code: homeTeam, broadcaster: norm, channel_name: norm, source: 'KBO'});
                 }
                 if (radioText && radioText !== '-') {
-                    results.push({game_id: gameId, broadcaster: 'RADIO_' + radioText, channel_name: radioText + ' (라디오)', source: 'KBO'});
+                    results.push({game_date: gameDate, away_team_code: awayTeam, home_team_code: homeTeam, broadcaster: 'RADIO_' + radioText, channel_name: radioText + ' (라디오)', source: 'KBO'});
                 }
             });
             return results;
         }
         """
-        return await page.evaluate(script, {"year": year})
+        data = await page.evaluate(script, {"year": year})
+        return self._normalize_game_ids(data, year)
+
+    def _normalize_game_ids(self, data: list[dict], year: int) -> list[dict]:
+        normalized = []
+        for item in data:
+            game_id = build_kbo_game_id(
+                item.get("game_date"),
+                item.get("away_team_code"),
+                item.get("home_team_code"),
+                season_year=year,
+            )
+            if not game_id:
+                logger.warning("Skipping broadcast row with unresolved game_id: %s", item)
+                continue
+            normalized.append(
+                {
+                    "game_id": game_id,
+                    "broadcaster": item["broadcaster"],
+                    "channel_name": item["channel_name"],
+                    "source": item.get("source") or "KBO",
+                }
+            )
+        return normalized
 
     def _save_to_db(self, data: list[dict]):
         session = SessionLocal()

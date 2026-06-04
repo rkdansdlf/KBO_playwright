@@ -4,8 +4,12 @@ Player sync: players, identities, basic info, movements, FA contracts.
 
 from __future__ import annotations
 
+import logging
+
 from sqlalchemy import text
 from sqlalchemy.dialects.postgresql import insert as pg_insert
+
+logger = logging.getLogger(__name__)
 
 from src.models.base import Base
 from src.models.crawl import CrawlRun
@@ -29,104 +33,34 @@ class PlayerSyncMixin:
     """Mixin for player-related sync operations."""
 
     def sync_players(self) -> int:
-        """Sync master player records (players table) from SQLite to OCI (batched upsert)"""
-
-        players = self.sqlite_session.query(Player).all()
-        synced = 0
-        batch_size = 500
-
-        print(f"🚚 Syncing Master Players ({len(players)} rows)...")
-
-        for batch_start in range(0, len(players), batch_size):
-            batch = players[batch_start : batch_start + batch_size]
-            values_list = [
-                {
-                    "kbo_person_id": p.kbo_person_id,
-                    "player_basic_id": p.player_basic_id,
-                    "birth_date": p.birth_date,
-                    "birth_place": p.birth_place,
-                    "height_cm": p.height_cm,
-                    "weight_kg": p.weight_kg,
-                    "bats": p.bats,
-                    "throws": p.throws,
-                    "is_foreign_player": p.is_foreign_player,
-                    "debut_year": p.debut_year,
-                    "retire_year": p.retire_year,
-                    "status": p.status,
-                    "notes": p.notes,
-                    "photo_url": p.photo_url,
-                    "salary_original": p.salary_original,
-                    "signing_bonus_original": p.signing_bonus_original,
-                    "draft_info": p.draft_info,
-                }
-                for p in batch
-            ]
-
-            if not values_list:
-                continue
-
-            stmt = pg_insert(Player).values(values_list)
-            update_dict = {
-                col: getattr(stmt.excluded, col)
-                for col in (
-                    "player_basic_id",
-                    "birth_date",
-                    "birth_place",
-                    "height_cm",
-                    "weight_kg",
-                    "bats",
-                    "throws",
-                    "is_foreign_player",
-                    "debut_year",
-                    "retire_year",
-                    "status",
-                    "notes",
-                    "photo_url",
-                    "salary_original",
-                    "signing_bonus_original",
-                    "draft_info",
-                )
-            }
-            update_dict["updated_at"] = text("CURRENT_TIMESTAMP")
-
-            stmt = stmt.on_conflict_do_update(index_elements=["kbo_person_id"], set_=update_dict)
-
-            self.target_session.execute(stmt)
-            self.target_session.commit()
-            synced += len(values_list)
-            print(f"   Synced {synced}/{len(players)} players...")
-
-        print(f"✅ Synced {synced} players to OCI")
-        return synced
+        """Sync master player records (players table) from SQLite to OCI using bulk COPY upsert."""
+        return self._sync_simple_table(
+            Player,
+            conflict_keys=["kbo_person_id"],
+            exclude_cols=["id"],
+            batch_size=5000,
+            update_timestamp=True,
+        )
 
     def sync_player_identities(self) -> int:
-        """Sync player identities from SQLite to OCI"""
+        """Sync player identities from SQLite to OCI using bulk COPY upsert."""
         player_mapping = self._get_player_id_mapping()
-        identities = self.sqlite_session.query(PlayerIdentity).all()
-        synced = 0
+        if not player_mapping:
+            return 0
 
-        for identity in identities:
-            oci_player_id = player_mapping.get(identity.player_id)
-            if not oci_player_id:
-                continue
+        valid_ids = list(player_mapping.keys())
 
-            data = {
-                "player_id": oci_player_id,
-                "name_kor": identity.name_kor,
-                "name_eng": identity.name_eng,
-                "start_date": identity.start_date,
-                "end_date": identity.end_date,
-                "is_primary": identity.is_primary,
-                "notes": identity.notes,
-            }
+        def _map_player_id(data: dict) -> dict:
+            data["player_id"] = player_mapping.get(data["player_id"], data["player_id"])
+            return data
 
-            stmt = pg_insert(PlayerIdentity).values(**data)
-            self.target_session.execute(stmt)
-            synced += 1
-
-        self.target_session.commit()
-        print(f"✅ Synced {synced} player identities to OCI")
-        return synced
+        return self._sync_simple_table(
+            PlayerIdentity,
+            conflict_keys=[],
+            exclude_cols=["created_at", "updated_at", "id"],
+            filters=[PlayerIdentity.player_id.in_(valid_ids)],
+            transform_fn=_map_player_id,
+        )
 
     def _get_player_id_mapping(self) -> dict[int, int]:
         """Get SQLite player_id → OCI player_id mapping"""
@@ -163,7 +97,7 @@ class PlayerSyncMixin:
         )
 
     def sync_player_basic_by_ids(self, player_ids: list[int]) -> int:
-        """Sync specific players from SQLite to OCI by their IDs"""
+        """Sync specific players from SQLite to OCI by their IDs using bulk COPY upsert."""
         target_player_ids = sorted({int(player_id) for player_id in player_ids if player_id is not None})
         if not target_player_ids:
             return 0
@@ -172,39 +106,49 @@ class PlayerSyncMixin:
         if not players:
             return 0
 
-        synced = 0
-        for player in players:
-            data = {
-                "player_id": player.player_id,
-                "name": player.name,
-                "uniform_no": player.uniform_no,
-                "team": player.team,
-                "position": player.position,
-                "birth_date": player.birth_date,
-                "birth_date_date": player.birth_date_date,
-                "height_cm": player.height_cm,
-                "weight_kg": player.weight_kg,
-                "career": player.career,
-                "status": player.status,
-                "staff_role": player.staff_role,
-                "status_source": player.status_source,
-                "photo_url": player.photo_url,
-                "bats": player.bats,
-                "throws": player.throws,
-                "debut_year": player.debut_year,
-                "salary_original": player.salary_original,
-                "signing_bonus_original": player.signing_bonus_original,
-                "draft_info": player.draft_info,
+        records = [
+            {
+                "player_id": p.player_id,
+                "name": p.name,
+                "uniform_no": p.uniform_no,
+                "team": p.team,
+                "position": p.position,
+                "birth_date": p.birth_date,
+                "birth_date_date": p.birth_date_date,
+                "height_cm": p.height_cm,
+                "weight_kg": p.weight_kg,
+                "career": p.career,
+                "status": p.status,
+                "staff_role": p.staff_role,
+                "status_source": p.status_source,
+                "photo_url": p.photo_url,
+                "bats": p.bats,
+                "throws": p.throws,
+                "debut_year": p.debut_year,
+                "salary_original": p.salary_original,
+                "signing_bonus_original": p.signing_bonus_original,
+                "draft_info": p.draft_info,
+                "salary_amount": p.salary_amount,
+                "salary_currency": p.salary_currency,
+                "signing_bonus_amount": p.signing_bonus_amount,
+                "signing_bonus_currency": p.signing_bonus_currency,
+                "draft_year": p.draft_year,
+                "draft_round": p.draft_round,
+                "draft_pick_overall": p.draft_pick_overall,
+                "draft_type": p.draft_type,
+                "education_path": p.education_path,
             }
+            for p in players
+        ]
 
-            stmt = pg_insert(PlayerBasic).values(**data)
-            update_dict = {k: stmt.excluded[k] for k in data if k != "player_id"}
-            stmt = stmt.on_conflict_do_update(index_elements=["player_id"], set_=update_dict)
+        self._bulk_copy_upsert(
+            PlayerBasic.__tablename__,
+            records,
+            unique_cols=["player_id"],
+            update_timestamp=True,
+        )
 
-            self.target_session.execute(stmt)
-            synced += 1
-
-        self.target_session.commit()
+        synced = len(records)
         print(f"✅ Synced {synced} player_basic records to OCI (by IDs)")
         return synced
 
@@ -249,109 +193,36 @@ class PlayerSyncMixin:
             missing_list = ", ".join(str(player_id) for player_id in missing_player_ids[:20])
             if len(missing_player_ids) > 20:
                 missing_list += f", ... (+{len(missing_player_ids) - 20})"
-            raise ValueError(
-                "Cannot sync game child rows because referenced player_id values are missing "
-                f"from local player_basic. games=[{game_list}] missing_player_ids=[{missing_list}]"
+            logger.warning(
+                "Skipping %d missing player_ids (not in local player_basic) for games=[%s]: [%s]",
+                len(missing_player_ids),
+                game_list,
+                missing_list,
             )
+            referenced_player_ids -= set(missing_player_ids)
+            if not referenced_player_ids:
+                return 0
 
         return self.sync_player_basic_by_ids(sorted(referenced_player_ids))
 
     def sync_player_movements(self) -> int:
-        """Sync player_movements from SQLite to OCI"""
-
-        movements = self.sqlite_session.query(PlayerMovement).all()
-        synced = 0
-
-        if not movements:
-            print("ℹ️ No player movement data to sync.")
-            return 0
-
-        for m in movements:
-            data = {
-                "movement_date": m.movement_date,
-                "section": m.section,
-                "team_code": m.team_code,
-                "canonical_team_id": m.canonical_team_id,
-                "player_basic_id": m.player_basic_id,
-                "resolution_status": m.resolution_status,
-                "player_name": m.player_name,
-                "remarks": m.remarks,
-            }
-
-            stmt = pg_insert(PlayerMovement).values(**data)
-
-            update_dict = {
-                "remarks": stmt.excluded.remarks,
-                "canonical_team_id": stmt.excluded.canonical_team_id,
-                "player_basic_id": stmt.excluded.player_basic_id,
-                "resolution_status": stmt.excluded.resolution_status,
-                "updated_at": text("CURRENT_TIMESTAMP"),
-            }
-
-            stmt = stmt.on_conflict_do_update(constraint="uq_player_movement", set_=update_dict)
-
-            self.target_session.execute(stmt)
-            synced += 1
-
-        self.target_session.commit()
-        print(f"✅ Synced {synced} player movement records to OCI")
-        return synced
+        """Sync player_movements from SQLite to OCI using bulk COPY upsert."""
+        return self._sync_simple_table(
+            PlayerMovement,
+            conflict_keys=["movement_date", "team_code", "player_name", "section"],
+            exclude_cols=["created_at", "updated_at", "id"],
+            update_timestamp=True,
+        )
 
     def sync_fa_contracts(self) -> int:
-        """Sync fa_contracts from SQLite to OCI"""
-
-        # Ensure table exists on target database
+        """Sync fa_contracts from SQLite to OCI using bulk COPY upsert."""
         Base.metadata.create_all(self.oci_engine)
-
-        contracts = self.sqlite_session.query(FAContract).all()
-        synced = 0
-
-        if not contracts:
-            print("ℹ️ No FA contract data to sync.")
-            return 0
-
-        for c in contracts:
-            data = {
-                "player_name": c.player_name,
-                "player_basic_id": c.player_basic_id,
-                "year": c.year,
-                "fa_type": c.fa_type,
-                "old_team": c.old_team,
-                "new_team": c.new_team,
-                "team_code": c.team_code,
-                "contract_duration": c.contract_duration,
-                "total_amount": c.total_amount,
-                "total_amount_krw": c.total_amount_krw,
-                "signing_bonus": c.signing_bonus,
-                "annual_salary": c.annual_salary,
-                "remarks": c.remarks,
-                "source_url": c.source_url,
-            }
-
-            stmt = pg_insert(FAContract).values(**data)
-
-            update_dict = {
-                "player_basic_id": stmt.excluded.player_basic_id,
-                "old_team": stmt.excluded.old_team,
-                "team_code": stmt.excluded.team_code,
-                "contract_duration": stmt.excluded.contract_duration,
-                "total_amount": stmt.excluded.total_amount,
-                "total_amount_krw": stmt.excluded.total_amount_krw,
-                "signing_bonus": stmt.excluded.signing_bonus,
-                "annual_salary": stmt.excluded.annual_salary,
-                "remarks": stmt.excluded.remarks,
-                "source_url": stmt.excluded.source_url,
-                "updated_at": text("CURRENT_TIMESTAMP"),
-            }
-
-            stmt = stmt.on_conflict_do_update(constraint="uq_fa_contract_record", set_=update_dict)
-
-            self.target_session.execute(stmt)
-            synced += 1
-
-        self.target_session.commit()
-        print(f"✅ Synced {synced} FA contract records to OCI")
-        return synced
+        return self._sync_simple_table(
+            FAContract,
+            conflict_keys=["player_name", "year", "fa_type", "new_team"],
+            exclude_cols=["created_at", "updated_at", "id"],
+            update_timestamp=True,
+        )
 
     def sync_crawl_runs(self) -> int:
         """Sync crawl runs from SQLite to OCI"""

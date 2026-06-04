@@ -4,8 +4,14 @@ import csv
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
+try:
+    from datetime import UTC
+except ImportError:
+    UTC = timezone.utc
 from pathlib import Path
 from typing import Any, Iterable
+
+from src.services.wpa_transitions import event_has_wpa_state
 
 ALLOWED_SOURCE_TYPES = {
     "naver",
@@ -24,6 +30,15 @@ ALLOWED_MANIFEST_FORMATS = {
 
 SPECIAL_BUCKET_SOURCE_ORDER = ("kbo", "naver", "import", "manual")
 REGULAR_BUCKET_SOURCE_ORDER = ("naver", "kbo", "import")
+
+# Known postseason/international date ranges by year: (start_yyyymmdd, end_yyyymmdd)
+# Used as fallback when league_type_name is not available.
+POSTSEASON_DATE_RANGES: dict[int, tuple[str, str]] = {
+    2024: ("20241002", "20241028"),
+}
+INTERNATIONAL_DATE_RANGES: dict[int, tuple[str, str]] = {
+    2024: ("20241110", "20241124"),
+}
 
 
 @dataclass(slots=True)
@@ -55,6 +70,9 @@ class NormalizedRelayResult:
     has_event_state: bool = False
     has_raw_pbp: bool = False
     notes: str | None = None
+    parser_version: str | None = None
+    source_schema_version: str | None = None
+    payload_hash: str | None = None
 
     @property
     def is_empty(self) -> bool:
@@ -72,13 +90,14 @@ class RelaySourceAdapter(ABC):
         raise NotImplementedError
 
 
-def normalize_inning_half(value: Any) -> Any:
+def normalize_inning_half(value: Any) -> str | None:
+    """Normalize inning half to 'top' or 'bottom'. Returns None for unrecognized values."""
     normalized = str(value or "").strip().lower()
     if normalized in {"top", "away", "초"}:
         return "top"
     if normalized in {"bottom", "home", "말"}:
         return "bottom"
-    return value
+    return None
 
 
 def trailing_result_from_description(description: Any) -> Any:
@@ -108,6 +127,11 @@ def event_to_pbp_row(event: dict[str, Any]) -> dict[str, Any]:
 
 
 def normalize_pbp_row(row: dict[str, Any]) -> dict[str, Any]:
+    """Normalize a raw PBP row dict to a standard set of fields.
+
+    Retains the user-facing play fields plus provider trace keys used by the
+    persistence layer to make raw rows auditable.
+    """
     return {
         "inning": row.get("inning"),
         "inning_half": normalize_inning_half(row.get("inning_half")),
@@ -117,25 +141,14 @@ def normalize_pbp_row(row: dict[str, Any]) -> dict[str, Any]:
         "event_type": row.get("event_type"),
         "result": row.get("result")
         or trailing_result_from_description(row.get("play_description") or row.get("description")),
+        "provider_log_id": row.get("provider_log_id"),
+        "source_row_index": row.get("source_row_index"),
+        "source_name": row.get("source_name"),
     }
 
 
 def event_has_minimum_state(event: dict[str, Any]) -> bool:
-    required = (
-        event.get("inning") is not None,
-        event.get("inning_half") is not None,
-        event.get("outs") is not None,
-        event.get("description") not in (None, ""),
-        event.get("wpa") is not None,
-        event.get("win_expectancy_before") is not None,
-        event.get("win_expectancy_after") is not None,
-        event.get("home_score") is not None,
-        event.get("away_score") is not None,
-    )
-    has_base_state = event.get("base_state") is not None or (
-        event.get("bases_before") is not None and event.get("bases_after") is not None
-    )
-    return all(required) and has_base_state
+    return event_has_wpa_state(event)
 
 
 def events_have_minimum_state(events: Iterable[dict[str, Any]]) -> bool:
@@ -158,10 +171,12 @@ def derive_bucket_id(game_id: str, league_type_name: str | None = None) -> str:
         return f"{year}_international"
 
     game_date = str(game_id)[:8]
-    if year == 2024 and "20241002" <= game_date <= "20241028":
-        return "2024_postseason"
-    if year == 2024 and "20241110" <= game_date <= "20241124":
-        return "2024_international"
+    ps_range = POSTSEASON_DATE_RANGES.get(year)
+    if ps_range and ps_range[0] <= game_date <= ps_range[1]:
+        return f"{year}_postseason"
+    intl_range = INTERNATIONAL_DATE_RANGES.get(year)
+    if intl_range and intl_range[0] <= game_date <= intl_range[1]:
+        return f"{year}_international"
     if year == 2025 and team_code == "EAWE":
         return "2025_all_star"
     if year in {2024, 2025, 2026}:
@@ -286,7 +301,7 @@ def upsert_capability_record(capability_path: str | Path, record: CapabilityReco
                     "source_name": row.source_name,
                     "sample_size": row.sample_size,
                     "supported": str(bool(row.supported)).lower(),
-                    "last_checked_at": row.last_checked_at or datetime.now(timezone.utc).isoformat(),
+                    "last_checked_at": row.last_checked_at or datetime.now(UTC).isoformat(),
                     "notes": row.notes or "",
                 }
             )

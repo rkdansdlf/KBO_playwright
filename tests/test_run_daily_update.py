@@ -2,11 +2,14 @@ from __future__ import annotations
 
 import asyncio
 import json
+import sys
 from pathlib import Path
 from types import SimpleNamespace
 
 import src.cli.run_daily_update as run_daily_update
+from src.utils import alerting as alerting_module
 from src.repositories.game_repository import GAME_STATUS_CANCELLED, GAME_STATUS_UNRESOLVED
+import scripts.verification.audit_game_logic as audit_game_logic_module
 
 
 class _FakeSession:
@@ -147,6 +150,11 @@ class _FakeRosterCrawler:
         return []
 
 
+class _FakeRosterTransactionCrawler:
+    async def run(self, save: bool = False, target_date: str | None = None):
+        return []
+
+
 async def _noop_async(*_args, **_kwargs):
     return None
 
@@ -241,8 +249,8 @@ class _FakeSyncer:
     def sync_player_movements(self):
         self.calls.append(("player_movements", None))
 
-    def sync_daily_rosters(self):
-        self.calls.append(("daily_rosters", None))
+    def sync_daily_rosters(self, *, start_date=None, end_date=None):
+        self.calls.append(("daily_rosters", {"start_date": start_date, "end_date": end_date}))
 
     def sync_player_basic(self):
         self.calls.append(("player_basic", None))
@@ -260,6 +268,12 @@ class _FakeSyncerWithSkips(_FakeSyncer):
         return {"skipped_empty_relay": 1}
 
 
+class _FakeSyncerWithSupportingFailure(_FakeSyncer):
+    def sync_player_season_batting(self, *, year=None):
+        self.calls.append(("season_batting", year))
+        raise RuntimeError("supporting sync failed")
+
+
 def _patch_common(monkeypatch):
     monkeypatch.setattr(run_daily_update, "ScheduleCrawler", _FakeScheduleCrawler)
     monkeypatch.setattr(run_daily_update, "SessionLocal", lambda: _FakeSession())
@@ -275,6 +289,7 @@ def _patch_common(monkeypatch):
     monkeypatch.setattr(run_daily_update, "run_healer_async", _noop_async)
     monkeypatch.setattr(run_daily_update, "PlayerMovementCrawler", _FakeMovementCrawler)
     monkeypatch.setattr(run_daily_update, "DailyRosterCrawler", _FakeRosterCrawler)
+    monkeypatch.setattr(run_daily_update, "RosterTransactionCrawler", _FakeRosterTransactionCrawler)
     monkeypatch.setattr(
         run_daily_update,
         "DEFAULT_DAILY_SUMMARY_DIR",
@@ -283,6 +298,28 @@ def _patch_common(monkeypatch):
     monkeypatch.setattr(run_daily_update, "write_refresh_manifest", lambda **_kwargs: "manifest.json")
     monkeypatch.setattr(run_daily_update, "reconcile_postgame_range", _fake_reconcile_postgame_range)
     monkeypatch.setattr(run_daily_update, "format_reconciliation_report", lambda changes: "")
+    monkeypatch.setitem(
+        sys.modules,
+        "scripts.verification.audit_game_logic",
+        SimpleNamespace(audit_game_logic=lambda *_args, **_kwargs: []),
+    )
+    monkeypatch.setattr(
+        run_daily_update,
+        "build_p0_readiness",
+        lambda *_args, **_kwargs: {
+            "target_date": "test",
+            "summary": {"ok": True, "failure_count": 0, "critical_failure_count": 0, "warning_count": 0},
+        },
+    )
+    monkeypatch.setattr(run_daily_update, "format_p0_readiness_summary", lambda _payload: "ok")
+    monkeypatch.setattr(alerting_module.TelegramBotClient, "send_message", staticmethod(lambda _message: False))
+    monkeypatch.setattr(alerting_module.SlackWebhookClient, "send_alert", staticmethod(lambda *_args, **_kwargs: True))
+    monkeypatch.setattr(
+        alerting_module.SlackWebhookClient,
+        "send_error_alert",
+        staticmethod(lambda *_args, **_kwargs: True),
+    )
+    monkeypatch.setattr(audit_game_logic_module, "audit_game_logic", lambda **_kwargs: [])
 
 
 def test_run_update_injects_resolver_marks_cancelled_and_uses_step_runner(monkeypatch):
@@ -572,10 +609,133 @@ def test_run_update_syncs_only_target_games_after_freshness_gate(monkeypatch):
     assert ("season_batting", 2025) in syncer.calls
     assert ("season_pitching", 2025) in syncer.calls
     assert ("player_movements", None) in syncer.calls
-    assert ("daily_rosters", None) in syncer.calls
+    assert ("daily_rosters", {"start_date": "2025-01-01", "end_date": "2025-01-01"}) in syncer.calls
     assert ("player_basic", None) in syncer.calls
     assert ("players", None) in syncer.calls
     assert syncer.closed is True
+
+
+def test_run_update_records_non_p0_supporting_sync_failure(monkeypatch):
+    _FakeSyncer.created = []
+    commands: list[list[str]] = []
+
+    _patch_common(monkeypatch)
+    monkeypatch.setattr(run_daily_update, "GameDetailCrawler", _FakeDetailCrawlerSuccess)
+    monkeypatch.setattr(run_daily_update, "OCISync", _FakeSyncerWithSupportingFailure)
+    monkeypatch.setattr(run_daily_update, "update_game_status", lambda *_args, **_kwargs: True)
+    monkeypatch.setenv("OCI_DB_URL", "postgresql://example")
+
+    result = asyncio.run(
+        run_daily_update.run_update(
+            "20250101",
+            sync=True,
+            headless=True,
+            limit=None,
+            step_runner=lambda argv: commands.append(list(argv)),
+        )
+    )
+
+    assert result["stability"]["oci"]["skip_counts"] == {"non_p0_supporting_sync_failed": 1}
+    assert result["stability"]["oci"]["skip_game_ids"] == {"non_p0_supporting_sync_failed": ["season:2025"]}
+    assert _FakeSyncer.created[0].closed is True
+
+
+def test_run_update_can_skip_oci_supporting_sync(monkeypatch):
+    _FakeSyncer.created = []
+    commands: list[list[str]] = []
+
+    _patch_common(monkeypatch)
+    monkeypatch.setattr(run_daily_update, "GameDetailCrawler", _FakeDetailCrawlerSuccess)
+    monkeypatch.setattr(run_daily_update, "OCISync", _FakeSyncer)
+    monkeypatch.setattr(run_daily_update, "update_game_status", lambda *_args, **_kwargs: True)
+    monkeypatch.setenv("OCI_DB_URL", "postgresql://example")
+
+    result = asyncio.run(
+        run_daily_update.run_update(
+            "20250101",
+            sync=True,
+            headless=True,
+            limit=None,
+            step_runner=lambda argv: commands.append(list(argv)),
+            skip_oci_supporting_sync=True,
+        )
+    )
+
+    syncer = _FakeSyncer.created[0]
+    call_names = [call[0] for call in syncer.calls]
+    assert "specific_game" in call_names
+    assert "games" not in call_names
+    assert "daily_rosters" not in call_names
+    assert result["stability"]["oci"]["skip_counts"] == {"oci_supporting_sync_skipped": 1}
+    assert result["stability"]["oci"]["skip_game_ids"] == {"oci_supporting_sync_skipped": ["season:2025"]}
+
+
+def test_run_update_can_skip_season_stats(monkeypatch, capsys):
+    _patch_common(monkeypatch)
+    monkeypatch.setattr(run_daily_update, "GameDetailCrawler", _FakeDetailCrawlerSuccess)
+    monkeypatch.setattr(run_daily_update, "update_game_status", lambda *_args, **_kwargs: True)
+    monkeypatch.setattr(
+        run_daily_update,
+        "crawl_series_batting_stats",
+        lambda **_kwargs: (_ for _ in ()).throw(AssertionError("batting stats should be skipped")),
+    )
+    monkeypatch.setattr(
+        run_daily_update,
+        "crawl_pitcher_series",
+        lambda **_kwargs: (_ for _ in ()).throw(AssertionError("pitching stats should be skipped")),
+    )
+
+    asyncio.run(
+        run_daily_update.run_update(
+            "20250101",
+            sync=False,
+            headless=True,
+            limit=None,
+            step_runner=lambda _argv: None,
+            skip_season_stats=True,
+        )
+    )
+
+    assert "Season stats update skipped by operator flag" in capsys.readouterr().out
+
+
+def test_run_update_proactive_recovery_includes_missing_wpa_games(monkeypatch):
+    class _ProactiveExecuteResult:
+        def scalars(self):
+            return self
+
+        def all(self):
+            return ["20241231LGSS0", "20250101LGSS0"]
+
+    class _ProactiveSession(_FakeSession):
+        def execute(self, *_args, **_kwargs):
+            return _ProactiveExecuteResult()
+
+    _FakeSyncer.created = []
+    commands: list[list[str]] = []
+
+    _patch_common(monkeypatch)
+    monkeypatch.setattr(run_daily_update, "SessionLocal", lambda: _ProactiveSession())
+    monkeypatch.setattr(run_daily_update, "GameDetailCrawler", _FakeDetailCrawlerSuccess)
+    monkeypatch.setattr(run_daily_update, "OCISync", _FakeSyncer)
+    monkeypatch.setattr(run_daily_update, "update_game_status", lambda *_args, **_kwargs: True)
+    monkeypatch.setenv("OCI_DB_URL", "postgresql://example")
+
+    asyncio.run(
+        run_daily_update.run_update(
+            "20250101",
+            sync=True,
+            headless=True,
+            limit=None,
+            step_runner=lambda argv: commands.append(list(argv)),
+        )
+    )
+
+    assert any(cmd[:3] == ["scripts/fetch_kbo_pbp.py", "--game-ids", "20250101LGSS0"] for cmd in commands)
+    assert any(cmd[:3] == ["scripts/fetch_kbo_pbp.py", "--game-ids", "20241231LGSS0"] for cmd in commands)
+    assert len(_FakeSyncer.created) == 1
+    syncer = _FakeSyncer.created[0]
+    assert syncer.synced_games == ["20241231LGSS0", "20250101LGSS0"]
 
 
 def test_run_update_prints_oci_skip_and_relay_summary(monkeypatch, capsys):
@@ -673,8 +833,47 @@ def test_run_update_writes_empty_stability_summary_for_clean_run(monkeypatch, tm
     assert stability["detail"]["failure_counts"] == {}
     assert stability["detail"]["failure_game_ids"] == {}
     assert stability["oci"]["skip_counts"] == {}
+    assert stability["quality_gates"] == {"non_p0_failure_counts": {}, "non_p0_failure_ids": {}}
     assert stability["retry_candidates"] == {"detail": [], "relay": []}
     assert stability["affected_game_ids"] == []
+
+
+def test_run_update_records_non_p0_quality_gate_failures(monkeypatch):
+    _FakeSyncer.created = []
+
+    _patch_common(monkeypatch)
+    monkeypatch.setattr(run_daily_update, "GameDetailCrawler", _FakeDetailCrawlerSuccess)
+    monkeypatch.setattr(run_daily_update, "OCISync", _FakeSyncer)
+    monkeypatch.setattr(run_daily_update, "update_game_status", lambda *_args, **_kwargs: True)
+    monkeypatch.setenv("OCI_DB_URL", "postgresql://example")
+
+    def _runner(argv):
+        command = list(argv)
+        if command[:3] == ["-m", "src.cli.quality_gate_check", "--year"]:
+            raise run_daily_update.subprocess.CalledProcessError(1, command)
+        if command[:1] == ["scripts/maintenance/quality_gate.py"]:
+            raise run_daily_update.subprocess.CalledProcessError(1, command)
+
+    result = asyncio.run(
+        run_daily_update.run_update(
+            "20250101",
+            sync=True,
+            headless=True,
+            limit=None,
+            step_runner=_runner,
+        )
+    )
+
+    assert result["stability"]["quality_gates"] == {
+        "non_p0_failure_counts": {
+            "non_p0_oci_parity_quality_gate_failed": 1,
+            "non_p0_statistical_quality_gate_failed": 1,
+        },
+        "non_p0_failure_ids": {
+            "non_p0_oci_parity_quality_gate_failed": ["oci"],
+            "non_p0_statistical_quality_gate_failed": ["season:2025"],
+        },
+    }
 
 
 def test_run_update_syncs_auto_healer_recovery_targets(monkeypatch):

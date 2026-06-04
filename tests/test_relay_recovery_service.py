@@ -6,7 +6,7 @@ from datetime import date
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-from src.models.game import Game, GameEvent, GamePlayByPlay
+from src.models.game import Game, GameEvent, GamePlayByPlay, GameValidationMetrics
 from src.models.season import KboSeason
 from src.services import relay_recovery_service as service
 from src.sources.relay import NormalizedRelayResult
@@ -18,6 +18,7 @@ def _build_session_factory():
     Game.__table__.create(bind=engine)
     GameEvent.__table__.create(bind=engine)
     GamePlayByPlay.__table__.create(bind=engine)
+    GameValidationMetrics.__table__.create(bind=engine)
     return sessionmaker(bind=engine, autoflush=False, autocommit=False, expire_on_commit=False)
 
 
@@ -68,7 +69,22 @@ def _seed_games(SessionLocal):
         session.add_all(
             [
                 GameEvent(game_id="20250402LGSS0", event_seq=1),
-                GameEvent(game_id="20250403LGSS0", event_seq=1),
+                GameEvent(
+                    game_id="20250403LGSS0",
+                    event_seq=1,
+                    inning=1,
+                    inning_half="top",
+                    outs=0,
+                    description="타자A : 좌전 안타",
+                    bases_before="---",
+                    bases_after="1--",
+                    base_state=1,
+                    home_score=0,
+                    away_score=1,
+                    wpa=0.01,
+                    win_expectancy_before=0.5,
+                    win_expectancy_after=0.51,
+                ),
                 GamePlayByPlay(game_id="20250403LGSS0", inning=1, inning_half="top"),
             ]
         )
@@ -115,7 +131,9 @@ def test_load_relay_recovery_targets_skips_fully_recovered_games(monkeypatch):
     assert [target.game_id for target in targets] == ["20250401LGSS0", "20250402LGSS0"]
     assert targets[0].needs_event_recovery is True
     assert targets[0].needs_pbp_recovery is True
-    assert targets[1].needs_event_recovery is False
+    assert targets[1].has_events is True
+    assert targets[1].has_event_state is False
+    assert targets[1].needs_event_recovery is True
     assert targets[1].needs_pbp_recovery is True
     assert targets[0].bucket_id == "2025_regular_kbo"
     assert messages == ["[INFO] Missing-only mode: Skipped 1 games already fully recovered."]
@@ -134,7 +152,57 @@ def test_load_relay_recovery_targets_preserves_requested_order(monkeypatch):
 
     assert [target.game_id for target in targets] == ["20250403LGSS0", "20250401LGSS0"]
     assert targets[0].has_events is True
+    assert targets[0].has_event_state is True
     assert targets[0].has_pbp is True
+
+
+def test_load_relay_recovery_targets_includes_existing_events_with_missing_wpa(monkeypatch):
+    SessionLocal = _build_session_factory()
+    monkeypatch.setattr(service, "SessionLocal", SessionLocal)
+    _seed_games(SessionLocal)
+    with SessionLocal() as session:
+        session.add(
+            Game(
+                game_id="20250404LGSS0",
+                game_date=date(2025, 4, 4),
+                home_team="SS",
+                away_team="LG",
+                away_score=1,
+                home_score=0,
+                season_id=20250,
+                game_status="COMPLETED",
+            )
+        )
+        session.add(
+            GameEvent(
+                game_id="20250404LGSS0",
+                event_seq=1,
+                inning=1,
+                inning_half="top",
+                outs=0,
+                description="타자A : 좌전 안타",
+                bases_before="---",
+                bases_after="1--",
+                base_state=1,
+                home_score=0,
+                away_score=1,
+            )
+        )
+        session.add(GamePlayByPlay(game_id="20250404LGSS0", inning=1, inning_half="top"))
+        session.commit()
+
+    targets = service.load_relay_recovery_targets(
+        game_ids=["20250404LGSS0"],
+        missing_only=True,
+        log=lambda _msg: None,
+    )
+
+    assert [target.game_id for target in targets] == ["20250404LGSS0"]
+    assert targets[0].has_events is True
+    assert targets[0].has_event_state is False
+    assert targets[0].has_pbp is True
+    assert targets[0].needs_event_recovery is True
+    assert targets[0].needs_pbp_recovery is False
 
 
 def test_load_relay_recovery_targets_excludes_non_completed_requested_games(monkeypatch):
@@ -234,6 +302,9 @@ def test_recover_relay_data_saves_orchestrator_result(monkeypatch):
                     "play_description": "test hit",
                     "event_type": None,
                     "result": "hit",
+                    "provider_log_id": None,
+                    "source_row_index": None,
+                    "source_name": None,
                 }
             ],
             "fake",
@@ -294,6 +365,55 @@ def test_recover_relay_data_filters_malformed_rows_before_save(monkeypatch):
     assert result.report_rows[-1]["status"] == "partial_relay"
     assert "filtered_event_rows:1" in result.report_rows[-1]["notes"]
     assert "filtered_pbp_rows:1" in result.report_rows[-1]["notes"]
+
+
+def test_recover_relay_data_backfills_missing_wpa_before_save(monkeypatch):
+    saved_events: list[dict] = []
+
+    def _fake_save(_game_id, events, raw_pbp_rows=None, **_kwargs):
+        saved_events.extend(events or [])
+        return len(events or []) + len(raw_pbp_rows or [])
+
+    monkeypatch.setattr(service, "save_relay_data", _fake_save)
+
+    class _FakeOrchestrator:
+        def source_order_for_bucket(self, _bucket_id, override=None):
+            return list(override or ["fake"])
+
+        async def probe_bucket(self, *_args):
+            return {}
+
+        async def fetch_game(self, game_id, bucket_id, source_order, **kwargs):
+            return (
+                NormalizedRelayResult(
+                    game_id=game_id,
+                    source_name="fake",
+                    events=[
+                        _valid_event(
+                            wpa=None,
+                            win_expectancy_before=None,
+                            win_expectancy_after=None,
+                        )
+                    ],
+                    has_event_state=False,
+                ),
+                [],
+            )
+
+    result = asyncio.run(
+        service.recover_relay_data(
+            [service.RelayRecoveryTarget(game_id="20250401LGSS0", bucket_id="2025_regular_kbo")],
+            orchestrator=_FakeOrchestrator(),
+            sleep_seconds=0,
+            log=lambda _msg: None,
+        )
+    )
+
+    assert result.saved_games == 1
+    assert len(saved_events) == 1
+    assert saved_events[0]["wpa"] is not None
+    assert saved_events[0]["win_expectancy_before"] is not None
+    assert saved_events[0]["win_expectancy_after"] is not None
 
 
 def test_recover_relay_data_skips_when_all_rows_filtered(monkeypatch):
@@ -362,6 +482,7 @@ def test_recover_relay_data_derives_missing_pbp_from_existing_events(monkeypatch
                     game_id="20250402LGSS0",
                     bucket_id="2025_regular_kbo",
                     has_events=True,
+                    has_event_state=True,
                     has_pbp=False,
                     needs_event_recovery=False,
                     needs_pbp_recovery=True,

@@ -34,6 +34,53 @@ def _dictify_rows(rows, label_lookup):
     return result
 
 
+def _games_played_in_season(session, season: int) -> int:
+    """Return number of completed game-dates in the given season."""
+    from sqlalchemy import text
+
+    row = session.execute(
+        text("""
+        SELECT COUNT(DISTINCT game_date) AS played
+        FROM game
+        WHERE CAST(strftime('%Y', game_date) AS INTEGER) = :yr
+          AND game_status IN ('COMPLETED', 'DRAW')
+        """),
+        {"yr": season},
+    ).fetchone()
+    return int(row[0]) if row and row[0] else 0
+
+
+_KBO_FULL_SEASON_GAMES = 144  # 정규 시즌 팀당 총 경기 수
+_MIN_PA_PER_GAME = 3.1  # KBO 타율왕 자격 기준 PA/경기
+_MIN_IP_PER_GAME = 3.0  # KBO 평균자책점 자격 기준 이닝/경기 (1이닝 = 3아웃)
+_MIN_PA_FLOOR = 30  # 시즌 초반 최소 보호 기준
+_MIN_IP_FLOOR = 90  # 시즌 초반 최소 보호 기준 (90 이닝 아웃 = 30 IP)
+
+
+def _compute_min_pa(session, season: int) -> int:
+    """시즌 진행 경기 수 기반으로 타율 자격 min_pa를 동적으로 계산.
+
+    완료된 시즌(144경기 이상)은 공식 기준 446 PA 적용.
+    진행 중인 시즌은 현재까지의 경기 수 기반으로 완화된 기준 적용.
+    """
+    games_played = _games_played_in_season(session, season)
+    if games_played >= _KBO_FULL_SEASON_GAMES:
+        return int(_KBO_FULL_SEASON_GAMES * _MIN_PA_PER_GAME)
+    return max(int(games_played * _MIN_PA_PER_GAME), _MIN_PA_FLOOR)
+
+
+def _compute_min_ip_outs(session, season: int) -> int:
+    """시즌 진행 경기 수 기반으로 평균자책점 자격 min_ip_outs를 동적으로 계산.
+
+    완료된 시즌(144경기 이상)은 공식 기준 432 이닝아웃 적용.
+    진행 중인 시즌은 현재까지의 경기 수 기반으로 완화된 기준 적용.
+    """
+    games_played = _games_played_in_season(session, season)
+    if games_played >= _KBO_FULL_SEASON_GAMES:
+        return int(_KBO_FULL_SEASON_GAMES * _MIN_IP_PER_GAME)
+    return max(int(games_played * _MIN_IP_PER_GAME), _MIN_IP_FLOOR)
+
+
 def rebuild_rankings(season: int) -> int:
     with SessionLocal() as session:
         batting_rows = (
@@ -87,10 +134,11 @@ def rebuild_rankings(season: int) -> int:
         fielding_dicts = _dictify_rows(fielding_rows, label_lookup)
         baserunning_dicts = _dictify_rows(baserunning_rows, label_lookup)
 
-        # Assuming 144 games for standard qualifications
-        total_games = 144
-        min_pa = int(total_games * 3.1)
-        min_ip_outs = int(total_games * 3)
+        # 시즌 진행 경기 수 기반으로 자격 기준을 동적으로 계산
+        # (완료 시즌: 고정 기준 / 진행 중 시즌: 완화된 기준)
+        min_pa = _compute_min_pa(session, season)
+        min_ip_outs = _compute_min_ip_outs(session, season)
+        print(f"[Rankings] 자격 기준 — min_pa={min_pa}, min_ip_outs={min_ip_outs} (season={season})")
 
         # Clear existing rankings for the season before regenerating
         session.query(StatRanking).filter(StatRanking.season == season).delete(synchronize_session=False)
