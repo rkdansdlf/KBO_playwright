@@ -8,13 +8,13 @@ import json
 from datetime import datetime
 from typing import Callable
 
-from sqlalchemy import text
-from sqlalchemy.dialects.postgresql import insert as pg_insert
+from sqlalchemy import inspect, text
 
 from src.models.game import (
     Game,
     GameBattingStat,
     GameEvent,
+    GameHighlight,
     GameIdAlias,
     GameInningScore,
     GameLineup,
@@ -22,6 +22,9 @@ from src.models.game import (
     GamePitchingStat,
     GamePlayByPlay,
     GameSummary,
+    GameValidationMetrics,
+    PlayerGameBatting,
+    PlayerGamePitching,
 )
 from src.sync.sync_base import (
     _dedupe_records_for_conflict_keys,
@@ -32,8 +35,87 @@ from src.sync.sync_base import (
 )
 
 
+_COMPACT_METADATA_SOURCE_PAYLOAD_KEYS = (
+    "pbp_validation_status",
+    "pbp_validation_error",
+    "parser_version",
+    "source_schema_version",
+    "payload_hash",
+)
+
+
+def _serialized_payload_length(payload: object) -> int:
+    if isinstance(payload, (dict, list)):
+        return len(json.dumps(payload, ensure_ascii=False))
+    return len(str(payload))
+
+
+def _compact_metadata_source_payload_for_limit(payload: object, limit: int | None) -> object:
+    """Keep OCI varchar-backed source_payload values under the target length."""
+    if payload is None or not limit or _serialized_payload_length(payload) <= limit:
+        return payload
+
+    if not isinstance(payload, dict):
+        return str(payload)[:limit]
+
+    compact = {
+        key: payload[key]
+        for key in _COMPACT_METADATA_SOURCE_PAYLOAD_KEYS
+        if payload.get(key) not in (None, "")
+    }
+    if not compact:
+        compact = {"truncated": True}
+
+    if _serialized_payload_length(compact) <= limit:
+        return compact
+
+    for drop_key in ("pbp_validation_error", "source_schema_version", "parser_version", "payload_hash"):
+        compact.pop(drop_key, None)
+        if _serialized_payload_length(compact) <= limit:
+            return compact
+
+    status = compact.get("pbp_validation_status")
+    if status not in (None, ""):
+        fallback = {"pbp_validation_status": str(status), "truncated": True}
+        if _serialized_payload_length(fallback) <= limit:
+            return fallback
+
+    return {"truncated": True}
+
+
 class GameSyncMixin:
     """Mixin for game-level sync operations."""
+
+    def _target_table_exists(self, model: type) -> bool:
+        if not getattr(self, "oci_engine", None):
+            return True
+        try:
+            return inspect(self.oci_engine).has_table(model.__tablename__)
+        except Exception:
+            return True
+
+    def _game_metadata_source_payload_limit(self) -> int | None:
+        if hasattr(self, "_cached_game_metadata_source_payload_limit"):
+            return getattr(self, "_cached_game_metadata_source_payload_limit")
+
+        limit = None
+        if getattr(self, "oci_engine", None):
+            try:
+                for column in inspect(self.oci_engine).get_columns(GameMetadata.__tablename__):
+                    if column["name"] == "source_payload":
+                        limit = getattr(column["type"], "length", None)
+                        break
+            except Exception:
+                limit = None
+
+        self._cached_game_metadata_source_payload_limit = limit
+        return limit
+
+    def _transform_game_metadata_for_target(self, data: dict) -> dict:
+        limit = self._game_metadata_source_payload_limit()
+        if limit and "source_payload" in data:
+            data["source_payload"] = _compact_metadata_source_payload_for_limit(data["source_payload"], limit)
+        return data
 
     def sync_games(self, limit: int = None, filters: list = None, batch_size: int = 10000) -> int:
         """Sync game detail data from SQLite to OCI using Batched UPSERT or COPY"""
@@ -69,118 +151,17 @@ class GameSyncMixin:
 
     def sync_player_game_batting(self, limit: int = None) -> int:
         """Sync player game batting stats from SQLite to OCI"""
-        query = self.sqlite_session.query(PlayerGameBatting)  # noqa: F821
-        if limit:
-            query = query.limit(limit)
-
-        batting_stats = query.all()
-        synced = 0
-
-        for stat in batting_stats:
-            data = {
-                "game_id": stat.game_id,
-                "player_id": stat.player_id,
-                "player_name": stat.player_name,
-                "team_side": stat.team_side,
-                "team_code": stat.team_code,
-                "batting_order": stat.batting_order,
-                "appearance_seq": stat.appearance_seq,
-                "position": stat.position,
-                "is_starter": bool(stat.is_starter) if stat.is_starter is not None else False,
-                "source": stat.source,
-                "plate_appearances": stat.plate_appearances,
-                "at_bats": stat.at_bats,
-                "runs": stat.runs,
-                "hits": stat.hits,
-                "doubles": stat.doubles,
-                "triples": stat.triples,
-                "home_runs": stat.home_runs,
-                "rbi": stat.rbi,
-                "walks": stat.walks,
-                "intentional_walks": stat.intentional_walks,
-                "hbp": stat.hbp,
-                "strikeouts": stat.strikeouts,
-                "stolen_bases": stat.stolen_bases,
-                "caught_stealing": stat.caught_stealing,
-                "sacrifice_hits": stat.sacrifice_hits,
-                "sacrifice_flies": stat.sacrifice_flies,
-                "gdp": stat.gdp,
-                "avg": stat.avg,
-                "obp": stat.obp,
-                "slg": stat.slg,
-                "ops": stat.ops,
-                "iso": stat.iso,
-                "babip": stat.babip,
-                "extras": stat.extras,
-            }
-
-            stmt = pg_insert(PlayerGameBatting).values(**data)  # noqa: F821
-            update_dict = {k: v for k, v in data.items() if k not in ["game_id", "player_id"]}
-            update_dict["updated_at"] = text("CURRENT_TIMESTAMP")
-            stmt = stmt.on_conflict_do_update(index_elements=["game_id", "player_id"], set_=update_dict)
-
-            self.target_session.execute(stmt)
-            synced += 1
-
-        self.target_session.commit()
-        print(f"✅ Synced {synced} player game batting stats to OCI")
-        return synced
+        return self._sync_simple_table(
+            PlayerGameBatting,
+            ["game_id", "player_id"],
+        )
 
     def sync_player_game_pitching(self, limit: int = None) -> int:
         """Sync player game pitching stats from SQLite to OCI"""
-        query = self.sqlite_session.query(PlayerGamePitching)  # noqa: F821
-        if limit:
-            query = query.limit(limit)
-
-        pitching_stats = query.all()
-        synced = 0
-
-        for stat in pitching_stats:
-            data = {
-                "game_id": stat.game_id,
-                "player_id": stat.player_id,
-                "player_name": stat.player_name,
-                "team_side": stat.team_side,
-                "team_code": stat.team_code,
-                "is_starting": bool(stat.is_starting) if stat.is_starting is not None else False,
-                "appearance_seq": stat.appearance_seq,
-                "source": stat.source,
-                "innings_outs": stat.innings_outs,
-                "hits_allowed": stat.hits_allowed,
-                "runs_allowed": stat.runs_allowed,
-                "earned_runs": stat.earned_runs,
-                "home_runs_allowed": stat.home_runs_allowed,
-                "walks_allowed": stat.walks_allowed,
-                "strikeouts": stat.strikeouts,
-                "hit_batters": stat.hit_batters,
-                "wild_pitches": stat.wild_pitches,
-                "balks": stat.balks,
-                "wins": stat.wins,
-                "losses": stat.losses,
-                "saves": stat.saves,
-                "holds": stat.holds,
-                "decision": stat.decision,
-                "batters_faced": stat.batters_faced,
-                "era": stat.era,
-                "whip": stat.whip,
-                "fip": stat.fip,
-                "k_per_nine": stat.k_per_nine,
-                "bb_per_nine": stat.bb_per_nine,
-                "kbb": stat.kbb,
-                "extras": stat.extras,
-            }
-
-            stmt = pg_insert(PlayerGamePitching).values(**data)  # noqa: F821
-            update_dict = {k: v for k, v in data.items() if k not in ["game_id", "player_id"]}
-            update_dict["updated_at"] = text("CURRENT_TIMESTAMP")
-            stmt = stmt.on_conflict_do_update(index_elements=["game_id", "player_id"], set_=update_dict)
-
-            self.target_session.execute(stmt)
-            synced += 1
-
-        self.target_session.commit()
-        print(f"✅ Synced {synced} player game pitching stats to OCI")
-        return synced
+        return self._sync_simple_table(
+            PlayerGamePitching,
+            ["game_id", "player_id"],
+        )
 
     def sync_all_game_data(self, limit: int = None) -> dict[str, int]:
         """Sync all game-related data"""
@@ -206,7 +187,9 @@ class GameSyncMixin:
             "game_pitching_stats",
             "game_play_by_play",
             "game_events",
+            "game_validation_metrics",
             "game_summary",
+            "game_highlights",
         ]
         for table_name in child_tables:
             self.target_session.execute(
@@ -225,6 +208,10 @@ class GameSyncMixin:
     ) -> dict[str, int]:
         """Sync all game detail tables to OCI"""
         results = {}
+
+        if not self.test_connection():
+            print("❌ OCI connection failed. Aborting sync_game_details.")
+            return results
 
         filters = []
         target_game_ids = None
@@ -316,7 +303,9 @@ class GameSyncMixin:
         def get_child_filters(model_cls):
             if model_cls in {GameEvent, GamePlayByPlay}:
                 return [model_cls.game_id.in_(eligibility.relay_game_ids)]
-            if model_cls in {GameMetadata, GameInningScore, GameLineup, GameBattingStat, GamePitchingStat, GameSummary}:
+            if model_cls is GameValidationMetrics:
+                return [model_cls.game_id.in_(scoped_game_ids)]
+            if model_cls in {GameMetadata, GameInningScore, GameLineup, GameBattingStat, GamePitchingStat, GameSummary, GameHighlight}:
                 return [model_cls.game_id.in_(eligibility.detail_game_ids)]
             return child_filters if child_filters else None
 
@@ -326,6 +315,7 @@ class GameSyncMixin:
             ["game_id"],
             exclude_cols=["created_at"],
             filters=get_child_filters(GameMetadata),
+            transform_fn=self._transform_game_metadata_for_target,
             batch_size=batch_size,
         )
 
@@ -374,16 +364,34 @@ class GameSyncMixin:
             filters=get_child_filters(GameEvent),
             batch_size=batch_size,
         )
+        results["validation_metrics"] = self._sync_simple_table(
+            GameValidationMetrics,
+            ["game_id"],
+            exclude_cols=["created_at", "id"],
+            filters=get_child_filters(GameValidationMetrics),
+            batch_size=batch_size,
+        )
 
         # 7. Game Summary
         results["summary"] = self._sync_game_summary_rows(filters=get_child_filters(GameSummary), batch_size=batch_size)
+
+        # 8. Game Highlights
+        results["highlights"] = self._sync_simple_table(
+            GameHighlight,
+            ["game_id", "highlight_type", "event_seq"],
+            exclude_cols=["id", "created_at"],
+            filters=get_child_filters(GameHighlight),
+            batch_size=batch_size,
+        )
 
         print(f"✅ Game Details Sync Summary: {results}")
         return results
 
     def sync_specific_game(self, game_id: str) -> dict[str, int]:
         """Sync all related data for a single game_id"""
-        # We need Game model for filtering
+        if not self.test_connection():
+            print("❌ OCI connection failed. Aborting sync_specific_game.")
+            return {}
 
         results = {}
         eligibility = build_game_sync_eligibility(self.sqlite_session, [game_id])
@@ -417,15 +425,22 @@ class GameSyncMixin:
             GameBattingStat,
             GamePitchingStat,
             GameSummary,
+            GameHighlight,
         )
-        relay_child_models = (GameEvent, GamePlayByPlay)
+        relay_child_models = (GameEvent, GamePlayByPlay, GameValidationMetrics)
         if eligibility.detail_game_ids:
             for child_model in detail_child_models:
+                if not self._target_table_exists(child_model):
+                    print(f"ℹ️ Skipping delete for missing OCI table: {child_model.__tablename__}")
+                    continue
                 self.target_session.query(child_model).filter(child_model.game_id == game_id).delete(
                     synchronize_session=False
                 )
         if eligibility.relay_game_ids:
             for child_model in relay_child_models:
+                if not self._target_table_exists(child_model):
+                    print(f"ℹ️ Skipping delete for missing OCI table: {child_model.__tablename__}")
+                    continue
                 self.target_session.query(child_model).filter(child_model.game_id == game_id).delete(
                     synchronize_session=False
                 )
@@ -433,7 +448,11 @@ class GameSyncMixin:
 
         # Sync children
         results["metadata"] = self._sync_simple_table(
-            GameMetadata, ["game_id"], exclude_cols=["created_at"], filters=detail_filters
+            GameMetadata,
+            ["game_id"],
+            exclude_cols=["created_at"],
+            filters=detail_filters,
+            transform_fn=self._transform_game_metadata_for_target,
         )
         results["inning_scores"] = self._sync_simple_table(
             GameInningScore,
@@ -466,9 +485,25 @@ class GameSyncMixin:
             exclude_cols=["id", "created_at"],
             filters=[GameEvent.game_id.in_(eligibility.relay_game_ids)],
         )
+        if self._target_table_exists(GameValidationMetrics):
+            results["validation_metrics"] = self._sync_simple_table(
+                GameValidationMetrics,
+                ["game_id"],
+                exclude_cols=["id", "created_at"],
+                filters=[GameValidationMetrics.game_id == game_id],
+            )
+        else:
+            print(f"ℹ️ Skipping missing OCI table: {GameValidationMetrics.__tablename__}")
+            results["validation_metrics"] = 0
         results["summary"] = self._sync_game_summary_rows(
             filters=[GameSummary.game_id.in_(eligibility.detail_game_ids)],
             replace_game_ids=eligibility.detail_game_ids,
+        )
+        results["highlights"] = self._sync_simple_table(
+            GameHighlight,
+            ["game_id", "highlight_type", "event_seq"],
+            exclude_cols=["id", "created_at"],
+            filters=[GameHighlight.game_id.in_(eligibility.detail_game_ids)],
         )
 
         return results
@@ -477,6 +512,10 @@ class GameSyncMixin:
         """Sync only pregame publish tables for one game without touching completed detail datasets."""
 
         if not game_id:
+            return {}
+
+        if not self.test_connection():
+            print("❌ OCI connection failed. Aborting sync_pregame_game.")
             return {}
 
         results: dict[str, int] = {}
@@ -502,6 +541,7 @@ class GameSyncMixin:
             ["game_id"],
             exclude_cols=["created_at"],
             filters=[GameMetadata.game_id == game_id],
+            transform_fn=self._transform_game_metadata_for_target,
         )
         results["lineups"] = self._sync_simple_table(
             GameLineup,
@@ -630,6 +670,7 @@ class GameSyncMixin:
         filters: list = None,
         transform_fn: Callable | None = None,
         batch_size: int = 10000,
+        update_timestamp: bool | None = None,
     ) -> int:
         """Generic sync parameter for simple tables using Batched UPSERT or COPY"""
         if exclude_cols is None:
@@ -637,13 +678,46 @@ class GameSyncMixin:
         elif "id" not in exclude_cols:
             exclude_cols.append("id")
 
+        if not self._target_table_exists(model):
+            print(f"ℹ️ Skipping missing OCI table: {model.__tablename__}")
+            return 0
+
         # Use all columns except those explicitly excluded and not present in target DB
-        from sqlalchemy import inspect
+        if getattr(self, "oci_engine", None) is not None:
+            target_column_defs = {c["name"]: c for c in inspect(self.oci_engine).get_columns(model.__tablename__)}
+            target_columns = set(target_column_defs)
+        else:
+            target_column_defs = {}
+            target_columns = {c.key for c in model.__table__.columns}
 
-        target_columns = {c["name"] for c in inspect(self.oci_engine).get_columns(model.__tablename__)}
-        columns = [c.key for c in model.__table__.columns if c.key not in exclude_cols and c.key in target_columns]
+        sqlite_bind = None
+        if hasattr(self.sqlite_session, "get_bind"):
+            try:
+                sqlite_bind = self.sqlite_session.get_bind()
+            except Exception:
+                pass
 
-        query = self.sqlite_session.query(model)
+        if sqlite_bind is not None:
+            local_columns = {c["name"] for c in inspect(sqlite_bind).get_columns(model.__tablename__)}
+        else:
+            local_columns = {c.key for c in model.__table__.columns}
+
+        columns = [
+            c.key
+            for c in model.__table__.columns
+            if c.key not in exclude_cols and c.key in target_columns and c.key in local_columns
+        ]
+        if model is GameMetadata and "source_payload" in columns:
+            source_payload_type = target_column_defs["source_payload"].get("type")
+            source_payload_length = getattr(source_payload_type, "length", None)
+            if source_payload_length and source_payload_length <= 255:
+                columns.remove("source_payload")
+                print("ℹ️ Skipping game_metadata.source_payload for legacy OCI varchar column")
+        if not columns:
+            print(f"ℹ️ No compatible columns for {model.__tablename__}")
+            return 0
+
+        query = self.sqlite_session.query(*[getattr(model, column) for column in columns])
         if filters:
             query = query.filter(*filters)
 
@@ -660,7 +734,11 @@ class GameSyncMixin:
             rows = query.offset(offset).limit(batch_size).all()
             records = []
             for row in rows:
-                data = {c: getattr(row, c) for c in columns if hasattr(row, c)}
+                mapping = getattr(row, "_mapping", None)
+                if mapping is not None:
+                    data = {c: mapping[c] for c in columns if c in mapping}
+                else:
+                    data = {c: getattr(row, c) for c in columns if hasattr(row, c)}
 
                 # Ensure created_at/updated_at are never null if the table requires them
                 now = datetime.now()
@@ -683,8 +761,12 @@ class GameSyncMixin:
             # errors, while preserving SQL's distinct-NULL unique semantics.
             records = _dedupe_records_for_conflict_keys(records, conflict_keys)
 
+            if update_timestamp is None:
+                effective_update_timestamp = "updated_at" not in exclude_cols
+            else:
+                effective_update_timestamp = update_timestamp
             self._bulk_copy_upsert(
-                model.__tablename__, records, conflict_keys, update_timestamp=("updated_at" not in exclude_cols)
+                model.__tablename__, records, conflict_keys, update_timestamp=effective_update_timestamp
             )
             synced += len(records)
             print(f"   Synced {synced}/{total_count} rows via COPY...")

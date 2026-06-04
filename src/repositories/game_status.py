@@ -9,6 +9,8 @@ from datetime import date, datetime
 from typing import Any
 from zoneinfo import ZoneInfo
 
+from sqlalchemy import func
+
 from src.db.engine import SessionLocal
 from src.models.game import (
     Game,
@@ -72,6 +74,18 @@ def refresh_game_status_for_date(target_date: str, today: date | None = None) ->
                 has_lineup = _has_game_child_rows(session, GameLineup, game.game_id)
                 has_batting = _has_game_child_rows(session, GameBattingStat, game.game_id)
                 has_pitching = _has_game_child_rows(session, GamePitchingStat, game.game_id)
+                if game.game_date < today and has_inning and (
+                    game.home_score is None or game.away_score is None
+                ):
+                    inning_totals = dict(
+                        session.query(GameInningScore.team_side, func.sum(GameInningScore.runs))
+                        .filter(GameInningScore.game_id == game.game_id)
+                        .group_by(GameInningScore.team_side)
+                        .all()
+                    )
+                    if inning_totals.get("away") is not None and inning_totals.get("home") is not None:
+                        game.away_score = int(inning_totals["away"] or 0)
+                        game.home_score = int(inning_totals["home"] or 0)
                 next_status = _derive_game_status(
                     game_date=game.game_date,
                     home_score=game.home_score,

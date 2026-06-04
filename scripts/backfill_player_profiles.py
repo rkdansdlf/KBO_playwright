@@ -27,14 +27,15 @@ async def backfill(limit: int, delay: float, ids: list[str] | None = None):
 
     # Target players: missing photo_url, NOT a pseudo ID, and NOT already marked as NOT_FOUND
     with SessionLocal() as session:
-        query = session.query(PlayerBasic).filter(
-            PlayerBasic.photo_url == None,
-            PlayerBasic.player_id >= 10000,
-            or_(PlayerBasic.status == None, PlayerBasic.status.not_in(["NOT_FOUND", "PSEUDO"])),
-        )
         if ids:
-            query = query.filter(PlayerBasic.player_id.in_(ids))
+            query = session.query(PlayerBasic).filter(PlayerBasic.player_id.in_(ids))
             print(f"🎯 Targeted processing for {len(ids)} IDs")
+        else:
+            query = session.query(PlayerBasic).filter(
+                PlayerBasic.photo_url == None,
+                PlayerBasic.player_id >= 10000,
+                or_(PlayerBasic.status == None, PlayerBasic.status.not_in(["NOT_FOUND", "PSEUDO"])),
+            )
         if limit > 0:
             query = query.limit(limit)
         targets = query.all()
@@ -65,6 +66,37 @@ async def backfill(limit: int, delay: float, ids: list[str] | None = None):
                     profile["name"] = p.name
                     # Update DB
                     repo.upsert_players([profile])
+                    
+                    # Update detailed players table
+                    try:
+                        from src.repositories.player_repository import PlayerRepository
+                        from src.parsers.player_profile_parser import PlayerProfileParsed
+                        detailed_repo = PlayerRepository()
+                        parsed = PlayerProfileParsed(
+                            player_id=int(p.player_id),
+                            player_name=p.name,
+                            photo_url=profile.get("photo_url"),
+                            batting_hand=profile.get("bats"),
+                            throwing_hand=profile.get("throws"),
+                            height_cm=profile.get("height_cm"),
+                            weight_kg=profile.get("weight_kg"),
+                            entry_year=profile.get("debut_year"),
+                            salary_original=profile.get("salary_original"),
+                            signing_bonus_original=profile.get("signing_bonus_original"),
+                            salary_amount=profile.get("salary_amount"),
+                            salary_currency=profile.get("salary_currency"),
+                            signing_bonus_amount=profile.get("signing_bonus_amount"),
+                            signing_bonus_currency=profile.get("signing_bonus_currency"),
+                            draft_year=profile.get("draft_year"),
+                            draft_round=profile.get("draft_round"),
+                            draft_pick_overall=profile.get("draft_pick_overall"),
+                            draft_type=profile.get("draft_type"),
+                            education_or_career_path=profile.get("education_path") or [],
+                        )
+                        detailed_repo.upsert_player_profile(str(p.player_id), parsed)
+                    except Exception as repo_err:
+                        print(f"  ⚠️ Detailed player sync warning: {repo_err}")
+
                     print(f"  ✅ Updated: photo={profile['photo_url']}, salary={profile['salary_original']}")
                     success_count += 1
                 else:

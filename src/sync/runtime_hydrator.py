@@ -20,6 +20,7 @@ from src.models.game import (
     GamePitchingStat,
     GamePlayByPlay,
     GameSummary,
+    GameValidationMetrics,
 )
 from src.models.player import PlayerBasic, PlayerMovement, PlayerSeasonBatting, PlayerSeasonPitching
 from src.models.team import TeamDailyRoster
@@ -165,6 +166,13 @@ class RuntimeHydrator:
                 GamePlayByPlay,
                 (GamePlayByPlay.game_id.like(f"{year}%"),),
                 (GamePlayByPlay.game_id.like(f"{year}%"),),
+                exclude_columns=("created_at", "updated_at"),
+            ),
+            HydrationSpec(
+                "game_validation_metrics",
+                GameValidationMetrics,
+                (GameValidationMetrics.game_id.like(f"{year}%"),),
+                (GameValidationMetrics.game_id.like(f"{year}%"),),
                 exclude_columns=("created_at", "updated_at"),
             ),
         ]

@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import os
+import threading
 import random
 import time
 
@@ -21,7 +22,17 @@ class AsyncThrottle:
         self._default_delay = float(env_delay) if env_delay is not None else delay
         self.jitter = float(env_jitter) if env_jitter is not None else jitter
         self._last_request_times: dict[str, float] = {}
-        self._lock = asyncio.Lock()
+        self._locks: dict[int, asyncio.Lock] = {}
+        self._locks_lock = threading.Lock()
+
+    def _get_lock(self) -> asyncio.Lock:
+        loop = asyncio.get_running_loop()
+        loop_id = id(loop)
+        if loop_id not in self._locks:
+            with self._locks_lock:
+                if loop_id not in self._locks:
+                    self._locks[loop_id] = asyncio.Lock()
+        return self._locks[loop_id]
 
     @property
     def default_delay(self) -> float:
@@ -40,7 +51,8 @@ class AsyncThrottle:
         Wait for the required delay plus jitter since the last request to this host.
         Safe for concurrent use.
         """
-        async with self._lock:
+        lock = self._get_lock()
+        async with lock:
             now = time.monotonic()
             last_time = self._last_request_times.get(host, 0.0)
             elapsed = now - last_time

@@ -66,6 +66,9 @@ class PreviewCrawler:
                 value = self._coerce_api_payload(payload.get(key))
                 if isinstance(value, list):
                     return value
+                nested = self._extract_list_payload(value)
+                if nested:
+                    return nested
         return []
 
     def _clean_text(self, value: Any) -> str:
@@ -83,6 +86,83 @@ class PreviewCrawler:
             if isinstance(value, str):
                 return value.strip() not in ("", "0", "false", "False", "FALSE")
             return bool(value)
+
+    def _first_non_empty_text(self, payload: dict[str, Any], keys: tuple[str, ...]) -> str:
+        for key in keys:
+            value = self._clean_text(payload.get(key))
+            if value:
+                return value
+        return ""
+
+    def _first_non_empty_value(self, payload: dict[str, Any], keys: tuple[str, ...]) -> Any | None:
+        for key in keys:
+            value = payload.get(key)
+            if value not in (None, ""):
+                return value
+        return None
+
+    def _extract_starter_name(self, game: dict[str, Any], side: str) -> str:
+        """Extract announced starter names from KBO game-list variants."""
+        if side == "away":
+            return self._first_non_empty_text(
+                game,
+                (
+                    "T_PIT_P_NM",
+                    "T_D_PIT_P_NM",
+                    "AWAY_PIT_P_NM",
+                    "AWAY_PITCHER_NM",
+                    "AWAY_START_PIT_P_NM",
+                    "W_PIT_P_NM",
+                ),
+            )
+        return self._first_non_empty_text(
+            game,
+            (
+                "B_PIT_P_NM",
+                "B_D_PIT_P_NM",
+                "HOME_PIT_P_NM",
+                "HOME_PITCHER_NM",
+                "HOME_START_PIT_P_NM",
+                "L_PIT_P_NM",
+            ),
+        )
+
+    def _extract_starter_id(self, game: dict[str, Any], side: str) -> Any | None:
+        """Extract announced starter ids from KBO game-list variants."""
+        if side == "away":
+            return self._first_non_empty_value(
+                game,
+                (
+                    "T_PIT_P_ID",
+                    "T_D_PIT_P_ID",
+                    "AWAY_PIT_P_ID",
+                    "AWAY_PITCHER_ID",
+                    "AWAY_START_PIT_P_ID",
+                    "W_PIT_P_ID",
+                ),
+            )
+        return self._first_non_empty_value(
+            game,
+            (
+                "B_PIT_P_ID",
+                "B_D_PIT_P_ID",
+                "HOME_PIT_P_ID",
+                "HOME_PITCHER_ID",
+                "HOME_START_PIT_P_ID",
+                "L_PIT_P_ID",
+            ),
+        )
+
+    def _extract_lineup_announced(self, lineup_rows: list[Any], fallback: bool) -> bool:
+        """Read LINEUP_CK from GetLineUpAnalysis when present."""
+        if not lineup_rows:
+            return fallback
+        first = lineup_rows[0]
+        if isinstance(first, list) and first and isinstance(first[0], dict) and "LINEUP_CK" in first[0]:
+            return self._to_flag(first[0].get("LINEUP_CK"))
+        if isinstance(first, dict) and "LINEUP_CK" in first:
+            return self._to_flag(first.get("LINEUP_CK"))
+        return fallback
 
     async def _fetch_api_json(
         self,
@@ -188,21 +268,15 @@ class PreviewCrawler:
 
                 away_team_name = self._clean_text(g.get("AWAY_NM"))
                 home_team_name = self._clean_text(g.get("HOME_NM"))
-                away_starter = self._clean_text(g.get("T_PIT_P_NM"))
-                home_starter = self._clean_text(g.get("B_PIT_P_NM"))
-                if not away_starter:
-                    away_starter = self._clean_text(g.get("T_D_PIT_P_NM"))
-                if not home_starter:
-                    home_starter = self._clean_text(g.get("B_D_PIT_P_NM"))
-                if not away_starter:
-                    away_starter = self._clean_text(g.get("W_PIT_P_NM"))
-                if not home_starter:
-                    home_starter = self._clean_text(g.get("L_PIT_P_NM"))
-                away_starter_id = g.get("T_PIT_P_ID")
-                home_starter_id = g.get("B_PIT_P_ID")
+                away_starter = self._extract_starter_name(g, "away")
+                home_starter = self._extract_starter_name(g, "home")
+                away_starter_id = self._extract_starter_id(g, "away")
+                home_starter_id = self._extract_starter_id(g, "home")
                 stadium = self._clean_text(g.get("S_NM")) or None
                 start_time = self._clean_text(g.get("G_TM")) or None
-                start_pitcher_announced = self._to_flag(g.get("START_PIT_CK"))
+                start_pitcher_announced = self._to_flag(g.get("START_PIT_CK")) or bool(
+                    away_starter and home_starter
+                )
                 lineup_announced = self._to_flag(g.get("LINEUP_CK"))
 
                 preview_data = {
@@ -241,6 +315,10 @@ class PreviewCrawler:
                 if lineup_data:
                     try:
                         lineup_rows = self._extract_list_payload(lineup_data)
+                        preview_data["lineup_announced"] = self._extract_lineup_announced(
+                            lineup_rows,
+                            bool(preview_data["lineup_announced"]),
+                        )
                         # Parse Home Lineup (Index 3 is Home)
                         if len(lineup_rows) > 3:
                             preview_data["home_lineup"] = self._parse_lineup_grid(lineup_rows[3])

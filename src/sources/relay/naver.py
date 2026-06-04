@@ -27,4 +27,7 @@ class NaverRelayAdapter(RelaySourceAdapter):
             has_event_state=events_have_minimum_state(events),
             has_raw_pbp=bool(raw_pbp_rows),
             notes=notes,
+            parser_version=(result or {}).get("parser_version"),
+            source_schema_version=(result or {}).get("source_schema_version"),
+            payload_hash=(result or {}).get("payload_hash"),
         )

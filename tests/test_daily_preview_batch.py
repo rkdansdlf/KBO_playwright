@@ -111,7 +111,7 @@ def test_preview_sync_leaves_unresolved_player_lineup_null(monkeypatch):
     assert saved_ids == ["20260515NCLT0"]
     assert len(_ForeignKeyCheckingSyncer.created) == 1
     syncer = _ForeignKeyCheckingSyncer.created[0]
-    assert syncer.calls == ["player_basic", "players", "pregame:20260515NCLT0"]
+    assert syncer.calls == ["pregame:20260515NCLT0"]
     assert syncer.closed is True
 
     with SessionLocal() as session:

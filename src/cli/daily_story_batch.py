@@ -11,7 +11,7 @@ from datetime import datetime
 from typing import Sequence
 
 from src.db.engine import SessionLocal
-from src.models.game import Game, GameEvent, GameSummary
+from src.models.game import Game, GameEvent, GameSummary, GameValidationMetrics
 from src.repositories.game_repository import refresh_game_status_for_date
 from src.services.game_story_builder import STORY_SUMMARY_TYPE, GameStoryBuilder
 from src.sync.oci_sync import OCISync
@@ -20,6 +20,7 @@ from src.utils.refresh_manifest import write_refresh_manifest
 from src.utils.safe_print import safe_print as print
 
 logger = logging.getLogger(__name__)
+TRUSTED_RELAY_STATUSES = {"verified", "recovered"}
 
 
 def dump_story_json(story_data: dict) -> str:
@@ -57,6 +58,31 @@ def _build_story_data(builder: GameStoryBuilder, session, game: Game) -> dict:
         .all()
     )
     return builder.build(game, events)
+
+
+def _trusted_relay_game_ids(session, game_ids: Sequence[str]) -> set[str]:
+    if not game_ids:
+        return set()
+    target_ids = {str(game_id) for game_id in game_ids}
+    metric_rows = (
+        session.query(GameValidationMetrics.game_id, GameValidationMetrics.validation_status)
+        .filter(GameValidationMetrics.game_id.in_(list(target_ids)))
+        .all()
+    )
+    statuses = {str(row.game_id): row.validation_status for row in metric_rows}
+    trusted_ids = {game_id for game_id, status in statuses.items() if status in TRUSTED_RELAY_STATUSES}
+
+    missing_metric_ids = target_ids - set(statuses)
+    if missing_metric_ids:
+        wpa_rows = (
+            session.query(GameEvent.game_id)
+            .filter(GameEvent.game_id.in_(list(missing_metric_ids)), GameEvent.wpa.isnot(None))
+            .distinct()
+            .all()
+        )
+        trusted_ids.update(str(row[0]) for row in wpa_rows)
+
+    return trusted_ids
 
 
 def _sync_story_summaries(game_ids: Sequence[str]) -> None:
@@ -109,7 +135,12 @@ async def run_story_batch(target_date: str, *, sync_to_oci: bool | None = None) 
             print(f"ℹ️ No completed games found for {target_date}. manifest={manifest_path}")
             return []
 
+        trusted_game_ids = _trusted_relay_game_ids(session, [game.game_id for game in games])
+
         for game in games:
+            if game.game_id not in trusted_game_ids:
+                print(f"  ⚠️ Skipping story for {game.game_id}: relay validation is not trusted")
+                continue
             print(f"📚 Generating story timeline for {game.game_id}...")
             story_data = _build_story_data(builder, session, game)
             if not story_data["timeline"]:

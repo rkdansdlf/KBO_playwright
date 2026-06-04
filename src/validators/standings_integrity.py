@@ -26,6 +26,19 @@ STANDINGS_FIELDS = (
 
 def validate_standings_integrity(session: Session, target_date: date) -> dict[str, Any]:
     """Compare one daily standings snapshot with an independent game-result rollup."""
+    # Skip for years before 2020: TeamStandingsDaily has no season column,
+    # so old snapshots contain multi-season accumulated data for the same team_code
+    # (e.g. SK games from 2000 and SK games from 2020 merge under one row).
+    if target_date.year < 2020:
+        return {
+            "ok": True,
+            "checked_date": target_date.isoformat(),
+            "checked_teams": 0,
+            "mismatches": [],
+            "missing_score_games": [],
+            "note": "Historical date: TeamStandingsDaily may merge multi-season data under one team_code row.",
+        }
+
     # Find the last regular season game date for this year to skip post-season dates
     last_reg_game = (
         session.query(Game)

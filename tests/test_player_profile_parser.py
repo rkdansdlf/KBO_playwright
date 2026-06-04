@@ -23,7 +23,7 @@ from src.parsers.player_profile_parser import (
                 "batting_hand": "R",
                 "height_cm": 183,
                 "weight_kg": 100,
-                "education_or_career_path": ["도미니카 Liceo Enedina Puella Renville (고)"],
+                "education_path": ["도미니카 Liceo Enedina Puella Renville (고)"],
                 "signing_bonus_amount": 200000,
                 "signing_bonus_currency": "USD",
                 "salary_amount": 356666,
@@ -50,7 +50,7 @@ from src.parsers.player_profile_parser import (
                 "batting_hand": "R",
                 "height_cm": 180,
                 "weight_kg": 95,
-                "education_or_career_path": ["송정동초", "무등중", "진흥고", "두산", "경찰", "두산", "NC"],
+                "education_path": ["송정동초", "무등중", "진흥고", "두산", "경찰", "두산", "NC"],
                 "signing_bonus_amount": 3000 * 10_000,
                 "signing_bonus_currency": "KRW",
                 "salary_amount": 160000 * 10_000,
@@ -72,7 +72,7 @@ from src.parsers.player_profile_parser import (
             {
                 "player_name": "강동우",
                 "birth_date": "1974-04-20",
-                "education_or_career_path": [
+                "education_path": [
                     "칠성초",
                     "경상중",
                     "경북고",
@@ -92,4 +92,5 @@ from src.parsers.player_profile_parser import (
 def test_parse_profile_examples(raw_text, expected):
     parsed = parse_profile(raw_text)
     for key, value in expected.items():
-        assert getattr(parsed, key) == value
+        assert parsed[key] == value
+

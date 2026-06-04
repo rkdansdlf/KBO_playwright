@@ -1,0 +1,14 @@
+column_name,type,is_primary_key,foreign_key,nullable,description
+id,INTEGER,True,,False,자동 증가 PK
+stadium_code,VARCHAR(10),False,stadium_info.stadium_code,False,구장 코드 (e.g. JAMSIL)
+location_type,VARCHAR(30),False,,False,"위치 유형: gate / subway_station / road / parking / area"
+location_label,VARCHAR(100),False,,False,"위치 레이블 (e.g. 잠실역_2호선 / 1번게이트)"
+measured_at,DATETIME,False,,False,혼잡도 측정 시각 (KST)
+game_date,DATE,False,,True,대상 경기일
+congestion_level,VARCHAR(20),False,,True,"혼잡도 단계: low / normal / high / very_high"
+congestion_index,FLOAT,False,,True,혼잡도 수치 (0~100)
+people_count,INTEGER,False,,True,추정 인원수
+source,VARCHAR(50),False,,True,"데이터 소스: seoul_open_api / kakao / naver / sdot"
+raw_data,JSON,False,,True,원본 API 응답 스냅샷
+created_at,DATETIME,False,,False,레코드 생성 시각
+updated_at,DATETIME,False,,False,레코드 마지막 수정 시각

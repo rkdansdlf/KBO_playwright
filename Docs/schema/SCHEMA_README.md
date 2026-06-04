@@ -22,6 +22,9 @@
 | player_season_pitching | 45 | id |
 | players | 16 | id |
 | stadium_foods | 10 | id |
+| stadium_transit_times | 15 | id |
+| stadium_congestion | 13 | id |
+| stadium_operation_notices | 15 | id |
 | stat_rankings | 14 | id |
 | team_daily_roster | 11 | id |
 | team_franchises | 8 | id |
@@ -29,6 +32,27 @@
 | team_season_batting | 25 | id |
 | team_season_pitching | 24 | id |
 | teams | 11 | team_id |
+
+## Stadium Real-Time Data Tables
+
+신규 3개 테이블은 잠실구장 경기일 실시간/준실시간 데이터를 저장합니다.
+모두 `stadium_info.stadium_code`를 FK로 사용합니다.
+
+| 테이블 | 용도 | 갱신 주기 | 데이터 소스 |
+|--------|------|----------|------------|
+| `stadium_transit_times` | 실측 이동 시간 | 15분 간격 (경기일) | 카카오/네이버/TMAP API |
+| `stadium_congestion` | 실시간 혼잡도 | 5분 간격 (경기일) | 서울시 공공데이터 API |
+| `stadium_operation_notices` | 구단 운영 공지 | 1일 2~4회 + 긴급 | LG·두산 공식 홈 + Naver 검색 |
+
+**Dedup 키:**
+- `stadium_transit_times`: `(stadium_code, origin_label, transport_mode, measured_at)`
+- `stadium_congestion`: `(stadium_code, location_label, measured_at)`
+- `stadium_operation_notices`: `(stadium_code, source_name, external_id)` 또는 `(stadium_code, source_name, title, published_at)` 폴백
+
+**`is_confirmed` 필드:**
+- `True` (기본값): LG·두산 공식 홈페이지 게시물
+- `False`: Naver 검색 결과 기사 (미공식 출처)
+
 
 ## Integrity Notes
 

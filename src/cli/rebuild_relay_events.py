@@ -13,6 +13,7 @@ from sqlalchemy import or_
 from src.db.engine import SessionLocal
 from src.models.game import Game, GameEvent
 from src.services.wpa_calculator import WPACalculator
+from src.services.wpa_transitions import apply_wpa_transitions, format_base_string
 from src.sync.oci_sync import OCISync
 from src.utils.relay_text import (
     detect_relay_event_type,
@@ -239,44 +240,7 @@ def _last_known_score(events: Sequence[dict[str, Any]]) -> tuple[int, int] | Non
 
 
 def _apply_wpa_transitions(events: list[dict[str, Any]], *, calculator: WPACalculator | None = None) -> None:
-    calculator = calculator or WPACalculator()
-    for index, event in enumerate(events):
-        is_bottom = event.get("inning_half") == "bottom"
-        if index == 0:
-            outs_before, runners_before, score_diff_before = 0, 0, 0
-        else:
-            previous = events[index - 1]
-            if previous.get("inning") != event.get("inning") or previous.get("inning_half") != event.get("inning_half"):
-                outs_before, runners_before = 0, 0
-            else:
-                outs_before = int(previous.get("outs") or 0)
-                runners_before = int(previous.get("base_state") or 0)
-            score_diff_before = int(previous.get("home_score") or 0) - int(previous.get("away_score") or 0)
-
-        inning = int(event.get("inning") or 1)
-        outs_after = int(event.get("outs") or 0)
-        runners_after = int(event.get("base_state") or 0)
-        score_diff_after = int(event.get("home_score") or 0) - int(event.get("away_score") or 0)
-        we_before = calculator.get_win_probability(
-            inning,
-            is_bottom,
-            outs_before,
-            runners_before,
-            score_diff_before,
-        )
-        we_after = calculator.get_win_probability(
-            inning,
-            is_bottom,
-            outs_after,
-            runners_after,
-            score_diff_after,
-        )
-        event["bases_before"] = _format_base_string(runners_before)
-        event["bases_after"] = _format_base_string(runners_after)
-        event["score_diff"] = score_diff_after
-        event["win_expectancy_before"] = we_before
-        event["win_expectancy_after"] = we_after
-        event["wpa"] = round(we_after - we_before if is_bottom else we_before - we_after, 4)
+    apply_wpa_transitions(events, calculator=calculator)
 
 
 def _build_orm_events(game_id: str, events: Sequence[dict[str, Any]]) -> list[GameEvent]:
@@ -413,7 +377,7 @@ def _result_from_description(description: Any) -> str | None:
 
 
 def _format_base_string(runners: int) -> str:
-    return f"{'1' if (runners & 1) else '-'}{'2' if (runners & 2) else '-'}{'3' if (runners & 4) else '-'}"
+    return format_base_string(runners)
 
 
 def _dedupe_game_ids(game_ids: Iterable[str]) -> list[str]:

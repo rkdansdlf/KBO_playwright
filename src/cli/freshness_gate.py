@@ -51,7 +51,14 @@ def collect_freshness_issues(
     target_date: str | None = None,
     days: int | None = None,
 ) -> dict[str, list[str]]:
-    query = session.query(Game).filter(
+    query = session.query(
+        Game.game_id,
+        Game.game_date,
+        Game.away_score,
+        Game.home_score,
+        Game.away_pitcher,
+        Game.home_pitcher,
+    ).filter(
         Game.game_status.in_(tuple(COMPLETED_LIKE_GAME_STATUSES)),
         Game.away_team.in_(KBO_FRESHNESS_TEAM_CODES),
         Game.home_team.in_(KBO_FRESHNESS_TEAM_CODES),
@@ -82,7 +89,11 @@ def collect_freshness_issues(
     }
 
     for game in games:
-        metadata = session.query(GameMetadata).filter(GameMetadata.game_id == game.game_id).one_or_none()
+        metadata = (
+            session.query(GameMetadata.start_time)
+            .filter(GameMetadata.game_id == game.game_id)
+            .one_or_none()
+        )
         if metadata is None or metadata.start_time is None:
             issues["missing_start_time"].append(game.game_id)
 
@@ -90,7 +101,11 @@ def collect_freshness_issues(
         if lineup_count == 0:
             issues["missing_lineups"].append(game.game_id)
 
-        inning_rows = session.query(GameInningScore).filter(GameInningScore.game_id == game.game_id).all()
+        inning_rows = (
+            session.query(GameInningScore.team_side, GameInningScore.runs)
+            .filter(GameInningScore.game_id == game.game_id)
+            .all()
+        )
         if not inning_rows:
             issues["missing_inning_scores"].append(game.game_id)
         else:
@@ -104,10 +119,15 @@ def collect_freshness_issues(
             ):
                 issues["inning_score_mismatch"].append(game.game_id)
 
-        events = session.query(GameEvent).filter(GameEvent.game_id == game.game_id).all()
-        if not events:
+        event_count = session.query(GameEvent.id).filter(GameEvent.game_id == game.game_id).count()
+        if not event_count:
             issues["missing_events"].append(game.game_id)
-        elif not any(event.wpa is not None for event in events):
+        elif (
+            session.query(GameEvent.id)
+            .filter(GameEvent.game_id == game.game_id, GameEvent.wpa.isnot(None))
+            .first()
+            is None
+        ):
             issues["missing_wpa"].append(game.game_id)
 
         if not (game.away_pitcher and str(game.away_pitcher).strip()) or not (
@@ -115,7 +135,11 @@ def collect_freshness_issues(
         ):
             issues["missing_starting_pitchers"].append(game.game_id)
 
-        pitching_rows = session.query(GamePitchingStat).filter(GamePitchingStat.game_id == game.game_id).all()
+        pitching_rows = (
+            session.query(GamePitchingStat.team_side, GamePitchingStat.is_starting)
+            .filter(GamePitchingStat.game_id == game.game_id)
+            .all()
+        )
         if not pitching_rows:
             issues["missing_pitching_stats"].append(game.game_id)
         else:
@@ -126,7 +150,7 @@ def collect_freshness_issues(
                 issues["missing_pitching_starters"].append(game.game_id)
 
         review = (
-            session.query(GameSummary)
+            session.query(GameSummary.detail_text)
             .filter(
                 GameSummary.game_id == game.game_id,
                 GameSummary.summary_type == "리뷰_WPA",

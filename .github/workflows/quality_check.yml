@@ -52,6 +52,13 @@ jobs:
           # Audit the last 14 days of completed games for missing stats or relay data.
           python3 scripts/verification/audit_daily_completeness.py --db-url env:OCI_DB_URL --days 14
 
+      - name: Run WPA Freshness Gate (OCI Only)
+        env:
+          OCI_DB_URL: ${{ secrets.OCI_DB_URL }}
+        run: |
+          # Fails when completed games are missing WPA-backed events or review summaries.
+          python3 -m src.cli.freshness_gate --days 14 --source-url-env OCI_DB_URL
+
       - name: Notify Telegram on Status
         if: always()
         uses: ./.github/actions/notify-telegram

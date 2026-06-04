@@ -265,10 +265,27 @@ class PlayerProfileCrawler:
                     continue
 
                 # Success found data
-                hands = _parse_hands(raw.get("raw_text") or "")
-                hw = _parse_height_weight(raw.get("height_weight"))
-                photo_url = raw.get("photo_url") or raw.get("photo_attr")
+                from src.parsers.player_profile_parser import parse_profile
 
+                raw_text = raw.get("raw_text") or ""
+                # Ensure we add fields from individual elements if they are not in the raw_text
+                # to support both direct scraping and unit tests using mock payloads.
+                if "선수명" not in raw_text and raw.get("name"):
+                    raw_text += f" 선수명: {raw['name']}"
+                if "연봉" not in raw_text and raw.get("salary"):
+                    raw_text += f" 연봉: {raw['salary']}"
+                if "입단 계약금" not in raw_text and raw.get("signing"):
+                    raw_text += f" 입단 계약금: {raw['signing']}"
+                if "지명순위" not in raw_text and raw.get("draft"):
+                    raw_text += f" 지명순위: {raw['draft']}"
+                if "입단년도" not in raw_text and raw.get("debut"):
+                    raw_text += f" 입단년도: {raw['debut']}"
+                if "신장/체중" not in raw_text and raw.get("height_weight"):
+                    raw_text += f" 신장/체중: {raw['height_weight']}"
+
+                parsed = parse_profile(raw_text)
+
+                photo_url = raw.get("photo_url") or raw.get("photo_attr")
                 # Heuristic: try current year CDN if still no photo or placeholder detected
                 if not photo_url or "no-Image.png" in photo_url:
                     from datetime import datetime
@@ -281,16 +298,25 @@ class PlayerProfileCrawler:
 
                 result = {
                     "player_id": player_id,
-                    "name": raw.get("name"),
+                    "name": raw.get("name") or parsed.get("player_name"),
                     "photo_url": _clean_photo_url(photo_url),
-                    "bats": hands["bats"],
-                    "throws": hands["throws"],
-                    "height_cm": hw["height_cm"],
-                    "weight_kg": hw["weight_kg"],
-                    "debut_year": _parse_debut_year(raw.get("debut")),
-                    "salary_original": (raw.get("salary") or "").strip() or None,
-                    "signing_bonus_original": (raw.get("signing") or "").strip() or None,
-                    "draft_info": (raw.get("draft") or "").strip() or None,
+                    "bats": parsed.get("batting_hand") or _parse_hands(raw.get("raw_text") or "")["bats"],
+                    "throws": parsed.get("throwing_hand") or _parse_hands(raw.get("raw_text") or "")["throws"],
+                    "height_cm": parsed.get("height_cm") or _parse_height_weight(raw.get("height_weight"))["height_cm"],
+                    "weight_kg": parsed.get("weight_kg") or _parse_height_weight(raw.get("height_weight"))["weight_kg"],
+                    "debut_year": parsed.get("entry_year") or _parse_debut_year(raw.get("debut")),
+                    "salary_original": parsed.get("salary_original") or (raw.get("salary") or "").strip() or None,
+                    "signing_bonus_original": parsed.get("signing_bonus_original") or (raw.get("signing") or "").strip() or None,
+                    "draft_info": parsed.get("draft_info") or (raw.get("draft") or "").strip() or None,
+                    "salary_amount": parsed.get("salary_amount"),
+                    "salary_currency": parsed.get("salary_currency"),
+                    "signing_bonus_amount": parsed.get("signing_bonus_amount"),
+                    "signing_bonus_currency": parsed.get("signing_bonus_currency"),
+                    "draft_year": parsed.get("draft_year"),
+                    "draft_round": parsed.get("draft_round"),
+                    "draft_pick_overall": parsed.get("draft_pick_overall"),
+                    "draft_type": parsed.get("draft_type"),
+                    "education_path": parsed.get("education_path"),
                 }
                 self._last_failure_reason.pop(str(player_id), None)
                 return result

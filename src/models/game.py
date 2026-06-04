@@ -3,6 +3,7 @@ from sqlalchemy import (
     Boolean,
     Column,
     Date,
+    DateTime,
     Float,
     ForeignKey,
     Integer,
@@ -36,6 +37,7 @@ class Game(Base, TimestampMixin):
     winning_score = Column(Integer)
     season_id = Column(Integer)
     game_status = Column(String(32), nullable=True)
+    game_lifecycle_state = Column(String(32), nullable=True)
     is_primary = Column(Boolean, nullable=False, default=True, server_default="1")
 
     # Canonical/Franchise IDs for stable analysis
@@ -53,6 +55,8 @@ class Game(Base, TimestampMixin):
     pitching_stats = relationship("GamePitchingStat", back_populates="game")
     events = relationship("GameEvent", back_populates="game")
     aliases = relationship("GameIdAlias", back_populates="canonical_game")
+    validation_metrics = relationship("GameValidationMetrics", back_populates="game", uselist=False)
+    highlights = relationship("GameHighlight", back_populates="game", cascade="all, delete-orphan")
 
 
 class GameIdAlias(Base, TimestampMixin):
@@ -97,6 +101,13 @@ class GamePlayByPlay(Base, TimestampMixin):
     play_description = Column(String(1000))
     event_type = Column(String(50))
     result = Column(String(100))
+    player_id = Column(Integer, ForeignKey("player_basic.player_id", ondelete="RESTRICT"), nullable=True)
+    resolver_confidence = Column(String(16), nullable=True)
+    resolver_reason = Column(String(64), nullable=True)
+    unresolved_player_name = Column(String(64), nullable=True)
+    provider_log_id = Column(String(64), nullable=True)
+    source_row_index = Column(Integer, nullable=True)
+    source_name = Column(String(32), nullable=True)
 
     game = relationship("Game", back_populates="plays")
 
@@ -280,6 +291,19 @@ class GameEvent(Base, TimestampMixin):
     bases_before = Column(String(3))
     bases_after = Column(String(3))
 
+    # Dedup & Traceability
+    provider_log_id = Column(String(64), nullable=True)
+    source_row_index = Column(Integer, nullable=True)
+
+    # At-Bat Grouping (Phase 2 preparation)
+    at_bat_seq = Column(Integer, nullable=True)
+    at_bat_event_role = Column(String(16), nullable=True)
+    at_bat_confidence = Column(String(16), nullable=True)
+
+    # Pitch Count
+    balls = Column(Integer, nullable=True, default=0)
+    strikes = Column(Integer, nullable=True, default=0)
+
     # WPA & State Columns
     wpa = Column(Float)
     win_expectancy_before = Column(Float)
@@ -292,3 +316,133 @@ class GameEvent(Base, TimestampMixin):
     extra_json = Column(JSON)
 
     game = relationship("Game", back_populates="events")
+
+
+class GameValidationMetrics(Base, TimestampMixin):
+    """Per-game validation and relay-source tracking metrics."""
+
+    __tablename__ = "game_validation_metrics"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    game_id = Column(String(20), ForeignKey("game.game_id", ondelete="CASCADE"), nullable=False, unique=True)
+    validation_status = Column(String(32), nullable=False, default="pending_live")
+    previous_status = Column(String(32), nullable=True)
+    source_used = Column(String(16), nullable=True)
+    fallback_trigger_count = Column(Integer, default=0)
+    fallback_trigger_reason = Column(String(64), nullable=True)
+    last_fallback_at = Column(DateTime, nullable=True)
+    duplicate_event_count = Column(Integer, default=0)
+    unclassified_event_count = Column(Integer, default=0)
+    finish_mismatch_count = Column(Integer, default=0)
+    last_successful_event_at = Column(DateTime, nullable=True)
+    parser_version = Column(String(32), nullable=True)
+    source_schema_version = Column(String(32), nullable=True)
+    payload_hash = Column(String(16), nullable=True)
+    evidence_json = Column(JSON, nullable=True)
+
+    game = relationship("Game", back_populates="validation_metrics")
+
+
+class GameHighlight(Base, TimestampMixin):
+    """Highlight plays / moments for a game computed from play-by-play events."""
+
+    __tablename__ = "game_highlights"
+    __table_args__ = (
+        UniqueConstraint("game_id", "highlight_type", "event_seq", name="uq_game_highlight_event"),
+    )
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    game_id = Column(String(20), ForeignKey("game.game_id", ondelete="CASCADE"), nullable=False, index=True)
+    event_seq = Column(Integer, nullable=True)  # Can be null for summary-level highlights
+    inning = Column(Integer, nullable=True)
+    inning_half = Column(String(10), nullable=True)
+    highlight_type = Column(String(32), nullable=False)  # "BIG_PLAY", "LEAD_CHANGE", "WALK_OFF", "CLUTCH", etc.
+    description = Column(Text, nullable=False)
+    wpa = Column(Float, nullable=True)
+    importance_score = Column(Float, nullable=False, default=0.0)  # Used to rank highlights within a game
+    tags = Column(JSON, nullable=True)  # e.g., ["홈런", "역전", "끝내기", "만루", "병살"]
+
+    game = relationship("Game", back_populates="highlights")
+
+
+class PlayerGameBatting(Base, TimestampMixin):
+    """Per-player batting aggregation across a single game."""
+
+    __tablename__ = "player_game_batting"
+    __table_args__ = (UniqueConstraint("game_id", "player_id", name="uq_player_game_batting"),)
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    game_id = Column(String(20), ForeignKey("game.game_id", ondelete="CASCADE"), nullable=False, index=True)
+    player_id = Column(Integer, ForeignKey("player_basic.player_id", ondelete="RESTRICT"), nullable=False)
+    player_name = Column(String(64), nullable=False)
+    team_side = Column(String(5), nullable=False)
+    team_code = Column(String(10))
+    batting_order = Column(Integer)
+    appearance_seq = Column(Integer)
+    position = Column(String(8))
+    is_starter = Column(Boolean, default=False)
+    source = Column(String(16))
+    plate_appearances = Column(Integer, default=0)
+    at_bats = Column(Integer, default=0)
+    runs = Column(Integer, default=0)
+    hits = Column(Integer, default=0)
+    doubles = Column(Integer, default=0)
+    triples = Column(Integer, default=0)
+    home_runs = Column(Integer, default=0)
+    rbi = Column(Integer, default=0)
+    walks = Column(Integer, default=0)
+    intentional_walks = Column(Integer, default=0)
+    hbp = Column(Integer, default=0)
+    strikeouts = Column(Integer, default=0)
+    stolen_bases = Column(Integer, default=0)
+    caught_stealing = Column(Integer, default=0)
+    sacrifice_hits = Column(Integer, default=0)
+    sacrifice_flies = Column(Integer, default=0)
+    gdp = Column(Integer, default=0)
+    avg = Column(Float)
+    obp = Column(Float)
+    slg = Column(Float)
+    ops = Column(Float)
+    iso = Column(Float)
+    babip = Column(Float)
+    extra_stats = Column(JSON)
+
+
+class PlayerGamePitching(Base, TimestampMixin):
+    """Per-player pitching aggregation across a single game."""
+
+    __tablename__ = "player_game_pitching"
+    __table_args__ = (UniqueConstraint("game_id", "player_id", name="uq_player_game_pitching"),)
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    game_id = Column(String(20), ForeignKey("game.game_id", ondelete="CASCADE"), nullable=False, index=True)
+    player_id = Column(Integer, ForeignKey("player_basic.player_id", ondelete="RESTRICT"), nullable=False)
+    player_name = Column(String(64), nullable=False)
+    team_side = Column(String(5), nullable=False)
+    team_code = Column(String(10))
+    is_starting = Column(Boolean, default=False)
+    appearance_seq = Column(Integer)
+    source = Column(String(16))
+    innings_outs = Column(Integer, default=0)
+    hits_allowed = Column(Integer, default=0)
+    runs_allowed = Column(Integer, default=0)
+    earned_runs = Column(Integer, default=0)
+    home_runs_allowed = Column(Integer, default=0)
+    walks_allowed = Column(Integer, default=0)
+    strikeouts = Column(Integer, default=0)
+    hit_batters = Column(Integer, default=0)
+    wild_pitches = Column(Integer, default=0)
+    balks = Column(Integer, default=0)
+    wins = Column(Integer, default=0)
+    losses = Column(Integer, default=0)
+    saves = Column(Integer, default=0)
+    holds = Column(Integer, default=0)
+    decision = Column(String(2))
+    batters_faced = Column(Integer, default=0)
+    era = Column(Float)
+    whip = Column(Float)
+    fip = Column(Float)
+    k_per_nine = Column(Float)
+    bb_per_nine = Column(Float)
+    kbb = Column(Float)
+    extra_stats = Column(JSON)

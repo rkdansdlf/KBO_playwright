@@ -1,16 +1,15 @@
 """
 Miscellaneous sync: franchises, teams, awards, stadium info, food, ticket, rag, matchup splits, home/away, park factor.
+Stadium real-time data: transit times, congestion, operation notices.
 """
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 from pathlib import Path
 from typing import Any
 
 from sqlalchemy import text
-from sqlalchemy.dialects.postgresql import insert as pg_insert
-
 from src.models.award import Award
 from src.models.base import Base
 from src.models.broadcast import GameBroadcast
@@ -30,11 +29,43 @@ from src.models.matchup import (
     PitcherTeamSplit,
 )
 from src.models.rag_chunk import RagChunk
+from src.models.stadium_congestion import StadiumCongestion
 from src.models.stadium_food import StadiumFood
 from src.models.stadium_info import StadiumInfo, StadiumRegulation
+from src.models.stadium_operation_notice import StadiumOperationNotice
+from src.models.stadium_transit_time import StadiumTransitTime
 from src.models.team import Team, TeamCodeMap, TeamDailyRoster
 from src.models.team_history import TeamHistory
 from src.models.ticket_schedule import TicketSchedule
+
+
+def _normalize_daily_roster_date(value: date | datetime | str | None) -> date | None:
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        return value.date()
+    if isinstance(value, date):
+        return value
+    if isinstance(value, str):
+        raw = value.strip()
+        if not raw:
+            return None
+        for date_format in ("%Y-%m-%d", "%Y%m%d"):
+            try:
+                return datetime.strptime(raw, date_format).date()
+            except ValueError:
+                continue
+    raise ValueError("daily roster date must be YYYY-MM-DD or YYYYMMDD")
+
+
+def _format_daily_roster_scope(start_date: date | None, end_date: date | None) -> str:
+    if start_date and end_date:
+        return f" for {start_date.isoformat()}..{end_date.isoformat()}"
+    if start_date:
+        return f" from {start_date.isoformat()}"
+    if end_date:
+        return f" through {end_date.isoformat()}"
+    return ""
 
 
 class MiscSyncMixin:
@@ -42,56 +73,56 @@ class MiscSyncMixin:
 
     def sync_franchises(self) -> int:
         """Sync franchises from SQLite to OCI"""
-        from src.cli.sync_oci import clone_row
-
-        franchises = self.sqlite_session.query(Franchise).all()
-        synced = 0
-
-        for f in franchises:
-            clone = clone_row(f, Franchise)
-            self.target_session.merge(clone)
-            synced += 1
-
-        self.target_session.commit()
-        print(f"✅ Synced {synced} franchises to OCI")
-        return synced
+        return self._sync_simple_table(Franchise, ["original_code"])
 
     def sync_teams(self) -> int:
         """Sync teams from SQLite to OCI"""
         import json
 
-        from src.cli.sync_oci import clone_row
-
-        # Get Franchise ID Mapping (Local ID -> OCI ID)
         franchise_mapping = self._get_franchise_id_mapping()
-
         teams = self.sqlite_session.query(Team).all()
-        synced = 0
+        if not teams:
+            print("ℹ️ No teams to sync.")
+            return 0
 
+        records = []
         for team in teams:
-            # Map Local Franchise ID to OCI Franchise ID
             fid = None
             if team.franchise_id:
                 fid = franchise_mapping.get(team.franchise_id)
 
-            clone = clone_row(team, Team)
-            clone.franchise_id = fid
-
-            # Ensure aliases is a list for merge to handle it as PG ARRAY
-            if clone.aliases is None:
-                clone.aliases = []
-            elif isinstance(clone.aliases, str):
+            aliases = team.aliases
+            if aliases is None:
+                aliases_list: list = []
+            elif isinstance(aliases, str):
                 try:
-                    clone.aliases = json.loads(clone.aliases)
+                    aliases_list = json.loads(aliases)
                 except Exception:
-                    clone.aliases = [clone.aliases]
+                    aliases_list = [aliases]
+            elif isinstance(aliases, list):
+                aliases_list = aliases
+            else:
+                aliases_list = []
 
-            self.target_session.merge(clone)
-            synced += 1
+            aliases_pg = "{" + ",".join(str(a) for a in aliases_list) + "}" if aliases_list else "{}"
 
-        self.target_session.commit()
-        print(f"✅ Synced {synced} teams to OCI")
-        return synced
+            records.append({
+                "team_id": team.team_id,
+                "team_name": team.team_name,
+                "team_short_name": team.team_short_name,
+                "city": team.city,
+                "founded_year": team.founded_year,
+                "stadium_name": team.stadium_name,
+                "franchise_id": fid,
+                "is_active": team.is_active if team.is_active is not None else True,
+                "aliases": aliases_pg,
+                "created_at": team.created_at or datetime.now(),
+                "updated_at": team.updated_at or datetime.now(),
+            })
+
+        self._bulk_copy_upsert(Team.__tablename__, records, ["team_id"])
+        print(f"✅ Synced {len(records)} teams to OCI")
+        return len(records)
 
     def sync_stadium_info(self) -> int:
         """Sync stadium_info from SQLite to OCI"""
@@ -104,7 +135,6 @@ class MiscSyncMixin:
 
     def sync_awards(self) -> int:
         """Sync awards from SQLite to OCI"""
-        # Ensure table exists
         try:
             migration_path = Path("migrations/oci/019_create_awards.sql")
             if migration_path.exists():
@@ -116,31 +146,11 @@ class MiscSyncMixin:
             print(f"⚠️ Failed to apply migration: {e}")
             self.target_session.rollback()
 
-        awards = self.sqlite_session.query(Award).all()
-        synced = 0
-        if not awards:
-            print("ℹ️ No awards data to sync.")
-            return 0
-
-        for award in awards:
-            data = {
-                "year": award.year,
-                "award_type": award.award_type,
-                "category": award.category,
-                "player_name": award.player_name,
-                "team_name": award.team_name,
-                "created_at": datetime.now(),
-                "updated_at": datetime.now(),
-            }
-            stmt = pg_insert(Award).values(**data)
-            update_dict = {"updated_at": stmt.excluded.updated_at}
-            stmt = stmt.on_conflict_do_update(constraint="uq_award_record", set_=update_dict)
-            self.target_session.execute(stmt)
-            synced += 1
-
-        self.target_session.commit()
-        print(f"✅ Synced {synced} awards to OCI")
-        return synced
+        return self._sync_simple_table(
+            Award,
+            ["year", "award_type", "category", "player_name", "team_name"],
+            exclude_cols=["created_at", "id"],
+        )
 
     def sync_rag_chunks(self, batch_size: int = 1000) -> int:
         """Sync RAG chunks from SQLite to OCI Postgres"""
@@ -312,156 +322,197 @@ class MiscSyncMixin:
         results["cheer_chants"] = self.sync_cheer_chants()
         return results
 
-    def sync_daily_rosters(self) -> int:
+    # ─────────────────────────────────────────────────────────────────────────────
+    # Stadium Real-Time Data Sync (이동 시간 · 혼잡도 · 운영 공지)
+    # ─────────────────────────────────────────────────────────────────────────────
+
+    def sync_transit_times(
+        self,
+        game_date: str | None = None,
+        batch_size: int = 1000,
+    ) -> int:
+        """
+        Sync stadium_transit_times from SQLite to OCI.
+
+        Args:
+            game_date: Filter by YYYYMMDD string. If None, syncs all rows.
+            batch_size: Records per UPSERT batch.
+        """
+        self._ensure_table(StadiumTransitTime)
+        filters = None
+        if game_date:
+            filters = [StadiumTransitTime.game_date == game_date]
+        count = self._sync_simple_table(
+            StadiumTransitTime,
+            ["stadium_code", "origin_label", "transport_mode", "measured_at"],
+            exclude_cols=["created_at", "id"],
+            filters=filters,
+            batch_size=batch_size,
+        )
+        print(f"✅ Synced {count} transit time records to OCI")
+        return count
+
+    def sync_congestion(
+        self,
+        game_date: str | None = None,
+        batch_size: int = 1000,
+    ) -> int:
+        """
+        Sync stadium_congestion from SQLite to OCI.
+
+        Args:
+            game_date: Filter by YYYYMMDD string. If None, syncs all rows.
+            batch_size: Records per UPSERT batch.
+        """
+        self._ensure_table(StadiumCongestion)
+        filters = None
+        if game_date:
+            filters = [StadiumCongestion.game_date == game_date]
+        count = self._sync_simple_table(
+            StadiumCongestion,
+            ["stadium_code", "location_label", "measured_at"],
+            exclude_cols=["created_at", "id"],
+            filters=filters,
+            batch_size=batch_size,
+        )
+        print(f"✅ Synced {count} congestion records to OCI")
+        return count
+
+    def sync_operation_notices(
+        self,
+        game_date: str | None = None,
+        batch_size: int = 500,
+    ) -> int:
+        """
+        Sync stadium_operation_notices from SQLite to OCI.
+
+        Args:
+            game_date: Filter by YYYYMMDD string. If None, syncs all rows.
+            batch_size: Records per UPSERT batch.
+        """
+        self._ensure_table(StadiumOperationNotice)
+        filters = None
+        if game_date:
+            filters = [StadiumOperationNotice.game_date == game_date]
+        count = self._sync_simple_table(
+            StadiumOperationNotice,
+            ["stadium_code", "source_name", "external_id"],
+            exclude_cols=["created_at", "id"],
+            filters=filters,
+            batch_size=batch_size,
+        )
+        print(f"✅ Synced {count} operation notice records to OCI")
+        return count
+
+    def sync_stadium_realtime_all(
+        self,
+        game_date: str | None = None,
+    ) -> dict[str, int]:
+        """Sync all 3 stadium real-time tables to OCI in one call."""
+        results = {
+            "transit_times": self.sync_transit_times(game_date=game_date),
+            "congestion": self.sync_congestion(game_date=game_date),
+            "operation_notices": self.sync_operation_notices(game_date=game_date),
+        }
+        print(f"✅ Stadium Realtime All Sync Summary: {results}")
+        return results
+
+    def sync_daily_rosters(
+        self,
+        start_date: date | datetime | str | None = None,
+        end_date: date | datetime | str | None = None,
+    ) -> int:
         """Sync team_daily_roster from SQLite to OCI"""
         from src.utils.team_history import resolve_team_code_for_season
 
-        try:
-            rosters = self.sqlite_session.query(TeamDailyRoster).all()
-        except Exception:
-            print("⚠️ team_daily_roster table likely doesn't exist in local DB yet.")
-            return 0
+        start = _normalize_daily_roster_date(start_date)
+        end = _normalize_daily_roster_date(end_date)
+        if start and end and start > end:
+            raise ValueError("daily roster start_date must be earlier than or equal to end_date")
+        scope = _format_daily_roster_scope(start, end)
+        print(f"INFO: Syncing daily rosters{scope}...")
 
-        synced = 0
-        if not rosters:
-            print("ℹ️ No daily roster data to sync.")
-            return 0
+        filters = []
+        if start:
+            filters.append(TeamDailyRoster.roster_date >= start)
+        if end:
+            filters.append(TeamDailyRoster.roster_date <= end)
 
-        print(f"INFO: Found {len(rosters)} rosters to sync. Resolving team codes and deduplicating...")
-
-        seen_keys = set()
-        unique_rosters = []
-        for r in rosters:
-            season_year = r.roster_date.year if r.roster_date else None
-            resolved_code = r.team_code
-            if r.team_code and season_year:
-                raw = r.team_code.strip().upper()
+        def transform(data: dict) -> dict:
+            team_code = data.get("team_code", "")
+            roster_date = data.get("roster_date")
+            if team_code and roster_date:
+                season_year = roster_date.year if hasattr(roster_date, "year") else None
+                raw = team_code.strip().upper()
                 if raw == "LOT":
                     raw = "LT"
                 elif raw == "KW":
                     raw = "KH"
-                resolved = resolve_team_code_for_season(raw, season_year)
-                if resolved:
-                    resolved_code = resolved
-                else:
-                    resolved_code = raw
+                if season_year:
+                    resolved = resolve_team_code_for_season(raw, season_year)
+                    if resolved:
+                        data["team_code"] = resolved
+            return data
 
-            key = (r.roster_date, resolved_code, r.player_id)
-            if key in seen_keys:
-                continue
-            seen_keys.add(key)
-            unique_rosters.append((r, resolved_code))
-
-        print(f"INFO: {len(rosters)} rows deduped to {len(unique_rosters)} unique daily roster records. Syncing...")
-
-        batch_size = 1000
-        for i in range(0, len(unique_rosters), batch_size):
-            batch = unique_rosters[i : i + batch_size]
-            values_list = []
-
-            for r, resolved_code in batch:
-                data = {
-                    "roster_date": r.roster_date,
-                    "team_code": resolved_code,
-                    "player_id": r.player_id,
-                    "player_basic_id": r.player_basic_id,
-                    "person_type": r.person_type,
-                    "player_name": r.player_name,
-                    "position": r.position,
-                    "back_number": r.back_number,
-                    "created_at": datetime.now(),
-                    "updated_at": datetime.now(),
-                }
-                values_list.append(data)
-
-            if not values_list:
-                continue
-
-            stmt = pg_insert(TeamDailyRoster).values(values_list)
-
-            update_dict = {
-                "player_name": stmt.excluded.player_name,
-                "player_basic_id": stmt.excluded.player_basic_id,
-                "person_type": stmt.excluded.person_type,
-                "position": stmt.excluded.position,
-                "back_number": stmt.excluded.back_number,
-                "updated_at": stmt.excluded.updated_at,
-            }
-
-            stmt = stmt.on_conflict_do_update(constraint="uq_team_daily_roster", set_=update_dict)
-
-            self.target_session.execute(stmt)
-            self.target_session.commit()
-            synced += len(values_list)
-            print(f"   Synced batch {i // batch_size + 1} ({len(values_list)} records)")
-        print(f"✅ Synced {synced} daily roster records to OCI")
-        return synced
+        return self._sync_simple_table(
+            TeamDailyRoster,
+            ["roster_date", "team_code", "player_id"],
+            filters=filters or None,
+            transform_fn=transform,
+            batch_size=1000,
+        )
 
     def sync_team_history(self) -> int:
         """Sync team_history table"""
-        from src.cli.sync_oci import clone_row
+        if not self._target_table_exists(TeamHistory):
+            return 0
 
         franchise_mapping = self._get_franchise_id_mapping()
         histories = self.sqlite_session.query(TeamHistory).all()
-        synced = 0
+        records = []
 
         for h in histories:
             sup_fid = franchise_mapping.get(h.franchise_id)
             if not sup_fid:
                 continue
+            records.append({
+                "id": h.id,
+                "franchise_id": sup_fid,
+                "season": h.season,
+                "team_name": h.team_name,
+                "team_code": h.team_code,
+                "logo_url": h.logo_url,
+                "ranking": h.ranking,
+                "stadium": h.stadium,
+                "city": h.city,
+                "color": h.color,
+                "created_at": h.created_at or datetime.now(),
+                "updated_at": h.updated_at or datetime.now(),
+            })
 
-            clone = clone_row(h, TeamHistory)
-            clone.franchise_id = sup_fid
-            self.target_session.merge(clone)
-            synced += 1
+        if not records:
+            print("ℹ️ No team history to sync.")
+            return 0
 
-        self.target_session.commit()
-        print(f"✅ Synced {synced} team history records to OCI")
-        return synced
+        self._bulk_copy_upsert(TeamHistory.__tablename__, records, ["id"])
+        print(f"✅ Synced {len(records)} team history records to OCI")
+        return len(records)
 
     def sync_team_code_map(self) -> int:
-        """Sync team_code_map table using PostgreSQL UPSERT"""
+        """Sync team_code_map table using bulk COPY upsert"""
         franchise_mapping = self._get_franchise_id_mapping()
-        maps = self.sqlite_session.query(TeamCodeMap).all()
-        synced = 0
-        batch_size = 500
 
-        for i in range(0, len(maps), batch_size):
-            batch = maps[i : i + batch_size]
-            values_list = []
-            for m in batch:
-                sup_fid = franchise_mapping.get(m.franchise_id) or m.franchise_id
+        def transform(data: dict) -> dict:
+            fid = data.get("franchise_id")
+            if fid:
+                data["franchise_id"] = franchise_mapping.get(fid, fid)
+            return data
 
-                data = {
-                    "franchise_id": sup_fid,
-                    "season": m.season,
-                    "curr_code": m.curr_code,
-                    "canonical_code": m.canonical_code,
-                    "is_canonical": m.is_canonical,
-                    "created_at": m.created_at or datetime.now(),
-                    "updated_at": m.updated_at or datetime.now(),
-                }
-                values_list.append(data)
-
-            if not values_list:
-                continue
-
-            stmt = pg_insert(TeamCodeMap).values(values_list)
-            update_dict = {
-                "franchise_id": stmt.excluded.franchise_id,
-                "canonical_code": stmt.excluded.canonical_code,
-                "is_canonical": stmt.excluded.is_canonical,
-                "updated_at": stmt.excluded.updated_at,
-            }
-
-            stmt = stmt.on_conflict_do_update(constraint="uq_team_code_map", set_=update_dict)
-
-            self.target_session.execute(stmt)
-            self.target_session.commit()
-            synced += len(values_list)
-
-        print(f"✅ Synced {synced} team code map records to OCI")
-        return synced
+        return self._sync_simple_table(
+            TeamCodeMap,
+            ["season", "curr_code"],
+            transform_fn=transform,
+        )
 
     def sync_matchups(self, year: int = None, batch_size: int = 10000) -> dict[str, int]:
         """Sync Matchup Split tables (Batter/Pitcher vs Team, Stadium, Starter, PBP-BvP) to OCI"""

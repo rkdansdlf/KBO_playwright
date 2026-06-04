@@ -17,6 +17,7 @@ from src.repositories.game_relay import (
     backfill_game_play_by_play_from_existing_events,
     backfill_missing_game_stubs_for_relays,
     derive_play_by_play_rows_from_events,
+    mark_relay_source_unavailable,
     repair_game_parent_from_existing_children,
     save_relay_data,
 )
@@ -38,6 +39,7 @@ __all__ = [
     "backfill_missing_game_stubs_for_relays",
     "derive_play_by_play_rows_from_events",
     "get_games_by_date",
+    "mark_relay_source_unavailable",
     "refresh_game_status_for_date",
     "repair_game_parent_from_existing_children",
     "resolve_canonical_game_id",

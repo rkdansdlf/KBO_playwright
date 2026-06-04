@@ -8,6 +8,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import os
 from datetime import datetime
 from typing import Sequence
@@ -18,6 +19,7 @@ from sqlalchemy import func, select, text
 from src.db.engine import SessionLocal
 from src.models.game import Game
 from src.models.player import Player, PlayerSeasonBatting, PlayerSeasonPitching
+from src.services.p0_readiness import build_p0_readiness, format_p0_readiness_summary, normalize_yyyymmdd
 from src.utils.safe_print import safe_print as print
 
 FALSE_ENV_VALUES = {"0", "false", "no", "off"}
@@ -428,7 +430,49 @@ def main(argv: Sequence[str] | None = None) -> None:
     load_dotenv()
     parser = argparse.ArgumentParser(description="Check KBO database status and data integrity")
     parser.add_argument("--verbose", "-v", action="store_true", help="Show detailed information")
+    parser.add_argument("--p0", action="store_true", help="Run P0 game-data readiness check")
+    parser.add_argument("--date", type=str, default=None, help="Target date for --p0 in YYYYMMDD format")
+    parser.add_argument("--lookback-days", type=int, default=7, help="Days before --date to include for --p0")
+    parser.add_argument("--lookahead-days", type=int, default=1, help="Days after --date to include for --p0")
+    parser.add_argument("--json", action="store_true", dest="json_output", help="Print --p0 result as JSON only")
     args = parser.parse_args(argv)
+
+    if args.p0:
+        target_date = normalize_yyyymmdd(args.date)
+        with SessionLocal() as session:
+            readiness = build_p0_readiness(
+                session,
+                target_date=target_date,
+                lookback_days=args.lookback_days,
+                lookahead_days=args.lookahead_days,
+            )
+
+        if args.json_output:
+            print(json.dumps({"p0_readiness": readiness}, ensure_ascii=False, indent=2, default=str))
+            return
+
+        print(f"\n{'=' * 60}")
+        print(" KBO P0 Readiness Check")
+        print(f" Target Date: {target_date}")
+        print(f" Window: {readiness['start_date']}..{readiness['end_date']}")
+        print(f"{'=' * 60}")
+        print(format_p0_readiness_summary(readiness))
+        print("\nDataset Summary:")
+        for key in ("schedule", "pregame", "live", "postgame", "relay", "roster", "broadcast", "oci"):
+            print(f"  {key}: {readiness[key]}")
+
+        if readiness["failures"]:
+            print("\nFailures:")
+            for failure in readiness["failures"]:
+                print(
+                    "  - "
+                    f"{failure['severity']} "
+                    f"{failure['dataset']} "
+                    f"{failure.get('game_date') or '-'} "
+                    f"{failure.get('game_id') or '-'} "
+                    f"{failure['reason']}"
+                )
+        return
 
     print(f"\n{'=' * 60}")
     print(" KBO Data Status Check")

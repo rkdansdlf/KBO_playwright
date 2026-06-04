@@ -9,7 +9,8 @@ from sqlalchemy.orm import sessionmaker
 import src.repositories.game_relay as game_relay_module
 import src.repositories.game_repository as game_repository
 import src.repositories.game_save as game_save_module
-from src.models.game import Game, GameEvent, GameIdAlias, GamePlayByPlay
+from src.crawlers.relay_crawler import RelayCrawler
+from src.models.game import Game, GameEvent, GameIdAlias, GameMetadata, GamePlayByPlay, GameValidationMetrics
 from src.sources.relay.base import NormalizedRelayResult, read_manifest_entries
 from src.sources.relay.importer import ImportRelayAdapter
 from src.sources.relay.kbo import KboRelayAdapter
@@ -22,6 +23,8 @@ def _build_session_factory():
     GameIdAlias.__table__.create(bind=engine)
     GamePlayByPlay.__table__.create(bind=engine)
     GameEvent.__table__.create(bind=engine)
+    GameMetadata.__table__.create(bind=engine)
+    GameValidationMetrics.__table__.create(bind=engine)
     return sessionmaker(bind=engine, autoflush=False, autocommit=False, expire_on_commit=False)
 
 
@@ -80,6 +83,52 @@ def test_save_relay_data_events_only_writes_both_tables(monkeypatch):
         pbp = session.query(GamePlayByPlay).filter(GamePlayByPlay.game_id == "20250401LGSS0").one()
         assert pbp.play_description == "타자A : 좌전 안타"
         assert pbp.result == "안타"
+
+
+def test_naver_relay_events_persist_with_wpa_state(monkeypatch):
+    SessionLocal = _build_session_factory()
+    monkeypatch.setattr(game_relay_module, "SessionLocal", SessionLocal)
+    monkeypatch.setattr(game_relay_module, "_auto_sync_to_oci", lambda game_id: None)
+    monkeypatch.setattr(game_save_module, "SessionLocal", SessionLocal)
+    monkeypatch.setattr(game_save_module, "_auto_sync_to_oci", lambda game_id: None)
+    _seed_game(SessionLocal, "20250405LGSS0")
+
+    parsed = RelayCrawler()._parse_naver_payload(
+        [
+            {
+                "title": "1회초 LG 공격",
+                "homeOrAway": "0",
+                "inn": 1,
+                "textOptions": [
+                    {
+                        "text": "타자A : 좌전 안타",
+                        "batterRecord": {"name": "타자A"},
+                        "currentGameState": {
+                            "homeScore": "0",
+                            "awayScore": "1",
+                            "out": "0",
+                            "base1": "1",
+                            "base2": "0",
+                            "base3": "0",
+                        },
+                    }
+                ],
+            }
+        ]
+    )
+
+    saved = game_repository.save_relay_data(
+        "20250405LGSS0",
+        parsed["events"],
+        raw_pbp_rows=parsed["raw_pbp_rows"],
+    )
+
+    assert saved == 1
+    with SessionLocal() as session:
+        event = session.query(GameEvent).filter(GameEvent.game_id == "20250405LGSS0").one()
+        assert event.wpa is not None
+        assert event.win_expectancy_before is not None
+        assert event.win_expectancy_after is not None
 
 
 def test_save_relay_data_keeps_raw_pbp_while_saving_filtered_events(monkeypatch):

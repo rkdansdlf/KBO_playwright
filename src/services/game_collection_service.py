@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 from dataclasses import dataclass, field
 from datetime import date, datetime
 from typing import Any, Callable, Iterable, Protocol
@@ -11,7 +12,10 @@ from src.db.engine import SessionLocal
 from src.models.game import Game, GameBattingStat, GameEvent, GamePitchingStat, GamePlayByPlay
 from src.repositories.game_repository import save_game_detail, save_relay_data
 from src.services.game_write_contract import GameWriteContract, GameWriteSource
+from src.services.pbp_sh_sf_derivation import apply_sh_sf_to_batting_stats
 from src.utils.safe_print import safe_print as print
+
+logger = logging.getLogger(__name__)
 from src.utils.team_codes import normalize_kbo_game_id
 
 
@@ -197,12 +201,67 @@ async def crawl_and_save_game_details(
     for target in targets:
         contract.claim_game(target.game_id, detail_source)
 
-    existing = inspect_existing_game_data(targets)
-    detail_ready_game_ids = {
-        target.game_id for target in targets if existing.get(target.game_id, ExistingGameData()).has_detail
+    exist_map = inspect_existing_game_data(targets)
+    detail_ready = await _collect_detail_phase(
+        targets,
+        exist_map,
+        detail_crawler,
+        contract,
+        detail_source,
+        force=force,
+        concurrency=concurrency,
+        should_save_detail=should_save_detail,
+        pause_every=pause_every,
+        pause_seconds=pause_seconds,
+        log=log,
+        result=result,
+    )
+
+    if relay_crawler:
+        await _collect_relay_phase(
+            targets,
+            exist_map,
+            detail_ready,
+            relay_crawler,
+            contract,
+            force=force,
+            relay_requires_detail=relay_requires_detail,
+            relay_source_reason=relay_source_reason,
+            pause_every=pause_every,
+            pause_seconds=pause_seconds,
+            log=log,
+            result=result,
+        )
+
+    # Derive SH/SF from PBP events for games where batting stats have them as 0
+    _derive_sh_sf_for_results(result, log=log)
+
+    if write_contract is None:
+        log(contract.summary())
+
+    return result
+
+
+async def _collect_detail_phase(
+    targets: list[GameCollectionTarget],
+    exist_map: dict[str, ExistingGameData],
+    detail_crawler: DetailCrawler,
+    contract: GameWriteContract,
+    detail_source: GameWriteSource,
+    *,
+    force: bool,
+    concurrency: int | None,
+    should_save_detail: Callable[[dict[str, Any]], bool] | None,
+    pause_every: int | None,
+    pause_seconds: float,
+    log: Callable[[str], None],
+    result: GameCollectionResult,
+) -> set[str]:
+    detail_ready: set[str] = {
+        target.game_id for target in targets if exist_map.get(target.game_id, ExistingGameData()).has_detail
     }
     detail_targets = [
-        target for target in targets if force or not existing.get(target.game_id, ExistingGameData()).has_detail
+        target for target in targets if force or not exist_map.get(target.game_id, ExistingGameData()).has_detail
     ]
     result.detail_targets = len(detail_targets)
     result.detail_skipped_existing = len(targets) - len(detail_targets)
@@ -210,145 +269,159 @@ async def crawl_and_save_game_details(
     if result.detail_skipped_existing:
         log(f"[SKIP] Detail already exists for {result.detail_skipped_existing} game(s). Use --force to recrawl.")
         for target in targets:
-            if existing.get(target.game_id, ExistingGameData()).has_detail and not force:
+            if exist_map.get(target.game_id, ExistingGameData()).has_detail and not force:
                 result.items[target.game_id].detail_status = "skipped_existing"
 
-    if detail_targets:
-        # High-stability batching: split targets and recycle crawler resources
-        batch_size = pause_every or 20
-        for b_idx in range(0, len(detail_targets), batch_size):
-            batch = detail_targets[b_idx : b_idx + batch_size]
-            batch_num = (b_idx // batch_size) + 1
-            total_batches = (len(detail_targets) + batch_size - 1) // batch_size
+    if not detail_targets:
+        return detail_ready
 
-            if b_idx > 0:
-                if pause_seconds > 0:
-                    log(f"   [PAUSE] Sleeping for {pause_seconds}s between batches...")
-                    await asyncio.sleep(pause_seconds)
-                # Resource recycling: close and let the crawler restart pool on next batch
-                await detail_crawler.close()
+    batch_size = pause_every or 20
+    for b_idx in range(0, len(detail_targets), batch_size):
+        batch = detail_targets[b_idx : b_idx + batch_size]
+        batch_num = (b_idx // batch_size) + 1
+        total_batches = (len(detail_targets) + batch_size - 1) // batch_size
 
-            log(f"[*] Processing detail batch {batch_num}/{total_batches} ({len(batch)} games)...")
+        if b_idx > 0:
+            if pause_seconds > 0:
+                log(f"   [PAUSE] Sleeping for {pause_seconds}s between batches...")
+                await asyncio.sleep(pause_seconds)
+            await detail_crawler.close()
 
-            payloads = await detail_crawler.crawl_games(
-                [target.as_crawler_input() for target in batch],
-                concurrency=concurrency,
-            )
-            payload_by_id = {
-                normalize_kbo_game_id(payload.get("game_id")): payload for payload in payloads if payload.get("game_id")
-            }
+        log(f"[*] Processing detail batch {batch_num}/{total_batches} ({len(batch)} games)...")
 
-            for index, target in enumerate(batch, start=1):
-                payload = payload_by_id.get(target.game_id)
-                global_index = b_idx + index
-                log(f"[DETAIL] {global_index}/{len(detail_targets)} {target.game_id}")
-                if not payload:
-                    result.detail_failed += 1
-                    item = result.items[target.game_id]
-                    item.detail_status = "crawl_failed"
-                    item.failure_reason = _get_failure_reason(detail_crawler, target.game_id) or "no_detail_payload"
-                    log("   [WARN] No detail payload returned")
-                    continue
+        payloads = await detail_crawler.crawl_games(
+            [target.as_crawler_input() for target in batch],
+            concurrency=concurrency,
+        )
+        payload_by_id = {
+            normalize_kbo_game_id(payload.get("game_id")): payload for payload in payloads if payload.get("game_id")
+        }
 
-                # ... validation and saving logic (keeping it surgical)
-                if not _has_required_detail_rows(payload):
-                    result.detail_failed += 1
-                    item = result.items[target.game_id]
-                    item.detail_status = "filtered"
-                    item.failure_reason = _get_failure_reason(detail_crawler, target.game_id) or "incomplete_detail"
-                    log("   [WARN] Detail payload is missing required hitter/pitcher rows")
-                    continue
-                if should_save_detail and not should_save_detail(payload):
-                    result.detail_failed += 1
-                    item = result.items[target.game_id]
-                    item.detail_status = "filtered"
-                    item.failure_reason = "detail_payload_filtered"
-                    log("   [WARN] Detail payload did not pass save predicate")
-                    continue
-                if save_game_detail(
-                    payload,
-                    write_contract=contract,
-                    source_stage=detail_source.stage,
-                    source_crawler=detail_source.crawler,
-                    source_reason=detail_source.reason,
-                ):
-                    result.detail_saved += 1
-                    result.processed_game_ids.append(target.game_id)
-                    detail_ready_game_ids.add(target.game_id)
-                    item = result.items[target.game_id]
-                    item.detail_status = "saved"
-                    item.detail_saved = True
-                    log("   [DB] Detail saved")
-                else:
-                    result.detail_failed += 1
-                    item = result.items[target.game_id]
-                    item.detail_status = "save_failed"
-                    item.failure_reason = "detail_save_failed"
-                    log("   [ERROR] Detail save failed")
-
-    if relay_crawler:
-        relay_source = GameWriteSource("relay", relay_crawler.__class__.__name__, relay_source_reason)
-        relay_targets = [
-            target
-            for target in targets
-            if (force or not existing.get(target.game_id, ExistingGameData()).has_relay)
-            and (not relay_requires_detail or target.game_id in detail_ready_game_ids)
-        ]
-        result.relay_targets = len(relay_targets)
-        result.relay_skipped_existing = len(targets) - len(relay_targets)
-        if result.relay_skipped_existing:
-            log(f"[SKIP] Relay already exists for {result.relay_skipped_existing} game(s). Use --force to recrawl.")
-            for target in targets:
+        for index, target in enumerate(batch, start=1):
+            payload = payload_by_id.get(target.game_id)
+            global_index = b_idx + index
+            log(f"[DETAIL] {global_index}/{len(detail_targets)} {target.game_id}")
+            if not payload:
+                result.detail_failed += 1
                 item = result.items[target.game_id]
-                has_relay = existing.get(target.game_id, ExistingGameData()).has_relay
-                if has_relay and not force:
-                    item.relay_status = "skipped_existing"
-                elif relay_requires_detail and target.game_id not in detail_ready_game_ids:
-                    item.relay_status = "skipped_no_detail"
+                item.detail_status = "crawl_failed"
+                item.failure_reason = _get_failure_reason(detail_crawler, target.game_id) or "no_detail_payload"
+                log("   [WARN] No detail payload returned")
+                continue
 
-        for index, target in enumerate(relay_targets, start=1):
-            contract.claim_game(target.game_id, relay_source)
-            log(f"[RELAY] {index}/{len(relay_targets)} {target.game_id}")
-            relay_data = await relay_crawler.crawl_game_events(target.game_id)
+            if not _has_required_detail_rows(payload):
+                result.detail_failed += 1
+                item = result.items[target.game_id]
+                item.detail_status = "filtered"
+                item.failure_reason = _get_failure_reason(detail_crawler, target.game_id) or "incomplete_detail"
+                log("   [WARN] Detail payload is missing required hitter/pitcher rows")
+                continue
+            if should_save_detail and not should_save_detail(payload):
+                result.detail_failed += 1
+                item = result.items[target.game_id]
+                item.detail_status = "filtered"
+                item.failure_reason = "detail_payload_filtered"
+                log("   [WARN] Detail payload did not pass save predicate")
+                continue
+            if save_game_detail(
+                payload,
+                write_contract=contract,
+                source_stage=detail_source.stage,
+                source_crawler=detail_source.crawler,
+                source_reason=detail_source.reason,
+            ):
+                result.detail_saved += 1
+                result.processed_game_ids.append(target.game_id)
+                detail_ready.add(target.game_id)
+                item = result.items[target.game_id]
+                item.detail_status = "saved"
+                item.detail_saved = True
+                log("   [DB] Detail saved")
+            else:
+                result.detail_failed += 1
+                item = result.items[target.game_id]
+                item.detail_status = "save_failed"
+                item.failure_reason = "detail_save_failed"
+                log("   [ERROR] Detail save failed")
+
+    return detail_ready
+
+
+async def _collect_relay_phase(
+    targets: list[GameCollectionTarget],
+    exist_map: dict[str, ExistingGameData],
+    detail_ready: set[str],
+    relay_crawler: RelayCrawler,
+    contract: GameWriteContract,
+    *,
+    force: bool,
+    relay_requires_detail: bool,
+    relay_source_reason: str,
+    pause_every: int | None,
+    pause_seconds: float,
+    log: Callable[[str], None],
+    result: GameCollectionResult,
+) -> None:
+    relay_source = GameWriteSource("relay", relay_crawler.__class__.__name__, relay_source_reason)
+    relay_targets = [
+        target
+        for target in targets
+        if (force or not exist_map.get(target.game_id, ExistingGameData()).has_relay)
+        and (not relay_requires_detail or target.game_id in detail_ready)
+    ]
+    result.relay_targets = len(relay_targets)
+    result.relay_skipped_existing = len(targets) - len(relay_targets)
+    if result.relay_skipped_existing:
+        log(f"[SKIP] Relay already exists for {result.relay_skipped_existing} game(s). Use --force to recrawl.")
+        for target in targets:
             item = result.items[target.game_id]
-            flat_events = list((relay_data or {}).get("events") or [])
-            raw_pbp_rows = list((relay_data or {}).get("raw_pbp_rows") or [])
-            if flat_events or raw_pbp_rows:
-                saved_rows = save_relay_data(
-                    target.game_id,
-                    flat_events,
-                    raw_pbp_rows=raw_pbp_rows,
-                    write_contract=contract,
-                    source_stage=relay_source.stage,
-                    source_crawler=relay_source.crawler,
-                    source_reason=relay_source.reason,
-                )
-                result.relay_rows_saved += saved_rows
-                item.relay_rows_saved = saved_rows
-                if saved_rows:
-                    result.relay_saved_games += 1
-                    item.relay_status = "saved"
-                    if target.game_id not in result.processed_game_ids:
-                        result.processed_game_ids.append(target.game_id)
-                    log(f"   [DB] Relay saved ({saved_rows} rows)")
-                else:
-                    result.relay_missing += 1
-                    item.relay_status = "save_failed"
-                    item.failure_reason = item.failure_reason or "relay_save_returned_zero"
-                    log("   [WARN] Relay save returned 0 rows")
+            has_relay = exist_map.get(target.game_id, ExistingGameData()).has_relay
+            if has_relay and not force:
+                item.relay_status = "skipped_existing"
+            elif relay_requires_detail and target.game_id not in detail_ready:
+                item.relay_status = "skipped_no_detail"
+
+    for index, target in enumerate(relay_targets, start=1):
+        contract.claim_game(target.game_id, relay_source)
+        log(f"[RELAY] {index}/{len(relay_targets)} {target.game_id}")
+        relay_data = await relay_crawler.crawl_game_events(target.game_id)
+        item = result.items[target.game_id]
+        flat_events = list((relay_data or {}).get("events") or [])
+        raw_pbp_rows = list((relay_data or {}).get("raw_pbp_rows") or [])
+        if flat_events or raw_pbp_rows:
+            saved_rows = save_relay_data(
+                target.game_id,
+                flat_events,
+                raw_pbp_rows=raw_pbp_rows,
+                write_contract=contract,
+                source_stage=relay_source.stage,
+                source_crawler=relay_source.crawler,
+                source_reason=relay_source.reason,
+                parser_version=(relay_data or {}).get("parser_version"),
+                source_schema_version=(relay_data or {}).get("source_schema_version"),
+                payload_hash=(relay_data or {}).get("payload_hash"),
+            )
+            result.relay_rows_saved += saved_rows
+            item.relay_rows_saved = saved_rows
+            if saved_rows:
+                result.relay_saved_games += 1
+                item.relay_status = "saved"
+                if target.game_id not in result.processed_game_ids:
+                    result.processed_game_ids.append(target.game_id)
+                log(f"   [DB] Relay saved ({saved_rows} rows)")
             else:
                 result.relay_missing += 1
-                item.relay_status = "missing"
-                item.failure_reason = (
-                    item.failure_reason or _get_failure_reason(relay_crawler, target.game_id) or "no_relay_payload"
-                )
-                log("   [INFO] No relay data available")
-            await _maybe_pause(index, pause_every, pause_seconds, log)
-
-    if write_contract is None:
-        log(contract.summary())
-
-    return result
+                item.relay_status = "save_failed"
+                item.failure_reason = item.failure_reason or "relay_save_returned_zero"
+                log("   [WARN] Relay save returned 0 rows")
+        else:
+            result.relay_missing += 1
+            item.relay_status = "missing"
+            item.failure_reason = (
+                item.failure_reason or _get_failure_reason(relay_crawler, target.game_id) or "no_relay_payload"
+            )
+            log("   [INFO] No relay data available")
+        await _maybe_pause(index, pause_every, pause_seconds, log)
 
 
 def _get_value(obj: Any, key: str) -> Any:
@@ -423,3 +496,24 @@ async def _maybe_pause(
     if index % pause_every == 0:
         log(f"[PAUSE] Sleeping for {pause_seconds:g}s before continuing...")
         await asyncio.sleep(pause_seconds)
+
+
+def _derive_sh_sf_for_results(result: GameCollectionResult, log: Callable[[str], None]) -> None:
+    """Derive sacrifice_hits/sacrifice_flies from PBP events for collected games."""
+    updated_total = 0
+    game_ids = [gid for gid, item in result.items.items() if item.detail_status == "success"]
+    if not game_ids:
+        return
+    with SessionLocal() as session:
+        for game_id in game_ids:
+            try:
+                updated = apply_sh_sf_to_batting_stats(session, game_id)
+                if updated:
+                    updated_total += updated
+            except Exception:
+                logger.exception("SH/SF derivation failed for %s", game_id)
+        if updated_total:
+            session.commit()
+            log(f"[SH/SF] Derived {updated_total} SH/SF values from PBP events.")
+        else:
+            log("[SH/SF] No SH/SF values needed derivation.")

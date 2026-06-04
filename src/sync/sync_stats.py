@@ -22,6 +22,18 @@ from src.sync.sync_base import _serialize_scalar
 class StatsSyncMixin:
     """Mixin for season stats sync operations."""
 
+    def _add_existing_player_basic_filter(self, model: type, filters: list) -> list:
+        """Avoid FK failures when local season stats contain orphan player IDs."""
+        from src.models.player import PlayerBasic
+
+        existing_player_filter = model.player_id.in_(self.sqlite_session.query(PlayerBasic.player_id))
+        missing_count = self.sqlite_session.query(model).filter(*filters, ~existing_player_filter).count()
+        if missing_count:
+            print(
+                f"⚠️ Skipping {missing_count} {model.__tablename__} rows with missing local player_basic references"
+            )
+        return [*filters, existing_player_filter]
+
     def sync_pitcher_data(self) -> int:
         """새로운 player_season_pitching 테이블의 투수 데이터를 OCI로 동기화 (고속 Batch COPY)"""
         return self._sync_simple_table(
@@ -139,10 +151,13 @@ class StatsSyncMixin:
                 row = session.execute(text(sql), params).fetchone()
                 return {"count": row[0] or 0, "max_updated_at": _serialize_scalar(row[1])}
             except Exception:
-                return {"count": -1, "max_updated_at": None}
+                return {"count": None, "max_updated_at": None}
 
         local_sig = get_sig(self.sqlite_session)
         remote_sig = get_sig(self.target_session)
+
+        if local_sig["count"] is None or remote_sig["count"] is None:
+            return {"local": local_sig, "remote": remote_sig, "match": False}
 
         # Compare strings but only up to seconds to avoid precision issues
         # Also replace 'T' with space to handle SQLite vs ISO/Postgres format differences
@@ -166,6 +181,7 @@ class StatsSyncMixin:
         filters = []
         if year:
             filters.append(PlayerSeasonBatting.season == year)
+        filters = self._add_existing_player_basic_filter(PlayerSeasonBatting, filters)
 
         synced = self._sync_simple_table(
             PlayerSeasonBatting,
@@ -189,6 +205,7 @@ class StatsSyncMixin:
         filters = []
         if year:
             filters.append(PlayerSeasonPitching.season == year)
+        filters = self._add_existing_player_basic_filter(PlayerSeasonPitching, filters)
 
         synced = self._sync_simple_table(
             PlayerSeasonPitching,
@@ -325,6 +342,44 @@ class StatsSyncMixin:
             batch_size=batch_size,
         )
 
+    def sync_team_season_fielding(self, year: int | None = None, batch_size: int = 5000, force: bool = False) -> int:
+        """Sync team_season_fielding aggregates from SQLite to OCI."""
+        from src.models.team import TeamSeasonFielding
+
+        if year and not force:
+            sig = self._get_table_signature(TeamSeasonFielding, year)
+            if sig["match"]:
+                print(f"   ⏩ Skipping team_season_fielding for {year} (No changes detected)")
+                return 0
+
+        filters = [TeamSeasonFielding.season == year] if year else None
+        return self._sync_simple_table(
+            TeamSeasonFielding,
+            conflict_keys=["season", "team_code"],
+            exclude_cols=["id", "created_at"],
+            filters=filters,
+            batch_size=batch_size,
+        )
+
+    def sync_team_season_baserunning(self, year: int | None = None, batch_size: int = 5000, force: bool = False) -> int:
+        """Sync team_season_baserunning aggregates from SQLite to OCI."""
+        from src.models.team import TeamSeasonBaserunning
+
+        if year and not force:
+            sig = self._get_table_signature(TeamSeasonBaserunning, year)
+            if sig["match"]:
+                print(f"   ⏩ Skipping team_season_baserunning for {year} (No changes detected)")
+                return 0
+
+        filters = [TeamSeasonBaserunning.season == year] if year else None
+        return self._sync_simple_table(
+            TeamSeasonBaserunning,
+            conflict_keys=["season", "team_code"],
+            exclude_cols=["id", "created_at"],
+            filters=filters,
+            batch_size=batch_size,
+        )
+
     def purge_season_stats(self, year: int, type: str = "all") -> None:
         """Delete year-scoped stats from OCI to prepare for a clean sync."""
         tables = []
@@ -336,12 +391,15 @@ class StatsSyncMixin:
             tables.append("team_season_pitching")
         if type in ("fielding", "all"):
             tables.append("player_season_fielding")
+            tables.append("team_season_fielding")
         if type in ("baserunning", "all"):
             tables.append("player_season_baserunning")
+            tables.append("team_season_baserunning")
 
         for table_name in tables:
-            # Most use 'season', some use 'year'
-            year_col = "year" if "fielding" in table_name or "baserunning" in table_name else "season"
+            # player-level fielding/baserunning use 'year'; team-level and others use 'season'
+            use_year_col = table_name in ("player_season_fielding", "player_season_baserunning")
+            year_col = "year" if use_year_col else "season"
             self.target_session.execute(text(f'DELETE FROM "{table_name}" WHERE "{year_col}" = :year'), {"year": year})
         self.target_session.commit()
         print(f"🧹 Purged OCI season stats for {year} (type={type})")

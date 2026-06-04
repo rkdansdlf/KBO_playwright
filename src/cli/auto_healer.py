@@ -1,23 +1,31 @@
 """
 KBO Pipeline Auto-Healer
 
-Detects past games stuck in SCHEDULED state (no scores) or with logic inconsistencies
-and attempts to self-correct by re-crawling from the KBO GameCenter.
+Two healing modes:
 
-Resolution logic per game:
-  - shared detail collection saved data → COMPLETED
-  - failure_reason=cancelled → update status → CANCELLED
-  - failure_reason=missing   → update status → UNRESOLVED_MISSING
+1. Default mode (stuck/inconsistent games):
+   Detects past games stuck in SCHEDULED state (no scores) or with logic inconsistencies
+   and attempts to self-correct by re-crawling from the KBO GameCenter.
+
+   Resolution logic per game:
+     - shared detail collection saved data → COMPLETED
+     - failure_reason=cancelled            → update status → CANCELLED
+     - failure_reason=missing              → update status → UNRESOLVED_MISSING
+
+2. PBP mode (--pbp flag):
+   Scans game_metadata for games with pbp_validation_status='unverified' in COMPLETED/DRAW state,
+   re-crawls PBP data from the KBO official website, re-validates, and sends Telegram notifications.
 """
 
 from __future__ import annotations
 
 import argparse
 import asyncio
+import logging
 from datetime import datetime, timedelta
 from typing import Sequence
 
-from sqlalchemy import select
+from sqlalchemy import select, text
 
 from src.crawlers.game_detail_crawler import GameDetailCrawler
 from src.db.engine import SessionLocal
@@ -32,8 +40,10 @@ from src.services.game_collection_service import crawl_and_save_game_details
 from src.services.game_write_contract import GameWriteContract
 from src.services.player_id_resolver import PlayerIdResolver
 from src.services.recovery_manager import RecoveryManager
-from src.utils.alerting import SlackWebhookClient
+from src.utils.alerting import SlackWebhookClient, TelegramBotClient
 from src.utils.safe_print import safe_print as print
+
+logger = logging.getLogger(__name__)
 
 
 def _find_stuck_games() -> list[Game]:
@@ -264,8 +274,241 @@ async def run_healer_async(
     return results["unresolved"]
 
 
+# ---------------------------------------------------------------------------
+# PBP Healing Mode
+# ---------------------------------------------------------------------------
+
+
+def _find_unverified_pbp_games(lookback_days: int = 3) -> list[dict]:
+    """
+    Scan game_metadata for finished games whose PBP is still 'unverified'.
+
+    Returns a list of dicts: {game_id, game_date, away_team, home_team, error_reason}
+    """
+    cutoff = (datetime.now().date() - timedelta(days=lookback_days)).strftime("%Y-%m-%d")
+
+    query = text(
+        """
+        SELECT
+            g.game_id,
+            g.game_date,
+            g.away_team,
+            g.home_team,
+            m.source_payload
+        FROM game g
+        JOIN game_metadata m ON g.game_id = m.game_id
+        WHERE g.game_status IN ('COMPLETED', 'DRAW')
+          AND g.game_date >= :cutoff
+          AND json_extract(m.source_payload, '$.pbp_validation_status') = 'unverified'
+        ORDER BY g.game_date, g.game_id
+        """
+    )
+
+    results = []
+    with SessionLocal() as session:
+        rows = session.execute(query, {"cutoff": cutoff}).fetchall()
+        for row in rows:
+            import json
+
+            payload = row.source_payload
+            if isinstance(payload, str):
+                try:
+                    payload = json.loads(payload)
+                except Exception:
+                    payload = {}
+            error_reason = payload.get("pbp_validation_error", "unknown") if isinstance(payload, dict) else "unknown"
+            results.append(
+                {
+                    "game_id": row.game_id,
+                    "game_date": str(row.game_date),
+                    "away_team": row.away_team or "?",
+                    "home_team": row.home_team or "?",
+                    "error_reason": error_reason,
+                }
+            )
+    return results
+
+
+async def run_pbp_healer_async(
+    dry_run: bool = False,
+    lookback_days: int = 3,
+    target_game_ids: list[str] | None = None,
+) -> dict:
+    """
+    PBP Auto-Healer:
+      1. Scan DB for unverified PBP games.
+      2. Send Telegram notification with the list.
+      3. Re-crawl from KBO official website (PBPCrawler).
+      4. Re-validate and re-save.
+      5. Send Telegram notification with the final result.
+
+    Returns a summary dict: {found, recovered, failed, skipped}
+    """
+    print("\n🩺 [PBP Healer] 검증 실패 PBP 게임 스캔 중...")
+
+    if target_game_ids:
+        # Targeted mode: load metadata for specific games
+        query = text(
+            """
+            SELECT g.game_id, g.game_date, g.away_team, g.home_team, m.source_payload
+            FROM game g
+            LEFT JOIN game_metadata m ON g.game_id = m.game_id
+            WHERE g.game_id IN :ids
+            """
+        )
+        results = []
+        import json
+
+        with SessionLocal() as session:
+            rows = session.execute(query, {"ids": tuple(target_game_ids)}).fetchall()
+            for row in rows:
+                payload = row.source_payload
+                if isinstance(payload, str):
+                    try:
+                        payload = json.loads(payload)
+                    except Exception:
+                        payload = {}
+                error_reason = (
+                    payload.get("pbp_validation_error", "targeted_mode")
+                    if isinstance(payload, dict)
+                    else "targeted_mode"
+                )
+                results.append(
+                    {
+                        "game_id": row.game_id,
+                        "game_date": str(row.game_date),
+                        "away_team": row.away_team or "?",
+                        "home_team": row.home_team or "?",
+                        "error_reason": error_reason,
+                    }
+                )
+    else:
+        results = _find_unverified_pbp_games(lookback_days=lookback_days)
+
+    if not results:
+        print("✅ [PBP Healer] 검증 실패 PBP 게임 없음. 파이프라인 정상.")
+        return {"found": 0, "recovered": 0, "failed": 0, "skipped": 0}
+
+    found = len(results)
+    print(f"⚠️  [PBP Healer] 검증 실패 게임 {found}건 발견")
+    for item in results:
+        print(f"   • {item['game_id']} ({item['away_team']} vs {item['home_team']}) - {item['error_reason']}")
+
+    # --- Telegram: 발견 알림 ---
+    if not dry_run:
+        date_vals = sorted({item["game_date"] for item in results})
+        date_range = f"{date_vals[0]}" if len(date_vals) == 1 else f"{date_vals[0]} ~ {date_vals[-1]}"
+        game_lines = "\n".join(
+            f"• {item['game_id']} ({item['away_team']} vs {item['home_team']}) - {item['error_reason']}"
+            for item in results
+        )
+        discovery_msg = (
+            f"⚠️ <b>PBP 검증 실패 게임 발견</b>\n\n"
+            f"총 <b>{found}</b>건 PBP 이상 감지\n"
+            f"대상 날짜: {date_range}\n\n"
+            f"<pre>{game_lines}</pre>\n\n"
+            f"🔧 자동 재크롤 시작..."
+        )
+        TelegramBotClient.send_message(discovery_msg)
+
+    if dry_run:
+        print("[DRY-RUN] 재크롤 생략. 실제 복구는 --pbp 없이 실행하거나 dry-run 플래그 제거.")
+        return {"found": found, "recovered": 0, "failed": 0, "skipped": found}
+
+    # --- Re-crawl through the relay source orchestrator ---
+    from src.services.relay_recovery_service import RelayRecoveryTarget, recover_relay_data
+    from src.sources.relay import derive_bucket_id
+
+    targets = [
+        RelayRecoveryTarget(
+            game_id=item["game_id"],
+            bucket_id=derive_bucket_id(item["game_id"]),
+            needs_event_recovery=True,
+            needs_pbp_recovery=True,
+        )
+        for item in results
+    ]
+    recovery_result = await recover_relay_data(
+        targets,
+        source_order_override=["kbo", "naver", "import", "manual"],
+        allow_derived_pbp=False,
+        sleep_seconds=0,
+        log=print,
+    )
+    recovered_ids = {
+        str(row.get("game_id"))
+        for row in recovery_result.report_rows
+        if str(row.get("status") or "") in {"saved", "partial_relay"}
+    }
+    recovered = recovery_result.saved_games
+    failed = max(0, found - recovered)
+    failed_games = [
+        {**item, "heal_error": "orchestrator_recovery_failed"}
+        for item in results
+        if item["game_id"] not in recovered_ids
+    ]
+
+    # --- Telegram: 결과 알림 ---
+    if recovered == found:
+        result_msg = f"✅ <b>PBP 자동 치유 완료</b>\n\n복구 성공: <b>{recovered}</b>건 (전체 {found}건 모두 복구)"
+    else:
+        failed_lines = "\n".join(
+            f"• {g['game_id']} ({g['away_team']} vs {g['home_team']}) - {g.get('heal_error', '?')}"
+            for g in failed_games
+        )
+        result_msg = (
+            f"⚠️ <b>PBP 자동 치유 완료</b>\n\n"
+            f"복구 성공: <b>{recovered}</b>건\n"
+            f"복구 실패: <b>{failed}</b>건\n\n"
+            f"<b>실패 게임:</b>\n<pre>{failed_lines}</pre>"
+        )
+
+    TelegramBotClient.send_message(result_msg)
+    print(f"\n📊 [PBP Healer] 완료 — 발견 {found}, 복구 {recovered}, 실패 {failed}")
+
+    return {"found": found, "recovered": recovered, "failed": failed, "skipped": 0}
+
+
+def run_pbp_healer(argv: Sequence[str] | None = None) -> int:
+    """CLI entry point for PBP-specific auto-healing."""
+    parser = argparse.ArgumentParser(description="KBO PBP 자동 치유 도구")
+    parser.add_argument("--dry-run", action="store_true", help="발견만 하고 재크롤 생략")
+    parser.add_argument(
+        "--lookback-days",
+        type=int,
+        default=3,
+        help="스캔할 과거 일수 (기본값: 3)",
+    )
+    parser.add_argument(
+        "--game-id",
+        nargs="+",
+        metavar="GAME_ID",
+        help="특정 game_id 강제 치유 (여러 개 가능)",
+    )
+    args = parser.parse_args(argv)
+    result = asyncio.run(
+        run_pbp_healer_async(
+            dry_run=args.dry_run,
+            lookback_days=args.lookback_days,
+            target_game_ids=args.game_id,
+        )
+    )
+    # Exit code: 0 if all healed, 1 if some failed
+    return 1 if result.get("failed", 0) > 0 else 0
+
+
+# ---------------------------------------------------------------------------
+# Default Healer (Stuck / Inconsistent Games) CLI
+# ---------------------------------------------------------------------------
+
+
 def run_healer(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="KBO Data Auto-Healer daemon")
+    parser.add_argument(
+        "--pbp",
+        action="store_true",
+        help="PBP 검증 실패 게임 재크롤 모드 실행",
+    )
     parser.add_argument(
         "--dry-run",
         action="store_true",
@@ -274,9 +517,32 @@ def run_healer(argv: Sequence[str] | None = None) -> int:
     parser.add_argument(
         "--reset",
         action="store_true",
-        help="Clear existing checkpoint and start fresh",
+        help="Clear existing checkpoint and start fresh (default mode only)",
+    )
+    parser.add_argument(
+        "--lookback-days",
+        type=int,
+        default=3,
+        help="PBP 모드: 스캔할 과거 일수 (기본값: 3)",
+    )
+    parser.add_argument(
+        "--game-id",
+        nargs="+",
+        metavar="GAME_ID",
+        help="PBP 모드: 특정 game_id 강제 치유",
     )
     args = parser.parse_args(argv)
+
+    if args.pbp:
+        return run_pbp_healer(
+            [
+                *(["--dry-run"] if args.dry_run else []),
+                "--lookback-days",
+                str(args.lookback_days),
+                *(["--game-id"] + args.game_id if args.game_id else []),
+            ]
+        )
+
     return asyncio.run(run_healer_async(dry_run=args.dry_run, reset_checkpoint=args.reset))
 
 

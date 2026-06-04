@@ -6,11 +6,16 @@ Generates daily/weekly/monthly SLA reports.
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import datetime, timezone, timedelta
+try:
+    from datetime import UTC
+except ImportError:
+    UTC = timezone.utc
 
 from sqlalchemy.orm import Session
 
 from src.models.game import Game, GameBattingStat, GameLineup, GameMetadata, GamePitchingStat, GamePlayByPlay
+from src.utils.alerting import SlackWebhookClient
 from src.utils.game_status import COMPLETED_LIKE_GAME_STATUSES
 from src.utils.safe_print import safe_print as print
 
@@ -111,15 +116,56 @@ class SlaTracker:
         print(f"  {'TOTAL':<10} {totals['games']:>6} {totals['completed']:>10} {overall_rate:>6.0%}")
         print()
 
+    def send_weekly_sla_report(self, end_date: str | None = None) -> None:
+        """
+        Compute the past 7-day SLA data and send a summary to Telegram/Slack.
+        If end_date is None, uses today (UTC).
+        """
+        from datetime import datetime
+
+        if end_date is None:
+            end_date = datetime.now(UTC).strftime("%Y%m%d")
+
+        sla_data = self.compute_weekly_sla(end_date, days=7)
+        active = [s for s in sla_data if s.get("total", 0) > 0]
+
+        if not active:
+            return  # No games this week — skip alert
+
+        total_games = sum(s["total"] for s in active)
+        total_completed = sum(s["completed"] for s in active)
+        avg_pbp = sum(s.get("pbp_coverage", 0) for s in active) / len(active)
+        avg_detail = sum(s.get("detail_coverage", 0) for s in active) / len(active)
+        overall_rate = total_completed / total_games if total_games else 0
+
+        # Find low-completion days (< 80%)
+        low_days = [s for s in active if s.get("completion_rate", 1.0) < 0.80]
+        low_days_text = ""
+        if low_days:
+            low_days_text = "\n⚠️ 낮은 완료율 날짜:\n"
+            for s in low_days:
+                low_days_text += f"  • {s['date']}: {s['completion_rate']:.0%} ({s['completed']}/{s['total']}경기)\n"
+
+        start_date = min(s["date"] for s in active)
+        msg = (
+            f"<b>📊 주간 SLA 리포트 ({start_date}~{end_date})</b>\n"
+            f"총 경기: {total_games} | 완료: {total_completed}\n"
+            f"평균 완료율: {overall_rate:.1%}\n"
+            f"평균 PBP 커버리지: {avg_pbp:.1%}\n"
+            f"평균 상세 커버리지: {avg_detail:.1%}"
+            f"{low_days_text}"
+        )
+        SlackWebhookClient.send_alert(msg)
+
 
 if __name__ == "__main__":
     import argparse
-    from datetime import datetime, timezone
+    from datetime import datetime
 
     from src.db.engine import SessionLocal
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("--date", default=datetime.now(timezone.utc).strftime("%Y%m%d"))
+    parser.add_argument("--date", default=datetime.now(UTC).strftime("%Y%m%d"))
     args = parser.parse_args()
 
     with SessionLocal() as session:

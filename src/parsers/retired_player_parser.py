@@ -93,10 +93,15 @@ def _select_tables(tables: list[dict[str, Any]]) -> tuple[list[dict[str, str]], 
             base_rows.extend(dict_rows)
             continue
 
-        # Fallback: keyword matching
-        if {"타수", "안타"} & header_set:
+        # Fallback: keyword matching (support both Korean and English abbreviations)
+        is_base = bool({"타수", "안타", "AB", "H"} & header_set)
+        is_adv = bool({"출루율", "장타율", "OPS", "OBP", "SLG"} & header_set)
+
+        if is_base:
             base_rows.extend(dict_rows)
-        elif {"출루율", "장타율", "OPS"} & header_set:
+            if is_adv:
+                adv_rows.extend(dict_rows)
+        elif is_adv:
             adv_rows.extend(dict_rows)
 
     return base_rows, adv_rows

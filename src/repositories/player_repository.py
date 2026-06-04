@@ -102,6 +102,17 @@ class PlayerRepository:
             if profile.education_or_career_path:
                 basic.career = "-".join(profile.education_or_career_path)
 
+            # Synchronize structured parsed fields
+            basic.salary_amount = profile.salary_amount
+            basic.salary_currency = profile.salary_currency
+            basic.signing_bonus_amount = profile.signing_bonus_amount
+            basic.signing_bonus_currency = profile.signing_bonus_currency
+            basic.draft_year = profile.draft_year
+            basic.draft_round = profile.draft_round
+            basic.draft_pick_overall = profile.draft_pick_overall
+            basic.draft_type = profile.draft_type
+            basic.education_path = profile.education_path
+
     def _get_or_create_player(self, session: Session, kbo_player_id: str) -> Player:
         player_basic_id = self._canonical_player_basic_id(session, kbo_player_id)
         player = session.execute(select(Player).where(Player.kbo_person_id == kbo_player_id)).scalar_one_or_none()
@@ -157,6 +168,17 @@ class PlayerRepository:
         # Reconstruct career path for notes
         if profile.education_or_career_path:
             player.notes = " -> ".join(profile.education_or_career_path)
+
+        # Structured parsed fields
+        player.salary_amount = profile.salary_amount
+        player.salary_currency = profile.salary_currency
+        player.signing_bonus_amount = profile.signing_bonus_amount
+        player.signing_bonus_currency = profile.signing_bonus_currency
+        player.draft_year = profile.draft_year
+        player.draft_round = profile.draft_round
+        player.draft_pick_overall = profile.draft_pick_overall
+        player.draft_type = profile.draft_type
+        player.education_path = profile.education_path
 
     def _upsert_identity(self, session: Session, player: Player, profile: PlayerProfileParsed) -> None:
         if not profile.player_name:

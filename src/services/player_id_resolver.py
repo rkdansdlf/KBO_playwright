@@ -264,6 +264,9 @@ class PlayerIdResolver:
             ("박지훈", "DB", 2026, True): 50204,
             ("김민석", "DB", 2026, False): 53554,
             ("김민석", "DB", 2026, True): 53554,
+            ("임기영", "SS", 2026, True): 62754,
+            ("임기영", "SS", 2026, False): 62754,
+            ("임기영", "SS", 2026, None): 62754,
             ("오재원", "HH", 2026, False): 56754,
             ("오재원", "HH", 2026, True): 56754,
             ("박시원", "NC", 2026, False): 50996,
@@ -314,7 +317,7 @@ class PlayerIdResolver:
             ("브룩스", "KH", 2026, None): 56322,
             ("정다훈", "KH", 2026, True): 56345,
             ("정다훈", "KH", 2026, False): 56345,
-            ("정다훈", "KH", 2026, None): 56345,
+            "정다훈": 56345,
             ("타케다", "SSG", 2026, True): 56823,
             ("타케다", "SSG", 2026, False): 56823,
             ("타케다", "SSG", 2026, None): 56823,
@@ -342,8 +345,8 @@ class PlayerIdResolver:
             elif uniform_no in ("20", "26"):
                 return 60146  # Right-handed pitcher
             elif not uniform_no:
-                # Default to 60146 (right-handed) as he pitched in 22 games while 51454 pitched only 3 games.
-                return 60146
+                # Default to 51454 (left-handed) as he pitched in 24 games while 60146 pitched only 3 games.
+                return 51454
 
         if player_name in self.NAME_ALIASES:
             player_name = self.NAME_ALIASES[player_name]

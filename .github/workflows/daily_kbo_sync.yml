@@ -66,7 +66,13 @@ jobs:
           KBO_USER_PWD: ${{ secrets.KBO_USER_PWD }}
           AUTO_SYNC_OCI: 'false'
         run: |
-          python3 -m src.cli.run_daily_update --date ${{ env.KST_DATE }} --sync
+          python3 -m src.cli.run_daily_update --date ${{ env.KST_DATE }} --sync --fix
+
+      - name: Run OCI Freshness Gate
+        env:
+          OCI_DB_URL: ${{ secrets.OCI_DB_URL }}
+        run: |
+          python3 -m src.cli.freshness_gate --date "${KST_DATE}" --source-url-env OCI_DB_URL
 
       - name: Notify Telegram on Status
         if: always()
