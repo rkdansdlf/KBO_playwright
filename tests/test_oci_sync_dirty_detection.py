@@ -22,6 +22,8 @@ from src.models.game import (
     GameSummary,
     GameValidationMetrics,
     GameHighlight,
+    PlayerGameBatting,
+    PlayerGamePitching,
 )
 from src.models.player import PlayerBasic
 from src.sync.oci_sync import OCISync
@@ -50,6 +52,8 @@ def _build_session_factory():
         GameIdAlias.__table__,
         GameValidationMetrics.__table__,
         GameHighlight.__table__,
+        PlayerGameBatting.__table__,
+        PlayerGamePitching.__table__,
     ):
         table.create(bind=engine)
     return sessionmaker(bind=engine, autoflush=False, autocommit=False, expire_on_commit=False)
