@@ -69,7 +69,7 @@ def test_aggregate_game_batting_single_appearance():
     session.add(GameBattingStat(
         game_id="20250401LGSS0", team_side="away", team_code="LG",
         player_id=1001, player_name="타자1", batting_order=1, position="CF",
-        is_starter=True, appearance_seq=1, source="CRAWLER",
+        is_starter=True, appearance_seq=1,
         plate_appearances=4, at_bats=3, runs=1, hits=2, doubles=1,
     ))
     session.flush()
@@ -92,13 +92,13 @@ def test_aggregate_game_batting_multiple_appearances():
         GameBattingStat(
             game_id="20250401LGSS0", team_side="away", team_code="LG",
             player_id=1001, player_name="타자1", batting_order=1, position="CF",
-            is_starter=True, appearance_seq=1, source="CRAWLER",
+            is_starter=True, appearance_seq=1,
             plate_appearances=3, at_bats=2, hits=1,
         ),
         GameBattingStat(
             game_id="20250401LGSS0", team_side="away", team_code="LG",
             player_id=1001, player_name="타자1", batting_order=1, position="PH",
-            is_starter=False, appearance_seq=2, source="CRAWLER",
+            is_starter=False, appearance_seq=2,
             plate_appearances=1, at_bats=1, hits=0,
         ),
     ])
@@ -140,7 +140,7 @@ def test_upsert_then_reaggregate():
     session.add(GameBattingStat(
         game_id="20250401LGSS0", team_side="away", team_code="LG",
         player_id=1001, player_name="타자1", batting_order=1, position="CF",
-        is_starter=True, appearance_seq=1, source="CRAWLER",
+        is_starter=True, appearance_seq=1,
         plate_appearances=4, at_bats=3, hits=2,
     ))
     session.flush()
