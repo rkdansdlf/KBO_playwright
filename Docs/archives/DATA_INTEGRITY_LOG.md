@@ -23,7 +23,7 @@
 *   **성능 최적화:** SQLite 대량 작업 시 `database is locked` 에러 방지를 위한 타임아웃(30s) 및 커넥션 튜닝.
 
 #### **라. 정기 품질 모니터링 자동화**
-*   **GitHub Actions:** 매일 새벽 4시(KST) OCI DB의 무결성을 검사하는 `quality_check.yml` 워크플로우 구축.
+*   **GitHub Actions:** 매일 새벽 OCI DB의 무결성을 검사하는 `daily_kbo_sync.yml` (quality-checks job) 워크플로우 구축.
 *   **Quality Gate:** 고아 데이터, NULL ID, 상태 지연 경기 등을 감시하고 Slack으로 즉시 알림 전송.
 
 ### 3. 최종 상태
