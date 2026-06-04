@@ -233,13 +233,21 @@ class RuntimeHydrator:
         existing_ids = {
             str(row[0]) for row in self.target_session.query(Game.game_id).filter(Game.game_id.in_(canonical_ids)).all()
         }
-        restored = 0
-        for alias in aliases:
-            if str(alias["canonical_game_id"]) not in existing_ids:
-                continue
-            self.target_session.merge(GameIdAlias(**alias))
-            restored += 1
-        return restored
+        mappings = [a for a in aliases if str(a["canonical_game_id"]) in existing_ids]
+        if not mappings:
+            return 0
+        keys = list(mappings[0].keys())
+        stmt = sqlite_insert(GameIdAlias.__table__)
+        update_columns = [c for c in keys if c not in ("alias_game_id",)]
+        if update_columns:
+            stmt = stmt.on_conflict_do_update(
+                index_elements=[GameIdAlias.__table__.c.alias_game_id],
+                set_={c: getattr(stmt.excluded, c) for c in update_columns},
+            )
+        else:
+            stmt = stmt.on_conflict_do_nothing(index_elements=[GameIdAlias.__table__.c.alias_game_id])
+        self.target_session.execute(stmt, mappings)
+        return len(mappings)
 
     def _delete_scope(self, spec: HydrationSpec) -> None:
         target_query = self.target_session.query(spec.model)
@@ -277,9 +285,7 @@ class RuntimeHydrator:
                         set_={c: getattr(stmt.excluded, c) for c in update_columns},
                     )
                 else:
-                    stmt = stmt.on_conflict_do_nothing(
-                        index_elements=[spec.model.__table__.c[c] for c in upsert_keys]
-                    )
+                    stmt = stmt.on_conflict_do_nothing(index_elements=[spec.model.__table__.c[c] for c in upsert_keys])
                 self.target_session.execute(stmt, mappings)
                 return len(mappings)
             for mapping in mappings:
