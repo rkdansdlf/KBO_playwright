@@ -24,7 +24,8 @@ from src.utils.safe_print import safe_print as print
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_REPORT_DIR = PROJECT_ROOT / "data" / "recovery"
-DEFAULT_SEASONS = (2024, 2025, 2026)
+_current_year = datetime.now().year
+DEFAULT_SEASONS = (_current_year - 2, _current_year - 1, _current_year)
 DEFAULT_MIN_EVENTS = 20
 
 

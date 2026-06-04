@@ -48,6 +48,7 @@ class RuntimeHydrator:
         GameBattingStat: ("game_id", "player_id", "appearance_seq"),
         GamePitchingStat: ("game_id", "player_id", "appearance_seq"),
         GameEvent: ("game_id", "event_seq"),
+        PlayerBasic: ("player_id",),
     }
 
     def __init__(self, source_session: Session, target_session: Session):
@@ -266,6 +267,21 @@ class RuntimeHydrator:
             mappings.append({column: getattr(row, column) for column in columns})
 
         if not spec.replace_scope:
+            upsert_keys = self.SQLITE_UPSERT_KEYS.get(spec.model)
+            if upsert_keys:
+                stmt = sqlite_insert(spec.model.__table__)
+                update_columns = [c for c in columns if c not in upsert_keys]
+                if update_columns:
+                    stmt = stmt.on_conflict_do_update(
+                        index_elements=[spec.model.__table__.c[c] for c in upsert_keys],
+                        set_={c: getattr(stmt.excluded, c) for c in update_columns},
+                    )
+                else:
+                    stmt = stmt.on_conflict_do_nothing(
+                        index_elements=[spec.model.__table__.c[c] for c in upsert_keys]
+                    )
+                self.target_session.execute(stmt, mappings)
+                return len(mappings)
             for mapping in mappings:
                 self.target_session.merge(spec.model(**mapping))
             return len(mappings)

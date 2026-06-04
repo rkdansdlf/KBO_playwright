@@ -13,6 +13,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import logging
+from datetime import datetime
 from typing import Sequence
 
 from src.crawlers.retire import RetiredPlayerDetailCrawler, RetiredPlayerListingCrawler
@@ -145,7 +146,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     """CLI 인자 파서를 생성합니다."""
     parser = argparse.ArgumentParser(description="Retired player crawling pipeline")
     parser.add_argument("--start-year", type=int, default=1982, help="비교 시작 연도")
-    parser.add_argument("--end-year", type=int, default=2024, help="비교 종료 연도")
+    parser.add_argument("--end-year", type=int, default=datetime.now().year - 1, help="비교 종료 연도")
     parser.add_argument("--active-year", type=int, default=None, help="현역 선수 기준 연도")
     parser.add_argument("--concurrency", type=int, default=3, help="동시 요청 수")
     parser.add_argument("--delay", type=float, default=1.5, help="요청 간 지연 시간(초)")

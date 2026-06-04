@@ -1,27 +1,28 @@
 """
 APScheduler-based automation for KBO data collection.
 
+Note: Daily post-processing (finalize, standings, defense, rankings, PBP healer,
+batch parse, quality report, gap report, freshness monitor) and Tier 2 backfills
+(SH/SF, advanced stats, player IDs, roster) are now handled by GitHub Actions
+via .github/workflows/daily_kbo_sync.yml and backfill_*.yml.
+
+APScheduler focuses on real-time and local-only jobs:
+
 Jobs:
- 1. crawl_games_regular: Daily at 03:00 KST (run_daily_update)
- 2. compute_standings: Daily at 03:30 KST (standings + home/away + trends)
- 3. aggregate_team_defense: Daily at 03:45 KST (fielding/baserunning)
- 4. compute_rankings: Daily at 04:00 KST (sabermetric rankings)
- 5. heal_unverified_pbp: Daily at 04:30 KST (PBP auto-healer)
-  6. batch_parse_snapshots: Daily at 04:45 KST (parse pending raw snapshots)
-  7. sync_from_oci: Daily at 05:00 KST (OCI hydration)
-  8. generate_quality_report: Daily at 05:15 KST
- 9. crawl_phase1_extra: Daily at 06:00 KST (broadcast, MVP, injury, etc.)
-10. crawl_p0_non_game: Daily at 06:20 KST (events + roster transactions + tickets)
-11. crawl_p1p2_data: Daily at 06:30 KST (seat + parking + food crawlers)
-12. monitor_data_freshness: Daily at 07:00 KST (stale source + table completeness)
-13. crawl_pregame_refresh: Every 15m, 10:00-23:45 KST
-14. crawl_live_refresh: Every 2m, 12:00-23:30 KST
-15. crawl_futures_profile: Weekly Sunday at 05:00 KST
-16. compute_park_factor: Weekly Sunday at 05:30 KST
-17. crawl_retired_players: Monthly 1st at 02:00 KST (crawl_retire)
-18. crawl_transit_time: Every 15m, 10:00-00:00 KST on game days (LIVE_LOCK)
-19. crawl_congestion: Every 5m, 10:00-00:00 KST on game days (LIVE_LOCK)
-20. crawl_operation_notices: Daily at 09:00 KST (DAILY_LOCK)
+ 1. crawl_phase1_extra: Daily at 06:00 KST (broadcast, MVP, injury, etc.)
+ 2. crawl_p0_non_game: Daily at 06:20 KST (P0 events/roster/tickets)
+ 3. crawl_p1p2_data: Daily at 06:30 KST (seat + parking + food crawlers)
+ 4. crawl_pregame_refresh: Every 15m, 10:00-23:45 KST
+ 5. crawl_live_refresh: Every 2m, 12:00-23:30 KST
+ 6. crawl_futures_profile: Weekly Sunday at 05:00 KST
+ 7. compute_park_factor: Weekly Sunday at 05:30 KST
+ 8. crawl_retired_players: Monthly 1st at 02:00 KST (crawl_retire)
+ 9. weekly_sla_report: Weekly Monday at 06:00 KST
+ 10. crawl_transit_time: Every 15m, 10:00-00:00 KST on game days (LIVE_LOCK)
+ 11. crawl_congestion: Every 5m, 10:00-00:00 KST on game days (LIVE_LOCK)
+ 12. crawl_operation_notices: Daily at 09:00 KST (DAILY_LOCK)
+ 13. crawl_operation_notices_naver: Daily at 09:30 + 13:00 KST
+ 14. crawl_fan_culture: Weekly Saturday at 04:00 KST
 """
 
 from __future__ import annotations
@@ -1224,83 +1225,6 @@ def main(argv: Sequence[str] | None = None):
     scheduler = BlockingScheduler(timezone="Asia/Seoul")
     scheduler.add_listener(job_error_listener, EVENT_JOB_ERROR)
 
-    # Job 1: Daily regular season games (03:00 KST)
-    scheduler.add_job(
-        crawl_daily_games,
-        trigger=CronTrigger(hour=3, minute=0),
-        id="crawl_games_regular",
-        name="Daily Regular Season Games Crawl",
-        misfire_grace_time=3600,  # Allow 1 hour grace period
-        max_instances=1,  # Prevent concurrent runs
-    )
-    logger.info("Registered job: crawl_games_regular (Daily 03:00 KST)")
-
-    # Job 1.6: Sync from OCI (05:00 KST) - After GitHub Actions finish
-    scheduler.add_job(
-        sync_from_oci_job,
-        trigger=CronTrigger(hour=5, minute=0),
-        id="sync_from_oci",
-        name="OCI to Local Sync (Hydration)",
-        misfire_grace_time=3600,
-        max_instances=1,
-    )
-    logger.info("Registered job: sync_from_oci (Daily 05:00 KST)")
-
-    # Job 1.5: Standings Computation (03:30 KST)
-    scheduler.add_job(
-        compute_standings_job,
-        trigger=CronTrigger(hour=3, minute=30),
-        id="compute_standings",
-        name="Daily Standings Computation",
-        misfire_grace_time=3600,
-        max_instances=1,
-    )
-    logger.info("Registered job: compute_standings (Daily 03:30 KST)")
-
-    # Job 1.6: Team Defense Aggregation (03:45 KST)
-    scheduler.add_job(
-        aggregate_team_defense_job,
-        trigger=CronTrigger(hour=3, minute=45),
-        id="aggregate_team_defense",
-        name="Daily Team Defense Aggregation",
-        misfire_grace_time=3600,
-        max_instances=1,
-    )
-    logger.info("Registered job: aggregate_team_defense (Daily 03:45 KST)")
-
-    # Job 1.7: Rankings Computation (04:00 KST)
-    scheduler.add_job(
-        compute_rankings_job,
-        trigger=CronTrigger(hour=4, minute=0),
-        id="compute_rankings",
-        name="Daily Rankings Computation",
-        misfire_grace_time=3600,
-        max_instances=1,
-    )
-    logger.info("Registered job: compute_rankings (Daily 04:00 KST)")
-
-    # Job 1.75: PBP Auto-Healer (04:30 KST)
-    scheduler.add_job(
-        heal_unverified_pbp_job,
-        trigger=CronTrigger(hour=4, minute=30),
-        id="heal_unverified_pbp",
-        name="PBP Auto-Healer (unverified re-crawl)",
-        misfire_grace_time=3600,
-        max_instances=1,
-    )
-    logger.info("Registered job: heal_unverified_pbp (Daily 04:30 KST)")
-
-    # Job 1.8: Batch Parse Snapshots (04:45 KST) — after PBP healer, before OCI sync
-    scheduler.add_job(
-        batch_parse_snapshots_job,
-        trigger=CronTrigger(hour=4, minute=45),
-        id="batch_parse_snapshots",
-        name="Batch Parse Pending Raw Snapshots",
-        misfire_grace_time=3600,
-        max_instances=1,
-    )
-    logger.info("Registered job: batch_parse_snapshots (Daily 04:45 KST)")
-
     # Job 1.9: Phase 1 Extra Crawlers (06:00 KST)
     scheduler.add_job(
         crawl_phase1_extra_job,
@@ -1322,50 +1246,6 @@ def main(argv: Sequence[str] | None = None):
         max_instances=1,
     )
     logger.info("Registered job: crawl_p1p2_data (Daily 06:30 KST)")
-
-    # Job 1.11: Data Freshness Monitor (07:00 KST) — after all crawlers
-    scheduler.add_job(
-        monitor_data_freshness_job,
-        trigger=CronTrigger(hour=7, minute=0),
-        id="monitor_data_freshness",
-        name="Data Freshness Monitor",
-        misfire_grace_time=3600,
-        max_instances=1,
-    )
-    logger.info("Registered job: monitor_data_freshness (Daily 07:00 KST)")
-
-    # Job 1.12: Daily Quality Report (05:15 KST)
-    scheduler.add_job(
-        generate_daily_report_job,
-        trigger=CronTrigger(hour=5, minute=15),
-        id="generate_quality_report",
-        name="Daily Quality Report Generation",
-        misfire_grace_time=3600,
-        max_instances=1,
-    )
-    logger.info("Registered job: generate_quality_report (Daily 05:15 KST)")
-
-    # Job 1.12a: Unified Gap Report (05:30 KST) — after quality report
-    scheduler.add_job(
-        gap_report_job,
-        trigger=CronTrigger(hour=5, minute=30),
-        id="gap_report",
-        name="Unified Data Gap Report",
-        misfire_grace_time=3600,
-        max_instances=1,
-    )
-    logger.info("Registered job: gap_report (Daily 05:30 KST)")
-
-    # Job 1.12b: Backfill missed daily crawls (Sunday 04:00 KST)
-    scheduler.add_job(
-        lambda: backfill_missed_daily_crawls(),
-        trigger=CronTrigger(day_of_week="sun", hour=4, minute=0),
-        id="backfill_missed_crawls",
-        name="Backfill Missed Daily Crawls",
-        misfire_grace_time=7200,
-        max_instances=1,
-    )
-    logger.info("Registered job: backfill_missed_crawls (Weekly Sunday 04:00 KST)")
 
     # Job 1.13: Weekly SLA Report (Monday 06:00 KST)
     scheduler.add_job(
@@ -1400,39 +1280,6 @@ def main(argv: Sequence[str] | None = None):
     )
     logger.info("Registered job: compute_park_factor (Weekly Sunday 05:30 KST)")
 
-    # Job 2.5b: Weekly SH/SF Backfill (Sunday 05:45 KST) — after Park Factor
-    scheduler.add_job(
-        backfill_sh_sf_job,
-        trigger=CronTrigger(day_of_week="sun", hour=5, minute=45),
-        id="backfill_sh_sf",
-        name="Weekly SH/SF Backfill from PBP",
-        misfire_grace_time=7200,
-        max_instances=1,
-    )
-    logger.info("Registered job: backfill_sh_sf (Weekly Sunday 05:45 KST)")
-
-    # Job 2.5c: Weekly Advanced Stats Backfill (Sunday 06:00 KST) — after SH/SF
-    scheduler.add_job(
-        backfill_advanced_stats_job,
-        trigger=CronTrigger(day_of_week="sun", hour=6, minute=0),
-        id="backfill_advanced_stats",
-        name="Weekly Advanced Stats Backfill",
-        misfire_grace_time=7200,
-        max_instances=1,
-    )
-    logger.info("Registered job: backfill_advanced_stats (Weekly Sunday 06:00 KST)")
-
-    # Job 2.5d: Weekly Player ID Backfill (Wednesday 05:30 KST) — midweek, light load
-    scheduler.add_job(
-        backfill_player_ids_job,
-        trigger=CronTrigger(day_of_week="wed", hour=5, minute=30),
-        id="backfill_player_ids",
-        name="Weekly Player ID Resolution Backfill",
-        misfire_grace_time=7200,
-        max_instances=1,
-    )
-    logger.info("Registered job: backfill_player_ids (Weekly Wednesday 05:30 KST)")
-
     # Job 2.6: Monthly Retired Player Crawl (1st of every month at 02:00 KST)
     scheduler.add_job(
         crawl_retired_players_job,
@@ -1443,17 +1290,6 @@ def main(argv: Sequence[str] | None = None):
         max_instances=1,
     )
     logger.info("Registered job: crawl_retired_players (Monthly 1st 02:00 KST)")
-
-    # Job 2.7: Monthly Roster Backfill (1st of every month at 04:00 KST) — after daily crawl
-    scheduler.add_job(
-        backfill_roster_job,
-        trigger=CronTrigger(day=1, hour=4, minute=0),
-        id="backfill_roster",
-        name="Monthly Roster Backfill",
-        misfire_grace_time=7200,
-        max_instances=1,
-    )
-    logger.info("Registered job: backfill_roster (Monthly 1st 04:00 KST)")
 
     scheduler.add_job(
         crawl_pregame_refresh,
@@ -1593,35 +1429,20 @@ def main(argv: Sequence[str] | None = None):
     print(f" Start Time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     print("=" * 60)
     print("\nScheduled Jobs:")
-    print("  1. Daily Games Crawl: Every day at 03:00 KST")
-    print("  2. Standings Computation: Every day at 03:30 KST")
-    print("  3. Team Defense Aggregation: Every day at 03:45 KST")
-    print("  4. Rankings Computation: Every day at 04:00 KST")
-    print("  5. PBP Auto-Healer: Every day at 04:30 KST")
-    print("  6. Batch Parse Snapshots: Every day at 04:45 KST")
-    print("  7. OCI to Local Sync: Every day at 05:00 KST")
-    print("  8. Daily Quality Report: Every day at 05:15 KST")
-    print("  8a. Gap Report (Unified): Every day at 05:30 KST")
-    print("  8b. Backfill Missed Crawls: Every Sunday at 04:00 KST (detail+PBP+preview+profiles)")
-    print("  8c. SH/SF Backfill: Every Sunday at 05:45 KST")
-    print("  8d. Advanced Stats Backfill: Every Sunday at 06:00 KST")
-    print("  8e. Player ID Backfill: Every Wednesday at 05:30 KST")
-    print("  9. Phase 1 Extra Crawlers: Every day at 06:00 KST")
-    print(" 10. P1/P2 Seat/Parking/Food: Every day at 06:30 KST")
-    print(" 11. Data Freshness Monitor: Every day at 07:00 KST")
-    print(" 12. Pregame Refresh: Every 15 minutes, 10:00-23:45 KST, today + lookahead")
-    print(" 13. Live Refresh: Every 2 minutes, 12:00-23:30 KST")
-    print(" 14. Futures Profile Sync: Every Sunday at 05:00 KST")
-    print(" 15. Park Factor Computation: Every Sunday at 05:30 KST")
-    print(" 16. Retired Player Crawl: 1st of every month at 02:00 KST")
-    print(" 17. Roster Backfill: 1st of every month at 04:00 KST")
-    print(" 18. Weekly SLA Report: Every Monday at 06:00 KST")
-    print(" 19. Transit Time (JAMSIL): Every 15m, 10:00-23:45 KST")
-    print(" 19. Congestion (JAMSIL): Every 5m, 10:00-23:55 KST")
-    print(" 20. Operation Notices (Official): Daily 09:00 + 11:30 KST")
-    print(" 21. Operation Notices (Naver): Daily 09:30 + 13:00 KST")
-    print(" 22. Fan Culture (Cheer Songs/Chants): Weekly Saturday 04:00 KST")
-    print(" 23. P0 Non-Game Data: Daily 06:20 KST")
+    print("  1. Phase 1 Extra Crawlers: Every day at 06:00 KST")
+    print("  2. P0 Non-Game Data: Every day at 06:20 KST")
+    print("  3. P1/P2 Seat/Parking/Food: Every day at 06:30 KST")
+    print("  4. Pregame Refresh: Every 15 minutes, 10:00-23:45 KST, today + lookahead")
+    print("  5. Live Refresh: Every 2 minutes, 12:00-23:30 KST")
+    print("  6. Futures Profile Sync: Every Sunday at 05:00 KST")
+    print("  7. Park Factor Computation: Every Sunday at 05:30 KST")
+    print("  8. Retired Player Crawl: 1st of every month at 02:00 KST")
+    print("  9. Weekly SLA Report: Every Monday at 06:00 KST")
+    print(" 10. Transit Time (JAMSIL): Every 15m, 10:00-23:45 KST")
+    print(" 11. Congestion (JAMSIL): Every 5m, 10:00-23:55 KST")
+    print(" 12. Operation Notices (Official): Daily 09:00 + 11:30 KST")
+    print(" 13. Operation Notices (Naver): Daily 09:30 + 13:00 KST")
+    print(" 14. Fan Culture (Cheer Songs/Chants): Weekly Saturday 04:00 KST")
     print("=" * 60 + "\n")
 
     logger.info("Scheduler started successfully")

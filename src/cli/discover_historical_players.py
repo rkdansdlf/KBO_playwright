@@ -61,10 +61,12 @@ async def discover_and_save_players(start_year: int, end_year: int, active_year:
 
 
 if __name__ == "__main__":
+    from datetime import datetime
+    _current_year = datetime.now().year
     parser = argparse.ArgumentParser(description="Discover and store historical player IDs")
     parser.add_argument("--start", type=int, default=1982)
-    parser.add_argument("--end", type=int, default=2024)
-    parser.add_argument("--active-year", type=int, default=2025)
+    parser.add_argument("--end", type=int, default=_current_year - 1)
+    parser.add_argument("--active-year", type=int, default=_current_year)
     args = parser.parse_args()
 
     asyncio.run(discover_and_save_players(args.start, args.end, args.active_year))
