@@ -53,39 +53,28 @@ runs:
       env:
         SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
       run: |
-        STATUS_INPUT="${{ inputs.status }}"
-        WF_NAME="${{ inputs.workflow }}"
-        if [ -z "$WF_NAME" ]; then
-          WF_NAME="${{ github.workflow }}"
-        fi
-
-        case "$STATUS_INPUT" in
-          success) EMOJI="✅"; STATUS="Success" ;;
-          failure) EMOJI="❌"; STATUS="Failure" ;;
-          cancelled) EMOJI="⚠️"; STATUS="Cancelled" ;;
-          *) EMOJI="❓"; STATUS="$STATUS_INPUT" ;;
-        esac
-
-        PAYLOAD=$(cat <<EOF
-        {
-          "text": "${EMOJI} KBO ${WF_NAME} ${STATUS}",
-          "attachments": [
-            {
-              "color": "$([ "$STATUS_INPUT" = "success" ] && echo "good" || echo "danger")",
-              "fields": [
-                {"title": "Repository", "value": "${{ github.repository }}", "short": true},
-                {"title": "Run", "value": "<https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Details>", "short": true}
-              ]
-            }
-          ]
-        }
-        EOF
-        )
-
-        if [ -n "$SLACK_WEBHOOK_URL" ]; then
-          curl -s -X POST "$SLACK_WEBHOOK_URL" \
-            -H "Content-Type: application/json" \
-            -d "$PAYLOAD" || echo "Slack notification failed"
-        else
-          echo "Slack webhook URL not set, skipping."
-        fi
+        python3 -c "
+import json, os
+status = '${{ inputs.status }}'
+wf = '${{ inputs.workflow }}' or '${{ github.workflow }}'
+emoji, label = {'success': ('✅', 'Success'), 'failure': ('❌', 'Failure'), 'cancelled': ('⚠️', 'Cancelled')}.get(status, ('❓', status))
+color = 'good' if status == 'success' else 'danger'
+payload = {
+    'text': f'{emoji} KBO {wf} {label}',
+    'attachments': [{
+        'color': color,
+        'fields': [
+            {'title': 'Repository', 'value': '${{ github.repository }}', 'short': True},
+            {'title': 'Run', 'value': '<https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Details>', 'short': True},
+        ],
+    }],
+}
+url = os.environ.get('SLACK_WEBHOOK_URL')
+if url:
+    import urllib.request
+    req = urllib.request.Request(url, data=json.dumps(payload).encode(), headers={'Content-Type': 'application/json'})
+    urllib.request.urlopen(req)
+    print('Slack notification sent')
+else:
+    print('Slack webhook URL not set, skipping.')
+"

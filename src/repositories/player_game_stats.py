@@ -98,7 +98,6 @@ def aggregate_game_batting(session: Session, game_id: str) -> list[dict[str, Any
             "appearance_seq": first.appearance_seq,
             "position": first.position,
             "is_starter": any_starter,
-            "source": first.source,
             **totals,
             **rates,
         })
@@ -125,7 +124,6 @@ def aggregate_game_pitching(session: Session, game_id: str) -> list[dict[str, An
         first = appearances[0]
         totals: dict[str, int] = defaultdict(int)
         any_starting = False
-        decisions = set()
         for a in appearances:
             totals["innings_outs"] += a.innings_outs or 0
             totals["hits_allowed"] += a.hits_allowed or 0
@@ -144,9 +142,8 @@ def aggregate_game_pitching(session: Session, game_id: str) -> list[dict[str, An
             totals["batters_faced"] += a.batters_faced or 0
             if a.is_starting:
                 any_starting = True
-            if a.decision:
-                decisions.add(a.decision)
 
+        decision = next((a.decision for a in appearances if a.decision), None)
         rates = _compute_pitching_rates(
             total_outs=totals["innings_outs"],
             hits=totals["hits_allowed"],
@@ -164,7 +161,7 @@ def aggregate_game_pitching(session: Session, game_id: str) -> list[dict[str, An
             "team_code": first.team_code,
             "is_starting": any_starting,
             "appearance_seq": first.appearance_seq,
-            "source": first.source,
+            "decision": decision,
             **totals,
             **rates,
         })
