@@ -96,6 +96,8 @@ class QualityGate:
         mismatches = []
         for row in transactional_data:
             pid = row.player_id
+            if pid is None:
+                continue
             if pid not in cumulative_map:
                 mismatches.append(
                     {
@@ -178,6 +180,8 @@ class QualityGate:
         mismatches = []
         for row in transactional_data:
             pid = row.player_id
+            if pid is None:
+                continue
             if pid not in cumulative_map:
                 mismatches.append(
                     {
