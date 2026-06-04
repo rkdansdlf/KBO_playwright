@@ -178,3 +178,54 @@ class TestSyncTeamCodeMap:
         assert model is TeamCodeMap
         assert conflict_keys == ["season", "curr_code"]
         assert "transform_fn" in kw
+
+    def test_returns_zero_when_no_data(self):
+        syncer = object.__new__(OCISync)
+        syncer.sqlite_session = _build_memory_session()
+
+        calls = []
+        def fake(model, conflict_keys, **kw):
+            calls.append((model, conflict_keys, kw))
+            return 0
+        syncer._sync_simple_table = fake
+
+        result = syncer.sync_team_code_map()
+        assert result == 0
+        assert len(calls) == 1
+
+
+class TestSyncTeamHistoryEdgeCases:
+    def test_skipped_when_target_table_missing(self):
+        syncer = object.__new__(OCISync)
+        syncer.sqlite_session = _build_memory_session()
+        syncer._target_table_exists = lambda model: False
+        assert syncer.sync_team_history() == 0
+
+    def test_skips_history_without_matching_franchise(self):
+        syncer = object.__new__(OCISync)
+        session = _build_memory_session()
+        syncer.sqlite_session = session
+
+        session.add(Franchise(id=1, name="Test", original_code="TT", current_code="TT"))
+        session.add(TeamHistory(id=10, franchise_id=1, season=2025, team_name="Test", team_code="TT"))
+        session.add(TeamHistory(id=11, franchise_id=999, season=2025, team_name="Ghost", team_code="XX"))
+        session.flush()
+
+        syncer._target_table_exists = lambda model: True
+
+        # Only franchise_id=1 maps, franchise_id=999 has no OCI match
+        mapping = {1: 100}
+        syncer._get_franchise_id_mapping = lambda: mapping
+
+        calls = []
+        def fake(table_name, records, unique_cols, **kw):
+            calls.append((table_name, records, unique_cols, kw))
+        syncer._bulk_copy_upsert = fake
+
+        result = syncer.sync_team_history()
+        assert result == 1
+        assert len(calls) == 1
+        _, records, _, _ = calls[0]
+        assert len(records) == 1
+        assert records[0]["id"] == 10
+        assert records[0]["franchise_id"] == 100

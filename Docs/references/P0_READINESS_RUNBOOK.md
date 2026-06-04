@@ -1,6 +1,6 @@
 # P0 경기 데이터 운영 게이트
 
-P0 readiness는 경기 전, 경기 중, 경기 후 파이프라인이 운영 가능한 상태인지 한 번에 확인하는 점검 결과다.
+P0 readiness는 경기 전, 경기 중, 경기 후 파이프라인이 운영 가능한 상태인지 한 번에 확인하는 점검 결과다. 직관 이벤트와 티켓 가격 같은 P0 비경기 데이터는 `monitor_data_freshness`의 DataSource/table freshness로 별도 점검한다.
 
 ## 점검 대상
 
@@ -42,7 +42,7 @@ PY
 
 ## 일일 운영 연결
 
-`python3 -m src.cli.run_daily_update --date YYYYMMDD`는 `logs/daily_update_summary/YYYYMMDD.json`에 `p0_readiness` 섹션을 함께 기록한다.
+`python3 -m src.cli.run_daily_update --date YYYYMMDD`는 `logs/daily_update_summary/YYYYMMDD.json`에 `p0_readiness` 섹션을 함께 기록한다. 또한 기본 실행에서는 P0 비경기 데이터인 구단 이벤트/뉴스와 티켓 가격/오픈 규칙도 저장하고, 결과를 `stability.p0_non_game`에 남긴다.
 
 P0 backfill처럼 이미 대상 경기 데이터를 보강했고 summary/OCI publish만 확인해야 하는 scoped 실행에서는 비-P0 병목을 명시적으로 제외할 수 있다.
 
@@ -52,6 +52,7 @@ python3 -m src.cli.run_daily_update --date YYYYMMDD --sync --skip-auto-healer --
 
 - `--skip-season-stats`: 누적 시즌 타격/투수 웹 크롤링을 건너뛴다. P0 경기 상세, relay, roster, broadcast readiness 계산에는 영향을 주지 않는다.
 - `--skip-oci-supporting-sync`: 대상 경기 publish 후 연간 standings/matchup/ranking/season stats/daily roster 전체 OCI sync를 건너뛴다. summary의 `p0_readiness.oci.skip_counts.oci_supporting_sync_skipped`에 남는다.
+- `--skip-p0-non-game`: 과거 날짜 scoped backfill에서 현재 기준 이벤트/티켓 소스를 다시 크롤링하지 않는다. P0 경기 readiness 계산에는 영향을 주지 않는다.
 
 스케줄러의 03:00 daily job은 기본적으로 full finalize를 실행한다. 운영 복구일 또는 비-P0 병목 회피가 필요한 날에는 다음 env로 scoped P0 모드를 켠다.
 
@@ -62,7 +63,7 @@ DAILY_SKIP_OCI_SUPPORTING_SYNC=1
 
 이 env는 `run_daily_update`에 각각 `--skip-season-stats`, `--skip-oci-supporting-sync`를 전달한다. full finalize로 복귀하려면 두 값을 unset 또는 `0`으로 둔다.
 
-스케줄러의 freshness monitor는 전날 경기 기준 critical P0 failure를 Slack/로그 알림 대상에 포함한다.
+스케줄러의 06:20 P0 non-game job은 `crawl_p0_data --type all --save --days 3 --season <current_year>`를 실행한다. 07:00 freshness monitor는 전날 경기 기준 critical P0 failure와 함께 `team_events`, `roster_transactions`, `ticket_prices`, `ticket_open_rules` table freshness를 Slack/로그 알림 대상에 포함한다.
 
 당일 roster OCI 재시도는 날짜 스코프를 명시한다. 날짜를 생략하면 기존 호환성을 위해 전체 `team_daily_roster`를 동기화한다.
 
