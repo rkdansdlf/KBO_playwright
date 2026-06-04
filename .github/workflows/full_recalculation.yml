@@ -28,33 +28,23 @@ on:
         type: boolean
         default: true
 
+env:
+  PYTHONPATH: ${{ github.workspace }}
+
 jobs:
   recalc:
     runs-on: ubuntu-latest
-    env:
-      PYTHONPATH: ${{ github.workspace }}
-
     steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
-
-      - name: Set up Python 3.12
-        uses: actions/setup-python@v5
+      - uses: ./.github/actions/python-env
         with:
-          python-version: '3.12'
-          cache: 'pip'
-
-      - name: Install dependencies
-        run: pip install -r requirements.txt
-
-      - name: Initialize Database & Seed Metadata
-        run: |
-          python3 -c "from src.db.engine import init_db; init_db()"
-          python3 scripts/maintenance/seed_data.py
+          init-db: 'true'
 
       - name: Run Recalculation
         run: |
-          python3 -m src.cli.recalc_season_stats --year ${{ github.event.inputs.year }} --series ${{ github.event.inputs.series }} --save
+          python3 -m src.cli.recalc_season_stats \
+            --year ${{ github.event.inputs.year }} \
+            --series ${{ github.event.inputs.series }} \
+            --save
 
       - name: Sync to OCI
         if: ${{ github.event.inputs.sync == 'true' }}
@@ -63,8 +53,8 @@ jobs:
         run: |
           python3 -m src.cli.sync_oci --season-stats
 
-      - name: Notify Telegram on Status
+      - uses: ./.github/actions/notify
         if: always()
-        uses: ./.github/actions/notify-telegram
         with:
           status: ${{ job.status }}
+          channels: telegram

@@ -1,28 +1,28 @@
-name: KBO Pregame Refresh
+name: KBO Backfill Missed Crawls
 
 on:
   schedule:
-    - cron: '*/15 7-9 * * 2-5'
-    - cron: '30,45 5 * * 6'
-    - cron: '*/15 6-8 * * 6'
-    - cron: '30,45 2 * * 0'
-    - cron: '*/15 3-8 * * 0'
+    - cron: '19 3 * * 0'  # 일요일 04:00 KST (일 19:00 UTC)
   workflow_dispatch:
     inputs:
+      lookback_days:
+        description: 'Number of days to look back'
+        required: false
+        default: '14'
       target_date:
-        description: 'Target date (YYYYMMDD). Defaults to today in KST.'
+        description: 'Specific date to backfill (YYYYMMDD)'
         required: false
         default: ''
 
 concurrency:
-  group: kbo-pregame-refresh
+  group: kbo-backfill-missed-crawls
   cancel-in-progress: false
 
 env:
   PYTHONPATH: ${{ github.workspace }}
 
 jobs:
-  pregame-refresh:
+  backfill:
     runs-on: ubuntu-latest
     steps:
       - uses: ./.github/actions/python-env
@@ -30,31 +30,29 @@ jobs:
           playwright: 'true'
           init-db: 'true'
 
-      - name: Get current date in KST
-        id: date
+      - name: Resolve target window
+        id: params
         run: |
-          if [ -n "${{ github.event.inputs.target_date }}" ]; then
-            KST_DATE="${{ github.event.inputs.target_date }}"
-          else
-            KST_DATE="$(TZ='Asia/Seoul' date +'%Y%m%d')"
-          fi
-          echo "KST_DATE=${KST_DATE}" >> $GITHUB_ENV
-          echo "KST_YEAR=${KST_DATE:0:4}" >> $GITHUB_ENV
+          echo "LOOKBACK=${{ github.event.inputs.lookback_days || '14' }}" >> $GITHUB_OUTPUT
 
       - name: Hydrate Runtime Cache From OCI
         env:
           OCI_DB_URL: ${{ secrets.OCI_DB_URL }}
         run: |
           python3 -m src.cli.hydrate_runtime_from_oci \
-            --year "${{ env.KST_YEAR }}" --date "${{ env.KST_DATE }}"
+            --year "$(TZ='Asia/Seoul' date +'%Y')"
 
-      - name: Run Daily Preview Batch
+      - name: Run Backfill Missed Daily Crawls
         env:
           OCI_DB_URL: ${{ secrets.OCI_DB_URL }}
           KBO_USER_ID: ${{ secrets.KBO_USER_ID }}
           KBO_USER_PWD: ${{ secrets.KBO_USER_PWD }}
         run: |
-          python3 -m src.cli.daily_preview_batch --date ${{ env.KST_DATE }}
+          python3 -c "
+          from scripts.scheduler import backfill_missed_daily_crawls
+          result = backfill_missed_daily_crawls(lookback_days=${{ steps.params.outputs.LOOKBACK }})
+          print(f'Backfilled: {result}')
+          "
 
       - uses: ./.github/actions/notify
         if: always()

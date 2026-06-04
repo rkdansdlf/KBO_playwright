@@ -2,14 +2,11 @@ name: KBO Live Refresh
 
 on:
   schedule:
-    # 화~금 (Tue-Fri): 18:00~23:30 KST (09:00~14:30 UTC)
     - cron: '*/5 9-13 * * 2-5'
     - cron: '0-30/5 14 * * 2-5'
-    # 토요일 (Sat): 16:30~22:30 KST (07:30~13:30 UTC)
     - cron: '30-59/5 7 * * 6'
     - cron: '*/5 8-12 * * 6'
     - cron: '0-30/5 13 * * 6'
-    # 일요일 (Sun): 13:30~22:30 KST (04:30~13:30 UTC) - 14시 및 17/18시 경기 시간 포괄
     - cron: '30-59/5 4 * * 0'
     - cron: '*/5 5-12 * * 0'
     - cron: '0-30/5 13 * * 0'
@@ -19,36 +16,27 @@ concurrency:
   group: kbo-live-refresh
   cancel-in-progress: false
 
+env:
+  PYTHONPATH: ${{ github.workspace }}
+
 jobs:
   live-refresh:
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    env:
-      PYTHONPATH: ${{ github.workspace }}
-
     steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
-
-      - name: Set up Python 3.12
-        uses: actions/setup-python@v5
+      - uses: ./.github/actions/python-env
         with:
-          python-version: '3.12'
-          cache: 'pip'
-
-      - name: Install dependencies
-        run: |
-          pip install -r requirements.txt
-          playwright install --with-deps chromium
-
-      - name: Initialize Database & Seed Metadata
-        run: |
-          python3 -c "from src.db.engine import init_db; init_db()"
-          python3 scripts/maintenance/seed_data.py
+          playwright: 'true'
+          init-db: 'true'
 
       - name: Run Live Refresh Cycle
         env:
           OCI_DB_URL: ${{ secrets.OCI_DB_URL }}
-          AUTO_SYNC_OCI: 'false'
         run: |
           python3 -m src.cli.live_crawler --run-once
+
+      - uses: ./.github/actions/notify
+        if: always()
+        with:
+          status: ${{ job.status }}
+          channels: telegram
