@@ -50,6 +50,8 @@ GAME_SIGNATURE_CHILD_TABLES = (
     "game_summary",
     "game_play_by_play",
     "game_validation_metrics",
+    "player_game_batting",
+    "player_game_pitching",
 )
 
 NON_DETAIL_TERMINAL_STATUSES = {GAME_STATUS_CANCELLED, GAME_STATUS_POSTPONED}

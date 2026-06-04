@@ -190,6 +190,8 @@ class GameSyncMixin:
             "game_validation_metrics",
             "game_summary",
             "game_highlights",
+            "player_game_batting",
+            "player_game_pitching",
         ]
         for table_name in child_tables:
             self.target_session.execute(
@@ -305,7 +307,7 @@ class GameSyncMixin:
                 return [model_cls.game_id.in_(eligibility.relay_game_ids)]
             if model_cls is GameValidationMetrics:
                 return [model_cls.game_id.in_(scoped_game_ids)]
-            if model_cls in {GameMetadata, GameInningScore, GameLineup, GameBattingStat, GamePitchingStat, GameSummary, GameHighlight}:
+            if model_cls in {GameMetadata, GameInningScore, GameLineup, GameBattingStat, GamePitchingStat, GameSummary, GameHighlight, PlayerGameBatting, PlayerGamePitching}:  # fmt: skip
                 return [model_cls.game_id.in_(eligibility.detail_game_ids)]
             return child_filters if child_filters else None
 
