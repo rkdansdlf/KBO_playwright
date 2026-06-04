@@ -200,21 +200,17 @@ def test_main_registers_morning_jobs_with_expected_cron(monkeypatch):
     monkeypatch.setattr(scheduler, "CronTrigger", _FakeTrigger)
     monkeypatch.setattr(scheduler, "BlockingScheduler", lambda timezone=None: _FakeScheduler())
     monkeypatch.setenv("STARTUP_RUN", "0")
-    monkeypatch.setattr(scheduler, "crawl_daily_games", lambda: None)
     monkeypatch.setattr(scheduler, "crawl_pregame_refresh", lambda: None)
     monkeypatch.setattr(scheduler, "crawl_live_refresh", lambda: None)
     monkeypatch.setattr(scheduler, "crawl_all_futures_profiles", lambda: None)
-    monkeypatch.setattr(scheduler, "sync_from_oci_job", lambda: None)
-    monkeypatch.setattr(scheduler, "generate_daily_report_job", lambda: None)
+    monkeypatch.setattr(scheduler, "crawl_phase1_extra_job", lambda: None)
+    monkeypatch.setattr(scheduler, "crawl_p0_non_game_job", lambda: None)
 
     scheduler.main(["--no-startup-run"])
 
     ids_to_trigger = {kwargs["id"]: trigger.kwargs for _, trigger, kwargs in scheduled if "id" in kwargs}
     ids_to_kwargs = {kwargs["id"]: kwargs for _, _, kwargs in scheduled if "id" in kwargs}
 
-    assert ids_to_trigger["sync_from_oci"] == {"hour": 5, "minute": 0}
-    assert ids_to_trigger["generate_quality_report"] == {"hour": 5, "minute": 15}
-    assert ids_to_trigger["crawl_games_regular"] == {"hour": 3, "minute": 0}
     assert ids_to_trigger["crawl_p0_non_game"] == {"hour": 6, "minute": 20}
     assert ids_to_trigger["crawl_futures_profile"] == {"day_of_week": "sun", "hour": 5, "minute": 0}
     assert ids_to_trigger["crawl_pregame_refresh"] == {"hour": "10-23", "minute": "*/15"}
