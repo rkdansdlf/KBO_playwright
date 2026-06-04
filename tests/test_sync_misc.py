@@ -106,6 +106,7 @@ class TestSyncAwards:
     def test_calls_sync_simple_table(self):
         syncer = object.__new__(OCISync)
         syncer.sqlite_session = _build_memory_session()
+        syncer.target_session = _build_memory_session()
 
         calls = []
         def fake(model, conflict_keys, **kw):
