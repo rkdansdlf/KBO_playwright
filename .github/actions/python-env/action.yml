@@ -1,0 +1,72 @@
+name: 'KBO Python Env'
+description: 'Checkout, setup Python, install deps, init DB, hydrate from OCI'
+inputs:
+  python-version:
+    description: 'Python version'
+    required: false
+    default: '3.12'
+  playwright:
+    description: 'Install Playwright browser'
+    required: false
+    default: 'false'
+  init-db:
+    description: 'Initialize database and seed metadata'
+    required: false
+    default: 'false'
+  hydrate:
+    description: 'Hydrate runtime cache from OCI'
+    required: false
+    default: 'false'
+  hydrate-year:
+    description: 'Year for OCI hydration'
+    required: false
+    default: ''
+  hydrate-date:
+    description: 'Date for OCI hydration (YYYYMMDD)'
+    required: false
+    default: ''
+
+runs:
+  using: 'composite'
+  steps:
+    - uses: actions/checkout@v4
+
+    - uses: actions/setup-python@v5
+      with:
+        python-version: ${{ inputs.python-version }}
+        cache: pip
+
+    - name: Install dependencies
+      shell: bash
+      run: pip install -r requirements.txt
+
+    - name: Install Playwright
+      if: ${{ inputs.playwright == 'true' }}
+      shell: bash
+      run: playwright install --with-deps chromium
+
+    - name: Initialize Database & Seed Metadata
+      if: ${{ inputs.init-db == 'true' }}
+      shell: bash
+      run: |
+        python3 -c "from src.db.engine import init_db; init_db()"
+        python3 scripts/maintenance/seed_data.py
+
+    - name: Hydrate Runtime Cache From OCI
+      if: ${{ inputs.hydrate == 'true' }}
+      shell: bash
+      env:
+        OCI_DB_URL: ${{ env.OCI_DB_URL }}
+      run: |
+        YEAR="${{ inputs.hydrate-year }}"
+        DATE="${{ inputs.hydrate-date }}"
+        if [ -z "$YEAR" ] && [ -n "$DATE" ]; then
+          YEAR="${DATE:0:4}"
+        fi
+        if [ -n "$YEAR" ] && [ -n "$DATE" ]; then
+          python3 -m src.cli.hydrate_runtime_from_oci --year "$YEAR" --date "$DATE"
+        elif [ -n "$YEAR" ]; then
+          python3 -m src.cli.hydrate_runtime_from_oci --year "$YEAR"
+        else
+          echo "Skipping hydration: no year or date provided"
+        fi

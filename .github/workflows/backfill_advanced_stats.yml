@@ -1,38 +1,39 @@
-name: KBO Weekly Maintenance
+name: KBO Advanced Stats Backfill
 
 on:
   schedule:
-    - cron: '0 20 * * 0'
+    - cron: '0 21 * * 0'  # 일요일 06:00 KST (일 21:00 UTC)
   workflow_dispatch:
     inputs:
-      profile_limit:
-        description: 'Max profiles to enrich'
+      year:
+        description: 'Season year'
         required: false
-        default: '500'
+        default: ''
 
 concurrency:
-  group: kbo-weekly-maintenance
+  group: kbo-backfill-advanced-stats
   cancel-in-progress: false
 
 env:
   PYTHONPATH: ${{ github.workspace }}
 
 jobs:
-  maintenance:
+  backfill:
     runs-on: ubuntu-latest
     steps:
       - uses: ./.github/actions/python-env
         with:
-          playwright: 'true'
           init-db: 'true'
 
-      - name: Run Weekly Maintenance & Sync
+      - name: Run Advanced Stats Backfill
         env:
           OCI_DB_URL: ${{ secrets.OCI_DB_URL }}
         run: |
-          LIMIT="${{ github.event.inputs.profile_limit || '500' }}"
-          python3 -m src.cli.run_weekly_maintenance \
-            --profile-limit "$LIMIT" --sync
+          YEAR="${{ github.event.inputs.year }}"
+          if [ -z "$YEAR" ]; then
+            YEAR="$(TZ='Asia/Seoul' date +'%Y')"
+          fi
+          python3 -m src.cli.backfill_advanced_stats "$YEAR" regular
 
       - uses: ./.github/actions/notify
         if: always()

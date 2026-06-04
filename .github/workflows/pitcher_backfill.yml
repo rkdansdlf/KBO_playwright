@@ -2,9 +2,7 @@ name: KBO Pitcher Backfill
 
 on:
   schedule:
-    # 09:00 KST (00:00 UTC) - Morning refresh for today/tomorrow
     - cron: '0 0 * * *'
-    # 23:00 KST (14:00 UTC) - Nightly update for next day's previews
     - cron: '0 14 * * *'
   workflow_dispatch:
     inputs:
@@ -12,45 +10,26 @@ on:
         description: 'Number of days ahead to search for scheduled games'
         required: false
         default: '1'
-        type: string
 
 concurrency:
   group: kbo-pitcher-backfill
   cancel-in-progress: false
 
+env:
+  PYTHONPATH: ${{ github.workspace }}
+
 jobs:
   backfill-pitchers:
     runs-on: ubuntu-latest
-    env:
-      PYTHONPATH: ${{ github.workspace }}
-
     steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
-
-      - name: Set up Python 3.12
-        uses: actions/setup-python@v5
+      - uses: ./.github/actions/python-env
         with:
-          python-version: '3.12'
-          cache: 'pip'
-
-      - name: Install dependencies
-        run: |
-          pip install -r requirements.txt
-          playwright install --with-deps chromium
-
-      - name: Initialize Database & Seed Metadata
-        run: |
-          python3 -c "from src.db.engine import init_db; init_db()"
-          python3 scripts/maintenance/seed_data.py
+          playwright: 'true'
+          init-db: 'true'
 
       - name: Resolve Backfill Window
         run: |
-          if [ "${{ github.event.inputs.days_ahead }}" != "" ]; then
-            DAYS_AHEAD="${{ github.event.inputs.days_ahead }}"
-          else
-            DAYS_AHEAD="1"
-          fi
+          DAYS_AHEAD="${{ github.event.inputs.days_ahead || '1' }}"
           KST_DATE="$(TZ='Asia/Seoul' date +'%Y%m%d')"
           echo "DAYS_AHEAD=${DAYS_AHEAD}" >> $GITHUB_ENV
           echo "KST_DATE=${KST_DATE}" >> $GITHUB_ENV
@@ -60,8 +39,8 @@ jobs:
         env:
           OCI_DB_URL: ${{ secrets.OCI_DB_URL }}
         run: |
-          # Hydrate current year to ensure scheduled games exist in local SQLite
-          python3 -m src.cli.hydrate_runtime_from_oci --year "${KST_YEAR}" --date "${KST_DATE}"
+          python3 -m src.cli.hydrate_runtime_from_oci \
+            --year "${KST_YEAR}" --date "${KST_DATE}"
 
       - name: Run Pregame Backfill
         env:
@@ -69,5 +48,11 @@ jobs:
           KBO_USER_ID: ${{ secrets.KBO_USER_ID }}
           KBO_USER_PWD: ${{ secrets.KBO_USER_PWD }}
         run: |
-          echo "Running pregame backfill (today + ${DAYS_AHEAD} days)..."
-          python3 -m src.cli.backfill_pregame_previews --days-ahead "${DAYS_AHEAD}"
+          python3 -m src.cli.backfill_pregame_previews \
+            --days-ahead "${DAYS_AHEAD}"
+
+      - uses: ./.github/actions/notify
+        if: always()
+        with:
+          status: ${{ job.status }}
+          channels: telegram

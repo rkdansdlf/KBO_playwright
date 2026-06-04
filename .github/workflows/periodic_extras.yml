@@ -2,7 +2,6 @@ name: KBO Periodic Extras
 
 on:
   schedule:
-    # Runs at 21:00 UTC on the 1st of every month.
     - cron: '0 21 1 * *'
   workflow_dispatch:
     inputs:
@@ -15,45 +14,30 @@ concurrency:
   group: kbo-periodic-extras
   cancel-in-progress: false
 
+env:
+  PYTHONPATH: ${{ github.workspace }}
+
 jobs:
   extras:
     runs-on: ubuntu-latest
-    env:
-      PYTHONPATH: ${{ github.workspace }}
-
     steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
-
-      - name: Set up Python 3.12
-        uses: actions/setup-python@v5
+      - uses: ./.github/actions/python-env
         with:
-          python-version: '3.12'
-          cache: 'pip'
-
-      - name: Install dependencies
-        run: |
-          pip install -r requirements.txt
-          playwright install --with-deps chromium
-
-      - name: Initialize Database & Seed Metadata
-        run: |
-          python3 -c "from src.db.engine import init_db; init_db()"
-          python3 scripts/maintenance/seed_data.py
+          playwright: 'true'
+          init-db: 'true'
 
       - name: Run Periodic Extras & Sync
         env:
           OCI_DB_URL: ${{ secrets.OCI_DB_URL }}
         run: |
-          if [ "${{ github.event.inputs.year }}" != "" ]; then
-            KST_YEAR="${{ github.event.inputs.year }}"
-          else
-            KST_YEAR="$(TZ='Asia/Seoul' date +'%Y')"
+          YEAR="${{ github.event.inputs.year }}"
+          if [ -z "$YEAR" ]; then
+            YEAR="$(TZ='Asia/Seoul' date +'%Y')"
           fi
-          python3 -m src.cli.run_periodic_extras --year "$KST_YEAR" --sync
+          python3 -m src.cli.run_periodic_extras --year "$YEAR" --sync
 
-      - name: Notify Telegram on Status
+      - uses: ./.github/actions/notify
         if: always()
-        uses: ./.github/actions/notify-telegram
         with:
           status: ${{ job.status }}
+          channels: telegram

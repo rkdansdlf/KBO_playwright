@@ -17,86 +17,102 @@ on:
           - live
           - finalize
           - freshness
+          - quality-report
+          - gap-report
+          - backfill
+          - recalc-stats
       target_date:
         description: 'Target date (YYYYMMDD). Defaults to today in KST for pregame/live, previous day for finalize/freshness.'
         required: false
         default: ''
 
+env:
+  PYTHONPATH: ${{ github.workspace }}
+
 jobs:
   run-phase:
     runs-on: ubuntu-latest
-    env:
-      PYTHONPATH: ${{ github.workspace }}
-
     steps:
-    - name: Checkout Code
-      uses: actions/checkout@v3
+      - uses: ./.github/actions/python-env
+        with:
+          playwright: 'true'
+          init-db: 'true'
 
-    - name: Set up Python 3.12
-      uses: actions/setup-python@v5
-      with:
-        python-version: "3.12"
-        cache: 'pip'
+      - name: Resolve Target Date
+        id: target
+        run: |
+          if [ -n "${{ github.event.inputs.target_date }}" ]; then
+            echo "TARGET_DATE=${{ github.event.inputs.target_date }}" >> $GITHUB_OUTPUT
+          elif [ "${{ github.event.inputs.phase }}" = "finalize" ] || [ "${{ github.event.inputs.phase }}" = "freshness" ]; then
+            echo "TARGET_DATE=$(TZ='Asia/Seoul' date -d 'yesterday' +'%Y%m%d')" >> $GITHUB_OUTPUT
+          else
+            echo "TARGET_DATE=$(TZ='Asia/Seoul' date +'%Y%m%d')" >> $GITHUB_OUTPUT
+          fi
 
-    - name: Install Dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install -r requirements.txt
-        playwright install --with-deps chromium
+      - name: Hydrate Runtime Cache From OCI
+        if: ${{ github.event.inputs.phase != 'live' }}
+        env:
+          OCI_DB_URL: ${{ secrets.OCI_DB_URL }}
+        run: |
+          TARGET_DATE="${{ steps.target.outputs.TARGET_DATE }}"
+          python3 -m src.cli.hydrate_runtime_from_oci --year "${TARGET_DATE:0:4}" --date "${TARGET_DATE}"
 
-    - name: Resolve Target Date
-      id: target
-      run: |
-        if [ "${{ github.event.inputs.target_date }}" != "" ]; then
-          echo "TARGET_DATE=${{ github.event.inputs.target_date }}" >> $GITHUB_OUTPUT
-        elif [ "${{ github.event.inputs.phase }}" = "finalize" ] || [ "${{ github.event.inputs.phase }}" = "freshness" ]; then
-          echo "TARGET_DATE=$(TZ='Asia/Seoul' date -d 'yesterday' +'%Y%m%d')" >> $GITHUB_OUTPUT
-        else
-          echo "TARGET_DATE=$(TZ='Asia/Seoul' date +'%Y%m%d')" >> $GITHUB_OUTPUT
-        fi
+      - name: Run Requested Phase
+        env:
+          OCI_DB_URL: ${{ secrets.OCI_DB_URL }}
+          KBO_USER_ID: ${{ secrets.KBO_USER_ID }}
+          KBO_USER_PWD: ${{ secrets.KBO_USER_PWD }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID_RELAY: ${{ secrets.TELEGRAM_CHAT_ID_RELAY }}
+          TELEGRAM_CHAT_ID_STANDINGS: ${{ secrets.TELEGRAM_CHAT_ID_STANDINGS }}
+          TELEGRAM_CHAT_ID_PROFILE: ${{ secrets.TELEGRAM_CHAT_ID_PROFILE }}
+          TELEGRAM_CHAT_ID_FRESHNESS: ${{ secrets.TELEGRAM_CHAT_ID_FRESHNESS }}
+        run: |
+          TARGET_DATE="${{ steps.target.outputs.TARGET_DATE }}"
+          echo "Running phase=${{ github.event.inputs.phase }} target_date=${TARGET_DATE}"
+          case "${{ github.event.inputs.phase }}" in
+            pregame)
+              python3 -m src.cli.daily_preview_batch --date "${TARGET_DATE}"
+              ;;
+            live)
+              python3 -m src.cli.live_crawler --run-once
+              ;;
+            finalize)
+              python3 -m src.cli.run_daily_update --date "${TARGET_DATE}" --sync --fix
+              ;;
+            freshness)
+              python3 -m src.cli.freshness_gate --date "${TARGET_DATE}"
+              ;;
+            quality-report)
+              python3 -m src.cli.generate_quality_report --date "${TARGET_DATE}" --force-notify
+              python3 -c "
+          from src.monitoring.trend_tracker import TrendTracker
+          TrendTracker().send_degradation_alert(days=14)
+          "
+              ;;
+            gap-report)
+              python3 -m src.cli.gap_report
+              ;;
+            backfill)
+              python3 -c "
+          from scripts.scheduler import backfill_missed_daily_crawls
+          result = backfill_missed_daily_crawls()
+          print(f'Backfilled: {result}')
+          "
+              ;;
+            recalc-stats)
+              YEAR="${TARGET_DATE:0:4}"
+              python3 -m src.cli.recalc_season_stats --year "${YEAR}" --all --save
+              python3 -m src.cli.backfill_advanced_stats "${YEAR}" regular
+              ;;
+            *)
+              echo "Unsupported phase: ${{ github.event.inputs.phase }}"
+              exit 1
+              ;;
+          esac
 
-    - name: Initialize Database & Seed Metadata
-      run: |
-        python3 -c "from src.db.engine import init_db; init_db()"
-        python3 scripts/maintenance/seed_data.py
-
-    - name: Hydrate Runtime Cache From OCI
-      if: ${{ github.event.inputs.phase != 'live' }}
-      env:
-        OCI_DB_URL: ${{ secrets.OCI_DB_URL }}
-      run: |
-        TARGET_DATE="${{ steps.target.outputs.TARGET_DATE }}"
-        python3 -m src.cli.hydrate_runtime_from_oci --year "${TARGET_DATE:0:4}" --date "${TARGET_DATE}"
-
-    - name: Run Requested Phase
-      env:
-        OCI_DB_URL: ${{ secrets.OCI_DB_URL }}
-        KBO_USER_ID: ${{ secrets.KBO_USER_ID }}
-        KBO_USER_PWD: ${{ secrets.KBO_USER_PWD }}
-        AUTO_SYNC_OCI: 'false'
-      run: |
-        echo "Running phase=${{ github.event.inputs.phase }} target_date=${{ steps.target.outputs.TARGET_DATE }}"
-        case "${{ github.event.inputs.phase }}" in
-          pregame)
-            python3 -m src.cli.daily_preview_batch --date "${{ steps.target.outputs.TARGET_DATE }}"
-            ;;
-          live)
-            python3 -m src.cli.live_crawler --run-once
-            ;;
-          finalize)
-            python3 -m src.cli.run_daily_update --date "${{ steps.target.outputs.TARGET_DATE }}" --sync
-            ;;
-          freshness)
-            python3 -m src.cli.freshness_gate --date "${{ steps.target.outputs.TARGET_DATE }}"
-            ;;
-          *)
-            echo "Unsupported phase: ${{ github.event.inputs.phase }}"
-            exit 1
-            ;;
-        esac
-
-    - name: Notify Telegram on Status
-      if: always()
-      uses: ./.github/actions/notify-telegram
-      with:
-        status: ${{ job.status }}
+      - uses: ./.github/actions/notify
+        if: always()
+        with:
+          status: ${{ job.status }}
+          channels: telegram
