@@ -147,6 +147,114 @@ def get_relay_integrity_metrics(
         "current_season_missing_game_ids": current_season_missing,
     }
 
+def get_auto_remediation_summary(target_date_str: str, audit_dir: Path | None = None) -> dict[str, Any]:
+    """
+    Scans logs/audit_fixes/ for files starting with target_date_str.
+    Parses warning, abort, and fixed player details to return a status summary.
+    """
+    import json
+    from pathlib import Path
+
+    if audit_dir is None:
+        project_root = Path(__file__).resolve().parent.parent.parent
+        audit_dir = project_root / "logs" / "audit_fixes"
+
+    summary = {
+        "status": "no_issues",
+        "categories_fixed": [],
+        "total_fixed": 0,
+        "players_fixed": [],
+        "categories_warning": [],
+        "total_warning": 0,
+        "players_warning": [],
+        "categories_aborted": [],
+        "abort_reasons": []
+    }
+
+    if not audit_dir.exists():
+        return summary
+
+    has_abort = False
+    has_warning = False
+    has_fixed = False
+
+    # List all files for target_date_str
+    files = sorted(audit_dir.glob(f"{target_date_str}_*.json"))
+
+    for f in files:
+        filename = f.name
+        try:
+            with open(f, encoding="utf-8") as file_handle:
+                content = json.load(file_handle)
+        except Exception as e:
+            _LOGGER.error(f"Failed to read/parse audit fix file {filename}: {e}")
+            continue
+
+        # Check file type based on naming pattern
+        if "_abort_" in filename:
+            has_abort = True
+            category = filename.split("_")[-1].replace(".json", "").upper()
+            if category not in summary["categories_aborted"]:
+                summary["categories_aborted"].append(category)
+            reason = content.get("reason", "unknown reason")
+            summary["abort_reasons"].append(f"{category}: {reason}")
+
+        elif "_warning_" in filename:
+            has_warning = True
+            category = filename.split("_")[-1].replace(".json", "").upper()
+            if category not in summary["categories_warning"]:
+                summary["categories_warning"].append(category)
+            mismatches = content.get("mismatches", [])
+            summary["total_warning"] += len(mismatches)
+            for m in mismatches:
+                summary["players_warning"].append({
+                    "name": m.get("name"),
+                    "player_id": m.get("player_id"),
+                    "category": category,
+                    "diffs": m.get("diffs", [])
+                })
+
+        else:
+            # Fixed player snapshot {date}_{player_id}_{type}.json
+            # Note: content is a list of snapshots
+            has_fixed = True
+            parts = filename.replace(".json", "").split("_")
+            category = parts[-1].upper() if len(parts) >= 3 else "UNKNOWN"
+            if category not in summary["categories_fixed"]:
+                summary["categories_fixed"].append(category)
+            
+            snapshots = content if isinstance(content, list) else [content]
+            summary["total_fixed"] += len(snapshots)
+            for snap in snapshots:
+                diffs = []
+                orig = snap.get("original", {})
+                calc = snap.get("calculated", {})
+                player_id = snap.get("player_id")
+                player_name = snap.get("player_name") or calc.get("player_name") or orig.get("player_name")
+                
+                for k in ["games", "at_bats", "hits", "home_runs", "rbi", "walks", "wins", "losses", "saves", "earned_runs", "innings_outs", "errors", "stolen_bases", "caught_stealing"]:
+                    if k in orig or k in calc:
+                        o_val = orig.get(k)
+                        c_val = calc.get(k)
+                        if o_val != c_val:
+                            diffs.append(f"{k}: {o_val}→{c_val}")
+
+                summary["players_fixed"].append({
+                    "name": player_name,
+                    "player_id": player_id,
+                    "category": category,
+                    "diffs": diffs
+                })
+
+    if has_abort:
+        summary["status"] = "aborted"
+    elif has_warning:
+        summary["status"] = "warning"
+    elif has_fixed:
+        summary["status"] = "fixed"
+
+    return summary
+
 
 def get_daily_metrics(session, target_date_str: str) -> dict[str, Any]:
     """Calculate core collection metrics for a specific date."""
@@ -198,8 +306,6 @@ def get_daily_metrics(session, target_date_str: str) -> dict[str, Any]:
         .all()
     )
 
-    # Simple extraction of best WAR player for that day (or season overall as a highlight)
-    # Actually, let's just get the top WAR for the season so far as a regular anchor.
     best_player = None
     if top_war_player:
         valid_players = []
@@ -232,6 +338,9 @@ def get_daily_metrics(session, target_date_str: str) -> dict[str, Any]:
         parity_info["ok"] = False
         parity_info["error"] = str(e)
 
+    # 6. Auto-Remediation Summary
+    auto_remediation = get_auto_remediation_summary(target_date_str)
+
     return {
         "date": target_date_str,
         "status_counts": status_map,
@@ -243,6 +352,7 @@ def get_daily_metrics(session, target_date_str: str) -> dict[str, Any]:
         "parity": parity_info,
         "total_games": sum(status_map.values()),
         "completed_count": len(game_ids),
+        "auto_remediation": auto_remediation,
     }
 
 
@@ -314,6 +424,41 @@ def format_telegram_report(metrics: dict[str, Any], gate_result: dict[str, Any])
             issue = item.get("issue", "mismatch")
             lines.append(f"   - {team_code}: {issue}")
 
+    # Auto-Remediation Status
+    auto_rem = metrics.get("auto_remediation") or {}
+    status = auto_rem.get("status", "no_issues")
+    if status == "fixed":
+        cat_counts = {}
+        for p in auto_rem.get("players_fixed", []):
+            cat = p.get("category", "UNKNOWN").lower()
+            cat_counts[cat] = cat_counts.get(cat, 0) + 1
+        cat_str = ", ".join([f"{k} {v}" for k, v in cat_counts.items()])
+        lines.append(f"🔧 <b>Auto-Remediation</b>: {auto_rem.get('total_fixed')}건 수정 완료 ({cat_str})")
+        for p in auto_rem.get("players_fixed", [])[:3]:
+            diffs_str = ", ".join(p.get("diffs", [])[:2])
+            lines.append(f"   - {p['name']} ({p['category']}): {diffs_str}")
+        if len(auto_rem.get("players_fixed", [])) > 3:
+            lines.append(f"   - ... 외 {len(auto_rem['players_fixed']) - 3}명")
+    elif status == "warning":
+        cat_counts = {}
+        for p in auto_rem.get("players_warning", []):
+            cat = p.get("category", "UNKNOWN").lower()
+            cat_counts[cat] = cat_counts.get(cat, 0) + 1
+        cat_str = ", ".join([f"{k} {v}" for k, v in cat_counts.items()])
+        lines.append(f"⚠️ <b>Auto-Remediation</b>: mismatch {auto_rem.get('total_warning')}건 발견 (수정 비활성화) ({cat_str})")
+        for p in auto_rem.get("players_warning", [])[:3]:
+            diffs_str = ", ".join(p.get("diffs", [])[:2])
+            lines.append(f"   - {p['name']} ({p['category']}): {diffs_str}")
+        if len(auto_rem.get("players_warning", [])) > 3:
+            lines.append(f"   - ... 외 {len(auto_rem['players_warning']) - 3}명")
+    elif status == "aborted":
+        cats_str = ", ".join(auto_rem.get("categories_aborted", []))
+        lines.append(f"🛑 <b>Auto-Remediation</b>: 작업 중단 ({cats_str})")
+        for r in auto_rem.get("abort_reasons", [])[:3]:
+            lines.append(f"   - {r}")
+    else:
+        lines.append("✅ <b>Auto-Remediation</b>: No issues detected")
+
     # New Players
     if metrics["new_players"]:
         p_names = ", ".join([p["name"] for p in metrics["new_players"][:5]])
@@ -329,6 +474,7 @@ def _has_report_issues(metrics: dict[str, Any], gate_result: dict[str, Any]) -> 
         or any(not d["is_complete"] for d in metrics["detail_integrity"])
         or not (metrics.get("relay_integrity") or {}).get("ok", True)
         or not (metrics.get("standings_integrity") or {}).get("ok", True)
+        or metrics.get("auto_remediation", {}).get("status") in ("warning", "aborted")
     )
 
 

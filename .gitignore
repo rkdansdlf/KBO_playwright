@@ -1,6 +1,7 @@
 # Python venv and cache
 venv/
 .venv/
+.venv312/
 __pycache__/
 *.pyc
 *.pyo
@@ -62,6 +63,18 @@ data/kbo_dev.db
 !/data/player_id_overrides.csv
 !/data/player_id_row_overrides.csv
 data/kbo_auth_state.json
+
+# Secret/key files (supplemental patterns from .ignore)
+*.key
+*.pem
+*.p12
+*.pfx
+*secret*
+*credential*
+*credentials*
+
+# Personal gitignore supplement
+.ignore
 
 # Temporary root-level crawler debug artifacts
 /*.json

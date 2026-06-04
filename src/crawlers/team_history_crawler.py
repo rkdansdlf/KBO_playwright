@@ -3,8 +3,14 @@ import contextlib
 import logging
 
 from playwright.async_api import async_playwright
+from sqlalchemy import select
 
+from src.db.engine import SessionLocal
+from src.models.team import Team
+from src.models.team_history import TeamHistory
+from src.repositories.source_registry_repository import save_raw_snapshots
 from src.utils.playwright_blocking import install_async_resource_blocking
+from src.utils.team_codes import resolve_team_code
 
 logger = logging.getLogger(__name__)
 
@@ -22,6 +28,7 @@ class TeamHistoryCrawler:
         self.page = None
         self.playwright = None
         self.context = None
+        self._raw_pages: list[dict] = []
 
     async def start(self):
         self.playwright = await async_playwright().start()
@@ -44,6 +51,9 @@ class TeamHistoryCrawler:
             await self.start()
 
         await self.page.goto(self.BASE_URL, wait_until="networkidle")
+
+        raw_html = await self.page.content()
+        self._raw_pages.append({"url": self.BASE_URL, "html": raw_html, "source_key": "kbo_team_history"})
 
         # Selectors validated by Subagent
         # Table: table.tData.tbd02
@@ -156,13 +166,58 @@ class TeamHistoryCrawler:
 
     async def save(self, data: list[dict]):
         print(f"💾 Saving {len(data)} history entries...")
-        # For simplicity in this Task, we will just print/dry-run or basic upsert.
-        # But Phase 7 requires filling `team_history` table.
-        # Logic:
-        # 1. Resolve team_code (SS, OB, etc) from team_name using utils/DB.
-        # 2. Resolve franchise_id from team_code.
-        # 3. Insert into team_history.
-        pass
+        with SessionLocal() as session:
+            try:
+                saved_snaps = save_raw_snapshots(session, self._raw_pages)
+
+                teams = session.execute(select(Team)).scalars().all()
+                team_map = {t.team_id: t.franchise_id for t in teams}
+
+                saved_count = 0
+                for entry in data:
+                    team_name = entry["team_name"]
+                    season = entry["season"]
+
+                    code = resolve_team_code(team_name)
+                    if not code:
+                        print(f"   ⚠️ Could not resolve code for '{team_name}' ({season})")
+                        continue
+
+                    franchise_id = team_map.get(code)
+                    if not franchise_id:
+                        print(f"   ⚠️ No franchise_id for code '{code}'")
+                        continue
+
+                    stmt = select(TeamHistory).where(
+                        TeamHistory.season == season, TeamHistory.team_code == code
+                    )
+                    existing = session.execute(stmt).scalars().first()
+
+                    if existing:
+                        existing.team_name = team_name
+                        existing.logo_url = entry["logo_url"]
+                        existing.ranking = entry["ranking"]
+                        existing.franchise_id = franchise_id
+                    else:
+                        session.add(
+                            TeamHistory(
+                                season=season,
+                                team_code=code,
+                                team_name=team_name,
+                                logo_url=entry["logo_url"],
+                                ranking=entry["ranking"],
+                                franchise_id=franchise_id,
+                            )
+                        )
+                    saved_count += 1
+
+                session.commit()
+                print(f"✅ Saved/Updated {saved_count} records ({saved_snaps} snapshots).")
+            except Exception as e:
+                session.rollback()
+                print(f"❌ Error saving team history: {e}")
+            finally:
+                self._raw_pages.clear()
 
 
 if __name__ == "__main__":

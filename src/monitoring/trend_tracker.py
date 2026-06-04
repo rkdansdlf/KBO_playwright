@@ -11,6 +11,8 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 
+from src.utils.alerting import SlackWebhookClient
+
 QUALITY_REPORT_DIR = Path("logs/quality_reports")
 
 
@@ -65,14 +67,15 @@ class TrendTracker:
             last_val = self._resolve_key(last, metric_key)
             if first_val is not None and last_val is not None:
                 pct_change = (last_val - first_val) / max(abs(first_val), 1) * 100
-                if pct_change > threshold:
+                is_degraded = (threshold > 0 and pct_change > threshold) or (threshold < 0 and pct_change < threshold)
+                if is_degraded:
                     alerts.append(
                         {
                             "metric": metric_key,
                             "first": first_val,
                             "last": last_val,
                             "pct_change": round(pct_change, 1),
-                            "severity": "WARN" if pct_change > threshold else "INFO",
+                            "severity": "WARN",
                         }
                     )
         return alerts
@@ -129,3 +132,26 @@ class TrendTracker:
             for d in deg:
                 print(f"    {d['metric']}: {d['pct_change']:+.1f}% ({d['severity']})")
         print()
+
+    def send_degradation_alert(self, days: int = 14) -> None:
+        """
+        Detect metric degradations over the last `days` days and send an alert
+        via Telegram/Slack if any are found. Stays quiet when everything is healthy.
+        """
+        default_thresholds = {
+            "metrics.relay_integrity.recent_missing_count": 50.0,  # +50% increase in missing PBP
+            "metrics.completed_count": -20.0,  # -20% drop in completed games
+        }
+        degradations = self.detect_degradations(default_thresholds)
+        if not degradations:
+            return  # Nothing to alert about
+
+        lines = ""
+        for d in degradations:
+            arrow = "↗" if d["pct_change"] > 0 else "↘"
+            lines += (
+                f"  {arrow} {d['metric']}\n    {d['first']} → {d['last']} ({d['pct_change']:+.1f}%) [{d['severity']}]\n"
+            )
+
+        msg = f"<b>📉 KBO 데이터 품질 열화 감지 (최근 {days}일)</b>\n\n{lines}\n상세 확인이 필요합니다."
+        SlackWebhookClient.send_alert(msg)

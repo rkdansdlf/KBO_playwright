@@ -2,6 +2,8 @@
 Tests for preview crawler API payload normalization logic.
 """
 
+import asyncio
+
 from src.crawlers.preview_crawler import PreviewCrawler
 
 
@@ -24,10 +26,93 @@ def test_extract_list_payload_various_shapes():
     assert crawler._extract_list_payload(wrapped_game) == direct_list
 
     wrapped_result = {"result": {"data": {"data": direct_list}}}
-    assert crawler._extract_list_payload(wrapped_result) == []
+    assert crawler._extract_list_payload(wrapped_result) == direct_list
 
     wrapped_data = {"data": direct_list}
     assert crawler._extract_list_payload(wrapped_data) == direct_list
+
+
+def test_extract_starter_fields_from_game_list_variants():
+    crawler = PreviewCrawler()
+
+    current_shape = {
+        "T_PIT_P_NM": "문동주 ",
+        "B_PIT_P_NM": "곽빈 ",
+        "T_PIT_P_ID": 52701,
+        "B_PIT_P_ID": 64213,
+    }
+    assert crawler._extract_starter_name(current_shape, "away") == "문동주"
+    assert crawler._extract_starter_name(current_shape, "home") == "곽빈"
+    assert crawler._extract_starter_id(current_shape, "away") == 52701
+    assert crawler._extract_starter_id(current_shape, "home") == 64213
+
+    alias_shape = {
+        "AWAY_PIT_P_NM": "하트",
+        "HOME_PITCHER_NM": "원태인",
+        "AWAY_PIT_P_ID": "54780",
+        "HOME_PITCHER_ID": "69446",
+    }
+    assert crawler._extract_starter_name(alias_shape, "away") == "하트"
+    assert crawler._extract_starter_name(alias_shape, "home") == "원태인"
+    assert crawler._extract_starter_id(alias_shape, "away") == "54780"
+    assert crawler._extract_starter_id(alias_shape, "home") == "69446"
+
+
+def test_extract_lineup_announced_from_lineup_analysis_header():
+    crawler = PreviewCrawler()
+
+    assert crawler._extract_lineup_announced([[{"LINEUP_CK": False}]], True) is False
+    assert crawler._extract_lineup_announced([[{"LINEUP_CK": "1"}]], False) is True
+    assert crawler._extract_lineup_announced([], True) is True
+
+
+def test_crawl_preview_recovers_starters_and_lineup_flag_from_current_payloads():
+    grid = [
+        (
+            '{"rows":['
+            '{"row":[{"Text":"1"},{"Text":"중견수"},{"Text":"이원석"}]},'
+            '{"row":[{"Text":"2"},{"Text":"우익수"},{"Text":"페라자"}]}'
+            "]}"
+        )
+    ]
+
+    class FakePreviewCrawler(PreviewCrawler):
+        async def _fetch_api_json(self, url, form, referer, page=None):
+            if url == self.GAME_LIST_URL:
+                return {
+                    "game": [
+                        {
+                            "G_ID": "20260602HHOB0",
+                            "SEASON_ID": 2026,
+                            "LE_ID": 1,
+                            "SR_ID": 0,
+                            "AWAY_NM": "한화",
+                            "HOME_NM": "두산",
+                            "T_PIT_P_NM": "문동주 ",
+                            "B_PIT_P_NM": "곽빈 ",
+                            "T_PIT_P_ID": 52701,
+                            "B_PIT_P_ID": 64213,
+                            "START_PIT_CK": 0,
+                            "LINEUP_CK": 0,
+                        }
+                    ]
+                }
+            if url == self.LINEUP_URL:
+                return [[{"LINEUP_CK": "1"}], [], [], grid, grid]
+            return None
+
+    previews = asyncio.run(FakePreviewCrawler(request_delay=0).crawl_preview_for_date("20260602"))
+
+    assert len(previews) == 1
+    preview = previews[0]
+    assert preview["away_starter"] == "문동주"
+    assert preview["home_starter"] == "곽빈"
+    assert preview["away_starter_id"] == 52701
+    assert preview["home_starter_id"] == 64213
+    assert preview["start_pitcher_announced"] is True
+    assert preview["lineup_announced"] is True
+    assert len(preview["away_lineup"]) == 2
+    assert len(preview["home_lineup"]) == 2
 
 
 def test_parse_lineup_grid_empty_and_ordered_rows():

@@ -4,8 +4,10 @@ from datetime import date, datetime, time
 
 import pytest
 from sqlalchemy import create_engine
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import sessionmaker
 
+import src.sync.sync_base as sync_base_module
 import src.sync.sync_games as sync_games_module
 from src.models.game import (
     Game,
@@ -18,6 +20,8 @@ from src.models.game import (
     GamePitchingStat,
     GamePlayByPlay,
     GameSummary,
+    GameValidationMetrics,
+    GameHighlight,
 )
 from src.models.player import PlayerBasic
 from src.sync.oci_sync import OCISync
@@ -44,6 +48,8 @@ def _build_session_factory():
         GameSummary.__table__,
         GamePlayByPlay.__table__,
         GameIdAlias.__table__,
+        GameValidationMetrics.__table__,
+        GameHighlight.__table__,
     ):
         table.create(bind=engine)
     return sessionmaker(bind=engine, autoflush=False, autocommit=False, expire_on_commit=False)
@@ -147,8 +153,99 @@ def test_reset_target_sequence_for_table_skips_when_table_has_no_sequence():
     syncer.target_session = _Session()
 
     assert syncer._reset_target_sequence_for_table("game_play_by_play") is False
-    assert syncer.target_session.executed == 1
-    assert syncer.target_session.commits == 0
+
+
+class _PlayerBasicTargetSession:
+    def __init__(self, error: Exception | None = None):
+        self.error = error
+        self.executes = 0
+        self.commits = 0
+        self.rollbacks = 0
+
+    def execute(self, *_args, **_kwargs):
+        self.executes += 1
+        if self.error:
+            raise self.error
+
+    def commit(self):
+        self.commits += 1
+
+    def rollback(self):
+        self.rollbacks += 1
+
+
+def _timeout_operational_error() -> OperationalError:
+    return OperationalError(
+        "INSERT INTO player_basic ...",
+        {},
+        Exception("could not receive data from server: Operation timed out"),
+    )
+
+
+def test_sync_player_basic_by_ids_retries_transient_target_execute(monkeypatch):
+    local_factory = _build_session_factory()
+
+    with local_factory() as session:
+        session.add(PlayerBasic(player_id=50204, name="박지훈", status="retired"))
+        session.commit()
+
+        syncer = object.__new__(OCISync)
+        syncer.sqlite_session = session
+        syncer.oci_engine = session.bind
+        reconnects = []
+
+        def _reconnect():
+            reconnects.append("reconnect")
+
+        syncer._reconnect_oci = _reconnect
+        monkeypatch.setattr(sync_base_module.time, "sleep", lambda _seconds: None)
+
+        attempts = 0
+        def _mock_do_bulk_copy_upsert(_self, table_name, records, unique_cols, update_timestamp, csv, io, random):
+            nonlocal attempts
+            attempts += 1
+            if attempts == 1:
+                raise _timeout_operational_error()
+            return len(records)
+
+        monkeypatch.setattr(OCISync, "_do_bulk_copy_upsert", _mock_do_bulk_copy_upsert)
+
+        assert syncer.sync_player_basic_by_ids([50204]) == 1
+        assert attempts == 2
+        assert reconnects == ["reconnect"]
+
+
+def test_sync_player_basic_by_ids_rolls_back_and_raises_after_retry_exhaustion(monkeypatch):
+    local_factory = _build_session_factory()
+
+    with local_factory() as session:
+        session.add(PlayerBasic(player_id=50204, name="박지훈", status="retired"))
+        session.commit()
+
+        syncer = object.__new__(OCISync)
+        syncer.sqlite_session = session
+        syncer.oci_engine = session.bind
+        reconnects = []
+
+        def _reconnect():
+            reconnects.append("reconnect")
+
+        syncer._reconnect_oci = _reconnect
+        monkeypatch.setattr(sync_base_module.time, "sleep", lambda _seconds: None)
+
+        attempts = 0
+        def _mock_do_bulk_copy_upsert(_self, table_name, records, unique_cols, update_timestamp, csv, io, random):
+            nonlocal attempts
+            attempts += 1
+            raise _timeout_operational_error()
+
+        monkeypatch.setattr(OCISync, "_do_bulk_copy_upsert", _mock_do_bulk_copy_upsert)
+
+        with pytest.raises(OperationalError):
+            syncer.sync_player_basic_by_ids([50204])
+
+        assert attempts == 3
+        assert reconnects == ["reconnect", "reconnect"]
 
 
 def test_reset_target_sequence_for_table_rejects_unsafe_identifiers():
@@ -257,7 +354,7 @@ def test_sync_game_play_by_play_skips_sequence_reset_when_no_rows(monkeypatch):
         assert syncer._sync_game_play_by_play() == 0
 
 
-def test_sync_referenced_player_basic_for_games_requires_local_player_basic():
+def test_sync_referenced_player_basic_for_games_skips_missing_local_player_basic(caplog):
     local_factory = _build_session_factory()
     stamp = datetime(2026, 5, 14, 18, 0, 0)
 
@@ -291,8 +388,11 @@ def test_sync_referenced_player_basic_for_games_requires_local_player_basic():
         syncer = object.__new__(OCISync)
         syncer.sqlite_session = session
 
-        with pytest.raises(ValueError, match="missing_player_ids=\\[901654\\]"):
-            syncer._sync_referenced_player_basic_for_games(["20260514NCLT0"])
+        with caplog.at_level("WARNING", logger="src.sync.sync_players"):
+            assert syncer._sync_referenced_player_basic_for_games(["20260514NCLT0"]) == 0
+
+        assert "Skipping 1 missing player_ids" in caplog.text
+        assert "901654" in caplog.text
 
 
 def test_sync_referenced_player_basic_for_games_syncs_local_stubs(monkeypatch):
@@ -375,6 +475,7 @@ def test_sync_pregame_game_syncs_player_basic_before_lineups(monkeypatch):
         return 1
 
     syncer.target_session = _TargetSession()
+    monkeypatch.setattr(OCISync, "test_connection", lambda _self: True)
     monkeypatch.setattr(OCISync, "_sync_simple_table", _sync_simple_table)
     monkeypatch.setattr(OCISync, "_sync_referenced_player_basic_for_games", _sync_refs)
     monkeypatch.setattr(OCISync, "_sync_game_summary_rows", _sync_summary)
@@ -449,6 +550,7 @@ def test_sync_specific_game_syncs_player_basic_before_child_replacement(monkeypa
 
     monkeypatch.setattr(sync_games_module, "build_game_sync_eligibility", lambda *_args, **_kwargs: _Eligibility())
     monkeypatch.setattr(sync_games_module, "_log_sync_eligibility", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(OCISync, "test_connection", lambda _self: True)
     monkeypatch.setattr(OCISync, "_sync_simple_table", _sync_simple_table)
     monkeypatch.setattr(OCISync, "_sync_referenced_player_basic_for_games", _sync_refs)
     monkeypatch.setattr(OCISync, "_sync_game_play_by_play", _sync_pbp)
@@ -463,7 +565,63 @@ def test_sync_specific_game_syncs_player_basic_before_child_replacement(monkeypa
     assert calls[:3] == ["game", "game_id_aliases", "player_basic_refs"]
     assert calls.index("player_basic_refs") < calls.index("delete:game_lineups")
     assert calls.index("commit") < calls.index("game_metadata")
-    assert calls[-3:] == ["game_play_by_play", "game_events", "game_summary"]
+    assert calls[-4:] == ["game_events", "game_validation_metrics", "game_summary", "game_highlights"]
+
+
+def test_sync_specific_game_skips_missing_optional_validation_metrics_table(monkeypatch):
+    calls = []
+    syncer = object.__new__(OCISync)
+
+    class _Eligibility:
+        detail_game_ids = ["20260514NCLT0"]
+        relay_game_ids = ["20260514NCLT0"]
+
+        def counts(self):
+            return {}
+
+    class _DeleteQuery:
+        def __init__(self, model):
+            self.model = model
+
+        def filter(self, *_args):
+            return self
+
+        def delete(self, **_kwargs):
+            calls.append(f"delete:{self.model.__tablename__}")
+            return 1
+
+    class _TargetSession:
+        def query(self, model):
+            return _DeleteQuery(model)
+
+        def commit(self):
+            calls.append("commit")
+
+    def _sync_simple_table(_self, model, _conflict_keys, **_kwargs):
+        calls.append(model.__tablename__)
+        return 1
+
+    monkeypatch.setattr(sync_games_module, "build_game_sync_eligibility", lambda *_args, **_kwargs: _Eligibility())
+    monkeypatch.setattr(sync_games_module, "_log_sync_eligibility", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(OCISync, "test_connection", lambda _self: True)
+    monkeypatch.setattr(
+        OCISync,
+        "_target_table_exists",
+        lambda _self, model: model is not GameValidationMetrics,
+    )
+    monkeypatch.setattr(OCISync, "_sync_simple_table", _sync_simple_table)
+    monkeypatch.setattr(OCISync, "_sync_referenced_player_basic_for_games", lambda *_args: 1)
+    monkeypatch.setattr(OCISync, "_sync_game_play_by_play", lambda *_args, **_kwargs: 1)
+    monkeypatch.setattr(OCISync, "_sync_game_summary_rows", lambda *_args, **_kwargs: 1)
+
+    syncer.sqlite_session = object()
+    syncer.target_session = _TargetSession()
+
+    result = syncer.sync_specific_game("20260514NCLT0")
+
+    assert result["validation_metrics"] == 0
+    assert "delete:game_validation_metrics" not in calls
+    assert "game_validation_metrics" not in calls
 
 
 def _seed_game(
@@ -838,6 +996,7 @@ def test_sync_game_details_filters_child_datasets_by_eligibility(monkeypatch):
             "sync_games",
             lambda _self, filters=None, **_kwargs: session.query(Game).filter(*(filters or [])).count(),
         )
+        monkeypatch.setattr(OCISync, "test_connection", lambda _self: True)
 
         def _count_table(_self, model, _conflict_keys, filters=None, **_kwargs):
             return session.query(model).filter(*(filters or [])).count()

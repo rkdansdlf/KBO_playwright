@@ -1,7 +1,12 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 from datetime import datetime, timezone
+try:
+    from datetime import UTC
+except ImportError:
+    UTC = timezone.utc
 from pathlib import Path
 from typing import Any, Callable, Iterable
 
@@ -13,6 +18,9 @@ from .base import (
     load_capability_records,
     upsert_capability_record,
 )
+from .circuit_breaker import SourceCircuitBreaker
+
+logger = logging.getLogger(__name__)
 
 
 class RelayRecoveryOrchestrator:
@@ -23,11 +31,25 @@ class RelayRecoveryOrchestrator:
         capability_path: str | Path,
         sample_size: int = 3,
         timeout_seconds: float = 30.0,
+        circuit_breaker: SourceCircuitBreaker | None = None,
     ):
         self.adapters = adapters
         self.capability_path = Path(capability_path)
         self.sample_size = sample_size
         self.timeout_seconds = timeout_seconds
+        self.circuit_breaker = circuit_breaker or SourceCircuitBreaker()
+        self._capability_cache: dict[tuple[str, str], CapabilityRecord] | None = None
+
+    def _invalidate_capability_cache(self) -> None:
+        self._capability_cache = None
+
+    def _load_capability(self) -> dict[tuple[str, str], CapabilityRecord]:
+        if self._capability_cache is None:
+            self._capability_cache = load_capability_records(self.capability_path)
+        return self._capability_cache
+
+    def get_capability(self, bucket_id: str, source_name: str) -> CapabilityRecord | None:
+        return self._load_capability().get((bucket_id, source_name))
 
     @staticmethod
     def _uses_bucket_probe(adapter: RelaySourceAdapter | None) -> bool:
@@ -51,7 +73,7 @@ class RelayRecoveryOrchestrator:
             result = await asyncio.wait_for(adapter.fetch_game(game_id), timeout=self.timeout_seconds)
             status = "success" if not result.is_empty else "miss"
             return result, status
-        except asyncio.TimeoutError:
+        except (TimeoutError, asyncio.TimeoutError):
             return (
                 NormalizedRelayResult(
                     game_id=game_id,
@@ -60,14 +82,21 @@ class RelayRecoveryOrchestrator:
                 ),
                 "timeout",
             )
+        except Exception as exc:
+            logger.warning("Fetch failed for %s from %s: %s", game_id, adapter.source_name, exc)
+            return (
+                NormalizedRelayResult(
+                    game_id=game_id,
+                    source_name=adapter.source_name,
+                    notes=f"exception: {exc}",
+                ),
+                "exception",
+            )
 
     def source_order_for_bucket(self, bucket_id: str, override: Iterable[str] | None = None) -> list[str]:
         if override:
             return [token.strip() for token in override if token and token.strip()]
         return default_source_order_for_bucket(bucket_id)
-
-    def get_capability(self, bucket_id: str, source_name: str) -> CapabilityRecord | None:
-        return load_capability_records(self.capability_path).get((bucket_id, source_name))
 
     async def probe_bucket(
         self,
@@ -75,6 +104,7 @@ class RelayRecoveryOrchestrator:
         game_ids: Iterable[str],
         source_order: Iterable[str],
     ) -> dict[str, CapabilityRecord]:
+        self._invalidate_capability_cache()
         sample_ids = [game_id for game_id in game_ids if game_id][: self.sample_size]
         records: dict[str, CapabilityRecord] = {}
         if not sample_ids:
@@ -110,11 +140,13 @@ class RelayRecoveryOrchestrator:
                 source_name=source_name,
                 sample_size=min(len(sample_ids), self.sample_size),
                 supported=successes > 0,
-                last_checked_at=datetime.now(timezone.utc).isoformat(),
+                last_checked_at=datetime.now(UTC).isoformat(),
                 notes=last_notes or ("probe_success" if successes else "three_sample_miss"),
             )
             if successes > 0 or getattr(adapter, "cache_negative_probe", True):
                 upsert_capability_record(self.capability_path, record)
+            if self._capability_cache is not None:
+                self._capability_cache[(bucket_id, source_name)] = record
             records[source_name] = record
         return records
 
@@ -128,6 +160,24 @@ class RelayRecoveryOrchestrator:
     ) -> tuple[NormalizedRelayResult, list[dict[str, Any]]]:
         attempts: list[dict[str, Any]] = []
         for source_name in source_order:
+            cb = self.circuit_breaker
+            if cb is not None and not cb.is_available(source_name, bucket_id):
+                logger.warning(
+                    "Skipping source %s / %s: circuit breaker open",
+                    source_name,
+                    bucket_id,
+                )
+                attempts.append(
+                    {
+                        "game_id": game_id,
+                        "bucket_id": bucket_id,
+                        "source_name": source_name,
+                        "status": "cb_open",
+                        "notes": f"circuit breaker open, consecutive_failures={cb.consecutive_failures(source_name, bucket_id)}",
+                    }
+                )
+                continue
+
             adapter = self.adapters.get(source_name)
             capability = self.get_capability(bucket_id, source_name)
             if self._can_skip_from_capability(adapter, capability):
@@ -161,7 +211,6 @@ class RelayRecoveryOrchestrator:
                 validation_error = validator(result)
                 if validation_error:
                     status = "skipped_validation"
-                    # We continue to the next source if validation fails
 
             attempts.append(
                 {
@@ -175,9 +224,26 @@ class RelayRecoveryOrchestrator:
                 }
             )
 
-            if not result.is_empty and not validation_error:
+            if result.is_empty or validation_error:
+                if cb is not None:
+                    cb.record_failure(source_name, bucket_id)
+            else:
+                if cb is not None:
+                    cb.record_success(source_name, bucket_id)
                 return result, attempts
 
+        attempt_summary = (
+            "; ".join(f"{a.get('source_name', '?')}={a.get('status', '?')}" for a in attempts)
+            if attempts
+            else "no_attempts"
+        )
+        logger.error(
+            "All sources exhausted for %s (bucket=%s, order=%s, attempts: %s)",
+            game_id,
+            bucket_id,
+            list(source_order),
+            attempt_summary,
+        )
         return NormalizedRelayResult(
             game_id=game_id,
             source_name="none",

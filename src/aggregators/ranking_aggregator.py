@@ -114,10 +114,11 @@ class RankingAggregator:
             rankings.extend(self._build_rankings(season, baserunning_stats, BASERUNNING_METRICS))
 
         if batting_stats:
-            # Inject dynamic min_pa into config copies if provided
+            # Generate both qualified (standard) and '_all' configs for ratio stats
             batting_configs = []
             for cfg in BATTING_METRICS:
                 if cfg.min_pa is not None and min_pa is not None:
+                    # 1. Standard Qualified Leaderboard
                     batting_configs.append(
                         MetricConfig(
                             name=cfg.name,
@@ -128,14 +129,29 @@ class RankingAggregator:
                             min_pa=min_pa,
                         )
                     )
+                    # 2. Complete Leaderboard (including unqualified)
+                    batting_configs.append(
+                        MetricConfig(
+                            name=cfg.name + "_all",
+                            source=cfg.source,
+                            value_key=cfg.value_key,
+                            descending=cfg.descending,
+                            entity_type=cfg.entity_type,
+                            min_pa=1,  # Require at least 1 PA to filter out 0 PA records
+                        )
+                    )
                 else:
                     batting_configs.append(cfg)
-            rankings.extend(self._build_rankings(season, batting_stats, batting_configs))
+            rankings.extend(self._build_rankings(
+                season, batting_stats, batting_configs, kbo_min_pa=min_pa
+            ))
 
         if pitching_stats:
+            # Generate both qualified (standard) and '_all' configs for ratio stats
             pitching_configs = []
             for cfg in PITCHING_METRICS:
                 if cfg.min_ip_outs is not None and min_ip_outs is not None:
+                    # 1. Standard Qualified Leaderboard
                     pitching_configs.append(
                         MetricConfig(
                             name=cfg.name,
@@ -146,9 +162,22 @@ class RankingAggregator:
                             min_ip_outs=min_ip_outs,
                         )
                     )
+                    # 2. Complete Leaderboard (including unqualified)
+                    pitching_configs.append(
+                        MetricConfig(
+                            name=cfg.name + "_all",
+                            source=cfg.source,
+                            value_key=cfg.value_key,
+                            descending=cfg.descending,
+                            entity_type=cfg.entity_type,
+                            min_ip_outs=1,  # Require at least 1 out to filter out 0 IP records
+                        )
+                    )
                 else:
                     pitching_configs.append(cfg)
-            rankings.extend(self._build_rankings(season, pitching_stats, pitching_configs))
+            rankings.extend(self._build_rankings(
+                season, pitching_stats, pitching_configs, kbo_min_ip_outs=min_ip_outs
+            ))
 
         if persist and rankings:
             self.repository.save_rankings(rankings)
@@ -159,13 +188,17 @@ class RankingAggregator:
         season: int,
         rows: Iterable[dict[str, Any]],
         metrics: list[MetricConfig],
+        kbo_min_pa: int | None = None,
+        kbo_min_ip_outs: int | None = None,
     ) -> list[dict[str, Any]]:
         if not rows:
             return []
         rankings: list[dict[str, Any]] = []
         rows_list = list(rows)
         for config in metrics:
-            rankings.extend(self._rank_single_metric(season, rows_list, config))
+            rankings.extend(self._rank_single_metric(
+                season, rows_list, config, kbo_min_pa=kbo_min_pa, kbo_min_ip_outs=kbo_min_ip_outs
+            ))
         return rankings
 
     def _resolve_value(self, row: dict[str, Any], config: MetricConfig) -> float | None:
@@ -188,6 +221,8 @@ class RankingAggregator:
         season: int,
         rows: list[dict[str, Any]],
         config: MetricConfig,
+        kbo_min_pa: int | None = None,
+        kbo_min_ip_outs: int | None = None,
     ) -> list[dict[str, Any]]:
         processed = []
         for row in rows:
@@ -238,6 +273,29 @@ class RankingAggregator:
             value = entry["value"]
             if previous_value is None or value != previous_value:
                 current_rank = processed_count
+
+            # Build metadata for UI/API consumption
+            entity_extra = {}
+            if config.source == "BATTING":
+                pa = entry["raw"].get("plate_appearances") or 0
+                min_pa_threshold = kbo_min_pa if kbo_min_pa is not None else (config.min_pa or 0)
+                entity_extra.update({
+                    "pa": pa,
+                    "min_pa": min_pa_threshold,
+                    "qualified": pa >= min_pa_threshold,
+                })
+            elif config.source == "PITCHING":
+                ip_outs = entry["raw"].get("innings_outs") or 0
+                min_ip_outs_threshold = kbo_min_ip_outs if kbo_min_ip_outs is not None else (config.min_ip_outs or 0)
+                entity_extra.update({
+                    "innings_outs": ip_outs,
+                    "min_ip_outs": min_ip_outs_threshold,
+                    "qualified": ip_outs >= min_ip_outs_threshold,
+                })
+
+            entity_extra["rank_mode"] = "all" if config.name.endswith("_all") else "qualified"
+            entity_extra["raw"] = entry["raw"]
+
             ranked.append(
                 {
                     "season": season,
@@ -250,7 +308,7 @@ class RankingAggregator:
                     "rank": current_rank,
                     "is_tie": previous_value is not None and value == previous_value,
                     "source": config.source,
-                    "extra": {"raw": entry["raw"]},
+                    "extra": entity_extra,
                 }
             )
             previous_value = value

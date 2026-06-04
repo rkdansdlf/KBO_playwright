@@ -148,6 +148,7 @@ def discover_captures(
     timeout: float,
     sleep_seconds: float,
     workers: int,
+    manifest_output_path: Path | None = None,
 ) -> int:
     rows = _selected_rows(input_path, game_ids=game_ids, limit=limit)
     report_rows: list[dict[str, str]] = []
@@ -247,7 +248,36 @@ def discover_captures(
         )
         writer.writeheader()
         writer.writerows(report_rows)
+    if manifest_output_path is not None:
+        _write_manifest_from_report(report_rows, manifest_output_path)
     return len(report_rows)
+
+
+def _write_manifest_from_report(report_rows: list[dict[str, str]], output_path: Path) -> int:
+    manifest_rows = []
+    for row in report_rows:
+        if row.get("capture_found") != "true" or not row.get("download_path"):
+            continue
+        manifest_format = "kbo_html" if row.get("url_kind") == "livetext" else "relay_html"
+        manifest_rows.append(
+            {
+                "game_id": row["game_id"],
+                "source_type": "html_archive",
+                "locator": row["download_path"],
+                "format": manifest_format,
+                "priority": 50,
+                "notes": f"wayback:{row.get('timestamp')} {row.get('original')}",
+            }
+        )
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    with output_path.open("w", encoding="utf-8", newline="") as handle:
+        writer = csv.DictWriter(
+            handle,
+            fieldnames=["game_id", "source_type", "locator", "format", "priority", "notes"],
+        )
+        writer.writeheader()
+        writer.writerows(manifest_rows)
+    return len(manifest_rows)
 
 
 def main() -> None:
@@ -272,6 +302,10 @@ def main() -> None:
         default="data/recovery/raw/html_archive",
         help="Directory to store downloaded archived HTML captures",
     )
+    parser.add_argument(
+        "--manifest-output",
+        help="Optional source_manifest CSV to write for downloaded captures",
+    )
     parser.add_argument("--timeout", type=float, default=20.0, help="HTTP timeout in seconds")
     parser.add_argument("--sleep-seconds", type=float, default=0.25, help="Delay between archive lookups")
     parser.add_argument("--workers", type=int, default=4, help="Number of concurrent archive lookups")
@@ -285,6 +319,7 @@ def main() -> None:
         game_ids=requested_ids,
         limit=args.limit,
         download_dir=Path(args.download_dir) if args.download_dir else None,
+        manifest_output_path=Path(args.manifest_output) if args.manifest_output else None,
         timeout=args.timeout,
         sleep_seconds=args.sleep_seconds,
         workers=max(1, args.workers),

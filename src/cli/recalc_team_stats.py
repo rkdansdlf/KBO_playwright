@@ -1,95 +1,161 @@
 """
-CLI tool to recalculate team-level season stats by aggregating player stats.
-Used as a fallback or for verification.
+CLI tool to recalculate team-level season stats from player season statistics.
+Useful for self-healing / rollup recalculations when team stats pages fail.
 """
 
-from __future__ import annotations
-
 import argparse
-import asyncio
-from typing import Any
+import logging
+import sys
+from datetime import datetime, timezone
 
 from src.aggregators.team_stat_aggregator import TeamStatAggregator
 from src.db.engine import SessionLocal
-from src.models.team_stats import TeamSeasonBatting, TeamSeasonPitching
+from src.repositories.team_stats_repository import (
+    TeamSeasonBattingRepository,
+    TeamSeasonPitchingRepository,
+)
+
+logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
+logger = logging.getLogger(__name__)
 
 
-def save_team_batting_stats(session, stats_list: list[dict[str, Any]]):
-    for data in stats_list:
-        existing = (
-            session.query(TeamSeasonBatting)
-            .filter_by(team_id=data["team_id"], season=data["season"], league=data["league"])
-            .first()
-        )
+def run_recalc(
+    season: int,
+    team_id: str | None = None,
+    dry_run: bool = False,
+    batting_only: bool = False,
+    pitching_only: bool = False,
+    verbose: bool = False,
+) -> int:
+    """
+    Recalculates team statistics for the given season.
+    Returns 0 on success, non-zero on failure.
+    """
+    if team_id:
+        team_id = team_id.upper()
 
-        # Filter out keys not in model
-        model_keys = TeamSeasonBatting.__table__.columns.keys()
-        filtered_data = {k: v for k, v in data.items() if k in model_keys}
+    batting_recalc = not pitching_only
+    pitching_recalc = not batting_only
 
-        if existing:
-            for k, v in filtered_data.items():
-                setattr(existing, k, v)
-        else:
-            new_rec = TeamSeasonBatting(**filtered_data)
-            session.add(new_rec)
-    session.commit()
-
-
-def save_team_pitching_stats(session, stats_list: list[dict[str, Any]]):
-    for data in stats_list:
-        existing = (
-            session.query(TeamSeasonPitching)
-            .filter_by(team_id=data["team_id"], season=data["season"], league=data["league"])
-            .first()
-        )
-
-        model_keys = TeamSeasonPitching.__table__.columns.keys()
-        filtered_data = {k: v for k, v in data.items() if k in model_keys}
-
-        if existing:
-            for k, v in filtered_data.items():
-                setattr(existing, k, v)
-        else:
-            new_rec = TeamSeasonPitching(**filtered_data)
-            session.add(new_rec)
-    session.commit()
-
-
-async def run_recalc(args):
+    # 1. Open Session and run rollup
     with SessionLocal() as session:
-        if args.type in ["batting", "all"]:
-            print(f"⚾ Recalculating team BATTING for {args.year} {args.league}...")
-            batting_stats = TeamStatAggregator.aggregate_team_batting(session, args.year, args.league)
-            print(f"   Found {len(batting_stats)} teams.")
-            if args.save:
-                save_team_batting_stats(session, batting_stats)
-                print("   ✅ Saved to database.")
-            else:
-                for s in batting_stats:
-                    print(
-                        f"   - {s['team_id']} ({s.get('team_name')}): {s['hits']} H, {s['home_runs']} HR, {s['avg']} AVG"
-                    )
+        aggregator = TeamStatAggregator(session)
 
-        if args.type in ["pitching", "all"]:
-            print(f"🥎 Recalculating team PITCHING for {args.year} {args.league}...")
-            pitching_stats = TeamStatAggregator.aggregate_team_pitching(session, args.year, args.league)
-            print(f"   Found {len(pitching_stats)} teams.")
-            if args.save:
-                save_team_pitching_stats(session, pitching_stats)
-                print("   ✅ Saved to database.")
-            else:
-                for s in pitching_stats:
-                    print(
-                        f"   - {s['team_id']} ({s.get('team_name')}): {s['wins']} W, {s['era']} ERA, {s['whip']} WHIP"
-                    )
+        # A. Batting Recalculation
+        if batting_recalc:
+            logger.info(f"🔄 Recalculating Team Batting Stats for season={season}...")
+            try:
+                batting_results = aggregator.aggregate_batting(season, team_id, dry_run=dry_run)
+
+                if not batting_results:
+                    logger.warning("  No batting stats aggregated.")
+                else:
+                    logger.info(f"  Aggregated {len(batting_results)} batting records.")
+
+                    if dry_run:
+                        logger.info("  [DRY-RUN] Batting statistics that would be saved:")
+                        for r in batting_results:
+                            print(
+                                f"    Team: {r.get('team_name', r['team_id']):<10} ({r['team_id']}) | "
+                                f"G: {r['games']:<3} | AB: {r['at_bats']:<4} | H: {r['hits']:<4} | "
+                                f"AVG: {r['avg']:.3f} | OBP: {r['obp']:.3f} | SLG: {r['slg']:.3f} | OPS: {r['ops']:.3f}"
+                            )
+                    else:
+                        logger.info(f"  💾 Upserted {len(batting_results)} team batting rows to DB.")
+
+            except Exception as e:
+                logger.exception(f"❌ Failed batting stats rollup for season={season}: {e}")
+                return 1
+
+        # B. Pitching Recalculation
+        if pitching_recalc:
+            logger.info(f"🔄 Recalculating Team Pitching Stats for season={season}...")
+            try:
+                pitching_results = aggregator.aggregate_pitching(season, team_id, dry_run=dry_run)
+
+                if not pitching_results:
+                    logger.warning("  No pitching stats aggregated.")
+                else:
+                    logger.info(f"  Aggregated {len(pitching_results)} pitching records.")
+
+                    if dry_run:
+                        logger.info("  [DRY-RUN] Pitching statistics that would be saved:")
+                        for r in pitching_results:
+                            print(
+                                f"    Team: {r.get('team_name', r['team_id']):<10} ({r['team_id']}) | "
+                                f"G: {r['games']:<3} | W-L-T: {r['wins']}-{r['losses']}-{r['ties']} | "
+                                f"IP: {r['innings_pitched']:.1f} | ER: {r['earned_runs']:<3} | "
+                                f"ERA: {r['era']:.2f} | WHIP: {r['whip']:.2f}"
+                            )
+                    else:
+                        logger.info(f"  💾 Upserted {len(pitching_results)} team pitching rows to DB.")
+
+            except Exception as e:
+                logger.exception(f"❌ Failed pitching stats rollup for season={season}: {e}")
+                return 1
+
+    logger.info("✨ Team statistics recalculation completed.")
+    return 0
+
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Recalculate team cumulative statistics from player stats.")
+    
+    # We allow --season as a required argument but support --year/--season flexibly
+    group = parser.add_mutually_exclusive_group(required=True)
+    group.add_argument("--season", type=int, help="Year of the season to recalculate")
+    group.add_argument("--year", type=int, help="Deprecated alias for --season")
+
+    parser.add_argument("--team-id", type=str, help="Specific KBO Team ID to recalculate (e.g. LG, OB, SS)")
+    parser.add_argument("--team", type=str, dest="team_arg", help="Alias for --team-id")
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Run rollup in-memory and print results without saving to the database",
+    )
+    parser.add_argument(
+        "--batting-only", action="store_true", help="Recalculate batting stats only"
+    )
+    parser.add_argument(
+        "--pitching-only", action="store_true", help="Recalculate pitching stats only"
+    )
+    parser.add_argument(
+        "--verbose", action="store_true", help="Enable verbose logging"
+    )
+
+    # Maintain backward compatibility with older crawlers calling with --save
+    parser.add_argument(
+        "--save", action="store_true", default=True, help="Save to DB (ignored as default is true, override with --dry-run)"
+    )
+    parser.add_argument(
+        "--type", choices=["batting", "pitching", "all"], default="all", help="Ignore this legacy argument"
+    )
+    parser.add_argument(
+        "--league", type=str, default="REGULAR", help="Ignore this legacy argument"
+    )
+
+    args = parser.parse_args()
+
+    if args.verbose:
+        logger.setLevel(logging.DEBUG)
+
+    season_val = args.season or args.year
+    team_val = args.team_id or args.team_arg
+
+    # Derive restrict flags from both legacy --type and new flags
+    bat_only = args.batting_only or (args.type == "batting")
+    pit_only = args.pitching_only or (args.type == "pitching")
+
+    sys.exit(run_recalc(
+        season=season_val,
+        team_id=team_val,
+        dry_run=args.dry_run,
+        batting_only=bat_only,
+        pitching_only=pit_only,
+        verbose=args.verbose,
+    ))
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Recalculate Team Season Stats from Player Stats")
-    parser.add_argument("--year", type=int, required=True, help="Season year")
-    parser.add_argument("--league", type=str, default="regular", help="League type (regular, etc.)")
-    parser.add_argument("--type", choices=["batting", "pitching", "all"], default="all", help="Stat type")
-    parser.add_argument("--save", action="store_true", help="Save results to database")
-
-    args = parser.parse_args()
-    asyncio.run(run_recalc(args))
+    main()

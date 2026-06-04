@@ -105,8 +105,23 @@ async def run_advanced_update(
         logger.exception("   ❌ Error crawling team pitching stats")
         any_error = True
 
-    # 5. Recalculate Rankings
-    print("\n🏷️ Step 5: Recalculating Stat Rankings...")
+    # 5. Team Defense Aggregation (from player-level data)
+    print("\n🏰 Step 5: Aggregating Team Fielding & Baserunning...")
+    try:
+        from src.aggregators.team_fielding_aggregator import TeamFieldingAggregator
+        from src.models.team import Team
+
+        with SessionLocal() as session:
+            active_teams = [t.team_id for t in session.query(Team.team_id).filter(Team.is_active).all()]
+            agg = TeamFieldingAggregator(session)
+            agg.run_all(year, active_teams)
+        print(f"   ✅ Team defense aggregated for {len(active_teams)} teams")
+    except Exception:
+        logger.exception("   ❌ Error aggregating team defense stats")
+        any_error = True
+
+    # 6. Recalculate Rankings
+    print("\n🏷️ Step 6: Recalculating Stat Rankings...")
     try:
         from src.cli.calculate_rankings import rebuild_rankings
 
@@ -117,7 +132,7 @@ async def run_advanced_update(
         any_error = True
 
     if sync:
-        print("\n☁️ Step 6: Synchronizing to OCI...")
+        print("\n☁️ Step 7: Synchronizing to OCI...")
         oci_url = os.getenv("OCI_DB_URL")
         if not oci_url:
             print("   ⚠️ OCI_DB_URL not set, skipping sync")
@@ -129,6 +144,8 @@ async def run_advanced_update(
                     syncer.sync_baserunning_stats(year)
                     syncer.sync_team_season_batting(year)
                     syncer.sync_team_season_pitching(year)
+                    syncer.sync_team_season_fielding(year)
+                    syncer.sync_team_season_baserunning(year)
                     syncer.sync_stat_rankings(year)
                     print("   ✅ OCI synchronization completed")
                 except Exception:

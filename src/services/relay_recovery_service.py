@@ -15,6 +15,7 @@ from src.models.game import Game, GameEvent, GamePlayByPlay
 from src.models.season import KboSeason
 from src.repositories.game_repository import (
     backfill_game_play_by_play_from_existing_events,
+    mark_relay_source_unavailable,
     save_relay_data,
 )
 from src.sources.relay import (
@@ -29,6 +30,7 @@ from src.sources.relay import (
     normalize_pbp_row,
     read_manifest_entries,
 )
+from src.services.wpa_transitions import apply_wpa_transitions, event_has_wpa_state
 from src.utils.game_status import COMPLETED_LIKE_GAME_STATUSES
 from src.utils.safe_print import safe_print as print
 
@@ -43,6 +45,7 @@ class RelayRecoveryTarget:
     league_type_name: str | None = None
     bucket_id: str | None = None
     has_events: bool = False
+    has_event_state: bool = False
     has_pbp: bool = False
     needs_event_recovery: bool = True
     needs_pbp_recovery: bool = True
@@ -55,6 +58,7 @@ class RelayRecoveryTarget:
         league_type_name: str | None,
         bucket_id: str | None,
         has_events: bool,
+        has_event_state: bool,
         has_pbp: bool,
     ) -> RelayRecoveryTarget:
         return cls(
@@ -62,8 +66,9 @@ class RelayRecoveryTarget:
             league_type_name=league_type_name,
             bucket_id=bucket_id or derive_bucket_id(game_id, league_type_name),
             has_events=has_events,
+            has_event_state=has_event_state,
             has_pbp=has_pbp,
-            needs_event_recovery=not has_events,
+            needs_event_recovery=not has_event_state,
             needs_pbp_recovery=not has_pbp,
         )
 
@@ -79,6 +84,14 @@ class RelayRecoveryResult:
     match_failed_games: int = 0
     api_failed_games: int = 0
     report_rows: list[dict[str, Any]] = field(default_factory=list)
+
+
+@dataclass(frozen=True)
+class RelaySaveCounts:
+    saved_rows: int
+    saved_event_rows: int = 0
+    saved_pbp_rows: int = 0
+    skipped_event_rows_reason: str | None = None
 
 
 def parse_source_order(value: str | None) -> list[str] | None:
@@ -138,10 +151,9 @@ def load_relay_recovery_targets(
         if not row_game_ids:
             return []
 
-        event_set = {
-            row[0]
-            for row in session.query(GameEvent.game_id).filter(GameEvent.game_id.in_(row_game_ids)).distinct().all()
-        }
+        event_rows = session.query(GameEvent).filter(GameEvent.game_id.in_(row_game_ids)).all()
+        event_set = {row.game_id for row in event_rows}
+        event_state_set = {row.game_id for row in event_rows if event_has_wpa_state(row)}
         pbp_set = {
             row[0]
             for row in session.query(GamePlayByPlay.game_id)
@@ -154,8 +166,9 @@ def load_relay_recovery_targets(
     skipped = 0
     for game_id, league_type_name in rows:
         has_events = game_id in event_set
+        has_event_state = game_id in event_state_set
         has_pbp = game_id in pbp_set
-        if missing_only and has_events and has_pbp:
+        if missing_only and has_event_state and has_pbp:
             skipped += 1
             continue
         targets.append(
@@ -164,6 +177,7 @@ def load_relay_recovery_targets(
                 league_type_name=league_type_name,
                 bucket_id=bucket,
                 has_events=has_events,
+                has_event_state=has_event_state,
                 has_pbp=has_pbp,
             )
         )
@@ -226,7 +240,7 @@ async def recover_relay_data(
         for index, target in enumerate(bucket_targets, start=1):
             log(f"\n[PROGRESS] Bucket {bucket_id} {index}/{len(bucket_targets)}: {target.game_id}")
 
-            if allow_derived_pbp and target.has_events and target.needs_pbp_recovery:
+            if allow_derived_pbp and target.has_event_state and target.needs_pbp_recovery:
                 saved_rows = 0 if dry_run else backfill_game_play_by_play_from_existing_events(target.game_id)
                 log(
                     f"[SUCCESS] {'Would derive' if dry_run else 'Derived'} "
@@ -241,6 +255,9 @@ async def recover_relay_data(
                         "source_name": "derived_game_events",
                         "status": "dry_run" if dry_run else "saved",
                         "saved_rows": saved_rows,
+                        "saved_event_rows": 0,
+                        "saved_pbp_rows": saved_rows,
+                        "skipped_event_rows_reason": None,
                         "has_event_state": True,
                         "has_raw_pbp": True,
                         "notes": "Derived game_play_by_play from existing game_events",
@@ -270,6 +287,35 @@ async def recover_relay_data(
                     run_result.match_failed_games += 1
                 elif failure_bucket == "relay_api_failed":
                     run_result.api_failed_games += 1
+                unavailable = _should_mark_source_unavailable(bucket_id, attempts, relay_result)
+                if unavailable:
+                    evidence = {
+                        "bucket_id": bucket_id,
+                        "source_order": list(source_order),
+                        "attempts": attempts,
+                        "notes": relay_result.notes,
+                    }
+                    if not dry_run:
+                        mark_relay_source_unavailable(
+                            target.game_id,
+                            reason="public_relay_source_unavailable",
+                            evidence=evidence,
+                        )
+                    run_result.report_rows.append(
+                        {
+                            "game_id": target.game_id,
+                            "bucket_id": bucket_id,
+                            "source_name": "none",
+                            "status": "source_unavailable_dry_run" if dry_run else "source_unavailable",
+                            "saved_rows": 0,
+                            "saved_event_rows": 0,
+                            "saved_pbp_rows": 0,
+                            "skipped_event_rows_reason": "public_relay_source_unavailable",
+                            "has_event_state": False,
+                            "has_raw_pbp": False,
+                            "notes": relay_result.notes,
+                        }
+                    )
                 log(f"[SKIP] No relay data extracted for {target.game_id}")
                 continue
 
@@ -293,27 +339,36 @@ async def recover_relay_data(
                 )
                 continue
 
-            saved_rows = _save_or_count_rows(
+            save_counts = _save_or_count_rows(
                 target.game_id,
                 relay_result,
                 dry_run=dry_run,
                 allow_derived_pbp=allow_derived_pbp,
             )
             if dry_run:
-                log(f"[DRY-RUN] Would save {saved_rows} rows from {relay_result.source_name} for {target.game_id}")
+                log(
+                    f"[DRY-RUN] Would save events={save_counts.saved_event_rows} "
+                    f"pbp={save_counts.saved_pbp_rows} from {relay_result.source_name} for {target.game_id}"
+                )
             else:
-                log(f"[SUCCESS] Saved {saved_rows} rows for {target.game_id} via {relay_result.source_name}")
+                log(
+                    f"[SUCCESS] Saved events={save_counts.saved_event_rows} "
+                    f"pbp={save_counts.saved_pbp_rows} for {target.game_id} via {relay_result.source_name}"
+                )
 
-            if saved_rows:
+            if save_counts.saved_rows:
                 run_result.saved_games += 1
-                run_result.saved_rows += saved_rows
+                run_result.saved_rows += save_counts.saved_rows
             run_result.report_rows.append(
                 {
                     "game_id": target.game_id,
                     "bucket_id": bucket_id,
                     "source_name": relay_result.source_name,
                     "status": "dry_run" if dry_run else ("partial_relay" if filtered_rows else "saved"),
-                    "saved_rows": saved_rows,
+                    "saved_rows": save_counts.saved_rows,
+                    "saved_event_rows": save_counts.saved_event_rows,
+                    "saved_pbp_rows": save_counts.saved_pbp_rows,
+                    "skipped_event_rows_reason": save_counts.skipped_event_rows_reason,
                     "has_event_state": relay_result.has_event_state,
                     "has_raw_pbp": relay_result.has_raw_pbp or bool(relay_result.raw_pbp_rows),
                     "notes": _join_notes(relay_result.notes, *filter_notes),
@@ -373,6 +428,9 @@ def write_relay_recovery_report(
         "source_name",
         "status",
         "saved_rows",
+        "saved_event_rows",
+        "saved_pbp_rows",
+        "skipped_event_rows_reason",
         "has_event_state",
         "has_raw_pbp",
         "notes",
@@ -479,7 +537,9 @@ def _validate_relay_result(
 def _sanitize_relay_result(
     relay_result: NormalizedRelayResult,
 ) -> tuple[NormalizedRelayResult, list[str], int]:
-    valid_events = [event for event in relay_result.events or [] if event_has_minimum_state(event)]
+    candidate_events = [dict(event) for event in relay_result.events or []]
+    apply_wpa_transitions(candidate_events, only_missing=True)
+    valid_events = [event for event in candidate_events if event_has_minimum_state(event)]
     valid_pbp_rows = [
         row for row in (_normalize_valid_pbp_row(row) for row in relay_result.raw_pbp_rows or []) if row is not None
     ]
@@ -500,6 +560,9 @@ def _sanitize_relay_result(
         has_event_state=bool(valid_events),
         has_raw_pbp=bool(valid_pbp_rows),
         notes=relay_result.notes,
+        parser_version=relay_result.parser_version,
+        source_schema_version=relay_result.source_schema_version,
+        payload_hash=relay_result.payload_hash,
     )
     return sanitized, notes, filtered_events + filtered_pbp
 
@@ -523,6 +586,32 @@ def _classify_relay_failure(notes: str | None) -> str:
     if "relay_api_error" in value or "api" in value or "timeout" in value:
         return "relay_api_failed"
     return "relay_empty"
+
+
+def _should_mark_source_unavailable(
+    bucket_id: str,
+    attempts: list[dict[str, Any]],
+    relay_result: NormalizedRelayResult,
+) -> bool:
+    """Return true when a historical miss should be recorded as explainably unavailable."""
+    if not bucket_id.endswith("_legacy"):
+        return False
+    try:
+        year = int(bucket_id.split("_", 1)[0])
+    except (TypeError, ValueError):
+        year = 0
+    if year >= 2010:
+        return False
+
+    failure_text = " ".join(
+        [
+            str(relay_result.notes or ""),
+            *[str(attempt.get("status") or "") for attempt in attempts],
+            *[str(attempt.get("notes") or "") for attempt in attempts],
+        ]
+    ).lower()
+    transient_tokens = ("timeout", "exception", "api", "http_5", "rate", "blocked")
+    return not any(token in failure_text for token in transient_tokens)
 
 
 def _join_notes(*notes: str | None) -> str | None:
@@ -554,16 +643,38 @@ def _save_or_count_rows(
     *,
     dry_run: bool,
     allow_derived_pbp: bool,
-) -> int:
+) -> RelaySaveCounts:
+    event_rows = len(relay_result.events or [])
+    pbp_rows = len(relay_result.raw_pbp_rows or [])
+    skipped_event_rows_reason = None
+    if not event_rows and relay_result.raw_pbp_rows:
+        skipped_event_rows_reason = "no_valid_event_state"
     if dry_run:
-        return len(relay_result.events) if relay_result.events else len(relay_result.raw_pbp_rows)
-    return save_relay_data(
+        saved_rows = event_rows if event_rows else pbp_rows
+        return RelaySaveCounts(
+            saved_rows=saved_rows,
+            saved_event_rows=event_rows,
+            saved_pbp_rows=pbp_rows,
+            skipped_event_rows_reason=skipped_event_rows_reason,
+        )
+    saved_rows = save_relay_data(
         game_id,
         relay_result.events,
         raw_pbp_rows=relay_result.raw_pbp_rows,
         source_name=relay_result.source_name,
         notes=relay_result.notes,
         allow_derived_pbp=allow_derived_pbp,
+        parser_version=relay_result.parser_version,
+        source_schema_version=relay_result.source_schema_version,
+        payload_hash=relay_result.payload_hash,
+    )
+    if not saved_rows:
+        return RelaySaveCounts(saved_rows=0, skipped_event_rows_reason=skipped_event_rows_reason)
+    return RelaySaveCounts(
+        saved_rows=saved_rows,
+        saved_event_rows=event_rows,
+        saved_pbp_rows=pbp_rows,
+        skipped_event_rows_reason=skipped_event_rows_reason,
     )
 
 

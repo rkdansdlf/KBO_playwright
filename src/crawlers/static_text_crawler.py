@@ -11,6 +11,7 @@ from typing import Any
 from bs4 import BeautifulSoup
 from pypdf import PdfReader
 
+from src.db.engine import SessionLocal
 from src.utils.playwright_pool import AsyncPlaywrightPool
 from src.utils.safe_print import safe_print as print
 
@@ -23,6 +24,7 @@ class StaticTextCrawler:
 
     def __init__(self, pool: AsyncPlaywrightPool | None = None):
         self.pool = pool
+        self._raw_pages: list[dict] = []
 
     def parse_local_pdf(self, pdf_path: str) -> list[dict[str, Any]]:
         """
@@ -59,7 +61,7 @@ class StaticTextCrawler:
 
         return chunks
 
-    async def crawl_namuwiki(self, url: str) -> dict[str, Any]:
+    async def crawl_namuwiki(self, url: str, save: bool = False) -> dict[str, Any]:
         """
         Crawls a Namuwiki page using Playwright to bypass Cloudflare protection
         and extracts cleaned main content with BeautifulSoup.
@@ -88,8 +90,20 @@ class StaticTextCrawler:
         if not html_content:
             raise ValueError(f"Failed to fetch content from Namuwiki url: {url}")
 
+        self._raw_pages.append({
+            "source_key": "namuwiki_kbo",
+            "url": url,
+            "html": html_content,
+            "status_code": 200,
+        })
+
+        if save:
+            from src.repositories.source_registry_repository import save_raw_snapshots
+            with SessionLocal() as session:
+                save_raw_snapshots(session, self._raw_pages)
+
         # Parse and clean with BeautifulSoup
-        soup = BeautifulSoup(html_content, "lxml")
+        soup = BeautifulSoup(html_content, "html.parser")
 
         # Remove noisy tags: scripts, styles, ads, nav panels, sidebars
         for tag in ["script", "style", "noscript", "iframe", "header", "footer"]:

@@ -67,6 +67,15 @@ async def collect_profiles(limit: int = 100, target_ids: list[str] | None = None
                         entry_year=data.get("debut_year"),
                         salary_original=data.get("salary_original"),
                         signing_bonus_original=data.get("signing_bonus_original"),
+                        salary_amount=data.get("salary_amount"),
+                        salary_currency=data.get("salary_currency"),
+                        signing_bonus_amount=data.get("signing_bonus_amount"),
+                        signing_bonus_currency=data.get("signing_bonus_currency"),
+                        draft_year=data.get("draft_year"),
+                        draft_round=data.get("draft_round"),
+                        draft_pick_overall=data.get("draft_pick_overall"),
+                        draft_type=data.get("draft_type"),
+                        education_or_career_path=data.get("education_path") or [],
                     )
 
                     # The repo.upsert_player_profile expects a PlayerProfileParsed object

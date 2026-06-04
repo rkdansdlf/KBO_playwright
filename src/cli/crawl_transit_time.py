@@ -1,0 +1,64 @@
+"""
+CLI for measuring transit times from transit hubs to Jamsil Stadium.
+
+Usage:
+    python -m src.cli.crawl_transit_time --save
+    python -m src.cli.crawl_transit_time --game-date 20260603 --save
+    python -m src.cli.crawl_transit_time --origin 잠실역_2호선_7번출구
+"""
+from __future__ import annotations
+
+import argparse
+import asyncio
+from datetime import datetime
+from typing import Sequence
+
+from src.crawlers.transit_time_crawler import JAMSIL_ORIGINS, TransitTimeCrawler
+
+
+async def run(args: argparse.Namespace) -> None:
+    game_date = None
+    if args.game_date:
+        game_date = datetime.strptime(args.game_date, "%Y%m%d").date()
+
+    origins = JAMSIL_ORIGINS
+    if args.origin:
+        origins = [o for o in JAMSIL_ORIGINS if o["label"] == args.origin]
+        if not origins:
+            print(f"Unknown origin: {args.origin}")
+            print("Available:", [o["label"] for o in JAMSIL_ORIGINS])
+            return
+
+    crawler = TransitTimeCrawler(origins=origins)
+    await crawler.run(game_date=game_date, save=args.save)
+
+
+def build_arg_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        description="Measure transit times from nearby stations to Jamsil Stadium"
+    )
+    parser.add_argument("--save", action="store_true", help="Save results to database")
+    parser.add_argument(
+        "--game-date",
+        type=str,
+        default=None,
+        metavar="YYYYMMDD",
+        help="Game date (default: today)",
+    )
+    parser.add_argument(
+        "--origin",
+        type=str,
+        default=None,
+        help="Specific origin label to measure (default: all configured origins)",
+    )
+    return parser
+
+
+def main(argv: Sequence[str] | None = None) -> None:
+    parser = build_arg_parser()
+    args = parser.parse_args(argv)
+    asyncio.run(run(args))
+
+
+if __name__ == "__main__":  # pragma: no cover
+    main()

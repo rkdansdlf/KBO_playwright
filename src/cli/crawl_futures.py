@@ -20,7 +20,7 @@ from src.crawlers.futures.futures_batting import fetch_and_parse_futures_batting
 from src.crawlers.futures.futures_pitching import fetch_and_parse_futures_pitching
 from src.crawlers.player_list_crawler import PlayerListCrawler
 from src.db.engine import SessionLocal
-from src.models.player import PlayerBasic
+from src.models.player import PlayerBasic, PlayerSeasonPitching
 from src.parsers.player_profile_parser import PlayerProfileParsed
 from src.repositories.player_repository import PlayerRepository
 from src.repositories.player_season_pitching_repository import save_pitching_stats_to_db
@@ -256,6 +256,43 @@ async def crawl_futures(args: argparse.Namespace) -> dict:
         player_positions = {pid: player_positions[pid] for pid in limited_pids}
         print(f"Limited to {len(player_positions)} players\n")
 
+    if getattr(args, "changed_since", None):
+        cutoff = args.changed_since
+        if isinstance(cutoff, str):
+            try:
+                cutoff = datetime.fromisoformat(cutoff.replace("Z", "+00:00"))
+                if cutoff.tzinfo is not None:
+                    cutoff = cutoff.replace(tzinfo=None)
+            except ValueError:
+                print(f"[WARN] Invalid --changed-since format: {cutoff}, ignoring filter")
+                cutoff = None
+
+        if cutoff is not None:
+            int_pids = [int(pid) for pid in player_positions if pid.isdigit()]
+            recent_pids = set()
+            with SessionLocal() as session:
+                for row in session.query(PlayerSeasonBatting.player_id, PlayerSeasonBatting.updated_at).filter(
+                    PlayerSeasonBatting.league == "FUTURES",
+                    PlayerSeasonBatting.player_id.in_(int_pids),
+                ).all():
+                    if row.updated_at and row.updated_at >= cutoff:
+                        recent_pids.add(row.player_id)
+                for row in session.query(PlayerSeasonPitching.player_id, PlayerSeasonPitching.updated_at).filter(
+                    PlayerSeasonPitching.league == "FUTURES",
+                    PlayerSeasonPitching.player_id.in_(int_pids),
+                ).all():
+                    if row.updated_at and row.updated_at >= cutoff:
+                        recent_pids.add(row.player_id)
+
+            skipped = sum(1 for pid in player_positions if int(pid) in recent_pids)
+            if skipped:
+                player_positions = {
+                    pid: meta for pid, meta in player_positions.items()
+                    if int(pid) not in recent_pids
+                }
+                print(f"[INFO] --changed-since filter: skipped {skipped} recently updated players")
+            print(f"Processing {len(player_positions)} remaining players\n")
+
     summary = {
         "ok": False,
         "season": args.season,
@@ -384,6 +421,13 @@ def build_arg_parser() -> argparse.ArgumentParser:
         "--json-summary",
         action="store_true",
         help="Print a machine-readable summary after the run",
+    )
+    parser.add_argument(
+        "--changed-since",
+        type=str,
+        default=None,
+        help="ISO datetime string (e.g. '2026-06-03' or '2026-06-03T10:00:00'). "
+             "Skips players whose FUTURES records were updated at or after this timestamp.",
     )
     return parser
 

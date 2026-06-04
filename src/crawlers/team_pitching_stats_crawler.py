@@ -92,28 +92,38 @@ class TeamPitchingStatsCrawler:
 
     def crawl(self, season: int, *, persist: bool = True, headless: bool = True) -> list[dict[str, Any]]:
         mapping = get_team_mapping_for_year(season)
-        stats = self._collect_from_site(season, mapping, headless=headless)
+        stats = []
+        try:
+            stats = self._collect_from_site(season, mapping, headless=headless)
+        except Exception as crawl_err:
+            print(f"[WARN] KBO 팀 투구 크롤링 실패: {crawl_err}. 폴백을 시도합니다...")
 
         if not stats:
             print(f"⚠️ KBO 팀 투구 페이지 오류. DB에서 폴백 집계를 시작합니다 (시즌: {season})...")
-            with SessionLocal() as session:
-                stats = TeamStatAggregator.aggregate_team_pitching(session, season, self.league, source="FALLBACK_AUTO")
-                # 팀명 보충
-                reverse_mapping = {v: k for k, v in mapping.items()}
-                for s in stats:
-                    s["team_name"] = reverse_mapping.get(s["team_id"], s["team_id"])
+            try:
+                with SessionLocal() as session:
+                    aggregator = TeamStatAggregator(session)
+                    stats = aggregator.aggregate_pitching(season, dry_run=not persist)
 
-                # 순위 데이터도 함께 재계산 (통합 폴백 로직)
-                print(f"⚠️ 팀 순위 데이터도 함께 재계산합니다 (시즌: {season})...")
-                try:
-                    from src.cli.calculate_standings import StandingsCalculator
+                    # 팀명 보충
+                    reverse_mapping = {v: k for k, v in mapping.items()}
+                    for s in stats:
+                        s["team_name"] = reverse_mapping.get(s["team_id"], s["team_id"])
 
-                    calc = StandingsCalculator(session)
-                    calc.calculate_year(season)
-                except Exception:
-                    logger.exception("[ERROR] 순위 연산 폴백 중 오류 발생")
+                    # 순위 데이터도 함께 재계산 (통합 폴백 로직)
+                    print(f"⚠️ 팀 순위 데이터도 함께 재계산합니다 (시즌: {season})...")
+                    try:
+                        from src.cli.calculate_standings import StandingsCalculator
 
-        if persist and stats:
+                        calc = StandingsCalculator(session)
+                        calc.calculate_year(season)
+                    except Exception:
+                        logger.exception("[ERROR] 순위 연산 폴백 중 오류 발생")
+            except Exception as fallback_error:
+                print(f"[ERROR] 팀 투구 집계 폴백 실패: {fallback_error}")
+                raise
+
+        elif persist:
             self.repo.upsert_many(stats)
         return stats
 

@@ -100,7 +100,35 @@ class TeamFieldingAggregator:
         }
 
     def run_all(self, season: int, team_codes: list[str]) -> None:
-        for code in team_codes:
+        from src.models.player import PlayerSeasonFielding, PlayerSeasonBaserunning
+        from src.models.team import Team
+
+        # Filter to teams that have actual player data for this season
+        fielding_teams = {
+            r[0] for r in self.session.query(PlayerSeasonFielding.team_id)
+            .filter(PlayerSeasonFielding.year == season)
+            .distinct()
+            .all()
+        }
+        baserunning_teams = {
+            r[0] for r in self.session.query(PlayerSeasonBaserunning.team_id)
+            .filter(PlayerSeasonBaserunning.year == season)
+            .distinct()
+            .all()
+        }
+        active_in_db = fielding_teams | baserunning_teams
+
+        # Filter to only KBO franchise teams (exclude All-Star, foreign teams without franchise_id)
+        kbo_teams = {
+            t.team_id for t in self.session.query(Team.team_id)
+            .filter(Team.franchise_id.isnot(None))
+            .all()
+        }
+
+        valid_teams = [code for code in team_codes if code in active_in_db and code in kbo_teams]
+        print(f"[TeamFieldingAggregator] Season {season} filtering: original={len(team_codes)} teams -> valid={len(valid_teams)} teams ({', '.join(valid_teams)})")
+
+        for code in valid_teams:
             fdata = self.aggregate_fielding(season, code)
             existing = (
                 self.session.query(TeamSeasonFielding)
@@ -152,7 +180,8 @@ if __name__ == "__main__":
     try:
         from src.models.team import Team
 
-        teams = [t.team_id for t in session.query(Team.team_id).filter(Team.is_active).all()]
+        # Select all teams regardless of active status, run_all will filter based on historical presence
+        teams = [t.team_id for t in session.query(Team.team_id).all()]
         if args.team:
             teams = [t for t in args.team if t in teams]
 

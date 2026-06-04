@@ -109,6 +109,22 @@ def test_sync_from_oci_job_runs_hydration_for_current_year(monkeypatch):
     assert calls == [2026]
 
 
+def test_live_refresh_uses_bounded_default_shard(monkeypatch):
+    calls = []
+
+    async def _fake_live_cycle(**kwargs):
+        calls.append(kwargs)
+        return {}
+
+    monkeypatch.delenv("LIVE_REFRESH_MAX_GAMES_PER_CYCLE", raising=False)
+    monkeypatch.setattr(scheduler, "_should_skip_live_for_pregame", lambda: False)
+    monkeypatch.setattr(scheduler, "run_live_crawler_cycle", _fake_live_cycle)
+
+    scheduler.crawl_live_refresh()
+
+    assert calls == [{"max_active_games": 1}]
+
+
 def test_generate_daily_report_job_forces_morning_summary_notify(monkeypatch):
     calls = []
     monkeypatch.setattr(scheduler, "_previous_day_kst", lambda: "20260513")
@@ -156,6 +172,7 @@ def test_main_registers_morning_jobs_with_expected_cron(monkeypatch):
     scheduler.main(["--no-startup-run"])
 
     ids_to_trigger = {kwargs["id"]: trigger.kwargs for _, trigger, kwargs in scheduled if "id" in kwargs}
+    ids_to_kwargs = {kwargs["id"]: kwargs for _, _, kwargs in scheduled if "id" in kwargs}
 
     assert ids_to_trigger["sync_from_oci"] == {"hour": 5, "minute": 0}
     assert ids_to_trigger["generate_quality_report"] == {"hour": 5, "minute": 15}
@@ -164,3 +181,5 @@ def test_main_registers_morning_jobs_with_expected_cron(monkeypatch):
     assert ids_to_trigger["crawl_pregame_refresh"] == {"hour": "10-23", "minute": "*/15"}
     assert ids_to_trigger["crawl_live_refresh_day"] == {"hour": "12-22", "minute": "*/2"}
     assert ids_to_trigger["crawl_live_refresh_night"] == {"hour": 23, "minute": "0-30/2"}
+    assert ids_to_kwargs["crawl_live_refresh_day"]["max_instances"] == 1
+    assert ids_to_kwargs["crawl_live_refresh_night"]["max_instances"] == 1

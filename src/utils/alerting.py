@@ -3,23 +3,41 @@ import os
 import urllib.request
 from typing import Any
 
+GAP_EMOJI_MAP: dict[str, str] = {
+    "FRESHNESS": "\u2757",
+    "P0": "\u26a1",
+    "STALENESS": "\u23f3",
+    "RELAY": "\U0001f4be",
+    "PROFILE": "\U0001f464",
+    "ID_RESOLUTION": "\U0001f50d",
+}
+
+GAP_CATEGORY_ENV_MAP: dict[str, str] = {
+    "FRESHNESS": "TELEGRAM_CHAT_ID_FRESHNESS",
+    "P0": "TELEGRAM_CHAT_ID_P0",
+    "STALENESS": "TELEGRAM_CHAT_ID_STALENESS",
+    "RELAY": "TELEGRAM_CHAT_ID_RELAY",
+    "PROFILE": "TELEGRAM_CHAT_ID_PROFILE",
+    "ID_RESOLUTION": "TELEGRAM_CHAT_ID_ID_RESOLUTION",
+}
+
 
 class TelegramBotClient:
     """Sends notifications via Telegram Bot API."""
 
     @staticmethod
-    def send_message(message: str) -> bool:
+    def send_message(message: str, chat_id: str | None = None) -> bool:
         """
         Sends an alert message to a Telegram chat.
-        Requires TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID.
+        Uses TELEGRAM_CHAT_ID by default, or the provided chat_id override.
+        Requires TELEGRAM_BOT_TOKEN.
         """
         token = os.getenv("TELEGRAM_BOT_TOKEN")
-        chat_id = os.getenv("TELEGRAM_CHAT_ID")
+        chat_id = chat_id or os.getenv("TELEGRAM_CHAT_ID")
 
         if not token or not chat_id:
             return False
 
-        # Prepare payload
         payload = {"chat_id": chat_id, "text": message, "parse_mode": "HTML"}
 
         url = f"https://api.telegram.org/bot{token}/sendMessage"
@@ -61,6 +79,38 @@ class SlackWebhookClient:
         data = json.dumps(payload).encode("utf-8")
         req = urllib.request.Request(webhook_url, data=data, headers={"Content-Type": "application/json"})
 
+        try:
+            with urllib.request.urlopen(req, timeout=5) as response:
+                return response.status in (200, 204)
+        except Exception as e:
+            print(f"[ALERT-ERROR] Failed to send Slack webhook: {e}")
+            return False
+
+    @staticmethod
+    def send_gap_alert(gap_type: str, summary: str, details: list[str] | None = None) -> bool:
+        """Send a gap-type-aware alert with optional per-category Telegram chat routing."""
+        emoji = GAP_EMOJI_MAP.get(gap_type, "\u26a0\ufe0f")
+        header = f"<b>{emoji} KBO {gap_type} Gap</b>\n{summary}"
+        body = ""
+        if details:
+            body = "\n".join(f"\u2022 {d}" for d in details[:15])
+            if len(details) > 15:
+                body += f"\n... and {len(details) - 15} more"
+        message = header + ("\n\n" + body if body else "")
+
+        chat_env = GAP_CATEGORY_ENV_MAP.get(gap_type)
+        chat_id = os.getenv(chat_env) if chat_env else None
+
+        if TelegramBotClient.send_message(message, chat_id=chat_id):
+            return True
+
+        webhook_url = os.getenv("SLACK_WEBHOOK_URL")
+        if not webhook_url:
+            return True
+        slack_msg = f"*{emoji} KBO {gap_type} Gap*\n{summary}"
+        payload = {"text": slack_msg}
+        data = json.dumps(payload).encode("utf-8")
+        req = urllib.request.Request(webhook_url, data=data, headers={"Content-Type": "application/json"})
         try:
             with urllib.request.urlopen(req, timeout=5) as response:
                 return response.status in (200, 204)

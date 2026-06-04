@@ -3,11 +3,14 @@ Sync validated data from SQLite to OCI (Oracle Cloud Infrastructure) PostgreSQL
 Dual-repository pattern: SQLite (dev/validation) → OCI (production)
 """
 
+import logging
+import time
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any
+from typing import Any, Callable
 
 from sqlalchemy import bindparam, create_engine, text
+from sqlalchemy.exc import DBAPIError, OperationalError
 from sqlalchemy.orm import Session, sessionmaker
 
 from src.models.game import (
@@ -19,6 +22,7 @@ from src.models.game import (
     GamePitchingStat,
     GamePlayByPlay,
     GameSummary,
+    GameValidationMetrics,
 )
 
 # 현재 사용 가능한 모델들만 import
@@ -45,9 +49,11 @@ GAME_SIGNATURE_CHILD_TABLES = (
     "game_events",
     "game_summary",
     "game_play_by_play",
+    "game_validation_metrics",
 )
 
 NON_DETAIL_TERMINAL_STATUSES = {GAME_STATUS_CANCELLED, GAME_STATUS_POSTPONED}
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -443,10 +449,12 @@ class OCISyncBase:
             connect_args={
                 "connect_timeout": 60,
                 "application_name": "KBO_Crawler_Sync",
-                "keepalives": 1,  # enable TCP keepalives
-                "keepalives_idle": 60,  # send keepalive after 60s idle
-                "keepalives_interval": 10,  # retry keepalive every 10s
-                "keepalives_count": 5,  # drop connection after 5 failed keepalives
+                "keepalives": 1,
+                "keepalives_idle": 60,
+                "keepalives_interval": 10,
+                "keepalives_count": 5,
+                "options": "-c statement_timeout=120000",
+                "tcp_user_timeout": 60000,
             },
         )
 
@@ -557,7 +565,121 @@ class OCISyncBase:
         import csv
         import io
         import random
+        import time
 
+        max_attempts = 3
+        last_exception: Exception | None = None
+
+        for attempt in range(1, max_attempts + 1):
+            try:
+                return self._do_bulk_copy_upsert(
+                    table_name,
+                    records,
+                    unique_cols,
+                    update_timestamp,
+                    csv,
+                    io,
+                    random,
+                )
+            except Exception as e:
+                last_exception = e
+                if attempt < max_attempts:
+                    wait = 1 * (3 ** (attempt - 1))
+                    print(f"   [RETRY] {table_name}: {e} (attempt {attempt}/{max_attempts}, retry in {wait}s)")
+                    time.sleep(wait)
+                    self._reconnect_oci()
+
+        print(f"❌ Batch COPY Error on {table_name} after {max_attempts} attempts: {last_exception}")
+        raise last_exception  # type: ignore[misc]
+
+    def _reconnect_oci(self) -> None:
+        """Close and recreate the OCI connection pool."""
+        try:
+            self.target_session.close()
+            self.oci_engine.dispose()
+        except Exception:
+            pass
+        target_session_factory = sessionmaker(bind=self.oci_engine)
+        self.target_session = target_session_factory()
+
+    @staticmethod
+    def _is_transient_oci_error(exc: Exception) -> bool:
+        """Return True for DB errors that are reasonable to retry after reconnecting."""
+        if isinstance(exc, OperationalError):
+            return True
+        if isinstance(exc, DBAPIError) and getattr(exc, "connection_invalidated", False):
+            return True
+
+        message = str(exc).lower()
+        transient_markers = (
+            "could not receive data from server",
+            "server closed the connection",
+            "connection not open",
+            "connection already closed",
+            "operation timed out",
+            "ssl syscall",
+            "terminating connection",
+            "connection reset",
+        )
+        return any(marker in message for marker in transient_markers)
+
+    def _rollback_target_session(self, *, label: str) -> None:
+        try:
+            self.target_session.rollback()
+        except Exception as rollback_exc:
+            logger.warning("OCI rollback failed label=%s error=%s", label, rollback_exc)
+
+    def _run_target_session_with_retries(
+        self,
+        operation: Callable[[], Any],
+        *,
+        label: str,
+        max_retries: int = 2,
+        base_delay_seconds: float = 1.0,
+    ) -> Any:
+        """Run an OCI session operation with bounded retry for transient connection loss."""
+        max_attempts = max_retries + 1
+
+        for attempt in range(1, max_attempts + 1):
+            try:
+                return operation()
+            except Exception as exc:
+                transient = self._is_transient_oci_error(exc)
+                self._rollback_target_session(label=label)
+
+                if not transient or attempt >= max_attempts:
+                    logger.error(
+                        "OCI session operation failed label=%s attempt=%d/%d transient=%s error=%s",
+                        label,
+                        attempt,
+                        max_attempts,
+                        transient,
+                        exc,
+                    )
+                    raise
+
+                wait_seconds = base_delay_seconds * (2 ** (attempt - 1))
+                logger.warning(
+                    "OCI transient failure label=%s attempt=%d/%d retry_in=%.1fs error=%s",
+                    label,
+                    attempt,
+                    max_attempts,
+                    wait_seconds,
+                    exc,
+                )
+                self._reconnect_oci()
+                time.sleep(wait_seconds)
+
+    def _do_bulk_copy_upsert(
+        self,
+        table_name: str,
+        records: list[dict[str, Any]],
+        unique_cols: list[str],
+        update_timestamp: bool,
+        csv: Any,
+        io: Any,
+        random: Any,
+    ):
         connection = self.oci_engine.raw_connection()
         cursor = connection.cursor()
 
@@ -602,7 +724,6 @@ class OCISyncBase:
 
         except Exception as e:
             connection.rollback()
-            print(f"❌ Batch COPY Error on {table_name}: {e}")
             raise e
         finally:
             cursor.close()

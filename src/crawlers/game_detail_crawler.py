@@ -1131,8 +1131,17 @@ class GameDetailCrawler:
 
         name = row[0]
         if name:
-            # Python-side fallback cleanup for result labels
             name = name.replace("승", "").replace("패", "").replace("무", "").replace("세", "").strip()
+
+        # Validate row structure against headers: last 3 should be R/H/E
+        if headers and len(headers) >= 4 and len(headers) == len(row):
+            _last3 = [h.upper() for h in headers[-3:]]
+            if not _last3[0] in ("R", "RUN", "득점", "R/H/E"):
+                logger.debug("Unexpected scoreboard header before R: %s", headers[-3])
+            if not _last3[1] in ("H", "HIT", "안타"):
+                logger.debug("Unexpected scoreboard header before H: %s", headers[-2])
+            if not _last3[2] in ("E", "ERR", "실책", "E/H"):
+                logger.debug("Unexpected scoreboard header before E: %s", headers[-1])
 
         line = row[1:-3] if len(row) > 4 else []
         totals = row[-3:] if len(row) >= 3 else []
@@ -1170,36 +1179,45 @@ class GameDetailCrawler:
         if not text:
             return None
         text = text.strip()
+        result = None
         if "승" in text:
-            return "W"
-        if "패" in text:
-            return "L"
-        if "세" in text:
-            return "S"
-        if "홀드" in text or "H" in text:
-            return "H"
-        return None
+            result = "W"
+        elif "패" in text:
+            result = "L"
+        elif "세" in text:
+            result = "S"
+        elif "홀드" in text or "H" in text:
+            result = "H"
+        if result not in ("W", "L", "S", "H"):
+            return None
+        return result
 
     def _parse_innings_to_outs(self, text: str | None) -> int | None:
         if not text:
             return None
         cleaned = text.strip()
         if cleaned in ("", "-", "0"):
-            return self._safe_int(cleaned) or 0
+            return 0
 
-        cleaned = cleaned.replace("⅓", ".1").replace("⅔", ".2").replace("⅔", ".2")
-        match = re.match(r"^(\d+)(?:\s*(\d)/3)?$", cleaned)
+        # Normalize unicode fractions → standard "X/3" notation
+        cleaned = cleaned.replace("⅓", " 1/3").replace("⅔", " 2/3").strip()
+
+        # Pattern: optional whole number + optional fraction "N/3"
+        # Handles: "5 1/3", "5⅓" (now "5 1/3"), "5", "1/3", "⅓"
+        match = re.match(r"^(?:(\d+)\s*)?(?:(\d+)/3)?$", cleaned)
         if match:
-            whole = int(match.group(1))
+            whole = int(match.group(1)) if match.group(1) else 0
             frac = int(match.group(2)) if match.group(2) else 0
             return whole * 3 + frac
 
+        # Legacy decimal notation: "5.1" = 5⅓, "0.2" = ⅔
         if "." in cleaned:
             try:
-                whole, frac = cleaned.split(".", 1)
-                outs = int(whole) * 3 + int(frac[:1])
-                return outs
-            except ValueError:
+                parts = cleaned.split(".", 1)
+                whole = int(parts[0].strip()) if parts[0].strip() else 0
+                frac = int(parts[1].strip()[:1])
+                return whole * 3 + frac
+            except (ValueError, IndexError):
                 pass
 
         try:

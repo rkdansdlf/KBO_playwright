@@ -338,3 +338,111 @@ def test_crawl_and_save_game_details_filters_incomplete_payload_by_default(monke
     assert result.detail_failed == 1
     assert item.detail_status == "filtered"
     assert item.failure_reason == "incomplete_detail"
+
+
+class TestBuildGameIdRange:
+    def test_with_month_returns_correct_range(self):
+        start, end = service.build_game_id_range(2025, 5)
+        assert start == "20250501"
+        assert end == "20250601"
+
+    def test_december_wraps_to_next_year(self):
+        start, end = service.build_game_id_range(2025, 12)
+        assert start == "20251201"
+        assert end == "20260101"
+
+    def test_without_month_returns_full_year(self):
+        start, end = service.build_game_id_range(2025, None)
+        assert start == "20250101"
+        assert end == "20260101"
+
+
+class TestNormalizeGameTargets:
+    def test_from_dicts(self):
+        targets = service.normalize_game_targets(
+            [
+                {"game_id": "20250401LGSS0", "game_date": "20250401"},
+                {"game_id": "20250402LGSS0", "game_date": "20250402"},
+            ]
+        )
+        assert len(targets) == 2
+        assert targets[0].game_id == "20250401LGSS0"
+        assert targets[0].game_date == "20250401"
+
+    def test_deduplicates_by_game_id(self):
+        targets = service.normalize_game_targets(
+            [
+                {"game_id": "20250401LGSS0", "game_date": "20250401"},
+                {"game_id": "20250401LGSS0", "game_date": "20250401"},
+            ]
+        )
+        assert len(targets) == 1
+
+    def test_skips_empty_game_id(self):
+        targets = service.normalize_game_targets(
+            [
+                {"game_id": "", "game_date": "20250401"},
+                {"game_id": None, "game_date": "20250401"},
+            ]
+        )
+        assert len(targets) == 0
+
+    def test_from_objects_with_attributes(self):
+        class FakeGame:
+            game_id = "20250401LGSS0"
+            game_date = "20250401"
+
+        targets = service.normalize_game_targets([FakeGame()])
+        assert len(targets) == 1
+        assert targets[0].game_id == "20250401LGSS0"
+
+
+class TestFormatGameDate:
+    def test_from_datetime(self):
+        from datetime import datetime
+
+        result = service._format_game_date(datetime(2025, 4, 1), fallback_game_id="20250401LGSS0")
+        assert result == "20250401"
+
+    def test_from_date(self):
+        result = service._format_game_date(date(2025, 4, 1), fallback_game_id="20250401LGSS0")
+        assert result == "20250401"
+
+    def test_from_dashed_string(self):
+        result = service._format_game_date("2025-04-01", fallback_game_id="20250401LGSS0")
+        assert result == "20250401"
+
+    def test_fallback_to_game_id_prefix(self):
+        result = service._format_game_date("", fallback_game_id="20250401LGSS0")
+        assert result == "20250401"
+
+
+class TestHasRequiredDetailRows:
+    def test_full_box_returns_true(self):
+        payload = {
+            "hitters": {"away": [{"player_name": "A"}], "home": [{"player_name": "B"}]},
+            "pitchers": {"away": [{"player_name": "C"}], "home": [{"player_name": "D"}]},
+        }
+        assert service._has_required_detail_rows(payload) is True
+
+    def test_partial_with_teams_and_score_returns_true(self):
+        payload = {
+            "teams": {"away": {"code": "LG"}, "home": {"code": "SS"}},
+            "metadata": {"stadium": "잠실"},
+            "hitters": {},
+            "pitchers": {},
+        }
+        assert service._has_required_detail_rows(payload) is True
+
+    def test_no_teams_returns_false(self):
+        payload = {"hitters": {}, "pitchers": {}, "metadata": {"stadium": "잠실"}}
+        assert service._has_required_detail_rows(payload) is False
+
+    def test_no_score_and_no_metadata_returns_false(self):
+        payload = {
+            "teams": {"away": {"code": "LG"}, "home": {"code": "SS"}},
+        }
+        assert service._has_required_detail_rows(payload) is False
+
+    def test_empty_payload_returns_false(self):
+        assert service._has_required_detail_rows({}) is False
