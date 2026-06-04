@@ -69,6 +69,7 @@ def _check_table_health(session) -> list[dict[str, Any]]:
                 }
             )
         except Exception as e:
+            logger.warning("Health check table %s query failed: %s", table, e)
             rows.append({"table": table, "rows": "ERR", "latest": str(e)[:40]})
     return rows
 
