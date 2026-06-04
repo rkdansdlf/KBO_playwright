@@ -6,9 +6,6 @@ from __future__ import annotations
 
 import logging
 
-from sqlalchemy import text
-from sqlalchemy.dialects.postgresql import insert as pg_insert
-
 logger = logging.getLogger(__name__)
 
 from src.models.base import Base
@@ -225,21 +222,9 @@ class PlayerSyncMixin:
         )
 
     def sync_crawl_runs(self) -> int:
-        """Sync crawl runs from SQLite to OCI"""
-        from src.cli.sync_oci import clone_row
-
-        runs = self.sqlite_session.query(CrawlRun).all()
-        if not runs:
-            return 0
-
-        synced = 0
-        for run in runs:
-            clone = clone_row(run, CrawlRun)
-            self.target_session.merge(clone)
-            synced += 1
-            if synced % 100 == 0:
-                self.target_session.commit()
-
-        self.target_session.commit()
-        print(f"✅ Synced {synced} crawl run records to OCI")
-        return synced
+        return self._sync_simple_table(
+            CrawlRun,
+            conflict_keys=["label", "started_at"],
+            exclude_cols=["created_at", "updated_at", "id"],
+            update_timestamp=True,
+        )
