@@ -12,7 +12,13 @@ APScheduler를 사용하여 정규시즌과 퓨처스리그 데이터 수집을 
 - **목적:** 매일 진행되는 정규시즌 경기의 상세 데이터를 수집하고, 시즌 통계를 롤업합니다.
 - **실행 빈도:** **높음 (매일)**
 - **권장 시간:** 매일 새벽 3시 (모든 경기가 종료된 후)
-- **표준 엔트리포인트:** `src.cli.run_daily_update`를 사용합니다. 이 작업은 월간 스케줄 upsert, 당일 상세 재확정, 릴레이 복구(`scripts/fetch_kbo_pbp.py`), 리뷰/WPA 생성, 파생 테이블 재계산을 순서대로 수행합니다.
+- **표준 엔트리포인트:** `src.cli.run_daily_update`를 사용합니다. 이 작업은 월간 스케줄 upsert, 당일 상세 재확정, 릴레이 복구(`scripts/fetch_kbo_pbp.py`), 리뷰/WPA 생성, P0 비경기 데이터(구단 이벤트/티켓), 파생 테이블 재계산을 순서대로 수행합니다.
+
+### 2.1.1. P0 비경기 크롤링 (`crawl_p0_non_game`)
+- **목적:** 구단 이벤트/뉴스, 당일 roster transaction, 티켓 가격/오픈 규칙을 freshness monitor 전에 갱신합니다.
+- **실행 빈도:** **매일**
+- **권장 시간:** 매일 06:20 KST (07:00 freshness monitor 이전)
+- **표준 엔트리포인트:** `src.cli.crawl_p0_data --type all --save --days 3 --season <current_year>`를 사용합니다. 경기 readiness 자체는 `src.services.p0_readiness.build_p0_readiness`가 계속 담당하고, 비경기 데이터는 `src.cli.monitor_data_freshness`의 DataSource/table freshness에서 점검합니다.
 
 ### 2.2. 퓨처스리그 프로필 크롤링 (`crawl_futures_profile`)
 - **목적:** 전체 선수 프로필을 순회하며 퓨처스리그 누적 기록을 동기화합니다.

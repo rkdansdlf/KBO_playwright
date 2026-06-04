@@ -10,17 +10,18 @@ Jobs:
   6. batch_parse_snapshots: Daily at 04:45 KST (parse pending raw snapshots)
   7. sync_from_oci: Daily at 05:00 KST (OCI hydration)
   8. generate_quality_report: Daily at 05:15 KST
- 8. crawl_phase1_extra: Daily at 06:00 KST (broadcast, MVP, injury, etc.)
- 9. crawl_pregame_refresh: Every 15m, 10:00-23:45 KST
-10. crawl_live_refresh: Every 2m, 12:00-23:30 KST
-11. crawl_futures_profile: Weekly Sunday at 05:00 KST
-12. compute_park_factor: Weekly Sunday at 05:30 KST
- 13. crawl_retired_players: Monthly 1st at 02:00 KST (crawl_retire)
- 14. crawl_p1p2_data: Daily at 06:30 KST (seat + parking + food crawlers)
- 15. monitor_data_freshness: Daily at 07:00 KST (stale source + table completeness)
- 16. crawl_transit_time: Every 15m, 10:00-00:00 KST on game days (LIVE_LOCK)
- 17. crawl_congestion: Every 5m, 10:00-00:00 KST on game days (LIVE_LOCK)
- 18. crawl_operation_notices: Daily at 09:00 KST (DAILY_LOCK)
+ 9. crawl_phase1_extra: Daily at 06:00 KST (broadcast, MVP, injury, etc.)
+10. crawl_p0_non_game: Daily at 06:20 KST (events + roster transactions + tickets)
+11. crawl_p1p2_data: Daily at 06:30 KST (seat + parking + food crawlers)
+12. monitor_data_freshness: Daily at 07:00 KST (stale source + table completeness)
+13. crawl_pregame_refresh: Every 15m, 10:00-23:45 KST
+14. crawl_live_refresh: Every 2m, 12:00-23:30 KST
+15. crawl_futures_profile: Weekly Sunday at 05:00 KST
+16. compute_park_factor: Weekly Sunday at 05:30 KST
+17. crawl_retired_players: Monthly 1st at 02:00 KST (crawl_retire)
+18. crawl_transit_time: Every 15m, 10:00-00:00 KST on game days (LIVE_LOCK)
+19. crawl_congestion: Every 5m, 10:00-00:00 KST on game days (LIVE_LOCK)
+20. crawl_operation_notices: Daily at 09:00 KST (DAILY_LOCK)
 """
 
 from __future__ import annotations
@@ -1171,20 +1172,22 @@ def crawl_fan_culture_job():
             logger.exception("Fan culture job failed")
 
 
-def crawl_team_events_job():
+def crawl_p0_non_game_job():
     """
-    Team events/news job: crawl official team news from all 10 KBO teams.
-    Runs daily at 06:30 KST alongside P1/P2 data crawlers. Uses MAINTENANCE_LOCK.
+    P0 non-game job: crawl team events, roster transactions, and ticket info.
+    Runs daily before the freshness monitor. Uses MAINTENANCE_LOCK.
     """
     with MAINTENANCE_LOCK:
-        logger.info("[TeamEvents] Starting team events crawl")
+        logger.info("[P0NonGame] Starting P0 non-game crawl")
         try:
-            from src.cli.crawl_team_events import main as team_events_main
+            from src.cli.crawl_p0_data import main as crawl_p0_data_main
 
-            team_events_main(["--days", "3", "--save"])
-            logger.info("[TeamEvents] Team events crawl completed")
+            current_year = datetime.now(KST).year
+            result = crawl_p0_data_main(["--type", "all", "--save", "--days", "3", "--season", str(current_year)])
+            logger.info("[P0NonGame] P0 non-game crawl completed: %s", result)
+            alert_success("crawl_p0_non_game_job", str(result))
         except Exception:
-            logger.exception("Team events job failed")
+            logger.exception("P0 non-game crawl failed")
 
 
 def job_error_listener(event):
@@ -1556,16 +1559,16 @@ def main(argv: Sequence[str] | None = None):
     )
     logger.info("Registered job: crawl_fan_culture (Weekly Saturday 04:00 KST)")
 
-    # Job M2: Team events/news — Daily 06:30 KST
+    # Job M2: P0 non-game data — Daily 06:20 KST
     scheduler.add_job(
-        crawl_team_events_job,
-        trigger=CronTrigger(hour=6, minute=30),
-        id="crawl_team_events",
-        name="Team Events/News Crawl (All 10 KBO Teams)",
+        crawl_p0_non_game_job,
+        trigger=CronTrigger(hour=6, minute=20),
+        id="crawl_p0_non_game",
+        name="P0 Non-Game Data Crawl (Events/Roster/Tickets)",
         misfire_grace_time=3600,
         max_instances=1,
     )
-    logger.info("Registered job: crawl_team_events (Daily 06:30 KST)")
+    logger.info("Registered job: crawl_p0_non_game (Daily 06:20 KST)")
 
     # Optional one-time startup backfill for missed days
     startup_run = os.getenv("STARTUP_RUN", "1") == "1" and not args.no_startup_run
@@ -1618,7 +1621,7 @@ def main(argv: Sequence[str] | None = None):
     print(" 20. Operation Notices (Official): Daily 09:00 + 11:30 KST")
     print(" 21. Operation Notices (Naver): Daily 09:30 + 13:00 KST")
     print(" 22. Fan Culture (Cheer Songs/Chants): Weekly Saturday 04:00 KST")
-    print(" 23. Team Events/News: Daily 06:30 KST")
+    print(" 23. P0 Non-Game Data: Daily 06:20 KST")
     print("=" * 60 + "\n")
 
     logger.info("Scheduler started successfully")

@@ -33,24 +33,6 @@ from src.utils.game_status import COMPLETED_LIKE_GAME_STATUSES
 logger = logging.getLogger(__name__)
 
 
-def _game_ids_for_season(session, season: int) -> list[str]:
-    return [
-        row[0] for row in
-        session.query(Game.game_id)
-        .filter(
-            Game.season_id.in_(
-                session.execute(
-                    "SELECT season_id FROM kbo_seasons WHERE season_year = :year AND league_type_code = 0",
-                    {"year": season},
-                ).scalars().all()
-            ) if session.bind.dialect.name == "sqlite" else True,
-            Game.game_status.in_(tuple(COMPLETED_LIKE_GAME_STATUSES)),
-        )
-        .order_by(Game.game_id.asc())
-        .all()
-    ]
-
-
 def _game_ids_for_date(session, target_date: str) -> list[str]:
     target = date_type.strptime(target_date, "%Y%m%d")
     return [

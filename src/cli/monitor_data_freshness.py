@@ -25,9 +25,9 @@ STALE_THRESHOLD_HOURS = {
 }
 
 DOMAIN_TABLE_CHECKS = {
-    "event": ("team_event", "last_seen_at"),
-    "roster": ("roster_transaction", "transaction_date"),
-    "ticket": ("ticket_price", "season"),
+    "event": ("team_events", "last_seen_at"),
+    "roster": ("roster_transactions", "transaction_date"),
+    "ticket": ("ticket_prices", "season"),
     "seat": ("stadium_seat_sections", "updated_at"),
     "parking": ("parking_lots", "updated_at"),
     "food": ("stadium_food_vendors", "last_verified_at"),

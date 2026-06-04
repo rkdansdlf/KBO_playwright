@@ -26,14 +26,14 @@ def analyze_events() -> list[dict[str, Any]]:
             text("""
                 SELECT team_id, event_type, COUNT(*) AS cnt,
                        MAX(published_at) AS last_event
-                FROM team_event
+                FROM team_events
                 GROUP BY team_id, event_type
                 ORDER BY team_id, cnt DESC
             """)
         ).fetchall()
-        total = session.execute(text("SELECT COUNT(*) FROM team_event")).scalar()
+        total = session.execute(text("SELECT COUNT(*) FROM team_events")).scalar()
         recent = session.execute(
-            text("SELECT COUNT(*) FROM team_event WHERE published_at >= :cutoff"),
+            text("SELECT COUNT(*) FROM team_events WHERE published_at >= :cutoff"),
             {"cutoff": datetime.utcnow() - timedelta(days=30)},
         ).scalar()
     return [
@@ -44,23 +44,23 @@ def analyze_events() -> list[dict[str, Any]]:
 
 def analyze_roster() -> list[dict[str, Any]]:
     with SessionLocal() as session:
-        total = session.execute(text("SELECT COUNT(*) FROM roster_transaction")).scalar()
+        total = session.execute(text("SELECT COUNT(*) FROM roster_transactions")).scalar()
         by_action = session.execute(
             text("""
                 SELECT action, COUNT(*) AS cnt
-                FROM roster_transaction GROUP BY action
+                FROM roster_transactions GROUP BY action
             """)
         ).fetchall()
         by_team = session.execute(
             text("""
                 SELECT team_id, COUNT(*) AS cnt,
                        MAX(transaction_date) AS last_txn
-                FROM roster_transaction
+                FROM roster_transactions
                 GROUP BY team_id ORDER BY team_id
             """)
         ).fetchall()
         recent = session.execute(
-            text("SELECT COUNT(*) FROM roster_transaction WHERE transaction_date >= :cutoff"),
+            text("SELECT COUNT(*) FROM roster_transactions WHERE transaction_date >= :cutoff"),
             {"cutoff": (datetime.utcnow() - timedelta(days=30)).date()},
         ).scalar()
     result = [{"section": "Roster", "total": _int(total), "recent_30d": _int(recent)}]
@@ -73,17 +73,17 @@ def analyze_roster() -> list[dict[str, Any]]:
 
 def analyze_tickets() -> list[dict[str, Any]]:
     with SessionLocal() as session:
-        total = session.execute(text("SELECT COUNT(*) FROM ticket_price")).scalar()
+        total = session.execute(text("SELECT COUNT(*) FROM ticket_prices")).scalar()
         by_team = session.execute(
             text("""
                 SELECT team_id, COUNT(*) AS cnt,
                        MIN(price) AS min_price, MAX(price) AS max_price,
                        season
-                FROM ticket_price
+                FROM ticket_prices
                 GROUP BY team_id, season ORDER BY team_id
             """)
         ).fetchall()
-        rules = session.execute(text("SELECT COUNT(*) FROM ticket_open_rule")).scalar()
+        rules = session.execute(text("SELECT COUNT(*) FROM ticket_open_rules")).scalar()
     result = [{"section": "Ticket", "total": _int(total), "open_rules": _int(rules)}]
     for r in by_team:
         result.append(

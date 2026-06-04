@@ -29,6 +29,8 @@ from src.crawlers.player_movement_crawler import PlayerMovementCrawler
 from src.crawlers.player_pitching_all_series_crawler import crawl_pitcher_series
 from src.crawlers.roster_transaction_crawler import RosterTransactionCrawler
 from src.crawlers.schedule_crawler import ScheduleCrawler
+from src.crawlers.team_event_crawler import TeamEventCrawler
+from src.crawlers.ticket_crawler import TicketCrawler
 from src.db.engine import SessionLocal
 from src.models.game import Game, GameEvent, GamePlayByPlay
 from src.repositories.game_repository import (
@@ -134,6 +136,8 @@ def _build_stability_summary(
     oci_skip_game_ids: Mapping[str, list[str]],
     non_p0_quality_gate_counts: Mapping[str, int],
     non_p0_quality_gate_ids: Mapping[str, list[str]],
+    p0_non_game_counts: Mapping[str, int],
+    p0_non_game_errors: Mapping[str, str],
     summary_path: Path,
 ) -> dict[str, Any]:
     detail_retry_candidates = sorted(
@@ -170,6 +174,10 @@ def _build_stability_summary(
             "non_p0_failure_ids": {
                 reason: sorted(set(ids)) for reason, ids in sorted(non_p0_quality_gate_ids.items())
             },
+        },
+        "p0_non_game": {
+            "counts": dict(sorted(p0_non_game_counts.items())),
+            "errors": dict(sorted(p0_non_game_errors.items())),
         },
         "retry_candidates": {
             "detail": detail_retry_candidates,
@@ -296,6 +304,7 @@ async def run_update(
     fix: bool = False,
     skip_season_stats: bool = False,
     skip_oci_supporting_sync: bool = False,
+    run_p0_non_game: bool = True,
 ):
     """Main orchestration logic for postgame finalize and daily reconciliation."""
     runner = step_runner or _run_python_step
@@ -317,6 +326,8 @@ async def run_update(
     oci_skip_game_ids: dict[str, list[str]] = {}
     non_p0_quality_gate_counts: dict[str, int] = {}
     non_p0_quality_gate_ids: dict[str, list[str]] = {}
+    p0_non_game_counts: dict[str, int] = {}
+    p0_non_game_errors: dict[str, str] = {}
     status_refresh_game_ids: list[str] = []
     write_contract = GameWriteContract(run_label=f"daily_update:{target_date}", log=print)
 
@@ -658,6 +669,8 @@ async def run_update(
     except Exception:
         logger.exception("   ⚠️ Statistical audit/fix found issues (see logs)")
 
+    r_target_date = datetime.strptime(target_date, "%Y%m%d").strftime("%Y-%m-%d")
+
     print("\n🔄 Step 7: Updating player movements and daily rosters...")
     try:
         m_crawler = PlayerMovementCrawler()
@@ -667,7 +680,6 @@ async def run_update(
             m_count = m_repo.save_player_movements(movements)
             print(f"   ✅ Saved {m_count} player movements for {year}")
 
-        r_target_date = datetime.strptime(target_date, "%Y%m%d").strftime("%Y-%m-%d")
         r_crawler = DailyRosterCrawler()
         rosters = await r_crawler.crawl_date_range(r_target_date, r_target_date)
         if rosters:
@@ -678,9 +690,34 @@ async def run_update(
 
         rt_crawler = RosterTransactionCrawler()
         roster_transactions = await rt_crawler.run(save=True, target_date=r_target_date)
+        p0_non_game_counts["roster_transactions"] = len(roster_transactions)
         print(f"   ✅ Roster transactions checked for {r_target_date}: {len(roster_transactions)} rows")
     except Exception:
         logger.exception("   ❌ Error updating player movements/rosters")
+        p0_non_game_errors["roster_transactions"] = "roster_pipeline_failed"
+
+    print("\n🎟️ Step 7.5: Updating P0 non-game events and tickets...")
+    if run_p0_non_game:
+        try:
+            event_crawler = TeamEventCrawler(days_back=3)
+            team_events = await event_crawler.run(save=True)
+            p0_non_game_counts["team_events"] = len(team_events)
+            print(f"   ✅ Team events checked: {len(team_events)} rows")
+        except Exception as exc:
+            logger.exception("   ⚠️ Team event crawler failed")
+            p0_non_game_errors["team_events"] = str(exc) or exc.__class__.__name__
+
+        try:
+            ticket_crawler = TicketCrawler()
+            ticket_prices = await ticket_crawler.run(save=True, season=year)
+            p0_non_game_counts["ticket_prices"] = len(ticket_prices)
+            print(f"   ✅ Ticket prices checked for {year}: {len(ticket_prices)} rows")
+        except Exception as exc:
+            logger.exception("   ⚠️ Ticket crawler failed")
+            p0_non_game_errors["ticket_prices"] = str(exc) or exc.__class__.__name__
+    else:
+        print("   ⏭️ P0 non-game event/ticket crawlers skipped by operator flag")
+        p0_non_game_counts["skipped"] = 1
 
     derived_refresh: list[str] = []
 
@@ -872,6 +909,8 @@ async def run_update(
         oci_skip_game_ids=oci_skip_game_ids,
         non_p0_quality_gate_counts=non_p0_quality_gate_counts,
         non_p0_quality_gate_ids=non_p0_quality_gate_ids,
+        p0_non_game_counts=p0_non_game_counts,
+        p0_non_game_errors=p0_non_game_errors,
         summary_path=summary_path,
     )
     try:
@@ -922,6 +961,10 @@ async def run_update(
             "game_events",
             "game_summary",
             "game_play_by_play",
+            "team_events",
+            "ticket_prices",
+            "ticket_open_rules",
+            "roster_transactions",
         ],
         derived_refresh=derived_refresh,
         stability=stability_summary,
@@ -940,7 +983,8 @@ async def run_update(
         f"detail_failures={_format_counts(detail_failure_counts)} "
         f"relay_targets={len(relay_recovery_target_ids)} "
         f"oci_skips={_format_counts(oci_skip_counts)} "
-        f"non_p0_quality_gates={_format_counts(non_p0_quality_gate_counts)}"
+        f"non_p0_quality_gates={_format_counts(non_p0_quality_gate_counts)} "
+        f"p0_non_game={_format_counts(p0_non_game_counts)}"
     )
     print(f"🎯 P0 readiness: {format_p0_readiness_summary(p0_readiness)}")
 
@@ -1124,6 +1168,11 @@ def build_arg_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Skip year-level non-P0 OCI supporting dataset sync after targeted game publish.",
     )
+    parser.add_argument(
+        "--skip-p0-non-game",
+        action="store_true",
+        help="Skip P0 non-game event/ticket crawlers for scoped historical backfills.",
+    )
     return parser
 
 
@@ -1152,6 +1201,7 @@ def main(argv: Sequence[str] | None = None):
             fix=args.fix or os.getenv("DAILY_AUTO_REMEDIATION", "0") == "1",
             skip_season_stats=args.skip_season_stats,
             skip_oci_supporting_sync=args.skip_oci_supporting_sync,
+            run_p0_non_game=not args.skip_p0_non_game,
         )
     )
 
