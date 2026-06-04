@@ -1,0 +1,186 @@
+"""
+CLI tool to recalculate player-game-level stats from game-level (transactional) data.
+Aggregates GameBattingStat -> PlayerGameBatting
+Aggregates GamePitchingStat -> PlayerGamePitching
+
+Usage:
+  python -m src.cli.recalc_player_game_stats --game-id 20250401LGSS0 --save
+  python -m src.cli.recalc_player_game_stats --date 20250401 --save
+  python -m src.cli.recalc_player_game_stats --season 2025 --save
+  python -m src.cli.recalc_player_game_stats --season 2025 --dry-run
+"""
+
+from __future__ import annotations
+
+import argparse
+import logging
+import sys
+from datetime import date as date_type
+from typing import Sequence
+
+from sqlalchemy import func
+
+from src.db.engine import SessionLocal
+from src.models.game import Game
+from src.repositories.player_game_stats import (
+    aggregate_game_batting,
+    aggregate_game_pitching,
+    upsert_player_game_batting,
+    upsert_player_game_pitching,
+)
+from src.utils.game_status import COMPLETED_LIKE_GAME_STATUSES
+
+logger = logging.getLogger(__name__)
+
+
+def _game_ids_for_season(session, season: int) -> list[str]:
+    return [
+        row[0] for row in
+        session.query(Game.game_id)
+        .filter(
+            Game.season_id.in_(
+                session.execute(
+                    "SELECT season_id FROM kbo_seasons WHERE season_year = :year AND league_type_code = 0",
+                    {"year": season},
+                ).scalars().all()
+            ) if session.bind.dialect.name == "sqlite" else True,
+            Game.game_status.in_(tuple(COMPLETED_LIKE_GAME_STATUSES)),
+        )
+        .order_by(Game.game_id.asc())
+        .all()
+    ]
+
+
+def _game_ids_for_date(session, target_date: str) -> list[str]:
+    target = date_type.strptime(target_date, "%Y%m%d")
+    return [
+        row[0] for row in
+        session.query(Game.game_id)
+        .filter(
+            Game.game_date == target,
+            Game.game_status.in_(tuple(COMPLETED_LIKE_GAME_STATUSES)),
+        )
+        .order_by(Game.game_id.asc())
+        .all()
+    ]
+
+
+def _print_batting_records(records):
+    for r in sorted(records, key=lambda x: x.get("plate_appearances", 0), reverse=True)[:20]:
+        print(
+            f"  PID={r['player_id']:<6} {r.get('player_name', ''):<8} "
+            f"PA={r.get('plate_appearances', 0):<3} H={r.get('hits', 0):<2} "
+            f"AVG={r.get('avg', 0):<5} OPS={r.get('ops', 0):<5}"
+        )
+
+
+def _print_pitching_records(records):
+    for r in sorted(records, key=lambda x: x.get("innings_outs", 0), reverse=True)[:20]:
+        ip = r.get("innings_outs", 0) / 3.0
+        print(
+            f"  PID={r['player_id']:<6} {r.get('player_name', ''):<8} "
+            f"IP={ip:<5.1f} ERA={r.get('era', 0):<5} WHIP={r.get('whip', 0):<5}"
+        )
+
+
+def recalc_for_game(session, game_id: str, dry_run: bool = False) -> dict[str, int]:
+    batting = aggregate_game_batting(session, game_id)
+    pitching = aggregate_game_pitching(session, game_id)
+
+    if dry_run:
+        if batting:
+            logger.info(f"[DRY-RUN] {game_id} batting ({len(batting)} players):")
+            _print_batting_records(batting)
+        if pitching:
+            logger.info(f"[DRY-RUN] {game_id} pitching ({len(pitching)} players):")
+            _print_pitching_records(pitching)
+        return {"batting": len(batting), "pitching": len(pitching)}
+
+    b_saved = upsert_player_game_batting(session, batting)
+    p_saved = upsert_player_game_pitching(session, pitching)
+    return {"batting": b_saved, "pitching": p_saved}
+
+
+def run_recalc(
+    game_id: str | None = None,
+    date: str | None = None,
+    season: int | None = None,
+    dry_run: bool = False,
+) -> int:
+    with SessionLocal() as session:
+        game_ids: list[str] = []
+
+        if game_id:
+            game_ids.append(game_id)
+
+        if date:
+            game_ids.extend(_game_ids_for_date(session, date))
+
+        if season:
+            season_ids = session.execute(
+                "SELECT season_id FROM kbo_seasons WHERE season_year = :year AND league_type_code = 0",
+                {"year": season},
+            ).scalars().all()
+            rows = (
+                session.query(Game.game_id)
+                .filter(
+                    Game.season_id.in_(season_ids),
+                    Game.game_status.in_(tuple(COMPLETED_LIKE_GAME_STATUSES)),
+                )
+                .order_by(Game.game_id.asc())
+                .all()
+            )
+            game_ids.extend(row[0] for row in rows)
+
+        game_ids = list(dict.fromkeys(game_ids))
+
+        if not game_ids:
+            logger.warning("No completed games matched.")
+            return 0
+
+        totals = {"batting": 0, "pitching": 0}
+        for gid in game_ids:
+            result = recalc_for_game(session, gid, dry_run=dry_run)
+            totals["batting"] += result["batting"]
+            totals["pitching"] += result["pitching"]
+            if not dry_run:
+                logger.info(f"{gid}: batting={result['batting']}, pitching={result['pitching']}")
+
+        if dry_run:
+            logger.info(f"[DRY-RUN] Total: {len(game_ids)} games, batting={totals['batting']}, pitching={totals['pitching']}")
+        else:
+            logger.info(f"Done: {len(game_ids)} games, upserted batting={totals['batting']}, pitching={totals['pitching']}")
+
+    return 0
+
+
+def main(argv: Sequence[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(
+        description="Recalculate player-game-level stats from game-level data."
+    )
+    parser.add_argument("--game-id", help="Single game ID to recalc")
+    parser.add_argument("--date", help="Game date (YYYYMMDD) to recalc all completed games")
+    parser.add_argument("--season", type=int, help="Season year to recalc all completed games")
+    parser.add_argument("--dry-run", action="store_true", help="Print results without saving")
+    parser.add_argument("--save", action="store_true", help="Persist results (default if not --dry-run)")
+    args = parser.parse_args(argv)
+
+    if not args.game_id and not args.date and not args.season:
+        parser.error("provide --game-id, --date, or --season")
+
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s [%(levelname)s] %(message)s",
+    )
+
+    dry_run = args.dry_run or not args.save
+    return run_recalc(
+        game_id=args.game_id,
+        date=args.date,
+        season=args.season,
+        dry_run=dry_run,
+    )
+
+
+if __name__ == "__main__":
+    sys.exit(main())
