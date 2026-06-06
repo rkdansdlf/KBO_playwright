@@ -34,7 +34,6 @@ from src.sync.sync_base import (
     filter_game_ids_by_year,
 )
 
-
 _COMPACT_METADATA_SOURCE_PAYLOAD_KEYS = (
     "pbp_validation_status",
     "pbp_validation_error",
@@ -58,11 +57,7 @@ def _compact_metadata_source_payload_for_limit(payload: object, limit: int | Non
     if not isinstance(payload, dict):
         return str(payload)[:limit]
 
-    compact = {
-        key: payload[key]
-        for key in _COMPACT_METADATA_SOURCE_PAYLOAD_KEYS
-        if payload.get(key) not in (None, "")
-    }
+    compact = {key: payload[key] for key in _COMPACT_METADATA_SOURCE_PAYLOAD_KEYS if payload.get(key) not in (None, "")}
     if not compact:
         compact = {"truncated": True}
 
@@ -96,7 +91,7 @@ class GameSyncMixin:
 
     def _game_metadata_source_payload_limit(self) -> int | None:
         if hasattr(self, "_cached_game_metadata_source_payload_limit"):
-            return getattr(self, "_cached_game_metadata_source_payload_limit")
+            return self._cached_game_metadata_source_payload_limit
 
         limit = None
         if getattr(self, "oci_engine", None):
@@ -145,20 +140,20 @@ class GameSyncMixin:
             "winning_franchise_id",
         ]
 
-        return self._sync_simple_table(
+        return self.sync_simple_table(
             Game, ["game_id"], exclude_cols=exclude_cols, filters=filters, transform_fn=transform, batch_size=batch_size
         )
 
     def sync_player_game_batting(self, limit: int = None) -> int:
         """Sync player game batting stats from SQLite to OCI"""
-        return self._sync_simple_table(
+        return self.sync_simple_table(
             PlayerGameBatting,
             ["game_id", "player_id"],
         )
 
     def sync_player_game_pitching(self, limit: int = None) -> int:
         """Sync player game pitching stats from SQLite to OCI"""
-        return self._sync_simple_table(
+        return self.sync_simple_table(
             PlayerGamePitching,
             ["game_id", "player_id"],
         )
@@ -277,7 +272,7 @@ class GameSyncMixin:
             alias_filters = [GameIdAlias.canonical_game_id.in_(game_ids)] if game_ids else []
 
         if alias_filters != []:
-            results["game_id_aliases"] = self._sync_simple_table(
+            results["game_id_aliases"] = self.sync_simple_table(
                 GameIdAlias,
                 ["alias_game_id"],
                 exclude_cols=["created_at"],
@@ -312,7 +307,7 @@ class GameSyncMixin:
             return child_filters if child_filters else None
 
         # 1. Game Metadata
-        results["metadata"] = self._sync_simple_table(
+        results["metadata"] = self.sync_simple_table(
             GameMetadata,
             ["game_id"],
             exclude_cols=["created_at"],
@@ -322,7 +317,7 @@ class GameSyncMixin:
         )
 
         # 2. Inning Scores
-        results["inning_scores"] = self._sync_simple_table(
+        results["inning_scores"] = self.sync_simple_table(
             GameInningScore,
             ["game_id", "team_side", "inning"],
             exclude_cols=["created_at", "id"],
@@ -331,7 +326,7 @@ class GameSyncMixin:
         )
 
         # 3. Lineups
-        results["lineups"] = self._sync_simple_table(
+        results["lineups"] = self.sync_simple_table(
             GameLineup,
             ["game_id", "team_side", "appearance_seq"],
             exclude_cols=["created_at", "id"],
@@ -340,7 +335,7 @@ class GameSyncMixin:
         )
 
         # 4. Batting Stats
-        results["batting_stats"] = self._sync_simple_table(
+        results["batting_stats"] = self.sync_simple_table(
             GameBattingStat,
             ["game_id", "player_id", "appearance_seq"],
             exclude_cols=["created_at", "id"],
@@ -349,7 +344,7 @@ class GameSyncMixin:
         )
 
         # 5. Pitching Stats
-        results["pitching_stats"] = self._sync_simple_table(
+        results["pitching_stats"] = self.sync_simple_table(
             GamePitchingStat,
             ["game_id", "player_id", "appearance_seq"],
             exclude_cols=["created_at", "id"],
@@ -359,14 +354,14 @@ class GameSyncMixin:
 
         results["play_by_play"] = self._sync_game_play_by_play(filters=get_child_filters(GamePlayByPlay))
 
-        results["events"] = self._sync_simple_table(
+        results["events"] = self.sync_simple_table(
             GameEvent,
             ["game_id", "event_seq"],
             exclude_cols=["created_at", "id"],
             filters=get_child_filters(GameEvent),
             batch_size=batch_size,
         )
-        results["validation_metrics"] = self._sync_simple_table(
+        results["validation_metrics"] = self.sync_simple_table(
             GameValidationMetrics,
             ["game_id"],
             exclude_cols=["created_at", "id"],
@@ -378,7 +373,7 @@ class GameSyncMixin:
         results["summary"] = self._sync_game_summary_rows(filters=get_child_filters(GameSummary), batch_size=batch_size)
 
         # 8. Game Highlights
-        results["highlights"] = self._sync_simple_table(
+        results["highlights"] = self.sync_simple_table(
             GameHighlight,
             ["game_id", "highlight_type", "event_seq"],
             exclude_cols=["id", "created_at"],
@@ -404,10 +399,10 @@ class GameSyncMixin:
         relay_filters = [GamePlayByPlay.game_id.in_(eligibility.relay_game_ids)]
 
         # Sync Game record
-        results["game"] = self._sync_simple_table(
+        results["game"] = self.sync_simple_table(
             Game, ["game_id"], exclude_cols=["created_at", "updated_at"], filters=filters
         )
-        results["game_id_aliases"] = self._sync_simple_table(
+        results["game_id_aliases"] = self.sync_simple_table(
             GameIdAlias,
             ["alias_game_id"],
             exclude_cols=["created_at"],
@@ -449,46 +444,46 @@ class GameSyncMixin:
         self.target_session.commit()
 
         # Sync children
-        results["metadata"] = self._sync_simple_table(
+        results["metadata"] = self.sync_simple_table(
             GameMetadata,
             ["game_id"],
             exclude_cols=["created_at"],
             filters=detail_filters,
             transform_fn=self._transform_game_metadata_for_target,
         )
-        results["inning_scores"] = self._sync_simple_table(
+        results["inning_scores"] = self.sync_simple_table(
             GameInningScore,
             ["game_id", "team_side", "inning"],
             exclude_cols=["created_at"],
             filters=[GameInningScore.game_id.in_(eligibility.detail_game_ids)],
         )
-        results["lineups"] = self._sync_simple_table(
+        results["lineups"] = self.sync_simple_table(
             GameLineup,
             ["game_id", "team_side", "appearance_seq"],
             exclude_cols=["id", "created_at"],
             filters=[GameLineup.game_id.in_(eligibility.detail_game_ids)],
         )
-        results["batting_stats"] = self._sync_simple_table(
+        results["batting_stats"] = self.sync_simple_table(
             GameBattingStat,
             ["game_id", "player_id", "appearance_seq"],
             exclude_cols=["id", "created_at"],
             filters=[GameBattingStat.game_id.in_(eligibility.detail_game_ids)],
         )
-        results["pitching_stats"] = self._sync_simple_table(
+        results["pitching_stats"] = self.sync_simple_table(
             GamePitchingStat,
             ["game_id", "player_id", "appearance_seq"],
             exclude_cols=["id", "created_at"],
             filters=[GamePitchingStat.game_id.in_(eligibility.detail_game_ids)],
         )
         results["play_by_play"] = self._sync_game_play_by_play(filters=relay_filters)
-        results["events"] = self._sync_simple_table(
+        results["events"] = self.sync_simple_table(
             GameEvent,
             ["game_id", "event_seq"],
             exclude_cols=["id", "created_at"],
             filters=[GameEvent.game_id.in_(eligibility.relay_game_ids)],
         )
         if self._target_table_exists(GameValidationMetrics):
-            results["validation_metrics"] = self._sync_simple_table(
+            results["validation_metrics"] = self.sync_simple_table(
                 GameValidationMetrics,
                 ["game_id"],
                 exclude_cols=["id", "created_at"],
@@ -501,7 +496,7 @@ class GameSyncMixin:
             filters=[GameSummary.game_id.in_(eligibility.detail_game_ids)],
             replace_game_ids=eligibility.detail_game_ids,
         )
-        results["highlights"] = self._sync_simple_table(
+        results["highlights"] = self.sync_simple_table(
             GameHighlight,
             ["game_id", "highlight_type", "event_seq"],
             exclude_cols=["id", "created_at"],
@@ -521,13 +516,13 @@ class GameSyncMixin:
             return {}
 
         results: dict[str, int] = {}
-        results["game"] = self._sync_simple_table(
+        results["game"] = self.sync_simple_table(
             Game,
             ["game_id"],
             exclude_cols=["created_at", "updated_at"],
             filters=[Game.game_id == game_id],
         )
-        results["game_id_aliases"] = self._sync_simple_table(
+        results["game_id_aliases"] = self.sync_simple_table(
             GameIdAlias,
             ["alias_game_id"],
             exclude_cols=["created_at"],
@@ -538,14 +533,14 @@ class GameSyncMixin:
         self.target_session.query(GameLineup).filter(GameLineup.game_id == game_id).delete(synchronize_session=False)
         self.target_session.commit()
 
-        results["metadata"] = self._sync_simple_table(
+        results["metadata"] = self.sync_simple_table(
             GameMetadata,
             ["game_id"],
             exclude_cols=["created_at"],
             filters=[GameMetadata.game_id == game_id],
             transform_fn=self._transform_game_metadata_for_target,
         )
-        results["lineups"] = self._sync_simple_table(
+        results["lineups"] = self.sync_simple_table(
             GameLineup,
             ["game_id", "team_side", "appearance_seq"],
             exclude_cols=["id", "created_at"],
@@ -655,8 +650,8 @@ class GameSyncMixin:
             )
         self.target_session.commit()
 
-        # Use _sync_simple_table with empty conflict_keys for blind bulk insert
-        return self._sync_simple_table(
+        # Use sync_simple_table with empty conflict_keys for blind bulk insert
+        return self.sync_simple_table(
             GamePlayByPlay,
             conflict_keys=[],  # Blind insert
             exclude_cols=["id"],
@@ -664,7 +659,7 @@ class GameSyncMixin:
             batch_size=20000,
         )
 
-    def _sync_simple_table(
+    def sync_simple_table(
         self,
         model: type,
         conflict_keys: list[str],

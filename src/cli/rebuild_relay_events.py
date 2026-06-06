@@ -326,7 +326,7 @@ def _sync_changed_events(
                     synchronize_session=False
                 )
                 syncer.target_session.commit()
-            synced = syncer._sync_simple_table(
+            synced = syncer.sync_simple_table(
                 GameEvent,
                 ["game_id", "event_seq"],
                 exclude_cols=["id", "created_at"],

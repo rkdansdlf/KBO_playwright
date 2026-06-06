@@ -9,7 +9,16 @@ from src.utils.alerting import (
     TelegramBotClient,
 )
 
-EXPECTED_GAP_CATEGORIES = {"FRESHNESS", "P0", "STALENESS", "RELAY", "PROFILE", "ID_RESOLUTION", "PA_FORMULA"}
+EXPECTED_GAP_CATEGORIES = {
+    "FRESHNESS",
+    "P0",
+    "STALENESS",
+    "RELAY",
+    "PROFILE",
+    "ID_RESOLUTION",
+    "PA_FORMULA",
+    "TEAM_STATS",
+}
 
 
 def test_gap_emoji_map_has_all_categories():

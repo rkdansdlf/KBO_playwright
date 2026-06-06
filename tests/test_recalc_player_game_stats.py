@@ -11,7 +11,9 @@ from src.repositories.player_game_stats import (
     _compute_batting_rates,
     _compute_pitching_rates,
     aggregate_game_batting,
+    aggregate_game_batting_batch,
     aggregate_game_pitching,
+    aggregate_game_pitching_batch,
     upsert_player_game_batting,
     upsert_player_game_pitching,
 )
@@ -410,6 +412,116 @@ def test_aggregate_batting_multiple_players():
     hits_map = {r["player_id"]: r["hits"] for r in result}
     assert hits_map[1001] == 2
     assert hits_map[1002] == 0
+
+
+def _seed_batting_stat(session, game_id, player_id, name, team_side="away", team_code="LG", **kw):
+    session.add(
+        GameBattingStat(
+            game_id=game_id,
+            team_side=team_side,
+            team_code=team_code,
+            player_id=player_id,
+            player_name=name,
+            batting_order=kw.pop("batting_order", 1),
+            position=kw.pop("position", "CF"),
+            is_starter=kw.pop("is_starter", True),
+            appearance_seq=kw.pop("appearance_seq", 1),
+            plate_appearances=kw.pop("plate_appearances", 4),
+            at_bats=kw.pop("at_bats", 3),
+            hits=kw.pop("hits", 2),
+            **kw,
+        )
+    )
+
+
+def _seed_pitching_stat(session, game_id, player_id, name, team_side="away", team_code="LG", **kw):
+    session.add(
+        GamePitchingStat(
+            game_id=game_id,
+            team_side=team_side,
+            team_code=team_code,
+            player_id=player_id,
+            player_name=name,
+            is_starting=kw.pop("is_starting", True),
+            appearance_seq=kw.pop("appearance_seq", 1),
+            innings_outs=kw.pop("innings_outs", 18),
+            hits_allowed=kw.pop("hits_allowed", 3),
+            earned_runs=kw.pop("earned_runs", 1),
+            strikeouts=kw.pop("strikeouts", 5),
+            walks_allowed=kw.pop("walks_allowed", 1),
+            **kw,
+        )
+    )
+
+
+def test_batch_aggregate_batting_single_game_returns_same_as_single():
+    session = _build_session()
+    _seed_game(session, "20250401LGSS0")
+    session.add(PlayerBasic(player_id=1001, name="타자1"))
+    _seed_batting_stat(session, "20250401LGSS0", 1001, "타자1")
+    session.flush()
+
+    single = aggregate_game_batting(session, "20250401LGSS0")
+    batch = aggregate_game_batting_batch(session, ["20250401LGSS0"])
+    assert len(single) == len(batch)
+    assert single[0]["player_id"] == batch[0]["player_id"]
+    assert single[0]["hits"] == batch[0]["hits"]
+
+
+def test_batch_aggregate_pitching_single_game_returns_same_as_single():
+    session = _build_session()
+    _seed_game(session, "20250401LGSS0")
+    session.add(PlayerBasic(player_id=2001, name="투수1"))
+    _seed_pitching_stat(session, "20250401LGSS0", 2001, "투수1")
+    session.flush()
+
+    single = aggregate_game_pitching(session, "20250401LGSS0")
+    batch = aggregate_game_pitching_batch(session, ["20250401LGSS0"])
+    assert len(single) == len(batch)
+    assert single[0]["player_id"] == batch[0]["player_id"]
+    assert single[0]["era"] == batch[0]["era"]
+
+
+def test_batch_aggregate_batting_multiple_games():
+    session = _build_session()
+    _seed_game(session, "GAME001")
+    _seed_game(session, "GAME002")
+    session.add_all([PlayerBasic(player_id=1001, name="타자1"), PlayerBasic(player_id=1002, name="타자2")])
+    _seed_batting_stat(session, "GAME001", 1001, "타자1", hits=2)
+    _seed_batting_stat(session, "GAME002", 1002, "타자2", hits=3)
+    session.flush()
+
+    batch = aggregate_game_batting_batch(session, ["GAME001", "GAME002"])
+    assert len(batch) == 2
+    for r in batch:
+        assert r["hits"] in (2, 3)
+
+
+def test_batch_aggregate_pitching_multiple_games():
+    session = _build_session()
+    _seed_game(session, "GAME001")
+    _seed_game(session, "GAME002")
+    session.add_all([PlayerBasic(player_id=2001, name="투수1"), PlayerBasic(player_id=2002, name="투수2")])
+    _seed_pitching_stat(session, "GAME001", 2001, "투수1", earned_runs=1)
+    _seed_pitching_stat(session, "GAME002", 2002, "투수2", earned_runs=2)
+    session.flush()
+
+    batch = aggregate_game_pitching_batch(session, ["GAME001", "GAME002"])
+    assert len(batch) == 2
+    for r in batch:
+        assert r["earned_runs"] in (1, 2)
+
+
+def test_batch_aggregate_batting_empty_game_ids():
+    session = _build_session()
+    assert aggregate_game_batting_batch(session, []) == []
+    assert aggregate_game_batting_batch(session, ["NONEXIST"]) == []
+
+
+def test_batch_aggregate_pitching_empty_game_ids():
+    session = _build_session()
+    assert aggregate_game_pitching_batch(session, []) == []
+    assert aggregate_game_pitching_batch(session, ["NONEXIST"]) == []
 
 
 def test_upsert_player_game_batting_overwrite():

@@ -24,7 +24,7 @@ def sync_2002_2009():
         syncer = OCISync(url, session)
 
         print("🚀 Syncing 2002-2009 PlayerSeasonBatting...")
-        syncer._sync_simple_table(
+        syncer.sync_simple_table(
             PlayerSeasonBatting,
             ["player_id", "season", "league", "level"],
             exclude_cols=["created_at", "updated_at"],
@@ -32,7 +32,7 @@ def sync_2002_2009():
         )
 
         print("🚀 Syncing 2002-2009 PlayerSeasonPitching...")
-        syncer._sync_simple_table(
+        syncer.sync_simple_table(
             PlayerSeasonPitching,
             ["player_id", "season", "league", "level"],
             exclude_cols=["created_at", "updated_at"],

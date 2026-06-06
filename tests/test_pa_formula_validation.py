@@ -61,10 +61,21 @@ def _make_session():
                     player_id INTEGER,
                     season INTEGER,
                     league TEXT,
+                    team_code TEXT,
+                    canonical_team_code TEXT,
+                    games INTEGER,
                     plate_appearances INTEGER,
+                    at_bats INTEGER,
                     hits INTEGER,
                     runs INTEGER,
-                    home_runs INTEGER
+                    doubles INTEGER,
+                    triples INTEGER,
+                    home_runs INTEGER,
+                    rbi INTEGER,
+                    stolen_bases INTEGER,
+                    caught_stealing INTEGER,
+                    walks INTEGER,
+                    strikeouts INTEGER
                 )
                 """
             )
@@ -89,10 +100,70 @@ def _make_session():
                     player_id INTEGER,
                     season INTEGER,
                     league TEXT,
+                    team_code TEXT,
+                    canonical_team_code TEXT,
+                    games INTEGER,
                     innings_outs INTEGER,
                     innings_pitched FLOAT,
+                    era FLOAT,
+                    whip FLOAT,
                     extra_stats JSON,
                     wins INTEGER,
+                    losses INTEGER,
+                    saves INTEGER,
+                    holds INTEGER,
+                    runs_allowed INTEGER,
+                    earned_runs INTEGER,
+                    hits_allowed INTEGER,
+                    home_runs_allowed INTEGER,
+                    walks_allowed INTEGER,
+                    strikeouts INTEGER
+                )
+                """
+            )
+        )
+        conn.execute(
+            text(
+                """
+                CREATE TABLE team_season_batting (
+                    team_id TEXT,
+                    season INTEGER,
+                    league TEXT,
+                    games INTEGER,
+                    plate_appearances INTEGER,
+                    at_bats INTEGER,
+                    runs INTEGER,
+                    hits INTEGER,
+                    doubles INTEGER,
+                    triples INTEGER,
+                    home_runs INTEGER,
+                    rbi INTEGER,
+                    stolen_bases INTEGER,
+                    caught_stealing INTEGER,
+                    walks INTEGER,
+                    strikeouts INTEGER
+                )
+                """
+            )
+        )
+        conn.execute(
+            text(
+                """
+                CREATE TABLE team_season_pitching (
+                    team_id TEXT,
+                    season INTEGER,
+                    league TEXT,
+                    games INTEGER,
+                    wins INTEGER,
+                    losses INTEGER,
+                    saves INTEGER,
+                    holds INTEGER,
+                    innings_pitched FLOAT,
+                    runs_allowed INTEGER,
+                    earned_runs INTEGER,
+                    hits_allowed INTEGER,
+                    home_runs_allowed INTEGER,
+                    walks_allowed INTEGER,
                     strikeouts INTEGER
                 )
                 """
@@ -431,8 +502,33 @@ def test_run_quality_gate_includes_pa_formula():
             text(
                 """
                 INSERT INTO player_season_batting
-                    (player_id, season, league, plate_appearances, hits, runs, home_runs)
-                VALUES (10, 2025, 'REGULAR', 5, 1, 0, 0)
+                    (player_id, season, league, team_code, plate_appearances, at_bats, hits, runs, home_runs)
+                VALUES (10, 2025, 'REGULAR', 'SS', 5, 2, 1, 0, 0)
+                """
+            )
+        )
+        session.execute(
+            text(
+                """
+                INSERT INTO team_season_batting (team_id, season, league, games, plate_appearances, at_bats, runs, hits)
+                VALUES ('SS', 2025, 'REGULAR', 1, 5, 2, 0, 1)
+                """
+            )
+        )
+        session.execute(
+            text(
+                """
+                INSERT INTO player_season_pitching
+                    (player_id, season, league, team_code, games)
+                VALUES (10, 2025, 'REGULAR', 'SS', 0)
+                """
+            )
+        )
+        session.execute(
+            text(
+                """
+                INSERT INTO team_season_pitching (team_id, season, league, games, wins)
+                VALUES ('SS', 2025, 'REGULAR', 0, 0)
                 """
             )
         )
@@ -472,8 +568,33 @@ def test_run_quality_gate_fails_on_pa_formula_violation():
             text(
                 """
                 INSERT INTO player_season_batting
-                    (player_id, season, league, plate_appearances, hits, runs, home_runs)
-                VALUES (10, 2025, 'REGULAR', 5, 1, 0, 0)
+                    (player_id, season, league, team_code, plate_appearances, at_bats, hits, runs, home_runs)
+                VALUES (10, 2025, 'REGULAR', 'SS', 5, 4, 1, 0, 0)
+                """
+            )
+        )
+        session.execute(
+            text(
+                """
+                INSERT INTO team_season_batting (team_id, season, league, games, plate_appearances, at_bats, runs, hits)
+                VALUES ('SS', 2025, 'REGULAR', 1, 5, 4, 0, 1)
+                """
+            )
+        )
+        session.execute(
+            text(
+                """
+                INSERT INTO player_season_pitching
+                    (player_id, season, league, team_code, games)
+                VALUES (10, 2025, 'REGULAR', 'SS', 0)
+                """
+            )
+        )
+        session.execute(
+            text(
+                """
+                INSERT INTO team_season_pitching (team_id, season, league, games)
+                VALUES ('SS', 2025, 'REGULAR', 0)
                 """
             )
         )

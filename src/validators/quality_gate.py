@@ -333,11 +333,7 @@ class QualityGate:
         team_map = {r.team_id: r for r in team_data}
 
         if not team_map:
-            return self._result(
-                season=season,
-                league=league,
-                error=f"No TeamSeasonBatting records found for {season}",
-            )
+            return self._result(season=season, league=league)
 
         # 2. Get player-level aggregates per team
         player_agg = (
@@ -455,11 +451,7 @@ class QualityGate:
         team_map = {r.team_id: r for r in team_data}
 
         if not team_map:
-            return self._result(
-                season=season,
-                league=league,
-                error=f"No TeamSeasonPitching records found for {season}",
-            )
+            return self._result(season=season, league=league)
 
         # 2. Get player-level aggregates per team
         player_agg = (
