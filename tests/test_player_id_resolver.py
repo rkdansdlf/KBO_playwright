@@ -55,6 +55,20 @@ def _build_resolver_session():
                 """
             )
         )
+        for table_name in ("game_lineups", "game_batting_stats", "game_pitching_stats"):
+            conn.execute(
+                text(
+                    f"""
+                    CREATE TABLE {table_name} (
+                        game_id TEXT NOT NULL,
+                        team_code TEXT,
+                        player_id INTEGER,
+                        player_name TEXT NOT NULL,
+                        uniform_no TEXT
+                    )
+                    """
+                )
+            )
     return sessionmaker(bind=engine, autoflush=False, autocommit=False)()
 
 
@@ -149,6 +163,91 @@ def test_strict_resolver_does_not_use_global_unique_name_or_register_unknown():
 
         assert resolver.resolve_id("전역선수", "SS", 2026) is None
         assert session.execute(text("SELECT COUNT(*) FROM player_basic WHERE player_id >= 900000")).scalar() == 0
+    finally:
+        session.close()
+
+
+def test_strict_resolver_uses_curated_pregame_lineup_overrides_without_season_stats():
+    session = _build_resolver_session()
+    try:
+        resolver = PlayerIdResolver(
+            session,
+            strict_game_resolution=True,
+            allow_auto_register=False,
+        )
+
+        assert resolver.resolve_id("히우라", "KH", 2026, is_pitcher=False) == 56305
+        assert resolver.resolve_id("히우라", "KH", 2026) == 56305
+        assert resolver.resolve_id("유민", "HH", 2026, is_pitcher=False) == 52765
+        assert resolver.resolve_id("유민", "HH", 2026) == 52765
+    finally:
+        session.close()
+
+
+def test_strict_resolver_uses_unique_same_season_game_fact_evidence():
+    session = _build_resolver_session()
+    try:
+        session.execute(
+            text(
+                """
+                INSERT INTO player_basic (player_id, name, team)
+                VALUES (61234, '신규타자', '키움')
+                """
+            )
+        )
+        session.execute(
+            text(
+                """
+                INSERT INTO game_batting_stats (game_id, team_code, player_id, player_name)
+                VALUES ('20260601WOLT0', 'KH', 61234, '신규타자')
+                """
+            )
+        )
+        session.commit()
+
+        resolver = PlayerIdResolver(
+            session,
+            strict_game_resolution=True,
+            allow_auto_register=False,
+        )
+
+        assert resolver.resolve_id("신규타자", "KH", 2026, is_pitcher=False) == 61234
+    finally:
+        session.close()
+
+
+def test_strict_resolver_keeps_same_season_game_fact_conflicts_ambiguous():
+    session = _build_resolver_session()
+    try:
+        session.execute(
+            text(
+                """
+                INSERT INTO player_basic (player_id, name, team)
+                VALUES
+                    (61234, '충돌타자', '키움'),
+                    (61235, '충돌타자', '키움')
+                """
+            )
+        )
+        session.execute(
+            text(
+                """
+                INSERT INTO game_batting_stats (game_id, team_code, player_id, player_name)
+                VALUES
+                    ('20260601WOLT0', 'KH', 61234, '충돌타자'),
+                    ('20260602WOLT0', 'KH', 61235, '충돌타자')
+                """
+            )
+        )
+        session.commit()
+
+        resolver = PlayerIdResolver(
+            session,
+            strict_game_resolution=True,
+            allow_auto_register=False,
+        )
+
+        assert resolver.resolve_id("충돌타자", "KH", 2026, is_pitcher=False) is None
     finally:
         session.close()
 
