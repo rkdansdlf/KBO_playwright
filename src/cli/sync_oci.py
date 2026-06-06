@@ -241,6 +241,11 @@ def build_arg_parser() -> argparse.ArgumentParser:
         help="선수 시즌 누적 스탯(타자, 투수)을 고속 동기화합니다.",
     )
     parser.add_argument(
+        "--player-game-stats",
+        action="store_true",
+        help="선수-경기 스탯(타자, 투수)을 동기화합니다.",
+    )
+    parser.add_argument(
         "--year",
         type=int,
         help="특정 연도의 데이터를 동기화합니다. (e.g., 2018)",
@@ -495,7 +500,9 @@ def main(argv: Iterable[str] | None = None) -> None:
         "stadium_realtime_all": ("sync_stadium_realtime_all", "🚀 Syncing ALL Stadium Real-Time Tables..."),
     }
 
-    flag = _detect_active_flag(args, list(SYNC_DISPATCH.keys()) + list(SIMPLE_FLAGS.keys()) + ["phase1_all", "stadium_realtime_all"])
+    flag = _detect_active_flag(
+        args, list(SYNC_DISPATCH.keys()) + list(SIMPLE_FLAGS.keys()) + ["phase1_all", "stadium_realtime_all"]
+    )
 
     if flag in SYNC_DISPATCH:
         sync_fn, header_str, parallel_ok, year_getter, completion_msg = SYNC_DISPATCH[flag]

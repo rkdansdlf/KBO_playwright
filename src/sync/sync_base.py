@@ -22,7 +22,6 @@ from src.models.game import (
     GamePitchingStat,
     GamePlayByPlay,
     GameSummary,
-    GameValidationMetrics,
 )
 
 # 현재 사용 가능한 모델들만 import
@@ -522,7 +521,7 @@ class OCISyncBase:
             print("✅ OCI connection successful")
             return True
         except Exception as e:
-            print(f"❌ OCI connection failed: {e}")
+            logger.exception("❌ OCI connection failed: %s", e)
             return False
 
     def _get_season_map(self) -> dict[tuple, int]:
@@ -538,7 +537,8 @@ class OCISyncBase:
             try:
                 rows = self.target_session.execute(text(q)).all()
                 return {(row.season_year, row.league_type_code): row.season_id for row in rows}
-            except Exception:
+            except Exception as e:
+                logger.info("Retrying alternate query: %s", e)
                 continue
 
         print("⚠️ Warning: Could not fetch season map from OCI")
@@ -564,6 +564,21 @@ class OCISyncBase:
         if not records:
             return
 
+        import json
+
+        serialized_records = []
+        for r in records:
+            serialized_r = {}
+            for k, v in r.items():
+                if v is None:
+                    serialized_r[k] = r"\N"
+                elif isinstance(v, (dict, list)):
+                    serialized_r[k] = json.dumps(v, ensure_ascii=False)
+                else:
+                    serialized_r[k] = v
+            serialized_records.append(serialized_r)
+        records = serialized_records
+
         import csv
         import io
         import random
@@ -587,7 +602,14 @@ class OCISyncBase:
                 last_exception = e
                 if attempt < max_attempts:
                     wait = 1 * (3 ** (attempt - 1))
-                    print(f"   [RETRY] {table_name}: {e} (attempt {attempt}/{max_attempts}, retry in {wait}s)")
+                    logger.warning(
+                        "   [RETRY] %s: %s (attempt %d/%d, retry in %ds)",
+                        table_name,
+                        e,
+                        attempt,
+                        max_attempts,
+                        wait,
+                    )
                     time.sleep(wait)
                     self._reconnect_oci()
 
@@ -599,8 +621,8 @@ class OCISyncBase:
         try:
             self.target_session.close()
             self.oci_engine.dispose()
-        except Exception:
-            pass
+        except Exception as e:
+            logger.info("Ignore exception during OCI reconnection cleanup: %s", e)
         target_session_factory = sessionmaker(bind=self.oci_engine)
         self.target_session = target_session_factory()
 
@@ -698,7 +720,7 @@ class OCISyncBase:
 
             columns_str = ", ".join([f'"{k}"' for k in keys])
             cursor.copy_expert(
-                f"COPY {temp_table} ({columns_str}) FROM STDIN WITH (FORMAT CSV, DELIMITER '\t', NULL '')", output
+                f"COPY {temp_table} ({columns_str}) FROM STDIN WITH (FORMAT CSV, DELIMITER '\t', NULL '\\N')", output
             )
 
             update_cols = [k for k in keys if k not in unique_cols and k not in ("created_at", "id")]

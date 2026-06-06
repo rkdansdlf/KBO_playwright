@@ -15,13 +15,11 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: ./.github/actions/python-env
         with:
           python-version: "3.12"
-          cache: pip
-      - name: Install dependencies
-        run: pip install -r requirements.txt ruff pre-commit
+      - name: Install lint dependencies
+        run: pip install ruff pre-commit
       - name: Ruff lint check
         run: ruff check --output-format=github src/ --exit-zero 2>&1
       - name: Ruff format check
@@ -36,15 +34,10 @@ jobs:
       matrix:
         python-version: ["3.11", "3.12"]
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: ./.github/actions/python-env
         with:
           python-version: ${{ matrix.python-version }}
-          cache: pip
-      - name: Install dependencies
-        run: |
-          pip install -r requirements.txt
-          playwright install chromium
+          playwright: "true"
       - name: Initialize test DB
         run: python init_db.py
         env:

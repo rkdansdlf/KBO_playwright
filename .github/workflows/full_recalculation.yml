@@ -46,12 +46,18 @@ jobs:
             --series ${{ github.event.inputs.series }} \
             --save
 
+      - name: Recalc Player-Game Stats
+        run: |
+          python3 -m src.cli.recalc_player_game_stats \
+            --season ${{ github.event.inputs.year }} \
+            --save
+
       - name: Sync to OCI
         if: ${{ github.event.inputs.sync == 'true' }}
         env:
           OCI_DB_URL: ${{ secrets.OCI_DB_URL }}
         run: |
-          python3 -m src.cli.sync_oci --season-stats
+          python3 -m src.cli.sync_oci --season-stats --player-game-stats
 
       - uses: ./.github/actions/notify
         if: always()
