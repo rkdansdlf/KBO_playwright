@@ -89,12 +89,53 @@ python3 /Users/mac/project/KBO_playwright/scripts/maintenance/quality_gate.py
 - 완료 경기 freshness 확인:
   - `python3 -m src.cli.freshness_gate --date YYYYMMDD`
 
+## PlayerGame 데이터 파이프라인
+
+`player_game_batting` / `player_game_pitching`은 경기 단위 스탯(`game_batting_stats`, `game_pitching_stats`)을 선수별로 집계한 파생 테이블입니다.
+
+### 파이프라인 순서
+```bash
+# 1) 재계산: 완료/무승부 경기의 스탯을 선수별로 집계
+python3 -m src.cli.recalc_player_game_stats --date YYYYMMDD --save
+
+# 2) OCI 동기화
+python3 -m src.cli.sync_oci --player-game-stats
+
+# 3) 품질 검증 (CI/CD에서 exit code로 활용)
+python3 -m scripts.verification.verify_player_game_stats --exit-code
+```
+
+### 전체 시즌 재계산
+```bash
+# 특정 시즌
+python3 -m src.cli.recalc_player_game_stats --season 2025 --save
+
+# 특정 경기
+python3 -m src.cli.recalc_player_game_stats --game-id 20250401LGSS0 --save
+
+# 변경 사항 미리보기
+python3 -m src.cli.recalc_player_game_stats --season 2025 --dry-run
+```
+
+### 문제 해결
+| 증상 | 원인 | 조치 |
+|---|---|---|
+| 특정 년도 coverage < 90% | 해당 년도 미처리 | `recalc_player_game_stats --season YYYY --save` 실행 |
+| verify에서 avg > obp 경고 | 희생플라이(SF)로 인한 정상 현상 | 확인 불필요 |
+| DRAW coverage 낮음 | DRAW 경기 수가 적어 통계적으로 낮음 | 대부분 소수(1~12건) 누락, 무시 가능 |
+| DB 연결 오류 | `OCI_DB_URL` 미설정 | `.env` 파일 확인 |
+
+### 데이터 커버리지
+- 2018-2026: COMPLETED 88~100%, DRAW 50~100% (연도별 편차 있음)
+- 2001-2017: 미처리 (source data 존재 시 backfill 가능)
+
 ## GitHub Actions 운영 메모
 - `daily_preview.yml`과 `daily_kbo_sync.yml`은 fresh GitHub runner에서 먼저 `hydrate_runtime_from_oci`를 실행합니다.
 - `run_daily_update --sync`는 freshness gate를 통과한 뒤에만 OCI publish를 수행합니다.
 - `sync_oci --game-details --unsynced-only`는 schedule-only parent `game` 행을 자동으로 제외합니다.
 - OCI만 검증하는 fresh runner의 참조 무결성 게이트는 `quality_gate.py --oci-only --no-write`를 사용합니다.
 - 릴리스 감사용 CSV 스냅샷이 필요한 운영자 실행에서는 `--no-write`를 생략합니다.
+- `daily_kbo_sync.yml` quality job의 PlayerGame verify 단계는 `--exit-code`로 실행되어 품질 게이트 역할을 수행합니다.
 
 ## 아티팩트
 - 상태 근거:

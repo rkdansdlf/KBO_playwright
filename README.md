@@ -26,82 +26,72 @@ Based on thorough research of the KBO official website:
 
 ## Quick Start
 
-### 1. Environment Setup
+### 1. Setup
 
 ```bash
-# 1. Install Python dependencies
+# Automatic setup (venv + deps + playwright + db)
+bash scripts/setup.sh
+
+# Or manual:
+python3 -m venv venv && source venv/bin/activate
 pip install -r requirements.txt
-
-# 2. Install Playwright browser binaries
 playwright install chromium
-
-# 3. Set up environment variables
-cp .env.example .env
-
-# 4. (Optional) Edit .env to configure your database
-# Default is SQLite: DATABASE_URL=sqlite:///./data/kbo_dev.db
+cp env.example .env
+# Edit .env as needed, then:
+python3 -c "from src.db.engine import init_db; init_db()"
 ```
 
-### 2. Initialize Database
-
-Create the database schema from the defined models.
+### 2. Run the Scheduler
 
 ```bash
-python3 -m src.db.engine
+source venv/bin/activate
+python3 -m scripts.scheduler
 ```
 
-### 3. Run a Test Crawl
-
-Execute the initial data collection script to test the full pipeline.
+### 3. Test a Single Command
 
 ```bash
-# This script runs the main crawling steps in order
-python3 init_data_collection.py
+python3 -m src.cli.crawl_schedule --year 2025 --month 10
 ```
 
-This will:
-- Crawl player lists, profiles, and game schedules.
-- Save the results to the configured database.
+> **자세한 명령어와 워크플로우는 [`AGENTS.md`](AGENTS.md) 참조.**
 
 ## Development
 
 ### Running Individual Crawlers
 
-You can run specific parts of the crawling pipeline using the CLI scripts.
+모든 CLI 명령어는 [`AGENTS.md`](AGENTS.md)에 정리되어 있습니다. 주요 명령어:
 
 ```bash
 # Operational daily entrypoint (recommended)
 python3 -m src.cli.run_daily_update --date 20251015
 
-# Completed-game relay/PBP recovery (recommended for historical/finalized games)
+# Completed-game relay/PBP recovery
 python3 scripts/fetch_kbo_pbp.py --date 20251015
 
-# Manual monthly detail collection; existing detail/relay rows are skipped unless --force is used
+# Manual monthly detail collection
 python3 -m src.cli.collect_games --year 2025 --month 10
 
 # Crawl and persist monthly schedule
 python3 -m src.cli.crawl_schedule --year 2025 --months 10
 
-# Crawl Futures League stats
+# Futures League stats
 python3 -m src.cli.crawl_futures
 
-# Crawl retired player data
+# Retired player data
 python3 -m src.cli.crawl_retire --years 2023
 ```
 
 ### Database Operations
 
 ```bash
-# Check database connection
-python3 -m src.cli.db_healthcheck
+# Check database health
+python3 -m src.cli.health_check
 
-# Seed tables (teams + seasons). CSV rows with schema headers are skipped
-# automatically; if the CSV lacks data, a built-in 22-team fallback list
-# is merged so team FKs stay valid without manual SQL.
-python3 seed_data.py
+# Seed tables (teams, seasons, data sources)
+python3 scripts/maintenance/seed_data.py
 
 # Sync validated local SQLite data to OCI PostgreSQL
-# Ensure OCI_DB_URL is set in your .env file
 python3 -m src.cli.sync_oci --game-details --unsynced-only
 ```
 
@@ -164,18 +154,20 @@ KBO_playwright/
 ├── scripts/
 │   ├── crawling/          # Historical data crawling scripts
 │   ├── maintenance/       # Database validation and repair scripts
+│   ├── verification/      # Data quality verification
 │   └── scheduler.py       # APScheduler job definitions (production)
+├── .github/
+│   ├── workflows/         # GitHub Actions CI/CD (14 workflows)
+│   └── actions/           # Composite actions (python-env, notify)
 ├── data/                  # Default directory for SQLite DB
 ├── Docs/                  # Detailed project documentation
-├── migrations/            # Database migration scripts
-│   └── *_oci.py           # OCI-specific migrations
+├── migrations/            # Database migration scripts (SQLite + OCI)
+├── tests/                 # Pytest test suite (1100+ tests)
 ├── docker-compose.yml     # Docker service definitions
 ├── Dockerfile             # Docker container setup
+├── env.example            # Environment variable template
 ├── requirements.txt       # Python dependencies
-├── init_db.py             # Database initialization
-├── seed_data.py           # Initial data seeding
-├── init_data_collection.py # Initial data collection workflow
-└── CLAUDE.md              # AI assistant guidance
+└── AGENTS.md              # Full command reference & CI/CD guide
 ```
 
 ## Scripts
@@ -197,12 +189,13 @@ The `scripts/` directory contains utility scripts for maintenance and operations
 
 ## Documentation
 
-See the [Docs/](Docs/) folder for comprehensive documentation:
+See the [Docs/](Docs/) folder and [`AGENTS.md`](AGENTS.md) for comprehensive documentation:
 
-- **[CLAUDE.md](CLAUDE.md)**: Quick reference for development with AI assistants.
-- **[Docs/projectOverviewGuid.md](Docs/projectOverviewGuid.md)**: Operational runbook and procedures.
-- **[Docs/URL_REFERENCE.md](Docs/URL_REFERENCE.md)**: Canonical URL patterns and CSS selectors.
-- **[Docs/CRAWLING_LIMITATIONS.md](Docs/CRAWLING_LIMITATIONS.md)**: Known data issues and workarounds.
+- **[AGENTS.md](AGENTS.md)**: Full command reference, CI/CD workflows, required secrets.
+- **[Docs/](Docs/)**: Project overview, runbooks, URL patterns, limitations.
+- **[Docs/references/COMMAND_REFERENCE.md](Docs/references/COMMAND_REFERENCE.md)**: Detailed CLI command guide.
+- **[Docs/references/SCHEDULER_README.md](Docs/references/SCHEDULER_README.md)**: APScheduler job definitions.
+- **[Docs/zero_issue_runbook_oci.md](Docs/zero_issue_runbook_oci.md)**: OCI sync & quality gates.
 
 ## License
 

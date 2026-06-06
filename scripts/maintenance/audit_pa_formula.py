@@ -5,18 +5,25 @@ PA = AB + BB + HBP + SH + SF
 
 Reports violations per season, categorizing by fixability:
   - FIXABLE_PBP: PBP events contain sacrifice descriptions
-  - FIXABLE_FORMULA: PA > AB+BB+HBP but SH=SF=0 (can apply conservative fix)
+  - FIXABLE_FORMULA: PA > AB+BB+HBP but SH=SF=0 (can apply ratio-based fix)
   - UNFIXABLE: No data source available
 
 Usage:
     python3 -m scripts.maintenance.audit_pa_formula --year 2020
     python3 -m scripts.maintenance.audit_pa_formula --all-years
-    python3 -m scripts.maintenance.audit_pa_formula --fix-2020
+    python3 -m scripts.maintenance.audit_pa_formula --fix-year 2020
+    python3 -m scripts.maintenance.audit_pa_formula --fix-year 2020 --dry-run
+    python3 -m scripts.maintenance.audit_pa_formula --all-years --json
 """
 
 import argparse
+import json
 import logging
+import sys
+import time
 from collections import Counter
+from datetime import datetime
+from pathlib import Path
 
 from sqlalchemy import text
 
@@ -97,7 +104,68 @@ def audit_year(year: int) -> dict:
     }
 
 
-def fix_year_formula(year: int) -> int:
+def _get_fix_candidates(year: int, session) -> list[dict]:
+    """Return candidate rows for ratio-based fix."""
+    rows = session.execute(
+        text("""
+            SELECT gs.id, gs.game_id, gs.player_id, gs.player_name,
+                   gs.plate_appearances, gs.at_bats, gs.walks, gs.hbp,
+                   gs.sacrifice_hits, gs.sacrifice_flies
+            FROM game_batting_stats gs
+            JOIN game g ON g.game_id = gs.game_id
+            JOIN kbo_seasons ks ON g.season_id = ks.season_id
+            WHERE ks.season_year = :year
+              AND g.game_status IN ('COMPLETED', 'DRAW', 'FINAL')
+              AND COALESCE(gs.plate_appearances, 0) != (
+                  COALESCE(gs.at_bats,0) + COALESCE(gs.walks,0) + COALESCE(gs.hbp,0)
+                  + COALESCE(gs.sacrifice_hits,0) + COALESCE(gs.sacrifice_flies,0)
+              )
+              AND gs.sacrifice_hits = 0 AND gs.sacrifice_flies = 0
+              AND gs.plate_appearances > (gs.at_bats + gs.walks + gs.hbp)
+        """),
+        {"year": year},
+    ).fetchall()
+    return [
+        {
+            "id": r.id,
+            "game_id": r.game_id,
+            "player_id": r.player_id,
+            "player_name": r.player_name,
+            "plate_appearances": r.plate_appearances,
+            "at_bats": r.at_bats,
+            "walks": r.walks,
+            "hbp": r.hbp,
+            "sacrifice_hits": r.sacrifice_hits,
+            "sacrifice_flies": r.sacrifice_flies,
+            "expected_pa": (r.at_bats or 0) + (r.walks or 0) + (r.hbp or 0),
+            "missing_pa": (r.plate_appearances or 0) - ((r.at_bats or 0) + (r.walks or 0) + (r.hbp or 0)),
+        }
+        for r in rows
+    ]
+
+
+def fix_year_formula(year: int, dry_run: bool = False) -> int:
+    candidates = []
+    with SessionLocal() as session:
+        candidates = _get_fix_candidates(year, session)
+
+    if not candidates:
+        print(f"  No fixable rows for {year}")
+        return 0
+
+    if dry_run:
+        print(f"  [DRY RUN] Would fix {len(candidates)} rows for {year}")
+        game_ids = set(c["game_id"] for c in candidates)
+        player_ids = set(c["player_id"] for c in candidates)
+        print(f"    Games affected: {len(game_ids)}")
+        print(f"    Players affected: {len(player_ids)}")
+        missing_pa_total = sum(c["missing_pa"] for c in candidates)
+        print(f"    Total missing PA to allocate: {missing_pa_total}")
+        sh_total = sum(int(c["missing_pa"] * 0.54) for c in candidates)
+        sf_total = sum(c["missing_pa"] - int(c["missing_pa"] * 0.54) for c in candidates)
+        print(f"    SH to assign: {sh_total} | SF to assign: {sf_total}")
+        return len(candidates)
+
     with SessionLocal() as session:
         fixed = session.execute(
             text("""
@@ -122,7 +190,19 @@ def fix_year_formula(year: int) -> int:
             {"year": year},
         )
         session.commit()
-        return fixed.rowcount
+        count = fixed.rowcount
+
+    game_ids = set(c["game_id"] for c in candidates)
+    player_ids = set(c["player_id"] for c in candidates)
+    missing_pa_total = sum(c["missing_pa"] for c in candidates)
+    sh_total = sum(int(c["missing_pa"] * 0.54) for c in candidates)
+    sf_total = sum(c["missing_pa"] - int(c["missing_pa"] * 0.54) for c in candidates)
+
+    print(f"  Fixed {count} rows for {year}")
+    print(f"    Games affected: {len(game_ids)}")
+    print(f"    Players affected: {len(player_ids)}")
+    print(f"    Total missing PA allocated: {missing_pa_total} (SH: {sh_total}, SF: {sf_total})")
+    return count
 
 
 def auto_fix_year(year: int) -> int:
@@ -243,6 +323,24 @@ def auto_fix_year(year: int) -> int:
     return len(game_ids)
 
 
+def _setup_logging():
+    """Configure structured logging to file and console."""
+    log_dir = Path("logs/audit_fixes")
+    log_dir.mkdir(parents=True, exist_ok=True)
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    log_file = log_dir / f"audit_pa_formula_{timestamp}.log"
+
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s [%(levelname)s] %(message)s",
+        handlers=[
+            logging.FileHandler(log_file, encoding="utf-8"),
+            logging.StreamHandler(sys.stdout),
+        ],
+    )
+    return log_file
+
+
 def main():
     parser = argparse.ArgumentParser(description="Audit PA formula violations")
     parser.add_argument("--year", type=int, help="Target year")
@@ -262,26 +360,41 @@ def main():
         action="store_true",
         help="Apply PBP-based correction, fallback to ratio-based fallback, and trigger stats recalc & OCI sync",
     )
+    parser.add_argument("--dry-run", action="store_true", help="Preview changes without applying")
+    parser.add_argument("--json", action="store_true", help="Output results as JSON")
     args = parser.parse_args()
+
+    log_file = _setup_logging()
+    start_time = time.time()
+    logger.info("Starting PA formula audit (dry_run=%s, json=%s)", args.dry_run, args.json)
 
     if args.auto_fix:
         years = list(range(2018, 2027)) if args.all_years else [args.year] if args.year else [2020, 2021, 2023]
         for y in years:
+            logger.info("Auto-fix for year %s", y)
             auto_fix_year(y)
+        elapsed = time.time() - start_time
+        logger.info("Total elapsed: %.2fs", elapsed)
         return
 
-    if args.fix_year:
-        fixed = fix_year_formula(args.fix_year)
-        print(f"Fixed {fixed} rows for {args.fix_year}")
+    if args.fix_year is not None:
+        logger.info("Fixing year %s (dry_run=%s)", args.fix_year, args.dry_run)
+        fixed = fix_year_formula(args.fix_year, dry_run=args.dry_run)
+        if not args.dry_run:
+            logger.info("Fixed %d rows for %s", fixed, args.fix_year)
+        elapsed = time.time() - start_time
+        logger.info("Total elapsed: %.2fs", elapsed)
         return
 
     if args.fix_all:
         for y in [2020, 2021]:
-            fixed = fix_year_formula(y)
-            print(f"Fixed {fixed} rows for {y}")
-        # Recount
+            logger.info("Fixing year %s (dry_run=%s)", y, args.dry_run)
+            fixed = fix_year_formula(y, dry_run=args.dry_run)
+            if not args.dry_run:
+                logger.info("Fixed %d rows for %s", fixed, y)
         print()
 
+    # Audit phase
     years = (
         list(range(2018, 2027))
         if (args.all_years or args.fix_all)
@@ -292,17 +405,29 @@ def main():
     results = [audit_year(y) for y in years]
     results.sort(key=lambda r: r["year"])
 
-    print(f"{'Year':>6} {'Games':>6} {'Rows':>8} {'Violations':>12} {'V Games':>8}  FIXABLE_PBP FIXABLE_FMLA UNFIXABLE")
-    print("-" * 85)
-    total_v = 0
+    elapsed = time.time() - start_time
     for r in results:
+        r["elapsed_seconds"] = round(elapsed, 2)
+
+    if args.json:
+        print(json.dumps(results, indent=2, ensure_ascii=False))
+    else:
         print(
-            f"{r['year']:>6} {r['total_games']:>6} {r['total_batting_rows']:>8} {r['violation_rows']:>12} {r['violation_games']:>8}  "
-            f"{r['categories'].get('FIXABLE_PBP', 0):>10} {r['categories'].get('FIXABLE_FORMULA', 0):>10} {r['categories'].get('UNFIXABLE', 0):>10}"
+            f"{'Year':>6} {'Games':>6} {'Rows':>8} {'Violations':>12} {'V Games':>8}  FIXABLE_PBP FIXABLE_FMLA UNFIXABLE"
         )
-        total_v += r["violation_rows"]
-    print("-" * 85)
-    print(f"{'TOTAL':>6} {'':>6} {'':>8} {total_v:>12}")
+        print("-" * 85)
+        total_v = 0
+        for r in results:
+            print(
+                f"{r['year']:>6} {r['total_games']:>6} {r['total_batting_rows']:>8} {r['violation_rows']:>12} {r['violation_games']:>8}  "
+                f"{r['categories'].get('FIXABLE_PBP', 0):>10} {r['categories'].get('FIXABLE_FORMULA', 0):>10} {r['categories'].get('UNFIXABLE', 0):>10}"
+            )
+            total_v += r["violation_rows"]
+        print("-" * 85)
+        print(f"{'TOTAL':>6} {'':>6} {'':>8} {total_v:>12}")
+        print(f"\nElapsed: {elapsed:.2f}s  |  Log: {log_file}")
+
+    logger.info("Audit completed. Total elapsed: %.2fs", elapsed)
 
 
 if __name__ == "__main__":

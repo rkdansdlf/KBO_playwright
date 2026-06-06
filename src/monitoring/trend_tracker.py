@@ -107,6 +107,7 @@ class TrendTracker:
             "metrics.relay_integrity.recent_missing_count",
             "metrics.relay_integrity.current_season_missing_count",
             "metrics.standings_integrity.ok",
+            "metrics.pa_formula_integrity.violation_count",
             "quality_gate.ok",
         ]
 
@@ -141,6 +142,7 @@ class TrendTracker:
         default_thresholds = {
             "metrics.relay_integrity.recent_missing_count": 50.0,  # +50% increase in missing PBP
             "metrics.completed_count": -20.0,  # -20% drop in completed games
+            "metrics.pa_formula_integrity.violation_count": 0.0,  # Any increase in violations
         }
         degradations = self.detect_degradations(default_thresholds)
         if not degradations:
