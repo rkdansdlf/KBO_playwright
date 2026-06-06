@@ -21,44 +21,11 @@ from sqlalchemy import text
 
 logger = logging.getLogger(__name__)
 
-# Modern PBP (2025+): batter_id is populated
-_DERIVE_SH_BY_ID_SQL = text("""
-    SELECT batter_id, COUNT(*) as cnt
+_DERIVE_EVENTS_SQL = text("""
+    SELECT batter_id, batter_name, description
     FROM game_events
     WHERE game_id = :game_id
-      AND description LIKE '%희생번트%'
-      AND batter_id IS NOT NULL
-    GROUP BY batter_id
-""")
-
-_DERIVE_SF_BY_ID_SQL = text("""
-    SELECT batter_id, COUNT(*) as cnt
-    FROM game_events
-    WHERE game_id = :game_id
-      AND description LIKE '%희생플라이%'
-      AND outs < 2
-      AND batter_id IS NOT NULL
-    GROUP BY batter_id
-""")
-
-# Legacy PBP (pre-2025): batter_id may be NULL, match by name
-_DERIVE_SH_BY_NAME_SQL = text("""
-    SELECT e.batter_name, COUNT(*) as cnt
-    FROM game_events e
-    WHERE e.game_id = :game_id
-      AND e.description LIKE '%희생번트%'
-      AND e.batter_name IS NOT NULL
-    GROUP BY e.batter_name
-""")
-
-_DERIVE_SF_BY_NAME_SQL = text("""
-    SELECT e.batter_name, COUNT(*) as cnt
-    FROM game_events e
-    WHERE e.game_id = :game_id
-      AND e.description LIKE '%희생플라이%'
-      AND e.outs < 2
-      AND e.batter_name IS NOT NULL
-    GROUP BY e.batter_name
+      AND (description LIKE '%희생번트%' OR description LIKE '%희생플라이%')
 """)
 
 
@@ -66,24 +33,48 @@ def derive_sh_sf_for_game(session: Any, game_id: str) -> dict[int | str, dict[st
     """Query game_events and return {player_id_or_name: {'sh': N, 'sf': N}}."""
     result: dict[int | str, dict[str, int]] = {}
 
-    # Try modern approach (by batter_id)
-    sh_rows = session.execute(_DERIVE_SH_BY_ID_SQL, {"game_id": game_id}).all()
-    for row in sh_rows:
-        result.setdefault(row.batter_id, {"sh": 0, "sf": 0})["sh"] = row.cnt
+    # Build name-to-id mapping from game_batting_stats for this game
+    stats_rows = session.execute(
+        text("SELECT player_id, player_name FROM game_batting_stats WHERE game_id = :game_id"), {"game_id": game_id}
+    ).all()
 
-    sf_rows = session.execute(_DERIVE_SF_BY_ID_SQL, {"game_id": game_id}).all()
-    for row in sf_rows:
-        result.setdefault(row.batter_id, {"sh": 0, "sf": 0})["sf"] = row.cnt
+    # Map player_name -> set of player_ids (in case of duplicate names, though rare)
+    name_to_ids: dict[str, set[int]] = {}
+    for r in stats_rows:
+        if r.player_id and r.player_name:
+            name_to_ids.setdefault(r.player_name.strip(), set()).add(r.player_id)
 
-    # If no ID-based results, try legacy name-based approach
-    if not result:
-        sh_rows = session.execute(_DERIVE_SH_BY_NAME_SQL, {"game_id": game_id}).all()
-        for row in sh_rows:
-            result.setdefault(row.batter_name, {"sh": 0, "sf": 0})["sh"] = row.cnt
+    # Unique name-to-id mapping
+    name_to_id: dict[str, int] = {}
+    for name, ids in name_to_ids.items():
+        if len(ids) == 1:
+            name_to_id[name] = next(iter(ids))
 
-        sf_rows = session.execute(_DERIVE_SF_BY_NAME_SQL, {"game_id": game_id}).all()
-        for row in sf_rows:
-            result.setdefault(row.batter_name, {"sh": 0, "sf": 0})["sf"] = row.cnt
+    # Query all events matching SH or SF descriptions
+    event_rows = session.execute(_DERIVE_EVENTS_SQL, {"game_id": game_id}).all()
+
+    for row in event_rows:
+        desc = row.description or ""
+        is_sh = "희생번트" in desc
+        is_sf = "희생플라이" in desc
+        if not is_sh and not is_sf:
+            continue
+
+        # Resolve the player key (player_id if available, fallback to name)
+        key: int | str | None = None
+        if row.batter_id is not None:
+            key = int(row.batter_id)
+        elif row.batter_name:
+            name = row.batter_name.strip()
+            key = name_to_id.get(name, name)
+        else:
+            continue
+
+        result.setdefault(key, {"sh": 0, "sf": 0})
+        if is_sh:
+            result[key]["sh"] += 1
+        if is_sf:
+            result[key]["sf"] += 1
 
     return result
 

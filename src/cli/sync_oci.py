@@ -1,9 +1,7 @@
 """로컬 SQLite 데이터베이스의 데이터를 원격 OCI/Postgres 데이터베이스와 동기화하는 스크립트.
 
-이 스크립트는 SQLAlchemy를 사용하여 두 데이터베이스 간의 데이터 이관을 수행합니다.
-테이블 간의 외래 키 제약 조건을 고려하여 정의된 `MODEL_ORDER` 순서에 따라 데이터를
-안전하게 복사합니다. `--truncate` 옵션을 사용하면 대상 테이블의 데이터를 삭제한 후
-새로 삽입할 수 있습니다.
+OCISync 클래스와 전용 동기화 메서드를 사용하여 테이블별로 특화된 UPSERT/COPY 로직을
+수행합니다. `--truncate` 옵션을 사용하면 대상 테이블의 데이터를 삭제한 후 새로 삽입할 수 있습니다.
 """
 
 from __future__ import annotations
@@ -15,36 +13,18 @@ from concurrent.futures import ThreadPoolExecutor
 from typing import Any, Callable, Iterable
 
 from dotenv import load_dotenv
-from sqlalchemy import delete, text
-from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy import text
+from sqlalchemy.orm import Session
 
-from src.db.engine import SessionLocal, create_engine_for_url
-from src.models.base import Base
+from src.db.engine import SessionLocal
 from src.models.game import Game
 from src.models.matchup import BatterTeamSplit
-from src.models.player import PlayerBasic, PlayerSeasonBatting
+from src.models.player import PlayerSeasonBatting
 from src.models.rankings import StatRanking
-from src.models.season import KboSeason
 from src.models.standings import TeamStandingsDaily
-from src.models.team import Team
 from src.sync.oci_sync import OCISync
 
 logger = logging.getLogger(__name__)
-
-
-# 외래 키 제약 조건을 고려한 모델 처리 순서
-MODEL_ORDER: list[type] = [
-    # Team,  # Handled by specialized --teams sync due to JSON vs TEXT[] type mismatch
-    KboSeason,
-    PlayerBasic,
-    # PlayerSeasonBatting/Pitching removed from here to enforce Bulk COPY via --season-stats
-]
-
-
-def clone_row(instance: object, model: type) -> object:
-    """SQLAlchemy 모델 인스턴스를 복제합니다."""
-    data = {col.key: getattr(instance, col.key) for col in model.__table__.columns}
-    return model(**data)
 
 
 def run_parallel_sync(
@@ -71,53 +51,6 @@ def _parse_game_ids(value: str | None) -> list[str]:
     if not value:
         return []
     return list(dict.fromkeys(token.strip() for token in value.split(",") if token.strip()))
-
-
-def sync_databases(source_url: str, target_url: str, truncate: bool = False, batch_size: int = 500) -> None:
-    """원본 데이터베이스에서 대상 데이터베이스로 데이터를 동기화합니다."""
-    source_engine = create_engine_for_url(source_url, disable_sqlite_wal=True)
-    target_engine = create_engine_for_url(target_url, disable_sqlite_wal=True)
-
-    # 대상 데이터베이스에 테이블이 없으면 생성합니다.
-    try:
-        Base.metadata.create_all(bind=target_engine)
-    except Exception:
-        logger.exception("⚠️ Table creation failed (might already exist or schema issue)")
-
-    SourceSession = sessionmaker(bind=source_engine, autoflush=False, autocommit=False)
-    TargetSession = sessionmaker(bind=target_engine, autoflush=False, autocommit=False)
-
-    with SourceSession() as src, TargetSession() as dst:
-        for model in MODEL_ORDER:
-            total = src.query(model).count()
-            if total == 0:
-                continue
-
-            # --truncate 옵션이 주어지면 대상 테이블의 데이터를 삭제합니다.
-            if truncate:
-                if model is Team:
-                    # NOTE: teams is a semi-static reference table. Do NOT truncate because
-                    # OCI still has legacy tables (e.g., team_history) with FK references.
-                    # Always rely on UPSERT behavior for teams.
-                    print("   ⚠️  Skipping truncate for teams (reference table with legacy FKs)")
-                else:
-                    dst.execute(delete(model))
-                    dst.commit()
-
-            print(f"🚚 Syncing {model.__name__} ({total} rows, batch={batch_size})…")
-            offset = 0
-            pk_columns = list(model.__table__.primary_key.columns)
-            while offset < total:
-                query = src.query(model)
-                if pk_columns:
-                    query = query.order_by(*pk_columns)
-                rows = query.offset(offset).limit(batch_size).all()
-                clones = [clone_row(row, model) for row in rows]
-                for clone in clones:
-                    dst.merge(clone)  # UPSERT 로직 수행
-                dst.commit()
-                offset += len(rows)
-        print("✅ Sync complete")
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
@@ -244,6 +177,11 @@ def build_arg_parser() -> argparse.ArgumentParser:
         "--player-game-stats",
         action="store_true",
         help="선수-경기 스탯(타자, 투수)을 동기화합니다.",
+    )
+    parser.add_argument(
+        "--kbo-season",
+        action="store_true",
+        help="KBO 시즌 기준 정보(kbo_seasons)를 동기화합니다.",
     )
     parser.add_argument(
         "--year",
@@ -483,6 +421,7 @@ def main(argv: Iterable[str] | None = None) -> None:
     # fmt: on
 
     SIMPLE_FLAGS = {
+        "kbo_season": ("sync_kbo_seasons", "🚀 Syncing KBO Seasons reference table using OCISync..."),
         "daily_roster": ("sync_daily_rosters", "🚀 Syncing Daily Rosters using specialized OCISync..."),
         "player_basic": ("sync_player_basic", "🚀 Syncing Player Basic using specialized OCISync..."),
         "players": ("sync_players", "🚀 Syncing Master Players using specialized OCISync..."),
@@ -605,7 +544,9 @@ def main(argv: Iterable[str] | None = None) -> None:
             finally:
                 syncer.close()
     else:
-        sync_databases(args.source_url, args.target_url, truncate=args.truncate, batch_size=args.batch_size)
+        print("⚠️  No recognized sync flag provided. Use --help to see available flags.")
+        print("   Tip: --game-details, --season-stats, --teams, --player-basic, --kbo-season")
+        return
 
     print("\n🚀 Resetting Sequence Identifiers on Target DB...")
     try:

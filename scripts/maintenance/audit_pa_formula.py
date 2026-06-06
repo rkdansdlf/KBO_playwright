@@ -15,11 +15,14 @@ Usage:
 """
 
 import argparse
+import logging
 from collections import Counter
 
 from sqlalchemy import text
 
 from src.db.engine import SessionLocal
+
+logger = logging.getLogger(__name__)
 
 
 def audit_year(year: int) -> dict:
@@ -34,8 +37,12 @@ def audit_year(year: int) -> dict:
                  + COALESCE(gs.sacrifice_hits,0) + COALESCE(gs.sacrifice_flies,0)) as calc_pa,
                 (SELECT COUNT(*) FROM game_events e
                  WHERE e.game_id = gs.game_id
-                 AND e.batter_id = gs.player_id
-                 AND (e.description LIKE '%희생번트%' OR e.description LIKE '%희생플라이%')) as pbp_sac_count
+                   AND (
+                       (e.batter_id IS NOT NULL AND gs.player_id IS NOT NULL AND e.batter_id = gs.player_id)
+                       OR
+                       ((e.batter_id IS NULL OR gs.player_id IS NULL) AND e.batter_name = gs.player_name)
+                   )
+                   AND (e.description LIKE '%희생번트%' OR e.description LIKE '%희생플라이%')) as pbp_sac_count
             FROM game_batting_stats gs
             JOIN game g ON g.game_id = gs.game_id
             JOIN kbo_seasons ks ON g.season_id = ks.season_id
@@ -118,6 +125,124 @@ def fix_year_formula(year: int) -> int:
         return fixed.rowcount
 
 
+def auto_fix_year(year: int) -> int:
+    """
+    Perform a complete PBP-based correction, and ratio-based fix fallback,
+    followed by stats recalculation and OCI sync.
+    """
+    import os
+    import sys
+    from pathlib import Path
+
+    # Ensure project root is in sys.path
+    PROJECT_ROOT = Path(__file__).resolve().parents[2]
+    if str(PROJECT_ROOT) not in sys.path:
+        sys.path.insert(0, str(PROJECT_ROOT))
+
+    from src.cli.recalc_player_game_stats import run_recalc as recalc_game_stats
+    from src.cli.recalc_player_stats import run_recalc as recalc_season_stats
+    from src.services.pbp_sh_sf_derivation import apply_sh_sf_to_batting_stats
+
+    with SessionLocal() as session:
+        rows = session.execute(
+            text("""
+                SELECT DISTINCT gs.game_id
+                FROM game_batting_stats gs
+                JOIN game g ON g.game_id = gs.game_id
+                JOIN kbo_seasons ks ON g.season_id = ks.season_id
+                WHERE ks.season_year = :year
+                  AND g.game_status IN ('COMPLETED', 'DRAW', 'FINAL')
+                  AND COALESCE(gs.plate_appearances, 0) != (
+                      COALESCE(gs.at_bats,0) + COALESCE(gs.walks,0) + COALESCE(gs.hbp,0)
+                      + COALESCE(gs.sacrifice_hits,0) + COALESCE(gs.sacrifice_flies,0)
+                  )
+            """),
+            {"year": year},
+        ).fetchall()
+
+        game_ids = [str(r[0]) for r in rows]
+
+    if not game_ids:
+        print(f"No PA formula violations found for year {year}.")
+        return 0
+
+    print(f"Found {len(game_ids)} games with PA formula violations in {year}. Starting auto-fix...")
+
+    pbp_fixed_games = []
+    for game_id in game_ids:
+        with SessionLocal() as session:
+            has_pbp = session.execute(
+                text("SELECT 1 FROM game_events WHERE game_id = :game_id LIMIT 1"), {"game_id": game_id}
+            ).scalar()
+
+            if has_pbp:
+                try:
+                    updated = apply_sh_sf_to_batting_stats(session, game_id)
+                    if updated:
+                        session.commit()
+                        pbp_fixed_games.append(game_id)
+                        print(f"  Applied PBP SH/SF correction for game {game_id}: {updated} rows updated")
+                except Exception as exc:
+                    session.rollback()
+                    logger.warning("Error applying PBP fix for game %s: %s", game_id, exc)
+                    print(f"  Error applying PBP fix for game {game_id}: {exc}")
+
+    # Ratio fallback for 2020-2021
+    ratio_fixed_rows = 0
+    if year in (2020, 2021):
+        ratio_fixed_rows = fix_year_formula(year)
+        if ratio_fixed_rows:
+            print(f"  Applied ratio-based fallback correction for {year}: {ratio_fixed_rows} rows updated")
+
+    # Recalculate stats for all violated games
+    print(f"Recalculating player game stats for {len(game_ids)} games...")
+    for game_id in game_ids:
+        try:
+            recalc_game_stats(game_id=game_id, dry_run=False)
+        except Exception as exc:
+            logger.warning("Error recalculating game stats for %s: %s", game_id, exc)
+            print(f"  Error recalculating game stats for {game_id}: {exc}")
+
+    # Recalculate player season stats
+    print(f"Recalculating player season stats for {year}...")
+    try:
+        recalc_season_stats(season=year, dry_run=False)
+    except Exception as exc:
+        logger.warning("Error recalculating season stats for %s: %s", year, exc)
+        print(f"  Error recalculating season stats for {year}: {exc}")
+
+    # Sync to OCI
+    oci_url = os.getenv("OCI_DB_URL")
+    if oci_url:
+        print("OCI_DB_URL found. Synchronizing corrected data to OCI...")
+        try:
+            from src.sync.oci_sync import OCISync
+
+            with SessionLocal() as sqlite_session:
+                syncer = OCISync(oci_url, sqlite_session)
+                print("  Syncing player basics first...")
+                syncer.sync_player_basic()
+                syncer.sync_players()
+
+                print(f"  Syncing {len(game_ids)} games to OCI...")
+                for game_id in game_ids:
+                    syncer.sync_specific_game(game_id)
+
+                print(f"  Syncing player season stats for {year} to OCI...")
+                syncer.sync_player_season_batting(year=year)
+                syncer.sync_player_season_pitching(year=year)
+
+                syncer.close()
+                print("  OCI synchronization completed successfully.")
+        except Exception as exc:
+            logger.warning("Error syncing to OCI: %s", exc)
+            print(f"  Error syncing to OCI: {exc}")
+    else:
+        print("OCI_DB_URL not set. Skipping OCI synchronization.")
+
+    return len(game_ids)
+
+
 def main():
     parser = argparse.ArgumentParser(description="Audit PA formula violations")
     parser.add_argument("--year", type=int, help="Target year")
@@ -132,7 +257,18 @@ def main():
         action="store_true",
         help="Apply ratio-based fix (SH:SF = 54:46) to satisfy PA formula for 2020-2021",
     )
+    parser.add_argument(
+        "--auto-fix",
+        action="store_true",
+        help="Apply PBP-based correction, fallback to ratio-based fallback, and trigger stats recalc & OCI sync",
+    )
     args = parser.parse_args()
+
+    if args.auto_fix:
+        years = list(range(2018, 2027)) if args.all_years else [args.year] if args.year else [2020, 2021, 2023]
+        for y in years:
+            auto_fix_year(y)
+        return
 
     if args.fix_year:
         fixed = fix_year_formula(args.fix_year)

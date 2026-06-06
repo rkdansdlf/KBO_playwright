@@ -339,6 +339,81 @@ def get_pa_formula_integrity(session, year: int) -> dict[str, Any]:
     }
 
 
+def get_pa_formula_trend(session, months: int = 6) -> dict[str, Any]:
+    """Get PA formula violation trend for the last N months."""
+    start_date = datetime.now(_KST).date() - timedelta(days=months * 30)
+
+    season_ids = [
+        r[0]
+        for r in session.execute(
+            select(KboSeason.season_id).where(
+                or_(
+                    KboSeason.league_type_code == 0,
+                    KboSeason.league_type_name.in_(_REGULAR_SEASON_NAMES),
+                )
+            )
+        ).all()
+    ]
+    if not season_ids:
+        return {"ok": True, "months": [], "direction": "stable"}
+
+    rows = session.execute(
+        select(
+            GameBattingStat.plate_appearances,
+            GameBattingStat.at_bats,
+            GameBattingStat.walks,
+            GameBattingStat.hbp,
+            GameBattingStat.sacrifice_hits,
+            GameBattingStat.sacrifice_flies,
+            Game.game_date,
+        )
+        .join(Game, Game.game_id == GameBattingStat.game_id)
+        .where(Game.season_id.in_(season_ids))
+        .where(Game.game_status.in_(tuple(COMPLETED_LIKE_GAME_STATUSES)))
+        .where(Game.game_date >= start_date)
+        .order_by(Game.game_date)
+    ).all()
+
+    monthly: dict[str, dict[str, int]] = {}
+    for r in rows:
+        month_key = r.game_date.strftime("%Y-%m")
+        if month_key not in monthly:
+            monthly[month_key] = {"total_checked": 0, "violation_count": 0}
+        monthly[month_key]["total_checked"] += 1
+
+        pa = r.plate_appearances or 0
+        expected = (r.at_bats or 0) + (r.walks or 0) + (r.hbp or 0) + (r.sacrifice_hits or 0) + (r.sacrifice_flies or 0)
+        if pa != expected:
+            monthly[month_key]["violation_count"] += 1
+
+    trend = [
+        {
+            "month": month,
+            "total_checked": data["total_checked"],
+            "violation_count": data["violation_count"],
+            "violation_pct": round(data["violation_count"] / data["total_checked"] * 100, 4)
+            if data["total_checked"] > 0
+            else 0.0,
+        }
+        for month, data in sorted(monthly.items())
+    ]
+
+    direction = "stable"
+    if len(trend) >= 2:
+        recent = trend[-1]["violation_count"]
+        prev = trend[-2]["violation_count"]
+        if recent > prev:
+            direction = "worsening"
+        elif recent < prev:
+            direction = "improving"
+
+    return {
+        "months": trend,
+        "direction": direction,
+        "ok": all(m["violation_count"] == 0 for m in trend),
+    }
+
+
 def get_daily_metrics(session, target_date_str: str) -> dict[str, Any]:
     """Calculate core collection metrics for a specific date."""
     target_dt = datetime.strptime(target_date_str, "%Y%m%d").date()
@@ -427,6 +502,9 @@ def get_daily_metrics(session, target_date_str: str) -> dict[str, Any]:
     # 7. PA Formula Integrity
     pa_formula_integrity = get_pa_formula_integrity(session, target_dt.year)
 
+    # 8. PA Formula Trend (6-month)
+    pa_formula_trend = get_pa_formula_trend(session, months=6)
+
     return {
         "date": target_date_str,
         "status_counts": status_map,
@@ -440,6 +518,7 @@ def get_daily_metrics(session, target_date_str: str) -> dict[str, Any]:
         "completed_count": len(game_ids),
         "auto_remediation": auto_remediation,
         "pa_formula_integrity": pa_formula_integrity,
+        "pa_formula_trend": pa_formula_trend,
     }
 
 
@@ -558,6 +637,17 @@ def format_telegram_report(metrics: dict[str, Any], gate_result: dict[str, Any])
         for v in (pa_formula.get("violations") or [])[:3]:
             lines.append(f"   - {v['game_date']} {v['player_name']} PA={v['pa']} ≠ AB+BB+HBP+SH+SF")
 
+    # PA Formula Trend
+    trend = metrics.get("pa_formula_trend") or {}
+    if trend.get("months"):
+        direction_icon = (
+            "📈" if trend.get("direction") == "worsening" else "📉" if trend.get("direction") == "improving" else "📊"
+        )
+        lines.append(f"{direction_icon} <b>PA Formula Trend</b> (6mo): {trend['direction']}")
+        for m in trend["months"][-4:]:
+            icon = "❌" if m["violation_count"] > 0 else "✅"
+            lines.append(f"   {icon} {m['month']}: {m['violation_count']}/{m['total_checked']} ({m['violation_pct']}%)")
+
     # New Players
     if metrics["new_players"]:
         p_names = ", ".join([p["name"] for p in metrics["new_players"][:5]])
@@ -568,6 +658,7 @@ def format_telegram_report(metrics: dict[str, Any], gate_result: dict[str, Any])
 
 
 def _has_report_issues(metrics: dict[str, Any], gate_result: dict[str, Any]) -> bool:
+    trend = metrics.get("pa_formula_trend") or {}
     return (
         not gate_result["ok"]
         or any(not d["is_complete"] for d in metrics["detail_integrity"])
@@ -575,6 +666,7 @@ def _has_report_issues(metrics: dict[str, Any], gate_result: dict[str, Any]) -> 
         or not (metrics.get("standings_integrity") or {}).get("ok", True)
         or metrics.get("auto_remediation", {}).get("status") in ("warning", "aborted")
         or not (metrics.get("pa_formula_integrity") or {}).get("ok", True)
+        or trend.get("direction") == "worsening"
     )
 
 

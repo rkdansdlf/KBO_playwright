@@ -278,6 +278,19 @@ def _format_terminal(data: dict[str, Any], sections: list[str]):
                 print("  PA 공식: ✅ 일치")
             else:
                 print(f"  PA 공식: ❌ ({pa.get('violation_count', 0)}건 위반)")
+        trend = q.get("pa_formula_trend", {})
+        if trend and trend.get("months"):
+            direction_icon = (
+                "📈"
+                if trend.get("direction") == "worsening"
+                else "📉"
+                if trend.get("direction") == "improving"
+                else "➡️"
+            )
+            print(f"  PA 추세 ({len(trend['months'])}개월): {direction_icon} {trend['direction']}")
+            for m in trend["months"][-3:]:
+                icon = "❌" if m["violation_count"] > 0 else "✅"
+                print(f"    {icon} {m['month']}: {m['violation_count']}/{m['total_checked']}")
 
     if "freshness" in sections and data.get("freshness"):
         f = data["freshness"]
