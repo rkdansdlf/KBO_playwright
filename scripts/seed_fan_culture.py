@@ -50,15 +50,19 @@ def seed_rivalries(dry_run: bool = False) -> int:
     with SessionLocal() as session:
         repo = FanCultureRepository(session)
         saved = 0
+        skipped = 0
         for r in rows:
             try:
                 repo.save_rivalry(r)
+                session.flush()
                 saved += 1
             except Exception as exc:
-                logger.warning("Error saving %s-%s: %s", r["team_id_a"], r["team_id_b"], exc)
-                print(f"  Error saving {r['team_id_a']}-{r['team_id_b']}: {exc}")
+                session.rollback()
+                skipped += 1
+                logger.warning("Skipped rivalry %s-%s: %s", r["team_id_a"], r["team_id_b"], exc)
+                print(f"  Skipped {r['team_id_a']}-{r['team_id_b']}: {exc}")
         session.commit()
-        print(f"Seeded {saved} rivalries into team_rivalries.")
+        print(f"Seeded {saved} rivalries into team_rivalries. ({skipped} skipped/already exist)")
     return saved
 
 

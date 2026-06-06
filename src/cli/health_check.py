@@ -27,6 +27,11 @@ TABLE_CHECKS = [
     ("stadium_food_vendors", "last_verified_at"),
     ("stadium_food_menu_items", "vendor_id"),
     ("team_standing", "snapshot_date"),
+    ("stadium_transit_times", "measured_at"),
+    ("stadium_congestion", "measured_at"),
+    ("stadium_operation_notices", "published_at"),
+    ("team_rivalries", "intensity"),
+    ("cheer_songs", "introduction_year"),
 ]
 
 

@@ -31,6 +31,9 @@ DOMAIN_TABLE_CHECKS = {
     "seat": ("stadium_seat_sections", "updated_at"),
     "parking": ("parking_lots", "updated_at"),
     "food": ("stadium_food_vendors", "last_verified_at"),
+    "transit": ("stadium_transit_times", "measured_at"),
+    "congestion": ("stadium_congestion", "measured_at"),
+    "operation_notice": ("stadium_operation_notices", "published_at"),
 }
 
 

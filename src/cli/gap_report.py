@@ -19,12 +19,12 @@ from typing import Any, Sequence
 from zoneinfo import ZoneInfo
 
 from src.cli.freshness_gate import collect_freshness_issues
-from src.cli.monitor_data_freshness import check_freshness, check_table_completeness
+from src.cli.monitor_data_freshness import check_freshness
 from src.db.engine import SessionLocal
 from src.models.game import GamePlayByPlay
-from src.validators.standings_integrity import validate_standings_integrity
-from src.utils.alerting import SlackWebhookClient, GAP_EMOJI_MAP
+from src.utils.alerting import GAP_EMOJI_MAP, SlackWebhookClient
 from src.utils.safe_print import safe_print as print
+from src.validators.standings_integrity import validate_standings_integrity
 
 logger = logging.getLogger(__name__)
 KST = ZoneInfo("Asia/Seoul")
@@ -32,9 +32,10 @@ KST = ZoneInfo("Asia/Seoul")
 
 def check_relay_gaps() -> dict[str, Any]:
     """Find COMPLETED/DRAW games missing game_play_by_play (last 14 days)."""
+    from sqlalchemy import select
+
     from src.models.game import Game
     from src.utils.game_status import COMPLETED_LIKE_GAME_STATUSES
-    from sqlalchemy import select
 
     start = datetime.now(KST).date() - timedelta(days=14)
     relay_games: list[str] = []
@@ -55,13 +56,19 @@ def check_relay_gaps() -> dict[str, Any]:
 def check_profile_gaps() -> dict[str, Any]:
     """Find player IDs missing photo_url (excludes pseudo/not-found)."""
     from sqlalchemy import or_
+
     from src.models.player import PlayerBasic
+
     with SessionLocal() as session:
-        rows = session.query(PlayerBasic.player_id).filter(
-            PlayerBasic.photo_url.is_(None),
-            PlayerBasic.player_id >= 10000,
-            or_(PlayerBasic.status.is_(None), ~PlayerBasic.status.in_(["NOT_FOUND", "PSEUDO"])),
-        ).all()
+        rows = (
+            session.query(PlayerBasic.player_id)
+            .filter(
+                PlayerBasic.photo_url.is_(None),
+                PlayerBasic.player_id >= 10000,
+                or_(PlayerBasic.status.is_(None), ~PlayerBasic.status.in_(["NOT_FOUND", "PSEUDO"])),
+            )
+            .all()
+        )
     player_ids = [r.player_id for r in rows]
     return {
         "ok": len(player_ids) == 0,
@@ -73,19 +80,30 @@ def check_profile_gaps() -> dict[str, Any]:
 def check_id_resolution_gaps() -> dict[str, Any]:
     """Find NULL player_ids in game stats tables."""
     from sqlalchemy import text
+
     with SessionLocal() as session:
-        batting = session.execute(
-            text("SELECT COUNT(*) FROM game_batting_stats WHERE player_id IS NULL")
-        ).scalar() or 0
-        pitching = session.execute(
-            text("SELECT COUNT(*) FROM game_pitching_stats WHERE player_id IS NULL")
-        ).scalar() or 0
-        lineups = session.execute(
-            text("SELECT COUNT(*) FROM game_lineups WHERE player_id IS NULL")
-        ).scalar() or 0
+        batting = session.execute(text("SELECT COUNT(*) FROM game_batting_stats WHERE player_id IS NULL")).scalar() or 0
+        pitching = (
+            session.execute(text("SELECT COUNT(*) FROM game_pitching_stats WHERE player_id IS NULL")).scalar() or 0
+        )
+        lineups = session.execute(text("SELECT COUNT(*) FROM game_lineups WHERE player_id IS NULL")).scalar() or 0
     total = batting + pitching + lineups
     counts = {"batting": batting, "pitching": pitching, "lineups": lineups}
     return {"ok": total == 0, "total": total, "counts": counts}
+
+
+def check_pa_formula_gaps() -> dict[str, Any]:
+    """Find PA formula violations (PA != AB+BB+HBP+SH+SF) for the current season."""
+    from src.cli.generate_quality_report import get_pa_formula_integrity
+
+    year = datetime.now(KST).year
+    with SessionLocal() as session:
+        pa_formula = get_pa_formula_integrity(session, year)
+    return {
+        "ok": pa_formula.get("ok", True),
+        "violation_count": pa_formula.get("violation_count", 0),
+        "violations": pa_formula.get("violations", [])[:20],
+    }
 
 
 def build_gap_report() -> dict[str, Any]:
@@ -130,7 +148,7 @@ def build_gap_report() -> dict[str, Any]:
 
     # 4. Standings integrity
     try:
-        target_date = (datetime.now(KST).date() - timedelta(days=1)).strftime("%Y%m%d")
+        target_date = datetime.now(KST).date() - timedelta(days=1)
         with SessionLocal() as session:
             standings = validate_standings_integrity(session, target_date)
         report["gaps"]["STANDINGS"] = {
@@ -155,6 +173,13 @@ def build_gap_report() -> dict[str, Any]:
     except Exception as e:
         logger.error("ID_RESOLUTION gap check failed: %s", e)
         report["gaps"]["ID_RESOLUTION"] = {"ok": False, "error": str(e)}
+
+    # 7. PA formula gaps
+    try:
+        report["gaps"]["PA_FORMULA"] = check_pa_formula_gaps()
+    except Exception as e:
+        logger.error("PA_FORMULA gap check failed: %s", e)
+        report["gaps"]["PA_FORMULA"] = {"ok": False, "error": str(e)}
 
     return report
 
@@ -186,12 +211,18 @@ def send_gap_alerts(report: dict[str, Any]) -> None:
         elif gap_type == "STALENESS":
             summary_parts.append(f"{gap_data.get('stale_count', 0)} stale sources")
         elif gap_type == "STANDINGS":
-            summary_parts.append(f"{gap_data.get('mismatches', 0)} mismatches, {gap_data.get('missing_scores', 0)} missing scores")
+            summary_parts.append(
+                f"{gap_data.get('mismatches', 0)} mismatches, {gap_data.get('missing_scores', 0)} missing scores"
+            )
         elif gap_type == "PROFILE":
             summary_parts.append(f"{gap_data.get('missing_count', 0)} players missing profiles")
         elif gap_type == "ID_RESOLUTION":
             counts = gap_data.get("counts", {})
-            summary_parts.append(f"{gap_data.get('total', 0)} NULL player_ids (batting={counts.get('batting')}, pitching={counts.get('pitching')}, lineups={counts.get('lineups')})")
+            summary_parts.append(
+                f"{gap_data.get('total', 0)} NULL player_ids (batting={counts.get('batting')}, pitching={counts.get('pitching')}, lineups={counts.get('lineups')})"
+            )
+        elif gap_type == "PA_FORMULA":
+            summary_parts.append(f"{gap_data.get('violation_count', 0)} PA formula violations")
         elif gap_data.get("error"):
             summary_parts.append(f"Error: {gap_data['error']}")
 
@@ -209,6 +240,9 @@ def send_gap_alerts(report: dict[str, Any]) -> None:
             for k, v in details.items():
                 for gid in v[:3]:
                     detail_items.append(f"{k}: {gid}")
+        elif gap_type == "PA_FORMULA":
+            for v in (gap_data.get("violations") or [])[:5]:
+                detail_items.append(f"{v['game_date']} {v['player_name']} PA={v['pa']} ≠ AB+BB+HBP+SH+SF")
 
         SlackWebhookClient.send_gap_alert(gap_type, summary, detail_items)
 
@@ -246,6 +280,8 @@ def run_gap_report(alert: bool = True, dry_run: bool = False) -> dict[str, Any]:
             count = f" ({gap_data['stale_count']})"
         elif "total" in gap_data:
             count = f" ({gap_data['total']})"
+        elif "violation_count" in gap_data:
+            count = f" ({gap_data['violation_count']})"
         print(f"  {icon} {emoji} {gap_type}: {sev}{count}")
 
     if alert and not dry_run:

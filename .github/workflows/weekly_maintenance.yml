@@ -29,6 +29,9 @@ jobs:
       - name: Run Weekly Maintenance & Sync
         env:
           OCI_DB_URL: ${{ secrets.OCI_DB_URL }}
+          YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
+          NAVER_CLIENT_ID: ${{ secrets.NAVER_CLIENT_ID }}
+          NAVER_CLIENT_SECRET: ${{ secrets.NAVER_CLIENT_SECRET }}
         run: |
           LIMIT="${{ github.event.inputs.profile_limit || '500' }}"
           python3 -m src.cli.run_weekly_maintenance \
