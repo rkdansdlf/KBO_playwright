@@ -18,7 +18,7 @@ import sys
 from datetime import date as date_type
 from typing import Sequence
 
-from sqlalchemy import func
+from sqlalchemy import text
 
 from src.db.engine import SessionLocal
 from src.models.game import Game
@@ -36,8 +36,8 @@ logger = logging.getLogger(__name__)
 def _game_ids_for_date(session, target_date: str) -> list[str]:
     target = date_type.strptime(target_date, "%Y%m%d")
     return [
-        row[0] for row in
-        session.query(Game.game_id)
+        row[0]
+        for row in session.query(Game.game_id)
         .filter(
             Game.game_date == target,
             Game.game_status.in_(tuple(COMPLETED_LIKE_GAME_STATUSES)),
@@ -99,10 +99,14 @@ def run_recalc(
             game_ids.extend(_game_ids_for_date(session, date))
 
         if season:
-            season_ids = session.execute(
-                "SELECT season_id FROM kbo_seasons WHERE season_year = :year AND league_type_code = 0",
-                {"year": season},
-            ).scalars().all()
+            season_ids = (
+                session.execute(
+                    text("SELECT season_id FROM kbo_seasons WHERE season_year = :year AND league_type_code = 0"),
+                    {"year": season},
+                )
+                .scalars()
+                .all()
+            )
             rows = (
                 session.query(Game.game_id)
                 .filter(
@@ -129,17 +133,19 @@ def run_recalc(
                 logger.info(f"{gid}: batting={result['batting']}, pitching={result['pitching']}")
 
         if dry_run:
-            logger.info(f"[DRY-RUN] Total: {len(game_ids)} games, batting={totals['batting']}, pitching={totals['pitching']}")
+            logger.info(
+                f"[DRY-RUN] Total: {len(game_ids)} games, batting={totals['batting']}, pitching={totals['pitching']}"
+            )
         else:
-            logger.info(f"Done: {len(game_ids)} games, upserted batting={totals['batting']}, pitching={totals['pitching']}")
+            logger.info(
+                f"Done: {len(game_ids)} games, upserted batting={totals['batting']}, pitching={totals['pitching']}"
+            )
 
     return 0
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(
-        description="Recalculate player-game-level stats from game-level data."
-    )
+    parser = argparse.ArgumentParser(description="Recalculate player-game-level stats from game-level data.")
     parser.add_argument("--game-id", help="Single game ID to recalc")
     parser.add_argument("--date", help="Game date (YYYYMMDD) to recalc all completed games")
     parser.add_argument("--season", type=int, help="Season year to recalc all completed games")

@@ -229,14 +229,84 @@ class QualityGate:
             mismatches=mismatches,
         )
 
+    def validate_season_pa_formula(self, season: int, league: str = "REGULAR") -> dict[str, Any]:
+        """
+        Validate PA = AB + BB + HBP + SH + SF consistency for game batting stats.
+        """
+        if league != "REGULAR":
+            return self._result(season=season, league=league)
+
+        reg_season_ids = self._get_regular_season_ids(season)
+        if not reg_season_ids:
+            return self._result(
+                season=season,
+                league=league,
+                error=f"No Regular Season IDs found for {season}",
+            )
+
+        # Get transactional totals per player from game_batting_stats
+        transactional_stmt = (
+            select(
+                GameBattingStat.player_id,
+                func.sum(GameBattingStat.plate_appearances).label("pa"),
+                func.sum(GameBattingStat.at_bats).label("ab"),
+                func.sum(GameBattingStat.walks).label("bb"),
+                func.sum(GameBattingStat.hbp).label("hbp"),
+                func.sum(GameBattingStat.sacrifice_hits).label("sh"),
+                func.sum(GameBattingStat.sacrifice_flies).label("sf"),
+            )
+            .join(
+                Game,
+                Game.game_id == GameBattingStat.game_id,
+            )
+            .where(
+                Game.game_status.in_(tuple(COMPLETED_LIKE_GAME_STATUSES)),
+                Game.season_id.in_(reg_season_ids),
+            )
+            .group_by(GameBattingStat.player_id)
+        )
+
+        transactional_data = self.session.execute(transactional_stmt).all()
+        mismatches = []
+        for row in transactional_data:
+            pid = row.player_id
+            if pid is None:
+                continue
+
+            # Calculate expected PA from components
+            expected_pa = (row.ab or 0) + (row.bb or 0) + (row.hbp or 0) + (row.sh or 0) + (row.sf or 0)
+            actual_pa = row.pa or 0
+
+            if actual_pa != expected_pa:
+                mismatches.append(
+                    {
+                        "player_id": pid,
+                        "issue": "PA formula mismatch",
+                        "expected_pa": expected_pa,
+                        "actual_pa": actual_pa,
+                        "difference": actual_pa - expected_pa,
+                    }
+                )
+
+        return self._result(
+            season=season,
+            league=league,
+            checked_players=len(transactional_data),
+            mismatches=mismatches,
+        )
+
 
 def run_quality_gate(session: Session, season: int) -> dict[str, Any]:
     gate = QualityGate(session)
     batting_result = gate.validate_season_batting(season)
     pitching_result = gate.validate_season_pitching(season)
+    pa_formula_result = gate.validate_season_pa_formula(season)
 
     return {
         "batting": batting_result,
         "pitching": pitching_result,
-        "ok": batting_result.get("ok", False) and pitching_result.get("ok", False),
+        "pa_formula": pa_formula_result,
+        "ok": batting_result.get("ok", False)
+        and pitching_result.get("ok", False)
+        and pa_formula_result.get("ok", False),
     }

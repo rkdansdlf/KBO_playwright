@@ -313,8 +313,7 @@ class RuntimeHydrator:
                     stmt = stmt.on_conflict_do_nothing(index_elements=[spec.model.__table__.c[c] for c in upsert_keys])
                 self.target_session.execute(stmt, mappings)
                 return len(mappings), {}
-            for mapping in mappings:
-                self.target_session.merge(spec.model(**mapping))
+            self.target_session.execute(spec.model.__table__.insert(), mappings)
             return len(mappings), {}
 
         refs = self._collect_player_refs(rows)

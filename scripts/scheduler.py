@@ -9,20 +9,19 @@ via .github/workflows/daily_kbo_sync.yml and backfill_*.yml.
 APScheduler focuses on real-time and local-only jobs:
 
 Jobs:
- 1. crawl_phase1_extra: Daily at 06:00 KST (broadcast, MVP, injury, etc.)
- 2. crawl_p0_non_game: Daily at 06:20 KST (P0 events/roster/tickets)
- 3. crawl_p1p2_data: Daily at 06:30 KST (seat + parking + food crawlers)
- 4. crawl_pregame_refresh: Every 15m, 10:00-23:45 KST
- 5. crawl_live_refresh: Every 2m, 12:00-23:30 KST
- 6. crawl_futures_profile: Weekly Sunday at 05:00 KST
- 7. compute_park_factor: Weekly Sunday at 05:30 KST
- 8. crawl_retired_players: Monthly 1st at 02:00 KST (crawl_retire)
- 9. weekly_sla_report: Weekly Monday at 06:00 KST
- 10. crawl_transit_time: Every 15m, 10:00-00:00 KST on game days (LIVE_LOCK)
- 11. crawl_congestion: Every 5m, 10:00-00:00 KST on game days (LIVE_LOCK)
- 12. crawl_operation_notices: Daily at 09:00 KST (DAILY_LOCK)
- 13. crawl_operation_notices_naver: Daily at 09:30 + 13:00 KST
- 14. crawl_fan_culture: Weekly Saturday at 04:00 KST
+  1. crawl_phase1_extra: Daily at 06:00 KST (broadcast, MVP, injury, etc.)
+  2. crawl_p0_non_game: Daily at 06:20 KST (P0 events/roster/tickets)
+  3. crawl_p1p2_data: Daily at 06:30 KST (seat + parking + food crawlers)
+  4. crawl_pregame_refresh: Every 15m, 10:00-23:45 KST
+  5. crawl_live_refresh: Every 2m, 12:00-23:30 KST
+  6. compute_park_factor: Weekly Sunday at 05:30 KST
+  7. crawl_retired_players: Monthly 1st at 02:00 KST (crawl_retire)
+  8. weekly_sla_report: Weekly Monday at 06:00 KST
+  9. crawl_transit_time: Every 15m, 10:00-00:00 KST on game days (LIVE_LOCK)
+  10. crawl_congestion: Every 5m, 10:00-00:00 KST on game days (LIVE_LOCK)
+  11. crawl_operation_notices: Daily at 09:00 KST (DAILY_LOCK)
+  12. crawl_operation_notices_naver: Daily at 09:30 + 13:00 KST
+  13. crawl_fan_culture: Weekly Saturday at 04:00 KST
 """
 
 from __future__ import annotations
@@ -57,6 +56,7 @@ from src.cli.crawl_futures import main as crawl_futures_main
 from src.cli.crawl_retire import main as crawl_retire_main
 from src.cli.daily_preview_batch import run_preview_batch
 from src.cli.live_crawler import run_live_crawler_cycle
+from src.cli.monthly_pa_audit import crawl_monthly_pa_audit_job
 from src.cli.run_daily_update import format_stability_alert_summary
 from src.cli.run_daily_update import main as run_daily_update_main
 from src.db.engine import SessionLocal
@@ -268,9 +268,7 @@ def _pregame_preview_detail_has_starters(detail_text: str | None) -> bool:
         return False
     if not isinstance(payload, dict):
         return False
-    return bool(str(payload.get("away_starter") or "").strip()) and bool(
-        str(payload.get("home_starter") or "").strip()
-    )
+    return bool(str(payload.get("away_starter") or "").strip()) and bool(str(payload.get("home_starter") or "").strip())
 
 
 def _env_enabled(name: str, default: str = "1") -> bool:
@@ -358,8 +356,10 @@ def crawl_daily_games():
 def _find_detail_gaps(session, start_date: date) -> list[str]:
     """Find dates with COMPLETED/DRAW games missing game_batting_stats."""
     from sqlalchemy import text as sa_text
-    rows = session.execute(
-        sa_text("""
+
+    rows = (
+        session.execute(
+            sa_text("""
             SELECT DISTINCT g.game_date
             FROM game g
             LEFT JOIN game_batting_stats b ON g.game_id = b.game_id
@@ -368,16 +368,21 @@ def _find_detail_gaps(session, start_date: date) -> list[str]:
               AND b.game_id IS NULL
             ORDER BY g.game_date
         """),
-        {"start": start_date},
-    ).scalars().all()
+            {"start": start_date},
+        )
+        .scalars()
+        .all()
+    )
     return [_compact_date(d) for d in rows]
 
 
 def _find_pbp_gaps(session, start_date: date) -> list[str]:
     """Find dates with COMPLETED/DRAW games missing game_play_by_play."""
     from sqlalchemy import text as sa_text
-    rows = session.execute(
-        sa_text("""
+
+    rows = (
+        session.execute(
+            sa_text("""
             SELECT DISTINCT g.game_date
             FROM game g
             LEFT JOIN game_play_by_play p ON g.game_id = p.game_id
@@ -386,16 +391,21 @@ def _find_pbp_gaps(session, start_date: date) -> list[str]:
               AND p.game_id IS NULL
             ORDER BY g.game_date
         """),
-        {"start": start_date},
-    ).scalars().all()
+            {"start": start_date},
+        )
+        .scalars()
+        .all()
+    )
     return [_compact_date(d) for d in rows]
 
 
 def _find_preview_gaps(session, start_date: date) -> list[str]:
     """Find dates with SCHEDULED games missing pregame preview data."""
     from sqlalchemy import text as sa_text
-    rows = session.execute(
-        sa_text("""
+
+    rows = (
+        session.execute(
+            sa_text("""
             SELECT DISTINCT g.game_date
             FROM game g
             LEFT JOIN game_summary s ON s.game_id = g.game_id AND s.summary_type = '프리뷰'
@@ -404,20 +414,29 @@ def _find_preview_gaps(session, start_date: date) -> list[str]:
               AND s.game_id IS NULL
             ORDER BY g.game_date
         """),
-        {"start": start_date},
-    ).scalars().all()
+            {"start": start_date},
+        )
+        .scalars()
+        .all()
+    )
     return [_compact_date(d) for d in rows]
 
 
 def _find_player_profile_gaps(session) -> list[int]:
     """Find player IDs missing photo_url (excludes pseudo/not-found status)."""
     from sqlalchemy import or_
+
     from src.models.player import PlayerBasic
-    rows = session.query(PlayerBasic.player_id).filter(
-        PlayerBasic.photo_url.is_(None),
-        PlayerBasic.player_id >= 10000,
-        or_(PlayerBasic.status.is_(None), ~PlayerBasic.status.in_(["NOT_FOUND", "PSEUDO"])),
-    ).all()
+
+    rows = (
+        session.query(PlayerBasic.player_id)
+        .filter(
+            PlayerBasic.photo_url.is_(None),
+            PlayerBasic.player_id >= 10000,
+            or_(PlayerBasic.status.is_(None), ~PlayerBasic.status.in_(["NOT_FOUND", "PSEUDO"])),
+        )
+        .all()
+    )
     return [row.player_id for row in rows]
 
 
@@ -436,7 +455,6 @@ def backfill_missed_daily_crawls(lookback_days: int = 14) -> list[str]:
     Phase 3 — Pregame previews via run_preview_batch
     Phase 4 — Player profiles via backfill_player_profiles.backfill
     """
-    from sqlalchemy import text as sa_text
 
     from src.db.engine import SessionLocal
 
@@ -492,10 +510,12 @@ def backfill_missed_daily_crawls(lookback_days: int = 14) -> list[str]:
         batch = profile_gap_ids[:5]
         logger.warning(
             "Phase 4 — Profile backfill: %d players need profiles (processing %d)",
-            len(profile_gap_ids), len(batch),
+            len(profile_gap_ids),
+            len(batch),
         )
         try:
             from scripts.backfill_player_profiles import backfill as backfill_player_profiles_fn
+
             awaitable = backfill_player_profiles_fn(limit=len(batch), delay=2.0, ids=batch)
             asyncio.run(awaitable)
             backfilled.append(f"profiles:{len(batch)}")
@@ -651,7 +671,6 @@ def crawl_retired_players_job(limit: int | None = None):
     """
     with MAINTENANCE_LOCK:
         logger.info("=== Starting Monthly Retired Player Crawl ===")
-
         try:
             current_year = datetime.now(KST).year
             start_year = 1982
@@ -984,6 +1003,7 @@ def heal_unverified_pbp_job():
 # Tier 2 Maintenance Backfill Jobs
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 def backfill_sh_sf_job():
     """Derive missing SH/SF from PBP events for current-season games."""
     with MAINTENANCE_LOCK:
@@ -994,6 +1014,7 @@ def backfill_sh_sf_job():
                 find_candidate_games,
             )
             from src.db.engine import SessionLocal
+
             year = datetime.now(KST).year
             with SessionLocal() as session:
                 game_ids = find_candidate_games(session, year=year)
@@ -1019,11 +1040,14 @@ def backfill_player_ids_job():
             from scripts.maintenance.backfill_player_ids import backfill_year
             from src.db.engine import SessionLocal
             from src.services.player_id_resolver import PlayerIdResolver
+
             year = datetime.now(KST).year
             with SessionLocal() as session:
                 resolver = PlayerIdResolver(session)
                 result = backfill_year(session, resolver, year)
-                logger.info("Player ID backfill: resolved=%d failed=%d", result.get("resolved", 0), result.get("failed", 0))
+                logger.info(
+                    "Player ID backfill: resolved=%d failed=%d", result.get("resolved", 0), result.get("failed", 0)
+                )
         except Exception:
             logger.exception("Player ID backfill job failed")
 
@@ -1034,6 +1058,7 @@ def backfill_advanced_stats_job():
         logger.info("=== Starting Advanced Stats Backfill ===")
         try:
             from src.cli.backfill_advanced_stats import backfill_stats
+
             year = datetime.now(KST).year
             backfill_stats([year], "regular")
             logger.info("Advanced stats backfill completed for %d", year)
@@ -1050,6 +1075,7 @@ def backfill_roster_job():
                 backfill_daily_rosters,
                 backfill_player_movements,
             )
+
             year = datetime.now(KST).year
             asyncio.run(backfill_player_movements([year]))
             end = datetime.now(KST).strftime("%Y-%m-%d")
@@ -1064,21 +1090,21 @@ def backfill_roster_job():
 # Tier 3 — Unified Gap Report
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 def gap_report_job():
     """Run the unified gap analysis and send per-category alerts."""
     with MAINTENANCE_LOCK:
         logger.info("=== Starting Gap Report ===")
         try:
             from src.cli.gap_report import run_gap_report
+
             report = run_gap_report(alert=True, dry_run=False)
-            total_gaps = sum(
-                1 for g in report.get("gaps", {}).values()
-                if not g.get("ok", True) and not g.get("error")
-            )
+            total_gaps = sum(1 for g in report.get("gaps", {}).values() if not g.get("ok", True) and not g.get("error"))
             error_gaps = sum(1 for g in report.get("gaps", {}).values() if g.get("error"))
             logger.info(
                 "Gap report complete: %d gap(s), %d error(s)",
-                total_gaps, error_gaps,
+                total_gaps,
+                error_gaps,
             )
         except Exception:
             logger.exception("Gap report job failed")
@@ -1087,6 +1113,7 @@ def gap_report_job():
 # ─────────────────────────────────────────────────────────────────────────────
 # Stadium Real-Time Data Jobs (이동 시간 · �잡도 · 운영 공지)
 # ─────────────────────────────────────────────────────────────────────────────
+
 
 def crawl_transit_time_job():
     """
@@ -1258,17 +1285,6 @@ def main(argv: Sequence[str] | None = None):
     )
     logger.info("Registered job: weekly_sla_report (Weekly Monday 06:00 KST)")
 
-    # Job 2: Weekly Futures profile sync (Sunday 05:00 KST)
-    scheduler.add_job(
-        crawl_all_futures_profiles,
-        trigger=CronTrigger(day_of_week="sun", hour=5, minute=0),
-        id="crawl_futures_profile",
-        name="Weekly Futures Profile Sync",
-        misfire_grace_time=7200,  # Allow 2 hour grace period
-        max_instances=1,  # Prevent concurrent runs
-    )
-    logger.info("Registered job: crawl_futures_profile (Weekly Sunday 05:00 KST)")
-
     # Job 2.5: Weekly Park Factor Computation (Sunday 05:30 KST)
     scheduler.add_job(
         compute_park_factor_job,
@@ -1286,10 +1302,21 @@ def main(argv: Sequence[str] | None = None):
         trigger=CronTrigger(day=1, hour=2, minute=0),
         id="crawl_retired_players",
         name="Monthly Retired Player Crawl",
-        misfire_grace_time=7200,
+        misfire_grace_time=3600,
         max_instances=1,
     )
     logger.info("Registered job: crawl_retired_players (Monthly 1st 02:00 KST)")
+
+    # Job 2.7: Monthly PA Formula Audit (1st of every month at 03:00 KST)
+    scheduler.add_job(
+        crawl_monthly_pa_audit_job,
+        trigger=CronTrigger(day=1, hour=3, minute=0),
+        id="crawl_monthly_pa_audit",
+        name="Monthly PA Formula Audit",
+        misfire_grace_time=3600,
+        max_instances=1,
+    )
+    logger.info("Registered job: crawl_monthly_pa_audit (Monthly 1st 03:00 KST)")
 
     scheduler.add_job(
         crawl_pregame_refresh,
@@ -1434,15 +1461,14 @@ def main(argv: Sequence[str] | None = None):
     print("  3. P1/P2 Seat/Parking/Food: Every day at 06:30 KST")
     print("  4. Pregame Refresh: Every 15 minutes, 10:00-23:45 KST, today + lookahead")
     print("  5. Live Refresh: Every 2 minutes, 12:00-23:30 KST")
-    print("  6. Futures Profile Sync: Every Sunday at 05:00 KST")
-    print("  7. Park Factor Computation: Every Sunday at 05:30 KST")
-    print("  8. Retired Player Crawl: 1st of every month at 02:00 KST")
-    print("  9. Weekly SLA Report: Every Monday at 06:00 KST")
-    print(" 10. Transit Time (JAMSIL): Every 15m, 10:00-23:45 KST")
-    print(" 11. Congestion (JAMSIL): Every 5m, 10:00-23:55 KST")
-    print(" 12. Operation Notices (Official): Daily 09:00 + 11:30 KST")
-    print(" 13. Operation Notices (Naver): Daily 09:30 + 13:00 KST")
-    print(" 14. Fan Culture (Cheer Songs/Chants): Weekly Saturday 04:00 KST")
+    print("  6. Park Factor Computation: Every Sunday at 05:30 KST")
+    print("  7. Retired Player Crawl: 1st of every month at 02:00 KST")
+    print("  8. Weekly SLA Report: Every Monday at 06:00 KST")
+    print("  9. Transit Time (JAMSIL): Every 15m, 10:00-23:45 KST")
+    print(" 10. Congestion (JAMSIL): Every 5m, 10:00-23:55 KST")
+    print(" 11. Operation Notices (Official): Daily 09:00 + 11:30 KST")
+    print(" 12. Operation Notices (Naver): Daily 09:30 + 13:00 KST")
+    print(" 13. Fan Culture (Cheer Songs/Chants): Weekly Saturday 04:00 KST")
     print("=" * 60 + "\n")
 
     logger.info("Scheduler started successfully")
