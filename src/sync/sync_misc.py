@@ -32,6 +32,7 @@ from src.models.matchup import (
     PitcherTeamSplit,
 )
 from src.models.rag_chunk import RagChunk
+from src.models.season import KboSeason
 from src.models.stadium_congestion import StadiumCongestion
 from src.models.stadium_food import StadiumFood
 from src.models.stadium_info import StadiumInfo, StadiumRegulation
@@ -80,6 +81,10 @@ class MiscSyncMixin:
     def sync_franchises(self) -> int:
         """Sync franchises from SQLite to OCI"""
         return self._sync_simple_table(Franchise, ["original_code"])
+
+    def sync_kbo_seasons(self) -> int:
+        """Sync kbo_seasons reference table from SQLite to OCI"""
+        return self._sync_simple_table(KboSeason, ["season_id"])
 
     def sync_teams(self) -> int:
         """Sync teams from SQLite to OCI"""
