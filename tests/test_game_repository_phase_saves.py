@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import date, time
 
-from sqlalchemy import create_engine, event
+from sqlalchemy import create_engine, event, text
 from sqlalchemy.orm import sessionmaker
 
 import src.repositories.game_helpers as game_helpers_module
@@ -75,6 +75,44 @@ def _build_fk_session_factory():
     ):
         table.create(bind=engine)
     return sessionmaker(bind=engine, autoflush=False, autocommit=False, expire_on_commit=False)
+
+
+def _build_real_resolver_session_factory():
+    SessionLocal = _build_session_factory()
+    with SessionLocal.kw["bind"].begin() as conn:
+        conn.execute(
+            text(
+                """
+                CREATE TABLE players (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    kbo_person_id TEXT UNIQUE
+                )
+                """
+            )
+        )
+        conn.execute(
+            text(
+                """
+                CREATE TABLE player_season_batting (
+                    player_id INTEGER NOT NULL,
+                    season INTEGER NOT NULL,
+                    team_code TEXT
+                )
+                """
+            )
+        )
+        conn.execute(
+            text(
+                """
+                CREATE TABLE player_season_pitching (
+                    player_id INTEGER NOT NULL,
+                    season INTEGER NOT NULL,
+                    team_code TEXT
+                )
+                """
+            )
+        )
+    return SessionLocal
 
 
 def _seed_existing_detail(SessionLocal, game_id: str):
@@ -207,6 +245,56 @@ def test_save_pregame_lineups_updates_start_time_and_preserves_existing_detail(m
             .count()
             == 1
         )
+
+
+def test_save_pregame_lineups_resolves_june_5_curated_players_with_real_resolver(monkeypatch):
+    SessionLocal = _build_real_resolver_session_factory()
+    monkeypatch.setattr(game_save_module, "SessionLocal", SessionLocal)
+    monkeypatch.setattr(game_save_module, "_auto_sync_to_oci", lambda _game_id: None)
+    monkeypatch.setattr(game_relay_module, "_auto_sync_to_oci", lambda _game_id: None)
+
+    with SessionLocal() as session:
+        session.add_all(
+            [
+                PlayerBasic(player_id=52765, name="유민", team="한화"),
+                PlayerBasic(player_id=56305, name="히우라", team="키움"),
+            ]
+        )
+        session.commit()
+
+    assert (
+        game_repository.save_pregame_lineups(
+            {
+                "game_id": "20260605HHLT0",
+                "game_date": "20260605",
+                "away_lineup": [{"player_name": "유민", "batting_order": 5, "position": "지명타자"}],
+            }
+        )
+        is True
+    )
+    assert (
+        game_repository.save_pregame_lineups(
+            {
+                "game_id": "20260605WOOB0",
+                "game_date": "20260605",
+                "away_lineup": [{"player_name": "히우라", "batting_order": 3, "position": "지명타자"}],
+            }
+        )
+        is True
+    )
+
+    with SessionLocal() as session:
+        rows = (
+            session.query(GameLineup.game_id, GameLineup.team_code, GameLineup.player_name, GameLineup.player_id)
+            .filter(GameLineup.player_name.in_(["유민", "히우라"]))
+            .order_by(GameLineup.player_name)
+            .all()
+        )
+
+    assert {(row.game_id, row.team_code, row.player_name, row.player_id) for row in rows} == {
+        ("20260605HHLT0", "HH", "유민", 52765),
+        ("20260605WOOB0", "KH", "히우라", 56305),
+    }
 
 
 def test_save_game_snapshot_preserves_detail_rows_and_start_time(monkeypatch):
