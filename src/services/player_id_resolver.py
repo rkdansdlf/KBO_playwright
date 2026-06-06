@@ -2,7 +2,7 @@ import csv
 import logging
 import os
 
-from sqlalchemy import or_, select
+from sqlalchemy import inspect, or_, select
 from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
@@ -289,6 +289,10 @@ class PlayerIdResolver:
             ("박채울", "KH", 2026, False): 54303,
             ("박채울", "KH", 2026, True): 54303,
             ("박채울", "KH", 2026, None): 54303,
+            ("히우라", "KH", 2026, False): 56305,
+            ("히우라", "KH", 2026, None): 56305,
+            ("유민", "HH", 2026, False): 52765,
+            ("유민", "HH", 2026, None): 52765,
             # 2022 Season KIA unresolved players
             ("류지혁", "KIA", 2022, False): 62234,
             ("류지혁", "KIA", 2022, True): 62234,
@@ -445,6 +449,17 @@ class PlayerIdResolver:
                 )
 
         if self.strict_game_resolution:
+            fact_id = self._resolve_from_same_season_game_facts(
+                player_name,
+                team_code,
+                season,
+                uniform_no=uniform_no,
+                is_pitcher=is_pitcher,
+            )
+            if fact_id:
+                self._cache[cache_key] = fact_id
+                return fact_id
+
             print(
                 f"   [UNRESOLVED PLAYER] {player_name} ({team_code}, {season}) lacked "
                 "strict team/season/uniform evidence. Leaving player_id NULL."
@@ -521,6 +536,54 @@ class PlayerIdResolver:
 
         existing_ids = sorted(int(row[0]) for row in self.session.execute(stmt).fetchall() if row[0] is not None)
         return existing_ids[0] if existing_ids else None
+
+    def _resolve_from_same_season_game_facts(
+        self,
+        player_name: str,
+        team_code: str,
+        season: int,
+        *,
+        uniform_no: str | None,
+        is_pitcher: bool | None,
+    ) -> int | None:
+        """Use already-linked same-season game rows as strict pregame evidence."""
+        if not player_name or not team_code or not season:
+            return None
+
+        from src.models.game import GameBattingStat, GameLineup, GamePitchingStat
+
+        if is_pitcher is True:
+            models = [GamePitchingStat]
+        elif is_pitcher is False:
+            models = [GameBattingStat, GameLineup]
+        else:
+            models = [GameBattingStat, GameLineup, GamePitchingStat]
+
+        connection = self.session.connection()
+        if connection is not None:
+            inspector = inspect(connection)
+            models = [model for model in models if inspector.has_table(model.__tablename__)]
+
+        candidate_ids: set[int] = set()
+        for model in models:
+            stmt = select(model.player_id).where(
+                model.game_id.like(f"{season}%"),
+                model.team_code == team_code,
+                model.player_name == player_name,
+                model.player_id.isnot(None),
+            )
+            if uniform_no:
+                stmt = stmt.where(model.uniform_no == str(uniform_no))
+
+            for (player_id,) in self.session.execute(stmt).fetchall():
+                if player_id is None:
+                    continue
+                candidate_ids.add(int(player_id))
+
+        official_ids = {pid for pid in self._filter_surrogate_ids(candidate_ids) if pid < 900000}
+        if len(official_ids) == 1:
+            return next(iter(official_ids))
+        return None
 
     def register_unknown_player(self, name: str, team_code: str, uniform_no: str | None) -> int | None:
         existing_id = self._find_existing_unknown_player(name, team_code, uniform_no)
