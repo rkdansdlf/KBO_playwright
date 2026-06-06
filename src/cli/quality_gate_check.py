@@ -52,7 +52,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         print(f"Statistical Quality Gate for {year}")
         print("----------------------------------------")
 
-        for category in ["batting", "pitching"]:
+        for category in ["batting", "pitching", "pa_formula"]:
             _print_category(category, result[category])
 
         print("----------------------------------------")
