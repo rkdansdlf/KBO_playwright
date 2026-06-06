@@ -3,8 +3,8 @@ set -euo pipefail
 
 # Optional automatic init_db
 if [[ "${RUN_INIT_DB:-0}" == "1" ]]; then
-  echo "🔧 Running init_db.py"
-  python init_db.py
+  echo "🔧 Initializing database..."
+  python -c "from src.db.engine import init_db; init_db()"
 fi
 
 # Optional sync from source to OCI target (e.g., SQLite -> OCI PostgreSQL)

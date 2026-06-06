@@ -1,7 +1,6 @@
 FROM python:3.12-slim
 
-ENV PYTHONUNBUFFERED=1 \
-    PLAYWRIGHT_BROWSERS_PATH=/pw-browsers
+ENV PYTHONUNBUFFERED=1
 
 WORKDIR /app
 
@@ -31,12 +30,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 COPY requirements.txt ./
 RUN pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir -r requirements.txt
-
-# Optional: install Playwright browsers (comment out if not crawling)
-RUN python -m playwright install chromium
+    pip install --no-cache-dir -r requirements.txt && \
+    python -m playwright install chromium
 
 COPY . .
 
+VOLUME /app/data
+
 ENTRYPOINT ["bash", "docker/entrypoint.sh"]
-CMD ["python", "-m", "src.cli.run_pipeline_demo", "--help"]
+CMD ["python", "-m", "scripts.scheduler"]
