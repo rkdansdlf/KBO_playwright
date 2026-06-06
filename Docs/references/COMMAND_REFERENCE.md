@@ -534,7 +534,45 @@ docker-compose logs -f scheduler
 ./venv/bin/python3 scripts/maintenance/quality_gate.py
 ```
 
-### 5. 품질 게이트 (Quality Gate Audit)
+### 5. PlayerGame 스탯 재계산 (Recalc)
+경기 단위 스탯(`game_batting_stats`, `game_pitching_stats`)을 선수별로 집계하여 `player_game_batting`/`player_game_pitching`에 저장합니다. 완료/무승부 경기만 처리합니다.
+
+```bash
+# 특정 경기만 재계산
+./venv/bin/python3 -m src.cli.recalc_player_game_stats --game-id 20250401LGSS0 --save
+
+# 특정 날짜 재계산
+./venv/bin/python3 -m src.cli.recalc_player_game_stats --date 20250401 --save
+
+# 특정 시즌 전체 재계산 (2018-2026 지원)
+./venv/bin/python3 -m src.cli.recalc_player_game_stats --season 2025 --save
+
+# 변경 사항 미리보기 (저장 안 함)
+./venv/bin/python3 -m src.cli.recalc_player_game_stats --season 2025 --dry-run
+```
+
+### 6. PlayerGame 데이터 품질 검증
+`player_game_batting`/`player_game_pitching` 테이블의 무결성을 자동으로 검증합니다.
+
+| 검증 항목 | 설명 |
+|---|---|
+| 중복 (game_id, player_id) | 동일 선수가 한 경기에 두 번 이상 집계되지 않았는지 확인 |
+| NULL 필드 | player_id, player_name, team_side NULL 여부 확인 |
+| Rate stat 범위 | avg/obp 0~1, era 0~200, whip 0~30 범위 내 확인 |
+| 년도별 커버리지 | 2018년 이후 각 년도의 경기 coverage 90% 이상인지 확인 |
+
+```bash
+# 기본 검증
+./venv/bin/python3 -m scripts.verification.verify_player_game_stats
+
+# 상세 연도별 coverage 출력
+./venv/bin/python3 -m scripts.verification.verify_player_game_stats --verbose
+
+# CI/CD용: 경고 있으면 exit code 1 또는 2 반환
+./venv/bin/python3 -m scripts.verification.verify_player_game_stats --exit-code
+```
+
+### 7. 품질 게이트 (Quality Gate Audit)
 데이터베이스의 전반적인 무결성 지표를 점검합니다. 로컬 SQLite와 OCI 원격 DB 간의 일치 여부, 고아 데이터 현황, NULL 값 등을 종합적으로 체크합니다.
 
 ```bash
@@ -565,6 +603,18 @@ export OCI_DB_URL='postgresql://user:password@host:5432/bega_backend'
 
 # player_basic 동기화
 ./venv/bin/python3 -m src.cli.sync_oci --player-basic
+
+# PlayerGame 스탯 (game-batting/pitching에서 집계) 동기화
+./venv/bin/python3 -m src.cli.sync_oci --player-game-stats
+
+# 전체 파이프라인: recalc + sync
+./venv/bin/python3 -m src.cli.recalc_player_game_stats --season 2025 --save
+./venv/bin/python3 -m src.cli.sync_oci --player-game-stats
+
+# PlayerGame 데이터 품질 검증
+./venv/bin/python3 -m scripts.verification.verify_player_game_stats
+./venv/bin/python3 -m scripts.verification.verify_player_game_stats --verbose
+./venv/bin/python3 -m scripts.verification.verify_player_game_stats --exit-code
 
 # 로컬/OCI 품질 게이트
 ./venv/bin/python3 scripts/maintenance/quality_gate.py
