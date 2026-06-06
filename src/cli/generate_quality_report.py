@@ -147,6 +147,7 @@ def get_relay_integrity_metrics(
         "current_season_missing_game_ids": current_season_missing,
     }
 
+
 def get_auto_remediation_summary(target_date_str: str, audit_dir: Path | None = None) -> dict[str, Any]:
     """
     Scans logs/audit_fixes/ for files starting with target_date_str.
@@ -168,7 +169,7 @@ def get_auto_remediation_summary(target_date_str: str, audit_dir: Path | None = 
         "total_warning": 0,
         "players_warning": [],
         "categories_aborted": [],
-        "abort_reasons": []
+        "abort_reasons": [],
     }
 
     if not audit_dir.exists():
@@ -186,7 +187,7 @@ def get_auto_remediation_summary(target_date_str: str, audit_dir: Path | None = 
         try:
             with open(f, encoding="utf-8") as file_handle:
                 content = json.load(file_handle)
-        except Exception as e:
+        except SQLAlchemyError as e:
             _LOGGER.error(f"Failed to read/parse audit fix file {filename}: {e}")
             continue
 
@@ -207,12 +208,14 @@ def get_auto_remediation_summary(target_date_str: str, audit_dir: Path | None = 
             mismatches = content.get("mismatches", [])
             summary["total_warning"] += len(mismatches)
             for m in mismatches:
-                summary["players_warning"].append({
-                    "name": m.get("name"),
-                    "player_id": m.get("player_id"),
-                    "category": category,
-                    "diffs": m.get("diffs", [])
-                })
+                summary["players_warning"].append(
+                    {
+                        "name": m.get("name"),
+                        "player_id": m.get("player_id"),
+                        "category": category,
+                        "diffs": m.get("diffs", []),
+                    }
+                )
 
         else:
             # Fixed player snapshot {date}_{player_id}_{type}.json
@@ -222,7 +225,7 @@ def get_auto_remediation_summary(target_date_str: str, audit_dir: Path | None = 
             category = parts[-1].upper() if len(parts) >= 3 else "UNKNOWN"
             if category not in summary["categories_fixed"]:
                 summary["categories_fixed"].append(category)
-            
+
             snapshots = content if isinstance(content, list) else [content]
             summary["total_fixed"] += len(snapshots)
             for snap in snapshots:
@@ -231,20 +234,32 @@ def get_auto_remediation_summary(target_date_str: str, audit_dir: Path | None = 
                 calc = snap.get("calculated", {})
                 player_id = snap.get("player_id")
                 player_name = snap.get("player_name") or calc.get("player_name") or orig.get("player_name")
-                
-                for k in ["games", "at_bats", "hits", "home_runs", "rbi", "walks", "wins", "losses", "saves", "earned_runs", "innings_outs", "errors", "stolen_bases", "caught_stealing"]:
+
+                for k in [
+                    "games",
+                    "at_bats",
+                    "hits",
+                    "home_runs",
+                    "rbi",
+                    "walks",
+                    "wins",
+                    "losses",
+                    "saves",
+                    "earned_runs",
+                    "innings_outs",
+                    "errors",
+                    "stolen_bases",
+                    "caught_stealing",
+                ]:
                     if k in orig or k in calc:
                         o_val = orig.get(k)
                         c_val = calc.get(k)
                         if o_val != c_val:
                             diffs.append(f"{k}: {o_val}→{c_val}")
 
-                summary["players_fixed"].append({
-                    "name": player_name,
-                    "player_id": player_id,
-                    "category": category,
-                    "diffs": diffs
-                })
+                summary["players_fixed"].append(
+                    {"name": player_name, "player_id": player_id, "category": category, "diffs": diffs}
+                )
 
     if has_abort:
         summary["status"] = "aborted"
@@ -254,6 +269,74 @@ def get_auto_remediation_summary(target_date_str: str, audit_dir: Path | None = 
         summary["status"] = "fixed"
 
     return summary
+
+
+def get_pa_formula_integrity(session, year: int) -> dict[str, Any]:
+    """Check PA = AB + BB + HBP + SH + SF consistency for the current season."""
+    season_ids = [
+        row[0]
+        for row in session.execute(
+            select(KboSeason.season_id)
+            .where(KboSeason.season_year == year)
+            .where(
+                or_(
+                    KboSeason.league_type_code == 0,
+                    KboSeason.league_type_name.in_(_REGULAR_SEASON_NAMES),
+                )
+            )
+        ).all()
+    ]
+    if not season_ids:
+        return {"ok": True, "violation_count": 0, "violations": []}
+
+    rows = session.execute(
+        select(
+            GameBattingStat.game_id,
+            GameBattingStat.player_name,
+            GameBattingStat.plate_appearances,
+            GameBattingStat.at_bats,
+            GameBattingStat.walks,
+            GameBattingStat.hbp,
+            GameBattingStat.sacrifice_hits,
+            GameBattingStat.sacrifice_flies,
+            Game.game_date,
+        )
+        .join(Game, Game.game_id == GameBattingStat.game_id)
+        .where(Game.season_id.in_(season_ids))
+        .where(Game.game_status.in_(tuple(COMPLETED_LIKE_GAME_STATUSES)))
+        .where(
+            func.coalesce(GameBattingStat.plate_appearances, 0)
+            != (
+                func.coalesce(GameBattingStat.at_bats, 0)
+                + func.coalesce(GameBattingStat.walks, 0)
+                + func.coalesce(GameBattingStat.hbp, 0)
+                + func.coalesce(GameBattingStat.sacrifice_hits, 0)
+                + func.coalesce(GameBattingStat.sacrifice_flies, 0)
+            )
+        )
+        .order_by(Game.game_date, GameBattingStat.game_id)
+    ).all()
+
+    violations = [
+        {
+            "game_id": r.game_id,
+            "game_date": r.game_date.isoformat(),
+            "player_name": r.player_name,
+            "pa": r.plate_appearances,
+            "at_bats": r.at_bats,
+            "walks": r.walks,
+            "hbp": r.hbp,
+            "sh": r.sacrifice_hits,
+            "sf": r.sacrifice_flies,
+        }
+        for r in rows
+    ]
+
+    return {
+        "ok": len(violations) == 0,
+        "violation_count": len(violations),
+        "violations": violations[:20],
+    }
 
 
 def get_daily_metrics(session, target_date_str: str) -> dict[str, Any]:
@@ -333,13 +416,16 @@ def get_daily_metrics(session, target_date_str: str) -> dict[str, Any]:
                 parity_info["oci_count"] = oci_count
                 parity_info["diff"] = oci_count - local_count
                 parity_info["ok"] = parity_info["diff"] == 0
-    except Exception as e:
+    except SQLAlchemyError as e:
         _LOGGER.error(f"Parity check failed: {e}")
         parity_info["ok"] = False
         parity_info["error"] = str(e)
 
     # 6. Auto-Remediation Summary
     auto_remediation = get_auto_remediation_summary(target_date_str)
+
+    # 7. PA Formula Integrity
+    pa_formula_integrity = get_pa_formula_integrity(session, target_dt.year)
 
     return {
         "date": target_date_str,
@@ -353,6 +439,7 @@ def get_daily_metrics(session, target_date_str: str) -> dict[str, Any]:
         "total_games": sum(status_map.values()),
         "completed_count": len(game_ids),
         "auto_remediation": auto_remediation,
+        "pa_formula_integrity": pa_formula_integrity,
     }
 
 
@@ -445,7 +532,9 @@ def format_telegram_report(metrics: dict[str, Any], gate_result: dict[str, Any])
             cat = p.get("category", "UNKNOWN").lower()
             cat_counts[cat] = cat_counts.get(cat, 0) + 1
         cat_str = ", ".join([f"{k} {v}" for k, v in cat_counts.items()])
-        lines.append(f"⚠️ <b>Auto-Remediation</b>: mismatch {auto_rem.get('total_warning')}건 발견 (수정 비활성화) ({cat_str})")
+        lines.append(
+            f"⚠️ <b>Auto-Remediation</b>: mismatch {auto_rem.get('total_warning')}건 발견 (수정 비활성화) ({cat_str})"
+        )
         for p in auto_rem.get("players_warning", [])[:3]:
             diffs_str = ", ".join(p.get("diffs", [])[:2])
             lines.append(f"   - {p['name']} ({p['category']}): {diffs_str}")
@@ -458,6 +547,16 @@ def format_telegram_report(metrics: dict[str, Any], gate_result: dict[str, Any])
             lines.append(f"   - {r}")
     else:
         lines.append("✅ <b>Auto-Remediation</b>: No issues detected")
+
+    # PA Formula Integrity
+    pa_formula = metrics.get("pa_formula_integrity") or {}
+    if pa_formula.get("ok", True):
+        lines.append("✅ <b>PA Formula</b>: All consistent (PA=AB+BB+HBP+SH+SF)")
+    else:
+        count = pa_formula.get("violation_count", 0)
+        lines.append(f"❌ <b>PA Formula</b>: {count} violations")
+        for v in (pa_formula.get("violations") or [])[:3]:
+            lines.append(f"   - {v['game_date']} {v['player_name']} PA={v['pa']} ≠ AB+BB+HBP+SH+SF")
 
     # New Players
     if metrics["new_players"]:
@@ -475,6 +574,7 @@ def _has_report_issues(metrics: dict[str, Any], gate_result: dict[str, Any]) -> 
         or not (metrics.get("relay_integrity") or {}).get("ok", True)
         or not (metrics.get("standings_integrity") or {}).get("ok", True)
         or metrics.get("auto_remediation", {}).get("status") in ("warning", "aborted")
+        or not (metrics.get("pa_formula_integrity") or {}).get("ok", True)
     )
 
 

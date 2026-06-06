@@ -167,7 +167,16 @@ jobs:
       - name: Data Freshness Monitor
         run: |
           python3 -m src.cli.monitor_data_freshness
-
+      - name: Recalc Player-Game Stats
+        env:
+          OCI_DB_URL: ${{ secrets.OCI_DB_URL }}
+        run: |
+          python3 -m src.cli.recalc_player_game_stats \
+            --date ${{ needs.finalize.outputs.date }} \
+            --save
+          python3 -m src.cli.sync_oci \
+            --player-game-stats \
+            --date ${{ needs.finalize.outputs.date }}
       - uses: ./.github/actions/notify
         if: always()
         with:
