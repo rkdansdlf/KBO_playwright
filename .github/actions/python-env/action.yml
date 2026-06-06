@@ -40,10 +40,23 @@ runs:
       shell: bash
       run: pip install -r requirements.txt
 
+    - name: Cache Playwright browsers
+      id: cache-playwright
+      if: ${{ inputs.playwright == 'true' }}
+      uses: actions/cache@v4
+      with:
+        path: ~/.cache/ms-playwright
+        key: playwright-${{ hashFiles('requirements.txt') }}
+
     - name: Install Playwright
       if: ${{ inputs.playwright == 'true' }}
       shell: bash
-      run: playwright install --with-deps chromium
+      run: |
+        if [ "${{ steps.cache-playwright.outputs.cache-hit }}" == "true" ]; then
+          playwright install-deps chromium
+        else
+          playwright install --with-deps chromium
+        fi
 
     - name: Initialize Database & Seed Metadata
       if: ${{ inputs.init-db == 'true' }}
