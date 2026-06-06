@@ -2,9 +2,6 @@
 
 from __future__ import annotations
 
-import os
-from unittest.mock import patch
-
 from src.utils.alerting import (
     GAP_CATEGORY_ENV_MAP,
     GAP_EMOJI_MAP,
@@ -12,7 +9,7 @@ from src.utils.alerting import (
     TelegramBotClient,
 )
 
-EXPECTED_GAP_CATEGORIES = {"FRESHNESS", "P0", "STALENESS", "RELAY", "PROFILE", "ID_RESOLUTION"}
+EXPECTED_GAP_CATEGORIES = {"FRESHNESS", "P0", "STALENESS", "RELAY", "PROFILE", "ID_RESOLUTION", "PA_FORMULA"}
 
 
 def test_gap_emoji_map_has_all_categories():
@@ -103,8 +100,10 @@ def test_send_gap_alert_fallback_to_slack(monkeypatch):
     @contextmanager
     def fake_urlopen(req, timeout=5):
         sent_slack.append(req.data.decode())
+
         class FakeResp:
             status = 200
+
         yield FakeResp()
 
     monkeypatch.setattr("urllib.request.urlopen", fake_urlopen)

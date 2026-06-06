@@ -201,6 +201,39 @@ def check_game_data(session) -> dict:
     print(f"Player game batting records: {batting_count}")
     pitching_count = session.execute(select(func.count(PlayerGamePitching.id))).scalar()
     print(f"Player game pitching records: {pitching_count}")
+
+    # Duplicate check
+    dup_b = session.execute(
+        text(
+            "SELECT COALESCE(COUNT(*), 0) FROM (SELECT game_id, player_id, COUNT(*) FROM player_game_batting GROUP BY game_id, player_id HAVING COUNT(*) > 1)"
+        )
+    ).scalar()
+    dup_p = session.execute(
+        text(
+            "SELECT COALESCE(COUNT(*), 0) FROM (SELECT game_id, player_id, COUNT(*) FROM player_game_pitching GROUP BY game_id, player_id HAVING COUNT(*) > 1)"
+        )
+    ).scalar()
+    if dup_b or dup_p:
+        print(f"  Duplicates: batting={dup_b}, pitching={dup_p} [WARN]")
+    else:
+        print("  Duplicates: none [OK]")
+
+    # NULL field check
+    for tbl, label in [("player_game_batting", "batting"), ("player_game_pitching", "pitching")]:
+        nid = session.execute(text(f"SELECT COUNT(*) FROM {tbl} WHERE player_id IS NULL")).scalar()
+        nn = session.execute(text(f"SELECT COUNT(*) FROM {tbl} WHERE player_name IS NULL")).scalar()
+        ns = session.execute(text(f"SELECT COUNT(*) FROM {tbl} WHERE team_side IS NULL")).scalar()
+        if nid or nn or ns:
+            print(f"  {label} NULLs: player_id={nid}, player_name={nn}, team_side={ns} [WARN]")
+        else:
+            print(f"  {label} NULLs: none [OK]")
+
+    # Rate stat anomaly check (avg > obp — documented as expected with SF)
+    avg_gt_obp = session.execute(
+        text("SELECT COUNT(*) FROM player_game_batting WHERE avg IS NOT NULL AND obp IS NOT NULL AND avg > obp")
+    ).scalar()
+    print(f"  Batting avg > obp: {avg_gt_obp} (expected when sacrifice flies exist)")
+
     return {"batting": batting_count, "pitching": pitching_count}
 
 

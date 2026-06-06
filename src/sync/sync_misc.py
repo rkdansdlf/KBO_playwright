@@ -5,11 +5,14 @@ Stadium real-time data: transit times, congestion, operation notices.
 
 from __future__ import annotations
 
+import json
+import logging
 from datetime import date, datetime
 from pathlib import Path
 from typing import Any
 
 from sqlalchemy import text
+
 from src.models.award import Award
 from src.models.base import Base
 from src.models.broadcast import GameBroadcast
@@ -35,8 +38,11 @@ from src.models.stadium_info import StadiumInfo, StadiumRegulation
 from src.models.stadium_operation_notice import StadiumOperationNotice
 from src.models.stadium_transit_time import StadiumTransitTime
 from src.models.team import Team, TeamCodeMap, TeamDailyRoster
+from src.models.team_event import TeamEvent
 from src.models.team_history import TeamHistory
 from src.models.ticket_schedule import TicketSchedule
+
+logger = logging.getLogger(__name__)
 
 
 def _normalize_daily_roster_date(value: date | datetime | str | None) -> date | None:
@@ -77,7 +83,6 @@ class MiscSyncMixin:
 
     def sync_teams(self) -> int:
         """Sync teams from SQLite to OCI"""
-        import json
 
         franchise_mapping = self._get_franchise_id_mapping()
         teams = self.sqlite_session.query(Team).all()
@@ -97,7 +102,7 @@ class MiscSyncMixin:
             elif isinstance(aliases, str):
                 try:
                     aliases_list = json.loads(aliases)
-                except Exception:
+                except json.JSONDecodeError:
                     aliases_list = [aliases]
             elif isinstance(aliases, list):
                 aliases_list = aliases
@@ -106,19 +111,21 @@ class MiscSyncMixin:
 
             aliases_pg = "{" + ",".join(str(a) for a in aliases_list) + "}" if aliases_list else "{}"
 
-            records.append({
-                "team_id": team.team_id,
-                "team_name": team.team_name,
-                "team_short_name": team.team_short_name,
-                "city": team.city,
-                "founded_year": team.founded_year,
-                "stadium_name": team.stadium_name,
-                "franchise_id": fid,
-                "is_active": team.is_active if team.is_active is not None else True,
-                "aliases": aliases_pg,
-                "created_at": team.created_at or datetime.now(),
-                "updated_at": team.updated_at or datetime.now(),
-            })
+            records.append(
+                {
+                    "team_id": team.team_id,
+                    "team_name": team.team_name,
+                    "team_short_name": team.team_short_name,
+                    "city": team.city,
+                    "founded_year": team.founded_year,
+                    "stadium_name": team.stadium_name,
+                    "franchise_id": fid,
+                    "is_active": team.is_active if team.is_active is not None else True,
+                    "aliases": aliases_pg,
+                    "created_at": team.created_at or datetime.now(),
+                    "updated_at": team.updated_at or datetime.now(),
+                }
+            )
 
         self._bulk_copy_upsert(Team.__tablename__, records, ["team_id"])
         print(f"✅ Synced {len(records)} teams to OCI")
@@ -142,8 +149,9 @@ class MiscSyncMixin:
                 self.target_session.execute(text(sql))
                 self.target_session.commit()
                 print("✅ Applied awards migration")
-        except Exception as e:
-            print(f"⚠️ Failed to apply migration: {e}")
+        except Exception as exc:
+            logger.warning("Failed to apply awards migration: %s", exc)
+            print(f"⚠️ Failed to apply migration: {exc}")
             self.target_session.rollback()
 
         return self._sync_simple_table(
@@ -157,8 +165,9 @@ class MiscSyncMixin:
         print("📁 Ensure RAG chunks table exists on OCI...")
         try:
             Base.metadata.create_all(self.oci_engine)
-        except Exception as e:
-            print(f"⚠️ Warning: metadata create_all error (might already exist): {e}")
+        except Exception as exc:
+            logger.warning("metadata create_all error (might already exist): %s", exc)
+            print(f"⚠️ Warning: metadata create_all error (might already exist): {exc}")
 
         def transform_rag_chunk(data: dict[str, Any]) -> dict[str, Any]:
             embedding = data.get("embedding")
@@ -168,7 +177,7 @@ class MiscSyncMixin:
                         import json
 
                         embedding = json.loads(embedding)
-                    except Exception:
+                    except json.JSONDecodeError:
                         pass
                 if isinstance(embedding, list):
                     target_dim = 256
@@ -201,8 +210,9 @@ class MiscSyncMixin:
         print("📁 Ensure Ticket schedules table exists on OCI...")
         try:
             Base.metadata.create_all(self.oci_engine)
-        except Exception as e:
-            print(f"⚠️ Warning: metadata create_all error (might already exist): {e}")
+        except Exception as exc:
+            logger.warning("metadata create_all error (might already exist): %s", exc)
+            print(f"⚠️ Warning: metadata create_all error (might already exist): {exc}")
 
         return self._sync_simple_table(
             TicketSchedule,
@@ -216,8 +226,9 @@ class MiscSyncMixin:
         print("📁 Ensure Stadium foods table exists on OCI...")
         try:
             Base.metadata.create_all(self.oci_engine)
-        except Exception as e:
-            print(f"⚠️ Warning: metadata create_all error (might already exist): {e}")
+        except Exception as exc:
+            logger.warning("metadata create_all error (might already exist): %s", exc)
+            print(f"⚠️ Warning: metadata create_all error (might already exist): {exc}")
 
         return self._sync_simple_table(
             StadiumFood,
@@ -307,6 +318,15 @@ class MiscSyncMixin:
             exclude_cols=["created_at", "id"],
         )
 
+    def sync_team_events(self) -> int:
+        """Sync team_events from SQLite to OCI"""
+        self._ensure_table(TeamEvent)
+        return self._sync_simple_table(
+            TeamEvent,
+            ["team_id", "title", "source_url"],
+            exclude_cols=["created_at", "id"],
+        )
+
     def sync_phase1_all(self) -> dict[str, int]:
         """Sync all Phase 1 tables to OCI"""
         results = {}
@@ -320,6 +340,7 @@ class MiscSyncMixin:
         results["team_rivalries"] = self.sync_team_rivalries()
         results["cheer_songs"] = self.sync_cheer_songs()
         results["cheer_chants"] = self.sync_cheer_chants()
+        results["team_events"] = self.sync_team_events()
         return results
 
     # ─────────────────────────────────────────────────────────────────────────────
@@ -475,20 +496,22 @@ class MiscSyncMixin:
             sup_fid = franchise_mapping.get(h.franchise_id)
             if not sup_fid:
                 continue
-            records.append({
-                "id": h.id,
-                "franchise_id": sup_fid,
-                "season": h.season,
-                "team_name": h.team_name,
-                "team_code": h.team_code,
-                "logo_url": h.logo_url,
-                "ranking": h.ranking,
-                "stadium": h.stadium,
-                "city": h.city,
-                "color": h.color,
-                "created_at": h.created_at or datetime.now(),
-                "updated_at": h.updated_at or datetime.now(),
-            })
+            records.append(
+                {
+                    "id": h.id,
+                    "franchise_id": sup_fid,
+                    "season": h.season,
+                    "team_name": h.team_name,
+                    "team_code": h.team_code,
+                    "logo_url": h.logo_url,
+                    "ranking": h.ranking,
+                    "stadium": h.stadium,
+                    "city": h.city,
+                    "color": h.color,
+                    "created_at": h.created_at or datetime.now(),
+                    "updated_at": h.updated_at or datetime.now(),
+                }
+            )
 
         if not records:
             print("ℹ️ No team history to sync.")
