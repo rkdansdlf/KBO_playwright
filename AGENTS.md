@@ -91,7 +91,7 @@ The CI/CD pipeline uses 14 workflows and 3 composite actions under `.github/`:
 | `backfill_roster.yml` | Month 1st 04:00 | Roster movements + daily rosters |
 
 ### Other Workflows
-- `daily_preview.yml` / `live_refresh.yml` / `pitcher_backfill.yml`: Real-time pregame and live data (day-of-game cron windows)
+- `daily_preview.yml` / `pitcher_backfill.yml`: Real-time pregame and live data (day-of-game cron windows)
 - `weekly_maintenance.yml`: Sunday 05:00 KST — futures profiles, player enrichment
 - `periodic_extras.yml`: Monthly 1st — periodic data sync
 - `full_recalculation.yml`: Manual dispatch — season stat recalculation + OCI sync
