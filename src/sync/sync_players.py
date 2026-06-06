@@ -204,10 +204,17 @@ class PlayerSyncMixin:
 
     def sync_player_movements(self) -> int:
         """Sync player_movements from SQLite to OCI using bulk COPY upsert."""
+
+        def _fix_team_code(data: dict) -> dict:
+            if not data.get("team_code"):
+                data["team_code"] = data.get("canonical_team_id") or "N/A"
+            return data
+
         return self._sync_simple_table(
             PlayerMovement,
             conflict_keys=["movement_date", "team_code", "player_name", "section"],
             exclude_cols=["created_at", "updated_at", "id"],
+            transform_fn=_fix_team_code,
             update_timestamp=True,
         )
 
