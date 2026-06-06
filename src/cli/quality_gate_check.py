@@ -25,7 +25,8 @@ def _print_category(category: str, result: dict) -> None:
     if mismatches:
         print(f"  Mismatches: {len(mismatches)}")
         for mismatch in mismatches[:5]:
-            print(f"    - Player {mismatch.get('player_id')}: {mismatch.get('issue')}")
+            entity = mismatch.get("player_id") or mismatch.get("team_id") or "?"
+            print(f"    - {entity}: {mismatch.get('issue')}")
         if len(mismatches) > 5:
             print(f"    - ... and {len(mismatches) - 5} more")
 
@@ -52,7 +53,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         print(f"Statistical Quality Gate for {year}")
         print("----------------------------------------")
 
-        for category in ["batting", "pitching", "pa_formula"]:
+        for category in ["batting", "pitching", "pa_formula", "team_batting", "team_pitching"]:
             _print_category(category, result[category])
 
         print("----------------------------------------")

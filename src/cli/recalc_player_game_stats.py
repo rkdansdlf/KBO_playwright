@@ -108,6 +108,7 @@ def run_recalc(
     date: str | None = None,
     season: int | None = None,
     dry_run: bool = False,
+    include_futures: bool = False,
 ) -> int:
     with SessionLocal() as session:
         game_ids: list[str] = []
@@ -119,10 +120,13 @@ def run_recalc(
             game_ids.extend(_game_ids_for_date(session, date))
 
         if season:
+            league_codes = [0]
+            if include_futures:
+                league_codes.append(5)
             season_ids = (
                 session.execute(
-                    text("SELECT season_id FROM kbo_seasons WHERE season_year = :year AND league_type_code = 0"),
-                    {"year": season},
+                    text("SELECT season_id FROM kbo_seasons WHERE season_year = :year AND league_type_code IN :codes"),
+                    {"year": season, "codes": tuple(league_codes)},
                 )
                 .scalars()
                 .all()
@@ -166,6 +170,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--game-id", help="Single game ID to recalc")
     parser.add_argument("--date", help="Game date (YYYYMMDD) to recalc all completed games")
     parser.add_argument("--season", type=int, help="Season year to recalc all completed games")
+    parser.add_argument(
+        "--include-futures", action="store_true", help="Include Futures (2nd league) games (default: KBO only)"
+    )
     parser.add_argument("--dry-run", action="store_true", help="Print results without saving")
     parser.add_argument("--save", action="store_true", help="Persist results (default if not --dry-run)")
     args = parser.parse_args(argv)
@@ -184,6 +191,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         date=args.date,
         season=args.season,
         dry_run=dry_run,
+        include_futures=args.include_futures,
     )
 
 
