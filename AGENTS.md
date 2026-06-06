@@ -33,6 +33,10 @@ This repository is a Playwright-based KBO data crawler with a two-track pipeline
 - `python3 -m scripts.maintenance.audit_pa_formula --all-years`: Audit PA formula violations (PA = AB+BB+HBP+SH+SF) across all years.
 - `python3 -m scripts.maintenance.audit_pa_formula --fix-year 2020`: Apply conservative SH fix to satisfy PA formula for a season with missing SH/SF data.
 - `python3 -m scripts.maintenance.backfill_sh_sf_from_pbp --year 2020`: Backfill SH/SF from PBP sacrifice descriptions.
+- `python3 -m src.cli.quality_gate_check --year 2025`: Run statistical quality gate (batting/pitching/pa_formula).
+- `python3 -m src.cli.monthly_pa_audit`: Run PA formula audit & fix for previous year.
+- `python3 -m src.crawlers.fan_culture_crawler --save`: Crawl KBO cheer songs from YouTube channels.
+- `python3 scripts/seed_fan_culture.py`: Seed team rivalry data.
 - `pytest`: Run the test suite.
 
 ## Coding Style & Naming Conventions
@@ -52,7 +56,7 @@ This repository is a Playwright-based KBO data crawler with a two-track pipeline
 - PRs should include: a clear summary, affected modules, test commands run, and any selector/URL changes.
 
 ## Configuration & Secrets
-- Use `.env` for `DATABASE_URL`, `OCI_DB_URL`, and request throttling (e.g., `KBO_REQUEST_DELAY_MIN`).
+- Use `.env` for `DATABASE_URL`, `OCI_DB_URL`, request throttling (e.g., `KBO_REQUEST_DELAY_MIN`), and external API keys (`YOUTUBE_API_KEY`, `NAVER_CLIENT_ID`, `NAVER_CLIENT_SECRET`).
 - Crawler stability depends on consistent delays; avoid reducing throttling without review.
 
 ## Concurrency & Scheduling
@@ -65,20 +69,19 @@ This repository is a Playwright-based KBO data crawler with a two-track pipeline
 
 ## GitHub Actions Automation
 
-The CI/CD pipeline uses 14 workflows and 3 composite actions under `.github/`:
+The CI/CD pipeline uses 14 workflows and 2 composite actions under `.github/`:
 
 ### Composite Actions
-- `.github/actions/python-env/`: Shared setup for all workflows — checkout, setup-python (3.12), pip install, Playwright (optional), init-db + seed (optional), OCI hydration (optional). Used via `uses: ./.github/actions/python-env` with `playwright`, `init-db`, `hydrate` boolean inputs.
+- `.github/actions/python-env/`: Shared setup for all workflows — checkout, setup-python (3.12), pip install, Playwright (cached via actions/cache, ~5s on hit), init-db + seed (optional), OCI hydration (optional). Used via `uses: ./.github/actions/python-env` with `playwright`, `init-db`, `hydrate` boolean inputs.
 - `.github/actions/notify/`: Status notification to Telegram and/or Slack. Inputs: `status` (success/failure/cancelled), `workflow` (name override), `channels` (telegram/slack/both).
-- `.github/actions/notify-telegram/`: Legacy Telegram-only notifier (kept for backward compatibility).
 
 ### Consolidated Daily Pipeline (`daily_kbo_sync.yml`)
 - **Schedule**: 18:00 UTC (03:00 KST next day), `workflow_dispatch` available
-- **Jobs** (5 sequential):
+- **Jobs** (4 sequential):
   1. `finalize` — run_daily_update + standings + defense + rankings + freshness gate
   2. `post-process` — PBP healer + batch parse snapshots
-  3. `quality` — quality report + trend tracker + gap report (Tier 3) + data freshness monitor
-  4. `advanced-sync` — advanced daily sync + reference integrity gate + quality gate + completeness audit
+  3. `quality` — quality report + trend tracker + gap report (Tier 3) + data freshness monitor + recalc player-game stats
+  4. `advanced-sync` — advanced daily sync + reference integrity gate + quality gate + completeness audit + freshness gate (extended)
 - **Environments**: `OCI_DB_URL`, `KBO_USER_ID`, `KBO_USER_PWD`, `TELEGRAM_BOT_TOKEN`, per-category `TELEGRAM_CHAT_ID_*` for gap report routing
 
 ### Backfill Workflows (Tier 2 on GH Actions)
@@ -88,6 +91,7 @@ The CI/CD pipeline uses 14 workflows and 3 composite actions under `.github/`:
 | `backfill_sh_sf.yml` | Sun 05:45 | Derive SH/SF from PBP events |
 | `backfill_advanced_stats.yml` | Sun 06:00 | Recalc advanced batting/pitching season stats |
 | `backfill_player_ids.yml` | Wed 05:30 | Resolve NULL player_ids in game stats |
+| `backfill_player_game_stats.yml` | Sun 03:00 | Recalc player game-level batting/pitching stats |
 | `backfill_roster.yml` | Month 1st 04:00 | Roster movements + daily rosters |
 
 ### Other Workflows
@@ -101,4 +105,5 @@ The CI/CD pipeline uses 14 workflows and 3 composite actions under `.github/`:
 ### Required Secrets
 - `OCI_DB_URL`, `KBO_USER_ID`, `KBO_USER_PWD`, `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`
 - Per-category gap alert: `TELEGRAM_CHAT_ID_RELAY`, `TELEGRAM_CHAT_ID_STANDINGS`, `TELEGRAM_CHAT_ID_PROFILE`, `TELEGRAM_CHAT_ID_FRESHNESS`
+- External APIs: `YOUTUBE_API_KEY`, `NAVER_CLIENT_ID`, `NAVER_CLIENT_SECRET`
 - Optionally: `SLACK_WEBHOOK_URL` (for notify action with `channels: slack`)
