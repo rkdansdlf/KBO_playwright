@@ -557,11 +557,18 @@ def format_telegram_report(metrics: dict[str, Any], gate_result: dict[str, Any])
     else:
         bat_miss = len(gate_result["batting"].get("mismatches", []))
         pit_miss = len(gate_result["pitching"].get("mismatches", []))
-        lines.append(f"❌ <b>Stats</b>: {bat_miss + pit_miss} mismatches detected")
+        team_bat_miss = len(gate_result.get("team_batting", {}).get("mismatches", []))
+        team_pit_miss = len(gate_result.get("team_pitching", {}).get("mismatches", []))
+        total_miss = bat_miss + pit_miss + team_bat_miss + team_pit_miss
+        lines.append(f"❌ <b>Stats</b>: {total_miss} mismatches detected")
         if bat_miss:
-            lines.append(f"   - Batting: {bat_miss} issues")
+            lines.append(f"   - Player Batting: {bat_miss} issues")
         if pit_miss:
-            lines.append(f"   - Pitching: {pit_miss} issues")
+            lines.append(f"   - Player Pitching: {pit_miss} issues")
+        if team_bat_miss:
+            lines.append(f"   - Team Batting: {team_bat_miss} issues")
+        if team_pit_miss:
+            lines.append(f"   - Team Pitching: {team_pit_miss} issues")
 
     # Sabermetrics highlight
     top = metrics.get("top_performer")
@@ -659,6 +666,8 @@ def format_telegram_report(metrics: dict[str, Any], gate_result: dict[str, Any])
 
 def _has_report_issues(metrics: dict[str, Any], gate_result: dict[str, Any]) -> bool:
     trend = metrics.get("pa_formula_trend") or {}
+    team_batting_ok = (gate_result.get("team_batting") or {}).get("ok", True)
+    team_pitching_ok = (gate_result.get("team_pitching") or {}).get("ok", True)
     return (
         not gate_result["ok"]
         or any(not d["is_complete"] for d in metrics["detail_integrity"])
@@ -667,6 +676,8 @@ def _has_report_issues(metrics: dict[str, Any], gate_result: dict[str, Any]) -> 
         or metrics.get("auto_remediation", {}).get("status") in ("warning", "aborted")
         or not (metrics.get("pa_formula_integrity") or {}).get("ok", True)
         or trend.get("direction") == "worsening"
+        or not team_batting_ok
+        or not team_pitching_ok
     )
 
 

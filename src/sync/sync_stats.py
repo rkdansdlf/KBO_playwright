@@ -29,14 +29,12 @@ class StatsSyncMixin:
         existing_player_filter = model.player_id.in_(self.sqlite_session.query(PlayerBasic.player_id))
         missing_count = self.sqlite_session.query(model).filter(*filters, ~existing_player_filter).count()
         if missing_count:
-            print(
-                f"⚠️ Skipping {missing_count} {model.__tablename__} rows with missing local player_basic references"
-            )
+            print(f"⚠️ Skipping {missing_count} {model.__tablename__} rows with missing local player_basic references")
         return [*filters, existing_player_filter]
 
     def sync_pitcher_data(self) -> int:
         """새로운 player_season_pitching 테이블의 투수 데이터를 OCI로 동기화 (고속 Batch COPY)"""
-        return self._sync_simple_table(
+        return self.sync_simple_table(
             PlayerSeasonPitching,
             conflict_keys=["player_id", "season", "league", "level"],
             exclude_cols=["id", "created_at"],
@@ -44,7 +42,7 @@ class StatsSyncMixin:
 
     def sync_batting_data(self) -> int:
         """타자 데이터를 OCI로 동기화 (고속 Batch COPY)"""
-        return self._sync_simple_table(
+        return self.sync_simple_table(
             PlayerSeasonBatting,
             conflict_keys=["player_id", "season", "league", "level"],
             exclude_cols=["id", "created_at"],
@@ -183,7 +181,7 @@ class StatsSyncMixin:
             filters.append(PlayerSeasonBatting.season == year)
         filters = self._add_existing_player_basic_filter(PlayerSeasonBatting, filters)
 
-        synced = self._sync_simple_table(
+        synced = self.sync_simple_table(
             PlayerSeasonBatting,
             conflict_keys=["player_id", "season", "league", "level"],
             exclude_cols=["id", "created_at"],  # Include updated_at
@@ -207,7 +205,7 @@ class StatsSyncMixin:
             filters.append(PlayerSeasonPitching.season == year)
         filters = self._add_existing_player_basic_filter(PlayerSeasonPitching, filters)
 
-        synced = self._sync_simple_table(
+        synced = self.sync_simple_table(
             PlayerSeasonPitching,
             conflict_keys=["player_id", "season", "league", "level"],
             exclude_cols=["id", "created_at"],  # Include updated_at
@@ -241,7 +239,7 @@ class StatsSyncMixin:
         if year:
             filters.append(TeamSeasonBatting.season == year)
 
-        return self._sync_simple_table(
+        return self.sync_simple_table(
             TeamSeasonBatting,
             conflict_keys=["team_id", "season", "league"],
             exclude_cols=["id", "created_at"],  # Include updated_at
@@ -262,7 +260,7 @@ class StatsSyncMixin:
         if year:
             filters.append(TeamSeasonPitching.season == year)
 
-        return self._sync_simple_table(
+        return self.sync_simple_table(
             TeamSeasonPitching,
             conflict_keys=["team_id", "season", "league"],
             exclude_cols=["id", "created_at"],  # Include updated_at
@@ -289,7 +287,7 @@ class StatsSyncMixin:
             since_date = (datetime.now() - timedelta(days=days)).date()
             filters.append(TeamStandingsDaily.standings_date >= since_date)
 
-        return self._sync_simple_table(
+        return self.sync_simple_table(
             TeamStandingsDaily,
             ["standings_date", "team_code"],
             exclude_cols=["created_at", "id"],
@@ -300,7 +298,7 @@ class StatsSyncMixin:
     def sync_stat_rankings(self, year: int | None = None, batch_size: int = 10000) -> int:
         """Sync derived stat_rankings rows to OCI."""
         filters = [StatRanking.season == year] if year else None
-        return self._sync_simple_table(
+        return self.sync_simple_table(
             StatRanking,
             ["season", "metric", "entity_id", "entity_type"],
             exclude_cols=["created_at", "id"],
@@ -317,7 +315,7 @@ class StatsSyncMixin:
                 return 0
 
         filters = [PlayerSeasonFielding.year == year] if year else None
-        return self._sync_simple_table(
+        return self.sync_simple_table(
             PlayerSeasonFielding,
             ["player_id", "team_id", "year", "position_id"],
             exclude_cols=["created_at", "id"],  # Include updated_at
@@ -334,7 +332,7 @@ class StatsSyncMixin:
                 return 0
 
         filters = [PlayerSeasonBaserunning.year == year] if year else None
-        return self._sync_simple_table(
+        return self.sync_simple_table(
             PlayerSeasonBaserunning,
             ["player_id", "team_id", "year"],
             exclude_cols=["created_at", "id"],  # Include updated_at
@@ -353,7 +351,7 @@ class StatsSyncMixin:
                 return 0
 
         filters = [TeamSeasonFielding.season == year] if year else None
-        return self._sync_simple_table(
+        return self.sync_simple_table(
             TeamSeasonFielding,
             conflict_keys=["season", "team_code"],
             exclude_cols=["id", "created_at"],
@@ -372,7 +370,7 @@ class StatsSyncMixin:
                 return 0
 
         filters = [TeamSeasonBaserunning.season == year] if year else None
-        return self._sync_simple_table(
+        return self.sync_simple_table(
             TeamSeasonBaserunning,
             conflict_keys=["season", "team_code"],
             exclude_cols=["id", "created_at"],

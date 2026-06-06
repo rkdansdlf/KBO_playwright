@@ -39,7 +39,7 @@ def sync_headers():
                     # Sync GameMetadata table
                     meta_filters = [GameMetadata.game_id.like(f"{year}%")]
                     print(f"  🚚 Syncing GameMetadata table for {year}...")
-                    synced_meta = syncer._sync_simple_table(
+                    synced_meta = syncer.sync_simple_table(
                         GameMetadata, ["game_id"], exclude_cols=["created_at", "updated_at"], filters=meta_filters
                     )
                     print(f"  ✅ Synced {synced_meta} metadata records.")

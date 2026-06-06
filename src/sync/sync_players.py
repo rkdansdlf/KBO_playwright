@@ -31,7 +31,7 @@ class PlayerSyncMixin:
 
     def sync_players(self) -> int:
         """Sync master player records (players table) from SQLite to OCI using bulk COPY upsert."""
-        return self._sync_simple_table(
+        return self.sync_simple_table(
             Player,
             conflict_keys=["kbo_person_id"],
             exclude_cols=["id"],
@@ -51,7 +51,7 @@ class PlayerSyncMixin:
             data["player_id"] = player_mapping.get(data["player_id"], data["player_id"])
             return data
 
-        return self._sync_simple_table(
+        return self.sync_simple_table(
             PlayerIdentity,
             conflict_keys=[],
             exclude_cols=["created_at", "updated_at", "id"],
@@ -82,7 +82,7 @@ class PlayerSyncMixin:
 
     def sync_player_basic(self, limit: int = None) -> int:
         """Sync player_basic data from SQLite to OCI using fast bulk COPY"""
-        return self._sync_simple_table(
+        return self.sync_simple_table(
             PlayerBasic,
             conflict_keys=["player_id"],
             exclude_cols=[
@@ -210,7 +210,7 @@ class PlayerSyncMixin:
                 data["team_code"] = data.get("canonical_team_id") or "N/A"
             return data
 
-        return self._sync_simple_table(
+        return self.sync_simple_table(
             PlayerMovement,
             conflict_keys=["movement_date", "team_code", "player_name", "section"],
             exclude_cols=["created_at", "updated_at", "id"],
@@ -221,7 +221,7 @@ class PlayerSyncMixin:
     def sync_fa_contracts(self) -> int:
         """Sync fa_contracts from SQLite to OCI using bulk COPY upsert."""
         Base.metadata.create_all(self.oci_engine)
-        return self._sync_simple_table(
+        return self.sync_simple_table(
             FAContract,
             conflict_keys=["player_name", "year", "fa_type", "new_team"],
             exclude_cols=["created_at", "updated_at", "id"],
@@ -229,7 +229,7 @@ class PlayerSyncMixin:
         )
 
     def sync_crawl_runs(self) -> int:
-        return self._sync_simple_table(
+        return self.sync_simple_table(
             CrawlRun,
             conflict_keys=["label", "started_at"],
             exclude_cols=["created_at", "updated_at", "id"],

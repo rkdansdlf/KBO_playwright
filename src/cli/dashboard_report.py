@@ -131,10 +131,13 @@ def _build_team_defense(session, year: int) -> dict:
     }
 
 
-def _build_quality(session, date_str: str) -> dict:
+def _build_quality(session, date_str: str, year: int) -> dict:
     from src.cli.generate_quality_report import get_daily_metrics
+    from src.validators.quality_gate import run_quality_gate
 
     metrics = get_daily_metrics(session, date_str)
+    gate_result = run_quality_gate(session, year)
+    metrics["quality_gate"] = gate_result
     return metrics
 
 
@@ -278,6 +281,24 @@ def _format_terminal(data: dict[str, Any], sections: list[str]):
                 print("  PA 공식: ✅ 일치")
             else:
                 print(f"  PA 공식: ❌ ({pa.get('violation_count', 0)}건 위반)")
+        gate = q.get("quality_gate", {})
+        if gate:
+            team_bat = gate.get("team_batting", {})
+            team_pit = gate.get("team_pitching", {})
+            if team_bat.get("checked_players", 0) > 0:
+                status = "✅" if team_bat.get("ok") else "❌"
+                print(f"  팀 타격 정합성: {status} ({team_bat.get('checked_players', 0)}개 팀)")
+                for m in team_bat.get("mismatches", []):
+                    print(f"    - {m.get('team_id')}: {m.get('issue')}")
+                    for d in m.get("diffs", [])[:2]:
+                        print(f"      {d}")
+            if team_pit.get("checked_players", 0) > 0:
+                status = "✅" if team_pit.get("ok") else "❌"
+                print(f"  팀 투수 정합성: {status} ({team_pit.get('checked_players', 0)}개 팀)")
+                for m in team_pit.get("mismatches", []):
+                    print(f"    - {m.get('team_id')}: {m.get('issue')}")
+                    for d in m.get("diffs", [])[:2]:
+                        print(f"      {d}")
         trend = q.get("pa_formula_trend", {})
         if trend and trend.get("months"):
             direction_icon = (
@@ -349,7 +370,7 @@ def main():
         if "team_defense" in sections:
             data["team_defense"] = _build_team_defense(session, args.year)
         if "quality" in sections:
-            data["quality"] = _build_quality(session, date_str)
+            data["quality"] = _build_quality(session, date_str, args.year)
         if "freshness" in sections:
             data["freshness"] = _build_freshness(session, date_str)
         if "sync" in sections:
@@ -373,6 +394,14 @@ def main():
             pa = q.get("pa_formula_integrity", {})
             if pa and not pa.get("ok", True):
                 msg_lines.append(f"PA 공식 위반: {pa.get('violation_count', 0)}건")
+            gate = q.get("quality_gate", {})
+            if gate:
+                team_bat = gate.get("team_batting", {})
+                team_pit = gate.get("team_pitching", {})
+                if team_bat and not team_bat.get("ok", True):
+                    msg_lines.append(f"팀 타격 불일치: {len(team_bat.get('mismatches', []))}건")
+                if team_pit and not team_pit.get("ok", True):
+                    msg_lines.append(f"팀 투수 불일치: {len(team_pit.get('mismatches', []))}건")
         SlackWebhookClient.send_alert("\n".join(msg_lines))
 
 

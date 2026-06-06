@@ -106,6 +106,29 @@ def check_pa_formula_gaps() -> dict[str, Any]:
     }
 
 
+def check_team_stats_gaps() -> dict[str, Any]:
+    """Check TeamSeasonBatting/Pitching vs PlayerSeasonBatting/Pitching consistency."""
+    year = datetime.now(KST).year
+    with SessionLocal() as session:
+        from src.validators.quality_gate import run_quality_gate
+
+        gate = run_quality_gate(session, year)
+        team_batting = gate.get("team_batting", {})
+        team_pitching = gate.get("team_pitching", {})
+        batting_mismatches = len(team_batting.get("mismatches", []))
+        pitching_mismatches = len(team_pitching.get("mismatches", []))
+        return {
+            "ok": team_batting.get("ok", True) and team_pitching.get("ok", True),
+            "batting_mismatches": batting_mismatches,
+            "pitching_mismatches": pitching_mismatches,
+            "total": batting_mismatches + pitching_mismatches,
+            "details": {
+                "batting": team_batting.get("mismatches", []),
+                "pitching": team_pitching.get("mismatches", []),
+            },
+        }
+
+
 def build_gap_report() -> dict[str, Any]:
     """Run all gap checks and return a unified report dict."""
     report: dict[str, Any] = {
@@ -181,6 +204,13 @@ def build_gap_report() -> dict[str, Any]:
         logger.error("PA_FORMULA gap check failed: %s", e)
         report["gaps"]["PA_FORMULA"] = {"ok": False, "error": str(e)}
 
+    # 8. Team stats consistency
+    try:
+        report["gaps"]["TEAM_STATS"] = check_team_stats_gaps()
+    except Exception as e:
+        logger.error("TEAM_STATS gap check failed: %s", e)
+        report["gaps"]["TEAM_STATS"] = {"ok": False, "error": str(e)}
+
     return report
 
 
@@ -223,6 +253,14 @@ def send_gap_alerts(report: dict[str, Any]) -> None:
             )
         elif gap_type == "PA_FORMULA":
             summary_parts.append(f"{gap_data.get('violation_count', 0)} PA formula violations")
+        elif gap_type == "TEAM_STATS":
+            summary_parts.append(f"{gap_data.get('total', 0)} team stat mismatches")
+            bat = gap_data.get("batting_mismatches", 0)
+            pit = gap_data.get("pitching_mismatches", 0)
+            if bat:
+                summary_parts.append(f"batting={bat}")
+            if pit:
+                summary_parts.append(f"pitching={pit}")
         elif gap_data.get("error"):
             summary_parts.append(f"Error: {gap_data['error']}")
 
@@ -243,6 +281,18 @@ def send_gap_alerts(report: dict[str, Any]) -> None:
         elif gap_type == "PA_FORMULA":
             for v in (gap_data.get("violations") or [])[:5]:
                 detail_items.append(f"{v['game_date']} {v['player_name']} PA={v['pa']} ≠ AB+BB+HBP+SH+SF")
+        elif gap_type == "TEAM_STATS":
+            details = gap_data.get("details", {})
+            for m in (details.get("batting") or [])[:3]:
+                team_id = m.get("team_id", "?")
+                detail_items.append(f"타격 [{team_id}]: {m.get('issue', '')}")
+                for d in (m.get("diffs") or [])[:2]:
+                    detail_items.append(f"  {d}")
+            for m in (details.get("pitching") or [])[:3]:
+                team_id = m.get("team_id", "?")
+                detail_items.append(f"투수 [{team_id}]: {m.get('issue', '')}")
+                for d in (m.get("diffs") or [])[:2]:
+                    detail_items.append(f"  {d}")
 
         SlackWebhookClient.send_gap_alert(gap_type, summary, detail_items)
 
@@ -282,6 +332,8 @@ def run_gap_report(alert: bool = True, dry_run: bool = False) -> dict[str, Any]:
             count = f" ({gap_data['total']})"
         elif "violation_count" in gap_data:
             count = f" ({gap_data['violation_count']})"
+        elif "total" in gap_data:
+            count = f" ({gap_data['total']})"
         print(f"  {icon} {emoji} {gap_type}: {sev}{count}")
 
     if alert and not dry_run:

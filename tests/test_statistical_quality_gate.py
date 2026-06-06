@@ -206,8 +206,8 @@ def test_statistical_quality_gate_passes_when_transactional_totals_are_within_cu
             text(
                 """
                 INSERT INTO player_season_batting
-                    (player_id, season, league, team_code, canonical_team_code, plate_appearances, hits, runs, home_runs)
-                VALUES (10, 2025, 'REGULAR', 'SSG', 'SSG', 5, 2, 1, 0)
+                    (player_id, season, league, team_code, canonical_team_code, plate_appearances, at_bats, hits, runs, home_runs)
+                VALUES (10, 2025, 'REGULAR', 'SSG', 'SSG', 5, 2, 2, 1, 0)
                 """
             )
         )

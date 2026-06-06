@@ -13,6 +13,7 @@ from src.models.game import (
     Game,
     GameBattingStat,
     GameEvent,
+    GameHighlight,
     GameIdAlias,
     GameInningScore,
     GameLineup,
@@ -21,7 +22,6 @@ from src.models.game import (
     GamePlayByPlay,
     GameSummary,
     GameValidationMetrics,
-    GameHighlight,
     PlayerGameBatting,
     PlayerGamePitching,
 )
@@ -205,6 +205,7 @@ def test_sync_player_basic_by_ids_retries_transient_target_execute(monkeypatch):
         monkeypatch.setattr(sync_base_module.time, "sleep", lambda _seconds: None)
 
         attempts = 0
+
         def _mock_do_bulk_copy_upsert(_self, table_name, records, unique_cols, update_timestamp, csv, io, random):
             nonlocal attempts
             attempts += 1
@@ -238,6 +239,7 @@ def test_sync_player_basic_by_ids_rolls_back_and_raises_after_retry_exhaustion(m
         monkeypatch.setattr(sync_base_module.time, "sleep", lambda _seconds: None)
 
         attempts = 0
+
         def _mock_do_bulk_copy_upsert(_self, table_name, records, unique_cols, update_timestamp, csv, io, random):
             nonlocal attempts
             attempts += 1
@@ -465,7 +467,7 @@ def test_sync_pregame_game_syncs_player_basic_before_lineups(monkeypatch):
         def commit(self):
             calls.append("commit")
 
-    def _sync_simple_table(_self, model, _conflict_keys, **_kwargs):
+    def sync_simple_table(_self, model, _conflict_keys, **_kwargs):
         calls.append(model.__tablename__)
         return 1
 
@@ -480,7 +482,7 @@ def test_sync_pregame_game_syncs_player_basic_before_lineups(monkeypatch):
 
     syncer.target_session = _TargetSession()
     monkeypatch.setattr(OCISync, "test_connection", lambda _self: True)
-    monkeypatch.setattr(OCISync, "_sync_simple_table", _sync_simple_table)
+    monkeypatch.setattr(OCISync, "sync_simple_table", sync_simple_table)
     monkeypatch.setattr(OCISync, "_sync_referenced_player_basic_for_games", _sync_refs)
     monkeypatch.setattr(OCISync, "_sync_game_summary_rows", _sync_summary)
 
@@ -535,7 +537,7 @@ def test_sync_specific_game_syncs_player_basic_before_child_replacement(monkeypa
         def commit(self):
             calls.append("commit")
 
-    def _sync_simple_table(_self, model, _conflict_keys, **_kwargs):
+    def sync_simple_table(_self, model, _conflict_keys, **_kwargs):
         calls.append(model.__tablename__)
         return 1
 
@@ -555,7 +557,7 @@ def test_sync_specific_game_syncs_player_basic_before_child_replacement(monkeypa
     monkeypatch.setattr(sync_games_module, "build_game_sync_eligibility", lambda *_args, **_kwargs: _Eligibility())
     monkeypatch.setattr(sync_games_module, "_log_sync_eligibility", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(OCISync, "test_connection", lambda _self: True)
-    monkeypatch.setattr(OCISync, "_sync_simple_table", _sync_simple_table)
+    monkeypatch.setattr(OCISync, "sync_simple_table", sync_simple_table)
     monkeypatch.setattr(OCISync, "_sync_referenced_player_basic_for_games", _sync_refs)
     monkeypatch.setattr(OCISync, "_sync_game_play_by_play", _sync_pbp)
     monkeypatch.setattr(OCISync, "_sync_game_summary_rows", _sync_summary)
@@ -601,7 +603,7 @@ def test_sync_specific_game_skips_missing_optional_validation_metrics_table(monk
         def commit(self):
             calls.append("commit")
 
-    def _sync_simple_table(_self, model, _conflict_keys, **_kwargs):
+    def sync_simple_table(_self, model, _conflict_keys, **_kwargs):
         calls.append(model.__tablename__)
         return 1
 
@@ -613,7 +615,7 @@ def test_sync_specific_game_skips_missing_optional_validation_metrics_table(monk
         "_target_table_exists",
         lambda _self, model: model is not GameValidationMetrics,
     )
-    monkeypatch.setattr(OCISync, "_sync_simple_table", _sync_simple_table)
+    monkeypatch.setattr(OCISync, "sync_simple_table", sync_simple_table)
     monkeypatch.setattr(OCISync, "_sync_referenced_player_basic_for_games", lambda *_args: 1)
     monkeypatch.setattr(OCISync, "_sync_game_play_by_play", lambda *_args, **_kwargs: 1)
     monkeypatch.setattr(OCISync, "_sync_game_summary_rows", lambda *_args, **_kwargs: 1)
@@ -1005,7 +1007,7 @@ def test_sync_game_details_filters_child_datasets_by_eligibility(monkeypatch):
         def _count_table(_self, model, _conflict_keys, filters=None, **_kwargs):
             return session.query(model).filter(*(filters or [])).count()
 
-        monkeypatch.setattr(OCISync, "_sync_simple_table", _count_table)
+        monkeypatch.setattr(OCISync, "sync_simple_table", _count_table)
         monkeypatch.setattr(
             OCISync,
             "_sync_game_play_by_play",
