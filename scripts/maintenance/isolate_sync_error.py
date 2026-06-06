@@ -28,7 +28,7 @@ def isolate_sync():
         try:
             total_metadata = session.query(GameMetadata).count()
             print(f"Total metadata records available: {total_metadata}")
-            res = syncer._sync_simple_table(GameMetadata, ["game_id"], exclude_cols=["created_at"], limit=10000)
+            res = syncer.sync_simple_table(GameMetadata, ["game_id"], exclude_cols=["created_at"], limit=10000)
             print(f"✅ Metadata sync result: {res}")
         except Exception as e:
             print(f"❌ Metadata sync failed: {e}")
@@ -41,7 +41,7 @@ def isolate_sync():
         try:
             total_scores = session.query(GameInningScore).count()
             print(f"Total score records available: {total_scores}")
-            res = syncer._sync_simple_table(
+            res = syncer.sync_simple_table(
                 GameInningScore, ["game_id", "team_side", "inning"], exclude_cols=["id", "created_at"], limit=10000
             )
             print(f"✅ Inning score sync result: {res}")

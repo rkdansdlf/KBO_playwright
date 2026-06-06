@@ -20,12 +20,12 @@ def fast_sync_stats():
         syncer = OCISync(url, session)
 
         print("🚀 Fast Syncing PlayerSeasonBatting...")
-        syncer._sync_simple_table(
+        syncer.sync_simple_table(
             PlayerSeasonBatting, ["player_id", "season", "league", "level"], exclude_cols=["created_at", "updated_at"]
         )
 
         print("🚀 Fast Syncing PlayerSeasonPitching...")
-        syncer._sync_simple_table(
+        syncer.sync_simple_table(
             PlayerSeasonPitching, ["player_id", "season", "league", "level"], exclude_cols=["created_at", "updated_at"]
         )
         print("✅ Finished fast sync of stats")

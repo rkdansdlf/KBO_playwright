@@ -25,17 +25,17 @@ def _build_memory_session():
 
 
 class TestSyncFranchises:
-    def test_calls_sync_simple_table(self):
+    def test_callssync_simple_table(self):
         syncer = object.__new__(OCISync)
         syncer.sqlite_session = _build_memory_session()
 
         calls = []
 
-        def fake_sync_simple_table(model, conflict_keys, **kw):
+        def fakesync_simple_table(model, conflict_keys, **kw):
             calls.append((model, conflict_keys, kw))
             return 5
 
-        syncer._sync_simple_table = fake_sync_simple_table
+        syncer.sync_simple_table = fakesync_simple_table
 
         result = syncer.sync_franchises()
         assert result == 5
@@ -125,7 +125,7 @@ class TestSyncTeams:
 
 
 class TestSyncAwards:
-    def test_calls_sync_simple_table(self):
+    def test_callssync_simple_table(self):
         syncer = object.__new__(OCISync)
         syncer.sqlite_session = _build_memory_session()
         syncer.target_session = _build_memory_session()
@@ -136,7 +136,7 @@ class TestSyncAwards:
             calls.append((model, conflict_keys, kw))
             return 3
 
-        syncer._sync_simple_table = fake
+        syncer.sync_simple_table = fake
 
         result = syncer.sync_awards()
         assert result == 3
@@ -176,7 +176,7 @@ class TestSyncTeamHistory:
 
 
 class TestSyncTeamCodeMap:
-    def test_calls_sync_simple_table_with_transform(self):
+    def test_callssync_simple_table_with_transform(self):
         syncer = object.__new__(OCISync)
         session = _build_memory_session()
         syncer.sqlite_session = session
@@ -197,7 +197,7 @@ class TestSyncTeamCodeMap:
                 assert data["franchise_id"] == 100
             return 1
 
-        syncer._sync_simple_table = fake
+        syncer.sync_simple_table = fake
 
         result = syncer.sync_team_code_map()
         assert result == 1
@@ -217,7 +217,7 @@ class TestSyncTeamCodeMap:
             calls.append((model, conflict_keys, kw))
             return 0
 
-        syncer._sync_simple_table = fake
+        syncer.sync_simple_table = fake
 
         result = syncer.sync_team_code_map()
         assert result == 0
@@ -264,7 +264,7 @@ class TestSyncTeamHistoryEdgeCases:
 
 
 class TestSyncTeamEvents:
-    def test_calls_sync_simple_table(self):
+    def test_callssync_simple_table(self):
         syncer = object.__new__(OCISync)
         syncer.sqlite_session = _build_memory_session()
         syncer._ensure_table = lambda model: None
@@ -275,7 +275,7 @@ class TestSyncTeamEvents:
             calls.append((model, conflict_keys, kw))
             return 8
 
-        syncer._sync_simple_table = fake
+        syncer.sync_simple_table = fake
 
         result = syncer.sync_team_events()
         assert result == 8
