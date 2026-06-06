@@ -2,7 +2,7 @@ name: KBO Player Game Stats Backfill
 
 on:
   schedule:
-    - cron: '0 18 * * 0'  # 일요일 03:00 KST (토 18:00 UTC)
+    - cron: '0 19 * * 0'  # 월요일 04:00 KST (일 19:00 UTC)
   workflow_dispatch:
     inputs:
       year:
@@ -11,7 +11,7 @@ on:
         default: ''
 
 concurrency:
-  group: kbo-backfill-player-game-stats
+  group: kbo-db-write-operations
   cancel-in-progress: false
 
 env:

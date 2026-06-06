@@ -11,7 +11,7 @@ on:
         default: ''
 
 concurrency:
-  group: kbo-daily-pipeline
+  group: kbo-db-write-operations
   cancel-in-progress: false
 
 env:

@@ -2,7 +2,7 @@ name: KBO Advanced Stats Backfill
 
 on:
   schedule:
-    - cron: '0 21 * * 0'  # 일요일 06:00 KST (일 21:00 UTC)
+    - cron: '0 21 * * 0'  # 월요일 06:00 KST (일 21:00 UTC)
   workflow_dispatch:
     inputs:
       year:
@@ -11,7 +11,7 @@ on:
         default: ''
 
 concurrency:
-  group: kbo-backfill-advanced-stats
+  group: kbo-db-write-operations
   cancel-in-progress: false
 
 env:
