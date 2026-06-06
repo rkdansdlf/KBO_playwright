@@ -332,7 +332,11 @@ def aggregate_game_pitching_batch(session: Session, game_ids: list[str]) -> list
 
 
 def _upsert_bulk(
-    session: Session, model: type, records: list[dict[str, Any]], conflict_keys: list[str] | None = None
+    session: Session,
+    model: type,
+    records: list[dict[str, Any]],
+    conflict_keys: list[str] | None = None,
+    chunk_size: int = 100,
 ) -> int:
     if not records:
         return 0
@@ -340,16 +344,19 @@ def _upsert_bulk(
 
     if conflict_keys is None:
         conflict_keys = ["game_id", "player_id"]
-    count = 0
-    for data in records:
-        stmt = sqlite_insert(model).values(**data)
+
+    cols = list(records[0].keys())
+    total = 0
+    for start in range(0, len(records), chunk_size):
+        chunk = records[start : start + chunk_size]
+        stmt = sqlite_insert(model).values(chunk)
         stmt = stmt.on_conflict_do_update(
             index_elements=conflict_keys,
-            set_={k: stmt.excluded[k] for k in data if k not in conflict_keys},
+            set_={k: stmt.excluded[k] for k in cols if k not in conflict_keys},
         )
         session.execute(stmt)
-        count += 1
-    return count
+        total += len(chunk)
+    return total
 
 
 def upsert_player_game_batting(session: Session, records: list[dict[str, Any]]) -> int:

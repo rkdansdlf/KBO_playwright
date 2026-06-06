@@ -117,6 +117,24 @@ def check_coverage(session, verbose: bool = False) -> list[str]:
     return issues
 
 
+def check_draw_missing_sources(session) -> list[str]:
+    """Diagnose DRAW games that lack source-level stats."""
+    issues = []
+    for src in ("game_batting_stats", "game_pitching_stats", "game_play_by_play"):
+        count = session.execute(
+            text(f"""
+                SELECT COUNT(*)
+                FROM game g
+                LEFT JOIN {src} s ON s.game_id = g.game_id
+                WHERE g.game_status = 'DRAW'
+                  AND s.game_id IS NULL
+            """)
+        ).scalar()
+        if count:
+            issues.append(f"DRAW games missing {src}: {count}")
+    return issues
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Verify PlayerGame data quality")
     parser.add_argument("--exit-code", action="store_true", help="Return non-zero exit code on issues")
@@ -132,6 +150,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             ("Duplicates", check_duplicates),
             ("NULL fields", check_nulls),
             ("Rate stats", check_rate_stats),
+            ("DRAW source gaps", check_draw_missing_sources),
             ("Coverage", lambda s: check_coverage(s, verbose=args.verbose)),
         ]:
             print(f"\n--- {label} ---")

@@ -234,6 +234,48 @@ def check_game_data(session) -> dict:
     ).scalar()
     print(f"  Batting avg > obp: {avg_gt_obp} (expected when sacrifice flies exist)")
 
+    # Rate stat boundary checks
+    for tbl, col, lo, hi, _label in [
+        ("player_game_batting", "avg", 0, 1, "avg"),
+        ("player_game_batting", "obp", 0, 1, "obp"),
+        ("player_game_batting", "slg", 0, 5, "slg"),
+        ("player_game_pitching", "era", 0, 200, "era"),
+        ("player_game_pitching", "whip", 0, 30, "whip"),
+    ]:
+        n = session.execute(
+            text(f"SELECT COUNT(*) FROM {tbl} WHERE {col} IS NOT NULL AND ({col} < {lo} OR {col} > {hi})")
+        ).scalar()
+        if n:
+            print(f"  {tbl}.{col}: {n} outside [{lo}, {hi}]")
+
+    # Coverage: games with PlayerGame vs total COMPLETED/DRAW
+    cov = session.execute(
+        text("""
+        SELECT g.game_status,
+               COUNT(DISTINCT g.game_id) as total,
+               COUNT(DISTINCT pgb.game_id) as covered
+        FROM game g
+        LEFT JOIN player_game_batting pgb ON pgb.game_id = g.game_id
+        WHERE g.game_status IN ('COMPLETED', 'DRAW')
+        GROUP BY g.game_status
+    """)
+    ).fetchall()
+    for status, total, covered in cov:
+        pct = 100.0 * covered / total if total else 0
+        print(f"  Coverage {status:<12}: {covered}/{total} ({pct:.1f}%)")
+
+    # Games missing source stats (COMPLETED/DRAW with no game_batting_stats)
+    missing_games = session.execute(
+        text("""
+        SELECT COUNT(DISTINCT g.game_id)
+        FROM game g
+        LEFT JOIN game_batting_stats gbs ON gbs.game_id = g.game_id
+        WHERE g.game_status IN ('COMPLETED', 'DRAW')
+          AND gbs.game_id IS NULL
+    """)
+    ).scalar()
+    print(f"  Games without source batting stats: {missing_games}")
+
     return {"batting": batting_count, "pitching": pitching_count}
 
 

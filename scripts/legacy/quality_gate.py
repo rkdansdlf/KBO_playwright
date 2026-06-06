@@ -102,7 +102,7 @@ def collect_metrics(session_or_conn) -> dict[str, int]:
     has_game_status = True
     try:
         session_or_conn.execute(text("SELECT game_status FROM game LIMIT 1")).fetchall()
-    except Exception:
+    except BaseException:
         has_game_status = False
 
     metrics["game_status_column_present"] = int(has_game_status)
