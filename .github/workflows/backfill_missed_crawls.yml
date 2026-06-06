@@ -2,7 +2,7 @@ name: KBO Backfill Missed Crawls
 
 on:
   schedule:
-    - cron: '19 3 * * 0'  # 일요일 04:00 KST (일 19:00 UTC)
+    - cron: '30 19 * * 0'  # 월요일 04:30 KST (일 19:30 UTC)
   workflow_dispatch:
     inputs:
       lookback_days:
@@ -15,7 +15,7 @@ on:
         default: ''
 
 concurrency:
-  group: kbo-backfill-missed-crawls
+  group: kbo-db-write-operations
   cancel-in-progress: false
 
 env:

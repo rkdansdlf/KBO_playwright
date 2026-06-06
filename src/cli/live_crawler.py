@@ -167,6 +167,145 @@ def _compute_enriched_interval(
     return final, extra_note, updated_counts
 
 
+_ACTIVE_HEALING_GAMES: set[str] = set()
+
+
+async def _run_kbo_fallback_healing(game_id: str) -> None:
+    """Run KBO official website re-crawl as a background fallback task when validation fails."""
+    try:
+        from src.crawlers.pbp_crawler import PBPCrawler
+        from src.utils.alerting import SlackWebhookClient
+
+        print(f"[FALLBACK TRIGGER] PBP for {game_id} is unverified. Triggering KBO website re-crawl in background...")
+        kbo_crawler = PBPCrawler()
+        kbo_data = None
+        max_attempts = 3
+        for attempt in range(1, max_attempts + 1):
+            try:
+                print(f"[FALLBACK TRIGGER] Attempt {attempt} to crawl KBO PBP for {game_id}...")
+                kbo_data = await kbo_crawler.crawl_game_events(game_id)
+                if kbo_data and kbo_data.get("events"):
+                    break
+                else:
+                    raise ValueError("KBO PBP crawl returned no events")
+            except Exception as fallback_err:
+                print(f"[FALLBACK WARNING] KBO fallback attempt {attempt} failed for {game_id}: {fallback_err}")
+                if attempt == max_attempts:
+                    print(f"[FALLBACK ERROR] KBO fallback failed all {max_attempts} attempts for {game_id}")
+                else:
+                    backoff = 2.0 ** attempt
+                    print(f"[FALLBACK INFO] Sleeping for {backoff:.1f}s before retry...")
+                    await asyncio.sleep(backoff)
+
+        if kbo_data and kbo_data.get("events"):
+            try:
+                saved = save_relay_data(
+                    game_id,
+                    events=kbo_data["events"],
+                    source_name="kbo_fallback",
+                    notes="Automatically re-crawled due to Naver validation failure.",
+                )
+                if saved:
+                    msg = f"✅ KBO Fallback Success: Recovered {saved} unverified Naver PBP events from KBO for game {game_id}"
+                    print(f"[FALLBACK SUCCESS] {msg}")
+                    SlackWebhookClient.send_alert(msg)
+            except Exception as db_err:
+                print(f"[FALLBACK ERROR] Failed to save KBO fallback data for {game_id}: {db_err}")
+    except Exception as exc:
+        print(f"[FALLBACK ERROR] Unexpected exception in background KBO healing for {game_id}: {exc}")
+    finally:
+        _ACTIVE_HEALING_GAMES.discard(game_id)
+
+
+async def _process_single_live_game(
+    game: dict[str, Any],
+    lifecycle_state: str | None,
+    nav_status_raw: str | None,
+    relay_crawler: Any,
+    detail_crawler: Any,
+    today_str: str,
+) -> tuple[str | None, str]:
+    """Process a single live game by crawling its relay, updating DB, and triggering healing if needed.
+
+    Returns (touched_game_id, resolved_lifecycle).
+    """
+    game_id = game["game_id"]
+
+    print(
+        f"[LIVE] 🔍 Crawling active game: {game_id} (lifecycle={lifecycle_state}, nav_status={nav_status_raw or 'UNKNOWN'})"
+    )
+
+    relay_data = await relay_crawler.crawl_game_events(game_id)
+    flat_events = list((relay_data or {}).get("events") or [])
+    raw_pbp_rows = list((relay_data or {}).get("raw_pbp_rows") or [])
+
+    # Determine lifecycle state from relay data + Naver status
+    last_desc = ""
+    if flat_events:
+        last_desc = flat_events[-1].get("description", "")
+    elif raw_pbp_rows:
+        last_desc = raw_pbp_rows[-1].get("play_description", "")
+
+    # Detect suspension from relay text
+    detected_suspension = any(term in last_desc for term in ["중단", "지연", "우천", "서스펜디드"])
+
+    # Detect game ending text
+    detected_game_end = _has_ending_header(raw_pbp_rows) or any(
+        term in last_desc for term in ["경기 종료", "게임 종료", "경기종료"]
+    )
+
+    # Resolve final lifecycle state:
+    # Priority: Naver status > text detection > default
+    if lifecycle_state == "result_pending_stabilization" or detected_game_end:
+        resolved_lifecycle = "result_pending_stabilization"
+    elif lifecycle_state == "suspended" or detected_suspension:
+        resolved_lifecycle = "suspended"
+    elif lifecycle_state == "delayed":
+        resolved_lifecycle = "delayed"
+    elif lifecycle_state == "running":
+        resolved_lifecycle = "running"
+    else:
+        resolved_lifecycle = "running"
+
+    touched = False
+    if flat_events or raw_pbp_rows:
+        saved_rows = save_relay_data(
+            game_id,
+            flat_events,
+            raw_pbp_rows=raw_pbp_rows,
+            source_name="naver_live",
+            parser_version=(relay_data or {}).get("parser_version"),
+            source_schema_version=(relay_data or {}).get("source_schema_version"),
+            payload_hash=(relay_data or {}).get("payload_hash"),
+            game_lifecycle_state=resolved_lifecycle,
+        )
+        if saved_rows:
+            touched = True
+            print(f"[LIVE] 📝 Synced {saved_rows} relay rows for {game_id}")
+
+        detail = await detail_crawler.crawl_game(game_id, today_str, lightweight=True)
+        if detail and save_game_snapshot(detail, status=GAME_STATUS_LIVE):
+            touched = True
+            print(f"[LIVE] 📊 Updated scoreboard snapshot for {game_id}")
+
+        # Fallback auto-healing trigger: if the game is finished but validation failed
+        if resolved_lifecycle == "result_pending_stabilization":
+            from src.models.game import GameMetadata
+
+            with SessionLocal() as session:
+                meta = session.query(GameMetadata).filter(GameMetadata.game_id == game_id).first()
+                val_status = (
+                    meta.source_payload.get("pbp_validation_status")
+                    if meta and isinstance(meta.source_payload, dict)
+                    else None
+                )
+                if val_status == "unverified" and game_id not in _ACTIVE_HEALING_GAMES:
+                    _ACTIVE_HEALING_GAMES.add(game_id)
+                    asyncio.create_task(_run_kbo_fallback_healing(game_id))
+
+    return (game_id if touched else None), resolved_lifecycle
+
+
 async def run_live_crawler_cycle(
     *,
     sync_to_oci: bool | None = None,
@@ -288,122 +427,28 @@ async def run_live_crawler_cycle(
             f"(min_delay={min_delay:.2f}s)"
         )
 
-    for game, lifecycle_state, nav_status_raw in selected_candidates:
-        game_id = game["game_id"]
-
-        # Crawl live relay data
-        print(
-            f"[LIVE] 🔍 Crawling active game: {game_id} (lifecycle={lifecycle_state}, nav_status={nav_status_raw or 'UNKNOWN'})"
-        )
-
-        relay_data = await relay_crawler.crawl_game_events(game_id)
-        flat_events = list((relay_data or {}).get("events") or [])
-        raw_pbp_rows = list((relay_data or {}).get("raw_pbp_rows") or [])
-
-        # Determine lifecycle state from relay data + Naver status
-        last_desc = ""
-        if flat_events:
-            last_desc = flat_events[-1].get("description", "")
-        elif raw_pbp_rows:
-            last_desc = raw_pbp_rows[-1].get("play_description", "")
-
-        # Detect suspension from relay text
-        detected_suspension = any(term in last_desc for term in ["중단", "지연", "우천", "서스펜디드"])
-
-        # Detect game ending text
-        detected_game_end = _has_ending_header(raw_pbp_rows) or any(
-            term in last_desc for term in ["경기 종료", "게임 종료", "경기종료"]
-        )
-
-        # Resolve final lifecycle state:
-        # Priority: Naver status > text detection > default
-        if lifecycle_state == "result_pending_stabilization" or detected_game_end:
-            resolved_lifecycle = "result_pending_stabilization"
-        elif lifecycle_state == "suspended" or detected_suspension:
-            resolved_lifecycle = "suspended"
-        elif lifecycle_state == "delayed":
-            resolved_lifecycle = "delayed"
-        elif lifecycle_state == "running":
-            resolved_lifecycle = "running"
-        else:
-            resolved_lifecycle = "running"
-
-        # Track active flags for dynamic polling
-        if resolved_lifecycle == "suspended":
-            active_suspended_flag = True
-        elif resolved_lifecycle == "running":
-            active_playing_flag = True
-
-        if flat_events or raw_pbp_rows:
-            saved_rows = save_relay_data(
-                game_id,
-                flat_events,
-                raw_pbp_rows=raw_pbp_rows,
-                source_name="naver_live",
-                parser_version=(relay_data or {}).get("parser_version"),
-                source_schema_version=(relay_data or {}).get("source_schema_version"),
-                payload_hash=(relay_data or {}).get("payload_hash"),
-                game_lifecycle_state=resolved_lifecycle,
+    # Process all selected games in parallel
+    if selected_candidates:
+        tasks = [
+            _process_single_live_game(
+                game,
+                lifecycle_state,
+                nav_status_raw,
+                relay_crawler,
+                detail_crawler,
+                today_str,
             )
-            if saved_rows:
-                touched_game_ids.add(game_id)
-                print(f"[LIVE] 📝 Synced {saved_rows} relay rows for {game_id}")
+            for game, lifecycle_state, nav_status_raw in selected_candidates
+        ]
+        results = await asyncio.gather(*tasks)
 
-            detail = await detail_crawler.crawl_game(game_id, today_str, lightweight=True)
-            if detail and save_game_snapshot(detail, status=GAME_STATUS_LIVE):
-                touched_game_ids.add(game_id)
-                print(f"[LIVE] 📊 Updated scoreboard snapshot for {game_id}")
-
-            # Fallback auto-healing trigger: if the game is finished but validation failed
-            if resolved_lifecycle == "result_pending_stabilization":
-                from src.models.game import GameMetadata
-
-                with SessionLocal() as session:
-                    meta = session.query(GameMetadata).filter(GameMetadata.game_id == game_id).first()
-                    val_status = (
-                        meta.source_payload.get("pbp_validation_status")
-                        if meta and isinstance(meta.source_payload, dict)
-                        else None
-                    )
-                    if val_status == "unverified":
-                        print(f"[FALLBACK TRIGGER] PBP for {game_id} is unverified. Triggering KBO website re-crawl...")
-                        from src.crawlers.pbp_crawler import PBPCrawler
-                        from src.utils.alerting import SlackWebhookClient
-
-                        kbo_crawler = PBPCrawler()
-                        kbo_data = None
-                        max_attempts = 3
-                        for attempt in range(1, max_attempts + 1):
-                            try:
-                                print(f"[FALLBACK TRIGGER] Attempt {attempt} to crawl KBO PBP for {game_id}...")
-                                kbo_data = await kbo_crawler.crawl_game_events(game_id)
-                                if kbo_data and kbo_data.get("events"):
-                                    break
-                                else:
-                                    raise ValueError("KBO PBP crawl returned no events")
-                            except Exception as fallback_err:
-                                print(f"[FALLBACK WARNING] KBO fallback attempt {attempt} failed for {game_id}: {fallback_err}")
-                                if attempt == max_attempts:
-                                    print(f"[FALLBACK ERROR] KBO fallback failed all {max_attempts} attempts for {game_id}")
-                                else:
-                                    backoff = 2.0 ** attempt
-                                    print(f"[FALLBACK INFO] Sleeping for {backoff:.1f}s before retry...")
-                                    await asyncio.sleep(backoff)
-
-                        if kbo_data and kbo_data.get("events"):
-                            try:
-                                saved = save_relay_data(
-                                    game_id,
-                                    events=kbo_data["events"],
-                                    source_name="kbo_fallback",
-                                    notes="Automatically re-crawled due to Naver validation failure.",
-                                )
-                                if saved:
-                                    msg = f"✅ KBO Fallback Success: Recovered {saved} unverified Naver PBP events from KBO for game {game_id}"
-                                    print(f"[FALLBACK SUCCESS] {msg}")
-                                    SlackWebhookClient.send_alert(msg)
-                            except Exception as db_err:
-                                print(f"[FALLBACK ERROR] Failed to save KBO fallback data for {game_id}: {db_err}")
+        for touched_gid, resolved_lifecycle in results:
+            if touched_gid:
+                touched_game_ids.add(touched_gid)
+            if resolved_lifecycle == "suspended":
+                active_suspended_flag = True
+            elif resolved_lifecycle == "running":
+                active_playing_flag = True
 
     manifest_path = write_refresh_manifest(
         phase="live",

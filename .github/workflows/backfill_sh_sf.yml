@@ -2,11 +2,11 @@ name: KBO SH/SF Backfill
 
 on:
   schedule:
-    - cron: '45 20 * * 0'  # 일요일 05:45 KST (일 20:45 UTC)
+    - cron: '45 20 * * 0'  # 월요일 05:45 KST (일 20:45 UTC)
   workflow_dispatch:
 
 concurrency:
-  group: kbo-backfill-sh-sf
+  group: kbo-db-write-operations
   cancel-in-progress: false
 
 env:

@@ -18,16 +18,18 @@ MIGRATIONS_DIR.mkdir(parents=True, exist_ok=True)
 
 DB_PATH = os.path.join(
     os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
-    "data", "kbo_dev.db",
+    "data",
+    "kbo_dev.db",
 )
 
 
 def get_db_path():
     from dotenv import load_dotenv
+
     load_dotenv()
     db_url = os.getenv("DATABASE_URL", f"sqlite:///{DB_PATH}")
     if db_url.startswith("sqlite:///"):
-        return db_url[len("sqlite:///"):]
+        return db_url[len("sqlite:///") :]
     return DB_PATH
 
 
@@ -51,9 +53,7 @@ def _install_functions(conn):
 
 
 def get_applied(conn):
-    rows = conn.execute(
-        "SELECT filename FROM _migrations ORDER BY filename"
-    ).fetchall()
+    rows = conn.execute("SELECT filename FROM _migrations ORDER BY filename").fetchall()
     return {r[0] for r in rows}
 
 

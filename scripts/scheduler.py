@@ -57,6 +57,7 @@ from src.cli.crawl_retire import main as crawl_retire_main
 from src.cli.daily_preview_batch import run_preview_batch
 from src.cli.live_crawler import run_live_crawler_cycle
 from src.cli.monthly_pa_audit import crawl_monthly_pa_audit_job
+from src.cli.monthly_team_audit import crawl_monthly_team_audit_job
 from src.cli.run_daily_update import format_stability_alert_summary
 from src.cli.run_daily_update import main as run_daily_update_main
 from src.db.engine import SessionLocal
@@ -85,6 +86,8 @@ DAILY_LOCK = Lock()  # For daily update/finalize
 MAINTENANCE_LOCK = Lock()  # For weekly futures sync and OCI hydration/reports
 
 MISSING_PREGAME_ALERTED_DATES: set[str] = set()
+LAST_LIVE_RUN_TIME: datetime | None = None
+LAST_LIVE_POLL_INTERVAL: int | None = None
 
 
 def _live_refresh_max_games_per_cycle() -> int | None:
@@ -599,14 +602,152 @@ def crawl_pregame_refresh():
         alert_success("crawl_pregame_refresh")
 
 
+def _get_live_poll_interval_seconds() -> int:
+    """
+    Calculate the appropriate polling interval in seconds by querying the
+    local SQLite database for today's KBO games.
+
+    Database state rules:
+    1. If no games scheduled for today: return 1800 (30 minutes).
+    2. If all games are terminal (COMPLETED, CANCELLED, POSTPONED, etc.):
+       - If the last game updated within the last 10 minutes (cooldown): return 60.
+       - Otherwise: return 1800 (30 minutes).
+    3. If there are any live/active games:
+       - If any game is 'LIVE' (running): return 10.
+       - If any game is 'DELAYED' or 'SUSPENDED' (rain delay/stoppage): return 60.
+       - Otherwise: return 10 (safe default).
+    4. If there are games today but none have started yet (all are SCHEDULED):
+       - Find the earliest start time.
+       - If current KST time is within 15 minutes of the earliest start time: return 30.
+       - Otherwise: return 120 (2 minutes).
+    """
+    now = datetime.now(KST)
+    today_str = now.strftime("%Y-%m-%d")
+
+    try:
+        with SessionLocal() as session:
+            # Query today's games and metadata from SQLite
+            query = text("""
+                SELECT g.game_status, g.game_id, m.start_time, g.updated_at
+                FROM game g
+                LEFT JOIN game_metadata m ON g.game_id = m.game_id
+                WHERE g.game_date = :today
+            """)
+            rows = session.execute(query, {"today": today_str}).all()
+    except Exception:
+        logger.exception("[LiveInterval] Failed to query game states; defaulting to 120s")
+        return 120
+
+    if not rows:
+        # No games scheduled today
+        return 1800
+
+    # Categorize game states
+    terminal_statuses = {"COMPLETED", "CANCELLED", "POSTPONED", "DRAW"}
+    active_statuses = {"LIVE", "DELAYED", "SUSPENDED", "RUNNING"}
+
+    has_active = False
+    has_suspended = False
+    all_terminal = True
+    earliest_start_time = None
+    latest_update_time = None
+
+    for row in rows:
+        # row: (game_status, game_id, start_time, updated_at)
+        status = str(row[0] or "").upper()
+        start_time_raw = row[2]  # datetime.time object
+        updated_at_raw = row[3]  # datetime.datetime object
+
+        if status not in terminal_statuses:
+            all_terminal = False
+
+        if status in active_statuses:
+            has_active = True
+            if status in {"DELAYED", "SUSPENDED"}:
+                has_suspended = True
+
+        # Track earliest start time for non-started games
+        if status == "SCHEDULED" and start_time_raw:
+            try:
+                if isinstance(start_time_raw, str):
+                    parts = list(map(int, start_time_raw.split(":")[:2]))
+                    start_time = now.replace(hour=parts[0], minute=parts[1], second=0, microsecond=0)
+                else:
+                    start_time = now.replace(hour=start_time_raw.hour, minute=start_time_raw.minute, second=0, microsecond=0)
+
+                if earliest_start_time is None or start_time < earliest_start_time:
+                    earliest_start_time = start_time
+            except Exception:
+                logger.warning("[LiveInterval] Failed to parse start_time: %s", start_time_raw)
+
+        # Track latest update time for terminal/finished games
+        if updated_at_raw:
+            try:
+                if isinstance(updated_at_raw, str):
+                    updated_dt = datetime.fromisoformat(updated_at_raw)
+                else:
+                    updated_dt = updated_at_raw
+
+                if updated_dt.tzinfo is None:
+                    updated_kst = updated_dt.replace(tzinfo=KST)
+                else:
+                    updated_kst = updated_dt.astimezone(KST)
+
+                if latest_update_time is None or updated_kst > latest_update_time:
+                    latest_update_time = updated_kst
+            except Exception:
+                pass
+
+    # Apply interval rules
+    if has_active:
+        if has_suspended:
+            return 60
+        return 10
+
+    if all_terminal:
+        if latest_update_time:
+            elapsed_since_finish = (now - latest_update_time).total_seconds()
+            if 0 <= elapsed_since_finish < 600:
+                return 60
+        return 1800
+
+    if earliest_start_time:
+        time_to_start = (earliest_start_time - now).total_seconds()
+        if 0 <= time_to_start <= 900:
+            return 30
+        elif time_to_start < 0:
+            return 30
+
+    return 120
+
+
 def crawl_live_refresh():
+    global LAST_LIVE_RUN_TIME, LAST_LIVE_POLL_INTERVAL
+
     if _should_skip_live_for_pregame():
         logger.info("Skipping live refresh because pregame refresh is due soon")
         return
 
+    now = datetime.now(KST)
+    interval = _get_live_poll_interval_seconds()
+
+    if interval != LAST_LIVE_POLL_INTERVAL:
+        logger.info("[LiveInterval] Polling interval changed: %s -> %ds", f"{LAST_LIVE_POLL_INTERVAL}s" if LAST_LIVE_POLL_INTERVAL else "None", interval)
+        LAST_LIVE_POLL_INTERVAL = interval
+
+    if LAST_LIVE_RUN_TIME is not None:
+        elapsed = (now - LAST_LIVE_RUN_TIME).total_seconds()
+        if elapsed < interval:
+            # Fast exit without acquiring LIVE_LOCK
+            return
+
     with LIVE_LOCK:
         logger.info("Running live refresh cycle")
         result = asyncio.run(run_live_crawler_cycle(max_active_games=_live_refresh_max_games_per_cycle()))
+
+        # Only update run time when the cycle actually executes
+        LAST_LIVE_RUN_TIME = datetime.now(KST)
+
         if isinstance(result, dict):
             failed_ids = result.get("oci_sync_failed_game_ids") or []
             failure_count = int(result.get("oci_sync_failure_count") or len(failed_ids) or 0)
@@ -1318,6 +1459,17 @@ def main(argv: Sequence[str] | None = None):
     )
     logger.info("Registered job: crawl_monthly_pa_audit (Monthly 1st 03:00 KST)")
 
+    # Job 2.8: Monthly Team Stats Audit (1st of every month at 04:00 KST)
+    scheduler.add_job(
+        crawl_monthly_team_audit_job,
+        trigger=CronTrigger(day=1, hour=4, minute=0),
+        id="crawl_monthly_team_audit",
+        name="Monthly Team Stats Audit",
+        misfire_grace_time=3600,
+        max_instances=1,
+    )
+    logger.info("Registered job: crawl_monthly_team_audit (Monthly 1st 04:00 KST)")
+
     scheduler.add_job(
         crawl_pregame_refresh,
         trigger=CronTrigger(hour="10-23", minute="*/15"),
@@ -1330,21 +1482,21 @@ def main(argv: Sequence[str] | None = None):
 
     scheduler.add_job(
         crawl_live_refresh,
-        trigger=CronTrigger(hour="12-22", minute="*/2"),
+        trigger=CronTrigger(hour="12-22", second="*/10"),
         id="crawl_live_refresh_day",
         name="Live Refresh Day Window",
-        misfire_grace_time=180,
+        misfire_grace_time=5,
         max_instances=1,
     )
     scheduler.add_job(
         crawl_live_refresh,
-        trigger=CronTrigger(hour=23, minute="0-30/2"),
+        trigger=CronTrigger(hour=23, minute="0-30", second="*/10"),
         id="crawl_live_refresh_night",
         name="Live Refresh Night Window",
-        misfire_grace_time=180,
+        misfire_grace_time=5,
         max_instances=1,
     )
-    logger.info("Registered job: crawl_live_refresh (Every 2m, 12:00-23:30 KST)")
+    logger.info("Registered job: crawl_live_refresh (Every 10s, 12:00-23:30 KST)")
 
     # ─────────────────────────────────────────────────────────────────────────
     # Stadium Real-Time Data Jobs

@@ -4,7 +4,7 @@ import argparse
 import csv
 import os
 import sys
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -30,7 +30,7 @@ def apply_overrides(override_path: Path, capability_path: Path) -> int:
                     source_name=source_name,
                     sample_size=int(row.get("sample_size") or 0),
                     supported=str(row.get("supported") or "").strip().lower() == "true",
-                    last_checked_at=datetime.now(timezone.utc).isoformat(),
+                    last_checked_at=datetime.now(UTC).isoformat(),
                     notes=(row.get("notes") or "").strip() or None,
                 ),
             )

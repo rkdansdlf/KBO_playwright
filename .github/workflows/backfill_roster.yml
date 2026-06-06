@@ -2,7 +2,7 @@ name: KBO Roster Backfill
 
 on:
   schedule:
-    - cron: '0 19 1 * *'  # 매월 1일 04:00 KST (1일 19:00 UTC)
+    - cron: '0 19 1 * *'  # 매월 2일 04:00 KST (1일 19:00 UTC)
   workflow_dispatch:
     inputs:
       year:
@@ -11,7 +11,7 @@ on:
         default: ''
 
 concurrency:
-  group: kbo-backfill-roster
+  group: kbo-db-write-operations
   cancel-in-progress: false
 
 env:
