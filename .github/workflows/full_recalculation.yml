@@ -59,6 +59,11 @@ jobs:
         run: |
           python3 -m src.cli.sync_oci --season-stats --player-game-stats
 
+      - name: Verify PlayerGame Data Quality
+        if: always()
+        run: |
+          python3 -m scripts.verification.verify_player_game_stats --exit-code
+
       - uses: ./.github/actions/notify
         if: always()
         with:

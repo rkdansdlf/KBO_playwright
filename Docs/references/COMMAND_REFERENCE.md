@@ -18,23 +18,27 @@
 
 ## 🚀 빠른 시작
 
-### 최신 1년 데이터 수집
+### 최신 데이터 수집 (권장)
 ```bash
-# 2024-2025년 정규시즌 + 포스트시즌 (SQLite 초기화 + 자동 동기화)
-./crawl_clean_and_sync.sh 2024 2025
+# 가상환경 활성화
+source venv/bin/activate
 
-# 최근 3년 빠르게
-./venv/bin/python3 crawl_all_historical.py --recent
+# 스케줄러 실행 (maintenance lock 작업 포함)
+python3 -m scripts.scheduler
+
+# 수동 일일 업데이트
+python3 -m src.cli.run_daily_update --date 20251015 --sync
+
+# 특정 시즌 크롤링
+python3 -m src.cli.crawl_schedule --year 2025 --month 10
+python3 -m src.cli.collect_games --year 2024 --month 10
+python3 -m src.cli.crawl_futures --season 2025 --concurrency 3
+
+# 데이터 품질 검증
+python3 -m src.cli.quality_gate_check --year 2025
 ```
 
-### 전체 역사 데이터 수집
-```bash
-# 1982-2025년 전체 KBO 역사 (자동 전략 선택)
-./venv/bin/python3 crawl_all_historical.py --full-history
-
-# 수동 범위 지정
-./crawl_year_range.sh 1982 2025 full
-```
+> **참고**: 레거시 스크립트(`crawl_clean_and_sync.sh`, `crawl_all_historical.py`, `crawl_year_range.sh`)는 `python3 -m src.cli.*` 기반의 새 명령어로 대체되었습니다. 상세 명령어는 아래 섹션을 참고하세요.
 
 ---
 
@@ -60,11 +64,11 @@ cp .env.example .env
 
 ### 2. 데이터베이스 초기화
 ```bash
-# SQLite 데이터베이스 생성
-./venv/bin/python3 init_db.py
+# SQLite 데이터베이스 생성 및 마이그레이션
+python3 -c "from src.db.engine import init_db; init_db()"
 
-# 기본 팀 데이터 시드
-./venv/bin/python3 seed_teams.py
+# 기본 데이터 시드 (팀, 시즌, 데이터소스)
+python3 scripts/maintenance/seed_data.py
 ```
 
 ---
@@ -92,10 +96,16 @@ cp .env.example .env
 ### 데이터 검증
 ```bash
 # 데이터 무결성 검증
-./venv/bin/python3 verify_sqlite_data.py
+python3 -m src.cli.health_check
 
-# 타자/투수 데이터 분리 확인
-./venv/bin/python3 verify_data_separation.py
+# PlayerGame 스탯 검증
+python3 -m scripts.verification.verify_player_game_stats
+
+# PA 공식 검증 (PA = AB + BB + HBP + SH + SF)
+python3 -m scripts.maintenance.audit_pa_formula --year 2025
+
+# 전체 품질 게이트 (로컬)
+python3 -m src.cli.quality_gate_check --year 2025
 ```
 
 ---
@@ -388,69 +398,35 @@ git status --short
 
 ## 🤖 자동화 스크립트
 
-### 1. 연도 범위 크롤링
+### 1. 스케줄러 (권장)
 ```bash
-# 기본 사용법 (대화형)
-./crawl_year_range.sh
+# 로컬 APScheduler 실행 (실시간/일일/주간 작업 자동화)
+python3 -m scripts.scheduler
 
-# 2020-2025년 빠른 모드
-./crawl_year_range.sh 2020 2025
+# 특정 작업만 실행 (다른 프로세스와 충돌 방지)
+python3 -m scripts.scheduler --no-backfill
 
-# 1982-2025년 완전 모드 (시범경기 포함)
-./crawl_year_range.sh 1982 2025 full
-
-# 도움말
-./crawl_year_range.sh --help
+# help
+python3 -m scripts.scheduler --help
 ```
 
-### 2. 깨끗한 크롤링 + 동기화
+### 2. 일일 데이터 동기화
 ```bash
-# 2024-2025년 (기본값)
-./crawl_clean_and_sync.sh
-
-# 2022-2025년 지정
-./crawl_clean_and_sync.sh 2022 2025
-
-# 완전 모드
-./crawl_clean_and_sync.sh 2020 2025 full
+# 경기 종료 후 수동 실행
+python3 -m src.cli.run_daily_update --date 20251015 --sync
 ```
 
-### 3. 자동 전략 선택 크롤링
+### 3. 연도 범위 크롤링
 ```bash
-# 최근 3년 자동 크롤링
-./venv/bin/python3 crawl_all_historical.py --recent
+# 최근 3년 빠르게
+python3 -m src.cli.collect_games --year 2024 --month 4
+python3 -m src.cli.collect_games --year 2025 --month 5
 
-# 전체 역사 자동 크롤링
-./venv/bin/python3 crawl_all_historical.py --full-history
+# 수동 범위 (기존 상세/릴레이는 기본 스킵)
+python3 -m src.cli.collect_games --year 2024 --month 10
 
-# 사용자 정의 범위
-./venv/bin/python3 crawl_all_historical.py \
-    --start 1990 \
-    --end 2010 \
-    --series regular korean_series
-
-# DB 초기화 없이 실행
-./venv/bin/python3 crawl_all_historical.py \
-    --start 2024 \
-    --end 2025 \
-    --no-reset
-
-# 브라우저 UI 표시
-./venv/bin/python3 crawl_all_historical.py \
-    --recent \
-    --no-headless
-```
-
-### 4. 스케줄러 (자동화)
-```bash
-# 로컬 스케줄러 실행
-./venv/bin/python3 -m scripts.scheduler
-
-# Docker 스케줄러
-docker-compose up -d scheduler
-
-# 스케줄러 로그 확인
-docker-compose logs -f scheduler
+# 강제 재수집
+python3 -m src.cli.collect_games --year 2024 --month 10 --force
 ```
 
 ---
@@ -596,28 +572,109 @@ export OCI_DB_URL='postgresql://user:password@host:5432/bega_backend'
 ### 동기화 명령어
 ```bash
 # 운영 권장: 검증된 경기 상세만 OCI에 반영
-./venv/bin/python3 -m src.cli.sync_oci --game-details --unsynced-only
+python3 -m src.cli.sync_oci --game-details --unsynced-only
 
 # 특정 연도 경기 상세 동기화
-./venv/bin/python3 -m src.cli.sync_oci --game-details --year 2025
+python3 -m src.cli.sync_oci --game-details --year 2025
 
 # player_basic 동기화
-./venv/bin/python3 -m src.cli.sync_oci --player-basic
+python3 -m src.cli.sync_oci --player-basic
 
 # PlayerGame 스탯 (game-batting/pitching에서 집계) 동기화
-./venv/bin/python3 -m src.cli.sync_oci --player-game-stats
+python3 -m src.cli.sync_oci --player-game-stats
 
 # 전체 파이프라인: recalc + sync
-./venv/bin/python3 -m src.cli.recalc_player_game_stats --season 2025 --save
-./venv/bin/python3 -m src.cli.sync_oci --player-game-stats
+python3 -m src.cli.recalc_player_game_stats --season 2025 --save
+python3 -m src.cli.sync_oci --player-game-stats
 
-# PlayerGame 데이터 품질 검증
-./venv/bin/python3 -m scripts.verification.verify_player_game_stats
-./venv/bin/python3 -m scripts.verification.verify_player_game_stats --verbose
-./venv/bin/python3 -m scripts.verification.verify_player_game_stats --exit-code
+# 시즌 스탯 동기화
+python3 -m src.cli.sync_oci --season-stats
 
-# 로컬/OCI 품질 게이트
-./venv/bin/python3 scripts/maintenance/quality_gate.py
+# OCI 전체 동기화 (truncate + full sync)
+python3 -m src.cli.sync_oci --truncate
+```
+
+---
+
+## 📊 품질 게이트 및 데이터 감사
+
+### 1. 통계 품질 게이트 (Quality Gate)
+시즌별 타자/투수/PA 공식 통계의 무결성을 검증합니다.
+
+```bash
+# 특정 시즌 검증
+python3 -m src.cli.quality_gate_check --year 2025
+
+# 전체 시즌 검증
+python3 -m src.cli.quality_gate_check --all-years
+
+# OCI 기준 검증
+python3 -m src.cli.quality_gate_check --year 2025 --oci
+```
+
+### 2. PA 공식 감사 (PA Formula Audit)
+`PA = AB + BB + HBP + SH + SF` 공식 위반을 탐지하고 수정합니다.
+
+```bash
+# 전체 연도 감사
+python3 -m scripts.maintenance.audit_pa_formula --all-years
+
+# 특정 연도 수정 (비율 기반 SH/SF 보정)
+python3 -m scripts.maintenance.audit_pa_formula --fix-year 2020
+
+# PBP 기반 SH/SF 백필
+python3 -m scripts.maintenance.backfill_sh_sf_from_pbp --year 2020
+
+# 월간 자동 감사 (APScheduler가 매월 1일 03:00 KST 실행)
+python3 -m src.cli.monthly_pa_audit
+```
+
+### 3. Freshness Gate
+최근 데이터가 정상적으로 수집되었는지 검증합니다.
+
+```bash
+# 기본 검증 (1일 기준)
+python3 -m src.cli.freshness_gate --date 20251015
+
+# 확장 검증 (14일 기준, OCI)
+python3 -m src.cli.freshness_gate --days 14 --source-url-env OCI_DB_URL
+```
+
+### 4. Gap Report
+카테고리별 데이터 수집 갭을 분석합니다.
+
+```bash
+# 전체 갭 리포트
+python3 -m src.cli.gap_report
+
+# 특정 카테고리
+python3 -m src.cli.gap_report --categories relay profile
+```
+
+### 5. PlayerGame 통계 재계산
+경기 단위 스탯을 선수별로 집계합니다.
+
+```bash
+# 특정 시즌 전체 재계산
+python3 -m src.cli.recalc_player_game_stats --season 2025 --save
+
+# 특정 날짜 재계산
+python3 -m src.cli.recalc_player_game_stats --date 20251015 --save
+
+# 특정 경기만 재계산
+python3 -m src.cli.recalc_player_game_stats --game-id 20250401LGSS0 --save
+
+# 변경 사항 미리보기
+python3 -m src.cli.recalc_player_game_stats --season 2025 --dry-run
+```
+
+### 6. 팀/선수 시즌 스탯 재계산
+```bash
+# 타자 시즌 스탯
+python3 -m src.cli.recalc_player_stats --season 2025 --save
+
+# 팀 통계 재계산
+python3 -m src.cli.recalc_team_stats --season 2025 --save
 ```
 
 ---
@@ -647,16 +704,14 @@ tail -f crawl_errors.log
 ```bash
 # SQLite 손상 시 재구축
 rm data/kbo_dev.db*
-./venv/bin/python3 init_db.py
-./venv/bin/python3 seed_teams.py
+python3 -c "from src.db.engine import init_db; init_db()"
+python3 scripts/maintenance/seed_data.py
 
 # 팀/시즌 데이터만 빠졌을 경우
-# CSV에 스키마 행만 있어도 `seed_data.py`는 자동으로 무시하고
-# 22개 기본 팀 리스트를 병합해 FK 무결성을 유지합니다.
-./venv/bin/python3 seed_data.py
+python3 scripts/maintenance/seed_data.py
 
 # 외래키 제약조건 확인
-./venv/bin/python3 -c "
+python3 -c "
 from src.db.engine import SessionLocal
 with SessionLocal() as session:
     session.execute('PRAGMA foreign_key_check')
@@ -824,67 +879,14 @@ docker-compose logs -f scheduler
 
 ---
 
-## 📊 크롤링 전략 가이드
-
-### 연도별 권장 전략
-
-#### 1982-2001년 (레거시 모드)
-- **특징**: 단순 컬럼 구조
-- **타자**: 순위, 선수명, 팀명, AVG, G, PA, AB, H, 2B, 3B, HR, RBI, SB, CS, BB, HBP, SO, GDP, E
-- **투수**: 순위, 선수명, 팀명, ERA, G, GS, W, L, SV, HLD, IP, H, HR, BB, SO, R, ER
-- **명령어**: `legacy_batting_crawler.py`, `legacy_pitching_crawler.py`
-- **시리즈**: regular, korean_series, exhibition (2000-2001년에는 플레이오프 없음)
-
-#### 2002년-현재 (현대 모드)
-- **특징**: 복합 구조, 상세 통계
-- **타자**: 기본 + OPS, wOBA, WAR 등 세이버메트릭스
-- **투수**: 기본 + WHIP, FIP, K/9, BB/9 등 고급 통계
-- **명령어**: `player_batting_all_series_crawler.py`, `player_pitching_all_series_crawler.py`
-- **시리즈**: regular, korean_series, playoff, semi_playoff (2007+), wildcard (2015+), exhibition
-
-### 연도별 시리즈 존재 여부
-- **1982-1985**: regular, korean_series
-- **1986-1999**: regular, korean_series, exhibition
-- **2000-2001**: regular, korean_series, exhibition (플레이오프 없음)
-- **2002-2006**: regular, korean_series, playoff, exhibition
-- **2007-2014**: regular, korean_series, playoff, semi_playoff, exhibition
-- **2015-현재**: regular, korean_series, playoff, semi_playoff, wildcard, exhibition
-
-### 시리즈별 우선순위
-1. **정규시즌** (`regular`): 가장 중요, 우선 크롤링 (1982+)
-2. **한국시리즈** (`korean_series`): 포스트시즌 최고 단계 (1982+)
-3. **플레이오프** (`playoff`): 준결승/결승 (2002+)
-4. **준플레이오프** (`semi_playoff`): 포스트시즌 1차전 (2007+)
-5. **와일드카드** (`wildcard`): 추가 진출전 (2015+)
-6. **시범경기** (`exhibition`): 참고용 데이터 (1986+)
-
-### 시리즈 검증 유틸리티
-```bash
-# 특정 연도에서 사용 가능한 시리즈 확인
-./venv/bin/python3 -c "
-from src.utils.series_validation import get_available_series_by_year
-print('2001년:', get_available_series_by_year(2001))
-print('2015년:', get_available_series_by_year(2015))
-"
-
-# 연도-시리즈 조합 유효성 검증
-./venv/bin/python3 -c "
-from src.utils.series_validation import validate_year_series_combination
-valid, msg = validate_year_series_combination(2001, 'playoff')
-print(f'2001년 플레이오프: {msg}')
-"
-```
-
----
-
 ## 📝 마무리
 
-이 가이드는 KBO_playwright의 모든 크롤링 기능을 다룹니다. 추가 질문이나 문제가 있으면 프로젝트의 다른 문서들을 참고하세요:
+이 가이드는 KBO_playwright의 주요 CLI 명령어를 다룹니다. 추가 문서:
 
-- **[프로젝트 개요](projectOverviewGuid.md)**: 전체 아키텍처
-- **[스케줄러 가이드](SCHEDULER_README.md)**: 자동화 설정
+- **[AGENTS.md](../../AGENTS.md)**: 최신 명령어, 워크플로우, 시크릿 설정
+- **[프로젝트 개요](../ProjectOverview.md)**: 전체 아키텍처
+- **[스케줄러 가이드](SCHEDULER_README.md)**: APScheduler 설정
 - **[OCI 런북](../zero_issue_runbook_oci.md)**: OCI 운영/품질 게이트
-- **[URL 레퍼런스](URL_REFERENCE.md)**: KBO 사이트 구조
 - **[크롤링 제약사항](CRAWLING_LIMITATIONS.md)**: 알려진 이슈들
 
 ---
