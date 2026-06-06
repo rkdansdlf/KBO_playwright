@@ -24,7 +24,11 @@ from src.db.engine import SessionLocal
 from src.models.game import Game
 from src.repositories.player_game_stats import (
     aggregate_game_batting,
+    aggregate_game_batting_batch,
     aggregate_game_pitching,
+    aggregate_game_pitching_batch,
+    bulk_upsert_player_game_batting,
+    bulk_upsert_player_game_pitching,
     upsert_player_game_batting,
     upsert_player_game_pitching,
 )
@@ -83,6 +87,22 @@ def recalc_for_game(session, game_id: str, dry_run: bool = False) -> dict[str, i
     return {"batting": b_saved, "pitching": p_saved}
 
 
+def recalc_for_games_batch(session, game_ids: list[str], dry_run: bool = False) -> dict[str, int]:
+    """Batch recalc: single query per side, single commit for all games."""
+    batting = aggregate_game_batting_batch(session, game_ids)
+    pitching = aggregate_game_pitching_batch(session, game_ids)
+
+    if dry_run:
+        logger.info(f"[DRY-RUN] {len(game_ids)} games, batting={len(batting)}, pitching={len(pitching)}")
+        return {"batting": len(batting), "pitching": len(pitching)}
+
+    b_saved = bulk_upsert_player_game_batting(session, batting)
+    p_saved = bulk_upsert_player_game_pitching(session, pitching)
+    session.commit()
+    logger.info(f"Batch done: {len(game_ids)} games, upserted batting={b_saved}, pitching={p_saved}")
+    return {"batting": b_saved, "pitching": p_saved}
+
+
 def run_recalc(
     game_id: str | None = None,
     date: str | None = None,
@@ -124,13 +144,10 @@ def run_recalc(
             logger.warning("No completed games matched.")
             return 0
 
-        totals = {"batting": 0, "pitching": 0}
-        for gid in game_ids:
-            result = recalc_for_game(session, gid, dry_run=dry_run)
-            totals["batting"] += result["batting"]
-            totals["pitching"] += result["pitching"]
-            if not dry_run:
-                logger.info(f"{gid}: batting={result['batting']}, pitching={result['pitching']}")
+        if len(game_ids) == 1:
+            totals = recalc_for_game(session, game_ids[0], dry_run=dry_run)
+        else:
+            totals = recalc_for_games_batch(session, game_ids, dry_run=dry_run)
 
         if dry_run:
             logger.info(

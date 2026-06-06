@@ -3,15 +3,52 @@ from __future__ import annotations
 from collections import defaultdict
 from typing import Any
 
-from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from src.models.game import Game, GameBattingStat, GamePitchingStat, PlayerGameBatting, PlayerGamePitching
 from src.utils.game_status import COMPLETED_LIKE_GAME_STATUSES
 
+_BATTING_SUM_FIELDS = [
+    "plate_appearances",
+    "at_bats",
+    "runs",
+    "hits",
+    "doubles",
+    "triples",
+    "home_runs",
+    "rbi",
+    "walks",
+    "intentional_walks",
+    "hbp",
+    "strikeouts",
+    "stolen_bases",
+    "caught_stealing",
+    "sacrifice_hits",
+    "sacrifice_flies",
+    "gdp",
+]
+_PITCHING_SUM_FIELDS = [
+    "innings_outs",
+    "hits_allowed",
+    "runs_allowed",
+    "earned_runs",
+    "home_runs_allowed",
+    "walks_allowed",
+    "strikeouts",
+    "hit_batters",
+    "wild_pitches",
+    "balks",
+    "wins",
+    "losses",
+    "saves",
+    "holds",
+    "batters_faced",
+]
 
-def _compute_batting_rates(hits: int, at_bats: int, walks: int, hbp: int, sf: int,
-                           strikeouts: int, doubles: int, triples: int, home_runs: int) -> dict[str, float]:
+
+def _compute_batting_rates(
+    hits: int, at_bats: int, walks: int, hbp: int, sf: int, strikeouts: int, doubles: int, triples: int, home_runs: int
+) -> dict[str, float]:
     ab = at_bats or 0
     pa_base = ab + walks + hbp + sf
     avg = round(hits / ab, 3) if ab > 0 else 0.0
@@ -20,7 +57,11 @@ def _compute_batting_rates(hits: int, at_bats: int, walks: int, hbp: int, sf: in
     slg = round(total_bases / ab, 3) if ab > 0 else 0.0
     ops = round(obp + slg, 3)
     iso = round(slg - avg, 3)
-    babip = round((hits - home_runs) / (ab - strikeouts - home_runs + sf), 3) if (ab - strikeouts - home_runs + sf) > 0 else 0.0
+    babip = (
+        round((hits - home_runs) / (ab - strikeouts - home_runs + sf), 3)
+        if (ab - strikeouts - home_runs + sf) > 0
+        else 0.0
+    )
     return {"avg": avg, "obp": obp, "slg": slg, "ops": ops, "iso": iso, "babip": babip}
 
 
@@ -88,19 +129,21 @@ def aggregate_game_batting(session: Session, game_id: str) -> list[dict[str, Any
             home_runs=totals["home_runs"],
         )
 
-        results.append({
-            "game_id": game_id,
-            "player_id": player_id,
-            "player_name": first.player_name,
-            "team_side": first.team_side,
-            "team_code": first.team_code,
-            "batting_order": first.batting_order,
-            "appearance_seq": first.appearance_seq,
-            "position": first.position,
-            "is_starter": any_starter,
-            **totals,
-            **rates,
-        })
+        results.append(
+            {
+                "game_id": game_id,
+                "player_id": player_id,
+                "player_name": first.player_name,
+                "team_side": first.team_side,
+                "team_code": first.team_code,
+                "batting_order": first.batting_order,
+                "appearance_seq": first.appearance_seq,
+                "position": first.position,
+                "is_starter": any_starter,
+                **totals,
+                **rates,
+            }
+        )
     return results
 
 
@@ -153,54 +196,177 @@ def aggregate_game_pitching(session: Session, game_id: str) -> list[dict[str, An
             hr=totals["home_runs_allowed"],
         )
 
-        results.append({
-            "game_id": game_id,
-            "player_id": player_id,
-            "player_name": first.player_name,
-            "team_side": first.team_side,
-            "team_code": first.team_code,
-            "is_starting": any_starting,
-            "appearance_seq": first.appearance_seq,
-            "decision": decision,
-            **totals,
-            **rates,
-        })
+        results.append(
+            {
+                "game_id": game_id,
+                "player_id": player_id,
+                "player_name": first.player_name,
+                "team_side": first.team_side,
+                "team_code": first.team_code,
+                "is_starting": any_starting,
+                "appearance_seq": first.appearance_seq,
+                "decision": decision,
+                **totals,
+                **rates,
+            }
+        )
     return results
 
 
-def upsert_player_game_batting(session: Session, records: list[dict[str, Any]]) -> int:
+def _group_batting_by_game_player(rows: list[GameBattingStat]) -> dict[tuple[str, int], dict]:
+    groups: dict[tuple[str, int], dict] = {}
+    for r in rows:
+        if r.player_id is None:
+            continue
+        key = (r.game_id, r.player_id)
+        if key not in groups:
+            groups[key] = {
+                "game_id": r.game_id,
+                "player_id": r.player_id,
+                "player_name": r.player_name,
+                "team_side": r.team_side,
+                "team_code": r.team_code,
+                "batting_order": r.batting_order,
+                "appearance_seq": r.appearance_seq,
+                "position": r.position,
+                "is_starter": False,
+            }
+            for f in _BATTING_SUM_FIELDS:
+                groups[key][f] = 0
+        entry = groups[key]
+        for f in _BATTING_SUM_FIELDS:
+            entry[f] += getattr(r, f) or 0
+        if r.is_starter:
+            entry["is_starter"] = True
+    return groups
+
+
+def _group_pitching_by_game_player(rows: list[GamePitchingStat]) -> dict[tuple[str, int], dict]:
+    groups: dict[tuple[str, int], dict] = {}
+    for r in rows:
+        if r.player_id is None:
+            continue
+        key = (r.game_id, r.player_id)
+        if key not in groups:
+            groups[key] = {
+                "game_id": r.game_id,
+                "player_id": r.player_id,
+                "player_name": r.player_name,
+                "team_side": r.team_side,
+                "team_code": r.team_code,
+                "is_starting": False,
+                "appearance_seq": r.appearance_seq,
+                "decision": None,
+            }
+            for f in _PITCHING_SUM_FIELDS:
+                groups[key][f] = 0
+        entry = groups[key]
+        for f in _PITCHING_SUM_FIELDS:
+            entry[f] += getattr(r, f) or 0
+        if r.is_starting:
+            entry["is_starting"] = True
+        if r.decision and not entry["decision"]:
+            entry["decision"] = r.decision
+    return groups
+
+
+def aggregate_game_batting_batch(session: Session, game_ids: list[str]) -> list[dict[str, Any]]:
+    valid_ids = [
+        row[0]
+        for row in session.query(Game.game_id)
+        .filter(Game.game_id.in_(game_ids), Game.game_status.in_(tuple(COMPLETED_LIKE_GAME_STATUSES)))
+        .all()
+    ]
+    if not valid_ids:
+        return []
+
+    rows = session.query(GameBattingStat).filter(GameBattingStat.game_id.in_(valid_ids)).all()
+    if not rows:
+        return []
+
+    groups = _group_batting_by_game_player(rows)
+    results = []
+    for entry in groups.values():
+        rates = _compute_batting_rates(
+            hits=entry["hits"],
+            at_bats=entry["at_bats"],
+            walks=entry["walks"],
+            hbp=entry["hbp"],
+            sf=entry["sacrifice_flies"],
+            strikeouts=entry["strikeouts"],
+            doubles=entry["doubles"],
+            triples=entry["triples"],
+            home_runs=entry["home_runs"],
+        )
+        results.append({**entry, **rates})
+    return results
+
+
+def aggregate_game_pitching_batch(session: Session, game_ids: list[str]) -> list[dict[str, Any]]:
+    valid_ids = [
+        row[0]
+        for row in session.query(Game.game_id)
+        .filter(Game.game_id.in_(game_ids), Game.game_status.in_(tuple(COMPLETED_LIKE_GAME_STATUSES)))
+        .all()
+    ]
+    if not valid_ids:
+        return []
+
+    rows = session.query(GamePitchingStat).filter(GamePitchingStat.game_id.in_(valid_ids)).all()
+    if not rows:
+        return []
+
+    groups = _group_pitching_by_game_player(rows)
+    results = []
+    for entry in groups.values():
+        rates = _compute_pitching_rates(
+            total_outs=entry["innings_outs"],
+            hits=entry["hits_allowed"],
+            bb=entry["walks_allowed"],
+            er=entry["earned_runs"],
+            k=entry["strikeouts"],
+            hr=entry["home_runs_allowed"],
+        )
+        results.append({**entry, **rates})
+    return results
+
+
+def _upsert_bulk(
+    session: Session, model: type, records: list[dict[str, Any]], conflict_keys: list[str] | None = None
+) -> int:
     if not records:
         return 0
     from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 
-    conflict_keys = ["game_id", "player_id"]
+    if conflict_keys is None:
+        conflict_keys = ["game_id", "player_id"]
     count = 0
     for data in records:
-        stmt = sqlite_insert(PlayerGameBatting).values(**data)
+        stmt = sqlite_insert(model).values(**data)
         stmt = stmt.on_conflict_do_update(
             index_elements=conflict_keys,
             set_={k: stmt.excluded[k] for k in data if k not in conflict_keys},
         )
         session.execute(stmt)
         count += 1
+    return count
+
+
+def upsert_player_game_batting(session: Session, records: list[dict[str, Any]]) -> int:
+    count = _upsert_bulk(session, PlayerGameBatting, records)
     session.commit()
     return count
 
 
 def upsert_player_game_pitching(session: Session, records: list[dict[str, Any]]) -> int:
-    if not records:
-        return 0
-    from sqlalchemy.dialects.sqlite import insert as sqlite_insert
-
-    conflict_keys = ["game_id", "player_id"]
-    count = 0
-    for data in records:
-        stmt = sqlite_insert(PlayerGamePitching).values(**data)
-        stmt = stmt.on_conflict_do_update(
-            index_elements=conflict_keys,
-            set_={k: stmt.excluded[k] for k in data if k not in conflict_keys},
-        )
-        session.execute(stmt)
-        count += 1
+    count = _upsert_bulk(session, PlayerGamePitching, records)
     session.commit()
     return count
+
+
+def bulk_upsert_player_game_batting(session: Session, records: list[dict[str, Any]]) -> int:
+    return _upsert_bulk(session, PlayerGameBatting, records)
+
+
+def bulk_upsert_player_game_pitching(session: Session, records: list[dict[str, Any]]) -> int:
+    return _upsert_bulk(session, PlayerGamePitching, records)

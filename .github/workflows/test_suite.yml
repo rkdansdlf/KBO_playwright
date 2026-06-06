@@ -39,7 +39,7 @@ jobs:
           python-version: ${{ matrix.python-version }}
           playwright: "true"
       - name: Initialize test DB
-        run: python init_db.py
+        run: python -c "from src.db.engine import init_db; init_db()"
         env:
           DATABASE_URL: sqlite:///./data/kbo_dev.db
       - name: Run tests
