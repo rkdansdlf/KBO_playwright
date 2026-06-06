@@ -1,0 +1,16 @@
+# Default owners for all files
+* @anomalyco
+
+# CI/CD workflows and actions
+.github/ @anomalyco
+
+# Core application code
+/src/ @anomalyco
+
+# Tests
+/tests/ @anomalyco
+
+# Documentation
+/Docs/ @anomalyco
+/AGENTS.md @anomalyco
+/README.md @anomalyco

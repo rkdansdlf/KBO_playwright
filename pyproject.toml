@@ -1,3 +1,35 @@
+[build-system]
+requires = ["setuptools>=75"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "kbo-playwright"
+version = "1.0.0"
+description = "Korean Baseball Organization (KBO) data collection system using Playwright"
+readme = "README.md"
+requires-python = ">=3.11"
+license = {text = "MIT"}
+authors = [
+    {name = "anomalyco"},
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Database",
+    "Topic :: Internet :: WWW/HTTP :: Indexing/Search",
+]
+
+dependencies = [
+    "playwright>=1.60",
+    "sqlalchemy>=2.0",
+    "apscheduler>=3.10",
+    "pydantic>=2.0",
+]
+
+[tool.setuptools.packages.find]
+include = ["src*"]
+
 [tool.ruff]
 line-length = 120
 target-version = "py312"
