@@ -15,6 +15,7 @@ from typing import Sequence
 
 from dotenv import load_dotenv
 from sqlalchemy import func, select, text
+from sqlalchemy.exc import SQLAlchemyError
 
 from src.db.engine import SessionLocal
 from src.models.game import Game
@@ -36,7 +37,7 @@ def check_schedules(session) -> dict:
     try:
         # 전체 일정 수
         total = session.execute(text("SELECT COUNT(*) FROM game_schedules")).scalar() or 0
-    except Exception:
+    except SQLAlchemyError:
         total = 0
     print(f"Total schedules: {total}")
 
@@ -54,7 +55,7 @@ def check_schedules(session) -> dict:
             ).scalar()
             or 0
         )
-    except Exception:
+    except SQLAlchemyError:
         operational_total = 0
         operational_scheduled = 0
 
@@ -64,7 +65,7 @@ def check_schedules(session) -> dict:
     try:
         stmt = text("SELECT season_type, COUNT(*) FROM game_schedules GROUP BY season_type")
         results = session.execute(stmt).all()
-    except Exception:
+    except SQLAlchemyError:
         results = []
 
     type_counts = {}
@@ -77,7 +78,7 @@ def check_schedules(session) -> dict:
     try:
         stmt = text("SELECT season_year, COUNT(*) FROM game_schedules GROUP BY season_year ORDER BY season_year DESC")
         results = session.execute(stmt).all()
-    except Exception:
+    except SQLAlchemyError:
         results = []
     print("\nBy year:")
     for year, count in results:
@@ -92,7 +93,7 @@ def check_schedules(session) -> dict:
     try:
         stmt = text("SELECT MIN(game_date), MAX(game_date) FROM game_schedules")
         min_date, max_date = session.execute(stmt).first()
-    except Exception:
+    except SQLAlchemyError:
         min_date, max_date = None, None
 
     if min_date and max_date:
@@ -103,7 +104,7 @@ def check_schedules(session) -> dict:
             game_min_date, game_max_date = session.execute(
                 text("SELECT MIN(game_date), MAX(game_date) FROM game")
             ).first()
-        except Exception:
+        except SQLAlchemyError:
             game_min_date, game_max_date = None, None
         if game_min_date and game_max_date:
             print(f"Operational game date range: {game_min_date} to {game_max_date}")
@@ -193,22 +194,14 @@ def check_futures_data(session) -> dict:
 
 
 def check_game_data(session) -> dict:
-    """개별 경기 내 선수들의 기록 데이터 현황을 점검합니다."""
+    from src.models.game import PlayerGameBatting, PlayerGamePitching
+
     print("\n=== Game-Level Stats ===")
-
-    try:
-        from src.models.game import PlayerGameBatting, PlayerGamePitching
-
-        batting_count = session.execute(select(func.count(PlayerGameBatting.id))).scalar()
-        print(f"Player game batting records: {batting_count}")
-
-        pitching_count = session.execute(select(func.count(PlayerGamePitching.id))).scalar()
-        print(f"Player game pitching records: {pitching_count}")
-
-        return {"batting": batting_count, "pitching": pitching_count}
-    except (ImportError, AttributeError):
-        print("Player game stats models not found (expected for early development)")
-        return {"batting": 0, "pitching": 0}
+    batting_count = session.execute(select(func.count(PlayerGameBatting.id))).scalar()
+    print(f"Player game batting records: {batting_count}")
+    pitching_count = session.execute(select(func.count(PlayerGamePitching.id))).scalar()
+    print(f"Player game pitching records: {pitching_count}")
+    return {"batting": batting_count, "pitching": pitching_count}
 
 
 def check_pregame_pitcher_coverage(session, *, verbose: bool = False) -> dict:

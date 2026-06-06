@@ -17,6 +17,8 @@ from src.models.game import (
     GamePlayByPlay,
     GameSummary,
     GameValidationMetrics,
+    PlayerGameBatting,
+    PlayerGamePitching,
 )
 from src.models.player import PlayerBasic, PlayerMovement, PlayerSeasonBatting, PlayerSeasonPitching
 from src.models.team import Team, TeamDailyRoster
@@ -50,6 +52,8 @@ def _build_session_factory():
         GameSummary.__table__,
         GamePlayByPlay.__table__,
         GameValidationMetrics.__table__,
+        PlayerGameBatting.__table__,
+        PlayerGamePitching.__table__,
     ):
         table.create(bind=engine)
     return sessionmaker(bind=engine, autoflush=False, autocommit=False, expire_on_commit=False)

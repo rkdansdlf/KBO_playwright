@@ -21,6 +21,8 @@ from src.models.game import (
     GamePlayByPlay,
     GameSummary,
     GameValidationMetrics,
+    PlayerGameBatting,
+    PlayerGamePitching,
 )
 from src.models.player import PlayerBasic, PlayerMovement, PlayerSeasonBatting, PlayerSeasonPitching
 from src.models.team import TeamDailyRoster
@@ -49,6 +51,8 @@ class RuntimeHydrator:
         GamePitchingStat: ("game_id", "player_id", "appearance_seq"),
         GameEvent: ("game_id", "event_seq"),
         PlayerBasic: ("player_id",),
+        PlayerGameBatting: ("game_id", "player_id"),
+        PlayerGamePitching: ("game_id", "player_id"),
     }
 
     def __init__(self, source_session: Session, target_session: Session):
@@ -176,6 +180,20 @@ class RuntimeHydrator:
                 (GameValidationMetrics.game_id.like(f"{year}%"),),
                 exclude_columns=("created_at", "updated_at"),
             ),
+            HydrationSpec(
+                "player_game_batting",
+                PlayerGameBatting,
+                (PlayerGameBatting.game_id.like(f"{year}%"),),
+                (PlayerGameBatting.game_id.like(f"{year}%"),),
+                exclude_columns=("created_at", "updated_at"),
+            ),
+            HydrationSpec(
+                "player_game_pitching",
+                PlayerGamePitching,
+                (PlayerGamePitching.game_id.like(f"{year}%"),),
+                (PlayerGamePitching.game_id.like(f"{year}%"),),
+                exclude_columns=("created_at", "updated_at"),
+            ),
         ]
         if not preserve_aliases:
             game_index = next(index for index, spec in enumerate(specs) if spec.model is Game)
@@ -199,9 +217,16 @@ class RuntimeHydrator:
             for spec in reversed(specs):
                 if spec.replace_scope:
                     self._delete_scope(spec)
+            all_refs: dict[int, str] = {}
             for spec in specs:
-                summary[spec.label] = self._hydrate_spec(spec)
+                count, refs = self._hydrate_spec(spec)
+                summary[spec.label] = count
+                if refs:
+                    for k, v in refs.items():
+                        all_refs.setdefault(k, v)
                 self.target_session.flush()
+            if all_refs:
+                self._resolve_player_refs(all_refs)
             if preserve_aliases:
                 summary["game_id_aliases_preserved"] = self._restore_aliases(preserved_aliases)
             self.target_session.commit()
@@ -255,18 +280,18 @@ class RuntimeHydrator:
             target_query = target_query.filter(*spec.target_filters)
         target_query.delete(synchronize_session=False)
 
-    def _hydrate_spec(self, spec: HydrationSpec) -> int:
+    def _hydrate_spec(self, spec: HydrationSpec) -> tuple[int, dict[int, str]]:
         source_query = self.source_session.query(spec.model)
         if spec.source_filters:
             source_query = source_query.filter(*spec.source_filters)
         rows = source_query.all()
 
         if not rows:
-            return 0
+            return 0, {}
 
         rows = self._filter_child_rows_with_parent_games(spec, rows)
         if not rows:
-            return 0
+            return 0, {}
 
         excluded = {"id", *spec.exclude_columns}
         columns = [column.key for column in spec.model.__table__.columns if column.key not in excluded]
@@ -287,15 +312,15 @@ class RuntimeHydrator:
                 else:
                     stmt = stmt.on_conflict_do_nothing(index_elements=[spec.model.__table__.c[c] for c in upsert_keys])
                 self.target_session.execute(stmt, mappings)
-                return len(mappings)
+                return len(mappings), {}
             for mapping in mappings:
                 self.target_session.merge(spec.model(**mapping))
-            return len(mappings)
+            return len(mappings), {}
 
+        refs = self._collect_player_refs(rows)
         self._delete_existing_game_id_rows(spec, rows)
-        self._ensure_player_basic_refs(rows)
         self._insert_mappings(spec, mappings, columns)
-        return len(mappings)
+        return len(mappings), refs
 
     def _delete_existing_game_id_rows(self, spec: HydrationSpec, rows: Sequence[object]) -> None:
         table = spec.model.__table__
@@ -340,7 +365,8 @@ class RuntimeHydrator:
         }
         return [row for row in rows if str(getattr(row, "game_id", "")) in existing_ids]
 
-    def _ensure_player_basic_refs(self, rows: Iterable[object]) -> None:
+    @staticmethod
+    def _collect_player_refs(rows: Iterable[object]) -> dict[int, str]:
         refs: dict[int, str] = {}
         for row in rows:
             player_id = getattr(row, "player_id", None)
@@ -352,7 +378,9 @@ class RuntimeHydrator:
                 continue
             player_name = getattr(row, "player_name", None) or f"Unknown {player_id_int}"
             refs.setdefault(player_id_int, str(player_name))
+        return refs
 
+    def _resolve_player_refs(self, refs: dict[int, str]) -> None:
         if not refs:
             return
 
@@ -370,25 +398,28 @@ class RuntimeHydrator:
             row.player_id: row
             for row in self.source_session.query(PlayerBasic).filter(PlayerBasic.player_id.in_(missing_ids)).all()
         }
+
+        full_columns = [c.key for c in PlayerBasic.__table__.columns if c.key not in {"created_at", "updated_at"}]
+        bulk_mappings: list[dict[str, object]] = []
         for player_id in missing_ids:
             source_player = source_rows.get(player_id)
             if source_player:
-                self.target_session.merge(
-                    PlayerBasic(
-                        **{
-                            column.key: getattr(source_player, column.key)
-                            for column in PlayerBasic.__table__.columns
-                            if column.key not in {"created_at", "updated_at"}
-                        }
-                    )
-                )
-                continue
-            self.target_session.merge(
-                PlayerBasic(
+                bulk_mappings.append({c: getattr(source_player, c) for c in full_columns})
+            else:
+                mapping: dict[str, object] = {c: None for c in full_columns}
+                mapping.update(
                     player_id=player_id,
                     name=refs[player_id],
                     status="Unknown/Runtime",
                     status_source="runtime_hydrator",
                 )
-            )
+                bulk_mappings.append(mapping)
+
+        stmt = sqlite_insert(PlayerBasic.__table__)
+        update_columns = [c for c in full_columns if c != "player_id"]
+        stmt = stmt.on_conflict_do_update(
+            index_elements=[PlayerBasic.__table__.c.player_id],
+            set_={c: getattr(stmt.excluded, c) for c in update_columns},
+        )
+        self.target_session.execute(stmt, bulk_mappings)
         self.target_session.flush()
