@@ -1,167 +1,219 @@
-import argparse
-import asyncio
-import re
+"""
+YouTube Data API-based KBO cheer song crawler.
 
-from playwright.async_api import Page, async_playwright
+Replaces the Namu Wiki crawler (which was blocked) by fetching
+cheer song metadata from official KBO team YouTube channels.
+
+Data collected:
+  - Song title (from video title)
+  - Player name (parsed from title)
+  - Song type (TEAM / PLAYER / STARTER / CLOSER etc.)
+  - YouTube URL as source_url
+  - Published date
+
+Usage:
+    python -m src.crawlers.fan_culture_crawler --save
+    python -m src.crawlers.fan_culture_crawler --team LG --dry-run
+    python -m src.crawlers.fan_culture_crawler --save --season 2026
+"""
+
+from __future__ import annotations
+
+import asyncio
+import logging
+import re
+from datetime import datetime
 
 from src.db.engine import SessionLocal
 from src.repositories.fan_culture_repository import FanCultureRepository
-from src.utils.playwright_blocking import install_async_resource_blocking
 from src.utils.safe_print import safe_print as print
+from src.utils.youtube_api_client import (
+    TEAM_YOUTUBE_CHANNELS,
+    YouTubeAPIClient,
+    YouTubeVideoItem,
+    _classify_song_type,
+    _extract_player_name,
+)
 
-TEAM_NAMUWIKI = {
-    "KIA": "KIA_%ED%83%80%EC%9D%B4%EA%B1%B0%EC%A6%88",
-    "SS": "%EC%82%BC%EC%84%B1_%EB%9D%BC%EC%9D%B4%EC%98%A8%EC%A6%88",
-    "LG": "LG_%ED%8A%B8%EC%9C%88%EC%8A%A4",
-    "DB": "%EB%91%90%EC%82%B0_%EB%B2%A0%EC%96%B4%EC%8A%A4",
-    "KT": "KT_%EC%9C%84%EC%A6%88",
-    "SSG": "SSG_%EB%9E%9C%EB%8D%94%EC%8A%A4",
-    "NC": "NC_%EB%8B%A4%EC%9D%B4%EB%85%B8%EC%8A%A4",
-    "HH": "%ED%95%9C%ED%99%94_%EC%9D%B4%EA%B8%80%EC%8A%A4",
-    "LT": "%EB%A1%AF%EB%8D%B0_%EC%9E%90%EC%9D%B4%EC%96%B8%EC%B8%A0",
-    "KH": "%ED%82%A4%EC%9B%80_%ED%9E%88%EC%96%B4%EB%A1%9C%EC%A6%88",
-}
+logger = logging.getLogger(__name__)
+
+YOUTUBE_VIDEO_BASE = "https://www.youtube.com/watch?v="
+
+# 응원가로 판단하기 위한 제목 필터 (이 단어가 포함되어야 함)
+CHEERSONG_TITLE_KEYWORDS = re.compile(
+    r"응원가|응원\s*송|cheersong|cheer\s*song|응원\s*모음",
+    re.I,
+)
+
+# 제외 패턴 (예: 쇼츠, 하이라이트, 뉴스 등 응원가 아닌 영상)
+EXCLUDE_PATTERNS = re.compile(
+    r"하이라이트|highlight|뉴스|news|경기\s*영상|직캠|fancam|영입|인터뷰|interview|예고|preview",
+    re.I,
+)
+
+# 시즌 연도 추출
+SEASON_PATTERN = re.compile(r"(20\d{2})\s*(?:시즌|season)?")
+
+
+def _extract_season(title: str, fallback: int | None = None) -> int | None:
+    m = SEASON_PATTERN.search(title)
+    return int(m.group(1)) if m else fallback
+
+
+def _video_to_song(item: YouTubeVideoItem, team_id: str, current_season: int) -> dict | None:
+    """Convert a YouTube video item to a cheer_song dict."""
+    title = item.title.strip()
+
+    # 필터링: 응원가 키워드가 없으면 제외
+    if not CHEERSONG_TITLE_KEYWORDS.search(title):
+        return None
+
+    # 제외 패턴 매칭
+    if EXCLUDE_PATTERNS.search(title):
+        return None
+
+    song_type = _classify_song_type(title)
+    player_name = _extract_player_name(title)
+    season = _extract_season(title, fallback=current_season)
+
+    return {
+        "team_id": team_id,
+        "song_name": title[:200],
+        "song_type": song_type,
+        "lyrics": None,  # YouTube API does not provide lyrics
+        "description": (
+            f"{'선수: ' + player_name + ' | ' if player_name else ''}시즌: {season} | 출처: YouTube {item.channel_id}"
+        ),
+        "video_url": f"{YOUTUBE_VIDEO_BASE}{item.video_id}",
+        "introduction_year": season,
+    }
 
 
 class FanCultureCrawler:
-    def __init__(self):
-        self.namuwiki_base = "https://namu.wiki/w/"
+    """
+    Crawls KBO cheer song metadata from official team YouTube channels.
 
-    async def run(self, save: bool = False):
-        async with async_playwright() as p:
-            browser = await p.chromium.launch(headless=True)
-            context = await browser.new_context()
-            await install_async_resource_blocking(context)
-            page = await context.new_page()
+    Replaces the previous Namu Wiki-based implementation.
+    Requires YOUTUBE_API_KEY environment variable.
+    """
 
-            all_songs = []
-            all_chants = []
+    def __init__(self, season: int | None = None, max_results_per_team: int = 50) -> None:
+        self.season = season or datetime.now().year
+        self.max_results = max_results_per_team
+        self.client = YouTubeAPIClient()
 
-            for team_code, wiki_path in TEAM_NAMUWIKI.items():
-                url = self.namuwiki_base + wiki_path
-                print(f"Crawling fan culture for {team_code} from {url}...")
-                try:
-                    songs, chants = await self._extract_fan_culture(page, team_code, url)
-                    all_songs.extend(songs)
-                    all_chants.extend(chants)
-                    print(f"  > Found {len(songs)} songs, {len(chants)} chants")
-                except Exception as e:
-                    print(f"  > Error: {e}")
-                await asyncio.sleep(1)
+    async def run(
+        self,
+        save: bool = False,
+        team_filter: str | None = None,
+        dry_run: bool = False,
+    ) -> list[dict]:
+        """
+        Crawl cheer songs from YouTube for all (or one) KBO team.
 
-            await browser.close()
+        Args:
+            save: Persist results to database.
+            team_filter: Only crawl this team code (e.g. 'LG').
+            dry_run: Print results without saving.
+        """
+        if not self.client.is_configured():
+            print("[FanCulture] ⚠️  YOUTUBE_API_KEY not set.")
+            print("[FanCulture]    Set it in .env to enable YouTube-based cheer song crawling.")
+            print("[FanCulture]    Get a free key at: https://console.cloud.google.com/")
+            return []
 
-            if save:
-                self._save_to_db(all_songs, all_chants)
-            else:
-                for s in all_songs[:5]:
-                    print(f"[Song] {s}")
-                for c in all_chants[:5]:
-                    print(f"[Chant] {c}")
+        teams = (
+            {team_filter.upper(): TEAM_YOUTUBE_CHANNELS[team_filter.upper()]}
+            if team_filter and team_filter.upper() in TEAM_YOUTUBE_CHANNELS
+            else TEAM_YOUTUBE_CHANNELS
+        )
 
-    async def _extract_fan_culture(self, page: Page, team_id: str, url: str) -> tuple:
-        await page.goto(url, wait_until="networkidle", timeout=30000)
-        await page.wait_for_timeout(2000)
+        all_songs: list[dict] = []
 
-        data = await page.evaluate("""
-        () => {
-            function findSectionHeading(headingText) {
-                const headings = document.querySelectorAll('h2, h3, .wiki-heading');
-                for (const h of headings) {
-                    if (h.innerText.includes(headingText)) return h;
-                }
-                return null;
-            }
-            function getSectionContent(heading) {
-                if (!heading) return '';
-                let el = heading.nextElementSibling;
-                let text = '';
-                while (el && !el.matches('h2, h3, .wiki-heading')) {
-                    text += el.innerText + '\\n';
-                    el = el.nextElementSibling;
-                }
-                return text;
-            }
-            return {
-                cheer: getSectionContent(findSectionHeading('응원가')),
-                song: getSectionContent(findSectionHeading('응원')),
-                chant: getSectionContent(findSectionHeading('구호')),
-                fight: getSectionContent(findSectionHeading('응원')),
-                culture: getSectionContent(findSectionHeading('문화')),
-                rivalry: getSectionContent(findSectionHeading('라이벌')),
-            };
-        }
-        """)
+        for team_id, ch_info in teams.items():
+            channel_id = ch_info["channel_id"]
+            print(f"[FanCulture] {team_id} ({ch_info['name']}) — searching YouTube...")
 
-        songs = []
-        combined_text = " ".join(v for v in data.values() if v)
-        song_lines = re.findall(r"[가-힣\s!?~]+(?:[가-힣\s!?~]+)", combined_text)
-        seen_songs = set()
-        for line in song_lines:
-            line = line.strip()
-            if len(line) > 5 and line not in seen_songs:
-                if any(kw in line for kw in ["응원", "노래", "가요", "♬", "♪"]):
-                    seen_songs.add(line)
-                    songs.append(
-                        {
-                            "team_id": team_id,
-                            "song_name": line[:100],
-                            "song_type": "TEAM",
-                            "lyrics": line[:500],
-                            "description": f"Extracted from Namuwiki {team_id} page",
-                        }
-                    )
+            team_songs = await self._crawl_team(team_id, channel_id, ch_info["search_queries"])
+            all_songs.extend(team_songs)
+            print(f"[FanCulture]   → {len(team_songs)} cheer songs found")
 
-        chants = []
-        chant_lines = re.findall(r"(?:([가-힣]+(?:[\s,]+[가-힣]+)*)\s*(?:!|~))", combined_text)
-        seen_chants = set()
-        for line in chant_lines:
-            line = line.strip()
-            if len(line) > 3 and line not in seen_chants:
-                if any(kw in line for kw in ["이기", "승리", "파이팅", "화이팅", "짝짝짝", "야"]):
-                    seen_chants.add(line)
-                    chants.append(
-                        {
-                            "team_id": team_id,
-                            "chant_text": line[:200],
-                            "situation": "GENERAL",
-                            "description": f"Extracted from Namuwiki {team_id} page",
-                        }
-                    )
+            # API 호출 간격 (rate limit 준수)
+            await asyncio.sleep(0.5)
 
-        return songs[:50], chants[:30]
+        print(f"[FanCulture] Total: {len(all_songs)} songs across {len(teams)} teams")
 
-    def _save_to_db(self, songs: list[dict], chants: list[dict]):
-        session = SessionLocal()
-        repo = FanCultureRepository(session)
-        song_count = 0
-        chant_count = 0
-        try:
-            for item in songs:
-                try:
-                    repo.save_cheer_song(item)
-                    song_count += 1
-                except Exception:
-                    pass
-            for item in chants:
-                try:
-                    repo.save_cheer_chant(item)
-                    chant_count += 1
-                except Exception:
-                    pass
-            session.commit()
-            print(f"Saved {song_count} cheer songs and {chant_count} cheer chants to database.")
-        except Exception as e:
-            session.rollback()
-            print(f"Error saving to DB: {e}")
-        finally:
-            session.close()
+        if dry_run or not save:
+            for s in all_songs[:5]:
+                print(f"  [{s['team_id']}] {s['song_name']} | type={s['song_type']} | player={s.get('player_name')}")
+            if len(all_songs) > 5:
+                print(f"  ... and {len(all_songs) - 5} more")
+        elif save:
+            self._save_to_db(all_songs)
+
+        return all_songs
+
+    async def _crawl_team(
+        self,
+        team_id: str,
+        channel_id: str,
+        search_queries: list[str],
+    ) -> list[dict]:
+        """Crawl cheer songs for a single team via YouTube search."""
+        seen_video_ids: set[str] = set()
+        songs: list[dict] = []
+
+        for query in search_queries:
+            items = await self.client.search_videos(
+                channel_id,
+                query,
+                max_results=self.max_results,
+            )
+            for item in items:
+                if item.video_id in seen_video_ids:
+                    continue
+                seen_video_ids.add(item.video_id)
+
+                song = _video_to_song(item, team_id, self.season)
+                if song:
+                    songs.append(song)
+
+            await asyncio.sleep(0.3)
+
+        return songs
+
+    def _save_to_db(self, songs: list[dict]) -> None:
+        with SessionLocal() as session:
+            try:
+                repo = FanCultureRepository(session)
+                saved = 0
+                for item in songs:
+                    try:
+                        repo.save_cheer_song(item)
+                        saved += 1
+                    except Exception:
+                        logger.exception("Failed to save song: %s", item.get("song_name", ""))
+                session.commit()
+                print(f"[FanCulture] Saved {saved} cheer songs to DB.")
+            except Exception:
+                session.rollback()
+                logger.exception("[FanCulture] DB save failed")
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Crawl KBO fan culture data from Namuwiki")
+    import argparse
+
+    parser = argparse.ArgumentParser(description="YouTube-based KBO cheer song crawler")
     parser.add_argument("--save", action="store_true", help="Save to database")
+    parser.add_argument("--dry-run", action="store_true", help="Print without saving")
+    parser.add_argument("--team", type=str, default=None, help="Team code (e.g. LG)")
+    parser.add_argument("--season", type=int, default=None, help="Season year (default: current year)")
     args = parser.parse_args()
 
-    crawler = FanCultureCrawler()
-    asyncio.run(crawler.run(save=args.save))
+    asyncio.run(
+        FanCultureCrawler(season=args.season).run(
+            save=args.save,
+            team_filter=args.team,
+            dry_run=args.dry_run,
+        )
+    )

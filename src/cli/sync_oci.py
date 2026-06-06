@@ -467,9 +467,13 @@ def main(argv: Iterable[str] | None = None) -> None:
                            lambda sess: get_available_years(sess, BatterTeamSplit, "season_year"),
                            "✅ Matchup Splits Sync Finished"),
         "rankings":       (lambda s, y, **kw: print(f"   [{y}] Synced {s.sync_stat_rankings(year=y, batch_size=kw.get('copy_batch_size'))} rows"),
-                           "🚀 Syncing Stat Rankings using specialized OCISync...", True,
-                           lambda sess: get_available_years(sess, StatRanking, "season"),
-                           "✅ Stat Rankings Sync Finished"),
+                            "🚀 Syncing Stat Rankings using specialized OCISync...", True,
+                            lambda sess: get_available_years(sess, StatRanking, "season"),
+                            "✅ Stat Rankings Sync Finished"),
+        "player_game_stats": (lambda s, y, **kw: (print(f"  - [{y}] Syncing Player Game Batting..."), s.sync_player_game_batting(), print(f"  - [{y}] Syncing Player Game Pitching..."), s.sync_player_game_pitching())[-1],
+                            "🚀 Syncing Player Game Stats...", True,
+                            lambda sess: get_available_years(sess, Game, "strftime('%Y', game_date)"),
+                            "✅ Player Game Stats Sync Finished"),
     }
     # fmt: on
 

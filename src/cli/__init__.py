@@ -37,6 +37,7 @@ Backfill & Maintenance:
   recalc_team_stats        — Team stats recalc
   recalc_player_game_stats — Player game-level stats recalc
   sync_oci                 — SQLite → OCI sync
+  audit_pa_formula         — PA formula audit and fix
 
 Analysis:
   calculate_standings   — Daily standings with splits
