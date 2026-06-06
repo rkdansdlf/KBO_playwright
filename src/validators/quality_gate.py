@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 
 from src.models.game import Game, GameBattingStat, GamePitchingStat
 from src.models.player import PlayerSeasonBatting, PlayerSeasonPitching
+from src.models.team_stats import TeamSeasonBatting, TeamSeasonPitching
 from src.utils.game_status import COMPLETED_LIKE_GAME_STATUSES
 
 
@@ -295,18 +296,273 @@ class QualityGate:
             mismatches=mismatches,
         )
 
+    def validate_season_team_batting(self, season: int, league: str = "REGULAR") -> dict[str, Any]:
+        """Compare TeamSeasonBatting with PlayerSeasonBatting sum grouped by team."""
+        if league != "REGULAR":
+            return self._result(season=season, league=league)
+
+        reg_season_ids = self._get_regular_season_ids(season)
+        if not reg_season_ids:
+            return self._result(
+                season=season,
+                league=league,
+                error=f"No Regular Season IDs found for {season}",
+            )
+
+        # 1. Get team-level totals from team_season_batting
+        team_stmt = select(
+            TeamSeasonBatting.team_id,
+            TeamSeasonBatting.games,
+            TeamSeasonBatting.plate_appearances,
+            TeamSeasonBatting.at_bats,
+            TeamSeasonBatting.runs,
+            TeamSeasonBatting.hits,
+            TeamSeasonBatting.doubles,
+            TeamSeasonBatting.triples,
+            TeamSeasonBatting.home_runs,
+            TeamSeasonBatting.rbi,
+            TeamSeasonBatting.stolen_bases,
+            TeamSeasonBatting.caught_stealing,
+            TeamSeasonBatting.walks,
+            TeamSeasonBatting.strikeouts,
+        ).where(
+            TeamSeasonBatting.season == season,
+            TeamSeasonBatting.league == league,
+        )
+        team_data = self.session.execute(team_stmt).all()
+        team_map = {r.team_id: r for r in team_data}
+
+        if not team_map:
+            return self._result(
+                season=season,
+                league=league,
+                error=f"No TeamSeasonBatting records found for {season}",
+            )
+
+        # 2. Get player-level aggregates per team
+        player_agg = (
+            select(
+                func.coalesce(PlayerSeasonBatting.canonical_team_code, PlayerSeasonBatting.team_code).label(
+                    "team_code"
+                ),
+                func.sum(PlayerSeasonBatting.games).label("games"),
+                func.sum(PlayerSeasonBatting.plate_appearances).label("plate_appearances"),
+                func.sum(PlayerSeasonBatting.at_bats).label("at_bats"),
+                func.sum(PlayerSeasonBatting.runs).label("runs"),
+                func.sum(PlayerSeasonBatting.hits).label("hits"),
+                func.sum(PlayerSeasonBatting.doubles).label("doubles"),
+                func.sum(PlayerSeasonBatting.triples).label("triples"),
+                func.sum(PlayerSeasonBatting.home_runs).label("home_runs"),
+                func.sum(PlayerSeasonBatting.rbi).label("rbi"),
+                func.sum(PlayerSeasonBatting.stolen_bases).label("stolen_bases"),
+                func.sum(PlayerSeasonBatting.caught_stealing).label("caught_stealing"),
+                func.sum(PlayerSeasonBatting.walks).label("walks"),
+                func.sum(PlayerSeasonBatting.strikeouts).label("strikeouts"),
+            )
+            .where(
+                PlayerSeasonBatting.season == season,
+                PlayerSeasonBatting.league == league,
+            )
+            .group_by(func.coalesce(PlayerSeasonBatting.canonical_team_code, PlayerSeasonBatting.team_code))
+        )
+        player_data = self.session.execute(player_agg).all()
+        player_map = {r.team_code: r for r in player_data if r.team_code}
+
+        mismatches = []
+        for team_id, team_r in team_map.items():
+            player_r = player_map.get(team_id)
+            if player_r is None:
+                mismatches.append(
+                    {
+                        "team_id": team_id,
+                        "issue": "No player season batting records for this team",
+                    }
+                )
+                continue
+
+            stat_fields = [
+                "games",
+                "plate_appearances",
+                "at_bats",
+                "runs",
+                "hits",
+                "doubles",
+                "triples",
+                "home_runs",
+                "rbi",
+                "stolen_bases",
+                "caught_stealing",
+                "walks",
+                "strikeouts",
+            ]
+            diffs = []
+            for field in stat_fields:
+                t_val = getattr(team_r, field) or 0
+                p_val = getattr(player_r, field) or 0
+                diff = abs(t_val - p_val)
+                if diff > 1:
+                    diffs.append(f"{field}: team={t_val} player_sum={p_val} diff={diff}")
+
+            if diffs:
+                mismatches.append(
+                    {
+                        "team_id": team_id,
+                        "issue": "Team batting stats mismatch with player sum",
+                        "diffs": diffs[:10],
+                    }
+                )
+
+        return self._result(
+            season=season,
+            league=league,
+            checked_players=len(team_map),
+            mismatches=mismatches,
+        )
+
+    def validate_season_team_pitching(self, season: int, league: str = "REGULAR") -> dict[str, Any]:
+        """Compare TeamSeasonPitching with PlayerSeasonPitching sum grouped by team."""
+        if league != "REGULAR":
+            return self._result(season=season, league=league)
+
+        reg_season_ids = self._get_regular_season_ids(season)
+        if not reg_season_ids:
+            return self._result(
+                season=season,
+                league=league,
+                error=f"No Regular Season IDs found for {season}",
+            )
+
+        # 1. Get team-level totals from team_season_pitching
+        team_stmt = select(
+            TeamSeasonPitching.team_id,
+            TeamSeasonPitching.games,
+            TeamSeasonPitching.wins,
+            TeamSeasonPitching.losses,
+            TeamSeasonPitching.saves,
+            TeamSeasonPitching.holds,
+            TeamSeasonPitching.innings_pitched,
+            TeamSeasonPitching.runs_allowed,
+            TeamSeasonPitching.earned_runs,
+            TeamSeasonPitching.hits_allowed,
+            TeamSeasonPitching.home_runs_allowed,
+            TeamSeasonPitching.walks_allowed,
+            TeamSeasonPitching.strikeouts,
+        ).where(
+            TeamSeasonPitching.season == season,
+            TeamSeasonPitching.league == league,
+        )
+        team_data = self.session.execute(team_stmt).all()
+        team_map = {r.team_id: r for r in team_data}
+
+        if not team_map:
+            return self._result(
+                season=season,
+                league=league,
+                error=f"No TeamSeasonPitching records found for {season}",
+            )
+
+        # 2. Get player-level aggregates per team
+        player_agg = (
+            select(
+                func.coalesce(PlayerSeasonPitching.canonical_team_code, PlayerSeasonPitching.team_code).label(
+                    "team_code"
+                ),
+                func.sum(PlayerSeasonPitching.games).label("games"),
+                func.sum(PlayerSeasonPitching.wins).label("wins"),
+                func.sum(PlayerSeasonPitching.losses).label("losses"),
+                func.sum(PlayerSeasonPitching.saves).label("saves"),
+                func.sum(PlayerSeasonPitching.holds).label("holds"),
+                func.sum(PlayerSeasonPitching.innings_outs).label("innings_outs"),
+                func.sum(PlayerSeasonPitching.runs_allowed).label("runs_allowed"),
+                func.sum(PlayerSeasonPitching.earned_runs).label("earned_runs"),
+                func.sum(PlayerSeasonPitching.hits_allowed).label("hits_allowed"),
+                func.sum(PlayerSeasonPitching.home_runs_allowed).label("home_runs_allowed"),
+                func.sum(PlayerSeasonPitching.walks_allowed).label("walks_allowed"),
+                func.sum(PlayerSeasonPitching.strikeouts).label("strikeouts"),
+            )
+            .where(
+                PlayerSeasonPitching.season == season,
+                PlayerSeasonPitching.league == league,
+            )
+            .group_by(func.coalesce(PlayerSeasonPitching.canonical_team_code, PlayerSeasonPitching.team_code))
+        )
+        player_data = self.session.execute(player_agg).all()
+        player_map = {r.team_code: r for r in player_data if r.team_code}
+
+        mismatches = []
+        for team_id, team_r in team_map.items():
+            player_r = player_map.get(team_id)
+            if player_r is None:
+                mismatches.append(
+                    {
+                        "team_id": team_id,
+                        "issue": "No player season pitching records for this team",
+                    }
+                )
+                continue
+
+            stat_fields = [
+                "games",
+                "wins",
+                "losses",
+                "saves",
+                "holds",
+                "runs_allowed",
+                "earned_runs",
+                "hits_allowed",
+                "home_runs_allowed",
+                "walks_allowed",
+                "strikeouts",
+            ]
+            diffs = []
+            for field in stat_fields:
+                t_val = getattr(team_r, field) or 0
+                p_val = getattr(player_r, field) or 0
+                diff = abs(t_val - p_val)
+                if diff > 1:
+                    diffs.append(f"{field}: team={t_val} player_sum={p_val} diff={diff}")
+
+            # Compare innings_pitched (special: float, not integer)
+            team_ip = team_r.innings_pitched or 0.0
+            player_outs = player_r.innings_outs or 0
+            expected_outs = int(team_ip * 3 + 0.5) if team_ip else 0
+            if abs(player_outs - expected_outs) > 3:
+                diffs.append(f"innings_pitched: team_ip={team_ip} ({expected_outs} outs) player_outs={player_outs}")
+
+            if diffs:
+                mismatches.append(
+                    {
+                        "team_id": team_id,
+                        "issue": "Team pitching stats mismatch with player sum",
+                        "diffs": diffs[:10],
+                    }
+                )
+
+        return self._result(
+            season=season,
+            league=league,
+            checked_players=len(team_map),
+            mismatches=mismatches,
+        )
+
 
 def run_quality_gate(session: Session, season: int) -> dict[str, Any]:
     gate = QualityGate(session)
     batting_result = gate.validate_season_batting(season)
     pitching_result = gate.validate_season_pitching(season)
     pa_formula_result = gate.validate_season_pa_formula(season)
+    team_batting_result = gate.validate_season_team_batting(season)
+    team_pitching_result = gate.validate_season_team_pitching(season)
 
     return {
         "batting": batting_result,
         "pitching": pitching_result,
         "pa_formula": pa_formula_result,
+        "team_batting": team_batting_result,
+        "team_pitching": team_pitching_result,
         "ok": batting_result.get("ok", False)
         and pitching_result.get("ok", False)
-        and pa_formula_result.get("ok", False),
+        and pa_formula_result.get("ok", False)
+        and team_batting_result.get("ok", False)
+        and team_pitching_result.get("ok", False),
     }

@@ -1,5 +1,5 @@
 # Source: https://www.koreabaseball.com/robots.txt
-# Fetched at: 2026-04-22T23:20:04.042031
+# Fetched at: 2026-06-07T01:50:35.208982
 
 User-agent: *
 Disallow: /Common/
