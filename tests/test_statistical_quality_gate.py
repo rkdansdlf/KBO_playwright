@@ -37,9 +37,14 @@ def _make_session():
                     game_id TEXT,
                     player_id INTEGER,
                     plate_appearances INTEGER,
+                    at_bats INTEGER,
+                    walks INTEGER,
+                    hbp INTEGER,
                     hits INTEGER,
                     runs INTEGER,
-                    home_runs INTEGER
+                    home_runs INTEGER,
+                    sacrifice_hits INTEGER,
+                    sacrifice_flies INTEGER
                 )
                 """
             )
@@ -88,7 +93,6 @@ def _make_session():
                 """
             )
         )
-
     return sessionmaker(bind=engine)()
 
 
@@ -120,8 +124,10 @@ def test_statistical_quality_gate_passes_when_transactional_totals_are_within_cu
             text(
                 """
                 INSERT INTO game_batting_stats
-                    (game_id, player_id, plate_appearances, hits, runs, home_runs)
-                VALUES ('G1', 10, 4, 2, 1, 0), ('G2', 10, 99, 99, 99, 99)
+                    (game_id, player_id, plate_appearances, hits, runs, home_runs, at_bats, walks, hbp, sacrifice_hits, sacrifice_flies)
+                VALUES
+                    ('G1', 10, 4, 2, 1, 0, 2, 1, 0, 0, 1),  -- PA=4 = 2+1+0+0+1
+                    ('G2', 10, 99, 99, 99, 99, 99, 0, 0, 0, 0) -- PA=99 = 99+0+0+0+0
                 """
             )
         )
@@ -139,7 +145,7 @@ def test_statistical_quality_gate_passes_when_transactional_totals_are_within_cu
                 """
                 INSERT INTO game_pitching_stats
                     (game_id, player_id, innings_outs, wins, strikeouts)
-                VALUES ('G1', 20, 6, 1, 4), ('G2', 20, 99, 9, 9)
+                VALUES ('G1', 20, 6, 1, 4), ('G2', 20, 20, 9, 9)
                 """
             )
         )
@@ -159,6 +165,7 @@ def test_statistical_quality_gate_passes_when_transactional_totals_are_within_cu
         assert result["ok"] is True
         assert result["batting"]["checked_players"] == 1
         assert result["pitching"]["checked_players"] == 1
+        assert result["pa_formula"]["checked_players"] == 1
     finally:
         session.close()
 
@@ -204,6 +211,57 @@ def test_statistical_quality_gate_reports_missing_cumulative_records():
         session.close()
 
 
+def test_statistical_quality_gate_reports_pa_formula_mismatch():
+    session = _make_session()
+    try:
+        _insert_regular_season(session)
+        session.execute(
+            text(
+                """
+                INSERT INTO game (game_id, game_status, season_id)
+                VALUES ('G1', 'COMPLETED', 202501)
+                """
+            )
+        )
+        # PA = 10, but AB + BB + HBP + SH + SF = 4 + 0 + 0 + 0 + 0 = 4
+        # So PA != AB+BB+HBP+SH+SF
+        session.execute(
+            text(
+                """
+                INSERT INTO game_batting_stats
+                    (game_id, player_id, plate_appearances, at_bats, walks, hbp, hits, runs, home_runs, sacrifice_hits, sacrifice_flies)
+                VALUES ('G1', 10, 10, 4, 0, 0, 2, 1, 0, 0, 0)
+                """
+            )
+        )
+        session.execute(
+            text(
+                """
+                INSERT INTO player_season_batting
+                    (player_id, season, league, plate_appearances, hits, runs, home_runs)
+                VALUES (10, 2025, 'REGULAR', 5, 2, 1, 0)
+                """
+            )
+        )
+        session.commit()
+
+        result = run_quality_gate(session, 2025)
+
+        # Should fail due to PA formula mismatch
+        assert result["ok"] is False
+        assert result["pa_formula"]["ok"] is False
+        assert result["pa_formula"]["checked_players"] == 1
+        assert len(result["pa_formula"]["mismatches"]) == 1
+        mismatch = result["pa_formula"]["mismatches"][0]
+        assert mismatch["player_id"] == 10
+        assert mismatch["issue"] == "PA formula mismatch"
+        assert mismatch["expected_pa"] == 4  # 4 + 0 + 0 + 0 + 0
+        assert mismatch["actual_pa"] == 10
+        assert mismatch["difference"] == 6  # 10 - 4
+    finally:
+        session.close()
+
+
 def test_statistical_quality_gate_returns_cli_safe_shape_when_regular_season_missing():
     session = _make_session()
     try:
@@ -241,12 +299,12 @@ def test_quality_gate_cli_prints_failed_error_results(monkeypatch, capsys):
         lambda _session, _year: {
             "batting": dict(failed_category),
             "pitching": dict(failed_category),
+            "pa_formula": dict(failed_category),  # Add pa_formula to match new structure
             "ok": False,
         },
     )
 
     exit_code = quality_gate_check.main(["--year", "2025"])
-
     out = capsys.readouterr().out
     assert exit_code == 1
     assert "Statistical Quality Gate for 2025" in out

@@ -14,12 +14,14 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 from datetime import datetime
 from typing import Any
 
 from src.db.engine import SessionLocal
 from src.utils.safe_print import safe_print as print
 
+logger = logging.getLogger(__name__)
 KST = __import__("zoneinfo").ZoneInfo("Asia/Seoul")
 
 AVAILABLE_SECTIONS = [
@@ -158,8 +160,9 @@ def _build_sync() -> dict:
         counts = check_table_counts(SessionLocal().bind, oci_engine)
         ok_count = sum(1 for c in counts if c["status"] == "OK")
         return {"status": "ok", "table_count": len(counts), "ok_count": ok_count, "details": counts}
-    except Exception as e:
-        return {"status": "error", "reason": str(e)}
+    except Exception as exc:
+        logger.exception("Dashboard OCI sync check failed")
+        return {"status": "error", "reason": str(exc)}
 
 
 # ─── Formatters ──────────────────────────────────────────────────────────
@@ -269,6 +272,12 @@ def _format_terminal(data: dict[str, Any], sections: list[str]):
         st = q.get("standings_integrity", {})
         if st:
             print(f"  순위 정합성: {'✅' if st.get('ok') else '❌'}")
+        pa = q.get("pa_formula_integrity", {})
+        if pa:
+            if pa.get("ok"):
+                print("  PA 공식: ✅ 일치")
+            else:
+                print(f"  PA 공식: ❌ ({pa.get('violation_count', 0)}건 위반)")
 
     if "freshness" in sections and data.get("freshness"):
         f = data["freshness"]
@@ -348,6 +357,9 @@ def main():
         if "quality" in data:
             q = data["quality"]
             msg_lines.append(f"완료: {q.get('completed_count', 0)}/{q.get('total_games', 0)}")
+            pa = q.get("pa_formula_integrity", {})
+            if pa and not pa.get("ok", True):
+                msg_lines.append(f"PA 공식 위반: {pa.get('violation_count', 0)}건")
         SlackWebhookClient.send_alert("\n".join(msg_lines))
 
 

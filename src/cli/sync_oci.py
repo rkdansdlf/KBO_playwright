@@ -302,6 +302,11 @@ def build_arg_parser() -> argparse.ArgumentParser:
         help="Phase1: 감독 변동(manager_changes)을 동기화합니다.",
     )
     parser.add_argument(
+        "--team-events",
+        action="store_true",
+        help="구단 이벤트/뉴스 정보(team_events)를 동기화합니다.",
+    )
+    parser.add_argument(
         "--fan-culture",
         action="store_true",
         help="Phase1: 팬 문화 데이터(team_rivalries, cheer_songs, cheer_chants)를 동기화합니다.",
@@ -495,6 +500,7 @@ def main(argv: Iterable[str] | None = None) -> None:
         "injuries": ("sync_injury_entries", "🚀 Syncing Injury Entries (Phase 1)..."),
         "foreign_players": ("sync_foreign_player_changes", "🚀 Syncing Foreign Player Changes (Phase 1)..."),
         "managers": ("sync_manager_changes", "🚀 Syncing Manager Changes (Phase 1)..."),
+        "team_events": ("sync_team_events", "🚀 Syncing Team Events/News..."),
         "fan_culture": ("sync_fan_culture", "🚀 Syncing Fan Culture Data (Phase 1)..."),
         "phase1_all": ("sync_phase1_all", "🚀 Syncing ALL Phase 1 Tables..."),
         # Stadium Real-Time Data

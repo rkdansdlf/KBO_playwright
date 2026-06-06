@@ -32,6 +32,22 @@ class _RecordingSyncer:
         self.calls.append("players")
         return 1
 
+    def sync_team_events(self):
+        self.calls.append("team_events")
+        return 1
+
+    def sync_team_rivalries(self):
+        self.calls.append("team_rivalries")
+        return 1
+
+    def sync_cheer_songs(self):
+        self.calls.append("cheer_songs")
+        return 1
+
+    def sync_cheer_chants(self):
+        self.calls.append("cheer_chants")
+        return 1
+
     def close(self):
         self.closed = True
 
@@ -42,6 +58,17 @@ def test_weekly_maintenance_syncs_player_basic_before_players(monkeypatch):
     async def _collect_profiles(*_args, **_kwargs):
         return None
 
+    class FakeTeamEventCrawler:
+        def __init__(self, days_back=14):
+            pass
+
+        async def run(self, save=False):
+            return []
+
+    class FakeFanCultureCrawler:
+        async def run(self, save=False):
+            return []
+
     monkeypatch.setattr(weekly, "collect_profiles", _collect_profiles)
     monkeypatch.setattr(weekly, "healthcheck_main", lambda _argv: None)
     monkeypatch.setattr(
@@ -49,6 +76,8 @@ def test_weekly_maintenance_syncs_player_basic_before_players(monkeypatch):
         "run",
         lambda *_args, **_kwargs: SimpleNamespace(returncode=0, stdout="", stderr=""),
     )
+    monkeypatch.setattr("src.crawlers.team_event_crawler.TeamEventCrawler", FakeTeamEventCrawler)
+    monkeypatch.setattr("src.crawlers.fan_culture_crawler.FanCultureCrawler", FakeFanCultureCrawler)
     monkeypatch.setattr(weekly, "SessionLocal", lambda: _SessionContext())
     monkeypatch.setattr(weekly, "OCISync", _RecordingSyncer)
     monkeypatch.setenv("OCI_DB_URL", "postgresql://example")
@@ -57,5 +86,12 @@ def test_weekly_maintenance_syncs_player_basic_before_players(monkeypatch):
 
     assert len(_RecordingSyncer.created) == 1
     syncer = _RecordingSyncer.created[0]
-    assert syncer.calls == ["player_basic", "players"]
+    assert syncer.calls == [
+        "player_basic",
+        "players",
+        "team_events",
+        "team_rivalries",
+        "cheer_songs",
+        "cheer_chants",
+    ]
     assert syncer.closed is True

@@ -13,6 +13,7 @@ GAP_EMOJI_MAP: dict[str, str] = {
     "RELAY": "\U0001f4be",
     "PROFILE": "\U0001f464",
     "ID_RESOLUTION": "\U0001f50d",
+    "PA_FORMULA": "\U0001f4ca",
 }
 
 GAP_CATEGORY_ENV_MAP: dict[str, str] = {
@@ -22,6 +23,7 @@ GAP_CATEGORY_ENV_MAP: dict[str, str] = {
     "RELAY": "TELEGRAM_CHAT_ID_RELAY",
     "PROFILE": "TELEGRAM_CHAT_ID_PROFILE",
     "ID_RESOLUTION": "TELEGRAM_CHAT_ID_ID_RESOLUTION",
+    "PA_FORMULA": "TELEGRAM_CHAT_ID_PA_FORMULA",
 }
 
 

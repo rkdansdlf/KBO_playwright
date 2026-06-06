@@ -1,12 +1,12 @@
 from __future__ import annotations
 
-import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
 from src.models.award import Award
 from src.models.franchise import Franchise
 from src.models.team import Team, TeamCodeMap
+from src.models.team_event import TeamEvent
 from src.models.team_history import TeamHistory
 from src.sync.oci_sync import OCISync
 
@@ -30,9 +30,11 @@ class TestSyncFranchises:
         syncer.sqlite_session = _build_memory_session()
 
         calls = []
+
         def fake_sync_simple_table(model, conflict_keys, **kw):
             calls.append((model, conflict_keys, kw))
             return 5
+
         syncer._sync_simple_table = fake_sync_simple_table
 
         result = syncer.sync_franchises()
@@ -56,28 +58,48 @@ class TestSyncTeams:
 
         # Seed one team with list aliases
         session.add(Franchise(id=1, name="Test", original_code="TT", current_code="TT"))
-        session.add(Team(
-            team_id="TT", team_name="Test Team", team_short_name="TT",
-            city="Seoul", franchise_id=1, is_active=True,
-            aliases=["Test", "TT"],
-        ))
+        session.add(
+            Team(
+                team_id="TT",
+                team_name="Test Team",
+                team_short_name="TT",
+                city="Seoul",
+                franchise_id=1,
+                is_active=True,
+                aliases=["Test", "TT"],
+            )
+        )
         # Seed a second team with string aliases
-        session.add(Team(
-            team_id="SS", team_name="Second", team_short_name="SS",
-            city="Busan", franchise_id=1, is_active=True,
-            aliases='["Second","SS"]',
-        ))
+        session.add(
+            Team(
+                team_id="SS",
+                team_name="Second",
+                team_short_name="SS",
+                city="Busan",
+                franchise_id=1,
+                is_active=True,
+                aliases='["Second","SS"]',
+            )
+        )
         # Seed a third team with None aliases
-        session.add(Team(
-            team_id="NN", team_name="No Alias", team_short_name="NN",
-            city="Daegu", franchise_id=1, is_active=True,
-            aliases=None,
-        ))
+        session.add(
+            Team(
+                team_id="NN",
+                team_name="No Alias",
+                team_short_name="NN",
+                city="Daegu",
+                franchise_id=1,
+                is_active=True,
+                aliases=None,
+            )
+        )
         session.flush()
 
         calls = []
+
         def fake_bulk_copy_upsert(table_name, records, unique_cols, **kw):
             calls.append((table_name, records, unique_cols, kw))
+
         syncer._bulk_copy_upsert = fake_bulk_copy_upsert
 
         # Mock franchise mapping
@@ -109,9 +131,11 @@ class TestSyncAwards:
         syncer.target_session = _build_memory_session()
 
         calls = []
+
         def fake(model, conflict_keys, **kw):
             calls.append((model, conflict_keys, kw))
             return 3
+
         syncer._sync_simple_table = fake
 
         result = syncer.sync_awards()
@@ -136,8 +160,10 @@ class TestSyncTeamHistory:
         syncer._target_table_exists = lambda model: True
 
         calls = []
+
         def fake(table_name, records, unique_cols, **kw):
             calls.append((table_name, records, unique_cols, kw))
+
         syncer._bulk_copy_upsert = fake
 
         result = syncer.sync_team_history()
@@ -161,6 +187,7 @@ class TestSyncTeamCodeMap:
         syncer._get_franchise_id_mapping = lambda: {1: 100}
 
         calls = []
+
         def fake(model, conflict_keys, **kw):
             calls.append((model, conflict_keys, kw))
             if kw.get("transform_fn"):
@@ -169,6 +196,7 @@ class TestSyncTeamCodeMap:
                 kw["transform_fn"](data)
                 assert data["franchise_id"] == 100
             return 1
+
         syncer._sync_simple_table = fake
 
         result = syncer.sync_team_code_map()
@@ -184,9 +212,11 @@ class TestSyncTeamCodeMap:
         syncer.sqlite_session = _build_memory_session()
 
         calls = []
+
         def fake(model, conflict_keys, **kw):
             calls.append((model, conflict_keys, kw))
             return 0
+
         syncer._sync_simple_table = fake
 
         result = syncer.sync_team_code_map()
@@ -218,8 +248,10 @@ class TestSyncTeamHistoryEdgeCases:
         syncer._get_franchise_id_mapping = lambda: mapping
 
         calls = []
+
         def fake(table_name, records, unique_cols, **kw):
             calls.append((table_name, records, unique_cols, kw))
+
         syncer._bulk_copy_upsert = fake
 
         result = syncer.sync_team_history()
@@ -229,3 +261,25 @@ class TestSyncTeamHistoryEdgeCases:
         assert len(records) == 1
         assert records[0]["id"] == 10
         assert records[0]["franchise_id"] == 100
+
+
+class TestSyncTeamEvents:
+    def test_calls_sync_simple_table(self):
+        syncer = object.__new__(OCISync)
+        syncer.sqlite_session = _build_memory_session()
+        syncer._ensure_table = lambda model: None
+
+        calls = []
+
+        def fake(model, conflict_keys, **kw):
+            calls.append((model, conflict_keys, kw))
+            return 8
+
+        syncer._sync_simple_table = fake
+
+        result = syncer.sync_team_events()
+        assert result == 8
+        assert len(calls) == 1
+        model, conflict_keys, kw = calls[0]
+        assert model is TeamEvent
+        assert conflict_keys == ["team_id", "title", "source_url"]

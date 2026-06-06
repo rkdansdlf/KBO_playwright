@@ -1,6 +1,6 @@
 """
 KBO Weekly Maintenance Orchestrator.
-Performs player profile enrichment, DB health checks, and OCI cleanup.
+Performs player profile enrichment, DB health checks, team events, fan culture crawling, and OCI cleanup/sync.
 """
 
 from __future__ import annotations
@@ -49,8 +49,28 @@ async def run_weekly_maintenance(
     except Exception:
         logger.exception("   ❌ Error during healthcheck")
 
-    # 3. OCI Cleanup (Duplicates)
-    print("\n🧹 Step 3: Cleaning up OCI Duplicates...")
+    # 3. Crawl Team Events/News
+    print("\n📅 Step 3: Crawling Team Events & News...")
+    try:
+        from src.crawlers.team_event_crawler import TeamEventCrawler
+
+        await TeamEventCrawler(days_back=14).run(save=True)
+        print("   ✅ Team events crawl complete")
+    except Exception:
+        logger.exception("   ❌ Error crawling team events")
+
+    # 4. Crawl Fan Culture (Cheer Songs)
+    print("\n🎵 Step 4: Crawling Fan Culture & Cheer Songs...")
+    try:
+        from src.crawlers.fan_culture_crawler import FanCultureCrawler
+
+        await FanCultureCrawler().run(save=True)
+        print("   ✅ Fan culture crawl complete")
+    except Exception:
+        logger.exception("   ❌ Error crawling fan culture")
+
+    # 5. OCI Cleanup (Duplicates)
+    print("\n🧹 Step 5: Cleaning up OCI Duplicates...")
     oci_url = os.getenv("OCI_DB_URL")
     if not oci_url:
         print("   ⚠️ OCI_DB_URL not set, skipping cleanup")
@@ -69,7 +89,7 @@ async def run_weekly_maintenance(
             logger.exception("   ❌ Error during OCI cleanup")
 
     if sync:
-        print("\n☁️ Step 4: Synchronizing Updated Profiles to OCI...")
+        print("\n☁️ Step 6: Synchronizing Updated Data to OCI...")
         if not oci_url:
             print("   ⚠️ OCI_DB_URL not set, skipping sync")
         else:
@@ -77,8 +97,16 @@ async def run_weekly_maintenance(
                 syncer = OCISync(oci_url, session)
                 try:
                     # Sync player_basic before master/profile records to match publish dependency order.
+                    print("   - Syncing player basics...")
                     syncer.sync_player_basic()
+                    print("   - Syncing players...")
                     syncer.sync_players()
+                    print("   - Syncing team events...")
+                    syncer.sync_team_events()
+                    print("   - Syncing fan culture (rivalries, songs, chants)...")
+                    syncer.sync_team_rivalries()
+                    syncer.sync_cheer_songs()
+                    syncer.sync_cheer_chants()
                     print("   ✅ OCI synchronization completed")
                 except Exception:
                     logger.exception("   ❌ OCI sync error")
