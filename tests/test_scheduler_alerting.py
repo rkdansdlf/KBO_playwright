@@ -213,7 +213,7 @@ def test_main_registers_morning_jobs_with_expected_cron(monkeypatch):
 
     assert ids_to_trigger["crawl_p0_non_game"] == {"hour": 6, "minute": 20}
     assert ids_to_trigger["crawl_pregame_refresh"] == {"hour": "10-23", "minute": "*/15"}
-    assert ids_to_trigger["crawl_live_refresh_day"] == {"hour": "12-22", "minute": "*/2"}
-    assert ids_to_trigger["crawl_live_refresh_night"] == {"hour": 23, "minute": "0-30/2"}
+    assert ids_to_trigger["crawl_live_refresh_day"] == {"hour": "12-22", "second": "*/10"}
+    assert ids_to_trigger["crawl_live_refresh_night"] == {"hour": 23, "minute": "0-30", "second": "*/10"}
     assert ids_to_kwargs["crawl_live_refresh_day"]["max_instances"] == 1
     assert ids_to_kwargs["crawl_live_refresh_night"]["max_instances"] == 1

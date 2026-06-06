@@ -36,12 +36,14 @@ jobs:
           fi
           python3 -m src.cli.run_periodic_extras --year "$YEAR" --sync
 
-      - name: PA Formula Monthly Audit
+      - name: Monthly Audits (PA Formula + Team Stats)
         run: |
           YEAR="$(TZ='Asia/Seoul' date +'%Y')"
           PREV_YEAR=$(( YEAR - 1 ))
           python3 -m src.cli.monthly_pa_audit --year "$PREV_YEAR"
           python3 -m src.cli.monthly_pa_audit --year "$YEAR"
+          python3 -m src.cli.monthly_team_audit --year "$PREV_YEAR"
+          python3 -m src.cli.monthly_team_audit --year "$YEAR"
 
       - uses: ./.github/actions/notify
         if: always()

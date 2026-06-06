@@ -2,11 +2,11 @@ name: KBO Player ID Backfill
 
 on:
   schedule:
-    - cron: '30 20 * * 3'  # 수요일 05:30 KST (수 20:30 UTC)
+    - cron: '30 20 * * 3'  # 목요일 05:30 KST (수 20:30 UTC)
   workflow_dispatch:
 
 concurrency:
-  group: kbo-backfill-player-ids
+  group: kbo-db-write-operations
   cancel-in-progress: false
 
 env:
