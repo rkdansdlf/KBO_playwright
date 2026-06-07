@@ -29,6 +29,11 @@ logger = logging.getLogger(__name__)
 FALSE_ENV_VALUES = {"0", "false", "no", "off"}
 
 
+def _configure_cli_logging() -> None:
+    if not logging.getLogger().handlers:
+        logging.basicConfig(level=logging.INFO, format="%(message)s")
+
+
 def _env_enabled(name: str, default: str = "1") -> bool:
     return os.getenv(name, default).strip().lower() not in FALSE_ENV_VALUES
 
@@ -42,7 +47,7 @@ def check_schedules(session) -> dict:
         total = session.execute(text("SELECT COUNT(*) FROM game_schedules")).scalar() or 0
     except SQLAlchemyError:
         total = 0
-    logger.exception(f"Total schedules: {total}")
+    logger.info(f"Total schedules: {total}")
 
     try:
         operational_total = session.execute(text("SELECT COUNT(*) FROM game")).scalar() or 0
@@ -83,7 +88,7 @@ def check_schedules(session) -> dict:
         results = session.execute(stmt).all()
     except SQLAlchemyError:
         results = []
-    logger.exception("\nBy year:")
+    logger.info("\nBy year:")
     for year, count in results:
         logger.info(f"  {year}: {count}")
 
@@ -500,6 +505,7 @@ def check_pregame_pitcher_coverage(session, *, verbose: bool = False) -> dict:
 
 def main(argv: Sequence[str] | None = None) -> None:
     """데이터 점검 스크립트의 메인 실행 함수."""
+    _configure_cli_logging()
     load_dotenv()
     parser = argparse.ArgumentParser(description="Check KBO database status and data integrity")
     parser.add_argument("--verbose", "-v", action="store_true", help="Show detailed information")
@@ -608,7 +614,7 @@ def main(argv: Sequence[str] | None = None) -> None:
         for warning in all_warnings:
             logger.info(f"  - {warning}")
 
-    logger.info()
+    logger.info("")
 
 
 if __name__ == "__main__":

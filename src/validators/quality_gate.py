@@ -325,6 +325,11 @@ class QualityGate:
             TeamSeasonBatting.caught_stealing,
             TeamSeasonBatting.walks,
             TeamSeasonBatting.strikeouts,
+            TeamSeasonBatting.intentional_walks,
+            TeamSeasonBatting.hbp,
+            TeamSeasonBatting.sacrifice_hits,
+            TeamSeasonBatting.sacrifice_flies,
+            TeamSeasonBatting.gdp,
         ).where(
             TeamSeasonBatting.season == season,
             TeamSeasonBatting.league == league,
@@ -354,6 +359,11 @@ class QualityGate:
                 func.sum(PlayerSeasonBatting.caught_stealing).label("caught_stealing"),
                 func.sum(PlayerSeasonBatting.walks).label("walks"),
                 func.sum(PlayerSeasonBatting.strikeouts).label("strikeouts"),
+                func.sum(PlayerSeasonBatting.intentional_walks).label("intentional_walks"),
+                func.sum(PlayerSeasonBatting.hbp).label("hbp"),
+                func.sum(PlayerSeasonBatting.sacrifice_hits).label("sacrifice_hits"),
+                func.sum(PlayerSeasonBatting.sacrifice_flies).label("sacrifice_flies"),
+                func.sum(PlayerSeasonBatting.gdp).label("gdp"),
             )
             .where(
                 PlayerSeasonBatting.season == season,
@@ -389,6 +399,11 @@ class QualityGate:
                 "caught_stealing",
                 "walks",
                 "strikeouts",
+                "intentional_walks",
+                "hbp",
+                "sacrifice_hits",
+                "sacrifice_flies",
+                "gdp",
             ]
             diffs = []
             for field in stat_fields:
@@ -442,6 +457,16 @@ class QualityGate:
             TeamSeasonPitching.home_runs_allowed,
             TeamSeasonPitching.walks_allowed,
             TeamSeasonPitching.strikeouts,
+            TeamSeasonPitching.innings_outs,
+            TeamSeasonPitching.intentional_walks,
+            TeamSeasonPitching.hit_batters,
+            TeamSeasonPitching.tbf,
+            TeamSeasonPitching.complete_games,
+            TeamSeasonPitching.shutouts,
+            TeamSeasonPitching.wild_pitches,
+            TeamSeasonPitching.balks,
+            TeamSeasonPitching.sacrifices_allowed,
+            TeamSeasonPitching.sacrifice_flies_allowed,
         ).where(
             TeamSeasonPitching.season == season,
             TeamSeasonPitching.league == league,
@@ -470,6 +495,15 @@ class QualityGate:
                 func.sum(PlayerSeasonPitching.home_runs_allowed).label("home_runs_allowed"),
                 func.sum(PlayerSeasonPitching.walks_allowed).label("walks_allowed"),
                 func.sum(PlayerSeasonPitching.strikeouts).label("strikeouts"),
+                func.sum(PlayerSeasonPitching.intentional_walks).label("intentional_walks"),
+                func.sum(PlayerSeasonPitching.hit_batters).label("hit_batters"),
+                func.sum(PlayerSeasonPitching.tbf).label("tbf"),
+                func.sum(PlayerSeasonPitching.complete_games).label("complete_games"),
+                func.sum(PlayerSeasonPitching.shutouts).label("shutouts"),
+                func.sum(PlayerSeasonPitching.wild_pitches).label("wild_pitches"),
+                func.sum(PlayerSeasonPitching.balks).label("balks"),
+                func.sum(PlayerSeasonPitching.sacrifices_allowed).label("sacrifices_allowed"),
+                func.sum(PlayerSeasonPitching.sacrifice_flies_allowed).label("sacrifice_flies_allowed"),
             )
             .where(
                 PlayerSeasonPitching.season == season,
@@ -503,6 +537,16 @@ class QualityGate:
                 "home_runs_allowed",
                 "walks_allowed",
                 "strikeouts",
+                "innings_outs",
+                "intentional_walks",
+                "hit_batters",
+                "tbf",
+                "complete_games",
+                "shutouts",
+                "wild_pitches",
+                "balks",
+                "sacrifices_allowed",
+                "sacrifice_flies_allowed",
             ]
             diffs = []
             for field in stat_fields:

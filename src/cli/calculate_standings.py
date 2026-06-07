@@ -228,10 +228,11 @@ class StandingsCalculator:
         logger.info(f"\n{'=' * 70}")
         logger.info(f"  KBO {year}년 순위표 (기준: {d})")
         logger.info(f"{'=' * 70}")
-        print(
-            f"{'순위':>4} {'팀':<6} {'승':>4} {'패':>4} {'무':>3} {'승률':>7} {'승차':>5} {'최근10':>8} {'연속':>4} {'홈':>8} {'원정':>8}"
+        logger.info(
+            "%-4s %-6s %4s %4s %3s %7s %5s %8s %4s %8s %8s",
+            "순위", "팀", "승", "패", "무", "승률", "승차", "최근10", "연속", "홈", "원정",
         )
-        logger.info(f"{'-' * 70}")
+        logger.info("%s", "-" * 70)
 
         top_5_rows = [r for r in rows if r.top_5]
         bottom_5_rows = [r for r in rows if not r.top_5]
@@ -241,19 +242,21 @@ class StandingsCalculator:
             streak_s = f"{abs(r.current_streak)}{'연승' if r.current_streak >= 0 else '연패'}"
             home_s = f"{r.home_wins}승{r.home_losses}패"
             away_s = f"{r.away_wins}승{r.away_losses}패"
-            print(
-                f"  ★{r.rank:>2}  {r.team_code:<6} {r.wins:>4} {r.losses:>4} {r.draws:>3}  {r.win_pct:.3f}  {r.games_behind:>4.1f}  {recent:>8} {streak_s:>4} {home_s:>8} {away_s:>8}"
+            logger.info(
+                "  ★%2d  %-6s %4d %4d %3d  %.3f  %4.1f  %8s %4s %8s %8s",
+                r.rank, r.team_code, r.wins, r.losses, r.draws, r.win_pct, r.games_behind, recent, streak_s, home_s, away_s,
             )
 
         if bottom_5_rows:
-            logger.info(f"  {'─' * 68}")
+            logger.info("  %s", "─" * 68)
             for r in bottom_5_rows:
                 recent = f"{r.recent_10_wins}승{r.recent_10_losses}패"
                 streak_s = f"{abs(r.current_streak)}{'연승' if r.current_streak >= 0 else '연패'}"
                 home_s = f"{r.home_wins}승{r.home_losses}패"
                 away_s = f"{r.away_wins}승{r.away_losses}패"
-                print(
-                    f"    {r.rank:>2}  {r.team_code:<6} {r.wins:>4} {r.losses:>4} {r.draws:>3}  {r.win_pct:.3f}  {r.games_behind:>4.1f}  {recent:>8} {streak_s:>4} {home_s:>8} {away_s:>8}"
+                logger.info(
+                    "    %2d  %-6s %4d %4d %3d  %.3f  %4.1f  %8s %4s %8s %8s",
+                    r.rank, r.team_code, r.wins, r.losses, r.draws, r.win_pct, r.games_behind, recent, streak_s, home_s, away_s,
                 )
 
         logger.info(f"{'=' * 70}")
@@ -289,8 +292,9 @@ class StandingsCalculator:
             if data:
                 last = data[-1]
                 recent = f"{last.recent_10_wins}승{last.recent_10_losses}패"
-                print(
-                    f"  {last.standings_date}  {last.wins:>3} {last.losses:>3}  {last.win_pct:.3f}  {last.rank:>3}위  {recent:>8}"
+                logger.info(
+                    "  %s  %3d %3d  %.3f  %d위  %s",
+                    last.standings_date, last.wins, last.losses, last.win_pct, last.rank, recent,
                 )
 
 

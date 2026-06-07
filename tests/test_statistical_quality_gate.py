@@ -72,7 +72,10 @@ def _make_session():
                     walks INTEGER,
                     strikeouts INTEGER,
                     sacrifice_hits INTEGER,
-                    sacrifice_flies INTEGER
+                    sacrifice_flies INTEGER,
+                    intentional_walks INTEGER,
+                    hbp INTEGER,
+                    gdp INTEGER
                 )
                 """
             )
@@ -112,7 +115,16 @@ def _make_session():
                     hits_allowed INTEGER,
                     home_runs_allowed INTEGER,
                     walks_allowed INTEGER,
-                    games INTEGER
+                    games INTEGER,
+                    intentional_walks INTEGER,
+                    hit_batters INTEGER,
+                    tbf INTEGER,
+                    complete_games INTEGER,
+                    shutouts INTEGER,
+                    wild_pitches INTEGER,
+                    balks INTEGER,
+                    sacrifices_allowed INTEGER,
+                    sacrifice_flies_allowed INTEGER
                 )
                 """
             )
@@ -136,7 +148,14 @@ def _make_session():
                     stolen_bases INTEGER,
                     caught_stealing INTEGER,
                     walks INTEGER,
-                    strikeouts INTEGER
+                    strikeouts INTEGER,
+                    intentional_walks INTEGER,
+                    hbp INTEGER,
+                    sacrifice_hits INTEGER,
+                    sacrifice_flies INTEGER,
+                    gdp INTEGER,
+                    iso FLOAT,
+                    babip FLOAT
                 )
                 """
             )
@@ -159,7 +178,21 @@ def _make_session():
                     hits_allowed INTEGER,
                     home_runs_allowed INTEGER,
                     walks_allowed INTEGER,
-                    strikeouts INTEGER
+                    strikeouts INTEGER,
+                    innings_outs INTEGER,
+                    intentional_walks INTEGER,
+                    hit_batters INTEGER,
+                    tbf INTEGER,
+                    complete_games INTEGER,
+                    shutouts INTEGER,
+                    wild_pitches INTEGER,
+                    balks INTEGER,
+                    sacrifices_allowed INTEGER,
+                    sacrifice_flies_allowed INTEGER,
+                    k_per_nine FLOAT,
+                    bb_per_nine FLOAT,
+                    kbb FLOAT,
+                    fip FLOAT
                 )
                 """
             )
@@ -242,8 +275,8 @@ def test_statistical_quality_gate_passes_when_transactional_totals_are_within_cu
             text(
                 """
                 INSERT INTO team_season_pitching
-                    (team_id, season, league, games, wins, strikeouts, innings_pitched)
-                VALUES ('SSG', 2025, 'REGULAR', 1, 1, 4, 2.333)
+                    (team_id, season, league, games, wins, strikeouts, innings_pitched, innings_outs)
+                VALUES ('SSG', 2025, 'REGULAR', 1, 1, 4, 2.333, 7)
                 """
             )
         )

@@ -161,6 +161,24 @@ def test_process_player_result_skips_when_player_basic_missing(monkeypatch):
     }
 
 
+def test_process_player_result_reports_pitching_filter_reason_when_save_returns_zero(monkeypatch):
+    async def rows(*_args, **_kwargs):
+        return [{"season": 2026, "team_code": "WO", "games": 1}]
+
+    monkeypatch.setattr(module, "fetch_and_parse_futures_pitching", rows)
+    monkeypatch.setattr(module, "_has_player_basic", lambda _pid: True)
+    monkeypatch.setattr(module, "save_pitching_stats_to_db", lambda _payloads: 0)
+    monkeypatch.setattr(module, "get_last_filter_counts", lambda: {"missing_required": 1})
+
+    result = asyncio.run(
+        module.process_player_result("1001", "pitcher", "PlayerA", _FakeRepository(player=object()), delay=0, pool=None)
+    )
+
+    assert result["status"] == "failed"
+    assert result["saved"] == 0
+    assert result["failure_reason"] == "pitching_filtered:missing_required=1"
+
+
 def test_crawl_futures_continues_when_player_processing_raises(monkeypatch):
     async def ids(_season, _delay):
         return {"1001": {"position": "hitter", "name": "PlayerA"}}

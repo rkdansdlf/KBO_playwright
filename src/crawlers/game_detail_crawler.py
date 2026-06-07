@@ -1341,8 +1341,8 @@ async def main():  # pragma: no cover
     crawler = GameDetailCrawler()
     game_data = await crawler.crawl_game(game_id, game_date)
     if game_data and args.save:
-        print(
-            "[DEBUG] Direct --save is intended for one-off parser checks. "
+        logger.info(
+            "Direct --save is intended for one-off parser checks. "
             "Operational collection should use src.cli.collect_games or src.cli.run_daily_update."
         )
         from src.repositories.game_repository import save_game_detail

@@ -331,8 +331,6 @@ def run_gap_report(alert: bool = True, dry_run: bool = False) -> dict[str, Any]:
             count = f" ({gap_data['total']})"
         elif "violation_count" in gap_data:
             count = f" ({gap_data['violation_count']})"
-        elif "total" in gap_data:
-            count = f" ({gap_data['total']})"
         logger.info(f"  {icon} {emoji} {gap_type}: {sev}{count}")
 
     if alert and not dry_run:

@@ -60,17 +60,24 @@ class PlayerSyncMixin:
         )
 
     def _get_player_id_mapping(self) -> dict[int, int]:
-        """Get SQLite player_id → OCI player_id mapping"""
-        mapping = {}
+        """Get and cache SQLite player_id → OCI player_id mapping (single batch query)."""
+        if hasattr(self, "_player_id_mapping_cache") and self._player_id_mapping_cache is not None:
+            return self._player_id_mapping_cache
+
         sqlite_players = self.sqlite_session.query(Player).all()
+        kbo_person_ids = [sp.kbo_person_id for sp in sqlite_players if sp.kbo_person_id]
 
-        for sp in sqlite_players:
-            if sp.kbo_person_id:
-                oci_player = self.target_session.query(Player).filter_by(kbo_person_id=sp.kbo_person_id).first()
-                if oci_player:
-                    mapping[sp.id] = oci_player.id
+        if not kbo_person_ids:
+            self._player_id_mapping_cache = {}
+            return self._player_id_mapping_cache
 
-        return mapping
+        oci_rows = self.target_session.query(Player).filter(Player.kbo_person_id.in_(kbo_person_ids)).all()
+        oci_by_person = {oci.kbo_person_id: oci.id for oci in oci_rows}
+
+        self._player_id_mapping_cache = {
+            sp.id: oci_by_person[sp.kbo_person_id] for sp in sqlite_players if sp.kbo_person_id in oci_by_person
+        }
+        return self._player_id_mapping_cache
 
     def sync_all_batting_data(self) -> dict[str, int]:
         """모든 타격 관련 데이터 동기화 (타자 + 투수)"""
