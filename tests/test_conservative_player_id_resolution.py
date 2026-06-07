@@ -3,7 +3,7 @@ from pathlib import Path
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker
 
-from scripts.maintenance.resolve_null_player_ids_conservative import (
+from scripts.legacy.maintenance.resolve_null_player_ids_conservative import (
     OverrideEntry,
     choose_candidate_ids,
     delete_duplicate_null_player_id_rows_for_group,

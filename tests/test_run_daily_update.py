@@ -984,7 +984,7 @@ def test_run_update_records_non_p0_quality_gate_failures(monkeypatch):
         command = list(argv)
         if command[:3] == ["-m", "src.cli.quality_gate_check", "--year"]:
             raise run_daily_update.subprocess.CalledProcessError(1, command)
-        if command[:1] == ["scripts/maintenance/quality_gate.py"]:
+        if command[:1] == ["scripts/legacy/quality_gate.py"]:
             raise run_daily_update.subprocess.CalledProcessError(1, command)
 
     result = asyncio.run(

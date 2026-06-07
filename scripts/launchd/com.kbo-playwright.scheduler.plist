@@ -8,7 +8,7 @@
 
   <key>ProgramArguments</key>
   <array>
-    <string>/Users/mac/project/KBO_playwright/.venv/bin/python</string>
+    <string>/Users/mac/project/KBO_playwright/venv/bin/python</string>
     <string>/Users/mac/project/KBO_playwright/scripts/scheduler.py</string>
     <string>--no-startup-run</string>
   </array>

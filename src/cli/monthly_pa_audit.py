@@ -28,7 +28,7 @@ def crawl_monthly_pa_audit_job():
 
     logger.info("Starting PA formula audit for year %s", target_year)
     result = subprocess.run(
-        [sys.executable, "-m", "scripts.maintenance.audit_pa_formula", "--fix-year", str(target_year)],
+        [sys.executable, "-m", "scripts.legacy.maintenance.audit_pa_formula", "--fix-year", str(target_year)],
         capture_output=True,
         text=True,
         timeout=300,
@@ -59,7 +59,7 @@ def main():
 
     print(f"Starting PA formula audit for year {target_year}")
     result = subprocess.run(
-        [sys.executable, "-m", "scripts.maintenance.audit_pa_formula", "--fix-year", str(target_year)],
+        [sys.executable, "-m", "scripts.legacy.maintenance.audit_pa_formula", "--fix-year", str(target_year)],
         capture_output=True,
         text=True,
         timeout=300,

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from sqlalchemy import create_engine, text
 
-from scripts.maintenance.repair_game_id_integrity import (
+from scripts.legacy.maintenance.repair_game_id_integrity import (
     _load_tables,
     apply_duplicate_group,
     collect_2024_backfill_candidates,

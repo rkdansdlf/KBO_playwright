@@ -4,7 +4,7 @@ from pathlib import Path
 import pytest
 from sqlalchemy import create_engine, text
 
-from scripts.maintenance.apply_player_id_overrides import OverrideApplyError, apply_overrides
+from scripts.legacy.maintenance.apply_player_id_overrides import OverrideApplyError, apply_overrides
 
 
 def _write(path: Path, content: str) -> Path:

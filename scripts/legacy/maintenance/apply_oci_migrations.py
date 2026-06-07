@@ -113,6 +113,7 @@ def apply_migrations():
 
 
 if __name__ == "__main__":
+    load_dotenv()
     parser = argparse.ArgumentParser(description="Apply or check OCI migrations")
     parser.add_argument("--check", action="store_true", help="Check migration status without applying")
     args = parser.parse_args()

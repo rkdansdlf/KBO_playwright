@@ -78,8 +78,8 @@ async def run_weekly_maintenance(
         try:
             # We call the script via subprocess to handle its own imports/setup if needed,
             # or just call its logic if easily importable.
-            # cleanup_oci.py is in scripts/maintenance/
-            cmd = [sys.executable, "scripts/maintenance/cleanup_oci.py", "--apply"]
+            # cleanup_oci.py is in scripts/legacy/maintenance/
+            cmd = [sys.executable, "scripts/legacy/maintenance/cleanup_oci.py", "--apply"]
             result = subprocess.run(cmd, capture_output=True, text=True)
             if result.returncode == 0:
                 print(f"   ✅ OCI Cleanup output:\n{result.stdout}")

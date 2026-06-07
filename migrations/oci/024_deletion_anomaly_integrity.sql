@@ -18,6 +18,77 @@ ALTER TABLE player_movements
 -- normalized joins instead.
 DROP TRIGGER IF EXISTS trg_normalize_player_movements_team_code ON player_movements;
 
+-- Temporary drop function helper to drop constraints before data updates
+CREATE OR REPLACE FUNCTION pg_temp.drop_single_column_fk(
+    child_table text,
+    child_column text,
+    parent_table text,
+    parent_column text
+)
+RETURNS void
+LANGUAGE plpgsql
+AS $$
+DECLARE
+    constraint_name text;
+BEGIN
+    FOR constraint_name IN
+        SELECT c.conname
+        FROM pg_constraint c
+        JOIN pg_class child ON child.oid = c.conrelid
+        JOIN pg_class parent ON parent.oid = c.confrelid
+        JOIN pg_attribute child_attr
+          ON child_attr.attrelid = child.oid
+         AND child_attr.attnum = c.conkey[1]
+        JOIN pg_attribute parent_attr
+          ON parent_attr.attrelid = parent.oid
+         AND parent_attr.attnum = c.confkey[1]
+        WHERE c.contype = 'f'
+          AND child.oid = to_regclass(child_table)
+          AND parent.oid = to_regclass(parent_table)
+          AND array_length(c.conkey, 1) = 1
+          AND array_length(c.confkey, 1) = 1
+          AND child_attr.attname = child_column
+          AND parent_attr.attname = parent_column
+    LOOP
+        EXECUTE format('ALTER TABLE %I DROP CONSTRAINT %I', child_table, constraint_name);
+    END LOOP;
+END $$;
+
+-- Drop all constraints that will be rebuilt to avoid FK violations during update
+DO $$
+BEGIN
+    PERFORM pg_temp.drop_single_column_fk('players', 'player_basic_id', 'player_basic', 'player_id');
+    PERFORM pg_temp.drop_single_column_fk('team_daily_roster', 'team_code', 'teams', 'team_id');
+    PERFORM pg_temp.drop_single_column_fk('team_daily_roster', 'player_basic_id', 'player_basic', 'player_id');
+    PERFORM pg_temp.drop_single_column_fk('player_movements', 'canonical_team_id', 'teams', 'team_id');
+    PERFORM pg_temp.drop_single_column_fk('player_movements', 'player_basic_id', 'player_basic', 'player_id');
+    PERFORM pg_temp.drop_single_column_fk('game_id_aliases', 'canonical_game_id', 'game', 'game_id');
+    PERFORM pg_temp.drop_single_column_fk('game_metadata', 'game_id', 'game', 'game_id');
+    PERFORM pg_temp.drop_single_column_fk('game_inning_scores', 'game_id', 'game', 'game_id');
+    PERFORM pg_temp.drop_single_column_fk('game_lineups', 'game_id', 'game', 'game_id');
+    PERFORM pg_temp.drop_single_column_fk('game_lineups', 'player_id', 'player_basic', 'player_id');
+    PERFORM pg_temp.drop_single_column_fk('game_batting_stats', 'game_id', 'game', 'game_id');
+    PERFORM pg_temp.drop_single_column_fk('game_batting_stats', 'player_id', 'player_basic', 'player_id');
+    PERFORM pg_temp.drop_single_column_fk('game_pitching_stats', 'game_id', 'game', 'game_id');
+    PERFORM pg_temp.drop_single_column_fk('game_pitching_stats', 'player_id', 'player_basic', 'player_id');
+    PERFORM pg_temp.drop_single_column_fk('game_events', 'game_id', 'game', 'game_id');
+    PERFORM pg_temp.drop_single_column_fk('game_events', 'batter_id', 'player_basic', 'player_id');
+    PERFORM pg_temp.drop_single_column_fk('game_events', 'pitcher_id', 'player_basic', 'player_id');
+    PERFORM pg_temp.drop_single_column_fk('game_summary', 'game_id', 'game', 'game_id');
+    PERFORM pg_temp.drop_single_column_fk('game_summary', 'player_id', 'player_basic', 'player_id');
+    PERFORM pg_temp.drop_single_column_fk('game_play_by_play', 'game_id', 'game', 'game_id');
+    
+    -- Drop matchup splits constraints
+    PERFORM pg_temp.drop_single_column_fk('matchup_bvp', 'batter_id', 'player_basic', 'player_id');
+    PERFORM pg_temp.drop_single_column_fk('matchup_bvp', 'pitcher_id', 'player_basic', 'player_id');
+    PERFORM pg_temp.drop_single_column_fk('matchup_batter_splits', 'player_id', 'player_basic', 'player_id');
+    PERFORM pg_temp.drop_single_column_fk('matchup_pitcher_splits', 'player_id', 'player_basic', 'player_id');
+    PERFORM pg_temp.drop_single_column_fk('matchup_batter_team_split', 'player_id', 'player_basic', 'player_id');
+    PERFORM pg_temp.drop_single_column_fk('matchup_pitcher_team_split', 'player_id', 'player_basic', 'player_id');
+    PERFORM pg_temp.drop_single_column_fk('matchup_batter_stadium_split', 'player_id', 'player_basic', 'player_id');
+    PERFORM pg_temp.drop_single_column_fk('matchup_batter_vs_starter', 'player_id', 'player_basic', 'player_id');
+END $$;
+
 UPDATE players
 SET player_basic_id = kbo_person_id::INTEGER
 WHERE kbo_person_id ~ '^[0-9]+$'

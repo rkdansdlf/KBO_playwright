@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import sqlite3
 
-from scripts.maintenance import smart_deduplicate
+from scripts.legacy.maintenance import smart_deduplicate
 from src.services.game_deduplication_service import DeduplicationWindow, mark_primary_games
 
 

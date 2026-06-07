@@ -2,7 +2,7 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-DEFAULT_PYTHON="${ROOT_DIR}/.venv/bin/python"
+DEFAULT_PYTHON="${ROOT_DIR}/venv/bin/python"
 PYTHON_BIN="${CRAWLER_LIVE_SMOKE_PYTHON:-${DEFAULT_PYTHON}}"
 
 if [[ ! -x "${PYTHON_BIN}" ]]; then
