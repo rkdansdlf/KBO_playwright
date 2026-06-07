@@ -90,7 +90,7 @@ class CrawlGate:
             logger.error(f"\n  ❌ CrawlGate ENFORCE mode: blocking pipeline ({len(self.issues)} issues)\n")
             sys.exit(1)
 
-        logger.info()
+        logger.info("")
         return all_pass
 
 

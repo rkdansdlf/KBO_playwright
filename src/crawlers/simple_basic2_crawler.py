@@ -265,7 +265,7 @@ def goto_next_page(page: Page) -> bool:
 
 def main():
     """메인 실행 함수"""
-    YEAR = 2025
+    YEAR = datetime.now().year
 
     logger.info(f"🚀 KBO {YEAR}년 BB 헤더 Basic2 크롤링 테스트 시작")
 

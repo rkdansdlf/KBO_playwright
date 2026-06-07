@@ -16,18 +16,20 @@ from src.utils.request_policy import RequestPolicy
 from src.utils.team_codes import resolve_team_code
 
 
-def crawl_baserunning_stats(year=2025, max_retries=3, timeout=60000):
+def crawl_baserunning_stats(year=None, max_retries=3, timeout=60000):
     """
     전체 선수의 주루 기록을 크롤링합니다.
 
     Args:
-        year: 시즌 연도
+        year: 시즌 연도 (None이면 현재 연도)
         max_retries: 최대 재시도 횟수
         timeout: 페이지 로드 타임아웃 (밀리초)
 
     Returns:
         list: 주루 기록 리스트
     """
+    if year is None:
+        year = datetime.now().year
     baserunning_data = []
     policy = RequestPolicy()
 
@@ -135,15 +137,19 @@ def crawl_baserunning_stats(year=2025, max_retries=3, timeout=60000):
     return baserunning_data
 
 
-def save_baserunning_stats(player_list, year=2025, db_path="kbo_2025.db"):
+def save_baserunning_stats(player_list, year=None, db_path=None):
     """
     주루 기록을 크롤링하여 DB에 저장합니다.
 
     Args:
         player_list: 선수 목록 (player_id 매칭용)
-        year: 시즌 연도
-        db_path: 데이터베이스 파일 경로
+        year: 시즌 연도 (None이면 현재 연도)
+        db_path: 데이터베이스 파일 경로 (None이면 data/kbo_{year}.db)
     """
+    if year is None:
+        year = datetime.now().year
+    if db_path is None:
+        db_path = f"data/kbo_{year}.db"
     logger.info(f"\n{'=' * 60}")
     logger.info(f"🏃 {year}년 주루 기록 수집 시작")
     logger.info(f"{'=' * 60}\n")
@@ -253,5 +259,6 @@ if __name__ == "__main__":
     # 테스트용
     from player_list_crawler import crawl_player_list
 
-    players = crawl_player_list(2025)
-    save_baserunning_stats(players, 2025, "data/kbo_2025.db")
+    YEAR = datetime.now().year
+    players = crawl_player_list(YEAR)
+    save_baserunning_stats(players, YEAR)
