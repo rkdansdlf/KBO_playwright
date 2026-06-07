@@ -15,10 +15,11 @@ Coverage:
 Scheduling recommendation:
   - Run every 5 minutes between D-3h and D+2h on game days.
 """
+
 from __future__ import annotations
 
 import logging
-from datetime import date, datetime, timezone
+from datetime import UTC, date, datetime
 
 from sqlalchemy.exc import SQLAlchemyError
 
@@ -76,7 +77,7 @@ class CongestionCrawler:
         save: bool = False,
     ) -> list[dict]:
         game_date = game_date or date.today()
-        measured_at = datetime.now(timezone.utc).replace(tzinfo=None)
+        measured_at = datetime.now(UTC).replace(tzinfo=None)
 
         print(f"[Congestion] Collecting for {game_date} at {measured_at.strftime('%H:%M')} UTC")
 
@@ -84,10 +85,7 @@ class CongestionCrawler:
         snapshots = await self._collect_seoul_api()
         print(f"[Congestion] Seoul API: {len(snapshots)} zones")
 
-        records = [
-            _snapshot_to_record(snap, game_date, measured_at)
-            for snap in snapshots
-        ]
+        records = [_snapshot_to_record(snap, game_date, measured_at) for snap in snapshots]
 
         print(f"[Congestion] Total records: {len(records)}")
 

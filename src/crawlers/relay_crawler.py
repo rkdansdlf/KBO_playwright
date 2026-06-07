@@ -303,7 +303,9 @@ class RelayCrawler:
                     for g in games:
                         g_away_t = self._naver_team_code(str(g.get("awayTeamCode") or "").strip())
                         g_home_t = self._naver_team_code(str(g.get("homeTeamCode") or "").strip())
-                        if (g_away_t == away_code and g_home_t == home_code) or (g_away_t == home_code and g_home_t == away_code):
+                        if (g_away_t == away_code and g_home_t == home_code) or (
+                            g_away_t == home_code and g_home_t == away_code
+                        ):
                             # Check date
                             g_date = str(g.get("gameDate") or "").replace("-", "").strip()
                             if not g_date:
@@ -316,6 +318,7 @@ class RelayCrawler:
                                 same_team_games.append(g)
 
                     if len(same_team_games) > 1:
+
                         def get_time_mins(g_item) -> int:
                             t = str(g_item.get("gameStartTime") or g_item.get("startTime") or "").strip()
                             t_clean = re.sub(r"[^\d:]", "", t)
@@ -598,7 +601,7 @@ class RelayCrawler:
                 "source_schema_version": parsed_payload.get("source_schema_version", SOURCE_SCHEMA_VERSION),
                 "payload_hash": parsed_payload.get("payload_hash"),
             }
-        except Exception as e:
+        except Exception:
             logger.exception("Relay API crawl failed for %s", kbo_game_id)
             self._set_failure_reason(kbo_game_id, "relay_api_error")
             return None

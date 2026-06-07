@@ -12,7 +12,6 @@ from typing import Sequence
 from src.db.engine import SessionLocal
 from src.validators.quality_gate import run_quality_gate
 
-
 CATEGORY_LABELS = {
     "batting": "Batting",
     "pitching": "Pitching",

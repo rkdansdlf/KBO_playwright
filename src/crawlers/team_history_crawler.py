@@ -188,9 +188,7 @@ class TeamHistoryCrawler:
                         print(f"   ⚠️ No franchise_id for code '{code}'")
                         continue
 
-                    stmt = select(TeamHistory).where(
-                        TeamHistory.season == season, TeamHistory.team_code == code
-                    )
+                    stmt = select(TeamHistory).where(TeamHistory.season == season, TeamHistory.team_code == code)
                     existing = session.execute(stmt).scalars().first()
 
                     if existing:
@@ -213,7 +211,7 @@ class TeamHistoryCrawler:
 
                 session.commit()
                 print(f"✅ Saved/Updated {saved_count} records ({saved_snaps} snapshots).")
-            except Exception as e:
+            except Exception:
                 session.rollback()
                 logger.exception("Error saving team history")
             finally:

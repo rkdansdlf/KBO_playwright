@@ -4,8 +4,8 @@ Supports both SQLite (dev) and MySQL (production)
 """
 
 import os
-
 import sqlite3
+
 from dotenv import load_dotenv
 from sqlalchemy import create_engine, event
 from sqlalchemy.exc import SQLAlchemyError

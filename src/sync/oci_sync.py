@@ -94,7 +94,7 @@ def main():
 
             sync.close()
 
-        except Exception as e:
+        except Exception:
             logger.exception("Sync error occurred")
             import traceback
 
