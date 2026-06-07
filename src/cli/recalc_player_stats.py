@@ -333,19 +333,21 @@ def _upsert_pitching(session: Session, records: list[dict[str, Any]], dialect: s
 
 def _print_batting_results(records: list[dict[str, Any]]) -> None:
     for r in sorted(records, key=lambda x: x["plate_appearances"], reverse=True)[:20]:
-        print(
-            f"  PID={r['player_id']:<6} Team={str(r.get('canonical_team_code', '')):<4} "
-            f"G={r['games']:<2} PA={r['plate_appearances']:<3} H={r['hits']:<2} "
-            f"AVG={r['avg']:<5} OPS={r['ops']:<5}"
+        logger.info(
+            "  PID=%-6s Team=%-4s G=%-2s PA=%-3s H=%-2s AVG=%-5s OPS=%-5s",
+            r["player_id"], str(r.get("canonical_team_code", "")),
+            r["games"], r["plate_appearances"], r["hits"],
+            r["avg"], r["ops"],
         )
 
 
 def _print_pitching_results(records: list[dict[str, Any]]) -> None:
     for r in sorted(records, key=lambda x: x["innings_pitched"] or 0, reverse=True)[:20]:
-        print(
-            f"  PID={r['player_id']:<6} Team={str(r.get('canonical_team_code', '')):<4} "
-            f"G={r['games']:<2} IP={r['innings_pitched']:<5} ERA={r['era']:<5} "
-            f"WHIP={r['whip']:<5} K={r['strikeouts']:<3}"
+        logger.info(
+            "  PID=%-6s Team=%-4s G=%-2s IP=%-5s ERA=%-5s WHIP=%-5s K=%-3s",
+            r["player_id"], str(r.get("canonical_team_code", "")),
+            r["games"], r["innings_pitched"], r["era"],
+            r["whip"], r["strikeouts"],
         )
 
 

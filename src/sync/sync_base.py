@@ -3,11 +3,14 @@ Sync validated data from SQLite to OCI (Oracle Cloud Infrastructure) PostgreSQL
 Dual-repository pattern: SQLite (dev/validation) → OCI (production)
 """
 
+import csv
+import io
 import json
 import logging
 import time
 from dataclasses import dataclass, field
 from datetime import datetime
+from itertools import count
 from typing import Any, Callable
 
 from sqlalchemy import bindparam, create_engine, inspect, text
@@ -466,6 +469,11 @@ class OCISyncBase:
         target_session_factory = sessionmaker(bind=self.oci_engine)
         self.target_session = target_session_factory()
 
+        # Performance: caches for mapping queries called multiple times per sync
+        self._season_map_cache: dict[tuple, int] | None = None
+        self._franchise_id_mapping_cache: dict[int, int] | None = None
+        self._temp_table_counter = count(1)
+
     @staticmethod
     def _chunked(items: list[str], size: int) -> list[list[str]]:
         return [items[idx : idx + size] for idx in range(0, len(items), size)]
@@ -536,8 +544,10 @@ class OCISyncBase:
             return False
 
     def _get_season_map(self) -> dict[tuple, int]:
-        """Fetch OCI season mapping (year, league_type_code) -> season_id via raw SQL"""
-        # We try different table names just in case, but using raw SQL is faster than reflection
+        """Fetch and cache OCI season mapping (year, league_type_code) -> season_id."""
+        if self._season_map_cache is not None:
+            return self._season_map_cache
+
         queries = [
             "SELECT season_id, season_year, league_type_code FROM kbo_seasons",
             "SELECT season_id, season_year, league_type_code FROM kbo_seasons_meta",
@@ -547,35 +557,40 @@ class OCISyncBase:
         for q in queries:
             try:
                 rows = self.target_session.execute(text(q)).all()
-                return {(row.season_year, row.league_type_code): row.season_id for row in rows}
-            except Exception as e:
-                logger.info("Retrying alternate query: %s", e)
+                self._season_map_cache = {(row.season_year, row.league_type_code): row.season_id for row in rows}
+                return self._season_map_cache
+            except Exception:
                 continue
 
         logger.warning("⚠️ Warning: Could not fetch season map from OCI")
-        return {}
+        self._season_map_cache = {}
+        return self._season_map_cache
 
     def _get_franchise_id_mapping(self) -> dict[int, int]:
-        """Get SQLite franchise_id → OCI franchise_id mapping"""
+        """Get and cache SQLite franchise_id → OCI franchise_id mapping (single batch query)."""
+        if self._franchise_id_mapping_cache is not None:
+            return self._franchise_id_mapping_cache
+
         from src.models.franchise import Franchise
 
-        mapping = {}
         sqlite_franchises = self.sqlite_session.query(Franchise).all()
+        original_codes = [sf.original_code for sf in sqlite_franchises if sf.original_code]
 
-        for sf in sqlite_franchises:
-            oci_franchise = self.target_session.query(Franchise).filter_by(original_code=sf.original_code).first()
-            if oci_franchise:
-                mapping[sf.id] = oci_franchise.id
+        if not original_codes:
+            self._franchise_id_mapping_cache = {}
+            return self._franchise_id_mapping_cache
 
-        return mapping
+        oci_rows = self.target_session.query(Franchise).filter(Franchise.original_code.in_(original_codes)).all()
+        oci_by_code = {oci.original_code: oci.id for oci in oci_rows}
+
+        self._franchise_id_mapping_cache = {sf.id: oci_by_code[sf.original_code] for sf in sqlite_franchises if sf.original_code in oci_by_code}
+        return self._franchise_id_mapping_cache
 
     def _bulk_copy_upsert(
         self, table_name: str, records: list[dict[str, Any]], unique_cols: list[str], update_timestamp: bool = True
     ):
         if not records:
             return
-
-        import json
 
         serialized_records = []
         for r in records:
@@ -590,25 +605,12 @@ class OCISyncBase:
             serialized_records.append(serialized_r)
         records = serialized_records
 
-        import csv
-        import io
-        import random
-        import time
-
         max_attempts = 3
         last_exception: Exception | None = None
 
         for attempt in range(1, max_attempts + 1):
             try:
-                return self._do_bulk_copy_upsert(
-                    table_name,
-                    records,
-                    unique_cols,
-                    update_timestamp,
-                    csv,
-                    io,
-                    random,
-                )
+                return self._do_bulk_copy_upsert(table_name, records, unique_cols, update_timestamp)
             except Exception as e:
                 last_exception = e
                 if attempt < max_attempts:
@@ -827,9 +829,6 @@ class OCISyncBase:
         records: list[dict[str, Any]],
         unique_cols: list[str],
         update_timestamp: bool,
-        csv: Any,
-        io: Any,
-        random: Any,
     ):
         connection = self.oci_engine.raw_connection()
         cursor = connection.cursor()
@@ -841,8 +840,8 @@ class OCISyncBase:
             writer.writerows(records)
             output.seek(0)
 
-            suffix = random.randint(1000, 9999)
-            temp_table = f"temp_{table_name}_{int(datetime.now().timestamp())}_{suffix}"
+            seq = next(self._temp_table_counter)
+            temp_table = f"temp_{table_name}_{seq}"
             cursor.execute(f"CREATE TEMP TABLE {temp_table} (LIKE {table_name} INCLUDING DEFAULTS)")
 
             columns_str = ", ".join([f'"{k}"' for k in keys])

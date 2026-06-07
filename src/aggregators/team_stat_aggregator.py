@@ -344,6 +344,15 @@ class TeamStatAggregator:
                 "home_runs_allowed": int(row.home_runs_allowed or 0),
                 "walks_allowed": bb,
                 "strikeouts": int(row.strikeouts or 0),
+                "intentional_walks": int(row.intentional_walks or 0),
+                "hit_batters": int(row.hit_batters or 0),
+                "tbf": int(row.tbf or 0),
+                "complete_games": int(row.complete_games or 0),
+                "shutouts": int(row.shutouts or 0),
+                "wild_pitches": int(row.wild_pitches or 0),
+                "balks": int(row.balks or 0),
+                "sacrifices_allowed": int(row.sacrifices_allowed or 0),
+                "sacrifice_flies_allowed": int(row.sacrifice_flies_allowed or 0),
                 "extra_stats": {"source": "player_rollup"},
             }
 

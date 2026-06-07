@@ -119,7 +119,7 @@ class DailyRosterCrawler:
         visible_date = await page.evaluate(
             "document.querySelector('.date') ? document.querySelector('.date').innerText : 'No Date Element'"
         )
-        logger.info(f"   [DEBUG] Visible Page Date: {visible_date}")
+        logger.debug("   Visible Page Date: %s", visible_date)
 
         # Now iterate teams
         daily_records = []
@@ -214,7 +214,7 @@ class DailyRosterCrawler:
 
         data = await page.evaluate(script)
         if data and data[0].get("status") == "no_tables":
-            logger.info(f"   [DEBUG] No tables found for team {team_code}")
+            logger.debug("   No tables found for team %s", team_code)
             return []
 
         # Post-process

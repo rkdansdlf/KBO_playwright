@@ -50,10 +50,11 @@ def run_recalc(
                     if dry_run:
                         logger.info("  [DRY-RUN] Batting statistics that would be saved:")
                         for r in batting_results:
-                            print(
-                                f"    Team: {r.get('team_name', r['team_id']):<10} ({r['team_id']}) | "
-                                f"G: {r['games']:<3} | AB: {r['at_bats']:<4} | H: {r['hits']:<4} | "
-                                f"AVG: {r['avg']:.3f} | OBP: {r['obp']:.3f} | SLG: {r['slg']:.3f} | OPS: {r['ops']:.3f}"
+                            logger.info(
+                                "    Team: %-10s (%s) | G: %-3d | AB: %-4d | H: %-4d | AVG: %.3f | OBP: %.3f | SLG: %.3f | OPS: %.3f",
+                                r.get("team_name", r["team_id"]), r["team_id"],
+                                r["games"], r["at_bats"], r["hits"],
+                                r["avg"], r["obp"], r["slg"], r["ops"],
                             )
                     else:
                         logger.info(f"  💾 Upserted {len(batting_results)} team batting rows to DB.")
@@ -76,11 +77,12 @@ def run_recalc(
                     if dry_run:
                         logger.info("  [DRY-RUN] Pitching statistics that would be saved:")
                         for r in pitching_results:
-                            print(
-                                f"    Team: {r.get('team_name', r['team_id']):<10} ({r['team_id']}) | "
-                                f"G: {r['games']:<3} | W-L-T: {r['wins']}-{r['losses']}-{r['ties']} | "
-                                f"IP: {r['innings_pitched']:.1f} | ER: {r['earned_runs']:<3} | "
-                                f"ERA: {r['era']:.2f} | WHIP: {r['whip']:.2f}"
+                            logger.info(
+                                "    Team: %-10s (%s) | G: %-3d | W-L-T: %d-%d-%d | IP: %.1f | ER: %-3d | ERA: %.2f | WHIP: %.2f",
+                                r.get("team_name", r["team_id"]), r["team_id"],
+                                r["games"], r["wins"], r["losses"], r["ties"],
+                                r["innings_pitched"], r["earned_runs"],
+                                r["era"], r["whip"],
                             )
                     else:
                         logger.info(f"  💾 Upserted {len(pitching_results)} team pitching rows to DB.")
