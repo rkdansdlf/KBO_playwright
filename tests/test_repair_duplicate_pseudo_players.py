@@ -5,7 +5,7 @@ from pathlib import Path
 
 from sqlalchemy import create_engine, text
 
-from scripts.maintenance.repair_duplicate_pseudo_players import repair_duplicate_pseudo_players
+from scripts.legacy.maintenance.repair_duplicate_pseudo_players import repair_duplicate_pseudo_players
 
 
 def _make_db(tmp_path: Path, *, conflict: bool = False) -> str:

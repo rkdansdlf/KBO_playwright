@@ -5,7 +5,7 @@ from pathlib import Path
 
 
 def _load_module():
-    module_path = Path(__file__).resolve().parents[1] / "scripts" / "maintenance" / "discover_wayback_relay_captures.py"
+    module_path = Path(__file__).resolve().parents[1] / "scripts" / "legacy" / "maintenance" / "discover_wayback_relay_captures.py"
     spec = importlib.util.spec_from_file_location("discover_wayback_relay_captures", module_path)
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)

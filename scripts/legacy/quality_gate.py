@@ -30,7 +30,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from scripts.maintenance.full_audit import collect_audit_metrics, flatten_gate_metrics
+from scripts.legacy.maintenance.full_audit import collect_audit_metrics, flatten_gate_metrics
 from src.db.engine import SessionLocal
 
 BASELINE_KEYS = (

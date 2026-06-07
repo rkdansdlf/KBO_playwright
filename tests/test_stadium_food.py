@@ -5,7 +5,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import sessionmaker
 
-from scripts.maintenance.seed_data import seed_stadium_foods
+from scripts.legacy.maintenance.seed_data import seed_stadium_foods
 from src.models.stadium_food import StadiumFood
 
 

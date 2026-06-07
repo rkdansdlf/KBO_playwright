@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from sqlalchemy import create_engine, text
 
-from scripts.maintenance.repair_historical_team_metadata import run
+from scripts.legacy.maintenance.repair_historical_team_metadata import run
 from src.models.base import Base
 from src.models.franchise import Franchise
 from src.models.team import Team, TeamCodeMap

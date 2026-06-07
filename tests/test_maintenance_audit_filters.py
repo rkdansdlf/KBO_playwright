@@ -1,5 +1,5 @@
-import scripts.maintenance.audit_2026_season as audit_2026
-import scripts.maintenance.check_player_integrity as player_integrity
+import scripts.legacy.maintenance.audit_2026_season as audit_2026
+import scripts.legacy.maintenance.check_player_integrity as player_integrity
 
 
 class _FakeQuery:
