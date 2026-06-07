@@ -32,7 +32,7 @@ from src.utils.game_state import (
     derive_lifecycle_from_naver_status,
 )
 from src.utils.refresh_manifest import write_refresh_manifest
-from src.utils.safe_print import safe_print as print
+
 
 
 def _has_ending_header(raw_pbp_rows: list[dict[str, Any]]) -> bool:
@@ -233,7 +233,7 @@ async def _process_single_live_game(
     """
     game_id = game["game_id"]
 
-    print(
+    logger.info(
         f"[LIVE] 🔍 Crawling active game: {game_id} (lifecycle={lifecycle_state}, nav_status={nav_status_raw or 'UNKNOWN'})"
     )
 
@@ -407,7 +407,7 @@ async def run_live_crawler_cycle(
     )
     if len(selected_candidates) < len(active_candidates):
         selected_ids = [item[0]["game_id"] for item in selected_candidates]
-        print(
+        logger.info(
             "[LIVE] Sharding active games: "
             f"processing {len(selected_candidates)}/{len(active_candidates)} this cycle "
             f"(max_active_games={max_active_games}, selected={','.join(selected_ids)})"
@@ -424,7 +424,7 @@ async def run_live_crawler_cycle(
             min_delay = relay_policy.min_delay
         else:
             min_delay = 0.0
-        print(
+        logger.info(
             f"[LIVE] Dynamic request delay scaling: factor {scale_factor:.2f}x for {num_active_games} active games "
             f"(min_delay={min_delay:.2f}s)"
         )
@@ -503,7 +503,7 @@ async def run_live_crawler_cycle(
             len(oci_sync_failures),
             ",".join(failed_ids),
         )
-        print(
+        logger.info(
             "[SYNC] ⚠️ Live crawl succeeded with OCI partial failures: "
             f"failed={len(oci_sync_failures)} game_ids={','.join(failed_ids)}"
         )

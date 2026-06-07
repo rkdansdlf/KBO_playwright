@@ -2,13 +2,15 @@
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from typing import Any, Callable, Iterable
 
 from src.repositories.game_repository import save_schedule_game
 from src.services.game_write_contract import GameWriteContract
-from src.utils.safe_print import safe_print as print
 from src.utils.schedule_validation import validate_schedule_game_payload
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -29,7 +31,7 @@ class ScheduleSaveResult:
 def save_schedule_games(
     games: Iterable[dict[str, Any]],
     *,
-    log: Callable[[str], None] | None = print,
+    log: Callable[[str], None] | None = logger.info,
     write_contract: GameWriteContract | None = None,
     source_crawler: str = "ScheduleCrawler",
     source_reason: str = "schedule_refresh",

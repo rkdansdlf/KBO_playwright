@@ -509,8 +509,10 @@ async def main():
         if suspects:
             confirmer = PlayerStatusConfirmer()
             confirm_stats = await confirmer.confirm_entries(suspects)
-            print(
-                f"\nProfile-confirmed statuses: {confirm_stats['confirmed']} (attempted {confirm_stats['attempted']})"
+            logger.info(
+                "\nProfile-confirmed statuses: %s (attempted %s)",
+                confirm_stats['confirmed'],
+                confirm_stats['attempted'],
             )
 
         parsed_dates = sum(1 for player in player_dicts if player["birth_date_date"] is not None)

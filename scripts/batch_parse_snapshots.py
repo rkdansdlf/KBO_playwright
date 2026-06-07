@@ -31,7 +31,6 @@ from src.repositories.stadium_seat_section_repository import StadiumSeatSectionR
 from src.repositories.team_event_repository import TeamEventRepository
 from src.repositories.ticket_price_repository import TicketPriceRepository
 from src.utils.http_client import DEFAULT_HEADERS as HEADERS
-from src.utils.safe_print import safe_print as print
 from src.utils.throttle import throttle
 
 logger = logging.getLogger(__name__)
@@ -108,10 +107,10 @@ def run_batch_parse(
             pending.extend(failed)
 
         if not pending:
-            print("[PARSE] No pending snapshots found.")
+            logger.info("[PARSE] No pending snapshots found.")
             return stats
 
-        print(f"[PARSE] Processing {len(pending)} snapshots (dry_run={dry_run})...")
+        logger.info("[PARSE] Processing %d snapshots (dry_run=%s)...", len(pending), dry_run)
 
         for snapshot in pending:
             stats["processed"] += 1
@@ -161,13 +160,13 @@ def run_batch_parse(
                 parsed = parser(resp.text, ds.source_key, metadata)
 
                 if dry_run:
-                    print(f"  [DRY-RUN] {ds.source_key}: {len(parsed)} items would be saved")
+                    logger.info("[DRY-RUN] %s: %d items would be saved", ds.source_key, len(parsed))
                     stats["done"] += 1
                 else:
                     saved = _save_parsed(session, ds.target_domain, parsed)
                     snap_repo.update_parse_status(snapshot.id, "done", parser_version=PARSER_VERSION)
                     session.commit()
-                    print(f"  [PARSE] {ds.source_key}: {saved} items saved")
+                    logger.info("[PARSE] %s: %d items saved", ds.source_key, saved)
                     stats["done"] += 1
 
             except Exception as e:
@@ -177,7 +176,7 @@ def run_batch_parse(
                 logger.exception(f"Parse failed for snapshot {snapshot.id} ({ds.source_key})")
                 stats["failed"] += 1
 
-    print(f"[PARSE] Done: {stats['done']}, Failed: {stats['failed']}, Skipped: {stats['skipped']}")
+    logger.info("[PARSE] Done: %d, Failed: %d, Skipped: %d", stats['done'], stats['failed'], stats['skipped'])
     return stats
 
 

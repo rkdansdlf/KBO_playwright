@@ -18,7 +18,6 @@ logger = logging.getLogger(__name__)
 import contextlib
 
 from src.utils.playwright_pool import AsyncPlaywrightPool
-from src.utils.safe_print import safe_print as print
 from src.utils.team_codes import normalize_kbo_game_id
 
 
@@ -327,10 +326,13 @@ class PreviewCrawler:
                         logger.exception(f"⚠️ Error parsing lineup for {game_id}")
 
                 results.append(preview_data)
-                print(
-                    f"✅ Preview Extracted: {game_id} "
-                    f"(Starter: {away_starter} vs {home_starter}) "
-                    f"[Lineups: {len(preview_data['away_lineup'])} vs {len(preview_data['home_lineup'])}]"
+                logger.info(
+                    "✅ Preview Extracted: %s (Starter: %s vs %s) [Lineups: %d vs %d]",
+                    game_id,
+                    away_starter,
+                    home_starter,
+                    len(preview_data['away_lineup']),
+                    len(preview_data['home_lineup']),
                 )
 
             return results

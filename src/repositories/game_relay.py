@@ -39,7 +39,6 @@ from src.repositories.game_helpers import (
 )
 from src.services.game_write_contract import GameWriteContract, GameWriteSource
 from src.sources.relay.base import event_has_minimum_state, event_to_pbp_row, normalize_pbp_row
-from src.utils.safe_print import safe_print as print
 from src.utils.team_codes import team_code_from_game_id_segment
 
 logger = logging.getLogger(__name__)
@@ -546,10 +545,11 @@ def save_relay_data(
                     if is_valid_state:
                         game_row.game_lifecycle_state = game_lifecycle_state
                     else:
-                        from src.utils.safe_print import safe_print
-
-                        safe_print(
-                            f"[WARN] Invalid lifecycle transition: {game_row.game_lifecycle_state} -> {game_lifecycle_state} for {game_id}"
+                        logger.warning(
+                            "Invalid lifecycle transition: %s -> %s for %s",
+                            game_row.game_lifecycle_state,
+                            game_lifecycle_state,
+                            game_id,
                         )
 
             pbp_rows = []
@@ -766,14 +766,14 @@ def save_relay_data(
             if changed:
                 _auto_sync_to_oci(game_id)
             if events and not valid_event_rows:
-                print(
-                    f"[WARN] Relay save for {game_id}: saved_event_rows=0 "
-                    f"saved_pbp_rows={len(pbp_rows)} skipped_event_rows_reason=insufficient_relay_state"
+                logger.warning(
+                    "Relay save for %s: saved_event_rows=0 saved_pbp_rows=%d skipped_event_rows_reason=insufficient_relay_state",
+                    game_id, len(pbp_rows),
                 )
             else:
-                print(
-                    f"[INFO] Relay save for {game_id}: "
-                    f"saved_event_rows={len(event_rows)} saved_pbp_rows={len(pbp_rows)}"
+                logger.info(
+                    "Relay save for %s: saved_event_rows=%d saved_pbp_rows=%d",
+                    game_id, len(event_rows) if event_rows else 0, len(pbp_rows),
                 )
             return len(event_rows) if event_rows else len(pbp_rows)
         except Exception:

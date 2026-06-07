@@ -46,7 +46,9 @@ async def run_crawler(args: argparse.Namespace) -> int:
 
     # 4. Optional OCI Synchronization
     if args.sync_oci and not args.dry_run:
-        oci_url = os.getenv("OCI_DB_URL") or os.getenv("TARGET_DATABASE_URL")
+        from src.db.engine import get_oci_url
+
+        oci_url = get_oci_url()
         if not oci_url:
             logger.warning(
                 "⚠️ sync-oci requested, but OCI_DB_URL/TARGET_DATABASE_URL env var not found. Skipping OCI sync."

@@ -81,7 +81,7 @@ def test_players_sync_runs_player_basic_before_master_players(monkeypatch):
         reset_oci_sequences, "reset_sequences", lambda target_url: calls.append(("reset_sequences", target_url))
     )
 
-    sync_oci_cli.main(["--target-url", "postgresql://oci.example/kbo", "--players"])
+    sync_oci_cli.main(["--target-url", "postgresql://oci.example/kbo", "--players", "--reset-sequences"])
 
     assert calls == [
         "session_enter",
@@ -135,7 +135,7 @@ def test_teams_sync_runs_reference_tables_in_dependency_order(monkeypatch):
         reset_oci_sequences, "reset_sequences", lambda target_url: calls.append(("reset_sequences", target_url))
     )
 
-    sync_oci_cli.main(["--target-url", "postgresql://oci.example/kbo", "--teams"])
+    sync_oci_cli.main(["--target-url", "postgresql://oci.example/kbo", "--teams", "--reset-sequences"])
 
     assert calls == [
         "session_enter",
@@ -186,6 +186,7 @@ def test_daily_roster_sync_passes_date_scope(monkeypatch):
             "--daily-roster",
             "--roster-date",
             "20260531",
+            "--reset-sequences",
         ]
     )
 

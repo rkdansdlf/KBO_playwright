@@ -18,8 +18,8 @@ import logging
 from datetime import datetime
 from typing import Any
 
-from src.db.engine import SessionLocal
-from src.utils.safe_print import safe_print as print
+from src.db.engine import SessionLocal, get_oci_url
+
 
 logger = logging.getLogger(__name__)
 KST = __import__("zoneinfo").ZoneInfo("Asia/Seoul")
@@ -156,7 +156,7 @@ def _build_sync() -> dict:
 
         from src.db.engine import create_engine_for_url
 
-        oci_url = os.getenv("OCI_DB_URL") or os.getenv("TARGET_DATABASE_URL")
+        oci_url = get_oci_url()
         if not oci_url:
             return {"status": "skipped", "reason": "OCI_DB_URL not set"}
         oci_engine = create_engine_for_url(oci_url)
@@ -180,7 +180,7 @@ def _format_terminal(data: dict[str, Any], sections: list[str]):
         logger.info(f"\n{'=' * 70}")
         logger.info(f"  KBO {year}년 순위표 (기준: {date_label})")
         logger.info(f"{'=' * 70}")
-        print(
+        logger.info(
             f"{'순위':>4} {'팀':<6} {'승':>4} {'패':>4} {'무':>3} {'승률':>7} {'승차':>5} {'최근10':>8} {'연속':>4} {'홈':>8} {'원정':>8}"
         )
         logger.info(f"{'-' * 70}")
@@ -204,7 +204,7 @@ def _format_terminal(data: dict[str, Any], sections: list[str]):
             d = r.draws if hasattr(r, "draws") else r.get("draws", 0)
             wp = r.win_pct if hasattr(r, "win_pct") else r.get("win_pct", 0)
             gb = r.games_behind if hasattr(r, "games_behind") else r.get("games_behind", "-")
-            print(
+            logger.info(
                 f"  {top5}{rank:>2} {tc:<6} {w:>4} {losses:>4} "
                 f"{d:>3} {wp:>7.3f} {gb:>5} "
                 f"{recent:>8} {streak_str:>4} {home:>8} {away:>8}"
@@ -223,7 +223,7 @@ def _format_terminal(data: dict[str, Any], sections: list[str]):
             logger.info(f"{'구장':<20} {'경기':>4} {'RPG':>6} {'PF':>6}  평가")
             logger.info(f"{'-' * 65}")
             for r in sorted(results, key=lambda x: x["park_factor"], reverse=True):
-                print(
+                logger.info(
                     f"  {r['stadium']:<18} {r['games']:>4} {r['runs_per_game']:>5.1f} {r['park_factor']:>5.3f}  {r['park_factor_label']}"
                 )
 

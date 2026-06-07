@@ -2,24 +2,28 @@
 Verify SQLite data integrity with advanced mathematical bounding.
 """
 
+import logging
+import traceback
+
 from sqlalchemy import func
 
 from src.db.engine import SessionLocal
 from src.models.game import Game, GameBattingStat, GameInningScore, GamePitchingStat
-from src.utils.safe_print import safe_print as print
+
+logger = logging.getLogger(__name__)
 
 
 def check_data_quality(session):
     """Check for data mathematical and relational quality issues."""
-    print("\n🔍 Advanced Data Quality & Math Checks")
-    print("=" * 50)
+    logger.info("Advanced Data Quality & Math Checks")
+    logger.info("=" * 50)
 
     issues = []
 
     # Removed schedule query
 
     # Advanced Game Math Consistency Checks
-    print("   - Verifying Box Score Mathematics (Last 50 finished games)...")
+    logger.info("   - Verifying Box Score Mathematics (Last 50 finished games)...")
     recent_games = (
         session.query(Game).filter(Game.game_status == "종료").order_by(Game.game_date.desc()).limit(50).all()
     )
@@ -33,9 +37,9 @@ def check_data_quality(session):
         )
 
         if home_innings != g.home_score:
-            issues.append(f"⚠️ Game {g.game_id} Home Score Mismatch: Board {g.home_score} vs Innings {home_innings}")
+            issues.append(f"Game {g.game_id} Home Score Mismatch: Board {g.home_score} vs Innings {home_innings}")
         if away_innings != g.away_score:
-            issues.append(f"⚠️ Game {g.game_id} Away Score Mismatch: Board {g.away_score} vs Innings {away_innings}")
+            issues.append(f"Game {g.game_id} Away Score Mismatch: Board {g.away_score} vs Innings {away_innings}")
 
         # 2. Batting stat RBI check
         home_rbi = (
@@ -47,24 +51,23 @@ def check_data_quality(session):
 
         # RBI can be <= total runs, but mathematically impossibility requires RBI > Runs
         if home_rbi > g.home_score:
-            issues.append(f"⚠️ Game {g.game_id} Home RBI Bound Error: RBI {home_rbi} > Total Runs {g.home_score}")
+            issues.append(f"Game {g.game_id} Home RBI Bound Error: RBI {home_rbi} > Total Runs {g.home_score}")
         if away_rbi > g.away_score:
-            issues.append(f"⚠️ Game {g.game_id} Away RBI Bound Error: RBI {away_rbi} > Total Runs {g.away_score}")
+            issues.append(f"Game {g.game_id} Away RBI Bound Error: RBI {away_rbi} > Total Runs {g.away_score}")
 
     if not issues:
-        print("✅ No data quality issues found!")
+        logger.info("No data quality issues found!")
     else:
         for issue in issues:
-            print(issue)
+            logger.warning(issue)
 
     return len(issues)
 
 
 def main():
     """Run all verification checks"""
-    print("\n" + "🔬" * 30)
-    print("Database Structure & Math Verification")
-    print("🔬" * 30)
+    logger.info("Database Structure & Math Verification")
+    logger.info("=" * 50)
 
     with SessionLocal() as session:
         try:
@@ -73,20 +76,18 @@ def main():
             batting = session.query(GameBattingStat).count()
             pitching = session.query(GamePitchingStat).count()
 
-            print(f"📊 Basic Counts: Games ({games}), Batting Rows ({batting}), Pitching Rows ({pitching})")
+            logger.info("Basic Counts: Games (%d), Batting Rows (%d), Pitching Rows (%d)", games, batting, pitching)
 
             # Check data quality
             issue_count = check_data_quality(session)
 
             if issue_count == 0:
-                print("\n✅ SQLite data passed mathematical bounds tests.")
+                logger.info("SQLite data passed mathematical bounds tests.")
             else:
-                print("\n⚠️ Please review the mathematical anomalies above.")
+                logger.warning("Please review the mathematical anomalies above.")
 
         except Exception as e:
-            print(f"\n❌ Verification error: {e}")
-            import traceback
-
+            logger.error("Verification error: %s", e)
             traceback.print_exc()
 
 

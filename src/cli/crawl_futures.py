@@ -30,7 +30,7 @@ from src.repositories.player_season_pitching_repository import get_last_filter_c
 from src.repositories.save_futures_batting import save_futures_batting
 from src.utils.player_validation import normalize_player_id
 from src.utils.playwright_pool import AsyncPlaywrightPool
-from src.utils.safe_print import safe_print as print
+
 
 logger = logging.getLogger(__name__)
 
@@ -85,7 +85,7 @@ async def gather_active_player_ids(season_year: int, delay: float) -> dict[str, 
     hitters_cnt = sum(1 for m in player_positions.values() if m["position"] == "hitter")
     pitchers_cnt = sum(1 for m in player_positions.values() if m["position"] == "pitcher")
     both_cnt = sum(1 for m in player_positions.values() if m["position"] == "both")
-    print(
+    logger.info(
         f"Found {len(player_positions)} active players (hitters: {hitters_cnt}, pitchers: {pitchers_cnt}, both: {both_cnt})"
     )
     return player_positions

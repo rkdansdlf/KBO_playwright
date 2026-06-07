@@ -19,7 +19,6 @@ from src.models.fa_contract import FAContract
 from src.models.player import PlayerBasic, PlayerMovement
 from src.models.team import Team
 from src.utils.playwright_blocking import install_async_resource_blocking
-from src.utils.safe_print import safe_print as print
 from src.utils.team_codes import resolve_team_code
 
 
@@ -267,8 +266,9 @@ class FACrawler:
 
         logger.info(f"   [Header Mapping] Section: {section_type} ({pos_type})")
         logger.info(f"   => Header: {header}")
-        print(
-            f"   => Indices - year: {year_idx}, name: {name_idx}, team: {team_idx}, old_team: {old_team_idx}, new_team: {new_team_idx}, duration: {duration_idx}, amount: {amount_idx}, remarks: {remarks_idx}"
+        logger.info(
+            "   => Indices - year: %s, name: %s, team: %s, old_team: %s, new_team: %s, duration: %s, amount: %s, remarks: %s",
+            year_idx, name_idx, team_idx, old_team_idx, new_team_idx, duration_idx, amount_idx, remarks_idx,
         )
 
         if name_idx == -1 or amount_idx == -1:
@@ -442,11 +442,13 @@ class FACrawler:
             )
 
             if dry_run:
-                print(
-                    f"   [DRY RUN] player_movements: {name} ({year}): {'MATCH FOUND' if existing else 'NEW RECORD'} -> {contract_info}"
+                logger.info(
+                    "   [DRY RUN] player_movements: %s (%s): %s -> %s",
+                    name, year, 'MATCH FOUND' if existing else 'NEW RECORD', contract_info,
                 )
-                print(
-                    f"   [DRY RUN] fa_contracts: {name} ({year}, {fa_type}): {'MATCH FOUND' if existing_contract else 'NEW RECORD'} -> {amount_val} ({amount_krw}만 원)"
+                logger.info(
+                    "   [DRY RUN] fa_contracts: %s (%s, %s): %s -> %s (%s만 원)",
+                    name, year, fa_type, 'MATCH FOUND' if existing_contract else 'NEW RECORD', amount_val, amount_krw,
                 )
                 continue
 

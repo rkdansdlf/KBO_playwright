@@ -14,7 +14,6 @@ from sqlalchemy.orm import Session
 from src.models.game import Game
 from src.models.season import KboSeason
 from src.utils.game_status import COMPLETED_LIKE_GAME_STATUSES
-from src.utils.safe_print import safe_print as print
 
 logger = logging.getLogger(__name__)
 
@@ -119,8 +118,9 @@ class ParkFactorCalculator:
 
         for r in sorted(results, key=lambda x: x["park_factor"], reverse=True):
             pf_label = r["park_factor_label"]
-            print(
-                f"  {r['stadium']:<18} {r['games']:>4} {r['runs_per_game']:>5.1f} {r['park_factor']:>5.3f}  {pf_label}"
+            logger.info(
+                "  %-18s %4d %5.1f %5.3f  %s",
+                r['stadium'], r['games'], r['runs_per_game'], r['park_factor'], pf_label,
             )
 
         logger.info(f"{'=' * 70}")

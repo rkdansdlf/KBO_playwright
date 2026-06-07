@@ -19,7 +19,7 @@ from sqlalchemy import inspect, text
 # Add project root to sys.path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
 
-from src.db.engine import create_engine_for_url
+from src.db.engine import create_engine_for_url, get_oci_url, get_source_db_url
 from src.utils.alerting import SlackWebhookClient
 
 load_dotenv()
@@ -134,8 +134,8 @@ def check_deep_ids(sqlite_conn, oci_conn, table_name: str, pk_cols: list[str]) -
 
 
 def run_consistency_audit(deep: bool = False, trigger_alert: bool = True) -> bool:
-    source_url = os.getenv("SOURCE_DATABASE_URL", "sqlite:///./data/kbo_dev.db")
-    target_url = os.getenv("OCI_DB_URL") or os.getenv("TARGET_DATABASE_URL")
+    source_url = get_source_db_url()
+    target_url = get_oci_url()
 
     if not target_url:
         logger.error("❌ OCI target database URL is not configured.")

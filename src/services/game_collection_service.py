@@ -13,7 +13,6 @@ from src.models.game import Game, GameBattingStat, GameEvent, GamePitchingStat, 
 from src.repositories.game_repository import save_game_detail, save_relay_data
 from src.services.game_write_contract import GameWriteContract, GameWriteSource
 from src.services.pbp_sh_sf_derivation import apply_sh_sf_to_batting_stats
-from src.utils.safe_print import safe_print as print
 
 logger = logging.getLogger(__name__)
 from src.utils.team_codes import normalize_kbo_game_id
@@ -176,7 +175,7 @@ async def crawl_and_save_game_details(
     should_save_detail: Callable[[dict[str, Any]], bool] | None = None,
     pause_every: int | None = None,
     pause_seconds: float = 0.0,
-    log: Callable[[str], None] = print,
+    log: Callable[[str], None] = logger.info,
     write_contract: GameWriteContract | None = None,
     source_stage: str = "detail",
     source_crawler: str | None = None,

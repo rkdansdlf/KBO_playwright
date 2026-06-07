@@ -3,7 +3,11 @@ Database Query Service
 Provides specialized query functions for player and game data.
 """
 
+import logging
+
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 from sqlalchemy import and_, select
 
@@ -65,4 +69,4 @@ if __name__ == "__main__":
     # Test
     stats = get_player_defensive_stats("김현수", 2025)
     for s in stats:
-        print(s)
+        logger.info(s)

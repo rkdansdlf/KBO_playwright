@@ -14,7 +14,6 @@ from sqlalchemy.orm import Session
 from src.models.game import Game, GameEvent
 from src.models.season import KboSeason
 from src.utils.game_status import COMPLETED_LIKE_GAME_STATUSES
-from src.utils.safe_print import safe_print as print
 
 logger = logging.getLogger(__name__)
 
@@ -165,9 +164,9 @@ class ClutchAggregator:
         logger.info(f"{'순위':>4} {'BatterID':>9} {'WPA합계':>8} {'평균WPA':>8} {'Clutch':>8} {'고레버리지':>9}")
         logger.info(f"{'-' * 60}")
         for i, r in enumerate(results[:top_n]):
-            print(
-                f"  {i + 1:>2}  {r['batter_id']:>9} {r['wpa_sum']:>8.4f} {r['avg_wpa']:>8.4f} "
-                f"{r['high_leverage_wpa']:>8.4f} {r['high_leverage_count']:>9}"
+            logger.info(
+                "  %2d  %9s %8.4f %8.4f %8.4f %9d",
+                i + 1, r['batter_id'], r['wpa_sum'], r['avg_wpa'], r['high_leverage_wpa'], r['high_leverage_count'],
             )
 
         logger.info(f"{'=' * 60}")

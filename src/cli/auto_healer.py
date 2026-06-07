@@ -41,7 +41,7 @@ from src.services.game_write_contract import GameWriteContract
 from src.services.player_id_resolver import PlayerIdResolver
 from src.services.recovery_manager import RecoveryManager
 from src.utils.alerting import SlackWebhookClient, TelegramBotClient
-from src.utils.safe_print import safe_print as print
+
 
 logger = logging.getLogger(__name__)
 
@@ -220,7 +220,7 @@ async def run_healer_async(
         crawler = GameDetailCrawler(request_delay=1.0, resolver=resolver)
         write_contract = GameWriteContract(
             run_label=f"auto_healer:{datetime.now():%Y%m%dT%H%M%S}",
-            log=print,
+            log=logger.info,
         )
 
         results = {"completed": 0, "cancelled": 0, "unresolved": 0, "dry_run": 0}
@@ -240,7 +240,7 @@ async def run_healer_async(
                 detail_crawler=crawler,
                 force=True,
                 concurrency=1,
-                log=print,
+                log=logger.info,
                 write_contract=write_contract,
                 source_reason="auto_healing_recovery",
             )
@@ -433,8 +433,8 @@ async def run_pbp_healer_async(
         source_order_override=["kbo", "naver", "import", "manual"],
         allow_derived_pbp=False,
         sleep_seconds=0,
-        log=print,
-    )
+                log=logger.info,
+            )
     recovered_ids = {
         str(row.get("game_id"))
         for row in recovery_result.report_rows

@@ -17,7 +17,7 @@ from typing import Any
 from dotenv import load_dotenv
 from sqlalchemy import create_engine, text
 
-from src.db.engine import SessionLocal
+from src.db.engine import SessionLocal, get_oci_url
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 logger = logging.getLogger(__name__)
@@ -195,7 +195,7 @@ def repair_candidates(
 def sync_to_oci(game_ids: list[str]) -> tuple[int, int]:
     from src.sync.oci_sync import OCISync
 
-    target_url = os.getenv("OCI_DB_URL") or os.getenv("TARGET_DATABASE_URL")
+    target_url = get_oci_url()
     if not target_url:
         raise RuntimeError("OCI_DB_URL or TARGET_DATABASE_URL is required for OCI sync")
 
@@ -216,7 +216,7 @@ def sync_to_oci(game_ids: list[str]) -> tuple[int, int]:
 
 
 def find_target_missing_ready_games(session, args: argparse.Namespace) -> list[dict[str, Any]]:
-    target_url = os.getenv("OCI_DB_URL") or os.getenv("TARGET_DATABASE_URL")
+    target_url = get_oci_url()
     if not target_url:
         raise RuntimeError("OCI_DB_URL or TARGET_DATABASE_URL is required for --sync-target-missing")
 
@@ -282,7 +282,7 @@ def update_target_pitcher_fields(rows: list[dict[str, Any]]) -> int:
     if not rows:
         return 0
 
-    target_url = os.getenv("OCI_DB_URL") or os.getenv("TARGET_DATABASE_URL")
+    target_url = get_oci_url()
     if not target_url:
         raise RuntimeError("OCI_DB_URL or TARGET_DATABASE_URL is required for OCI update")
 

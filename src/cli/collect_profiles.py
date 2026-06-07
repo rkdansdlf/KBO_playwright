@@ -14,7 +14,7 @@ from src.db.engine import SessionLocal
 from src.models.player import Player
 from src.repositories.player_repository import PlayerRepository
 from src.utils.playwright_pool import AsyncPlaywrightPool
-from src.utils.safe_print import safe_print as print
+
 
 logger = logging.getLogger(__name__)
 
@@ -46,7 +46,7 @@ async def collect_profiles(limit: int = 100, target_ids: list[str] | None = None
                 if not pid:
                     continue
 
-                print(
+                logger.info(
                     f"[{idx}/{len(target_players)}] Crawling profile for {pid} ({getattr(player, 'name_kor', 'Unknown')})"
                 )
 

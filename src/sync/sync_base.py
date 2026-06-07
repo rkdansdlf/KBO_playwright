@@ -545,8 +545,9 @@ class OCISyncBase:
 
     def _get_season_map(self) -> dict[tuple, int]:
         """Fetch and cache OCI season mapping (year, league_type_code) -> season_id."""
-        if self._season_map_cache is not None:
-            return self._season_map_cache
+        cache = getattr(self, "_season_map_cache", None)
+        if cache is not None:
+            return cache
 
         queries = [
             "SELECT season_id, season_year, league_type_code FROM kbo_seasons",
@@ -568,8 +569,9 @@ class OCISyncBase:
 
     def _get_franchise_id_mapping(self) -> dict[int, int]:
         """Get and cache SQLite franchise_id → OCI franchise_id mapping (single batch query)."""
-        if self._franchise_id_mapping_cache is not None:
-            return self._franchise_id_mapping_cache
+        cache = getattr(self, "_franchise_id_mapping_cache", None)
+        if cache is not None:
+            return cache
 
         from src.models.franchise import Franchise
 
@@ -583,7 +585,9 @@ class OCISyncBase:
         oci_rows = self.target_session.query(Franchise).filter(Franchise.original_code.in_(original_codes)).all()
         oci_by_code = {oci.original_code: oci.id for oci in oci_rows}
 
-        self._franchise_id_mapping_cache = {sf.id: oci_by_code[sf.original_code] for sf in sqlite_franchises if sf.original_code in oci_by_code}
+        self._franchise_id_mapping_cache = {
+            sf.id: oci_by_code[sf.original_code] for sf in sqlite_franchises if sf.original_code in oci_by_code
+        }
         return self._franchise_id_mapping_cache
 
     def _bulk_copy_upsert(
@@ -840,7 +844,8 @@ class OCISyncBase:
             writer.writerows(records)
             output.seek(0)
 
-            seq = next(self._temp_table_counter)
+            counter = getattr(self, "_temp_table_counter", None) or count(1)
+            seq = next(counter)
             temp_table = f"temp_{table_name}_{seq}"
             cursor.execute(f"CREATE TEMP TABLE {temp_table} (LIKE {table_name} INCLUDING DEFAULTS)")
 

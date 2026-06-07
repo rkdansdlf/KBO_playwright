@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import logging
 import os
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -21,7 +22,9 @@ from src.utils.relay_text import (
     is_relay_noise_text,
     is_relay_result_event_text,
 )
-from src.utils.safe_print import safe_print as print
+
+
+logger = logging.getLogger(__name__)
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_REPORT_DIR = PROJECT_ROOT / "data" / "recovery"
@@ -52,7 +55,7 @@ def rebuild_relay_events(
     report_out: str | Path | None = None,
     backup_out: str | Path | None = None,
     oci_url: str | None = None,
-    log=print,
+    log=logger.info,
 ) -> list[RebuildReportRow]:
     season_values = tuple(int(season) for season in seasons)
     timestamp = datetime.now(UTC).replace(tzinfo=None).strftime("%Y%m%dT%H%M%SZ")
@@ -444,7 +447,7 @@ def run(argv: Sequence[str] | None = None) -> int:
         min_events=args.min_events,
         report_out=args.report_out,
         backup_out=args.backup_out,
-        log=print,
+        log=logger.info,
     )
     return 0
 

@@ -52,7 +52,9 @@ class TeamMapper:
 
     def load_oci_mapping(self) -> bool:
         """OCI team_history 테이블에서 매핑 데이터 로드"""
-        oci_url = os.getenv("OCI_DB_URL") or os.getenv("TARGET_DATABASE_URL")
+        from src.db.engine import get_oci_url
+
+        oci_url = get_oci_url()
         if not oci_url:
             logger.warning("⚠️ OCI_DB_URL 환경변수가 설정되지 않음. 정적 매핑만 사용.")
             return False

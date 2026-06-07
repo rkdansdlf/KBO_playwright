@@ -19,7 +19,7 @@ from src.db.engine import SessionLocal
 from src.models.game import Game
 from src.services.context_aggregator import ContextAggregator
 from src.utils.game_status import COMPLETED_LIKE_GAME_STATUSES
-from src.utils.safe_print import safe_print as print
+
 
 logger = logging.getLogger(__name__)
 
@@ -40,29 +40,29 @@ def _game_ids_for_date(session, target_date: str) -> list[str]:
 
 def _print_text_report(rows: list[dict]) -> None:
     if not rows:
-        print("No completed games matched.")
+        logger.info("No completed games matched.")
         return
 
     for row in rows:
         raw = row["raw_tables"]
         repo = row["repository"]
         final = row["final_payload"]
-        print(f"{row['game_id']}: {row['drop_stage']}")
-        print(
+        logger.info(f"{row['game_id']}: {row['drop_stage']}")
+        logger.info(
             "  raw: "
             f"pitching={raw['game_pitching_rows']} "
             f"starters={raw['starter_rows']} "
             f"bullpen={raw['bullpen_rows']} "
             f"missing_player_ids={raw['player_id_missing_rows']}"
         )
-        print(
+        logger.info(
             "  repository: "
             f"starters={repo['starter_rows']} "
             f"bullpen={repo['bullpen_rows']} "
             f"season_matches={repo['season_pitching_matches']} "
             f"unmatched={len(repo['unmatched_season_stats'])}"
         )
-        print(
+        logger.info(
             "  final_payload: "
             f"review={final['review_summary_found']} "
             f"summary_rows={final['review_summary_rows']} "
@@ -71,12 +71,12 @@ def _print_text_report(rows: list[dict]) -> None:
             f"bullpen={final['bullpen_rows']}"
         )
         if row.get("warnings"):
-            print(f"  warnings: {', '.join(row['warnings'])}")
+            logger.info(f"  warnings: {', '.join(row['warnings'])}")
         if repo["unmatched_season_stats"]:
             examples = ", ".join(
                 f"{item.get('player_name')}({item.get('player_id')})" for item in repo["unmatched_season_stats"][:5]
             )
-            print(f"  unmatched_examples: {examples}")
+            logger.info(f"  unmatched_examples: {examples}")
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -104,7 +104,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         rows = [agg.diagnose_completed_game_coach_pitching(game_id) for game_id in game_ids]
 
     if args.json:
-        print(json.dumps(rows, ensure_ascii=False, indent=2))
+        logger.info(json.dumps(rows, ensure_ascii=False, indent=2))
     else:
         _print_text_report(rows)
     return 0
