@@ -626,6 +626,8 @@ python3 -m scripts.maintenance.audit_pa_formula --fix-year 2020
 python3 -m scripts.maintenance.backfill_sh_sf_from_pbp --year 2020
 
 # 월간 자동 감사 (APScheduler가 매월 1일 03:00 KST 실행)
+python3 -m src.cli.monthly_unified_audit
+python3 -m src.cli.monthly_unified_audit --team-only
 python3 -m src.cli.monthly_pa_audit
 ```
 
