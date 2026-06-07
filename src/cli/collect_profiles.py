@@ -28,17 +28,17 @@ async def collect_profiles(limit: int = 100, target_ids: list[str] | None = None
     try:
         if target_ids:
             stmt = select(Player).where(Player.kbo_person_id.in_(target_ids))
-            print(f"🎯 Targeted processing for {len(target_ids)} IDs")
+            logger.info(f"🎯 Targeted processing for {len(target_ids)} IDs")
         else:
             stmt = select(Player).where(or_(Player.birth_date is None, Player.debut_year is None)).limit(limit)
 
         target_players = session.execute(stmt).scalars().all()
 
         if not target_players:
-            print("✅ No matching players found for profile collection.")
+            logger.info("✅ No matching players found for profile collection.")
             return
 
-        print(f"🎯 Processing {len(target_players)} player profiles...")
+        logger.info(f"🎯 Processing {len(target_players)} player profiles...")
 
         async with pool:
             for idx, player in enumerate(target_players, 1):
@@ -52,7 +52,7 @@ async def collect_profiles(limit: int = 100, target_ids: list[str] | None = None
 
                 data = await crawler.crawl_player_profile(str(pid))
                 if data:
-                    print(f"   ✅ Fetched profile for {pid}")
+                    logger.info(f"   ✅ Fetched profile for {pid}")
                     from src.parsers.player_profile_parser import PlayerProfileParsed
 
                     # Manually populate parsed object since we already have parsed data
@@ -80,9 +80,9 @@ async def collect_profiles(limit: int = 100, target_ids: list[str] | None = None
 
                     # The repo.upsert_player_profile expects a PlayerProfileParsed object
                     repo.upsert_player_profile(str(pid), parsed)
-                    print(f"   ✅ Saved profile metadata for {pid}")
+                    logger.info(f"   ✅ Saved profile metadata for {pid}")
                 else:
-                    print(f"   ⚠️  Crawl skipped or no data for {pid}")
+                    logger.warning(f"   ⚠️  Crawl skipped or no data for {pid}")
 
                 if idx % 5 == 0:
                     await asyncio.sleep(1)

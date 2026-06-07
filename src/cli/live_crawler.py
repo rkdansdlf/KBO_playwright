@@ -176,13 +176,15 @@ async def _run_kbo_fallback_healing(game_id: str) -> None:
         from src.crawlers.pbp_crawler import PBPCrawler
         from src.utils.alerting import SlackWebhookClient
 
-        print(f"[FALLBACK TRIGGER] PBP for {game_id} is unverified. Triggering KBO website re-crawl in background...")
+        logger.info(
+            f"[FALLBACK TRIGGER] PBP for {game_id} is unverified. Triggering KBO website re-crawl in background..."
+        )
         kbo_crawler = PBPCrawler()
         kbo_data = None
         max_attempts = 3
         for attempt in range(1, max_attempts + 1):
             try:
-                print(f"[FALLBACK TRIGGER] Attempt {attempt} to crawl KBO PBP for {game_id}...")
+                logger.info(f"[FALLBACK TRIGGER] Attempt {attempt} to crawl KBO PBP for {game_id}...")
                 kbo_data = await kbo_crawler.crawl_game_events(game_id)
                 if kbo_data and kbo_data.get("events"):
                     break
@@ -190,12 +192,11 @@ async def _run_kbo_fallback_healing(game_id: str) -> None:
                     raise ValueError("KBO PBP crawl returned no events")
             except Exception as fallback_err:
                 logger.warning(f"KBO fallback attempt {attempt} failed for {game_id}: {fallback_err}", exc_info=True)
-                print(f"[FALLBACK WARNING] KBO fallback attempt {attempt} failed for {game_id}: {fallback_err}")
                 if attempt == max_attempts:
-                    print(f"[FALLBACK ERROR] KBO fallback failed all {max_attempts} attempts for {game_id}")
+                    logger.error(f"[FALLBACK ERROR] KBO fallback failed all {max_attempts} attempts for {game_id}")
+                    break
                 else:
                     backoff = 2.0**attempt
-                    print(f"[FALLBACK INFO] Sleeping for {backoff:.1f}s before retry...")
                     await asyncio.sleep(backoff)
 
         if kbo_data and kbo_data.get("events"):
@@ -208,14 +209,12 @@ async def _run_kbo_fallback_healing(game_id: str) -> None:
                 )
                 if saved:
                     msg = f"✅ KBO Fallback Success: Recovered {saved} unverified Naver PBP events from KBO for game {game_id}"
-                    print(f"[FALLBACK SUCCESS] {msg}")
+                    logger.info(f"[FALLBACK SUCCESS] {msg}")
                     SlackWebhookClient.send_alert(msg)
             except Exception as db_err:
                 logger.error(f"Failed to save KBO fallback data for {game_id}: {db_err}", exc_info=True)
-                print(f"[FALLBACK ERROR] Failed to save KBO fallback data for {game_id}: {db_err}")
     except Exception as exc:
         logger.error(f"Unexpected exception in background KBO healing for {game_id}: {exc}", exc_info=True)
-        print(f"[FALLBACK ERROR] Unexpected exception in background KBO healing for {game_id}: {exc}")
     finally:
         _ACTIVE_HEALING_GAMES.discard(game_id)
 
@@ -284,12 +283,12 @@ async def _process_single_live_game(
         )
         if saved_rows:
             touched = True
-            print(f"[LIVE] 📝 Synced {saved_rows} relay rows for {game_id}")
+            logger.info(f"[LIVE] 📝 Synced {saved_rows} relay rows for {game_id}")
 
         detail = await detail_crawler.crawl_game(game_id, today_str, lightweight=True)
         if detail and save_game_snapshot(detail, status=GAME_STATUS_LIVE):
             touched = True
-            print(f"[LIVE] 📊 Updated scoreboard snapshot for {game_id}")
+            logger.info(f"[LIVE] 📊 Updated scoreboard snapshot for {game_id}")
 
         # Fallback auto-healing trigger: if the game is finished but validation failed
         if resolved_lifecycle == "result_pending_stabilization":
@@ -319,14 +318,14 @@ async def run_live_crawler_cycle(
     now = datetime.now(seoul_tz)
     today_str = now.strftime("%Y%m%d")
 
-    print(f"\n[{now.strftime('%Y-%m-%d %H:%M:%S')}] 🚨 Live Crawl Cycle Started")
+    logger.info(f"\n[{now.strftime('%Y-%m-%d %H:%M:%S')}] 🚨 Live Crawl Cycle Started")
 
     sched_crawler = ScheduleCrawler()
     games = await sched_crawler.crawl_schedule(now.year, now.month)
     today_games = [g for g in games if g["game_date"].replace("-", "") == today_str]
 
     if not today_games:
-        print(f"[INFO] No games scheduled for today ({today_str}).")
+        logger.info(f"[INFO] No games scheduled for today ({today_str}).")
         return {
             "active": False,
             "active_playing": False,
@@ -378,10 +377,10 @@ async def run_live_crawler_cycle(
         lifecycle_state = derive_lifecycle_from_naver_status(nav_status_raw)
 
         if lifecycle_state == "cancelled":
-            print(f"[SKIP] {game_id} is CANCELLED.")
+            logger.info(f"[SKIP] {game_id} is CANCELLED.")
             continue
         if lifecycle_state == "before":
-            print(f"[SKIP] {game_id} has not started yet.")
+            logger.info(f"[SKIP] {game_id} has not started yet.")
             all_finished = False
             continue
         if lifecycle_state == "result_pending_stabilization":
@@ -393,10 +392,10 @@ async def run_live_crawler_cycle(
                 if g_row and g_row.game_lifecycle_state in TERMINAL_STATES:
                     terminal_state = g_row.game_lifecycle_state
             if terminal_state:
-                print(f"[SKIP] {game_id} is already final in DB (game_lifecycle_state={terminal_state}).")
+                logger.info(f"[SKIP] {game_id} is already final in DB (game_lifecycle_state={terminal_state}).")
                 continue
             else:
-                print(f"[LIVE] Game {game_id} transitioned to RESULT. Crawling final state to finalize...")
+                logger.info(f"[LIVE] Game {game_id} transitioned to RESULT. Crawling final state to finalize...")
 
         all_finished = False
         active_candidates.append((game, lifecycle_state, nav_status_raw))
@@ -461,7 +460,7 @@ async def run_live_crawler_cycle(
     )
 
     if not touched_game_ids:
-        print(f"[INFO] No live games currently active right now. manifest={manifest_path}")
+        logger.info(f"[INFO] No live games currently active right now. manifest={manifest_path}")
         return {
             "active": False,
             "active_playing": False,
@@ -481,7 +480,7 @@ async def run_live_crawler_cycle(
                     for game_id in sorted(touched_game_ids):
                         try:
                             sync_engine.sync_specific_game(game_id)
-                            print(f"[SYNC] ✅ Synced {game_id} to OCI.")
+                            logger.info(f"[SYNC] ✅ Synced {game_id} to OCI.")
                         except Exception as exc:
                             oci_sync_failures.append(
                                 {
@@ -494,7 +493,6 @@ async def run_live_crawler_cycle(
                                 "[SYNC] OCI sync failed game_id=%s phase=sync_specific_game",
                                 game_id,
                             )
-                            print(f"[SYNC] ⚠️ OCI sync failed for {game_id}: {exc}")
                 finally:
                     sync_engine.close()
 
@@ -510,7 +508,7 @@ async def run_live_crawler_cycle(
             f"failed={len(oci_sync_failures)} game_ids={','.join(failed_ids)}"
         )
 
-    print(f"[INFO] Live cycle finished. updated={len(touched_game_ids)} manifest={manifest_path}")
+    logger.info(f"[INFO] Live cycle finished. updated={len(touched_game_ids)} manifest={manifest_path}")
     return {
         "active": True,
         "active_playing": active_playing_flag,
@@ -573,7 +571,7 @@ async def main_loop(base_interval_minutes: int, *, sync_to_oci: bool | None = No
                 log_parts.append(f"[{mode_str}]")
             if extra_note:
                 log_parts.append(extra_note)
-            print(" ".join(log_parts))
+            logger.info(" ".join(log_parts))
             await asyncio.sleep(sleep_seconds)
 
         except Exception:
@@ -629,7 +627,7 @@ def main(argv: Sequence[str] | None = None):
         asyncio.run(run_live_crawler_cycle(sync_to_oci=not args.no_sync))
     else:
         mode = "DYNAMIC" if args.dynamic else f"FIXED ({args.interval}m)"
-        print(f"🚀 Starting Real-time Daemon... Mode: {mode}")
+        logger.info(f"🚀 Starting Real-time Daemon... Mode: {mode}")
         asyncio.run(main_loop(args.interval, sync_to_oci=not args.no_sync, dynamic=args.dynamic))
 
 

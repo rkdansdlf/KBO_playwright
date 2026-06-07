@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 import os
 from datetime import datetime
 from typing import Sequence
@@ -23,6 +24,8 @@ from src.models.player import Player, PlayerSeasonBatting, PlayerSeasonPitching
 from src.services.p0_readiness import build_p0_readiness, format_p0_readiness_summary, normalize_yyyymmdd
 from src.utils.safe_print import safe_print as print
 
+logger = logging.getLogger(__name__)
+
 FALSE_ENV_VALUES = {"0", "false", "no", "off"}
 
 
@@ -32,14 +35,14 @@ def _env_enabled(name: str, default: str = "1") -> bool:
 
 def check_schedules(session) -> dict:
     """`game_schedules` 테이블의 데이터 현황을 점검합니다."""
-    print("\n=== Game Schedules ===")
+    logger.info("\n=== Game Schedules ===")
 
     try:
         # 전체 일정 수
         total = session.execute(text("SELECT COUNT(*) FROM game_schedules")).scalar() or 0
     except SQLAlchemyError:
         total = 0
-    print(f"Total schedules: {total}")
+    logger.exception(f"Total schedules: {total}")
 
     try:
         operational_total = session.execute(text("SELECT COUNT(*) FROM game")).scalar() or 0
@@ -69,10 +72,10 @@ def check_schedules(session) -> dict:
         results = []
 
     type_counts = {}
-    print("\nBy season type:")
+    logger.info("\nBy season type:")
     for season_type, count in results:
         type_counts[season_type] = count
-        print(f"  {season_type}: {count}")
+        logger.info(f"  {season_type}: {count}")
 
     # 연도별 집계
     try:
@@ -80,14 +83,14 @@ def check_schedules(session) -> dict:
         results = session.execute(stmt).all()
     except SQLAlchemyError:
         results = []
-    print("\nBy year:")
+    logger.exception("\nBy year:")
     for year, count in results:
-        print(f"  {year}: {count}")
+        logger.info(f"  {year}: {count}")
 
     if total == 0 and operational_total > 0:
-        print("\nOperational game table fallback:")
-        print(f"  Total game rows: {operational_total}")
-        print(f"  Scheduled game rows: {operational_scheduled}")
+        logger.info("\nOperational game table fallback:")
+        logger.info(f"  Total game rows: {operational_total}")
+        logger.info(f"  Scheduled game rows: {operational_scheduled}")
 
     # 데이터의 날짜 범위 확인
     try:
@@ -97,7 +100,7 @@ def check_schedules(session) -> dict:
         min_date, max_date = None, None
 
     if min_date and max_date:
-        print(f"\nDate range: {min_date} to {max_date}")
+        logger.info(f"\nDate range: {min_date} to {max_date}")
 
     if total == 0 and operational_total > 0:
         try:
@@ -107,7 +110,7 @@ def check_schedules(session) -> dict:
         except SQLAlchemyError:
             game_min_date, game_max_date = None, None
         if game_min_date and game_max_date:
-            print(f"Operational game date range: {game_min_date} to {game_max_date}")
+            logger.info(f"Operational game date range: {game_min_date} to {game_max_date}")
 
     # 예상 데이터 수와 비교하여 검증 (2025 시즌 기준)
     warnings = []
@@ -117,15 +120,15 @@ def check_schedules(session) -> dict:
         "postseason": 7,  # Initial fixtures
     }
 
-    print("\nValidation:")
+    logger.info("\nValidation:")
     if total == 0 and operational_total > 0:
-        print("  game_schedules: 0 rows [INFO: using game table fallback]")
-        print(f"  game table: {operational_total} rows [OK]")
+        logger.info("  game_schedules: 0 rows [INFO: using game table fallback]")
+        logger.info(f"  game table: {operational_total} rows [OK]")
     else:
         for stype, expected_count in expected.items():
             actual = type_counts.get(stype, 0)
             status = "OK" if actual >= expected_count else "WARN"
-            print(f"  {stype}: {actual}/{expected_count} [{status}]")
+            logger.info(f"  {stype}: {actual}/{expected_count} [{status}]")
             if actual < expected_count:
                 warnings.append(f"{stype}: {actual} < {expected_count} (missing {expected_count - actual})")
 
@@ -144,32 +147,32 @@ def check_schedules(session) -> dict:
 
 def check_players(session) -> dict:
     """`players` 테이블의 데이터 현황을 점검합니다."""
-    print("\n=== Players ===")
+    logger.info("\n=== Players ===")
 
     # 전체 선수 수
     total = session.execute(select(func.count(Player.id))).scalar()
-    print(f"Total players: {total}")
+    logger.info(f"Total players: {total}")
 
     # 선수 상태(현역, 은퇴 등)별 집계
     stmt = select(Player.status, func.count(Player.id)).group_by(Player.status)
 
     results = session.execute(stmt).all()
-    print("\nBy status:")
+    logger.info("\nBy status:")
     for status, count in results:
         status_label = status or "(null)"
-        print(f"  {status_label}: {count}")
+        logger.info(f"  {status_label}: {count}")
 
     return {"total": total}
 
 
 def check_futures_data(session) -> dict:
     """퓨처스리그 관련 데이터(타자/투수 기록) 현황을 점검합니다."""
-    print("\n=== Futures League Data ===")
+    logger.info("\n=== Futures League Data ===")
 
     # 퓨처스리그 타자 기록 수
     batting_stmt = select(func.count(PlayerSeasonBatting.id)).where(PlayerSeasonBatting.league == "FUTURES")
     batting_count = session.execute(batting_stmt).scalar()
-    print(f"Batting records: {batting_count}")
+    logger.info(f"Batting records: {batting_count}")
 
     # 시즌별 타자 기록 집계
     stmt = (
@@ -181,14 +184,14 @@ def check_futures_data(session) -> dict:
 
     results = session.execute(stmt).all()
     if results:
-        print("\nBatting by season:")
+        logger.info("\nBatting by season:")
         for season, count in results:
-            print(f"  {season}: {count}")
+            logger.info(f"  {season}: {count}")
 
     # 퓨처스리그 투수 기록 수
     pitching_stmt = select(func.count(PlayerSeasonPitching.id)).where(PlayerSeasonPitching.league == "FUTURES")
     pitching_count = session.execute(pitching_stmt).scalar()
-    print(f"\nPitching records: {pitching_count}")
+    logger.info(f"\nPitching records: {pitching_count}")
 
     return {"batting": batting_count, "pitching": pitching_count}
 
@@ -196,11 +199,11 @@ def check_futures_data(session) -> dict:
 def check_game_data(session) -> dict:
     from src.models.game import PlayerGameBatting, PlayerGamePitching
 
-    print("\n=== Game-Level Stats ===")
+    logger.info("\n=== Game-Level Stats ===")
     batting_count = session.execute(select(func.count(PlayerGameBatting.id))).scalar()
-    print(f"Player game batting records: {batting_count}")
+    logger.info(f"Player game batting records: {batting_count}")
     pitching_count = session.execute(select(func.count(PlayerGamePitching.id))).scalar()
-    print(f"Player game pitching records: {pitching_count}")
+    logger.info(f"Player game pitching records: {pitching_count}")
 
     # Duplicate check
     dup_b = session.execute(
@@ -214,9 +217,9 @@ def check_game_data(session) -> dict:
         )
     ).scalar()
     if dup_b or dup_p:
-        print(f"  Duplicates: batting={dup_b}, pitching={dup_p} [WARN]")
+        logger.info(f"  Duplicates: batting={dup_b}, pitching={dup_p} [WARN]")
     else:
-        print("  Duplicates: none [OK]")
+        logger.info("  Duplicates: none [OK]")
 
     # NULL field check
     for tbl, label in [("player_game_batting", "batting"), ("player_game_pitching", "pitching")]:
@@ -224,15 +227,15 @@ def check_game_data(session) -> dict:
         nn = session.execute(text(f"SELECT COUNT(*) FROM {tbl} WHERE player_name IS NULL")).scalar()
         ns = session.execute(text(f"SELECT COUNT(*) FROM {tbl} WHERE team_side IS NULL")).scalar()
         if nid or nn or ns:
-            print(f"  {label} NULLs: player_id={nid}, player_name={nn}, team_side={ns} [WARN]")
+            logger.info(f"  {label} NULLs: player_id={nid}, player_name={nn}, team_side={ns} [WARN]")
         else:
-            print(f"  {label} NULLs: none [OK]")
+            logger.info(f"  {label} NULLs: none [OK]")
 
     # Rate stat anomaly check (avg > obp — documented as expected with SF)
     avg_gt_obp = session.execute(
         text("SELECT COUNT(*) FROM player_game_batting WHERE avg IS NOT NULL AND obp IS NOT NULL AND avg > obp")
     ).scalar()
-    print(f"  Batting avg > obp: {avg_gt_obp} (expected when sacrifice flies exist)")
+    logger.info(f"  Batting avg > obp: {avg_gt_obp} (expected when sacrifice flies exist)")
 
     # Rate stat boundary checks
     for tbl, col, lo, hi, _label in [
@@ -246,7 +249,7 @@ def check_game_data(session) -> dict:
             text(f"SELECT COUNT(*) FROM {tbl} WHERE {col} IS NOT NULL AND ({col} < {lo} OR {col} > {hi})")
         ).scalar()
         if n:
-            print(f"  {tbl}.{col}: {n} outside [{lo}, {hi}]")
+            logger.info(f"  {tbl}.{col}: {n} outside [{lo}, {hi}]")
 
     # Coverage: games with PlayerGame vs total COMPLETED/DRAW
     cov = session.execute(
@@ -262,7 +265,7 @@ def check_game_data(session) -> dict:
     ).fetchall()
     for status, total, covered in cov:
         pct = 100.0 * covered / total if total else 0
-        print(f"  Coverage {status:<12}: {covered}/{total} ({pct:.1f}%)")
+        logger.info(f"  Coverage {status:<12}: {covered}/{total} ({pct:.1f}%)")
 
     # Games missing source stats (COMPLETED/DRAW with no game_batting_stats)
     missing_games = session.execute(
@@ -274,14 +277,14 @@ def check_game_data(session) -> dict:
           AND gbs.game_id IS NULL
     """)
     ).scalar()
-    print(f"  Games without source batting stats: {missing_games}")
+    logger.info(f"  Games without source batting stats: {missing_games}")
 
     return {"batting": batting_count, "pitching": pitching_count}
 
 
 def check_pregame_pitcher_coverage(session, *, verbose: bool = False) -> dict:
     """예정 경기 선발투수 적재율을 점검합니다."""
-    print("\n=== Pregame Starting Pitchers ===")
+    logger.info("\n=== Pregame Starting Pitchers ===")
 
     scheduled_filter = func.upper(Game.game_status) == "SCHEDULED"
     total = session.query(Game).filter(scheduled_filter).count()
@@ -290,15 +293,15 @@ def check_pregame_pitcher_coverage(session, *, verbose: bool = False) -> dict:
         oci_url_present = bool(os.getenv("OCI_DB_URL"))
         oci_sync_ready = pregame_sync_enabled and oci_url_present
 
-        print("Scheduled games: 0")
-        print("  OCI sync candidates: 0")
-        print("  OCI sync candidates with both starters: 0")
+        logger.info("Scheduled games: 0")
+        logger.info("  OCI sync candidates: 0")
+        logger.info("  OCI sync candidates with both starters: 0")
         if oci_sync_ready:
-            print("  OCI sync config: ready")
+            logger.info("  OCI sync config: ready")
         elif not pregame_sync_enabled:
-            print("  OCI sync config: disabled by PREGAME_SYNC_TO_OCI")
+            logger.info("  OCI sync config: disabled by PREGAME_SYNC_TO_OCI")
         else:
-            print("  OCI sync config: disabled because OCI_DB_URL is missing")
+            logger.info("  OCI sync config: disabled because OCI_DB_URL is missing")
 
         return {
             "scheduled_total": 0,
@@ -429,21 +432,21 @@ def check_pregame_pitcher_coverage(session, *, verbose: bool = False) -> dict:
 
     coverage_pct = 0.0 if total == 0 else (both_ok / total) * 100
 
-    print(f"Scheduled games: {total}")
-    print(f"  Both starters present: {both_ok} ({coverage_pct:.1f}%)")
-    print(f"  Away starters present: {away_ok}")
-    print(f"  Home starters present: {home_ok}")
-    print(f"  Both missing: {both_missing}")
-    print(f"  Preview summaries present: {preview_rows}")
-    print(f"  Preview summaries missing starters: {preview_missing_starters}")
-    print(f"  OCI sync candidates: {sync_candidate_games}")
-    print(f"  OCI sync candidates with both starters: {sync_complete_starters}")
+    logger.info(f"Scheduled games: {total}")
+    logger.info(f"  Both starters present: {both_ok} ({coverage_pct:.1f}%)")
+    logger.info(f"  Away starters present: {away_ok}")
+    logger.info(f"  Home starters present: {home_ok}")
+    logger.info(f"  Both missing: {both_missing}")
+    logger.info(f"  Preview summaries present: {preview_rows}")
+    logger.info(f"  Preview summaries missing starters: {preview_missing_starters}")
+    logger.info(f"  OCI sync candidates: {sync_candidate_games}")
+    logger.info(f"  OCI sync candidates with both starters: {sync_complete_starters}")
     if oci_sync_ready:
-        print("  OCI sync config: ready")
+        logger.info("  OCI sync config: ready")
     elif not pregame_sync_enabled:
-        print("  OCI sync config: disabled by PREGAME_SYNC_TO_OCI")
+        logger.info("  OCI sync config: disabled by PREGAME_SYNC_TO_OCI")
     else:
-        print("  OCI sync config: disabled because OCI_DB_URL is missing")
+        logger.info("  OCI sync config: disabled because OCI_DB_URL is missing")
 
     if verbose:
         rows = session.execute(
@@ -474,9 +477,11 @@ def check_pregame_pitcher_coverage(session, *, verbose: bool = False) -> dict:
             )
         ).all()
 
-        print("\nScheduled pregame by date:")
+        logger.info("\nScheduled pregame by date:")
         for game_date, date_total, date_both_ok, date_preview_rows in rows:
-            print(f"  {game_date}: starters={date_both_ok}/{date_total}, preview={date_preview_rows}/{date_total}")
+            logger.info(
+                f"  {game_date}: starters={date_both_ok}/{date_total}, preview={date_preview_rows}/{date_total}"
+            )
 
     return {
         "scheduled_total": total,
@@ -519,18 +524,18 @@ def main(argv: Sequence[str] | None = None) -> None:
             print(json.dumps({"p0_readiness": readiness}, ensure_ascii=False, indent=2, default=str))
             return
 
-        print(f"\n{'=' * 60}")
-        print(" KBO P0 Readiness Check")
-        print(f" Target Date: {target_date}")
-        print(f" Window: {readiness['start_date']}..{readiness['end_date']}")
-        print(f"{'=' * 60}")
-        print(format_p0_readiness_summary(readiness))
-        print("\nDataset Summary:")
+        logger.info(f"\n{'=' * 60}")
+        logger.info(" KBO P0 Readiness Check")
+        logger.info(f" Target Date: {target_date}")
+        logger.info(f" Window: {readiness['start_date']}..{readiness['end_date']}")
+        logger.info(f"{'=' * 60}")
+        logger.info(format_p0_readiness_summary(readiness))
+        logger.info("\nDataset Summary:")
         for key in ("schedule", "pregame", "live", "postgame", "relay", "roster", "broadcast", "oci"):
-            print(f"  {key}: {readiness[key]}")
+            logger.info(f"  {key}: {readiness[key]}")
 
         if readiness["failures"]:
-            print("\nFailures:")
+            logger.info("\nFailures:")
             for failure in readiness["failures"]:
                 print(
                     "  - "
@@ -542,10 +547,10 @@ def main(argv: Sequence[str] | None = None) -> None:
                 )
         return
 
-    print(f"\n{'=' * 60}")
-    print(" KBO Data Status Check")
-    print(f" Timestamp: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-    print(f"{'=' * 60}")
+    logger.info(f"\n{'=' * 60}")
+    logger.info(" KBO Data Status Check")
+    logger.info(f" Timestamp: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    logger.info(f"{'=' * 60}")
 
     with SessionLocal() as session:
         schedule_stats = check_schedules(session)
@@ -555,15 +560,15 @@ def main(argv: Sequence[str] | None = None) -> None:
         pregame_pitcher_stats = check_pregame_pitcher_coverage(session, verbose=args.verbose)
 
     # 최종 요약 출력
-    print(f"\n{'=' * 60}")
-    print(" Summary")
-    print(f"{'=' * 60}")
-    print(f"  Schedules: {schedule_stats['total']}")
-    print(f"  Players: {player_stats['total']}")
-    print(f"  Futures batting: {futures_stats['batting']}")
-    print(f"  Futures pitching: {futures_stats['pitching']}")
-    print(f"  Game batting: {game_stats['batting']}")
-    print(f"  Game pitching: {game_stats['pitching']}")
+    logger.info(f"\n{'=' * 60}")
+    logger.info(" Summary")
+    logger.info(f"{'=' * 60}")
+    logger.info(f"  Schedules: {schedule_stats['total']}")
+    logger.info(f"  Players: {player_stats['total']}")
+    logger.info(f"  Futures batting: {futures_stats['batting']}")
+    logger.info(f"  Futures pitching: {futures_stats['pitching']}")
+    logger.info(f"  Game batting: {game_stats['batting']}")
+    logger.info(f"  Game pitching: {game_stats['pitching']}")
     print(
         "  Scheduled pregame pitchers: "
         f"both={pregame_pitcher_stats['both_ok']} / "
@@ -597,13 +602,13 @@ def main(argv: Sequence[str] | None = None) -> None:
         all_warnings.append("Pregame sync candidates exist but OCI sync is not ready")
 
     if all_warnings:
-        print(f"\n{'=' * 60}")
-        print(" WARNINGS")
-        print(f"{'=' * 60}")
+        logger.info(f"\n{'=' * 60}")
+        logger.info(" WARNINGS")
+        logger.info(f"{'=' * 60}")
         for warning in all_warnings:
-            print(f"  - {warning}")
+            logger.info(f"  - {warning}")
 
-    print()
+    logger.info()
 
 
 if __name__ == "__main__":

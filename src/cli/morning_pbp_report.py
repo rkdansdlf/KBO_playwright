@@ -203,7 +203,7 @@ def run_morning_report(
             f"⚠️ No daily summary found. The postgame pipeline may not have run."
         )
         if dry_run:
-            print(msg)
+            logger.info(msg)
             return True
         from src.utils.alerting import SlackWebhookClient
 
@@ -216,7 +216,7 @@ def run_morning_report(
     message = _build_telegram_message(target_date, summary, validation_counts, dry_run)
 
     if dry_run:
-        print(message)
+        logger.info(message)
         return True
 
     from src.utils.alerting import SlackWebhookClient

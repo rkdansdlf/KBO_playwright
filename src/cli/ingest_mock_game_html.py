@@ -7,11 +7,15 @@
 from __future__ import annotations
 
 import argparse
+import logging
 from pathlib import Path
 from typing import Iterable
 
 from src.parsers.game_detail_parser import parse_game_detail_html
 from src.repositories.game_repository import save_game_detail
+from src.utils.safe_print import safe_print as print
+
+logger = logging.getLogger(__name__)
 
 
 def ingest_mock_html(args: argparse.Namespace) -> None:

@@ -7,17 +7,20 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import logging
 
 from src.crawlers.retire.listing import RetiredPlayerListingCrawler
 from src.db.engine import SessionLocal
 from src.models.player import PlayerBasic
 
+logger = logging.getLogger(__name__)
+
 
 async def discover_and_save_players(start_year: int, end_year: int, active_year: int):
     crawler = RetiredPlayerListingCrawler(request_delay=1.0)
 
-    print(f"🚀 Starting historical player discovery from {start_year} to {end_year}...")
-    print(f"📡 Comparing against active roster year: {active_year}")
+    logger.info(f"🚀 Starting historical player discovery from {start_year} to {end_year}...")
+    logger.info(f"📡 Comparing against active roster year: {active_year}")
 
     seasons = range(start_year, end_year + 1)
     historical_players = await crawler.collect_historical_player_ids(seasons)
@@ -25,7 +28,7 @@ async def discover_and_save_players(start_year: int, end_year: int, active_year:
 
     active_ids = set(active_players.keys())
 
-    print(f"✨ Discovered {len(historical_players)} unique historical player IDs.")
+    logger.info(f"✨ Discovered {len(historical_players)} unique historical player IDs.")
 
     # Save to DB
     with SessionLocal() as session:
@@ -57,7 +60,7 @@ async def discover_and_save_players(start_year: int, end_year: int, active_year:
                 session.commit()
 
         session.commit()
-        print(f"✅ DB Update complete: {new_count} new players added, {update_count} players updated.")
+        logger.info(f"✅ DB Update complete: {new_count} new players added, {update_count} players updated.")
 
 
 if __name__ == "__main__":

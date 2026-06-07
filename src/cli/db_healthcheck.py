@@ -11,13 +11,15 @@
 
 from __future__ import annotations
 
+import logging
 import os
 
 from sqlalchemy import inspect, text
 from sqlalchemy.exc import SQLAlchemyError
 
 from src.db.engine import DATABASE_URL, Engine
-from src.utils.safe_print import safe_print as print
+
+logger = logging.getLogger(__name__)
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -25,30 +27,30 @@ def main(argv: list[str] | None = None) -> None:
     url = os.getenv("DATABASE_URL", DATABASE_URL)
     dialect = Engine.url.get_backend_name()
 
-    print("\n=== DB Healthcheck ===")
-    print(f"URL: {url}")
-    print(f"Dialect: {dialect}")
+    logger.info("\n=== DB Healthcheck ===")
+    logger.info(f"URL: {url}")
+    logger.info(f"Dialect: {dialect}")
 
     # 1. 데이터베이스 연결 테스트
     try:
         with Engine.connect() as conn:
             conn.execute(text("SELECT 1"))
-        print("Connectivity: OK")
+        logger.info("Connectivity: OK")
     except SQLAlchemyError as e:
-        print(f"Connectivity: FAILED -> {e}")
+        logger.exception(f"Connectivity: FAILED -> {e}")
         return
 
     # 2. 테이블 목록 조회
     try:
         insp = inspect(Engine)
         tables = insp.get_table_names()
-        print(f"Tables: {len(tables)} found")
+        logger.info(f"Tables: {len(tables)} found")
         if tables:
             # 최대 10개의 테이블 이름 출력
             for t in tables[:10]:
-                print(f"  - {t}")
+                logger.info(f"  - {t}")
     except SQLAlchemyError as e:
-        print(f"Introspection failed: {e}")
+        logger.exception(f"Introspection failed: {e}")
 
     # 3. 주요 테이블의 레코드 수 집계
     for table in [
@@ -66,16 +68,16 @@ def main(argv: list[str] | None = None) -> None:
             with Engine.connect() as conn:
                 result = conn.execute(text(f"SELECT COUNT(*) FROM {table}"))
                 count = result.scalar_one()
-                print(f"{table}: {count}")
+                logger.info(f"{table}: {count}")
         except SQLAlchemyError:
             # 테이블이 존재하지 않으면 조용히 넘어감
             continue
 
-    print("\nReview/WPA focus:")
-    print("  - game_events: required raw event source for Coach review and WPA summaries")
-    print("  - game_play_by_play: optional legacy text feed")
+    logger.info("\nReview/WPA focus:")
+    logger.info("  - game_events: required raw event source for Coach review and WPA summaries")
+    logger.info("  - game_play_by_play: optional legacy text feed")
 
-    print("\nHealthcheck complete.\n")
+    logger.info("\nHealthcheck complete.\n")
 
 
 if __name__ == "__main__":

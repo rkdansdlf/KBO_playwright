@@ -8,6 +8,7 @@ PBP rows or events.
 from __future__ import annotations
 
 import argparse
+import logging
 from datetime import datetime
 from typing import Sequence
 
@@ -23,7 +24,8 @@ from src.utils.relay_validation import (
     VALIDATION_UNVERIFIED,
     VALIDATION_VERIFIED,
 )
-from src.utils.safe_print import safe_print as print
+
+logger = logging.getLogger(__name__)
 
 
 def seed_relay_validation_metrics(
@@ -119,7 +121,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         season=args.season,
         mark_legacy_unavailable=not args.no_mark_legacy_unavailable,
     )
-    print(f"[INFO] Seeded relay validation metrics: {counts}")
+    logger.info(f"[INFO] Seeded relay validation metrics: {counts}")
     return 0
 
 

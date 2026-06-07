@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 import os
 from datetime import datetime, timedelta
 from typing import Sequence
@@ -24,6 +25,8 @@ from src.models.game import (
 )
 from src.utils.game_status import COMPLETED_LIKE_GAME_STATUSES
 from src.utils.relay_text import is_relay_noise_text
+
+logger = logging.getLogger(__name__)
 
 KBO_FRESHNESS_TEAM_CODES = {
     "DB",
@@ -234,14 +237,14 @@ def main(argv: Sequence[str] | None = None) -> int:
             engine.dispose()
 
     if args.json:
-        print(json.dumps({"ok": not failures, "issues": issues}, ensure_ascii=False, indent=2))
+        logger.info(json.dumps({"ok": not failures, "issues": issues}, ensure_ascii=False, indent=2))
     else:
         if failures:
-            print("❌ Freshness gate failed")
+            logger.error("❌ Freshness gate failed")
             for failure in failures:
-                print(f"  - {failure}")
+                logger.info(f"  - {failure}")
         else:
-            print("✅ Freshness gate passed")
+            logger.info("✅ Freshness gate passed")
 
     return 1 if failures else 0
 

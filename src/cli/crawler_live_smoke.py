@@ -7,6 +7,7 @@ import asyncio
 import contextlib
 import io
 import json
+import logging
 import os
 from datetime import datetime
 from typing import Any, Mapping, Sequence
@@ -17,6 +18,8 @@ from src.crawlers.schedule_crawler import ScheduleCrawler
 from src.utils.safe_print import safe_print as print
 from src.utils.schedule_validation import is_detail_candidate_game
 from src.utils.team_codes import normalize_kbo_game_id
+
+logger = logging.getLogger(__name__)
 
 SCOPES = ("schedule", "detail", "relay", "all")
 
@@ -245,7 +248,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             )
             _print_human_summary(result)
     except ValueError as exc:
-        print(f"[ERROR] {exc}")
+        logger.exception(f"[ERROR] {exc}")
         return 2
 
     return 0 if result.get("ok") else 1

@@ -138,22 +138,22 @@ def main():
     target_year = args.year if args.year else current_year - 1
 
     if target_year < 2020:
-        print(f"Skipping unified audit for year {target_year} (before 2020)")
+        logger.info(f"Skipping unified audit for year {target_year} (before 2020)")
         return
 
-    print(f"Running unified audit for year {target_year}...")
+    logger.info(f"Running unified audit for year {target_year}...")
 
     if args.team_only:
         team_result = run_monthly_team_audit(target_year)
         if args.json:
-            print(json.dumps(team_result, indent=2, ensure_ascii=False))
+            logger.info(json.dumps(team_result, indent=2, ensure_ascii=False))
             return
         bat_ok = team_result["batting"]["ok"]
         pit_ok = team_result["pitching"]["ok"]
         bat_miss = len(team_result["batting"]["mismatches"])
         pit_miss = len(team_result["pitching"]["mismatches"])
-        print(f"Team Batting: {'PASS' if bat_ok else 'FAIL'} ({bat_miss} mismatches)")
-        print(f"Team Pitching: {'PASS' if pit_ok else 'FAIL'} ({pit_miss} mismatches)")
+        logger.info(f"Team Batting: {'PASS' if bat_ok else 'FAIL'} ({bat_miss} mismatches)")
+        logger.info(f"Team Pitching: {'PASS' if pit_ok else 'FAIL'} ({pit_miss} mismatches)")
         if not bat_ok or not pit_ok:
             sys.exit(1)
         return
@@ -171,13 +171,13 @@ def main():
         output = {"pa_formula": pa_result}
         if not args.pa_only:
             output["team_stats"] = team_result
-        print(json.dumps(output, indent=2, ensure_ascii=False))
+        logger.info(json.dumps(output, indent=2, ensure_ascii=False))
         return
 
     # Human-readable output
     pa_ok = pa_result.get("ok", False)
     pa_violations = pa_result.get("violation_count", 0)
-    print(f"\nPA Formula Audit: {'PASS' if pa_ok else 'FAIL (' + str(pa_violations) + ' violations)'}")
+    logger.info(f"\nPA Formula Audit: {'PASS' if pa_ok else 'FAIL (' + str(pa_violations) + ' violations)'}")
 
     if args.pa_only:
         if not pa_ok:
@@ -189,17 +189,17 @@ def main():
     bat_miss = len(team_result["batting"]["mismatches"])
     pit_miss = len(team_result["pitching"]["mismatches"])
 
-    print(f"Team Batting: {'PASS' if team_bat_ok else 'FAIL'} ({bat_miss} mismatches)")
+    logger.info(f"Team Batting: {'PASS' if team_bat_ok else 'FAIL'} ({bat_miss} mismatches)")
     for m in team_result["batting"]["mismatches"][:3]:
-        print(f"  - [{m['team_id']}] {m['issue']}")
+        logger.info(f"  - [{m['team_id']}] {m['issue']}")
         for d in (m.get("diffs") or [])[:2]:
-            print(f"    {d}")
+            logger.info(f"    {d}")
 
-    print(f"Team Pitching: {'PASS' if team_pit_ok else 'FAIL'} ({pit_miss} mismatches)")
+    logger.info(f"Team Pitching: {'PASS' if team_pit_ok else 'FAIL'} ({pit_miss} mismatches)")
     for m in team_result["pitching"]["mismatches"][:3]:
-        print(f"  - [{m['team_id']}] {m['issue']}")
+        logger.info(f"  - [{m['team_id']}] {m['issue']}")
         for d in (m.get("diffs") or [])[:2]:
-            print(f"    {d}")
+            logger.info(f"    {d}")
 
     if not pa_ok or not team_bat_ok or not team_pit_ok:
         sys.exit(1)

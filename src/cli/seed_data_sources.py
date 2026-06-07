@@ -6,10 +6,13 @@ P0/P1/P2 대상 출처를 DataSource 테이블에 등록합니다.
 from __future__ import annotations
 
 import argparse
+import logging
 from typing import Sequence
 
 from src.db.engine import SessionLocal
 from src.repositories.source_registry_repository import DataSourceRepository
+
+logger = logging.getLogger(__name__)
 
 SEED_DATA: list[dict] = [
     # === P0: 이벤트 ===
@@ -415,7 +418,7 @@ def run_seed(dry_run: bool = False) -> None:
                 created += 1
         if not dry_run:
             session.commit()
-        print(f"[SEED] DataSource: {created} created, {updated} updated (dry_run={dry_run})")
+        logger.info(f"[SEED] DataSource: {created} created, {updated} updated (dry_run={dry_run})")
 
 
 def build_arg_parser() -> argparse.ArgumentParser:

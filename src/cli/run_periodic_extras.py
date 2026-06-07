@@ -14,7 +14,6 @@ from zoneinfo import ZoneInfo
 
 from src.db.engine import SessionLocal
 from src.sync.oci_sync import OCISync
-from src.utils.safe_print import safe_print as print
 
 logger = logging.getLogger(__name__)
 
@@ -25,13 +24,13 @@ async def run_periodic_extras(
     year: int,
     sync: bool = False,
 ):
-    print(f"\n{'=' * 60}")
-    print(f"🚀 KBO Periodic Extras Started for Year: {year}")
-    print(f"{'=' * 60}")
+    logger.info(f"\n{'=' * 60}")
+    logger.info(f"🚀 KBO Periodic Extras Started for Year: {year}")
+    logger.info(f"{'=' * 60}")
 
     # 1. Futures League Data (Hitter)
     # Note: We assume these crawlers have a main() or similar entrypoint
-    print("\n🔮 Step 1: Crawling Futures League Batting Stats...")
+    logger.info("\n🔮 Step 1: Crawling Futures League Batting Stats...")
     try:
         import subprocess
         import sys
@@ -39,30 +38,30 @@ async def run_periodic_extras(
         cmd = [sys.executable, "-m", "src.crawlers.futures.futures_batting", "--year", str(year), "--save"]
         result = subprocess.run(cmd, capture_output=True, text=True)
         if result.returncode == 0:
-            print(f"   ✅ Futures Hitter output:\n{result.stdout}")
+            logger.info(f"   ✅ Futures Hitter output:\n{result.stdout}")
         else:
-            print(f"   ❌ Futures Hitter failed:\n{result.stderr}")
+            logger.error(f"   ❌ Futures Hitter failed:\n{result.stderr}")
     except Exception:
         logger.exception("   ❌ Error crawling futures stats")
 
     # 2. Retired Player Listing
-    print("\n👴 Step 2: Crawling Retired Player Listings...")
+    logger.info("\n👴 Step 2: Crawling Retired Player Listings...")
     try:
         # retired listing usually doesn't need a year, or it's for all
         cmd = [sys.executable, "-m", "src.crawlers.retire.listing", "--save"]
         result = subprocess.run(cmd, capture_output=True, text=True)
         if result.returncode == 0:
-            print(f"   ✅ Retired Listing output:\n{result.stdout}")
+            logger.info(f"   ✅ Retired Listing output:\n{result.stdout}")
         else:
-            print(f"   ❌ Retired Listing failed:\n{result.stderr}")
+            logger.error(f"   ❌ Retired Listing failed:\n{result.stderr}")
     except Exception:
         logger.exception("   ❌ Error crawling retired players")
 
     if sync:
-        print("\n☁️ Step 3: Synchronizing to OCI...")
+        logger.info("\n☁️ Step 3: Synchronizing to OCI...")
         oci_url = os.getenv("OCI_DB_URL")
         if not oci_url:
-            print("   ⚠️ OCI_DB_URL not set, skipping sync")
+            logger.warning("   ⚠️ OCI_DB_URL not set, skipping sync")
         else:
             with SessionLocal() as session:
                 syncer = OCISync(oci_url, session)
@@ -72,15 +71,15 @@ async def run_periodic_extras(
                     syncer.sync_players()
                     syncer.sync_player_season_batting(year=year)
                     syncer.sync_player_season_pitching(year=year)
-                    print("   ✅ OCI synchronization completed")
+                    logger.info("   ✅ OCI synchronization completed")
                 except Exception:
                     logger.exception("   ❌ OCI sync error")
                 finally:
                     syncer.close()
 
-    print(f"\n{'=' * 60}")
-    print("🏁 Periodic Extras Finished")
-    print(f"{'=' * 60}\n")
+    logger.info(f"\n{'=' * 60}")
+    logger.info("🏁 Periodic Extras Finished")
+    logger.info(f"{'=' * 60}\n")
 
 
 def main():

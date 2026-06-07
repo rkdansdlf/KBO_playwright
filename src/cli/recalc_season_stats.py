@@ -1,3 +1,6 @@
+import logging
+
+logger = logging.getLogger(__name__)
 import argparse
 
 from src.crawlers.player_batting_all_series_crawler import fallback_batting_from_db
@@ -26,11 +29,11 @@ def main():
     else:
         series_list = [args.series]
 
-    print(f"🚀 Starting Recalculation for {args.year} (Type: {args.type}, Series: {args.series})")
+    logger.info(f"🚀 Starting Recalculation for {args.year} (Type: {args.type}, Series: {args.series})")
 
     for series in series_list:
         if args.type in ["batting", "all"]:
-            print(f"\n[BATTING] Processing {args.year} {series}...")
+            logger.info(f"\n[BATTING] Processing {args.year} {series}...")
             batting_data = fallback_batting_from_db(args.year, series, reason="Manual CLI Trigger")
             # Set source to MANUAL_RECALC
             for s in batting_data:
@@ -39,10 +42,10 @@ def main():
             if args.save and batting_data:
                 save_batting_stats_safe(batting_data)
             elif not batting_data:
-                print(f"   ℹ️ No batting transactional data found for {args.year} {series}.")
+                logger.info(f"   ℹ️ No batting transactional data found for {args.year} {series}.")
 
         if args.type in ["pitching", "all"]:
-            print(f"\n[PITCHING] Processing {args.year} {series}...")
+            logger.info(f"\n[PITCHING] Processing {args.year} {series}...")
             pitching_data = fallback_pitching_from_db(args.year, series, reason="Manual CLI Trigger")
             # Set source to MANUAL_RECALC
             for s in pitching_data:
@@ -52,9 +55,9 @@ def main():
                 payloads = [stat.to_repository_payload() for stat in pitching_data]
                 save_pitching_stats_to_db(payloads)
             elif not pitching_data:
-                print(f"   ℹ️ No pitching transactional data found for {args.year} {series}.")
+                logger.info(f"   ℹ️ No pitching transactional data found for {args.year} {series}.")
 
-    print("\n✅ Recalculation task finished.")
+    logger.info("\n✅ Recalculation task finished.")
 
 
 if __name__ == "__main__":

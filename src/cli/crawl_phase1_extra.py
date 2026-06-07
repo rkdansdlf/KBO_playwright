@@ -7,9 +7,10 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import logging
 import sys
 
-from src.utils.safe_print import safe_print as print
+logger = logging.getLogger(__name__)
 
 
 async def run_broadcast(save: bool = False):
@@ -62,20 +63,20 @@ def seed_stadium_info():
 
 async def run_all_crawlers(save: bool = False):
     """Run all news-based crawlers (broadcast, mvp, injury, foreign, manager)."""
-    print("Starting Phase 1 news-based crawlers...")
+    logger.info("Starting Phase 1 news-based crawlers...")
     await run_broadcast(save=save)
     await run_game_mvp(save=save)
     await run_injury(save=save)
     await run_foreign_player(save=save)
     await run_manager_change(save=save)
-    print("Phase 1 news-based crawlers complete.")
+    logger.info("Phase 1 news-based crawlers complete.")
 
 
 def run_all_seeds():
     """Run all seed data (stadium info, fan culture)."""
-    print("Starting Phase 1 seed data...")
+    logger.info("Starting Phase 1 seed data...")
     seed_stadium_info()
-    print("Phase 1 seed data complete.")
+    logger.info("Phase 1 seed data complete.")
 
 
 async def run_all(save: bool = False):

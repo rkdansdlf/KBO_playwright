@@ -12,7 +12,6 @@ from src.db.engine import SessionLocal
 from src.repositories.source_registry_repository import DataSourceRepository
 from src.services.p0_readiness import build_p0_readiness, format_p0_readiness_summary
 from src.utils.alerting import SlackWebhookClient
-from src.utils.safe_print import safe_print as print
 
 logger = logging.getLogger(__name__)
 KST = ZoneInfo("Asia/Seoul")
@@ -131,11 +130,11 @@ def run_monitor(alert: bool = True, dry_run: bool = False) -> dict[str, list[str
             header = "<b>🧹 KBO Data Freshness Monitor</b>\n"
             body = "\n".join(f"• {a}" for a in all_issues[:20])
             SlackWebhookClient.send_alert(header + "\n" + body)
-        print(summary)
+        logger.info(summary)
         for issue in all_issues:
-            print(f"  {issue}")
+            logger.info(f"  {issue}")
     else:
-        print("[MONITOR] All data sources and tables look healthy.")
+        logger.info("[MONITOR] All data sources and tables look healthy.")
 
     return {"stale": stale, "table_issues": empty, "p0_issues": p0_issues}
 

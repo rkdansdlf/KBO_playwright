@@ -20,7 +20,7 @@ def batch_calculate_matchups(years: list[int], sync_oci: bool = False):
             logger.exception(f"⚠️ Failed to calculate matchups for {year}")
 
     if sync_oci:
-        print("🚀 Syncing Matchups to OCI...")
+        logger.info("🚀 Syncing Matchups to OCI...")
         import os
 
         from src.cli.sync_oci import OCISync
@@ -30,9 +30,9 @@ def batch_calculate_matchups(years: list[int], sync_oci: bool = False):
             with SessionLocal() as session:
                 syncer = OCISync(target_url, session)
                 syncer.sync_matchups()
-            print("✅ Sync complete.")
+            logger.info("✅ Sync complete.")
         else:
-            print("⚠️ OCI_DB_URL not set, skipping sync.")
+            logger.warning("⚠️ OCI_DB_URL not set, skipping sync.")
 
 
 if __name__ == "__main__":

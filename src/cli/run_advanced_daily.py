@@ -19,7 +19,6 @@ from src.crawlers.team_pitching_stats_crawler import TeamPitchingStatsCrawler
 from src.db.engine import SessionLocal
 from src.repositories.player_stats_repository import PlayerSeasonBaserunningRepository, PlayerSeasonFieldingRepository
 from src.sync.oci_sync import OCISync
-from src.utils.safe_print import safe_print as print
 
 logger = logging.getLogger(__name__)
 
@@ -31,14 +30,14 @@ async def run_advanced_update(
     sync: bool = False,
     headless: bool = True,
 ):
-    print(f"\n{'=' * 60}")
-    print(f"🚀 KBO Advanced Daily Sync Started for Year: {year}")
-    print(f"{'=' * 60}")
+    logger.info(f"\n{'=' * 60}")
+    logger.info(f"🚀 KBO Advanced Daily Sync Started for Year: {year}")
+    logger.info(f"{'=' * 60}")
 
     any_error = False
 
     # 1. Fielding Stats
-    print("\n🛡️ Step 1: Crawling Fielding Stats...")
+    logger.info("\n🛡️ Step 1: Crawling Fielding Stats...")
     try:
         fielding_records = await asyncio.to_thread(crawl_all_fielding_stats, year)
         if fielding_records:
@@ -57,13 +56,13 @@ async def run_advanced_update(
 
             fielding_repo = PlayerSeasonFieldingRepository()
             saved = fielding_repo.upsert_many(processed)
-            print(f"   ✅ Saved {saved} fielding records")
+            logger.info(f"   ✅ Saved {saved} fielding records")
     except Exception:
         logger.exception("   ❌ Error crawling fielding stats")
         any_error = True
 
     # 2. Baserunning Stats
-    print("\n🏃 Step 2: Crawling Baserunning Stats...")
+    logger.info("\n🏃 Step 2: Crawling Baserunning Stats...")
     try:
         baserunning_records = await asyncio.to_thread(crawl_baserunning_stats, year)
         if baserunning_records:
@@ -80,33 +79,33 @@ async def run_advanced_update(
 
             baserunning_repo = PlayerSeasonBaserunningRepository()
             saved = baserunning_repo.upsert_many(processed)
-            print(f"   ✅ Saved {saved} baserunning records")
+            logger.info(f"   ✅ Saved {saved} baserunning records")
     except Exception:
         logger.exception("   ❌ Error crawling baserunning stats")
         any_error = True
 
     # 3. Team Batting Stats
-    print("\n🏏 Step 3: Crawling Team Batting Stats...")
+    logger.info("\n🏏 Step 3: Crawling Team Batting Stats...")
     try:
         batting_crawler = TeamBattingStatsCrawler()
         batting_stats = await asyncio.to_thread(batting_crawler.crawl, year, persist=True, headless=headless)
-        print(f"   ✅ Saved {len(batting_stats)} team batting records")
+        logger.info(f"   ✅ Saved {len(batting_stats)} team batting records")
     except Exception:
         logger.exception("   ❌ Error crawling team batting stats")
         any_error = True
 
     # 4. Team Pitching Stats
-    print("\n⚾ Step 4: Crawling Team Pitching Stats...")
+    logger.info("\n⚾ Step 4: Crawling Team Pitching Stats...")
     try:
         pitching_crawler = TeamPitchingStatsCrawler()
         pitching_stats = await asyncio.to_thread(pitching_crawler.crawl, year, persist=True, headless=headless)
-        print(f"   ✅ Saved {len(pitching_stats)} team pitching records")
+        logger.info(f"   ✅ Saved {len(pitching_stats)} team pitching records")
     except Exception:
         logger.exception("   ❌ Error crawling team pitching stats")
         any_error = True
 
     # 5. Team Defense Aggregation (from player-level data)
-    print("\n🏰 Step 5: Aggregating Team Fielding & Baserunning...")
+    logger.info("\n🏰 Step 5: Aggregating Team Fielding & Baserunning...")
     try:
         from src.aggregators.team_fielding_aggregator import TeamFieldingAggregator
         from src.models.team import Team
@@ -115,27 +114,27 @@ async def run_advanced_update(
             active_teams = [t.team_id for t in session.query(Team.team_id).filter(Team.is_active).all()]
             agg = TeamFieldingAggregator(session)
             agg.run_all(year, active_teams)
-        print(f"   ✅ Team defense aggregated for {len(active_teams)} teams")
+        logger.info(f"   ✅ Team defense aggregated for {len(active_teams)} teams")
     except Exception:
         logger.exception("   ❌ Error aggregating team defense stats")
         any_error = True
 
     # 6. Recalculate Rankings
-    print("\n🏷️ Step 6: Recalculating Stat Rankings...")
+    logger.info("\n🏷️ Step 6: Recalculating Stat Rankings...")
     try:
         from src.cli.calculate_rankings import rebuild_rankings
 
         saved_rankings = await asyncio.to_thread(rebuild_rankings, year)
-        print(f"   ✅ Recalculated {saved_rankings} ranking records")
+        logger.info(f"   ✅ Recalculated {saved_rankings} ranking records")
     except Exception:
         logger.exception("   ❌ Error recalculating rankings")
         any_error = True
 
     if sync:
-        print("\n☁️ Step 7: Synchronizing to OCI...")
+        logger.info("\n☁️ Step 7: Synchronizing to OCI...")
         oci_url = os.getenv("OCI_DB_URL")
         if not oci_url:
-            print("   ⚠️ OCI_DB_URL not set, skipping sync")
+            logger.warning("   ⚠️ OCI_DB_URL not set, skipping sync")
         else:
             with SessionLocal() as session:
                 syncer = OCISync(oci_url, session)
@@ -147,16 +146,16 @@ async def run_advanced_update(
                     syncer.sync_team_season_fielding(year)
                     syncer.sync_team_season_baserunning(year)
                     syncer.sync_stat_rankings(year)
-                    print("   ✅ OCI synchronization completed")
+                    logger.info("   ✅ OCI synchronization completed")
                 except Exception:
                     logger.exception("   ❌ OCI sync error")
                     any_error = True
                 finally:
                     syncer.close()
 
-    print(f"\n{'=' * 60}")
-    print(f"🏁 Advanced Daily Sync Finished for {year}")
-    print(f"{'=' * 60}\n")
+    logger.info(f"\n{'=' * 60}")
+    logger.info(f"🏁 Advanced Daily Sync Finished for {year}")
+    logger.info(f"{'=' * 60}\n")
 
     if any_error:
         raise RuntimeError(f"Advanced Daily Sync finished with errors for {year}")

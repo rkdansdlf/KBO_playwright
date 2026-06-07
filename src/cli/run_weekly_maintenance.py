@@ -17,7 +17,6 @@ from src.cli.collect_profiles import collect_profiles
 from src.cli.db_healthcheck import main as healthcheck_main
 from src.db.engine import SessionLocal
 from src.sync.oci_sync import OCISync
-from src.utils.safe_print import safe_print as print
 
 logger = logging.getLogger(__name__)
 
@@ -28,88 +27,88 @@ async def run_weekly_maintenance(
     profile_limit: int = 100,
     sync: bool = False,
 ):
-    print(f"\n{'=' * 60}")
-    print(f"🚀 KBO Weekly Maintenance Started: {datetime.now(KST).strftime('%Y-%m-%d %H:%M:%S')}")
-    print(f"{'=' * 60}")
+    logger.info(f"\n{'=' * 60}")
+    logger.info(f"🚀 KBO Weekly Maintenance Started: {datetime.now(KST).strftime('%Y-%m-%d %H:%M:%S')}")
+    logger.info(f"{'=' * 60}")
 
     # 1. Player Profile Enrichment
-    print("\n👤 Step 1: Enriching Player Profiles...")
+    logger.info("\n👤 Step 1: Enriching Player Profiles...")
     try:
         await collect_profiles(limit=profile_limit)
-        print("   ✅ Profile enrichment complete")
+        logger.info("   ✅ Profile enrichment complete")
     except Exception:
         logger.exception("   ❌ Error during profile enrichment")
 
     # 2. Database Healthcheck
-    print("\n🩺 Step 2: Running Database Healthcheck...")
+    logger.info("\n🩺 Step 2: Running Database Healthcheck...")
     try:
         healthcheck_main([])
-        print("   ✅ Healthcheck complete")
+        logger.info("   ✅ Healthcheck complete")
     except Exception:
         logger.exception("   ❌ Error during healthcheck")
 
     # 3. Crawl Team Events/News
-    print("\n📅 Step 3: Crawling Team Events & News...")
+    logger.info("\n📅 Step 3: Crawling Team Events & News...")
     try:
         from src.crawlers.team_event_crawler import TeamEventCrawler
 
         await TeamEventCrawler(days_back=14).run(save=True)
-        print("   ✅ Team events crawl complete")
+        logger.info("   ✅ Team events crawl complete")
     except Exception:
         logger.exception("   ❌ Error crawling team events")
 
     # 4. Crawl Fan Culture (Cheer Songs)
-    print("\n🎵 Step 4: Crawling Fan Culture & Cheer Songs...")
+    logger.info("\n🎵 Step 4: Crawling Fan Culture & Cheer Songs...")
     try:
         from src.crawlers.fan_culture_crawler import FanCultureCrawler
 
         await FanCultureCrawler().run(save=True)
-        print("   ✅ Fan culture crawl complete")
+        logger.info("   ✅ Fan culture crawl complete")
     except Exception:
         logger.exception("   ❌ Error crawling fan culture")
 
     # 5. OCI Cleanup (Duplicates)
-    print("\n🧹 Step 5: Cleaning up OCI Duplicates...")
+    logger.info("\n🧹 Step 5: Cleaning up OCI Duplicates...")
     oci_url = os.getenv("OCI_DB_URL")
     if not oci_url:
-        print("   ⚠️ OCI_DB_URL not set, skipping cleanup")
+        logger.warning("   ⚠️ OCI_DB_URL not set, skipping cleanup")
     else:
         try:
             counts = cleanup_oci_duplicates(database_url=oci_url, apply=True)
-            print("   ✅ OCI Cleanup committed:")
+            logger.info("   ✅ OCI Cleanup committed:")
             for key, value in counts.items():
-                print(f"      {key}: {value}")
+                logger.info(f"      {key}: {value}")
         except Exception:
             logger.exception("   ❌ Error during OCI cleanup")
 
     if sync:
-        print("\n☁️ Step 6: Synchronizing Updated Data to OCI...")
+        logger.info("\n☁️ Step 6: Synchronizing Updated Data to OCI...")
         if not oci_url:
-            print("   ⚠️ OCI_DB_URL not set, skipping sync")
+            logger.warning("   ⚠️ OCI_DB_URL not set, skipping sync")
         else:
             with SessionLocal() as session:
                 syncer = OCISync(oci_url, session)
                 try:
                     # Sync player_basic before master/profile records to match publish dependency order.
-                    print("   - Syncing player basics...")
+                    logger.info("   - Syncing player basics...")
                     syncer.sync_player_basic()
-                    print("   - Syncing players...")
+                    logger.info("   - Syncing players...")
                     syncer.sync_players()
-                    print("   - Syncing team events...")
+                    logger.info("   - Syncing team events...")
                     syncer.sync_team_events()
-                    print("   - Syncing fan culture (rivalries, songs, chants)...")
+                    logger.info("   - Syncing fan culture (rivalries, songs, chants)...")
                     syncer.sync_team_rivalries()
                     syncer.sync_cheer_songs()
                     syncer.sync_cheer_chants()
-                    print("   ✅ OCI synchronization completed")
+                    logger.info("   ✅ OCI synchronization completed")
                 except Exception:
                     logger.exception("   ❌ OCI sync error")
                 finally:
                     syncer.close()
 
-    print(f"\n{'=' * 60}")
-    print("🏁 Weekly Maintenance Finished")
-    print(f"{'=' * 60}\n")
+    logger.info(f"\n{'=' * 60}")
+    logger.info("🏁 Weekly Maintenance Finished")
+    logger.info(f"{'=' * 60}\n")
 
 
 def main():

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import logging
 import sys
 from typing import Sequence
 
@@ -10,6 +11,8 @@ from src.services.relay_recovery_service import (
     recover_relay_data,
 )
 from src.utils.safe_print import safe_print as print
+
+logger = logging.getLogger(__name__)
 
 
 async def run_fetcher(argv: Sequence[str] | None = None) -> int:
@@ -43,10 +46,10 @@ async def run_fetcher(argv: Sequence[str] | None = None) -> int:
         "Prefer `python scripts/fetch_kbo_pbp.py` for completed-game relay recovery."
     )
     if args.concurrency != 1:
-        print("[WARN] --concurrency is ignored by the shared relay recovery service.")
+        logger.info("[WARN] --concurrency is ignored by the shared relay recovery service.")
 
     if not args.season and not args.game_id:
-        print("[ERROR] Must provide --season or --game-id")
+        logger.info("[ERROR] Must provide --season or --game-id")
         return 1
 
     try:
@@ -58,11 +61,11 @@ async def run_fetcher(argv: Sequence[str] | None = None) -> int:
             log=print,
         )
     except (FileNotFoundError, ValueError) as exc:
-        print(f"[ERROR] {exc}")
+        logger.exception(f"[ERROR] {exc}")
         return 1
 
     if not targets:
-        print("[INFO] No games found to process.")
+        logger.info("[INFO] No games found to process.")
         return 0
 
     await recover_relay_data(
@@ -71,7 +74,7 @@ async def run_fetcher(argv: Sequence[str] | None = None) -> int:
         validate_inning_continuity=args.validate_inning_continuity,
         log=print,
     )
-    print("\n[INFO] Relay recovery run completed.")
+    logger.info("\n[INFO] Relay recovery run completed.")
     return 0
 
 
