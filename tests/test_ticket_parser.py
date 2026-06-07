@@ -1,6 +1,4 @@
-import pytest
-
-from src.parsers.ticket_parser import parse_ticket_page, PRICE_PATTERN, WEEKEND_PATTERN
+from src.parsers.ticket_parser import PRICE_PATTERN, WEEKEND_PATTERN, parse_ticket_page
 
 
 class TestTicketParser:
@@ -49,6 +47,7 @@ class TestTicketParser:
 
     def test_default_season_is_current_year(self):
         from datetime import datetime
+
         html = "<html><body><p>테이블석 : 150,000원</p></body></html>"
         result = parse_ticket_page(html, "lg_twins_ticket")
         assert result[0]["season"] == datetime.now().year

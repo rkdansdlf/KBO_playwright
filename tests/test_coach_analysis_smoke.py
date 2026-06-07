@@ -12,10 +12,10 @@ from src.models.player import PlayerSeasonPitching
 from src.services.context_aggregator import ContextAggregator
 from src.utils.game_status import GAME_STATUS_COMPLETED
 
-
 # ============================================================
 # Fixtures
 # ============================================================
+
 
 def _build_session_factory():
     engine = create_engine("sqlite:///:memory:")
@@ -42,42 +42,98 @@ def _seed_full_pitching_game(session):
             game_status=GAME_STATUS_COMPLETED,
         )
     )
-    session.add_all([
-        GamePitchingStat(
-            game_id="20250401LGSS0", team_side="away", team_code="LG",
-            player_id=1001, player_name="원정선발", is_starting=True,
-            appearance_seq=1, innings_outs=18, pitches=92, earned_runs=1, strikeouts=6,
-        ),
-        GamePitchingStat(
-            game_id="20250401LGSS0", team_side="away", team_code="LG",
-            player_id=1002, player_name="원정불펜", is_starting=False,
-            appearance_seq=2, innings_outs=9, pitches=31, earned_runs=1, strikeouts=2,
-        ),
-        GamePitchingStat(
-            game_id="20250401LGSS0", team_side="home", team_code="SS",
-            player_id=2001, player_name="홈선발", is_starting=True,
-            appearance_seq=1, innings_outs=15, pitches=81, earned_runs=3, strikeouts=4,
-        ),
-        GamePitchingStat(
-            game_id="20250401LGSS0", team_side="home", team_code="SS",
-            player_id=2002, player_name="홈불펜", is_starting=False,
-            appearance_seq=2, innings_outs=12, pitches=44, earned_runs=1, strikeouts=3,
-        ),
-    ])
-    session.add(PlayerSeasonPitching(
-        player_id=1001, season=2025, league="REGULAR", level="KBO1", source="CRAWLER",
-        team_code="LG", games=20, games_started=20, innings_pitched=120.0, era=3.15,
-    ))
-    session.add(PlayerSeasonPitching(
-        player_id=1002, season=2025, league="REGULAR", level="KBO1", source="CRAWLER",
-        team_code="LG", games=45, games_started=0, innings_pitched=42.0, era=2.95, holds=12,
-    ))
+    session.add_all(
+        [
+            GamePitchingStat(
+                game_id="20250401LGSS0",
+                team_side="away",
+                team_code="LG",
+                player_id=1001,
+                player_name="원정선발",
+                is_starting=True,
+                appearance_seq=1,
+                innings_outs=18,
+                pitches=92,
+                earned_runs=1,
+                strikeouts=6,
+            ),
+            GamePitchingStat(
+                game_id="20250401LGSS0",
+                team_side="away",
+                team_code="LG",
+                player_id=1002,
+                player_name="원정불펜",
+                is_starting=False,
+                appearance_seq=2,
+                innings_outs=9,
+                pitches=31,
+                earned_runs=1,
+                strikeouts=2,
+            ),
+            GamePitchingStat(
+                game_id="20250401LGSS0",
+                team_side="home",
+                team_code="SS",
+                player_id=2001,
+                player_name="홈선발",
+                is_starting=True,
+                appearance_seq=1,
+                innings_outs=15,
+                pitches=81,
+                earned_runs=3,
+                strikeouts=4,
+            ),
+            GamePitchingStat(
+                game_id="20250401LGSS0",
+                team_side="home",
+                team_code="SS",
+                player_id=2002,
+                player_name="홈불펜",
+                is_starting=False,
+                appearance_seq=2,
+                innings_outs=12,
+                pitches=44,
+                earned_runs=1,
+                strikeouts=3,
+            ),
+        ]
+    )
+    session.add(
+        PlayerSeasonPitching(
+            player_id=1001,
+            season=2025,
+            league="REGULAR",
+            level="KBO1",
+            source="CRAWLER",
+            team_code="LG",
+            games=20,
+            games_started=20,
+            innings_pitched=120.0,
+            era=3.15,
+        )
+    )
+    session.add(
+        PlayerSeasonPitching(
+            player_id=1002,
+            season=2025,
+            league="REGULAR",
+            level="KBO1",
+            source="CRAWLER",
+            team_code="LG",
+            games=45,
+            games_started=0,
+            innings_pitched=42.0,
+            era=2.95,
+            holds=12,
+        )
+    )
     session.commit()
 
 
 # ============================================================
 # 1. Fixture creation validation
 # ============================================================
+
 
 class TestFixture:
     def test_seed_data_produces_valid_breakdown(self):
@@ -101,24 +157,30 @@ class TestFixture:
 # 2. API response shape validation
 # ============================================================
 
+
 class TestApiResponseShape:
     def test_diagnose_returns_expected_keys(self):
         SessionLocal = _build_session_factory()
         with SessionLocal() as session:
             _seed_full_pitching_game(session)
-            session.add(GameSummary(
-                game_id="20250401LGSS0",
-                summary_type="리뷰_WPA",
-                detail_text=json.dumps({
-                    "pitching_breakdown": {
-                        "starters": {"away": {"player_name": "원정선발"}, "home": {"player_name": "홈선발"}},
-                        "bullpen": {
-                            "away": {"pitchers": [{"player_name": "원정불펜"}]},
-                            "home": {"pitchers": [{"player_name": "홈불펜"}]},
+            session.add(
+                GameSummary(
+                    game_id="20250401LGSS0",
+                    summary_type="리뷰_WPA",
+                    detail_text=json.dumps(
+                        {
+                            "pitching_breakdown": {
+                                "starters": {"away": {"player_name": "원정선발"}, "home": {"player_name": "홈선발"}},
+                                "bullpen": {
+                                    "away": {"pitchers": [{"player_name": "원정불펜"}]},
+                                    "home": {"pitchers": [{"player_name": "홈불펜"}]},
+                                },
+                            }
                         },
-                    }
-                }, ensure_ascii=False),
-            ))
+                        ensure_ascii=False,
+                    ),
+                )
+            )
             session.commit()
             result = ContextAggregator(session).diagnose_completed_game_coach_pitching("20250401LGSS0")
 
@@ -136,8 +198,11 @@ class TestApiResponseShape:
 
         raw = result["raw_tables"]
         assert set(raw.keys()) == {
-            "game_pitching_rows", "starter_rows", "bullpen_rows",
-            "player_id_missing_rows", "season_pitching_matches",
+            "game_pitching_rows",
+            "starter_rows",
+            "bullpen_rows",
+            "player_id_missing_rows",
+            "season_pitching_matches",
         }
         assert raw["game_pitching_rows"] == 4
         assert raw["player_id_missing_rows"] == 0
@@ -147,17 +212,22 @@ class TestApiResponseShape:
 # 3. Drop stage coverage (rendering validation)
 # ============================================================
 
+
 class TestDropStages:
     def test_drop_stage_raw_missing(self):
         SessionLocal = _build_session_factory()
         with SessionLocal() as session:
-            session.add(Game(
-                game_id="20250401HHLG0",
-                game_date=date(2025, 4, 1),
-                away_team="HH", home_team="LG",
-                away_score=0, home_score=0,
-                game_status=GAME_STATUS_COMPLETED,
-            ))
+            session.add(
+                Game(
+                    game_id="20250401HHLG0",
+                    game_date=date(2025, 4, 1),
+                    away_team="HH",
+                    home_team="LG",
+                    away_score=0,
+                    home_score=0,
+                    game_status=GAME_STATUS_COMPLETED,
+                )
+            )
             session.commit()
             result = ContextAggregator(session).diagnose_completed_game_coach_pitching("20250401HHLG0")
 
@@ -166,18 +236,29 @@ class TestDropStages:
     def test_drop_stage_starter_missing(self):
         SessionLocal = _build_session_factory()
         with SessionLocal() as session:
-            session.add(Game(
-                game_id="20250401HHLG0",
-                game_date=date(2025, 4, 1),
-                away_team="HH", home_team="LG",
-                away_score=0, home_score=0,
-                game_status=GAME_STATUS_COMPLETED,
-            ))
-            session.add(GamePitchingStat(
-                game_id="20250401HHLG0", team_side="away", team_code="HH",
-                player_id=3001, player_name="불펜만", is_starting=False,
-                appearance_seq=1, innings_outs=9,
-            ))
+            session.add(
+                Game(
+                    game_id="20250401HHLG0",
+                    game_date=date(2025, 4, 1),
+                    away_team="HH",
+                    home_team="LG",
+                    away_score=0,
+                    home_score=0,
+                    game_status=GAME_STATUS_COMPLETED,
+                )
+            )
+            session.add(
+                GamePitchingStat(
+                    game_id="20250401HHLG0",
+                    team_side="away",
+                    team_code="HH",
+                    player_id=3001,
+                    player_name="불펜만",
+                    is_starting=False,
+                    appearance_seq=1,
+                    innings_outs=9,
+                )
+            )
             session.commit()
             result = ContextAggregator(session).diagnose_completed_game_coach_pitching("20250401HHLG0")
 
@@ -195,11 +276,13 @@ class TestDropStages:
         SessionLocal = _build_session_factory()
         with SessionLocal() as session:
             _seed_full_pitching_game(session)
-            session.add(GameSummary(
-                game_id="20250401LGSS0",
-                summary_type="리뷰_WPA",
-                detail_text=json.dumps({"crucial_moments": []}, ensure_ascii=False),
-            ))
+            session.add(
+                GameSummary(
+                    game_id="20250401LGSS0",
+                    summary_type="리뷰_WPA",
+                    detail_text=json.dumps({"crucial_moments": []}, ensure_ascii=False),
+                )
+            )
             session.commit()
             result = ContextAggregator(session).diagnose_completed_game_coach_pitching("20250401LGSS0")
 
@@ -209,19 +292,24 @@ class TestDropStages:
         SessionLocal = _build_session_factory()
         with SessionLocal() as session:
             _seed_full_pitching_game(session)
-            session.add(GameSummary(
-                game_id="20250401LGSS0",
-                summary_type="리뷰_WPA",
-                detail_text=json.dumps({
-                    "pitching_breakdown": {
-                        "starters": {"away": {"player_name": "원정선발"}, "home": {"player_name": "홈선발"}},
-                        "bullpen": {
-                            "away": {"pitchers": [{"player_name": "원정불펜"}]},
-                            "home": {"pitchers": [{"player_name": "홈불펜"}]},
+            session.add(
+                GameSummary(
+                    game_id="20250401LGSS0",
+                    summary_type="리뷰_WPA",
+                    detail_text=json.dumps(
+                        {
+                            "pitching_breakdown": {
+                                "starters": {"away": {"player_name": "원정선발"}, "home": {"player_name": "홈선발"}},
+                                "bullpen": {
+                                    "away": {"pitchers": [{"player_name": "원정불펜"}]},
+                                    "home": {"pitchers": [{"player_name": "홈불펜"}]},
+                                },
+                            }
                         },
-                    }
-                }, ensure_ascii=False),
-            ))
+                        ensure_ascii=False,
+                    ),
+                )
+            )
             session.commit()
             result = ContextAggregator(session).diagnose_completed_game_coach_pitching("20250401LGSS0")
 
@@ -232,6 +320,7 @@ class TestDropStages:
 # ============================================================
 # 4. Regression tests
 # ============================================================
+
 
 class TestRegression:
     def test_empty_game_id_returns_missing(self):
@@ -245,26 +334,34 @@ class TestRegression:
         SessionLocal = _build_session_factory()
         with SessionLocal() as session:
             _seed_full_pitching_game(session)
-            session.add_all([
-                GameSummary(
-                    game_id="20250401LGSS0",
-                    summary_type="리뷰_WPA",
-                    detail_text=json.dumps({"old": True}, ensure_ascii=False),
-                ),
-                GameSummary(
-                    game_id="20250401LGSS0",
-                    summary_type="리뷰_WPA",
-                    detail_text=json.dumps({
-                        "pitching_breakdown": {
-                            "starters": {"away": {"player_name": "원정선발"}, "home": {"player_name": "홈선발"}},
-                            "bullpen": {
-                                "away": {"pitchers": [{"player_name": "원정불펜"}]},
-                                "home": {"pitchers": [{"player_name": "홈불펜"}]},
+            session.add_all(
+                [
+                    GameSummary(
+                        game_id="20250401LGSS0",
+                        summary_type="리뷰_WPA",
+                        detail_text=json.dumps({"old": True}, ensure_ascii=False),
+                    ),
+                    GameSummary(
+                        game_id="20250401LGSS0",
+                        summary_type="리뷰_WPA",
+                        detail_text=json.dumps(
+                            {
+                                "pitching_breakdown": {
+                                    "starters": {
+                                        "away": {"player_name": "원정선발"},
+                                        "home": {"player_name": "홈선발"},
+                                    },
+                                    "bullpen": {
+                                        "away": {"pitchers": [{"player_name": "원정불펜"}]},
+                                        "home": {"pitchers": [{"player_name": "홈불펜"}]},
+                                    },
+                                }
                             },
-                        }
-                    }, ensure_ascii=False),
-                ),
-            ])
+                            ensure_ascii=False,
+                        ),
+                    ),
+                ]
+            )
             session.commit()
             result = ContextAggregator(session).diagnose_completed_game_coach_pitching("20250401LGSS0")
 
@@ -282,25 +379,43 @@ class TestRegression:
     def test_diagnostic_without_season_stats(self):
         SessionLocal = _build_session_factory()
         with SessionLocal() as session:
-            session.add(Game(
-                game_id="20250401HHLG0",
-                game_date=date(2025, 4, 1),
-                away_team="HH", home_team="LG",
-                away_score=3, home_score=1,
-                game_status=GAME_STATUS_COMPLETED,
-            ))
-            session.add_all([
-                GamePitchingStat(
-                    game_id="20250401HHLG0", team_side="away", team_code="HH",
-                    player_id=4001, player_name="선발", is_starting=True,
-                    appearance_seq=1, innings_outs=21, pitches=95,
-                ),
-                GamePitchingStat(
-                    game_id="20250401HHLG0", team_side="home", team_code="LG",
-                    player_id=4002, player_name="선발홈", is_starting=True,
-                    appearance_seq=1, innings_outs=18, pitches=88,
-                ),
-            ])
+            session.add(
+                Game(
+                    game_id="20250401HHLG0",
+                    game_date=date(2025, 4, 1),
+                    away_team="HH",
+                    home_team="LG",
+                    away_score=3,
+                    home_score=1,
+                    game_status=GAME_STATUS_COMPLETED,
+                )
+            )
+            session.add_all(
+                [
+                    GamePitchingStat(
+                        game_id="20250401HHLG0",
+                        team_side="away",
+                        team_code="HH",
+                        player_id=4001,
+                        player_name="선발",
+                        is_starting=True,
+                        appearance_seq=1,
+                        innings_outs=21,
+                        pitches=95,
+                    ),
+                    GamePitchingStat(
+                        game_id="20250401HHLG0",
+                        team_side="home",
+                        team_code="LG",
+                        player_id=4002,
+                        player_name="선발홈",
+                        is_starting=True,
+                        appearance_seq=1,
+                        innings_outs=18,
+                        pitches=88,
+                    ),
+                ]
+            )
             session.commit()
             result = ContextAggregator(session).diagnose_completed_game_coach_pitching("20250401HHLG0")
 
@@ -312,6 +427,7 @@ class TestRegression:
 # 5. CLI smoke tests
 # ============================================================
 
+
 class TestCli:
     def test_cli_diagnose_requires_date_or_game_id(self):
         """No args → SystemExit."""
@@ -322,7 +438,6 @@ class TestCli:
 
     def test_cli_diagnose_with_seeded_data(self, capsys, monkeypatch):
         """Seed + --date → drop_stage in stdout."""
-        from src.cli.diagnose_coach_pitching import SessionLocal as _OriginalSessionLocal
         from src.cli.diagnose_coach_pitching import main
 
         factory = _build_session_factory()

@@ -1,7 +1,9 @@
 """Unit tests for GameDetailCrawler parsing methods."""
+
 from __future__ import annotations
 
 import pytest
+
 from src.crawlers.game_detail_crawler import GameDetailCrawler
 
 

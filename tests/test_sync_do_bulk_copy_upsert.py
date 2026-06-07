@@ -3,15 +3,14 @@ from __future__ import annotations
 import csv
 import io as io_module
 import random
-from datetime import datetime, timezone
-from unittest.mock import MagicMock, call
+from unittest.mock import MagicMock
 
 import pytest
 
 from src.sync.oci_sync import OCISync
 
-
 # ── helpers ───────────────────────────────────────────────────────────
+
 
 def _build_syncer():
     syncer = object.__new__(OCISync)
@@ -41,8 +40,8 @@ def _capture_sql_calls(mock_cursor):
 
 # ── _do_bulk_copy_upsert ──────────────────────────────────────────────
 
-class TestDoBulkCopyUpsert:
 
+class TestDoBulkCopyUpsert:
     def test_creates_temp_table(self):
         syncer = _build_syncer()
         cursor, _ = _mock_cursor(syncer)
@@ -82,7 +81,13 @@ class TestDoBulkCopyUpsert:
         syncer = _build_syncer()
         cursor, _ = _mock_cursor(syncer)
         syncer._do_bulk_copy_upsert(
-            "t", [{"id": 1, "name": "a"}], ["id"], update_timestamp=True, csv=csv, io=io_module, random=random,
+            "t",
+            [{"id": 1, "name": "a"}],
+            ["id"],
+            update_timestamp=True,
+            csv=csv,
+            io=io_module,
+            random=random,
         )
         sqls = _capture_sql_calls(cursor)
         insert_sql = [s for s in sqls if "INSERT INTO t" in s][0]
@@ -92,7 +97,13 @@ class TestDoBulkCopyUpsert:
         syncer = _build_syncer()
         cursor, _ = _mock_cursor(syncer)
         syncer._do_bulk_copy_upsert(
-            "t", [{"id": 1, "updated_at": "2025-01-01"}], ["id"], update_timestamp=True, csv=csv, io=io_module, random=random,
+            "t",
+            [{"id": 1, "updated_at": "2025-01-01"}],
+            ["id"],
+            update_timestamp=True,
+            csv=csv,
+            io=io_module,
+            random=random,
         )
         sqls = _capture_sql_calls(cursor)
         insert_sql = [s for s in sqls if "INSERT INTO t" in s][0]
@@ -102,7 +113,13 @@ class TestDoBulkCopyUpsert:
         syncer = _build_syncer()
         cursor, _ = _mock_cursor(syncer)
         syncer._do_bulk_copy_upsert(
-            "t", [{"id": 1, "name": "a"}], ["id"], update_timestamp=False, csv=csv, io=io_module, random=random,
+            "t",
+            [{"id": 1, "name": "a"}],
+            ["id"],
+            update_timestamp=False,
+            csv=csv,
+            io=io_module,
+            random=random,
         )
         sqls = _capture_sql_calls(cursor)
         insert_sql = [s for s in sqls if "INSERT INTO t" in s][0]
@@ -120,9 +137,7 @@ class TestDoBulkCopyUpsert:
     def test_temp_table_naming(self):
         syncer = _build_syncer()
         cursor, _ = _mock_cursor(syncer)
-        before = int(datetime.now().timestamp())
         syncer._do_bulk_copy_upsert("my_table", [{"id": 1}], ["id"], True, csv, io_module, random)
-        after = int(datetime.now().timestamp())
         create_calls = [c[0][0] for c in cursor.execute.call_args_list if "CREATE TEMP TABLE" in c[0][0]]
         assert "temp_my_table_" in create_calls[0]
 

@@ -22,6 +22,7 @@ class _SampleModel(_Base):
 
 # ── _serialize_scalar ─────────────────────────────────────────────────
 
+
 class TestSerializeScalar:
     def test_none_returns_none(self):
         assert _serialize_scalar(None) is None
@@ -44,6 +45,7 @@ class TestSerializeScalar:
 
     def test_date_isoformat(self):
         from datetime import date
+
         d = date(2025, 4, 1)
         assert _serialize_scalar(d) == "2025-04-01"
 
@@ -57,6 +59,7 @@ class TestSerializeScalar:
 
 
 # ── _chunked ──────────────────────────────────────────────────────────
+
 
 class TestChunked:
     def test_empty_list(self):
@@ -85,6 +88,7 @@ class TestChunked:
 
 
 # ── _is_transient_oci_error ───────────────────────────────────────────
+
 
 class TestIsTransientOciError:
     def test_operational_error_is_transient(self):
@@ -146,6 +150,7 @@ class TestIsTransientOciError:
 
 
 # ── _run_target_session_with_retries ──────────────────────────────────
+
 
 class TestRunTargetSessionWithRetries:
     def test_success_on_first_attempt(self):
@@ -292,6 +297,7 @@ class TestRunTargetSessionWithRetries:
 
 # ── sync_simple_table ──────────────────────────────────────────────────
 
+
 class TestBaseSyncSimpleTable:
     def test_accepts_test_declared_model(self, tmp_path):
         engine = create_engine(f"sqlite:///{tmp_path / 'base_sync.db'}")
@@ -320,8 +326,8 @@ class TestBaseSyncSimpleTable:
 
 # ── helpers ───────────────────────────────────────────────────────────
 
+
 def _build_syncer():
-    import types
     syncer = object.__new__(OCISyncBase)
     syncer.sqlite_session = None
     syncer.target_session = None

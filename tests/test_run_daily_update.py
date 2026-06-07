@@ -6,10 +6,10 @@ import sys
 from pathlib import Path
 from types import SimpleNamespace
 
-import src.cli.run_daily_update as run_daily_update
-from src.utils import alerting as alerting_module
-from src.repositories.game_repository import GAME_STATUS_CANCELLED, GAME_STATUS_UNRESOLVED
 import scripts.verification.audit_game_logic as audit_game_logic_module
+import src.cli.run_daily_update as run_daily_update
+from src.repositories.game_repository import GAME_STATUS_CANCELLED, GAME_STATUS_UNRESOLVED
+from src.utils import alerting as alerting_module
 
 
 class _FakeSession:
