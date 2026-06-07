@@ -51,12 +51,14 @@ class RealtimeIssueCrawler:
             with httpx.Client(headers=custom_headers, timeout=self.timeout) as client:
                 throttle.wait_sync("api-gw.sports.naver.com")
                 res = client.get(api_url)
-                self._raw_pages.append({
-                    "source_key": "naver_sports_news",
-                    "url": api_url,
-                    "html": res.text,
-                    "status_code": res.status_code,
-                })
+                self._raw_pages.append(
+                    {
+                        "source_key": "naver_sports_news",
+                        "url": api_url,
+                        "html": res.text,
+                        "status_code": res.status_code,
+                    }
+                )
                 if res.status_code == 200:
                     data = res.json()
                     result_data = data.get("result", {})
@@ -98,12 +100,14 @@ class RealtimeIssueCrawler:
             with httpx.Client(headers=self.headers, timeout=self.timeout) as client:
                 throttle.wait_sync("sports.news.naver.com")
                 res = client.get(fallback_url)
-                self._raw_pages.append({
-                    "source_key": "naver_sports_news",
-                    "url": fallback_url,
-                    "html": res.text,
-                    "status_code": res.status_code,
-                })
+                self._raw_pages.append(
+                    {
+                        "source_key": "naver_sports_news",
+                        "url": fallback_url,
+                        "html": res.text,
+                        "status_code": res.status_code,
+                    }
+                )
                 if res.status_code == 200:
                     soup = BeautifulSoup(res.text, "html.parser")
                     links = []
@@ -152,12 +156,14 @@ class RealtimeIssueCrawler:
             with httpx.Client(headers=self.headers, timeout=self.timeout) as client:
                 throttle.wait_sync("mlbpark.donga.com")
                 res = client.get(url)
-                self._raw_pages.append({
-                    "source_key": "mlbpark_bullpen",
-                    "url": url,
-                    "html": res.text,
-                    "status_code": res.status_code,
-                })
+                self._raw_pages.append(
+                    {
+                        "source_key": "mlbpark_bullpen",
+                        "url": url,
+                        "html": res.text,
+                        "status_code": res.status_code,
+                    }
+                )
                 if res.status_code == 200:
                     soup = BeautifulSoup(res.text, "html.parser")
 

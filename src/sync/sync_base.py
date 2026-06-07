@@ -751,7 +751,11 @@ class OCISyncBase:
             for c in model.__table__.columns
             if c.key not in exclude_cols and c.key in target_columns and c.key in local_columns
         ]
-        if model.__tablename__ == "game_metadata" and "source_payload" in columns and "source_payload" in target_column_defs:
+        if (
+            model.__tablename__ == "game_metadata"
+            and "source_payload" in columns
+            and "source_payload" in target_column_defs
+        ):
             source_payload_type = target_column_defs["source_payload"].get("type")
             source_payload_length = getattr(source_payload_type, "length", None)
             if source_payload_length and source_payload_length <= 255:

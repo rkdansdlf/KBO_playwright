@@ -298,8 +298,15 @@ class TestParseTeamEvents:
         assert event["event_scope"] == "team"
         assert event["team_id"] == "LG"
         assert event["title"]
-        assert event["event_type"] in ("giveaway", "first_pitch", "discount",
-                                        "fan_participation", "festival", "promotion", "notice")
+        assert event["event_type"] in (
+            "giveaway",
+            "first_pitch",
+            "discount",
+            "fan_participation",
+            "festival",
+            "promotion",
+            "notice",
+        )
         assert isinstance(event["published_at"], datetime)
         assert event["source_url"].startswith("http")
         assert isinstance(event["last_seen_at"], datetime)

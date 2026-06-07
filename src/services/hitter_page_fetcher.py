@@ -46,10 +46,7 @@ def build_hitter_url(game_id: str, game_date: str) -> str:
     game_date should be in YYYY-MM-DD or YYYYMMDD format.
     """
     date_compact = game_date.replace("-", "")
-    return (
-        f"{KBO_GAME_CENTER_URL}?gameDate={date_compact}"
-        f"&gameId={game_id}&section=HITTER"
-    )
+    return f"{KBO_GAME_CENTER_URL}?gameDate={date_compact}&gameId={game_id}&section=HITTER"
 
 
 def _safe_int(value: Any) -> int:
@@ -154,9 +151,7 @@ def fetch_hitter_page_sync(
         if client is not None:
             response = client.get(url)
         else:
-            with httpx.Client(
-                headers=DEFAULT_HEADERS, follow_redirects=True, timeout=15.0
-            ) as cl:
+            with httpx.Client(headers=DEFAULT_HEADERS, follow_redirects=True, timeout=15.0) as cl:
                 response = cl.get(url)
         response.raise_for_status()
         return response.text

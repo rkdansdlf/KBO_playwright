@@ -6,6 +6,7 @@ Usage:
     python -m src.cli.crawl_transit_time --game-date 20260603 --save
     python -m src.cli.crawl_transit_time --origin 잠실역_2호선_7번출구
 """
+
 from __future__ import annotations
 
 import argparse
@@ -34,9 +35,7 @@ async def run(args: argparse.Namespace) -> None:
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(
-        description="Measure transit times from nearby stations to Jamsil Stadium"
-    )
+    parser = argparse.ArgumentParser(description="Measure transit times from nearby stations to Jamsil Stadium")
     parser.add_argument("--save", action="store_true", help="Save results to database")
     parser.add_argument(
         "--game-date",

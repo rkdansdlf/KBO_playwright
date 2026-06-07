@@ -54,6 +54,7 @@ def parse_food(html: str, source_key: str, metadata: dict | None = None) -> list
 
 if __name__ == "__main__":
     import sys
+
     html = sys.stdin.read() if not sys.stdin.isatty() else "<html><body><p>떡볶이: 3,000원</p></body></html>"
     result = parse_food(html, "lotte_giants_fnb")
     for item in result:

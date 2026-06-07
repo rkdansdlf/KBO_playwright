@@ -59,9 +59,7 @@ def _preview_detail_has_starters(detail_text: str | None) -> bool:
         return False
     if not isinstance(payload, dict):
         return False
-    return bool(str(payload.get("away_starter") or "").strip()) and bool(
-        str(payload.get("home_starter") or "").strip()
-    )
+    return bool(str(payload.get("away_starter") or "").strip()) and bool(str(payload.get("home_starter") or "").strip())
 
 
 def find_missing_pregame_dates(
@@ -116,9 +114,7 @@ def find_missing_pregame_dates(
             )
 
         has_preview = row.preview_detail_text is not None
-        starters_complete = bool(str(row.away_pitcher or "").strip()) and bool(
-            str(row.home_pitcher or "").strip()
-        )
+        starters_complete = bool(str(row.away_pitcher or "").strip()) and bool(str(row.home_pitcher or "").strip())
         preview_has_starters = _preview_detail_has_starters(row.preview_detail_text)
 
         by_date[target_date] = PregameBackfillDate(
@@ -126,8 +122,7 @@ def find_missing_pregame_dates(
             scheduled_total=current.scheduled_total + 1,
             starters_complete=current.starters_complete + int(starters_complete),
             preview_rows=current.preview_rows + int(has_preview),
-            preview_missing_starters=current.preview_missing_starters
-            + int(has_preview and not preview_has_starters),
+            preview_missing_starters=current.preview_missing_starters + int(has_preview and not preview_has_starters),
         )
 
     targets = list(by_date.values())
@@ -194,8 +189,7 @@ async def run_backfill(args: argparse.Namespace) -> int:
         if args.fail_on_incomplete:
             refreshed = get_pregame_date_status(target.target_date)
             if refreshed and (
-                refreshed.starters_complete < refreshed.scheduled_total
-                or refreshed.preview_missing_starters > 0
+                refreshed.starters_complete < refreshed.scheduled_total or refreshed.preview_missing_starters > 0
             ):
                 incomplete.append(
                     f"{target.target_date}: "

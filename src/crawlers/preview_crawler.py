@@ -274,9 +274,7 @@ class PreviewCrawler:
                 home_starter_id = self._extract_starter_id(g, "home")
                 stadium = self._clean_text(g.get("S_NM")) or None
                 start_time = self._clean_text(g.get("G_TM")) or None
-                start_pitcher_announced = self._to_flag(g.get("START_PIT_CK")) or bool(
-                    away_starter and home_starter
-                )
+                start_pitcher_announced = self._to_flag(g.get("START_PIT_CK")) or bool(away_starter and home_starter)
                 lineup_announced = self._to_flag(g.get("LINEUP_CK"))
 
                 preview_data = {

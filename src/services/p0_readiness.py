@@ -131,10 +131,7 @@ def _query_games(session, start: date, end: date) -> list[Any]:
         logger.warning("P0 readiness requires game.game_id and game.game_date columns")
         return []
 
-    select_columns = [
-        column if column in existing_columns else f"NULL AS {column}"
-        for column in required
-    ]
+    select_columns = [column if column in existing_columns else f"NULL AS {column}" for column in required]
     try:
         rows = (
             session.execute(
@@ -174,9 +171,7 @@ def _count_by_game(session, model, game_ids: Iterable[str]) -> dict[str, int]:
     ids = [gid for gid in game_ids if gid]
     if not ids:
         return {}
-    rows = _safe_rows(
-        session.query(model.game_id, func.count()).filter(model.game_id.in_(ids)).group_by(model.game_id)
-    )
+    rows = _safe_rows(session.query(model.game_id, func.count()).filter(model.game_id.in_(ids)).group_by(model.game_id))
     return {str(game_id): int(count or 0) for game_id, count in rows}
 
 
@@ -201,7 +196,9 @@ def _side_counts_by_game(session, model, game_ids: Iterable[str]) -> dict[str, s
     if not ids:
         return {}
     rows = _safe_rows(
-        session.query(model.game_id, model.team_side).filter(model.game_id.in_(ids)).group_by(model.game_id, model.team_side)
+        session.query(model.game_id, model.team_side)
+        .filter(model.game_id.in_(ids))
+        .group_by(model.game_id, model.team_side)
     )
     sides: dict[str, set[str]] = {}
     for game_id, team_side in rows:
@@ -327,7 +324,8 @@ def build_p0_readiness(
     live_games = [
         game
         for game in active_games
-        if is_live_status(game.game_status) or str(game.game_lifecycle_state or "").lower() in {"running", "delayed", "suspended"}
+        if is_live_status(game.game_status)
+        or str(game.game_lifecycle_state or "").lower() in {"running", "delayed", "suspended"}
     ]
     completed_games = [game for game in active_games if _status(game.game_status) in COMPLETED_LIKE_GAME_STATUSES]
     relay_games = sorted({game.game_id for game in completed_games + live_games if game.game_id})
@@ -354,9 +352,13 @@ def build_p0_readiness(
                 severity="critical",
             )
         if not _meta_has_start_time(meta):
-            _add_failure(failures, dataset="schedule", game_id=game.game_id, game_date=game_date, reason="missing_start_time")
+            _add_failure(
+                failures, dataset="schedule", game_id=game.game_id, game_date=game_date, reason="missing_start_time"
+            )
         if not _meta_has_stadium(game, meta):
-            _add_failure(failures, dataset="schedule", game_id=game.game_id, game_date=game_date, reason="missing_stadium")
+            _add_failure(
+                failures, dataset="schedule", game_id=game.game_id, game_date=game_date, reason="missing_stadium"
+            )
 
     lineup_sides = _lineup_sides_by_game(session, [game.game_id for game in scheduled_games])
     preview_ids = _preview_games(session, [game.game_id for game in scheduled_games])
@@ -367,13 +369,19 @@ def build_p0_readiness(
         if _has_text(game.away_pitcher) and _has_text(game.home_pitcher):
             starters_complete += 1
         else:
-            _add_failure(failures, dataset="pregame", game_id=game.game_id, game_date=game_date, reason="missing_starter")
+            _add_failure(
+                failures, dataset="pregame", game_id=game.game_id, game_date=game_date, reason="missing_starter"
+            )
         if {"away", "home"} <= lineup_sides.get(game.game_id, set()):
             lineups_complete += 1
         else:
-            _add_failure(failures, dataset="pregame", game_id=game.game_id, game_date=game_date, reason="missing_lineup")
+            _add_failure(
+                failures, dataset="pregame", game_id=game.game_id, game_date=game_date, reason="missing_lineup"
+            )
         if game.game_id not in preview_ids:
-            _add_failure(failures, dataset="pregame", game_id=game.game_id, game_date=game_date, reason="missing_preview")
+            _add_failure(
+                failures, dataset="pregame", game_id=game.game_id, game_date=game_date, reason="missing_preview"
+            )
 
     event_counts = _count_by_game(session, GameEvent, relay_games)
     pbp_counts = _count_by_game(session, GamePlayByPlay, relay_games)
@@ -390,9 +398,13 @@ def build_p0_readiness(
         game_date = _date_key(game.game_date)
         has_relay = event_counts.get(game.game_id, 0) > 0 or pbp_counts.get(game.game_id, 0) > 0
         if not has_relay:
-            _add_failure(failures, dataset="live", game_id=game.game_id, game_date=game_date, reason="missing_live_relay")
+            _add_failure(
+                failures, dataset="live", game_id=game.game_id, game_date=game_date, reason="missing_live_relay"
+            )
         if not _score_present(game):
-            _add_failure(failures, dataset="live", game_id=game.game_id, game_date=game_date, reason="missing_live_score")
+            _add_failure(
+                failures, dataset="live", game_id=game.game_id, game_date=game_date, reason="missing_live_score"
+            )
 
     inning_counts = _count_by_game(session, GameInningScore, [game.game_id for game in completed_games])
     batting_sides = _side_counts_by_game(session, GameBattingStat, [game.game_id for game in completed_games])
@@ -431,11 +443,19 @@ def build_p0_readiness(
         if inning_counts.get(game.game_id, 0) > 0:
             inning_scores_ok += 1
         else:
-            _add_failure(failures, dataset="postgame", game_id=game.game_id, game_date=game_date, reason="missing_inning_score")
+            _add_failure(
+                failures, dataset="postgame", game_id=game.game_id, game_date=game_date, reason="missing_inning_score"
+            )
         if game.game_id in decision_ids:
             decisions_ok += 1
         else:
-            _add_failure(failures, dataset="postgame", game_id=game.game_id, game_date=game_date, reason="missing_pitcher_decision")
+            _add_failure(
+                failures,
+                dataset="postgame",
+                game_id=game.game_id,
+                game_date=game_date,
+                reason="missing_pitcher_decision",
+            )
 
     relay_ok = 0
     for game_id in relay_games:
@@ -445,7 +465,14 @@ def build_p0_readiness(
             relay_ok += 1
         else:
             severity = "critical" if game and _status(game.game_status) in COMPLETED_LIKE_GAME_STATUSES else "warning"
-            _add_failure(failures, dataset="relay", game_id=game_id, game_date=game_date, reason="missing_relay", severity=severity)
+            _add_failure(
+                failures,
+                dataset="relay",
+                game_id=game_id,
+                game_date=game_date,
+                reason="missing_relay",
+                severity=severity,
+            )
 
     roster_dates = sorted({game.game_date for game in active_games if game.game_date and game.game_date <= target_day})
     daily_roster_rows = _rows_by_date(session, TeamDailyRoster, TeamDailyRoster.roster_date, roster_dates)
@@ -517,9 +544,7 @@ def build_p0_readiness(
         "live": {
             "games": live_total,
             "with_relay": sum(
-                1
-                for game in live_games
-                if event_counts.get(game.game_id, 0) > 0 or pbp_counts.get(game.game_id, 0) > 0
+                1 for game in live_games if event_counts.get(game.game_id, 0) > 0 or pbp_counts.get(game.game_id, 0) > 0
             ),
             "with_score": sum(1 for game in live_games if _score_present(game)),
             "max_inning_by_game": {game.game_id: max_innings.get(game.game_id, 0) for game in live_games},

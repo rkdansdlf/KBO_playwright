@@ -29,16 +29,12 @@ logger = logging.getLogger(__name__)
 
 
 def _get_regular_season_ids(session: Session, year: int) -> list[int]:
-    stmt = text(
-        "SELECT season_id FROM kbo_seasons WHERE season_year = :year AND league_type_code = 0"
-    )
+    stmt = text("SELECT season_id FROM kbo_seasons WHERE season_year = :year AND league_type_code = 0")
     result = session.execute(stmt, {"year": year}).scalars().all()
     return [int(r) for r in result]
 
 
-def _get_player_teams(
-    session: Session, season_ids: list[int], model
-) -> dict[int, str]:
+def _get_player_teams(session: Session, season_ids: list[int], model) -> dict[int, str]:
     """Get the most common canonical_team_code per player_id."""
     rows = (
         session.query(
@@ -203,9 +199,7 @@ def _aggregate_pitching(
             func.sum(GamePitchingStat.holds).label("holds"),
             func.sum(GamePitchingStat.batters_faced).label("batters_faced"),
             func.sum(GamePitchingStat.pitches).label("pitches"),
-            func.count(
-                func.nullif(GamePitchingStat.is_starting == 1, False)
-            ).label("games_started"),
+            func.count(func.nullif(GamePitchingStat.is_starting == 1, False)).label("games_started"),
         )
         .join(Game, Game.game_id == GamePitchingStat.game_id)
         .filter(
@@ -278,6 +272,7 @@ def _upsert_batting(session: Session, records: list[dict[str, Any]], dialect: st
                 )
             elif dialect == "postgresql":
                 from sqlalchemy.dialects.postgresql import insert as pg_insert
+
                 stmt = pg_insert(PlayerSeasonBatting).values(**data)
                 stmt = stmt.on_conflict_do_update(
                     index_elements=conflict_keys,
@@ -285,10 +280,9 @@ def _upsert_batting(session: Session, records: list[dict[str, Any]], dialect: st
                 )
             else:
                 from sqlalchemy.dialects.mysql import insert as my_insert
+
                 stmt = my_insert(PlayerSeasonBatting).values(**data)
-                stmt = stmt.on_duplicate_key_update(
-                    **{k: stmt.inserted[k] for k in data if k not in conflict_keys}
-                )
+                stmt = stmt.on_duplicate_key_update(**{k: stmt.inserted[k] for k in data if k not in conflict_keys})
             session.execute(stmt)
             saved += 1
         except Exception as e:
@@ -316,6 +310,7 @@ def _upsert_pitching(session: Session, records: list[dict[str, Any]], dialect: s
                 )
             elif dialect == "postgresql":
                 from sqlalchemy.dialects.postgresql import insert as pg_insert
+
                 stmt = pg_insert(PlayerSeasonPitching).values(**data)
                 stmt = stmt.on_conflict_do_update(
                     index_elements=conflict_keys,
@@ -323,10 +318,9 @@ def _upsert_pitching(session: Session, records: list[dict[str, Any]], dialect: s
                 )
             else:
                 from sqlalchemy.dialects.mysql import insert as my_insert
+
                 stmt = my_insert(PlayerSeasonPitching).values(**data)
-                stmt = stmt.on_duplicate_key_update(
-                    **{k: stmt.inserted[k] for k in data if k not in conflict_keys}
-                )
+                stmt = stmt.on_duplicate_key_update(**{k: stmt.inserted[k] for k in data if k not in conflict_keys})
             session.execute(stmt)
             saved += 1
         except Exception as e:
@@ -400,9 +394,7 @@ def run_recalc(
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(
-        description="Recalculate player cumulative statistics from game-level data."
-    )
+    parser = argparse.ArgumentParser(description="Recalculate player cumulative statistics from game-level data.")
     parser.add_argument("--season", type=int, required=True, help="Season year")
     parser.add_argument(
         "--dry-run",

@@ -93,7 +93,6 @@ def run_recalc(
     return 0
 
 
-
 def main():
     parser = argparse.ArgumentParser(description="Recalculate team cumulative statistics from player stats.")
 
@@ -109,26 +108,21 @@ def main():
         action="store_true",
         help="Run rollup in-memory and print results without saving to the database",
     )
-    parser.add_argument(
-        "--batting-only", action="store_true", help="Recalculate batting stats only"
-    )
-    parser.add_argument(
-        "--pitching-only", action="store_true", help="Recalculate pitching stats only"
-    )
-    parser.add_argument(
-        "--verbose", action="store_true", help="Enable verbose logging"
-    )
+    parser.add_argument("--batting-only", action="store_true", help="Recalculate batting stats only")
+    parser.add_argument("--pitching-only", action="store_true", help="Recalculate pitching stats only")
+    parser.add_argument("--verbose", action="store_true", help="Enable verbose logging")
 
     # Maintain backward compatibility with older crawlers calling with --save
     parser.add_argument(
-        "--save", action="store_true", default=True, help="Save to DB (ignored as default is true, override with --dry-run)"
+        "--save",
+        action="store_true",
+        default=True,
+        help="Save to DB (ignored as default is true, override with --dry-run)",
     )
     parser.add_argument(
         "--type", choices=["batting", "pitching", "all"], default="all", help="Ignore this legacy argument"
     )
-    parser.add_argument(
-        "--league", type=str, default="REGULAR", help="Ignore this legacy argument"
-    )
+    parser.add_argument("--league", type=str, default="REGULAR", help="Ignore this legacy argument")
 
     args = parser.parse_args()
 
@@ -142,14 +136,16 @@ def main():
     bat_only = args.batting_only or (args.type == "batting")
     pit_only = args.pitching_only or (args.type == "pitching")
 
-    sys.exit(run_recalc(
-        season=season_val,
-        team_id=team_val,
-        dry_run=args.dry_run,
-        batting_only=bat_only,
-        pitching_only=pit_only,
-        verbose=args.verbose,
-    ))
+    sys.exit(
+        run_recalc(
+            season=season_val,
+            team_id=team_val,
+            dry_run=args.dry_run,
+            batting_only=bat_only,
+            pitching_only=pit_only,
+            verbose=args.verbose,
+        )
+    )
 
 
 if __name__ == "__main__":

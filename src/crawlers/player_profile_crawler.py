@@ -306,7 +306,9 @@ class PlayerProfileCrawler:
                     "weight_kg": parsed.get("weight_kg") or _parse_height_weight(raw.get("height_weight"))["weight_kg"],
                     "debut_year": parsed.get("entry_year") or _parse_debut_year(raw.get("debut")),
                     "salary_original": parsed.get("salary_original") or (raw.get("salary") or "").strip() or None,
-                    "signing_bonus_original": parsed.get("signing_bonus_original") or (raw.get("signing") or "").strip() or None,
+                    "signing_bonus_original": parsed.get("signing_bonus_original")
+                    or (raw.get("signing") or "").strip()
+                    or None,
                     "draft_info": parsed.get("draft_info") or (raw.get("draft") or "").strip() or None,
                     "salary_amount": parsed.get("salary_amount"),
                     "salary_currency": parsed.get("salary_currency"),

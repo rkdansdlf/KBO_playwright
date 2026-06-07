@@ -90,15 +90,18 @@ class StaticTextCrawler:
         if not html_content:
             raise ValueError(f"Failed to fetch content from Namuwiki url: {url}")
 
-        self._raw_pages.append({
-            "source_key": "namuwiki_kbo",
-            "url": url,
-            "html": html_content,
-            "status_code": 200,
-        })
+        self._raw_pages.append(
+            {
+                "source_key": "namuwiki_kbo",
+                "url": url,
+                "html": html_content,
+                "status_code": 200,
+            }
+        )
 
         if save:
             from src.repositories.source_registry_repository import save_raw_snapshots
+
             with SessionLocal() as session:
                 save_raw_snapshots(session, self._raw_pages)
 
