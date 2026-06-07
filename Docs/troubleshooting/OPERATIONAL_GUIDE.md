@@ -21,47 +21,47 @@ If a specific day fails to crawl or has data inconsistencies:
 
 ### Re-run Daily Finalize for a specific date
 ```bash
-./.venv/bin/python3 -m src.cli.run_daily_update --date YYYYMMDD --sync
+./venv/bin/python3 -m src.cli.run_daily_update --date YYYYMMDD --sync
 ```
 
 ### Run Quality Gate Check
 To verify statistical consistency manually:
 ```bash
-./.venv/bin/python3 -m src.cli.quality_gate_check --year 2024
+./venv/bin/python3 -m src.cli.quality_gate_check --year 2024
 ```
 
 ### Run Reference Integrity Gate
 Run this before OCI publish, after reference repair jobs, and before applying FK migrations:
 ```bash
 ./venv/bin/python scripts/verification/check_orphan_data.py --strict --json --sample-limit 20
-./venv/bin/python scripts/maintenance/quality_gate.py --skip-oci
+./venv/bin/python scripts/legacy/quality_gate.py --skip-oci
 ```
 
 Use the default command for operator runs where the CSV snapshots under `data/` are useful audit artifacts. In CI or agent sessions that only need pass/fail and may not have a writable artifact directory, add `--no-write`:
 ```bash
-./venv/bin/python scripts/maintenance/quality_gate.py --skip-oci --no-write
+./venv/bin/python scripts/legacy/quality_gate.py --skip-oci --no-write
 ```
 
 After OCI publish, verify production parity:
 ```bash
 ./venv/bin/python scripts/verification/check_orphan_data.py --db-url env:OCI_DB_URL --strict --json --sample-limit 20
-./venv/bin/python scripts/maintenance/quality_gate.py
+./venv/bin/python scripts/legacy/quality_gate.py
 ```
 
 For fresh CI runners that validate OCI directly without a local snapshot, use OCI-only non-writing mode:
 ```bash
-./venv/bin/python scripts/maintenance/quality_gate.py --oci-only --no-write
+./venv/bin/python scripts/legacy/quality_gate.py --oci-only --no-write
 ```
 
 If a year-scoped game-detail sync fails with a duplicate primary key on an auto-increment table, reset the target sequences and retry the same year:
 ```bash
-./venv/bin/python scripts/maintenance/reset_oci_sequences.py
+./venv/bin/python scripts/legacy/maintenance/reset_oci_sequences.py
 ./venv/bin/python -m src.cli.sync_oci --game-details --year YYYY
 ```
 
 Apply declared FK constraints only after the OCI integrity gate passes:
 ```bash
-./venv/bin/python scripts/maintenance/apply_oci_migration.py migrations/oci/023_reference_integrity_foreign_keys.sql
+./venv/bin/python scripts/legacy/maintenance/apply_oci_migration.py migrations/oci/023_reference_integrity_foreign_keys.sql
 ```
 
 ### Run Crawler Stability Gate
@@ -108,7 +108,7 @@ Do not include local investigation files such as `inspect_*.py`, `find_boxscore.
 `incomplete_detail` means the GameCenter page loaded, but the full-detail payload did not include both teams' hitter and pitcher rows after direct HITTER/PITCHER extraction and REVIEW fallback.
 
 ```bash
-./.venv/bin/python3 -m src.cli.crawl_game_details --year YYYY --month M --force --concurrency 1
+./venv/bin/python3 -m src.cli.crawl_game_details --year YYYY --month M --force --concurrency 1
 ```
 
 If the same game still fails, wait for the KBO box score to finish publishing and rerun the daily finalize command for that date. Do not manually save partial hitter/pitcher payloads as completed detail data.
@@ -131,17 +131,17 @@ Success notifications include the compact stability summary when `NOTIFY_SUCCESS
 ### Retry Daily Soft Failures
 Preview retry commands first:
 ```bash
-./.venv/bin/python -m src.cli.retry_daily_failures --date YYYYMMDD --dry-run
+./venv/bin/python -m src.cli.retry_daily_failures --date YYYYMMDD --dry-run
 ```
 
 Execute only after reviewing the targets:
 ```bash
-./.venv/bin/python -m src.cli.retry_daily_failures --date YYYYMMDD --apply
+./venv/bin/python -m src.cli.retry_daily_failures --date YYYYMMDD --apply
 ```
 
 Add `--sync` to publish retried game IDs to OCI after all retry commands succeed:
 ```bash
-./.venv/bin/python -m src.cli.retry_daily_failures --date YYYYMMDD --apply --sync
+./venv/bin/python -m src.cli.retry_daily_failures --date YYYYMMDD --apply --sync
 ```
 
 This CLI reads `logs/daily_update_summary/YYYYMMDD.json`, retries only `retry_candidates.detail` and `retry_candidates.relay`, and requires `--apply` before it runs any recovery command.

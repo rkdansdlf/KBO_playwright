@@ -11,16 +11,16 @@ All scripts should be run from the project root directory:
 cd /path/to/KBO_playwright
 
 # Run scripts with Python module syntax
-python -m scripts.maintenance.verify_sqlite_data
+python -m scripts.legacy.maintenance.verify_sqlite_data
 
 # Or use PYTHONPATH
-PYTHONPATH=. python scripts/maintenance/verify_sqlite_data.py
+PYTHONPATH=. python scripts/legacy/maintenance/verify_sqlite_data.py
 ```
 
 ## Directory Structure
 
 - **crawling/** - Historical data crawling scripts
-- **maintenance/** - Database validation and repair
+- **legacy/maintenance/** - Database validation and repair (legacy scripts)
 
 ## Available Scripts
 
@@ -38,20 +38,20 @@ PYTHONPATH=. python scripts/maintenance/verify_sqlite_data.py
 
 ```bash
 # 삭제 대상 예측(실제 삭제 없음)
-python scripts/maintenance/cleanup_temp_artifacts.py --days 7 --dry-run
+python scripts/legacy/maintenance/cleanup_temp_artifacts.py --days 7 --dry-run
 
 # 대상만 요약 출력
-python scripts/maintenance/cleanup_temp_artifacts.py --days 7 --whatif
+python scripts/legacy/maintenance/cleanup_temp_artifacts.py --days 7 --whatif
 
 # 실제 삭제(운영자 수동 실행)
-python scripts/maintenance/cleanup_temp_artifacts.py --days 7
+python scripts/legacy/maintenance/cleanup_temp_artifacts.py --days 7
 ```
 
 카테고리 단일 정리:
 
 ```bash
-python scripts/maintenance/cleanup_temp_artifacts.py --only scratch --dry-run
-python scripts/maintenance/cleanup_temp_artifacts.py --only daily_update_summary --days 14
+python scripts/legacy/maintenance/cleanup_temp_artifacts.py --only scratch --dry-run
+python scripts/legacy/maintenance/cleanup_temp_artifacts.py --only daily_update_summary --days 14
 ```
 
 추가 옵션:
@@ -95,14 +95,14 @@ Use the `src.cli` entrypoints for DB-writing schedule/detail collection, and the
 
 ### Manual Debug and Manifest Scripts
 These scripts call crawlers directly for parser investigation or write JSON manifests only. They are not standard DB-writing collection paths:
-- `scripts/maintenance/init_data_collection.py`
-- `scripts/maintenance/debug_missing_game.py`
-- `scripts/maintenance/check_kia_code.py`
-- `scripts/maintenance/debug_modern_crawler.py`
-- `scripts/maintenance/test_cancel_detect.py`
-- `scripts/maintenance/test_2019_crawl.py`
-- `scripts/maintenance/verify_2018_fix.py`
-- `scripts/maintenance/collect_historical_game_ids.py`
-- `scripts/maintenance/crawl_historical_schedule.py`
+- `scripts/legacy/maintenance/init_data_collection.py`
+- `scripts/legacy/maintenance/debug_missing_game.py`
+- `scripts/legacy/maintenance/check_kia_code.py`
+- `scripts/legacy/maintenance/debug_modern_crawler.py`
+- `scripts/legacy/maintenance/test_cancel_detect.py`
+- `scripts/legacy/maintenance/test_2019_crawl.py`
+- `scripts/legacy/maintenance/verify_2018_fix.py`
+- `scripts/legacy/maintenance/collect_historical_game_ids.py`
+- `scripts/legacy/maintenance/crawl_historical_schedule.py`
 - `scripts/crawl_2009_game_details.py`
-- `scripts/maintenance/prototype_2000_crawler.py`
+- `scripts/legacy/maintenance/prototype_2000_crawler.py`

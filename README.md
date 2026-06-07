@@ -89,7 +89,7 @@ python3 -m src.cli.crawl_retire --years 2023
 python3 -m src.cli.health_check
 
 # Seed tables (teams, seasons, data sources)
-python3 scripts/maintenance/seed_data.py
+python3 scripts/legacy/maintenance/seed_data.py
 
 # Sync validated local SQLite data to OCI PostgreSQL
 python3 -m src.cli.sync_oci --game-details --unsynced-only
@@ -179,13 +179,14 @@ The `scripts/` directory contains utility scripts for maintenance and operations
 - `recrawl_legacy_years.py` - Re-crawl specific historical seasons
 - `collect_detailed_data.py` - Deprecated wrapper; use `python -m src.cli.collect_games` or `python -m src.cli.run_daily_update`
 
-### Maintenance Scripts (`scripts/maintenance/`)
+### Maintenance Scripts (`scripts/legacy/maintenance/`)
 - `fix_player_names.py` - Re-crawl and fix player names
 - `verify_sqlite_data.py` - Verify local SQLite data quality
 - `reset_sqlite.py` - Reset local database
 - `check_missing_teams.py` - Find missing team data
-- `quality_gate.py` - Compare local SQLite vs OCI integrity metrics
 - `fill_oci_null_player_ids_from_local.py` - Repair OCI NULL `player_id` values from validated local rows
+
+> **Note:** Legacy maintenance scripts moved to `scripts/legacy/maintenance/`. Active CLI commands prefer `python3 -m src.cli.*`.
 
 ## Documentation
 
