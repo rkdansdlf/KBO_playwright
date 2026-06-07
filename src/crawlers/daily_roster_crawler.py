@@ -111,8 +111,7 @@ class DailyRosterCrawler:
             async with page.expect_response(lambda response: "Register.aspx" in response.url, timeout=5000):
                 await page.evaluate(f"__doPostBack('{triggers[0]}', '')")
         except (TimeoutError, PlaywrightTimeoutError):
-            # Timeout means maybe no request or fast.
-            pass
+            logger.debug("__doPostBack timed out (expected for fast/no-op)")
         await page.wait_for_timeout(2000)  # Wait for UI update
 
         # DEBUG: Check visible date

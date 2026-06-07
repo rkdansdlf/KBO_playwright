@@ -283,7 +283,7 @@ async def fetch_and_parse_futures_pitching(
                     await futures_tab.click()
                     await throttle.wait()
             except PlaywrightError:
-                pass
+                logger.debug("Pitching tab not found or already selected")
 
             html = await page.content()
         finally:

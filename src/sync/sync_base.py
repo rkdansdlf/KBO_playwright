@@ -124,12 +124,28 @@ def _execute_signature_query(session_or_conn, sql: str, *, game_ids: list[str] |
     return session_or_conn.execute(stmt, params)
 
 
-def load_game_sync_signatures(session_or_conn, *, game_ids: list[str] | None = None) -> dict[str, dict[str, Any]]:
-    filter_sql = "WHERE g.game_id IN :game_ids" if game_ids is not None else ""
-    game_rows = (
-        _execute_signature_query(
-            session_or_conn,
-            f"""
+def _build_composite_signature_query(game_ids: list[str] | None) -> str:
+    """Build a single composite query with correlated subqueries for all child tables."""
+    filter_clause = "WHERE g.game_id IN :game_ids" if game_ids is not None else ""
+
+    child_subqueries: list[str] = []
+    for i, table_name in enumerate(GAME_SIGNATURE_CHILD_TABLES):
+        alias = f"t{i}"
+        if table_name == "game_metadata":
+            child_subqueries.append(
+                f"(SELECT COUNT(*) FROM game_metadata {alias} WHERE {alias}.game_id = g.game_id) AS meta_count,\n"
+                f"            (SELECT MAX({alias}.updated_at) FROM game_metadata {alias} WHERE {alias}.game_id = g.game_id) AS meta_max_updated,\n"
+                f"            (SELECT MAX({alias}.start_time) FROM game_metadata {alias} WHERE {alias}.game_id = g.game_id) AS meta_start_time"
+            )
+        else:
+            child_subqueries.append(
+                f"(SELECT COUNT(*) FROM {table_name} {alias} WHERE {alias}.game_id = g.game_id) AS {alias}_count,\n"
+                f"            (SELECT MAX({alias}.updated_at) FROM {table_name} {alias} WHERE {alias}.game_id = g.game_id) AS {alias}_max_updated"
+            )
+
+    children_sql = ",\n            ".join(child_subqueries)
+
+    return f"""
         SELECT
             g.game_id,
             g.game_status,
@@ -139,20 +155,21 @@ def load_game_sync_signatures(session_or_conn, *, game_ids: list[str] | None = N
             g.away_pitcher,
             g.home_team,
             g.away_team,
-            g.updated_at
+            g.updated_at,
+            {children_sql}
         FROM game g
-        {filter_sql}
-        """,
-            game_ids=game_ids,
-        )
-        .mappings()
-        .all()
-    )
+        {filter_clause}
+    """
+
+
+def load_game_sync_signatures(session_or_conn, *, game_ids: list[str] | None = None) -> dict[str, dict[str, Any]]:
+    composite_sql = _build_composite_signature_query(game_ids)
+    rows = _execute_signature_query(session_or_conn, composite_sql, game_ids=game_ids).mappings().all()
 
     signatures: dict[str, dict[str, Any]] = {}
-    for row in game_rows:
+    for row in rows:
         game_id = str(row["game_id"])
-        signatures[game_id] = {
+        sig: dict[str, Any] = {
             "game": {
                 "game_status": row["game_status"],
                 "home_score": row["home_score"],
@@ -164,66 +181,24 @@ def load_game_sync_signatures(session_or_conn, *, game_ids: list[str] | None = N
                 "updated_at": _serialize_scalar(row["updated_at"]),
             }
         }
-        for table_name in GAME_SIGNATURE_CHILD_TABLES:
-            signatures[game_id][table_name] = {
-                "row_count": 0,
-                "max_updated_at": None,
-            }
 
-    if not signatures:
-        return signatures
+        for i, table_name in enumerate(GAME_SIGNATURE_CHILD_TABLES):
+            alias = f"t{i}"
+            if table_name == "game_metadata":
+                sig[table_name] = {
+                    "row_count": int(row["meta_count"] or 0),
+                    "max_updated_at": _serialize_scalar(row["meta_max_updated"]),
+                    "start_time": _serialize_scalar(row["meta_start_time"]),
+                }
+            else:
+                count_col = f"{alias}_count"
+                max_col = f"{alias}_max_updated"
+                sig[table_name] = {
+                    "row_count": int(row[count_col] or 0),
+                    "max_updated_at": _serialize_scalar(row[max_col]),
+                }
 
-    child_game_ids = sorted(signatures.keys())
-    metadata_rows = (
-        _execute_signature_query(
-            session_or_conn,
-            """
-        SELECT
-            g.game_id,
-            COUNT(g.game_id) AS row_count,
-            MAX(g.updated_at) AS max_updated_at,
-            MAX(g.start_time) AS start_time
-        FROM game_metadata g
-        WHERE g.game_id IN :game_ids
-        GROUP BY g.game_id
-        """,
-            game_ids=child_game_ids,
-        )
-        .mappings()
-        .all()
-    )
-    for row in metadata_rows:
-        signatures[str(row["game_id"])]["game_metadata"] = {
-            "row_count": int(row["row_count"] or 0),
-            "max_updated_at": _serialize_scalar(row["max_updated_at"]),
-            "start_time": _serialize_scalar(row["start_time"]),
-        }
-
-    for table_name in GAME_SIGNATURE_CHILD_TABLES:
-        if table_name == "game_metadata":
-            continue
-        rows = (
-            _execute_signature_query(
-                session_or_conn,
-                f"""
-            SELECT
-                t.game_id,
-                COUNT(*) AS row_count,
-                MAX(t.updated_at) AS max_updated_at
-            FROM {table_name} t
-            WHERE t.game_id IN :game_ids
-            GROUP BY t.game_id
-            """,
-                game_ids=child_game_ids,
-            )
-            .mappings()
-            .all()
-        )
-        for row in rows:
-            signatures[str(row["game_id"])][table_name] = {
-                "row_count": int(row["row_count"] or 0),
-                "max_updated_at": _serialize_scalar(row["max_updated_at"]),
-            }
+        signatures[game_id] = sig
 
     return signatures
 
@@ -591,7 +566,12 @@ class OCISyncBase:
         return self._franchise_id_mapping_cache
 
     def _bulk_copy_upsert(
-        self, table_name: str, records: list[dict[str, Any]], unique_cols: list[str], update_timestamp: bool = True
+        self,
+        table_name: str,
+        records: list[dict[str, Any]],
+        unique_cols: list[str],
+        update_timestamp: bool = True,
+        connection=None,
     ):
         if not records:
             return
@@ -614,7 +594,9 @@ class OCISyncBase:
 
         for attempt in range(1, max_attempts + 1):
             try:
-                return self._do_bulk_copy_upsert(table_name, records, unique_cols, update_timestamp)
+                return self._do_bulk_copy_upsert(
+                    table_name, records, unique_cols, update_timestamp, connection=connection
+                )
             except Exception as e:
                 last_exception = e
                 if attempt < max_attempts:
@@ -629,6 +611,7 @@ class OCISyncBase:
                     )
                     time.sleep(wait)
                     self._reconnect_oci()
+                    connection = None
 
         logger.error(f"❌ Batch COPY Error on {table_name} after {max_attempts} attempts: {last_exception}")
         raise last_exception  # type: ignore[misc]
@@ -744,7 +727,7 @@ class OCISyncBase:
             try:
                 sqlite_bind = self.sqlite_session.get_bind()
             except SQLAlchemyError:
-                pass
+                logger.warning("Failed to get SQLite bind for %s", model.__tablename__)
 
         if sqlite_bind is not None:
             try:
@@ -784,46 +767,53 @@ class OCISyncBase:
 
         logger.info(f"🚚 Syncing {model.__tablename__} ({total_count} rows, batch={batch_size})...")
 
-        # Always use Bulk COPY Upsert to be safe from schema mismatches (e.g. created_at/updated_at missing on OCI).
-        synced = 0
-        for offset in range(0, total_count, batch_size):
-            rows = query.offset(offset).limit(batch_size).all()
-            records = []
-            for row in rows:
-                mapping = getattr(row, "_mapping", None)
-                if mapping is not None:
-                    data = {c: mapping[c] for c in columns if c in mapping}
+        connection = None
+        try:
+            connection = self.oci_engine.raw_connection()
+            synced = 0
+            for offset in range(0, total_count, batch_size):
+                rows = query.offset(offset).limit(batch_size).all()
+                records = []
+                for row in rows:
+                    mapping = getattr(row, "_mapping", None)
+                    if mapping is not None:
+                        data = {c: mapping[c] for c in columns if c in mapping}
+                    else:
+                        data = {c: getattr(row, c) for c in columns if hasattr(row, c)}
+
+                    now = datetime.now()
+                    if "created_at" in columns and data.get("created_at") is None:
+                        data["created_at"] = now
+                    if "updated_at" in columns and data.get("updated_at") is None:
+                        data["updated_at"] = now
+
+                    if transform_fn:
+                        data = transform_fn(data)
+
+                    for k, v in data.items():
+                        if isinstance(v, (dict, list)):
+                            data[k] = json.dumps(v, ensure_ascii=False)
+                    records.append(data)
+
+                records = _dedupe_records_for_conflict_keys(records, conflict_keys)
+
+                if update_timestamp is None:
+                    effective_update_timestamp = "updated_at" not in exclude_cols
                 else:
-                    data = {c: getattr(row, c) for c in columns if hasattr(row, c)}
-
-                # Ensure created_at/updated_at are never null if the table requires them.
-                now = datetime.now()
-                if "created_at" in columns and data.get("created_at") is None:
-                    data["created_at"] = now
-                if "updated_at" in columns and data.get("updated_at") is None:
-                    data["updated_at"] = now
-
-                if transform_fn:
-                    data = transform_fn(data)
-
-                for k, v in data.items():
-                    if isinstance(v, (dict, list)):
-                        data[k] = json.dumps(v, ensure_ascii=False)
-                records.append(data)
-
-            # Deduplicate records to avoid Postgres "affect row a second time"
-            # errors, while preserving SQL's distinct-NULL unique semantics.
-            records = _dedupe_records_for_conflict_keys(records, conflict_keys)
-
-            if update_timestamp is None:
-                effective_update_timestamp = "updated_at" not in exclude_cols
-            else:
-                effective_update_timestamp = update_timestamp
-            self._bulk_copy_upsert(
-                model.__tablename__, records, conflict_keys, update_timestamp=effective_update_timestamp
-            )
-            synced += len(records)
-            logger.info(f"   Synced {synced}/{total_count} rows via COPY...")
+                    effective_update_timestamp = update_timestamp
+                self._bulk_copy_upsert(
+                    model.__tablename__, records, conflict_keys,
+                    update_timestamp=effective_update_timestamp,
+                    connection=connection,
+                )
+                synced += len(records)
+                logger.info(f"   Synced {synced}/{total_count} rows via COPY...")
+        finally:
+            if connection is not None:
+                try:
+                    connection.close()
+                except Exception:
+                    pass
 
         return synced
 

@@ -7,7 +7,10 @@ batter identity, result events, and inning/half boundaries.
 
 from __future__ import annotations
 
+import logging
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 # Event types that definitively end an at-bat
 AT_BAT_TERMINAL_EVENTS = frozenset(
@@ -136,7 +139,7 @@ def compute_at_bat_pitch_count(events: list[dict[str, Any]]) -> list[dict[str, A
                 balls = max(balls, int(preset_balls or 0))
                 strikes = max(strikes, int(preset_strikes or 0))
             except (TypeError, ValueError):
-                pass
+                logger.debug("Invalid preset ball/strike value: balls=%s strikes=%s", preset_balls, preset_strikes)
 
         balls, strikes, _matched = advance_pitch_count(description, balls, strikes)
 

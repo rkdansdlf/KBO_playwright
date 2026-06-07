@@ -15,7 +15,6 @@ import argparse
 import logging
 import os
 import re
-import time
 
 logger = logging.getLogger(__name__)
 
@@ -903,7 +902,7 @@ def crawl_series_batting_stats(
                             tm["value"],
                         )
                         page.wait_for_load_state("networkidle", timeout=30000)
-                        time.sleep(1)
+                        policy.delay()
                     except Exception:
                         logger.exception(f"⚠️ 팀 선택 실패 ({tm['text']})")
                         continue
@@ -914,7 +913,7 @@ def crawl_series_batting_stats(
                     page.click(pa_sort_link)
                     logger.info("✅ 타석(PA) 기준 정렬 적용")
                     page.wait_for_load_state("networkidle", timeout=30000)
-                    time.sleep(2)
+                    policy.delay()
                 else:
                     logger.warning("⚠️ 타석 정렬 버튼을 찾을 수 없습니다.")
 
@@ -946,7 +945,7 @@ def crawl_series_batting_stats(
                         break
 
                     page_num += 1
-                    time.sleep(1)
+                    policy.delay()
 
             # 정규시즌인 경우 Basic2 페이지에서 추가 데이터 수집
             if series_key == "regular" and all_players_data:
@@ -1014,6 +1013,7 @@ def crawl_all_series(
     Returns:
         시리즈별 수집된 데이터 딕셔너리
     """
+    policy = RequestPolicy()
     series_mapping = get_series_mapping()
     all_series_data = {}
 
@@ -1022,8 +1022,7 @@ def crawl_all_series(
         series_data = crawl_series_batting_stats(year, series_key, limit, save_to_db, headless, by_team=by_team)
         all_series_data[series_key] = series_data
 
-        # 시리즈 간 대기
-        time.sleep(3)
+        policy.delay()
 
     return all_series_data
 

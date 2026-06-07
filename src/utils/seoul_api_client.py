@@ -94,7 +94,7 @@ async def get_area_congestion(area_name: str) -> CongestionSnapshot | None:
             try:
                 people_count = (int(ppltn_max) + int(ppltn_min)) // 2
             except (ValueError, TypeError):
-                pass
+                logger.debug("Invalid people count values: max=%s min=%s", ppltn_max, ppltn_min)
 
         # Congestion index: map levels to 0~100
         index_map = {"low": 20.0, "normal": 50.0, "high": 75.0, "very_high": 95.0}

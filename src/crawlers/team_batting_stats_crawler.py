@@ -6,7 +6,6 @@ from __future__ import annotations
 
 import argparse
 import logging
-import time
 from typing import Any
 
 from bs4 import BeautifulSoup
@@ -147,9 +146,9 @@ class TeamBattingStatsCrawler:
                 try:
                     self.policy.delay()
                     self.policy.run_with_retry(page.goto, url, wait_until="networkidle", timeout=60000)
-                    time.sleep(0.5)
+                    self.policy.delay()
                     self._select_season(page, season)
-                    time.sleep(0.5)
+                    self.policy.delay()
                     html = page.content()
                     stats = parse_team_batting_html(html, season, self.league, team_mapping)
                     if stats:

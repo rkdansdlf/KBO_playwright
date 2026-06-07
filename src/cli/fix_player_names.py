@@ -12,11 +12,16 @@ import logging
 import os
 
 from src.crawlers.player_search_crawler import crawl_all_players, player_row_to_dict
-from src.db.engine import SessionLocal, get_oci_url, init_db
+from src.db.engine import SessionLocal, init_db
 from src.repositories.player_basic_repository import PlayerBasicRepository
 from src.utils.player_validation import filter_valid_player_payloads
 
 logger = logging.getLogger(__name__)
+
+
+def _configure_cli_logging() -> None:
+    if not logging.getLogger().handlers:
+        logging.basicConfig(level=logging.INFO, format="%(message)s")
 
 
 async def fix_player_names(
@@ -96,6 +101,7 @@ async def fix_player_names(
 
 
 def main():
+    _configure_cli_logging()
     parser = argparse.ArgumentParser(description="Fix player names by re-crawling from KBO website")
     parser.add_argument("--crawl", action="store_true", help="Crawl players from website")
     parser.add_argument("--save", action="store_true", help="Save to SQLite database")
