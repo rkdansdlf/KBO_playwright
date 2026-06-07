@@ -29,6 +29,11 @@ class _FakePolicy:
         return await func(*args, **kwargs)
 
 
+class _FakeElement:
+    async def click(self):
+        pass
+
+
 class _FakePage:
     def __init__(self):
         self.url = "about:blank"
@@ -42,6 +47,9 @@ class _FakePage:
 
     async def wait_for_selector(self, selector, timeout=None):
         self.selector_calls.append((selector, timeout))
+
+    async def query_selector(self, selector):
+        return _FakeElement()
 
     async def evaluate(self, script, *args):
         self.evaluate_calls.append((script, args))
@@ -157,7 +165,7 @@ def test_crawl_single_uses_review_fallback_when_direct_sections_are_empty(monkey
     monkeypatch.setattr(crawler, "_extract_hitters", fake_hitters)
     monkeypatch.setattr(crawler, "_extract_pitchers", fake_pitchers)
 
-    payload = asyncio.run(crawler._crawl_single(object(), "20250401LGSS0", "20250401"))
+    payload = asyncio.run(crawler._crawl_single(_FakePage(), "20250401LGSS0", "20250401"))
 
     assert payload is not None
     assert sections == ["REVIEW", "HITTER", "PITCHER"]
@@ -207,7 +215,7 @@ def test_crawl_single_marks_incomplete_detail_when_fallback_is_empty(monkeypatch
     monkeypatch.setattr(crawler, "_extract_hitters", empty_hitters)
     monkeypatch.setattr(crawler, "_extract_pitchers", empty_pitchers)
 
-    payload = asyncio.run(crawler._crawl_single(object(), "20250402LGSS0", "20250402"))
+    payload = asyncio.run(crawler._crawl_single(_FakePage(), "20250402LGSS0", "20250402"))
 
     assert payload is None
     assert crawler.get_last_failure_reason("20250402LGSS0") == "incomplete_detail"

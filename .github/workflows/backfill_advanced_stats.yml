@@ -21,19 +21,39 @@ jobs:
   backfill:
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
+
       - uses: ./.github/actions/python-env
         with:
           init-db: 'true'
 
-      - name: Run Advanced Stats Backfill
-        env:
-          OCI_DB_URL: ${{ secrets.OCI_DB_URL }}
+      - name: Resolve Season Year
+        id: params
         run: |
           YEAR="${{ github.event.inputs.year }}"
           if [ -z "$YEAR" ]; then
             YEAR="$(TZ='Asia/Seoul' date +'%Y')"
           fi
-          python3 -m src.cli.backfill_advanced_stats "$YEAR" regular
+          echo "year=${YEAR}" >> "$GITHUB_OUTPUT"
+
+      - name: Hydrate Runtime Cache From OCI
+        env:
+          OCI_DB_URL: ${{ secrets.OCI_DB_URL }}
+        run: |
+          python3 -m src.cli.hydrate_runtime_from_oci \
+            --year "${{ steps.params.outputs.year }}"
+
+      - name: Run Advanced Stats Backfill
+        env:
+          OCI_DB_URL: ${{ secrets.OCI_DB_URL }}
+        run: |
+          YEAR="${{ steps.params.outputs.year }}"
+          python3 -m src.cli.backfill_advanced_stats \
+            --years "$YEAR" \
+            --series regular
+          python3 -m src.cli.sync_oci \
+            --season-stats \
+            --year "$YEAR"
 
       - uses: ./.github/actions/notify
         if: always()

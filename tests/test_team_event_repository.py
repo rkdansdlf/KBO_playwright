@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 from sqlalchemy import create_engine
@@ -59,7 +59,7 @@ class TestTeamEventRepository:
                 "team_id": "LG",
                 "title": "LG 이벤트1",
                 "source_url": "u1",
-                "published_at": datetime.now(timezone.utc).replace(tzinfo=None),
+                "published_at": datetime.now(UTC).replace(tzinfo=None),
             }
         )
         repo.save(
@@ -68,7 +68,7 @@ class TestTeamEventRepository:
                 "team_id": "LG",
                 "title": "LG 이벤트2",
                 "source_url": "u2",
-                "published_at": datetime.now(timezone.utc).replace(tzinfo=None),
+                "published_at": datetime.now(UTC).replace(tzinfo=None),
             }
         )
         repo.save({"event_scope": "team", "team_id": "SS", "title": "SS 이벤트", "source_url": "u3"})

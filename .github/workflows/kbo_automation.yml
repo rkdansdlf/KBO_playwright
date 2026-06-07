@@ -33,6 +33,8 @@ jobs:
   run-phase:
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
+
       - uses: ./.github/actions/python-env
         with:
           playwright: 'true'
@@ -103,7 +105,12 @@ jobs:
             recalc-stats)
               YEAR="${TARGET_DATE:0:4}"
               python3 -m src.cli.recalc_season_stats --year "${YEAR}" --all --save
-              python3 -m src.cli.backfill_advanced_stats "${YEAR}" regular
+              python3 -m src.cli.backfill_advanced_stats \
+                --years "${YEAR}" \
+                --series regular
+              python3 -m src.cli.sync_oci \
+                --season-stats \
+                --year "${YEAR}"
               ;;
             *)
               echo "Unsupported phase: ${{ github.event.inputs.phase }}"
