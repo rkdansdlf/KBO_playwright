@@ -2,7 +2,7 @@
 Repository for TeamEvent operations.
 """
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from sqlalchemy import select, update
 from sqlalchemy.orm import Session
@@ -18,13 +18,13 @@ class TeamEventRepository:
         source_url = data.get("source_url")
         title = data.get("title", "")
         if source_url:
-            stmt = select(TeamEvent).where(TeamEvent.source_url == source_url)
+            stmt = select(TeamEvent).where(TeamEvent.source_url == source_url).limit(1)
             existing = self.session.execute(stmt).scalar_one_or_none()
             if existing:
                 for key, value in data.items():
                     if key not in ("source_url",) and value is not None:
                         setattr(existing, key, value)
-                existing.last_seen_at = datetime.now(timezone.utc).replace(tzinfo=None)
+                existing.last_seen_at = datetime.now(UTC).replace(tzinfo=None)
                 return existing
 
         stmt = select(TeamEvent).where(
@@ -36,7 +36,7 @@ class TeamEventRepository:
             for key, value in data.items():
                 if key not in ("team_id", "title") and value is not None:
                     setattr(existing, key, value)
-            existing.last_seen_at = datetime.now(timezone.utc).replace(tzinfo=None)
+            existing.last_seen_at = datetime.now(UTC).replace(tzinfo=None)
             return existing
 
         new_record = TeamEvent(**data)
@@ -53,7 +53,7 @@ class TeamEventRepository:
         return list(self.session.execute(stmt).scalars().all())
 
     def get_upcoming(self, limit: int = 50) -> list[TeamEvent]:
-        now = datetime.now(timezone.utc).replace(tzinfo=None)
+        now = datetime.now(UTC).replace(tzinfo=None)
         stmt = (
             select(TeamEvent)
             .where(

@@ -5,7 +5,7 @@ Crawler for KBO and team events/news from official team websites.
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from urllib.parse import urlparse
 
 import httpx
@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 
 TEAM_NEWS_SOURCES: dict[str, dict] = {
     "LG": {
-        "url": "https://www.lgtwins.com/service/announcement?pageNo={page}",
+        "url": "https://www.lgtwins.com/twins/feed/events?page={page}",
         "link_prefix": "https://www.lgtwins.com",
     },
     "HH": {
@@ -30,15 +30,17 @@ TEAM_NEWS_SOURCES: dict[str, dict] = {
         "link_prefix": "",
     },
     "OB": {
-        "url": "https://www.doosanbears.com/event/board?page={page}",
+        "url": "https://www.doosanbears.com/doosan/v1/web/doorun/events?page={page0}&size=8",
         "link_prefix": "https://www.doosanbears.com",
+        # Doosan's public API currently serves an incomplete TLS chain for Python's cert store.
+        "verify_ssl": False,
     },
     "SK": {
-        "url": "https://www.ssglanders.com/news/notice?pageIndex={page}",
+        "url": "https://www.ssglanders.com/media/news?page={page}",
         "link_prefix": "https://www.ssglanders.com",
     },
     "NC": {
-        "url": "https://www.ncdinos.com/notice?page={page}",
+        "url": "https://www.ncdinos.com/dinos/news.do?newsType=event&pageNo={page}",
         "link_prefix": "https://www.ncdinos.com",
     },
     "HT": {
@@ -58,8 +60,8 @@ TEAM_NEWS_SOURCES: dict[str, dict] = {
         "link_prefix": "https://www.ktwiz.co.kr",
     },
     "WO": {
-        "url": "https://www.heroesbaseball.co.kr/news/noticeList?page={page}",
-        "link_prefix": "https://www.heroesbaseball.co.kr",
+        "url": "https://www.heroesbaseball.co.kr/story/heroesNews/list.do?page={page}",
+        "link_prefix": "https://www.heroesbaseball.co.kr/story/heroesNews/",
     },
 }
 
@@ -107,9 +109,15 @@ class TeamEventCrawler:
 
     async def _crawl_team(self, team_code: str, config: dict) -> list[dict]:
         events = []
-        async with httpx.AsyncClient(headers=HEADERS, timeout=15, follow_redirects=True) as client:
+        seen_event_keys: set[tuple[str | None, str | None, str | None]] = set()
+        async with httpx.AsyncClient(
+            headers=HEADERS,
+            timeout=15,
+            follow_redirects=True,
+            verify=config.get("verify_ssl", True),
+        ) as client:
             for page in range(1, 4):
-                url = config["url"].format(page=page)
+                url = config["url"].format(page=page, page0=page - 1)
                 try:
                     host = urlparse(url).hostname or "koreabaseball.com"
                     await throttle.wait(host)
@@ -129,14 +137,22 @@ class TeamEventCrawler:
                     metadata = {
                         "url": url,
                         "cutoff_days": self.days_back,
-                        "fetched_at": datetime.now(timezone.utc).replace(tzinfo=None).isoformat(),
+                        "fetched_at": datetime.now(UTC).replace(tzinfo=None).isoformat(),
                     }
                     page_events = parse_team_events(html, source_key, metadata)
-                    events.extend(page_events)
-                    if not page_events:
+                    new_events = []
+                    for event in page_events:
+                        event_key = (event.get("team_id"), event.get("title"), event.get("source_url"))
+                        if event_key in seen_event_keys:
+                            continue
+                        seen_event_keys.add(event_key)
+                        new_events.append(event)
+
+                    events.extend(new_events)
+                    if not page_events or not new_events:
                         break
-                except httpx.HTTPError:
-                    logger.warning("Failed to fetch %s", url)
+                except httpx.HTTPError as exc:
+                    logger.warning("Failed to fetch %s: %s", url, exc)
                     continue
 
         return events
@@ -155,7 +171,7 @@ class TeamEventCrawler:
                         logger.exception("Event save failed: %s", item.get("title", "")[:50])
                 session.commit()
                 print(f"[EVENT] Saved {count} event records, {saved_snaps} snapshots.")
-            except Exception as e:
+            except Exception:
                 session.rollback()
                 logger.exception("Event batch save error")
             finally:

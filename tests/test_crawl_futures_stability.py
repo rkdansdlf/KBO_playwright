@@ -1,4 +1,5 @@
 import asyncio
+from datetime import datetime
 from types import SimpleNamespace
 
 import src.cli.crawl_futures as module
@@ -176,6 +177,64 @@ def test_crawl_futures_continues_when_player_processing_raises(monkeypatch):
     assert summary["ok"] is False
     assert summary["processed"] == 1
     assert summary["failure_counts"] == {"exception": 1}
+
+
+def test_crawl_futures_changed_since_skips_recent_futures_rows(monkeypatch):
+    cutoff = datetime(2026, 6, 3)
+
+    class _FakeQuery:
+        def __init__(self, rows):
+            self.rows = rows
+
+        def filter(self, *_args):
+            return self
+
+        def all(self):
+            return self.rows
+
+    class _FakeSession:
+        def __init__(self):
+            self.query_results = [
+                [
+                    SimpleNamespace(player_id=1001, updated_at=datetime(2026, 6, 7)),
+                    SimpleNamespace(player_id=1002, updated_at=datetime(2026, 6, 1)),
+                ],
+                [SimpleNamespace(player_id=1001, updated_at=datetime(2026, 6, 7))],
+            ]
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        def query(self, *_args):
+            return _FakeQuery(self.query_results.pop(0))
+
+    async def ids(_season, _delay):
+        return {
+            "1001": {"position": "hitter", "name": "PlayerA"},
+            "1002": {"position": "pitcher", "name": "PlayerB"},
+        }
+
+    processed = []
+
+    async def fake_process(pid, pos, name, *_args, **_kwargs):
+        processed.append((pid, pos, name))
+        return {"player_id": pid, "status": "success", "saved": 1, "failure_reason": None}
+
+    monkeypatch.setattr(module, "gather_active_player_ids", ids)
+    monkeypatch.setattr(module, "SessionLocal", lambda: _FakeSession())
+    monkeypatch.setattr(module, "process_player_result", fake_process)
+    monkeypatch.setattr(module, "PlayerRepository", lambda: object())
+    monkeypatch.setattr(module, "AsyncPlaywrightPool", _FakePool)
+
+    summary = asyncio.run(module.crawl_futures(_args(changed_since=cutoff.isoformat())))
+
+    assert processed == [("1002", "pitcher", "PlayerB")]
+    assert summary["ok"] is True
+    assert summary["processed"] == 1
+    assert summary["success_count"] == 1
 
 
 def test_crawl_futures_summary_groups_failure_reasons(monkeypatch):

@@ -13,10 +13,23 @@ from src.db.engine import SessionLocal
 from src.validators.quality_gate import run_quality_gate
 
 
+CATEGORY_LABELS = {
+    "batting": "Batting",
+    "pitching": "Pitching",
+    "pa_formula": "PA Formula",
+    "team_batting": "Team Batting",
+    "team_pitching": "Team Pitching",
+}
+
+
 def _print_category(category: str, result: dict) -> None:
     status = "PASSED" if result.get("ok") else "FAILED"
-    print(f"{category.capitalize()}: {status}")
-    print(f"  Checked Players: {result.get('checked_players', 0)}")
+    label = CATEGORY_LABELS.get(category, category.capitalize())
+    print(f"{label}: {status}")
+
+    is_team = category.startswith("team_")
+    checked_label = "Checked Teams" if is_team else "Checked Players"
+    print(f"  {checked_label}: {result.get('checked_players', 0)}")
 
     if result.get("error"):
         print(f"  Error: {result['error']}")
@@ -27,6 +40,15 @@ def _print_category(category: str, result: dict) -> None:
         for mismatch in mismatches[:5]:
             entity = mismatch.get("player_id") or mismatch.get("team_id") or "?"
             print(f"    - {entity}: {mismatch.get('issue')}")
+            diffs = mismatch.get("diffs")
+            if diffs:
+                for d in diffs[:3]:
+                    print(f"      {d}")
+                if len(diffs) > 3:
+                    print(f"      ... and {len(diffs) - 3} more diff entries")
+            for key in ("expected_pa", "actual_pa", "difference"):
+                if key in mismatch:
+                    print(f"      {key}: {mismatch[key]}")
         if len(mismatches) > 5:
             print(f"    - ... and {len(mismatches) - 5} more")
 

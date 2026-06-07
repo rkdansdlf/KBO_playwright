@@ -884,7 +884,7 @@ def crawl_all_futures_profiles():
 
             # Crawl Futures stats with recommended settings
             logger.info(f"Crawling Futures stats for active players in {current_year}")
-            crawl_futures_main(
+            summary = crawl_futures_main(
                 [
                     "--season",
                     str(current_year),
@@ -894,6 +894,16 @@ def crawl_all_futures_profiles():
                     "2.0",  # 2-second delay between requests
                 ]
             )
+            if not isinstance(summary, dict):
+                raise RuntimeError("Futures crawl did not return a summary")
+            if not summary.get("ok", False):
+                raise RuntimeError(
+                    "Futures crawl failed: "
+                    f"processed={summary.get('processed')} "
+                    f"success_count={summary.get('success_count')} "
+                    f"total_saved={summary.get('total_saved')} "
+                    f"failure_counts={summary.get('failure_counts')}"
+                )
 
             logger.info("=== Weekly Futures Profile Crawl Completed Successfully ===")
             alert_success("crawl_all_futures_profiles")

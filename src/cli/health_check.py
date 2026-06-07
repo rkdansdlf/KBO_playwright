@@ -26,7 +26,7 @@ TABLE_CHECKS = [
     ("parking_fee_rules", "parking_lot_id"),
     ("stadium_food_vendors", "last_verified_at"),
     ("stadium_food_menu_items", "vendor_id"),
-    ("team_standing", "snapshot_date"),
+    ("team_standings_daily", "standings_date"),
     ("stadium_transit_times", "measured_at"),
     ("stadium_congestion", "measured_at"),
     ("stadium_operation_notices", "published_at"),

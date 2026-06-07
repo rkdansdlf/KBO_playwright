@@ -1,6 +1,8 @@
 from datetime import datetime
 from types import SimpleNamespace
 
+import pytest
+
 import scripts.scheduler as scheduler
 import src.cli.generate_quality_report as generate_quality_report
 
@@ -90,6 +92,28 @@ def test_alert_success_includes_optional_details(monkeypatch):
     scheduler.alert_success("sample_job", "detail_failures=incomplete_detail=1")
 
     assert calls == ["✅ KBO Job sample_job completed successfully.\ndetail_failures=incomplete_detail=1"]
+
+
+def test_futures_scheduler_raises_on_failed_crawl_summary(monkeypatch):
+    monkeypatch.setattr(
+        scheduler,
+        "crawl_futures_main",
+        lambda _argv: {
+            "ok": False,
+            "processed": 5323,
+            "success_count": 0,
+            "total_saved": 0,
+            "failure_counts": {"exception": 5323},
+        },
+    )
+    monkeypatch.setattr(
+        scheduler,
+        "alert_success",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("success alert should not be sent")),
+    )
+
+    with pytest.raises(RuntimeError, match="Futures crawl failed"):
+        scheduler.crawl_all_futures_profiles.__wrapped__()
 
 
 def test_sync_from_oci_job_runs_hydration_for_current_year(monkeypatch):
@@ -289,6 +313,7 @@ def test_crawl_p0_non_game_job_invokes_unified_cli(monkeypatch):
 def test_health_and_freshness_checks_use_canonical_table_names():
     from src.cli import health_check, monitor_data_freshness
     from src.models.roster_transaction import RosterTransaction
+    from src.models.standings import TeamStandingsDaily
     from src.models.team_event import TeamEvent
     from src.models.ticket_open_rule import TicketOpenRule
     from src.models.ticket_price import TicketPrice
@@ -302,6 +327,7 @@ def test_health_and_freshness_checks_use_canonical_table_names():
     assert RosterTransaction.__tablename__ in health_tables
     assert TicketPrice.__tablename__ in health_tables
     assert TicketOpenRule.__tablename__ in health_tables
+    assert TeamStandingsDaily.__tablename__ in health_tables
 
 
 def test_main_registers_morning_jobs_with_expected_cron(monkeypatch):
