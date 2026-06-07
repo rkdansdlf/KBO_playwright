@@ -26,9 +26,9 @@ KBO_LIVE_SMOKE=1 KBO_LIVE_SMOKE_DATE=YYYYMMDD ./scripts/verification/crawler_rel
 
 ## Operational Commands
 ```bash
-./.venv/bin/python -m src.cli.run_daily_update --date YYYYMMDD --sync
-./.venv/bin/python -m src.cli.retry_daily_failures --date YYYYMMDD --dry-run
-./.venv/bin/python -m src.cli.retry_daily_failures --date YYYYMMDD --apply --sync
+./venv/bin/python -m src.cli.run_daily_update --date YYYYMMDD --sync
+./venv/bin/python -m src.cli.retry_daily_failures --date YYYYMMDD --dry-run
+./venv/bin/python -m src.cli.retry_daily_failures --date YYYYMMDD --apply --sync
 ```
 
 ## Rollback And Recovery

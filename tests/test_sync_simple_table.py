@@ -6,7 +6,7 @@ import pytest
 from sqlalchemy import Column, Integer, String, Text, create_engine
 from sqlalchemy.orm import Session, declarative_base
 
-from src.sync.sync_games import GameSyncMixin
+from src.sync.oci_sync import OCISync
 
 _Base = declarative_base()
 
@@ -30,12 +30,21 @@ def _build_session():
 
 
 def _build_syncer(session):
-    import types
-    syncer = object.__new__(GameSyncMixin)
+    syncer = object.__new__(OCISync)
     syncer.sqlite_session = session
     syncer.oci_engine = None
     syncer.target_session = None
     return syncer
+
+
+def _spy_bulk(syncer):
+    spy = {}
+    syncer._bulk_copy_upsert = lambda tbl, recs, keys, **kw: spy.update(tbl=tbl, recs=recs, keys=keys, kw=kw)
+    return spy
+
+
+def _target_exists(syncer, exists: bool = True):
+    syncer._target_table_exists = lambda _m: exists
 
 
 def _seed_sample(session, records: list[dict]):
@@ -60,257 +69,169 @@ def syncer(session):
 
 class TestSyncSimpleTable:
 
-    # -- basic happy path ------------------------------------------------
-
-    def test_syncs_all_records(self, syncer, session, monkeypatch):
-        _seed_sample(session, [
-            {"name": "a", "value": 1},
-            {"name": "b", "value": 2},
-        ])
-        captured = {}
-        monkeypatch.setattr(syncer, "_target_table_exists", lambda _m: True)
-        monkeypatch.setattr(syncer, "_bulk_copy_upsert",
-                            lambda tbl, recs, keys, **kw: captured.update(tbl=tbl, recs=recs, keys=keys))
-
+    def test_syncs_all_records(self, syncer, session):
+        _seed_sample(session, [{"name": "a", "value": 1}, {"name": "b", "value": 2}])
+        spy = _spy_bulk(syncer)
+        _target_exists(syncer)
         result = syncer.sync_simple_table(_SampleModel, ["name"])
         assert result == 2
-        assert captured["tbl"] == "sample_table"
-        assert captured["keys"] == ["name"]
+        assert spy["tbl"] == "sample_table"
+        assert spy["keys"] == ["name"]
+        assert len(spy["recs"]) == 2
 
-    def test_returns_0_when_table_missing(self, syncer, session, monkeypatch):
-        monkeypatch.setattr(syncer, "_target_table_exists", lambda _m: False)
-        result = syncer.sync_simple_table(_SampleModel, ["name"])
-        assert result == 0
+    def test_returns_0_when_table_missing(self, syncer, session):
+        _target_exists(syncer, False)
+        assert syncer.sync_simple_table(_SampleModel, ["name"]) == 0
 
-    def test_returns_0_when_no_records(self, syncer, session, monkeypatch):
-        syncer._target_table_exists = lambda _m: True
-        syncer._bulk_copy_upsert = lambda *a, **kw: None
-        result = syncer.sync_simple_table(_SampleModel, ["name"])
-        assert result == 0
+    def test_returns_0_when_no_records(self, syncer, session):
+        _target_exists(syncer)
+        _spy_bulk(syncer)
+        assert syncer.sync_simple_table(_SampleModel, ["name"]) == 0
 
-    # -- exclude_cols ----------------------------------------------------
-
-    def test_excludes_id_by_default(self, syncer, session, monkeypatch):
+    def test_excludes_id_by_default(self, syncer, session):
         _seed_sample(session, [{"name": "a"}])
-        captured = {}
-        monkeypatch.setattr(syncer, "_target_table_exists", lambda _m: True)
-        monkeypatch.setattr(syncer, "_bulk_copy_upsert",
-                            lambda tbl, recs, keys, **kw: captured.update(recs=recs))
+        spy = _spy_bulk(syncer)
+        _target_exists(syncer)
         syncer.sync_simple_table(_SampleModel, ["name"])
-        record = captured["recs"][0]
-        assert "id" not in record
+        assert "id" not in spy["recs"][0]
 
-    def test_exclude_cols_extended(self, syncer, session, monkeypatch):
+    def test_exclude_cols_extended(self, syncer, session):
         _seed_sample(session, [{"name": "a", "value": 99}])
-        captured = {}
-        monkeypatch.setattr(syncer, "_target_table_exists", lambda _m: True)
-        monkeypatch.setattr(syncer, "_bulk_copy_upsert",
-                            lambda tbl, recs, keys, **kw: captured.update(recs=recs))
+        spy = _spy_bulk(syncer)
+        _target_exists(syncer)
         syncer.sync_simple_table(_SampleModel, ["name"], exclude_cols=["value"])
-        record = captured["recs"][0]
+        record = spy["recs"][0]
         assert "id" not in record
         assert "value" not in record
         assert record["name"] == "a"
 
-    # -- filters ---------------------------------------------------------
-
-    def test_applies_filters(self, syncer, session, monkeypatch):
-        _seed_sample(session, [
-            {"name": "keep", "value": 1},
-            {"name": "skip", "value": 2},
-        ])
-        captured = {}
-        monkeypatch.setattr(syncer, "_target_table_exists", lambda _m: True)
-        monkeypatch.setattr(syncer, "_bulk_copy_upsert",
-                            lambda tbl, recs, keys, **kw: captured.update(recs=recs))
-        syncer.sync_simple_table(_SampleModel, ["name"], filters=[_SampleModel.value == 1])
-        assert len(captured["recs"]) == 1
-        assert captured["recs"][0]["name"] == "keep"
-
-    # -- NULL timestamp fill ---------------------------------------------
-
-    def test_null_created_at_filled(self, syncer, session, monkeypatch):
+    def test_exclude_cols_auto_adds_id(self, syncer, session):
         _seed_sample(session, [{"name": "a"}])
-        captured = {}
-        monkeypatch.setattr(syncer, "_target_table_exists", lambda _m: True)
-        monkeypatch.setattr(syncer, "_bulk_copy_upsert",
-                            lambda tbl, recs, keys, **kw: captured.update(recs=recs))
-        syncer.sync_simple_table(_SampleModel, ["name"])
-        record = captured["recs"][0]
-        assert record["created_at"] is not None
-        assert isinstance(record["created_at"], datetime)
+        spy = _spy_bulk(syncer)
+        _target_exists(syncer)
+        syncer.sync_simple_table(_SampleModel, ["name"], exclude_cols=[])
+        assert "id" not in spy["recs"][0]
 
-    def test_existing_created_at_preserved(self, syncer, session, monkeypatch):
+    def test_applies_filters(self, syncer, session):
+        _seed_sample(session, [{"name": "keep", "value": 1}, {"name": "skip", "value": 2}])
+        spy = _spy_bulk(syncer)
+        _target_exists(syncer)
+        syncer.sync_simple_table(_SampleModel, ["name"], filters=[_SampleModel.value == 1])
+        assert len(spy["recs"]) == 1
+        assert spy["recs"][0]["name"] == "keep"
+
+    def test_null_created_at_filled(self, syncer, session):
+        _seed_sample(session, [{"name": "a"}])
+        spy = _spy_bulk(syncer)
+        _target_exists(syncer)
+        syncer.sync_simple_table(_SampleModel, ["name"])
+        assert isinstance(spy["recs"][0]["created_at"], datetime)
+
+    def test_existing_created_at_preserved(self, syncer, session):
         dt = "2025-01-01T00:00:00"
         _seed_sample(session, [{"name": "a", "created_at": dt}])
-        captured = {}
-        monkeypatch.setattr(syncer, "_target_table_exists", lambda _m: True)
-        monkeypatch.setattr(syncer, "_bulk_copy_upsert",
-                            lambda tbl, recs, keys, **kw: captured.update(recs=recs))
+        spy = _spy_bulk(syncer)
+        _target_exists(syncer)
         syncer.sync_simple_table(_SampleModel, ["name"])
-        assert captured["recs"][0]["created_at"] == dt
+        assert spy["recs"][0]["created_at"] == dt
 
-    def test_null_updated_at_filled(self, syncer, session, monkeypatch):
+    def test_null_updated_at_filled(self, syncer, session):
         _seed_sample(session, [{"name": "a"}])
-        captured = {}
-        monkeypatch.setattr(syncer, "_target_table_exists", lambda _m: True)
-        monkeypatch.setattr(syncer, "_bulk_copy_upsert",
-                            lambda tbl, recs, keys, **kw: captured.update(recs=recs))
+        spy = _spy_bulk(syncer)
+        _target_exists(syncer)
         syncer.sync_simple_table(_SampleModel, ["name"])
-        assert isinstance(captured["recs"][0]["updated_at"], datetime)
+        assert isinstance(spy["recs"][0]["updated_at"], datetime)
 
-    # -- transform_fn ----------------------------------------------------
-
-    def test_transform_fn_applied(self, syncer, session, monkeypatch):
+    def test_transform_fn_applied(self, syncer, session):
         _seed_sample(session, [{"name": "hello", "value": 5}])
-        captured = {}
-        monkeypatch.setattr(syncer, "_target_table_exists", lambda _m: True)
-        monkeypatch.setattr(syncer, "_bulk_copy_upsert",
-                            lambda tbl, recs, keys, **kw: captured.update(recs=recs))
+        spy = _spy_bulk(syncer)
+        _target_exists(syncer)
 
         def upper_name(data):
             data["name"] = data["name"].upper()
             return data
 
         syncer.sync_simple_table(_SampleModel, ["name"], transform_fn=upper_name)
-        assert captured["recs"][0]["name"] == "HELLO"
+        assert spy["recs"][0]["name"] == "HELLO"
 
-    def test_transform_fn_adding_keys(self, syncer, session, monkeypatch):
+    def test_transform_fn_adding_keys(self, syncer, session):
         _seed_sample(session, [{"name": "a"}])
-        captured = {}
-        monkeypatch.setattr(syncer, "_target_table_exists", lambda _m: True)
-        monkeypatch.setattr(syncer, "_bulk_copy_upsert",
-                            lambda tbl, recs, keys, **kw: captured.update(recs=recs))
+        spy = _spy_bulk(syncer)
+        _target_exists(syncer)
 
         def add_key(data):
             data["extra"] = "x"
             return data
 
         syncer.sync_simple_table(_SampleModel, ["name"], transform_fn=add_key)
-        assert captured["recs"][0].get("extra") == "x"
+        assert spy["recs"][0].get("extra") == "x"
 
-    # -- JSON serialization ----------------------------------------------
+    def test_json_serialization_of_dict_objects(self, syncer, session):
+        _seed_sample(session, [{"name": "a"}])
+        spy = _spy_bulk(syncer)
+        _target_exists(syncer)
 
-    def test_dict_serialized_to_json(self, syncer, session, monkeypatch):
-        import json
-        _seed_sample(session, [{"name": "a", "payload": json.dumps({"key": "val"})}])
-        captured = {}
-        monkeypatch.setattr(syncer, "_target_table_exists", lambda _m: True)
-        monkeypatch.setattr(syncer, "_bulk_copy_upsert",
-                            lambda tbl, recs, keys, **kw: captured.update(recs=recs))
-        syncer.sync_simple_table(_SampleModel, ["name"])
-        # payload is a Text column, comes back as string → stays as string
-        # JSON serialization only applies to dict/list objects
-        assert isinstance(captured["recs"][0].get("payload"), str)
-
-    def test_dict_object_serialized(self, syncer, session, monkeypatch):
-        _seed_sample(session, [{"name": "a", "payload": None}])
-        captured = {}
-        monkeypatch.setattr(syncer, "_target_table_exists", lambda _m: True)
-        monkeypatch.setattr(syncer, "_bulk_copy_upsert",
-                            lambda tbl, recs, keys, **kw: captured.update(recs=recs))
-
-        # Manually set payload to a dict (simulates transform_fn returning a dict)
-        orig_bulk = syncer._bulk_copy_upsert
-
-        def capturing_bulk(tbl, recs, keys, **kw):
-            recs[0]["payload"] = {"nested": True}
-            return orig_bulk(tbl, recs, keys, **kw)
-
-        # We need to capture AFTER JSON serialization. Override _bulk_copy_upsert
-        # and inspect what sync_simple_table's local variable contains instead.
-        # Actually, let's just verify the JSON.dumps happens in the records building.
-        # We'll monkeypatch json.dumps to trace calls.
-        dumps_calls = []
-        import src.sync.sync_games as sg
-        monkeypatch.setattr(sg.json, "dumps", lambda v, **kw: (
-            dumps_calls.append(v), json.dumps(v, **kw))[1])
-
-        # Seed with a dict-like value won't work since SQLite Text returns str.
-        # Instead, use transform_fn to set a dict in the record.
         def inject_dict(data):
             data["payload"] = {"hello": "world"}
             return data
 
-        monkeypatch.setattr(syncer, "_target_table_exists", lambda _m: True)
-        monkeypatch.setattr(syncer, "_bulk_copy_upsert",
-                            lambda tbl, recs, keys, **kw: captured.update(recs=recs))
         syncer.sync_simple_table(_SampleModel, ["name"], transform_fn=inject_dict)
-        assert captured["recs"][0]["payload"] == '{"hello": "world"}'
-        assert any(isinstance(c, dict) for c in dumps_calls)
+        assert spy["recs"][0]["payload"] == '{"hello": "world"}'
 
-    # -- deduplication ---------------------------------------------------
+    def test_json_serialization_of_list_objects(self, syncer, session):
+        _seed_sample(session, [{"name": "a"}])
+        spy = _spy_bulk(syncer)
+        _target_exists(syncer)
 
-    def test_dedup_applied_with_conflict_keys(self, syncer, session, monkeypatch):
-        _seed_sample(session, [
-            {"name": "dup", "value": 1},
-        ])
-        captured = {}
-        monkeypatch.setattr(syncer, "_target_table_exists", lambda _m: True)
-        monkeypatch.setattr(syncer, "_bulk_copy_upsert",
-                            lambda tbl, recs, keys, **kw: captured.update(recs=recs))
+        def inject_list(data):
+            data["payload"] = [1, 2, 3]
+            return data
 
-        # override the query to return duplicates manually
-        # Just verify dedupe is called by checking conflict_keys passed
+        syncer.sync_simple_table(_SampleModel, ["name"], transform_fn=inject_list)
+        assert spy["recs"][0]["payload"] == "[1, 2, 3]"
 
-        # We can't easily inject duplicates via the query.
-        # Instead verify the dedupe module is imported and used:
-        # the _dedupe_records_for_conflict_keys is called inside sync_simple_table.
-        # We'll trust unit coverage of _dedupe_records_for_conflict_keys.
+    def test_passes_conflict_keys_to_bulk_copy(self, syncer, session):
+        _seed_sample(session, [{"name": "a"}])
+        spy = _spy_bulk(syncer)
+        _target_exists(syncer)
         syncer.sync_simple_table(_SampleModel, ["name"])
-        assert captured["keys"] == ["name"]
+        assert spy["keys"] == ["name"]
 
-    # -- update_timestamp -------------------------------------------------
-
-    def test_update_timestamp_true(self, syncer, session, monkeypatch):
+    def test_update_timestamp_true(self, syncer, session):
         _seed_sample(session, [{"name": "a"}])
-        kw_captured = {}
-        monkeypatch.setattr(syncer, "_target_table_exists", lambda _m: True)
-        monkeypatch.setattr(syncer, "_bulk_copy_upsert",
-                            lambda tbl, recs, keys, **kw: kw_captured.update(kw))
+        spy = _spy_bulk(syncer)
+        _target_exists(syncer)
         syncer.sync_simple_table(_SampleModel, ["name"], update_timestamp=True)
-        assert kw_captured.get("update_timestamp") is True
+        assert spy["kw"].get("update_timestamp") is True
 
-    def test_update_timestamp_false(self, syncer, session, monkeypatch):
+    def test_update_timestamp_false(self, syncer, session):
         _seed_sample(session, [{"name": "a"}])
-        kw_captured = {}
-        monkeypatch.setattr(syncer, "_target_table_exists", lambda _m: True)
-        monkeypatch.setattr(syncer, "_bulk_copy_upsert",
-                            lambda tbl, recs, keys, **kw: kw_captured.update(kw))
+        spy = _spy_bulk(syncer)
+        _target_exists(syncer)
         syncer.sync_simple_table(_SampleModel, ["name"], update_timestamp=False)
-        assert kw_captured.get("update_timestamp") is False
+        assert spy["kw"].get("update_timestamp") is False
 
-    # -- batch_size -------------------------------------------------------
+    def test_update_timestamp_default_depends_on_exclude_cols(self, syncer, session):
+        _seed_sample(session, [{"name": "a"}])
+        spy = _spy_bulk(syncer)
+        _target_exists(syncer)
+        syncer.sync_simple_table(_SampleModel, ["name"], exclude_cols=["updated_at"])
+        assert spy["kw"].get("update_timestamp") is False
 
-    def test_batch_size_respected(self, syncer, session, monkeypatch):
-        _seed_sample(session, [{"name": f"item{i}"} for i in range(5)])
-        call_count = 0
-        monkeypatch.setattr(syncer, "_target_table_exists", lambda _m: True)
-        monkeypatch.setattr(syncer, "_bulk_copy_upsert", lambda *a, **kw: call_count)
-        syncer.sync_simple_table(_SampleModel, ["name"], batch_size=2)
-        # 5 records / batch_size=2 = 3 batches (2 + 2 + 1)
-        # We can't easily count calls since lambda returns int, but we can
-        # track call count via a list:
-
-    def test_batch_splits_records(self, syncer, session, monkeypatch):
+    def test_batch_splits_records(self, syncer, session):
         _seed_sample(session, [{"name": f"n{i}"} for i in range(7)])
         batches = []
-        monkeypatch.setattr(syncer, "_target_table_exists", lambda _m: True)
-        monkeypatch.setattr(syncer, "_bulk_copy_upsert",
-                            lambda tbl, recs, keys, **kw: batches.append(len(recs)))
+        _target_exists(syncer)
+        syncer._bulk_copy_upsert = lambda tbl, recs, keys, **kw: batches.append(len(recs))
         syncer.sync_simple_table(_SampleModel, ["name"], batch_size=3)
         assert batches == [3, 3, 1]
 
-    # -- no compatible columns -------------------------------------------
-
-    def test_no_compatible_columns_returns_0(self, syncer, session, monkeypatch):
+    def test_no_compatible_columns_returns_0(self, syncer, session):
         _seed_sample(session, [{"name": "a"}])
-        monkeypatch.setattr(syncer, "_target_table_exists", lambda _m: True)
-
-        # Exclude all columns to trigger the "No compatible columns" path
+        _target_exists(syncer)
+        _spy_bulk(syncer)
         result = syncer.sync_simple_table(
             _SampleModel, ["name"],
             exclude_cols=["id", "name", "value", "payload", "created_at", "updated_at"],
         )
         assert result == 0
-    # noqa: E501

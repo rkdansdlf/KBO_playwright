@@ -58,7 +58,7 @@ def write_summary(input_path: Path, output_path: Path, counts: dict[str, int]) -
             "## Raw Drop Reminder",
             "- Drop recovered files under `data/recovery/raw/json_archive`, `html_archive`, or `manual_text`.",
             "- Prefix filenames with `game_id`.",
-            "- Then run `./.venv/bin/python scripts/maintenance/build_source_manifest_from_raw_drop.py`.",
+            "- Then run `./venv/bin/python scripts/maintenance/build_source_manifest_from_raw_drop.py`.",
         ]
     )
     output_path.parent.mkdir(parents=True, exist_ok=True)
