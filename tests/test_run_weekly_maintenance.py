@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-from types import SimpleNamespace
 
 import src.cli.run_weekly_maintenance as weekly
 
@@ -72,9 +71,9 @@ def test_weekly_maintenance_syncs_player_basic_before_players(monkeypatch):
     monkeypatch.setattr(weekly, "collect_profiles", _collect_profiles)
     monkeypatch.setattr(weekly, "healthcheck_main", lambda _argv: None)
     monkeypatch.setattr(
-        weekly.subprocess,
-        "run",
-        lambda *_args, **_kwargs: SimpleNamespace(returncode=0, stdout="", stderr=""),
+        weekly,
+        "cleanup_oci_duplicates",
+        lambda *, database_url, apply: {"non_primary_games_before": 0, "game": 0, "non_primary_games_after": 0},
     )
     monkeypatch.setattr("src.crawlers.team_event_crawler.TeamEventCrawler", FakeTeamEventCrawler)
     monkeypatch.setattr("src.crawlers.fan_culture_crawler.FanCultureCrawler", FakeFanCultureCrawler)

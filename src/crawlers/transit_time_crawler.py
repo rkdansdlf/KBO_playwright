@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 
 from src.db.engine import SessionLocal
 from src.repositories.transit_time_repository import TransitTimeRepository
@@ -97,7 +97,7 @@ class TransitTimeCrawler:
             save: Persist results to the database.
         """
         game_date = game_date or date.today()
-        measured_at = datetime.utcnow()
+        measured_at = datetime.now(timezone.utc).replace(tzinfo=None)
 
         print(f"[Transit] Measuring {len(self.origins)} origins for {game_date} at {measured_at.strftime('%H:%M')} UTC")
 

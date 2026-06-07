@@ -5,7 +5,7 @@ Crawler for KBO and team events/news from official team websites.
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from urllib.parse import urlparse
 
 import httpx
@@ -129,7 +129,7 @@ class TeamEventCrawler:
                     metadata = {
                         "url": url,
                         "cutoff_days": self.days_back,
-                        "fetched_at": datetime.utcnow().isoformat(),
+                        "fetched_at": datetime.now(timezone.utc).replace(tzinfo=None).isoformat(),
                     }
                     page_events = parse_team_events(html, source_key, metadata)
                     events.extend(page_events)

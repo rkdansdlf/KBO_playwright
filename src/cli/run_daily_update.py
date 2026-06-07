@@ -21,6 +21,8 @@ from zoneinfo import ZoneInfo
 
 from sqlalchemy import or_, select
 
+from scripts.legacy.maintenance.audit_game_status_integrity import audit_game_status
+from scripts.legacy.quality_gate import run_quality_gate as run_legacy_quality_gate
 from src.cli.auto_healer import run_healer_async
 from src.crawlers.daily_roster_crawler import DailyRosterCrawler
 from src.crawlers.game_detail_crawler import GameDetailCrawler
@@ -250,6 +252,39 @@ def _run_python_step(argv: Sequence[str]) -> None:
     import subprocess
 
     subprocess.run([sys.executable, *argv], check=True)
+
+
+def _run_game_status_integrity_audit() -> None:
+    violations = audit_game_status()
+    if not violations:
+        return
+
+    sample = "; ".join(
+        f"{item.get('game_id')} {item.get('game_date')} {item.get('status')}: {item.get('reason')}"
+        for item in violations[:5]
+    )
+    if len(violations) > 5:
+        sample = f"{sample}; ... and {len(violations) - 5} more"
+    raise RuntimeError(f"{len(violations)} game status integrity violations found: {sample}")
+
+
+def _run_oci_parity_quality_gate() -> dict[str, Any]:
+    result = run_legacy_quality_gate(
+        baseline_path=PROJECT_ROOT / "Docs" / "quality_gate_baseline.json",
+        output_dir=PROJECT_ROOT / "data",
+        oci_url=os.getenv("OCI_DB_URL"),
+        skip_oci=False,
+        oci_only=False,
+        write_artifacts=True,
+        strict_zero=False,
+    )
+    if not result.get("ok"):
+        failures = result.get("failures") or []
+        detail = "; ".join(str(item) for item in failures[:5]) if failures else "unknown failure"
+        if len(failures) > 5:
+            detail = f"{detail}; ... and {len(failures) - 5} more"
+        raise RuntimeError(detail)
+    return result
 
 
 def _collect_past_scheduled_recovery_targets(today: date) -> list[dict[str, str]]:
@@ -807,11 +842,11 @@ async def run_update(
 
         print("\n🕵️  Step 11.5: Local game status integrity audit...")
         try:
-            runner(["scripts/legacy/maintenance/audit_game_status_integrity.py", "--fail"])
+            _run_game_status_integrity_audit()
             print("   ✅ Local integrity audit passed")
-        except subprocess.CalledProcessError as exc:
+        except Exception as exc:
             print(f"   ❌ Local integrity audit FAILED: {exc}")
-            raise RuntimeError("Aborting OCI sync due to local data integrity violations.")
+            raise RuntimeError("Aborting OCI sync due to local data integrity violations.") from exc
 
         print("\n⚖️ Step 12: Statistical quality gate check...")
         try:
@@ -880,9 +915,9 @@ async def run_update(
 
         print("\n⚖️ Step 13.6: OCI parity quality gate check...")
         try:
-            runner(["scripts/legacy/quality_gate.py"])
+            _run_oci_parity_quality_gate()
             print("   ✅ OCI parity check complete")
-        except subprocess.CalledProcessError as exc:
+        except Exception as exc:
             reason = "non_p0_oci_parity_quality_gate_failed"
             non_p0_quality_gate_counts[reason] = non_p0_quality_gate_counts.get(reason, 0) + 1
             non_p0_quality_gate_ids.setdefault(reason, []).append("oci")

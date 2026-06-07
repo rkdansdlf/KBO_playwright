@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Callable
 
 
@@ -30,7 +30,7 @@ class GameWriteContract:
         log: Callable[[str], None] | None = None,
         log_duplicate_fields: bool = False,
     ) -> None:
-        self.run_label = run_label or f"game-write:{datetime.utcnow():%Y%m%dT%H%M%SZ}"
+        self.run_label = run_label or f"game-write:{datetime.now(timezone.utc).replace(tzinfo=None):%Y%m%dT%H%M%SZ}"
         self.log = log
         self.log_duplicate_fields = log_duplicate_fields
         self.claimed_games: dict[str, set[GameWriteSource]] = {}

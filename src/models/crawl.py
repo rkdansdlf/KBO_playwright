@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 
 from sqlalchemy import DateTime, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column
@@ -20,4 +20,4 @@ class CrawlRun(Base):
     staff_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     confirmed_profiles: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     heuristic_only: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
-    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None))

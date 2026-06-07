@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import argparse
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Sequence
 from zoneinfo import ZoneInfo
 
@@ -47,7 +47,7 @@ def check_freshness(dry_run: bool = False) -> list[str]:
     with SessionLocal() as session:
         ds_repo = DataSourceRepository(session)
         all_active = ds_repo.get_all_active()
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc).replace(tzinfo=None)
 
         for source in all_active:
             if source.last_success_at is None:

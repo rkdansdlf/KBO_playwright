@@ -17,6 +17,8 @@ from collections import Counter
 from datetime import datetime
 from typing import Sequence
 
+from sqlalchemy import select
+
 from src.crawlers.futures.futures_batting import fetch_and_parse_futures_batting
 from src.crawlers.futures.futures_pitching import fetch_and_parse_futures_pitching
 from src.crawlers.player_list_crawler import PlayerListCrawler
@@ -40,10 +42,9 @@ def _has_player_basic(player_id: str) -> bool:
         return False
 
     with SessionLocal() as session:
-        return (
-            session.query(PlayerBasic.player_id).filter(PlayerBasic.player_id == player_id_db).scalar_one_or_none()
-            is not None
-        )
+        return session.execute(
+            select(PlayerBasic.player_id).where(PlayerBasic.player_id == player_id_db)
+        ).scalar_one_or_none() is not None
 
 
 async def gather_active_player_ids(season_year: int, delay: float) -> dict[str, dict[str, str]]:

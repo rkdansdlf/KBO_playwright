@@ -9,11 +9,10 @@ import argparse
 import asyncio
 import logging
 import os
-import subprocess
-import sys
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
+from scripts.legacy.maintenance.cleanup_oci import cleanup_oci_duplicates
 from src.cli.collect_profiles import collect_profiles
 from src.cli.db_healthcheck import main as healthcheck_main
 from src.db.engine import SessionLocal
@@ -76,15 +75,10 @@ async def run_weekly_maintenance(
         print("   ⚠️ OCI_DB_URL not set, skipping cleanup")
     else:
         try:
-            # We call the script via subprocess to handle its own imports/setup if needed,
-            # or just call its logic if easily importable.
-            # cleanup_oci.py is in scripts/legacy/maintenance/
-            cmd = [sys.executable, "scripts/legacy/maintenance/cleanup_oci.py", "--apply"]
-            result = subprocess.run(cmd, capture_output=True, text=True)
-            if result.returncode == 0:
-                print(f"   ✅ OCI Cleanup output:\n{result.stdout}")
-            else:
-                print(f"   ❌ OCI Cleanup failed:\n{result.stderr}")
+            counts = cleanup_oci_duplicates(database_url=oci_url, apply=True)
+            print("   ✅ OCI Cleanup committed:")
+            for key, value in counts.items():
+                print(f"      {key}: {value}")
         except Exception:
             logger.exception("   ❌ Error during OCI cleanup")
 

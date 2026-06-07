@@ -3,14 +3,15 @@ Sync validated data from SQLite to OCI (Oracle Cloud Infrastructure) PostgreSQL
 Dual-repository pattern: SQLite (dev/validation) → OCI (production)
 """
 
+import json
 import logging
 import time
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Callable
 
-from sqlalchemy import bindparam, create_engine, text
-from sqlalchemy.exc import DBAPIError, OperationalError
+from sqlalchemy import bindparam, create_engine, inspect, text
+from sqlalchemy.exc import DBAPIError, OperationalError, SQLAlchemyError
 from sqlalchemy.orm import Session, sessionmaker
 
 from src.models.game import (
@@ -467,6 +468,14 @@ class OCISyncBase:
     def _chunked(items: list[str], size: int) -> list[list[str]]:
         return [items[idx : idx + size] for idx in range(0, len(items), size)]
 
+    def _target_table_exists(self, model: type) -> bool:
+        if not getattr(self, "oci_engine", None):
+            return True
+        try:
+            return inspect(self.oci_engine).has_table(model.__tablename__)
+        except SQLAlchemyError:
+            return True
+
     @staticmethod
     def _quote_identifier(identifier: str) -> str:
         if not identifier:
@@ -693,6 +702,118 @@ class OCISyncBase:
                 )
                 self._reconnect_oci()
                 time.sleep(wait_seconds)
+
+    def sync_simple_table(
+        self,
+        model: type,
+        conflict_keys: list[str],
+        exclude_cols: list[str] = None,
+        filters: list = None,
+        transform_fn: Callable | None = None,
+        batch_size: int = 10000,
+        update_timestamp: bool | None = None,
+    ) -> int:
+        """Generic sync parameter for simple tables using Batched UPSERT or COPY."""
+        if exclude_cols is None:
+            exclude_cols = ["id"]  # Default to exclude ID for auto-inc compatibility
+        elif "id" not in exclude_cols:
+            exclude_cols.append("id")
+
+        if not self._target_table_exists(model):
+            print(f"ℹ️ Skipping missing OCI table: {model.__tablename__}")
+            return 0
+
+        # Use all columns except those explicitly excluded and not present in target DB.
+        if getattr(self, "oci_engine", None) is not None:
+            target_column_defs = {c["name"]: c for c in inspect(self.oci_engine).get_columns(model.__tablename__)}
+            target_columns = set(target_column_defs)
+        else:
+            target_column_defs = {}
+            target_columns = {c.key for c in model.__table__.columns}
+
+        sqlite_bind = None
+        if hasattr(self.sqlite_session, "get_bind"):
+            try:
+                sqlite_bind = self.sqlite_session.get_bind()
+            except SQLAlchemyError:
+                pass
+
+        if sqlite_bind is not None:
+            try:
+                local_columns = {c["name"] for c in inspect(sqlite_bind).get_columns(model.__tablename__)}
+            except SQLAlchemyError:
+                local_columns = set()
+        else:
+            local_columns = {c.key for c in model.__table__.columns}
+
+        columns = [
+            c.key
+            for c in model.__table__.columns
+            if c.key not in exclude_cols and c.key in target_columns and c.key in local_columns
+        ]
+        if model.__tablename__ == "game_metadata" and "source_payload" in columns and "source_payload" in target_column_defs:
+            source_payload_type = target_column_defs["source_payload"].get("type")
+            source_payload_length = getattr(source_payload_type, "length", None)
+            if source_payload_length and source_payload_length <= 255:
+                columns.remove("source_payload")
+                print("ℹ️ Skipping game_metadata.source_payload for legacy OCI varchar column")
+        if not columns:
+            print(f"ℹ️ No compatible columns for {model.__tablename__}")
+            return 0
+
+        query = self.sqlite_session.query(*[getattr(model, column) for column in columns])
+        if filters:
+            query = query.filter(*filters)
+
+        total_count = query.count()
+        if total_count == 0:
+            print(f"ℹ️  No records for {model.__tablename__}")
+            return 0
+
+        print(f"🚚 Syncing {model.__tablename__} ({total_count} rows, batch={batch_size})...")
+
+        # Always use Bulk COPY Upsert to be safe from schema mismatches (e.g. created_at/updated_at missing on OCI).
+        synced = 0
+        for offset in range(0, total_count, batch_size):
+            rows = query.offset(offset).limit(batch_size).all()
+            records = []
+            for row in rows:
+                mapping = getattr(row, "_mapping", None)
+                if mapping is not None:
+                    data = {c: mapping[c] for c in columns if c in mapping}
+                else:
+                    data = {c: getattr(row, c) for c in columns if hasattr(row, c)}
+
+                # Ensure created_at/updated_at are never null if the table requires them.
+                now = datetime.now()
+                if "created_at" in columns and data.get("created_at") is None:
+                    data["created_at"] = now
+                if "updated_at" in columns and data.get("updated_at") is None:
+                    data["updated_at"] = now
+
+                if transform_fn:
+                    data = transform_fn(data)
+
+                for k, v in data.items():
+                    if isinstance(v, (dict, list)):
+                        data[k] = json.dumps(v, ensure_ascii=False)
+                records.append(data)
+
+            # Deduplicate records to avoid Postgres "affect row a second time"
+            # errors, while preserving SQL's distinct-NULL unique semantics.
+            records = _dedupe_records_for_conflict_keys(records, conflict_keys)
+
+            if update_timestamp is None:
+                effective_update_timestamp = "updated_at" not in exclude_cols
+            else:
+                effective_update_timestamp = update_timestamp
+            self._bulk_copy_upsert(
+                model.__tablename__, records, conflict_keys, update_timestamp=effective_update_timestamp
+            )
+            synced += len(records)
+            print(f"   Synced {synced}/{total_count} rows via COPY...")
+
+        return synced
 
     def _do_bulk_copy_upsert(
         self,

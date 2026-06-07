@@ -27,6 +27,47 @@ class _FakeRepository:
         return self.player
 
 
+def test_has_player_basic_uses_sqlalchemy_2_execute(monkeypatch):
+    class _FakeResult:
+        def __init__(self, value):
+            self.value = value
+
+        def scalar_one_or_none(self):
+            return self.value
+
+    class _FakeSession:
+        def __init__(self, value):
+            self.value = value
+            self.execute_calls = 0
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        def execute(self, _stmt):
+            self.execute_calls += 1
+            return _FakeResult(self.value)
+
+        def query(self, *_args, **_kwargs):
+            raise AssertionError("legacy query() should not be used")
+
+    sessions = []
+    results = iter([1234, None])
+
+    def fake_session_local():
+        session = _FakeSession(next(results))
+        sessions.append(session)
+        return session
+
+    monkeypatch.setattr(module, "SessionLocal", fake_session_local)
+
+    assert module._has_player_basic("1234") is True
+    assert module._has_player_basic("5678") is False
+    assert [session.execute_calls for session in sessions] == [1, 1]
+
+
 def _args(**overrides):
     defaults = {
         "season": 2025,
