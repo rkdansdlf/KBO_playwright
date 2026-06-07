@@ -66,11 +66,12 @@ async def backfill(limit: int, delay: float, ids: list[str] | None = None):
                     profile["name"] = p.name
                     # Update DB
                     repo.upsert_players([profile])
-                    
+
                     # Update detailed players table
                     try:
-                        from src.repositories.player_repository import PlayerRepository
                         from src.parsers.player_profile_parser import PlayerProfileParsed
+                        from src.repositories.player_repository import PlayerRepository
+
                         detailed_repo = PlayerRepository()
                         parsed = PlayerProfileParsed(
                             player_id=int(p.player_id),

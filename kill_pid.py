@@ -1,7 +1,9 @@
 import os
 import sys
+
 import psycopg2
 from dotenv import load_dotenv
+
 
 def main():
     if len(sys.argv) < 2:
@@ -24,6 +26,7 @@ def main():
             print(f"Result: {result}")
     finally:
         conn.close()
+
 
 if __name__ == "__main__":
     main()

@@ -35,14 +35,14 @@ def _compact_date(d) -> str
 ```
 Phase 1 — Detail backfill (기존):
   _find_detail_gaps() → run_daily_update_main(["--date", date])
-  
+
 Phase 2 — PBP/relay backfill (신규):
   _find_pbp_gaps() → run_daily_update_main(["--date", date])
   (Phase 1에서 이미 처리된 날짜는 스킵)
-  
+
 Phase 3 — Pregame preview backfill (신규):
   _find_preview_gaps() → asyncio.run(run_preview_batch(date))
-  
+
 Phase 4 — Player profile backfill (신규):
   _find_player_profile_gaps() → asyncio.run(backfill(limit=5, delay=2.0, ids=batch))
   (사이클당 최대 5명으로 rate-limit)

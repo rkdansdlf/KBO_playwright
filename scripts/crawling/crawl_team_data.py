@@ -72,6 +72,7 @@ async def main():
     except Exception as e:
         print(f"❌ TeamHistoryCrawler Failed: {e}")
         import traceback
+
         traceback.print_exc()
     finally:
         await hist_crawler.close()

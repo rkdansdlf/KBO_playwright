@@ -13,12 +13,8 @@ load_dotenv()
 
 # Paths to files
 DB_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "kbo_dev.db")
-SQLITE_MIGRATION_SQL = os.path.join(
-    os.path.dirname(__file__), "sqlite", "018_add_player_parsed_profile_fields.sql"
-)
-OCI_MIGRATION_SQL = os.path.join(
-    os.path.dirname(__file__), "oci", "040_add_player_parsed_profile_fields.sql"
-)
+SQLITE_MIGRATION_SQL = os.path.join(os.path.dirname(__file__), "sqlite", "018_add_player_parsed_profile_fields.sql")
+OCI_MIGRATION_SQL = os.path.join(os.path.dirname(__file__), "oci", "040_add_player_parsed_profile_fields.sql")
 
 # New columns configuration
 NEW_COLUMNS = [
@@ -57,7 +53,7 @@ def migrate_sqlite():
     # Apply SQLite indexes SQL
     if os.path.exists(SQLITE_MIGRATION_SQL):
         print(" [RUN] Applying indexes from SQL file...")
-        with open(SQLITE_MIGRATION_SQL, "r", encoding="utf-8") as f:
+        with open(SQLITE_MIGRATION_SQL, encoding="utf-8") as f:
             sql_script = f.read()
         cursor.executescript(sql_script)
         print("  SQLite indexes verified/created.")
@@ -80,7 +76,7 @@ def migrate_oci():
         print(f" [ERROR] OCI migration SQL file not found at {OCI_MIGRATION_SQL}")
         return
 
-    with open(OCI_MIGRATION_SQL, "r", encoding="utf-8") as f:
+    with open(OCI_MIGRATION_SQL, encoding="utf-8") as f:
         sql_script = f.read()
 
     engine = create_engine(url)
