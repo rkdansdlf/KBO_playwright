@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 import sys
 from datetime import datetime
 from typing import Sequence
@@ -18,6 +19,9 @@ from src.db.engine import SessionLocal
 from src.models.game import Game
 from src.services.context_aggregator import ContextAggregator
 from src.utils.game_status import COMPLETED_LIKE_GAME_STATUSES
+from src.utils.safe_print import safe_print as print
+
+logger = logging.getLogger(__name__)
 
 
 def _game_ids_for_date(session, target_date: str) -> list[str]:

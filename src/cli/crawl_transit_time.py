@@ -11,10 +11,13 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import logging
 from datetime import datetime
 from typing import Sequence
 
 from src.crawlers.transit_time_crawler import JAMSIL_ORIGINS, TransitTimeCrawler
+
+logger = logging.getLogger(__name__)
 
 
 async def run(args: argparse.Namespace) -> None:
@@ -26,8 +29,8 @@ async def run(args: argparse.Namespace) -> None:
     if args.origin:
         origins = [o for o in JAMSIL_ORIGINS if o["label"] == args.origin]
         if not origins:
-            print(f"Unknown origin: {args.origin}")
-            print("Available:", [o["label"] for o in JAMSIL_ORIGINS])
+            logger.info(f"Unknown origin: {args.origin}")
+            logger.info("Available:", [o["label"] for o in JAMSIL_ORIGINS])
             return
 
     crawler = TransitTimeCrawler(origins=origins)

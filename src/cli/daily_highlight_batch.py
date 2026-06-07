@@ -18,7 +18,6 @@ from src.models.game import Game, GameHighlight
 from src.sync.oci_sync import OCISync
 from src.utils.alerting import SlackWebhookClient
 from src.utils.game_status import COMPLETED_LIKE_GAME_STATUSES
-from src.utils.safe_print import safe_print as print
 
 logger = logging.getLogger(__name__)
 
@@ -31,12 +30,12 @@ async def run_highlight_batch(
     sync_to_oci: bool | None = None,
     notify: bool = True,
 ) -> list[str]:
-    print(f"🎬 Starting Daily Highlight Batch for {target_date_str}...")
+    logger.info(f"🎬 Starting Daily Highlight Batch for {target_date_str}...")
 
     try:
         target_date = datetime.strptime(target_date_str, "%Y%m%d").date()
     except ValueError:
-        print(f"❌ Invalid date format: {target_date_str}. Expected YYYYMMDD.")
+        logger.exception(f"❌ Invalid date format: {target_date_str}. Expected YYYYMMDD.")
         return []
 
     processed_game_ids: list[str] = []
@@ -55,7 +54,7 @@ async def run_highlight_batch(
         )
 
         if not games:
-            print(f"ℹ️ No completed games found for {target_date_str}.")
+            logger.info(f"ℹ️ No completed games found for {target_date_str}.")
             return []
 
         aggregator = HighlightAggregator(session)
@@ -68,28 +67,28 @@ async def run_highlight_batch(
             if not force and not dry_run:
                 exists = session.query(GameHighlight).filter(GameHighlight.game_id == game_id).first() is not None
                 if exists:
-                    print(f"   ⏩ Skipping {game_id}: Highlights already exist (use --force to overwrite)")
+                    logger.info(f"   ⏩ Skipping {game_id}: Highlights already exist (use --force to overwrite)")
                     # Load existing highlights for notification purposes
                     existing = session.query(GameHighlight).filter(GameHighlight.game_id == game_id).all()
                     game_highlights_map[game_id] = existing
                     processed_game_ids.append(game_id)
                     continue
 
-            print(f"📊 Aggregating highlights for {game_id} ({game.away_team} vs {game.home_team})...")
+            logger.info(f"📊 Aggregating highlights for {game_id} ({game.away_team} vs {game.home_team})...")
             highlights = aggregator.aggregate_game_highlights(game_id)
 
             if not highlights:
-                print(f"   ⚠️ No significant highlight plays found for {game_id}.")
+                logger.warning(f"   ⚠️ No significant highlight plays found for {game_id}.")
                 continue
 
-            print(f"   ✨ Generated {len(highlights)} highlights.")
+            logger.info(f"   ✨ Generated {len(highlights)} highlights.")
             game_highlights_map[game_id] = highlights
 
             if not dry_run:
                 saved_count = aggregator.save_highlights(game_id, highlights)
-                print(f"   💾 Saved {saved_count} highlights to local DB.")
+                logger.info(f"   💾 Saved {saved_count} highlights to local DB.")
             else:
-                print("   🧪 [DRY-RUN] Highlights not saved.")
+                logger.info("   🧪 [DRY-RUN] Highlights not saved.")
 
             processed_game_ids.append(game_id)
 
@@ -98,7 +97,7 @@ async def run_highlight_batch(
     if should_sync and processed_game_ids and not dry_run:
         oci_url = os.getenv("OCI_DB_URL")
         if oci_url:
-            print(f"🔄 Syncing highlights for {len(processed_game_ids)} games to OCI PostgreSQL...")
+            logger.info(f"🔄 Syncing highlights for {len(processed_game_ids)} games to OCI PostgreSQL...")
             with SessionLocal() as sync_session:
                 syncer = OCISync(oci_url, sync_session)
                 try:
@@ -106,7 +105,6 @@ async def run_highlight_batch(
                         syncer.sync_specific_game(game_id)
                 except Exception as e:
                     logger.error(f"OCI Sync failed: {e}", exc_info=True)
-                    print(f"❌ OCI Sync failed: {e}")
                 finally:
                     syncer.close()
 
@@ -161,17 +159,17 @@ async def run_highlight_batch(
             message += "- 없음 (이벤트 WPA 데이터 불충분)\n"
 
         if dry_run:
-            print("\n🧪 [DRY-RUN] Telegram message content:")
-            print(message)
+            logger.info("\n🧪 [DRY-RUN] Telegram message content:")
+            logger.info(message)
         else:
-            print("📣 Sending Telegram notification summary...")
+            logger.info("📣 Sending Telegram notification summary...")
             sent = SlackWebhookClient.send_alert(message)
             if sent:
-                print("   ✅ Telegram alert sent successfully.")
+                logger.info("   ✅ Telegram alert sent successfully.")
             else:
-                print("   ⚠️ Failed to send Telegram alert.")
+                logger.warning("   ⚠️ Failed to send Telegram alert.")
 
-    print(f"✅ Highlight batch finished. Processed={len(processed_game_ids)} games.")
+    logger.info(f"✅ Highlight batch finished. Processed={len(processed_game_ids)} games.")
     return processed_game_ids
 
 

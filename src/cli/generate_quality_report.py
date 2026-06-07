@@ -33,6 +33,8 @@ from src.utils.game_status import COMPLETED_LIKE_GAME_STATUSES
 from src.validators.quality_gate import run_quality_gate
 from src.validators.standings_integrity import validate_standings_integrity
 
+logger = logging.getLogger(__name__)
+
 _KST = ZoneInfo("Asia/Seoul")
 _LOGGER = logging.getLogger(__name__)
 _PLAYER_BASIC_NEW_PLAYER_COLUMNS = {"player_id", "name", "created_at"}
@@ -776,7 +778,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     with open(log_dir / f"{target_date}.json", "w", encoding="utf-8") as f:
         json.dump(report_json, f, indent=2, ensure_ascii=False)
 
-    print(f"✅ Quality report saved to {log_dir}/{target_date}.json")
+    logger.info(f"✅ Quality report saved to {log_dir}/{target_date}.json")
 
     # Telegram Notification
     telegram_msg = format_telegram_report(metrics, gate_result)
@@ -784,10 +786,10 @@ def main(argv: Sequence[str] | None = None) -> int:
     should_notify = args.force_notify or (args.notify and _has_report_issues(metrics, gate_result))
 
     if should_notify:
-        print("🚀 Sending report to Telegram...")
+        logger.info("🚀 Sending report to Telegram...")
         SlackWebhookClient.send_alert(telegram_msg)
     else:
-        print("\n" + telegram_msg.replace("<b>", "").replace("</b>", ""))
+        logger.info("\n" + telegram_msg.replace("<b>", "").replace("</b>", ""))
 
     return 0
 

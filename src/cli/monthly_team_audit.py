@@ -100,14 +100,14 @@ def main():
     target_year = args.year if args.year else current_year - 1
 
     if target_year < 2020:
-        print(f"Skipping team audit for year {target_year} (before 2020)")
+        logger.info(f"Skipping team audit for year {target_year} (before 2020)")
         return
 
-    print(f"Running team stats audit for year {target_year}...")
+    logger.info(f"Running team stats audit for year {target_year}...")
     result = run_monthly_team_audit(target_year)
 
     if args.json:
-        print(json.dumps(result, indent=2, ensure_ascii=False))
+        logger.info(json.dumps(result, indent=2, ensure_ascii=False))
         return
 
     bat_ok = result["batting"]["ok"]
@@ -115,17 +115,17 @@ def main():
     bat_miss = len(result["batting"]["mismatches"])
     pit_miss = len(result["pitching"]["mismatches"])
 
-    print(f"\nTeam Batting: {'PASS' if bat_ok else 'FAIL'} ({bat_miss} mismatches)")
+    logger.info(f"\nTeam Batting: {'PASS' if bat_ok else 'FAIL'} ({bat_miss} mismatches)")
     for m in result["batting"]["mismatches"]:
-        print(f"  - [{m['team_id']}] {m['issue']}")
+        logger.info(f"  - [{m['team_id']}] {m['issue']}")
         for d in (m.get("diffs") or [])[:3]:
-            print(f"    {d}")
+            logger.info(f"    {d}")
 
-    print(f"\nTeam Pitching: {'PASS' if pit_ok else 'FAIL'} ({pit_miss} mismatches)")
+    logger.info(f"\nTeam Pitching: {'PASS' if pit_ok else 'FAIL'} ({pit_miss} mismatches)")
     for m in result["pitching"]["mismatches"]:
-        print(f"  - [{m['team_id']}] {m['issue']}")
+        logger.info(f"  - [{m['team_id']}] {m['issue']}")
         for d in (m.get("diffs") or [])[:3]:
-            print(f"    {d}")
+            logger.info(f"    {d}")
 
     if not bat_ok or not pit_ok:
         sys.exit(1)

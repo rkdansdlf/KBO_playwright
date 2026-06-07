@@ -101,7 +101,7 @@ def _sync_story_summaries(game_ids: Sequence[str]) -> None:
 
 
 async def run_story_batch(target_date: str, *, sync_to_oci: bool | None = None) -> list[str]:
-    print(f"🚀 Starting Post-game Story Data Batch for {target_date}...")
+    logger.info(f"🚀 Starting Post-game Story Data Batch for {target_date}...")
 
     target_dt_obj = datetime.strptime(target_date, "%Y%m%d").date()
     status_result = refresh_game_status_for_date(target_date)
@@ -132,16 +132,16 @@ async def run_story_batch(target_date: str, *, sync_to_oci: bool | None = None) 
                 game_ids=[],
                 datasets=["game", "game_events", "game_summary"],
             )
-            print(f"ℹ️ No completed games found for {target_date}. manifest={manifest_path}")
+            logger.info(f"ℹ️ No completed games found for {target_date}. manifest={manifest_path}")
             return []
 
         trusted_game_ids = _trusted_relay_game_ids(session, [game.game_id for game in games])
 
         for game in games:
             if game.game_id not in trusted_game_ids:
-                print(f"  ⚠️ Skipping story for {game.game_id}: relay validation is not trusted")
+                logger.warning(f"  ⚠️ Skipping story for {game.game_id}: relay validation is not trusted")
                 continue
-            print(f"📚 Generating story timeline for {game.game_id}...")
+            logger.info(f"📚 Generating story timeline for {game.game_id}...")
             story_data = _build_story_data(builder, session, game)
             if not story_data["timeline"]:
                 print(
@@ -168,7 +168,7 @@ async def run_story_batch(target_date: str, *, sync_to_oci: bool | None = None) 
         game_ids=saved_ids,
         datasets=["game", "game_events", "game_summary"],
     )
-    print(f"✅ Story batch finished. saved={len(saved_ids)} manifest={manifest_path}")
+    logger.info(f"✅ Story batch finished. saved={len(saved_ids)} manifest={manifest_path}")
     return saved_ids
 
 

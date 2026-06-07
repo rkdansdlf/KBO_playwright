@@ -4,10 +4,11 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import logging
 from datetime import datetime
 from typing import Sequence
 
-from src.utils.safe_print import safe_print as print
+logger = logging.getLogger(__name__)
 
 
 async def run_events(save: bool = False, *, days: int = 30, team: str | None = None) -> int:
@@ -42,13 +43,13 @@ async def run_all(
     season: int | None = None,
     target_date: str | None = None,
 ) -> dict[str, int]:
-    print("=== P0 data collection ===")
+    logger.info("=== P0 data collection ===")
     counts = {
         "events": await run_events(save=save, days=days, team=team),
         "roster": await run_roster(save=save, target_date=target_date),
         "ticket": await run_ticket(save=save, season=season),
     }
-    print(f"=== P0 complete: events={counts['events']} roster={counts['roster']} ticket={counts['ticket']} ===")
+    logger.info(f"=== P0 complete: events={counts['events']} roster={counts['roster']} ticket={counts['ticket']} ===")
     return counts
 
 

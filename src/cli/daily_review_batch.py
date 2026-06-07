@@ -104,7 +104,7 @@ def _trusted_relay_game_ids(session, game_ids: Sequence[str]) -> set[str]:
 
 
 async def run_review_batch(target_date: str, *, sync_to_oci: bool | None = None) -> list[str]:
-    print(f"🚀 Starting Post-game Review Data Batch for {target_date}...")
+    logger.info(f"🚀 Starting Post-game Review Data Batch for {target_date}...")
 
     target_dt_obj = datetime.strptime(target_date, "%Y%m%d").date()
     status_result = refresh_game_status_for_date(target_date)
@@ -140,7 +140,7 @@ async def run_review_batch(target_date: str, *, sync_to_oci: bool | None = None)
                     "game_summary",
                 ],
             )
-            print(f"ℹ️ No completed games found for {target_date}. manifest={manifest_path}")
+            logger.info(f"ℹ️ No completed games found for {target_date}. manifest={manifest_path}")
             return []
 
         trusted_game_ids = _trusted_relay_game_ids(session, [game.game_id for game in games])
@@ -148,10 +148,10 @@ async def run_review_batch(target_date: str, *, sync_to_oci: bool | None = None)
         for game in games:
             game_id = game.game_id
             if game_id not in trusted_game_ids:
-                print(f"  ⚠️ Skipping review for {game_id}: relay validation is not trusted")
+                logger.warning(f"  ⚠️ Skipping review for {game_id}: relay validation is not trusted")
                 continue
 
-            print(f"📊 Generating review context for {game_id}...")
+            logger.info(f"📊 Generating review context for {game_id}...")
             review_data = _build_review_data(agg, game)
 
             if not review_data["crucial_moments"]:
@@ -194,7 +194,7 @@ async def run_review_batch(target_date: str, *, sync_to_oci: bool | None = None)
             "game_summary",
         ],
     )
-    print(f"✅ Review batch finished. saved={len(saved_ids)} manifest={manifest_path}")
+    logger.info(f"✅ Review batch finished. saved={len(saved_ids)} manifest={manifest_path}")
     return saved_ids
 
 

@@ -1,3 +1,6 @@
+import logging
+
+logger = logging.getLogger(__name__)
 import argparse
 
 from sqlalchemy import func
@@ -16,7 +19,7 @@ def backfill_stats(years: list[int], series: str):
 
     with SessionLocal() as session:
         for year in years:
-            print(f"🛠️  Backfilling Advanced Stats for {year} {series}...")
+            logger.info(f"🛠️  Backfilling Advanced Stats for {year} {series}...")
 
             # 1. Resolve team_id for all players in this season (most frequent team)
             team_map = {}
@@ -54,7 +57,7 @@ def backfill_stats(years: list[int], series: str):
 
                 valid_bat = [s for s in bat_stats if s["team_code"]]
                 save_batting_stats_safe(valid_bat)
-                print(f"   ✅ Batting: {len(valid_bat)} records saved.")
+                logger.info(f"   ✅ Batting: {len(valid_bat)} records saved.")
 
             # 3. Pitching Backfill
             pit_stats = SeasonStatAggregator.aggregate_pitching_season_bulk(
@@ -67,7 +70,7 @@ def backfill_stats(years: list[int], series: str):
 
                 valid_pit = [s for s in pit_stats if s["team_code"]]
                 save_pitching_stats_to_db(valid_pit)
-                print(f"   ✅ Pitching: {len(valid_pit)} records saved.")
+                logger.info(f"   ✅ Pitching: {len(valid_pit)} records saved.")
 
             # 4. Baserunning Backfill
             br_stats = SeasonStatAggregator.aggregate_baserunning_season_bulk(
@@ -80,7 +83,7 @@ def backfill_stats(years: list[int], series: str):
 
                 valid_br = [s for s in br_stats if s["team_id"]]
                 cnt = baserun_repo.upsert_many(valid_br)
-                print(f"   ✅ Baserunning: {cnt} records saved.")
+                logger.info(f"   ✅ Baserunning: {cnt} records saved.")
 
             # 5. Fielding Backfill
             fld_stats = SeasonStatAggregator.aggregate_fielding_season_bulk(
@@ -93,7 +96,7 @@ def backfill_stats(years: list[int], series: str):
 
                 valid_fld = [s for s in fld_stats if s["team_id"]]
                 cnt = fielding_repo.upsert_many(valid_fld)
-                print(f"   ✅ Fielding: {cnt} records saved.")
+                logger.info(f"   ✅ Fielding: {cnt} records saved.")
 
 
 if __name__ == "__main__":

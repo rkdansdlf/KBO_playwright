@@ -52,7 +52,7 @@ def _has_player_basic(player_id: str) -> bool:
 
 async def gather_active_player_ids(season_year: int, delay: float) -> dict[str, dict[str, str]]:
     """지정된 시즌의 모든 현역 선수 ID와 메타정보(포지션, 이름)를 수집합니다."""
-    print(f"Gathering active player list for {season_year}...")
+    logger.info(f"Gathering active player list for {season_year}...")
     crawler = PlayerListCrawler(request_delay=delay)
     result = await crawler.crawl_all_players(season_year=season_year)
 
@@ -145,7 +145,6 @@ async def process_player_result(
             batting_rows = await fetch_and_parse_futures_batting(player_id, hitter_url, pool=pool)
         except Exception as exc:
             logger.error(f"Exception crawling batting stats for player {player_id}: {exc}", exc_info=True)
-            print(f"[ERROR] Exception crawling batting stats for player {player_id}: {exc}")
 
     # 2. Pitcher stats
     if position in ("pitcher", "both"):
@@ -154,7 +153,6 @@ async def process_player_result(
             pitching_rows = await fetch_and_parse_futures_pitching(player_id, pitcher_url, pool=pool)
         except Exception as exc:
             logger.error(f"Exception crawling pitching stats for player {player_id}: {exc}", exc_info=True)
-            print(f"[ERROR] Exception crawling pitching stats for player {player_id}: {exc}")
 
     if not batting_rows and not pitching_rows:
         return {
@@ -170,7 +168,7 @@ async def process_player_result(
     )
 
     if not player:
-        print(f"[WARN] Could not create player record for {player_id}")
+        logger.info(f"[WARN] Could not create player record for {player_id}")
         return {
             "player_id": player_id,
             "status": "failed",
@@ -187,7 +185,6 @@ async def process_player_result(
             saved += saved_batting
         except Exception as exc:
             logger.error(f"Exception saving batting stats for player {player_id}: {exc}", exc_info=True)
-            print(f"[ERROR] Exception saving batting stats for player {player_id}: {exc}")
 
     # Save Pitcher stats if any
     if pitching_rows:
@@ -227,7 +224,6 @@ async def process_player_result(
             saved += saved_pitching
         except Exception as exc:
             logger.error(f"Exception saving pitching stats for player {player_id}: {exc}", exc_info=True)
-            print(f"[ERROR] Exception saving pitching stats for player {player_id}: {exc}")
 
     if saved > 0:
         return {
@@ -247,10 +243,10 @@ async def process_player_result(
 
 async def crawl_futures(args: argparse.Namespace) -> dict:
     """퓨처스리그 크롤링 메인 로직."""
-    print("\n=== Futures League Stats Crawler ===")
-    print(f"Season: {args.season}")
-    print(f"Concurrency: {args.concurrency}")
-    print(f"Delay: {args.delay}s\n")
+    logger.info("\n=== Futures League Stats Crawler ===")
+    logger.info(f"Season: {args.season}")
+    logger.info(f"Concurrency: {args.concurrency}")
+    logger.info(f"Delay: {args.delay}s\n")
 
     # 1단계: 크롤링 대상 선수 ID 목록 수집
     if getattr(args, "player_ids", None):
@@ -258,14 +254,14 @@ async def crawl_futures(args: argparse.Namespace) -> dict:
         player_positions = {}
         for pid in pids:
             player_positions[pid] = {"position": "both", "name": ""}
-        print(f"Using target player IDs from CLI: {pids}\n")
+        logger.info(f"Using target player IDs from CLI: {pids}\n")
     else:
         player_positions = await gather_active_player_ids(args.season, args.delay)
 
     if args.limit:
         limited_pids = sorted(player_positions.keys())[: args.limit]
         player_positions = {pid: player_positions[pid] for pid in limited_pids}
-        print(f"Limited to {len(player_positions)} players\n")
+        logger.info(f"Limited to {len(player_positions)} players\n")
 
     if getattr(args, "changed_since", None):
         cutoff = args.changed_since
@@ -275,7 +271,7 @@ async def crawl_futures(args: argparse.Namespace) -> dict:
                 if cutoff.tzinfo is not None:
                     cutoff = cutoff.replace(tzinfo=None)
             except ValueError:
-                print(f"[WARN] Invalid --changed-since format: {cutoff}, ignoring filter")
+                logger.exception(f"[WARN] Invalid --changed-since format: {cutoff}, ignoring filter")
                 cutoff = None
 
         if cutoff is not None:
@@ -306,8 +302,8 @@ async def crawl_futures(args: argparse.Namespace) -> dict:
             skipped = sum(1 for pid in player_positions if int(pid) in recent_pids)
             if skipped:
                 player_positions = {pid: meta for pid, meta in player_positions.items() if int(pid) not in recent_pids}
-                print(f"[INFO] --changed-since filter: skipped {skipped} recently updated players")
-            print(f"Processing {len(player_positions)} remaining players\n")
+                logger.info(f"[INFO] --changed-since filter: skipped {skipped} recently updated players")
+            logger.info(f"Processing {len(player_positions)} remaining players\n")
 
     summary = {
         "ok": False,
@@ -320,14 +316,14 @@ async def crawl_futures(args: argparse.Namespace) -> dict:
     }
 
     if not player_positions:
-        print("No players to process")
+        logger.info("No players to process")
         summary["failure_counts"] = {"player_list_empty": 1}
         if getattr(args, "json_summary", False):
-            print(json.dumps(summary, ensure_ascii=False, sort_keys=True))
+            logger.info(json.dumps(summary, ensure_ascii=False, sort_keys=True))
         return summary
 
     # 2단계: 각 선수를 병렬로 처리
-    print(f"Processing {len(player_positions)} players...\n")
+    logger.info(f"Processing {len(player_positions)} players...\n")
 
     repository = PlayerRepository()
     pool = AsyncPlaywrightPool(
@@ -347,7 +343,6 @@ async def crawl_futures(args: argparse.Namespace) -> dict:
                 result = await process_player_result(pid, pos, name, repository, args.delay, pool)
             except Exception as exc:
                 logger.error(f"Unhandled exception for player {pid} ({pos}): {exc}", exc_info=True)
-                print(f"[ERROR] Unhandled exception for player {pid} ({pos}): {exc}")
                 result = {
                     "player_id": pid,
                     "status": "failed",
@@ -360,31 +355,31 @@ async def crawl_futures(args: argparse.Namespace) -> dict:
             saved = result["saved"]
             failure_reason = result.get("failure_reason")
             if result["status"] == "success":
-                print(f"[OK] {player_id} ({pos}): {saved} seasons")
+                logger.info(f"[OK] {player_id} ({pos}): {saved} seasons")
             elif failure_reason == "futures_empty":
                 failure_counts[failure_reason] += 1
-                print(f"[SKIP] {player_id} ({pos}): no Futures data")
+                logger.info(f"[SKIP] {player_id} ({pos}): no Futures data")
             else:
                 failure_counts[failure_reason or "exception"] += 1
-                print(f"[ERROR] {player_id} ({pos}): {failure_reason}")
+                logger.info(f"[ERROR] {player_id} ({pos}): {failure_reason}")
 
     async with pool:
         await asyncio.gather(*(runner(pid, meta) for pid, meta in sorted(player_positions.items())))
 
     # 3단계: 결과 요약
-    print("\n=== Summary ===")
+    logger.info("\n=== Summary ===")
     total_saved = sum(result["saved"] for result in results)
     success_count = sum(1 for result in results if result["status"] == "success")
 
-    print(f"Total players processed: {len(results)}")
-    print(f"Players with Futures data: {success_count}")
-    print(f"Total seasons saved: {total_saved}")
-    print(f"Failures/skips: {sum(failure_counts.values())}")
+    logger.info(f"Total players processed: {len(results)}")
+    logger.info(f"Players with Futures data: {success_count}")
+    logger.info(f"Total seasons saved: {total_saved}")
+    logger.info(f"Failures/skips: {sum(failure_counts.values())}")
 
     if failure_counts:
-        print("\nFailure reasons:")
+        logger.info("\nFailure reasons:")
         for reason, count in sorted(failure_counts.items()):
-            print(f"  {reason}: {count}")
+            logger.info(f"  {reason}: {count}")
 
     summary.update(
         {
@@ -397,7 +392,7 @@ async def crawl_futures(args: argparse.Namespace) -> dict:
         }
     )
     if getattr(args, "json_summary", False):
-        print(json.dumps(summary, ensure_ascii=False, sort_keys=True))
+        logger.info(json.dumps(summary, ensure_ascii=False, sort_keys=True))
     return summary
 
 

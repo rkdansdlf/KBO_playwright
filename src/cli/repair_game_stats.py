@@ -6,20 +6,23 @@ NULL/zero AVG, OBP, ERA, WHIP 등을 계산하여 채웁니다.
 from __future__ import annotations
 
 import argparse
+import logging
 from typing import Sequence
 
 from src.db.engine import SessionLocal
 from src.models.game import GameBattingStat, GamePitchingStat
 from src.services.stat_calculator import BattingStatCalculator, PitchingStatCalculator
 
+logger = logging.getLogger(__name__)
+
 
 def _repair_batting():
-    print("[REPAIR] Starting batting stat repair...")
+    logger.info("[REPAIR] Starting batting stat repair...")
     with SessionLocal() as session:
         query = session.query(GameBattingStat).filter((GameBattingStat.avg.is_(None)) | (GameBattingStat.avg == 0.0))
         total = query.count()
         if total == 0:
-            print("[REPAIR] No missing batting stats found.")
+            logger.info("[REPAIR] No missing batting stats found.")
             return
 
         updated = 0
@@ -57,16 +60,16 @@ def _repair_batting():
             if idx % 500 == 0:
                 session.commit()
         session.commit()
-        print(f"[REPAIR] Batting: Updated {updated} rows.")
+        logger.info(f"[REPAIR] Batting: Updated {updated} rows.")
 
 
 def _repair_pitching():
-    print("[REPAIR] Starting pitching stat repair...")
+    logger.info("[REPAIR] Starting pitching stat repair...")
     with SessionLocal() as session:
         query = session.query(GamePitchingStat).filter((GamePitchingStat.era.is_(None)) | (GamePitchingStat.era == 0.0))
         total = query.count()
         if total == 0:
-            print("[REPAIR] No missing pitching stats found.")
+            logger.info("[REPAIR] No missing pitching stats found.")
             return
 
         updated = 0
@@ -99,7 +102,7 @@ def _repair_pitching():
             if idx % 500 == 0:
                 session.commit()
         session.commit()
-        print(f"[REPAIR] Pitching: Updated {updated} rows.")
+        logger.info(f"[REPAIR] Pitching: Updated {updated} rows.")
 
 
 def main(argv: Sequence[str] | None = None) -> None:

@@ -5,7 +5,6 @@ import asyncio
 import logging
 
 from src.crawlers.parking_crawler import ParkingCrawler
-from src.utils.safe_print import safe_print as print
 
 logger = logging.getLogger(__name__)
 
@@ -18,7 +17,7 @@ def main(argv: list[str] | None = None) -> None:
 
     crawler = ParkingCrawler()
     result = asyncio.run(crawler.run(save=args.save, team_filter=args.team))
-    print(f"[PARKING] Done: {len(result)} lots")
+    logger.info(f"[PARKING] Done: {len(result)} lots")
 
 
 if __name__ == "__main__":

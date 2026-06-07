@@ -6,7 +6,6 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import sys
 from typing import Iterable
 
 logger = logging.getLogger(__name__)
@@ -60,7 +59,7 @@ class RetiredPlayerListingCrawler:
         team-aware path for production collection.
         """
         if not await compliance.is_allowed(base_url):
-            logger.info(f"[COMPLIANCE] Blocked record listing: {base_url}", file=sys.stderr)
+            logger.info(f"[COMPLIANCE] Blocked record listing: {base_url}")
             return {}
 
         await self._wait()
@@ -105,7 +104,7 @@ class RetiredPlayerListingCrawler:
     async def _crawl_record_page_ids_with_teams(self, page, base_url: str, year: int) -> dict[str, str]:
         """Navigate to record page, select year, and iterate through all teams to collect IDs and names."""
         if not await compliance.is_allowed(base_url):
-            logger.info(f"[COMPLIANCE] Blocked record listing: {base_url}", file=sys.stderr)
+            logger.info(f"[COMPLIANCE] Blocked record listing: {base_url}")
             return {}
 
         await self._wait()
@@ -138,7 +137,7 @@ class RetiredPlayerListingCrawler:
 
         all_players: dict[str, str] = {}
         for code in team_codes:
-            logger.info(f"    [Year {year}] Fetching team {code}", file=sys.stderr)
+            logger.info(f"    [Year {year}] Fetching team {code}")
             await page.select_option(team_selector, code)
             await page.evaluate(
                 "el => { if (el.onchange) el.onchange(); else el.dispatchEvent(new Event('change', { bubbles: true })); }",
@@ -209,15 +208,13 @@ class RetiredPlayerListingCrawler:
     async def collect_historical_player_ids(self, seasons: Iterable[int]) -> dict[str, str]:
         historical_players: dict[str, str] = {}
         seasons_list = list(seasons)
-        logger.info(
-            f"🔍 Collecting historical player IDs for {len(seasons_list)} seasons in parallel...", file=sys.stderr
-        )
+        logger.info(f"🔍 Collecting historical player IDs for {len(seasons_list)} seasons in parallel...")
 
         semaphore = asyncio.Semaphore(10)  # Allow 10 concurrent years
 
         async def fetch_year(season):
             async with semaphore:
-                logger.info(f"  Fetching IDs for {season}...", file=sys.stderr)
+                logger.info(f"  Fetching IDs for {season}...")
                 try:
                     return await self.collect_player_ids_for_year(season)
                 except Exception:
@@ -228,7 +225,7 @@ class RetiredPlayerListingCrawler:
         for season_players in results:
             historical_players.update(season_players)
 
-        logger.info(f"✨ Total unique IDs found: {len(historical_players)}", file=sys.stderr)
+        logger.info(f"✨ Total unique IDs found: {len(historical_players)}")
         return historical_players
 
     async def determine_inactive_player_ids(
@@ -246,16 +243,14 @@ class RetiredPlayerListingCrawler:
 
         seasons = range(start_year, end_year + 1)
         historical_players = await self.collect_historical_player_ids(seasons)
-        logger.info(f"📡 Fetching active player IDs for {active_year}...", file=sys.stderr)
+        logger.info(f"📡 Fetching active player IDs for {active_year}...")
         active_players = await self.collect_player_ids_for_year(active_year)
 
         historical_ids = set(historical_players.keys())
         active_ids = set(active_players.keys())
 
         inactive = {pid for pid in historical_ids if pid and pid not in active_ids}
-        print(
-            f"✨ Found {len(inactive)} inactive players out of {len(historical_ids)} total unique IDs.", file=sys.stderr
-        )
+        logger.info(f"✨ Found {len(inactive)} inactive players out of {len(historical_ids)} total unique IDs.")
         return inactive
 
     def _extract_ids(self, data: dict[str, list[dict]]) -> set[str]:
