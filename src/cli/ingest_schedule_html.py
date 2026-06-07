@@ -14,7 +14,7 @@ from typing import Any, Iterable
 
 from src.parsers.schedule_parser import parse_schedule_html
 from src.services.schedule_collection_service import save_schedule_games
-from src.utils.safe_print import safe_print as print
+
 
 logger = logging.getLogger(__name__)
 
@@ -29,7 +29,7 @@ def ingest_schedule_html(args: argparse.Namespace) -> None:
 
     files = sorted(fixtures_dir.glob("*.html"))
     if not files:
-        print("ℹ️  No HTML files found. Save schedule pages as *.html first.")
+        logger.info("ℹ️  No HTML files found. Save schedule pages as *.html first.")
         return
 
     for html_file in files:
@@ -41,15 +41,15 @@ def ingest_schedule_html(args: argparse.Namespace) -> None:
             season_type=args.season_type,
         )
         all_games.extend(games)
-        print(f"📄 Parsed {len(games)} games from {html_file.name}")
+        logger.info(f"📄 Parsed {len(games)} games from {html_file.name}")
 
     if not all_games:
-        print("ℹ️  No games parsed from fixtures.")
+        logger.info("ℹ️  No games parsed from fixtures.")
         return
 
     # 파싱된 모든 경기 일정을 데이터베이스에 저장합니다.
     result = save_schedule_games(all_games)
-    print(f"✅ Ingested {result.saved} games from fixtures. Failed: {result.failed}")
+    logger.info(f"✅ Ingested {result.saved} games from fixtures. Failed: {result.failed}")
 
 
 def build_arg_parser() -> argparse.ArgumentParser:

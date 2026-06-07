@@ -19,7 +19,6 @@ from sqlalchemy.orm import Session
 from src.models.game import Game, GameBattingStat, GameLineup, GameMetadata, GamePitchingStat, GamePlayByPlay
 from src.utils.alerting import SlackWebhookClient
 from src.utils.game_status import COMPLETED_LIKE_GAME_STATUSES
-from src.utils.safe_print import safe_print as print
 
 logger = logging.getLogger(__name__)
 
@@ -107,9 +106,10 @@ class SlaTracker:
                 continue
             totals["games"] += s["total"]
             totals["completed"] += s["completed"]
-            print(
-                f"  {s['date']:<10} {s['total']:>6} {s['completed']:>10} "
-                f"{s['completion_rate']:>6.0%} {s['pbp_coverage']:>6.0%} {s['detail_coverage']:>7.0%}"
+            logger.info(
+                "  %-10s %6d %10d %6.0f%% %6.0f%% %7.0f%%",
+                s['date'], s['total'], s['completed'],
+                s['completion_rate'] * 100, s['pbp_coverage'] * 100, s['detail_coverage'] * 100,
             )
 
         if totals["games"] > 0:

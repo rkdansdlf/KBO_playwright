@@ -10,7 +10,7 @@ from src.services.relay_recovery_service import (
     load_relay_recovery_targets,
     recover_relay_data,
 )
-from src.utils.safe_print import safe_print as print
+
 
 logger = logging.getLogger(__name__)
 
@@ -41,7 +41,7 @@ async def run_fetcher(argv: Sequence[str] | None = None) -> int:
     )
     args = parser.parse_args(argv)
 
-    print(
+    logger.info(
         "[DEPRECATED] src.cli.fetch_kbo_pbp is a compatibility alias. "
         "Prefer `python scripts/fetch_kbo_pbp.py` for completed-game relay recovery."
     )
@@ -58,7 +58,7 @@ async def run_fetcher(argv: Sequence[str] | None = None) -> int:
             month=args.month,
             game_ids=[args.game_id] if args.game_id else None,
             missing_only=not args.force,
-            log=print,
+            log=logger.info,
         )
     except (FileNotFoundError, ValueError) as exc:
         logger.exception(f"[ERROR] {exc}")
@@ -72,7 +72,7 @@ async def run_fetcher(argv: Sequence[str] | None = None) -> int:
         targets,
         validate_final_score=args.validate_final_score,
         validate_inning_continuity=args.validate_inning_continuity,
-        log=print,
+        log=logger.info,
     )
     logger.info("\n[INFO] Relay recovery run completed.")
     return 0

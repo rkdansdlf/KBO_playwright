@@ -55,10 +55,10 @@ def main():
             if batting_count == 0 and pitching_count == 0:
                 logger.warning("⚠️ 동기화할 데이터가 없습니다.")
                 logger.info("📌 먼저 크롤러를 실행하세요:")
-                print(
+                logger.info(
                     "   ./venv/bin/python3 -m src.crawlers.player_batting_all_series_crawler --year 2025 --series regular --save"
                 )
-                print(
+                logger.info(
                     "   ./venv/bin/python3 -m src.crawlers.player_pitching_all_series_crawler --year 2025 --series regular --save"
                 )
                 return

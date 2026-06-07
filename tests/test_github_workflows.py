@@ -82,14 +82,12 @@ def test_workflows_do_not_reference_removed_maintenance_paths():
 
 
 def test_backfill_advanced_stats_uses_supported_cli_flags():
-    workflow = _read(WORKFLOW_DIR / "backfill_advanced_stats.yml")
+    workflow = _read(WORKFLOW_DIR / "backfill.yml")
 
-    assert "Resolve Season Year" in workflow
-    assert "python3 -m src.cli.hydrate_runtime_from_oci" in workflow
-    assert "python3 -m src.cli.backfill_advanced_stats \\" in workflow
+    assert "python3 -m src.cli.backfill_advanced_stats" in workflow
     assert '--years "$YEAR"' in workflow
     assert "--series regular" in workflow
-    assert "python3 -m src.cli.sync_oci \\" in workflow
+    assert "python3 -m src.cli.sync_oci" in workflow
     assert "--season-stats" in workflow
     assert 'python3 -m src.cli.backfill_advanced_stats "$YEAR" regular' not in workflow
 

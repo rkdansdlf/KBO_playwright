@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass, field
 from datetime import date, datetime
 from pathlib import Path
@@ -25,8 +26,9 @@ from src.services.game_collection_service import (
     crawl_and_save_game_details,
 )
 from src.services.game_write_contract import GameWriteContract
-from src.utils.safe_print import safe_print as print
 from src.utils.team_codes import normalize_kbo_game_id
+
+logger = logging.getLogger(__name__)
 
 
 class DetailCrawler(Protocol):
@@ -150,7 +152,7 @@ async def reconcile_postgame_range(
     detail_crawler: DetailCrawler,
     concurrency: int | None = 1,
     extra_game_ids: Iterable[str] | None = None,
-    log: Callable[[str], None] = print,
+    log: Callable[[str], None] = logger.info,
     write_contract: GameWriteContract | None = None,
     source_reason: str = "postgame_reconciliation",
 ) -> PostgameReconciliationResult:

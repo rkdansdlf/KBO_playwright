@@ -88,15 +88,17 @@ The CI/CD pipeline uses 14 workflows and 2 composite actions under `.github/`:
   4. `advanced-sync` — advanced daily sync + reference integrity gate + quality gate + completeness audit + freshness gate (extended)
 - **Environments**: `OCI_DB_URL`, `KBO_USER_ID`, `KBO_USER_PWD`, `TELEGRAM_BOT_TOKEN`, per-category `TELEGRAM_CHAT_ID_*` for gap report routing
 
-### Backfill Workflows (Tier 2 on GH Actions)
-| File | Cron (KST) | Purpose |
-|------|-----------|---------|
-| `backfill_missed_crawls.yml` | Sun 04:00 | Multi-phase auto-backfill (detail+PBP+preview+profiles) |
-| `backfill_sh_sf.yml` | Sun 05:45 | Derive SH/SF from PBP events |
-| `backfill_advanced_stats.yml` | Sun 06:00 | Recalc advanced batting/pitching season stats |
-| `backfill_player_ids.yml` | Wed 05:30 | Resolve NULL player_ids in game stats |
-| `backfill_player_game_stats.yml` | Sun 03:00 | Recalc player game-level batting/pitching stats |
-| `backfill_roster.yml` | Month 1st 04:00 | Roster movements + daily rosters |
+### Backfill Workflows (Consolidated, Tier 2 on GH Actions)
+| Matrix ID | Cron (KST) | Purpose |
+|-----------|-----------|---------|
+| `missed_crawls` | Sun 04:30 | Multi-phase auto-backfill (detail+PBP+preview+profiles) |
+| `player_game_stats` | Sun 04:00 | Recalc player game-level batting/pitching stats |
+| `sh_sf` | Sun 05:45 | Derive SH/SF from PBP events |
+| `advanced_stats` | Sun 06:00 | Recalc advanced batting/pitching season stats |
+| `player_ids` | Thu 05:30 | Resolve NULL player_ids in game stats |
+| `roster` | Month 2nd 04:00 | Roster movements + daily rosters |
+
+All six backfill types are defined in a single `backfill.yml` using a job matrix. Trigger manually with `--backfill_id <id>` or `all`.
 
 ### Other Workflows
 - `daily_preview.yml` / `pitcher_backfill.yml`: Real-time pregame and live data (day-of-game cron windows)

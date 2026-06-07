@@ -55,7 +55,7 @@ from src.services.postgame_reconciliation_service import (
 from src.services.schedule_collection_service import save_schedule_games
 from src.sync.oci_sync import OCISync
 from src.utils.refresh_manifest import write_refresh_manifest
-from src.utils.safe_print import safe_print as print
+
 from src.utils.schedule_validation import is_detail_candidate_game
 from src.utils.team_codes import normalize_kbo_game_id
 
@@ -362,7 +362,7 @@ async def run_update(
     p0_non_game_counts: dict[str, int] = {}
     p0_non_game_errors: dict[str, str] = {}
     status_refresh_game_ids: list[str] = []
-    write_contract = GameWriteContract(run_label=f"daily_update:{target_date}", log=print)
+    write_contract = GameWriteContract(run_label=f"daily_update:{target_date}", log=logger.info)
 
     if run_auto_healer:
         logger.info("\n🩺 Step 0: Running Auto-Healer...")
@@ -382,11 +382,11 @@ async def run_update(
     schedule_games = await s_crawler.crawl_schedule(year, month)
     schedule_result = save_schedule_games(
         schedule_games,
-        log=print,
+        log=logger.info,
         write_contract=write_contract,
         source_reason=f"monthly_schedule_refresh:{year}-{month:02d}",
     )
-    print(
+    logger.info(
         f"   ✅ Schedule discovered={schedule_result.discovered} "
         f"saved={schedule_result.saved} failed={schedule_result.failed}"
     )
@@ -418,7 +418,7 @@ async def run_update(
             detail_crawler=g_crawler,
             force=True,
             concurrency=1,
-            log=print,
+            log=logger.info,
             write_contract=write_contract,
             source_reason=f"postgame_finalize:{target_date}",
         )
@@ -462,7 +462,7 @@ async def run_update(
             f"   ✅ Detail result success={collection_result.detail_saved} failed={collection_result.detail_failed}"
         )
         if detail_failure_counts:
-            print(f"   ℹ️ Detail failure reasons: {_format_counts(detail_failure_counts)}")
+            logger.info(f"   ℹ️ Detail failure reasons: {_format_counts(detail_failure_counts)}")
 
         if run_postgame_reconciliation:
             reconcile_start = (
@@ -474,7 +474,7 @@ async def run_update(
                 target_date,
                 detail_crawler=g_crawler,
                 concurrency=1,
-                log=print,
+                log=logger.info,
                 write_contract=write_contract,
                 source_reason=f"postgame_reconciliation:{reconcile_start}-{target_date}",
             )
@@ -508,7 +508,7 @@ async def run_update(
     status_refresh_game_ids = [
         normalized for game_id in status_result.get("game_ids", []) if (normalized := normalize_kbo_game_id(game_id))
     ]
-    print(
+    logger.info(
         "   ✅ "
         f"total={status_result.get('total', 0)} "
         f"updated={status_result.get('updated', 0)} "
@@ -520,7 +520,7 @@ async def run_update(
         relay_game_ids = sorted(set(processed_game_ids) | set(reconciliation_changed_ids))
         if relay_game_ids:
             relay_recovery_target_ids.update(relay_game_ids)
-            print(f"   ℹ️ Relay candidates={len(relay_game_ids)}")
+            logger.info(f"   ℹ️ Relay candidates={len(relay_game_ids)}")
             runner(
                 [
                     "scripts/fetch_kbo_pbp.py",
@@ -589,7 +589,7 @@ async def run_update(
             missing_relay_game_ids = session.execute(stmt).scalars().all()
 
             if missing_relay_game_ids:
-                print(
+                logger.info(
                     f"   ⚠️ Found {len(missing_relay_game_ids)} games missing PBP/event/WPA data. Attempting recovery..."
                 )
                 # Filter out ones already in relay_recovery_target_ids to avoid redundant runs
@@ -647,7 +647,7 @@ async def run_update(
 
     logger.info("\n📈 Step 6: Updating cumulative player stats...")
     if skip_season_stats:
-        print("   ⏭️ Season stats update skipped by operator flag")
+        logger.info("   ⏭️ Season stats update skipped by operator flag")
     else:
         # Identify unique season types from today's games
         active_series = sorted({g.get("season_type", "regular") for g in daily_games if g.get("season_type")})
@@ -905,7 +905,7 @@ async def run_update(
                         )
                         oci_skip_game_ids.setdefault("non_p0_supporting_sync_failed", []).append(f"season:{year}")
                 if oci_skip_counts:
-                    print(f"   ℹ️ OCI skip summary: {_format_counts(oci_skip_counts)}")
+                    logger.info(f"   ℹ️ OCI skip summary: {_format_counts(oci_skip_counts)}")
             finally:
                 syncer.close()
 
@@ -1016,7 +1016,7 @@ async def run_update(
     )
 
     logger.info(write_contract.summary())
-    print(
+    logger.info(
         "🔎 Stability summary: "
         f"detail_failures={_format_counts(detail_failure_counts)} "
         f"relay_targets={len(relay_recovery_target_ids)} "

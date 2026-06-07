@@ -26,7 +26,7 @@ from src.services.context_aggregator import ContextAggregator
 from src.sync.oci_sync import OCISync
 from src.utils.game_status import COMPLETED_LIKE_GAME_STATUSES
 from src.utils.relay_text import is_relay_noise_text
-from src.utils.safe_print import safe_print as print
+
 
 logger = logging.getLogger(__name__)
 
@@ -213,7 +213,7 @@ def regenerate_review_summaries(
     oci_url: str | None = None,
     report_out: Path | None = None,
     backup_out: Path | None = None,
-    log=print,
+    log=logger.info,
 ) -> list[ReviewRegenReportRow]:
     target_game_ids = list(game_ids or [])
     target_dates = list(dates or [])

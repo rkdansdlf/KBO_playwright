@@ -17,7 +17,7 @@ from src.services.game_collection_service import (
     load_game_targets_by_ids,
     load_game_targets_from_db,
 )
-from src.utils.safe_print import safe_print as print
+
 from src.utils.team_codes import normalize_kbo_game_id
 
 logger = logging.getLogger(__name__)
@@ -66,9 +66,9 @@ async def collect_games(
             concurrency=concurrency,
             pause_every=10,
             pause_seconds=2.0,
-            log=print,
+            log=logger.info,
         )
-        print(
+        logger.info(
             "[FINISH] "
             f"detail_saved={result.detail_saved} detail_failed={result.detail_failed} "
             f"detail_skipped={result.detail_skipped_existing} "

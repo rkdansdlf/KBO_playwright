@@ -3,37 +3,39 @@ End-to-end test: Fetch Futures pitching stats and save to database.
 """
 
 import asyncio
+import logging
 
 from src.crawlers.futures.futures_pitching import fetch_and_parse_futures_pitching
 from src.repositories.player_repository import PlayerRepository
 from src.repositories.player_season_pitching_repository import save_pitching_stats_to_db
-from src.utils.safe_print import safe_print as print
+
+logger = logging.getLogger(__name__)
 
 PLAYER_ID = "50030"  # KBO player ID (string) for So Hyeong-jun (pitcher)
 PLAYER_URL = f"https://www.koreabaseball.com/Futures/Player/PitcherTotal.aspx?playerId={PLAYER_ID}"
 
 
 async def main():
-    print("=== Futures Pitching E2E Test ===\n")
+    logger.info("=== Futures Pitching E2E Test ===\n")
 
     # Step 1: Crawl and parse
-    print(f"Step 1: Crawling Futures pitching stats for player {PLAYER_ID}...")
+    logger.info("Step 1: Crawling Futures pitching stats for player %s...", PLAYER_ID)
     rows = await fetch_and_parse_futures_pitching(PLAYER_ID, PLAYER_URL)
-    print(f"✓ Parsed {len(rows)} season records\n")
+    logger.info("Parsed %d season records\n", len(rows))
 
     if not rows:
-        print("No data to save. Exiting.")
+        logger.info("No data to save. Exiting.")
         return
 
     # Show sample
     for row in rows[:3]:
-        print(
-            f"  {row.get('season')}: ERA={row.get('era')}, G={row.get('games')}, W={row.get('wins')}, L={row.get('losses')}, IP={row.get('innings_pitched')}"
+        logger.info(
+            "  %s: ERA=%s, G=%s, W=%s, L=%s, IP=%s", row.get('season'), row.get('era'), row.get('games'), row.get('wins'), row.get('losses'), row.get('innings_pitched')
         )
-    print()
+    logger.info("")
 
     # Step 2: Get or create player in database
-    print(f"Step 2: Ensuring player {PLAYER_ID} exists in database...")
+    logger.info("Step 2: Ensuring player %s exists in database...", PLAYER_ID)
     repo = PlayerRepository()
 
     from src.parsers.player_profile_parser import PlayerProfileParsed
@@ -41,13 +43,13 @@ async def main():
     player = repo.upsert_player_profile(PLAYER_ID, PlayerProfileParsed(is_active=True, player_name="소형준"))
 
     if not player:
-        print("Failed to create player record")
+        logger.info("Failed to create player record")
         return
 
-    print(f"✓ Player DB ID: {player.id}, Player Basic ID: {player.player_basic_id}\n")
+    logger.info("Player DB ID: %s, Player Basic ID: %s\n", player.id, player.player_basic_id)
 
     # Step 3: Save Futures pitching stats
-    print(f"Step 3: Saving {len(rows)} Futures pitching records to database...")
+    logger.info("Step 3: Saving %d Futures pitching records to database...", len(rows))
     payloads = []
     for r in rows:
         payloads.append(
@@ -81,10 +83,10 @@ async def main():
         )
 
     saved = save_pitching_stats_to_db(payloads)
-    print(f"✓ Saved {saved} records\n")
+    logger.info("Saved %d records\n", saved)
 
     # Step 4: Verify
-    print("Step 4: Verifying records in database...")
+    logger.info("Step 4: Verifying records in database...")
     from sqlalchemy import select
 
     from src.db.engine import SessionLocal
@@ -99,13 +101,13 @@ async def main():
 
         results = session.execute(stmt).scalars().all()
 
-        print(f"✓ Found {len(results)} Futures pitching records in database:")
+        logger.info("Found %d Futures pitching records in database:", len(results))
         for record in results:
-            print(
-                f"  {record.season}: ERA={record.era}, G={record.games}, W={record.wins}, L={record.losses}, IP={record.innings_pitched}"
+            logger.info(
+                "  %s: ERA=%s, G=%s, W=%s, L=%s, IP=%s", record.season, record.era, record.games, record.wins, record.losses, record.innings_pitched
             )
 
-    print("\n=== Test Complete ===")
+    logger.info("\n=== Test Complete ===")
 
 
 if __name__ == "__main__":

@@ -537,10 +537,10 @@ class ScheduleCrawler:
                     expected_month=month,
                 )
                 if not is_valid:
-                    print(
-                        "[WARN] Filtered schedule row: "
-                        f"{schedule_game.get('game_id') or '<missing>'} "
-                        f"reason={failure_reason}"
+                    logger.warning(
+                        "Filtered schedule row: %s reason=%s",
+                        schedule_game.get('game_id') or '<missing>',
+                        failure_reason,
                     )
                     continue
 

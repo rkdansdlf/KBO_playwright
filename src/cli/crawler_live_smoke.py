@@ -15,7 +15,7 @@ from typing import Any, Mapping, Sequence
 from src.crawlers.game_detail_crawler import GameDetailCrawler
 from src.crawlers.relay_crawler import RelayCrawler
 from src.crawlers.schedule_crawler import ScheduleCrawler
-from src.utils.safe_print import safe_print as print
+
 from src.utils.schedule_validation import is_detail_candidate_game
 from src.utils.team_codes import normalize_kbo_game_id
 
@@ -187,14 +187,14 @@ async def run_smoke(
 
 def _print_human_summary(result: Mapping[str, Any]) -> None:
     status = "passed" if result.get("ok") else "failed"
-    print(
+    logger.info(
         f"[SMOKE] {status}: date={result.get('target_date')} "
         f"scope={result.get('scope')} candidates={len(result.get('candidates') or [])}"
     )
     for game_result in result.get("results") or []:
-        print(f"  - {game_result.get('game_id')}: {game_result}")
+        logger.info(f"  - {game_result.get('game_id')}: {game_result}")
     if result.get("failure_reasons"):
-        print(f"[SMOKE] failure_reasons={result['failure_reasons']}")
+        logger.info(f"[SMOKE] failure_reasons={result['failure_reasons']}")
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
@@ -220,9 +220,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         result = _base_result(args.date, args.scope)
         result["failure_reasons"] = {"network": ["network_not_allowed"]}
         if args.json:
-            print(json.dumps(result, ensure_ascii=False, indent=2))
+            logger.info(json.dumps(result, ensure_ascii=False, indent=2))
         else:
-            print("[ERROR] Live smoke requires --allow-network or KBO_LIVE_SMOKE=1")
+            logger.error("Live smoke requires --allow-network or KBO_LIVE_SMOKE=1")
         return 2
 
     try:
@@ -236,7 +236,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                         limit=args.limit,
                     )
                 )
-            print(json.dumps(result, ensure_ascii=False, indent=2))
+            logger.info(json.dumps(result, ensure_ascii=False, indent=2))
         else:
             result = asyncio.run(
                 run_smoke(

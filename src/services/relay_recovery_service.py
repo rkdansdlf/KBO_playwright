@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import csv
+import logging
 from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -32,7 +33,8 @@ from src.sources.relay import (
     read_manifest_entries,
 )
 from src.utils.game_status import COMPLETED_LIKE_GAME_STATUSES
-from src.utils.safe_print import safe_print as print
+
+logger = logging.getLogger(__name__)
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_MANIFEST_PATH = PROJECT_ROOT / "data" / "recovery" / "source_manifest.csv"
@@ -132,7 +134,7 @@ def load_relay_recovery_targets(
     game_ids_file: str | Path | None = None,
     bucket: str | None = None,
     missing_only: bool = True,
-    log: Callable[[str], None] = print,
+    log: Callable[[str], None] = logger.info,
 ) -> list[RelayRecoveryTarget]:
     requested_ids = _dedupe([*(game_ids or []), *load_game_ids_from_file(game_ids_file)])
 
@@ -202,7 +204,7 @@ async def recover_relay_data(
     report_out: str | Path | None = None,
     sleep_seconds: float = 1.0,
     orchestrator: RelayRecoveryOrchestrator | None = None,
-    log: Callable[[str], None] = print,
+    log: Callable[[str], None] = logger.info,
 ) -> RelayRecoveryResult:
     target_list = list(targets)
     run_result = RelayRecoveryResult(total_targets=len(target_list))
@@ -416,7 +418,7 @@ def write_relay_recovery_report(
     report_path: str | Path | None,
     rows: list[dict[str, Any]],
     *,
-    log: Callable[[str], None] = print,
+    log: Callable[[str], None] = logger.info,
 ) -> None:
     if not report_path:
         return

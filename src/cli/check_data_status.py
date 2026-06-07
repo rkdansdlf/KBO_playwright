@@ -22,7 +22,7 @@ from src.db.engine import SessionLocal
 from src.models.game import Game
 from src.models.player import Player, PlayerSeasonBatting, PlayerSeasonPitching
 from src.services.p0_readiness import build_p0_readiness, format_p0_readiness_summary, normalize_yyyymmdd
-from src.utils.safe_print import safe_print as print
+
 
 logger = logging.getLogger(__name__)
 
@@ -527,7 +527,7 @@ def main(argv: Sequence[str] | None = None) -> None:
             )
 
         if args.json_output:
-            print(json.dumps({"p0_readiness": readiness}, ensure_ascii=False, indent=2, default=str))
+            logger.info(json.dumps({"p0_readiness": readiness}, ensure_ascii=False, indent=2, default=str))
             return
 
         logger.info(f"\n{'=' * 60}")
@@ -543,7 +543,7 @@ def main(argv: Sequence[str] | None = None) -> None:
         if readiness["failures"]:
             logger.info("\nFailures:")
             for failure in readiness["failures"]:
-                print(
+                logger.info(
                     "  - "
                     f"{failure['severity']} "
                     f"{failure['dataset']} "
@@ -575,18 +575,18 @@ def main(argv: Sequence[str] | None = None) -> None:
     logger.info(f"  Futures pitching: {futures_stats['pitching']}")
     logger.info(f"  Game batting: {game_stats['batting']}")
     logger.info(f"  Game pitching: {game_stats['pitching']}")
-    print(
+    logger.info(
         "  Scheduled pregame pitchers: "
         f"both={pregame_pitcher_stats['both_ok']} / "
         f"{pregame_pitcher_stats['scheduled_total']} "
         f"({pregame_pitcher_stats['coverage_pct']:.1f}%)"
     )
-    print(
+    logger.info(
         "  Scheduled preview summaries: "
         f"{pregame_pitcher_stats['preview_rows']} "
         f"(missing starters={pregame_pitcher_stats['preview_missing_starters']})"
     )
-    print(
+    logger.info(
         "  Pregame OCI sync: "
         f"candidates={pregame_pitcher_stats['sync_candidate_games']}, "
         f"complete_starters={pregame_pitcher_stats['sync_complete_starters']}, "

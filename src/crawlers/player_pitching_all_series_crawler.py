@@ -1033,8 +1033,9 @@ def crawl_pitcher_series(
             payloads = [stat.to_repository_payload() for stat in stats_list]
             saved_count = save_pitching_stats_to_db(payloads)
             logger.info(f"✅ 투수 데이터 저장 완료: {saved_count}명")
-            print(
-                f"📌 다음 단계: ./venv/bin/python3 -m src.cli.sync_oci --season-stats --year {year} 실행하여 OCI 동기화"
+            logger.info(
+                "📌 다음 단계: ./venv/bin/python3 -m src.cli.sync_oci --season-stats --year %s 실행하여 OCI 동기화",
+                year,
             )
         except Exception:
             logger.exception("❌ 투수 데이터 저장 실패")

@@ -16,7 +16,7 @@ from src.services.postgame_reconciliation_service import (
     reconcile_postgame_range,
     write_reconciliation_csv,
 )
-from src.utils.safe_print import safe_print as print
+
 
 logger = logging.getLogger(__name__)
 
@@ -42,12 +42,12 @@ async def run_reconciliation(args: argparse.Namespace) -> int:
             detail_crawler=crawler,
             concurrency=args.concurrency,
             extra_game_ids=args.game_id,
-            log=print,
+            log=logger.info,
         )
     finally:
         session.close()
 
-    print(
+    logger.info(
         "[POSTGAME-RECONCILE] "
         f"range={result.start_date}-{result.end_date} "
         f"candidates={result.candidates} changed={len(result.changes)}"

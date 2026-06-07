@@ -24,7 +24,6 @@ logger = logging.getLogger(__name__)
 from playwright.async_api import BrowserContext, Page, async_playwright
 
 from src.utils.request_policy import RequestPolicy
-from src.utils.safe_print import safe_print as print
 from src.utils.team_codes import resolve_team_code
 
 # ---------------------------------------------------------------------------
@@ -229,8 +228,11 @@ class StaffRegisterCrawler:
                 }
             )
 
-        print(
-            f"  [{kbo_team_code}] Found {len(records)} staff ({'→'.join(str(r['player_id']) for r in records[:3])}...)"
+        logger.info(
+            "  [%s] Found %d staff (%s...)",
+            kbo_team_code,
+            len(records),
+            '→'.join(str(r['player_id']) for r in records[:3]),
         )
         return records
 
@@ -315,10 +317,15 @@ async def main():
     records = await crawler.crawl_all_teams(team_codes=["LG", "WO"])
     logger.info(f"\nTotal staff records collected: {len(records)}")
     for r in records:
-        print(
-            f"  [{r['staff_role'].upper()}] {r['name']} "
-            f"(pid={r['player_id']}, team={r['team']}, "
-            f"birth={r['birth_date']}, {r['height_cm']}cm/{r['weight_kg']}kg)"
+        logger.info(
+            "  [%s] %s (pid=%s, team=%s, birth=%s, %scm/%skg)",
+            r['staff_role'].upper(),
+            r['name'],
+            r['player_id'],
+            r['team'],
+            r['birth_date'],
+            r['height_cm'],
+            r['weight_kg'],
         )
 
 

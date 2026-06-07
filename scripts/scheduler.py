@@ -4,7 +4,7 @@ APScheduler-based automation for KBO data collection.
 Note: Daily post-processing (finalize, standings, defense, rankings, PBP healer,
 batch parse, quality report, gap report, freshness monitor) and Tier 2 backfills
 (SH/SF, advanced stats, player IDs, roster) are now handled by GitHub Actions
-via .github/workflows/daily_kbo_sync.yml and backfill_*.yml.
+via .github/workflows/daily_kbo_sync.yml and backfill.yml (consolidated).
 
 APScheduler focuses on real-time and local-only jobs:
 
@@ -62,7 +62,6 @@ from src.cli.run_daily_update import main as run_daily_update_main
 from src.db.engine import SessionLocal
 from src.sync.oci_sync import OCISync
 from src.utils.alerting import SlackWebhookClient
-from src.utils.safe_print import safe_print as print
 
 # Stadium real-time data job functions (imported lazily inside job bodies to avoid startup overhead)
 
