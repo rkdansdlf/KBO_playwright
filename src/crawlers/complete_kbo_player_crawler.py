@@ -562,7 +562,7 @@ def save_to_database(player_data: dict[int, dict], series_name: str):
 def main():
     """메인 실행 함수"""
     # 크롤링 대상 설정
-    YEAR = 2025
+    YEAR = datetime.now().year
 
     # 시리즈 정의
     SERIES_LIST = [

@@ -314,8 +314,18 @@ def build_arg_parser() -> argparse.ArgumentParser:
     return parser
 
 
+_ALLOWED_YEAR_COLUMNS = frozenset({
+    "season",
+    "season_year",
+    "strftime('%Y', game_date)",
+    "strftime('%Y', standings_date)",
+})
+
+
 def get_available_years(session: Session, model: Any, column_name: str = "season") -> list[int]:
     """대상 테이블에서 사용 가능한 연도 목록을 가져옵니다."""
+    if column_name not in _ALLOWED_YEAR_COLUMNS:
+        raise ValueError(f"Disallowed column expression: {column_name}")
     query = session.query(text(f"DISTINCT {column_name}")).select_from(model)
     years = [int(row[0]) for row in query.all() if row[0]]
     return sorted(years, reverse=True)

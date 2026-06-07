@@ -277,12 +277,11 @@ class GameSyncMixin:
         # Build filters for child tables (they often use game_id instead of game_date)
         child_filters = []
         if year:
-            child_filters.append(text(f"game_id LIKE '{year}%'"))
+            child_filters.append(text("game_id LIKE :year_pattern").bindparams(year_pattern=f"{year}%"))
         elif days:
             game_ids = [g.game_id for g in self.sqlite_session.query(Game.game_id).filter(*filters).all()]
             if game_ids:
-                quoted_ids = [f"'{gid}'" for gid in game_ids]
-                child_filters.append(text(f"game_id IN ({','.join(quoted_ids)})"))
+                child_filters.append(GameMetadata.game_id.in_(game_ids))
             else:
                 logger.info("ℹ️ No games found for the specified period.")
                 return results

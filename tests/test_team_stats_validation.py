@@ -25,7 +25,9 @@ def _make_session():
                 games INTEGER, plate_appearances INTEGER, at_bats INTEGER,
                 runs INTEGER, hits INTEGER, doubles INTEGER, triples INTEGER,
                 home_runs INTEGER, rbi INTEGER, stolen_bases INTEGER,
-                caught_stealing INTEGER, walks INTEGER, strikeouts INTEGER
+                caught_stealing INTEGER, walks INTEGER, strikeouts INTEGER,
+                intentional_walks INTEGER, hbp INTEGER, sacrifice_hits INTEGER,
+                sacrifice_flies INTEGER, gdp INTEGER
             )
         """)
         )
@@ -37,7 +39,11 @@ def _make_session():
                 holds INTEGER, innings_pitched FLOAT, runs_allowed INTEGER,
                 earned_runs INTEGER, hits_allowed INTEGER,
                 home_runs_allowed INTEGER, walks_allowed INTEGER,
-                strikeouts INTEGER
+                strikeouts INTEGER, innings_outs INTEGER,
+                intentional_walks INTEGER, hit_batters INTEGER, tbf INTEGER,
+                complete_games INTEGER, shutouts INTEGER, wild_pitches INTEGER,
+                balks INTEGER, sacrifices_allowed INTEGER,
+                sacrifice_flies_allowed INTEGER
             )
         """)
         )
@@ -50,7 +56,13 @@ def _make_session():
                 runs INTEGER, hits INTEGER, doubles INTEGER, triples INTEGER,
                 home_runs INTEGER, rbi INTEGER, stolen_bases INTEGER,
                 caught_stealing INTEGER, walks INTEGER, strikeouts INTEGER
-            )
+            ,
+            intentional_walks INTEGER,
+            hbp INTEGER,
+            sacrifice_hits INTEGER,
+            sacrifice_flies INTEGER,
+            gdp INTEGER
+        )
         """)
         )
         conn.execute(
@@ -63,7 +75,17 @@ def _make_session():
                 runs_allowed INTEGER, earned_runs INTEGER, hits_allowed INTEGER,
                 home_runs_allowed INTEGER, walks_allowed INTEGER,
                 strikeouts INTEGER
-            )
+            ,
+            intentional_walks INTEGER,
+            hit_batters INTEGER,
+            tbf INTEGER,
+            complete_games INTEGER,
+            shutouts INTEGER,
+            wild_pitches INTEGER,
+            balks INTEGER,
+            sacrifices_allowed INTEGER,
+            sacrifice_flies_allowed INTEGER
+        )
         """)
         )
     return sessionmaker(bind=engine)()
@@ -287,8 +309,8 @@ class TestTeamPitchingValidation:
                 text("""
                     INSERT INTO team_season_pitching
                         (team_id, season, league, games, wins, losses,
-                         innings_pitched, strikeouts)
-                    VALUES ('SSG', 2025, 'REGULAR', 2, 1, 1, 10.0, 8)
+                         innings_pitched, innings_outs, strikeouts)
+                    VALUES ('SSG', 2025, 'REGULAR', 2, 1, 1, 10.0, 30, 8)
                 """)
             )
             session.commit()
@@ -387,8 +409,8 @@ class TestTeamPitchingValidation:
                 text("""
                     INSERT INTO team_season_pitching
                         (team_id, season, league, games, wins,
-                         innings_pitched, strikeouts)
-                    VALUES ('SSG', 2025, 'REGULAR', 1, 1, 7.1, 5)
+                         innings_pitched, innings_outs, strikeouts)
+                    VALUES ('SSG', 2025, 'REGULAR', 1, 1, 7.1, 22, 5)
                 """)
             )
             session.commit()
