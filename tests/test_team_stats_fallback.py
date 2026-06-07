@@ -2,13 +2,12 @@ import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-from src.models.base import Base
+from src.crawlers.team_batting_stats_crawler import TeamBattingStatsCrawler
+from src.crawlers.team_pitching_stats_crawler import TeamPitchingStatsCrawler
 from src.models.player import PlayerSeasonBatting, PlayerSeasonPitching
 from src.models.standings import TeamStandingsDaily
 from src.models.team import Team
 from src.models.team_stats import TeamSeasonBatting, TeamSeasonPitching
-from src.crawlers.team_batting_stats_crawler import TeamBattingStatsCrawler
-from src.crawlers.team_pitching_stats_crawler import TeamPitchingStatsCrawler
 
 
 @pytest.fixture
@@ -26,11 +25,11 @@ def test_db():
         table.create(bind=engine)
     TestSession = sessionmaker(bind=engine)
     session = TestSession()
-    
+
     # Seed team
     session.add(Team(team_id="OB", team_name="두산 베어스", team_short_name="두산", city="서울"))
     session.commit()
-    
+
     yield session
     session.close()
 
@@ -71,18 +70,18 @@ def test_team_batting_stats_crawler_fallback(test_db, monkeypatch):
 
     # Mock SessionLocal and _collect_from_site
     monkeypatch.setattr("src.crawlers.team_batting_stats_crawler.SessionLocal", lambda: session)
-    
+
     crawler = TeamBattingStatsCrawler()
     # Force _collect_from_site to fail
     monkeypatch.setattr(crawler, "_collect_from_site", lambda *args, **kwargs: [])
 
     # Run crawl with persist=False
     results = crawler.crawl(2025, persist=False)
-    
+
     assert len(results) == 1
     assert results[0]["team_id"] == "OB"
     assert results[0]["hits"] == 10
-    
+
     # Since persist=False, nothing should be saved to database
     db_records = session.query(TeamSeasonBatting).all()
     assert len(db_records) == 0
@@ -90,7 +89,7 @@ def test_team_batting_stats_crawler_fallback(test_db, monkeypatch):
     # Run crawl with persist=True (default)
     results_persist = crawler.crawl(2025, persist=True)
     assert len(results_persist) == 1
-    
+
     # Now it should be saved to database
     db_records_persist = session.query(TeamSeasonBatting).all()
     assert len(db_records_persist) == 1
@@ -136,18 +135,18 @@ def test_team_pitching_stats_crawler_fallback(test_db, monkeypatch):
 
     # Mock SessionLocal and _collect_from_site
     monkeypatch.setattr("src.crawlers.team_pitching_stats_crawler.SessionLocal", lambda: session)
-    
+
     crawler = TeamPitchingStatsCrawler()
     # Force _collect_from_site to fail
     monkeypatch.setattr(crawler, "_collect_from_site", lambda *args, **kwargs: [])
 
     # Run crawl with persist=False
     results = crawler.crawl(2025, persist=False)
-    
+
     assert len(results) == 1
     assert results[0]["team_id"] == "OB"
     assert results[0]["wins"] == 2
-    
+
     # Since persist=False, nothing should be saved to database
     db_records = session.query(TeamSeasonPitching).all()
     assert len(db_records) == 0
@@ -155,7 +154,7 @@ def test_team_pitching_stats_crawler_fallback(test_db, monkeypatch):
     # Run crawl with persist=True (default)
     results_persist = crawler.crawl(2025, persist=True)
     assert len(results_persist) == 1
-    
+
     # Now it should be saved to database
     db_records_persist = session.query(TeamSeasonPitching).all()
     assert len(db_records_persist) == 1

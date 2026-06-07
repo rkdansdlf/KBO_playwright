@@ -11,16 +11,13 @@ Covers:
   - OperationNoticeNaverCrawler skips when unconfigured
   - CLI --source argument parsing
 """
+
 from __future__ import annotations
 
 from datetime import date, datetime
-from unittest.mock import AsyncMock, MagicMock, patch
-
-import pytest
 
 from src.crawlers.operation_notice_naver_crawler import (
     _classify,
-    _infer_game_date,
     _is_urgent,
     _result_to_notice,
 )
@@ -32,10 +29,10 @@ from src.utils.naver_search_client import (
     _parse_naver_date,
 )
 
-
 # ─────────────────────────────────────────────
 # naver_search_client helpers
 # ─────────────────────────────────────────────
+
 
 class TestParseNaverDate:
     def test_rfc2822_format(self):
@@ -120,6 +117,7 @@ class TestNoticeQueries:
 # ─────────────────────────────────────────────
 # operation_notice_naver_crawler helpers
 # ─────────────────────────────────────────────
+
 
 class TestClassify:
     def test_cancel(self):
@@ -212,10 +210,13 @@ class TestResultToNotice:
 # OperationNoticeNaverCrawler integration
 # ─────────────────────────────────────────────
 
+
 class TestNaverCrawlerIntegration:
     def test_returns_empty_when_not_configured(self, monkeypatch):
         import asyncio
+
         from src.crawlers.operation_notice_naver_crawler import OperationNoticeNaverCrawler
+
         monkeypatch.delenv("NAVER_CLIENT_ID", raising=False)
         monkeypatch.delenv("NAVER_CLIENT_SECRET", raising=False)
         crawler = OperationNoticeNaverCrawler()
@@ -224,6 +225,7 @@ class TestNaverCrawlerIntegration:
 
     def test_uses_search_client_results(self, monkeypatch):
         import asyncio
+
         from src.crawlers.operation_notice_naver_crawler import OperationNoticeNaverCrawler
 
         fake_result = NaverSearchResult(
@@ -255,21 +257,25 @@ class TestNaverCrawlerIntegration:
 # CLI argument parsing
 # ─────────────────────────────────────────────
 
+
 class TestCLIArgumentParsing:
     def test_default_source_is_official(self):
         from src.cli.crawl_operation_notices import build_arg_parser
+
         parser = build_arg_parser()
         args = parser.parse_args([])
         assert args.source == "official"
 
     def test_source_naver(self):
         from src.cli.crawl_operation_notices import build_arg_parser
+
         parser = build_arg_parser()
         args = parser.parse_args(["--source", "naver"])
         assert args.source == "naver"
 
     def test_source_all(self):
         from src.cli.crawl_operation_notices import build_arg_parser
+
         parser = build_arg_parser()
         args = parser.parse_args(["--source", "all", "--save"])
         assert args.source == "all"
@@ -277,18 +283,21 @@ class TestCLIArgumentParsing:
 
     def test_days_default(self):
         from src.cli.crawl_operation_notices import build_arg_parser
+
         parser = build_arg_parser()
         args = parser.parse_args(["--source", "naver"])
         assert args.days == 3
 
     def test_days_custom(self):
         from src.cli.crawl_operation_notices import build_arg_parser
+
         parser = build_arg_parser()
         args = parser.parse_args(["--source", "naver", "--days", "1"])
         assert args.days == 1
 
     def test_team_and_pages(self):
         from src.cli.crawl_operation_notices import build_arg_parser
+
         parser = build_arg_parser()
         args = parser.parse_args(["--team", "LG", "--pages", "3", "--save"])
         assert args.team == "LG"

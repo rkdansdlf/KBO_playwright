@@ -1,5 +1,4 @@
 import json
-from pathlib import Path
 
 from src.cli.generate_quality_report import (
     format_telegram_report,

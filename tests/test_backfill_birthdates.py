@@ -1,13 +1,14 @@
-import os
 import unittest
 from datetime import date
+
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import sessionmaker
+
+from scripts.backfill_birthdates import _parse_birth_date, backfill
 
 # Setup test imports
 from src.models.base import Base
 from src.models.player import PlayerBasic
-from scripts.backfill_birthdates import _parse_birth_date, backfill
 
 
 class TestBirthdateParsing(unittest.TestCase):
@@ -63,9 +64,7 @@ class TestBirthdateBackfillIntegration(unittest.TestCase):
         with self.Session() as session:
             p1 = PlayerBasic(player_id=1, name="HitterA", birth_date="1990-05-12")
             p2 = PlayerBasic(player_id=2, name="PitcherB", birth_date="1995.7.3")
-            p3 = PlayerBasic(
-                player_id=3, name="InfielderC", birth_date="1998년 10월 22일"
-            )
+            p3 = PlayerBasic(player_id=3, name="InfielderC", birth_date="1998년 10월 22일")
             p4 = PlayerBasic(player_id=4, name="OutfielderD", birth_date="-")
             p5 = PlayerBasic(player_id=5, name="CoachE", birth_date=None)
 
@@ -78,9 +77,7 @@ class TestBirthdateBackfillIntegration(unittest.TestCase):
 
         # Verify DB updates
         with self.Session() as session:
-            res = session.execute(
-                select(PlayerBasic).order_by(PlayerBasic.player_id)
-            ).scalars().all()
+            res = session.execute(select(PlayerBasic).order_by(PlayerBasic.player_id)).scalars().all()
 
             self.assertEqual(res[0].birth_date_date, date(1990, 5, 12))
             self.assertEqual(res[1].birth_date_date, date(1995, 7, 3))

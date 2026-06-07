@@ -1,15 +1,15 @@
 import datetime
 import unittest
+
 import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-from src.models.base import Base
+from src.aggregators.team_stat_aggregator import TeamStatAggregator
 from src.models.player import PlayerSeasonBatting, PlayerSeasonPitching
 from src.models.standings import TeamStandingsDaily
 from src.models.team import Team
 from src.models.team_stats import TeamSeasonBatting, TeamSeasonPitching
-from src.aggregators.team_stat_aggregator import TeamStatAggregator
 
 
 class TestTeamStatAggregatorPure(unittest.TestCase):
@@ -637,14 +637,14 @@ class TestTeamStatAggregatorInstanceMethods:
     def test_aggregate_batting_instance(self, seed_standings):
         session = seed_standings
         self.seed_batting_data(session)
-        
+
         aggregator = TeamStatAggregator(session)
         results = aggregator.aggregate_batting(2025)
-        
+
         assert len(results) == 1
         assert results[0]["team_id"] == "OB"
         assert results[0]["hits"] == 10
-        
+
         # Verify saved in DB
         db_records = session.query(TeamSeasonBatting).filter_by(season=2025).all()
         assert len(db_records) == 1
@@ -654,15 +654,15 @@ class TestTeamStatAggregatorInstanceMethods:
     def test_aggregate_pitching_instance(self, seed_standings):
         session = seed_standings
         self.seed_pitching_data(session)
-        
+
         aggregator = TeamStatAggregator(session)
         results = aggregator.aggregate_pitching(2025)
-        
+
         assert len(results) == 1
         assert results[0]["team_id"] == "OB"
         assert results[0]["wins"] == 2
-        assert results[0]["avg_against"] == pytest.approx(10 / (60 - 5), rel=1e-4) # hits / (tbf - bb)
-        
+        assert results[0]["avg_against"] == pytest.approx(10 / (60 - 5), rel=1e-4)  # hits / (tbf - bb)
+
         # Verify saved in DB
         db_records = session.query(TeamSeasonPitching).filter_by(season=2025).all()
         assert len(db_records) == 1
@@ -676,7 +676,7 @@ class TestTeamStatAggregatorInstanceMethods:
 
         aggregator = TeamStatAggregator(session)
         all_results = aggregator.aggregate_all(2025)
-        
+
         assert "batting" in all_results
         assert "pitching" in all_results
         assert len(all_results["batting"]) == 1

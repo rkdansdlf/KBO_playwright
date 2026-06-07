@@ -4,8 +4,6 @@ Integration tests for food_parser with realistic fixture HTML.
 
 from __future__ import annotations
 
-from pathlib import Path
-
 from src.parsers.food_parser import parse_food
 
 

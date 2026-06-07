@@ -1,6 +1,4 @@
-import pytest
-
-from src.parsers.food_parser import parse_food, MENU_PATTERN, STADIUM_FROM_SOURCE_KEY
+from src.parsers.food_parser import MENU_PATTERN, STADIUM_FROM_SOURCE_KEY, parse_food
 
 
 class TestFoodParser:

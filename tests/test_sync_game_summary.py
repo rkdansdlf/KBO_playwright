@@ -10,8 +10,8 @@ from sqlalchemy.orm import Session
 from src.models.game import GameSummary
 from src.sync.oci_sync import OCISync
 
-
 # ── helpers ───────────────────────────────────────────────────────────
+
 
 def _build_env(tmp_path: str):
     local_path = os.path.join(tmp_path, "local.db")
@@ -27,9 +27,7 @@ def _build_env(tmp_path: str):
     syncer.sqlite_session = local_session
     syncer.target_session = target_session
     syncer.oci_engine = None
-    syncer._chunked = lambda items, size: (
-        [items[i:i + size] for i in range(0, len(items), size)]
-    )
+    syncer._chunked = lambda items, size: ([items[i : i + size] for i in range(0, len(items), size)])
     return syncer, local_session, target_session
 
 
@@ -60,6 +58,7 @@ def _spy_reset_sequence(syncer):
 
 # ── fixtures ──────────────────────────────────────────────────────────
 
+
 @pytest.fixture
 def env(tmp_path):
     return _build_env(tmp_path)
@@ -67,8 +66,8 @@ def env(tmp_path):
 
 # ── _sync_game_summary_rows ──────────────────────────────────────────
 
-class TestSyncGameSummaryRows:
 
+class TestSyncGameSummaryRows:
     def test_deletes_before_insert(self, env):
         syncer, local, target = env
         _seed(local, [{"game_id": "G001", "summary_type": "리뷰", "player_name": "A"}])
@@ -131,30 +130,39 @@ class TestSyncGameSummaryRows:
 
     def test_deduplicates_by_key(self, env):
         syncer, local, target = env
-        _seed(local, [
-            {"game_id": "G001", "summary_type": "리뷰", "player_id": 1, "player_name": "A", "detail_text": "x"},
-            {"game_id": "G001", "summary_type": "리뷰", "player_id": 1, "player_name": "A", "detail_text": "x"},
-        ])
+        _seed(
+            local,
+            [
+                {"game_id": "G001", "summary_type": "리뷰", "player_id": 1, "player_name": "A", "detail_text": "x"},
+                {"game_id": "G001", "summary_type": "리뷰", "player_id": 1, "player_name": "A", "detail_text": "x"},
+            ],
+        )
         calls = _spy_bulk_copy(syncer)
         syncer._sync_game_summary_rows()
         assert len(calls[0][1]) == 1
 
     def test_deduplicates_by_full_text(self, env):
         syncer, local, target = env
-        _seed(local, [
-            {"game_id": "G001", "summary_type": "리뷰", "player_name": "A", "detail_text": "hello"},
-            {"game_id": "G001", "summary_type": "리뷰", "player_name": "A", "detail_text": "world"},
-        ])
+        _seed(
+            local,
+            [
+                {"game_id": "G001", "summary_type": "리뷰", "player_name": "A", "detail_text": "hello"},
+                {"game_id": "G001", "summary_type": "리뷰", "player_name": "A", "detail_text": "world"},
+            ],
+        )
         calls = _spy_bulk_copy(syncer)
         syncer._sync_game_summary_rows()
         assert len(calls[0][1]) == 2
 
     def test_replace_game_ids_scopes_delete(self, env):
         syncer, local, target = env
-        _seed(local, [
-            {"game_id": "G001", "summary_type": "A", "player_name": "X"},
-            {"game_id": "G002", "summary_type": "A", "player_name": "Y"},
-        ])
+        _seed(
+            local,
+            [
+                {"game_id": "G001", "summary_type": "A", "player_name": "X"},
+                {"game_id": "G002", "summary_type": "A", "player_name": "Y"},
+            ],
+        )
         target.add(GameSummary(game_id="G001", summary_type="A", player_name="OLD1"))
         target.add(GameSummary(game_id="G002", summary_type="A", player_name="OLD2"))
         target.commit()
@@ -166,9 +174,7 @@ class TestSyncGameSummaryRows:
         assert len(calls) == 1
         assert len(calls[0][1]) == 2
 
-        old_rows = target.query(GameSummary).filter(
-            GameSummary.player_name == "OLD1"
-        ).count()
+        old_rows = target.query(GameSummary).filter(GameSummary.player_name == "OLD1").count()
         assert old_rows == 0
 
     def test_excludes_system_columns(self, env):
@@ -206,17 +212,20 @@ class TestSyncGameSummaryRows:
         target.commit()
 
         target.commit = MagicMock(wraps=target.commit)
-        calls = _spy_bulk_copy(syncer)
+        _spy_bulk_copy(syncer)
         _spy_reset_sequence(syncer)
         syncer._sync_game_summary_rows()
         target.commit.assert_called()
 
     def test_summary_type_filter_in_query(self, env):
         syncer, local, target = env
-        _seed(local, [
-            {"game_id": "G001", "summary_type": "리뷰", "player_name": "A"},
-            {"game_id": "G001", "summary_type": "프리뷰", "player_name": "B"},
-        ])
+        _seed(
+            local,
+            [
+                {"game_id": "G001", "summary_type": "리뷰", "player_name": "A"},
+                {"game_id": "G001", "summary_type": "프리뷰", "player_name": "B"},
+            ],
+        )
         calls = _spy_bulk_copy(syncer)
         syncer._sync_game_summary_rows(summary_type="프리뷰")
         assert len(calls[0][1]) == 1
@@ -224,10 +233,13 @@ class TestSyncGameSummaryRows:
 
     def test_filters_passthrough(self, env):
         syncer, local, target = env
-        _seed(local, [
-            {"game_id": "G001", "summary_type": "T", "player_name": "A"},
-            {"game_id": "G002", "summary_type": "T", "player_name": "B"},
-        ])
+        _seed(
+            local,
+            [
+                {"game_id": "G001", "summary_type": "T", "player_name": "A"},
+                {"game_id": "G002", "summary_type": "T", "player_name": "B"},
+            ],
+        )
         calls = _spy_bulk_copy(syncer)
         syncer._sync_game_summary_rows(filters=[GameSummary.game_id == "G001"])
         assert len(calls[0][1]) == 1
@@ -235,10 +247,13 @@ class TestSyncGameSummaryRows:
 
     def test_returns_inserted_count(self, env):
         syncer, local, target = env
-        _seed(local, [
-            {"game_id": "G001", "summary_type": "T", "player_name": "A"},
-            {"game_id": "G002", "summary_type": "T", "player_name": "B"},
-        ])
+        _seed(
+            local,
+            [
+                {"game_id": "G001", "summary_type": "T", "player_name": "A"},
+                {"game_id": "G002", "summary_type": "T", "player_name": "B"},
+            ],
+        )
         _spy_bulk_copy(syncer)
         result = syncer._sync_game_summary_rows()
         assert result == 2

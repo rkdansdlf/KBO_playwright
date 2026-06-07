@@ -7,6 +7,7 @@ Covers:
   - Seoul API level mapping helper
   - CongestionSnapshot dataclass
 """
+
 from __future__ import annotations
 
 from datetime import date, datetime
@@ -19,10 +20,10 @@ from src.models.stadium_congestion import StadiumCongestion
 from src.models.stadium_info import StadiumInfo
 from src.repositories.congestion_repository import CongestionRepository
 
-
 # ─────────────────────────────────────────────
 # Fixtures
 # ─────────────────────────────────────────────
+
 
 @pytest.fixture
 def session():
@@ -69,6 +70,7 @@ def _congestion(
 # ─────────────────────────────────────────────
 # CongestionRepository Tests
 # ─────────────────────────────────────────────
+
 
 class TestCongestionRepositoryUpsert:
     def test_insert_new_record(self, session, stadium):
@@ -125,10 +127,7 @@ class TestCongestionRepositoryUpsert:
 
     def test_bulk_upsert_dedup_on_re_run(self, session, stadium):
         repo = CongestionRepository(session)
-        records = [
-            _congestion(location_label=f"위치_{i}", measured_at=datetime(2026, 6, 3, 15, 0))
-            for i in range(3)
-        ]
+        records = [_congestion(location_label=f"위치_{i}", measured_at=datetime(2026, 6, 3, 15, 0)) for i in range(3)]
         repo.bulk_upsert(records)
         session.commit()
 
@@ -153,8 +152,12 @@ class TestCongestionRepositoryRead:
 
     def test_get_by_game_date_location_type_filter(self, session, stadium):
         repo = CongestionRepository(session)
-        repo.upsert(_congestion(location_type="gate", location_label="게이트1", measured_at=datetime(2026, 6, 3, 15, 0)))
-        repo.upsert(_congestion(location_type="road", location_label="올림픽로", measured_at=datetime(2026, 6, 3, 15, 0)))
+        repo.upsert(
+            _congestion(location_type="gate", location_label="게이트1", measured_at=datetime(2026, 6, 3, 15, 0))
+        )
+        repo.upsert(
+            _congestion(location_type="road", location_label="올림픽로", measured_at=datetime(2026, 6, 3, 15, 0))
+        )
         session.commit()
 
         results = repo.get_by_game_date("JAMSIL", date(2026, 6, 3), location_type="gate")
@@ -177,16 +180,20 @@ class TestCongestionRepositoryRead:
 
     def test_get_peak_congestion(self, session, stadium):
         repo = CongestionRepository(session)
-        repo.upsert(_congestion(
-            location_label="잠실역_2호선",
-            measured_at=datetime(2026, 6, 3, 15, 0),
-            congestion_index=50.0,
-        ))
-        repo.upsert(_congestion(
-            location_label="잠실야구장_권역",
-            measured_at=datetime(2026, 6, 3, 16, 0),
-            congestion_index=92.0,
-        ))
+        repo.upsert(
+            _congestion(
+                location_label="잠실역_2호선",
+                measured_at=datetime(2026, 6, 3, 15, 0),
+                congestion_index=50.0,
+            )
+        )
+        repo.upsert(
+            _congestion(
+                location_label="잠실야구장_권역",
+                measured_at=datetime(2026, 6, 3, 16, 0),
+                congestion_index=92.0,
+            )
+        )
         session.commit()
 
         peak = repo.get_peak_congestion("JAMSIL", date(2026, 6, 3))
@@ -203,14 +210,17 @@ class TestCongestionRepositoryRead:
 # Seoul API level mapping tests
 # ─────────────────────────────────────────────
 
+
 class TestSeoulAPILevelMapping:
     def test_level_map_coverage(self):
         from src.utils.seoul_api_client import LEVEL_MAP
+
         expected_keys = {"여유", "보통", "약간 붐빔", "붐빔", "매우 붐빔"}
         assert expected_keys.issubset(set(LEVEL_MAP.keys()))
 
     def test_level_map_values(self):
         from src.utils.seoul_api_client import LEVEL_MAP
+
         assert LEVEL_MAP["여유"] == "low"
         assert LEVEL_MAP["보통"] == "normal"
         assert LEVEL_MAP["약간 붐빔"] == "high"
@@ -218,6 +228,7 @@ class TestSeoulAPILevelMapping:
 
     def test_jamsil_area_codes_defined(self):
         from src.utils.seoul_api_client import JAMSIL_AREA_CODES
+
         assert len(JAMSIL_AREA_CODES) >= 2
         assert any("잠실" in code for code in JAMSIL_AREA_CODES)
 
@@ -226,9 +237,11 @@ class TestSeoulAPILevelMapping:
 # CongestionSnapshot dataclass tests
 # ─────────────────────────────────────────────
 
+
 class TestCongestionSnapshot:
     def test_snapshot_creation(self):
         from src.utils.seoul_api_client import CongestionSnapshot
+
         snap = CongestionSnapshot(
             location_label="잠실역_2호선",
             congestion_level="high",
@@ -243,6 +256,7 @@ class TestCongestionSnapshot:
 
     def test_snapshot_optional_fields(self):
         from src.utils.seoul_api_client import CongestionSnapshot
+
         snap = CongestionSnapshot(
             location_label="잠실야구장_권역",
             congestion_level="normal",

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import hashlib
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from types import SimpleNamespace
 
 import pytest
@@ -59,7 +59,7 @@ def _seed_duplicate_snapshot(
                 "data_source_id": ds.id,
                 "raw_html_or_json_path": f"https://example.com/{source_key}",
                 "content_hash": content_hash,
-                "fetched_at": datetime.now(timezone.utc).replace(tzinfo=None),
+                "fetched_at": datetime.now(UTC).replace(tzinfo=None),
                 "status_code": 200,
             }
         )

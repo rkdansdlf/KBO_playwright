@@ -1,14 +1,15 @@
 import unittest
-from datetime import date
-from sqlalchemy import create_engine, select
+
+from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
+
+from src.cli.recalc_team_stats import run_recalc
 
 # Setup test imports
 from src.models.base import Base
+from src.models.player import PlayerBasic, PlayerSeasonBatting, PlayerSeasonPitching
 from src.models.team import Team
 from src.models.team_stats import TeamSeasonBatting, TeamSeasonPitching
-from src.models.player import PlayerBasic, PlayerSeasonBatting, PlayerSeasonPitching
-from src.cli.recalc_team_stats import run_recalc
 
 
 class TestRecalcTeamStatsCLI(unittest.TestCase):
@@ -19,8 +20,8 @@ class TestRecalcTeamStatsCLI(unittest.TestCase):
         self.Session = sessionmaker(bind=self.engine)
 
         # Patch SessionLocal across necessary modules
-        import src.db.engine
         import src.cli.recalc_team_stats
+        import src.db.engine
         import src.repositories.team_stats_repository
 
         self.orig_engine_session = src.db.engine.SessionLocal
@@ -46,8 +47,8 @@ class TestRecalcTeamStatsCLI(unittest.TestCase):
 
     def tearDown(self):
         # Restore original sessions
-        import src.db.engine
         import src.cli.recalc_team_stats
+        import src.db.engine
         import src.repositories.team_stats_repository
 
         src.db.engine.SessionLocal = self.orig_engine_session
