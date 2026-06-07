@@ -129,6 +129,6 @@ class ParkingCrawler:
                 print(f"[PARKING] Saved {lot_count} lots, {fee_count} fee rules, {saved_snaps} snapshots.")
             except Exception as e:
                 session.rollback()
-                print(f"[PARKING] Error: {e}")
+                logger.exception("Parking batch save error")
             finally:
                 self._raw_pages.clear()

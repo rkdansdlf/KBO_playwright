@@ -82,7 +82,7 @@ class TeamHistoryCrawler:
             try:
                 year = int(year_text.strip())
             except Exception:
-                print(f"⚠️ Skipping invalid year: {year_text}")
+                logger.warning("Skipping invalid year: %s", year_text)
                 continue
 
             # 2. Iterate Cells
@@ -215,7 +215,7 @@ class TeamHistoryCrawler:
                 print(f"✅ Saved/Updated {saved_count} records ({saved_snaps} snapshots).")
             except Exception as e:
                 session.rollback()
-                print(f"❌ Error saving team history: {e}")
+                logger.exception("Error saving team history")
             finally:
                 self._raw_pages.clear()
 

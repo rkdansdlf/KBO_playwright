@@ -12,6 +12,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import logging
 from collections import Counter
 from datetime import datetime
 from typing import Sequence
@@ -28,6 +29,8 @@ from src.repositories.save_futures_batting import save_futures_batting
 from src.utils.player_validation import normalize_player_id
 from src.utils.playwright_pool import AsyncPlaywrightPool
 from src.utils.safe_print import safe_print as print
+
+logger = logging.getLogger(__name__)
 
 
 def _has_player_basic(player_id: str) -> bool:
@@ -137,6 +140,7 @@ async def process_player_result(
         try:
             batting_rows = await fetch_and_parse_futures_batting(player_id, hitter_url, pool=pool)
         except Exception as exc:
+            logger.error(f"Exception crawling batting stats for player {player_id}: {exc}", exc_info=True)
             print(f"[ERROR] Exception crawling batting stats for player {player_id}: {exc}")
 
     # 2. Pitcher stats
@@ -145,6 +149,7 @@ async def process_player_result(
         try:
             pitching_rows = await fetch_and_parse_futures_pitching(player_id, pitcher_url, pool=pool)
         except Exception as exc:
+            logger.error(f"Exception crawling pitching stats for player {player_id}: {exc}", exc_info=True)
             print(f"[ERROR] Exception crawling pitching stats for player {player_id}: {exc}")
 
     if not batting_rows and not pitching_rows:
@@ -177,6 +182,7 @@ async def process_player_result(
             saved_batting = await asyncio.to_thread(save_futures_batting, player_id, batting_rows)
             saved += saved_batting
         except Exception as exc:
+            logger.error(f"Exception saving batting stats for player {player_id}: {exc}", exc_info=True)
             print(f"[ERROR] Exception saving batting stats for player {player_id}: {exc}")
 
     # Save Pitcher stats if any
@@ -216,6 +222,7 @@ async def process_player_result(
             saved_pitching = await asyncio.to_thread(save_pitching_stats_to_db, payloads)
             saved += saved_pitching
         except Exception as exc:
+            logger.error(f"Exception saving pitching stats for player {player_id}: {exc}", exc_info=True)
             print(f"[ERROR] Exception saving pitching stats for player {player_id}: {exc}")
 
     if saved > 0:
@@ -330,6 +337,7 @@ async def crawl_futures(args: argparse.Namespace) -> dict:
             try:
                 result = await process_player_result(pid, pos, name, repository, args.delay, pool)
             except Exception as exc:
+                logger.error(f"Unhandled exception for player {pid} ({pos}): {exc}", exc_info=True)
                 print(f"[ERROR] Unhandled exception for player {pid} ({pos}): {exc}")
                 result = {
                     "player_id": pid,

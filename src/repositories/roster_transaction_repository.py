@@ -5,6 +5,7 @@ Repository for RosterTransaction operations.
 from datetime import date
 
 from sqlalchemy import inspect, select
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from ..models.player import PlayerBasic
@@ -37,7 +38,7 @@ class RosterTransactionRepository:
             return True
         try:
             tables = set(inspect(self.session.get_bind()).get_table_names())
-        except Exception:
+        except SQLAlchemyError:
             return True
         if PlayerBasic.__tablename__ not in tables:
             return True

@@ -6,6 +6,8 @@ from datetime import datetime, timedelta
 
 import httpx
 
+from sqlalchemy.exc import SQLAlchemyError
+
 from src.db.engine import SessionLocal
 from src.repositories.foreign_player_repository import ForeignPlayerRepository
 from src.utils.safe_print import safe_print as print
@@ -149,12 +151,13 @@ class ForeignPlayerCrawler:
                 try:
                     repo.save_change(item)
                     count += 1
-                except Exception as e:
+                except SQLAlchemyError as e:
                     logger.warning(f"Foreign player save failed: {e}")
             session.commit()
             print(f"Saved {count} foreign player change records.")
-        except Exception as e:
+        except SQLAlchemyError as e:
             session.rollback()
+            logger.error(f"Database error saving foreign players: {e}", exc_info=True)
             print(f"Error: {e}")
         finally:
             session.close()

@@ -191,7 +191,7 @@ class RelayCrawler:
             print(f"[INFO] Relay API permanent error: {full_url} status={exc.status_code}")
             return None, f"http_{exc.status_code}"
         except Exception as exc:
-            print(f"[WARN] Relay API request failed: {full_url} reason={exc}")
+            logger.warning("Relay API request failed: %s reason=%s", full_url, exc)
             return None, "relay_api_error"
 
     def _match_schedule_game(
@@ -324,6 +324,7 @@ class RelayCrawler:
                                     h, m = map(int, t_clean.split(":"))
                                     return h * 60 + m
                                 except Exception:
+                                    logger.warning("Failed to parse time string: %s", t_clean)
                                     pass
                             return 0
 
@@ -371,6 +372,7 @@ class RelayCrawler:
                         elif diff_mins > 120:
                             score -= 30
                     except Exception:
+                        logger.warning("Failed to compute time diff score")
                         pass
 
             # 6. Stadium Match
@@ -548,6 +550,7 @@ class RelayCrawler:
                                 if hasattr(game_time, "strftime"):
                                     game_time = game_time.strftime("%H:%M")
             except Exception:
+                logger.warning("Failed to extract game metadata for relay relay")
                 pass
 
         if game_time and not isinstance(game_time, str):
@@ -596,7 +599,7 @@ class RelayCrawler:
                 "payload_hash": parsed_payload.get("payload_hash"),
             }
         except Exception as e:
-            print(f"[ERROR] Relay API crawl failed for {kbo_game_id}: {e}")
+            logger.exception("Relay API crawl failed for %s", kbo_game_id)
             self._set_failure_reason(kbo_game_id, "relay_api_error")
             return None
 
@@ -720,6 +723,7 @@ class RelayCrawler:
                     try:
                         return int(val) if val is not None else default
                     except Exception:
+                        logger.warning("Failed to convert to int: %s", val)
                         return default
 
                 home_score = to_int(state.get("homeScore"))

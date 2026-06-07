@@ -4,13 +4,15 @@ import logging
 
 from playwright.async_api import async_playwright
 
+from sqlalchemy.exc import SQLAlchemyError
+
 from src.db.engine import SessionLocal
 
 logger = logging.getLogger(__name__)
 from src.repositories.broadcast_repository import BroadcastRepository
-from src.utils.team_codes import build_kbo_game_id
 from src.utils.playwright_blocking import install_async_resource_blocking
 from src.utils.safe_print import safe_print as print
+from src.utils.team_codes import build_kbo_game_id
 
 
 class BroadcastCrawler:
@@ -117,12 +119,13 @@ class BroadcastCrawler:
                 try:
                     repo.save_broadcast(item)
                     count += 1
-                except Exception as ex:
+                except SQLAlchemyError as ex:
                     logger.warning(f"Broadcast save failed for item: {ex}")
             session.commit()
             print(f"Saved {count} broadcast records.")
-        except Exception as e:
+        except SQLAlchemyError as e:
             session.rollback()
+            logger.error(f"Database error saving broadcasts: {e}", exc_info=True)
             print(f"Error: {e}")
         finally:
             session.close()

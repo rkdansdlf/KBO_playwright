@@ -14,6 +14,7 @@ from __future__ import annotations
 import os
 
 from sqlalchemy import inspect, text
+from sqlalchemy.exc import SQLAlchemyError
 
 from src.db.engine import DATABASE_URL, Engine
 from src.utils.safe_print import safe_print as print
@@ -33,7 +34,7 @@ def main(argv: list[str] | None = None) -> None:
         with Engine.connect() as conn:
             conn.execute(text("SELECT 1"))
         print("Connectivity: OK")
-    except Exception as e:
+    except SQLAlchemyError as e:
         print(f"Connectivity: FAILED -> {e}")
         return
 
@@ -46,7 +47,7 @@ def main(argv: list[str] | None = None) -> None:
             # 최대 10개의 테이블 이름 출력
             for t in tables[:10]:
                 print(f"  - {t}")
-    except Exception as e:
+    except SQLAlchemyError as e:
         print(f"Introspection failed: {e}")
 
     # 3. 주요 테이블의 레코드 수 집계
@@ -66,7 +67,7 @@ def main(argv: list[str] | None = None) -> None:
                 result = conn.execute(text(f"SELECT COUNT(*) FROM {table}"))
                 count = result.scalar_one()
                 print(f"{table}: {count}")
-        except Exception:
+        except SQLAlchemyError:
             # 테이블이 존재하지 않으면 조용히 넘어감
             continue
 

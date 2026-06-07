@@ -129,6 +129,6 @@ class SeatCrawler:
                 print(f"[SEAT] Saved {count} section records, {saved_snaps} snapshots.")
             except Exception as e:
                 session.rollback()
-                print(f"[SEAT] Error: {e}")
+                logger.exception("Seat batch save error")
             finally:
                 self._raw_pages.clear()

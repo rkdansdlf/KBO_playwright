@@ -451,7 +451,8 @@ def _get_failure_reason(crawler: Any, game_id: str) -> str | None:
         return None
     try:
         return getter(game_id)
-    except Exception:
+    except Exception as exc:
+        logger.warning("Failed to get last failure reason from crawler: %s", exc)
         return None
 
 

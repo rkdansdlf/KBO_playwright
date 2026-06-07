@@ -318,7 +318,7 @@ class TicketCrawler:
                 print(f"[TICKET] Saved {price_count} prices, {rule_count} rules, {saved_snaps} snapshots.")
             except Exception as e:
                 session.rollback()
-                print(f"[TICKET] Error: {e}")
+                logger.exception("Ticket price batch save error")
             finally:
                 self._raw_pages.clear()
 

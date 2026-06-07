@@ -6,6 +6,7 @@ Now refactored into a class as expected by GameDetailCrawler.
 
 import asyncio
 import contextlib
+import logging
 import os
 import re
 from collections import Counter
@@ -21,6 +22,8 @@ from src.utils.player_classification import PlayerCategory, classify_player
 from src.utils.player_validation import normalize_player_name, validate_player_payload
 from src.utils.playwright_pool import AsyncPlaywrightPool
 from src.utils.request_policy import RequestPolicy
+
+logger = logging.getLogger(__name__)
 
 # URL and selectors
 SEARCH_URL = "https://www.koreabaseball.com/Player/Search.aspx"
@@ -121,6 +124,7 @@ class PlayerSearchCrawler:
             return True, "ok"
         except Exception:
             reason = "selector_timeout" if required_selector else "navigation_failed"
+            logger.warning("Player search page navigation failed: %s", reason)
             self._record_failure(reason)
             return False, reason
 
@@ -146,6 +150,7 @@ class PlayerSearchCrawler:
                 try:
                     await page.wait_for_selector(TABLE_ROWS, timeout=TIMEOUT_MS)
                 except Exception:
+                    logger.info("Table rows not found for player search")
                     return []
                 rows = await self._paginate_current_tab(page)
                 return [self.row_to_dict(r) for r in rows]
@@ -324,6 +329,7 @@ class PlayerSearchCrawler:
         try:
             return (await page.locator(TABLE_ROWS).first.locator("td").nth(1).inner_text()).strip()
         except Exception:
+            logger.info("Could not get first player name from table")
             return ""
 
     async def _trigger_postback(self, page, anchor):
@@ -334,7 +340,7 @@ class PlayerSearchCrawler:
             await page.wait_for_load_state("load", timeout=10000)
             return True
         except Exception:
-            # Fallback to manual postback if click fails or times out
+            logger.warning("Postback click failed, trying manual postback")
             try:
                 href = await anchor.get_attribute("href", timeout=5000)
                 if href and "javascript:__doPostBack" in href:
@@ -345,9 +351,9 @@ class PlayerSearchCrawler:
                             await page.wait_for_load_state("load", timeout=10000)
                             return True
                         except Exception:
-                            pass
+                            logger.warning("Manual postback evaluate failed")
             except Exception:
-                pass
+                logger.warning("Failed to get href attribute for manual postback")
             return False
 
     async def _wait_after_nav(self, page, prev_v, first_b):
@@ -398,6 +404,7 @@ def parse_birth_date(raw: str | None) -> date_type | None:
             if 1900 <= year <= 2100 and 1 <= month <= 12 and 1 <= day <= 31:
                 return datetime(year, month, day).date()
     except Exception:
+        logger.warning("Failed to parse date from text: %s", text)
         return None
     return None
 

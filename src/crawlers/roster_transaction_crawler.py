@@ -225,7 +225,7 @@ class RosterTransactionCrawler:
                             "__doPostBack('ctl00$ctl00$ctl00$cphContents$cphContents$cphContents$btnCalendarSelect', '')"
                         )
                 except Exception:
-                    pass
+                    logger.info("Calendar select postback timeout, continuing")
                 await page.wait_for_timeout(2000)
 
                 desktop_html = await page.content()
@@ -340,7 +340,7 @@ class RosterTransactionCrawler:
                 print(f"[ROSTER] Saved {count} transaction records, {saved_snaps} snapshots.")
             except Exception as e:
                 session.rollback()
-                print(f"[ROSTER] Error: {e}")
+                logger.exception("Roster batch save error")
             finally:
                 self._raw_pages.clear()
 

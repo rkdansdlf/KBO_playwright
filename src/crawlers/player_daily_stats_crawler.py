@@ -107,6 +107,7 @@ class PlayerDailyStatsCrawler:
                 },
             }
         except Exception:
+            logger.exception("Failed to parse batter row")
             return None
 
     def _parse_pitcher_row(self, row: list[str], season: int) -> dict[str, Any] | None:
@@ -152,6 +153,7 @@ class PlayerDailyStatsCrawler:
                 },
             }
         except Exception:
+            logger.exception("Failed to parse pitcher row")
             return None
 
     def _parse_innings_to_outs(self, ip_str: str) -> int:
@@ -175,6 +177,7 @@ class PlayerDailyStatsCrawler:
                     return 0
                 return int(ip_str) * 3
         except Exception:
+            logger.exception("Failed to parse innings string: %s", ip_str)
             return 0
 
 

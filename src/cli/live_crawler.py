@@ -189,6 +189,7 @@ async def _run_kbo_fallback_healing(game_id: str) -> None:
                 else:
                     raise ValueError("KBO PBP crawl returned no events")
             except Exception as fallback_err:
+                logger.warning(f"KBO fallback attempt {attempt} failed for {game_id}: {fallback_err}", exc_info=True)
                 print(f"[FALLBACK WARNING] KBO fallback attempt {attempt} failed for {game_id}: {fallback_err}")
                 if attempt == max_attempts:
                     print(f"[FALLBACK ERROR] KBO fallback failed all {max_attempts} attempts for {game_id}")
@@ -210,8 +211,10 @@ async def _run_kbo_fallback_healing(game_id: str) -> None:
                     print(f"[FALLBACK SUCCESS] {msg}")
                     SlackWebhookClient.send_alert(msg)
             except Exception as db_err:
+                logger.error(f"Failed to save KBO fallback data for {game_id}: {db_err}", exc_info=True)
                 print(f"[FALLBACK ERROR] Failed to save KBO fallback data for {game_id}: {db_err}")
     except Exception as exc:
+        logger.error(f"Unexpected exception in background KBO healing for {game_id}: {exc}", exc_info=True)
         print(f"[FALLBACK ERROR] Unexpected exception in background KBO healing for {game_id}: {exc}")
     finally:
         _ACTIVE_HEALING_GAMES.discard(game_id)

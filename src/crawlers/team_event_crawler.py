@@ -157,7 +157,7 @@ class TeamEventCrawler:
                 print(f"[EVENT] Saved {count} event records, {saved_snaps} snapshots.")
             except Exception as e:
                 session.rollback()
-                print(f"[EVENT] Error: {e}")
+                logger.exception("Event batch save error")
             finally:
                 self._raw_pages.clear()
 

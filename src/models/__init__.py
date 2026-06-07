@@ -8,6 +8,7 @@ from .foreign_player import ForeignPlayerChange as ForeignPlayerChange
 from .game import Game as Game
 from .game import GameBattingStat as GameBattingStat
 from .game import GameEvent as GameEvent
+from .game import GameHighlight as GameHighlight
 from .game import GameIdAlias as GameIdAlias
 from .game import GameInningScore as GameInningScore
 from .game import GameLineup as GameLineup
@@ -16,7 +17,6 @@ from .game import GamePitchingStat as GamePitchingStat
 from .game import GamePlayByPlay as GamePlayByPlay
 from .game import GameSummary as GameSummary
 from .game import GameValidationMetrics as GameValidationMetrics
-from .game import GameHighlight as GameHighlight
 from .game_mvp import GameMvp as GameMvp
 from .injury import InjuryEntry as InjuryEntry
 from .manager_change import ManagerChange as ManagerChange
@@ -27,10 +27,10 @@ from .rag_chunk import RagChunk as RagChunk
 from .roster_transaction import RosterTransaction as RosterTransaction
 from .source_registry import DataSource as DataSource
 from .source_registry import RawSourceSnapshot as RawSourceSnapshot
+from .stadium_congestion import StadiumCongestion as StadiumCongestion
 from .stadium_food import StadiumFood as StadiumFood
 from .stadium_food_menu_item import StadiumFoodMenuItem as StadiumFoodMenuItem
 from .stadium_food_vendor import StadiumFoodVendor as StadiumFoodVendor
-from .stadium_congestion import StadiumCongestion as StadiumCongestion
 from .stadium_info import StadiumInfo as StadiumInfo
 from .stadium_info import StadiumRegulation as StadiumRegulation
 from .stadium_operation_notice import StadiumOperationNotice as StadiumOperationNotice

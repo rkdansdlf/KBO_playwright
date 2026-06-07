@@ -14,8 +14,6 @@ from __future__ import annotations
 import argparse
 import logging
 import sys
-from collections import defaultdict
-from datetime import datetime, timezone
 from typing import Any, Sequence
 
 from sqlalchemy import func, text
@@ -68,7 +66,6 @@ def _get_player_teams(
 def _compute_batting_rates(row) -> dict[str, Any]:
     ab = row.at_bats or 0
     h = row.hits or 0
-    pa = row.plate_appearances or 0
     bb = row.walks or 0
     hbp = row.hbp or 0
     sf = row.sacrifice_flies or 0

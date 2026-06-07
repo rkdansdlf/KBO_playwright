@@ -7,6 +7,7 @@ from __future__ import annotations
 from typing import Any
 
 from sqlalchemy import text
+from sqlalchemy.exc import SQLAlchemyError
 
 from src.models.player import (
     PlayerSeasonBaserunning,
@@ -66,7 +67,7 @@ class StatsSyncMixin:
             else:
                 print("⚠️ 동기화된 투수 데이터 수가 예상보다 적습니다.")
 
-        except Exception as e:
+        except SQLAlchemyError as e:
             print(f"⚠️ 투수 데이터 동기화 검증 실패: {e}")
 
     def verify_batting_sync(self, expected_count: int):
@@ -87,7 +88,7 @@ class StatsSyncMixin:
             else:
                 print("⚠️ 동기화된 타자 데이터 수가 예상보다 적습니다.")
 
-        except Exception as e:
+        except SQLAlchemyError as e:
             print(f"⚠️ 타자 데이터 동기화 검증 실패: {e}")
 
     def show_oci_data_sample(self):
@@ -125,7 +126,7 @@ class StatsSyncMixin:
                     print(f"  {i + 1}. player_id: {row[0]}, season: {row[1]}")
                     print(f"     게임수: {row[2]}, 타율: {row[3]}, 안타: {row[4]}, 홈런: {row[5]}")
 
-        except Exception as e:
+        except SQLAlchemyError as e:
             print(f"⚠️ OCI 데이터 조회 실패: {e}")
 
     def _get_table_signature(self, model: type, year: int | None = None, year_col: str = "season") -> dict[str, Any]:
@@ -148,7 +149,7 @@ class StatsSyncMixin:
             try:
                 row = session.execute(text(sql), params).fetchone()
                 return {"count": row[0] or 0, "max_updated_at": _serialize_scalar(row[1])}
-            except Exception:
+            except SQLAlchemyError:
                 return {"count": None, "max_updated_at": None}
 
         local_sig = get_sig(self.sqlite_session)

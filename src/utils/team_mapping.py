@@ -6,6 +6,7 @@ OCI team_history 테이블과 연동하여 동적 매핑 제공
 import os
 
 from sqlalchemy import create_engine, text
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import sessionmaker
 
 from src.utils.team_codes import resolve_team_code
@@ -69,7 +70,7 @@ class TeamMapper:
                 """)
                 columns = session.execute(structure_query).fetchall()
                 print(f"📋 team_history 테이블 컬럼: {[col[0] for col in columns]}")
-            except Exception as e:
+            except SQLAlchemyError as e:
                 print(f"⚠️ 테이블 구조 확인 실패: {e}")
 
             # 가능한 컬럼명으로 쿼리 시도
@@ -141,7 +142,7 @@ class TeamMapper:
                     query_result = session.execute(query).fetchall()
                     print(f"✅ 쿼리 패턴 {i + 1} 성공: {len(query_result)}개 행 조회")
                     break
-                except Exception as e:
+                except SQLAlchemyError as e:
                     print(f"⚠️ 쿼리 패턴 {i + 1} 실패: {e}")
                     session.rollback()  # 실패시 트랜잭션 롤백
                     continue
@@ -191,7 +192,7 @@ class TeamMapper:
             print(f"✅ OCI에서 {len(results)}개 팀 매핑 로드 완료")
             return True
 
-        except Exception as e:
+        except (SQLAlchemyError, ValueError) as e:
             print(f"⚠️ OCI 팀 매핑 로드 실패: {e}")
             return False
 

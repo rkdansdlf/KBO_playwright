@@ -4,7 +4,6 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from src.models.game import GameEvent, GameHighlight
-from src.utils.safe_print import safe_print as print
 
 
 class HighlightAggregator:
@@ -62,9 +61,7 @@ class HighlightAggregator:
             is_walkoff = False
             # Bottom of 9th or later, score diff transitions to home team lead, ending the game
             is_bottom_late = (e.inning or 1) >= 9 and e.inning_half == "bottom"
-            if is_bottom_late and score_diff_before <= 0 and score_diff_after > 0:
-                is_walkoff = True
-            elif e.description and "끝내기" in e.description:
+            if is_bottom_late and score_diff_before <= 0 and score_diff_after > 0 or e.description and "끝내기" in e.description:
                 is_walkoff = True
 
             if is_walkoff:
@@ -97,9 +94,7 @@ class HighlightAggregator:
 
             # 6. Home Run (홈런) Detection
             is_hr = False
-            if e.description and "홈런" in e.description:
-                is_hr = True
-            elif e.event_type and e.event_type.lower() in ("hr", "homerun"):
+            if e.description and "홈런" in e.description or e.event_type and e.event_type.lower() in ("hr", "homerun"):
                 is_hr = True
 
             if is_hr:
@@ -119,7 +114,7 @@ class HighlightAggregator:
                 importance += 0.10
             if "홈런" in tags:
                 importance += 0.05
-            
+
             # Late inning clutch multiplier/bonus
             inning_val = e.inning or 1
             importance += 0.01 * inning_val

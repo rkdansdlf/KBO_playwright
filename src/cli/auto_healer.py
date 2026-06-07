@@ -314,7 +314,7 @@ def _find_unverified_pbp_games(lookback_days: int = 3) -> list[dict]:
             if isinstance(payload, str):
                 try:
                     payload = json.loads(payload)
-                except Exception:
+                except (json.JSONDecodeError, TypeError):
                     payload = {}
             error_reason = payload.get("pbp_validation_error", "unknown") if isinstance(payload, dict) else "unknown"
             results.append(
@@ -366,7 +366,7 @@ async def run_pbp_healer_async(
                 if isinstance(payload, str):
                     try:
                         payload = json.loads(payload)
-                    except Exception:
+                    except (json.JSONDecodeError, TypeError):
                         payload = {}
                 error_reason = (
                     payload.get("pbp_validation_error", "targeted_mode")

@@ -310,7 +310,7 @@ def repair_game_parent_from_existing_children(
 
             try:
                 game_date = datetime.strptime(game_id[:8], "%Y%m%d").date()
-            except Exception:
+            except ValueError:
                 game_date = datetime.now().date()
             season_year = game_date.year
 
@@ -551,7 +551,8 @@ def save_relay_data(
                     return None, None, None
                 try:
                     pid = resolver.resolve_id(name, team_code, season_year)
-                except Exception:
+                except Exception as exc:
+                    logger.warning("Player ID resolution encountered exception: %s", exc)
                     return None, "error", "resolve_exception"
                 if pid is None:
                     return None, "unresolved", f"no_match_{team_code}_{season_year}"

@@ -7,6 +7,7 @@ from __future__ import annotations
 
 from collections import defaultdict
 
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from src.models.game import Game, GameEvent
@@ -118,7 +119,7 @@ class ClutchAggregator:
         try:
             self.session.commit()
             print(f"[Clutch] {len(results)} batters updated for {year}.")
-        except Exception as e:
+        except SQLAlchemyError as e:
             err_str = str(e)
             self.session.rollback()
             if "foreign key" in err_str.lower() or "Foreign key" in err_str:

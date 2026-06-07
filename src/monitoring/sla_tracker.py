@@ -6,11 +6,12 @@ Generates daily/weekly/monthly SLA reports.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timedelta
+
 try:
     from datetime import UTC
 except ImportError:
-    UTC = timezone.utc
+    UTC = UTC
 
 from sqlalchemy.orm import Session
 

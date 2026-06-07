@@ -6,6 +6,7 @@ import asyncio
 from typing import Any
 
 from bs4 import BeautifulSoup
+from playwright.async_api import Error as PlaywrightError
 from playwright.async_api import Page
 
 from src.utils.compliance import compliance
@@ -66,7 +67,7 @@ class FuturesProfileCrawler:
         try:
             await self._wait()
             await page.goto(url, wait_until="domcontentloaded", timeout=30000)
-        except Exception:
+        except PlaywrightError:
             return None
 
         await self._wait()
@@ -93,12 +94,12 @@ class FuturesProfileCrawler:
         for selector in selectors:
             try:
                 element = await page.query_selector(selector)
-            except Exception:
+            except PlaywrightError:
                 element = None
             if element:
                 try:
                     text = await element.inner_text()
-                except Exception:
+                except PlaywrightError:
                     continue
                 if text and text.strip():
                     return text.strip()
@@ -115,14 +116,14 @@ class FuturesProfileCrawler:
         for selector in tab_selectors:
             try:
                 tab = await page.wait_for_selector(selector, timeout=10000)
-            except Exception:
+            except PlaywrightError:
                 continue
             if tab:
                 try:
                     await tab.click()
                     futures_clicked = True
                     break
-                except Exception:
+                except PlaywrightError:
                     continue
 
         if not futures_clicked:
@@ -199,7 +200,7 @@ class FuturesProfileCrawler:
 
             if headers or rows:
                 return {"caption": caption, "summary": summary, "headers": headers, "rows": rows}
-        except Exception:
+        except (AttributeError, TypeError):
             pass
 
         return None

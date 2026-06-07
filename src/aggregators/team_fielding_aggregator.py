@@ -100,7 +100,7 @@ class TeamFieldingAggregator:
         }
 
     def run_all(self, season: int, team_codes: list[str]) -> None:
-        from src.models.player import PlayerSeasonFielding, PlayerSeasonBaserunning
+        from src.models.player import PlayerSeasonBaserunning, PlayerSeasonFielding
         from src.models.team import Team
 
         # Filter to teams that have actual player data for this season

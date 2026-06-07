@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import date, datetime, timezone
+from datetime import UTC, date, datetime
 from typing import Any, Iterable, Sequence
 
 from src.models.game import Game, GameEvent
@@ -394,5 +394,5 @@ class GameStoryBuilder:
     def _format_timestamp(self, value: datetime) -> str:
         value = value.replace(microsecond=0)
         if value.tzinfo is not None:
-            value = value.astimezone(timezone.utc).replace(tzinfo=None)
+            value = value.astimezone(UTC).replace(tzinfo=None)
         return f"{value.isoformat()}Z"

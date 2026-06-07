@@ -6,6 +6,8 @@ from datetime import datetime, timedelta
 
 import httpx
 
+from sqlalchemy.exc import SQLAlchemyError
+
 from src.db.engine import SessionLocal
 from src.repositories.manager_change_repository import ManagerChangeRepository
 from src.utils.safe_print import safe_print as print
@@ -154,13 +156,14 @@ class ManagerChangeCrawler:
                     repo.save_change(item)
                     session.flush()
                     count += 1
-                except Exception as e:
+                except SQLAlchemyError as e:
                     logger.warning(f"Manager change save failed: {e}")
                     session.rollback()
             session.commit()
             print(f"Saved {count} manager change records.")
-        except Exception as e:
+        except SQLAlchemyError as e:
             session.rollback()
+            logger.error(f"Database error saving manager changes: {e}", exc_info=True)
             print(f"Error: {e}")
         finally:
             session.close()

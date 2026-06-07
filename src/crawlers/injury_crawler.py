@@ -6,6 +6,8 @@ from datetime import datetime, timedelta
 
 import httpx
 
+from sqlalchemy.exc import SQLAlchemyError
+
 from src.db.engine import SessionLocal
 from src.repositories.injury_repository import InjuryRepository
 from src.utils.safe_print import safe_print as print
@@ -143,12 +145,13 @@ class InjuryCrawler:
                 try:
                     repo.save_injury(item)
                     count += 1
-                except Exception as e:
+                except SQLAlchemyError as e:
                     logger.warning(f"Injury save failed: {e}")
             session.commit()
             print(f"Saved {count} injury records.")
-        except Exception as e:
+        except SQLAlchemyError as e:
             session.rollback()
+            logger.error(f"Database error saving injury records: {e}", exc_info=True)
             print(f"Error: {e}")
         finally:
             session.close()
