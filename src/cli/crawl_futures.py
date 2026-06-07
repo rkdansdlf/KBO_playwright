@@ -26,13 +26,23 @@ from src.db.engine import SessionLocal
 from src.models.player import PlayerBasic, PlayerSeasonBatting, PlayerSeasonPitching
 from src.parsers.player_profile_parser import PlayerProfileParsed
 from src.repositories.player_repository import PlayerRepository
-from src.repositories.player_season_pitching_repository import save_pitching_stats_to_db
+from src.repositories.player_season_pitching_repository import get_last_filter_counts, save_pitching_stats_to_db
 from src.repositories.save_futures_batting import save_futures_batting
 from src.utils.player_validation import normalize_player_id
 from src.utils.playwright_pool import AsyncPlaywrightPool
 from src.utils.safe_print import safe_print as print
 
 logger = logging.getLogger(__name__)
+
+
+def _configure_cli_logging() -> None:
+    if not logging.getLogger().handlers:
+        logging.basicConfig(level=logging.INFO, format="%(message)s")
+
+
+def _format_filter_counts(prefix: str, filter_counts: dict[str, int]) -> str:
+    details = ",".join(f"{reason}={count}" for reason, count in sorted(filter_counts.items()))
+    return f"{prefix}:{details}" if details else prefix
 
 
 def _has_player_basic(player_id: str) -> bool:
@@ -177,14 +187,18 @@ async def process_player_result(
         }
 
     saved = 0
+    save_failures: list[str] = []
 
     # Save Hitter stats if any
     if batting_rows:
         try:
             saved_batting = await asyncio.to_thread(save_futures_batting, player_id, batting_rows)
             saved += saved_batting
+            if saved_batting == 0:
+                save_failures.append("batting_save_zero")
         except Exception as exc:
             logger.error(f"Exception saving batting stats for player {player_id}: {exc}", exc_info=True)
+            save_failures.append("batting_save_exception")
 
     # Save Pitcher stats if any
     if pitching_rows:
@@ -222,8 +236,15 @@ async def process_player_result(
                 )
             saved_pitching = await asyncio.to_thread(save_pitching_stats_to_db, payloads)
             saved += saved_pitching
+            if saved_pitching == 0:
+                filter_counts = get_last_filter_counts()
+                if filter_counts:
+                    save_failures.append(_format_filter_counts("pitching_filtered", filter_counts))
+                else:
+                    save_failures.append("pitching_save_zero")
         except Exception as exc:
             logger.error(f"Exception saving pitching stats for player {player_id}: {exc}", exc_info=True)
+            save_failures.append("pitching_save_exception")
 
     if saved > 0:
         return {
@@ -237,7 +258,7 @@ async def process_player_result(
         "player_id": player_id,
         "status": "failed",
         "saved": 0,
-        "failure_reason": "save_failed",
+        "failure_reason": save_failures[0] if save_failures else "save_failed",
     }
 
 
@@ -445,6 +466,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: Sequence[str] | None = None) -> dict:
+    _configure_cli_logging()
     parser = build_arg_parser()
     args = parser.parse_args(argv)
     return asyncio.run(crawl_futures(args))

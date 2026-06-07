@@ -553,11 +553,11 @@ class ScheduleCrawler:
         if not games:
             # Debugging: Check if table exists or content
             content = await page.content()
-            logger.info(f"[DEBUG] No games found. Page content len: {len(content)}")
+            logger.debug("No games found. Page content len: %d", len(content))
             if "gameId=" in content:
-                logger.info("[DEBUG] 'gameId=' string FOUND in HTML but extraction failed.")
+                logger.debug("'gameId=' string FOUND in HTML but extraction failed.")
             else:
-                logger.info("[DEBUG] 'gameId=' string NOT found in HTML.")
+                logger.debug("'gameId=' string NOT found in HTML.")
                 # Dump first few rows of the table to see structure
                 debug_script = """
                  () => {

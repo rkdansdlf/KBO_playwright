@@ -306,6 +306,11 @@ def build_arg_parser() -> argparse.ArgumentParser:
         default=4,
         help="병렬 작업 시 워커(스레드) 수 (기본값: 4)",
     )
+    parser.add_argument(
+        "--reset-sequences",
+        action="store_true",
+        help="동기화 후 OCI 시퀀스 식별자를 재설정합니다. (기본값: 해제 — per-table reset이 이미 sync_games에서 처리됨)",
+    )
     return parser
 
 
@@ -381,27 +386,27 @@ def main(argv: Iterable[str] | None = None) -> None:
     # fmt: off
     SYNC_DISPATCH: dict[str, tuple] = {
         "game_details":   (lambda s, y, **kw: s.sync_game_details(year=y, days=kw.get("days"), unsynced_only=kw.get("unsynced_only"), batch_size=kw.get("copy_batch_size")) if not kw.get("requested_game_ids")
-                           else [print(f"   [{gid}] {s.sync_specific_game(gid)}") for gid in kw["requested_game_ids"]],
+                           else [logger.info("   [%s] %s", gid, s.sync_specific_game(gid)) for gid in kw["requested_game_ids"]],
                            "🚀 Syncing Game Details using specialized OCISync...", True,
                            lambda sess: get_available_years(sess, Game, "strftime('%Y', game_date)"),
                            "✅ Game Details Sync Finished"),
-        "games_only":     (lambda s, y, **kw: print(f"   [{y}] Synced {s.sync_games(filters=[Game.game_id.like(f'{y}%')] if y else None, batch_size=kw.get('copy_batch_size'))} rows"),
+        "games_only":     (lambda s, y, **kw: logger.info("   [%s] Synced %s rows", y, s.sync_games(filters=[Game.game_id.like(f'{y}%')] if y else None, batch_size=kw.get('copy_batch_size'))),
                            "🚀 Syncing game table only using specialized OCISync...", True,
                            lambda sess: get_available_years(sess, Game, "strftime('%Y', game_date)"),
                            "✅ Game Table Sync Finished"),
         "season_stats":   (lambda s, y, **kw: (_maybe_purge(s, y, kw.get("truncate")),
-                           print(f"  - [{y}] Syncing Player Batting stats..."), s.sync_player_season_batting(year=y, batch_size=kw.get("batch_size")),
-                           print(f"  - [{y}] Syncing Player Pitching stats..."), s.sync_player_season_pitching(year=y, batch_size=kw.get("batch_size")),
-                           print(f"  - [{y}] Syncing Team Batting stats..."), s.sync_team_season_batting(year=y, batch_size=kw.get("batch_size")),
-                           print(f"  - [{y}] Syncing Team Pitching stats..."), s.sync_team_season_pitching(year=y, batch_size=kw.get("batch_size")),
-                           print(f"  - [{y}] Syncing Fielding stats..."), s.sync_fielding_stats(year=y, batch_size=kw.get("copy_batch_size")),
-                           print(f"  - [{y}] Syncing Baserunning stats..."), s.sync_baserunning_stats(year=y, batch_size=kw.get("copy_batch_size")),
-                           print(f"  - [{y}] Syncing Team Fielding stats..."), s.sync_team_season_fielding(year=y, batch_size=kw.get("batch_size")),
-                           print(f"  - [{y}] Syncing Team Baserunning stats..."), s.sync_team_season_baserunning(year=y, batch_size=kw.get("batch_size")))[-1],
+                           logger.info("  - [%s] Syncing Player Batting stats...", y), s.sync_player_season_batting(year=y, batch_size=kw.get("batch_size")),
+                           logger.info("  - [%s] Syncing Player Pitching stats...", y), s.sync_player_season_pitching(year=y, batch_size=kw.get("batch_size")),
+                           logger.info("  - [%s] Syncing Team Batting stats...", y), s.sync_team_season_batting(year=y, batch_size=kw.get("batch_size")),
+                           logger.info("  - [%s] Syncing Team Pitching stats...", y), s.sync_team_season_pitching(year=y, batch_size=kw.get("batch_size")),
+                           logger.info("  - [%s] Syncing Fielding stats...", y), s.sync_fielding_stats(year=y, batch_size=kw.get("copy_batch_size")),
+                           logger.info("  - [%s] Syncing Baserunning stats...", y), s.sync_baserunning_stats(year=y, batch_size=kw.get("copy_batch_size")),
+                           logger.info("  - [%s] Syncing Team Fielding stats...", y), s.sync_team_season_fielding(year=y, batch_size=kw.get("batch_size")),
+                           logger.info("  - [%s] Syncing Team Baserunning stats...", y), s.sync_team_season_baserunning(year=y, batch_size=kw.get("batch_size")))[-1],
                            "🚀 Syncing Season Stats using specialized OCISync...", True,
                            lambda sess: get_available_years(sess, PlayerSeasonBatting, "season"),
                            "✅ Season Stats Sync Finished"),
-        "standings":      (lambda s, y, **kw: print(f"   [{y}] Synced {s.sync_standings(days=kw.get('days'), year=y, batch_size=kw.get('copy_batch_size'))} rows"),
+        "standings":      (lambda s, y, **kw: logger.info("   [%s] Synced %s rows", y, s.sync_standings(days=kw.get('days'), year=y, batch_size=kw.get('copy_batch_size'))),
                            "🚀 Syncing Daily Standings using specialized OCISync...", True,
                            lambda sess: get_available_years(sess, TeamStandingsDaily, "strftime('%Y', standings_date)"),
                            "✅ Daily Standings Sync Finished"),
@@ -409,11 +414,11 @@ def main(argv: Iterable[str] | None = None) -> None:
                            "🚀 Syncing Matchup Splits using specialized OCISync...", True,
                            lambda sess: get_available_years(sess, BatterTeamSplit, "season_year"),
                            "✅ Matchup Splits Sync Finished"),
-        "rankings":       (lambda s, y, **kw: print(f"   [{y}] Synced {s.sync_stat_rankings(year=y, batch_size=kw.get('copy_batch_size'))} rows"),
+        "rankings":       (lambda s, y, **kw: logger.info("   [%s] Synced %s rows", y, s.sync_stat_rankings(year=y, batch_size=kw.get('copy_batch_size'))),
                             "🚀 Syncing Stat Rankings using specialized OCISync...", True,
                             lambda sess: get_available_years(sess, StatRanking, "season"),
                             "✅ Stat Rankings Sync Finished"),
-        "player_game_stats": (lambda s, y, **kw: (print(f"  - [{y}] Syncing Player Game Batting..."), s.sync_player_game_batting(), print(f"  - [{y}] Syncing Player Game Pitching..."), s.sync_player_game_pitching())[-1],
+        "player_game_stats": (lambda s, y, **kw: (logger.info("  - [%s] Syncing Player Game Batting...", y), s.sync_player_game_batting(), logger.info("  - [%s] Syncing Player Game Pitching...", y), s.sync_player_game_pitching())[-1],
                             "🚀 Syncing Player Game Stats...", True,
                             lambda sess: get_available_years(sess, Game, "strftime('%Y', game_date)"),
                             "✅ Player Game Stats Sync Finished"),
@@ -496,11 +501,10 @@ def main(argv: Iterable[str] | None = None) -> None:
                 elif flag == "player_basic":
                     logger.info(f"🚀 Syncing Player Basic using specialized OCISync (limit={args.limit})...")
                     synced = syncer.sync_player_basic(limit=args.limit)
-                    print(
-                        f"✅ Player Basic Sync Finished ({synced} rows)"
-                        if isinstance(synced, int)
-                        else "✅ Player Basic Sync Finished"
-                    )
+                    if isinstance(synced, int):
+                        logger.info("✅ Player Basic Sync Finished (%d rows)", synced)
+                    else:
+                        logger.info("✅ Player Basic Sync Finished")
                 elif flag == "phase1_all":
                     logger.info(header_str)
                     results = syncer.sync_phase1_all()
@@ -519,30 +523,30 @@ def main(argv: Iterable[str] | None = None) -> None:
                     game_date = getattr(args, "realtime_game_date", None)
                     method = getattr(syncer, method_name)
                     result = method(game_date=game_date)
-                    print(
-                        f"✅ {header_str.replace('🚀 ', '')} Finished ({result} rows)"
-                        if isinstance(result, int)
-                        else f"✅ {header_str.replace('🚀 ', '')} Finished"
-                    )
+                    header_label = header_str.replace("🚀 ", "")
+                    if isinstance(result, int):
+                        logger.info("✅ %s Finished (%d rows)", header_label, result)
+                    else:
+                        logger.info("✅ %s Finished", header_label)
                 elif flag == "daily_roster":
                     logger.info(header_str)
                     roster_start_date = args.roster_date or args.roster_start_date
                     roster_end_date = args.roster_date or args.roster_end_date
                     result = syncer.sync_daily_rosters(start_date=roster_start_date, end_date=roster_end_date)
-                    print(
-                        f"✅ {header_str.replace('🚀 ', '')} Finished ({result} rows)"
-                        if isinstance(result, int)
-                        else f"✅ {header_str.replace('🚀 ', '')} Finished"
-                    )
+                    header_label = header_str.replace("🚀 ", "")
+                    if isinstance(result, int):
+                        logger.info("✅ %s Finished (%d rows)", header_label, result)
+                    else:
+                        logger.info("✅ %s Finished", header_label)
                 else:
                     logger.info(header_str)
                     method = getattr(syncer, method_name)
                     result = method()
-                    print(
-                        f"✅ {header_str.replace('🚀 ', '')} Finished ({result} rows)"
-                        if isinstance(result, int)
-                        else f"✅ {header_str.replace('🚀 ', '')} Finished"
-                    )
+                    header_label = header_str.replace("🚀 ", "")
+                    if isinstance(result, int):
+                        logger.info("✅ %s Finished (%d rows)", header_label, result)
+                    else:
+                        logger.info("✅ %s Finished", header_label)
             finally:
                 syncer.close()
     else:
@@ -550,13 +554,14 @@ def main(argv: Iterable[str] | None = None) -> None:
         logger.info("   Tip: --game-details, --season-stats, --teams, --player-basic, --kbo-season")
         return
 
-    logger.info("\n🚀 Resetting Sequence Identifiers on Target DB...")
-    try:
-        from scripts.legacy.maintenance.reset_oci_sequences import reset_sequences
+    if getattr(args, "reset_sequences", False):
+        logger.info("\n🚀 Resetting Sequence Identifiers on Target DB...")
+        try:
+            from scripts.legacy.maintenance.reset_oci_sequences import reset_sequences
 
-        reset_sequences(args.target_url)
-    except Exception:
-        logger.exception("⚠️ Failed to call reset_sequences")
+            reset_sequences(args.target_url)
+        except Exception:
+            logger.exception("⚠️ Failed to call reset_sequences")
 
 
 def _detect_active_flag(args, all_flags: list[str]) -> str | None:

@@ -65,7 +65,7 @@ def main(argv: Sequence[str] | None = None):
         fixed_rows = run_monthly_pa_audit(target_year)
     except Exception as exc:
         logger.exception("PA formula audit failed")
-        print(f"PA formula audit failed: {exc}")
+        logger.error("PA formula audit failed: %s", exc)
         sys.exit(1)
 
     logger.info(f"PA formula audit completed for {target_year}")

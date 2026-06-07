@@ -20,8 +20,9 @@ def batch_calculate_sabermetrics(years: list[int], sync_oci: bool = False):
 
             try:
                 lg = SabermetricsCalculator.get_league_constants(session, year)
-                print(
-                    f"   League Constants: wOBA={lg['lg_woba']:.3f}, FIP_C={lg['fip_constant']:.2f}, R/PA={lg['lg_r_per_pa']:.3f}"
+                logger.info(
+                    "   League Constants: wOBA=%.3f, FIP_C=%.2f, R/PA=%.3f",
+                    lg["lg_woba"], lg["fip_constant"], lg["lg_r_per_pa"],
                 )
             except Exception:
                 logger.exception(f"   ⚠️ Could not calculate league constants for {year}")

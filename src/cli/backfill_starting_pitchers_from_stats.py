@@ -332,8 +332,9 @@ def main() -> int:
             logger.info(f"target_missing_ready: games={len(target_missing_ready_rows)}")
             return 0
         updated_target_rows = update_target_pitcher_fields(target_missing_ready_rows)
-        print(
-            f"target_missing_pitcher_update: candidates={len(target_missing_ready_rows)}, updated={updated_target_rows}"
+        logger.info(
+            "target_missing_pitcher_update: candidates=%d, updated=%s",
+            len(target_missing_ready_rows), updated_target_rows,
         )
         return 0
 

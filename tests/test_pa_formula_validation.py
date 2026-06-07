@@ -75,7 +75,12 @@ def _make_session():
                     stolen_bases INTEGER,
                     caught_stealing INTEGER,
                     walks INTEGER,
-                    strikeouts INTEGER
+                    strikeouts INTEGER,
+                    intentional_walks INTEGER,
+                    hbp INTEGER,
+                    sacrifice_hits INTEGER,
+                    sacrifice_flies INTEGER,
+                    gdp INTEGER
                 )
                 """
             )
@@ -117,7 +122,16 @@ def _make_session():
                     hits_allowed INTEGER,
                     home_runs_allowed INTEGER,
                     walks_allowed INTEGER,
-                    strikeouts INTEGER
+                    strikeouts INTEGER,
+                    intentional_walks INTEGER,
+                    hit_batters INTEGER,
+                    tbf INTEGER,
+                    complete_games INTEGER,
+                    shutouts INTEGER,
+                    wild_pitches INTEGER,
+                    balks INTEGER,
+                    sacrifices_allowed INTEGER,
+                    sacrifice_flies_allowed INTEGER
                 )
                 """
             )
@@ -141,7 +155,12 @@ def _make_session():
                     stolen_bases INTEGER,
                     caught_stealing INTEGER,
                     walks INTEGER,
-                    strikeouts INTEGER
+                    strikeouts INTEGER,
+                    intentional_walks INTEGER,
+                    hbp INTEGER,
+                    sacrifice_hits INTEGER,
+                    sacrifice_flies INTEGER,
+                    gdp INTEGER
                 )
                 """
             )
@@ -164,7 +183,17 @@ def _make_session():
                     hits_allowed INTEGER,
                     home_runs_allowed INTEGER,
                     walks_allowed INTEGER,
-                    strikeouts INTEGER
+                    strikeouts INTEGER,
+                    innings_outs INTEGER,
+                    intentional_walks INTEGER,
+                    hit_batters INTEGER,
+                    tbf INTEGER,
+                    complete_games INTEGER,
+                    shutouts INTEGER,
+                    wild_pitches INTEGER,
+                    balks INTEGER,
+                    sacrifices_allowed INTEGER,
+                    sacrifice_flies_allowed INTEGER
                 )
                 """
             )
