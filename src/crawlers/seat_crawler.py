@@ -16,7 +16,6 @@ from src.db.engine import SessionLocal
 from src.repositories.source_registry_repository import save_raw_snapshots
 from src.repositories.stadium_seat_section_repository import StadiumSeatSectionRepository
 from src.utils.http_client import DEFAULT_HEADERS as HEADERS
-from src.utils.safe_print import safe_print as print
 from src.utils.throttle import throttle
 
 logger = logging.getLogger(__name__)
@@ -52,17 +51,17 @@ class SeatCrawler:
             try:
                 sections = await self._crawl_team_seats(team_code, info)
                 all_sections.extend(sections)
-                print(f"[SEAT] {team_code}: {len(sections)} sections found")
+                logger.info(f"[SEAT] {team_code}: {len(sections)} sections found")
             except Exception:
                 logger.exception("Failed to crawl seats for %s", team_code)
 
-        print(f"[SEAT] Total: {len(all_sections)} sections")
+        logger.info(f"[SEAT] Total: {len(all_sections)} sections")
 
         if save:
             self._save_to_db(all_sections)
         else:
             for s in all_sections[:5]:
-                print(s)
+                logger.info(s)
 
         return all_sections
 
@@ -126,7 +125,7 @@ class SeatCrawler:
                     except Exception:
                         logger.exception("Seat section save failed: %s", item.get("section_name", ""))
                 session.commit()
-                print(f"[SEAT] Saved {count} section records, {saved_snaps} snapshots.")
+                logger.info(f"[SEAT] Saved {count} section records, {saved_snaps} snapshots.")
             except Exception:
                 session.rollback()
                 logger.exception("Seat batch save error")

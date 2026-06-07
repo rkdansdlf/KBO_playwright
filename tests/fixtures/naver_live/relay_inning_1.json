@@ -1,0 +1,64 @@
+{
+  "result": {
+    "textRelayData": {
+      "textRelays": [
+        {
+          "title": "1회초 LG 공격",
+          "homeOrAway": "0",
+          "inn": 1,
+          "textOptions": [
+            {
+              "text": "1번타자 홍창기:안타",
+              "pitcherName": "네일",
+              "batterName": "홍창기",
+              "batterRecord": {"name": "홍창기"},
+              "currentGameState": {
+                "homeScore": "0",
+                "awayScore": "1",
+                "out": "0",
+                "base1": "1",
+                "base2": "0",
+                "base3": "0"
+              }
+            },
+            {
+              "text": "2번타자 문성주:삼진",
+              "pitcherName": "네일",
+              "batterName": "문성주",
+              "batterRecord": {"name": "문성주"},
+              "currentGameState": {
+                "homeScore": "0",
+                "awayScore": "1",
+                "out": "1",
+                "base1": "1",
+                "base2": "0",
+                "base3": "0"
+              }
+            }
+          ]
+        },
+        {
+          "title": "1회말 KIA 공격",
+          "homeOrAway": "1",
+          "inn": 1,
+          "textOptions": [
+            {
+              "text": "1번타자 박찬호:땅볼",
+              "pitcherName": "켈리",
+              "batterName": "박찬호",
+              "batterRecord": {"name": "박찬호"},
+              "currentGameState": {
+                "homeScore": "0",
+                "awayScore": "0",
+                "out": "1",
+                "base1": "0",
+                "base2": "0",
+                "base3": "0"
+              }
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

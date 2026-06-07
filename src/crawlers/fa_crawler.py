@@ -109,14 +109,14 @@ class FACrawler:
             await Stealth().apply_stealth_async(page)
 
             try:
-                print(f"🌍 Navigating to {self.url}...")
+                logger.info(f"🌍 Navigating to {self.url}...")
                 await page.goto(self.url, wait_until="domcontentloaded", timeout=60000)
 
                 # Wait for table or specific content wrapper
                 try:
                     await page.wait_for_selector(".wiki-table-wrap table, #content .table, table", timeout=30000)
                 except TimeoutError:
-                    print("⚠️ Timeout waiting for table selector. Exploring content...")
+                    logger.exception("⚠️ Timeout waiting for table selector. Exploring content...")
 
                 # Extract data from 4 main sections
                 sections = [
@@ -127,16 +127,16 @@ class FACrawler:
                 ]
 
                 for section in sections:
-                    print(f"🔍 Processing Section {section['id']} ({section['type']} - {section['pos']})...")
+                    logger.info(f"🔍 Processing Section {section['id']} ({section['type']} - {section['pos']})...")
                     section_data = await self._extract_section_table(page, section["type"], section["pos"])
 
                     # Filter by year
                     if target_years:
                         filtered = [d for d in section_data if d["year"] in target_years]
-                        print(f"   => Found {len(filtered)} records for target years.")
+                        logger.info(f"   => Found {len(filtered)} records for target years.")
                         results.extend(filtered)
                     else:
-                        print(f"   => Found {len(section_data)} records total.")
+                        logger.info(f"   => Found {len(section_data)} records total.")
                         results.extend(section_data)
 
             except Exception:
@@ -228,7 +228,7 @@ class FACrawler:
         raw_rows = await page.evaluate(full_script)
 
         if not raw_rows or len(raw_rows) < 2:
-            print(f"   ⚠️ No table found matching section {section_type} ({pos_type})")
+            logger.warning(f"   ⚠️ No table found matching section {section_type} ({pos_type})")
             return []
 
         header = raw_rows[0]
@@ -265,14 +265,14 @@ class FACrawler:
 
         remarks_idx = find_index(["비고", "기타", "상세", "옵션"])
 
-        print(f"   [Header Mapping] Section: {section_type} ({pos_type})")
-        print(f"   => Header: {header}")
+        logger.info(f"   [Header Mapping] Section: {section_type} ({pos_type})")
+        logger.info(f"   => Header: {header}")
         print(
             f"   => Indices - year: {year_idx}, name: {name_idx}, team: {team_idx}, old_team: {old_team_idx}, new_team: {new_team_idx}, duration: {duration_idx}, amount: {amount_idx}, remarks: {remarks_idx}"
         )
 
         if name_idx == -1 or amount_idx == -1:
-            print("   ⚠️ Critical columns (이름, 총액) not found in header. Skipping table.")
+            logger.warning("   ⚠️ Critical columns (이름, 총액) not found in header. Skipping table.")
             return []
 
         parsed_data = []
@@ -354,11 +354,11 @@ class FACrawler:
 
     def load_from_json(self, filepath: str) -> list[dict[str, Any]]:
         """Loads FA data from a JSON file."""
-        print(f"📂 Loading data from {filepath}...")
+        logger.info(f"📂 Loading data from {filepath}...")
         try:
             with open(filepath, encoding="utf-8") as f:
                 data = json.load(f)
-            print(f"   => Loaded {len(data)} records.")
+            logger.info(f"   => Loaded {len(data)} records.")
             return data
         except Exception:
             logger.exception("❌ Error loading JSON")
@@ -375,7 +375,7 @@ class FACrawler:
         new_fa_contracts = 0
         updated_fa_contracts = 0
 
-        print(f"💾 processing {len(data)} records for Database...")
+        logger.info(f"💾 processing {len(data)} records for Database...")
 
         for item in data:
             if not item.get("player_name"):
@@ -388,10 +388,10 @@ class FACrawler:
 
             if not team_code:
                 if item.get("type") == "transfer" and not item.get("new_team"):
-                    print(f"   ⚠️ Skipping record for {name} ({year}): No valid team (likely overseas split).")
+                    logger.warning(f"   ⚠️ Skipping record for {name} ({year}): No valid team (likely overseas split).")
                     continue
 
-                print(f"   ⚠️ Could not resolve team code for '{team_raw}' ({name}, {year}). Skipping.")
+                logger.warning(f"   ⚠️ Could not resolve team code for '{team_raw}' ({name}, {year}). Skipping.")
                 continue
 
             # Construct Remarks string
@@ -504,8 +504,10 @@ class FACrawler:
         if not dry_run:
             try:
                 session.commit()
-                print(f"✅ player_movements Update Complete: {new_records} Inserted, {updates} Updated.")
-                print(f"✅ fa_contracts Update Complete: {new_fa_contracts} Inserted, {updated_fa_contracts} Updated.")
+                logger.info(f"✅ player_movements Update Complete: {new_records} Inserted, {updates} Updated.")
+                logger.info(
+                    f"✅ fa_contracts Update Complete: {new_fa_contracts} Inserted, {updated_fa_contracts} Updated."
+                )
             except Exception:
                 session.rollback()
                 logger.exception("❌ DB Error")
@@ -540,9 +542,9 @@ async def main():
         finally:
             session.close()
     else:
-        print(f"Fetched {len(data)} records.")
+        logger.info(f"Fetched {len(data)} records.")
         for d in data[:5]:
-            print(d)
+            logger.info(d)
 
 
 if __name__ == "__main__":

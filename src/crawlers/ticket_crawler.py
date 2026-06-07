@@ -21,7 +21,6 @@ from src.repositories.source_registry_repository import save_raw_snapshots
 from src.repositories.ticket_open_rule_repository import TicketOpenRuleRepository
 from src.repositories.ticket_price_repository import TicketPriceRepository
 from src.utils.http_client import DEFAULT_HEADERS as HEADERS
-from src.utils.safe_print import safe_print as print
 from src.utils.throttle import throttle
 
 logger = logging.getLogger(__name__)
@@ -130,7 +129,7 @@ class TicketCrawler:
         if not prices:
             prices = await self._crawl_lg_ticket_page()
 
-        print(f"[TICKET] Found {len(prices)} price entries, {len(open_rules)} open rules")
+        logger.info(f"[TICKET] Found {len(prices)} price entries, {len(open_rules)} open rules")
 
         if save:
             self._save_to_db(prices, open_rules)
@@ -315,7 +314,7 @@ class TicketCrawler:
                         logger.exception("Open rule save failed: %s", item)
 
                 session.commit()
-                print(f"[TICKET] Saved {price_count} prices, {rule_count} rules, {saved_snaps} snapshots.")
+                logger.info(f"[TICKET] Saved {price_count} prices, {rule_count} rules, {saved_snaps} snapshots.")
             except Exception:
                 session.rollback()
                 logger.exception("Ticket price batch save error")

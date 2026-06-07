@@ -1,3 +1,6 @@
+import logging
+
+logger = logging.getLogger(__name__)
 """
 Futures League Batting Stats Crawler
 Fetches year-by-year Futures batting statistics from player profile pages.
@@ -209,7 +212,7 @@ async def fetch_and_parse_futures_batting(
         page = await active_pool.acquire()
         try:
             if not await compliance.is_allowed(profile_url):
-                print(f"[COMPLIANCE] Blocked futures batting: {profile_url}")
+                logger.info(f"[COMPLIANCE] Blocked futures batting: {profile_url}")
                 return []
 
             await throttle.wait()
@@ -257,10 +260,10 @@ async def main():
     profile_url = f"https://www.koreabaseball.com/Futures/Player/HitterTotal.aspx?playerId={player_id}"
 
     rows = await fetch_and_parse_futures_batting(player_id, profile_url)
-    print(f"\nParsed {len(rows)} Futures season records for player {player_id}")
+    logger.info(f"\nParsed {len(rows)} Futures season records for player {player_id}")
 
     for row in rows:
-        print(f"  Season {row.get('season')}: AVG={row.get('AVG')}, G={row.get('G')}, H={row.get('H')}")
+        logger.info(f"  Season {row.get('season')}: AVG={row.get('AVG')}, G={row.get('G')}, H={row.get('H')}")
 
 
 if __name__ == "__main__":

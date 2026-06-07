@@ -1,5 +1,6 @@
 from .award import Award as Award
 from .broadcast import GameBroadcast as GameBroadcast
+from .embedding_cache import EmbeddingCache as EmbeddingCache
 from .fa_contract import FAContract as FAContract
 from .fan_culture import CheerChant as CheerChant
 from .fan_culture import CheerSong as CheerSong

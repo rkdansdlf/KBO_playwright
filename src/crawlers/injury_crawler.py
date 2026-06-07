@@ -9,7 +9,6 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from src.db.engine import SessionLocal
 from src.repositories.injury_repository import InjuryRepository
-from src.utils.safe_print import safe_print as print
 
 logger = logging.getLogger(__name__)
 
@@ -29,12 +28,12 @@ INJURY_KEYWORDS = ["부상", "IL", "전력이탈", "이탈", "재활", "복귀"]
 class InjuryCrawler:
     async def run(self, save: bool = False):
         data = await self._fetch_news()
-        print(f"Found {len(data)} injury entries.")
+        logger.info(f"Found {len(data)} injury entries.")
         if save:
             self._save_to_db(data)
         else:
             for d in data[:10]:
-                print(d)
+                logger.info(d)
 
     async def _fetch_news(self) -> list[dict]:
         results = []
@@ -147,11 +146,10 @@ class InjuryCrawler:
                 except SQLAlchemyError as e:
                     logger.warning(f"Injury save failed: {e}")
             session.commit()
-            print(f"Saved {count} injury records.")
+            logger.info(f"Saved {count} injury records.")
         except SQLAlchemyError as e:
             session.rollback()
             logger.error(f"Database error saving injury records: {e}", exc_info=True)
-            print(f"Error: {e}")
         finally:
             session.close()
 

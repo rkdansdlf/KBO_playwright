@@ -16,7 +16,6 @@ from playwright.async_api import TimeoutError as PlaywrightTimeoutError
 from tenacity import AsyncRetrying, retry_if_exception_type, stop_after_attempt, wait_exponential
 
 from src.utils.playwright_pool import AsyncPlaywrightPool
-from src.utils.safe_print import safe_print as print
 
 
 class PlayerMovementCrawler:
@@ -56,7 +55,7 @@ class PlayerMovementCrawler:
         return results
 
     async def _crawl_year(self, page: Page, year: int) -> list[dict[str, Any]]:
-        print(f"🔄 Crawling Player Movements for Year: {year}...")
+        logger.info(f"🔄 Crawling Player Movements for Year: {year}...")
         results = []
 
         # Select Year
@@ -70,7 +69,7 @@ class PlayerMovementCrawler:
                 # The page might not reload URL, just DOM update.
                 await page.click("#btnSearch")
             except TimeoutError:
-                print("⚠️ Search click timeout - Page might have updated without reload or network is slow.")
+                logger.exception("⚠️ Search click timeout - Page might have updated without reload or network is slow.")
 
             await page.wait_for_load_state("networkidle")
             await page.wait_for_timeout(1000)
@@ -80,17 +79,17 @@ class PlayerMovementCrawler:
             prev_page_data_str = ""
 
             while True:
-                print(f"   PAGE {page_num}: Extracting...")
+                logger.info(f"   PAGE {page_num}: Extracting...")
 
                 # Extract current page rows
                 data = await self._extract_table(page)
                 if not data:
-                    print("   ⚠️ No data found on this page.")
+                    logger.warning("   ⚠️ No data found on this page.")
 
                 # Check for duplicates (Stop infinite loop)
                 current_data_str = str(data)
                 if current_data_str == prev_page_data_str:
-                    print(f"   🛑 Duplicate data detected (Same as Page {page_num - 1}). Stopping.")
+                    logger.info(f"   🛑 Duplicate data detected (Same as Page {page_num - 1}). Stopping.")
                     break
                 prev_page_data_str = current_data_str
 
@@ -127,7 +126,7 @@ class PlayerMovementCrawler:
                         pass
 
                 if not clicked:
-                    print(f"   ✅ Finished Year {year}. No more next pages.")
+                    logger.info(f"   ✅ Finished Year {year}. No more next pages.")
                     break
 
                 # Wait for table update
@@ -146,7 +145,7 @@ class PlayerMovementCrawler:
 
             traceback.print_exc()
 
-        print(f"✅ Year {year}: Collected {len(results)} records.")
+        logger.info(f"✅ Year {year}: Collected {len(results)} records.")
         return results
 
     async def _extract_table(self, page: Page) -> list[dict[str, Any]]:
@@ -195,9 +194,9 @@ async def main():
     # Test run
     crawler = PlayerMovementCrawler()
     data = await crawler.crawl_years(2023, 2023)
-    print(f"Total collected: {len(data)}")
+    logger.info(f"Total collected: {len(data)}")
     for d in data[:5]:
-        print(d)
+        logger.info(d)
 
 
 if __name__ == "__main__":

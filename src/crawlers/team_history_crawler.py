@@ -46,7 +46,7 @@ class TeamHistoryCrawler:
             await self.playwright.stop()
 
     async def crawl(self):
-        print(f"📜 Crawling Team History from {self.BASE_URL}")
+        logger.info(f"📜 Crawling Team History from {self.BASE_URL}")
         if not self.page:
             await self.start()
 
@@ -62,7 +62,7 @@ class TeamHistoryCrawler:
         # Cells: td (12 columns)
 
         rows = await self.page.locator("table.tData.tbd02 tbody tr").all()
-        print(f"Found {len(rows)} year entries.")
+        logger.info(f"Found {len(rows)} year entries.")
 
         history_data = []
 
@@ -160,12 +160,12 @@ class TeamHistoryCrawler:
                             }
                         )
 
-            print(f"Processed {year}: {len([h for h in history_data if h['season'] == year])} teams.")
+            logger.info(f"Processed {year}: {len([h for h in history_data if h['season'] == year])} teams.")
 
         return history_data
 
     async def save(self, data: list[dict]):
-        print(f"💾 Saving {len(data)} history entries...")
+        logger.info(f"💾 Saving {len(data)} history entries...")
         with SessionLocal() as session:
             try:
                 saved_snaps = save_raw_snapshots(session, self._raw_pages)
@@ -180,12 +180,12 @@ class TeamHistoryCrawler:
 
                     code = resolve_team_code(team_name)
                     if not code:
-                        print(f"   ⚠️ Could not resolve code for '{team_name}' ({season})")
+                        logger.warning(f"   ⚠️ Could not resolve code for '{team_name}' ({season})")
                         continue
 
                     franchise_id = team_map.get(code)
                     if not franchise_id:
-                        print(f"   ⚠️ No franchise_id for code '{code}'")
+                        logger.warning(f"   ⚠️ No franchise_id for code '{code}'")
                         continue
 
                     stmt = select(TeamHistory).where(TeamHistory.season == season, TeamHistory.team_code == code)
@@ -210,7 +210,7 @@ class TeamHistoryCrawler:
                     saved_count += 1
 
                 session.commit()
-                print(f"✅ Saved/Updated {saved_count} records ({saved_snaps} snapshots).")
+                logger.info(f"✅ Saved/Updated {saved_count} records ({saved_snaps} snapshots).")
             except Exception:
                 session.rollback()
                 logger.exception("Error saving team history")

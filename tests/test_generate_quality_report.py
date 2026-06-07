@@ -297,3 +297,75 @@ def test_report_issue_detection_includes_relay_and_standings_integrity():
         )
         is True
     )
+
+
+def test_team_stats_integrity_all_ok():
+    gate = {
+        "team_batting": {"ok": True, "mismatches": [], "checked_players": 10},
+        "team_pitching": {"ok": True, "mismatches": [], "checked_players": 10},
+    }
+    result = generate_quality_report.get_team_stats_integrity(gate)
+    assert result["ok"] is True
+    assert result["total_mismatches"] == 0
+    assert result["batting_checked"] == 10
+    assert result["pitching_checked"] == 10
+
+
+def test_team_stats_integrity_batting_mismatch():
+    gate = {
+        "team_batting": {
+            "ok": False,
+            "mismatches": [{"team_id": "SSG", "issue": "games mismatch"}],
+            "checked_players": 10,
+        },
+        "team_pitching": {"ok": True, "mismatches": [], "checked_players": 10},
+    }
+    result = generate_quality_report.get_team_stats_integrity(gate)
+    assert result["ok"] is False
+    assert result["total_mismatches"] == 1
+    assert result["batting_ok"] is False
+    assert result["pitching_ok"] is True
+
+
+def test_team_stats_integrity_pitching_mismatch():
+    gate = {
+        "team_batting": {"ok": True, "mismatches": [], "checked_players": 10},
+        "team_pitching": {
+            "ok": False,
+            "mismatches": [{"team_id": "LG", "issue": "era mismatch"}],
+            "checked_players": 10,
+        },
+    }
+    result = generate_quality_report.get_team_stats_integrity(gate)
+    assert result["ok"] is False
+    assert result["total_mismatches"] == 1
+    assert result["batting_ok"] is True
+    assert result["pitching_ok"] is False
+
+
+def test_team_stats_integrity_both_mismatch():
+    gate = {
+        "team_batting": {
+            "ok": False,
+            "mismatches": [{"team_id": "SSG", "issue": "games mismatch"}],
+            "checked_players": 10,
+        },
+        "team_pitching": {
+            "ok": False,
+            "mismatches": [{"team_id": "LG", "issue": "era mismatch"}],
+            "checked_players": 10,
+        },
+    }
+    result = generate_quality_report.get_team_stats_integrity(gate)
+    assert result["ok"] is False
+    assert result["total_mismatches"] == 2
+    assert result["batting_ok"] is False
+    assert result["pitching_ok"] is False
+
+
+def test_team_stats_integrity_empty_gate():
+    result = generate_quality_report.get_team_stats_integrity({})
+    assert result["ok"] is True
+    assert result["total_mismatches"] == 0
+    assert result["batting_checked"] == 0
+    assert result["pitching_checked"] == 0

@@ -83,7 +83,7 @@ class RetiredPlayerDetailCrawler:
     async def _fetch_page(self, page: Page, base_url: str, player_id: str) -> dict[str, Any] | None:
         url = f"{base_url}?playerId={player_id}"
         if not await compliance.is_allowed(url):
-            print(f"⚠️  BLOCKED by compliance: {url}")
+            logger.warning(f"⚠️  BLOCKED by compliance: {url}")
             return None
 
         # One policy wait is enough before navigation.
@@ -165,9 +165,9 @@ async def main():
     sample_id = "78137"
     try:
         payload = await crawler.fetch_player(sample_id)
-        print(f"Fetched player {sample_id}")
-        print(f"Hitter tables: {len(payload.get('hitter', {}).get('tables', []))}")
-        print(f"Pitcher tables: {len(payload.get('pitcher', {}).get('tables', []))}")
+        logger.info(f"Fetched player {sample_id}")
+        logger.info(f"Hitter tables: {len(payload.get('hitter', {}).get('tables', []))}")
+        logger.info(f"Pitcher tables: {len(payload.get('pitcher', {}).get('tables', []))}")
     finally:
         await crawler.close()
 

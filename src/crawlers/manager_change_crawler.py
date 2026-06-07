@@ -9,7 +9,6 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from src.db.engine import SessionLocal
 from src.repositories.manager_change_repository import ManagerChangeRepository
-from src.utils.safe_print import safe_print as print
 
 logger = logging.getLogger(__name__)
 
@@ -29,12 +28,12 @@ MANAGER_KEYWORDS = ["감독", "선임", "경질", "사임", "대행", "사퇴"]
 class ManagerChangeCrawler:
     async def run(self, save: bool = False):
         data = await self._fetch_news()
-        print(f"Found {len(data)} manager change entries.")
+        logger.info(f"Found {len(data)} manager change entries.")
         if save:
             self._save_to_db(data)
         else:
             for d in data[:10]:
-                print(d)
+                logger.info(d)
 
     async def _fetch_news(self) -> list[dict]:
         results = []
@@ -159,11 +158,10 @@ class ManagerChangeCrawler:
                     logger.warning(f"Manager change save failed: {e}")
                     session.rollback()
             session.commit()
-            print(f"Saved {count} manager change records.")
+            logger.info(f"Saved {count} manager change records.")
         except SQLAlchemyError as e:
             session.rollback()
             logger.error(f"Database error saving manager changes: {e}", exc_info=True)
-            print(f"Error: {e}")
         finally:
             session.close()
 

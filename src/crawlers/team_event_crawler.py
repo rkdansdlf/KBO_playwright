@@ -15,7 +15,6 @@ from src.parsers.team_event_parser import parse_team_events
 from src.repositories.source_registry_repository import save_raw_snapshots
 from src.repositories.team_event_repository import TeamEventRepository
 from src.utils.http_client import DEFAULT_HEADERS as HEADERS
-from src.utils.safe_print import safe_print as print
 from src.utils.throttle import throttle
 
 logger = logging.getLogger(__name__)
@@ -93,17 +92,17 @@ class TeamEventCrawler:
             try:
                 events = await self._crawl_team(team_code, config)
                 all_events.extend(events)
-                print(f"[EVENT] {team_code}: {len(events)} events found")
+                logger.info(f"[EVENT] {team_code}: {len(events)} events found")
             except Exception:
                 logger.exception("Failed to crawl events for %s", team_code)
 
-        print(f"[EVENT] Total: {len(all_events)} events")
+        logger.info(f"[EVENT] Total: {len(all_events)} events")
 
         if save:
             self._save_to_db(all_events)
         else:
             for e in all_events[:5]:
-                print(e)
+                logger.info(e)
 
         return all_events
 
@@ -170,7 +169,7 @@ class TeamEventCrawler:
                     except Exception:
                         logger.exception("Event save failed: %s", item.get("title", "")[:50])
                 session.commit()
-                print(f"[EVENT] Saved {count} event records, {saved_snaps} snapshots.")
+                logger.info(f"[EVENT] Saved {count} event records, {saved_snaps} snapshots.")
             except Exception:
                 session.rollback()
                 logger.exception("Event batch save error")

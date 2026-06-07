@@ -348,10 +348,10 @@ class TestRunPBPHealerCLI:
         """Exit code 0 when no failures."""
         from src.cli.auto_healer import run_pbp_healer
 
-        with patch(
-            "asyncio.run",
-            return_value={"found": 2, "recovered": 2, "failed": 0, "skipped": 0},
-        ):
+        async def fake_healer(**_kwargs):
+            return {"found": 2, "recovered": 2, "failed": 0, "skipped": 0}
+
+        with patch("src.cli.auto_healer.run_pbp_healer_async", new=fake_healer):
             code = run_pbp_healer(["--lookback-days", "3"])
         assert code == 0
 
@@ -359,10 +359,10 @@ class TestRunPBPHealerCLI:
         """Exit code 1 when some games could not be recovered."""
         from src.cli.auto_healer import run_pbp_healer
 
-        with patch(
-            "asyncio.run",
-            return_value={"found": 2, "recovered": 1, "failed": 1, "skipped": 0},
-        ):
+        async def fake_healer(**_kwargs):
+            return {"found": 2, "recovered": 1, "failed": 1, "skipped": 0}
+
+        with patch("src.cli.auto_healer.run_pbp_healer_async", new=fake_healer):
             code = run_pbp_healer(["--lookback-days", "3"])
         assert code == 1
 
@@ -376,7 +376,7 @@ class TestRunPBPHealerCLI:
             captured.update(kwargs)
             return {"found": 0, "recovered": 0, "failed": 0, "skipped": 0}
 
-        with patch("src.cli.auto_healer.run_pbp_healer_async", side_effect=fake_healer):
+        with patch("src.cli.auto_healer.run_pbp_healer_async", new=fake_healer):
             run_pbp_healer(["--dry-run", "--lookback-days", "5"])
 
         assert captured.get("dry_run") is True

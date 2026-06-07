@@ -22,7 +22,6 @@ from sqlalchemy.exc import SQLAlchemyError
 from src.db.engine import SessionLocal
 from src.repositories.operation_notice_repository import OperationNoticeRepository
 from src.utils.http_client import DEFAULT_HEADERS as HEADERS
-from src.utils.safe_print import safe_print as print
 from src.utils.throttle import throttle
 
 logger = logging.getLogger(__name__)
@@ -113,7 +112,7 @@ class OperationNoticeLGCrawler:
                     notices, hit_stop = self._parse_page(html, stop_at_external_id)
                     all_notices.extend(notices)
 
-                    print(f"[LG Notice] page {page}: {len(notices)} notices")
+                    logger.info(f"[LG Notice] page {page}: {len(notices)} notices")
                     if hit_stop or not notices:
                         break
 
@@ -121,13 +120,13 @@ class OperationNoticeLGCrawler:
                     logger.exception("[LG Notice] Failed to fetch page %d", page)
                     break
 
-        print(f"[LG Notice] Total: {len(all_notices)} notices")
+        logger.info(f"[LG Notice] Total: {len(all_notices)} notices")
 
         if save:
             self._save_to_db(all_notices)
         else:
             for n in all_notices[:5]:
-                print(n)
+                logger.info(n)
 
         return all_notices
 
@@ -190,11 +189,10 @@ class OperationNoticeLGCrawler:
                 repo = OperationNoticeRepository(session)
                 created, updated = repo.bulk_upsert(notices)
                 session.commit()
-                print(f"[LG Notice] Saved: {created} new, {updated} updated.")
+                logger.info(f"[LG Notice] Saved: {created} new, {updated} updated.")
             except SQLAlchemyError as e:
                 session.rollback()
                 logger.error(f"[LG Notice] Database error: {e}", exc_info=True)
-                print(f"[LG Notice] Error: {e}")
             finally:
                 self._raw_pages.clear()
 

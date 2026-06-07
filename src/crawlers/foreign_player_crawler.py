@@ -9,7 +9,6 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from src.db.engine import SessionLocal
 from src.repositories.foreign_player_repository import ForeignPlayerRepository
-from src.utils.safe_print import safe_print as print
 
 logger = logging.getLogger(__name__)
 
@@ -29,12 +28,12 @@ FOREIGN_KEYWORDS = ["외국인", "대체", "교체", "방출", "영입", "재계
 class ForeignPlayerCrawler:
     async def run(self, save: bool = False):
         data = await self._fetch_news()
-        print(f"Found {len(data)} foreign player change entries.")
+        logger.info(f"Found {len(data)} foreign player change entries.")
         if save:
             self._save_to_db(data)
         else:
             for d in data[:10]:
-                print(d)
+                logger.info(d)
 
     async def _fetch_news(self) -> list[dict]:
         results = []
@@ -153,11 +152,10 @@ class ForeignPlayerCrawler:
                 except SQLAlchemyError as e:
                     logger.warning(f"Foreign player save failed: {e}")
             session.commit()
-            print(f"Saved {count} foreign player change records.")
+            logger.info(f"Saved {count} foreign player change records.")
         except SQLAlchemyError as e:
             session.rollback()
             logger.error(f"Database error saving foreign players: {e}", exc_info=True)
-            print(f"Error: {e}")
         finally:
             session.close()
 

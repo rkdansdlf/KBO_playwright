@@ -47,12 +47,12 @@ def crawl_bb_basic2_data(page: Page, year: int) -> dict[int, dict]:
     """
     BB 헤더만 클릭하는 단순화된 Basic2 크롤링
     """
-    print(f"📊 {year}년 정규시즌 BB 헤더 Basic2 크롤링 시작...")
+    logger.info(f"📊 {year}년 정규시즌 BB 헤더 Basic2 크롤링 시작...")
 
     try:
         # 1. Basic1 페이지로 이동
         url = "https://www.koreabaseball.com/Record/Player/HitterBasic/Basic1.aspx"
-        print(f"   🔍 Basic1 페이지로 이동: {url}")
+        logger.info(f"   🔍 Basic1 페이지로 이동: {url}")
         page.goto(url, wait_until="load", timeout=30000)
         page.wait_for_load_state("networkidle", timeout=30000)
         time.sleep(2)
@@ -60,66 +60,66 @@ def crawl_bb_basic2_data(page: Page, year: int) -> dict[int, dict]:
         # 2. 연도 선택
         season_selector = 'select[name="ctl00$ctl00$ctl00$cphContents$cphContents$cphContents$ddlSeason$ddlSeason"]'
         page.select_option(season_selector, str(year))
-        print(f"   ✅ {year}년 연도 선택")
+        logger.info(f"   ✅ {year}년 연도 선택")
         time.sleep(1)
 
         # 3. 정규시즌 선택
         series_selector = 'select[name="ctl00$ctl00$ctl00$cphContents$cphContents$cphContents$ddlSeries$ddlSeries"]'
         page.select_option(series_selector, value="0")  # 정규시즌
-        print("   ✅ 정규시즌 선택")
+        logger.info("   ✅ 정규시즌 선택")
         time.sleep(2)
 
         # 4. "다음" 링크로 Basic2 접근
         next_link = page.query_selector('a.next[href*="Basic2.aspx"]')
         if not next_link:
-            print("   ❌ Basic2 '다음' 링크를 찾을 수 없습니다.")
+            logger.error("   ❌ Basic2 '다음' 링크를 찾을 수 없습니다.")
             return {}
 
-        print("   🔗 'Basic2' 다음 링크 클릭...")
+        logger.info("   🔗 'Basic2' 다음 링크 클릭...")
         next_link.click()
         page.wait_for_load_state("networkidle", timeout=30000)
         time.sleep(2)
 
         current_url = page.url
-        print(f"   ✅ Basic2 페이지 접속: {current_url}")
+        logger.info(f"   ✅ Basic2 페이지 접속: {current_url}")
 
         # 5. BB 헤더 클릭
-        print("   📊 BB(볼넷) 헤더 클릭...")
+        logger.info("   📊 BB(볼넷) 헤더 클릭...")
 
         bb_link = page.query_selector("a[href*=\"sort('BB_CN')\"]")
         if not bb_link:
-            print("   ❌ BB 헤더를 찾을 수 없습니다.")
+            logger.error("   ❌ BB 헤더를 찾을 수 없습니다.")
             return {}
 
         bb_link.click()
         page.wait_for_load_state("networkidle", timeout=30000)
         time.sleep(1)
 
-        print("   ✅ BB 헤더 클릭 완료")
+        logger.info("   ✅ BB 헤더 클릭 완료")
 
         # 6. 테이블 헤더 확인
         table = page.query_selector("table")
         if not table:
-            print("   ❌ 테이블을 찾을 수 없습니다.")
+            logger.error("   ❌ 테이블을 찾을 수 없습니다.")
             return {}
 
         thead = table.query_selector("thead")
         if thead:
             header_cells = thead.query_selector_all("th")
             headers = [cell.inner_text().strip() for cell in header_cells]
-            print(f"   📋 테이블 헤더: {headers}")
+            logger.info(f"   📋 테이블 헤더: {headers}")
 
         # 7. 모든 페이지 데이터 수집
         all_player_data = {}
         page_num = 1
 
         while True:
-            print(f"      📄 페이지 {page_num} 처리 중...")
+            logger.info(f"      📄 페이지 {page_num} 처리 중...")
 
             # 현재 페이지 데이터 수집
             page_data = collect_current_page_bb_data(page)
             if not page_data:
-                print(f"      ⚠️ 페이지 {page_num}에 데이터가 없습니다.")
+                logger.warning(f"      ⚠️ 페이지 {page_num}에 데이터가 없습니다.")
                 break
 
             # 데이터 병합
@@ -129,7 +129,7 @@ def crawl_bb_basic2_data(page: Page, year: int) -> dict[int, dict]:
                 else:
                     all_player_data[player_id].update(data)
 
-            print(f"         ✅ {len(page_data)}명 데이터 수집, 총 {len(all_player_data)}명")
+            logger.info(f"         ✅ {len(page_data)}명 데이터 수집, 총 {len(all_player_data)}명")
 
             # 다음 페이지로 이동
             if not goto_next_page(page):
@@ -138,7 +138,7 @@ def crawl_bb_basic2_data(page: Page, year: int) -> dict[int, dict]:
             page_num += 1
             time.sleep(1)
 
-        print(f"   ✅ BB 헤더 기준 데이터 수집 완료: {len(all_player_data)}명")
+        logger.info(f"   ✅ BB 헤더 기준 데이터 수집 완료: {len(all_player_data)}명")
         return all_player_data
 
     except Exception:
@@ -267,7 +267,7 @@ def main():
     """메인 실행 함수"""
     YEAR = 2025
 
-    print(f"🚀 KBO {YEAR}년 BB 헤더 Basic2 크롤링 테스트 시작")
+    logger.info(f"🚀 KBO {YEAR}년 BB 헤더 Basic2 크롤링 테스트 시작")
 
     with sync_playwright() as playwright:
         browser = playwright.chromium.launch(headless=False)
@@ -279,26 +279,26 @@ def main():
             bb_data = crawl_bb_basic2_data(page, YEAR)
 
             if bb_data:
-                print(f"\n📊 수집 결과: {len(bb_data)}명")
+                logger.info(f"\n📊 수집 결과: {len(bb_data)}명")
 
                 # 샘플 데이터 출력
                 if bb_data:
                     first_player = next(iter(bb_data.values()))
-                    print("\n📋 샘플 데이터:")
+                    logger.info("\n📋 샘플 데이터:")
                     for key, value in first_player.items():
-                        print(f"   {key}: {value}")
+                        logger.info(f"   {key}: {value}")
 
                 # SQLite 저장
-                print("\n💾 SQLite 저장 시작...")
+                logger.info("\n💾 SQLite 저장 시작...")
                 saved_count = save_kbo_batting_batch(bb_data, "정규시즌 BB 테스트")
 
-                print("\n🎉 완료!")
-                print(f"   📊 수집: {len(bb_data)}명")
-                print(f"   💾 저장: {saved_count}명")
-                print(f"   📅 시간: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+                logger.info("\n🎉 완료!")
+                logger.info(f"   📊 수집: {len(bb_data)}명")
+                logger.info(f"   💾 저장: {saved_count}명")
+                logger.info(f"   📅 시간: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
 
             else:
-                print("❌ 데이터를 수집하지 못했습니다.")
+                logger.error("❌ 데이터를 수집하지 못했습니다.")
 
         except Exception:
             logger.exception("❌ 크롤링 중 오류 발생")

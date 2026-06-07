@@ -473,21 +473,23 @@ async def main():
     )
     args = parser.parse_args()
 
-    print("=" * 60)
-    print("KBO Player Search Crawler")
-    print("=" * 60)
+    logger.info("=" * 60)
+    logger.info("KBO Player Search Crawler")
+    logger.info("=" * 60)
 
-    print(f"\nCrawling players (max_pages={args.max_pages or 'all'})...")
+    logger.info(f"\nCrawling players (max_pages={args.max_pages or 'all'})...")
     players = await crawl_all_players(max_pages=args.max_pages)
-    print(f"\nTotal players collected: {len(players)}")
+    logger.info(f"\nTotal players collected: {len(players)}")
 
     if not players:
-        print("No players collected")
+        logger.info("No players collected")
         return
 
-    print("\nSample (first 5 players):")
+    logger.info("\nSample (first 5 players):")
     for player in players[:5]:
-        print(f"  - {player.name} (ID: {player.player_id}, #{player.uniform_no}, {player.team}/{player.position})")
+        logger.info(
+            f"  - {player.name} (ID: {player.player_id}, #{player.uniform_no}, {player.team}/{player.position})"
+        )
 
     oci_url = os.getenv("OCI_DB_URL")
     should_sync = args.sync_oci if args.sync_oci is not None else bool(oci_url)
@@ -495,7 +497,7 @@ async def main():
     if args.save or should_sync:
         from src.db.engine import init_db
 
-        print("\nInitializing database...")
+        logger.info("\nInitializing database...")
         init_db()
 
     player_dicts = [player_row_to_dict(player) for player in players]
@@ -512,45 +514,45 @@ async def main():
             )
 
         parsed_dates = sum(1 for player in player_dicts if player["birth_date_date"] is not None)
-        print(f"\nParsed birth dates: {parsed_dates}/{len(player_dicts)}")
+        logger.info(f"\nParsed birth dates: {parsed_dates}/{len(player_dicts)}")
 
-        print("\nSaving to SQLite...")
+        logger.info("\nSaving to SQLite...")
         repo = PlayerBasicRepository()
         saved_count = repo.upsert_players(player_dicts)
-        print(f"Saved {saved_count} players to SQLite")
+        logger.info(f"Saved {saved_count} players to SQLite")
     else:
-        print("\nSkipping SQLite save (--no-save specified)")
+        logger.info("\nSkipping SQLite save (--no-save specified)")
         if should_sync:
-            print("Existing SQLite data will be used for OCI sync")
+            logger.info("Existing SQLite data will be used for OCI sync")
 
     if should_sync:
         from src.db.engine import SessionLocal
         from src.sync.oci_sync import OCISync
 
         if not oci_url:
-            print("\nOCI_DB_URL not set; skipping OCI sync")
+            logger.info("\nOCI_DB_URL not set; skipping OCI sync")
         else:
-            print("\nSyncing to OCI...")
+            logger.info("\nSyncing to OCI...")
             with SessionLocal() as sqlite_session:
                 sync = OCISync(oci_url, sqlite_session)
                 try:
                     if not sync.test_connection():
-                        print("OCI connection failed")
+                        logger.info("OCI connection failed")
                         return
 
                     synced = sync.sync_player_basic()
-                    print(f"Synced {synced} players to OCI")
+                    logger.info(f"Synced {synced} players to OCI")
                 finally:
                     sync.close()
     else:
         if args.sync_oci is False:
-            print("\nSkipping OCI sync (--no-sync-oci specified)")
+            logger.info("\nSkipping OCI sync (--no-sync-oci specified)")
         elif not oci_url:
-            print("\nOCI_DB_URL not set; OCI sync skipped")
+            logger.info("\nOCI_DB_URL not set; OCI sync skipped")
 
-    print("\n" + "=" * 60)
-    print("Complete")
-    print("=" * 60)
+    logger.info("\n" + "=" * 60)
+    logger.info("Complete")
+    logger.info("=" * 60)
 
 
 if __name__ == "__main__":

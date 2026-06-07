@@ -24,7 +24,6 @@ from src.utils.relay_text import (
     is_relay_result_event_text,
 )
 from src.utils.request_policy import RequestPolicy
-from src.utils.safe_print import safe_print as print
 from src.utils.team_codes import normalize_kbo_game_id
 
 logger = logging.getLogger(__name__)
@@ -164,7 +163,7 @@ class RelayCrawler:
     ) -> tuple[dict[str, Any] | None, str | None]:
         full_url = str(httpx.URL(url, params=params or {}))
         if not await compliance.is_allowed(full_url):
-            print(f"[COMPLIANCE] Relay request blocked: {full_url}")
+            logger.info(f"[COMPLIANCE] Relay request blocked: {full_url}")
             return None, "blocked"
 
         async def _fetch() -> dict[str, Any]:
@@ -188,7 +187,7 @@ class RelayCrawler:
         try:
             return await self.policy.run_with_retry_async(_fetch), None
         except _PermanentStatusError as exc:
-            print(f"[INFO] Relay API permanent error: {full_url} status={exc.status_code}")
+            logger.exception(f"[INFO] Relay API permanent error: {full_url} status={exc.status_code}")
             return None, f"http_{exc.status_code}"
         except Exception as exc:
             logger.warning("Relay API request failed: %s reason=%s", full_url, exc)
