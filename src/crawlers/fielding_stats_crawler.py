@@ -34,18 +34,20 @@ def build_fielding_crawl_summary(records):
     return summary, valid_records
 
 
-def crawl_all_fielding_stats(year=2025):
+def crawl_all_fielding_stats(year=None):
     """
     KBO 공식 홈페이지에서 팀별 수비 기록을 크롤링하여 전체 선수의 수비 기록을 수집합니다.
     팀별로 조회하여 전체 수비수(투수 포함)를 누락 없이 가져옵니다.
     포수의 경우 별도의 포지션 필터링을 통해 상세 지표(도루저지 등)를 추가 수집합니다.
 
     Args:
-        year: 시즌 연도
+        year: 시즌 연도 (None이면 현재 연도)
 
     Returns:
         list: 수비 기록 딕셔너리 리스트
     """
+    if year is None:
+        year = datetime.now().year
     fielding_data = []
     fielding_data_map = {}  # (player_id, team_id, position_id) -> record
     policy = RequestPolicy()
@@ -345,14 +347,18 @@ def crawl_all_fielding_stats(year=2025):
     return fielding_data
 
 
-def save_fielding_stats(year=2025, db_path="data/kbo_dev.db"):
+def save_fielding_stats(year=None, db_path=None):
     """
     수비 기록을 크롤링하여 DB에 저장합니다.
 
     Args:
-        year: 시즌 연도
-        db_path: 데이터베이스 파일 경로
+        year: 시즌 연도 (None이면 현재 연도)
+        db_path: 데이터베이스 파일 경로 (None이면 data/kbo_{year}.db)
     """
+    if year is None:
+        year = datetime.now().year
+    if db_path is None:
+        db_path = f"data/kbo_{year}.db"
     # 수비 기록 크롤링
     fielding_records = crawl_all_fielding_stats(year)
 
@@ -422,13 +428,14 @@ if __name__ == "__main__":
     import argparse
 
     parser = argparse.ArgumentParser(description="KBO Fielding stats crawler")
-    parser.add_argument("--year", type=int, default=2025, help="Season year (default: 2025)")
+    parser.add_argument("--year", type=int, default=None, help="Season year (default: current year)")
     parser.add_argument("--save", action="store_true", help="Save to local database")
     args = parser.parse_args()
+    year = args.year or datetime.now().year
 
-    logger.info(f"📊 수비 크롤러 실행 (연도: {args.year}, 저장 여부: {args.save})")
+    logger.info(f"📊 수비 크롤러 실행 (연도: {year}, 저장 여부: {args.save})")
     if args.save:
-        save_fielding_stats(args.year, "data/kbo_dev.db")
+        save_fielding_stats(year)
     else:
         data = crawl_all_fielding_stats(args.year)
         logger.info(f"🔍 Dry-run completed: {len(data)} records found.")

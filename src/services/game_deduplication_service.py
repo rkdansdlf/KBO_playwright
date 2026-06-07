@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import sqlite3
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 from typing import Iterable, Sequence
 
@@ -82,13 +83,15 @@ def mark_primary_games(
             marked += result.marked_primary
 
         if remove_extreme_dates:
+            current_year = datetime.now().year
             cursor.execute(
                 """
                 UPDATE game
                 SET is_primary = 0
                 WHERE (strftime('%m%d', game_date) < '0301' OR strftime('%m%d', game_date) > '1231')
-                  AND strftime('%Y', game_date) != '2026'
-                """
+                  AND strftime('%Y', game_date) != ?
+                """,
+                (str(current_year),),
             )
 
         conn.commit()

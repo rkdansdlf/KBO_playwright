@@ -544,7 +544,7 @@ class MiscSyncMixin:
         Base.metadata.create_all(self.oci_engine)
 
         results = {}
-        filters = [text(f"season_year = {year}")] if year else None
+        filters = [text("season_year = :year").bindparams(year=year)] if year else None
 
         results["batter_team"] = self.sync_simple_table(
             BatterTeamSplit,
