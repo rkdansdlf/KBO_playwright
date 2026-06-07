@@ -165,7 +165,7 @@ def _parse_fetched_at(metadata: dict | None) -> datetime:
             fetched_at = datetime.fromisoformat(fetched_at_str)
             return fetched_at.replace(tzinfo=None)
         except (ValueError, TypeError):
-            pass
+            logger.debug("Invalid fetched_at string: %s", fetched_at_str)
     return datetime.now(UTC).replace(tzinfo=None)
 
 

@@ -6,7 +6,6 @@ OCI 동기화 전 SQLite 저장 테스트용
 import logging
 import os
 import sys
-import time
 from datetime import datetime
 
 logger = logging.getLogger(__name__)
@@ -17,6 +16,7 @@ from playwright.sync_api import Page, sync_playwright
 
 from src.repositories.save_kbo_batting import save_kbo_batting_batch
 from src.utils.playwright_blocking import install_sync_resource_blocking
+from src.utils.request_policy import RequestPolicy
 
 
 def safe_parse_number(value_str: str, data_type: type) -> int | float | None:
@@ -43,7 +43,7 @@ def parse_player_id_from_link(link_href: str) -> int | None:
     return None
 
 
-def crawl_bb_basic2_data(page: Page, year: int) -> dict[int, dict]:
+def crawl_bb_basic2_data(page: Page, year: int, policy: RequestPolicy | None = None) -> dict[int, dict]:
     """
     BB 헤더만 클릭하는 단순화된 Basic2 크롤링
     """
@@ -55,19 +55,22 @@ def crawl_bb_basic2_data(page: Page, year: int) -> dict[int, dict]:
         logger.info(f"   🔍 Basic1 페이지로 이동: {url}")
         page.goto(url, wait_until="load", timeout=30000)
         page.wait_for_load_state("networkidle", timeout=30000)
-        time.sleep(2)
+        if policy:
+            policy.delay()
 
         # 2. 연도 선택
         season_selector = 'select[name="ctl00$ctl00$ctl00$cphContents$cphContents$cphContents$ddlSeason$ddlSeason"]'
         page.select_option(season_selector, str(year))
         logger.info(f"   ✅ {year}년 연도 선택")
-        time.sleep(1)
+        if policy:
+            policy.delay()
 
         # 3. 정규시즌 선택
         series_selector = 'select[name="ctl00$ctl00$ctl00$cphContents$cphContents$cphContents$ddlSeries$ddlSeries"]'
         page.select_option(series_selector, value="0")  # 정규시즌
         logger.info("   ✅ 정규시즌 선택")
-        time.sleep(2)
+        if policy:
+            policy.delay()
 
         # 4. "다음" 링크로 Basic2 접근
         next_link = page.query_selector('a.next[href*="Basic2.aspx"]')
@@ -78,7 +81,8 @@ def crawl_bb_basic2_data(page: Page, year: int) -> dict[int, dict]:
         logger.info("   🔗 'Basic2' 다음 링크 클릭...")
         next_link.click()
         page.wait_for_load_state("networkidle", timeout=30000)
-        time.sleep(2)
+        if policy:
+            policy.delay()
 
         current_url = page.url
         logger.info(f"   ✅ Basic2 페이지 접속: {current_url}")
@@ -93,7 +97,8 @@ def crawl_bb_basic2_data(page: Page, year: int) -> dict[int, dict]:
 
         bb_link.click()
         page.wait_for_load_state("networkidle", timeout=30000)
-        time.sleep(1)
+        if policy:
+            policy.delay()
 
         logger.info("   ✅ BB 헤더 클릭 완료")
 
@@ -132,11 +137,12 @@ def crawl_bb_basic2_data(page: Page, year: int) -> dict[int, dict]:
             logger.info(f"         ✅ {len(page_data)}명 데이터 수집, 총 {len(all_player_data)}명")
 
             # 다음 페이지로 이동
-            if not goto_next_page(page):
+            if not goto_next_page(page, policy=policy):
                 break
 
             page_num += 1
-            time.sleep(1)
+            if policy:
+                policy.delay()
 
         logger.info(f"   ✅ BB 헤더 기준 데이터 수집 완료: {len(all_player_data)}명")
         return all_player_data
@@ -236,7 +242,7 @@ def collect_current_page_bb_data(page: Page) -> dict[int, dict]:
     return page_data
 
 
-def goto_next_page(page: Page) -> bool:
+def goto_next_page(page: Page, policy: RequestPolicy | None = None) -> bool:
     """다음 페이지로 이동"""
     try:
         # 페이지네이션 확인
@@ -253,7 +259,8 @@ def goto_next_page(page: Page) -> bool:
                 if href and "javascript:" not in href:
                     link.click()
                     page.wait_for_load_state("networkidle", timeout=30000)
-                    time.sleep(1)
+                    if policy:
+                        policy.delay()
                     return True
 
         return False
@@ -269,6 +276,8 @@ def main():
 
     logger.info(f"🚀 KBO {YEAR}년 BB 헤더 Basic2 크롤링 테스트 시작")
 
+    policy = RequestPolicy()
+
     with sync_playwright() as playwright:
         browser = playwright.chromium.launch(headless=False)
         page = browser.new_page()
@@ -276,7 +285,7 @@ def main():
 
         try:
             # BB 헤더 Basic2 데이터 수집
-            bb_data = crawl_bb_basic2_data(page, YEAR)
+            bb_data = crawl_bb_basic2_data(page, YEAR, policy=policy)
 
             if bb_data:
                 logger.info(f"\n📊 수집 결과: {len(bb_data)}명")

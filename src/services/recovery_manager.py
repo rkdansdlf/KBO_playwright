@@ -5,8 +5,11 @@ Recovery Manager to handle checkpoints for large-scale data repair jobs.
 from __future__ import annotations
 
 import json
+import logging
 from pathlib import Path
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 
 class RecoveryManager:
@@ -22,7 +25,7 @@ class RecoveryManager:
                 with open(self.path, encoding="utf-8") as f:
                     self.state.update(json.load(f))
             except (OSError, json.JSONDecodeError):
-                pass
+                logger.debug("No existing recovery state at %s", self.path)
 
     def save(self) -> None:
         with open(self.path, "w", encoding="utf-8") as f:

@@ -14,4 +14,22 @@ if str(ROOT) not in sys.path:
 
 import logging
 
-logging.basicConfig(level=logging.DEBUG, format="%(message)s", stream=sys.stdout, force=True)
+
+class _CurrentStdoutHandler(logging.StreamHandler):
+    """StreamHandler that always writes to sys.stdout (even when capsys patches it)."""
+    def __init__(self) -> None:
+        super().__init__(None)
+
+    @property
+    def stream(self):
+        return sys.stdout
+
+    @stream.setter
+    def stream(self, value) -> None:
+        pass
+
+
+logging.basicConfig(level=logging.DEBUG, format="%(message)s", force=True)
+root = logging.getLogger()
+if root.handlers:
+    root.handlers = [_CurrentStdoutHandler()]

@@ -4,7 +4,6 @@
 
 import logging
 import sqlite3
-import time
 from datetime import datetime
 
 from playwright.sync_api import sync_playwright
@@ -47,13 +46,13 @@ def crawl_baserunning_stats(year=None, max_retries=3, timeout=60000):
             try:
                 page.goto(url, wait_until="load", timeout=timeout)
                 page.wait_for_load_state("networkidle", timeout=timeout)
-                time.sleep(1)
+                policy.delay()
                 break
             except Exception:
                 if attempt < max_retries - 1:
                     wait_time = (attempt + 1) * 2
                     logger.exception(f"   ⚠️  재시도 {attempt + 1}/{max_retries} ({wait_time}초 후 재시도)")
-                    time.sleep(wait_time)
+                    policy.delay()
                 else:
                     logger.exception("   ❌ 최대 재시도 횟수 초과")
                     browser.close()

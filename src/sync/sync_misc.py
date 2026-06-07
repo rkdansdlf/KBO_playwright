@@ -181,7 +181,7 @@ class MiscSyncMixin:
 
                         embedding = json.loads(embedding)
                     except json.JSONDecodeError:
-                        pass
+                        logger.debug("Failed to parse embedding JSON")
                 if isinstance(embedding, list):
                     target_dim = 256
                     current_dim = len(embedding)
