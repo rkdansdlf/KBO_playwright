@@ -35,6 +35,10 @@ This repository is a Playwright-based KBO data crawler with a two-track pipeline
 - `python3 -m scripts.maintenance.backfill_sh_sf_from_pbp --year 2020`: Backfill SH/SF from PBP sacrifice descriptions.
 - `python3 -m src.cli.quality_gate_check --year 2025`: Run statistical quality gate (batting/pitching/pa_formula).
 - `python3 -m src.cli.monthly_pa_audit`: Run PA formula audit & fix for previous year.
+- `python3 -m src.cli.monthly_unified_audit`: Run unified audit (PA formula + team stats) for previous year.
+- `python3 -m src.cli.monthly_unified_audit --year 2025 --dry-run`: Preview unified audit (no changes).
+- `python3 -m src.cli.monthly_unified_audit --year 2025 --team-only`: Run only team stats audit.
+- `python3 -m src.cli.monthly_unified_audit --year 2025 --pa-only`: Run only PA formula audit.
 - `python3 -m src.crawlers.fan_culture_crawler --save`: Crawl KBO cheer songs from YouTube channels.
 - `python3 scripts/seed_fan_culture.py`: Seed team rivalry data.
 - `pytest`: Run the test suite.
