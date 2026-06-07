@@ -62,6 +62,7 @@ async def discover_and_save_players(start_year: int, end_year: int, active_year:
 
 if __name__ == "__main__":
     from datetime import datetime
+
     _current_year = datetime.now().year
     parser = argparse.ArgumentParser(description="Discover and store historical player IDs")
     parser.add_argument("--start", type=int, default=1982)

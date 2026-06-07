@@ -81,9 +81,7 @@ def seed_relay_validation_metrics(
                 reason = "missing_relay_rows"
 
             metrics = (
-                session.query(GameValidationMetrics)
-                .filter(GameValidationMetrics.game_id == game_id)
-                .one_or_none()
+                session.query(GameValidationMetrics).filter(GameValidationMetrics.game_id == game_id).one_or_none()
             )
             if metrics is None:
                 metrics = GameValidationMetrics(game_id=game_id)
@@ -92,7 +90,9 @@ def seed_relay_validation_metrics(
                 metrics.previous_status = metrics.validation_status
             metrics.validation_status = status
             metrics.source_used = metrics.source_used or "seed"
-            metrics.last_successful_event_at = now if status == VALIDATION_VERIFIED else metrics.last_successful_event_at
+            metrics.last_successful_event_at = (
+                now if status == VALIDATION_VERIFIED else metrics.last_successful_event_at
+            )
             metrics.evidence_json = {
                 "reason": reason,
                 "has_pbp": has_pbp,

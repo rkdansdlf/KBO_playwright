@@ -42,9 +42,12 @@ def _has_player_basic(player_id: str) -> bool:
         return False
 
     with SessionLocal() as session:
-        return session.execute(
-            select(PlayerBasic.player_id).where(PlayerBasic.player_id == player_id_db)
-        ).scalar_one_or_none() is not None
+        return (
+            session.execute(
+                select(PlayerBasic.player_id).where(PlayerBasic.player_id == player_id_db)
+            ).scalar_one_or_none()
+            is not None
+        )
 
 
 async def gather_active_player_ids(season_year: int, delay: float) -> dict[str, dict[str, str]]:
@@ -279,25 +282,30 @@ async def crawl_futures(args: argparse.Namespace) -> dict:
             int_pids = [int(pid) for pid in player_positions if pid.isdigit()]
             recent_pids = set()
             with SessionLocal() as session:
-                for row in session.query(PlayerSeasonBatting.player_id, PlayerSeasonBatting.updated_at).filter(
-                    PlayerSeasonBatting.league == "FUTURES",
-                    PlayerSeasonBatting.player_id.in_(int_pids),
-                ).all():
+                for row in (
+                    session.query(PlayerSeasonBatting.player_id, PlayerSeasonBatting.updated_at)
+                    .filter(
+                        PlayerSeasonBatting.league == "FUTURES",
+                        PlayerSeasonBatting.player_id.in_(int_pids),
+                    )
+                    .all()
+                ):
                     if row.updated_at and row.updated_at >= cutoff:
                         recent_pids.add(row.player_id)
-                for row in session.query(PlayerSeasonPitching.player_id, PlayerSeasonPitching.updated_at).filter(
-                    PlayerSeasonPitching.league == "FUTURES",
-                    PlayerSeasonPitching.player_id.in_(int_pids),
-                ).all():
+                for row in (
+                    session.query(PlayerSeasonPitching.player_id, PlayerSeasonPitching.updated_at)
+                    .filter(
+                        PlayerSeasonPitching.league == "FUTURES",
+                        PlayerSeasonPitching.player_id.in_(int_pids),
+                    )
+                    .all()
+                ):
                     if row.updated_at and row.updated_at >= cutoff:
                         recent_pids.add(row.player_id)
 
             skipped = sum(1 for pid in player_positions if int(pid) in recent_pids)
             if skipped:
-                player_positions = {
-                    pid: meta for pid, meta in player_positions.items()
-                    if int(pid) not in recent_pids
-                }
+                player_positions = {pid: meta for pid, meta in player_positions.items() if int(pid) not in recent_pids}
                 print(f"[INFO] --changed-since filter: skipped {skipped} recently updated players")
             print(f"Processing {len(player_positions)} remaining players\n")
 
@@ -436,7 +444,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
         type=str,
         default=None,
         help="ISO datetime string (e.g. '2026-06-03' or '2026-06-03T10:00:00'). "
-             "Skips players whose FUTURES records were updated at or after this timestamp.",
+        "Skips players whose FUTURES records were updated at or after this timestamp.",
     )
     return parser
 

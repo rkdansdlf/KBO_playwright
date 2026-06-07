@@ -13,10 +13,10 @@ class PlayerProfileParsed(BaseModel):
     player_id: int | None = None
     player_name: str | None = None
     back_number: int | None = None
-    birth_date: str | None = None        # 'YYYY-MM-DD'
-    position: str | None = None          # 'P','C','IF','OF','DH'...
-    throwing_hand: str | None = None     # 'R','L','S'
-    batting_hand: str | None = None      # 'R','L','S'
+    birth_date: str | None = None  # 'YYYY-MM-DD'
+    position: str | None = None  # 'P','C','IF','OF','DH'...
+    throwing_hand: str | None = None  # 'R','L','S'
+    batting_hand: str | None = None  # 'R','L','S'
     height_cm: int | None = None
     weight_kg: int | None = None
     education_or_career_path: list[str] = []
@@ -32,13 +32,13 @@ class PlayerProfileParsed(BaseModel):
     draft_team_code: str | None = None
     draft_round: int | None = None
     draft_pick_overall: int | None = None
-    draft_type: str | None = None        # '자유선발','1차','2차'...
+    draft_type: str | None = None  # '자유선발','1차','2차'...
     # entry
     entry_year: int | None = None
     entry_team_code: str | None = None
     # flags
     is_active: bool | None = None
-    is_foreign: bool | None = None       # 소스 맥락/페이지 플래그로 세팅
+    is_foreign: bool | None = None  # 소스 맥락/페이지 플래그로 세팅
     photo_url: str | None = None
 
     @property
@@ -170,9 +170,7 @@ def parse_height_weight(s: str) -> dict[str, int | None]:
     if not s:
         return {"height_cm": None, "weight_kg": None}
     m = re.search(r"(\d+)\s*cm\s*/\s*(\d+)\s*kg", _clean(s), re.I)
-    return {"height_cm": int(m.group(1)), "weight_kg": int(m.group(2))} if m else {
-        "height_cm": None, "weight_kg": None
-    }
+    return {"height_cm": int(m.group(1)), "weight_kg": int(m.group(2))} if m else {"height_cm": None, "weight_kg": None}
 
 
 def parse_path(s: str) -> list[str]:

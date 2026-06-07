@@ -24,7 +24,6 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 logger = logging.getLogger(__name__)
 
 
-
 def _normalize_date(value: str | None) -> str | None:
     if not value:
         return None

@@ -115,9 +115,7 @@ def apply_wpa_transitions(
 
         outs_after = coerce_int(event.get("outs")) or 0
         runners_after = event_runner_state(event) or 0
-        score_diff_after = (coerce_int(event.get("home_score")) or 0) - (
-            coerce_int(event.get("away_score")) or 0
-        )
+        score_diff_after = (coerce_int(event.get("home_score")) or 0) - (coerce_int(event.get("away_score")) or 0)
 
         we_before = calculator.get_win_probability(
             inning,

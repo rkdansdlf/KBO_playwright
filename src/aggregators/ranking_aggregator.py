@@ -142,9 +142,7 @@ class RankingAggregator:
                     )
                 else:
                     batting_configs.append(cfg)
-            rankings.extend(self._build_rankings(
-                season, batting_stats, batting_configs, kbo_min_pa=min_pa
-            ))
+            rankings.extend(self._build_rankings(season, batting_stats, batting_configs, kbo_min_pa=min_pa))
 
         if pitching_stats:
             # Generate both qualified (standard) and '_all' configs for ratio stats
@@ -175,9 +173,7 @@ class RankingAggregator:
                     )
                 else:
                     pitching_configs.append(cfg)
-            rankings.extend(self._build_rankings(
-                season, pitching_stats, pitching_configs, kbo_min_ip_outs=min_ip_outs
-            ))
+            rankings.extend(self._build_rankings(season, pitching_stats, pitching_configs, kbo_min_ip_outs=min_ip_outs))
 
         if persist and rankings:
             self.repository.save_rankings(rankings)
@@ -196,9 +192,11 @@ class RankingAggregator:
         rankings: list[dict[str, Any]] = []
         rows_list = list(rows)
         for config in metrics:
-            rankings.extend(self._rank_single_metric(
-                season, rows_list, config, kbo_min_pa=kbo_min_pa, kbo_min_ip_outs=kbo_min_ip_outs
-            ))
+            rankings.extend(
+                self._rank_single_metric(
+                    season, rows_list, config, kbo_min_pa=kbo_min_pa, kbo_min_ip_outs=kbo_min_ip_outs
+                )
+            )
         return rankings
 
     def _resolve_value(self, row: dict[str, Any], config: MetricConfig) -> float | None:
@@ -279,19 +277,23 @@ class RankingAggregator:
             if config.source == "BATTING":
                 pa = entry["raw"].get("plate_appearances") or 0
                 min_pa_threshold = kbo_min_pa if kbo_min_pa is not None else (config.min_pa or 0)
-                entity_extra.update({
-                    "pa": pa,
-                    "min_pa": min_pa_threshold,
-                    "qualified": pa >= min_pa_threshold,
-                })
+                entity_extra.update(
+                    {
+                        "pa": pa,
+                        "min_pa": min_pa_threshold,
+                        "qualified": pa >= min_pa_threshold,
+                    }
+                )
             elif config.source == "PITCHING":
                 ip_outs = entry["raw"].get("innings_outs") or 0
                 min_ip_outs_threshold = kbo_min_ip_outs if kbo_min_ip_outs is not None else (config.min_ip_outs or 0)
-                entity_extra.update({
-                    "innings_outs": ip_outs,
-                    "min_ip_outs": min_ip_outs_threshold,
-                    "qualified": ip_outs >= min_ip_outs_threshold,
-                })
+                entity_extra.update(
+                    {
+                        "innings_outs": ip_outs,
+                        "min_ip_outs": min_ip_outs_threshold,
+                        "qualified": ip_outs >= min_ip_outs_threshold,
+                    }
+                )
 
             entity_extra["rank_mode"] = "all" if config.name.endswith("_all") else "qualified"
             entity_extra["raw"] = entry["raw"]

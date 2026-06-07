@@ -51,12 +51,14 @@ class TeamInfoCrawler:
         await self.page.goto(self.BASE_URL, wait_until="networkidle")
 
         html = await self.page.content()
-        self._raw_pages.append({
-            "source_key": "kbo_team_info",
-            "url": self.BASE_URL,
-            "html": html,
-            "status_code": 200,
-        })
+        self._raw_pages.append(
+            {
+                "source_key": "kbo_team_info",
+                "url": self.BASE_URL,
+                "html": html,
+                "status_code": 200,
+            }
+        )
 
         rows = await self.page.locator("table.tData tbody tr").all()
         print("Found %d team entries.", len(rows))
@@ -137,6 +139,7 @@ class TeamInfoCrawler:
 
     def _save_raw_snapshots(self) -> None:
         from src.repositories.source_registry_repository import save_raw_snapshots
+
         with SessionLocal() as session:
             count = save_raw_snapshots(session, self._raw_pages)
             print("Saved %d raw snapshots for team info.", count)

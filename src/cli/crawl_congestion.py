@@ -5,6 +5,7 @@ Usage:
     python -m src.cli.crawl_congestion --save
     python -m src.cli.crawl_congestion --game-date 20260603 --save
 """
+
 from __future__ import annotations
 
 import argparse
@@ -25,9 +26,7 @@ async def run(args: argparse.Namespace) -> None:
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(
-        description="Collect real-time congestion data for Jamsil Stadium area"
-    )
+    parser = argparse.ArgumentParser(description="Collect real-time congestion data for Jamsil Stadium area")
     parser.add_argument("--save", action="store_true", help="Save results to database")
     parser.add_argument(
         "--game-date",

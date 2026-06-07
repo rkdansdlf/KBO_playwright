@@ -5,6 +5,7 @@ Captures real-time congestion levels at stadium gates, surrounding subway statio
 roads, and parking areas on game days. Sourced from Seoul Open Data API,
 Kakao/Naver map services, and S-DoT sensor data.
 """
+
 from __future__ import annotations
 
 from datetime import date, datetime

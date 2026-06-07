@@ -71,13 +71,16 @@ def crawl_monthly_team_audit_job():
 
     logger.info(
         "Team audit for %s: batting_ok=%s (%d mismatches), pitching_ok=%s (%d mismatches)",
-        target_year, bat_ok, bat_miss, pit_ok, pit_miss
+        target_year,
+        bat_ok,
+        bat_miss,
+        pit_ok,
+        pit_miss,
     )
 
     if not bat_ok or not pit_ok:
         raise RuntimeError(
-            f"Team stats audit failed for {target_year}: "
-            f"batting={bat_miss} mismatches, pitching={pit_miss} mismatches"
+            f"Team stats audit failed for {target_year}: batting={bat_miss} mismatches, pitching={pit_miss} mismatches"
         )
 
     logger.info("Monthly team stats audit completed for %s", target_year)

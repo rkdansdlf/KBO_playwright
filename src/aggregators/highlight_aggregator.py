@@ -61,7 +61,13 @@ class HighlightAggregator:
             is_walkoff = False
             # Bottom of 9th or later, score diff transitions to home team lead, ending the game
             is_bottom_late = (e.inning or 1) >= 9 and e.inning_half == "bottom"
-            if is_bottom_late and score_diff_before <= 0 and score_diff_after > 0 or e.description and "끝내기" in e.description:
+            if (
+                is_bottom_late
+                and score_diff_before <= 0
+                and score_diff_after > 0
+                or e.description
+                and "끝내기" in e.description
+            ):
                 is_walkoff = True
 
             if is_walkoff:
@@ -143,7 +149,7 @@ class HighlightAggregator:
                     description=e.description,
                     wpa=wpa_val,
                     importance_score=round(importance, 4),
-                    tags=tags
+                    tags=tags,
                 )
                 highlights.append(h)
 

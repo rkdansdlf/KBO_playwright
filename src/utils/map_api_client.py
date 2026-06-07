@@ -16,6 +16,7 @@ Environment variables required (at least one group):
     TMAP_API_KEY            — TMAP (SK) API key
     GOOGLE_MAPS_API_KEY     — Google Maps Directions API (fallback)
 """
+
 from __future__ import annotations
 
 import logging
@@ -240,11 +241,6 @@ async def get_transit_times_batch(
     """
     import asyncio
 
-    tasks = [
-        get_transit_time(
-            o["label"], o["lat"], o["lng"], mode, dest_lat, dest_lng
-        )
-        for o in origins
-    ]
+    tasks = [get_transit_time(o["label"], o["lat"], o["lng"], mode, dest_lat, dest_lng) for o in origins]
     results = await asyncio.gather(*tasks, return_exceptions=True)
     return [r for r in results if isinstance(r, TransitResult)]
