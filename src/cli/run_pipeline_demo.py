@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import logging
 from pathlib import Path
 from typing import Sequence
 
@@ -24,6 +25,8 @@ from src.parsers.schedule_parser import parse_schedule_html
 from src.repositories.game_repository import save_game_detail
 from src.services.schedule_collection_service import save_schedule_games
 
+logger = logging.getLogger(__name__)
+
 
 def ingest_schedule_fixtures(fixtures_dir: Path, season_type: str, default_year: int | None) -> int:
     """경기 일정 fixture 파일들을 데이터베이스로 가져옵니다."""
@@ -35,7 +38,7 @@ def ingest_schedule_fixtures(fixtures_dir: Path, season_type: str, default_year:
             continue
         result = save_schedule_games(rows)
         total += result.saved
-        print(f"✅ Schedule ingest: {html_file.name} ({result.saved} saved, {result.failed} failed)")
+        logger.info(f"✅ Schedule ingest: {html_file.name} ({result.saved} saved, {result.failed} failed)")
     return total
 
 
@@ -48,7 +51,7 @@ def ingest_game_fixtures(fixtures_dir: Path) -> int:
         payload = parse_game_detail_html(html, game_id, game_id[:8])
         if save_game_detail(payload):
             count += 1
-            print(f"✅ Game ingest: {game_id}")
+            logger.info(f"✅ Game ingest: {game_id}")
     return count
 
 
@@ -80,9 +83,9 @@ def _count_games_by_season_id() -> dict[str, int]:
 def show_schedule_totals() -> None:
     """현재 저장된 경기 수 요약을 출력합니다."""
     counts = _count_games_by_season_id()
-    print("\n📊 Schedule totals:")
+    logger.info("\n📊 Schedule totals:")
     for season_id, count in sorted(counts.items()):
-        print(f"  - season_id {season_id}: {count}")
+        logger.info(f"  - season_id {season_id}: {count}")
 
 
 def show_summary(game_ids: list[str]) -> None:
@@ -95,15 +98,15 @@ def show_summary(game_ids: list[str]) -> None:
             batting_rows = session.query(GameBattingStat).filter(GameBattingStat.game_id == game_id).count()
             pitching_rows = session.query(GamePitchingStat).filter(GamePitchingStat.game_id == game_id).count()
 
-            print(f"\n🎯 Game summary: {game_id}")
+            logger.info(f"\n🎯 Game summary: {game_id}")
             if game:
-                print(f"  Game date:  {game.game_date}")
-                print(f"  Season ID:  {game.season_id}")
-                print(f"  Stored scores: away {game.away_score} / home {game.home_score}")
+                logger.info(f"  Game date:  {game.game_date}")
+                logger.info(f"  Season ID:  {game.season_id}")
+                logger.info(f"  Stored scores: away {game.away_score} / home {game.home_score}")
             else:
-                print("  Game: not found")
-            print(f"  Batting rows:  {batting_rows}")
-            print(f"  Pitching rows: {pitching_rows}")
+                logger.info("  Game: not found")
+            logger.info(f"  Batting rows:  {batting_rows}")
+            logger.info(f"  Pitching rows: {pitching_rows}")
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
@@ -138,7 +141,7 @@ def main(argv: Sequence[str] | None = None) -> None:
         if not fixtures_dir.exists():
             raise SystemExit(f"Schedule fixtures directory not found: {fixtures_dir}")
         total = ingest_schedule_fixtures(fixtures_dir, args.schedule_season_type, args.schedule_year)
-        print(f"\n✅ Schedule ingest complete ({total} rows processed)")
+        logger.info(f"\n✅ Schedule ingest complete ({total} rows processed)")
 
     game_ids = list(args.report_game_id)
     if args.game_fixtures:
@@ -146,7 +149,7 @@ def main(argv: Sequence[str] | None = None) -> None:
         if not game_dir.exists():
             raise SystemExit(f"Game fixtures directory not found: {game_dir}")
         ingested = ingest_game_fixtures(game_dir)
-        print(f"\n✅ Game detail ingest complete ({ingested} files)")
+        logger.info(f"\n✅ Game detail ingest complete ({ingested} files)")
         if ingested and not game_ids:
             game_ids = [path.stem for path in sorted(game_dir.glob("*.html"))]
 

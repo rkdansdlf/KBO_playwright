@@ -36,7 +36,6 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../.
 import contextlib
 
 from src.db.engine import get_db_session
-from src.utils.safe_print import safe_print as print
 
 load_dotenv()
 
@@ -174,12 +173,12 @@ def print_report(chunks: list[dict], source_filter: str | None) -> bool:
 
     total = len(chunks)
     if total == 0:
-        print(f"\n⚠️  No chunks found{' for source=' + source_filter if source_filter else ''}.")
+        logger.warning(f"\n⚠️  No chunks found{' for source=' + source_filter if source_filter else ''}.")
         return False
 
-    print(f"\n{'=' * 70}")
-    print("  📊  RAG Chunk Quality Report" + (f"  [filter: {source_filter}]" if source_filter else ""))
-    print(f"{'=' * 70}\n")
+    logger.info(f"\n{'=' * 70}")
+    logger.info("  📊  RAG Chunk Quality Report" + (f"  [filter: {source_filter}]" if source_filter else ""))
+    logger.info(f"{'=' * 70}\n")
 
     # --- Length stats ---
     stats = compute_length_stats(chunks)
@@ -222,32 +221,34 @@ def print_report(chunks: list[dict], source_filter: str | None) -> bool:
     top = f"┌{'─' * 25}┬{'─' * 12}┬{'─' * 14}┬{'─' * 8}┐"
     bot = f"└{'─' * 25}┴{'─' * 12}┴{'─' * 14}┴{'─' * 8}┘"
 
-    print(top)
-    print(header)
-    print(sep)
+    logger.info(top)
+    logger.info(header)
+    logger.info(sep)
     for metric, value, threshold, status in rows:
-        print(f"│ {metric:<24}│ {value:>10} │ {threshold:>12} │ {status:>6} │")
-    print(bot)
+        logger.info(f"│ {metric:<24}│ {value:>10} │ {threshold:>12} │ {status:>6} │")
+    logger.info(bot)
 
     # Category distribution
-    print("\n📂  Category Distribution:")
+    logger.info("\n📂  Category Distribution:")
     for cat, cnt in sorted(cat_dist.items(), key=lambda x: -x[1]):
         bar = "█" * min(cnt // 5 + 1, 30)
-        print(f"   {cat:<30} {cnt:>5}  {bar}")
+        logger.info(f"   {cat:<30} {cnt:>5}  {bar}")
 
     # Under-chunked documents
     if under_chunked:
-        print(f"\n⚠️  Under-chunked documents (< {MIN_CHUNKS_PER_DOC} chunks):")
+        logger.warning(f"\n⚠️  Under-chunked documents (< {MIN_CHUNKS_PER_DOC} chunks):")
         for src, cnt in sorted(under_chunked.items(), key=lambda x: x[1]):
-            print(f"   [{cnt}]  {src}")
+            logger.info(f"   [{cnt}]  {src}")
 
     # Duplicate IDs sample
     if dup_ids:
-        print("\n⚠️  Sample duplicate source_row_ids (showing up to 5):")
+        logger.warning("\n⚠️  Sample duplicate source_row_ids (showing up to 5):")
         for did in dup_ids[:5]:
-            print(f"   {did}")
+            logger.info(f"   {did}")
 
-    print(f"\n{'✅  All quality checks passed!' if all_ok else '❌  Some quality checks failed — review above.'}\n")
+    logger.error(
+        f"\n{'✅  All quality checks passed!' if all_ok else '❌  Some quality checks failed — review above.'}\n"
+    )
     return all_ok
 
 
@@ -307,7 +308,7 @@ def main():
 
         if args.fix_duplicates:
             deleted = remove_duplicate_chunks(session)
-            print(f"🗑️  Removed {deleted} duplicate chunk row(s).")
+            logger.info(f"🗑️  Removed {deleted} duplicate chunk row(s).")
             # Reload after fix
             chunks = load_chunks(session, args.source)
 
@@ -322,7 +323,7 @@ def main():
                 "keyword_coverage": round(keyword_coverage(chunks), 4),
                 "category_distribution": dict(category_distribution(chunks)),
             }
-            print(json.dumps(out, ensure_ascii=False, indent=2))
+            logger.info(json.dumps(out, ensure_ascii=False, indent=2))
             sys.exit(0)
 
         ok = print_report(chunks, args.source)

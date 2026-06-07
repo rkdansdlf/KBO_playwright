@@ -9,6 +9,7 @@ without pushing an entire season.
 from __future__ import annotations
 
 import argparse
+import logging
 import os
 import sys
 from dataclasses import dataclass
@@ -22,6 +23,8 @@ from sqlalchemy import text
 from src.db.engine import SessionLocal
 from src.sync.oci_sync import OCISync
 from src.utils.safe_print import safe_print as print
+
+logger = logging.getLogger(__name__)
 
 KST = ZoneInfo("Asia/Seoul")
 
@@ -101,7 +104,7 @@ def run_sync(args: argparse.Namespace) -> int:
     targets = find_pregame_sync_targets(start_date, end_date)
 
     if not targets:
-        print(f"No local pregame preview targets found between {start_date} and {end_date}.")
+        logger.info(f"No local pregame preview targets found between {start_date} and {end_date}.")
         return 0
 
     complete_starters = sum(1 for target in targets if target.away_pitcher and target.home_pitcher)
@@ -127,11 +130,11 @@ def run_sync(args: argparse.Namespace) -> int:
             for target in targets:
                 result = syncer.sync_specific_game(target.game_id)
                 synced += 1
-                print(f"Synced {target.game_id}: {result}")
+                logger.info(f"Synced {target.game_id}: {result}")
         finally:
             syncer.close()
 
-    print(f"Pregame preview sync finished. synced_games={synced}")
+    logger.info(f"Pregame preview sync finished. synced_games={synced}")
     return 0
 
 

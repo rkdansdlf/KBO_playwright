@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import logging
 from datetime import datetime, timedelta
 from typing import Sequence
 
@@ -16,6 +17,8 @@ from src.services.postgame_reconciliation_service import (
     write_reconciliation_csv,
 )
 from src.utils.safe_print import safe_print as print
+
+logger = logging.getLogger(__name__)
 
 
 async def run_reconciliation(args: argparse.Namespace) -> int:
@@ -49,11 +52,11 @@ async def run_reconciliation(args: argparse.Namespace) -> int:
         f"range={result.start_date}-{result.end_date} "
         f"candidates={result.candidates} changed={len(result.changes)}"
     )
-    print(format_reconciliation_report(result.changes))
+    logger.info(format_reconciliation_report(result.changes))
 
     if args.output_csv:
         output_path = write_reconciliation_csv(result.changes, args.output_csv)
-        print(f"[POSTGAME-RECONCILE] report_csv={output_path}")
+        logger.info(f"[POSTGAME-RECONCILE] report_csv={output_path}")
 
     return 0
 

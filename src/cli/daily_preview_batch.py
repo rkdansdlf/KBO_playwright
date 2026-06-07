@@ -18,14 +18,13 @@ from src.repositories.game_repository import save_pregame_lineups
 from src.services.context_aggregator import ContextAggregator
 from src.sync.oci_sync import OCISync
 from src.utils.refresh_manifest import write_refresh_manifest
-from src.utils.safe_print import safe_print as print
 from src.utils.team_codes import resolve_team_code
 
 logger = logging.getLogger(__name__)
 
 
 async def run_preview_batch(target_date: str, *, sync_to_oci: bool | None = None) -> list[str]:
-    print(f"🚀 Starting Preview Data Batch for {target_date}...")
+    logger.info(f"🚀 Starting Preview Data Batch for {target_date}...")
 
     crawler = PreviewCrawler(request_delay=1.0)
     previews = await crawler.crawl_preview_for_date(target_date)
@@ -36,7 +35,7 @@ async def run_preview_batch(target_date: str, *, sync_to_oci: bool | None = None
             game_ids=[],
             datasets=["game", "game_metadata", "game_lineups", "game_summary"],
         )
-        print(f"ℹ️ No preview data found. manifest={manifest_path}")
+        logger.info(f"ℹ️ No preview data found. manifest={manifest_path}")
         return []
 
     saved_ids: list[str] = []
@@ -55,7 +54,7 @@ async def run_preview_batch(target_date: str, *, sync_to_oci: bool | None = None
 
             if away_code and home_code:
                 try:
-                    print(f"📊 Aggregating pregame context for {game_id}...")
+                    logger.info(f"📊 Aggregating pregame context for {game_id}...")
                     preview["matchup_h2h"] = agg.get_head_to_head_summary(
                         away_code, home_code, season_year, target_dt_obj
                     )
@@ -94,7 +93,7 @@ async def run_preview_batch(target_date: str, *, sync_to_oci: bool | None = None
             with SessionLocal() as sync_session:
                 syncer = OCISync(oci_url, sync_session)
                 try:
-                    print("🛡️ Syncing pregame games and referenced players...")
+                    logger.info("🛡️ Syncing pregame games and referenced players...")
                     for game_id in sorted(set(saved_ids)):
                         syncer.sync_pregame_game(game_id)
                 finally:
@@ -106,7 +105,7 @@ async def run_preview_batch(target_date: str, *, sync_to_oci: bool | None = None
         game_ids=saved_ids,
         datasets=["game", "game_metadata", "game_lineups", "game_summary"],
     )
-    print(f"✅ Pregame batch finished. saved={len(saved_ids)} manifest={manifest_path}")
+    logger.info(f"✅ Pregame batch finished. saved={len(saved_ids)} manifest={manifest_path}")
     return saved_ids
 
 

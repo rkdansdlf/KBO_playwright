@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 import shlex
 import subprocess
 import sys
@@ -14,6 +15,8 @@ from typing import Any, Callable, Iterable, Mapping, Sequence
 from src.cli.run_daily_update import DEFAULT_DAILY_SUMMARY_DIR
 from src.utils.safe_print import safe_print as print
 from src.utils.team_codes import normalize_kbo_game_id
+
+logger = logging.getLogger(__name__)
 
 Command = list[str]
 Runner = Callable[[Sequence[str]], None]
@@ -199,9 +202,11 @@ def main(argv: Sequence[str] | None = None, *, runner: Runner | None = None) -> 
             runner=runner,
         )
     except (FileNotFoundError, ValueError) as exc:
+        logger.exception(f"[ERROR] {exc}")
         print(f"[ERROR] {exc}")
         return 2
     except subprocess.CalledProcessError as exc:
+        logger.exception(f"[ERROR] Retry command failed with exit code {exc.returncode}: {shlex.join(exc.cmd)}")
         print(f"[ERROR] Retry command failed with exit code {exc.returncode}: {shlex.join(exc.cmd)}")
         return exc.returncode or 1
 

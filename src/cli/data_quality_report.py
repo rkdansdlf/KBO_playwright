@@ -1,3 +1,6 @@
+import logging
+
+logger = logging.getLogger(__name__)
 import argparse
 import csv
 import json
@@ -30,7 +33,7 @@ def generate_report(years: list[int], output_format: str, output_dir: str, db_ur
 
     with SessionFactory() as session:
         for year in years:
-            print(f"📊 Processing {year}...")
+            logger.info(f"📊 Processing {year}...")
             year_data = {
                 "batting": {"total": 0, "sources": {}, "consistency_rate": 0.0},
                 "pitching": {"total": 0, "sources": {}, "consistency_rate": 0.0},
@@ -96,7 +99,7 @@ def generate_report(years: list[int], output_format: str, output_dir: str, db_ur
             year_data["baserunning"]["total"] = total_br
 
             # 5. Sample Consistency Check
-            print(f"   🔍 Auditing consistency for {year} (sample)...")
+            logger.info(f"   🔍 Auditing consistency for {year} (sample)...")
             sample_players = (
                 session.query(PlayerSeasonBatting).filter(PlayerSeasonBatting.season == year).limit(50).all()
             )
@@ -136,7 +139,7 @@ def generate_report(years: list[int], output_format: str, output_dir: str, db_ur
         path = os.path.join(output_dir, f"{filename}.json")
         with open(path, "w", encoding="utf-8") as f:
             json.dump(report_data, f, indent=2, ensure_ascii=False)
-        print(f"✅ Report saved to {path}")
+        logger.info(f"✅ Report saved to {path}")
     else:
         path = os.path.join(output_dir, f"{filename}.csv")
         with open(path, "w", encoding="utf-8", newline="") as f:
@@ -148,7 +151,7 @@ def generate_report(years: list[int], output_format: str, output_dir: str, db_ur
                     writer.writerow(
                         [yr, cat.upper(), data[cat]["total"], data[cat].get("consistency_rate", "N/A"), sources]
                     )
-        print(f"✅ Report saved to {path}")
+        logger.info(f"✅ Report saved to {path}")
 
 
 if __name__ == "__main__":

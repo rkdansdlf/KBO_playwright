@@ -48,10 +48,10 @@ class StandingsCalculator:
         )
 
         if not games:
-            print(f"[Standings] {year} 시즌 완료 경기 없음.")
+            logger.info(f"[Standings] {year} 시즌 완료 경기 없음.")
             return
 
-        print(f"[Standings] {year}년 {len(games)}경기 로드. 순위 연산 시작...")
+        logger.info(f"[Standings] {year}년 {len(games)}경기 로드. 순위 연산 시작...")
 
         class TeamState:
             def __init__(self, team_code):
@@ -197,13 +197,13 @@ class StandingsCalculator:
                 )
                 daily_snapshots.append(snapshot)
 
-        print(f"[Standings] {len(daily_snapshots)}건 스냅샷 DB 저장 중...")
+        logger.info(f"[Standings] {len(daily_snapshots)}건 스냅샷 DB 저장 중...")
         self.session.query(TeamStandingsDaily).filter(
             extract("year", TeamStandingsDaily.standings_date) == year
         ).delete(synchronize_session=False)
         self.session.bulk_save_objects(daily_snapshots)
         self.session.commit()
-        print(f"[Standings] {year} 시즌 순위표 계산 완료!")
+        logger.info(f"[Standings] {year} 시즌 순위표 계산 완료!")
 
     def print_report(self, year: int, target_date: date = None):
         query = self.session.query(TeamStandingsDaily).filter(
@@ -214,7 +214,7 @@ class StandingsCalculator:
 
         latest_date = query.order_by(TeamStandingsDaily.standings_date.desc()).first()
         if not latest_date:
-            print(f"[Report] {year}년 순위 데이터 없음.")
+            logger.info(f"[Report] {year}년 순위 데이터 없음.")
             return
 
         d = latest_date.standings_date
@@ -225,13 +225,13 @@ class StandingsCalculator:
             .all()
         )
 
-        print(f"\n{'=' * 70}")
-        print(f"  KBO {year}년 순위표 (기준: {d})")
-        print(f"{'=' * 70}")
+        logger.info(f"\n{'=' * 70}")
+        logger.info(f"  KBO {year}년 순위표 (기준: {d})")
+        logger.info(f"{'=' * 70}")
         print(
             f"{'순위':>4} {'팀':<6} {'승':>4} {'패':>4} {'무':>3} {'승률':>7} {'승차':>5} {'최근10':>8} {'연속':>4} {'홈':>8} {'원정':>8}"
         )
-        print(f"{'-' * 70}")
+        logger.info(f"{'-' * 70}")
 
         top_5_rows = [r for r in rows if r.top_5]
         bottom_5_rows = [r for r in rows if not r.top_5]
@@ -246,7 +246,7 @@ class StandingsCalculator:
             )
 
         if bottom_5_rows:
-            print(f"  {'─' * 68}")
+            logger.info(f"  {'─' * 68}")
             for r in bottom_5_rows:
                 recent = f"{r.recent_10_wins}승{r.recent_10_losses}패"
                 streak_s = f"{abs(r.current_streak)}{'연승' if r.current_streak >= 0 else '연패'}"
@@ -256,8 +256,8 @@ class StandingsCalculator:
                     f"    {r.rank:>2}  {r.team_code:<6} {r.wins:>4} {r.losses:>4} {r.draws:>3}  {r.win_pct:.3f}  {r.games_behind:>4.1f}  {recent:>8} {streak_s:>4} {home_s:>8} {away_s:>8}"
                 )
 
-        print(f"{'=' * 70}")
-        print("  ★ 상위 5팀 (5강)" if top_5_rows else "")
+        logger.info(f"{'=' * 70}")
+        logger.info("  ★ 상위 5팀 (5강)" if top_5_rows else "")
 
     def print_trend(self, year: int, team_code: str = None):
         rows = (
@@ -277,13 +277,15 @@ class StandingsCalculator:
             if tc not in team_rows:
                 continue
             data = team_rows[tc]
-            print(f"\n[{tc}] 승률 추이 ({year})")
-            print(f"{'날짜':<12} {'승':>3} {'패':>3} {'승률':>7} {'순위':>4} {'최근10':>8}")
-            print(f"{'-' * 45}")
+            logger.info(f"\n[{tc}] 승률 추이 ({year})")
+            logger.info(f"{'날짜':<12} {'승':>3} {'패':>3} {'승률':>7} {'순위':>4} {'최근10':>8}")
+            logger.info(f"{'-' * 45}")
             step = max(1, len(data) // 15)
             for r in data[::step]:
                 recent = f"{r.recent_10_wins}승{r.recent_10_losses}패"
-                print(f"  {r.standings_date}  {r.wins:>3} {r.losses:>3}  {r.win_pct:.3f}  {r.rank:>3}위  {recent:>8}")
+                logger.info(
+                    f"  {r.standings_date}  {r.wins:>3} {r.losses:>3}  {r.win_pct:.3f}  {r.rank:>3}위  {recent:>8}"
+                )
             if data:
                 last = data[-1]
                 recent = f"{last.recent_10_wins}승{last.recent_10_losses}패"

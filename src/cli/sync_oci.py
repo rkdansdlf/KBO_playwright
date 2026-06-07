@@ -31,15 +31,15 @@ def run_parallel_sync(
     sync_fn: Callable[[OCISync, Any], None], target_url: str, years: list[int], workers: int, **kwargs
 ) -> None:
     """연도별로 병렬 동기화 작업을 수행합니다."""
-    print(f"🚀 Starting parallel sync with {workers} workers for years: {years}")
+    logger.info(f"🚀 Starting parallel sync with {workers} workers for years: {years}")
 
     def sync_worker(year: int):
-        print(f"🧵 Worker started for year {year}")
+        logger.info(f"🧵 Worker started for year {year}")
         with SessionLocal() as session:
             try:
                 syncer = OCISync(target_url, session)
                 sync_fn(syncer, year, **kwargs)
-                print(f"✅ Worker finished for year {year}")
+                logger.info(f"✅ Worker finished for year {year}")
             except Exception:
                 logger.exception(f"❌ Worker failed for year {year}")
 
@@ -318,7 +318,7 @@ def get_available_years(session: Session, model: Any, column_name: str = "season
 
 def _run_sync(args, sync_fn, *, parallel_support=False, header=None, years_getter=None, completion_msg=None):
     if header:
-        print(header)
+        logger.info(header)
 
     target_years = [args.year] if args.year else []
 
@@ -357,7 +357,7 @@ def _run_sync(args, sync_fn, *, parallel_support=False, header=None, years_gette
                 syncer.close()
 
     if completion_msg:
-        print(completion_msg)
+        logger.info(completion_msg)
 
 
 def main(argv: Iterable[str] | None = None) -> None:
@@ -469,30 +469,32 @@ def main(argv: Iterable[str] | None = None) -> None:
             syncer = OCISync(args.target_url, session)
             try:
                 if flag == "stadiums":
-                    print(header_str)
+                    logger.info(header_str)
                     synced_info = syncer.sync_stadium_info()
                     synced_reg = syncer.sync_stadium_regulations()
-                    print(f"✅ Stadium Info ({synced_info}) + Regulations ({synced_reg}) Sync Finished")
+                    logger.info(f"✅ Stadium Info ({synced_info}) + Regulations ({synced_reg}) Sync Finished")
                 elif flag == "fan_culture":
-                    print(header_str)
+                    logger.info(header_str)
                     synced_r = syncer.sync_team_rivalries()
                     synced_s = syncer.sync_cheer_songs()
                     synced_c = syncer.sync_cheer_chants()
-                    print(f"✅ Fan Culture Sync Finished (Rivalries={synced_r}, Songs={synced_s}, Chants={synced_c})")
+                    logger.info(
+                        f"✅ Fan Culture Sync Finished (Rivalries={synced_r}, Songs={synced_s}, Chants={synced_c})"
+                    )
                 elif flag == "teams":
-                    print(header_str)
+                    logger.info(header_str)
                     syncer.sync_franchises()
                     syncer.sync_teams()
                     syncer.sync_team_history()
                     syncer.sync_team_code_map()
-                    print("✅ Franchises & Teams Sync Finished")
+                    logger.info("✅ Franchises & Teams Sync Finished")
                 elif flag == "players":
-                    print(header_str)
+                    logger.info(header_str)
                     syncer.sync_player_basic()
                     syncer.sync_players()
-                    print("✅ Master Players Sync Finished")
+                    logger.info("✅ Master Players Sync Finished")
                 elif flag == "player_basic":
-                    print(f"🚀 Syncing Player Basic using specialized OCISync (limit={args.limit})...")
+                    logger.info(f"🚀 Syncing Player Basic using specialized OCISync (limit={args.limit})...")
                     synced = syncer.sync_player_basic(limit=args.limit)
                     print(
                         f"✅ Player Basic Sync Finished ({synced} rows)"
@@ -500,20 +502,20 @@ def main(argv: Iterable[str] | None = None) -> None:
                         else "✅ Player Basic Sync Finished"
                     )
                 elif flag == "phase1_all":
-                    print(header_str)
+                    logger.info(header_str)
                     results = syncer.sync_phase1_all()
                     for table, count in results.items():
-                        print(f"  {table}: {count} rows")
-                    print("✅ All Phase 1 Tables Sync Finished")
+                        logger.info(f"  {table}: {count} rows")
+                    logger.info("✅ All Phase 1 Tables Sync Finished")
                 elif flag == "stadium_realtime_all":
-                    print(header_str)
+                    logger.info(header_str)
                     game_date = getattr(args, "realtime_game_date", None)
                     results = syncer.sync_stadium_realtime_all(game_date=game_date)
                     for table, count in results.items():
-                        print(f"  {table}: {count} rows")
-                    print("✅ Stadium Real-Time All Sync Finished")
+                        logger.info(f"  {table}: {count} rows")
+                    logger.info("✅ Stadium Real-Time All Sync Finished")
                 elif flag in ("transit_times", "congestion", "operation_notices"):
-                    print(header_str)
+                    logger.info(header_str)
                     game_date = getattr(args, "realtime_game_date", None)
                     method = getattr(syncer, method_name)
                     result = method(game_date=game_date)
@@ -523,7 +525,7 @@ def main(argv: Iterable[str] | None = None) -> None:
                         else f"✅ {header_str.replace('🚀 ', '')} Finished"
                     )
                 elif flag == "daily_roster":
-                    print(header_str)
+                    logger.info(header_str)
                     roster_start_date = args.roster_date or args.roster_start_date
                     roster_end_date = args.roster_date or args.roster_end_date
                     result = syncer.sync_daily_rosters(start_date=roster_start_date, end_date=roster_end_date)
@@ -533,7 +535,7 @@ def main(argv: Iterable[str] | None = None) -> None:
                         else f"✅ {header_str.replace('🚀 ', '')} Finished"
                     )
                 else:
-                    print(header_str)
+                    logger.info(header_str)
                     method = getattr(syncer, method_name)
                     result = method()
                     print(
@@ -544,11 +546,11 @@ def main(argv: Iterable[str] | None = None) -> None:
             finally:
                 syncer.close()
     else:
-        print("⚠️  No recognized sync flag provided. Use --help to see available flags.")
-        print("   Tip: --game-details, --season-stats, --teams, --player-basic, --kbo-season")
+        logger.warning("⚠️  No recognized sync flag provided. Use --help to see available flags.")
+        logger.info("   Tip: --game-details, --season-stats, --teams, --player-basic, --kbo-season")
         return
 
-    print("\n🚀 Resetting Sequence Identifiers on Target DB...")
+    logger.info("\n🚀 Resetting Sequence Identifiers on Target DB...")
     try:
         from scripts.legacy.maintenance.reset_oci_sequences import reset_sequences
 

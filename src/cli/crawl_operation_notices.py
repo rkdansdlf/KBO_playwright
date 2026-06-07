@@ -48,7 +48,7 @@ async def _run_official_crawlers(args: argparse.Namespace) -> None:
                 repo = OperationNoticeRepository(session)
                 stop_id = repo.get_latest_external_id("JAMSIL", source_name)
                 if stop_id:
-                    print(f"[{team_code}] Incremental mode: stopping at external_id={stop_id}")
+                    logger.info(f"[{team_code}] Incremental mode: stopping at external_id={stop_id}")
 
         crawler = crawler_cls(max_pages=args.pages)
         await crawler.run(save=args.save, stop_at_external_id=stop_id)

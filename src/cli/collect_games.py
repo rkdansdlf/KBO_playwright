@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import logging
 from typing import Sequence
 
 from src.crawlers.game_detail_crawler import GameDetailCrawler
@@ -18,6 +19,8 @@ from src.services.game_collection_service import (
 )
 from src.utils.safe_print import safe_print as print
 from src.utils.team_codes import normalize_kbo_game_id
+
+logger = logging.getLogger(__name__)
 
 
 def _parse_game_ids(value: str | None) -> list[str]:
@@ -37,7 +40,9 @@ async def collect_games(
         targets = load_game_targets_by_ids(game_ids)
     else:
         targets = load_game_targets_from_db(year, month)
-    print(f"Target: {len(targets)} games" + (f" for {year}" + (f"-{month}" if month else "") if not game_ids else ""))
+    logger.info(
+        f"Target: {len(targets)} games" + (f" for {year}" + (f"-{month}" if month else "") if not game_ids else "")
+    )
 
     session = SessionLocal()
     try:

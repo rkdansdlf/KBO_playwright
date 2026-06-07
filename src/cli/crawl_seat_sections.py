@@ -5,7 +5,6 @@ import asyncio
 import logging
 
 from src.crawlers.seat_crawler import SeatCrawler
-from src.utils.safe_print import safe_print as print
 
 logger = logging.getLogger(__name__)
 
@@ -18,7 +17,7 @@ def main(argv: list[str] | None = None) -> None:
 
     crawler = SeatCrawler()
     result = asyncio.run(crawler.run(save=args.save, team_filter=args.team))
-    print(f"[SEAT] Done: {len(result)} sections")
+    logger.info(f"[SEAT] Done: {len(result)} sections")
 
 
 if __name__ == "__main__":

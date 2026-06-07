@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import csv
 import hashlib
+import logging
 import os
 from dataclasses import dataclass
 from datetime import date, datetime
@@ -22,6 +23,8 @@ from src.services.game_story_builder import STORY_SUMMARY_TYPE, GameStoryBuilder
 from src.sync.oci_sync import OCISync
 from src.utils.game_status import COMPLETED_LIKE_GAME_STATUSES
 from src.utils.safe_print import safe_print as print
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -385,7 +388,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     status_counts = {}
     for row in rows:
         status_counts[row.status] = status_counts.get(row.status, 0) + 1
-    print(f"Done. apply={args.apply} total={len(rows)} statuses={status_counts}")
+    logger.info(f"Done. apply={args.apply} total={len(rows)} statuses={status_counts}")
     return 0
 
 

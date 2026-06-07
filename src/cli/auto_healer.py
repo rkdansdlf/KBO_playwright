@@ -91,17 +91,17 @@ def _apply_heal_outcome(game_id: str, item) -> str:
     Returns one of: 'completed', 'cancelled', 'unresolved'
     """
     if item and item.detail_saved:
-        print(f"  ✅ {game_id} → COMPLETED (score saved)")
+        logger.info(f"  ✅ {game_id} → COMPLETED (score saved)")
         return "completed"
 
     failure_reason = item.failure_reason if item else None
     if failure_reason == "cancelled":
         update_game_status(game_id, GAME_STATUS_CANCELLED)
-        print(f"  🚫 {game_id} → CANCELLED")
+        logger.info(f"  🚫 {game_id} → CANCELLED")
         return "cancelled"
 
     update_game_status(game_id, GAME_STATUS_UNRESOLVED)
-    print(f"  ❓ {game_id} → UNRESOLVED_MISSING (reason={failure_reason})")
+    logger.info(f"  ❓ {game_id} → UNRESOLVED_MISSING (reason={failure_reason})")
     return "unresolved"
 
 
@@ -110,7 +110,7 @@ async def run_healer_async(
     reset_checkpoint: bool = False,
     target_game_ids: list[str] | None = None,
 ) -> int:
-    print("\n🩺 Running KBO Pipeline Auto-Healer...")
+    logger.info("\n🩺 Running KBO Pipeline Auto-Healer...")
 
     recovery_mgr = RecoveryManager()
     if reset_checkpoint:
@@ -124,14 +124,14 @@ async def run_healer_async(
         with SessionLocal() as session:
             stmt = select(Game).where(Game.game_id.in_(target_game_ids))
             all_found = list(session.execute(stmt).scalars().all())
-            print(f"🎯 Target recovery requested for {len(all_found)} specific game(s).")
+            logger.info(f"🎯 Target recovery requested for {len(all_found)} specific game(s).")
     else:
         # Standard anomaly detection mode
         stuck_games = _find_stuck_games()
         inconsistent_games = _find_inconsistent_games()
 
         if not stuck_games and not inconsistent_games:
-            print("✅ No anomalies detected. Pipeline is healthy.")
+            logger.info("✅ No anomalies detected. Pipeline is healthy.")
             recovery_mgr.clear()
             return 0
 
@@ -141,7 +141,7 @@ async def run_healer_async(
         )
 
     if not all_found:
-        print("✅ No games found for recovery.")
+        logger.info("✅ No games found for recovery.")
         return 0
 
     # Initialize or resume checkpoint
@@ -151,7 +151,7 @@ async def run_healer_async(
     recovery_candidates = [g for g in all_found if g.game_id in pending_ids]
 
     if not recovery_candidates:
-        print("✅ All detected anomalies were already processed in current checkpoint.")
+        logger.info("✅ All detected anomalies were already processed in current checkpoint.")
         return 0
 
     total = len(recovery_candidates)
@@ -163,14 +163,14 @@ async def run_healer_async(
     if stuck_games_filtered:
         stuck_count = len([g for g in stuck_games_filtered if g.game_id in pending_ids])
         if stuck_count:
-            print(f"⚠️  Anomaly Detected: {stuck_count} past game(s) stuck in SCHEDULED state!")
+            logger.warning(f"⚠️  Anomaly Detected: {stuck_count} past game(s) stuck in SCHEDULED state!")
     if inconsistent_games:
         incon_count = len([g for g in inconsistent_games if g.game_id in pending_ids])
         if incon_count:
-            print(f"⚠️  Anomaly Detected: {incon_count} game(s) with score inconsistencies!")
+            logger.warning(f"⚠️  Anomaly Detected: {incon_count} game(s) with score inconsistencies!")
 
     for d in anomaly_dates:
-        print(f"  - {d}")
+        logger.info(f"  - {d}")
 
     # Slack alert
     if not dry_run:
@@ -204,7 +204,7 @@ async def run_healer_async(
             ],
         )
 
-    print(f"\n🚀 Initiating self-recovery for {total} game(s)...")
+    logger.info(f"\n🚀 Initiating self-recovery for {total} game(s)...")
 
     with SessionLocal() as db_session:
         resolver = PlayerIdResolver(
@@ -226,7 +226,7 @@ async def run_healer_async(
         results = {"completed": 0, "cancelled": 0, "unresolved": 0, "dry_run": 0}
         if dry_run:
             for game in recovery_candidates:
-                print(f"  [DRY-RUN] Would re-crawl {game.game_id}")
+                logger.info(f"  [DRY-RUN] Would re-crawl {game.game_id}")
                 results["dry_run"] += 1
         else:
             collection_result = await crawl_and_save_game_details(
@@ -254,13 +254,13 @@ async def run_healer_async(
                 elif outcome == "unresolved":
                     recovery_mgr.mark_failed(game.game_id, item.failure_reason if item else "unknown")
 
-            print(write_contract.summary())
+            logger.info(write_contract.summary())
 
     # Final Summary
-    print("\n📊 Auto-Healer Summary:")
+    logger.info("\n📊 Auto-Healer Summary:")
     for outcome, count in results.items():
         if count > 0:
-            print(f"  {outcome}: {count}")
+            logger.info(f"  {outcome}: {count}")
 
     if not dry_run:
         unresolved_count = results.get("unresolved", 0)
@@ -344,7 +344,7 @@ async def run_pbp_healer_async(
 
     Returns a summary dict: {found, recovered, failed, skipped}
     """
-    print("\n🩺 [PBP Healer] 검증 실패 PBP 게임 스캔 중...")
+    logger.info("\n🩺 [PBP Healer] 검증 실패 PBP 게임 스캔 중...")
 
     if target_game_ids:
         # Targeted mode: load metadata for specific games
@@ -386,13 +386,13 @@ async def run_pbp_healer_async(
         results = _find_unverified_pbp_games(lookback_days=lookback_days)
 
     if not results:
-        print("✅ [PBP Healer] 검증 실패 PBP 게임 없음. 파이프라인 정상.")
+        logger.info("✅ [PBP Healer] 검증 실패 PBP 게임 없음. 파이프라인 정상.")
         return {"found": 0, "recovered": 0, "failed": 0, "skipped": 0}
 
     found = len(results)
-    print(f"⚠️  [PBP Healer] 검증 실패 게임 {found}건 발견")
+    logger.warning(f"⚠️  [PBP Healer] 검증 실패 게임 {found}건 발견")
     for item in results:
-        print(f"   • {item['game_id']} ({item['away_team']} vs {item['home_team']}) - {item['error_reason']}")
+        logger.info(f"   • {item['game_id']} ({item['away_team']} vs {item['home_team']}) - {item['error_reason']}")
 
     # --- Telegram: 발견 알림 ---
     if not dry_run:
@@ -412,7 +412,7 @@ async def run_pbp_healer_async(
         TelegramBotClient.send_message(discovery_msg)
 
     if dry_run:
-        print("[DRY-RUN] 재크롤 생략. 실제 복구는 --pbp 없이 실행하거나 dry-run 플래그 제거.")
+        logger.info("[DRY-RUN] 재크롤 생략. 실제 복구는 --pbp 없이 실행하거나 dry-run 플래그 제거.")
         return {"found": found, "recovered": 0, "failed": 0, "skipped": found}
 
     # --- Re-crawl through the relay source orchestrator ---
@@ -464,7 +464,7 @@ async def run_pbp_healer_async(
         )
 
     TelegramBotClient.send_message(result_msg)
-    print(f"\n📊 [PBP Healer] 완료 — 발견 {found}, 복구 {recovered}, 실패 {failed}")
+    logger.info(f"\n📊 [PBP Healer] 완료 — 발견 {found}, 복구 {recovered}, 실패 {failed}")
 
     return {"found": found, "recovered": recovered, "failed": failed, "skipped": 0}
 

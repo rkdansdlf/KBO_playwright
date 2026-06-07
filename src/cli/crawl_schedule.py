@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import logging
 from datetime import datetime
 from typing import Sequence
 
@@ -15,6 +16,8 @@ from dateutil.relativedelta import relativedelta
 
 from src.crawlers.schedule_crawler import ScheduleCrawler
 from src.services.schedule_collection_service import save_schedule_games
+
+logger = logging.getLogger(__name__)
 
 
 async def crawl_schedule(args: argparse.Namespace) -> None:
@@ -27,11 +30,11 @@ async def crawl_schedule(args: argparse.Namespace) -> None:
 
     # 지정된 연도와 월의 경기 정보를 크롤링합니다.
     games = await crawler.crawl_season(args.year, months)
-    print(f"[SCHEDULE] Total games discovered: {len(games)}")
+    logger.info(f"[SCHEDULE] Total games discovered: {len(games)}")
 
     # 수집된 경기 정보를 데이터베이스에 저장합니다.
     result = save_schedule_games(games)
-    print(f"[SCHEDULE] Saved: {result.saved}, Failed: {result.failed}")
+    logger.info(f"[SCHEDULE] Saved: {result.saved}, Failed: {result.failed}")
 
 
 async def _crawl_upcoming_months(args: argparse.Namespace) -> None:
@@ -45,14 +48,14 @@ async def _crawl_upcoming_months(args: argparse.Namespace) -> None:
         ms = [int(m.strip()) for m in str(args.months).split(",") if m.strip()]
         targets = [(y, m) for m in ms]
 
-    print(f"[UPCOMING] Crawling schedule for: {targets}")
+    logger.info(f"[UPCOMING] Crawling schedule for: {targets}")
     total_saved = 0
     for year, month in targets:
         games = await crawler.crawl_schedule(year, month)
         result = save_schedule_games(games)
         total_saved += result.saved
-        print(f"[UPCOMING] {year}-{month:02d}: {len(games)} games, {result.saved} upserted")
-    print(f"[UPCOMING] Done. Total upserts: {total_saved}")
+        logger.info(f"[UPCOMING] {year}-{month:02d}: {len(games)} games, {result.saved} upserted")
+    logger.info(f"[UPCOMING] Done. Total upserts: {total_saved}")
 
 
 def parse_months(months_arg: str | None) -> list[int]:

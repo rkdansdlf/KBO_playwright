@@ -10,6 +10,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import logging
 import sys
 from dataclasses import dataclass
 from datetime import datetime, timedelta
@@ -21,6 +22,8 @@ from sqlalchemy import text
 from src.cli.daily_preview_batch import run_preview_batch
 from src.db.engine import SessionLocal
 from src.utils.safe_print import safe_print as print
+
+logger = logging.getLogger(__name__)
 
 KST = ZoneInfo("Asia/Seoul")
 
@@ -160,10 +163,10 @@ async def run_backfill(args: argparse.Namespace) -> int:
     )
 
     if not targets:
-        print(f"No missing scheduled pregame dates found between {start_date} and {end_date}.")
+        logger.info(f"No missing scheduled pregame dates found between {start_date} and {end_date}.")
         return 0
 
-    print(f"Pregame backfill targets ({start_date}..{end_date}): {len(targets)} date(s)")
+    logger.info(f"Pregame backfill targets ({start_date}..{end_date}): {len(targets)} date(s)")
     for target in targets:
         print(
             f"  {target.target_date}: "
@@ -179,11 +182,11 @@ async def run_backfill(args: argparse.Namespace) -> int:
     incomplete: list[str] = []
     saved_total = 0
     for target in targets:
-        print(f"\nRunning pregame backfill for {target.target_date}...")
+        logger.info(f"\nRunning pregame backfill for {target.target_date}...")
         saved_ids = await run_preview_batch(target.target_date, sync_to_oci=not args.no_sync)
         saved_count = len(saved_ids)
         saved_total += saved_count
-        print(f"Backfill result for {target.target_date}: saved={saved_count}")
+        logger.info(f"Backfill result for {target.target_date}: saved={saved_count}")
         if args.fail_on_empty and target.scheduled_total and saved_count == 0:
             failed.append(target.target_date)
         if args.fail_on_incomplete:
@@ -203,13 +206,13 @@ async def run_backfill(args: argparse.Namespace) -> int:
         f"saved_total={saved_total}, failed_empty={len(failed)}, incomplete={len(incomplete)}"
     )
     if failed:
-        print("Dates with scheduled games but no preview rows saved:")
+        logger.info("Dates with scheduled games but no preview rows saved:")
         for target_date in failed:
-            print(f"  {target_date}")
+            logger.info(f"  {target_date}")
     if incomplete:
-        print("Dates still missing complete starting pitchers:")
+        logger.info("Dates still missing complete starting pitchers:")
         for target in incomplete:
-            print(f"  {target}")
+            logger.info(f"  {target}")
     if failed or incomplete:
         return 1
     return 0

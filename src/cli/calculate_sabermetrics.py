@@ -16,7 +16,7 @@ def batch_calculate_sabermetrics(years: list[int], sync_oci: bool = False):
     """
     with SessionLocal() as session:
         for year in years:
-            print(f"📈 Calculating Sabermetrics for {year}...")
+            logger.info(f"📈 Calculating Sabermetrics for {year}...")
 
             try:
                 lg = SabermetricsCalculator.get_league_constants(session, year)
@@ -41,7 +41,7 @@ def batch_calculate_sabermetrics(years: list[int], sync_oci: bool = False):
                 extra.update(metrics)
                 bat.extra_stats = extra
 
-            print(f"   ✅ Updated {len(batters)} batters.")
+            logger.info(f"   ✅ Updated {len(batters)} batters.")
 
             # 2. Update Pitching Sabermetrics
             pitchers = (
@@ -58,21 +58,21 @@ def batch_calculate_sabermetrics(years: list[int], sync_oci: bool = False):
                 extra.update({"fip_adj": metrics["fip_adj"], "lob_pct": metrics.get("lob_pct"), "war": metrics["war"]})
                 pit.extra_stats = extra
 
-            print(f"   ✅ Updated {len(pitchers)} pitchers.")
+            logger.info(f"   ✅ Updated {len(pitchers)} pitchers.")
 
             session.commit()
 
     if sync_oci:
-        print("🚀 Syncing updated Sabermetrics to OCI...")
+        logger.info("🚀 Syncing updated Sabermetrics to OCI...")
         target_url = os.getenv("OCI_DB_URL")
         if target_url:
             with SessionLocal() as session:
                 syncer = OCISync(target_url, session)
                 syncer.sync_player_season_batting()
                 syncer.sync_player_season_pitching()
-            print("✅ Sync complete.")
+            logger.info("✅ Sync complete.")
         else:
-            print("⚠️ OCI_DB_URL not set, skipping sync.")
+            logger.warning("⚠️ OCI_DB_URL not set, skipping sync.")
 
 
 if __name__ == "__main__":

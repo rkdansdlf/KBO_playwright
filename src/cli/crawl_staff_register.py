@@ -14,7 +14,6 @@ import sys
 from typing import Sequence
 
 from src.crawlers.staff_register_crawler import KBO_TEAM_MAP, StaffRegisterCrawler
-from src.utils.safe_print import safe_print as print
 
 logger = logging.getLogger(__name__)
 
@@ -26,21 +25,21 @@ async def run_crawler(args: argparse.Namespace) -> int:
     elif args.team:
         team_upper = args.team.upper()
         if team_upper not in KBO_TEAM_MAP:
-            print(f"❌ Invalid team code: {args.team}. Must be one of: {list(KBO_TEAM_MAP.keys())}")
+            logger.error(f"❌ Invalid team code: {args.team}. Must be one of: {list(KBO_TEAM_MAP.keys())}")
             return 1
         team_codes = [team_upper]
     else:
-        print("❌ Please specify either --team <TEAM_CODE> or --all-teams.")
+        logger.error("❌ Please specify either --team <TEAM_CODE> or --all-teams.")
         return 1
 
-    print(f"🚀 Starting KBO Staff Register Crawler for teams: {team_codes}")
-    print(f"   Dry run: {args.dry_run}")
+    logger.info(f"🚀 Starting KBO Staff Register Crawler for teams: {team_codes}")
+    logger.info(f"   Dry run: {args.dry_run}")
 
     # 2. Instantiate and run crawler
     crawler = StaffRegisterCrawler(headless=True)
     records = await crawler.crawl_all_teams(team_codes=team_codes)
 
-    print(f"📊 Crawled {len(records)} staff records.")
+    logger.info(f"📊 Crawled {len(records)} staff records.")
 
     # 3. Save to local SQLite
     crawler.save_to_db(records, dry_run=args.dry_run)
@@ -49,11 +48,13 @@ async def run_crawler(args: argparse.Namespace) -> int:
     if args.sync_oci and not args.dry_run:
         oci_url = os.getenv("OCI_DB_URL") or os.getenv("TARGET_DATABASE_URL")
         if not oci_url:
-            print("⚠️ sync-oci requested, but OCI_DB_URL/TARGET_DATABASE_URL env var not found. Skipping OCI sync.")
+            logger.warning(
+                "⚠️ sync-oci requested, but OCI_DB_URL/TARGET_DATABASE_URL env var not found. Skipping OCI sync."
+            )
         else:
             player_ids = [r["player_id"] for r in records if r.get("player_id")]
             if player_ids:
-                print(f"🔄 Synchronizing {len(player_ids)} staff records to OCI...")
+                logger.info(f"🔄 Synchronizing {len(player_ids)} staff records to OCI...")
                 from src.db.engine import SessionLocal
                 from src.sync.oci_sync import OCISync
 
@@ -61,15 +62,15 @@ async def run_crawler(args: argparse.Namespace) -> int:
                     syncer = OCISync(oci_url, session)
                     try:
                         synced_count = syncer.sync_player_basic_by_ids(player_ids)
-                        print(f"✅ Successfully synchronized {synced_count} player_basic records to OCI.")
+                        logger.info(f"✅ Successfully synchronized {synced_count} player_basic records to OCI.")
                     except Exception:
                         logger.exception("❌ Failed to sync player basic records to OCI")
                     finally:
                         syncer.close()
             else:
-                print("ℹ️ No valid player IDs found to sync to OCI.")
+                logger.info("ℹ️ No valid player IDs found to sync to OCI.")
 
-    print("🏁 Roster crawling completed.")
+    logger.info("🏁 Roster crawling completed.")
     return 0
 
 

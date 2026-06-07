@@ -23,7 +23,6 @@ from src.cli.monitor_data_freshness import check_freshness
 from src.db.engine import SessionLocal
 from src.models.game import GamePlayByPlay
 from src.utils.alerting import GAP_EMOJI_MAP, SlackWebhookClient
-from src.utils.safe_print import safe_print as print
 from src.validators.standings_integrity import validate_standings_integrity
 
 logger = logging.getLogger(__name__)
@@ -311,11 +310,11 @@ def format_report_summary(report: dict[str, Any]) -> str:
 def run_gap_report(alert: bool = True, dry_run: bool = False) -> dict[str, Any]:
     """Build and optionally alert the unified gap report."""
     if dry_run:
-        print("[GAP-REPORT] DRY RUN — no alerts will be sent")
+        logger.info("[GAP-REPORT] DRY RUN — no alerts will be sent")
 
     report = build_gap_report()
     summary = format_report_summary(report)
-    print(f"[GAP-REPORT] {summary}")
+    logger.info(f"[GAP-REPORT] {summary}")
 
     for gap_type, gap_data in report.get("gaps", {}).items():
         sev = _gap_severity(gap_data)
@@ -334,7 +333,7 @@ def run_gap_report(alert: bool = True, dry_run: bool = False) -> dict[str, Any]:
             count = f" ({gap_data['violation_count']})"
         elif "total" in gap_data:
             count = f" ({gap_data['total']})"
-        print(f"  {icon} {emoji} {gap_type}: {sev}{count}")
+        logger.info(f"  {icon} {emoji} {gap_type}: {sev}{count}")
 
     if alert and not dry_run:
         send_gap_alerts(report)

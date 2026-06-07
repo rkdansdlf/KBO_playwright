@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import logging
 import os
 from datetime import datetime
 from typing import Sequence
@@ -12,6 +13,8 @@ from sqlalchemy.orm import sessionmaker
 
 from src.db.engine import SessionLocal, create_engine_for_url
 from src.sync.runtime_hydrator import RuntimeHydrator
+
+logger = logging.getLogger(__name__)
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -42,7 +45,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             preserve_aliases=args.preserve_aliases,
         )
 
-    print(f"✅ Hydrated runtime cache for {args.year}: {summary}")
+    logger.info(f"✅ Hydrated runtime cache for {args.year}: {summary}")
     source_engine.dispose()
     return 0
 

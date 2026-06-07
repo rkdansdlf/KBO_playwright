@@ -6,11 +6,15 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 import sys
 from typing import Sequence
 
 from src.db.engine import SessionLocal
+from src.utils.safe_print import safe_print as print
 from src.validators.quality_gate import run_quality_gate
+
+logger = logging.getLogger(__name__)
 
 CATEGORY_LABELS = {
     "batting": "Batting",
