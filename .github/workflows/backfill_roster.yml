@@ -45,7 +45,7 @@ jobs:
           fi
           python3 -c "
           import asyncio
-          from scripts.maintenance.backfill_roster_movements import (
+          from scripts.legacy.maintenance.backfill_roster_movements import (
               backfill_daily_rosters,
               backfill_player_movements,
           )

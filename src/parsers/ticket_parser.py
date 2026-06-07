@@ -26,7 +26,7 @@ TEAM_CODE_FROM_SOURCE_KEY = {
     "kiwoom_heroes_ticket": ("WO", "GOCHEOK"),
 }
 
-PRICE_PATTERN = re.compile(r"(?<!주말\s)([가-힣]+(?:석|존|zone|Zone))\s*:?\s*(\d{1,3}(?:,\d{3})*)\s*(?:원|￦|KRW)?", re.MULTILINE)
+PRICE_PATTERN = re.compile(r"(?<![가-힣])(?<!주말\s)(?<!주말)([가-힣]+(?:석|존|zone|Zone))\s*:?\s*(\d{1,3}(?:,\d{3})*)\s*(?:원|￦|KRW)?", re.MULTILINE)
 WEEKEND_PATTERN = re.compile(r"주말\s*([가-힣]+(?:석|존|zone|Zone))\s*:?\s*(\d{1,3}(?:,\d{3})*)", re.MULTILINE)
 
 
@@ -45,17 +45,34 @@ def parse_ticket_page(html: str, source_key: str, metadata: dict | None = None) 
     soup = BeautifulSoup(html, "html.parser")
     text_content = soup.get_text(separator=" ", strip=True)
 
-    prices = {}
+    prices_dict = {}
     for match in PRICE_PATTERN.finditer(text_content):
         grade, price_str = match.group(1), match.group(2).replace(",", "")
         key = (team_code, season, grade, "weekday", "general")
-        if key not in prices:
-            prices[key] = {
+        prices_dict[key] = {
+            "team_id": team_code,
+            "stadium_id": stadium_id,
+            "season": season,
+            "seat_grade": grade,
+            "day_type": "weekday",
+            "price": int(price_str),
+            "currency": "KRW",
+            "audience_type": "general",
+            "effective_from": None,
+            "effective_to": None,
+        }
+
+    for match in WEEKEND_PATTERN.finditer(text_content):
+        grade, price_str = match.group(1), match.group(2).replace(",", "")
+        key_weekday = (team_code, season, grade, "weekday", "general")
+        key_weekend = (team_code, season, grade, "weekend", "general")
+        if key_weekday in prices_dict:
+            prices_dict[key_weekend] = {
                 "team_id": team_code,
                 "stadium_id": stadium_id,
                 "season": season,
                 "seat_grade": grade,
-                "day_type": "weekday",
+                "day_type": "weekend",
                 "price": int(price_str),
                 "currency": "KRW",
                 "audience_type": "general",
@@ -63,19 +80,7 @@ def parse_ticket_page(html: str, source_key: str, metadata: dict | None = None) 
                 "effective_to": None,
             }
 
-    weekend_prices = {}
-    for match in WEEKEND_PATTERN.finditer(text_content):
-        grade, price_str = match.group(1), match.group(2).replace(",", "")
-        key_weekday = (team_code, season, grade, "weekday", "general")
-        key_weekend = (team_code, season, grade, "weekend", "general")
-        if key_weekday in prices and key_weekend not in weekend_prices:
-            p = prices[key_weekday]
-            weekend_entry = dict(p)
-            weekend_entry["day_type"] = "weekend"
-            weekend_entry["price"] = int(price_str)
-            weekend_prices[key_weekend] = weekend_entry
-
-    return list(prices.values()) + list(weekend_prices.values())
+    return list(prices_dict.values())
 
 
 if __name__ == "__main__":

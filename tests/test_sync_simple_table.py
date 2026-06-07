@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import os
+import tempfile
 from datetime import datetime
 
 import pytest
@@ -23,8 +25,8 @@ class _SampleModel(_Base):
 
 # ── helpers ───────────────────────────────────────────────────────────
 
-def _build_session():
-    engine = create_engine("sqlite:///:memory:")
+def _build_session(db_path: str):
+    engine = create_engine(f"sqlite:///{db_path}")
     _Base.metadata.create_all(bind=engine)
     return Session(bind=engine, autoflush=False, autocommit=False, expire_on_commit=False)
 
@@ -56,8 +58,8 @@ def _seed_sample(session, records: list[dict]):
 # ── fixtures ──────────────────────────────────────────────────────────
 
 @pytest.fixture
-def session():
-    return _build_session()
+def session(tmp_path):
+    return _build_session(os.path.join(tmp_path, "test.db"))
 
 
 @pytest.fixture

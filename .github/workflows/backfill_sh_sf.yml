@@ -26,7 +26,7 @@ jobs:
         run: |
           YEAR=$(TZ='Asia/Seoul' date +'%Y')
           python3 -c "
-          from scripts.maintenance.backfill_sh_sf_from_pbp import find_candidate_games, backfill_game
+          from scripts.legacy.maintenance.backfill_sh_sf_from_pbp import find_candidate_games, backfill_game
           from src.db.engine import SessionLocal
           year = ${YEAR}
           with SessionLocal() as session:
