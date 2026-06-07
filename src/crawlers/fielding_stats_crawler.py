@@ -194,13 +194,13 @@ def crawl_all_fielding_stats(year=2025):
                                     def s_int(cell_el):
                                         try:
                                             return int(cell_el.inner_text().strip().replace(",", ""))
-                                        except Exception:
+                                        except (ValueError, TypeError):
                                             return 0
 
                                     def s_float(cell_el):
                                         try:
                                             return float(cell_el.inner_text().strip().replace(",", ""))
-                                        except Exception:
+                                        except (ValueError, TypeError):
                                             return 0.0
 
                                     record = {
@@ -306,13 +306,13 @@ def crawl_all_fielding_stats(year=2025):
                                 def s_int(cell_el):
                                     try:
                                         return int(cell_el.inner_text().strip().replace(",", ""))
-                                    except Exception:
+                                    except (ValueError, TypeError):
                                         return 0
 
                                 def s_float(cell_el):
                                     try:
                                         return float(cell_el.inner_text().strip().replace(",", ""))
-                                    except Exception:
+                                    except (ValueError, TypeError):
                                         return 0.0
 
                                 fielding_data_map[key].update(

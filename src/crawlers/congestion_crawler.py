@@ -20,10 +20,12 @@ from __future__ import annotations
 import logging
 from datetime import date, datetime
 
+from sqlalchemy.exc import SQLAlchemyError
+
 from src.db.engine import SessionLocal
 from src.repositories.congestion_repository import CongestionRepository
 from src.utils.safe_print import safe_print as print
-from src.utils.seoul_api_client import JAMSIL_AREA_CODES, CongestionSnapshot, get_jamsil_congestion_batch
+from src.utils.seoul_api_client import CongestionSnapshot, get_jamsil_congestion_batch
 
 logger = logging.getLogger(__name__)
 
@@ -114,8 +116,9 @@ class CongestionCrawler:
                 created, updated = repo.bulk_upsert(records)
                 session.commit()
                 print(f"[Congestion] Saved: {created} new, {updated} updated.")
-            except Exception as e:
+            except SQLAlchemyError as e:
                 session.rollback()
+                logger.error(f"[Congestion] Database error: {e}", exc_info=True)
                 print(f"[Congestion] Error: {e}")
 
 

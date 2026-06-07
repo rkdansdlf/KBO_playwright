@@ -9,6 +9,7 @@ from datetime import datetime
 from typing import Callable
 
 from sqlalchemy import inspect, text
+from sqlalchemy.exc import SQLAlchemyError
 
 from src.models.game import (
     Game,
@@ -86,7 +87,7 @@ class GameSyncMixin:
             return True
         try:
             return inspect(self.oci_engine).has_table(model.__tablename__)
-        except Exception:
+        except SQLAlchemyError:
             return True
 
     def _game_metadata_source_payload_limit(self) -> int | None:
@@ -100,7 +101,7 @@ class GameSyncMixin:
                     if column["name"] == "source_payload":
                         limit = getattr(column["type"], "length", None)
                         break
-            except Exception:
+            except SQLAlchemyError:
                 limit = None
 
         self._cached_game_metadata_source_payload_limit = limit
@@ -691,7 +692,7 @@ class GameSyncMixin:
         if hasattr(self.sqlite_session, "get_bind"):
             try:
                 sqlite_bind = self.sqlite_session.get_bind()
-            except Exception:
+            except SQLAlchemyError:
                 pass
 
         if sqlite_bind is not None:

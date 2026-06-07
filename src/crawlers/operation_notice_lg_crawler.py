@@ -13,10 +13,11 @@ from __future__ import annotations
 import logging
 import re
 from datetime import datetime
-from urllib.parse import urlparse
 
 import httpx
 from bs4 import BeautifulSoup
+
+from sqlalchemy.exc import SQLAlchemyError
 
 from src.db.engine import SessionLocal
 from src.repositories.operation_notice_repository import OperationNoticeRepository
@@ -28,7 +29,7 @@ logger = logging.getLogger(__name__)
 
 STADIUM_CODE = "JAMSIL"
 SOURCE_NAME = "LG트윈스공식"
-BASE_URL = "https://www.lgtwins.com/service/announcement"
+BASE_URL = "https://www.lgtwins.com/twins/feed/news"
 LINK_PREFIX = "https://www.lgtwins.com"
 HOST = "www.lgtwins.com"
 
@@ -68,7 +69,7 @@ def _parse_date(raw: str) -> datetime | None:
 
 def _extract_article_id(href: str) -> str | None:
     """Extract article ID from URL query params or path."""
-    m = re.search(r"(?:idx|id|seq|no|articleIdx)=(\d+)", href)
+    m = re.search(r"(?:idx|id|seq|no|articleIdx|snSeq)=(\d+)", href, re.I)
     if m:
         return m.group(1)
     m = re.search(r"/(\d+)(?:\?|$)", href)
@@ -96,7 +97,7 @@ class OperationNoticeLGCrawler:
 
         async with httpx.AsyncClient(headers=HEADERS, timeout=15, follow_redirects=True) as client:
             for page in range(1, self.max_pages + 1):
-                url = f"{BASE_URL}?pageNo={page}"
+                url = f"{BASE_URL}?page={page}"
                 try:
                     await throttle.wait(HOST)
                     resp = await client.get(url)
@@ -138,11 +139,7 @@ class OperationNoticeLGCrawler:
         notices: list[dict] = []
         hit_stop = False
 
-        # LG Twins notice list: <ul class="board-list"> or <table> with anchor tags
-        rows = soup.select("ul.board-list li, table.board-table tbody tr, .list-wrap .item")
-        if not rows:
-            # Fallback: grab all anchor tags with article-like hrefs
-            rows = [a.parent for a in soup.find_all("a", href=re.compile(r"announcement|notice|board"))]
+        rows = soup.select("ul.news_list li, .news_list li")
 
         for row in rows:
             anchor = row.find("a", href=True)
@@ -150,21 +147,22 @@ class OperationNoticeLGCrawler:
                 continue
 
             href = anchor["href"]
-            if not href.startswith("http"):
-                href = LINK_PREFIX + href
+            href_clean = re.sub(r";jsessionid=[A-Za-z0-9.]+", "", href)
+            if not href_clean.startswith("http"):
+                href_clean = LINK_PREFIX + href_clean
 
-            external_id = _extract_article_id(href) or href
+            external_id = _extract_article_id(href_clean) or href_clean
 
             if stop_at_id and external_id == stop_at_id:
                 hit_stop = True
                 break
 
-            title_el = row.select_one(".title, .subject, td.subject, .board-title, strong")
+            title_el = row.select_one(".title, span.title")
             title = title_el.get_text(strip=True) if title_el else anchor.get_text(strip=True)
             if not title:
                 continue
 
-            date_el = row.select_one(".date, td.date, .board-date, time")
+            date_el = row.select_one(".date, span.date")
             published_at = None
             if date_el:
                 published_at = _parse_date(date_el.get_text(strip=True))
@@ -178,11 +176,11 @@ class OperationNoticeLGCrawler:
                     "published_at": published_at,
                     "game_date": published_at.date() if published_at else None,
                     "source_name": SOURCE_NAME,
-                    "source_url": href,
+                    "source_url": href_clean,
                     "external_id": external_id,
                     "is_urgent": _is_urgent(title),
                     "is_confirmed": True,
-                    "raw_snapshot": {"href": href, "title": title},
+                    "raw_snapshot": {"href": href_clean, "title": title},
                 }
             )
 
@@ -195,8 +193,9 @@ class OperationNoticeLGCrawler:
                 created, updated = repo.bulk_upsert(notices)
                 session.commit()
                 print(f"[LG Notice] Saved: {created} new, {updated} updated.")
-            except Exception as e:
+            except SQLAlchemyError as e:
                 session.rollback()
+                logger.error(f"[LG Notice] Database error: {e}", exc_info=True)
                 print(f"[LG Notice] Error: {e}")
             finally:
                 self._raw_pages.clear()

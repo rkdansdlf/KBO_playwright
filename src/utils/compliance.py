@@ -61,7 +61,7 @@ class ComplianceChecker:
                                         f.write(f"# Fetched at: {datetime.now().isoformat()}\n\n")
                                         f.write(content)
                                     print(f"[COMPLIANCE] robots.txt snapshot saved to {snapshot_path}")
-                                except Exception as se:
+                                except OSError as se:
                                     print(f"[COMPLIANCE] Failed to save snapshot: {se}")
 
                                 print("[COMPLIANCE] robots.txt loaded successfully.")
@@ -72,7 +72,7 @@ class ComplianceChecker:
                                 # Fallback: assume everything is allowed or use a default
                                 self.parser.parse(["User-agent: *", "Disallow:"])
                                 self.last_fetch_time = now
-                    except Exception as e:
+                    except httpx.HTTPError as e:
                         print(f"[COMPLIANCE] Error fetching robots.txt: {e}")
                         # Fallback on error
                         self.parser.parse(["User-agent: *", "Disallow:"])
@@ -102,7 +102,7 @@ class ComplianceChecker:
                 else:
                     self.parser.parse(["User-agent: *", "Disallow:"])
                     self.last_fetch_time = now
-            except Exception as e:
+            except httpx.HTTPError as e:
                 print(f"[COMPLIANCE] Error sync fetching robots.txt: {e}")
                 self.parser.parse(["User-agent: *", "Disallow:"])
                 self.last_fetch_time = now

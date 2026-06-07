@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from datetime import date, datetime
 
-from sqlalchemy import Date, DateTime, Float, ForeignKey, Index, Integer, String, Text, UniqueConstraint
+from sqlalchemy import Date, DateTime, Float, ForeignKey, Index, Integer, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.types import JSON
 

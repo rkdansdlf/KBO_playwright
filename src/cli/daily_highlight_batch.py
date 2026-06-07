@@ -7,17 +7,20 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import logging
 import os
-from datetime import datetime, date
+from datetime import datetime
 from typing import Sequence
 
+from src.aggregators.highlight_aggregator import HighlightAggregator
 from src.db.engine import SessionLocal
 from src.models.game import Game, GameHighlight
-from src.aggregators.highlight_aggregator import HighlightAggregator
 from src.sync.oci_sync import OCISync
-from src.utils.game_status import COMPLETED_LIKE_GAME_STATUSES
 from src.utils.alerting import SlackWebhookClient
+from src.utils.game_status import COMPLETED_LIKE_GAME_STATUSES
 from src.utils.safe_print import safe_print as print
+
+logger = logging.getLogger(__name__)
 
 
 async def run_highlight_batch(
@@ -86,7 +89,7 @@ async def run_highlight_batch(
                 saved_count = aggregator.save_highlights(game_id, highlights)
                 print(f"   💾 Saved {saved_count} highlights to local DB.")
             else:
-                print(f"   🧪 [DRY-RUN] Highlights not saved.")
+                print("   🧪 [DRY-RUN] Highlights not saved.")
 
             processed_game_ids.append(game_id)
 
@@ -102,6 +105,7 @@ async def run_highlight_batch(
                     for game_id in sorted(set(processed_game_ids)):
                         syncer.sync_specific_game(game_id)
                 except Exception as e:
+                    logger.error(f"OCI Sync failed: {e}", exc_info=True)
                     print(f"❌ OCI Sync failed: {e}")
                 finally:
                     syncer.close()
@@ -137,10 +141,10 @@ async def run_highlight_batch(
         # Format Telegram alert message
         target_date_formatted = f"{target_date_str[:4]}-{target_date_str[4:6]}-{target_date_str[6:]}"
         message = f"🎬 <b>KBO 일일 하이라이트 요약 ({target_date_formatted})</b>\n\n"
-        
+
         message += "📊 <b>경기 요약</b>\n"
         message += f"- 대상 경기: {len(processed_game_ids)}경기\n"
-        
+
         lc_text = f"{len(lead_change_games)}경기 ({', '.join(lead_change_games)})" if lead_change_games else "0경기"
         wo_text = f"{len(walkoff_games)}경기 ({', '.join(walkoff_games)})" if walkoff_games else "0경기"
         message += f"- 역전 경기: {lc_text}\n"

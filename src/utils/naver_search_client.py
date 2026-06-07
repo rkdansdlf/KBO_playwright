@@ -26,7 +26,6 @@ import os
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Literal
-from urllib.parse import quote
 
 import httpx
 
@@ -76,7 +75,7 @@ def _parse_naver_date(pub_date_str: str) -> datetime | None:
         # Naver returns: "Tue, 03 Jun 2026 14:32:00 +0900"
         from email.utils import parsedate_to_datetime
         return parsedate_to_datetime(pub_date_str).replace(tzinfo=None)
-    except Exception:
+    except (ValueError, TypeError):
         pass
     # Fallback: simple date only
     for fmt in ("%Y.%m.%d.", "%Y-%m-%d", "%Y.%m.%d"):

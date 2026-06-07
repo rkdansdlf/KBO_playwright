@@ -119,7 +119,7 @@ class TestTeamBattingValidation:
                     INSERT INTO team_season_batting
                         (team_id, season, league, games, plate_appearances, at_bats,
                          runs, hits, home_runs)
-                    VALUES ('SSG', 2025, 'REGULAR', 1, 10, 5, 3, 3, 2)
+                    VALUES ('SSG', 2025, 'REGULAR', 1, 11, 5, 3, 3, 2)
                 """)
             )
             session.commit()
@@ -312,7 +312,7 @@ class TestTeamPitchingValidation:
                     INSERT INTO team_season_pitching
                         (team_id, season, league, games, wins,
                          innings_pitched, strikeouts)
-                    VALUES ('SSG', 2025, 'REGULAR', 2, 2, 7.0, 10)
+                    VALUES ('SSG', 2025, 'REGULAR', 2, 7, 7.0, 10)
                 """)
             )
             session.commit()

@@ -131,7 +131,7 @@ def save_schedule_game(
     game_date_str = str(game_data.get("game_date", "")).replace("-", "")
     try:
         game_date = datetime.strptime(game_date_str, "%Y%m%d").date()
-    except Exception:
+    except ValueError:
         return False
 
     season_year = _coerce_int(game_data.get("season_year")) or game_date.year
@@ -266,7 +266,7 @@ def save_game_detail(
     game_date_str = str(game_data.get("game_date", "")).replace("-", "") or str(provisional_game_id or "")[:8]
     try:
         game_date = datetime.strptime(game_date_str, "%Y%m%d").date()
-    except Exception:
+    except ValueError:
         game_date = datetime.now().date()
 
     game_id, original_game_id = _canonicalize_game_id_for_payload(
@@ -584,7 +584,7 @@ def save_game_snapshot(game_data: dict[str, Any], *, status: str | None = None) 
     game_date_str = str(game_data.get("game_date", "")).replace("-", "") or str(provisional_game_id or "")[:8]
     try:
         game_date = datetime.strptime(game_date_str, "%Y%m%d").date()
-    except Exception:
+    except ValueError:
         game_date = datetime.now().date()
 
     game_id, original_game_id = _canonicalize_game_id_for_payload(
@@ -691,7 +691,7 @@ def save_pregame_lineups(preview_data: dict[str, Any]) -> bool:
 
     try:
         game_date = datetime.strptime(game_date_str, "%Y%m%d").date()
-    except Exception:
+    except ValueError:
         return False
 
     season_year = game_date.year

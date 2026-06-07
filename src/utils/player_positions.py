@@ -4,10 +4,10 @@ Utility to standardize KBO player positions from raw strings (Korean/Hanja) to s
 
 from __future__ import annotations
 
-from enum import Enum
+from enum import StrEnum
 
 
-class PositionCode(str, Enum):
+class PositionCode(StrEnum):
     P = "P"  # Pitcher (투)
     C = "C"  # Catcher (포)
     B1 = "1B"  # 1st Base (一)

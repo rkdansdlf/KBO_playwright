@@ -6,14 +6,9 @@ Useful for self-healing / rollup recalculations when team stats pages fail.
 import argparse
 import logging
 import sys
-from datetime import datetime, timezone
 
 from src.aggregators.team_stat_aggregator import TeamStatAggregator
 from src.db.engine import SessionLocal
-from src.repositories.team_stats_repository import (
-    TeamSeasonBattingRepository,
-    TeamSeasonPitchingRepository,
-)
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger(__name__)
@@ -101,7 +96,7 @@ def run_recalc(
 
 def main():
     parser = argparse.ArgumentParser(description="Recalculate team cumulative statistics from player stats.")
-    
+
     # We allow --season as a required argument but support --year/--season flexibly
     group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument("--season", type=int, help="Year of the season to recalculate")

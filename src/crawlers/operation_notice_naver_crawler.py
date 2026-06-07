@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import logging
 import re
-from datetime import date, datetime
+from datetime import date
 
 from src.db.engine import SessionLocal
 from src.repositories.operation_notice_repository import OperationNoticeRepository
@@ -135,7 +135,7 @@ class OperationNoticeNaverCrawler:
                 print(f"[NaverNotice] Saved: {created} new, {updated} updated.")
             except Exception as e:
                 session.rollback()
-                print(f"[NaverNotice] Error saving: {e}")
+                logger.exception("Error saving notices")
 
 
 if __name__ == "__main__":

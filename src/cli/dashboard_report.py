@@ -312,6 +312,23 @@ def _format_terminal(data: dict[str, Any], sections: list[str]):
             for m in trend["months"][-3:]:
                 icon = "❌" if m["violation_count"] > 0 else "✅"
                 print(f"    {icon} {m['month']}: {m['violation_count']}/{m['total_checked']}")
+        gate = q.get("quality_gate", {})
+        if gate:
+            pa_ok = (q.get("pa_formula_integrity") or {}).get("ok", True)
+            team_bat_ok = gate.get("team_batting", {}).get("ok", True)
+            team_pit_ok = gate.get("team_pitching", {}).get("ok", True)
+            all_ok = pa_ok and team_bat_ok and team_pit_ok
+            if all_ok:
+                print("  통합 감사: ✅ 전체 통과")
+            else:
+                issues = []
+                if not pa_ok:
+                    issues.append("PA 공식")
+                if not team_bat_ok:
+                    issues.append("팀 타격")
+                if not team_pit_ok:
+                    issues.append("팀 투수")
+                print(f"  통합 감사: ❌ ({', '.join(issues)})")
 
     if "freshness" in sections and data.get("freshness"):
         f = data["freshness"]
@@ -391,17 +408,26 @@ def main():
         if "quality" in data:
             q = data["quality"]
             msg_lines.append(f"완료: {q.get('completed_count', 0)}/{q.get('total_games', 0)}")
-            pa = q.get("pa_formula_integrity", {})
-            if pa and not pa.get("ok", True):
-                msg_lines.append(f"PA 공식 위반: {pa.get('violation_count', 0)}건")
             gate = q.get("quality_gate", {})
             if gate:
-                team_bat = gate.get("team_batting", {})
-                team_pit = gate.get("team_pitching", {})
-                if team_bat and not team_bat.get("ok", True):
-                    msg_lines.append(f"팀 타격 불일치: {len(team_bat.get('mismatches', []))}건")
-                if team_pit and not team_pit.get("ok", True):
-                    msg_lines.append(f"팀 투수 불일치: {len(team_pit.get('mismatches', []))}건")
+                pa_ok = (q.get("pa_formula_integrity") or {}).get("ok", True)
+                team_bat_ok = gate.get("team_batting", {}).get("ok", True)
+                team_pit_ok = gate.get("team_pitching", {}).get("ok", True)
+                all_ok = pa_ok and team_bat_ok and team_pit_ok
+                if all_ok:
+                    msg_lines.append("통합 감사: ✅ 전체 통과")
+                else:
+                    violations = []
+                    if not pa_ok:
+                        pa = q.get("pa_formula_integrity", {})
+                        violations.append(f"PA {pa.get('violation_count', 0)}건")
+                    if not team_bat_ok:
+                        tb = gate.get("team_batting", {})
+                        violations.append(f"팀타격 {len(tb.get('mismatches', []))}건")
+                    if not team_pit_ok:
+                        tp = gate.get("team_pitching", {})
+                        violations.append(f"팀투수 {len(tp.get('mismatches', []))}건")
+                    msg_lines.append(f"통합 감사: ❌ ({', '.join(violations)})")
         SlackWebhookClient.send_alert("\n".join(msg_lines))
 
 

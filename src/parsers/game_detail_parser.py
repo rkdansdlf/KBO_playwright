@@ -9,6 +9,7 @@ from typing import Any
 import pandas as pd
 from bs4 import BeautifulSoup
 from sqlalchemy import text
+from sqlalchemy.exc import SQLAlchemyError
 
 from src.utils.team_codes import resolve_team_code, team_code_from_game_id_segment
 
@@ -417,7 +418,7 @@ def _resolve_missing_player_id(db_session, player_name: str, team_code: str) -> 
 
         # Last resort: just return first if we have to, but better to be safe
         return rows[0][0]
-    except Exception:
+    except SQLAlchemyError:
         return None
 
 

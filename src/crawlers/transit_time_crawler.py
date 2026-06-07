@@ -18,11 +18,11 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from datetime import date, datetime, timedelta
+from datetime import date, datetime
 
 from src.db.engine import SessionLocal
 from src.repositories.transit_time_repository import TransitTimeRepository
-from src.utils.map_api_client import TransportMode, get_transit_times_batch
+from src.utils.map_api_client import get_transit_times_batch
 from src.utils.safe_print import safe_print as print
 
 logger = logging.getLogger(__name__)
@@ -164,7 +164,7 @@ class TransitTimeCrawler:
                 print(f"[Transit] Saved: {created} new, {updated} updated.")
             except Exception as e:
                 session.rollback()
-                print(f"[Transit] Error: {e}")
+                logger.exception("Transit time batch save error")
 
 
 if __name__ == "__main__":

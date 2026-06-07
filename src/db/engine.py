@@ -5,8 +5,10 @@ Supports both SQLite (dev) and MySQL (production)
 
 import os
 
+import sqlite3
 from dotenv import load_dotenv
 from sqlalchemy import create_engine, event
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import sessionmaker
 
 load_dotenv()
@@ -35,7 +37,7 @@ def create_engine_for_url(url: str, *, disable_sqlite_wal: bool = False):
                 cursor.execute("PRAGMA busy_timeout = 120000;")
                 cursor.execute("PRAGMA synchronous = NORMAL;")
                 cursor.close()
-            except Exception:
+            except sqlite3.Error:
                 pass
 
         return engine
@@ -84,7 +86,7 @@ def _ensure_player_batting_team_code_column():
             if "team_code" not in column_names and "team_id" in column_names:
                 print("[DB] Migrating player_season_batting.team_id -> team_code")
                 conn.exec_driver_sql("ALTER TABLE player_season_batting RENAME COLUMN team_id TO team_code;")
-    except Exception as exc:
+    except SQLAlchemyError as exc:
         print(f"[WARN] Could not migrate player_season_batting.team_id column: {exc}")
 
 
@@ -105,7 +107,7 @@ def _ensure_player_basic_status_columns():
                 alterations.append("ADD COLUMN status_source TEXT")
             for clause in alterations:
                 conn.exec_driver_sql(f"ALTER TABLE player_basic {clause};")
-    except Exception as exc:
+    except SQLAlchemyError as exc:
         print(f"[WARN] Could not ensure player_basic status columns: {exc}")
 
 
@@ -117,7 +119,7 @@ def _ensure_game_core_tables():
         with Engine.begin() as conn:
             _migrate_game_table(conn)
             _migrate_game_summary_table(conn)
-    except Exception as exc:
+    except SQLAlchemyError as exc:
         print(f"[WARN] Could not align game tables: {exc}")
 
 
@@ -131,7 +133,7 @@ def _ensure_game_status_column():
             column_names = {row[1] for row in info_rows}
             if "game_status" not in column_names:
                 conn.exec_driver_sql("ALTER TABLE game ADD COLUMN game_status VARCHAR(32);")
-    except Exception as exc:
+    except SQLAlchemyError as exc:
         print(f"[WARN] Could not ensure game.game_status column: {exc}")
 
 
@@ -151,7 +153,7 @@ def _ensure_game_identity_columns():
                 conn.exec_driver_sql("ALTER TABLE game ADD COLUMN winning_franchise_id INTEGER;")
             if "is_primary" not in column_names:
                 conn.exec_driver_sql("ALTER TABLE game ADD COLUMN is_primary BOOLEAN DEFAULT 1;")
-    except Exception as exc:
+    except SQLAlchemyError as exc:
         print(f"[WARN] Could not ensure game identity columns: {exc}")
 
 
@@ -296,7 +298,6 @@ def _migrate_game_summary_table(conn):
 def init_db():
     # Import all models to ensure they are registered in Base.metadata
     import src.models  # noqa: F401
-
     from src.models.base import Base
 
     Base.metadata.create_all(bind=Engine)

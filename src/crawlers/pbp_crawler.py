@@ -7,6 +7,7 @@ Computes WPA transitions based on the events.
 from __future__ import annotations
 
 import asyncio
+import logging
 from typing import Any
 
 from playwright.async_api import Page
@@ -17,6 +18,8 @@ from src.utils.playwright_pool import AsyncPlaywrightPool
 from src.utils.request_policy import RequestPolicy
 from src.utils.safe_print import safe_print as print
 from src.utils.text_parser import KBOTextParser
+
+logger = logging.getLogger(__name__)
 
 
 class PBPCrawler:
@@ -88,7 +91,7 @@ class PBPCrawler:
                             # Try to wait for any of the containers (1-12)
                             await page.wait_for_selector('div[id^="numCont"]', timeout=20000)
                         except Exception:
-                            print(f"[WARN] No PBP containers found for {game_id}.")
+                            logger.warning("No PBP containers found for %s", game_id)
                             body = await page.content()
                             if "데이터가 없습니다" in body or "취소" in body:
                                 self.last_failure_reason = "empty"
@@ -104,13 +107,13 @@ class PBPCrawler:
                         return {"game_id": game_id, "game_date": game_date, "events": events}
 
                     except Exception as e:
-                        print(f"[ERROR] PBP crawl failed for {game_id}: {e}")
+                        logger.exception("PBP crawl failed for %s", game_id)
                         self.last_failure_reason = "error"
                         return None
                     finally:
                         await pool.release(page)
                 except Exception as e:
-                    print(f"[ERROR] Pool error for {game_id}: {e}")
+                    logger.exception("Pool error for %s", game_id)
                     self.last_failure_reason = "error"
                     return None
 
@@ -261,7 +264,7 @@ class PBPCrawler:
 
             return events
         except Exception as e:
-            print(f"[WARN] Error extracting PBP legacy (JS): {e}")
+            logger.exception("Error extracting PBP legacy (JS)")
             return []
 
     def _format_base_string(self, runners: int) -> str:

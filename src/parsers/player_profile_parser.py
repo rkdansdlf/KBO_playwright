@@ -4,44 +4,45 @@ Parses raw KBO profile texts and original string fields into structured attribut
 """
 
 import re
-from typing import Any, Dict, List, Optional
+from typing import Any
+
 from pydantic import BaseModel
 
 
 class PlayerProfileParsed(BaseModel):
-    player_id: Optional[int] = None
-    player_name: Optional[str] = None
-    back_number: Optional[int] = None
-    birth_date: Optional[str] = None        # 'YYYY-MM-DD'
-    position: Optional[str] = None          # 'P','C','IF','OF','DH'...
-    throwing_hand: Optional[str] = None     # 'R','L','S'
-    batting_hand: Optional[str] = None      # 'R','L','S'
-    height_cm: Optional[int] = None
-    weight_kg: Optional[int] = None
-    education_or_career_path: List[str] = []
+    player_id: int | None = None
+    player_name: str | None = None
+    back_number: int | None = None
+    birth_date: str | None = None        # 'YYYY-MM-DD'
+    position: str | None = None          # 'P','C','IF','OF','DH'...
+    throwing_hand: str | None = None     # 'R','L','S'
+    batting_hand: str | None = None      # 'R','L','S'
+    height_cm: int | None = None
+    weight_kg: int | None = None
+    education_or_career_path: list[str] = []
     # contracts
-    signing_bonus_amount: Optional[int] = None
-    signing_bonus_currency: Optional[str] = None  # 'KRW' or 'USD'
-    signing_bonus_original: Optional[str] = None
-    salary_amount: Optional[int] = None
-    salary_currency: Optional[str] = None
-    salary_original: Optional[str] = None
+    signing_bonus_amount: int | None = None
+    signing_bonus_currency: str | None = None  # 'KRW' or 'USD'
+    signing_bonus_original: str | None = None
+    salary_amount: int | None = None
+    salary_currency: str | None = None
+    salary_original: str | None = None
     # draft
-    draft_year: Optional[int] = None
-    draft_team_code: Optional[str] = None
-    draft_round: Optional[int] = None
-    draft_pick_overall: Optional[int] = None
-    draft_type: Optional[str] = None        # '자유선발','1차','2차'...
+    draft_year: int | None = None
+    draft_team_code: str | None = None
+    draft_round: int | None = None
+    draft_pick_overall: int | None = None
+    draft_type: str | None = None        # '자유선발','1차','2차'...
     # entry
-    entry_year: Optional[int] = None
-    entry_team_code: Optional[str] = None
+    entry_year: int | None = None
+    entry_team_code: str | None = None
     # flags
-    is_active: Optional[bool] = None
-    is_foreign: Optional[bool] = None       # 소스 맥락/페이지 플래그로 세팅
-    photo_url: Optional[str] = None
+    is_active: bool | None = None
+    is_foreign: bool | None = None       # 소스 맥락/페이지 플래그로 세팅
+    photo_url: str | None = None
 
     @property
-    def education_path(self) -> List[str]:
+    def education_path(self) -> list[str]:
         return self.education_or_career_path
 
     def __getitem__(self, item: str) -> Any:
@@ -97,7 +98,7 @@ POS_MAP = {
 }
 
 
-def _clean(s: Optional[str]) -> str:
+def _clean(s: str | None) -> str:
     if not s:
         return ""
     # Normalize whitespaces
@@ -109,10 +110,10 @@ def _to_year(two_digits: int, cutoff: int = 50) -> int:
     return (2000 + two_digits) if two_digits < cutoff else (1900 + two_digits)
 
 
-def tokenize_profile(raw: str) -> Dict[str, str]:
+def tokenize_profile(raw: str) -> dict[str, str]:
     """Tokenize raw text by matching defined KBO labels."""
     raw = _clean(raw)
-    out: Dict[str, str] = {}
+    out: dict[str, str] = {}
     for m in LABEL_REGEX.finditer(raw):
         key = _clean(m.group("key"))
         val = _clean(m.group("val"))
@@ -120,7 +121,7 @@ def tokenize_profile(raw: str) -> Dict[str, str]:
     return out
 
 
-def parse_back_number(s: str) -> Optional[int]:
+def parse_back_number(s: str) -> int | None:
     """Extract back number from values like 'No.25' or '25'."""
     if not s:
         return None
@@ -128,7 +129,7 @@ def parse_back_number(s: str) -> Optional[int]:
     return int(m.group(1)) if m else None
 
 
-def parse_birth_date(s: str) -> Optional[str]:
+def parse_birth_date(s: str) -> str | None:
     """Convert '1987년 06월 05일' to '1987-06-05'."""
     if not s:
         return None
@@ -143,7 +144,7 @@ def parse_birth_date(s: str) -> Optional[str]:
     return f"{y}-{mm:02d}-{dd:02d}"
 
 
-def parse_position_and_hands(s: str) -> Dict[str, Optional[str]]:
+def parse_position_and_hands(s: str) -> dict[str, str | None]:
     """Parse position and throwing/batting hands: '포수(우투우타)' -> C, R, R."""
     s = _clean(s)
     if not s:
@@ -151,7 +152,7 @@ def parse_position_and_hands(s: str) -> Dict[str, Optional[str]]:
 
     # Extract position prefix before '('
     pos_txt = s.split("(")[0].strip()
-    pos_code = POS_MAP.get(pos_txt, None)
+    pos_code = POS_MAP.get(pos_txt)
 
     # Extract hands info inside parenthesis
     throw, bat = None, None
@@ -164,7 +165,7 @@ def parse_position_and_hands(s: str) -> Dict[str, Optional[str]]:
     return {"position": pos_code, "throwing_hand": throw, "batting_hand": bat}
 
 
-def parse_height_weight(s: str) -> Dict[str, Optional[int]]:
+def parse_height_weight(s: str) -> dict[str, int | None]:
     """Parse height/weight from '180cm/95kg' format."""
     if not s:
         return {"height_cm": None, "weight_kg": None}
@@ -174,7 +175,7 @@ def parse_height_weight(s: str) -> Dict[str, Optional[int]]:
     }
 
 
-def parse_path(s: str) -> List[str]:
+def parse_path(s: str) -> list[str]:
     """Parse education or career path string: '송정동초-무등중-진흥고' -> list."""
     if not s:
         return []
@@ -183,7 +184,7 @@ def parse_path(s: str) -> List[str]:
     return [p for p in (i.strip() for i in parts) if p]
 
 
-def parse_money(s: str) -> Dict[str, Optional[Any]]:
+def parse_money(s: str) -> dict[str, Any | None]:
     """
     Parse currency amounts:
     - '200000달러' -> amount=200000, currency='USD'
@@ -191,7 +192,7 @@ def parse_money(s: str) -> Dict[str, Optional[Any]]:
     """
     if not s:
         return {"amount": None, "currency": None, "original": None}
-    
+
     original = _clean(s)
     if original in ("-", "", "None", "NULL"):
         return {"amount": None, "currency": None, "original": None}
@@ -214,7 +215,7 @@ def parse_money(s: str) -> Dict[str, Optional[Any]]:
     return {"amount": num, "currency": "KRW", "original": original}
 
 
-def parse_draft(s: str) -> Dict[str, Optional[Any]]:
+def parse_draft(s: str) -> dict[str, Any | None]:
     """
     Parse draft info like '06 두산 2차 8라운드 59순위', '25 삼성 자유선발', or '98 삼성 1차'.
     """
@@ -250,7 +251,7 @@ def parse_draft(s: str) -> Dict[str, Optional[Any]]:
         pick = m.group("pick")
 
         # Map team name to code
-        team_code = TEAM_CODE_MAP.get(team, None)
+        team_code = TEAM_CODE_MAP.get(team)
         if not team_code:
             # Try partial matching for team names
             for k, v in TEAM_CODE_MAP.items():
@@ -265,11 +266,11 @@ def parse_draft(s: str) -> Dict[str, Optional[Any]]:
             "draft_pick_overall": int(pick) if pick else None,
             "draft_type": dtype if dtype else ("자유선발" if "자유" in s else None),
         }
-    except Exception:
+    except (ValueError, TypeError):
         return default_res
 
 
-def parse_entry_year_team(s: str) -> Dict[str, Optional[Any]]:
+def parse_entry_year_team(s: str) -> dict[str, Any | None]:
     """Parse entrant details like '06두산' or '25 삼성'."""
     if not s:
         return {"entry_year": None, "entry_team_code": None}
@@ -281,7 +282,7 @@ def parse_entry_year_team(s: str) -> Dict[str, Optional[Any]]:
     try:
         yy = int(m.group("yy"))
         team = m.group("team").strip()
-        team_code = TEAM_CODE_MAP.get(team, None)
+        team_code = TEAM_CODE_MAP.get(team)
         if not team_code:
             for k, v in TEAM_CODE_MAP.items():
                 if k in team or team in k:
@@ -289,15 +290,15 @@ def parse_entry_year_team(s: str) -> Dict[str, Optional[Any]]:
                     break
 
         return {"entry_year": _to_year(yy), "entry_team_code": team_code}
-    except Exception:
+    except (ValueError, TypeError):
         return {"entry_year": None, "entry_team_code": None}
 
 
 def parse_profile(
     raw_text: str,
-    is_active: Optional[bool] = None,
-    is_foreign: Optional[bool] = None,
-) -> Dict[str, Any]:
+    is_active: bool | None = None,
+    is_foreign: bool | None = None,
+) -> dict[str, Any]:
     """
     Main entry point. Tokenizes raw profile text and returns a structured dictionary
     of all parsed values.
@@ -305,7 +306,7 @@ def parse_profile(
     tokens = tokenize_profile(raw_text)
 
     # Initialize standard payload
-    out: Dict[str, Any] = {
+    out: dict[str, Any] = {
         "player_name": tokens.get("선수명") or None,
         "back_number": parse_back_number(tokens.get("등번호", "")),
         "birth_date": parse_birth_date(tokens.get("생년월일", "")),

@@ -123,10 +123,15 @@ def run_recalc(
             league_codes = [0]
             if include_futures:
                 league_codes.append(5)
+            from sqlalchemy import bindparam
+            stmt = (
+                text("SELECT season_id FROM kbo_seasons WHERE season_year = :year AND league_type_code IN :codes")
+                .bindparams(bindparam("codes", expanding=True))
+            )
             season_ids = (
                 session.execute(
-                    text("SELECT season_id FROM kbo_seasons WHERE season_year = :year AND league_type_code IN :codes"),
-                    {"year": season, "codes": tuple(league_codes)},
+                    stmt,
+                    {"year": season, "codes": league_codes},
                 )
                 .scalars()
                 .all()

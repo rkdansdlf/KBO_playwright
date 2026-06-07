@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 import contextlib
 from datetime import datetime
 
-from playwright.async_api import Page
+from playwright.async_api import Error as PlaywrightError, Page
 
 from src.db.engine import SessionLocal
 from src.utils.compliance import compliance
@@ -256,7 +256,7 @@ class GameDetailCrawler:
                 if review_tab:
                     await review_tab.click()
                     await asyncio.sleep(0.5)
-            except Exception:
+            except PlaywrightError:
                 pass
 
             away_hitters, away_total = await self._extract_hitters(
@@ -421,7 +421,7 @@ class GameDetailCrawler:
                         return False, "cancelled"
 
             return True, "ok"  # Found boxscore or at least not cancelled
-        except Exception:
+        except PlaywrightError:
             # Check if it was a timeout but maybe we missed the cancel badge?
             print(f"⚠️  Timeout waiting for boxscore selectors. Page URL: {page.url}")
             try:
@@ -434,7 +434,7 @@ class GameDetailCrawler:
 
                 if lightweight:
                     return True, "ok"
-            except Exception:
+            except PlaywrightError:
                 pass
             # Diagnostic screenshot
             debug_path = f"data/error_{datetime.now().strftime('%H%M%S')}.png"
@@ -464,7 +464,7 @@ class GameDetailCrawler:
                 try:
                     val = (await crowd_el.text_content()).replace("관중 :", "").replace(",", "").strip()
                     metadata["attendance"] = int(val)
-                except Exception:
+                except (ValueError, TypeError):
                     pass
 
             # 2. Try generic area search
@@ -1136,11 +1136,11 @@ class GameDetailCrawler:
         # Validate row structure against headers: last 3 should be R/H/E
         if headers and len(headers) >= 4 and len(headers) == len(row):
             _last3 = [h.upper() for h in headers[-3:]]
-            if not _last3[0] in ("R", "RUN", "득점", "R/H/E"):
+            if _last3[0] not in ("R", "RUN", "득점", "R/H/E"):
                 logger.debug("Unexpected scoreboard header before R: %s", headers[-3])
-            if not _last3[1] in ("H", "HIT", "안타"):
+            if _last3[1] not in ("H", "HIT", "안타"):
                 logger.debug("Unexpected scoreboard header before H: %s", headers[-2])
-            if not _last3[2] in ("E", "ERR", "실책", "E/H"):
+            if _last3[2] not in ("E", "ERR", "실책", "E/H"):
                 logger.debug("Unexpected scoreboard header before E: %s", headers[-1])
 
         line = row[1:-3] if len(row) > 4 else []
@@ -1313,7 +1313,8 @@ class GameDetailCrawler:
         """
         try:
             return await page.evaluate(script)
-        except Exception as e:
+        except PlaywrightError as e:
+            logger.warning(f"Error executing roster extraction script: {e}", exc_info=True)
             print(f"⚠️ Error executing roster extraction script: {e}")
             return {}
 

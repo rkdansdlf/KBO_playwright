@@ -21,7 +21,7 @@ class RecoveryManager:
             try:
                 with open(self.path, encoding="utf-8") as f:
                     self.state.update(json.load(f))
-            except Exception:
+            except (OSError, json.JSONDecodeError):
                 pass
 
     def save(self) -> None:

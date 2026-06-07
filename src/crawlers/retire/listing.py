@@ -79,6 +79,7 @@ class RetiredPlayerListingCrawler:
             await page.wait_for_load_state("load", timeout=10000)
             await page.wait_for_timeout(500)
         except Exception:
+            logger.warning("Failed to select all series option, continuing")
             pass
 
         return await self._collect_ids_from_pages(page, year)
@@ -201,6 +202,7 @@ class RetiredPlayerListingCrawler:
                 else:
                     break
             except Exception:
+                logger.warning("Error during pagination, stopping")
                 break
         return players
 

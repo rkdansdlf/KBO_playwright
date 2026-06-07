@@ -102,6 +102,7 @@ def _extract_rows_fast(page: Page, table_selector: str = "table") -> list[dict[s
         )
         return payload or []
     except Exception:
+        logger.exception("Failed to execute JS payload")
         return None
 
 
@@ -857,7 +858,7 @@ def crawl_series_batting_stats(
 
             except Exception as e:
                 reason = f"Season/Series selection error: {e}"
-                print(f"⚠️ 시즌/시리즈 선택 중 오류: {e}. DB에서 직접 집계하여 폴백(Fallback)을 시도합니다.")
+                logger.exception("Season/Series selection error, falling back to DB aggregation")
                 browser.close()
                 all_players_data = fallback_batting_from_db(year, series_key, reason=reason)
                 # Set source to FALLBACK_AUTO

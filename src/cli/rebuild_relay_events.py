@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any, Iterable, Sequence
 
 from sqlalchemy import or_
+from sqlalchemy.exc import SQLAlchemyError
 
 from src.db.engine import SessionLocal
 from src.models.game import Game, GameEvent
@@ -297,7 +298,7 @@ def _sync_changed_games(
                     syncer.sync_specific_game(game_id)
                     report_by_game_id[game_id].oci_status = "synced"
                     log(f"[OCI] Synced {game_id}")
-                except Exception as exc:
+                except SQLAlchemyError as exc:
                     report_by_game_id[game_id].oci_status = f"failed:{exc}"
                     log(f"[OCI] Failed {game_id}: {exc}")
         finally:
@@ -335,7 +336,7 @@ def _sync_changed_events(
             for game_id in game_ids:
                 report_by_game_id[game_id].oci_status = f"synced_events:{synced}"
             log(f"[OCI] Synced game_events for {len(game_ids)} games ({synced} rows)")
-        except Exception as exc:
+        except SQLAlchemyError as exc:
             for game_id in game_ids:
                 report_by_game_id[game_id].oci_status = f"failed:{exc}"
             log(f"[OCI] Failed game_events batch sync: {exc}")

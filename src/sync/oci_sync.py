@@ -2,6 +2,7 @@
 OCI sync — thin composite of domain-specific mixins.
 """
 
+import logging
 import os
 
 from src.sync.sync_base import OCISyncBase
@@ -9,6 +10,8 @@ from src.sync.sync_games import GameSyncMixin
 from src.sync.sync_misc import MiscSyncMixin
 from src.sync.sync_players import PlayerSyncMixin
 from src.sync.sync_stats import StatsSyncMixin
+
+logger = logging.getLogger(__name__)
 
 
 class OCISync(OCISyncBase, GameSyncMixin, PlayerSyncMixin, StatsSyncMixin, MiscSyncMixin):
@@ -92,7 +95,7 @@ def main():
             sync.close()
 
         except Exception as e:
-            print(f"\n❌ Sync error: {e}")
+            logger.exception("Sync error occurred")
             import traceback
 
             traceback.print_exc()

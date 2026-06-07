@@ -414,6 +414,25 @@ def get_pa_formula_trend(session, months: int = 6) -> dict[str, Any]:
     }
 
 
+def get_team_stats_integrity(gate_result: dict[str, Any]) -> dict[str, Any]:
+    team_batting = gate_result.get("team_batting", {})
+    team_pitching = gate_result.get("team_pitching", {})
+    batting_ok = team_batting.get("ok", True)
+    pitching_ok = team_pitching.get("ok", True)
+    batting_mismatches = team_batting.get("mismatches", [])
+    pitching_mismatches = team_pitching.get("mismatches", [])
+    return {
+        "ok": batting_ok and pitching_ok,
+        "batting_ok": batting_ok,
+        "pitching_ok": pitching_ok,
+        "batting_checked": team_batting.get("checked_players", 0),
+        "pitching_checked": team_pitching.get("checked_players", 0),
+        "batting_mismatches": batting_mismatches,
+        "pitching_mismatches": pitching_mismatches,
+        "total_mismatches": len(batting_mismatches) + len(pitching_mismatches),
+    }
+
+
 def get_daily_metrics(session, target_date_str: str) -> dict[str, Any]:
     """Calculate core collection metrics for a specific date."""
     target_dt = datetime.strptime(target_date_str, "%Y%m%d").date()
@@ -551,24 +570,20 @@ def format_telegram_report(metrics: dict[str, Any], gate_result: dict[str, Any])
         for gid in incomplete[:3]:
             lines.append(f"   - {gid}")
 
-    # Statistical Consistency
-    if gate_result["ok"]:
-        lines.append("✅ <b>Stats</b>: Consistent with cumulative totals")
+    # Player Statistical Consistency
+    player_bat_ok = gate_result.get("batting", {}).get("ok", True)
+    player_pit_ok = gate_result.get("pitching", {}).get("ok", True)
+    if player_bat_ok and player_pit_ok:
+        lines.append("✅ <b>Player Stats</b>: Consistent with cumulative totals")
     else:
         bat_miss = len(gate_result["batting"].get("mismatches", []))
         pit_miss = len(gate_result["pitching"].get("mismatches", []))
-        team_bat_miss = len(gate_result.get("team_batting", {}).get("mismatches", []))
-        team_pit_miss = len(gate_result.get("team_pitching", {}).get("mismatches", []))
-        total_miss = bat_miss + pit_miss + team_bat_miss + team_pit_miss
-        lines.append(f"❌ <b>Stats</b>: {total_miss} mismatches detected")
+        total_miss = bat_miss + pit_miss
+        lines.append(f"❌ <b>Player Stats</b>: {total_miss} mismatches detected")
         if bat_miss:
-            lines.append(f"   - Player Batting: {bat_miss} issues")
+            lines.append(f"   - Batting: {bat_miss} issues")
         if pit_miss:
-            lines.append(f"   - Player Pitching: {pit_miss} issues")
-        if team_bat_miss:
-            lines.append(f"   - Team Batting: {team_bat_miss} issues")
-        if team_pit_miss:
-            lines.append(f"   - Team Pitching: {team_pit_miss} issues")
+            lines.append(f"   - Pitching: {pit_miss} issues")
 
     # Sabermetrics highlight
     top = metrics.get("top_performer")
@@ -654,6 +669,22 @@ def format_telegram_report(metrics: dict[str, Any], gate_result: dict[str, Any])
         for m in trend["months"][-4:]:
             icon = "❌" if m["violation_count"] > 0 else "✅"
             lines.append(f"   {icon} {m['month']}: {m['violation_count']}/{m['total_checked']} ({m['violation_pct']}%)")
+
+    # Team Stats Consistency
+    team_stats = get_team_stats_integrity(gate_result)
+    if team_stats["ok"]:
+        checked = team_stats["batting_checked"] or team_stats["pitching_checked"]
+        lines.append(f"🏆 <b>Team Stats</b>: Consistent ({checked} teams checked)")
+    else:
+        lines.append(f"🏆 <b>Team Stats</b>: {team_stats['total_mismatches']} mismatches")
+        for m in team_stats["batting_mismatches"]:
+            lines.append(f"   ❌ Batting [{m.get('team_id', '?')}]: {m.get('issue', 'mismatch')}")
+            for d in m.get("diffs", [])[:2]:
+                lines.append(f"      {d}")
+        for m in team_stats["pitching_mismatches"]:
+            lines.append(f"   ❌ Pitching [{m.get('team_id', '?')}]: {m.get('issue', 'mismatch')}")
+            for d in m.get("diffs", [])[:2]:
+                lines.append(f"      {d}")
 
     # New Players
     if metrics["new_players"]:
