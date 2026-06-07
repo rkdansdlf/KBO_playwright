@@ -1,5 +1,5 @@
 name: 'KBO Python Env'
-description: 'Checkout, setup Python, install deps, init DB, hydrate from OCI'
+description: 'Setup Python, install deps, init DB, hydrate from OCI'
 inputs:
   python-version:
     description: 'Python version'
@@ -29,8 +29,6 @@ inputs:
 runs:
   using: 'composite'
   steps:
-    - uses: actions/checkout@v4
-
     - uses: actions/setup-python@v5
       with:
         python-version: ${{ inputs.python-version }}

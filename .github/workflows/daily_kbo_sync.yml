@@ -27,6 +27,8 @@ jobs:
       date: ${{ steps.date.outputs.KST_DATE }}
       year: ${{ steps.date.outputs.KST_YEAR }}
     steps:
+      - uses: actions/checkout@v4
+
       - uses: ./.github/actions/python-env
         with:
           playwright: 'true'
@@ -110,10 +112,17 @@ jobs:
     needs: finalize
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
+
       - uses: ./.github/actions/python-env
+        env:
+          OCI_DB_URL: ${{ secrets.OCI_DB_URL }}
         with:
           playwright: 'true'
           init-db: 'true'
+          hydrate: 'true'
+          hydrate-year: ${{ needs.finalize.outputs.year }}
+          hydrate-date: ${{ needs.finalize.outputs.date }}
 
       - name: Heal Unverified PBP
         env:
@@ -136,12 +145,19 @@ jobs:
   # JOB 3 — Quality Report + Gap Report (05:15-05:30 KST)
   # ──────────────────────────────────────────────────────────────────────────
   quality:
-    needs: post-process
+    needs: [finalize, post-process]
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
+
       - uses: ./.github/actions/python-env
+        env:
+          OCI_DB_URL: ${{ secrets.OCI_DB_URL }}
         with:
           init-db: 'true'
+          hydrate: 'true'
+          hydrate-year: ${{ needs.finalize.outputs.year }}
+          hydrate-date: ${{ needs.finalize.outputs.date }}
 
       - name: Generate Quality Report
         env:
@@ -183,7 +199,7 @@ jobs:
             --save
           python3 -m src.cli.sync_oci \
             --player-game-stats \
-            --date ${{ needs.finalize.outputs.date }}
+            --year ${{ needs.finalize.outputs.year }}
 
       - name: Verify PlayerGame Data Quality
         run: |
@@ -199,12 +215,19 @@ jobs:
   # JOB 4 — Advanced Daily Sync (기존 advanced_daily_sync)
   # ──────────────────────────────────────────────────────────────────────────
   advanced-sync:
-    needs: quality
+    needs: [finalize, quality]
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
+
       - uses: ./.github/actions/python-env
+        env:
+          OCI_DB_URL: ${{ secrets.OCI_DB_URL }}
         with:
           init-db: 'true'
+          hydrate: 'true'
+          hydrate-year: ${{ needs.finalize.outputs.year }}
+          hydrate-date: ${{ needs.finalize.outputs.date }}
 
       - name: Run Advanced Daily & Sync
         env:

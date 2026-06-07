@@ -23,7 +23,7 @@ from src.crawlers.futures.futures_batting import fetch_and_parse_futures_batting
 from src.crawlers.futures.futures_pitching import fetch_and_parse_futures_pitching
 from src.crawlers.player_list_crawler import PlayerListCrawler
 from src.db.engine import SessionLocal
-from src.models.player import PlayerBasic, PlayerSeasonPitching
+from src.models.player import PlayerBasic, PlayerSeasonBatting, PlayerSeasonPitching
 from src.parsers.player_profile_parser import PlayerProfileParsed
 from src.repositories.player_repository import PlayerRepository
 from src.repositories.player_season_pitching_repository import save_pitching_stats_to_db
@@ -441,10 +441,10 @@ def build_arg_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def main(argv: Sequence[str] | None = None) -> None:
+def main(argv: Sequence[str] | None = None) -> dict:
     parser = build_arg_parser()
     args = parser.parse_args(argv)
-    asyncio.run(crawl_futures(args))
+    return asyncio.run(crawl_futures(args))
 
 
 if __name__ == "__main__":
