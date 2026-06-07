@@ -4,10 +4,13 @@ Parser for stadium parking information pages. Extracts lot names and fee rules.
 
 from __future__ import annotations
 
+import logging
 import re
 from typing import Any
 
 from bs4 import BeautifulSoup
+
+logger = logging.getLogger(__name__)
 
 PARKING_FEE_PATTERN = re.compile(
     r"(기본|추가|일일|행사|경기|무료)\s*(?:요금|시간|금액)?\s*:?\s*(\d{1,3}(?:,\d{3})*)\s*(?:원)"
@@ -55,4 +58,4 @@ if __name__ == "__main__":
     html = sys.stdin.read() if not sys.stdin.isatty() else "<html><body><p>기본요금: 5,000원</p></body></html>"
     result = parse_parking(html, "ssg_landers_parking")
     for item in result:
-        print(item)
+        logger.info(item)

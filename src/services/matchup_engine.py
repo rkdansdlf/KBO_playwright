@@ -27,7 +27,7 @@ class MatchupEngine:
         """Runs the entire suite of split calculations."""
         sess = self.session or SessionLocal()
         try:
-            print(f"📊 Recalculating matchups for {season_year}...")
+            logger.info(f"📊 Recalculating matchups for {season_year}...")
             self._calc_batter_team_splits(sess, season_year)
             self._calc_pitcher_team_splits(sess, season_year)
             self._calc_batter_stadium_splits(sess, season_year)
@@ -38,7 +38,7 @@ class MatchupEngine:
             self._calc_situational_splits(sess, season_year)
 
             sess.commit()
-            print(f"✅ Matchup metrics recalculated for season {season_year}")
+            logger.info(f"✅ Matchup metrics recalculated for season {season_year}")
         except Exception:
             sess.rollback()
             logger.exception("❌ Matchup engine failed")
@@ -49,7 +49,7 @@ class MatchupEngine:
 
     def _calc_precise_bvp(self, session, season_year: int) -> None:
         """Aggregates precise batter vs pitcher stats from GameEvents."""
-        print(f"   🎯 Calculating precise BvP for {season_year}...")
+        logger.info(f"   🎯 Calculating precise BvP for {season_year}...")
 
         # We fetch all plate appearance events
         events = (
@@ -172,7 +172,7 @@ class MatchupEngine:
 
     def _calc_situational_splits(self, session, season_year: int) -> None:
         """Calculates RISP and vs Handedness splits using GameEvents."""
-        print(f"   📉 Calculating situational splits for {season_year}...")
+        logger.info(f"   📉 Calculating situational splits for {season_year}...")
 
         # Cleanup for the specific year first
         session.query(BatterSplit).filter(BatterSplit.season_year == season_year).delete()

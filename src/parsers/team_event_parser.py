@@ -399,4 +399,4 @@ if __name__ == "__main__":
     )
     result = parse_team_events(html, "lg_twins_events", {"cutoff_days": 90, "fetched_at": "2025-06-01T00:00:00"})
     for item in result:
-        print(item)
+        logger.info(item)

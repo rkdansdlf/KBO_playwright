@@ -6,6 +6,7 @@ Generates daily/weekly/monthly SLA reports.
 
 from __future__ import annotations
 
+import logging
 from datetime import datetime, timedelta
 
 try:
@@ -19,6 +20,8 @@ from src.models.game import Game, GameBattingStat, GameLineup, GameMetadata, Gam
 from src.utils.alerting import SlackWebhookClient
 from src.utils.game_status import COMPLETED_LIKE_GAME_STATUSES
 from src.utils.safe_print import safe_print as print
+
+logger = logging.getLogger(__name__)
 
 
 class SlaTracker:
@@ -89,14 +92,14 @@ class SlaTracker:
     def print_weekly_report(self, end_date: str):
         sla_data = self.compute_weekly_sla(end_date, days=7)
         if not sla_data or sla_data[0]["total"] == 0:
-            print(f"[SLA] No data for week ending {end_date}")
+            logger.info(f"[SLA] No data for week ending {end_date}")
             return
 
-        print(f"\n{'=' * 60}")
-        print(f"  SLA Report (Week ending {end_date})")
-        print(f"{'=' * 60}")
-        print(f"{'Date':<12} {'Games':>6} {'Completed':>10} {'Comp%':>7} {'PBP%':>7} {'Detail%':>8}")
-        print(f"{'-' * 12} {'-' * 6} {'-' * 10} {'-' * 7} {'-' * 7} {'-' * 8}")
+        logger.info(f"\n{'=' * 60}")
+        logger.info(f"  SLA Report (Week ending {end_date})")
+        logger.info(f"{'=' * 60}")
+        logger.info(f"{'Date':<12} {'Games':>6} {'Completed':>10} {'Comp%':>7} {'PBP%':>7} {'Detail%':>8}")
+        logger.info(f"{'-' * 12} {'-' * 6} {'-' * 10} {'-' * 7} {'-' * 7} {'-' * 8}")
 
         totals = {"games": 0, "completed": 0}
         for s in sla_data:
@@ -113,9 +116,9 @@ class SlaTracker:
             overall_rate = totals["completed"] / totals["games"]
         else:
             overall_rate = 0
-        print(f"{'-' * 12} {'-' * 6} {'-' * 10} {'-' * 7} {'-' * 7} {'-' * 8}")
-        print(f"  {'TOTAL':<10} {totals['games']:>6} {totals['completed']:>10} {overall_rate:>6.0%}")
-        print()
+        logger.info(f"{'-' * 12} {'-' * 6} {'-' * 10} {'-' * 7} {'-' * 7} {'-' * 8}")
+        logger.info(f"  {'TOTAL':<10} {totals['games']:>6} {totals['completed']:>10} {overall_rate:>6.0%}")
+        logger.info()
 
     def send_weekly_sla_report(self, end_date: str | None = None) -> None:
         """

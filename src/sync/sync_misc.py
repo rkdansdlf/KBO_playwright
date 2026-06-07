@@ -92,7 +92,7 @@ class MiscSyncMixin:
         franchise_mapping = self._get_franchise_id_mapping()
         teams = self.sqlite_session.query(Team).all()
         if not teams:
-            print("ℹ️ No teams to sync.")
+            logger.info("ℹ️ No teams to sync.")
             return 0
 
         records = []
@@ -133,7 +133,7 @@ class MiscSyncMixin:
             )
 
         self._bulk_copy_upsert(Team.__tablename__, records, ["team_id"])
-        print(f"✅ Synced {len(records)} teams to OCI")
+        logger.info(f"✅ Synced {len(records)} teams to OCI")
         return len(records)
 
     def sync_stadium_info(self) -> int:
@@ -153,10 +153,9 @@ class MiscSyncMixin:
                 sql = migration_path.read_text()
                 self.target_session.execute(text(sql))
                 self.target_session.commit()
-                print("✅ Applied awards migration")
+                logger.info("✅ Applied awards migration")
         except Exception as exc:
             logger.warning("Failed to apply awards migration: %s", exc)
-            print(f"⚠️ Failed to apply migration: {exc}")
             self.target_session.rollback()
 
         return self.sync_simple_table(
@@ -167,12 +166,11 @@ class MiscSyncMixin:
 
     def sync_rag_chunks(self, batch_size: int = 1000) -> int:
         """Sync RAG chunks from SQLite to OCI Postgres"""
-        print("📁 Ensure RAG chunks table exists on OCI...")
+        logger.info("📁 Ensure RAG chunks table exists on OCI...")
         try:
             Base.metadata.create_all(self.oci_engine)
         except Exception as exc:
             logger.warning("metadata create_all error (might already exist): %s", exc)
-            print(f"⚠️ Warning: metadata create_all error (might already exist): {exc}")
 
         def transform_rag_chunk(data: dict[str, Any]) -> dict[str, Any]:
             embedding = data.get("embedding")
@@ -212,12 +210,11 @@ class MiscSyncMixin:
 
     def sync_ticket_schedules(self, batch_size: int = 1000) -> int:
         """Sync ticket schedules from SQLite to OCI Postgres"""
-        print("📁 Ensure Ticket schedules table exists on OCI...")
+        logger.info("📁 Ensure Ticket schedules table exists on OCI...")
         try:
             Base.metadata.create_all(self.oci_engine)
         except Exception as exc:
             logger.warning("metadata create_all error (might already exist): %s", exc)
-            print(f"⚠️ Warning: metadata create_all error (might already exist): {exc}")
 
         return self.sync_simple_table(
             TicketSchedule,
@@ -228,12 +225,11 @@ class MiscSyncMixin:
 
     def sync_stadium_foods(self, batch_size: int = 1000) -> int:
         """Sync stadium foods from SQLite to OCI Postgres"""
-        print("📁 Ensure Stadium foods table exists on OCI...")
+        logger.info("📁 Ensure Stadium foods table exists on OCI...")
         try:
             Base.metadata.create_all(self.oci_engine)
         except Exception as exc:
             logger.warning("metadata create_all error (might already exist): %s", exc)
-            print(f"⚠️ Warning: metadata create_all error (might already exist): {exc}")
 
         return self.sync_simple_table(
             StadiumFood,
@@ -375,7 +371,7 @@ class MiscSyncMixin:
             filters=filters,
             batch_size=batch_size,
         )
-        print(f"✅ Synced {count} transit time records to OCI")
+        logger.info(f"✅ Synced {count} transit time records to OCI")
         return count
 
     def sync_congestion(
@@ -401,7 +397,7 @@ class MiscSyncMixin:
             filters=filters,
             batch_size=batch_size,
         )
-        print(f"✅ Synced {count} congestion records to OCI")
+        logger.info(f"✅ Synced {count} congestion records to OCI")
         return count
 
     def sync_operation_notices(
@@ -427,7 +423,7 @@ class MiscSyncMixin:
             filters=filters,
             batch_size=batch_size,
         )
-        print(f"✅ Synced {count} operation notice records to OCI")
+        logger.info(f"✅ Synced {count} operation notice records to OCI")
         return count
 
     def sync_stadium_realtime_all(
@@ -440,7 +436,7 @@ class MiscSyncMixin:
             "congestion": self.sync_congestion(game_date=game_date),
             "operation_notices": self.sync_operation_notices(game_date=game_date),
         }
-        print(f"✅ Stadium Realtime All Sync Summary: {results}")
+        logger.info(f"✅ Stadium Realtime All Sync Summary: {results}")
         return results
 
     def sync_daily_rosters(
@@ -456,7 +452,7 @@ class MiscSyncMixin:
         if start and end and start > end:
             raise ValueError("daily roster start_date must be earlier than or equal to end_date")
         scope = _format_daily_roster_scope(start, end)
-        print(f"INFO: Syncing daily rosters{scope}...")
+        logger.info(f"INFO: Syncing daily rosters{scope}...")
 
         filters = []
         if start:
@@ -519,11 +515,11 @@ class MiscSyncMixin:
             )
 
         if not records:
-            print("ℹ️ No team history to sync.")
+            logger.info("ℹ️ No team history to sync.")
             return 0
 
         self._bulk_copy_upsert(TeamHistory.__tablename__, records, ["id"])
-        print(f"✅ Synced {len(records)} team history records to OCI")
+        logger.info(f"✅ Synced {len(records)} team history records to OCI")
         return len(records)
 
     def sync_team_code_map(self) -> int:
@@ -544,7 +540,7 @@ class MiscSyncMixin:
 
     def sync_matchups(self, year: int = None, batch_size: int = 10000) -> dict[str, int]:
         """Sync Matchup Split tables (Batter/Pitcher vs Team, Stadium, Starter, PBP-BvP) to OCI"""
-        print("📁 Ensuring matchup tables exist on OCI...")
+        logger.info("📁 Ensuring matchup tables exist on OCI...")
         Base.metadata.create_all(self.oci_engine)
 
         results = {}
@@ -601,5 +597,5 @@ class MiscSyncMixin:
             batch_size=batch_size,
         )
 
-        print(f"✅ Matchup Splits Sync Summary: {results}")
+        logger.info(f"✅ Matchup Splits Sync Summary: {results}")
         return results

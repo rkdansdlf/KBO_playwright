@@ -176,7 +176,7 @@ class PlayerIdResolver:
         return self._return_ambiguous(cache_key, player_name, team_code, season, candidates)
 
     def preload_season_index(self, season: int) -> None:
-        print(f"🔄 Preloading player index for season {season}...")
+        logger.info(f"🔄 Preloading player index for season {season}...")
         season_index: dict[str, set[int]] = {}
 
         # Batters
@@ -340,7 +340,7 @@ class PlayerIdResolver:
         override_key_no_pitcher = (player_name, team_code, season, None)
         if override_key_no_pitcher in overrides:
             resolved_id = overrides[override_key_no_pitcher]
-            print(f"   [OVERRIDE RESOLVED (relaxed)] {player_name} ({team_code}, {season}) -> {resolved_id}")
+            logger.info(f"   [OVERRIDE RESOLVED (relaxed)] {player_name} ({team_code}, {season}) -> {resolved_id}")
             return resolved_id
 
         # 2026 Season Samsung Lee Seung-hyun disambiguation
@@ -589,10 +589,10 @@ class PlayerIdResolver:
     def register_unknown_player(self, name: str, team_code: str, uniform_no: str | None) -> int | None:
         existing_id = self._find_existing_unknown_player(name, team_code, uniform_no)
         if existing_id:
-            print(f"   [UNKNOWN PLAYER REUSED] {name} ({team_code}) -> {existing_id}")
+            logger.info(f"   [UNKNOWN PLAYER REUSED] {name} ({team_code}) -> {existing_id}")
             return existing_id
 
-        print(f"   [NEW PLAYER ADDED] Auto-registering local profile for {name} ({team_code})")
+        logger.info(f"   [NEW PLAYER ADDED] Auto-registering local profile for {name} ({team_code})")
         # Generate a large fake ID (>900000)
         stmt = (
             select(PlayerBasic.player_id)

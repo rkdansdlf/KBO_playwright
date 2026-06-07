@@ -57,7 +57,7 @@ def save_batting_stats_safe(payloads: list[dict[str, Any]]) -> int:
             # SQLite의 경우 외래키 제약조건 임시 비활성화
             if db_type == "sqlite":
                 session.execute(text("PRAGMA foreign_keys = OFF"))
-                print("⚙️ SQLite 외래키 제약조건 임시 비활성화")
+                logger.info("⚙️ SQLite 외래키 제약조건 임시 비활성화")
 
             unique_payloads = {}
             for payload in payloads:
@@ -222,7 +222,7 @@ def save_batting_stats_safe(payloads: list[dict[str, Any]]) -> int:
                     saved_count += 1
 
             session.commit()
-            print(f"✅ 타자 데이터 {saved_count}건 저장 완료 (player_season_batting 테이블)")
+            logger.info(f"✅ 타자 데이터 {saved_count}건 저장 완료 (player_season_batting 테이블)")
 
         except Exception:
             session.rollback()

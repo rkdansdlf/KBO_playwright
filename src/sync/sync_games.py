@@ -5,6 +5,7 @@ Game-level sync: games, details, PBP, play-by-play, player game stats.
 from __future__ import annotations
 
 import json
+import logging
 
 from sqlalchemy import inspect, text
 from sqlalchemy.exc import SQLAlchemyError
@@ -25,6 +26,9 @@ from src.models.game import (
     PlayerGameBatting,
     PlayerGamePitching,
 )
+
+logger = logging.getLogger(__name__)
+
 from src.sync.sync_base import (
     _log_sync_eligibility,
     build_game_sync_eligibility,
@@ -184,7 +188,7 @@ class GameSyncMixin:
                 {"pattern": pattern},
             )
         self.target_session.commit()
-        print(f"🧹 Purged OCI child game-detail rows for year {year}")
+        logger.info(f"🧹 Purged OCI child game-detail rows for year {year}")
 
     def get_unsynced_or_modified_game_ids(self) -> list[str]:
         """Detect dirty game_ids by comparing game + child-table signatures across local/OCI."""
@@ -197,7 +201,7 @@ class GameSyncMixin:
         results = {}
 
         if not self.test_connection():
-            print("❌ OCI connection failed. Aborting sync_game_details.")
+            logger.error("❌ OCI connection failed. Aborting sync_game_details.")
             return results
 
         filters = []
@@ -207,14 +211,14 @@ class GameSyncMixin:
         eligibility = None
 
         if unsynced_only:
-            print("🔍 식별 중: OCI에 없거나 로컬에서 최근에 갱신된 게임 데이터를 검사합니다...")
+            logger.info("🔍 식별 중: OCI에 없거나 로컬에서 최근에 갱신된 게임 데이터를 검사합니다...")
             target_game_ids = self.get_unsynced_or_modified_game_ids()
             target_game_ids = filter_game_ids_by_year(target_game_ids, year)
             if not target_game_ids:
                 year_msg = f" ({year})" if year else ""
-                print(f"🎉 모든 게임 데이터{year_msg}가 이미 최신 상태입니다. 동기화를 건너뜁니다.")
+                logger.info(f"🎉 모든 게임 데이터{year_msg}가 이미 최신 상태입니다. 동기화를 건너뜁니다.")
                 return results
-            print(f"🎯 총 {len(target_game_ids)}개의 변경/누락된 게임을 발견했습니다.")
+            logger.info(f"🎯 총 {len(target_game_ids)}개의 변경/누락된 게임을 발견했습니다.")
             # target_game_ids가 너무 길면 sqlite in_ 절 한도를 초과할 수 있지만, 부분 업데이트라 대개 수십 건 내외임.
             filters.append(Game.game_id.in_(target_game_ids))
         else:
@@ -240,7 +244,7 @@ class GameSyncMixin:
             publishable_parent_game_ids = eligibility.parent_game_ids
 
         # 0. Sync Parent Games first (Required for Foreign Keys)
-        print("⚾ Syncing Parent Game Records...")
+        logger.info("⚾ Syncing Parent Game Records...")
         if unsynced_only and target_game_ids is not None:
             if publishable_parent_game_ids:
                 results["games"] = self.sync_games(
@@ -248,7 +252,7 @@ class GameSyncMixin:
                 )
             else:
                 results["games"] = 0
-                print("ℹ️ No publishable parent game rows beyond schedule-only stubs.")
+                logger.info("ℹ️ No publishable parent game rows beyond schedule-only stubs.")
         else:
             results["games"] = self.sync_games(filters=filters if filters else None, batch_size=batch_size)
 
@@ -280,7 +284,7 @@ class GameSyncMixin:
                 quoted_ids = [f"'{gid}'" for gid in game_ids]
                 child_filters.append(text(f"game_id IN ({','.join(quoted_ids)})"))
             else:
-                print("ℹ️ No games found for the specified period.")
+                logger.info("ℹ️ No games found for the specified period.")
                 return results
 
         if year and not unsynced_only:
@@ -371,13 +375,13 @@ class GameSyncMixin:
             batch_size=batch_size,
         )
 
-        print(f"✅ Game Details Sync Summary: {results}")
+        logger.info(f"✅ Game Details Sync Summary: {results}")
         return results
 
     def sync_specific_game(self, game_id: str) -> dict[str, int]:
         """Sync all related data for a single game_id"""
         if not self.test_connection():
-            print("❌ OCI connection failed. Aborting sync_specific_game.")
+            logger.error("❌ OCI connection failed. Aborting sync_specific_game.")
             return {}
 
         results = {}
@@ -418,7 +422,7 @@ class GameSyncMixin:
         if eligibility.detail_game_ids:
             for child_model in detail_child_models:
                 if not self._target_table_exists(child_model):
-                    print(f"ℹ️ Skipping delete for missing OCI table: {child_model.__tablename__}")
+                    logger.info(f"ℹ️ Skipping delete for missing OCI table: {child_model.__tablename__}")
                     continue
                 self.target_session.query(child_model).filter(child_model.game_id == game_id).delete(
                     synchronize_session=False
@@ -426,7 +430,7 @@ class GameSyncMixin:
         if eligibility.relay_game_ids:
             for child_model in relay_child_models:
                 if not self._target_table_exists(child_model):
-                    print(f"ℹ️ Skipping delete for missing OCI table: {child_model.__tablename__}")
+                    logger.info(f"ℹ️ Skipping delete for missing OCI table: {child_model.__tablename__}")
                     continue
                 self.target_session.query(child_model).filter(child_model.game_id == game_id).delete(
                     synchronize_session=False
@@ -480,7 +484,7 @@ class GameSyncMixin:
                 filters=[GameValidationMetrics.game_id == game_id],
             )
         else:
-            print(f"ℹ️ Skipping missing OCI table: {GameValidationMetrics.__tablename__}")
+            logger.info(f"ℹ️ Skipping missing OCI table: {GameValidationMetrics.__tablename__}")
             results["validation_metrics"] = 0
         results["summary"] = self._sync_game_summary_rows(
             filters=[GameSummary.game_id.in_(eligibility.detail_game_ids)],
@@ -502,7 +506,7 @@ class GameSyncMixin:
             return {}
 
         if not self.test_connection():
-            print("❌ OCI connection failed. Aborting sync_pregame_game.")
+            logger.error("❌ OCI connection failed. Aborting sync_pregame_game.")
             return {}
 
         results: dict[str, int] = {}
@@ -593,7 +597,7 @@ class GameSyncMixin:
 
         rows = query.all()
         if not rows:
-            print("ℹ️  No records for game_summary")
+            logger.info("ℹ️  No records for game_summary")
             return 0
 
         game_ids = sorted(set(replace_game_ids or [row.game_id for row in rows if row.game_id]))
@@ -616,9 +620,9 @@ class GameSyncMixin:
             seen.add(key)
             records.append({column: getattr(row, column) for column in columns if hasattr(row, column)})
 
-        print(f"🚚 Syncing game_summary ({len(records)} rows, batch={batch_size})...")
+        logger.info(f"🚚 Syncing game_summary ({len(records)} rows, batch={batch_size})...")
         self._bulk_copy_upsert("game_summary", records, [], update_timestamp=False)
-        print(f"   Synced {len(records)}/{len(records)} rows via COPY...")
+        logger.info(f"   Synced {len(records)}/{len(records)} rows via COPY...")
         return len(records)
 
     def _sync_game_play_by_play(self, filters: list = None) -> int:

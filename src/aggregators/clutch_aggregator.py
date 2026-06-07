@@ -5,6 +5,7 @@ Computes per-player, per-season clutch metrics from GameEvent WPA data.
 
 from __future__ import annotations
 
+import logging
 from collections import defaultdict
 
 from sqlalchemy.exc import SQLAlchemyError
@@ -14,6 +15,8 @@ from src.models.game import Game, GameEvent
 from src.models.season import KboSeason
 from src.utils.game_status import COMPLETED_LIKE_GAME_STATUSES
 from src.utils.safe_print import safe_print as print
+
+logger = logging.getLogger(__name__)
 
 
 class ClutchAggregator:
@@ -35,7 +38,7 @@ class ClutchAggregator:
         )
 
         if not events:
-            print(f"[Clutch] {year}년 WPA 데이터 없음.")
+            logger.info(f"[Clutch] {year}년 WPA 데이터 없음.")
             return []
 
         # Aggregate by batter
@@ -118,12 +121,12 @@ class ClutchAggregator:
 
         try:
             self.session.commit()
-            print(f"[Clutch] {len(results)} batters updated for {year}.")
+            logger.info(f"[Clutch] {len(results)} batters updated for {year}.")
         except SQLAlchemyError as e:
             err_str = str(e)
             self.session.rollback()
             if "foreign key" in err_str.lower() or "Foreign key" in err_str:
-                print(f"[Clutch] FK constraint ({err_str[:80]}...), trying raw SQL fallback...")
+                logger.exception(f"[Clutch] FK constraint ({err_str[:80]}...), trying raw SQL fallback...")
                 import json
 
                 from sqlalchemy import text
@@ -146,9 +149,9 @@ class ClutchAggregator:
                         {"e": json.dumps(extra, ensure_ascii=False), "s": year, "p": pid},
                     )
                 self.session.commit()
-                print(f"[Clutch] {len(results)} batters updated via raw SQL.")
+                logger.exception(f"[Clutch] {len(results)} batters updated via raw SQL.")
             else:
-                print(f"[Clutch] Non-FK error: {err_str[:200]}")
+                logger.exception(f"[Clutch] Non-FK error: {err_str[:200]}")
                 raise
 
     def print_report(self, year: int, top_n: int = 10):
@@ -156,18 +159,18 @@ class ClutchAggregator:
         if not results:
             return
 
-        print(f"\n{'=' * 60}")
-        print(f"  KBO {year}년 Clutch/WPA Top {top_n}")
-        print(f"{'=' * 60}")
-        print(f"{'순위':>4} {'BatterID':>9} {'WPA합계':>8} {'평균WPA':>8} {'Clutch':>8} {'고레버리지':>9}")
-        print(f"{'-' * 60}")
+        logger.info(f"\n{'=' * 60}")
+        logger.info(f"  KBO {year}년 Clutch/WPA Top {top_n}")
+        logger.info(f"{'=' * 60}")
+        logger.info(f"{'순위':>4} {'BatterID':>9} {'WPA합계':>8} {'평균WPA':>8} {'Clutch':>8} {'고레버리지':>9}")
+        logger.info(f"{'-' * 60}")
         for i, r in enumerate(results[:top_n]):
             print(
                 f"  {i + 1:>2}  {r['batter_id']:>9} {r['wpa_sum']:>8.4f} {r['avg_wpa']:>8.4f} "
                 f"{r['high_leverage_wpa']:>8.4f} {r['high_leverage_count']:>9}"
             )
 
-        print(f"{'=' * 60}")
+        logger.info(f"{'=' * 60}")
 
 
 if __name__ == "__main__":
@@ -190,4 +193,4 @@ if __name__ == "__main__":
             agg.print_report(args.year)
         else:
             results = agg.aggregate(args.year)
-            print(f"Computed clutch for {len(results)} batters in {args.year}")
+            logger.info(f"Computed clutch for {len(results)} batters in {args.year}")

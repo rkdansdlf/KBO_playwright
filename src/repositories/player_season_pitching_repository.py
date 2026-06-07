@@ -176,7 +176,7 @@ def save_pitching_stats_to_db(payloads: list[dict[str, Any]]) -> int:
 
         try:
             session.commit()
-            print(f"✅ 투수 데이터 {saved_count}건 저장 완료 (player_season_pitching 테이블)")
+            logger.info(f"✅ 투수 데이터 {saved_count}건 저장 완료 (player_season_pitching 테이블)")
         except Exception:
             session.rollback()
             logger.exception("❌ 커밋 실패")
