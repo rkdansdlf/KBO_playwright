@@ -1,10 +1,11 @@
 """
 Repository for StadiumCongestion CRUD operations.
 """
+
 from __future__ import annotations
 
 import logging
-from datetime import date, datetime, timezone
+from datetime import UTC, date, datetime
 
 from sqlalchemy import and_, select
 from sqlalchemy.orm import Session
@@ -43,7 +44,7 @@ class CongestionRepository:
             for k, v in data.items():
                 if k in mutable and v is not None:
                     setattr(existing, k, v)
-            existing.updated_at = datetime.now(timezone.utc).replace(tzinfo=None)
+            existing.updated_at = datetime.now(UTC).replace(tzinfo=None)
             return existing, False
 
         record = StadiumCongestion(**data)

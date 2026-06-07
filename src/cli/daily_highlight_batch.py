@@ -29,7 +29,7 @@ async def run_highlight_batch(
     force: bool = False,
     dry_run: bool = False,
     sync_to_oci: bool | None = None,
-    notify: bool = True
+    notify: bool = True,
 ) -> list[str]:
     print(f"🎬 Starting Daily Highlight Batch for {target_date_str}...")
 
@@ -114,7 +114,7 @@ async def run_highlight_batch(
     if notify and processed_game_ids:
         # Collate all highlights across games
         all_highlights: list[GameHighlight] = []
-        for g_id, h_list in game_highlights_map.items():
+        for _g_id, h_list in game_highlights_map.items():
             all_highlights.extend(h_list)
 
         # Count special games
@@ -191,7 +191,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             force=args.force,
             dry_run=args.dry_run,
             sync_to_oci=False if args.no_sync else None,
-            notify=not args.no_notify
+            notify=not args.no_notify,
         )
     )
     return 0

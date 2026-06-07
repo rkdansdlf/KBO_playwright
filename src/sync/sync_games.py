@@ -5,7 +5,6 @@ Game-level sync: games, details, PBP, play-by-play, player game stats.
 from __future__ import annotations
 
 import json
-from datetime import datetime
 
 from sqlalchemy import inspect, text
 from sqlalchemy.exc import SQLAlchemyError

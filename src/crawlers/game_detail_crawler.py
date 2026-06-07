@@ -13,7 +13,8 @@ logger = logging.getLogger(__name__)
 import contextlib
 from datetime import datetime
 
-from playwright.async_api import Error as PlaywrightError, Page
+from playwright.async_api import Error as PlaywrightError
+from playwright.async_api import Page
 
 from src.db.engine import SessionLocal
 from src.utils.compliance import compliance

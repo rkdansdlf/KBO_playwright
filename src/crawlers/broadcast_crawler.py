@@ -3,7 +3,6 @@ import asyncio
 import logging
 
 from playwright.async_api import async_playwright
-
 from sqlalchemy.exc import SQLAlchemyError
 
 from src.db.engine import SessionLocal

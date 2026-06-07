@@ -4,7 +4,6 @@ import re
 from datetime import datetime, timedelta
 
 import httpx
-
 from sqlalchemy.exc import SQLAlchemyError
 
 from src.db.engine import SessionLocal

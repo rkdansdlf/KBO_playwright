@@ -8,6 +8,7 @@ by tracking the last seen external_id (article ID).
 Target URL pattern:
   https://www.lgtwins.com/service/announcement?pageNo={page}
 """
+
 from __future__ import annotations
 
 import logging
@@ -16,7 +17,6 @@ from datetime import datetime
 
 import httpx
 from bs4 import BeautifulSoup
-
 from sqlalchemy.exc import SQLAlchemyError
 
 from src.db.engine import SessionLocal
@@ -131,9 +131,7 @@ class OperationNoticeLGCrawler:
 
         return all_notices
 
-    def _parse_page(
-        self, html: str, stop_at_id: str | None
-    ) -> tuple[list[dict], bool]:
+    def _parse_page(self, html: str, stop_at_id: str | None) -> tuple[list[dict], bool]:
         """Parse one listing page. Returns (notices, hit_stop_id)."""
         soup = BeautifulSoup(html, "html.parser")
         notices: list[dict] = []

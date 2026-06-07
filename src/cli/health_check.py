@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import argparse
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any, Sequence
 
 from sqlalchemy import text
@@ -41,7 +41,7 @@ def _check_datasource_health(session) -> list[dict[str, Any]]:
     for ds in ds_repo.get_all_active():
         stale = ""
         if ds.last_success_at:
-            hours_since = (datetime.now(timezone.utc).replace(tzinfo=None) - ds.last_success_at).total_seconds() / 3600
+            hours_since = (datetime.now(UTC).replace(tzinfo=None) - ds.last_success_at).total_seconds() / 3600
             if hours_since > 48:
                 stale = f"STALE ({hours_since:.0f}h)"
             else:

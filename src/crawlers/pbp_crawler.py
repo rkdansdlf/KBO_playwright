@@ -106,13 +106,13 @@ class PBPCrawler:
 
                         return {"game_id": game_id, "game_date": game_date, "events": events}
 
-                    except Exception as e:
+                    except Exception:
                         logger.exception("PBP crawl failed for %s", game_id)
                         self.last_failure_reason = "error"
                         return None
                     finally:
                         await pool.release(page)
-                except Exception as e:
+                except Exception:
                     logger.exception("Pool error for %s", game_id)
                     self.last_failure_reason = "error"
                     return None
@@ -263,7 +263,7 @@ class PBPCrawler:
                     sequence += 1
 
             return events
-        except Exception as e:
+        except Exception:
             logger.exception("Error extracting PBP legacy (JS)")
             return []
 

@@ -4,10 +4,11 @@ Repository for StadiumOperationNotice CRUD operations.
 Handles upsert logic based on (stadium_code, source_name, external_id)
 or (stadium_code, source_name, title, published_at) as fallback.
 """
+
 from __future__ import annotations
 
 import logging
-from datetime import date, datetime, timezone
+from datetime import UTC, date, datetime
 
 from sqlalchemy import and_, select
 from sqlalchemy.orm import Session
@@ -68,7 +69,7 @@ class OperationNoticeRepository:
             for key, value in data.items():
                 if key in mutable_fields and value is not None:
                     setattr(existing, key, value)
-            existing.updated_at = datetime.now(timezone.utc).replace(tzinfo=None)
+            existing.updated_at = datetime.now(UTC).replace(tzinfo=None)
             return existing, False
 
         record = StadiumOperationNotice(**data)
@@ -89,7 +90,7 @@ class OperationNoticeRepository:
                 key = ("ext", n.get("stadium_code"), n.get("source_name"), ext_id)
             else:
                 key = ("fallback", n.get("stadium_code"), n.get("source_name"), n.get("title"), n.get("published_at"))
-            
+
             if key not in unique_notices:
                 unique_notices[key] = n
 
@@ -134,9 +135,7 @@ class OperationNoticeRepository:
         notice_type: str | None = None,
         source_name: str | None = None,
     ) -> list[StadiumOperationNotice]:
-        stmt = select(StadiumOperationNotice).where(
-            StadiumOperationNotice.stadium_code == stadium_code
-        )
+        stmt = select(StadiumOperationNotice).where(StadiumOperationNotice.stadium_code == stadium_code)
         if notice_type:
             stmt = stmt.where(StadiumOperationNotice.notice_type == notice_type)
         if source_name:

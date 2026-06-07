@@ -14,11 +14,12 @@ Configured origin points for JAMSIL:
 Scheduling recommendation (via scheduler.py):
   - Run every 15 minutes between D-2h and D+1h on game days.
 """
+
 from __future__ import annotations
 
 import asyncio
 import logging
-from datetime import date, datetime, timezone
+from datetime import UTC, date, datetime
 
 from src.db.engine import SessionLocal
 from src.repositories.transit_time_repository import TransitTimeRepository
@@ -97,7 +98,7 @@ class TransitTimeCrawler:
             save: Persist results to the database.
         """
         game_date = game_date or date.today()
-        measured_at = datetime.now(timezone.utc).replace(tzinfo=None)
+        measured_at = datetime.now(UTC).replace(tzinfo=None)
 
         print(f"[Transit] Measuring {len(self.origins)} origins for {game_date} at {measured_at.strftime('%H:%M')} UTC")
 
@@ -124,12 +125,8 @@ class TransitTimeCrawler:
             {
                 "stadium_code": self.stadium_code,
                 "origin_label": r.origin_label,
-                "origin_lat": next(
-                    (o["lat"] for o in self.origins if o["label"] == r.origin_label), None
-                ),
-                "origin_lng": next(
-                    (o["lng"] for o in self.origins if o["label"] == r.origin_label), None
-                ),
+                "origin_lat": next((o["lat"] for o in self.origins if o["label"] == r.origin_label), None),
+                "origin_lng": next((o["lng"] for o in self.origins if o["label"] == r.origin_label), None),
                 "transport_mode": r.transport_mode,
                 "measured_at": measured_at,
                 "game_date": game_date,
@@ -162,7 +159,7 @@ class TransitTimeCrawler:
                 created, updated = repo.bulk_upsert(records)
                 session.commit()
                 print(f"[Transit] Saved: {created} new, {updated} updated.")
-            except Exception as e:
+            except Exception:
                 session.rollback()
                 logger.exception("Transit time batch save error")
 

@@ -2,7 +2,7 @@
 Repository for DataSource and RawSourceSnapshot operations.
 """
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import select, update
 from sqlalchemy.orm import Session
@@ -53,7 +53,7 @@ class DataSourceRepository:
         return list(self.session.execute(stmt).scalars().all())
 
     def mark_success(self, source_key: str, content_hash: str) -> DataSource | None:
-        now = datetime.now(timezone.utc).replace(tzinfo=None)
+        now = datetime.now(UTC).replace(tzinfo=None)
         stmt = (
             update(DataSource)
             .where(DataSource.source_key == source_key)
@@ -63,7 +63,7 @@ class DataSourceRepository:
         return self.get_by_key(source_key)
 
     def get_stale_sources(self, max_hours: int = 48) -> list[DataSource]:
-        cutoff = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(hours=max_hours)
+        cutoff = datetime.now(UTC).replace(tzinfo=None) - timedelta(hours=max_hours)
         stmt = select(DataSource).where(
             DataSource.is_active,
             DataSource.last_success_at < cutoff,
@@ -107,7 +107,7 @@ class RawSourceSnapshotRepository:
         return list(self.session.execute(stmt).scalars().all())
 
     def get_failed_for_retry(self, retry_after_hours: int = 1, limit: int = 50) -> list[RawSourceSnapshot]:
-        cutoff = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(hours=retry_after_hours)
+        cutoff = datetime.now(UTC).replace(tzinfo=None) - timedelta(hours=retry_after_hours)
         from sqlalchemy import and_
 
         stmt = (
@@ -167,7 +167,7 @@ def save_raw_snapshots(session, raw_pages: list[dict]) -> int:
                     "data_source_id": ds.id,
                     "raw_html_or_json_path": page["url"],
                     "content_hash": content_hash,
-                    "fetched_at": datetime.now(timezone.utc).replace(tzinfo=None),
+                    "fetched_at": datetime.now(UTC).replace(tzinfo=None),
                     "status_code": page["status_code"],
                 }
             )
