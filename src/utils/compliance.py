@@ -69,8 +69,9 @@ class ComplianceChecker:
 
                                 logger.info("[COMPLIANCE] robots.txt loaded successfully.")
                             else:
-                                print(
-                                    f"[COMPLIANCE] Failed to fetch robots.txt (Status {response.status_code}). Using fallback."
+                                logger.warning(
+                                    "Failed to fetch robots.txt (Status %s). Using fallback.",
+                                    response.status_code,
                                 )
                                 # Fallback: assume everything is allowed or use a default
                                 self.parser.parse(["User-agent: *", "Disallow:"])

@@ -345,8 +345,9 @@ class GameDetailCrawler:
                     or metadata.get("stadium")
                     or metadata.get("attendance")
                 ):
-                    print(
-                        f"ℹ️  No box scores found for {game_id}, but scoreboard/metadata available. Proceeding with partial recovery."
+                    logger.info(
+                        "ℹ️  No box scores found for %s, but scoreboard/metadata available. Proceeding with partial recovery.",
+                        game_id,
                     )
                 else:
                     self._last_failure_reason[game_id] = "incomplete_detail"

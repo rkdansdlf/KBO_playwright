@@ -24,7 +24,6 @@ from datetime import UTC, date, datetime
 from src.db.engine import SessionLocal
 from src.repositories.transit_time_repository import TransitTimeRepository
 from src.utils.map_api_client import get_transit_times_batch
-from src.utils.safe_print import safe_print as print
 
 logger = logging.getLogger(__name__)
 
@@ -147,9 +146,12 @@ class TransitTimeCrawler:
             self._save_to_db(records)
         else:
             for rec in records:
-                print(
-                    f"  {rec['origin_label']} | {rec['transport_mode']} | "
-                    f"{rec['duration_minutes']}min | {rec['source_api']}"
+                logger.info(
+                    "  %s | %s | %smin | %s",
+                    rec['origin_label'],
+                    rec['transport_mode'],
+                    rec['duration_minutes'],
+                    rec['source_api'],
                 )
 
         return records

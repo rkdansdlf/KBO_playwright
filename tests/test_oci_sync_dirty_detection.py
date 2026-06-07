@@ -206,7 +206,7 @@ def test_sync_player_basic_by_ids_retries_transient_target_execute(monkeypatch):
 
         attempts = 0
 
-        def _mock_do_bulk_copy_upsert(_self, table_name, records, unique_cols, update_timestamp, csv, io, random):
+        def _mock_do_bulk_copy_upsert(_self, table_name, records, unique_cols, update_timestamp):
             nonlocal attempts
             attempts += 1
             if attempts == 1:
@@ -240,7 +240,7 @@ def test_sync_player_basic_by_ids_rolls_back_and_raises_after_retry_exhaustion(m
 
         attempts = 0
 
-        def _mock_do_bulk_copy_upsert(_self, table_name, records, unique_cols, update_timestamp, csv, io, random):
+        def _mock_do_bulk_copy_upsert(_self, table_name, records, unique_cols, update_timestamp):
             nonlocal attempts
             attempts += 1
             raise _timeout_operational_error()

@@ -13,7 +13,7 @@ from typing import Iterable
 
 from src.parsers.game_detail_parser import parse_game_detail_html
 from src.repositories.game_repository import save_game_detail
-from src.utils.safe_print import safe_print as print
+
 
 logger = logging.getLogger(__name__)
 
@@ -29,7 +29,7 @@ def ingest_mock_html(args: argparse.Namespace) -> None:
         files = files[: args.limit]
 
     if not files:
-        print("ℹ️  No HTML fixtures found. Place files like 20251001NCLG0.html in the directory.")
+        logger.info("ℹ️  No HTML fixtures found. Place files like 20251001NCLG0.html in the directory.")
         return
 
     for html_file in files:
@@ -44,9 +44,9 @@ def ingest_mock_html(args: argparse.Namespace) -> None:
         # 변환된 데이터를 데이터베이스에 저장합니다.
         success = save_game_detail(payload)
         if success:
-            print(f"✅ Ingested mock game {game_id}")
+            logger.info(f"✅ Ingested mock game {game_id}")
         else:
-            print(f"❌ Failed to ingest mock game {game_id}")
+            logger.info(f"❌ Failed to ingest mock game {game_id}")
 
 
 def build_arg_parser() -> argparse.ArgumentParser:

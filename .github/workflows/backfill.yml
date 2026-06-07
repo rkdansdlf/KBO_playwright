@@ -1,0 +1,228 @@
+name: KBO Backfill (Consolidated)
+
+on:
+  schedule:
+    - cron: '30 19 * * 0'  # Mon 04:30 KST — missed_crawls
+    - cron: '0 19 * * 0'   # Mon 04:00 KST — player_game_stats
+    - cron: '45 20 * * 0'  # Mon 05:45 KST — sh_sf
+    - cron: '0 21 * * 0'   # Mon 06:00 KST — advanced_stats
+    - cron: '30 20 * * 3'  # Thu 05:30 KST — player_ids
+    - cron: '0 19 1 * *'   # 2nd 04:00 KST — roster
+  workflow_dispatch:
+    inputs:
+      backfill_id:
+        description: 'Which backfill to run (missed_crawls|player_game_stats|sh_sf|advanced_stats|player_ids|roster|all)'
+        required: false
+        default: 'all'
+      year:
+        description: 'Season year (leave empty for current)'
+        required: false
+        default: ''
+
+concurrency:
+  group: kbo-db-write-operations
+  cancel-in-progress: false
+
+env:
+  PYTHONPATH: ${{ github.workspace }}
+
+jobs:
+  backfill:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - id: missed_crawls
+            name: Missed Crawls
+            cron: '30 19 * * 0'
+            playwright: 'true'
+            hydrate: 'true'
+            secrets_group: kbo_auth
+          - id: player_game_stats
+            name: Player Game Stats
+            cron: '0 19 * * 0'
+            playwright: 'false'
+            hydrate: 'false'
+            secrets_group: none
+          - id: sh_sf
+            name: SH/SF
+            cron: '45 20 * * 0'
+            playwright: 'false'
+            hydrate: 'false'
+            secrets_group: none
+          - id: advanced_stats
+            name: Advanced Stats
+            cron: '0 21 * * 0'
+            playwright: 'false'
+            hydrate: 'true'
+            secrets_group: none
+          - id: player_ids
+            name: Player IDs
+            cron: '30 20 * * 3'
+            playwright: 'false'
+            hydrate: 'false'
+            secrets_group: none
+          - id: roster
+            name: Roster
+            cron: '0 19 1 * *'
+            playwright: 'true'
+            hydrate: 'true'
+            secrets_group: kbo_auth
+
+    name: ${{ matrix.name }}
+    if: |
+      github.event_name == 'workflow_dispatch' && (
+        github.event.inputs.backfill_id == matrix.id ||
+        github.event.inputs.backfill_id == 'all'
+      ) ||
+      github.event_name == 'schedule' && github.event.schedule == matrix.cron
+
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ./.github/actions/python-env
+        with:
+          playwright: ${{ matrix.playwright }}
+          init-db: 'true'
+
+      - name: Resolve Year
+        id: params
+        run: |
+          YEAR="${{ github.event.inputs.year || '' }}"
+          if [ -z "$YEAR" ]; then
+            YEAR="$(TZ='Asia/Seoul' date +'%Y')"
+          fi
+          echo "year=${YEAR}" >> "$GITHUB_OUTPUT"
+          echo "date=$(TZ='Asia/Seoul' date +'%Y%m%d')" >> "$GITHUB_OUTPUT"
+
+      - name: Hydrate Runtime Cache From OCI
+        if: ${{ matrix.hydrate == 'true' }}
+        env:
+          OCI_DB_URL: ${{ secrets.OCI_DB_URL }}
+        run: |
+          python3 -m src.cli.hydrate_runtime_from_oci \
+            --year "${{ steps.params.outputs.year }}"
+
+      # ── missed_crawls ────────────────────────────────────────────────
+      - name: Run Missed Crawls Backfill
+        if: ${{ matrix.id == 'missed_crawls' }}
+        env:
+          OCI_DB_URL: ${{ secrets.OCI_DB_URL }}
+          KBO_USER_ID: ${{ secrets.KBO_USER_ID }}
+          KBO_USER_PWD: ${{ secrets.KBO_USER_PWD }}
+        run: |
+          python3 -c "
+          from scripts.scheduler import backfill_missed_daily_crawls
+          result = backfill_missed_daily_crawls(lookback_days=${{ github.event.inputs.lookback_days || '14' }})
+          print(f'Backfilled: {result}')
+          "
+
+      # ── player_game_stats ────────────────────────────────────────────
+      - name: Recalc & Sync Player Game Stats
+        if: ${{ matrix.id == 'player_game_stats' }}
+        env:
+          OCI_DB_URL: ${{ secrets.OCI_DB_URL }}
+        run: |
+          YEAR="${{ steps.params.outputs.year }}"
+          for year in $(seq 2018 "$YEAR"); do
+            echo "=== Processing $year ==="
+            python3 -m src.cli.recalc_player_game_stats --season "$year" --save
+          done
+          echo "=== Syncing all to OCI ==="
+          python3 -m src.cli.sync_oci --player-game-stats
+
+      - name: Verify PlayerGame Data Quality
+        if: ${{ matrix.id == 'player_game_stats' }}
+        run: |
+          python3 -m scripts.verification.verify_player_game_stats --exit-code
+
+      # ── sh_sf ────────────────────────────────────────────────────────
+      - name: Run SH/SF Backfill
+        if: ${{ matrix.id == 'sh_sf' }}
+        env:
+          OCI_DB_URL: ${{ secrets.OCI_DB_URL }}
+        run: |
+          YEAR="${{ steps.params.outputs.year }}"
+          python3 -c "
+          from scripts.legacy.maintenance.backfill_sh_sf_from_pbp import find_candidate_games, backfill_game
+          from src.db.engine import SessionLocal
+          year = ${YEAR}
+          with SessionLocal() as session:
+              game_ids = find_candidate_games(session, year=year)
+              if not game_ids:
+                  print('No candidate games found')
+              else:
+                  total = 0
+                  for gid in game_ids:
+                      updated = backfill_game(session, gid)
+                      if updated:
+                          session.commit()
+                          total += updated
+                  print(f'SH/SF backfill: {len(game_ids)} games updated ({total} rows)')
+          "
+
+      # ── advanced_stats ───────────────────────────────────────────────
+      - name: Run Advanced Stats Backfill
+        if: ${{ matrix.id == 'advanced_stats' }}
+        env:
+          OCI_DB_URL: ${{ secrets.OCI_DB_URL }}
+        run: |
+          YEAR="${{ steps.params.outputs.year }}"
+          python3 -m src.cli.backfill_advanced_stats \
+            --years "$YEAR" \
+            --series regular
+          python3 -m src.cli.sync_oci \
+            --season-stats \
+            --year "$YEAR"
+
+      # ── player_ids ──────────────────────────────────────────────────
+      - name: Run Player ID Backfill
+        if: ${{ matrix.id == 'player_ids' }}
+        env:
+          OCI_DB_URL: ${{ secrets.OCI_DB_URL }}
+        run: |
+          python3 -c "
+          from scripts.legacy.maintenance.backfill_player_ids import backfill_year
+          from src.db.engine import SessionLocal
+          from src.services.player_id_resolver import PlayerIdResolver
+          year = $(TZ='Asia/Seoul' date +'%Y')
+          with SessionLocal() as session:
+              resolver = PlayerIdResolver(session)
+              result = backfill_year(session, resolver, year)
+              print(f'Player ID backfill: resolved={result.get(\"resolved\", 0)} failed={result.get(\"failed\", 0)}')
+          "
+
+      # ── roster ──────────────────────────────────────────────────────
+      - name: Run Roster Backfill
+        if: ${{ matrix.id == 'roster' }}
+        env:
+          OCI_DB_URL: ${{ secrets.OCI_DB_URL }}
+          KBO_USER_ID: ${{ secrets.KBO_USER_ID }}
+          KBO_USER_PWD: ${{ secrets.KBO_USER_PWD }}
+        run: |
+          YEAR="${{ steps.params.outputs.year }}"
+          python3 -c "
+          import asyncio
+          from scripts.legacy.maintenance.backfill_roster_movements import (
+              backfill_daily_rosters,
+              backfill_player_movements,
+          )
+          from datetime import datetime, timedelta
+          from zoneinfo import ZoneInfo
+          KST = ZoneInfo('Asia/Seoul')
+          now = datetime.now(KST)
+          asyncio.run(backfill_player_movements(['${YEAR}']))
+          end = now.strftime('%Y-%m-%d')
+          start = (now - timedelta(days=7)).strftime('%Y-%m-%d')
+          asyncio.run(backfill_daily_rosters(start, end))
+          print(f'Roster backfill completed for {end}')
+          "
+
+      - uses: ./.github/actions/notify
+        if: always()
+        with:
+          status: ${{ job.status }}
+          workflow: ${{ format('Backfill ({0})', matrix.name) }}
+          channels: telegram

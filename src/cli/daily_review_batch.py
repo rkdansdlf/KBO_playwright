@@ -20,7 +20,7 @@ from src.services.context_aggregator import ContextAggregator
 from src.sync.oci_sync import OCISync
 from src.utils.game_status import COMPLETED_LIKE_GAME_STATUSES
 from src.utils.refresh_manifest import write_refresh_manifest
-from src.utils.safe_print import safe_print as print
+
 from src.utils.team_codes import team_code_from_game_id_segment
 
 logger = logging.getLogger(__name__)
@@ -109,7 +109,7 @@ async def run_review_batch(target_date: str, *, sync_to_oci: bool | None = None)
     target_dt_obj = datetime.strptime(target_date, "%Y%m%d").date()
     status_result = refresh_game_status_for_date(target_date)
     if status_result.get("updated", 0):
-        print(
+        logger.info(
             "🔄 Refreshed game statuses before review: "
             f"updated={status_result.get('updated', 0)} "
             f"counts={status_result.get('status_counts', {})}"
@@ -155,7 +155,7 @@ async def run_review_batch(target_date: str, *, sync_to_oci: bool | None = None)
             review_data = _build_review_data(agg, game)
 
             if not review_data["crucial_moments"]:
-                print(
+                logger.info(
                     f"  ⚠️ No WPA-backed game_events found for {game_id}. Raw event crawl may be missing or incomplete."
                 )
 

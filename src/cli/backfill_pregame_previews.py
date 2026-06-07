@@ -21,7 +21,7 @@ from sqlalchemy import text
 
 from src.cli.daily_preview_batch import run_preview_batch
 from src.db.engine import SessionLocal
-from src.utils.safe_print import safe_print as print
+
 
 logger = logging.getLogger(__name__)
 
@@ -168,7 +168,7 @@ async def run_backfill(args: argparse.Namespace) -> int:
 
     logger.info(f"Pregame backfill targets ({start_date}..{end_date}): {len(targets)} date(s)")
     for target in targets:
-        print(
+        logger.info(
             f"  {target.target_date}: "
             f"starters={target.starters_complete}/{target.scheduled_total}, "
             f"preview={target.preview_rows}/{target.scheduled_total}, "
@@ -201,7 +201,7 @@ async def run_backfill(args: argparse.Namespace) -> int:
                     f"preview_missing_starters={refreshed.preview_missing_starters}"
                 )
 
-    print(
+    logger.info(
         "\nPregame backfill finished. "
         f"saved_total={saved_total}, failed_empty={len(failed)}, incomplete={len(incomplete)}"
     )

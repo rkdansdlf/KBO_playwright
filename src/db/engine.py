@@ -3,10 +3,13 @@ Database engine configuration
 Supports both SQLite (dev) and MySQL (production)
 """
 
+import logging
 import os
 import sqlite3
 
 from dotenv import load_dotenv
+
+logger = logging.getLogger(__name__)
 from sqlalchemy import create_engine, event
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import sessionmaker
@@ -15,6 +18,16 @@ load_dotenv()
 
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./data/kbo_dev.db")
 DISABLE_SQLITE_WAL = os.getenv("DISABLE_SQLITE_WAL", "0") == "1"
+
+
+def get_oci_url() -> str | None:
+    """Resolve the OCI/Target database URL from environment variables."""
+    return os.getenv("OCI_DB_URL") or os.getenv("TARGET_DATABASE_URL")
+
+
+def get_source_db_url() -> str:
+    """Resolve the source/local database URL (with SQLite default)."""
+    return os.getenv("SOURCE_DATABASE_URL", "sqlite:///./data/kbo_dev.db")
 
 
 def _is_sqlite(url: str) -> bool:
@@ -84,10 +97,10 @@ def _ensure_player_batting_team_code_column():
             info_rows = conn.exec_driver_sql("PRAGMA table_info(player_season_batting);").fetchall()
             column_names = {row[1] for row in info_rows}
             if "team_code" not in column_names and "team_id" in column_names:
-                print("[DB] Migrating player_season_batting.team_id -> team_code")
+                logger.info("[DB] Migrating player_season_batting.team_id -> team_code")
                 conn.exec_driver_sql("ALTER TABLE player_season_batting RENAME COLUMN team_id TO team_code;")
     except SQLAlchemyError as exc:
-        print(f"[WARN] Could not migrate player_season_batting.team_id column: {exc}")
+        logger.warning("Could not migrate player_season_batting.team_id column: %s", exc)
 
 
 def _ensure_player_basic_status_columns():
@@ -108,7 +121,7 @@ def _ensure_player_basic_status_columns():
             for clause in alterations:
                 conn.exec_driver_sql(f"ALTER TABLE player_basic {clause};")
     except SQLAlchemyError as exc:
-        print(f"[WARN] Could not ensure player_basic status columns: {exc}")
+        logger.warning("Could not ensure player_basic status columns: %s", exc)
 
 
 def _ensure_game_core_tables():
@@ -120,7 +133,7 @@ def _ensure_game_core_tables():
             _migrate_game_table(conn)
             _migrate_game_summary_table(conn)
     except SQLAlchemyError as exc:
-        print(f"[WARN] Could not align game tables: {exc}")
+        logger.warning("Could not align game tables: %s", exc)
 
 
 def _ensure_game_status_column():
@@ -134,7 +147,7 @@ def _ensure_game_status_column():
             if "game_status" not in column_names:
                 conn.exec_driver_sql("ALTER TABLE game ADD COLUMN game_status VARCHAR(32);")
     except SQLAlchemyError as exc:
-        print(f"[WARN] Could not ensure game.game_status column: {exc}")
+        logger.warning("Could not ensure game.game_status column: %s", exc)
 
 
 def _ensure_game_identity_columns():
@@ -154,7 +167,7 @@ def _ensure_game_identity_columns():
             if "is_primary" not in column_names:
                 conn.exec_driver_sql("ALTER TABLE game ADD COLUMN is_primary BOOLEAN DEFAULT 1;")
     except SQLAlchemyError as exc:
-        print(f"[WARN] Could not ensure game identity columns: {exc}")
+        logger.warning("Could not ensure game identity columns: %s", exc)
 
 
 def _migrate_game_table(conn):
@@ -306,4 +319,4 @@ def init_db():
     _ensure_game_core_tables()
     _ensure_game_status_column()
     _ensure_game_identity_columns()
-    print(f"[DB] Database initialized: {DATABASE_URL}")
+    logger.info("[DB] Database initialized: %s", DATABASE_URL)

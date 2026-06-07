@@ -6,6 +6,7 @@ Ensures PlayerIdResolver can match players using relational links.
 
 from __future__ import annotations
 
+import logging
 import os
 import sys
 
@@ -16,16 +17,17 @@ from sqlalchemy import select
 
 from src.db.engine import SessionLocal
 from src.models.player import Player, PlayerBasic, PlayerIdentity
-from src.utils.safe_print import safe_print as print
+
+logger = logging.getLogger(__name__)
 
 
 def sync_profiles():
-    print("🚀 Starting Player Metadata Sync (Relational Mirroring)...")
+    logger.info("Starting Player Metadata Sync (Relational Mirroring)...")
 
     with SessionLocal() as session:
         # Get all players from basic table
         basics = session.execute(select(PlayerBasic)).scalars().all()
-        print(f"📊 Found {len(basics)} players in 'player_basic'.")
+        logger.info("Found %d players in 'player_basic'.", len(basics))
 
         synced_count = 0
         new_players = 0
@@ -68,14 +70,14 @@ def sync_profiles():
 
             synced_count += 1
             if synced_count % 500 == 0:
-                print(f"   Progress: {synced_count} processed...")
+                logger.info("   Progress: %d processed...", synced_count)
                 session.commit()  # Periodic commit
 
         session.commit()
-        print("\n✅ Sync Complete!")
-        print(f"   - Total processed: {synced_count}")
-        print(f"   - New master players: {new_players}")
-        print(f"   - New identities: {new_identities}")
+        logger.info("Sync Complete!")
+        logger.info("   - Total processed: %d", synced_count)
+        logger.info("   - New master players: %d", new_players)
+        logger.info("   - New identities: %d", new_identities)
 
 
 if __name__ == "__main__":

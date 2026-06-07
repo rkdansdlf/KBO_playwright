@@ -10,7 +10,6 @@ from sqlalchemy.orm import Session
 
 from src.models.player import PlayerSeasonBaserunning, PlayerSeasonFielding
 from src.models.team import TeamSeasonBaserunning, TeamSeasonFielding
-from src.utils.safe_print import safe_print as print
 
 logger = logging.getLogger(__name__)
 
@@ -128,8 +127,9 @@ class TeamFieldingAggregator:
         kbo_teams = {t.team_id for t in self.session.query(Team.team_id).filter(Team.franchise_id.isnot(None)).all()}
 
         valid_teams = [code for code in team_codes if code in active_in_db and code in kbo_teams]
-        print(
-            f"[TeamFieldingAggregator] Season {season} filtering: original={len(team_codes)} teams -> valid={len(valid_teams)} teams ({', '.join(valid_teams)})"
+        logger.info(
+            "[TeamFieldingAggregator] Season %s filtering: original=%d teams -> valid=%d teams (%s)",
+            season, len(team_codes), len(valid_teams), ', '.join(valid_teams),
         )
 
         for code in valid_teams:

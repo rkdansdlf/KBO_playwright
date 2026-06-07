@@ -121,9 +121,9 @@ class PlayerIdResolver:
         self, cache_key: str, player_name: str, team_code: str, season: int, candidate_ids
     ) -> int | None:
         candidates = sorted({int(pid) for pid in candidate_ids if pid is not None})
-        print(
-            f"   [AMBIGUOUS PLAYER] {player_name} ({team_code}, {season}) "
-            f"matches multiple official candidates: {candidates}. Leaving player_id NULL."
+        logger.warning(
+            "   [AMBIGUOUS PLAYER] %s (%s, %s) matches multiple official candidates: %s. Leaving player_id NULL.",
+            player_name, team_code, season, candidates,
         )
         self._cache[cache_key] = None
         return None
@@ -331,8 +331,9 @@ class PlayerIdResolver:
         override_key = (player_name, team_code, season, is_pitcher)
         if override_key in overrides:
             resolved_id = overrides[override_key]
-            print(
-                f"   [OVERRIDE RESOLVED] {player_name} ({team_code}, {season}, is_pitcher={is_pitcher}) -> {resolved_id}"
+            logger.info(
+                "   [OVERRIDE RESOLVED] %s (%s, %s, is_pitcher=%s) -> %s",
+                player_name, team_code, season, is_pitcher, resolved_id,
             )
             return resolved_id
 
@@ -461,9 +462,9 @@ class PlayerIdResolver:
                 self._cache[cache_key] = fact_id
                 return fact_id
 
-            print(
-                f"   [UNRESOLVED PLAYER] {player_name} ({team_code}, {season}) lacked "
-                "strict team/season/uniform evidence. Leaving player_id NULL."
+            logger.warning(
+                "   [UNRESOLVED PLAYER] %s (%s, %s) lacked strict team/season/uniform evidence. Leaving player_id NULL.",
+                player_name, team_code, season,
             )
             self._cache[cache_key] = None
             return None
@@ -494,17 +495,17 @@ class PlayerIdResolver:
 
         # 6. Optional legacy fallback: auto-register unknown player as a local profile.
         if not self.allow_unknown_registration:
-            print(
-                f"   [UNKNOWN PLAYER] {player_name} ({team_code}, {season}) was not resolved. "
-                "Leaving player_id NULL; automatic local profile registration is disabled."
+            logger.warning(
+                "   [UNKNOWN PLAYER] %s (%s, %s) was not resolved. Leaving player_id NULL; automatic local profile registration is disabled.",
+                player_name, team_code, season,
             )
             self._cache[cache_key] = None
             return None
 
         if not team_code:
-            print(
-                f"   [UNKNOWN PLAYER] {player_name} ({season}) has no team context. "
-                "Leaving player_id NULL instead of auto-registering."
+            logger.warning(
+                "   [UNKNOWN PLAYER] %s (%s) has no team context. Leaving player_id NULL instead of auto-registering.",
+                player_name, season,
             )
             self._cache[cache_key] = None
             return None

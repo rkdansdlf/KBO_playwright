@@ -124,8 +124,10 @@ def crawl_baserunning_stats(year=None, max_retries=3, timeout=60000):
                             baserunning_data.append(stats)
 
                         except (ValueError, AttributeError, IndexError) as e:
-                            print(
-                                f"   ⚠️  선수 데이터 파싱 오류 ({player_name if 'player_name' in locals() else '알 수 없음'}): {e}"
+                            logger.warning(
+                                "   ⚠️  선수 데이터 파싱 오류 (%s): %s",
+                                player_name if 'player_name' in locals() else '알 수 없음',
+                                e,
                             )
                             continue
 

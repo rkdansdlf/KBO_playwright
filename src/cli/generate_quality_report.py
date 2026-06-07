@@ -16,7 +16,7 @@ from zoneinfo import ZoneInfo
 from sqlalchemy import MetaData, Table, func, inspect, or_, select
 from sqlalchemy.exc import SQLAlchemyError
 
-from src.db.engine import SessionLocal
+from src.db.engine import SessionLocal, get_oci_url
 from src.models.game import (
     Game,
     GameBattingStat,
@@ -533,7 +533,7 @@ def get_daily_metrics(session, target_date_str: str, gate_result: dict[str, Any]
         local_count = session.query(func.count(Game.game_id)).scalar()
         parity_info["local_count"] = local_count
 
-        target_url = os.getenv("OCI_DB_URL") or os.getenv("TARGET_DATABASE_URL")
+        target_url = get_oci_url()
         if target_url:
             oci_engine = create_engine(target_url)
             with oci_engine.connect() as conn:

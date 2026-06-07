@@ -15,7 +15,9 @@ from src.services.relay_recovery_service import (
     parse_source_order,
     recover_relay_data,
 )
-from src.utils.safe_print import safe_print as print
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 async def run_fetcher(argv: list[str] | None = None) -> int:
@@ -74,7 +76,7 @@ async def run_fetcher(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     if not args.season and not args.date and not args.game_ids and not args.game_ids_file:
-        print("[ERROR] Must provide --season, --date, --game-ids, or --game-ids-file")
+        logger.error("Must provide --season, --date, --game-ids, or --game-ids-file")
         return 1
 
     if args.force:
@@ -88,14 +90,14 @@ async def run_fetcher(argv: list[str] | None = None) -> int:
             game_ids_file=args.game_ids_file,
             bucket=args.bucket,
             missing_only=args.missing_only,
-            log=print,
+            log=logger.info,
         )
     except (FileNotFoundError, ValueError) as exc:
-        print(f"[ERROR] {exc}")
+        logger.error("%s", exc)
         return 1
 
     if not targets:
-        print("[INFO] No games found to process.")
+        logger.info("No games found to process.")
         return 0
 
     if args.limit:
@@ -112,9 +114,9 @@ async def run_fetcher(argv: list[str] | None = None) -> int:
         validate_final_score=args.validate_final_score,
         validate_inning_continuity=args.validate_inning_continuity,
         report_out=Path(args.report_out) if args.report_out else None,
-        log=print,
+        log=logger.info,
     )
-    print("\n[INFO] Relay recovery run completed.")
+    logger.info("Relay recovery run completed.")
     return 0
 
 

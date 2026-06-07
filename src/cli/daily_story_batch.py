@@ -17,7 +17,7 @@ from src.services.game_story_builder import STORY_SUMMARY_TYPE, GameStoryBuilder
 from src.sync.oci_sync import OCISync
 from src.utils.game_status import COMPLETED_LIKE_GAME_STATUSES
 from src.utils.refresh_manifest import write_refresh_manifest
-from src.utils.safe_print import safe_print as print
+
 
 logger = logging.getLogger(__name__)
 TRUSTED_RELAY_STATUSES = {"verified", "recovered"}
@@ -106,7 +106,7 @@ async def run_story_batch(target_date: str, *, sync_to_oci: bool | None = None) 
     target_dt_obj = datetime.strptime(target_date, "%Y%m%d").date()
     status_result = refresh_game_status_for_date(target_date)
     if status_result.get("updated", 0):
-        print(
+        logger.info(
             "🔄 Refreshed game statuses before story generation: "
             f"updated={status_result.get('updated', 0)} "
             f"counts={status_result.get('status_counts', {})}"
@@ -144,7 +144,7 @@ async def run_story_batch(target_date: str, *, sync_to_oci: bool | None = None) 
             logger.info(f"📚 Generating story timeline for {game.game_id}...")
             story_data = _build_story_data(builder, session, game)
             if not story_data["timeline"]:
-                print(
+                logger.info(
                     f"  ⚠️ No story timeline events selected for {game.game_id}. "
                     f"warnings={story_data['source'].get('warnings', [])}"
                 )

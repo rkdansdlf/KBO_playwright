@@ -20,7 +20,7 @@ from src.cli.verify_sync_consistency import run_consistency_audit
 from src.crawlers.dynamic_data_crawler import DynamicDataCrawler
 from src.crawlers.realtime_issue_crawler import RealtimeIssueCrawler
 from src.crawlers.static_text_crawler import StaticTextCrawler
-from src.db.engine import get_db_session
+from src.db.engine import get_db_session, get_oci_url
 from src.parsers.text_transformer import TextTransformer
 from src.repositories.rag_chunk_repository import RagChunkRepository
 from src.services.embedding_service import EmbeddingService
@@ -196,7 +196,7 @@ async def run_static_pipeline(pdf_path: str | None = None):
                 logger.info("🚚 Syncing new static RAG chunks to OCI...")
                 from src.sync.oci_sync import OCISync
 
-                oci_url = os.getenv("OCI_DB_URL") or os.getenv("TARGET_DATABASE_URL")
+                oci_url = get_oci_url()
                 if oci_url:
                     syncer = OCISync(oci_url, session)
                     try:
@@ -237,7 +237,7 @@ async def run_dynamic_pipeline():
             logger.info("🚚 Syncing ticket schedules and daily rosters to OCI...")
             from src.sync.oci_sync import OCISync
 
-            oci_url = os.getenv("OCI_DB_URL") or os.getenv("TARGET_DATABASE_URL")
+            oci_url = get_oci_url()
             if oci_url:
                 syncer = OCISync(oci_url, session)
                 try:
@@ -306,7 +306,7 @@ async def run_realtime_pipeline():
                 logger.info("🚚 Syncing realtime RAG chunks to OCI...")
                 from src.sync.oci_sync import OCISync
 
-                oci_url = os.getenv("OCI_DB_URL") or os.getenv("TARGET_DATABASE_URL")
+                oci_url = get_oci_url()
                 if oci_url:
                     syncer = OCISync(oci_url, session)
                     try:
@@ -321,7 +321,7 @@ def run_consistency_check(deep: bool = False):
     Runs a post-sync consistency audit between local SQLite and OCI.
     Sends an alert if mismatches are found. Skips silently if OCI is not configured.
     """
-    oci_url = os.getenv("OCI_DB_URL") or os.getenv("TARGET_DATABASE_URL")
+    oci_url = get_oci_url()
     if not oci_url:
         logger.info("ℹ️  OCI URL not configured — skipping consistency check.")
         return

@@ -1,5 +1,6 @@
 import argparse
 import asyncio
+import logging
 import os
 import sys
 
@@ -12,17 +13,18 @@ from src.db.engine import SessionLocal
 from src.repositories.game_repository import Game
 from src.services.game_collection_service import crawl_and_save_game_details
 from src.services.schedule_collection_service import save_schedule_games
-from src.utils.safe_print import safe_print as print
 from src.utils.series_validation import get_available_series_by_year
+
+logger = logging.getLogger(__name__)
 
 
 async def backfill_year(year: int, series_list: list[str] = None):
     """
     Backfill game data for a single year.
     """
-    print("\n" + "=" * 60)
-    print(f"🚀 Starting Backfill for Year: {year}")
-    print("=" * 60)
+    logger.info("\n" + "=" * 60)
+    logger.info("Starting Backfill for Year: %d", year)
+    logger.info("=" * 60)
 
     if not series_list:
         series_list = get_available_series_by_year(year)
@@ -35,7 +37,7 @@ async def backfill_year(year: int, series_list: list[str] = None):
     all_game_ids = []
 
     # Step 1: Collect Schedules
-    print(f"\n📅 Phase 1: Collecting Schedules for {year}...")
+    logger.info("Phase 1: Collecting Schedules for %d...", year)
 
     # Map internal series names to KBO Series IDs (based on 2010 debug)
     # 0,9,6: Regular Season
@@ -54,17 +56,17 @@ async def backfill_year(year: int, series_list: list[str] = None):
 
     for sid in kbo_series_ids:
         try:
-            print(f"  🔍 Crawling Series ID: {sid}...")
+            logger.info("Crawling Series ID: %s...", sid)
             games = await schedule_crawler.crawl_season(year, months=list(range(3, 12)), series_id=sid)
-            print(f"  ✅ Found {len(games)} games for Series {sid}")
+            logger.info("Found %d games for Series %s", len(games), sid)
 
-            result = save_schedule_games(games, log=print)
+            result = save_schedule_games(games, log=logger.info)
             if result.failed:
-                print(f"  ⚠️ Schedule save failed for {result.failed} rows")
+                logger.warning("Schedule save failed for %d rows", result.failed)
             for g in result.saved_games:
                 all_game_ids.append((g["game_id"], g["game_date"]))
         except Exception as e:
-            print(f"  ❌ Error collecting schedule for {year} (Series {sid}): {e}")
+            logger.error("Error collecting schedule for %d (Series %s): %s", year, sid, e)
 
     # Remove duplicates from all_game_ids
     unique_games = []
@@ -74,10 +76,10 @@ async def backfill_year(year: int, series_list: list[str] = None):
             unique_games.append({"game_id": gid, "game_date": gdate})
             seen_ids.add(gid)
 
-    print(f"📊 Total unique games to scrape: {len(unique_games)}")
+    logger.info("Total unique games to scrape: %d", len(unique_games))
 
     # Step 2: Scrape Details
-    print(f"\n🎮 Phase 2: Scraping Game Details for {year}...")
+    logger.info("Phase 2: Scraping Game Details for %d...", year)
 
     # Filter out already completed games if needed, but for backfill we usually want all
     # For efficiency, we use crawl_games which handles concurrency
@@ -87,8 +89,11 @@ async def backfill_year(year: int, series_list: list[str] = None):
     chunk_size = 20
     for i in range(0, len(unique_games), chunk_size):
         chunk = unique_games[i : i + chunk_size]
-        print(
-            f"  📦 Processing chunk {i // chunk_size + 1}/{(len(unique_games) - 1) // chunk_size + 1} ({len(chunk)} games)..."
+        logger.info(
+            "Processing chunk %d/%d (%d games)...",
+            i // chunk_size + 1,
+            (len(unique_games) - 1) // chunk_size + 1,
+            len(chunk),
         )
 
         pending_chunk = []
@@ -99,7 +104,6 @@ async def backfill_year(year: int, series_list: list[str] = None):
             with SessionLocal() as session:
                 existing = session.query(Game).filter(Game.game_id == gid).one_or_none()
                 if existing and existing.home_score is not None:
-                    # print(f"    ⏭️  Skipping {gid} (already has score)")
                     success_count += 1
                     continue
             pending_chunk.append(game)
@@ -110,14 +114,14 @@ async def backfill_year(year: int, series_list: list[str] = None):
                 detail_crawler=detail_crawler,
                 force=True,
                 concurrency=1,
-                log=print,
+                log=logger.info,
             )
             success_count += result.detail_saved
             for item in result.items.values():
                 if not item.detail_saved:
-                    print(f"    ❌ Failed to crawl/save {item.game_id} (reason={item.failure_reason or 'unknown'})")
+                    logger.warning("Failed to crawl/save %s (reason=%s)", item.game_id, item.failure_reason or 'unknown')
 
-    print(f"\n🏁 Finished {year}: {success_count}/{len(unique_games)} games completed.")
+    logger.info("Finished %d: %d/%d games completed.", year, success_count, len(unique_games))
 
 
 async def main():
@@ -133,7 +137,7 @@ async def main():
     else:
         years = list(range(args.start, args.end + 1))
 
-    print(f"🌟 Starting Historical Backfill for range: {years}")
+    logger.info("Starting Historical Backfill for range: %s", years)
 
     for year in years:
         await backfill_year(year)

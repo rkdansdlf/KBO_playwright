@@ -20,9 +20,9 @@ from zoneinfo import ZoneInfo
 from dotenv import load_dotenv
 from sqlalchemy import text
 
-from src.db.engine import SessionLocal
+from src.db.engine import SessionLocal, get_oci_url
 from src.sync.oci_sync import OCISync
-from src.utils.safe_print import safe_print as print
+
 
 logger = logging.getLogger(__name__)
 
@@ -95,7 +95,7 @@ def find_pregame_sync_targets(start_date: str, end_date: str) -> list[PregameSyn
 
 def run_sync(args: argparse.Namespace) -> int:
     load_dotenv()
-    target_url = args.target_url or os.getenv("OCI_DB_URL") or os.getenv("TARGET_DATABASE_URL")
+    target_url = args.target_url or get_oci_url()
     if not target_url:
         raise SystemExit("OCI_DB_URL or TARGET_DATABASE_URL is required")
 
@@ -109,12 +109,12 @@ def run_sync(args: argparse.Namespace) -> int:
 
     complete_starters = sum(1 for target in targets if target.away_pitcher and target.home_pitcher)
     preview_rows = sum(1 for target in targets if target.has_preview)
-    print(
+    logger.info(
         f"Pregame sync targets ({start_date}..{end_date}): "
         f"games={len(targets)}, starters_complete={complete_starters}, previews={preview_rows}"
     )
     for target in targets:
-        print(
+        logger.info(
             f"  {target.game_date} {target.game_id}: "
             f"starter='{target.away_pitcher}' vs '{target.home_pitcher}', "
             f"preview={int(target.has_preview)}"

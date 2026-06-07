@@ -25,7 +25,6 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from src.db.engine import SessionLocal
 from src.repositories.congestion_repository import CongestionRepository
-from src.utils.safe_print import safe_print as print
 from src.utils.seoul_api_client import CongestionSnapshot, get_jamsil_congestion_batch
 
 logger = logging.getLogger(__name__)
@@ -93,9 +92,12 @@ class CongestionCrawler:
             self._save_to_db(records)
         else:
             for rec in records:
-                print(
-                    f"  {rec['location_label']} | {rec['location_type']} | "
-                    f"level={rec['congestion_level']} | index={rec['congestion_index']}"
+                logger.info(
+                    "  %s | %s | level=%s | index=%s",
+                    rec['location_label'],
+                    rec['location_type'],
+                    rec['congestion_level'],
+                    rec['congestion_index'],
                 )
 
         return records

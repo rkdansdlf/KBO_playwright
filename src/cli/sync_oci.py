@@ -16,7 +16,7 @@ from dotenv import load_dotenv
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from src.db.engine import SessionLocal
+from src.db.engine import SessionLocal, get_oci_url
 from src.models.game import Game
 from src.models.matchup import BatterTeamSplit
 from src.models.player import PlayerSeasonBatting
@@ -65,7 +65,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--target-url",
         type=str,
-        default=os.getenv("OCI_DB_URL") or os.getenv("TARGET_DATABASE_URL"),
+        default=get_oci_url(),
         help="대상 데이터베이스 URL (OCI/Postgres)",
     )
     parser.add_argument(

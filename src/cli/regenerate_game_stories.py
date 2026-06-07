@@ -22,7 +22,7 @@ from src.models.game import Game, GameEvent, GameSummary
 from src.services.game_story_builder import STORY_SUMMARY_TYPE, GameStoryBuilder
 from src.sync.oci_sync import OCISync
 from src.utils.game_status import COMPLETED_LIKE_GAME_STATUSES
-from src.utils.safe_print import safe_print as print
+
 
 logger = logging.getLogger(__name__)
 
@@ -220,7 +220,7 @@ def regenerate_game_stories(
     oci_url: str | None = None,
     report_out: Path | None = None,
     backup_out: Path | None = None,
-    log=print,
+    log=logger.info,
 ) -> list[StoryRegenReportRow]:
     target_game_ids = list(game_ids or [])
     target_dates = list(dates or [])

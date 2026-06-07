@@ -14,6 +14,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import logging
 import os
 import sys
 
@@ -22,7 +23,8 @@ import httpx
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 
 from src.crawlers.relay_crawler import RelayCrawler
-from src.utils.safe_print import safe_print as print
+
+logger = logging.getLogger(__name__)
 
 FIXTURE_DIRS = {
     "naver_live": "tests/fixtures/naver_live",
@@ -93,10 +95,10 @@ async def main():
                 for g in games:
                     naver_id = str(g.get("gameId", ""))
                     game_ids.append(naver_id)
-                print(f"Found {len(game_ids)} games on {args.date}")
+                logger.info("Found %d games on %s", len(game_ids), args.date)
 
     for gid in game_ids:
-        print(f"\n--- Processing {gid} ---")
+        logger.info("\n--- Processing %s ---", gid)
 
         schedule = await fetch_naver_schedule(gid, crawler)
         if schedule:
@@ -110,7 +112,7 @@ async def main():
             schedule_path = os.path.join(FIXTURE_DIRS[prefix], f"schedule_{gid[:8]}.json")
             with open(schedule_path, "w", encoding="utf-8") as f:
                 json.dump(schedule, f, ensure_ascii=False, indent=2)
-            print(f"  Saved schedule to {schedule_path} (status={game_status})")
+            logger.info("  Saved schedule to %s (status=%s)", schedule_path, game_status)
 
         naver_id = crawler._map_to_naver_id(gid)
         innings_data = await fetch_naver_relay(naver_id, crawler)
@@ -121,9 +123,9 @@ async def main():
                 relay_path = os.path.join(FIXTURE_DIRS[prefix], f"relay_inning_{inn_padded}.json")
                 with open(relay_path, "w", encoding="utf-8") as f:
                     json.dump(payload, f, ensure_ascii=False, indent=2)
-            print(f"  Saved {len(innings_data)} inning relays to {prefix}/")
+            logger.info("  Saved %d inning relays to %s/", len(innings_data), prefix)
 
-    print("\nDone.")
+    logger.info("\nDone.")
 
 
 if __name__ == "__main__":

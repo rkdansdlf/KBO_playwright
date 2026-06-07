@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Any, Callable, Iterable, Mapping, Sequence
 
 from src.cli.run_daily_update import DEFAULT_DAILY_SUMMARY_DIR
-from src.utils.safe_print import safe_print as print
+
 from src.utils.team_codes import normalize_kbo_game_id
 
 logger = logging.getLogger(__name__)
@@ -153,22 +153,22 @@ def run_retry(
     commands = build_retry_commands(summary, sync=sync, python_bin=python_bin)
 
     if not commands:
-        print(f"[INFO] No retry candidates found in {summary_file}")
+        logger.info(f"No retry candidates found in {summary_file}")
         return 0
 
     action = "apply" if apply else "dry-run"
-    print(f"[INFO] Daily failure retry {action}: date={target_date} commands={len(commands)}")
+    logger.info(f"Daily failure retry {action}: date={target_date} commands={len(commands)}")
     for command in commands:
-        print(f"  $ {shlex.join(command)}")
+        logger.info(f"  $ {shlex.join(command)}")
 
     if not apply:
-        print("[INFO] Dry run only. Re-run with --apply to execute these commands.")
+        logger.info("Dry run only. Re-run with --apply to execute these commands.")
         return 0
 
     command_runner = runner or _default_runner
     for command in commands:
         command_runner(command)
-    print("[INFO] Retry commands completed.")
+    logger.info("Retry commands completed.")
     return 0
 
 
@@ -202,12 +202,12 @@ def main(argv: Sequence[str] | None = None, *, runner: Runner | None = None) -> 
             runner=runner,
         )
     except (FileNotFoundError, ValueError) as exc:
-        logger.exception(f"[ERROR] {exc}")
-        print(f"[ERROR] {exc}")
+        logger.exception(f"{exc}")
+        logger.error(f"{exc}")
         return 2
     except subprocess.CalledProcessError as exc:
-        logger.exception(f"[ERROR] Retry command failed with exit code {exc.returncode}: {shlex.join(exc.cmd)}")
-        print(f"[ERROR] Retry command failed with exit code {exc.returncode}: {shlex.join(exc.cmd)}")
+        logger.exception(f"Retry command failed with exit code {exc.returncode}: {shlex.join(exc.cmd)}")
+        logger.error(f"Retry command failed with exit code {exc.returncode}: {shlex.join(exc.cmd)}")
         return exc.returncode or 1
 
 
