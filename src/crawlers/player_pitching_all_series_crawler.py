@@ -233,7 +233,7 @@ def wait_for_table(page: Page, timeout: int = 30000) -> None:
             state="attached",
         )
     except PlaywrightTimeout:
-        print("   ⚠️  테이블 행이 표시되지 않았습니다. (데이터 없음 가능성)")
+        logger.exception("   ⚠️  테이블 행이 표시되지 않았습니다. (데이터 없음 가능성)")
     finally:
         page.wait_for_timeout(500)
 
@@ -267,7 +267,7 @@ def go_to_next_page(page: Page, current_page: int, policy: RequestPolicy | None 
         # 직접 클릭 시도
         page.click(selector, timeout=15000)
         page.wait_for_load_state("networkidle", timeout=30000)
-        print(f"➡️ {desc}")
+        logger.info(f"➡️ {desc}")
 
         # 페이지 이동 후 테이블 대기
         wait_for_table(page)
@@ -325,7 +325,7 @@ def apply_sort(
                 page.wait_for_timeout(800)
                 return True
 
-        print(f"⚠️  '{header_label}' 정렬 링크를 찾지 못했습니다.")
+        logger.warning(f"⚠️  '{header_label}' 정렬 링크를 찾지 못했습니다.")
         return False
     except Exception:
         logger.exception("⚠️ 정렬 적용 실패")
@@ -457,15 +457,15 @@ def parse_basic1_page(
     core_headers = ["선수명", "팀명", "IP", "G", "ERA"]
     missing_core = [h for h in core_headers if h not in header_index]
     if missing_core:
-        print(f"   ⚠️  Basic1 테이블 헤더에 필수 컬럼이 없습니다: {', '.join(missing_core)}")
-        print(f"   현재 헤더: {headers}")
+        logger.warning(f"   ⚠️  Basic1 테이블 헤더에 필수 컬럼이 없습니다: {', '.join(missing_core)}")
+        logger.info(f"   현재 헤더: {headers}")
         # If headers are still empty, try a more lenient selector
         if not headers:
-            print("   🔍 Lenient header check (tData01)...")
+            logger.info("   🔍 Lenient header check (tData01)...")
             headers = page.evaluate("""
                 () => Array.from(document.querySelectorAll('table.tData01 thead th')).map(th => th.textContent.trim())
             """)
-            print(f"   Lenient headers: {headers}")
+            logger.info(f"   Lenient headers: {headers}")
             headers = [normalize_header(h) for h in headers]
             header_index = {name: idx for idx, name in enumerate(headers)}
             missing_core = [h for h in core_headers if h not in header_index]
@@ -621,7 +621,7 @@ def parse_basic2_page(
     max_players: int | None = None,
 ) -> int:
     if not retry_wait_for_selector(page, "table.tData01 thead th", timeout=30000):
-        print("⚠️  Basic2 테이블 헤더 파싱 실패 (타임아웃)")
+        logger.warning("⚠️  Basic2 테이블 헤더 파싱 실패 (타임아웃)")
         return 0
 
     headers = [normalize_header(th.text_content()) for th in page.query_selector_all("table.tData01 thead th")]
@@ -631,7 +631,7 @@ def parse_basic2_page(
 
     # Basic2 헤더는 정규시즌과 포스트시즌에서 다를 수 있음
     if "선수명" not in header_index or "팀명" not in header_index:
-        print("⚠️  Basic2 테이블 헤더 파싱 실패")
+        logger.warning("⚠️  Basic2 테이블 헤더 파싱 실패")
         return 0
 
     rows_data = _extract_rows_fast(page) if use_fast else None
@@ -728,7 +728,7 @@ def setup_pitcher_page(page: Page, url: str, year: int, series_value: str, polic
     if policy:
         policy.delay(host="www.koreabaseball.com")
 
-    print(f"   🌐 Navigating to {url}...")
+    logger.info(f"   🌐 Navigating to {url}...")
     try:
         page.goto(url, wait_until="networkidle", timeout=60000)
     except Exception:
@@ -743,14 +743,14 @@ def setup_pitcher_page(page: Page, url: str, year: int, series_value: str, polic
         season_selector = 'select[name*="ddlSeason"]'
         series_selector = 'select[name*="ddlSeries"]'
 
-        print(f"   ⚙️  Selecting Season {year}...")
+        logger.info(f"   ⚙️  Selecting Season {year}...")
         page.select_option(season_selector, str(year))
         page.wait_for_load_state("networkidle", timeout=30000)
         import time
 
         time.sleep(2)
 
-        print(f"   ⚙️  Selecting Series {series_value}...")
+        logger.info(f"   ⚙️  Selecting Series {series_value}...")
         page.select_option(series_selector, value=series_value)
         page.wait_for_load_state("networkidle", timeout=30000)
         time.sleep(2)
@@ -758,7 +758,7 @@ def setup_pitcher_page(page: Page, url: str, year: int, series_value: str, polic
         # KBO 페이지 에러 감지 (500 에러 등)
         title = page.title()
         if "에러" in title or "Error" in title:
-            print(f"   ❌ KBO 페이지 에러 감지: {title}")
+            logger.error(f"   ❌ KBO 페이지 에러 감지: {title}")
             return False
 
         return True
@@ -791,7 +791,7 @@ def fallback_pitching_from_db(year: int, series_key: str, reason: str = "Manual 
     KBO 페이지 장애 시 로컬 DB의 상세 기록을 합산하여 투수 시즌 기록을 생성합니다.
     """
     FallbackMonitor.log_fallback(year, series_key, "PITCHING", reason)
-    print(f"🔄 로컬 DB 기반 투수 기록 집계 시작 (연도: {year}, 시리즈: {series_key})...")
+    logger.info(f"🔄 로컬 DB 기반 투수 기록 집계 시작 (연도: {year}, 시리즈: {series_key})...")
     pitchers: dict[int, PitcherStats] = {}
 
     with SessionLocal() as session:
@@ -808,7 +808,7 @@ def fallback_pitching_from_db(year: int, series_key: str, reason: str = "Manual 
         )
 
         player_ids = [p[0] for p in player_ids_query.all() if p[0]]
-        print(f"🔍 DB에서 {len(player_ids)}명의 투수를 발견했습니다.")
+        logger.info(f"🔍 DB에서 {len(player_ids)}명의 투수를 발견했습니다.")
 
         series_info = SERIES_MAPPING.get(series_key, {})
         league_name = series_info.get("league", "REGULAR")
@@ -851,7 +851,7 @@ def fallback_pitching_from_db(year: int, series_key: str, reason: str = "Manual 
 
             pitchers[pid] = stats
 
-    print(f"✅ DB 집계 완료: 총 {len(pitchers)}명")
+    logger.info(f"✅ DB 집계 완료: 총 {len(pitchers)}명")
     return list(pitchers.values())
 
 
@@ -868,7 +868,7 @@ def crawl_pitcher_series(
 
     series_info = SERIES_MAPPING[series_key]
     league_name = series_info.get("league", "REGULAR")
-    print(f"\n📊 {year}년 {series_info['name']} 수집 시작 (by_team={by_team})")
+    logger.info(f"\n📊 {year}년 {series_info['name']} 수집 시작 (by_team={by_team})")
 
     pitchers: dict[int, PitcherStats] = {}
     policy = RequestPolicy()
@@ -884,7 +884,7 @@ def crawl_pitcher_series(
         # Step 1: Basic1 - 시리즈별 정렬 후 전체 페이지 수집
         if not setup_pitcher_page(page, BASIC1_URL, year, series_info["value"], policy=policy):
             reason = "Basic1 page setup failed (possible KBO site error)"
-            print(f"❌ Basic1 페이지 설정 실패. {reason}. DB에서 직접 집계하여 폴백(Fallback)을 시도합니다.")
+            logger.error(f"❌ Basic1 페이지 설정 실패. {reason}. DB에서 직접 집계하여 폴백(Fallback)을 시도합니다.")
             browser.close()
             stats_list = fallback_pitching_from_db(year, series_key, reason=reason)
             # Use FALLBACK_AUTO if triggered during crawl
@@ -911,9 +911,9 @@ def crawl_pitcher_series(
                         "options => options.map(o => ({text: o.textContent, value: o.value}))",
                     )
                     team_options = [opt for opt in options if opt["value"]]  # Empty value is "Team Selection"
-                    print(f"ℹ️ 팀별 순회 모드: {len(team_options)}개 팀 발견")
+                    logger.info(f"ℹ️ 팀별 순회 모드: {len(team_options)}개 팀 발견")
                 else:
-                    print("⚠️ 팀 선택 드롭다운을 찾을 수 없습니다. 전체 모드로 진행.")
+                    logger.warning("⚠️ 팀 선택 드롭다운을 찾을 수 없습니다. 전체 모드로 진행.")
             except Exception:
                 logger.exception("⚠️ 팀 목록 추출 실패, 전체 모드로 진행")
                 team_options = []
@@ -925,7 +925,7 @@ def crawl_pitcher_series(
 
             time.sleep(2)
             if team_options:
-                print(f"🔍 팀 선택: {tm['text']} ({tm['value']})")
+                logger.info(f"🔍 팀 선택: {tm['text']} ({tm['value']})")
                 try:
                     page.select_option(
                         'select[name="ctl00$ctl00$ctl00$cphContents$cphContents$cphContents$ddlTeam$ddlTeam"]',
@@ -959,10 +959,10 @@ def crawl_pitcher_series(
                     pitchers=pitchers,
                     max_players=limit,
                 )
-                print(f"   ▶ Basic1 {page_number}페이지: {parsed}명 처리 (누적 {len(pitchers)}명)")
+                logger.info(f"   ▶ Basic1 {page_number}페이지: {parsed}명 처리 (누적 {len(pitchers)}명)")
 
                 if limit and len(pitchers) >= limit:
-                    print("   🎯 수집 제한에 도달했습니다.")
+                    logger.info("   🎯 수집 제한에 도달했습니다.")
                     break
 
                 if not go_to_next_page(page, page_number, policy=policy):
@@ -972,7 +972,7 @@ def crawl_pitcher_series(
             if limit and len(pitchers) >= limit:
                 break
 
-        print(f"✅ Basic1 수집 완료: 총 {len(pitchers)}명")
+        logger.info(f"✅ Basic1 수집 완료: 총 {len(pitchers)}명")
 
         # Step 2: Basic2 (정규시즌만 실행, by_team 여부와 상관없이 '전체'에서 시도하거나 무시)
         # by_team일 때 Basic2를 팀별로 돌면 너무 오래 걸림.
@@ -983,7 +983,7 @@ def crawl_pitcher_series(
 
         if series_key == "regular" and not by_team:
             if not setup_pitcher_page(page, BASIC2_URL, year, series_info["value"], policy=policy):
-                print("⚠️  Basic2 페이지 설정 실패. 추가 지표 없이 종료합니다.")
+                logger.warning("⚠️  Basic2 페이지 설정 실패. 추가 지표 없이 종료합니다.")
                 browser.close()
                 return list(pitchers.values()) if not limit else list(pitchers.values())[:limit]
 
@@ -1010,9 +1010,9 @@ def crawl_pitcher_series(
                         break
                     page_number += 1
 
-                print(f"   ✅ Basic2 {display_name} 정렬 처리: {total_processed}행")
+                logger.info(f"   ✅ Basic2 {display_name} 정렬 처리: {total_processed}행")
         elif by_team:
-            print("ℹ️ 팀별 순회 모드에서는 Basic2(상세 지표) 수집을 건너뜁니다.")
+            logger.info("ℹ️ 팀별 순회 모드에서는 Basic2(상세 지표) 수집을 건너뜁니다.")
 
         browser.close()
 
@@ -1020,19 +1020,19 @@ def crawl_pitcher_series(
     if limit:
         stats_list = stats_list[:limit]
 
-    print(f"✅ {series_info['name']} 크롤링 완료: {len(stats_list)}명")
+    logger.info(f"✅ {series_info['name']} 크롤링 완료: {len(stats_list)}명")
     summary, valid_stats_list = build_pitching_crawl_summary(stats_list)
     if summary["filtered_rows"]:
-        print(f"⚠️ 투수 시즌 row 필터링: {summary['filtered_rows']}건 ({summary['failure_counts']})")
+        logger.warning(f"⚠️ 투수 시즌 row 필터링: {summary['filtered_rows']}건 ({summary['failure_counts']})")
     stats_list = valid_stats_list
 
     # 투수 전용 테이블에 저장
     if save_to_db and stats_list:
-        print("\n💾 투수 데이터 저장 시작 (player_season_pitching 테이블)...")
+        logger.info("\n💾 투수 데이터 저장 시작 (player_season_pitching 테이블)...")
         try:
             payloads = [stat.to_repository_payload() for stat in stats_list]
             saved_count = save_pitching_stats_to_db(payloads)
-            print(f"✅ 투수 데이터 저장 완료: {saved_count}명")
+            logger.info(f"✅ 투수 데이터 저장 완료: {saved_count}명")
             print(
                 f"📌 다음 단계: ./venv/bin/python3 -m src.cli.sync_oci --season-stats --year {year} 실행하여 OCI 동기화"
             )
@@ -1085,7 +1085,7 @@ def main():
         all_data = {}
         for series_key in SERIES_MAPPING:
             series_info = SERIES_MAPPING[series_key]
-            print(f"\n🚀 {series_info['name']} 시작...")
+            logger.info(f"\n🚀 {series_info['name']} 시작...")
             series_data = crawl_pitcher_series(
                 year=args.year,
                 series_key=series_key,
@@ -1098,16 +1098,16 @@ def main():
             time.sleep(3)
 
         # 전체 요약
-        print("\n" + "=" * 60)
-        print(f"📈 전체 수집 요약 ({args.year}년)")
-        print("=" * 60)
+        logger.info("\n" + "=" * 60)
+        logger.info(f"📈 전체 수집 요약 ({args.year}년)")
+        logger.info("=" * 60)
         total_players = 0
         for series_key, data in all_data.items():
             series_name = SERIES_MAPPING[series_key]["name"]
-            print(f"  {series_name}: {len(data)}명")
+            logger.info(f"  {series_name}: {len(data)}명")
             total_players += len(data)
 
-        print(f"\n총 수집 선수: {total_players}명")
+        logger.info(f"\n총 수집 선수: {total_players}명")
 
 
 if __name__ == "__main__":

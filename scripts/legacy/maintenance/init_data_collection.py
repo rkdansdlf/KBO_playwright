@@ -18,7 +18,7 @@ Deprecated for operational DB writes:
 import argparse
 import asyncio
 import json
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 
 from src.crawlers.game_detail_crawler import GameDetailCrawler
@@ -207,8 +207,8 @@ async def run_pipeline(args: argparse.Namespace):
     print("KBO Initial Data Collection")
     print("Following ProjectOverview.md order")
     print("🚀" * 30)
-    run_label = args.label or datetime.utcnow().strftime("init_run_%Y%m%d_%H%M%S")
-    started_at = datetime.utcnow()
+    run_label = args.label or datetime.now(UTC).strftime("init_run_%Y%m%d_%H%M%S")
+    started_at = datetime.now(UTC)
 
     try:
         # Step 1: Player List
@@ -280,7 +280,7 @@ async def run_pipeline(args: argparse.Namespace):
         repo.create_run(
             label=run_label,
             started_at=started_at,
-            finished_at=datetime.utcnow(),
+            finished_at=datetime.now(UTC),
             active_count=active_total,
             retired_count=retired_total,
             staff_count=staff_total,

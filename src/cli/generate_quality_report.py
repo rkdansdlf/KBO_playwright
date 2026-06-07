@@ -433,7 +433,36 @@ def get_team_stats_integrity(gate_result: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def get_daily_metrics(session, target_date_str: str) -> dict[str, Any]:
+def get_team_stats_trend(session, months: int = 6, gate_result: dict[str, Any] | None = None) -> dict[str, Any]:
+    """현재 시즌 team stats 정합성 스냅샷.
+
+    TeamSeason*은 시즌 단위 aggregate라 월별 추세 산출 불가.
+    run_quality_gate()를 호출하여 현재 상태만 반환.
+    """
+    if gate_result is None:
+        year = datetime.now(_KST).year
+        gate_result = run_quality_gate(session, year)
+    integrity = get_team_stats_integrity(gate_result)
+
+    month_key = datetime.now(_KST).strftime("%Y-%m")
+    checked = max(integrity["batting_checked"], integrity["pitching_checked"])
+    return {
+        "months": [
+            {
+                "month": month_key,
+                "batting_violations": len(integrity["batting_mismatches"]),
+                "pitching_violations": len(integrity["pitching_mismatches"]),
+                "total_violations": integrity["total_mismatches"],
+                "teams_checked": checked,
+                "ok": integrity["ok"],
+            }
+        ],
+        "direction": "stable",
+        "ok": integrity["ok"],
+    }
+
+
+def get_daily_metrics(session, target_date_str: str, gate_result: dict[str, Any] | None = None) -> dict[str, Any]:
     """Calculate core collection metrics for a specific date."""
     target_dt = datetime.strptime(target_date_str, "%Y%m%d").date()
 
@@ -524,6 +553,9 @@ def get_daily_metrics(session, target_date_str: str) -> dict[str, Any]:
     # 8. PA Formula Trend (6-month)
     pa_formula_trend = get_pa_formula_trend(session, months=6)
 
+    # 9. Team Stats Trend (snapshot)
+    team_stats_trend = get_team_stats_trend(session, months=6, gate_result=gate_result)
+
     return {
         "date": target_date_str,
         "status_counts": status_map,
@@ -538,6 +570,7 @@ def get_daily_metrics(session, target_date_str: str) -> dict[str, Any]:
         "auto_remediation": auto_remediation,
         "pa_formula_integrity": pa_formula_integrity,
         "pa_formula_trend": pa_formula_trend,
+        "team_stats_trend": team_stats_trend,
     }
 
 
@@ -685,6 +718,15 @@ def format_telegram_report(metrics: dict[str, Any], gate_result: dict[str, Any])
             lines.append(f"   ❌ Pitching [{m.get('team_id', '?')}]: {m.get('issue', 'mismatch')}")
             for d in m.get("diffs", [])[:2]:
                 lines.append(f"      {d}")
+
+    # Team Stats Trend
+    ts_trend = metrics.get("team_stats_trend") or {}
+    if ts_trend.get("months"):
+        direction_icon = "📊"
+        lines.append(f"{direction_icon} <b>Team Stats Trend</b> (snapshot): {ts_trend['direction']}")
+        for m in ts_trend["months"]:
+            icon = "❌" if m["total_violations"] > 0 else "✅"
+            lines.append(f"   {icon} {m['month']}: {m['total_violations']} violations ({m['teams_checked']} teams)")
 
     # New Players
     if metrics["new_players"]:

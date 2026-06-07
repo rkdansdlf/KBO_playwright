@@ -1,3 +1,6 @@
+import logging
+
+logger = logging.getLogger(__name__)
 import re
 from datetime import datetime
 
@@ -38,7 +41,7 @@ class InternationalScheduleCrawler:
         """
         Crawls the international schedule from the given URL.
         """
-        print(f"🌍 Crawling International Schedule: {url}")
+        logger.info(f"🌍 Crawling International Schedule: {url}")
         if not self.page:
             await self.start_browser()
 
@@ -59,7 +62,7 @@ class InternationalScheduleCrawler:
             if game_data:
                 games.append(game_data)
 
-        print(f"✅ Found {len(games)} international games.")
+        logger.info(f"✅ Found {len(games)} international games.")
         return games
 
     async def _parse_row(self, row: Locator, year: int) -> dict | None:
@@ -101,7 +104,7 @@ class InternationalScheduleCrawler:
         home_code = resolve_team_code(home_name)
 
         if not away_code or not home_code:
-            print(f"⚠️  Unknown team code for: {away_name} vs {home_name}")
+            logger.warning(f"⚠️  Unknown team code for: {away_name} vs {home_name}")
             return None
 
         # 3. Score (if played)

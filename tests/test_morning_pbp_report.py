@@ -1,11 +1,30 @@
 from __future__ import annotations
 
+import json
 from unittest.mock import patch
 
+import src.cli.morning_pbp_report as morning_pbp_report
 from src.cli.morning_pbp_report import (
     _build_telegram_message,
     _find_latest_summary,
 )
+
+
+def _write_summary(monkeypatch, tmp_path, date_str: str, payload: dict | None = None):
+    summary_dir = tmp_path / "daily_update_summary"
+    summary_dir.mkdir()
+    monkeypatch.setattr(morning_pbp_report, "DAILY_SUMMARY_DIR", summary_dir)
+    (summary_dir / f"{date_str}.json").write_text(
+        json.dumps(payload or {"stability": {}}, ensure_ascii=False),
+        encoding="utf-8",
+    )
+
+
+def _use_empty_summary_dir(monkeypatch, tmp_path):
+    summary_dir = tmp_path / "daily_update_summary"
+    summary_dir.mkdir()
+    monkeypatch.setattr(morning_pbp_report, "DAILY_SUMMARY_DIR", summary_dir)
+
 
 # ===================================================================
 # _find_latest_summary tests
@@ -13,23 +32,22 @@ from src.cli.morning_pbp_report import (
 
 
 class TestFindLatestSummary:
-    def test_nonexistent_date_returns_none(self):
+    def test_nonexistent_date_returns_none(self, monkeypatch, tmp_path):
+        _use_empty_summary_dir(monkeypatch, tmp_path)
         assert _find_latest_summary("19900101") is None
 
-    def test_valid_date_found(self):
+    def test_valid_date_found(self, monkeypatch, tmp_path):
+        _write_summary(monkeypatch, tmp_path, "20260528")
         result = _find_latest_summary("20260528")
         assert result is not None
         date_str, data = result
         assert date_str == "20260528"
         assert "stability" in data
 
-    def test_none_default_looks_for_yesterday(self):
-        # Should not crash; may return None or a summary depending on yesterday's file
+    def test_none_default_looks_for_yesterday(self, monkeypatch, tmp_path):
+        _use_empty_summary_dir(monkeypatch, tmp_path)
         result = _find_latest_summary(None)
-        if result is not None:
-            date_str, data = result
-            assert len(date_str) == 8
-            assert "stability" in data
+        assert result is None
 
 
 # ===================================================================
@@ -184,21 +202,24 @@ class TestBuildTelegramMessage:
 
 
 class TestRunMorningReport:
-    def test_dry_run_returns_true(self):
+    def test_dry_run_returns_true(self, monkeypatch, tmp_path):
+        _write_summary(monkeypatch, tmp_path, "20260528", SAMPLE_SUMMARY)
         from src.cli.morning_pbp_report import run_morning_report
 
         result = run_morning_report("20260528", dry_run=True)
         assert result is True
 
-    def test_nonexistent_date_returns_true_in_dry_run(self):
+    def test_nonexistent_date_returns_true_in_dry_run(self, monkeypatch, tmp_path):
         """Should still return True and show the fallback message."""
+        _use_empty_summary_dir(monkeypatch, tmp_path)
         from src.cli.morning_pbp_report import run_morning_report
 
         result = run_morning_report("19900101", dry_run=True)
         assert result is True
 
     @patch("src.utils.alerting.SlackWebhookClient.send_alert")
-    def test_sends_alert_when_not_dry(self, mock_send):
+    def test_sends_alert_when_not_dry(self, mock_send, monkeypatch, tmp_path):
+        _write_summary(monkeypatch, tmp_path, "20260528", SAMPLE_SUMMARY)
         mock_send.return_value = True
         from src.cli.morning_pbp_report import run_morning_report
 
@@ -209,7 +230,8 @@ class TestRunMorningReport:
         assert "PBP Morning Report" in msg
 
     @patch("src.utils.alerting.SlackWebhookClient.send_alert")
-    def test_sends_alert_for_nonexistent_date(self, mock_send):
+    def test_sends_alert_for_nonexistent_date(self, mock_send, monkeypatch, tmp_path):
+        _use_empty_summary_dir(monkeypatch, tmp_path)
         mock_send.return_value = True
         from src.cli.morning_pbp_report import run_morning_report
 

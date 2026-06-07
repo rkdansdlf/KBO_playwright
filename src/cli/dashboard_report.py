@@ -423,11 +423,25 @@ def main():
                         violations.append(f"PA {pa.get('violation_count', 0)}건")
                     if not team_bat_ok:
                         tb = gate.get("team_batting", {})
-                        violations.append(f"팀타격 {len(tb.get('mismatches', []))}건")
+                        bat_mismatches = tb.get("mismatches", [])
+                        violations.append(f"팀타격 {len(bat_mismatches)}건")
                     if not team_pit_ok:
                         tp = gate.get("team_pitching", {})
-                        violations.append(f"팀투수 {len(tp.get('mismatches', []))}건")
+                        pit_mismatches = tp.get("mismatches", [])
+                        violations.append(f"팀투수 {len(pit_mismatches)}건")
                     msg_lines.append(f"통합 감사: ❌ ({', '.join(violations)})")
+                    if not team_bat_ok:
+                        bat_mismatches = gate.get("team_batting", {}).get("mismatches", [])
+                        for m in bat_mismatches[:1]:
+                            team_id = m.get("team_id", "?")
+                            issue = m.get("issue", "mismatch")
+                            msg_lines.append(f"  - 팀타격 [{team_id}]: {issue}")
+                    if not team_pit_ok:
+                        pit_mismatches = gate.get("team_pitching", {}).get("mismatches", [])
+                        for m in pit_mismatches[:1]:
+                            team_id = m.get("team_id", "?")
+                            issue = m.get("issue", "mismatch")
+                            msg_lines.append(f"  - 팀투수 [{team_id}]: {issue}")
         SlackWebhookClient.send_alert("\n".join(msg_lines))
 
 

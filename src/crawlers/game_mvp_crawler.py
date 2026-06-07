@@ -8,7 +8,6 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from src.db.engine import SessionLocal
 from src.repositories.game_mvp_repository import GameMvpRepository
-from src.utils.safe_print import safe_print as print
 
 logger = logging.getLogger(__name__)
 
@@ -35,15 +34,15 @@ class GameMvpCrawler:
                 self._save_to_db(results)
             else:
                 for d in results:
-                    print(d)
+                    logger.info(d)
         else:
             data = await self._fetch_recent_mvp_news()
-            print(f"Found {len(data)} MVP entries.")
+            logger.info(f"Found {len(data)} MVP entries.")
             if save:
                 self._save_to_db(data)
             else:
                 for d in data[:10]:
-                    print(d)
+                    logger.info(d)
 
     async def _search_mvp_for_game(self, game_id: str) -> dict | None:
         date_str = game_id[:8]
@@ -71,7 +70,6 @@ class GameMvpCrawler:
                     }
         except Exception as e:
             logger.warning(f"Error searching MVP for game {game_id}: {e}", exc_info=True)
-            print(f"  Error: {e}")
         finally:
             client.close()
         return None
@@ -157,11 +155,10 @@ class GameMvpCrawler:
                 except SQLAlchemyError as e:
                     logger.warning(f"Game MVP save failed: {e}")
             session.commit()
-            print(f"Saved {count} MVP records.")
+            logger.info(f"Saved {count} MVP records.")
         except SQLAlchemyError as e:
             session.rollback()
             logger.error(f"Database error saving MVP records: {e}", exc_info=True)
-            print(f"Error: {e}")
         finally:
             session.close()
 

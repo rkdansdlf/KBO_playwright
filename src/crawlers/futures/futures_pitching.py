@@ -1,3 +1,6 @@
+import logging
+
+logger = logging.getLogger(__name__)
 """
 Futures League Pitching Stats Crawler
 Fetches year-by-year Futures pitching statistics from player profile pages.
@@ -267,7 +270,7 @@ async def fetch_and_parse_futures_pitching(
         page = await active_pool.acquire()
         try:
             if not await compliance.is_allowed(profile_url):
-                print(f"[COMPLIANCE] Blocked futures pitching: {profile_url}")
+                logger.info(f"[COMPLIANCE] Blocked futures pitching: {profile_url}")
                 return []
 
             await throttle.wait()

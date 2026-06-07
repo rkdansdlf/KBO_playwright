@@ -25,7 +25,7 @@ jobs:
       - name: Ruff lint check
         run: ruff check --output-format=github src/ --exit-zero 2>&1
       - name: Ruff format check
-        run: ruff format --check src/ --exit-zero 2>&1
+        run: ruff format --check src/ 2>&1
       - name: Bare except lint check
         run: python scripts/lint_bare_except.py 2>&1
 

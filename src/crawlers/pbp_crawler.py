@@ -16,7 +16,6 @@ from src.services.wpa_calculator import WPACalculator
 from src.utils.compliance import compliance
 from src.utils.playwright_pool import AsyncPlaywrightPool
 from src.utils.request_policy import RequestPolicy
-from src.utils.safe_print import safe_print as print
 from src.utils.text_parser import KBOTextParser
 
 logger = logging.getLogger(__name__)
@@ -58,27 +57,27 @@ class PBPCrawler:
                 try:
                     page = await pool.acquire()
                     try:
-                        print(f"[FETCH] PBP Data: {url}")
+                        logger.info(f"[FETCH] PBP Data: {url}")
                         if not await compliance.is_allowed(url):
-                            print(f"[COMPLIANCE] Navigation to {url} aborted.")
+                            logger.info(f"[COMPLIANCE] Navigation to {url} aborted.")
                             return None
 
                         await self.policy.delay_async(host="www.koreabaseball.com")
 
                         # Step 1: Warm up the session by visiting the Scoreboard page
                         parent_url = f"https://www.koreabaseball.com/Schedule/ScoreBoard.aspx?gameDate={game_date}"
-                        print(f"[AUTH] Warming up session on Scoreboard: {parent_url}")
+                        logger.info(f"[AUTH] Warming up session on Scoreboard: {parent_url}")
                         await page.goto(parent_url, wait_until="networkidle", timeout=20000)
                         await asyncio.sleep(2)
 
                         # Step 2: Navigate to the actual relay page with explicit Referer
-                        print(f"[FETCH] Navigating to Relay page with Referer: {url}")
+                        logger.info(f"[FETCH] Navigating to Relay page with Referer: {url}")
                         # Use 'domcontentloaded' as KBO pages often have persistent tracking scripts/images that block 'load' or 'networkidle'
                         await page.goto(url, wait_until="domcontentloaded", timeout=60000, referer=parent_url)
 
                         # Check for redirects
                         if "Error.html" in page.url or "Login.aspx" in page.url:
-                            print(f"[ERROR] Redirected to {page.url}.")
+                            logger.info(f"[ERROR] Redirected to {page.url}.")
                             self.last_failure_reason = "auth_required"
                             if retry_count == 0:
                                 await pool.close()
@@ -97,7 +96,7 @@ class PBPCrawler:
                                 self.last_failure_reason = "empty"
                                 return None
 
-                        print("[INFO] Extracting Relay Data...")
+                        logger.info("[INFO] Extracting Relay Data...")
                         events = await self._extract_flat_events_legacy(page)
 
                         if not events:

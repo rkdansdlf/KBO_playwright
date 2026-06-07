@@ -17,7 +17,6 @@ from src.db.engine import SessionLocal
 from src.repositories.source_registry_repository import save_raw_snapshots
 from src.repositories.stadium_food_repository import StadiumFoodMenuItemRepository, StadiumFoodVendorRepository
 from src.utils.http_client import DEFAULT_HEADERS as HEADERS
-from src.utils.safe_print import safe_print as print
 from src.utils.throttle import throttle
 
 logger = logging.getLogger(__name__)
@@ -50,16 +49,16 @@ class FoodCrawler:
             try:
                 vendors = await self._crawl_team_food(team_code, info)
                 all_vendors.extend(vendors)
-                print(f"[FOOD] {team_code}: {len(vendors)} vendors found")
+                logger.info(f"[FOOD] {team_code}: {len(vendors)} vendors found")
             except Exception:
                 logger.exception("Failed to crawl food for %s", team_code)
 
-        print(f"[FOOD] Total: {len(all_vendors)} vendors")
+        logger.info(f"[FOOD] Total: {len(all_vendors)} vendors")
         if save:
             self._save_to_db(all_vendors)
         else:
             for v in all_vendors[:5]:
-                print(v)
+                logger.info(v)
         return all_vendors
 
     async def _crawl_team_food(self, team_code: str, info: dict) -> list[dict[str, Any]]:
@@ -134,10 +133,9 @@ class FoodCrawler:
                     except Exception:
                         logger.exception("Food save failed: %s", entry.get("vendor", {}).get("vendor_name", ""))
                 session.commit()
-                print(f"[FOOD] Saved {vendor_count} vendors, {menu_count} menus, {saved_snaps} snapshots.")
+                logger.info(f"[FOOD] Saved {vendor_count} vendors, {menu_count} menus, {saved_snaps} snapshots.")
             except SQLAlchemyError as e:
                 session.rollback()
                 logger.error(f"[FOOD] Database error: {e}", exc_info=True)
-                print(f"[FOOD] Error: {e}")
             finally:
                 self._raw_pages.clear()

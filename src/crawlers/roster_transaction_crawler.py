@@ -24,7 +24,6 @@ from src.repositories.roster_transaction_repository import RosterTransactionRepo
 from src.repositories.source_registry_repository import save_raw_snapshots
 from src.utils.http_client import DEFAULT_HEADERS as HEADERS
 from src.utils.playwright_pool import AsyncPlaywrightPool
-from src.utils.safe_print import safe_print as print
 from src.utils.throttle import throttle
 
 logger = logging.getLogger(__name__)
@@ -60,12 +59,12 @@ class RosterTransactionCrawler:
             # Fallback to desktop page via Playwright
             data = await self._crawl_desktop_page(crawl_date)
 
-        print(f"[ROSTER] {crawl_date}: {len(data)} transactions found")
+        logger.info(f"[ROSTER] {crawl_date}: {len(data)} transactions found")
         if save:
             self._save_to_db(data)
         else:
             for d in data[:10]:
-                print(d)
+                logger.info(d)
 
         return data
 
@@ -337,7 +336,7 @@ class RosterTransactionCrawler:
                     except Exception:
                         logger.exception("Roster transaction save failed: %s", item.get("dedupe_key", ""))
                 session.commit()
-                print(f"[ROSTER] Saved {count} transaction records, {saved_snaps} snapshots.")
+                logger.info(f"[ROSTER] Saved {count} transaction records, {saved_snaps} snapshots.")
             except Exception:
                 session.rollback()
                 logger.exception("Roster batch save error")

@@ -1,0 +1,17 @@
+{
+  "result": {
+    "games": [
+      {
+        "gameId": "20260412SKLG02026",
+        "gameDate": "2026-04-12",
+        "awayTeamCode": "SSG",
+        "homeTeamCode": "LG",
+        "status": "RUNNING",
+        "gameStartTime": "14:00",
+        "stadiumName": "잠실",
+        "doubleHeader": "0",
+        "reversedHomeAway": false
+      }
+    ]
+  }
+}

@@ -1,0 +1,92 @@
+{
+  "result": {
+    "textRelayData": {
+      "textRelays": [
+        {
+          "title": "9회초 SSG 공격",
+          "homeOrAway": "0",
+          "inn": 9,
+          "textOptions": [
+            {
+              "text": "4번타자 최정:홈런",
+              "pitcherName": "정해영",
+              "batterName": "최정",
+              "batterRecord": {"name": "최정"},
+              "currentGameState": {
+                "homeScore": "3",
+                "awayScore": "5",
+                "out": "0",
+                "base1": "0",
+                "base2": "0",
+                "base3": "0"
+              }
+            },
+            {
+              "text": "경기 종료:SSG 승리",
+              "pitcherName": "",
+              "batterName": "",
+              "batterRecord": {},
+              "currentGameState": {
+                "homeScore": "3",
+                "awayScore": "5",
+                "out": "3",
+                "base1": "0",
+                "base2": "0",
+                "base3": "0"
+              }
+            }
+          ]
+        },
+        {
+          "title": "9회말 LG 공격",
+          "homeOrAway": "1",
+          "inn": 9,
+          "textOptions": [
+            {
+              "text": "7번타자 김현수:땅볼",
+              "pitcherName": "문승원",
+              "batterName": "김현수",
+              "batterRecord": {"name": "김현수"},
+              "currentGameState": {
+                "homeScore": "3",
+                "awayScore": "5",
+                "out": "1",
+                "base1": "0",
+                "base2": "0",
+                "base3": "0"
+              }
+            },
+            {
+              "text": "8번타자 박동원:삼진",
+              "pitcherName": "문승원",
+              "batterName": "박동원",
+              "batterRecord": {"name": "박동원"},
+              "currentGameState": {
+                "homeScore": "3",
+                "awayScore": "5",
+                "out": "2",
+                "base1": "0",
+                "base2": "0",
+                "base3": "0"
+              }
+            },
+            {
+              "text": "9번타자 구본혁:플라이",
+              "pitcherName": "문승원",
+              "batterName": "구본혁",
+              "batterRecord": {"name": "구본혁"},
+              "currentGameState": {
+                "homeScore": "3",
+                "awayScore": "5",
+                "out": "3",
+                "base1": "0",
+                "base2": "0",
+                "base3": "0"
+              }
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

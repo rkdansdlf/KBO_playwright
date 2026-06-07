@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 import sys
+import tempfile
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -322,7 +323,7 @@ def _patch_common(monkeypatch):
     monkeypatch.setattr(
         run_daily_update,
         "DEFAULT_DAILY_SUMMARY_DIR",
-        Path("/private/tmp/kbo_daily_update_summary_tests"),
+        Path(tempfile.mkdtemp(prefix="kbo_daily_update_summary_tests_")),
     )
     monkeypatch.setattr(run_daily_update, "write_refresh_manifest", lambda **_kwargs: "manifest.json")
     monkeypatch.setattr(run_daily_update, "reconcile_postgame_range", _fake_reconcile_postgame_range)

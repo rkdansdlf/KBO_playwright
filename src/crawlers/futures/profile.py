@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 from bs4 import BeautifulSoup
 from playwright.async_api import Error as PlaywrightError
@@ -61,7 +64,7 @@ class FuturesProfileCrawler:
     async def _scrape_profile(self, page: Page, base_url: str, player_id: str) -> dict[str, Any] | None:
         url = f"{base_url}?playerId={player_id}"
         if not await compliance.is_allowed(url):
-            print(f"[COMPLIANCE] Blocked futures profile: {url}")
+            logger.info(f"[COMPLIANCE] Blocked futures profile: {url}")
             return None
 
         try:
@@ -210,7 +213,7 @@ async def main():
     crawler = FuturesProfileCrawler()
     sample_id = "78137"
     payload = await crawler.fetch_player_futures(sample_id)
-    print(f"Fetched Futures tables for {sample_id}: {len(payload['tables'])}")
+    logger.info(f"Fetched Futures tables for {sample_id}: {len(payload['tables'])}")
 
 
 if __name__ == "__main__":

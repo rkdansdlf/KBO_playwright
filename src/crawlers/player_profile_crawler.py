@@ -17,7 +17,6 @@ from src.utils.compliance import compliance
 from src.utils.player_validation import validate_player_payload
 from src.utils.playwright_pool import AsyncPlaywrightPool
 from src.utils.request_policy import RequestPolicy
-from src.utils.safe_print import safe_print as print
 
 # KBO profile page selectors (common across Hitter/Pitcher detail pages)
 _PROFILE_PREFIXES = [
@@ -235,9 +234,9 @@ class PlayerProfileCrawler:
         last_reason = "profile_not_found"
 
         for url in urls:
-            print(f"📡 Attempting profile [{player_id}]: {url}")
+            logger.info(f"📡 Attempting profile [{player_id}]: {url}")
             if not await compliance.is_allowed(url):
-                print(f"⚠️  BLOCKED by compliance: {url}")
+                logger.warning(f"⚠️  BLOCKED by compliance: {url}")
                 last_reason = "blocked"
                 continue
 
@@ -256,7 +255,7 @@ class PlayerProfileCrawler:
                 # but usually stub means no data on any of them.
                 ok, reason = validate_player_payload({"player_id": player_id, "name": raw.get("name")})
                 if not ok:
-                    print(f"⚠️  Stub profile detected at {url}")
+                    logger.warning(f"⚠️  Stub profile detected at {url}")
                     last_reason = (
                         "profile_stub"
                         if reason in {"missing_player_name", "unknown_player_name"}
@@ -361,11 +360,11 @@ async def main():
     crawler = PlayerProfileCrawler()
     result = await crawler.crawl_player_profile("900076")
     if result:
-        print("✅ Success:")
+        logger.info("✅ Success:")
         for k, v in result.items():
-            print(f"  {k}: {v}")
+            logger.info(f"  {k}: {v}")
     else:
-        print("❌ No result (Expected for stub/empty profiles)")
+        logger.error("❌ No result (Expected for stub/empty profiles)")
 
 
 if __name__ == "__main__":

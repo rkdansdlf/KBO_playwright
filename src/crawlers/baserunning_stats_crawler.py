@@ -50,7 +50,7 @@ def crawl_baserunning_stats(year=2025, max_retries=3, timeout=60000):
             except Exception:
                 if attempt < max_retries - 1:
                     wait_time = (attempt + 1) * 2
-                    print(f"   ⚠️  재시도 {attempt + 1}/{max_retries} ({wait_time}초 후 재시도)")
+                    logger.exception(f"   ⚠️  재시도 {attempt + 1}/{max_retries} ({wait_time}초 후 재시도)")
                     time.sleep(wait_time)
                 else:
                     logger.exception("   ❌ 최대 재시도 횟수 초과")
@@ -65,7 +65,7 @@ def crawl_baserunning_stats(year=2025, max_retries=3, timeout=60000):
                 tbody = tables[0].query_selector("tbody")
                 rows = tbody.query_selector_all("tr") if tbody else []
 
-                print(f"   ✓ {len(rows)}명의 주루 기록 발견")
+                logger.info(f"   ✓ {len(rows)}명의 주루 기록 발견")
 
                 for row in rows:
                     cells = row.query_selector_all("td")
@@ -144,9 +144,9 @@ def save_baserunning_stats(player_list, year=2025, db_path="kbo_2025.db"):
         year: 시즌 연도
         db_path: 데이터베이스 파일 경로
     """
-    print(f"\n{'=' * 60}")
-    print(f"🏃 {year}년 주루 기록 수집 시작")
-    print(f"{'=' * 60}\n")
+    logger.info(f"\n{'=' * 60}")
+    logger.info(f"🏃 {year}년 주루 기록 수집 시작")
+    logger.info(f"{'=' * 60}\n")
 
     conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
@@ -155,7 +155,7 @@ def save_baserunning_stats(player_list, year=2025, db_path="kbo_2025.db"):
     baserunning_data = crawl_baserunning_stats(year)
 
     if not baserunning_data:
-        print("❌ 주루 기록을 가져올 수 없습니다.")
+        logger.error("❌ 주루 기록을 가져올 수 없습니다.")
         conn.close()
         return
 
@@ -230,23 +230,23 @@ def save_baserunning_stats(player_list, year=2025, db_path="kbo_2025.db"):
                 success_count += 1
 
                 if idx % 10 == 0:
-                    print(f"[{idx}/{len(baserunning_data)}] {player_name} 저장 완료")
+                    logger.info(f"[{idx}/{len(baserunning_data)}] {player_name} 저장 완료")
 
             except Exception:
                 fail_count += 1
                 logger.exception(f"   ❌ {player_name} 저장 실패")
         else:
             fail_count += 1
-            print(f"   ⚠️  {player_name}: player_id를 찾을 수 없음")
+            logger.warning(f"   ⚠️  {player_name}: player_id를 찾을 수 없음")
 
     conn.close()
 
-    print(f"\n{'=' * 60}")
-    print("✅ 주루 기록 저장 완료!")
-    print(f"{'=' * 60}")
-    print(f"  - 성공: {success_count}명")
-    print(f"  - 실패: {fail_count}명")
-    print(f"{'=' * 60}\n")
+    logger.info(f"\n{'=' * 60}")
+    logger.info("✅ 주루 기록 저장 완료!")
+    logger.info(f"{'=' * 60}")
+    logger.info(f"  - 성공: {success_count}명")
+    logger.info(f"  - 실패: {fail_count}명")
+    logger.info(f"{'=' * 60}\n")
 
 
 if __name__ == "__main__":

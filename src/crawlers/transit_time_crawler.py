@@ -100,7 +100,9 @@ class TransitTimeCrawler:
         game_date = game_date or date.today()
         measured_at = datetime.now(UTC).replace(tzinfo=None)
 
-        print(f"[Transit] Measuring {len(self.origins)} origins for {game_date} at {measured_at.strftime('%H:%M')} UTC")
+        logger.info(
+            f"[Transit] Measuring {len(self.origins)} origins for {game_date} at {measured_at.strftime('%H:%M')} UTC"
+        )
 
         # Fetch transit times for each mode
         walk_origins = [o for o in self.origins if o["mode"] in ("walk", "subway")]
@@ -139,7 +141,7 @@ class TransitTimeCrawler:
             for r in all_results
         ]
 
-        print(f"[Transit] Got {len(records)} measurements")
+        logger.info(f"[Transit] Got {len(records)} measurements")
 
         if save:
             self._save_to_db(records)
@@ -158,7 +160,7 @@ class TransitTimeCrawler:
                 repo = TransitTimeRepository(session)
                 created, updated = repo.bulk_upsert(records)
                 session.commit()
-                print(f"[Transit] Saved: {created} new, {updated} updated.")
+                logger.info(f"[Transit] Saved: {created} new, {updated} updated.")
             except Exception:
                 session.rollback()
                 logger.exception("Transit time batch save error")

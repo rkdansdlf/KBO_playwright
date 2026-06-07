@@ -1,0 +1,11 @@
+team_id_a,team_id_b,rivalry_name,description,intensity
+LG,OB,잠실 더비,같은 잠실구장을 홈구장으로 사용하는 전통의 라이벌. 'LG-두산 더비'라고 불림.,HIGH
+KIA,SS,영남-호남 더비,KIA(광주)와 삼성(대구)의 지역 라이벌. KBO 최다 우승 팀 간 경쟁.,HIGH
+LT,SS,부산-대구 더비,롯데(부산)와 삼성(대구)의 영남권 더비.,HIGH
+KH,LG,서울 더비,키움(고척)과 LG(잠실)의 서울 연고 라이벌.,MEDIUM
+NC,LT,경남 더비,NC(창원)와 롯데(부산)의 경남권 라이벌.,MEDIUM
+KT,SSG,경기-인천 더비,KT(수원)와 SSG(인천)의 수도권 신생팀 라이벌.,MEDIUM
+HH,SS,중부-영남 더비,한화(대전)와 삼성(대구)의 중부-영남 라이벌.,MEDIUM
+LG,KH,한강 더비,LG(잠실)와 키움(고척)의 한강 연선 더비.,MEDIUM
+KIA,HH,호남-충청 더비,KIA(광주)와 한화(대전)의 호남-충청 라이벌.,LOW
+OB,KIA,전통 강팀 더비,두산과 KIA의 KBO 최다 우승 팀 간 전통 라이벌.,MEDIUM

@@ -28,6 +28,8 @@ pw-browsers/
 # Fixtures saved locally (HTML/JSON)
 tests/fixtures/**/*.html
 tests/fixtures/**/*.json
+!tests/fixtures/**/*.html
+!tests/fixtures/**/*.json
 
 # Runtime robots.txt snapshots
 Docs/robots/robots_*.txt
@@ -62,6 +64,8 @@ data/kbo_dev.db
 !/data/game_status_overrides.csv
 !/data/player_id_overrides.csv
 !/data/player_id_row_overrides.csv
+!/data/seed/
+!/data/seed/team_rivalries.csv
 data/kbo_auth_state.json
 
 # Secret/key files (supplemental patterns from .ignore)

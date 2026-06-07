@@ -9,7 +9,7 @@ import shutil
 import sys
 from collections import defaultdict
 from dataclasses import dataclass
-from datetime import date, datetime
+from datetime import UTC, date, datetime
 from pathlib import Path
 from typing import Any, Iterable
 
@@ -920,13 +920,13 @@ def _upsert_alias(conn, tables: dict[str, Table], alias_game_id: str, canonical_
         "reason": "merged_duplicate_to_kbo_legacy_game_id",
     }
     if "updated_at" in alias_table.c:
-        values["updated_at"] = datetime.utcnow()
+        values["updated_at"] = datetime.now(UTC)
     if existing:
         conn.execute(alias_table.update().where(alias_table.c.alias_game_id == alias_game_id).values(**values))
     else:
         insert_values = {"alias_game_id": alias_game_id, **values}
         if "created_at" in alias_table.c:
-            insert_values["created_at"] = datetime.utcnow()
+            insert_values["created_at"] = datetime.now(UTC)
         conn.execute(alias_table.insert().values(**insert_values))
 
 
@@ -946,7 +946,7 @@ def _retarget_aliases(conn, tables: dict[str, Table], source_game_id: str, canon
             continue
         values = {"canonical_game_id": canonical_game_id}
         if "updated_at" in alias_table.c:
-            values["updated_at"] = datetime.utcnow()
+            values["updated_at"] = datetime.now(UTC)
         conn.execute(alias_table.update().where(alias_table.c.alias_game_id == alias_game_id).values(**values))
 
     conn.execute(alias_table.delete().where(alias_table.c.alias_game_id == alias_table.c.canonical_game_id))

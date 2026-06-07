@@ -14,7 +14,6 @@ from sqlalchemy.orm import Session
 from src.crawlers.daily_roster_crawler import DailyRosterCrawler
 from src.models.game import Game
 from src.models.ticket_schedule import TicketSchedule
-from src.utils.safe_print import safe_print as print
 
 logger = logging.getLogger(__name__)
 
@@ -57,10 +56,10 @@ class DynamicDataCrawler:
         """
         Crawls daily 1st team registration changes using the existing DailyRosterCrawler.
         """
-        print(f"📋 Crawling roster changes from {start_date} to {end_date}...")
+        logger.info(f"📋 Crawling roster changes from {start_date} to {end_date}...")
         try:
             records = await self.roster_crawler.crawl_date_range(start_date, end_date)
-            print(f"   Collected {len(records)} roster movements.")
+            logger.info(f"   Collected {len(records)} roster movements.")
             return records
         except Exception as e:
             logger.exception("⚠️ Error crawling roster")
@@ -73,12 +72,12 @@ class DynamicDataCrawler:
         """
         today_val = datetime.now().date()
         future_val = today_val + timedelta(days=lookahead_days)
-        print(f"🎟️ Calculating ticket opening times for games between {today_val} and {future_val}...")
+        logger.info(f"🎟️ Calculating ticket opening times for games between {today_val} and {future_val}...")
 
         # Fetch upcoming games from database
         query = select(Game).where(Game.game_date >= today_val, Game.game_date <= future_val)
         games = self.db_session.scalars(query).all()
-        print(f"   Found {len(games)} scheduled games in local DB.")
+        logger.info(f"   Found {len(games)} scheduled games in local DB.")
 
         ticket_records = []
         for g in games:
@@ -130,5 +129,5 @@ class DynamicDataCrawler:
                 ticket_records.append(new_ticket)
 
         self.db_session.commit()
-        print(f"   Successfully upserted {len(ticket_records)} ticketing schedules.")
+        logger.info(f"   Successfully upserted {len(ticket_records)} ticketing schedules.")
         return ticket_records
