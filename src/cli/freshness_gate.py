@@ -89,11 +89,7 @@ def collect_freshness_issues(
     }
 
     for game in games:
-        metadata = (
-            session.query(GameMetadata.start_time)
-            .filter(GameMetadata.game_id == game.game_id)
-            .one_or_none()
-        )
+        metadata = session.query(GameMetadata.start_time).filter(GameMetadata.game_id == game.game_id).one_or_none()
         if metadata is None or metadata.start_time is None:
             issues["missing_start_time"].append(game.game_id)
 
@@ -123,9 +119,7 @@ def collect_freshness_issues(
         if not event_count:
             issues["missing_events"].append(game.game_id)
         elif (
-            session.query(GameEvent.id)
-            .filter(GameEvent.game_id == game.game_id, GameEvent.wpa.isnot(None))
-            .first()
+            session.query(GameEvent.id).filter(GameEvent.game_id == game.game_id, GameEvent.wpa.isnot(None)).first()
             is None
         ):
             issues["missing_wpa"].append(game.game_id)

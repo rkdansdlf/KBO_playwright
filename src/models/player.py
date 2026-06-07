@@ -76,14 +76,24 @@ class PlayerBasic(Base, TimestampMixin):
 
     # Parsed structured profile details
     salary_amount: Mapped[int | None] = mapped_column(Integer, nullable=True, comment="Parsed salary amount")
-    salary_currency: Mapped[str | None] = mapped_column(String(8), nullable=True, comment="Salary currency (KRW or USD)")
+    salary_currency: Mapped[str | None] = mapped_column(
+        String(8), nullable=True, comment="Salary currency (KRW or USD)"
+    )
     signing_bonus_amount: Mapped[int | None] = mapped_column(Integer, nullable=True, comment="Parsed signing bonus")
-    signing_bonus_currency: Mapped[str | None] = mapped_column(String(8), nullable=True, comment="Signing bonus currency")
+    signing_bonus_currency: Mapped[str | None] = mapped_column(
+        String(8), nullable=True, comment="Signing bonus currency"
+    )
     draft_year: Mapped[int | None] = mapped_column(Integer, nullable=True, comment="Draft year")
     draft_round: Mapped[int | None] = mapped_column(Integer, nullable=True, comment="Draft round number")
-    draft_pick_overall: Mapped[int | None] = mapped_column(Integer, nullable=True, comment="Draft pick overall position")
-    draft_type: Mapped[str | None] = mapped_column(String(32), nullable=True, comment="Draft type (e.g. 1차, 2차, 자유선발)")
-    education_path: Mapped[list | None] = mapped_column(JSON, nullable=True, comment="Structured education/career history path")
+    draft_pick_overall: Mapped[int | None] = mapped_column(
+        Integer, nullable=True, comment="Draft pick overall position"
+    )
+    draft_type: Mapped[str | None] = mapped_column(
+        String(32), nullable=True, comment="Draft type (e.g. 1차, 2차, 자유선발)"
+    )
+    education_path: Mapped[list | None] = mapped_column(
+        JSON, nullable=True, comment="Structured education/career history path"
+    )
 
     __table_args__ = (
         Index("idx_player_basic_name", "name"),
@@ -133,14 +143,24 @@ class Player(Base, TimestampMixin):
 
     # Parsed structured profile details
     salary_amount: Mapped[int | None] = mapped_column(Integer, nullable=True, comment="Parsed salary amount")
-    salary_currency: Mapped[str | None] = mapped_column(String(8), nullable=True, comment="Salary currency (KRW or USD)")
+    salary_currency: Mapped[str | None] = mapped_column(
+        String(8), nullable=True, comment="Salary currency (KRW or USD)"
+    )
     signing_bonus_amount: Mapped[int | None] = mapped_column(Integer, nullable=True, comment="Parsed signing bonus")
-    signing_bonus_currency: Mapped[str | None] = mapped_column(String(8), nullable=True, comment="Signing bonus currency")
+    signing_bonus_currency: Mapped[str | None] = mapped_column(
+        String(8), nullable=True, comment="Signing bonus currency"
+    )
     draft_year: Mapped[int | None] = mapped_column(Integer, nullable=True, comment="Draft year")
     draft_round: Mapped[int | None] = mapped_column(Integer, nullable=True, comment="Draft round number")
-    draft_pick_overall: Mapped[int | None] = mapped_column(Integer, nullable=True, comment="Draft pick overall position")
-    draft_type: Mapped[str | None] = mapped_column(String(32), nullable=True, comment="Draft type (e.g. 1차, 2차, 자유선발)")
-    education_path: Mapped[list | None] = mapped_column(JSON, nullable=True, comment="Structured education/career history path")
+    draft_pick_overall: Mapped[int | None] = mapped_column(
+        Integer, nullable=True, comment="Draft pick overall position"
+    )
+    draft_type: Mapped[str | None] = mapped_column(
+        String(32), nullable=True, comment="Draft type (e.g. 1차, 2차, 자유선발)"
+    )
+    education_path: Mapped[list | None] = mapped_column(
+        JSON, nullable=True, comment="Structured education/career history path"
+    )
 
     def __repr__(self) -> str:
         return f"<Player(id={self.id}, status={self.status})>"

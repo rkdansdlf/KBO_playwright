@@ -19,6 +19,7 @@ Environment variables:
 Reference:
   https://developers.naver.com/docs/serviceapi/search/news/news.md
 """
+
 from __future__ import annotations
 
 import logging
@@ -74,6 +75,7 @@ def _parse_naver_date(pub_date_str: str) -> datetime | None:
     try:
         # Naver returns: "Tue, 03 Jun 2026 14:32:00 +0900"
         from email.utils import parsedate_to_datetime
+
         return parsedate_to_datetime(pub_date_str).replace(tzinfo=None)
     except (ValueError, TypeError):
         pass
@@ -89,6 +91,7 @@ def _parse_naver_date(pub_date_str: str) -> datetime | None:
 def _clean_html(text: str) -> str:
     """Remove Naver search result HTML tags (e.g. <b>, </b>)."""
     import re
+
     return re.sub(r"<[^>]+>", "", text).strip()
 
 

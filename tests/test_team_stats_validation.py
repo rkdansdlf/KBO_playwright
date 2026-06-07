@@ -9,14 +9,17 @@ from src.validators.quality_gate import QualityGate
 def _make_session():
     engine = create_engine("sqlite:///:memory:")
     with engine.begin() as conn:
-        conn.execute(text("""
+        conn.execute(
+            text("""
             CREATE TABLE kbo_seasons (
                 season_id INTEGER PRIMARY KEY,
                 season_year INTEGER NOT NULL,
                 league_type_code INTEGER NOT NULL
             )
-        """))
-        conn.execute(text("""
+        """)
+        )
+        conn.execute(
+            text("""
             CREATE TABLE team_season_batting (
                 team_id TEXT, season INTEGER, league TEXT,
                 games INTEGER, plate_appearances INTEGER, at_bats INTEGER,
@@ -24,8 +27,10 @@ def _make_session():
                 home_runs INTEGER, rbi INTEGER, stolen_bases INTEGER,
                 caught_stealing INTEGER, walks INTEGER, strikeouts INTEGER
             )
-        """))
-        conn.execute(text("""
+        """)
+        )
+        conn.execute(
+            text("""
             CREATE TABLE team_season_pitching (
                 team_id TEXT, season INTEGER, league TEXT,
                 games INTEGER, wins INTEGER, losses INTEGER, saves INTEGER,
@@ -34,8 +39,10 @@ def _make_session():
                 home_runs_allowed INTEGER, walks_allowed INTEGER,
                 strikeouts INTEGER
             )
-        """))
-        conn.execute(text("""
+        """)
+        )
+        conn.execute(
+            text("""
             CREATE TABLE player_season_batting (
                 player_id INTEGER, season INTEGER, league TEXT,
                 team_code TEXT, canonical_team_code TEXT,
@@ -44,8 +51,10 @@ def _make_session():
                 home_runs INTEGER, rbi INTEGER, stolen_bases INTEGER,
                 caught_stealing INTEGER, walks INTEGER, strikeouts INTEGER
             )
-        """))
-        conn.execute(text("""
+        """)
+        )
+        conn.execute(
+            text("""
             CREATE TABLE player_season_pitching (
                 player_id INTEGER, season INTEGER, league TEXT,
                 team_code TEXT, canonical_team_code TEXT,
@@ -55,14 +64,13 @@ def _make_session():
                 home_runs_allowed INTEGER, walks_allowed INTEGER,
                 strikeouts INTEGER
             )
-        """))
+        """)
+        )
     return sessionmaker(bind=engine)()
 
 
 def _insert_regular_season(session):
-    session.execute(
-        text("INSERT INTO kbo_seasons (season_id, season_year, league_type_code) VALUES (202501, 2025, 0)")
-    )
+    session.execute(text("INSERT INTO kbo_seasons (season_id, season_year, league_type_code) VALUES (202501, 2025, 0)"))
     session.commit()
 
 

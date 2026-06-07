@@ -124,10 +124,10 @@ def run_recalc(
             if include_futures:
                 league_codes.append(5)
             from sqlalchemy import bindparam
-            stmt = (
-                text("SELECT season_id FROM kbo_seasons WHERE season_year = :year AND league_type_code IN :codes")
-                .bindparams(bindparam("codes", expanding=True))
-            )
+
+            stmt = text(
+                "SELECT season_id FROM kbo_seasons WHERE season_year = :year AND league_type_code IN :codes"
+            ).bindparams(bindparam("codes", expanding=True))
             season_ids = (
                 session.execute(
                     stmt,

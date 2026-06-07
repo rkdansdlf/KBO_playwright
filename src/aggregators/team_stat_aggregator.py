@@ -99,7 +99,9 @@ class TeamStatAggregator:
         or pure in-memory aggregation if an iterable of rows is passed.
         """
         actual_rows = rows if rows is not None else (season_or_rows if not isinstance(season_or_rows, int) else None)
-        actual_names = team_names if team_names is not None else (team_id_or_names if isinstance(team_id_or_names, dict) else None)
+        actual_names = (
+            team_names if team_names is not None else (team_id_or_names if isinstance(team_id_or_names, dict) else None)
+        )
 
         if isinstance(season_or_rows, int):
             season = season_or_rows
@@ -124,7 +126,9 @@ class TeamStatAggregator:
         or pure in-memory aggregation if an iterable of rows is passed.
         """
         actual_rows = rows if rows is not None else (season_or_rows if not isinstance(season_or_rows, int) else None)
-        actual_names = team_names if team_names is not None else (team_id_or_names if isinstance(team_id_or_names, dict) else None)
+        actual_names = (
+            team_names if team_names is not None else (team_id_or_names if isinstance(team_id_or_names, dict) else None)
+        )
 
         if isinstance(season_or_rows, int):
             season = season_or_rows
@@ -135,7 +139,9 @@ class TeamStatAggregator:
         else:
             raise ValueError("Either an integer season or rows iterable must be provided")
 
-    def aggregate_all(self, season: int, team_id: str | None = None, dry_run: bool = False) -> dict[str, list[dict[str, Any]]]:
+    def aggregate_all(
+        self, season: int, team_id: str | None = None, dry_run: bool = False
+    ) -> dict[str, list[dict[str, Any]]]:
         """
         Aggregates and updates both batting and pitching stats.
         """
@@ -146,7 +152,9 @@ class TeamStatAggregator:
             "pitching": pitching_results,
         }
 
-    def _aggregate_batting_db(self, season: int, team_id: str | None = None, dry_run: bool = False) -> list[dict[str, Any]]:
+    def _aggregate_batting_db(
+        self, season: int, team_id: str | None = None, dry_run: bool = False
+    ) -> list[dict[str, Any]]:
         if not self.session:
             raise ValueError("Database session is required for database aggregation")
 
@@ -231,7 +239,6 @@ class TeamStatAggregator:
                 "extra_stats": {"source": "player_rollup"},
             }
 
-
             ratios = BattingStatCalculator.calculate_ratios(data)
             data.update(ratios)
             results.append(data)
@@ -240,7 +247,9 @@ class TeamStatAggregator:
             self._save_batting_records(results)
         return results
 
-    def _aggregate_pitching_db(self, season: int, team_id: str | None = None, dry_run: bool = False) -> list[dict[str, Any]]:
+    def _aggregate_pitching_db(
+        self, season: int, team_id: str | None = None, dry_run: bool = False
+    ) -> list[dict[str, Any]]:
         if not self.session:
             raise ValueError("Database session is required for database aggregation")
 
@@ -338,7 +347,6 @@ class TeamStatAggregator:
                 "extra_stats": {"source": "player_rollup"},
             }
 
-
             ratios = PitchingStatCalculator.calculate_ratios(data)
             data.update(ratios)
             data["avg_against"] = avg_against
@@ -352,6 +360,7 @@ class TeamStatAggregator:
         if not records:
             return
         from src.repositories.team_stats_repository import TeamSeasonBattingRepository
+
         repo = TeamSeasonBattingRepository()
         cleaned = [repo._filter_model_fields(repo._filter_none(r)) for r in records]
 
@@ -374,6 +383,7 @@ class TeamStatAggregator:
         if not records:
             return
         from src.repositories.team_stats_repository import TeamSeasonPitchingRepository
+
         repo = TeamSeasonPitchingRepository()
         cleaned = [repo._filter_model_fields(repo._filter_none(r)) for r in records]
 
@@ -412,14 +422,10 @@ class TeamStatAggregator:
         for r in rows:
             tc = r.team_code
             if not tc or tc in ("합계", "TOTAL", "ALL", "-"):
-                logger.warning(
-                    f"[WARN] Skipping PlayerSeasonBatting row ID {r.id}: Invalid team_code '{tc}'"
-                )
+                logger.warning(f"[WARN] Skipping PlayerSeasonBatting row ID {r.id}: Invalid team_code '{tc}'")
                 continue
             if not r.season:
-                logger.warning(
-                    f"[WARN] Skipping PlayerSeasonBatting row ID {r.id}: Missing season"
-                )
+                logger.warning(f"[WARN] Skipping PlayerSeasonBatting row ID {r.id}: Missing season")
                 continue
 
             key = (r.season, tc)
@@ -511,14 +517,10 @@ class TeamStatAggregator:
         for r in rows:
             tc = r.team_code
             if not tc or tc in ("합계", "TOTAL", "ALL", "-"):
-                logger.warning(
-                    f"[WARN] Skipping PlayerSeasonPitching row ID {r.id}: Invalid team_code '{tc}'"
-                )
+                logger.warning(f"[WARN] Skipping PlayerSeasonPitching row ID {r.id}: Invalid team_code '{tc}'")
                 continue
             if not r.season:
-                logger.warning(
-                    f"[WARN] Skipping PlayerSeasonPitching row ID {r.id}: Missing season"
-                )
+                logger.warning(f"[WARN] Skipping PlayerSeasonPitching row ID {r.id}: Missing season")
                 continue
 
             key = (r.season, tc)
@@ -617,9 +619,7 @@ class TeamStatAggregator:
                     team_games_map[(year, tc)] = games
 
         aggregator = TeamStatAggregator()
-        return aggregator.aggregate_batting(
-            rows=rows, team_names=team_names, team_games_map=team_games_map
-        )
+        return aggregator.aggregate_batting(rows=rows, team_names=team_names, team_games_map=team_games_map)
 
     @staticmethod
     def aggregate_team_pitching(session: Session, year: int, league: str = "REGULAR", **kwargs) -> list[dict[str, Any]]:
@@ -654,9 +654,7 @@ class TeamStatAggregator:
                     team_games_map[(year, tc)] = games
 
         aggregator = TeamStatAggregator()
-        results = aggregator.aggregate_pitching(
-            rows=rows, team_names=team_names, team_games_map=team_games_map
-        )
+        results = aggregator.aggregate_pitching(rows=rows, team_names=team_names, team_games_map=team_games_map)
 
         # Supplement ties from standings
         for r in results:

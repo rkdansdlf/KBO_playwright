@@ -105,13 +105,15 @@ class TeamFieldingAggregator:
 
         # Filter to teams that have actual player data for this season
         fielding_teams = {
-            r[0] for r in self.session.query(PlayerSeasonFielding.team_id)
+            r[0]
+            for r in self.session.query(PlayerSeasonFielding.team_id)
             .filter(PlayerSeasonFielding.year == season)
             .distinct()
             .all()
         }
         baserunning_teams = {
-            r[0] for r in self.session.query(PlayerSeasonBaserunning.team_id)
+            r[0]
+            for r in self.session.query(PlayerSeasonBaserunning.team_id)
             .filter(PlayerSeasonBaserunning.year == season)
             .distinct()
             .all()
@@ -119,14 +121,12 @@ class TeamFieldingAggregator:
         active_in_db = fielding_teams | baserunning_teams
 
         # Filter to only KBO franchise teams (exclude All-Star, foreign teams without franchise_id)
-        kbo_teams = {
-            t.team_id for t in self.session.query(Team.team_id)
-            .filter(Team.franchise_id.isnot(None))
-            .all()
-        }
+        kbo_teams = {t.team_id for t in self.session.query(Team.team_id).filter(Team.franchise_id.isnot(None)).all()}
 
         valid_teams = [code for code in team_codes if code in active_in_db and code in kbo_teams]
-        print(f"[TeamFieldingAggregator] Season {season} filtering: original={len(team_codes)} teams -> valid={len(valid_teams)} teams ({', '.join(valid_teams)})")
+        print(
+            f"[TeamFieldingAggregator] Season {season} filtering: original={len(team_codes)} teams -> valid={len(valid_teams)} teams ({', '.join(valid_teams)})"
+        )
 
         for code in valid_teams:
             fdata = self.aggregate_fielding(season, code)

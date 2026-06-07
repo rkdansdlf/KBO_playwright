@@ -194,7 +194,7 @@ async def _run_kbo_fallback_healing(game_id: str) -> None:
                 if attempt == max_attempts:
                     print(f"[FALLBACK ERROR] KBO fallback failed all {max_attempts} attempts for {game_id}")
                 else:
-                    backoff = 2.0 ** attempt
+                    backoff = 2.0**attempt
                     print(f"[FALLBACK INFO] Sleeping for {backoff:.1f}s before retry...")
                     await asyncio.sleep(backoff)
 

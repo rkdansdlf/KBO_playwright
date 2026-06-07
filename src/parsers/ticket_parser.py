@@ -26,7 +26,10 @@ TEAM_CODE_FROM_SOURCE_KEY = {
     "kiwoom_heroes_ticket": ("WO", "GOCHEOK"),
 }
 
-PRICE_PATTERN = re.compile(r"(?<![가-힣])(?<!주말\s)(?<!주말)([가-힣]+(?:석|존|zone|Zone))\s*:?\s*(\d{1,3}(?:,\d{3})*)\s*(?:원|￦|KRW)?", re.MULTILINE)
+PRICE_PATTERN = re.compile(
+    r"(?<![가-힣])(?<!주말\s)(?<!주말)([가-힣]+(?:석|존|zone|Zone))\s*:?\s*(\d{1,3}(?:,\d{3})*)\s*(?:원|￦|KRW)?",
+    re.MULTILINE,
+)
 WEEKEND_PATTERN = re.compile(r"주말\s*([가-힣]+(?:석|존|zone|Zone))\s*:?\s*(\d{1,3}(?:,\d{3})*)", re.MULTILINE)
 
 
@@ -85,6 +88,7 @@ def parse_ticket_page(html: str, source_key: str, metadata: dict | None = None) 
 
 if __name__ == "__main__":
     import sys
+
     html = sys.stdin.read() if not sys.stdin.isatty() else "<html><body><p>테이블석 : 150,000원</p></body></html>"
     result = parse_ticket_page(html, "lg_twins_ticket", {"season": 2025})
     for item in result:

@@ -10,6 +10,7 @@ Usage:
     python -m src.cli.crawl_operation_notices --source naver --days 1      # 오늘자만
     python -m src.cli.crawl_operation_notices --source all --save          # 전체 소스
 """
+
 from __future__ import annotations
 
 import argparse
@@ -56,6 +57,7 @@ async def _run_official_crawlers(args: argparse.Namespace) -> None:
 async def _run_naver_crawler(args: argparse.Namespace) -> None:
     """Naver 검색 API 기반 공지 크롤러 실행."""
     from src.crawlers.operation_notice_naver_crawler import OperationNoticeNaverCrawler
+
     days = getattr(args, "days", 3)
     crawler = OperationNoticeNaverCrawler(days_back=days)
     await crawler.run(save=args.save)
@@ -75,9 +77,7 @@ async def run(args: argparse.Namespace) -> None:
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(
-        description="Crawl stadium operation notices (official + Naver search)"
-    )
+    parser = argparse.ArgumentParser(description="Crawl stadium operation notices (official + Naver search)")
     parser.add_argument("--save", action="store_true", help="Save results to database")
     parser.add_argument(
         "--source",

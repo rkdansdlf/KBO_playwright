@@ -173,9 +173,7 @@ def _build_stability_summary(
         },
         "quality_gates": {
             "non_p0_failure_counts": dict(sorted(non_p0_quality_gate_counts.items())),
-            "non_p0_failure_ids": {
-                reason: sorted(set(ids)) for reason, ids in sorted(non_p0_quality_gate_ids.items())
-            },
+            "non_p0_failure_ids": {reason: sorted(set(ids)) for reason, ids in sorted(non_p0_quality_gate_ids.items())},
         },
         "p0_non_game": {
             "counts": dict(sorted(p0_non_game_counts.items())),
@@ -586,8 +584,7 @@ async def run_update(
 
             if missing_relay_game_ids:
                 print(
-                    f"   ⚠️ Found {len(missing_relay_game_ids)} games missing PBP/event/WPA data. "
-                    "Attempting recovery..."
+                    f"   ⚠️ Found {len(missing_relay_game_ids)} games missing PBP/event/WPA data. Attempting recovery..."
                 )
                 # Filter out ones already in relay_recovery_target_ids to avoid redundant runs
                 # (though fetch_kbo_pbp handles it, cleaner to show accurate count here)
@@ -918,6 +915,7 @@ async def run_update(
             _run_oci_parity_quality_gate()
             print("   ✅ OCI parity check complete")
         except Exception as exc:
+            logger.exception("OCI parity quality gate failed")
             reason = "non_p0_oci_parity_quality_gate_failed"
             non_p0_quality_gate_counts[reason] = non_p0_quality_gate_counts.get(reason, 0) + 1
             non_p0_quality_gate_ids.setdefault(reason, []).append("oci")

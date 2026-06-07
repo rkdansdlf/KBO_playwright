@@ -14,6 +14,7 @@ Primary data sources:
 Environment variables:
     SEOUL_OPEN_DATA_API_KEY  — 서울 열린데이터광장 API 인증키
 """
+
 from __future__ import annotations
 
 import logging
@@ -24,22 +25,20 @@ import httpx
 
 logger = logging.getLogger(__name__)
 
-SEOUL_REALTIME_CONGESTION_URL = (
-    "http://openapi.seoul.go.kr:8088/{api_key}/json/citydata_ppltn/1/5/{area_name}"
-)
+SEOUL_REALTIME_CONGESTION_URL = "http://openapi.seoul.go.kr:8088/{api_key}/json/citydata_ppltn/1/5/{area_name}"
 
 # Jamsil area codes registered in Seoul Real-time City Data API
 JAMSIL_AREA_CODES = [
-    "잠실 야구장",       # 잠실 Baseball Stadium area
-    "잠실역(2호선)",     # 잠실Station Line 2
-    "석촌호수(동호)",    # Seokchon Lake East (nearby)
+    "잠실 야구장",  # 잠실 Baseball Stadium area
+    "잠실역(2호선)",  # 잠실Station Line 2
+    "석촌호수(동호)",  # Seokchon Lake East (nearby)
 ]
 
 
 @dataclass
 class CongestionSnapshot:
     location_label: str
-    congestion_level: str   # 여유 / 보통 / 약간 붐빔 / 붐빔 → mapped to low/normal/high/very_high
+    congestion_level: str  # 여유 / 보통 / 약간 붐빔 / 붐빔 → mapped to low/normal/high/very_high
     congestion_index: float | None
     people_count: int | None
     source: str
@@ -66,9 +65,7 @@ async def get_area_congestion(area_name: str) -> CongestionSnapshot | None:
         logger.warning("[SeoulAPI] SEOUL_OPEN_DATA_API_KEY not set")
         return None
 
-    url = SEOUL_REALTIME_CONGESTION_URL.format(
-        api_key=api_key, area_name=area_name
-    )
+    url = SEOUL_REALTIME_CONGESTION_URL.format(api_key=api_key, area_name=area_name)
 
     try:
         async with httpx.AsyncClient(timeout=10) as client:
@@ -77,10 +74,7 @@ async def get_area_congestion(area_name: str) -> CongestionSnapshot | None:
             data = resp.json()
 
         # Response structure: SeoulRtd.citydata_ppltn[0]
-        records = (
-            data.get("SeoulRtd.citydata_ppltn", {})
-            .get("RESULT", {})
-        )
+        records = data.get("SeoulRtd.citydata_ppltn", {}).get("RESULT", {})
         if not isinstance(records, list) or not records:
             # Try alternate key
             items = data.get("CITYDATA", {}).get("LIVE_PPLTN_STTS", [])

@@ -5,6 +5,7 @@ Captures game-day operational announcements from official team websites and
 KBO channels: gate changes, rain delays/cancellations, entry restrictions,
 special event announcements, and urgent notices.
 """
+
 from __future__ import annotations
 
 from datetime import date, datetime
@@ -34,10 +35,7 @@ class StadiumOperationNotice(Base, TimestampMixin):
     notice_type: Mapped[str] = mapped_column(
         String(30),
         nullable=False,
-        comment=(
-            "Notice type: GATE_CHANGE / CANCEL / DELAY / "
-            "ENTRY_RULE / WEATHER / EVENT / PARKING / GENERAL"
-        ),
+        comment=("Notice type: GATE_CHANGE / CANCEL / DELAY / ENTRY_RULE / WEATHER / EVENT / PARKING / GENERAL"),
     )
     title: Mapped[str] = mapped_column(
         String(500),

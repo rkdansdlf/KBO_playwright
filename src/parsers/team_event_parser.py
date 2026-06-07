@@ -386,11 +386,16 @@ def parse_team_events(html: str, source_key: str, metadata: dict | None = None) 
 
 if __name__ == "__main__":
     import sys
-    html = sys.stdin.read() if not sys.stdin.isatty() else (
-        '<html><body><table><tr>'
-        '<td><a class="subject" href="/notice/1">2025 시즌 이벤트 안내</a></td>'
-        '<td><span class="date">2025-03-15</span></td>'
-        '</tr></table></body></html>'
+
+    html = (
+        sys.stdin.read()
+        if not sys.stdin.isatty()
+        else (
+            "<html><body><table><tr>"
+            '<td><a class="subject" href="/notice/1">2025 시즌 이벤트 안내</a></td>'
+            '<td><span class="date">2025-03-15</span></td>'
+            "</tr></table></body></html>"
+        )
     )
     result = parse_team_events(html, "lg_twins_events", {"cutoff_days": 90, "fetched_at": "2025-06-01T00:00:00"})
     for item in result:
