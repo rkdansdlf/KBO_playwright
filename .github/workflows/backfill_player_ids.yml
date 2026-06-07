@@ -25,7 +25,7 @@ jobs:
           OCI_DB_URL: ${{ secrets.OCI_DB_URL }}
         run: |
           python3 -c "
-          from scripts.maintenance.backfill_player_ids import backfill_year
+          from scripts.legacy.maintenance.backfill_player_ids import backfill_year
           from src.db.engine import SessionLocal
           from src.services.player_id_resolver import PlayerIdResolver
           year = $(TZ='Asia/Seoul' date +'%Y')

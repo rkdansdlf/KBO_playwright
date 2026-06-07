@@ -125,6 +125,13 @@ jobs:
         run: |
           python3 scripts/batch_parse_snapshots.py
 
+      - uses: ./.github/actions/notify
+        if: always()
+        with:
+          status: ${{ job.status }}
+          workflow: 'PBP Healer & Batch Parse'
+          channels: telegram
+
   # ──────────────────────────────────────────────────────────────────────────
   # JOB 3 — Quality Report + Gap Report (05:15-05:30 KST)
   # ──────────────────────────────────────────────────────────────────────────
