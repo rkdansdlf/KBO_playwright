@@ -258,7 +258,7 @@ class GameDetailCrawler:
                     await review_tab.click()
                     await asyncio.sleep(0.5)
             except PlaywrightError:
-                pass
+                logger.debug("Review tab not clickable for game")
 
             away_hitters, away_total = await self._extract_hitters(
                 page,
@@ -439,7 +439,7 @@ class GameDetailCrawler:
                 if lightweight:
                     return True, "ok"
             except PlaywrightError:
-                pass
+                logger.debug("Game dialog button not clickable")
             # Diagnostic screenshot
             debug_path = f"data/error_{datetime.now().strftime('%H%M%S')}.png"
             os.makedirs("data", exist_ok=True)
@@ -469,7 +469,7 @@ class GameDetailCrawler:
                     val = (await crowd_el.text_content()).replace("관중 :", "").replace(",", "").strip()
                     metadata["attendance"] = int(val)
                 except (ValueError, TypeError):
-                    pass
+                    logger.debug("Failed to parse attendance value from #txtCrowd")
 
             # 2. Try generic area search
             info_area = await page.query_selector(".box-score-area, .game-info, .score-board, .record-etc")
@@ -1222,7 +1222,7 @@ class GameDetailCrawler:
                 frac = int(parts[1].strip()[:1])
                 return whole * 3 + frac
             except (ValueError, IndexError):
-                pass
+                logger.debug("Failed to parse innings as X.Y format: %s", cleaned)
 
         try:
             value = float(cleaned)

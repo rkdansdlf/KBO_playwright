@@ -143,7 +143,7 @@ class PlayerIdResolver:
                 kbo_pid = int(kbo_id)
                 surrogates[pid] = kbo_pid
             except (ValueError, TypeError):
-                pass
+                logger.debug("Invalid KBO ID for player %s: %s", pid, kbo_id)
 
         if not surrogates:
             return candidate_ids

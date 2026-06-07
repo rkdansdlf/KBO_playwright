@@ -226,7 +226,7 @@ async def fetch_and_parse_futures_batting(
                     await futures_tab.click()
                     await throttle.wait()
             except PlaywrightError:
-                pass  # Tab might not exist or already selected
+                logger.debug("Batting tab not found or already selected")
 
             html = await page.content()
         finally:

@@ -568,7 +568,7 @@ def save_relay_data(
                     team_code_from_game_id_segment(game_id[10:12], season_year) if len(game_id) >= 12 else None
                 )
             except (ValueError, IndexError):
-                pass
+                logger.debug("Failed to parse team codes from game_id: %s", game_id)
 
             try:
                 from src.services.player_id_resolver import PlayerIdResolver

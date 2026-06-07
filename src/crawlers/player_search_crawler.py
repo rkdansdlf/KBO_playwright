@@ -280,10 +280,23 @@ class PlayerSearchCrawler:
         return collected
 
     async def _collect_page_rows(self, page: Page) -> list[PlayerRow]:
-        payload = await page.evaluate(
-            "(sel) => Array.from(document.querySelectorAll(sel)).map(r => ({cells: Array.from(r.querySelectorAll('td')).map(td => td.innerText.trim()), linkHref: r.querySelector('td:nth-child(2) a')?.getAttribute('href')}))",
-            TABLE_ROWS,
-        )
+        # Retry on "Execution context was destroyed" which happens when
+        # an ASP.NET postback response arrives during evaluate.
+        max_attempts = 3
+        for attempt in range(max_attempts):
+            try:
+                payload = await page.evaluate(
+                    "(sel) => Array.from(document.querySelectorAll(sel)).map(r => ({cells: Array.from(r.querySelectorAll('td')).map(td => td.innerText.trim()), linkHref: r.querySelector('td:nth-child(2) a')?.getAttribute('href')}))",
+                    TABLE_ROWS,
+                )
+                break
+            except Exception as e:
+                err_msg = str(e)
+                if "Execution context was destroyed" in err_msg or "Target closed" in err_msg:
+                    if attempt < max_attempts - 1:
+                        await asyncio.sleep(1.0)
+                        continue
+                raise
         res = []
         for r in payload or []:
             cells = r["cells"]
@@ -333,27 +346,32 @@ class PlayerSearchCrawler:
             return ""
 
     async def _trigger_postback(self, page, anchor):
+        # Check href first — javascript:__doPostBack links must use manual evaluation
+        # because Playwright click() returns success but does not actually trigger
+        # the ASP.NET postback mechanism.
         try:
-            # Try to use click() which handles both normal links and many JS-based navigations reliably.
-            # We use wait_for_load_state as a generic way to ensure navigation finished.
+            href = await anchor.get_attribute("href", timeout=5000)
+        except Exception:
+            href = None
+
+        if href and "javascript:__doPostBack" in href:
+            m = POSTBACK_RE.search(href)
+            if m:
+                try:
+                    await page.evaluate(POSTBACK_EVAL, [m.group(1), m.group(2)])
+                    await page.wait_for_load_state("load", timeout=10000)
+                    return True
+                except Exception:
+                    logger.warning("Manual postback evaluate failed")
+            return False
+
+        # Normal (non-JS) links: use click()
+        try:
             await anchor.click(timeout=10000)
             await page.wait_for_load_state("load", timeout=10000)
             return True
         except Exception:
-            logger.warning("Postback click failed, trying manual postback")
-            try:
-                href = await anchor.get_attribute("href", timeout=5000)
-                if href and "javascript:__doPostBack" in href:
-                    m = POSTBACK_RE.search(href)
-                    if m:
-                        try:
-                            await page.evaluate(POSTBACK_EVAL, [m.group(1), m.group(2)])
-                            await page.wait_for_load_state("load", timeout=10000)
-                            return True
-                        except Exception:
-                            logger.warning("Manual postback evaluate failed")
-            except Exception:
-                logger.warning("Failed to get href attribute for manual postback")
+            logger.warning("Postback click failed: %s", href)
             return False
 
     async def _wait_after_nav(self, page, prev_v, first_b):

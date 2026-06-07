@@ -45,7 +45,7 @@ def parse_mobile_roster(html: str, source_key: str, metadata: dict | None = None
     try:
         target_date = datetime.fromisoformat(target_date_str).date() if target_date_str else date.today()
     except (ValueError, TypeError):
-        pass
+        logger.debug("Invalid target_date_str: %s", target_date_str)
     transactions = []
 
     registered_section = ""

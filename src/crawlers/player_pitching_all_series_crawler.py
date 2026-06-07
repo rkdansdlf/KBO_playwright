@@ -22,7 +22,6 @@ import argparse
 import logging
 import os
 import re
-import time
 from dataclasses import dataclass, field
 
 logger = logging.getLogger(__name__)
@@ -293,9 +292,8 @@ def apply_sort(
                         policy.delay()
                     anchor.click()
                     page.wait_for_load_state("networkidle", timeout=60000)
-                    import time
-
-                    time.sleep(2)
+                    if policy:
+                        policy.delay()
                     return True
             except Exception:
                 logger.warning("Sort toggle click failed, falling back to JS execution")
@@ -307,9 +305,8 @@ def apply_sort(
                     policy.delay()
                 page.evaluate(f"sort('{sort_code}')")
                 page.wait_for_load_state("networkidle", timeout=60000)
-                import time
-
-                time.sleep(2)
+                if policy:
+                    policy.delay()
                 return True
 
         anchors = page.query_selector_all("table.tData01 thead a")
@@ -735,9 +732,8 @@ def setup_pitcher_page(page: Page, url: str, year: int, series_value: str, polic
         logger.exception(f"   ❌ {url} 페이지 로딩 실패")
         return False
 
-    import time
-
-    time.sleep(2)
+    if policy:
+        policy.delay()
 
     try:
         season_selector = 'select[name*="ddlSeason"]'
@@ -746,14 +742,14 @@ def setup_pitcher_page(page: Page, url: str, year: int, series_value: str, polic
         logger.info(f"   ⚙️  Selecting Season {year}...")
         page.select_option(season_selector, str(year))
         page.wait_for_load_state("networkidle", timeout=30000)
-        import time
-
-        time.sleep(2)
+        if policy:
+            policy.delay()
 
         logger.info(f"   ⚙️  Selecting Series {series_value}...")
         page.select_option(series_selector, value=series_value)
         page.wait_for_load_state("networkidle", timeout=30000)
-        time.sleep(2)
+        if policy:
+            policy.delay()
 
         # KBO 페이지 에러 감지 (500 에러 등)
         title = page.title()
@@ -921,9 +917,7 @@ def crawl_pitcher_series(
         iteration_targets = team_options if team_options else [{"value": "", "text": "전체"}]
 
         for tm in iteration_targets:
-            import time
-
-            time.sleep(2)
+            policy.delay()
             if team_options:
                 logger.info(f"🔍 팀 선택: {tm['text']} ({tm['value']})")
                 try:
@@ -932,7 +926,7 @@ def crawl_pitcher_series(
                         tm["value"],
                     )
                     page.wait_for_load_state("networkidle", timeout=60000)
-                    time.sleep(1)
+                    policy.delay()
                 except Exception:
                     logger.exception(f"⚠️ 팀 선택 실패 ({tm['text']})")
                     continue
@@ -1070,6 +1064,7 @@ def parse_arguments() -> argparse.Namespace:
 
 def main():
     args = parse_arguments()
+    policy = RequestPolicy()
 
     if args.series:
         # 특정 시리즈만 크롤링
@@ -1096,7 +1091,7 @@ def main():
                 by_team=args.by_team,
             )
             all_data[series_key] = series_data
-            time.sleep(3)
+            policy.delay()
 
         # 전체 요약
         logger.info("\n" + "=" * 60)

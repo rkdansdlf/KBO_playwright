@@ -9,7 +9,6 @@ Docs/schema/player_season_data.md 스키마를 기반으로 구현
 import logging
 import os
 import sys
-import time
 from datetime import datetime
 
 logger = logging.getLogger(__name__)
@@ -20,6 +19,7 @@ from playwright.sync_api import Page, sync_playwright
 
 from src.repositories.save_futures_batting import save_futures_batting
 from src.utils.playwright_blocking import install_sync_resource_blocking
+from src.utils.request_policy import RequestPolicy
 
 
 def safe_parse_number(value_str: str, data_type: type, allow_zero: bool = True) -> int | float | None:
@@ -47,7 +47,7 @@ def parse_player_id_from_link(link_href: str) -> int | None:
     return None
 
 
-def crawl_regular_season_data(page: Page, year: int) -> dict[int, dict]:
+def crawl_regular_season_data(page: Page, year: int, policy: RequestPolicy | None = None) -> dict[int, dict]:
     """
     정규시즌 데이터 크롤링 (Basic1 + Basic2)
     컬럼: AVG,G,PA,AB,R,H,2B,3B,HR,TB,RBI,SAC,SF + BB,IBB,HBP,SO,GDP,SLG,OBP,OPS,MH,RISP,PH-BA
@@ -55,11 +55,11 @@ def crawl_regular_season_data(page: Page, year: int) -> dict[int, dict]:
     logger.info(f"📊 {year}년 정규시즌 데이터 크롤링 시작...")
 
     # 1. Basic1 데이터 수집
-    basic1_data = crawl_basic1_data(page, year, {"value": "0", "name": "정규시즌"})
+    basic1_data = crawl_basic1_data(page, year, {"value": "0", "name": "정규시즌"}, policy=policy)
     logger.info(f"   ✅ Basic1 데이터: {len(basic1_data)}명")
 
     # 2. Basic2 데이터 수집 (헤더 클릭)
-    basic2_data = crawl_basic2_with_headers(page, year, {"value": "0", "name": "정규시즌"})
+    basic2_data = crawl_basic2_with_headers(page, year, {"value": "0", "name": "정규시즌"}, policy=policy)
     logger.info(f"   ✅ Basic2 데이터: {len(basic2_data)}명")
 
     # 3. 데이터 병합
@@ -76,7 +76,7 @@ def crawl_regular_season_data(page: Page, year: int) -> dict[int, dict]:
     return merged_data
 
 
-def crawl_basic1_data(page: Page, year: int, series_info: dict) -> dict[int, dict]:
+def crawl_basic1_data(page: Page, year: int, series_info: dict, policy: RequestPolicy | None = None) -> dict[int, dict]:
     """
     Basic1 페이지 데이터 크롤링
     컬럼: AVG,G,PA,AB,R,H,2B,3B,HR,TB,RBI,SAC,SF (정규시즌)
@@ -89,17 +89,20 @@ def crawl_basic1_data(page: Page, year: int, series_info: dict) -> dict[int, dic
         url = "https://www.koreabaseball.com/Record/Player/HitterBasic/Basic1.aspx"
         page.goto(url, wait_until="load", timeout=30000)
         page.wait_for_load_state("networkidle", timeout=30000)
-        time.sleep(2)
+        if policy:
+            policy.delay()
 
         # 연도 선택
         season_selector = 'select[name="ctl00$ctl00$ctl00$cphContents$cphContents$cphContents$ddlSeason$ddlSeason"]'
         page.select_option(season_selector, str(year))
-        time.sleep(1)
+        if policy:
+            policy.delay()
 
         # 시리즈 선택
         series_selector = 'select[name="ctl00$ctl00$ctl00$cphContents$cphContents$cphContents$ddlSeries$ddlSeries"]'
         page.select_option(series_selector, value=series_info["value"])
-        time.sleep(2)
+        if policy:
+            policy.delay()
 
         # 페이지별 데이터 수집
         all_player_data = {}
@@ -176,11 +179,12 @@ def crawl_basic1_data(page: Page, year: int, series_info: dict) -> dict[int, dic
             logger.info(f"         ✅ {len(rows)}개 행 처리, 총 {len(all_player_data)}명")
 
             # 다음 페이지 확인
-            if not goto_next_page(page):
+            if not goto_next_page(page, policy=policy):
                 break
 
             page_num += 1
-            time.sleep(1)
+            if policy:
+                policy.delay()
 
         return all_player_data
 
@@ -248,7 +252,7 @@ def parse_other_series_stats(cells: list) -> dict:
     return stats
 
 
-def crawl_basic2_with_headers(page: Page, year: int, series_info: dict) -> dict[int, dict]:
+def crawl_basic2_with_headers(page: Page, year: int, series_info: dict, policy: RequestPolicy | None = None) -> dict[int, dict]:
     """
     Basic2 헤더 클릭으로 추가 데이터 수집
     컬럼: BB,IBB,HBP,SO,GDP,SLG,OBP,OPS,MH,RISP,PH-BA
@@ -276,16 +280,19 @@ def crawl_basic2_with_headers(page: Page, year: int, series_info: dict) -> dict[
         url = "https://www.koreabaseball.com/Record/Player/HitterBasic/Basic1.aspx"
         page.goto(url, wait_until="load", timeout=30000)
         page.wait_for_load_state("networkidle", timeout=30000)
-        time.sleep(2)
+        if policy:
+            policy.delay()
 
         # 연도 및 시리즈 선택
         season_selector = 'select[name="ctl00$ctl00$ctl00$cphContents$cphContents$cphContents$ddlSeason$ddlSeason"]'
         page.select_option(season_selector, str(year))
-        time.sleep(1)
+        if policy:
+            policy.delay()
 
         series_selector = 'select[name="ctl00$ctl00$ctl00$cphContents$cphContents$cphContents$ddlSeries$ddlSeries"]'
         page.select_option(series_selector, value=series_info["value"])
-        time.sleep(2)
+        if policy:
+            policy.delay()
 
         # "다음" 링크로 Basic2 접근
         next_link = page.query_selector('a.next[href*="Basic2.aspx"]')
@@ -295,7 +302,8 @@ def crawl_basic2_with_headers(page: Page, year: int, series_info: dict) -> dict[
 
         next_link.click()
         page.wait_for_load_state("networkidle", timeout=30000)
-        time.sleep(2)
+        if policy:
+            policy.delay()
 
         # 각 헤더별 데이터 수집
         for i, (header_name, sort_code, description) in enumerate(headers_to_click):
@@ -310,10 +318,11 @@ def crawl_basic2_with_headers(page: Page, year: int, series_info: dict) -> dict[
 
                 header_link.click()
                 page.wait_for_load_state("networkidle", timeout=30000)
-                time.sleep(1)
+                if policy:
+                    policy.delay()
 
                 # 현재 정렬 기준으로 데이터 수집
-                page_data = collect_current_page_data(page, header_name)
+                page_data = collect_current_page_data(page, header_name, policy=policy)
 
                 # 데이터 병합
                 for player_id, data in page_data.items():
@@ -336,7 +345,7 @@ def crawl_basic2_with_headers(page: Page, year: int, series_info: dict) -> dict[
         return {}
 
 
-def collect_current_page_data(page: Page, sort_field: str) -> dict[int, dict]:
+def collect_current_page_data(page: Page, sort_field: str, policy: RequestPolicy | None = None) -> dict[int, dict]:
     """현재 페이지의 모든 선수 데이터 수집"""
     page_data = {}
 
@@ -386,11 +395,12 @@ def collect_current_page_data(page: Page, sort_field: str) -> dict[int, dict]:
                 page_data[player_id] = player_data
 
             # 다음 페이지로 이동
-            if not goto_next_page(page):
+            if not goto_next_page(page, policy=policy):
                 break
 
             page_num += 1
-            time.sleep(1)
+            if policy:
+                policy.delay()
 
     except Exception:
         logger.exception("         ⚠️ 페이지 데이터 수집 중 오류")
@@ -454,7 +464,7 @@ def extract_basic2_stats(cells: list, sort_field: str) -> dict:
     return stats
 
 
-def goto_next_page(page: Page) -> bool:
+def goto_next_page(page: Page, policy: RequestPolicy | None = None) -> bool:
     """다음 페이지로 이동"""
     try:
         # 페이지네이션 확인
@@ -470,7 +480,8 @@ def goto_next_page(page: Page) -> bool:
                 if href and "javascript:" not in href:
                     link.click()
                     page.wait_for_load_state("networkidle", timeout=30000)
-                    time.sleep(1)
+                    if policy:
+                        policy.delay()
                     return True
 
         return False
@@ -480,14 +491,14 @@ def goto_next_page(page: Page) -> bool:
         return False
 
 
-def crawl_other_series_data(page: Page, year: int, series_list: list[dict]) -> dict[str, dict[int, dict]]:
+def crawl_other_series_data(page: Page, year: int, series_list: list[dict], policy: RequestPolicy | None = None) -> dict[str, dict[int, dict]]:
     """기타 시리즈 데이터 크롤링 (기본 데이터만)"""
     all_series_data = {}
 
     for series_info in series_list:
         logger.info(f"📊 {year}년 {series_info['name']} 데이터 크롤링...")
 
-        series_data = crawl_basic1_data(page, year, series_info)
+        series_data = crawl_basic1_data(page, year, series_info, policy=policy)
         if series_data:
             all_series_data[series_info["name"]] = series_data
             logger.info(f"   ✅ {series_info['name']}: {len(series_data)}명")
@@ -576,6 +587,8 @@ def main():
     logger.info(f"🚀 KBO {YEAR}년 선수 타자 기록 완전 크롤링 시작")
     logger.info(f"📋 대상: 정규시즌(Enhanced) + {len(SERIES_LIST)}개 시리즈(Basic)")
 
+    policy = RequestPolicy()
+
     with sync_playwright() as playwright:
         browser = playwright.chromium.launch(headless=False)
         page = browser.new_page()
@@ -589,7 +602,7 @@ def main():
             logger.info("📊 1단계: 정규시즌 데이터 수집 (Enhanced)")
             logger.info(f"{'=' * 50}")
 
-            regular_season_data = crawl_regular_season_data(page, YEAR)
+            regular_season_data = crawl_regular_season_data(page, YEAR, policy=policy)
             if regular_season_data:
                 saved = save_to_database(regular_season_data, "정규시즌")
                 total_saved += saved
@@ -599,7 +612,7 @@ def main():
             logger.info("📊 2단계: 기타 시리즈 데이터 수집 (Basic)")
             logger.info(f"{'=' * 50}")
 
-            other_series_data = crawl_other_series_data(page, YEAR, SERIES_LIST)
+            other_series_data = crawl_other_series_data(page, YEAR, SERIES_LIST, policy=policy)
             for series_name, series_data in other_series_data.items():
                 if series_data:
                     saved = save_to_database(series_data, series_name)

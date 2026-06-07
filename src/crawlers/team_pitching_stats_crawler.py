@@ -6,7 +6,6 @@ from __future__ import annotations
 
 import argparse
 import logging
-import time
 from typing import Any
 
 logger = logging.getLogger(__name__)
@@ -137,9 +136,9 @@ class TeamPitchingStatsCrawler:
                 try:
                     self.policy.delay()
                     self.policy.run_with_retry(page.goto, url, wait_until="networkidle", timeout=60000)
-                    time.sleep(0.5)
+                    self.policy.delay()
                     self._select_season(page, season)
-                    time.sleep(0.5)
+                    self.policy.delay()
                     html = page.content()
                     stats = parse_team_pitching_html(html, season, self.league, team_mapping)
                     if stats:

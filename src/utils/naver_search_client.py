@@ -78,7 +78,7 @@ def _parse_naver_date(pub_date_str: str) -> datetime | None:
 
         return parsedate_to_datetime(pub_date_str).replace(tzinfo=None)
     except (ValueError, TypeError):
-        pass
+        logger.debug("Failed to parse Naver date: %s", pub_date_str)
     # Fallback: simple date only
     for fmt in ("%Y.%m.%d.", "%Y-%m-%d", "%Y.%m.%d"):
         try:

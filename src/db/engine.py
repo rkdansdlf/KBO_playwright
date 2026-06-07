@@ -51,7 +51,7 @@ def create_engine_for_url(url: str, *, disable_sqlite_wal: bool = False):
                 cursor.execute("PRAGMA synchronous = NORMAL;")
                 cursor.close()
             except sqlite3.Error:
-                pass
+                logger.warning("Failed to configure SQLite pragmas")
 
         return engine
     return create_engine(url, pool_pre_ping=True, pool_size=10, max_overflow=20, echo=False)

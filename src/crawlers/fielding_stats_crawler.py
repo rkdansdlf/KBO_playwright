@@ -5,7 +5,6 @@
 
 import logging
 import sqlite3
-import time
 from datetime import datetime
 
 from playwright.sync_api import sync_playwright
@@ -66,7 +65,7 @@ def crawl_all_fielding_stats(year=None):
             page.wait_for_load_state("networkidle", timeout=15000)
         except Exception:
             logger.exception("⚠️ 페이지 초기 대기 중 경고 (무시 가능)")
-        time.sleep(2)
+        policy.delay()
 
         try:
             # 연도 선택
@@ -75,7 +74,7 @@ def crawl_all_fielding_stats(year=None):
                 page.select_option("select#cphContents_cphContents_cphContents_ddlSeason_ddlSeason", str(year))
                 with contextlib.suppress(Exception):
                     page.wait_for_load_state("networkidle", timeout=15000)
-                time.sleep(2)
+                policy.delay()
                 logger.info(f"✅ {year}년 데이터 선택 완료")
 
             # 포지션 한글 → ID 매핑
@@ -116,12 +115,12 @@ def crawl_all_fielding_stats(year=None):
                     logger.info(f"\n🏢 [{team_name}] 수비 기록 크롤링 중...")
                     # 포지션 선택을 "전체"로 초기화 (중요)
                     page.select_option("select#cphContents_cphContents_cphContents_ddlPos_ddlPos", value="")
-                    time.sleep(1)
+                    policy.delay()
 
                     with page.expect_response("**/Record/Player/Defense/Basic.aspx", timeout=20000):
                         page.select_option("select#cphContents_cphContents_cphContents_ddlTeam_ddlTeam", value=team_val)
                     page.wait_for_load_state("networkidle", timeout=15000)
-                    time.sleep(2)
+                    policy.delay()
 
                     pagination = page.query_selector(".paging")
                     total_pages = 1
@@ -149,7 +148,7 @@ def crawl_all_fielding_stats(year=None):
                                     with page.expect_response("**/Record/Player/Defense/Basic.aspx", timeout=20000):
                                         page_link.click()
                                     page.wait_for_load_state("networkidle", timeout=15000)
-                                    time.sleep(2)
+                                    policy.delay()
                             except Exception:
                                 logger.exception(f"   ⚠️ 페이지 {current_page} 이동 중 오류")
                                 break
@@ -236,13 +235,13 @@ def crawl_all_fielding_stats(year=None):
                 # 페이지 초기화
                 page.goto(url, wait_until="load", timeout=60000)
                 page.wait_for_load_state("networkidle", timeout=15000)
-                time.sleep(2)
+                policy.delay()
 
                 # 1단계: 포지션 "포수(2)" 선택
                 with page.expect_response("**/Record/Player/Defense/Basic.aspx", timeout=20000):
                     page.select_option("select#cphContents_cphContents_cphContents_ddlPos_ddlPos", value="2")
                 page.wait_for_load_state("networkidle", timeout=15000)
-                time.sleep(3)
+                policy.delay()
 
                 # 2단계: 팀 "전체" 선택 (이미 전체일 수도 있으므로 확인 후 선택)
                 team_val = page.evaluate(
@@ -252,7 +251,7 @@ def crawl_all_fielding_stats(year=None):
                     with page.expect_response("**/Record/Player/Defense/Basic.aspx", timeout=20000):
                         page.select_option("select#cphContents_cphContents_cphContents_ddlTeam_ddlTeam", value="")
                     page.wait_for_load_state("networkidle", timeout=15000)
-                    time.sleep(3)
+                    policy.delay()
 
                 # 페이지네이션 (포수가 많을 경우 대비)
                 pagination = page.query_selector(".paging")
@@ -281,7 +280,7 @@ def crawl_all_fielding_stats(year=None):
                             with page.expect_response("**/Record/Player/Defense/Basic.aspx", timeout=20000):
                                 p_link.click()
                             page.wait_for_load_state("networkidle", timeout=15000)
-                            time.sleep(2)
+                            policy.delay()
 
                     table = page.query_selector("table.tData01.tt")
                     if not table or not table.query_selector("tbody"):
