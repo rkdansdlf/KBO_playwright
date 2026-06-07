@@ -77,7 +77,7 @@ BEGIN
     PERFORM pg_temp.drop_single_column_fk('game_summary', 'game_id', 'game', 'game_id');
     PERFORM pg_temp.drop_single_column_fk('game_summary', 'player_id', 'player_basic', 'player_id');
     PERFORM pg_temp.drop_single_column_fk('game_play_by_play', 'game_id', 'game', 'game_id');
-    
+
     -- Drop matchup splits constraints
     PERFORM pg_temp.drop_single_column_fk('matchup_bvp', 'batter_id', 'player_basic', 'player_id');
     PERFORM pg_temp.drop_single_column_fk('matchup_bvp', 'pitcher_id', 'player_basic', 'player_id');

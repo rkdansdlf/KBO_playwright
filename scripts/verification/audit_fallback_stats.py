@@ -50,9 +50,7 @@ class StatAudit:
         ]
         SlackWebhookClient.send_alert(msg, blocks=blocks)
         try:
-            FallbackMonitor.save_audit_event(
-                category, "abort", {"year": year, "series": series, "reason": reason}
-            )
+            FallbackMonitor.save_audit_event(category, "abort", {"year": year, "series": series, "reason": reason})
         except Exception as e:
             logger.error(f"Failed to save audit abort event: {e}")
 
@@ -130,11 +128,13 @@ class StatAudit:
         try:
             mismatch_data = []
             for m in mismatches:
-                mismatch_data.append({
-                    "player_id": str(m["player_id"]),
-                    "name": str(m["name"]),
-                    "diffs": m["diffs"],
-                })
+                mismatch_data.append(
+                    {
+                        "player_id": str(m["player_id"]),
+                        "name": str(m["name"]),
+                        "diffs": m["diffs"],
+                    }
+                )
             FallbackMonitor.save_audit_event(
                 category, "warning", {"year": year, "series": series, "mismatches": mismatch_data}
             )
@@ -740,7 +740,11 @@ def main():
 
     if args.type in ["batting", "all"]:
         StatAudit.audit_batting(
-            args.year, args.series, fix=fix_enabled, max_mismatches=args.max_mismatches, max_game_diff=args.max_game_diff
+            args.year,
+            args.series,
+            fix=fix_enabled,
+            max_mismatches=args.max_mismatches,
+            max_game_diff=args.max_game_diff,
         )
     if args.type in ["pitching", "all"]:
         StatAudit.audit_pitching(

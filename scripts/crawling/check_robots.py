@@ -6,7 +6,7 @@ Fetch and validate koreabaseball.com robots.txt before running crawlers.
 from __future__ import annotations
 
 import argparse
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from urllib.robotparser import RobotFileParser
 
@@ -31,7 +31,7 @@ def fetch_robots(timeout: float = 10.0) -> str:
 
 def save_snapshot(content: str) -> Path:
     SNAPSHOT_DIR.mkdir(parents=True, exist_ok=True)
-    timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    timestamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
     snapshot_path = SNAPSHOT_DIR / f"robots_{timestamp}.txt"
     snapshot_path.write_text(content, encoding="utf-8")
     return snapshot_path
@@ -71,7 +71,7 @@ def main():
     print(f"[INFO] Saved robots snapshot to {snapshot_path}")
 
     blocked = validate_paths(content, args.paths)
-    inspected_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
+    inspected_at = datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S UTC")
     print(f"[INFO] Robots inspected at {inspected_at}")
 
     if blocked:
