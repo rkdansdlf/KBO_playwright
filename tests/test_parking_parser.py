@@ -1,6 +1,4 @@
-import pytest
-
-from src.parsers.parking_parser import parse_parking, PARKING_FEE_PATTERN, STADIUM_FROM_SOURCE_KEY
+from src.parsers.parking_parser import PARKING_FEE_PATTERN, STADIUM_FROM_SOURCE_KEY, parse_parking
 
 
 class TestParkingParser:

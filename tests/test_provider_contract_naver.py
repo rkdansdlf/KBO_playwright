@@ -131,7 +131,7 @@ class TestNaverRelayResponseContract:
 
         crawler = RelayCrawler()
 
-        for fixture_path, source_type in _iter_relay_fixtures():
+        for fixture_path, _source_type in _iter_relay_fixtures():
             payload = _load_json(fixture_path)
             segments = payload["result"]["textRelayData"]["textRelays"]
             for seg_idx, segment in enumerate(segments):

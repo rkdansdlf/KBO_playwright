@@ -7,6 +7,7 @@ Covers:
   - JAMSIL_ORIGINS origin config sanity checks
   - map_api_client TransitResult dataclass
 """
+
 from __future__ import annotations
 
 from datetime import date, datetime
@@ -19,10 +20,10 @@ from src.models.stadium_info import StadiumInfo
 from src.models.stadium_transit_time import StadiumTransitTime
 from src.repositories.transit_time_repository import TransitTimeRepository
 
-
 # ─────────────────────────────────────────────
 # Fixtures
 # ─────────────────────────────────────────────
+
 
 @pytest.fixture
 def session():
@@ -70,6 +71,7 @@ def _transit(
 # TransitTimeRepository Tests
 # ─────────────────────────────────────────────
 
+
 class TestTransitTimeRepositoryUpsert:
     def test_insert_new_record(self, session, stadium):
         repo = TransitTimeRepository(session)
@@ -110,10 +112,7 @@ class TestTransitTimeRepositoryUpsert:
 
     def test_bulk_upsert_counts(self, session, stadium):
         repo = TransitTimeRepository(session)
-        records = [
-            _transit(measured_at=datetime(2026, 6, 3, 15, i * 15))
-            for i in range(4)
-        ]
+        records = [_transit(measured_at=datetime(2026, 6, 3, 15, i * 15)) for i in range(4)]
         created, updated = repo.bulk_upsert(records)
         session.commit()
         assert created == 4
@@ -187,9 +186,11 @@ class TestTransitTimeRepositoryRead:
 # Origin config sanity checks
 # ─────────────────────────────────────────────
 
+
 class TestJamsilOriginsConfig:
     def test_all_origins_have_required_keys(self):
         from src.crawlers.transit_time_crawler import JAMSIL_ORIGINS
+
         for origin in JAMSIL_ORIGINS:
             assert "label" in origin
             assert "lat" in origin
@@ -199,6 +200,7 @@ class TestJamsilOriginsConfig:
 
     def test_lat_lng_in_jamsil_area(self):
         from src.crawlers.transit_time_crawler import JAMSIL_ORIGINS
+
         for origin in JAMSIL_ORIGINS:
             # Jamsil area: roughly 37.49~37.53 lat, 127.05~127.12 lng
             assert 37.48 < origin["lat"] < 37.55, f"Suspicious lat for {origin['label']}"
@@ -206,11 +208,13 @@ class TestJamsilOriginsConfig:
 
     def test_at_least_three_subway_origins(self):
         from src.crawlers.transit_time_crawler import JAMSIL_ORIGINS
+
         walk_origins = [o for o in JAMSIL_ORIGINS if o["mode"] in ("walk", "subway")]
         assert len(walk_origins) >= 2
 
     def test_has_car_or_bus_origin(self):
         from src.crawlers.transit_time_crawler import JAMSIL_ORIGINS
+
         non_walk = [o for o in JAMSIL_ORIGINS if o["mode"] in ("bus", "car")]
         assert len(non_walk) >= 1
 
@@ -219,9 +223,11 @@ class TestJamsilOriginsConfig:
 # TransitResult dataclass tests
 # ─────────────────────────────────────────────
 
+
 class TestTransitResult:
     def test_transit_result_creation(self):
         from src.utils.map_api_client import TransitResult
+
         result = TransitResult(
             origin_label="잠실역_2호선",
             transport_mode="walk",
@@ -236,5 +242,6 @@ class TestTransitResult:
 
     def test_jamsil_coordinates(self):
         from src.utils.map_api_client import JAMSIL_LAT, JAMSIL_LNG
+
         assert 37.50 < JAMSIL_LAT < 37.52
         assert 127.06 < JAMSIL_LNG < 127.08

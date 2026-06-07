@@ -1,6 +1,4 @@
-import pytest
-
-from src.parsers.seat_parser import parse_seat_sections, SECTION_PATTERNS, STADIUM_FROM_SOURCE_KEY
+from src.parsers.seat_parser import SECTION_PATTERNS, STADIUM_FROM_SOURCE_KEY, parse_seat_sections
 
 
 class TestSeatParser:

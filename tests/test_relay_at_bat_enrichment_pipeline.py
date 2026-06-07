@@ -492,9 +492,7 @@ class TestRelayAtBatEnrichmentPipeline:
         with SessionLocal() as session:
             rows = {
                 row.play_description: row
-                for row in session.query(GamePlayByPlay)
-                .filter(GamePlayByPlay.game_id == "20260607WOOB0")
-                .all()
+                for row in session.query(GamePlayByPlay).filter(GamePlayByPlay.game_id == "20260607WOOB0").all()
             }
             assert rows["김민석 : 1루수 땅볼 아웃"].player_id == 53554
             assert rows["김민석 : 1루수 땅볼 아웃"].resolver_reason == "name_match_DB_2026"
@@ -621,7 +619,7 @@ class TestRelayAtBatEnrichmentPipeline:
             )
             assert len(db_events) == len(before_events)
 
-            for i, (orig, db_ev) in enumerate(zip(before_events, db_events)):
+            for i, (orig, db_ev) in enumerate(zip(before_events, db_events, strict=True)):
                 # At-bat group fields must never silently go to NULL
                 assert db_ev.at_bat_seq == orig["at_bat_seq"], (
                     f"Mismatch at event {i}: DB at_bat_seq={db_ev.at_bat_seq} ≠ orig={orig['at_bat_seq']}"

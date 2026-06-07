@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import date
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 from scripts.scheduler import (
     _compact_date,
@@ -12,7 +12,6 @@ from scripts.scheduler import (
     _find_player_profile_gaps,
     _find_preview_gaps,
 )
-
 
 # ── _compact_date ────────────────────────────────────────────────────────────────────
 
@@ -31,6 +30,7 @@ def test_compact_date_already_compact():
 
 def test_compact_date_datetime():
     from datetime import datetime
+
     assert _compact_date(datetime(2026, 6, 3, 15, 30)) == "20260603"
 
 

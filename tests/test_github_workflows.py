@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-
 ROOT = Path(__file__).resolve().parents[1]
 WORKFLOW_DIR = ROOT / ".github/workflows"
 
@@ -61,7 +60,7 @@ def test_daily_kbo_sync_includes_quality_and_gap_report():
 
     assert "Generate Quality Report" in workflow
     assert "Run Gap Report" in workflow
-    assert "\"--force-notify\"" in workflow or "--force-notify" in workflow
+    assert '"--force-notify"' in workflow or "--force-notify" in workflow
 
 
 def test_daily_kbo_sync_includes_advanced_sync_and_quality_checks():
@@ -88,11 +87,11 @@ def test_backfill_advanced_stats_uses_supported_cli_flags():
     assert "Resolve Season Year" in workflow
     assert "python3 -m src.cli.hydrate_runtime_from_oci" in workflow
     assert "python3 -m src.cli.backfill_advanced_stats \\" in workflow
-    assert "--years \"$YEAR\"" in workflow
+    assert '--years "$YEAR"' in workflow
     assert "--series regular" in workflow
     assert "python3 -m src.cli.sync_oci \\" in workflow
     assert "--season-stats" in workflow
-    assert "python3 -m src.cli.backfill_advanced_stats \"$YEAR\" regular" not in workflow
+    assert 'python3 -m src.cli.backfill_advanced_stats "$YEAR" regular' not in workflow
 
 
 def test_kbo_automation_recalc_stats_uses_supported_cli_flags_and_syncs():
@@ -101,11 +100,11 @@ def test_kbo_automation_recalc_stats_uses_supported_cli_flags_and_syncs():
     recalc_block = workflow[recalc_start : workflow.index(";;", recalc_start)]
 
     assert "python3 -m src.cli.backfill_advanced_stats \\" in recalc_block
-    assert "--years \"${YEAR}\"" in recalc_block
+    assert '--years "${YEAR}"' in recalc_block
     assert "--series regular" in recalc_block
     assert "python3 -m src.cli.sync_oci \\" in recalc_block
     assert "--season-stats" in recalc_block
-    assert "python3 -m src.cli.backfill_advanced_stats \"${YEAR}\" regular" not in recalc_block
+    assert 'python3 -m src.cli.backfill_advanced_stats "${YEAR}" regular' not in recalc_block
 
 
 def test_local_github_actions_are_used_after_checkout():

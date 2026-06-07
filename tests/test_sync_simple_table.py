@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import os
-import tempfile
 from datetime import datetime
 
 import pytest
@@ -24,6 +23,7 @@ class _SampleModel(_Base):
 
 
 # ── helpers ───────────────────────────────────────────────────────────
+
 
 def _build_session(db_path: str):
     engine = create_engine(f"sqlite:///{db_path}")
@@ -57,6 +57,7 @@ def _seed_sample(session, records: list[dict]):
 
 # ── fixtures ──────────────────────────────────────────────────────────
 
+
 @pytest.fixture
 def session(tmp_path):
     return _build_session(os.path.join(tmp_path, "test.db"))
@@ -69,8 +70,8 @@ def syncer(session):
 
 # ── sync_simple_table ─────────────────────────────────────────────────
 
-class TestSyncSimpleTable:
 
+class TestSyncSimpleTable:
     def test_syncs_all_records(self, syncer, session):
         _seed_sample(session, [{"name": "a", "value": 1}, {"name": "b", "value": 2}])
         spy = _spy_bulk(syncer)
@@ -233,7 +234,8 @@ class TestSyncSimpleTable:
         _target_exists(syncer)
         _spy_bulk(syncer)
         result = syncer.sync_simple_table(
-            _SampleModel, ["name"],
+            _SampleModel,
+            ["name"],
             exclude_cols=["id", "name", "value", "payload", "created_at", "updated_at"],
         )
         assert result == 0

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import os
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 from sqlalchemy import Column, Integer, String, create_engine
@@ -30,6 +30,7 @@ class _YearModel(_SigBase):
 
 # ── helpers ───────────────────────────────────────────────────────────
 
+
 def _build_dual(path_local: str, path_remote: str):
     local_engine = create_engine(f"sqlite:///{path_local}")
     remote_engine = create_engine(f"sqlite:///{path_remote}")
@@ -52,10 +53,11 @@ def _seed(session, model, records: list[dict]):
 
 
 def _now_ts() -> str:
-    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S")
+    return datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%S")
 
 
 # ── fixtures ──────────────────────────────────────────────────────────
+
 
 @pytest.fixture
 def dual(tmp_path):
@@ -67,8 +69,8 @@ def dual(tmp_path):
 
 # ── _get_table_signature ─────────────────────────────────────────────
 
-class TestGetTableSignature:
 
+class TestGetTableSignature:
     def test_match_identical_data(self, dual):
         syncer, local, remote = dual
         ts = _now_ts()
@@ -83,10 +85,14 @@ class TestGetTableSignature:
         syncer, local, remote = dual
         ts = _now_ts()
         _seed(local, _SeasonModel, [{"season": 2025, "value": "a", "updated_at": ts}])
-        _seed(remote, _SeasonModel, [
-            {"season": 2025, "value": "a", "updated_at": ts},
-            {"season": 2025, "value": "b", "updated_at": ts},
-        ])
+        _seed(
+            remote,
+            _SeasonModel,
+            [
+                {"season": 2025, "value": "a", "updated_at": ts},
+                {"season": 2025, "value": "b", "updated_at": ts},
+            ],
+        )
         sig = syncer._get_table_signature(_SeasonModel)
         assert sig["match"] is False
 
@@ -99,13 +105,21 @@ class TestGetTableSignature:
 
     def test_with_year_filter(self, dual):
         syncer, local, remote = dual
-        _seed(local, _SeasonModel, [
-            {"season": 2024, "value": "old", "updated_at": "2025-01-01"},
-            {"season": 2025, "value": "cur", "updated_at": "2025-06-01"},
-        ])
-        _seed(remote, _SeasonModel, [
-            {"season": 2025, "value": "cur", "updated_at": "2025-06-01"},
-        ])
+        _seed(
+            local,
+            _SeasonModel,
+            [
+                {"season": 2024, "value": "old", "updated_at": "2025-01-01"},
+                {"season": 2025, "value": "cur", "updated_at": "2025-06-01"},
+            ],
+        )
+        _seed(
+            remote,
+            _SeasonModel,
+            [
+                {"season": 2025, "value": "cur", "updated_at": "2025-06-01"},
+            ],
+        )
         sig = syncer._get_table_signature(_SeasonModel, year=2025)
         assert sig["match"] is True
 
