@@ -12,12 +12,12 @@ Runs on the 1st of every month at 03:00 KST via APScheduler.
 
 import json
 import logging
-import subprocess
 import sys
 from datetime import datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
+from scripts.legacy.maintenance.audit_pa_formula import audit_year, fix_year_formula
 from src.cli.monthly_team_audit import run_monthly_team_audit
 
 logger = logging.getLogger(__name__)
@@ -25,58 +25,34 @@ logger = logging.getLogger(__name__)
 
 def run_pa_fix(year: int, dry_run: bool = False) -> dict:
     """Apply PA formula fix for a given year, returning result dict."""
-    cmd = [
-        sys.executable,
-        "-m",
-        "scripts.legacy.maintenance.audit_pa_formula",
-        "--fix-year",
-        str(year),
-    ]
-    if dry_run:
-        cmd.append("--dry-run")
     try:
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
-        if result.returncode != 0:
-            logger.error("PA formula fix failed for %s: %s", year, result.stderr.strip())
-            return {"ok": False, "error": result.stderr.strip(), "fixed_rows": 0}
-        logger.info("PA formula fix completed for %s (dry_run=%s)", year, dry_run)
-        return {"ok": True, "fixed_rows": 0, "message": result.stdout.strip()}
-    except subprocess.TimeoutExpired:
-        logger.error("PA formula fix timed out for %s", year)
-        return {"ok": False, "error": "Timeout after 300s", "fixed_rows": 0}
+        fixed_rows = fix_year_formula(year, dry_run=dry_run)
+    except Exception as exc:
+        logger.exception("PA formula fix failed for %s", year)
+        return {"ok": False, "error": str(exc), "fixed_rows": 0}
+
+    logger.info("PA formula fix completed for %s (dry_run=%s fixed_rows=%s)", year, dry_run, fixed_rows)
+    return {
+        "ok": True,
+        "fixed_rows": fixed_rows,
+        "message": f"PA formula fix completed for {year} (fixed_rows={fixed_rows}, dry_run={dry_run})",
+    }
 
 
 def run_pa_audit(year: int) -> dict:
     """Run PA formula audit (read-only) and return JSON result."""
-    cmd = [
-        sys.executable,
-        "-m",
-        "scripts.legacy.maintenance.audit_pa_formula",
-        "--year",
-        str(year),
-        "--json",
-    ]
     try:
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
-        if result.returncode != 0:
-            logger.error("PA formula audit failed for %s: %s", year, result.stderr.strip())
-            return {"year": year, "ok": False, "violation_count": 0, "violations": []}
-        try:
-            data = json.loads(result.stdout.strip())
-            if isinstance(data, list):
-                data = data[0] if data else {}
-            return {
-                "year": year,
-                "ok": data.get("violation_rows", 0) == 0,
-                "violation_count": data.get("violation_rows", 0),
-                "violations": data,
-            }
-        except json.JSONDecodeError:
-            logger.error("Failed to parse PA audit JSON for %s", year)
-            return {"year": year, "ok": False, "violation_count": 0, "violations": []}
-    except subprocess.TimeoutExpired:
-        logger.error("PA formula audit timed out for %s", year)
-        return {"year": year, "ok": False, "error": "Timeout after 300s", "violation_count": 0, "violations": []}
+        data = audit_year(year)
+    except Exception as exc:
+        logger.exception("PA formula audit failed for %s", year)
+        return {"year": year, "ok": False, "error": str(exc), "violation_count": 0, "violations": []}
+
+    return {
+        "year": year,
+        "ok": data.get("violation_rows", 0) == 0,
+        "violation_count": data.get("violation_rows", 0),
+        "violations": data,
+    }
 
 
 def crawl_monthly_unified_audit_job():

@@ -7,7 +7,7 @@ or (stadium_code, source_name, title, published_at) as fallback.
 from __future__ import annotations
 
 import logging
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 
 from sqlalchemy import and_, select
 from sqlalchemy.orm import Session
@@ -68,7 +68,7 @@ class OperationNoticeRepository:
             for key, value in data.items():
                 if key in mutable_fields and value is not None:
                     setattr(existing, key, value)
-            existing.updated_at = datetime.utcnow()
+            existing.updated_at = datetime.now(timezone.utc).replace(tzinfo=None)
             return existing, False
 
         record = StadiumOperationNotice(**data)

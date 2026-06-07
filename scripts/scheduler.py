@@ -767,6 +767,9 @@ def _get_live_poll_interval_seconds() -> int:
                 else:
                     start_time = now.replace(hour=start_time_raw.hour, minute=start_time_raw.minute, second=0, microsecond=0)
 
+                if start_time < now:
+                    start_time += timedelta(days=1)
+
                 if earliest_start_time is None or start_time < earliest_start_time:
                     earliest_start_time = start_time
             except Exception:

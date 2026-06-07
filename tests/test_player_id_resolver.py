@@ -105,6 +105,38 @@ def test_resolver_does_not_register_unknown_when_season_candidates_are_ambiguous
         session.close()
 
 
+def test_resolver_canonicalizes_ob_to_db_for_season_lookup():
+    session = _build_resolver_session()
+    try:
+        session.execute(
+            text(
+                """
+                INSERT INTO player_basic (player_id, name, team)
+                VALUES
+                    (53554, '김민석', '두산'),
+                    (54097, '김민석', 'KT')
+                """
+            )
+        )
+        session.execute(
+            text(
+                """
+                INSERT INTO player_season_batting (player_id, season, team_code)
+                VALUES
+                    (53554, 2026, 'DB'),
+                    (54097, 2026, 'KT')
+                """
+            )
+        )
+        session.commit()
+
+        resolver = PlayerIdResolver(session)
+
+        assert resolver.resolve_id("김민석", "OB", 2026, is_pitcher=False) == 53554
+    finally:
+        session.close()
+
+
 def test_preloaded_resolver_keeps_same_team_same_name_candidates_ambiguous():
     session = _build_resolver_session()
     try:

@@ -3,9 +3,21 @@ from __future__ import annotations
 from datetime import datetime
 
 import pytest
+from sqlalchemy import Column, Integer, String, create_engine
 from sqlalchemy.exc import DBAPIError, OperationalError
+from sqlalchemy.orm import Session, declarative_base
 
 from src.sync.sync_base import OCISyncBase, _serialize_scalar
+
+_Base = declarative_base()
+
+
+class _SampleModel(_Base):
+    __tablename__ = "base_sample_table"
+
+    id = Column(Integer, primary_key=True)
+    name = Column(String(50), nullable=False)
+    updated_at = Column(String(30), nullable=True)
 
 
 # ── _serialize_scalar ─────────────────────────────────────────────────
@@ -276,6 +288,34 @@ class TestRunTargetSessionWithRetries:
         with pytest.raises(ValueError, match="still bad"):
             syncer._run_target_session_with_retries(op, label="test")
         assert call_count == 2
+
+
+# ── sync_simple_table ──────────────────────────────────────────────────
+
+class TestBaseSyncSimpleTable:
+    def test_accepts_test_declared_model(self, tmp_path):
+        engine = create_engine(f"sqlite:///{tmp_path / 'base_sync.db'}")
+        _Base.metadata.create_all(bind=engine)
+        session = Session(bind=engine, autoflush=False, autocommit=False, expire_on_commit=False)
+        session.add(_SampleModel(name="sample"))
+        session.flush()
+
+        syncer = _build_syncer()
+        syncer.sqlite_session = session
+        captured = {}
+
+        def fake_bulk_copy_upsert(table_name, records, unique_cols, **kwargs):
+            captured.update(table_name=table_name, records=records, unique_cols=unique_cols, kwargs=kwargs)
+
+        syncer._bulk_copy_upsert = fake_bulk_copy_upsert
+
+        assert syncer.sync_simple_table(_SampleModel, ["name"]) == 1
+        assert captured["table_name"] == "base_sample_table"
+        assert captured["unique_cols"] == ["name"]
+        record = captured["records"][0]
+        assert record["name"] == "sample"
+        assert isinstance(record["updated_at"], datetime)
+        assert "id" not in record
 
 
 # ── helpers ───────────────────────────────────────────────────────────

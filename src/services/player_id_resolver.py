@@ -220,6 +220,7 @@ class PlayerIdResolver:
 
         # Standardize team_code to database canonical code (e.g. SK -> SSG, WO/NX -> KH)
         canonical_team_map = {
+            "OB": "DB",
             "SK": "SSG",
             "WO": "KH",
             "NX": "KH",
