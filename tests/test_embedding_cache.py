@@ -6,12 +6,14 @@ from __future__ import annotations
 
 from unittest import mock
 
-from src.db.engine import SessionLocal
+from src.db.engine import Engine, SessionLocal
 from src.models.embedding_cache import EmbeddingCache
 from src.services.embedding_service import EmbeddingService
 
 
 def test_embedding_cache_mechanism():
+    EmbeddingCache.__table__.create(bind=Engine, checkfirst=True)
+
     # 1. Initialize the service and mock API key
     svc = EmbeddingService()
     svc.api_key = "sk-or-v1-mock-key-for-cache-testing"

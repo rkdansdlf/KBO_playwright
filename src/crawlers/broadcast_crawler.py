@@ -10,7 +10,6 @@ from src.db.engine import SessionLocal
 logger = logging.getLogger(__name__)
 from src.repositories.broadcast_repository import BroadcastRepository
 from src.utils.playwright_blocking import install_async_resource_blocking
-from src.utils.safe_print import safe_print as print
 from src.utils.team_codes import build_kbo_game_id
 
 
@@ -31,12 +30,12 @@ class BroadcastCrawler:
             page = await context.new_page()
 
             url = f"{self.url}?year={year}&month={month:02d}"
-            print(f"Loading {url}...")
+            logger.info(f"Loading {url}...")
             await page.goto(url, wait_until="networkidle", timeout=30000)
             await page.wait_for_timeout(2000)
 
             data = await self._extract_broadcast_data(page, year)
-            print(f"Found {len(data)} broadcast entries.")
+            logger.info(f"Found {len(data)} broadcast entries.")
 
             await browser.close()
 
@@ -44,8 +43,8 @@ class BroadcastCrawler:
                 self._save_to_db(data)
             else:
                 for d in data[:10]:
-                    print(d)
-                    print("")
+                    logger.info(d)
+                    logger.info("")
 
     async def _extract_broadcast_data(self, page, year: int) -> list[dict]:
         script = """
@@ -121,11 +120,10 @@ class BroadcastCrawler:
                 except SQLAlchemyError as ex:
                     logger.warning(f"Broadcast save failed for item: {ex}")
             session.commit()
-            print(f"Saved {count} broadcast records.")
+            logger.info(f"Saved {count} broadcast records.")
         except SQLAlchemyError as e:
             session.rollback()
             logger.error(f"Database error saving broadcasts: {e}", exc_info=True)
-            print(f"Error: {e}")
         finally:
             session.close()
 

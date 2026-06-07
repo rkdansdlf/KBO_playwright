@@ -191,7 +191,7 @@ class PreviewCrawler:
                 payload = self._coerce_api_payload(response.json())
                 if isinstance(payload, (dict, list)):
                     return payload
-                print(f"⚠️ Unexpected response type from {url}: {type(payload).__name__}")
+                logger.warning(f"⚠️ Unexpected response type from {url}: {type(payload).__name__}")
         except Exception:
             # Keep logs concise; caller may still recover via Playwright.
             logger.exception(f"⚠️ HTTP API call failed for {url}")
@@ -206,7 +206,7 @@ class PreviewCrawler:
                 payload = self._coerce_api_payload(await response.json())
                 if isinstance(payload, (dict, list)):
                     return payload
-                print(f"⚠️ Unexpected Playwright response type from {url}: {type(payload).__name__}")
+                logger.warning(f"⚠️ Unexpected Playwright response type from {url}: {type(payload).__name__}")
         except Exception:
             logger.exception(f"⚠️ Playwright API call failed for {url}")
         return None
@@ -216,7 +216,7 @@ class PreviewCrawler:
         주어진 날짜(game_date: 'YYYYMMDD')의 모든 경기에 대해
         선발투수와 선발 라인업(발표되었을 경우) 정보를 수집합니다.
         """
-        print(f"🔍 Fetching Pre-game preview data for {game_date}...")
+        logger.info(f"🔍 Fetching Pre-game preview data for {game_date}...")
 
         pool = self.pool
         owns_pool = False
@@ -254,7 +254,7 @@ class PreviewCrawler:
 
             games = self._extract_list_payload(list_data)
             if not games:
-                print(f"ℹ️ No games found or no starting pitchers announced for {game_date}.")
+                logger.info(f"ℹ️ No games found or no starting pitchers announced for {game_date}.")
                 return []
 
             for g in games:

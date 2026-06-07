@@ -4,16 +4,18 @@ Crawler for static text sources: rulebooks (PDF) and baseball encyclopedias/wiki
 
 from __future__ import annotations
 
+import logging
 import os
 from datetime import datetime
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 from bs4 import BeautifulSoup
 from pypdf import PdfReader
 
 from src.db.engine import SessionLocal
 from src.utils.playwright_pool import AsyncPlaywrightPool
-from src.utils.safe_print import safe_print as print
 
 
 class StaticTextCrawler:
@@ -30,14 +32,14 @@ class StaticTextCrawler:
         """
         Parses a local PDF rulebook using pypdf and extracts text by page.
         """
-        print(f"📄 Parsing local PDF: {pdf_path}")
+        logger.info(f"📄 Parsing local PDF: {pdf_path}")
         if not os.path.exists(pdf_path):
             raise FileNotFoundError(f"PDF file not found at: {pdf_path}")
 
         chunks = []
         reader = PdfReader(pdf_path)
         total_pages = len(reader.pages)
-        print(f"   Total pages: {total_pages}")
+        logger.info(f"   Total pages: {total_pages}")
 
         for page_idx in range(total_pages):
             page = reader.pages[page_idx]
@@ -66,7 +68,7 @@ class StaticTextCrawler:
         Crawls a Namuwiki page using Playwright to bypass Cloudflare protection
         and extracts cleaned main content with BeautifulSoup.
         """
-        print(f"🌐 Crawling Namuwiki page: {url}")
+        logger.info(f"🌐 Crawling Namuwiki page: {url}")
 
         html_content = ""
         pool = self.pool or AsyncPlaywrightPool(max_pages=1)

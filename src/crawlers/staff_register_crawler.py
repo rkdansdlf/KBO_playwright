@@ -254,7 +254,7 @@ class StaffRegisterCrawler:
             page = await context.new_page()
 
             try:
-                print(f"🌍 Navigating to {REGISTER_URL} ...")
+                logger.info(f"🌍 Navigating to {REGISTER_URL} ...")
                 await page.goto(REGISTER_URL, wait_until="domcontentloaded", timeout=30000)
                 await page.wait_for_timeout(1500)
 
@@ -289,21 +289,23 @@ class StaffRegisterCrawler:
         skipped = [r for r in records if not r.get("player_id")]
 
         if skipped:
-            print(f"  ⚠️  {len(skipped)} record(s) skipped (no player_id): " + ", ".join(r["name"] for r in skipped))
+            logger.warning(
+                f"  ⚠️  {len(skipped)} record(s) skipped (no player_id): " + ", ".join(r["name"] for r in skipped)
+            )
 
         if dry_run:
-            print(f"  [DRY-RUN] Would upsert {len(valid)} staff record(s) into player_basic.")
+            logger.info(f"  [DRY-RUN] Would upsert {len(valid)} staff record(s) into player_basic.")
             for r in valid:
-                print(f"    → {r['name']} ({r['staff_role']}) pid={r['player_id']} team={r['team']}")
+                logger.info(f"    → {r['name']} ({r['staff_role']}) pid={r['player_id']} team={r['team']}")
             return len(valid)
 
         if not valid:
-            print("  ℹ️  No valid staff records to save.")
+            logger.info("  ℹ️  No valid staff records to save.")
             return 0
 
         repo = PlayerBasicRepository()
         count = repo.upsert_players(valid)
-        print(f"  ✅ Upserted {count} staff record(s) into player_basic.")
+        logger.info(f"  ✅ Upserted {count} staff record(s) into player_basic.")
         return count
 
 
@@ -311,7 +313,7 @@ async def main():
     """Quick standalone test – print staff for LG and Kiwoom."""
     crawler = StaffRegisterCrawler(headless=True)
     records = await crawler.crawl_all_teams(team_codes=["LG", "WO"])
-    print(f"\nTotal staff records collected: {len(records)}")
+    logger.info(f"\nTotal staff records collected: {len(records)}")
     for r in records:
         print(
             f"  [{r['staff_role'].upper()}] {r['name']} "

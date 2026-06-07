@@ -52,15 +52,15 @@ def crawl_regular_season_data(page: Page, year: int) -> dict[int, dict]:
     정규시즌 데이터 크롤링 (Basic1 + Basic2)
     컬럼: AVG,G,PA,AB,R,H,2B,3B,HR,TB,RBI,SAC,SF + BB,IBB,HBP,SO,GDP,SLG,OBP,OPS,MH,RISP,PH-BA
     """
-    print(f"📊 {year}년 정규시즌 데이터 크롤링 시작...")
+    logger.info(f"📊 {year}년 정규시즌 데이터 크롤링 시작...")
 
     # 1. Basic1 데이터 수집
     basic1_data = crawl_basic1_data(page, year, {"value": "0", "name": "정규시즌"})
-    print(f"   ✅ Basic1 데이터: {len(basic1_data)}명")
+    logger.info(f"   ✅ Basic1 데이터: {len(basic1_data)}명")
 
     # 2. Basic2 데이터 수집 (헤더 클릭)
     basic2_data = crawl_basic2_with_headers(page, year, {"value": "0", "name": "정규시즌"})
-    print(f"   ✅ Basic2 데이터: {len(basic2_data)}명")
+    logger.info(f"   ✅ Basic2 데이터: {len(basic2_data)}명")
 
     # 3. 데이터 병합
     merged_data = {}
@@ -72,7 +72,7 @@ def crawl_regular_season_data(page: Page, year: int) -> dict[int, dict]:
         if player_id not in merged_data:
             merged_data[player_id] = basic2_data[player_id]
 
-    print(f"   ✅ 병합 완료: {len(merged_data)}명")
+    logger.info(f"   ✅ 병합 완료: {len(merged_data)}명")
     return merged_data
 
 
@@ -82,7 +82,7 @@ def crawl_basic1_data(page: Page, year: int, series_info: dict) -> dict[int, dic
     컬럼: AVG,G,PA,AB,R,H,2B,3B,HR,TB,RBI,SAC,SF (정규시즌)
     컬럼: AVG,G,PA,AB,H,2B,3B,HR,RBI,SB,CS,BB,HBP,SO,GDP,E (기타시리즈)
     """
-    print(f"   🔍 Basic1 데이터 수집: {series_info['name']}")
+    logger.info(f"   🔍 Basic1 데이터 수집: {series_info['name']}")
 
     try:
         # Basic1 페이지로 이동
@@ -106,12 +106,12 @@ def crawl_basic1_data(page: Page, year: int, series_info: dict) -> dict[int, dic
         page_num = 1
 
         while True:
-            print(f"      📄 페이지 {page_num} 처리 중...")
+            logger.info(f"      📄 페이지 {page_num} 처리 중...")
 
             # 테이블 찾기
             table = page.query_selector("table")
             if not table:
-                print(f"      ⚠️ 페이지 {page_num}에서 테이블을 찾을 수 없습니다.")
+                logger.warning(f"      ⚠️ 페이지 {page_num}에서 테이블을 찾을 수 없습니다.")
                 break
 
             # 헤더 확인
@@ -119,7 +119,7 @@ def crawl_basic1_data(page: Page, year: int, series_info: dict) -> dict[int, dic
             if thead:
                 header_cells = thead.query_selector_all("th")
                 headers = [cell.inner_text().strip() for cell in header_cells]
-                print(f"         📋 헤더: {headers}")
+                logger.info(f"         📋 헤더: {headers}")
 
             # 데이터 행 처리
             tbody = table.query_selector("tbody")
@@ -129,7 +129,7 @@ def crawl_basic1_data(page: Page, year: int, series_info: dict) -> dict[int, dic
                 rows = table.query_selector_all("tr")[1:]  # 첫 번째 행(헤더) 제외
 
             if not rows:
-                print(f"      ⚠️ 페이지 {page_num}에 데이터가 없습니다.")
+                logger.warning(f"      ⚠️ 페이지 {page_num}에 데이터가 없습니다.")
                 break
 
             for row in rows:
@@ -173,7 +173,7 @@ def crawl_basic1_data(page: Page, year: int, series_info: dict) -> dict[int, dic
 
                 all_player_data[player_id] = player_data
 
-            print(f"         ✅ {len(rows)}개 행 처리, 총 {len(all_player_data)}명")
+            logger.info(f"         ✅ {len(rows)}개 행 처리, 총 {len(all_player_data)}명")
 
             # 다음 페이지 확인
             if not goto_next_page(page):
@@ -253,7 +253,7 @@ def crawl_basic2_with_headers(page: Page, year: int, series_info: dict) -> dict[
     Basic2 헤더 클릭으로 추가 데이터 수집
     컬럼: BB,IBB,HBP,SO,GDP,SLG,OBP,OPS,MH,RISP,PH-BA
     """
-    print(f"   🔍 Basic2 헤더 클릭 데이터 수집: {series_info['name']}")
+    logger.info(f"   🔍 Basic2 헤더 클릭 데이터 수집: {series_info['name']}")
 
     headers_to_click = [
         ("BB", "BB_CN", "볼넷"),
@@ -290,7 +290,7 @@ def crawl_basic2_with_headers(page: Page, year: int, series_info: dict) -> dict[
         # "다음" 링크로 Basic2 접근
         next_link = page.query_selector('a.next[href*="Basic2.aspx"]')
         if not next_link:
-            print("      ⚠️ Basic2 '다음' 링크를 찾을 수 없습니다.")
+            logger.warning("      ⚠️ Basic2 '다음' 링크를 찾을 수 없습니다.")
             return {}
 
         next_link.click()
@@ -299,13 +299,13 @@ def crawl_basic2_with_headers(page: Page, year: int, series_info: dict) -> dict[
 
         # 각 헤더별 데이터 수집
         for i, (header_name, sort_code, description) in enumerate(headers_to_click):
-            print(f"      📊 {description}({header_name}) 헤더 클릭... ({i + 1}/11)")
+            logger.info(f"      📊 {description}({header_name}) 헤더 클릭... ({i + 1}/11)")
 
             try:
                 # 헤더 클릭
                 header_link = page.query_selector(f"a[href*=\"sort('{sort_code}')\"]")
                 if not header_link:
-                    print(f"         ⚠️ {header_name} 헤더를 찾을 수 없습니다.")
+                    logger.warning(f"         ⚠️ {header_name} 헤더를 찾을 수 없습니다.")
                     continue
 
                 header_link.click()
@@ -322,13 +322,13 @@ def crawl_basic2_with_headers(page: Page, year: int, series_info: dict) -> dict[
                     else:
                         all_player_data[player_id].update(data)
 
-                print(f"         ✅ {len(page_data)}명 데이터 수집")
+                logger.info(f"         ✅ {len(page_data)}명 데이터 수집")
 
             except Exception:
                 logger.exception(f"         ❌ {header_name} 헤더 처리 중 오류")
                 continue
 
-        print(f"   ✅ Basic2 헤더별 데이터 수집 완료: {len(all_player_data)}명")
+        logger.info(f"   ✅ Basic2 헤더별 데이터 수집 완료: {len(all_player_data)}명")
         return all_player_data
 
     except Exception:
@@ -485,14 +485,14 @@ def crawl_other_series_data(page: Page, year: int, series_list: list[dict]) -> d
     all_series_data = {}
 
     for series_info in series_list:
-        print(f"📊 {year}년 {series_info['name']} 데이터 크롤링...")
+        logger.info(f"📊 {year}년 {series_info['name']} 데이터 크롤링...")
 
         series_data = crawl_basic1_data(page, year, series_info)
         if series_data:
             all_series_data[series_info["name"]] = series_data
-            print(f"   ✅ {series_info['name']}: {len(series_data)}명")
+            logger.info(f"   ✅ {series_info['name']}: {len(series_data)}명")
         else:
-            print(f"   ⚠️ {series_info['name']}: 데이터 없음")
+            logger.warning(f"   ⚠️ {series_info['name']}: 데이터 없음")
 
     return all_series_data
 
@@ -500,7 +500,7 @@ def crawl_other_series_data(page: Page, year: int, series_list: list[dict]) -> d
 def save_to_database(player_data: dict[int, dict], series_name: str):
     """데이터베이스에 저장"""
     try:
-        print(f"💾 {series_name} 데이터 저장 중...")
+        logger.info(f"💾 {series_name} 데이터 저장 중...")
 
         saved_count = 0
         for _player_id, data in player_data.items():
@@ -551,7 +551,7 @@ def save_to_database(player_data: dict[int, dict], series_name: str):
                 logger.exception(f"   ⚠️ {data['player_name']} 저장 실패")
                 continue
 
-        print(f"   ✅ {saved_count}/{len(player_data)}명 저장 완료")
+        logger.info(f"   ✅ {saved_count}/{len(player_data)}명 저장 완료")
         return saved_count
 
     except Exception:
@@ -573,8 +573,8 @@ def main():
         {"value": "7", "name": "KBO 한국시리즈"},
     ]
 
-    print(f"🚀 KBO {YEAR}년 선수 타자 기록 완전 크롤링 시작")
-    print(f"📋 대상: 정규시즌(Enhanced) + {len(SERIES_LIST)}개 시리즈(Basic)")
+    logger.info(f"🚀 KBO {YEAR}년 선수 타자 기록 완전 크롤링 시작")
+    logger.info(f"📋 대상: 정규시즌(Enhanced) + {len(SERIES_LIST)}개 시리즈(Basic)")
 
     with sync_playwright() as playwright:
         browser = playwright.chromium.launch(headless=False)
@@ -585,9 +585,9 @@ def main():
             total_saved = 0
 
             # 1. 정규시즌 데이터 수집 (Basic1 + Basic2)
-            print(f"\n{'=' * 50}")
-            print("📊 1단계: 정규시즌 데이터 수집 (Enhanced)")
-            print(f"{'=' * 50}")
+            logger.info(f"\n{'=' * 50}")
+            logger.info("📊 1단계: 정규시즌 데이터 수집 (Enhanced)")
+            logger.info(f"{'=' * 50}")
 
             regular_season_data = crawl_regular_season_data(page, YEAR)
             if regular_season_data:
@@ -595,9 +595,9 @@ def main():
                 total_saved += saved
 
             # 2. 기타 시리즈 데이터 수집 (Basic1만)
-            print(f"\n{'=' * 50}")
-            print("📊 2단계: 기타 시리즈 데이터 수집 (Basic)")
-            print(f"{'=' * 50}")
+            logger.info(f"\n{'=' * 50}")
+            logger.info("📊 2단계: 기타 시리즈 데이터 수집 (Basic)")
+            logger.info(f"{'=' * 50}")
 
             other_series_data = crawl_other_series_data(page, YEAR, SERIES_LIST)
             for series_name, series_data in other_series_data.items():
@@ -606,11 +606,11 @@ def main():
                     total_saved += saved
 
             # 3. 최종 결과
-            print(f"\n{'=' * 50}")
-            print("🎉 크롤링 완료")
-            print(f"{'=' * 50}")
-            print(f"📊 총 저장된 레코드: {total_saved}개")
-            print(f"📅 크롤링 시간: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+            logger.info(f"\n{'=' * 50}")
+            logger.info("🎉 크롤링 완료")
+            logger.info(f"{'=' * 50}")
+            logger.info(f"📊 총 저장된 레코드: {total_saved}개")
+            logger.info(f"📅 크롤링 시간: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
 
         except Exception:
             logger.exception("❌ 크롤링 중 오류 발생")

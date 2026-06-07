@@ -21,7 +21,6 @@ from datetime import date
 from src.db.engine import SessionLocal
 from src.repositories.operation_notice_repository import OperationNoticeRepository
 from src.utils.naver_search_client import NaverSearchClient, NaverSearchResult
-from src.utils.safe_print import safe_print as print
 
 logger = logging.getLogger(__name__)
 
@@ -100,15 +99,15 @@ class OperationNoticeNaverCrawler:
         self.client = NaverSearchClient()
 
     async def run(self, save: bool = False) -> list[dict]:
-        print(f"[NaverNotice] Searching for notices (last {self.days_back} days)...")
+        logger.info(f"[NaverNotice] Searching for notices (last {self.days_back} days)...")
 
         if not self.client._is_configured():
-            print("[NaverNotice] ⚠️  NAVER_CLIENT_ID / NAVER_CLIENT_SECRET not set.")
-            print("[NaverNotice]    Set in .env to enable Naver search-based notice crawling.")
+            logger.warning("[NaverNotice] ⚠️  NAVER_CLIENT_ID / NAVER_CLIENT_SECRET not set.")
+            logger.info("[NaverNotice]    Set in .env to enable Naver search-based notice crawling.")
             return []
 
         search_results = await self.client.search_kbo_notices(days_back=self.days_back)
-        print(f"[NaverNotice] Found {len(search_results)} articles from Naver.")
+        logger.info(f"[NaverNotice] Found {len(search_results)} articles from Naver.")
 
         notices = [_result_to_notice(r) for r in search_results]
 
@@ -116,9 +115,9 @@ class OperationNoticeNaverCrawler:
             self._save_to_db(notices)
         else:
             for n in notices[:5]:
-                print(f"  [{n['notice_type']}] {n['title'][:60]} | urgent={n['is_urgent']} | {n['published_at']}")
+                logger.info(f"  [{n['notice_type']}] {n['title'][:60]} | urgent={n['is_urgent']} | {n['published_at']}")
             if len(notices) > 5:
-                print(f"  ... and {len(notices) - 5} more")
+                logger.info(f"  ... and {len(notices) - 5} more")
 
         return notices
 
@@ -128,7 +127,7 @@ class OperationNoticeNaverCrawler:
                 repo = OperationNoticeRepository(session)
                 created, updated = repo.bulk_upsert(notices)
                 session.commit()
-                print(f"[NaverNotice] Saved: {created} new, {updated} updated.")
+                logger.info(f"[NaverNotice] Saved: {created} new, {updated} updated.")
             except Exception:
                 session.rollback()
                 logger.exception("Error saving notices")

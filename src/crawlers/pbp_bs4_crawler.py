@@ -14,7 +14,6 @@ import httpx
 from bs4 import BeautifulSoup
 
 from src.services.wpa_calculator import WPACalculator
-from src.utils.safe_print import safe_print as print
 from src.utils.text_parser import KBOTextParser
 
 logger = logging.getLogger(__name__)
@@ -38,7 +37,7 @@ class PBPBS4Crawler:
         url = f"{self.base_url}?gameDate={game_date}&gameId={game_id}"
 
         try:
-            print(f"[FETCH] BS4 PBP Data: {url}")
+            logger.info(f"[FETCH] BS4 PBP Data: {url}")
             # Use a longer timeout for KBO server stability, though 15s is usually plenty.
             response = httpx.get(url, headers=self.headers, timeout=15.0, follow_redirects=True)
             response.raise_for_status()
@@ -46,19 +45,19 @@ class PBPBS4Crawler:
 
             # If redirected to KBO global Error page
             if "Error.html" in str(response.url):
-                print(f"[WARN] Redirected to Error page for {game_id} (No PBP data available).")
+                logger.info(f"[WARN] Redirected to Error page for {game_id} (No PBP data available).")
                 return None
 
             if "경기 준비중" in html or "취소" in html:
-                print(f"[INFO] Game {game_id} seems to have no relay data.")
+                logger.info(f"[INFO] Game {game_id} seems to have no relay data.")
                 return None
 
             # Quick check for relay elements before full BS4 parsing
             if "relay-bx" not in html and "relay-txt" not in html:
-                print(f"[WARN] No relay containers found in HTML for {game_id}.")
+                logger.info(f"[WARN] No relay containers found in HTML for {game_id}.")
                 return None
 
-            print("[INFO] Extracting Relay Data via BeautifulSoup...")
+            logger.info("[INFO] Extracting Relay Data via BeautifulSoup...")
             events = self._parse_html_to_events(html)
 
             if not events:
@@ -67,7 +66,7 @@ class PBPBS4Crawler:
             return {"game_id": game_id, "game_date": game_date, "events": events}
 
         except httpx.HTTPError as e:
-            print(f"[ERROR] HTTP fetch failed for {game_id}: {e}")
+            logger.exception(f"[ERROR] HTTP fetch failed for {game_id}: {e}")
             return None
         except Exception:
             logger.exception("BS4 PBP crawl failed for %s", game_id)

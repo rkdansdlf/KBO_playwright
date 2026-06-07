@@ -14,7 +14,6 @@ from bs4 import BeautifulSoup
 
 from src.db.engine import SessionLocal
 from src.repositories.source_registry_repository import save_raw_snapshots
-from src.utils.safe_print import safe_print as print
 from src.utils.throttle import throttle
 
 logger = logging.getLogger(__name__)
@@ -41,7 +40,7 @@ class RealtimeIssueCrawler:
         """
         date_str = datetime.now().strftime("%Y%m%d")
         api_url = f"https://api-gw.sports.naver.com/news/articles/kbaseball?sort=latest&date={date_str}&page=1&pageSize=20&isPhoto=N"
-        print("Fetching Naver news from API: %s", api_url)
+        logger.info("Fetching Naver news from API: %s", api_url)
 
         articles = []
         try:
@@ -87,10 +86,10 @@ class RealtimeIssueCrawler:
                                 },
                             }
                         )
-                    print("   Fetched %d headlines from JSON API.", len(articles))
+                    logger.info("   Fetched %d headlines from JSON API.", len(articles))
                     return articles
                 else:
-                    print("Naver news API returned status code %d", res.status_code)
+                    logger.info("Naver news API returned status code %d", res.status_code)
         except httpx.HTTPError:
             logger.exception("Naver news API failed. Falling back to HTML scraping...")
 
@@ -135,7 +134,7 @@ class RealtimeIssueCrawler:
                                 },
                             }
                         )
-            print(f"   Fetched {len(articles)} headlines from HTML fallback.")
+            logger.info(f"   Fetched {len(articles)} headlines from HTML fallback.")
         except httpx.HTTPError:
             logger.exception("Naver News HTML fallback also failed")
 
@@ -149,7 +148,7 @@ class RealtimeIssueCrawler:
         Crawls popular titles and post details from MLBPark Bullpen forum.
         """
         url = "https://mlbpark.donga.com/mp/b.php?b=bullpen"
-        print("Fetching posts from MLBPark Bullpen: %s", url)
+        logger.info("Fetching posts from MLBPark Bullpen: %s", url)
 
         posts = []
         try:
@@ -197,7 +196,7 @@ class RealtimeIssueCrawler:
                                     },
                                 }
                             )
-            print("   Fetched %d posts from MLBPark.", len(posts))
+            logger.info("   Fetched %d posts from MLBPark.", len(posts))
         except httpx.HTTPError:
             logger.exception("Error fetching MLBPark bullpen posts")
 

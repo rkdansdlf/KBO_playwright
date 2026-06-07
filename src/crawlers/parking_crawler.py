@@ -16,7 +16,6 @@ from src.db.engine import SessionLocal
 from src.repositories.parking_lot_repository import ParkingFeeRuleRepository, ParkingLotRepository
 from src.repositories.source_registry_repository import save_raw_snapshots
 from src.utils.http_client import DEFAULT_HEADERS as HEADERS
-from src.utils.safe_print import safe_print as print
 from src.utils.throttle import throttle
 
 logger = logging.getLogger(__name__)
@@ -51,16 +50,16 @@ class ParkingCrawler:
             try:
                 lots = await self._crawl_team_parking(team_code, info)
                 all_lots.extend(lots)
-                print(f"[PARKING] {team_code}: {len(lots)} lots found")
+                logger.info(f"[PARKING] {team_code}: {len(lots)} lots found")
             except Exception:
                 logger.exception("Failed to crawl parking for %s", team_code)
 
-        print(f"[PARKING] Total: {len(all_lots)} lots")
+        logger.info(f"[PARKING] Total: {len(all_lots)} lots")
         if save:
             self._save_to_db(all_lots)
         else:
             for lot in all_lots[:5]:
-                print(lot)
+                logger.info(lot)
         return all_lots
 
     async def _crawl_team_parking(self, team_code: str, info: dict) -> list[dict[str, Any]]:
@@ -126,7 +125,7 @@ class ParkingCrawler:
                     except Exception:
                         logger.exception("Parking save failed: %s", entry.get("lot", {}).get("name", ""))
                 session.commit()
-                print(f"[PARKING] Saved {lot_count} lots, {fee_count} fee rules, {saved_snaps} snapshots.")
+                logger.info(f"[PARKING] Saved {lot_count} lots, {fee_count} fee rules, {saved_snaps} snapshots.")
             except Exception:
                 session.rollback()
                 logger.exception("Parking batch save error")

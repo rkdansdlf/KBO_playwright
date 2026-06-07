@@ -70,7 +70,7 @@ class ScheduleCrawler:
         Returns:
             경기 정보 딕셔너리가 담긴 리스트.
         """
-        print(f"🔍 Crawling schedule for {year}-{month:02d} (Series: {series_id})...")
+        logger.info(f"🔍 Crawling schedule for {year}-{month:02d} (Series: {series_id})...")
 
         pool = self.pool or AsyncPlaywrightPool(max_pages=1)
         owns_pool = self.pool is None
@@ -79,7 +79,7 @@ class ScheduleCrawler:
             page = await pool.acquire()
             try:
                 games = await self._crawl_month(page, year, month, series_id=series_id)
-                print(f"✅ Found {len(games)} games")
+                logger.info(f"✅ Found {len(games)} games")
                 return games
             except Exception:
                 logger.exception("❌ Error crawling schedule")
@@ -128,7 +128,7 @@ class ScheduleCrawler:
         selector_timeout: int = 10000,
     ) -> tuple[bool, str]:
         if not await compliance.is_allowed(self.base_url):
-            print(f"[COMPLIANCE] Navigation to {self.base_url} aborted.")
+            logger.info(f"[COMPLIANCE] Navigation to {self.base_url} aborted.")
             return False, "blocked"
 
         async def _navigate() -> None:
@@ -221,7 +221,7 @@ class ScheduleCrawler:
         }
 
         for sid in target_series:
-            print(f"[NAV] Selecting Series: {sid} for {year}-{month:02d}")
+            logger.info(f"[NAV] Selecting Series: {sid} for {year}-{month:02d}")
             try:
                 ok, failure_reason = await self._select_option_with_retry(
                     page,
@@ -488,7 +488,7 @@ class ScheduleCrawler:
                     home_code = resolve_team_code(home_name, year)
 
                     if not away_code or not home_code:
-                        print(f"[WARN] Skipping game due to unresolved team names: {away_name} vs {home_name}")
+                        logger.info(f"[WARN] Skipping game due to unresolved team names: {away_name} vs {home_name}")
                         continue
 
                     # KBO Website uses LEGACY codes in Game IDs.
@@ -553,11 +553,11 @@ class ScheduleCrawler:
         if not games:
             # Debugging: Check if table exists or content
             content = await page.content()
-            print(f"[DEBUG] No games found. Page content len: {len(content)}")
+            logger.info(f"[DEBUG] No games found. Page content len: {len(content)}")
             if "gameId=" in content:
-                print("[DEBUG] 'gameId=' string FOUND in HTML but extraction failed.")
+                logger.info("[DEBUG] 'gameId=' string FOUND in HTML but extraction failed.")
             else:
-                print("[DEBUG] 'gameId=' string NOT found in HTML.")
+                logger.info("[DEBUG] 'gameId=' string NOT found in HTML.")
                 # Dump first few rows of the table to see structure
                 debug_script = """
                  () => {
@@ -596,13 +596,13 @@ async def main():
     now = datetime.now()
     games = await crawler.crawl_schedule(now.year, now.month)
 
-    print("\n📊 Schedule Summary:")
-    print(f"Total games found: {len(games)}")
+    logger.info("\n📊 Schedule Summary:")
+    logger.info(f"Total games found: {len(games)}")
 
     if games:
-        print("\n📝 First 5 games:")
+        logger.info("\n📝 First 5 games:")
         for game in games[:5]:
-            print(f"  - {game['game_id']} | {game['game_date']}")
+            logger.info(f"  - {game['game_id']} | {game['game_date']}")
 
 
 if __name__ == "__main__":

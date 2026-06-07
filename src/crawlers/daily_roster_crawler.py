@@ -17,7 +17,6 @@ from playwright.async_api import TimeoutError as PlaywrightTimeoutError
 from tenacity import AsyncRetrying, retry_if_exception_type, stop_after_attempt, wait_exponential
 
 from src.utils.playwright_pool import AsyncPlaywrightPool
-from src.utils.safe_print import safe_print as print
 from src.utils.team_codes import resolve_team_code
 
 
@@ -79,7 +78,7 @@ class DailyRosterCrawler:
 
     async def _crawl_date(self, page: Page, target_date: date) -> list[dict[str, Any]]:
         date_str = target_date.strftime("%Y%m%d")
-        print(f"📅 Crawling Roster for {target_date}...")
+        logger.info(f"📅 Crawling Roster for {target_date}...")
 
         # Evaluate setting hidden field and posting back
         # The page uses update panel, so we wait for network idle or specific element changes
@@ -120,7 +119,7 @@ class DailyRosterCrawler:
         visible_date = await page.evaluate(
             "document.querySelector('.date') ? document.querySelector('.date').innerText : 'No Date Element'"
         )
-        print(f"   [DEBUG] Visible Page Date: {visible_date}")
+        logger.info(f"   [DEBUG] Visible Page Date: {visible_date}")
 
         # Now iterate teams
         daily_records = []
@@ -215,7 +214,7 @@ class DailyRosterCrawler:
 
         data = await page.evaluate(script)
         if data and data[0].get("status") == "no_tables":
-            print(f"   [DEBUG] No tables found for team {team_code}")
+            logger.info(f"   [DEBUG] No tables found for team {team_code}")
             return []
 
         # Post-process
@@ -258,9 +257,9 @@ async def main():
     # Test for yesterday
     (datetime.now().date()).strftime("%Y-%m-%d")
     data = await crawler.crawl_date_range("2024-05-20", "2024-05-20")
-    print(f"Crawled {len(data)} records.")
+    logger.info(f"Crawled {len(data)} records.")
     for r in data[:5]:
-        print(r)
+        logger.info(r)
 
 
 if __name__ == "__main__":

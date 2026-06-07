@@ -99,7 +99,7 @@ class TeamPitchingStatsCrawler:
             logger.warning("KBO team pitching crawl failed: %s. Falling back...", crawl_err)
 
         if not stats:
-            print(f"⚠️ KBO 팀 투구 페이지 오류. DB에서 폴백 집계를 시작합니다 (시즌: {season})...")
+            logger.warning(f"⚠️ KBO 팀 투구 페이지 오류. DB에서 폴백 집계를 시작합니다 (시즌: {season})...")
             try:
                 with SessionLocal() as session:
                     aggregator = TeamStatAggregator(session)
@@ -111,7 +111,7 @@ class TeamPitchingStatsCrawler:
                         s["team_name"] = reverse_mapping.get(s["team_id"], s["team_id"])
 
                     # 순위 데이터도 함께 재계산 (통합 폴백 로직)
-                    print(f"⚠️ 팀 순위 데이터도 함께 재계산합니다 (시즌: {season})...")
+                    logger.warning(f"⚠️ 팀 순위 데이터도 함께 재계산합니다 (시즌: {season})...")
                     try:
                         from src.cli.calculate_standings import StandingsCalculator
 
@@ -120,7 +120,7 @@ class TeamPitchingStatsCrawler:
                     except Exception:
                         logger.exception("[ERROR] 순위 연산 폴백 중 오류 발생")
             except Exception as fallback_error:
-                print(f"[ERROR] 팀 투구 집계 폴백 실패: {fallback_error}")
+                logger.exception(f"[ERROR] 팀 투구 집계 폴백 실패: {fallback_error}")
                 raise
 
         elif persist:
@@ -312,7 +312,7 @@ def main():
 
     crawler = TeamPitchingStatsCrawler(league=args.league)
     stats = crawler.crawl(args.season, persist=not args.no_save, headless=not args.headed)
-    print(f"Collected {len(stats)} team pitching rows for season {args.season}")
+    logger.info(f"Collected {len(stats)} team pitching rows for season {args.season}")
 
 
 if __name__ == "__main__":

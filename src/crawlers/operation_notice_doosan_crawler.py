@@ -19,7 +19,6 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from src.db.engine import SessionLocal
 from src.repositories.operation_notice_repository import OperationNoticeRepository
-from src.utils.safe_print import safe_print as print
 from src.utils.throttle import throttle
 
 logger = logging.getLogger(__name__)
@@ -106,7 +105,7 @@ class OperationNoticeDoosanCrawler:
 
                         notices, hit_stop = self._parse_page(html, stop_at_external_id)
                         all_notices.extend(notices)
-                        print(f"[Doosan Notice] page {page_no}: {len(notices)} notices")
+                        logger.info(f"[Doosan Notice] page {page_no}: {len(notices)} notices")
 
                         if hit_stop or not notices:
                             break
@@ -115,13 +114,13 @@ class OperationNoticeDoosanCrawler:
                         logger.exception("[Doosan Notice] Failed to fetch page %d: %s", page_no, e)
                         break
 
-        print(f"[Doosan Notice] Total: {len(all_notices)} notices")
+        logger.info(f"[Doosan Notice] Total: {len(all_notices)} notices")
 
         if save:
             self._save_to_db(all_notices)
         else:
             for n in all_notices[:5]:
-                print(n)
+                logger.info(n)
 
         return all_notices
 
@@ -189,11 +188,10 @@ class OperationNoticeDoosanCrawler:
                 repo = OperationNoticeRepository(session)
                 created, updated = repo.bulk_upsert(notices)
                 session.commit()
-                print(f"[Doosan Notice] Saved: {created} new, {updated} updated.")
+                logger.info(f"[Doosan Notice] Saved: {created} new, {updated} updated.")
             except SQLAlchemyError as e:
                 session.rollback()
                 logger.error(f"[Doosan Notice] Database error: {e}", exc_info=True)
-                print(f"[Doosan Notice] Error: {e}")
             finally:
                 self._raw_pages.clear()
 

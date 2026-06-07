@@ -7,7 +7,7 @@ import argparse
 import json
 import os
 import sys
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Iterable, Mapping
 
@@ -449,7 +449,7 @@ def collect_audit_metrics(conn) -> dict[str, Any]:
     }
 
     return {
-        "generated_at": datetime.utcnow().replace(microsecond=0).isoformat() + "Z",
+        "generated_at": datetime.now(UTC).replace(microsecond=0).isoformat() + "Z",
         "orphans": orphans,
         "duplicates": duplicates,
         "team_collisions": team_collisions,

@@ -7,7 +7,6 @@ from sqlalchemy import select
 from src.db.engine import SessionLocal
 from src.models.franchise import Franchise
 from src.utils.playwright_blocking import install_async_resource_blocking
-from src.utils.safe_print import safe_print as print
 from src.utils.throttle import throttle
 
 logger = logging.getLogger(__name__)
@@ -44,7 +43,7 @@ class TeamInfoCrawler:
             await self.playwright.stop()
 
     async def crawl(self, save: bool = False):
-        print("Crawling Team Info from %s", self.BASE_URL)
+        logger.info("Crawling Team Info from %s", self.BASE_URL)
         if not self.page:
             await self.start()
 
@@ -61,7 +60,7 @@ class TeamInfoCrawler:
         )
 
         rows = await self.page.locator("table.tData tbody tr").all()
-        print("Found %d team entries.", len(rows))
+        logger.info("Found %d team entries.", len(rows))
 
         teams_data = []
 
@@ -76,7 +75,7 @@ class TeamInfoCrawler:
             hometown = await cols[2].inner_text()
 
             team_name = team_name_full.strip()
-            print("Processing %s...", team_name)
+            logger.info("Processing %s...", team_name)
 
             link = row.locator("td").nth(0).locator("a.showTg").first
             if await link.count() > 0:
@@ -116,7 +115,7 @@ class TeamInfoCrawler:
                     await self.page.keyboard.press("Escape")
                     owner, ceo, address, phone, homepage = None, None, None, None, None
             else:
-                print("No link found for %s", team_name)
+                logger.info("No link found for %s", team_name)
                 owner, ceo, address, phone, homepage = None, None, None, None, None
 
             info = {
@@ -142,10 +141,10 @@ class TeamInfoCrawler:
 
         with SessionLocal() as session:
             count = save_raw_snapshots(session, self._raw_pages)
-            print("Saved %d raw snapshots for team info.", count)
+            logger.info("Saved %d raw snapshots for team info.", count)
 
     async def save(self, data: list[dict]):
-        print("Saving %d team profiles...", len(data))
+        logger.info("Saving %d team profiles...", len(data))
         with SessionLocal() as session:
             for item in data:
                 stmt = select(Franchise).where(Franchise.name.like(f"%{item['name']}%"))
@@ -164,9 +163,9 @@ class TeamInfoCrawler:
                     result.metadata_json = meta
                     result.web_url = item["homepage"]
                     session.add(result)
-                    print("Updated %s", result.name)
+                    logger.info("Updated %s", result.name)
                 else:
-                    print("Could not find franchise for %s", item["name"])
+                    logger.info("Could not find franchise for %s", item["name"])
             session.commit()
 
 

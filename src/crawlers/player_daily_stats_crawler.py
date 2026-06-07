@@ -29,7 +29,7 @@ class PlayerDailyStatsCrawler:
             page = await browser.new_page()
 
             try:
-                print(f"📡 Navigating to {url}...")
+                logger.info(f"📡 Navigating to {url}...")
                 await page.goto(url, wait_until="networkidle")
 
                 # 1. Select Year
@@ -60,7 +60,7 @@ class PlayerDailyStatsCrawler:
                     return results;
                 }""")
 
-                print(f"   📊 Found {len(rows)} raw data rows on page.")
+                logger.info(f"   📊 Found {len(rows)} raw data rows on page.")
 
                 all_games = []
                 for row in rows:
@@ -187,14 +187,14 @@ if __name__ == "__main__":
         crawler = PlayerDailyStatsCrawler()
         # Jose Fernandez 2020
         data = await crawler.crawl_player_season(69209, False, 2020)
-        print(f"Collected {len(data)} games for hitter.")
+        logger.info(f"Collected {len(data)} games for hitter.")
         if data:
-            print(data[0])
+            logger.info(data[0])
 
         # Pinto 2020
         data_p = await crawler.crawl_player_season(50815, True, 2020)
-        print(f"Collected {len(data_p)} games for pitcher.")
+        logger.info(f"Collected {len(data_p)} games for pitcher.")
         if data_p:
-            print(data_p[0])
+            logger.info(data_p[0])
 
     asyncio.run(test())

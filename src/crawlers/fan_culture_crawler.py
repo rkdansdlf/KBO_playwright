@@ -26,7 +26,6 @@ from datetime import datetime
 
 from src.db.engine import SessionLocal
 from src.repositories.fan_culture_repository import FanCultureRepository
-from src.utils.safe_print import safe_print as print
 from src.utils.youtube_api_client import (
     TEAM_YOUTUBE_CHANNELS,
     YouTubeAPIClient,
@@ -117,9 +116,9 @@ class FanCultureCrawler:
             dry_run: Print results without saving.
         """
         if not self.client.is_configured():
-            print("[FanCulture] ⚠️  YOUTUBE_API_KEY not set.")
-            print("[FanCulture]    Set it in .env to enable YouTube-based cheer song crawling.")
-            print("[FanCulture]    Get a free key at: https://console.cloud.google.com/")
+            logger.warning("[FanCulture] ⚠️  YOUTUBE_API_KEY not set.")
+            logger.info("[FanCulture]    Set it in .env to enable YouTube-based cheer song crawling.")
+            logger.info("[FanCulture]    Get a free key at: https://console.cloud.google.com/")
             return []
 
         teams = (
@@ -132,22 +131,24 @@ class FanCultureCrawler:
 
         for team_id, ch_info in teams.items():
             channel_id = ch_info["channel_id"]
-            print(f"[FanCulture] {team_id} ({ch_info['name']}) — searching YouTube...")
+            logger.info(f"[FanCulture] {team_id} ({ch_info['name']}) — searching YouTube...")
 
             team_songs = await self._crawl_team(team_id, channel_id, ch_info["search_queries"])
             all_songs.extend(team_songs)
-            print(f"[FanCulture]   → {len(team_songs)} cheer songs found")
+            logger.info(f"[FanCulture]   → {len(team_songs)} cheer songs found")
 
             # API 호출 간격 (rate limit 준수)
             await asyncio.sleep(0.5)
 
-        print(f"[FanCulture] Total: {len(all_songs)} songs across {len(teams)} teams")
+        logger.info(f"[FanCulture] Total: {len(all_songs)} songs across {len(teams)} teams")
 
         if dry_run or not save:
             for s in all_songs[:5]:
-                print(f"  [{s['team_id']}] {s['song_name']} | type={s['song_type']} | player={s.get('player_name')}")
+                logger.info(
+                    f"  [{s['team_id']}] {s['song_name']} | type={s['song_type']} | player={s.get('player_name')}"
+                )
             if len(all_songs) > 5:
-                print(f"  ... and {len(all_songs) - 5} more")
+                logger.info(f"  ... and {len(all_songs) - 5} more")
         elif save:
             self._save_to_db(all_songs)
 
@@ -194,7 +195,7 @@ class FanCultureCrawler:
                     except Exception:
                         logger.exception("Failed to save song: %s", item.get("song_name", ""))
                 session.commit()
-                print(f"[FanCulture] Saved {saved} cheer songs to DB.")
+                logger.info(f"[FanCulture] Saved {saved} cheer songs to DB.")
             except Exception:
                 session.rollback()
                 logger.exception("[FanCulture] DB save failed")

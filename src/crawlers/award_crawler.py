@@ -12,7 +12,6 @@ from playwright.async_api import Page, async_playwright
 from src.db.engine import SessionLocal
 from src.repositories.award_repository import AwardRepository
 from src.utils.playwright_blocking import install_async_resource_blocking
-from src.utils.safe_print import safe_print as print
 
 logger = logging.getLogger(__name__)
 
@@ -40,10 +39,10 @@ class AwardCrawler:
             for atype in award_types:
                 url = self.base_url_map.get(atype)
                 if not url:
-                    print(f"Unknown award type: {atype}")
+                    logger.info(f"Unknown award type: {atype}")
                     continue
 
-                print(f"Crawling {atype} from {url}...")
+                logger.info(f"Crawling {atype} from {url}...")
                 await page.goto(url, wait_until="networkidle")
 
                 try:
@@ -59,14 +58,13 @@ class AwardCrawler:
                         data = []
                 except Exception as e:
                     logger.error(f"Error crawling {atype}: {e}", exc_info=True)
-                    print(f"Error crawling {atype}: {e}")
                     import traceback
 
                     traceback.print_exc()
                     data = []
 
                 all_data.extend(data)
-                print(f"  > Found {len(data)} records for {atype}")
+                logger.info(f"  > Found {len(data)} records for {atype}")
 
             await browser.close()
 
@@ -75,8 +73,8 @@ class AwardCrawler:
             else:
                 # Dry run print
                 for d in all_data[:5]:
-                    print(d)
-                print(f"... and {len(all_data) - 5} more.")
+                    logger.info(d)
+                logger.info(f"... and {len(all_data) - 5} more.")
 
     async def crawl_player_prize(self, page: Page) -> list[dict]:
         """
@@ -319,13 +317,11 @@ class AwardCrawler:
                     count += 1
                 except Exception as ex:
                     logger.warning(f"Skipping duplicate or error: {item} - {ex}", exc_info=True)
-                    print(f"Skipping duplicate or error: {item} - {ex}")
             session.commit()
-            print(f"✅ Saved {count} awards to database.")
+            logger.info(f"✅ Saved {count} awards to database.")
         except Exception as e:
             session.rollback()
             logger.error(f"Error saving to DB: {e}", exc_info=True)
-            print(f"❌ Error saving to DB: {e}")
         finally:
             session.close()
 
