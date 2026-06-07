@@ -33,14 +33,21 @@ def _build_session_factory():
     return sessionmaker(bind=engine, autoflush=False, autocommit=False, expire_on_commit=False)
 
 
-def _seed_game(SessionLocal, game_id: str):
+def _seed_game(
+    SessionLocal,
+    game_id: str,
+    *,
+    target_date: date = date(2025, 4, 1),
+    home_team: str = "SS",
+    away_team: str = "LG",
+):
     with SessionLocal() as session:
         session.add(
             Game(
                 game_id=game_id,
-                game_date=date(2025, 4, 1),
-                home_team="SS",
-                away_team="LG",
+                game_date=target_date,
+                home_team=home_team,
+                away_team=away_team,
             )
         )
         session.commit()
@@ -439,6 +446,94 @@ class TestRelayAtBatEnrichmentPipeline:
             # Verify confidence is "resolved" for those rows
             assert resolved[0].resolver_confidence == "resolved"
             assert resolved[0].resolver_reason is not None
+
+    def test_save_relay_resolves_woob_players_with_canonical_and_defensive_team_context(self, monkeypatch):
+        SessionLocal = _build_session_factory()
+        monkeypatch.setattr(game_relay_module, "SessionLocal", SessionLocal)
+        monkeypatch.setattr(game_relay_module, "_auto_sync_to_oci", lambda game_id: None)
+        monkeypatch.setattr(game_save_module, "SessionLocal", SessionLocal)
+        monkeypatch.setattr(game_save_module, "_auto_sync_to_oci", lambda game_id: None)
+        _seed_game(
+            SessionLocal,
+            "20260607WOOB0",
+            target_date=date(2026, 6, 7),
+            home_team="DB",
+            away_team="KH",
+        )
+        _seed_player_basic(SessionLocal, 53554, "김민석", "두산")
+        _seed_player_basic(SessionLocal, 54097, "김민석", "KT")
+        _seed_player_basic(SessionLocal, 76232, "양의지", "두산")
+        _seed_player_season_batting(SessionLocal, 53554, 2026, "DB")
+        _seed_player_season_batting(SessionLocal, 54097, 2026, "KT")
+        _seed_player_season_batting(SessionLocal, 76232, 2026, "DB")
+
+        saved = game_relay_module.save_relay_data(
+            "20260607WOOB0",
+            events=[],
+            raw_pbp_rows=[
+                {
+                    "inning": 2,
+                    "inning_half": "bottom",
+                    "batter_name": "김민석",
+                    "play_description": "김민석 : 1루수 땅볼 아웃",
+                    "event_type": "batting",
+                },
+                {
+                    "inning": 3,
+                    "inning_half": "top",
+                    "batter_name": "포수 양의지",
+                    "play_description": "포수 양의지 : 포수 윤준호 (으)로 교체",
+                    "event_type": "unknown",
+                },
+            ],
+        )
+
+        assert saved == 2
+        with SessionLocal() as session:
+            rows = {
+                row.play_description: row
+                for row in session.query(GamePlayByPlay)
+                .filter(GamePlayByPlay.game_id == "20260607WOOB0")
+                .all()
+            }
+            assert rows["김민석 : 1루수 땅볼 아웃"].player_id == 53554
+            assert rows["김민석 : 1루수 땅볼 아웃"].resolver_reason == "name_match_DB_2026"
+            assert rows["포수 양의지 : 포수 윤준호 (으)로 교체"].player_id == 76232
+            assert rows["포수 양의지 : 포수 윤준호 (으)로 교체"].resolver_reason == "name_match_DB_2026"
+
+    def test_save_relay_resolves_hhlt_batter_with_explicit_batter_role_context(self, monkeypatch):
+        SessionLocal = _build_session_factory()
+        monkeypatch.setattr(game_relay_module, "SessionLocal", SessionLocal)
+        monkeypatch.setattr(game_relay_module, "_auto_sync_to_oci", lambda game_id: None)
+        monkeypatch.setattr(game_save_module, "SessionLocal", SessionLocal)
+        monkeypatch.setattr(game_save_module, "_auto_sync_to_oci", lambda game_id: None)
+        _seed_game(
+            SessionLocal,
+            "20260607HHLT0",
+            target_date=date(2026, 6, 7),
+            home_team="LT",
+            away_team="HH",
+        )
+
+        saved = game_relay_module.save_relay_data(
+            "20260607HHLT0",
+            events=[],
+            raw_pbp_rows=[
+                {
+                    "inning": 1,
+                    "inning_half": "top",
+                    "batter_name": "오재원",
+                    "play_description": "오재원 : 1루수 왼쪽 앞 내야안타",
+                    "event_type": "batting",
+                },
+            ],
+        )
+
+        assert saved == 1
+        with SessionLocal() as session:
+            pbp = session.query(GamePlayByPlay).filter(GamePlayByPlay.game_id == "20260607HHLT0").one()
+            assert pbp.player_id == 56754
+            assert pbp.resolver_reason == "name_match_HH_2026"
 
     def test_pipeline_resolver_fallback_graceful(self, monkeypatch):
         """Verify pipeline still succeeds when resolver cannot find player data."""

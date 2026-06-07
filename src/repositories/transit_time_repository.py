@@ -4,7 +4,7 @@ Repository for StadiumTransitTime CRUD operations.
 from __future__ import annotations
 
 import logging
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 
 from sqlalchemy import and_, select
 from sqlalchemy.orm import Session
@@ -44,7 +44,7 @@ class TransitTimeRepository:
             for k, v in data.items():
                 if k in mutable and v is not None:
                     setattr(existing, k, v)
-            existing.updated_at = datetime.utcnow()
+            existing.updated_at = datetime.now(timezone.utc).replace(tzinfo=None)
             return existing, False
 
         record = StadiumTransitTime(**data)

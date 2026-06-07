@@ -18,7 +18,7 @@ Scheduling recommendation:
 from __future__ import annotations
 
 import logging
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 
 from sqlalchemy.exc import SQLAlchemyError
 
@@ -76,7 +76,7 @@ class CongestionCrawler:
         save: bool = False,
     ) -> list[dict]:
         game_date = game_date or date.today()
-        measured_at = datetime.utcnow()
+        measured_at = datetime.now(timezone.utc).replace(tzinfo=None)
 
         print(f"[Congestion] Collecting for {game_date} at {measured_at.strftime('%H:%M')} UTC")
 

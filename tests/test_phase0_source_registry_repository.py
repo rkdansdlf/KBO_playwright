@@ -1,9 +1,15 @@
+import hashlib
+
 import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from src.models.source_registry import DataSource, RawSourceSnapshot
-from src.repositories.source_registry_repository import DataSourceRepository, RawSourceSnapshotRepository
+from src.repositories.source_registry_repository import (
+    DataSourceRepository,
+    RawSourceSnapshotRepository,
+    save_raw_snapshots,
+)
 
 
 @pytest.fixture
@@ -49,13 +55,13 @@ class TestDataSourceRepository:
         assert len(active) == 2
 
     def test_get_stale_sources(self, session):
-        from datetime import datetime, timedelta
+        from datetime import datetime, timedelta, timezone
 
         repo = DataSourceRepository(session)
         ds = repo.save(
             {"source_key": "stale", "source_type": "official_kbo", "target_domain": "event", "is_active": True}
         )
-        ds.last_success_at = datetime.utcnow() - timedelta(hours=72)
+        ds.last_success_at = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(hours=72)
         session.commit()
 
         stale = repo.get_stale_sources(max_hours=48)
@@ -63,12 +69,12 @@ class TestDataSourceRepository:
         assert "stale" in keys
 
     def test_get_stale_sources_excludes_fresh(self, session):
-        from datetime import datetime
+        from datetime import datetime, timezone
 
         repo = DataSourceRepository(session)
         repo.save({"source_key": "fresh", "source_type": "official_kbo", "target_domain": "event", "is_active": True})
         ds = repo.get_by_key("fresh")
-        ds.last_success_at = datetime.utcnow()
+        ds.last_success_at = datetime.now(timezone.utc).replace(tzinfo=None)
         session.commit()
 
         stale = repo.get_stale_sources(max_hours=48)
@@ -107,14 +113,14 @@ class TestRawSourceSnapshotRepository:
         session.flush()
 
         snap_repo = RawSourceSnapshotRepository(session)
-        from datetime import datetime
+        from datetime import datetime, timezone
 
         snap = snap_repo.save(
             {
                 "data_source_id": ds.id,
                 "raw_html_or_json_path": "/tmp/test.json",
                 "content_hash": "hash1",
-                "fetched_at": datetime.utcnow(),
+                "fetched_at": datetime.now(timezone.utc).replace(tzinfo=None),
             }
         )
         assert snap.data_source_id == ds.id
@@ -131,14 +137,14 @@ class TestRawSourceSnapshotRepository:
         session.flush()
 
         snap_repo = RawSourceSnapshotRepository(session)
-        from datetime import datetime
+        from datetime import datetime, timezone
 
         snap_repo.save(
             {
                 "data_source_id": ds.id,
                 "raw_html_or_json_path": "/tmp/a.json",
                 "content_hash": "abc",
-                "fetched_at": datetime.utcnow(),
+                "fetched_at": datetime.now(timezone.utc).replace(tzinfo=None),
             }
         )
         snap_repo.save(
@@ -146,7 +152,7 @@ class TestRawSourceSnapshotRepository:
                 "data_source_id": ds.id,
                 "raw_html_or_json_path": "/tmp/b.json",
                 "content_hash": "def",
-                "fetched_at": datetime.utcnow(),
+                "fetched_at": datetime.now(timezone.utc).replace(tzinfo=None),
             }
         )
 
@@ -165,14 +171,14 @@ class TestRawSourceSnapshotRepository:
         session.flush()
 
         snap_repo = RawSourceSnapshotRepository(session)
-        from datetime import datetime
+        from datetime import datetime, timezone
 
         snap_repo.save(
             {
                 "data_source_id": ds.id,
                 "raw_html_or_json_path": "/tmp/a.json",
                 "content_hash": "h1",
-                "fetched_at": datetime.utcnow(),
+                "fetched_at": datetime.now(timezone.utc).replace(tzinfo=None),
             }
         )
         snap_repo.save(
@@ -181,7 +187,7 @@ class TestRawSourceSnapshotRepository:
                 "raw_html_or_json_path": "/tmp/b.json",
                 "content_hash": "h2",
                 "parse_status": "done",
-                "fetched_at": datetime.utcnow(),
+                "fetched_at": datetime.now(timezone.utc).replace(tzinfo=None),
             }
         )
         session.commit()
@@ -198,14 +204,14 @@ class TestRawSourceSnapshotRepository:
         session.flush()
 
         snap_repo = RawSourceSnapshotRepository(session)
-        from datetime import datetime
+        from datetime import datetime, timezone
 
         snap = snap_repo.save(
             {
                 "data_source_id": ds.id,
                 "raw_html_or_json_path": "/tmp/a.json",
                 "content_hash": "h1",
-                "fetched_at": datetime.utcnow(),
+                "fetched_at": datetime.now(timezone.utc).replace(tzinfo=None),
             }
         )
         session.commit()
@@ -214,3 +220,76 @@ class TestRawSourceSnapshotRepository:
         updated = session.get(RawSourceSnapshot, snap.id)
         assert updated.parse_status == "done"
         assert updated.parser_version == "v1"
+
+
+class TestSaveRawSnapshots:
+    def test_new_snapshot_marks_data_source_success(self, session):
+        ds_repo = DataSourceRepository(session)
+        ds_repo.save(
+            {"source_key": "p0_event", "source_type": "official_team", "target_domain": "event", "is_active": True}
+        )
+        session.flush()
+
+        html = "<html>fresh event page</html>"
+        saved = save_raw_snapshots(
+            session,
+            [
+                {
+                    "source_key": "p0_event",
+                    "url": "https://example.com/events",
+                    "html": html,
+                    "status_code": 200,
+                }
+            ],
+        )
+
+        ds = ds_repo.get_by_key("p0_event")
+        assert saved == 1
+        assert ds.last_success_at is not None
+        assert ds.last_content_hash == hashlib.sha256(html.encode()).hexdigest()
+
+    def test_duplicate_snapshot_still_marks_data_source_success(self, session):
+        from datetime import datetime, timedelta, timezone
+
+        ds_repo = DataSourceRepository(session)
+        ds = ds_repo.save(
+            {"source_key": "p1_seat", "source_type": "official_team", "target_domain": "seat", "is_active": True}
+        )
+        session.flush()
+
+        html = "<html>unchanged seat page</html>"
+        content_hash = hashlib.sha256(html.encode()).hexdigest()
+        old_success_at = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=7)
+        ds.last_success_at = old_success_at
+        ds.last_content_hash = content_hash
+
+        snap_repo = RawSourceSnapshotRepository(session)
+        snap_repo.save(
+            {
+                "data_source_id": ds.id,
+                "raw_html_or_json_path": "https://example.com/seat",
+                "content_hash": content_hash,
+                "fetched_at": old_success_at,
+                "status_code": 200,
+            }
+        )
+        session.commit()
+
+        saved = save_raw_snapshots(
+            session,
+            [
+                {
+                    "source_key": "p1_seat",
+                    "url": "https://example.com/seat",
+                    "html": html,
+                    "status_code": 200,
+                }
+            ],
+        )
+        session.commit()
+
+        updated = ds_repo.get_by_key("p1_seat")
+        assert saved == 0
+        assert updated.last_content_hash == content_hash
+        assert updated.last_success_at is not None
+        assert updated.last_success_at > old_success_at

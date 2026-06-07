@@ -5,6 +5,7 @@ Relay data persistence and backfill functions.
 from __future__ import annotations
 
 import logging
+import re
 from datetime import datetime
 from typing import Any, Iterable
 
@@ -39,8 +40,14 @@ from src.repositories.game_helpers import (
 from src.services.game_write_contract import GameWriteContract, GameWriteSource
 from src.sources.relay.base import event_has_minimum_state, event_to_pbp_row, normalize_pbp_row
 from src.utils.safe_print import safe_print as print
+from src.utils.team_codes import team_code_from_game_id_segment
 
 logger = logging.getLogger(__name__)
+
+_OFFENSIVE_RELAY_ROLE_RE = re.compile(r"^(?:\d+번타자|[123]루주자|대타|대주자)\s+(.+)$")
+_DEFENSIVE_RELAY_ROLE_RE = re.compile(r"^(투수|포수|1루수|2루수|3루수|유격수|좌익수|중견수|우익수)\s+(.+)$")
+_RELAY_TURN_NOISE_RE = re.compile(r"^\d+회(?:초|말)\s+\d+번타순\b")
+_RELAY_DECISION_LABELS = ("승리투수", "패전투수", "세이브", "홀드")
 
 
 def _coerce_player_id(value: Any) -> int | None:
@@ -50,6 +57,27 @@ def _coerce_player_id(value: Any) -> int | None:
         return int(value)
     except (TypeError, ValueError):
         return None
+
+
+def _relay_player_resolution_context(name: Any) -> tuple[str, str, bool | None] | None:
+    text_value = " ".join(str(name or "").strip().split())
+    if not text_value:
+        return None
+    if _RELAY_TURN_NOISE_RE.match(text_value):
+        return None
+    if any(text_value.startswith(label) for label in _RELAY_DECISION_LABELS):
+        return None
+
+    offensive_match = _OFFENSIVE_RELAY_ROLE_RE.match(text_value)
+    if offensive_match:
+        return offensive_match.group(1).strip(), "offense", False
+
+    defensive_match = _DEFENSIVE_RELAY_ROLE_RE.match(text_value)
+    if defensive_match:
+        role = defensive_match.group(1)
+        return defensive_match.group(2).strip(), "defense", role == "투수"
+
+    return text_value, "offense", False
 
 
 def _upsert_validation_metrics(
@@ -533,8 +561,12 @@ def save_relay_data(
             home_team_code = None
             try:
                 season_year = int(game_id[:4]) if len(game_id) >= 4 else None
-                away_team_code = game_id[8:10] if len(game_id) >= 10 else None
-                home_team_code = game_id[10:12] if len(game_id) >= 12 else None
+                away_team_code = (
+                    team_code_from_game_id_segment(game_id[8:10], season_year) if len(game_id) >= 10 else None
+                )
+                home_team_code = (
+                    team_code_from_game_id_segment(game_id[10:12], season_year) if len(game_id) >= 12 else None
+                )
             except (ValueError, IndexError):
                 pass
 
@@ -546,17 +578,36 @@ def save_relay_data(
                 logger.warning("Failed to initialize PlayerIdResolver — player_id resolution will be skipped")
                 resolver = None
 
-            def resolve_participant(name: str | None, team_code: str | None) -> tuple[int | None, str | None, str | None]:
+            def resolve_participant(
+                name: str | None,
+                team_code: str | None,
+                *,
+                is_pitcher: bool | None = None,
+            ) -> tuple[int | None, str | None, str | None]:
                 if resolver is None or not name or not team_code or not season_year:
                     return None, None, None
                 try:
-                    pid = resolver.resolve_id(name, team_code, season_year)
+                    pid = resolver.resolve_id(name, team_code, season_year, is_pitcher=is_pitcher)
                 except Exception as exc:
                     logger.warning("Player ID resolution encountered exception: %s", exc)
                     return None, "error", "resolve_exception"
                 if pid is None:
                     return None, "unresolved", f"no_match_{team_code}_{season_year}"
                 return _coerce_player_id(pid), "resolved", f"name_match_{team_code}_{season_year}"
+
+            def offense_team(half: str | None) -> str | None:
+                if half == "top":
+                    return away_team_code
+                if half == "bottom":
+                    return home_team_code
+                return None
+
+            def defense_team(half: str | None) -> str | None:
+                if half == "top":
+                    return home_team_code
+                if half == "bottom":
+                    return away_team_code
+                return None
 
             for row in raw_pbp_rows:
                 player_id = None
@@ -569,13 +620,24 @@ def save_relay_data(
                 inning_half = row.get("inning_half")
 
                 if resolver is not None and batter_name and season_year and away_team_code and home_team_code:
-                    batter_team = away_team_code if inning_half == "top" else home_team_code
-                    player_id, resolver_confidence, resolver_reason = resolve_participant(batter_name, batter_team)
-                    if player_id is None:
-                        unresolved_player_name = batter_name
+                    batter_context = _relay_player_resolution_context(batter_name)
+                    if batter_context is not None:
+                        resolved_name, side, is_pitcher = batter_context
+                        batter_team = offense_team(inning_half) if side == "offense" else defense_team(inning_half)
+                        player_id, resolver_confidence, resolver_reason = resolve_participant(
+                            resolved_name,
+                            batter_team,
+                            is_pitcher=is_pitcher,
+                        )
+                        if player_id is None:
+                            unresolved_player_name = resolved_name
                 elif resolver is not None and pitcher_name and season_year:
-                    pitcher_team = home_team_code if inning_half == "top" else away_team_code
-                    player_id, resolver_confidence, resolver_reason = resolve_participant(pitcher_name, pitcher_team)
+                    pitcher_team = defense_team(inning_half)
+                    player_id, resolver_confidence, resolver_reason = resolve_participant(
+                        pitcher_name,
+                        pitcher_team,
+                        is_pitcher=True,
+                    )
                     if player_id is None:
                         unresolved_player_name = pitcher_name
 
@@ -608,14 +670,31 @@ def save_relay_data(
                     extra_json.setdefault("relay_source", source_name)
                 if notes:
                     extra_json.setdefault("relay_notes", notes)
-                batter_team = away_team_code if half == "top" else home_team_code
-                pitcher_team = home_team_code if half == "top" else away_team_code
-                batter_id, batter_confidence, batter_reason = resolve_participant(batter_name, batter_team)
-                pitcher_id, pitcher_confidence, pitcher_reason = resolve_participant(pitcher_name, pitcher_team)
+                batter_context = _relay_player_resolution_context(batter_name)
+                if batter_context is not None:
+                    resolved_batter_name, batter_side, batter_is_pitcher = batter_context
+                    batter_team = offense_team(half) if batter_side == "offense" else defense_team(half)
+                    batter_id, batter_confidence, batter_reason = resolve_participant(
+                        resolved_batter_name,
+                        batter_team,
+                        is_pitcher=batter_is_pitcher,
+                    )
+                else:
+                    resolved_batter_name = batter_name
+                    batter_team = None
+                    batter_confidence = None
+                    batter_reason = None
+                    batter_id = None
+                pitcher_team = defense_team(half)
+                pitcher_id, pitcher_confidence, pitcher_reason = resolve_participant(
+                    pitcher_name,
+                    pitcher_team,
+                    is_pitcher=True,
+                )
                 resolver_payload: dict[str, Any] = {}
                 if batter_name:
                     resolver_payload["batter"] = {
-                        "name": batter_name,
+                        "name": resolved_batter_name,
                         "team_code": batter_team,
                         "confidence": batter_confidence,
                         "reason": batter_reason,

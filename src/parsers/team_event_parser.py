@@ -5,7 +5,7 @@ Parser for team event/news HTML pages. Extracts event title, date, type, and sou
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from bs4 import BeautifulSoup
@@ -202,7 +202,7 @@ def parse_team_events(html: str, source_key: str, metadata: dict | None = None) 
                 "event_type": _classify_event(title),
                 "published_at": published_at,
                 "source_url": source_url or page_url,
-                "last_seen_at": datetime.utcnow(),
+                "last_seen_at": datetime.now(timezone.utc).replace(tzinfo=None),
                 "status": "unknown",
             }
         )
