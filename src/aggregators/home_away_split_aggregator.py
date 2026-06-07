@@ -4,6 +4,7 @@ Aggregate player batting/pitching home/away splits from game-level stats.
 
 from __future__ import annotations
 
+import logging
 from collections import defaultdict
 
 from sqlalchemy.orm import Session
@@ -12,7 +13,8 @@ from src.models.game import Game, GameBattingStat
 from src.models.matchup import BatterHomeAwaySplit
 from src.models.season import KboSeason
 from src.utils.game_status import COMPLETED_LIKE_GAME_STATUSES
-from src.utils.safe_print import safe_print as print
+
+logger = logging.getLogger(__name__)
 
 
 class HomeAwaySplitAggregator:
@@ -109,7 +111,7 @@ class HomeAwaySplitAggregator:
         for r in results:
             self.session.add(BatterHomeAwaySplit(**r))
         self.session.commit()
-        print(f"[HomeAway] {len(results)} batting split rows saved for {year}.")
+        logger.info(f"[HomeAway] {len(results)} batting split rows saved for {year}.")
 
     def print_report(self, year: int, top_n: int = 5):
         results = self.aggregate_batting(year)
@@ -123,11 +125,11 @@ class HomeAwaySplitAggregator:
                 players[pid] = {}
             players[pid][r["location"]] = r
 
-        print(f"\n{'=' * 70}")
-        print(f"  KBO {year}년 홈/원정 OPS 차이 Top {top_n}")
-        print(f"{'=' * 70}")
-        print(f"{'PlayerID':>9} {'홈OPS':>7} {'원정OPS':>8} {'차이':>6}")
-        print(f"{'-' * 70}")
+        logger.info(f"\n{'=' * 70}")
+        logger.info(f"  KBO {year}년 홈/원정 OPS 차이 Top {top_n}")
+        logger.info(f"{'=' * 70}")
+        logger.info(f"{'PlayerID':>9} {'홈OPS':>7} {'원정OPS':>8} {'차이':>6}")
+        logger.info(f"{'-' * 70}")
 
         diffs = []
         for pid, locs in players.items():
@@ -146,7 +148,7 @@ class HomeAwaySplitAggregator:
             and players[pid].get("AWAY", {}).get("plate_appearances", 0) >= 50
         ]
         for pid, h_ops, a_ops, diff in diffs[:top_n]:
-            print(f"  {pid:>9} {h_ops:>7.3f} {a_ops:>8.3f} {diff:>+6.3f}")
+            logger.info(f"  {pid:>9} {h_ops:>7.3f} {a_ops:>8.3f} {diff:>+6.3f}")
 
 
 if __name__ == "__main__":

@@ -1,3 +1,6 @@
+import logging
+
+logger = logging.getLogger(__name__)
 """
 Situational Splits Calculator Service.
 
@@ -176,4 +179,4 @@ if __name__ == "__main__":
 
     calc = SituationalSplitCalculator()
     result = calc.get_full_splits(args.player_id, args.season)
-    print(json.dumps(result, ensure_ascii=False, indent=2))
+    logger.info(json.dumps(result, ensure_ascii=False, indent=2))

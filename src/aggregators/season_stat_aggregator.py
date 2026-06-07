@@ -1,3 +1,6 @@
+import logging
+
+logger = logging.getLogger(__name__)
 from typing import Any
 
 from sqlalchemy import Integer, case, func, or_
@@ -83,7 +86,7 @@ class SeasonStatAggregator:
         Aggregate batting stats for all players in a season/series in a single query.
         """
         pattern = SeasonStatAggregator._get_league_name_pattern(series)
-        print(f"🚀 [BULK] Aggregating batting stats for {year} {series}...")
+        logger.info(f"🚀 [BULK] Aggregating batting stats for {year} {series}...")
 
         query = (
             session.query(
@@ -187,7 +190,7 @@ class SeasonStatAggregator:
         Aggregate pitching stats for all players in a season/series in a single query.
         """
         pattern = SeasonStatAggregator._get_league_name_pattern(series)
-        print(f"🚀 [BULK] Aggregating pitching stats for {year} {series}...")
+        logger.info(f"🚀 [BULK] Aggregating pitching stats for {year} {series}...")
 
         query = (
             session.query(
@@ -276,7 +279,7 @@ class SeasonStatAggregator:
         Aggregate baserunning stats for all players in bulk.
         """
         pattern = SeasonStatAggregator._get_league_name_pattern(series)
-        print(f"🚀 [BULK] Aggregating baserunning stats for {year} {series}...")
+        logger.info(f"🚀 [BULK] Aggregating baserunning stats for {year} {series}...")
 
         query = (
             session.query(
@@ -314,7 +317,7 @@ class SeasonStatAggregator:
         Aggregate fielding stats for all players and positions in bulk.
         """
         pattern = SeasonStatAggregator._get_league_name_pattern(series)
-        print(f"🚀 [BULK] Aggregating fielding stats for {year} {series}...")
+        logger.info(f"🚀 [BULK] Aggregating fielding stats for {year} {series}...")
 
         # 1. Get all player-position-game counts
         pos_counts_query = (

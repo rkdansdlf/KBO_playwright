@@ -146,7 +146,7 @@ class PlayerSyncMixin:
         )
 
         synced = len(records)
-        print(f"✅ Synced {synced} player_basic records to OCI (by IDs)")
+        logger.info(f"✅ Synced {synced} player_basic records to OCI (by IDs)")
         return synced
 
     def _sync_referenced_player_basic_for_games(self, game_ids: list[str]) -> int:

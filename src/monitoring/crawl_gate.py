@@ -5,11 +5,12 @@ Can be used as a blocking gate or non-blocking alert.
 
 from __future__ import annotations
 
+import logging
 import sys
 
 from sqlalchemy.orm import Session
 
-from src.utils.safe_print import safe_print as print
+logger = logging.getLogger(__name__)
 
 
 class CrawlGate:
@@ -27,7 +28,7 @@ class CrawlGate:
                 for issue in issue_list:
                     msg = f"[{game_id}] {issue}"
                     self.issues.append(msg)
-                    print(f"  ⚠️  {msg}")
+                    logger.warning(f"  ⚠️  {msg}")
         return len(issues) == 0
 
     def check_game_completion_rate(self, target_date: str) -> bool:
@@ -36,7 +37,7 @@ class CrawlGate:
 
         games = self.session.query(Game).filter(Game.game_date == target_date).all()
         if not games:
-            print(f"  ℹ️  No games on {target_date}")
+            logger.info(f"  ℹ️  No games on {target_date}")
             return True
 
         completed = sum(1 for g in games if g.game_status in COMPLETED_LIKE_GAME_STATUSES)
@@ -46,7 +47,7 @@ class CrawlGate:
         if rate < threshold:
             msg = f"Completion rate {rate:.0%} ({completed}/{len(games)}) below {threshold:.0%}"
             self.issues.append(msg)
-            print(f"  ⚠️  {msg}")
+            logger.warning(f"  ⚠️  {msg}")
             return False
         return True
 
@@ -60,18 +61,18 @@ class CrawlGate:
             if mismatches:
                 msg = f"Standings: {len(mismatches)} mismatches"
                 self.issues.append(msg)
-                print(f"  ⚠️  {msg}")
+                logger.warning(f"  ⚠️  {msg}")
             if missing_games:
                 msg = f"Standings: {len(missing_games)} games with missing scores"
                 self.issues.append(msg)
-                print(f"  ⚠️  {msg}")
+                logger.warning(f"  ⚠️  {msg}")
             return False
         return True
 
     def run_all_checks(self, target_date: str) -> bool:
-        print(f"\n{'=' * 50}")
-        print(f"  CrawlGate: Checking {target_date}")
-        print(f"{'=' * 50}")
+        logger.info(f"\n{'=' * 50}")
+        logger.info(f"  CrawlGate: Checking {target_date}")
+        logger.info(f"{'=' * 50}")
 
         results = [
             ("Freshness", self.check_freshness(target_date)),
@@ -80,16 +81,16 @@ class CrawlGate:
         ]
 
         all_pass = all(r[1] for r in results)
-        print("\n  Results:")
+        logger.info("\n  Results:")
         for name, ok in results:
             icon = "✅" if ok else "❌"
-            print(f"    {icon} {name}")
+            logger.info(f"    {icon} {name}")
 
         if not all_pass and self.enforce:
-            print(f"\n  ❌ CrawlGate ENFORCE mode: blocking pipeline ({len(self.issues)} issues)\n")
+            logger.error(f"\n  ❌ CrawlGate ENFORCE mode: blocking pipeline ({len(self.issues)} issues)\n")
             sys.exit(1)
 
-        print()
+        logger.info()
         return all_pass
 
 

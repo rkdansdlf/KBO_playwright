@@ -26,10 +26,10 @@ class KboAuthenticator:
     async def login(self, headless: bool = True) -> bool:
         """Perform login and save state to file."""
         if not self.user_id or not self.user_pwd:
-            print("[AUTH] Error: KBO_USER_ID or KBO_USER_PWD not set.")
+            logger.info("[AUTH] Error: KBO_USER_ID or KBO_USER_PWD not set.")
             return False
 
-        print(f"[AUTH] Attempting login for user: {self.user_id}...")
+        logger.info(f"[AUTH] Attempting login for user: {self.user_id}...")
 
         async with async_playwright() as p:
             # Replicate stealth launch args
@@ -66,7 +66,7 @@ class KboAuthenticator:
                 # Check if logged in (usually header text changes to "로그아웃")
                 content = await page.content()
                 if "로그아웃" in content:
-                    print("[AUTH] Login successful! Warming up session...")
+                    logger.info("[AUTH] Login successful! Warming up session...")
 
                     # 1. Natural navigation to GameCenter
                     try:
@@ -89,7 +89,7 @@ class KboAuthenticator:
                     await context.storage_state(path=self.AUTH_STATE_PATH)
                     return True
                 else:
-                    print("[AUTH] Login failed: Logout button not found after redirection.")
+                    logger.info("[AUTH] Login failed: Logout button not found after redirection.")
                     return False
 
             except Exception as e:
@@ -113,9 +113,9 @@ async def main():
     auth = KboAuthenticator()
     success = await auth.login(headless=True)
     if success:
-        print("✨ Auth state saved successfully.")
+        logger.info("✨ Auth state saved successfully.")
     else:
-        print("❌ Auth failed.")
+        logger.error("❌ Auth failed.")
 
 
 if __name__ == "__main__":

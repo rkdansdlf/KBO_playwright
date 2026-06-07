@@ -10,8 +10,6 @@ import os
 
 import httpx
 
-from src.utils.safe_print import safe_print as print
-
 logger = logging.getLogger(__name__)
 
 
@@ -23,7 +21,7 @@ class EmbeddingService:
     def __init__(self):
         self.api_key = os.getenv("GEMINI_API_KEY")
         if not self.api_key:
-            print("⚠️ Warning: GEMINI_API_KEY is not configured in environment.")
+            logger.warning("⚠️ Warning: GEMINI_API_KEY is not configured in environment.")
 
     def adjust_embedding_dimension(self, embedding: list[float], target_dim: int = 256) -> list[float]:
         """
@@ -114,7 +112,7 @@ class EmbeddingService:
         new_embeddings = []
         if missing_texts:
             if not self.api_key:
-                print("❌ GEMINI_API_KEY missing. Returning zero-vectors as fallback.")
+                logger.error("❌ GEMINI_API_KEY missing. Returning zero-vectors as fallback.")
                 new_embeddings = [[0.0] * 256 for _ in missing_texts]
             else:
                 if self.api_key.startswith("sk-or-v1-"):
@@ -171,7 +169,7 @@ class EmbeddingService:
                     embeddings = [item.get("embedding") for item in sorted_records]
                     return embeddings
                 else:
-                    print(f"❌ OpenRouter Embedding API returned status {res.status_code}: {res.text}")
+                    logger.error(f"❌ OpenRouter Embedding API returned status {res.status_code}: {res.text}")
         except Exception:
             logger.exception("❌ Exception fetching OpenRouter embeddings")
 
@@ -207,7 +205,7 @@ class EmbeddingService:
                     embeddings_data = data.get("embeddings", [])
                     return [item.get("values", []) for item in embeddings_data]
                 else:
-                    print(f"❌ Google Embedding API returned status {res.status_code}: {res.text}")
+                    logger.error(f"❌ Google Embedding API returned status {res.status_code}: {res.text}")
         except Exception:
             logger.exception("❌ Exception fetching Google embeddings")
 

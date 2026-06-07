@@ -4,10 +4,13 @@ Parser for stadium seat section information pages. Extracts section names and gr
 
 from __future__ import annotations
 
+import logging
 import re
 from typing import Any
 
 from bs4 import BeautifulSoup
+
+logger = logging.getLogger(__name__)
 
 SECTION_PATTERNS = [
     re.compile(r"([가-힣]+(?:석|존|zone|Zone))"),
@@ -53,4 +56,4 @@ if __name__ == "__main__":
     html = sys.stdin.read() if not sys.stdin.isatty() else "<html><body><p>블루석 오렌지석 레드석</p></body></html>"
     result = parse_seat_sections(html, "lg_twins_seat")
     for item in result:
-        print(item)
+        logger.info(item)

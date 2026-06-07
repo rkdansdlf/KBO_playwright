@@ -4,11 +4,15 @@ Aggregate player-level fielding & baserunning stats to team-season level.
 
 from __future__ import annotations
 
+import logging
+
 from sqlalchemy.orm import Session
 
 from src.models.player import PlayerSeasonBaserunning, PlayerSeasonFielding
 from src.models.team import TeamSeasonBaserunning, TeamSeasonFielding
 from src.utils.safe_print import safe_print as print
+
+logger = logging.getLogger(__name__)
 
 
 class TeamFieldingAggregator:
@@ -161,7 +165,7 @@ class TeamFieldingAggregator:
             else:
                 self.session.add(TeamSeasonBaserunning(**br))
 
-            print(f"  {season} {code}: fielding={fdata.get('fielding_pct')}, sb_rate={br.get('sb_success_rate')}")
+            logger.info(f"  {season} {code}: fielding={fdata.get('fielding_pct')}, sb_rate={br.get('sb_success_rate')}")
 
         self.session.commit()
 

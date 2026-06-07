@@ -12,8 +12,6 @@ from typing import Any
 
 import httpx
 
-from src.utils.safe_print import safe_print as print
-
 logger = logging.getLogger(__name__)
 
 
@@ -74,7 +72,7 @@ class MetadataEnrichmentService:
                     content_str = data.get("choices", [{}])[0].get("message", {}).get("content", "")
                     return self._parse_json_response(content_str)
                 else:
-                    print(f"⚠️ OpenRouter Enrichment API status {res.status_code}: {res.text}")
+                    logger.warning(f"⚠️ OpenRouter Enrichment API status {res.status_code}: {res.text}")
         except Exception:
             logger.exception("⚠️ Exception in OpenRouter enrichment")
         return {"summary": "", "keywords": [], "questions": []}
@@ -98,7 +96,7 @@ class MetadataEnrichmentService:
                     )
                     return self._parse_json_response(content_str)
                 else:
-                    print(f"⚠️ Google Gemini Enrichment API status {res.status_code}: {res.text}")
+                    logger.warning(f"⚠️ Google Gemini Enrichment API status {res.status_code}: {res.text}")
         except Exception:
             logger.exception("⚠️ Exception in Gemini enrichment")
         return {"summary": "", "keywords": [], "questions": []}

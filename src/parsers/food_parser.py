@@ -4,10 +4,13 @@ Parser for stadium food vendor pages. Extracts vendor names and menu items with 
 
 from __future__ import annotations
 
+import logging
 import re
 from typing import Any
 
 from bs4 import BeautifulSoup
+
+logger = logging.getLogger(__name__)
 
 MENU_PATTERN = re.compile(r"([가-힣a-zA-Z0-9\s]{2,30})\s*:?\s*(\d{1,3}(?:,\d{3})*)\s*(?:원)")
 
@@ -58,4 +61,4 @@ if __name__ == "__main__":
     html = sys.stdin.read() if not sys.stdin.isatty() else "<html><body><p>떡볶이: 3,000원</p></body></html>"
     result = parse_food(html, "lotte_giants_fnb")
     for item in result:
-        print(item)
+        logger.info(item)

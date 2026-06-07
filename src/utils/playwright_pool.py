@@ -5,12 +5,15 @@ Async Playwright browser/page pool with optional resource blocking.
 from __future__ import annotations
 
 import asyncio
+import logging
 from contextlib import asynccontextmanager, suppress
 from typing import Any
 
 from playwright.async_api import Browser, BrowserContext, Page, async_playwright
 
 from src.utils.playwright_blocking import install_async_resource_blocking
+
+logger = logging.getLogger(__name__)
 
 
 class AsyncPlaywrightPool:
@@ -56,14 +59,14 @@ class AsyncPlaywrightPool:
         # Automated Authentication if required
         if self.requires_auth:
             if not KboAuthenticator.is_authenticated():
-                print("[POOL] Session missing. Triggering auto-login...")
+                logger.info("[POOL] Session missing. Triggering auto-login...")
                 auth = KboAuthenticator()
                 success = await auth.login(headless=self.headless)
                 if not success:
-                    print("[POOL] Warning: Auto-login failed. Proceeding without auth.")
+                    logger.info("[POOL] Warning: Auto-login failed. Proceeding without auth.")
 
             if KboAuthenticator.is_authenticated():
-                print("[POOL] Using saved session state.")
+                logger.info("[POOL] Using saved session state.")
                 self.context_kwargs["storage_state"] = KboAuthenticator.get_auth_state_path()
 
         self._playwright = await async_playwright().start()

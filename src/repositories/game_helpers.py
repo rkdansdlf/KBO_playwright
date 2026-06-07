@@ -42,7 +42,6 @@ from src.utils.game_status import (
     LIVE_GAME_STATUSES,
 )
 from src.utils.player_positions import get_primary_position
-from src.utils.safe_print import safe_print as print
 from src.utils.team_codes import (
     build_kbo_game_id,
     normalize_kbo_game_id,
@@ -670,7 +669,7 @@ def _dedupe_exact_player_rows(game_id: str, dataset: str, mappings: list[dict[st
         seen.add(key)
         deduped.append(mapping)
     if removed:
-        print(f"[WARN] Removed {removed} exact duplicate rows from {dataset} for {game_id}")
+        logger.info(f"[WARN] Removed {removed} exact duplicate rows from {dataset} for {game_id}")
     return deduped
 
 
@@ -733,7 +732,7 @@ def _ensure_player_basic_stubs(session, mappings: Iterable[dict[str, Any]]) -> b
             )
         )
     session.flush()
-    print(f"[WARN] Created {len(missing_ids)} player_basic stub(s) for game detail save")
+    logger.info(f"[WARN] Created {len(missing_ids)} player_basic stub(s) for game detail save")
     return True
 
 
@@ -1297,6 +1296,6 @@ def _auto_sync_to_oci(game_id: str):
                     syncer = OCISync(oci_url, sync_session)
                     syncer.sync_specific_game(game_id)
                     syncer.close()
-                print(f" ✨ Auto-synced {game_id} to OCI")
+                logger.info(f" ✨ Auto-synced {game_id} to OCI")
         except Exception:
             logger.exception(" ⚠️ Auto-sync OCI failed")

@@ -54,9 +54,8 @@ class TelegramBotClient:
         try:
             with urllib.request.urlopen(req, timeout=10) as response:
                 return response.status == 200
-        except Exception as e:
+        except Exception:
             logger.exception("Failed to send Telegram message")
-            print(f"[TELEGRAM-ERROR] Failed to send message: {e}")
             return False
 
 
@@ -77,7 +76,7 @@ class SlackWebhookClient:
         webhook_url = os.getenv("SLACK_WEBHOOK_URL")
         if not webhook_url:
             if not os.getenv("TELEGRAM_BOT_TOKEN"):
-                print(f"[ALERT-SKIP] No alerting (Slack/Telegram) configured. Message: {message}")
+                logger.info(f"[ALERT-SKIP] No alerting (Slack/Telegram) configured. Message: {message}")
             return True
 
         payload: dict[str, Any] = {"text": message}
@@ -90,9 +89,8 @@ class SlackWebhookClient:
         try:
             with urllib.request.urlopen(req, timeout=5) as response:
                 return response.status in (200, 204)
-        except Exception as e:
+        except Exception:
             logger.exception("Failed to send Slack webhook")
-            print(f"[ALERT-ERROR] Failed to send Slack webhook: {e}")
             return False
 
     @staticmethod
@@ -123,9 +121,8 @@ class SlackWebhookClient:
         try:
             with urllib.request.urlopen(req, timeout=5) as response:
                 return response.status in (200, 204)
-        except Exception as e:
+        except Exception:
             logger.exception("Failed to send Slack gap alert")
-            print(f"[ALERT-ERROR] Failed to send Slack webhook: {e}")
             return False
 
     @staticmethod
