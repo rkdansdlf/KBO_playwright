@@ -11,6 +11,7 @@ Usage:
     python -m src.crawlers.operation_notice_naver_crawler --save
     python -m src.crawlers.operation_notice_naver_crawler --days 1 --save
 """
+
 from __future__ import annotations
 
 import logging
@@ -38,9 +39,7 @@ NOTICE_TYPE_RULES: list[tuple[re.Pattern, str]] = [
     (re.compile(r"셔틀|버스|교통|혼잡", re.I), "ENTRY_RULE"),
 ]
 
-URGENT_KEYWORDS = re.compile(
-    r"\[긴급\]|\[필독\]|\[중요\]|긴급|즉시|당장|오늘 취소|경기 취소", re.I
-)
+URGENT_KEYWORDS = re.compile(r"\[긴급\]|\[필독\]|\[중요\]|긴급|즉시|당장|오늘 취소|경기 취소", re.I)
 
 TEAM_SOURCE_MAP = {
     "LG": "naver_search_LG",
@@ -117,10 +116,7 @@ class OperationNoticeNaverCrawler:
             self._save_to_db(notices)
         else:
             for n in notices[:5]:
-                print(
-                    f"  [{n['notice_type']}] {n['title'][:60]} "
-                    f"| urgent={n['is_urgent']} | {n['published_at']}"
-                )
+                print(f"  [{n['notice_type']}] {n['title'][:60]} | urgent={n['is_urgent']} | {n['published_at']}")
             if len(notices) > 5:
                 print(f"  ... and {len(notices) - 5} more")
 
@@ -133,7 +129,7 @@ class OperationNoticeNaverCrawler:
                 created, updated = repo.bulk_upsert(notices)
                 session.commit()
                 print(f"[NaverNotice] Saved: {created} new, {updated} updated.")
-            except Exception as e:
+            except Exception:
                 session.rollback()
                 logger.exception("Error saving notices")
 

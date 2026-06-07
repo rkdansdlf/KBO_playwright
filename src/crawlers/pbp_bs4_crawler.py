@@ -69,7 +69,7 @@ class PBPBS4Crawler:
         except httpx.HTTPError as e:
             print(f"[ERROR] HTTP fetch failed for {game_id}: {e}")
             return None
-        except Exception as e:
+        except Exception:
             logger.exception("BS4 PBP crawl failed for %s", game_id)
             return None
 

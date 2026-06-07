@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from sqlalchemy import text
@@ -34,7 +34,7 @@ def analyze_events() -> list[dict[str, Any]]:
         total = session.execute(text("SELECT COUNT(*) FROM team_events")).scalar()
         recent = session.execute(
             text("SELECT COUNT(*) FROM team_events WHERE published_at >= :cutoff"),
-            {"cutoff": datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=30)},
+            {"cutoff": datetime.now(UTC).replace(tzinfo=None) - timedelta(days=30)},
         ).scalar()
     return [
         {"section": "Events", "total": _int(total), "recent_30d": _int(recent), "by_team": {}},
@@ -61,7 +61,7 @@ def analyze_roster() -> list[dict[str, Any]]:
         ).fetchall()
         recent = session.execute(
             text("SELECT COUNT(*) FROM roster_transactions WHERE transaction_date >= :cutoff"),
-            {"cutoff": (datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=30)).date()},
+            {"cutoff": (datetime.now(UTC).replace(tzinfo=None) - timedelta(days=30)).date()},
         ).scalar()
     result = [{"section": "Roster", "total": _int(total), "recent_30d": _int(recent)}]
     for r in by_action:
@@ -160,7 +160,7 @@ def analyze_food() -> list[dict[str, Any]]:
 def generate_report() -> str:
     lines = []
     lines.append("# KBO Pipeline Data Summary")
-    lines.append(f"Generated: {datetime.now(timezone.utc).replace(tzinfo=None).strftime('%Y-%m-%d %H:%M:%S UTC')}")
+    lines.append(f"Generated: {datetime.now(UTC).replace(tzinfo=None).strftime('%Y-%m-%d %H:%M:%S UTC')}")
     lines.append("")
 
     sections = [

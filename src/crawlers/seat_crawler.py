@@ -127,7 +127,7 @@ class SeatCrawler:
                         logger.exception("Seat section save failed: %s", item.get("section_name", ""))
                 session.commit()
                 print(f"[SEAT] Saved {count} section records, {saved_snaps} snapshots.")
-            except Exception as e:
+            except Exception:
                 session.rollback()
                 logger.exception("Seat batch save error")
             finally:

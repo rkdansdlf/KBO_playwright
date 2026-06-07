@@ -357,7 +357,7 @@ def run_pipeline_sync(pipeline_type: str, pdf_path: str | None = None):
         else:
             print(f"❌ Unknown pipeline type: {pipeline_type}")
             return
-    except Exception as e:
+    except Exception:
         logger.exception("Critical Pipeline Failure")
         err_msg = traceback.format_exc()
         print(f"❌ Critical Pipeline Failure:\n{err_msg}")

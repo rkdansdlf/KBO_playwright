@@ -7,20 +7,18 @@ operational announcements for Jamsil Stadium (Doosan's home).
 Target URL pattern:
   https://www.doosanbears.com/event/board?page={page}
 """
+
 from __future__ import annotations
 
 import logging
 import re
 from datetime import datetime
 
-import httpx
 from bs4 import BeautifulSoup
-
 from sqlalchemy.exc import SQLAlchemyError
 
 from src.db.engine import SessionLocal
 from src.repositories.operation_notice_repository import OperationNoticeRepository
-from src.utils.http_client import DEFAULT_HEADERS as HEADERS
 from src.utils.safe_print import safe_print as print
 from src.utils.throttle import throttle
 
@@ -95,7 +93,9 @@ class OperationNoticeDoosanCrawler:
                         await throttle.wait(HOST)
                         resp = await page.goto(url)
                         if not resp or resp.status != 200:
-                            logger.warning("[Doosan Notice] HTTP %s on page %d", resp.status if resp else "None", page_no)
+                            logger.warning(
+                                "[Doosan Notice] HTTP %s on page %d", resp.status if resp else "None", page_no
+                            )
                             break
 
                         await page.wait_for_timeout(2000)
@@ -125,9 +125,7 @@ class OperationNoticeDoosanCrawler:
 
         return all_notices
 
-    def _parse_page(
-        self, html: str, stop_at_id: str | None
-    ) -> tuple[list[dict], bool]:
+    def _parse_page(self, html: str, stop_at_id: str | None) -> tuple[list[dict], bool]:
         soup = BeautifulSoup(html, "html.parser")
         notices: list[dict] = []
         hit_stop = False

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from sqlalchemy import DateTime, ForeignKey, Index, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
@@ -43,7 +43,10 @@ class TeamEvent(Base, TimestampMixin):
     source_url: Mapped[str | None] = mapped_column(String(500), nullable=True, comment="Original source URL")
     published_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, comment="When published")
     last_seen_at: Mapped[datetime] = mapped_column(
-        DateTime, nullable=False, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None), comment="Last time this event was observed"
+        DateTime,
+        nullable=False,
+        default=lambda: datetime.now(UTC).replace(tzinfo=None),
+        comment="Last time this event was observed",
     )
     status: Mapped[str] = mapped_column(
         String(20), nullable=False, default="unknown", comment="scheduled / open / closed / ended / unknown"

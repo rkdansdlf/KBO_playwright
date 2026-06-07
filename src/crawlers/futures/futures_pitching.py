@@ -6,9 +6,9 @@ Fetches year-by-year Futures pitching statistics from player profile pages.
 import re
 
 from bs4 import BeautifulSoup
+from playwright.async_api import Error as PlaywrightError
 
 from src.utils.compliance import compliance
-from playwright.async_api import Error as PlaywrightError
 from src.utils.playwright_pool import AsyncPlaywrightPool
 from src.utils.team_codes import resolve_kbo_legacy_team_code
 from src.utils.throttle import throttle

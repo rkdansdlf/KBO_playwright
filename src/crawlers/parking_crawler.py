@@ -59,8 +59,8 @@ class ParkingCrawler:
         if save:
             self._save_to_db(all_lots)
         else:
-            for l in all_lots[:5]:
-                print(l)
+            for lot in all_lots[:5]:
+                print(lot)
         return all_lots
 
     async def _crawl_team_parking(self, team_code: str, info: dict) -> list[dict[str, Any]]:
@@ -127,7 +127,7 @@ class ParkingCrawler:
                         logger.exception("Parking save failed: %s", entry.get("lot", {}).get("name", ""))
                 session.commit()
                 print(f"[PARKING] Saved {lot_count} lots, {fee_count} fee rules, {saved_snaps} snapshots.")
-            except Exception as e:
+            except Exception:
                 session.rollback()
                 logger.exception("Parking batch save error")
             finally:

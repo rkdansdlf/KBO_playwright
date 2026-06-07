@@ -316,7 +316,7 @@ class TicketCrawler:
 
                 session.commit()
                 print(f"[TICKET] Saved {price_count} prices, {rule_count} rules, {saved_snaps} snapshots.")
-            except Exception as e:
+            except Exception:
                 session.rollback()
                 logger.exception("Ticket price batch save error")
             finally:

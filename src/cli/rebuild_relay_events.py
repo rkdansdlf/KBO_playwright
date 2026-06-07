@@ -4,7 +4,7 @@ import argparse
 import csv
 import os
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Iterable, Sequence
 
@@ -55,7 +55,7 @@ def rebuild_relay_events(
     log=print,
 ) -> list[RebuildReportRow]:
     season_values = tuple(int(season) for season in seasons)
-    timestamp = datetime.now(timezone.utc).replace(tzinfo=None).strftime("%Y%m%dT%H%M%SZ")
+    timestamp = datetime.now(UTC).replace(tzinfo=None).strftime("%Y%m%dT%H%M%SZ")
     report_path = Path(report_out) if report_out else DEFAULT_REPORT_DIR / f"relay_event_rebuild_report_{timestamp}.csv"
     backup_path = Path(backup_out) if backup_out else DEFAULT_REPORT_DIR / f"relay_event_rebuild_backup_{timestamp}.csv"
 

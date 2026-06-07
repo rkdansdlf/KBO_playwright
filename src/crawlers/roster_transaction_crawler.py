@@ -338,7 +338,7 @@ class RosterTransactionCrawler:
                         logger.exception("Roster transaction save failed: %s", item.get("dedupe_key", ""))
                 session.commit()
                 print(f"[ROSTER] Saved {count} transaction records, {saved_snaps} snapshots.")
-            except Exception as e:
+            except Exception:
                 session.rollback()
                 logger.exception("Roster batch save error")
             finally:

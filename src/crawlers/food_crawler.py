@@ -11,7 +11,6 @@ from urllib.parse import urlparse
 
 import httpx
 from bs4 import BeautifulSoup
-
 from sqlalchemy.exc import SQLAlchemyError
 
 from src.db.engine import SessionLocal

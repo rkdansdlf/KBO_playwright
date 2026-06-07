@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import logging
 import os
-from datetime import date, datetime, timezone
+from datetime import UTC, date, datetime
 from decimal import Decimal
 from typing import Any, Iterable
 
@@ -79,7 +79,7 @@ def _resolve_league_type_code(season_type: Any) -> int:
 
 
 def _resolve_schedule_season_id(session, game_data: dict[str, Any], existing_season_id: int | None) -> int | None:
-    from datetime import date, datetime, timezone
+    from datetime import date, datetime
 
     explicit = _coerce_int(game_data.get("season_id"))
     if explicit is not None:
@@ -755,7 +755,7 @@ def _replace_records(
 
     query.delete()
     if mappings:
-        now = datetime.now(timezone.utc).replace(tzinfo=None)
+        now = datetime.now(UTC).replace(tzinfo=None)
         has_created_at = "created_at" in model.__table__.columns
         has_updated_at = "updated_at" in model.__table__.columns
         if has_created_at or has_updated_at:
@@ -789,7 +789,7 @@ def _replace_records_for_side(
 
     query.delete()
     if mappings:
-        now = datetime.now(timezone.utc).replace(tzinfo=None)
+        now = datetime.now(UTC).replace(tzinfo=None)
         has_created_at = "created_at" in model.__table__.columns
         has_updated_at = "updated_at" in model.__table__.columns
         if has_created_at or has_updated_at:

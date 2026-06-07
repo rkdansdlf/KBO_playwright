@@ -121,7 +121,7 @@ class TeamBattingStatsCrawler:
 
                         calc = StandingsCalculator(session)
                         calc.calculate_year(season)
-                    except Exception as e:
+                    except Exception:
                         logger.exception("Standings calculation fallback error")
             except Exception as fallback_error:
                 print(f"[ERROR] 팀 타격 집계 폴백 실패: {fallback_error}")
