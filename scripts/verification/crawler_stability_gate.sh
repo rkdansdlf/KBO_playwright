@@ -2,7 +2,7 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-DEFAULT_PYTHON="${ROOT_DIR}/.venv/bin/python"
+DEFAULT_PYTHON="${ROOT_DIR}/venv/bin/python"
 PYTHON_BIN="${CRAWLER_STABILITY_PYTHON:-${DEFAULT_PYTHON}}"
 
 if [[ ! -x "${PYTHON_BIN}" ]]; then
@@ -47,7 +47,7 @@ Options:
   -h, --help       Show this help.
 
 Environment:
-  CRAWLER_STABILITY_PYTHON  Python executable to use. Defaults to ./.venv/bin/python.
+  CRAWLER_STABILITY_PYTHON  Python executable to use. Defaults to ./venv/bin/python.
 USAGE
 }
 

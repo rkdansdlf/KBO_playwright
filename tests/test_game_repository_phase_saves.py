@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from datetime import date, time
 
 from sqlalchemy import create_engine, event, text
@@ -245,6 +246,64 @@ def test_save_pregame_lineups_updates_start_time_and_preserves_existing_detail(m
             .count()
             == 1
         )
+
+
+def test_save_pregame_lineups_preserves_existing_starters_when_preview_blank(monkeypatch):
+    SessionLocal = _build_session_factory()
+    monkeypatch.setattr(game_save_module, "SessionLocal", SessionLocal)
+    monkeypatch.setattr(game_save_module, "_auto_sync_to_oci", lambda _game_id: None)
+    monkeypatch.setattr(game_relay_module, "_auto_sync_to_oci", lambda _game_id: None)
+
+    with SessionLocal() as session:
+        session.add(
+            Game(
+                game_id="20260606KTSK0",
+                game_date=date(2026, 6, 6),
+                away_team="KT",
+                home_team="SK",
+                away_pitcher="배제성",
+                home_pitcher="타케다",
+                game_status=GAME_STATUS_SCHEDULED,
+            )
+        )
+        session.commit()
+
+    saved = game_repository.save_pregame_lineups(
+        {
+            "game_id": "20260606KTSK0",
+            "game_date": "20260606",
+            "stadium": "문학",
+            "start_time": "17:00",
+            "away_team_name": "KT",
+            "home_team_name": "SSG",
+            "away_starter": "",
+            "home_starter": "",
+            "start_pitcher_announced": True,
+            "lineup_announced": True,
+            "away_lineup": [],
+            "home_lineup": [],
+        }
+    )
+
+    assert saved is True
+
+    with SessionLocal() as session:
+        game = session.query(Game).filter(Game.game_id == "20260606KTSK0").one()
+        summary = (
+            session.query(GameSummary)
+            .filter(
+                GameSummary.game_id == "20260606KTSK0",
+                GameSummary.summary_type == "프리뷰",
+            )
+            .one()
+        )
+        payload = json.loads(summary.detail_text)
+
+        assert game.away_pitcher == "배제성"
+        assert game.home_pitcher == "타케다"
+        assert payload["away_starter"] == "배제성"
+        assert payload["home_starter"] == "타케다"
+        assert payload["start_pitcher_announced"] is True
 
 
 def test_save_pregame_lineups_resolves_june_5_curated_players_with_real_resolver(monkeypatch):

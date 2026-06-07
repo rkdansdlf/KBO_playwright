@@ -15,7 +15,7 @@ def main():
             # Recalculate batting
             subprocess.run(
                 [
-                    ".venv/bin/python3",
+                    "venv/bin/python3",
                     "-m",
                     "src.cli.recalc_team_stats",
                     "--year",

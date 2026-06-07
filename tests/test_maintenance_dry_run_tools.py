@@ -4,17 +4,17 @@ import sqlite3
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker
 
-import scripts.maintenance.cleanup_oci as cleanup_oci
-import scripts.maintenance.fix_2024_season_ids as fix_2024
-from scripts.maintenance.apply_event_backed_split_repairs import apply_event_backed_split_repairs
-from scripts.maintenance.collect_identity_conflict_evidence import (
+import scripts.legacy.maintenance.cleanup_oci as cleanup_oci
+import scripts.legacy.maintenance.fix_2024_season_ids as fix_2024
+from scripts.legacy.maintenance.apply_event_backed_split_repairs import apply_event_backed_split_repairs
+from scripts.legacy.maintenance.collect_identity_conflict_evidence import (
     flatten_hitter_evidence,
     load_manifest_targets,
     propose_identity_conflict_updates,
 )
-from scripts.maintenance.export_identity_conflict_worklist import export_identity_conflict_worklist
-from scripts.maintenance.full_audit import collect_audit_metrics, flatten_gate_metrics
-from scripts.maintenance.propose_event_backed_split_repairs import propose_event_backed_split_repairs
+from scripts.legacy.maintenance.export_identity_conflict_worklist import export_identity_conflict_worklist
+from scripts.legacy.maintenance.full_audit import collect_audit_metrics, flatten_gate_metrics
+from scripts.legacy.maintenance.propose_event_backed_split_repairs import propose_event_backed_split_repairs
 
 DELETE_ROWCOUNTS = tuple(range(10, 10 + len(cleanup_oci.DELETE_STEPS)))
 

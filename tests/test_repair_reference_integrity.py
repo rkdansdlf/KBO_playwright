@@ -1,6 +1,6 @@
 from sqlalchemy import create_engine, text
 
-from scripts.maintenance.repair_reference_integrity import run
+from scripts.legacy.maintenance.repair_reference_integrity import run
 
 
 def _build_db(path):

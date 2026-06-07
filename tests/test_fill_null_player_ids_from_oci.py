@@ -1,6 +1,6 @@
 from sqlalchemy import create_engine, text
 
-from scripts.maintenance.fill_null_player_ids_from_oci import _choose_candidate_id, _remote_candidate_map
+from scripts.legacy.maintenance.fill_null_player_ids_from_oci import _choose_candidate_id, _remote_candidate_map
 
 
 def test_choose_candidate_id_prefers_single_real_id_over_generated_placeholder():

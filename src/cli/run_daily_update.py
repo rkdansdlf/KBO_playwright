@@ -807,7 +807,7 @@ async def run_update(
 
         print("\n🕵️  Step 11.5: Local game status integrity audit...")
         try:
-            runner(["scripts/maintenance/audit_game_status_integrity.py", "--fail"])
+            runner(["scripts/legacy/maintenance/audit_game_status_integrity.py", "--fail"])
             print("   ✅ Local integrity audit passed")
         except subprocess.CalledProcessError as exc:
             print(f"   ❌ Local integrity audit FAILED: {exc}")
@@ -880,7 +880,7 @@ async def run_update(
 
         print("\n⚖️ Step 13.6: OCI parity quality gate check...")
         try:
-            runner(["scripts/maintenance/quality_gate.py"])
+            runner(["scripts/legacy/quality_gate.py"])
             print("   ✅ OCI parity check complete")
         except subprocess.CalledProcessError as exc:
             reason = "non_p0_oci_parity_quality_gate_failed"

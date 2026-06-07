@@ -13,11 +13,11 @@ import sqlite3
 import sys
 from pathlib import Path
 
-MIGRATIONS_DIR = Path(__file__).resolve().parent.parent.parent / "migrations" / "sqlite"
+MIGRATIONS_DIR = Path(__file__).resolve().parent.parent.parent.parent / "migrations" / "sqlite"
 MIGRATIONS_DIR.mkdir(parents=True, exist_ok=True)
 
 DB_PATH = os.path.join(
-    os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
+    os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__)))),
     "data",
     "kbo_dev.db",
 )

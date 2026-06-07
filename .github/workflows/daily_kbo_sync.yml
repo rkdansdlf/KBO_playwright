@@ -218,7 +218,7 @@ jobs:
         env:
           OCI_DB_URL: ${{ secrets.OCI_DB_URL }}
         run: |
-          python3 scripts/maintenance/quality_gate.py --oci-only --no-write
+          python3 scripts/legacy/quality_gate.py --oci-only --no-write
 
       - name: Completeness Audit
         env:

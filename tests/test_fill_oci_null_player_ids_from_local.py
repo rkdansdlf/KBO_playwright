@@ -3,8 +3,8 @@ from pathlib import Path
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker
 
-import scripts.maintenance.fill_oci_null_player_ids_from_local as fill_local_to_oci
-from scripts.maintenance.fill_oci_null_player_ids_from_local import (
+import scripts.legacy.maintenance.fill_oci_null_player_ids_from_local as fill_local_to_oci
+from scripts.legacy.maintenance.fill_oci_null_player_ids_from_local import (
     _choose_candidate_id,
     _local_candidate_map,
     fill_oci_from_local,

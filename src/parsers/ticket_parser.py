@@ -45,11 +45,12 @@ def parse_ticket_page(html: str, source_key: str, metadata: dict | None = None) 
     soup = BeautifulSoup(html, "html.parser")
     text_content = soup.get_text(separator=" ", strip=True)
 
-    prices = []
+    prices = {}
     for match in PRICE_PATTERN.finditer(text_content):
         grade, price_str = match.group(1), match.group(2).replace(",", "")
-        prices.append(
-            {
+        key = (team_code, season, grade, "weekday", "general")
+        if key not in prices:
+            prices[key] = {
                 "team_id": team_code,
                 "stadium_id": stadium_id,
                 "season": season,
@@ -61,21 +62,20 @@ def parse_ticket_page(html: str, source_key: str, metadata: dict | None = None) 
                 "effective_from": None,
                 "effective_to": None,
             }
-        )
 
-    weekend_prices = []
+    weekend_prices = {}
     for match in WEEKEND_PATTERN.finditer(text_content):
         grade, price_str = match.group(1), match.group(2).replace(",", "")
-        for p in prices:
-            if p["seat_grade"] == grade:
-                weekend_entry = dict(p)
-                weekend_entry["day_type"] = "weekend"
-                weekend_entry["price"] = int(price_str)
-                weekend_prices.append(weekend_entry)
-                break
+        key_weekday = (team_code, season, grade, "weekday", "general")
+        key_weekend = (team_code, season, grade, "weekend", "general")
+        if key_weekday in prices and key_weekend not in weekend_prices:
+            p = prices[key_weekday]
+            weekend_entry = dict(p)
+            weekend_entry["day_type"] = "weekend"
+            weekend_entry["price"] = int(price_str)
+            weekend_prices[key_weekend] = weekend_entry
 
-    prices.extend(weekend_prices)
-    return prices
+    return list(prices.values()) + list(weekend_prices.values())
 
 
 if __name__ == "__main__":

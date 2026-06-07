@@ -550,7 +550,7 @@ def main(argv: Iterable[str] | None = None) -> None:
 
     print("\n🚀 Resetting Sequence Identifiers on Target DB...")
     try:
-        from scripts.maintenance.reset_oci_sequences import reset_sequences
+        from scripts.legacy.maintenance.reset_oci_sequences import reset_sequences
 
         reset_sequences(args.target_url)
     except Exception:

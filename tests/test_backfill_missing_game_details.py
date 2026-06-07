@@ -4,7 +4,7 @@ import asyncio
 import csv
 from types import SimpleNamespace
 
-import scripts.maintenance.backfill_missing_game_details as backfill
+import scripts.legacy.maintenance.backfill_missing_game_details as backfill
 
 
 class _FakeDetailCrawler:

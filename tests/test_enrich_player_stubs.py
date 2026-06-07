@@ -1,7 +1,7 @@
 import asyncio
 from types import SimpleNamespace
 
-import scripts.maintenance.enrich_player_stubs as enrich_player_stubs
+import scripts.legacy.maintenance.enrich_player_stubs as enrich_player_stubs
 
 
 class _FakeResult:

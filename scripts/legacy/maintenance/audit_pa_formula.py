@@ -9,11 +9,11 @@ Reports violations per season, categorizing by fixability:
   - UNFIXABLE: No data source available
 
 Usage:
-    python3 -m scripts.maintenance.audit_pa_formula --year 2020
-    python3 -m scripts.maintenance.audit_pa_formula --all-years
-    python3 -m scripts.maintenance.audit_pa_formula --fix-year 2020
-    python3 -m scripts.maintenance.audit_pa_formula --fix-year 2020 --dry-run
-    python3 -m scripts.maintenance.audit_pa_formula --all-years --json
+    python3 -m scripts.legacy.maintenance.audit_pa_formula --year 2020
+    python3 -m scripts.legacy.maintenance.audit_pa_formula --all-years
+    python3 -m scripts.legacy.maintenance.audit_pa_formula --fix-year 2020
+    python3 -m scripts.legacy.maintenance.audit_pa_formula --fix-year 2020 --dry-run
+    python3 -m scripts.legacy.maintenance.audit_pa_formula --all-years --json
 """
 
 import argparse

@@ -4,6 +4,7 @@ Public save functions for game details, snapshots, and schedules.
 
 from __future__ import annotations
 
+import json
 import logging
 from datetime import datetime
 from typing import Any
@@ -68,6 +69,44 @@ def get_games_by_date(target_date: str) -> list[Game]:
 
     with SessionLocal() as session:
         return session.query(Game).filter(Game.game_date == dt).all()
+
+
+def _clean_pregame_text(value: Any) -> str:
+    if value is None:
+        return ""
+    return str(value).strip()
+
+
+def _extract_existing_preview_payload(summary: GameSummary | None) -> dict[str, Any]:
+    if not summary or not summary.detail_text:
+        return {}
+    try:
+        payload = json.loads(summary.detail_text)
+    except (TypeError, json.JSONDecodeError):
+        return {}
+    return payload if isinstance(payload, dict) else {}
+
+
+def _resolve_pregame_starter(
+    preview_data: dict[str, Any],
+    game: Game,
+    existing_payload: dict[str, Any],
+    side: str,
+) -> tuple[str, Any | None]:
+    starter_key = f"{side}_starter"
+    starter_id_key = f"{side}_starter_id"
+    pitcher_attr = f"{side}_pitcher"
+
+    raw_starter = _clean_pregame_text(preview_data.get(starter_key))
+    existing_game_starter = _clean_pregame_text(getattr(game, pitcher_attr, None))
+    existing_payload_starter = _clean_pregame_text(existing_payload.get(starter_key))
+    resolved_starter = raw_starter or existing_game_starter or existing_payload_starter
+
+    resolved_starter_id = preview_data.get(starter_id_key)
+    if not resolved_starter_id and existing_payload_starter and existing_payload_starter == resolved_starter:
+        resolved_starter_id = existing_payload.get(starter_id_key)
+
+    return resolved_starter, resolved_starter_id
 
 
 def resolve_canonical_game_id(game_id: str) -> str | None:
@@ -674,23 +713,6 @@ def save_pregame_lineups(preview_data: dict[str, Any]) -> bool:
     if not game_id:
         return False
 
-    preview_payload = {
-        "game_id": game_id,
-        "game_date": game_date_str,
-        "stadium": preview_data.get("stadium"),
-        "start_time": preview_data.get("start_time"),
-        "away_team_name": preview_data.get("away_team_name"),
-        "home_team_name": preview_data.get("home_team_name"),
-        "away_starter": preview_data.get("away_starter"),
-        "away_starter_id": preview_data.get("away_starter_id"),
-        "home_starter": preview_data.get("home_starter"),
-        "home_starter_id": preview_data.get("home_starter_id"),
-        "start_pitcher_announced": preview_data.get("start_pitcher_announced"),
-        "lineup_announced": preview_data.get("lineup_announced"),
-        "away_lineup": preview_data.get("away_lineup") or [],
-        "home_lineup": preview_data.get("home_lineup") or [],
-    }
-
     with SessionLocal() as session:
         try:
             game = session.query(Game).filter(Game.game_id == game_id).one_or_none()
@@ -706,14 +728,40 @@ def save_pregame_lineups(preview_data: dict[str, Any]) -> bool:
                 reason="normalized_to_kbo_legacy_game_id",
             )
 
+            existing_preview_summary = (
+                session.query(GameSummary)
+                .filter(
+                    GameSummary.game_id == game_id,
+                    GameSummary.summary_type == "프리뷰",
+                    GameSummary.player_name.is_(None),
+                )
+                .one_or_none()
+            )
+            existing_preview_payload = _extract_existing_preview_payload(existing_preview_summary)
+            away_starter, away_starter_id = _resolve_pregame_starter(
+                preview_data,
+                game,
+                existing_preview_payload,
+                "away",
+            )
+            home_starter, home_starter_id = _resolve_pregame_starter(
+                preview_data,
+                game,
+                existing_preview_payload,
+                "home",
+            )
+            start_pitcher_announced = preview_data.get("start_pitcher_announced")
+            if not start_pitcher_announced and away_starter and home_starter:
+                start_pitcher_announced = True
+
             game.game_date = game_date
             game.away_team = away_code or game.away_team
             game.home_team = home_code or game.home_team
             game.stadium = preview_data.get("stadium") or game.stadium
-            if preview_data.get("away_starter"):
-                game.away_pitcher = preview_data.get("away_starter")
-            if preview_data.get("home_starter"):
-                game.home_pitcher = preview_data.get("home_starter")
+            if away_starter:
+                game.away_pitcher = away_starter
+            if home_starter:
+                game.home_pitcher = home_starter
             if not is_terminal_status(game.game_status) and not is_live_status(game.game_status):
                 game.game_status = GAME_STATUS_SCHEDULED
             _apply_game_team_identity(game, season_year)
@@ -724,7 +772,7 @@ def save_pregame_lineups(preview_data: dict[str, Any]) -> bool:
                 {
                     "stadium": preview_data.get("stadium"),
                     "start_time": preview_data.get("start_time"),
-                    "start_pitcher_announced": preview_data.get("start_pitcher_announced"),
+                    "start_pitcher_announced": start_pitcher_announced,
                     "lineup_announced": preview_data.get("lineup_announced"),
                 },
             )
@@ -755,6 +803,22 @@ def save_pregame_lineups(preview_data: dict[str, Any]) -> bool:
             if home_rows:
                 _replace_records_for_side(session, GameLineup, game_id, "home", home_rows)
 
+            preview_payload = {
+                "game_id": game_id,
+                "game_date": game_date_str,
+                "stadium": preview_data.get("stadium"),
+                "start_time": preview_data.get("start_time"),
+                "away_team_name": preview_data.get("away_team_name"),
+                "home_team_name": preview_data.get("home_team_name"),
+                "away_starter": away_starter,
+                "away_starter_id": away_starter_id,
+                "home_starter": home_starter,
+                "home_starter_id": home_starter_id,
+                "start_pitcher_announced": start_pitcher_announced,
+                "lineup_announced": preview_data.get("lineup_announced"),
+                "away_lineup": preview_data.get("away_lineup") or [],
+                "home_lineup": preview_data.get("home_lineup") or [],
+            }
             _upsert_game_summary_entry(
                 session,
                 game_id=game_id,

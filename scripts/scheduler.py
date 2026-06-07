@@ -35,7 +35,7 @@ import sys
 from datetime import date, datetime, timedelta
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
-from threading import Lock
+from threading import Lock, Thread
 from typing import Sequence
 from zoneinfo import ZoneInfo
 
@@ -56,11 +56,11 @@ from src.cli.crawl_futures import main as crawl_futures_main
 from src.cli.crawl_retire import main as crawl_retire_main
 from src.cli.daily_preview_batch import run_preview_batch
 from src.cli.live_crawler import run_live_crawler_cycle
-from src.cli.monthly_pa_audit import crawl_monthly_pa_audit_job
-from src.cli.monthly_team_audit import crawl_monthly_team_audit_job
+from src.cli.monthly_unified_audit import crawl_monthly_unified_audit_job
 from src.cli.run_daily_update import format_stability_alert_summary
 from src.cli.run_daily_update import main as run_daily_update_main
 from src.db.engine import SessionLocal
+from src.sync.oci_sync import OCISync
 from src.utils.alerting import SlackWebhookClient
 from src.utils.safe_print import safe_print as print
 
@@ -84,6 +84,7 @@ FALSE_ENV_VALUES = {"0", "false", "no", "off"}
 LIVE_LOCK = Lock()  # For live refresh and pregame refresh
 DAILY_LOCK = Lock()  # For daily update/finalize
 MAINTENANCE_LOCK = Lock()  # For weekly futures sync and OCI hydration/reports
+REALTIME_OCI_SYNC_LOCK = Lock()  # Best-effort live/pregame OCI sync, never blocks realtime jobs
 
 MISSING_PREGAME_ALERTED_DATES: set[str] = set()
 LAST_LIVE_RUN_TIME: datetime | None = None
@@ -280,6 +281,90 @@ def _env_enabled(name: str, default: str = "1") -> bool:
 
 def _pregame_sync_to_oci_enabled() -> bool:
     return _env_enabled("PREGAME_SYNC_TO_OCI") and bool(os.getenv("OCI_DB_URL"))
+
+
+def _submit_realtime_oci_sync(sync_kind: str, game_ids: Sequence[str]) -> bool:
+    """Submit best-effort realtime OCI sync without blocking live/pregame jobs."""
+    target_game_ids = sorted({str(game_id) for game_id in game_ids if game_id})
+    if not target_game_ids:
+        return False
+
+    oci_url = os.getenv("OCI_DB_URL")
+    if not oci_url:
+        logger.warning("Skipping realtime OCI %s sync because OCI_DB_URL is not set", sync_kind)
+        return False
+
+    method_by_kind = {
+        "pregame": "sync_pregame_game",
+        "live": "sync_specific_game",
+    }
+    method_name = method_by_kind.get(sync_kind)
+    if method_name is None:
+        raise ValueError(f"Unsupported realtime OCI sync kind: {sync_kind}")
+
+    if not REALTIME_OCI_SYNC_LOCK.acquire(blocking=False):
+        logger.warning(
+            "Skipping realtime OCI %s sync because a prior realtime OCI sync is still running games=%s",
+            sync_kind,
+            ",".join(target_game_ids),
+        )
+        return False
+
+    def _worker() -> None:
+        syncer = None
+        succeeded = 0
+        failed = 0
+        try:
+            logger.info(
+                "Starting background realtime OCI %s sync games=%s",
+                sync_kind,
+                ",".join(target_game_ids),
+            )
+            with SessionLocal() as sync_session:
+                syncer = OCISync(oci_url, sync_session)
+                sync_method = getattr(syncer, method_name)
+                for game_id in target_game_ids:
+                    try:
+                        sync_method(game_id)
+                        succeeded += 1
+                    except Exception:
+                        failed += 1
+                        logger.exception(
+                            "Background realtime OCI %s sync failed game_id=%s",
+                            sync_kind,
+                            game_id,
+                        )
+        except Exception:
+            failed += len(target_game_ids) - succeeded - failed
+            logger.exception("Background realtime OCI %s sync setup failed", sync_kind)
+        finally:
+            if syncer is not None:
+                try:
+                    syncer.close()
+                except Exception:
+                    logger.exception("Failed to close background realtime OCI %s syncer", sync_kind)
+            REALTIME_OCI_SYNC_LOCK.release()
+            logger.info(
+                "Background realtime OCI %s sync finished succeeded=%d failed=%d",
+                sync_kind,
+                succeeded,
+                failed,
+            )
+
+    thread = Thread(
+        target=_worker,
+        name=f"realtime-oci-{sync_kind}-sync",
+        daemon=True,
+    )
+    try:
+        thread.start()
+    except Exception:
+        REALTIME_OCI_SYNC_LOCK.release()
+        logger.exception("Failed to start background realtime OCI %s sync", sync_kind)
+        return False
+
+    logger.info("Queued background realtime OCI %s sync games=%s", sync_kind, ",".join(target_game_ids))
+    return True
 
 
 @retry(
@@ -540,6 +625,9 @@ def backfill_missed_daily_crawls(lookback_days: int = 14) -> list[str]:
     retry_error_callback=alert_failure,
 )
 def crawl_pregame_refresh():
+    sync_to_oci = False
+    pregame_sync_game_ids: list[str] = []
+
     with LIVE_LOCK:
         refresh_only_missing = _env_enabled("PREGAME_REFRESH_ONLY_MISSING", "1")
         alert_on_missing = _env_enabled("PREGAME_MISSING_ALERT", "0")
@@ -575,9 +663,10 @@ def crawl_pregame_refresh():
                 starters_missing,
                 preview_missing,
             )
-            saved_ids = asyncio.run(run_preview_batch(target_date, sync_to_oci=sync_to_oci))
+            saved_ids = asyncio.run(run_preview_batch(target_date, sync_to_oci=False))
             if saved_ids and sync_to_oci:
-                logger.info("Pregame OCI sync completed for target_date=%s games=%s", target_date, len(saved_ids))
+                pregame_sync_game_ids.extend(saved_ids)
+                logger.info("Pregame OCI sync queued for target_date=%s games=%s", target_date, len(saved_ids))
             post_refresh = _pregame_refresh_summary(target_date)
             if post_refresh[0] and (post_refresh[1] > 0 or post_refresh[2] > 0):
                 if alert_on_missing and target_date not in MISSING_PREGAME_ALERTED_DATES:
@@ -600,6 +689,9 @@ def crawl_pregame_refresh():
                 )
 
         alert_success("crawl_pregame_refresh")
+
+    if sync_to_oci and pregame_sync_game_ids:
+        _submit_realtime_oci_sync("pregame", pregame_sync_game_ids)
 
 
 def _get_live_poll_interval_seconds() -> int:
@@ -741,14 +833,21 @@ def crawl_live_refresh():
             # Fast exit without acquiring LIVE_LOCK
             return
 
+    live_sync_game_ids: list[str] = []
     with LIVE_LOCK:
         logger.info("Running live refresh cycle")
-        result = asyncio.run(run_live_crawler_cycle(max_active_games=_live_refresh_max_games_per_cycle()))
+        result = asyncio.run(
+            run_live_crawler_cycle(
+                sync_to_oci=False,
+                max_active_games=_live_refresh_max_games_per_cycle(),
+            )
+        )
 
         # Only update run time when the cycle actually executes
         LAST_LIVE_RUN_TIME = datetime.now(KST)
 
         if isinstance(result, dict):
+            live_sync_game_ids.extend(str(game_id) for game_id in result.get("game_ids_playing") or [] if game_id)
             failed_ids = result.get("oci_sync_failed_game_ids") or []
             failure_count = int(result.get("oci_sync_failure_count") or len(failed_ids) or 0)
             if failure_count:
@@ -757,6 +856,9 @@ def crawl_live_refresh():
                     failure_count,
                     ",".join(str(game_id) for game_id in failed_ids),
                 )
+
+    if os.getenv("OCI_DB_URL") and live_sync_game_ids:
+        _submit_realtime_oci_sync("live", live_sync_game_ids)
 
 
 @retry(
@@ -1150,7 +1252,7 @@ def backfill_sh_sf_job():
     with MAINTENANCE_LOCK:
         logger.info("=== Starting SH/SF Backfill ===")
         try:
-            from scripts.maintenance.backfill_sh_sf_from_pbp import (
+            from scripts.legacy.maintenance.backfill_sh_sf_from_pbp import (
                 backfill_game,
                 find_candidate_games,
             )
@@ -1178,7 +1280,7 @@ def backfill_player_ids_job():
     with MAINTENANCE_LOCK:
         logger.info("=== Starting Player ID Backfill ===")
         try:
-            from scripts.maintenance.backfill_player_ids import backfill_year
+            from scripts.legacy.maintenance.backfill_player_ids import backfill_year
             from src.db.engine import SessionLocal
             from src.services.player_id_resolver import PlayerIdResolver
 
@@ -1212,7 +1314,7 @@ def backfill_roster_job():
     with MAINTENANCE_LOCK:
         logger.info("=== Starting Roster Backfill ===")
         try:
-            from scripts.maintenance.backfill_roster_movements import (
+            from scripts.legacy.maintenance.backfill_roster_movements import (
                 backfill_daily_rosters,
                 backfill_player_movements,
             )
@@ -1448,27 +1550,16 @@ def main(argv: Sequence[str] | None = None):
     )
     logger.info("Registered job: crawl_retired_players (Monthly 1st 02:00 KST)")
 
-    # Job 2.7: Monthly PA Formula Audit (1st of every month at 03:00 KST)
+    # Job 2.7: Monthly Unified Audit (1st of every month at 03:00 KST)
     scheduler.add_job(
-        crawl_monthly_pa_audit_job,
+        crawl_monthly_unified_audit_job,
         trigger=CronTrigger(day=1, hour=3, minute=0),
-        id="crawl_monthly_pa_audit",
-        name="Monthly PA Formula Audit",
+        id="crawl_monthly_unified_audit",
+        name="Monthly Unified Audit (PA + Team Stats)",
         misfire_grace_time=3600,
         max_instances=1,
     )
-    logger.info("Registered job: crawl_monthly_pa_audit (Monthly 1st 03:00 KST)")
-
-    # Job 2.8: Monthly Team Stats Audit (1st of every month at 04:00 KST)
-    scheduler.add_job(
-        crawl_monthly_team_audit_job,
-        trigger=CronTrigger(day=1, hour=4, minute=0),
-        id="crawl_monthly_team_audit",
-        name="Monthly Team Stats Audit",
-        misfire_grace_time=3600,
-        max_instances=1,
-    )
-    logger.info("Registered job: crawl_monthly_team_audit (Monthly 1st 04:00 KST)")
+    logger.info("Registered job: crawl_monthly_unified_audit (Monthly 1st 03:00 KST)")
 
     scheduler.add_job(
         crawl_pregame_refresh,

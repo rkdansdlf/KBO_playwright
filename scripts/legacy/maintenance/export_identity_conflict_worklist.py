@@ -20,7 +20,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from scripts.maintenance.classify_game_stat_duplicates import (  # noqa: E402
+from scripts.legacy.maintenance.classify_game_stat_duplicates import (  # noqa: E402
     DEFAULT_DB_PATH,
     DUPLICATE_CONFIGS,
     _classify_group,

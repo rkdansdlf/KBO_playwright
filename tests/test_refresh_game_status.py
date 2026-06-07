@@ -1,6 +1,6 @@
 from datetime import date
 
-from scripts.maintenance.refresh_game_status import (
+from scripts.legacy.maintenance.refresh_game_status import (
     STATUS_CANCELLED,
     STATUS_COMPLETED,
     STATUS_DRAW,
