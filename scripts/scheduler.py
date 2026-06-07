@@ -765,7 +765,9 @@ def _get_live_poll_interval_seconds() -> int:
                     parts = list(map(int, start_time_raw.split(":")[:2]))
                     start_time = now.replace(hour=parts[0], minute=parts[1], second=0, microsecond=0)
                 else:
-                    start_time = now.replace(hour=start_time_raw.hour, minute=start_time_raw.minute, second=0, microsecond=0)
+                    start_time = now.replace(
+                        hour=start_time_raw.hour, minute=start_time_raw.minute, second=0, microsecond=0
+                    )
 
                 if start_time < now:
                     start_time += timedelta(days=1)
@@ -808,9 +810,7 @@ def _get_live_poll_interval_seconds() -> int:
 
     if earliest_start_time:
         time_to_start = (earliest_start_time - now).total_seconds()
-        if 0 <= time_to_start <= 900:
-            return 30
-        elif time_to_start < 0:
+        if 0 <= time_to_start <= 900 or time_to_start < 0:
             return 30
 
     return 120
@@ -827,7 +827,11 @@ def crawl_live_refresh():
     interval = _get_live_poll_interval_seconds()
 
     if interval != LAST_LIVE_POLL_INTERVAL:
-        logger.info("[LiveInterval] Polling interval changed: %s -> %ds", f"{LAST_LIVE_POLL_INTERVAL}s" if LAST_LIVE_POLL_INTERVAL else "None", interval)
+        logger.info(
+            "[LiveInterval] Polling interval changed: %s -> %ds",
+            f"{LAST_LIVE_POLL_INTERVAL}s" if LAST_LIVE_POLL_INTERVAL else "None",
+            interval,
+        )
         LAST_LIVE_POLL_INTERVAL = interval
 
     if LAST_LIVE_RUN_TIME is not None:

@@ -1,6 +1,8 @@
 import os
+
 import psycopg2
 from dotenv import load_dotenv
+
 
 def main():
     load_dotenv()
@@ -25,7 +27,7 @@ def main():
                 print(f"PID: {r[0]}, Age: {r[1]}, State: {r[2]}, Client IP: {r[4]}")
                 print(f"Query: {r[3]}")
                 print("-" * 40)
-            
+
             print("\n--- Locks ---")
             cur.execute("""
                 SELECT
@@ -56,6 +58,7 @@ def main():
                 print("-" * 40)
     finally:
         conn.close()
+
 
 if __name__ == "__main__":
     main()

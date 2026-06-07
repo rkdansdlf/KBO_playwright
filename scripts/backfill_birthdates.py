@@ -6,12 +6,13 @@ Parses various representations of birth_date into ISO standard birth_date_date c
 import argparse
 import os
 import sys
-from datetime import datetime, date
+from datetime import date, datetime
 
 # Add project root to sys.path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from sqlalchemy import select, update
+
 from src.db.engine import SessionLocal
 from src.models.player import PlayerBasic
 
@@ -50,13 +51,7 @@ def _parse_birth_date(raw: str | None) -> date | None:
 
     # 2. Extract digits if Korean formatting is used, e.g. "1990년7월3일" -> "1990.7.3"
     # Or resolve custom split for patterns like "1990.7.3" which datetime.strptime cannot easily match with %Y.%m.%d directly if not zero-padded
-    s_cleaned = (
-        s.replace("년", ".")
-        .replace("월", ".")
-        .replace("일", "")
-        .replace("-", ".")
-        .replace("/", ".")
-    )
+    s_cleaned = s.replace("년", ".").replace("월", ".").replace("일", "").replace("-", ".").replace("/", ".")
     parts = s_cleaned.split(".")
 
     # Remove any empty parts (e.g. trailing dot from "1990.07.03.")
@@ -136,7 +131,7 @@ def backfill(limit: int = 0, dry_run: bool = False, verbose: bool = False) -> in
 
         if not dry_run and updated_count > 0:
             session.commit()
-            print(f"💾 Changes committed successfully.")
+            print("💾 Changes committed successfully.")
 
     print("\n✨ Process completed!")
     print(f"   - Successfully parsed/updated: {updated_count}")
