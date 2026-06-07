@@ -1,0 +1,46 @@
+name: Security Audit
+
+on:
+  schedule:
+    - cron: '0 21 * * 0'  # 일요일 06:00 KST (토 21:00 UTC)
+  workflow_dispatch:
+
+concurrency:
+  group: security-audit-${{ github.ref_name }}
+  cancel-in-progress: true
+
+jobs:
+  pip-audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install pip-audit
+        run: pip install pip-audit
+
+      - name: Run pip-audit
+        continue-on-error: true
+        id: audit
+        run: |
+          pip-audit --requirement requirements.txt --desc on 2>&1 | tee pip-audit-output.txt
+
+      - name: Read audit output
+        if: always()
+        id: output
+        run: |
+          echo "output<<EOF" >> "$GITHUB_OUTPUT"
+          cat pip-audit-output.txt >> "$GITHUB_OUTPUT"
+          echo "EOF" >> "$GITHUB_OUTPUT"
+
+      - uses: ./.github/actions/notify
+        if: always()
+        with:
+          status: ${{ job.status }}
+          workflow: 'Dependency Security Audit'
+          channels: telegram
