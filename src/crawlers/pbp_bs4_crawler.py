@@ -6,6 +6,7 @@ Computes WPA transitions based on the events.
 
 from __future__ import annotations
 
+import logging
 import re
 from typing import Any
 
@@ -15,6 +16,8 @@ from bs4 import BeautifulSoup
 from src.services.wpa_calculator import WPACalculator
 from src.utils.safe_print import safe_print as print
 from src.utils.text_parser import KBOTextParser
+
+logger = logging.getLogger(__name__)
 
 
 class PBPBS4Crawler:
@@ -67,7 +70,7 @@ class PBPBS4Crawler:
             print(f"[ERROR] HTTP fetch failed for {game_id}: {e}")
             return None
         except Exception as e:
-            print(f"[ERROR] BS4 PBP crawl failed for {game_id}: {e}")
+            logger.exception("BS4 PBP crawl failed for %s", game_id)
             return None
 
     def _parse_html_to_events(self, html: str) -> list[dict[str, Any]]:

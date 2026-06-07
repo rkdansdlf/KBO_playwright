@@ -3,11 +3,12 @@ from __future__ import annotations
 import csv
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import datetime
+
 try:
     from datetime import UTC
 except ImportError:
-    UTC = timezone.utc
+    UTC = UTC
 from pathlib import Path
 from typing import Any, Iterable
 

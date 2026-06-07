@@ -4,10 +4,10 @@ Utility helpers to classify player rows into active/retired/staff buckets.
 
 from __future__ import annotations
 
-from enum import Enum
+from enum import StrEnum
 
 
-class PlayerCategory(str, Enum):
+class PlayerCategory(StrEnum):
     ACTIVE = "ACTIVE"
     RETIRED = "RETIRED"
     MANAGER = "MANAGER"

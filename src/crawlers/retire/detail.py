@@ -5,13 +5,17 @@ Fetch retired/inactive player detail pages (hitter & pitcher).
 from __future__ import annotations
 
 import asyncio
+import logging
 from typing import Any
 
+from playwright.async_api import Error as PlaywrightError
 from playwright.async_api import Page
 
 from src.utils.compliance import compliance
 from src.utils.playwright_pool import AsyncPlaywrightPool
 from src.utils.throttle import throttle
+
+logger = logging.getLogger(__name__)
 
 
 class RetiredPlayerDetailCrawler:
@@ -65,9 +69,9 @@ class RetiredPlayerDetailCrawler:
                     }
             except Exception as exc:
                 if attempt == retries:
-                    print(f"❌ Failed to fetch player {player_id} after {retries} retries: {exc}")
+                    logger.error(f"❌ Failed to fetch player {player_id} after {retries} retries: {exc}")
                     break
-                print(f"⚠️ Retry {attempt + 1} for {player_id} due to: {exc}")
+                logger.warning(f"⚠️ Retry {attempt + 1} for {player_id} due to: {exc}")
                 await asyncio.sleep(1.0 * (attempt + 1))
 
         return {
@@ -152,7 +156,7 @@ class RetiredPlayerDetailCrawler:
         """
         try:
             return await page.eval_on_selector_all("table", script)
-        except Exception:
+        except PlaywrightError:
             return []
 
 

@@ -10,11 +10,11 @@ from typing import Any, Iterable
 from sqlalchemy import func, text
 from sqlalchemy.orm import Session
 
+from src.db.engine import get_database_type
 from src.models.player import PlayerSeasonBatting, PlayerSeasonPitching
 from src.models.standings import TeamStandingsDaily
 from src.models.team import Team
 from src.services.stat_calculator import BattingStatCalculator, PitchingStatCalculator
-from src.db.engine import get_database_type
 
 logger = logging.getLogger(__name__)
 
@@ -299,7 +299,7 @@ class TeamStatAggregator:
         for row in rows:
             tc = row.team_id
             rec = self._get_team_record_from_standings(self.session, tc, season)
-            
+
             # wins/losses are aggregated from player rows, ties from standings
             wins = int(row.wins or 0)
             losses = int(row.losses or 0)
@@ -354,7 +354,7 @@ class TeamStatAggregator:
         from src.repositories.team_stats_repository import TeamSeasonBattingRepository
         repo = TeamSeasonBattingRepository()
         cleaned = [repo._filter_model_fields(repo._filter_none(r)) for r in records]
-        
+
         db_type = get_database_type()
         try:
             if db_type == "sqlite":
@@ -376,7 +376,7 @@ class TeamStatAggregator:
         from src.repositories.team_stats_repository import TeamSeasonPitchingRepository
         repo = TeamSeasonPitchingRepository()
         cleaned = [repo._filter_model_fields(repo._filter_none(r)) for r in records]
-        
+
         db_type = get_database_type()
         try:
             if db_type == "sqlite":

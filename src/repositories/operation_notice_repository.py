@@ -82,7 +82,18 @@ class OperationNoticeRepository:
         Returns (created, updated) counts.
         """
         created = updated = 0
-        for notice in notices:
+        unique_notices = {}
+        for n in notices:
+            ext_id = n.get("external_id")
+            if ext_id:
+                key = ("ext", n.get("stadium_code"), n.get("source_name"), ext_id)
+            else:
+                key = ("fallback", n.get("stadium_code"), n.get("source_name"), n.get("title"), n.get("published_at"))
+            
+            if key not in unique_notices:
+                unique_notices[key] = n
+
+        for notice in unique_notices.values():
             try:
                 _, is_new = self.upsert(notice)
                 if is_new:

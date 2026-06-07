@@ -12,6 +12,8 @@ from urllib.parse import urlparse
 import httpx
 from bs4 import BeautifulSoup
 
+from sqlalchemy.exc import SQLAlchemyError
+
 from src.db.engine import SessionLocal
 from src.repositories.source_registry_repository import save_raw_snapshots
 from src.repositories.stadium_food_repository import StadiumFoodMenuItemRepository, StadiumFoodVendorRepository
@@ -134,8 +136,9 @@ class FoodCrawler:
                         logger.exception("Food save failed: %s", entry.get("vendor", {}).get("vendor_name", ""))
                 session.commit()
                 print(f"[FOOD] Saved {vendor_count} vendors, {menu_count} menus, {saved_snaps} snapshots.")
-            except Exception as e:
+            except SQLAlchemyError as e:
                 session.rollback()
+                logger.error(f"[FOOD] Database error: {e}", exc_info=True)
                 print(f"[FOOD] Error: {e}")
             finally:
                 self._raw_pages.clear()

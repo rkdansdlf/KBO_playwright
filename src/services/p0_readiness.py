@@ -8,8 +8,8 @@ from __future__ import annotations
 
 import logging
 import os
-from types import SimpleNamespace
 from datetime import date, datetime, timedelta
+from types import SimpleNamespace
 from typing import Any, Iterable
 from zoneinfo import ZoneInfo
 

@@ -5,6 +5,7 @@ Team-level batting stats crawler.
 from __future__ import annotations
 
 import argparse
+import logging
 import time
 from typing import Any
 
@@ -17,6 +18,8 @@ from src.repositories.team_stats_repository import TeamSeasonBattingRepository
 from src.utils.playwright_blocking import install_sync_resource_blocking
 from src.utils.request_policy import RequestPolicy
 from src.utils.team_mapping import get_team_mapping_for_year
+
+logger = logging.getLogger(__name__)
 
 TEAM_BATTING_URLS = [
     "https://www.koreabaseball.com/Record/Team/Hitter/Basic.aspx",
@@ -97,7 +100,7 @@ class TeamBattingStatsCrawler:
         try:
             stats = self._collect_from_site(season, team_mapping, headless=headless)
         except Exception as crawl_err:
-            print(f"[WARN] KBO 팀 타격 크롤링 실패: {crawl_err}. 폴백을 시도합니다...")
+            logger.warning("Team batting crawl failed: %s. Falling back...", crawl_err)
 
         if not stats:
             print(f"⚠️ KBO 팀 타격 페이지 오류. DB에서 폴백 집계를 시작합니다 (시즌: {season})...")
@@ -119,7 +122,7 @@ class TeamBattingStatsCrawler:
                         calc = StandingsCalculator(session)
                         calc.calculate_year(season)
                     except Exception as e:
-                        print(f"[ERROR] 순위 연산 폴백 중 오류 발생: {e}")
+                        logger.exception("Standings calculation fallback error")
             except Exception as fallback_error:
                 print(f"[ERROR] 팀 타격 집계 폴백 실패: {fallback_error}")
                 raise
@@ -154,7 +157,7 @@ class TeamBattingStatsCrawler:
                         browser.close()
                         return stats
                 except Exception as exc:
-                    print(f"[WARN] Failed to parse {url}: {exc}")
+                    logger.warning("Failed to parse %s: %s", url, exc)
             context.close()
             browser.close()
         return []
@@ -175,6 +178,7 @@ class TeamBattingStatsCrawler:
                 page.wait_for_load_state("networkidle")
                 return True
             except Exception:
+                logger.warning("Failed to select season dropdown, trying next selector")
                 continue
         return False
 

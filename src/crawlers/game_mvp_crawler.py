@@ -5,6 +5,8 @@ from datetime import datetime, timedelta
 
 import httpx
 
+from sqlalchemy.exc import SQLAlchemyError
+
 from src.db.engine import SessionLocal
 from src.repositories.game_mvp_repository import GameMvpRepository
 from src.utils.safe_print import safe_print as print
@@ -69,6 +71,7 @@ class GameMvpCrawler:
                         "award_source": "NAVER",
                     }
         except Exception as e:
+            logger.warning(f"Error searching MVP for game {game_id}: {e}", exc_info=True)
             print(f"  Error: {e}")
         finally:
             client.close()
@@ -152,12 +155,13 @@ class GameMvpCrawler:
                 try:
                     repo.save_mvp(item)
                     count += 1
-                except Exception as e:
+                except SQLAlchemyError as e:
                     logger.warning(f"Game MVP save failed: {e}")
             session.commit()
             print(f"Saved {count} MVP records.")
-        except Exception as e:
+        except SQLAlchemyError as e:
             session.rollback()
+            logger.error(f"Database error saving MVP records: {e}", exc_info=True)
             print(f"Error: {e}")
         finally:
             session.close()

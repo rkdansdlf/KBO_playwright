@@ -5,12 +5,15 @@ Shared request policy for throttling, UA rotation, and retries.
 from __future__ import annotations
 
 import asyncio
+import logging
 import os
 import random
 import time
 from typing import Any, Callable, Iterable
 
 from src.utils.throttle import throttle
+
+logger = logging.getLogger(__name__)
 
 DEFAULT_USER_AGENTS = [
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36",
@@ -83,6 +86,7 @@ class RequestPolicy:
                 last_exc = exc
                 if attempt >= self.max_retries:
                     raise
+                logger.info(f"Retrying function due to error: {exc}")
                 time.sleep(self._backoff_delay(attempt))
         if last_exc:
             raise last_exc
@@ -96,6 +100,7 @@ class RequestPolicy:
                 last_exc = exc
                 if attempt >= self.max_retries:
                     raise
+                logger.info(f"Retrying async function due to error: {exc}")
                 await asyncio.sleep(self._backoff_delay(attempt))
         if last_exc:
             raise last_exc

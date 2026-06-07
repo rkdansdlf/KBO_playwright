@@ -2,11 +2,12 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from datetime import datetime, timezone
+from datetime import datetime
+
 try:
     from datetime import UTC
 except ImportError:
-    UTC = timezone.utc
+    UTC = UTC
 from pathlib import Path
 from typing import Any, Callable, Iterable
 
@@ -73,7 +74,7 @@ class RelayRecoveryOrchestrator:
             result = await asyncio.wait_for(adapter.fetch_game(game_id), timeout=self.timeout_seconds)
             status = "success" if not result.is_empty else "miss"
             return result, status
-        except (TimeoutError, asyncio.TimeoutError):
+        except TimeoutError:
             return (
                 NormalizedRelayResult(
                     game_id=game_id,

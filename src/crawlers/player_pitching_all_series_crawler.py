@@ -221,6 +221,7 @@ def _extract_rows_fast(page: Page, table_selector: str = "table.tData01") -> lis
         )
         return payload or []
     except Exception:
+        logger.exception("Failed to execute JS payload")
         return None
 
 
@@ -297,7 +298,7 @@ def apply_sort(
                     time.sleep(2)
                     return True
             except Exception:
-                pass
+                logger.warning("Sort toggle click failed, falling back to JS execution")
 
             # Fallback to direct JS execution if DOM is un-clickable
             has_sort_fn = page.evaluate("typeof sort === 'function'")
@@ -433,15 +434,9 @@ def parse_basic1_page(
     try:
         page.wait_for_selector("table.tData01", timeout=15000)
     except Exception:
-        print("   ⚠️  기록 테이블을 찾을 수 없습니다. (타임아웃)")
-        # Debug: Print content length and snippet
+        logger.warning("기록 테이블을 찾을 수 없습니다. (타임아웃)")
         content = page.content()
-        print(f"   [DEBUG] Page content length: {len(content)}")
-        if "tData01" in content:
-            print("   [DEBUG] 'tData01' string found in content, but selector failed.")
-        else:
-            print("   [DEBUG] 'tData01' string NOT found in content.")
-            print(f"   [DEBUG] Body snippet: {content[:500]}")
+        logger.debug("Page content length: %d | tData01 found: %s", len(content), "tData01" in content)
         return 0
 
     # Small stability delay to ensure AJAX completion if any

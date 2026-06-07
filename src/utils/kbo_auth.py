@@ -4,7 +4,10 @@ Handles automated login and session persistence.
 """
 
 import asyncio
+import logging
 import os
+
+logger = logging.getLogger(__name__)
 
 from dotenv import load_dotenv
 from playwright.async_api import async_playwright
@@ -79,7 +82,7 @@ class KboAuthenticator:
                         await page.evaluate("window.scrollTo(0, 0)")
                         await asyncio.sleep(2)  # Wait for Akamai to finalize _abck cookie
                     except Exception as e:
-                        print(f"[AUTH] Session warm-up warning (ignoring): {e}")
+                        logger.warning(f"[AUTH] Session warm-up warning (ignoring): {e}")
 
                     # Save state
                     os.makedirs(os.path.dirname(self.AUTH_STATE_PATH), exist_ok=True)
@@ -90,7 +93,7 @@ class KboAuthenticator:
                     return False
 
             except Exception as e:
-                print(f"[AUTH] Exception during login: {e}")
+                logger.error(f"[AUTH] Exception during login: {e}")
                 return False
             finally:
                 await browser.close()

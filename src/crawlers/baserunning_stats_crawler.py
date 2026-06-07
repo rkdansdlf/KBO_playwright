@@ -94,7 +94,7 @@ def crawl_baserunning_stats(year=2025, max_retries=3, timeout=60000):
                                     return 0
                                 try:
                                     return int(text.strip().replace(",", ""))
-                                except Exception:
+                                except (ValueError, TypeError):
                                     return 0
 
                             def safe_float(text):
@@ -102,7 +102,7 @@ def crawl_baserunning_stats(year=2025, max_retries=3, timeout=60000):
                                     return 0.0
                                 try:
                                     return float(text.strip().replace(",", ""))
-                                except Exception:
+                                except (ValueError, TypeError):
                                     return 0.0
 
                             stats = {

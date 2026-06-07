@@ -348,7 +348,7 @@ class PlayerProfileCrawler:
                 timeout=2000,
             )
         except Exception:
-            # Continue even if no real image found (some players don't have one)
+            logger.info("No real image found for player (expected for some players)")
             pass
 
         return await page.evaluate(_EXTRACT_JS)

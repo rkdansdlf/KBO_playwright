@@ -5,6 +5,7 @@ Source: https://www.koreabaseball.com/Player/Awards/PlayerPrize.aspx
 
 import argparse
 import asyncio
+import logging
 
 from playwright.async_api import Page, async_playwright
 
@@ -12,6 +13,8 @@ from src.db.engine import SessionLocal
 from src.repositories.award_repository import AwardRepository
 from src.utils.playwright_blocking import install_async_resource_blocking
 from src.utils.safe_print import safe_print as print
+
+logger = logging.getLogger(__name__)
 
 
 class AwardCrawler:
@@ -55,6 +58,7 @@ class AwardCrawler:
                     else:
                         data = []
                 except Exception as e:
+                    logger.error(f"Error crawling {atype}: {e}", exc_info=True)
                     print(f"Error crawling {atype}: {e}")
                     import traceback
 
@@ -314,11 +318,13 @@ class AwardCrawler:
                     repo.save_award(item)
                     count += 1
                 except Exception as ex:
+                    logger.warning(f"Skipping duplicate or error: {item} - {ex}", exc_info=True)
                     print(f"Skipping duplicate or error: {item} - {ex}")
             session.commit()
             print(f"✅ Saved {count} awards to database.")
         except Exception as e:
             session.rollback()
+            logger.error(f"Error saving to DB: {e}", exc_info=True)
             print(f"❌ Error saving to DB: {e}")
         finally:
             session.close()

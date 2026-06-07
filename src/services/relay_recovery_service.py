@@ -18,6 +18,7 @@ from src.repositories.game_repository import (
     mark_relay_source_unavailable,
     save_relay_data,
 )
+from src.services.wpa_transitions import apply_wpa_transitions, event_has_wpa_state
 from src.sources.relay import (
     ImportRelayAdapter,
     KboRelayAdapter,
@@ -30,7 +31,6 @@ from src.sources.relay import (
     normalize_pbp_row,
     read_manifest_entries,
 )
-from src.services.wpa_transitions import apply_wpa_transitions, event_has_wpa_state
 from src.utils.game_status import COMPLETED_LIKE_GAME_STATUSES
 from src.utils.safe_print import safe_print as print
 

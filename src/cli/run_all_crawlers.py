@@ -357,7 +357,8 @@ def run_pipeline_sync(pipeline_type: str, pdf_path: str | None = None):
         else:
             print(f"❌ Unknown pipeline type: {pipeline_type}")
             return
-    except Exception:
+    except Exception as e:
+        logger.exception("Critical Pipeline Failure")
         err_msg = traceback.format_exc()
         print(f"❌ Critical Pipeline Failure:\n{err_msg}")
         # Send Telegram Bot Warning Webhook alert

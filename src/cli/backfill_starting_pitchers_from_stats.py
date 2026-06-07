@@ -9,6 +9,7 @@ values unless explicitly requested.
 from __future__ import annotations
 
 import argparse
+import logging
 import os
 import sys
 from pathlib import Path
@@ -20,6 +21,8 @@ from sqlalchemy import create_engine, text
 from src.db.engine import SessionLocal
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
+logger = logging.getLogger(__name__)
+
 
 
 def _normalize_date(value: str | None) -> str | None:
@@ -210,6 +213,7 @@ def sync_to_oci(game_ids: list[str]) -> tuple[int, int]:
                     failed += 1
             except Exception as exc:  # noqa: BLE001
                 failed += 1
+                logger.error(f"OCI sync failed for {game_id}: {exc}", exc_info=True)
                 print(f"OCI sync failed for {game_id}: {exc}", file=sys.stderr)
     return success, failed
 

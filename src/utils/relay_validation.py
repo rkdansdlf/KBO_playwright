@@ -137,7 +137,6 @@ def cross_validate_with_box_score(
 
     # Compute inning-by-inning runs from PBP events
     pbp_innings: dict[str, dict[int, int]] = {"away": {}, "home": {}}
-    event_scores: dict[str, int] = {"away": 0, "home": 0}
     prev_home = 0
     prev_away = 0
 

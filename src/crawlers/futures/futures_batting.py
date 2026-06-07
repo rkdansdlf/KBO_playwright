@@ -9,6 +9,7 @@ import re
 from bs4 import BeautifulSoup
 
 from src.utils.compliance import compliance
+from playwright.async_api import Error as PlaywrightError
 from src.utils.playwright_pool import AsyncPlaywrightPool
 from src.utils.throttle import throttle
 
@@ -221,7 +222,7 @@ async def fetch_and_parse_futures_batting(
                 if futures_tab:
                     await futures_tab.click()
                     await throttle.wait()
-            except Exception:
+            except PlaywrightError:
                 pass  # Tab might not exist or already selected
 
             html = await page.content()
