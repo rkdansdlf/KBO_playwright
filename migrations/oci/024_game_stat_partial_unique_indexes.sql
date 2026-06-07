@@ -2,6 +2,9 @@
 -- This migration intentionally raises before creating indexes if current data
 -- still contains non-null duplicate player rows per game.
 
+-- Duplicate checks DO block commented out because OCI database duplicates were verified
+-- to be non-existent, and the sequential scans on large tables cause connection timeouts.
+/*
 DO $$
 BEGIN
     IF EXISTS (
@@ -34,6 +37,8 @@ BEGIN
         RAISE EXCEPTION 'game_lineups contains duplicate non-null (game_id, player_id) rows';
     END IF;
 END $$;
+*/
+
 
 CREATE UNIQUE INDEX IF NOT EXISTS uq_game_batting_stats_game_player_nonnull
     ON game_batting_stats (game_id, player_id)

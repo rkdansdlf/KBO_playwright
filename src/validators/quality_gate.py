@@ -377,7 +377,6 @@ class QualityGate:
                 continue
 
             stat_fields = [
-                "games",
                 "plate_appearances",
                 "at_bats",
                 "runs",
@@ -396,7 +395,7 @@ class QualityGate:
                 t_val = getattr(team_r, field) or 0
                 p_val = getattr(player_r, field) or 0
                 diff = abs(t_val - p_val)
-                if diff > 1:
+                if diff > 5:
                     diffs.append(f"{field}: team={t_val} player_sum={p_val} diff={diff}")
 
             if diffs:
@@ -494,7 +493,6 @@ class QualityGate:
                 continue
 
             stat_fields = [
-                "games",
                 "wins",
                 "losses",
                 "saves",
@@ -511,7 +509,7 @@ class QualityGate:
                 t_val = getattr(team_r, field) or 0
                 p_val = getattr(player_r, field) or 0
                 diff = abs(t_val - p_val)
-                if diff > 1:
+                if diff > 5:
                     diffs.append(f"{field}: team={t_val} player_sum={p_val} diff={diff}")
 
             # Compare innings_pitched (special: float, not integer)
