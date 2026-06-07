@@ -1,3 +1,6 @@
+import logging
+
+logger = logging.getLogger(__name__)
 """
 KBO 팀명 매핑 유틸리티
 OCI team_history 테이블과 연동하여 동적 매핑 제공
@@ -51,7 +54,7 @@ class TeamMapper:
         """OCI team_history 테이블에서 매핑 데이터 로드"""
         oci_url = os.getenv("OCI_DB_URL") or os.getenv("TARGET_DATABASE_URL")
         if not oci_url:
-            print("⚠️ OCI_DB_URL 환경변수가 설정되지 않음. 정적 매핑만 사용.")
+            logger.warning("⚠️ OCI_DB_URL 환경변수가 설정되지 않음. 정적 매핑만 사용.")
             return False
 
         try:
@@ -69,9 +72,9 @@ class TeamMapper:
                     ORDER BY ordinal_position
                 """)
                 columns = session.execute(structure_query).fetchall()
-                print(f"📋 team_history 테이블 컬럼: {[col[0] for col in columns]}")
+                logger.info(f"📋 team_history 테이블 컬럼: {[col[0] for col in columns]}")
             except SQLAlchemyError as e:
-                print(f"⚠️ 테이블 구조 확인 실패: {e}")
+                logger.exception(f"⚠️ 테이블 구조 확인 실패: {e}")
 
             # 가능한 컬럼명으로 쿼리 시도
             possible_queries = [
@@ -140,21 +143,21 @@ class TeamMapper:
                     session.rollback()
                     query = text(query_sql)
                     query_result = session.execute(query).fetchall()
-                    print(f"✅ 쿼리 패턴 {i + 1} 성공: {len(query_result)}개 행 조회")
+                    logger.info(f"✅ 쿼리 패턴 {i + 1} 성공: {len(query_result)}개 행 조회")
                     break
                 except SQLAlchemyError as e:
-                    print(f"⚠️ 쿼리 패턴 {i + 1} 실패: {e}")
+                    logger.exception(f"⚠️ 쿼리 패턴 {i + 1} 실패: {e}")
                     session.rollback()  # 실패시 트랜잭션 롤백
                     continue
 
             if not query_result:
-                print("❌ 모든 쿼리 패턴 실패")
+                logger.error("❌ 모든 쿼리 패턴 실패")
                 return False
 
             results = query_result
 
             if not results:
-                print("⚠️ team_history 테이블에서 데이터를 찾을 수 없음")
+                logger.warning("⚠️ team_history 테이블에서 데이터를 찾을 수 없음")
                 return False
 
             # 매핑 데이터 구성
@@ -189,11 +192,11 @@ class TeamMapper:
             engine.dispose()
 
             self._oci_loaded = True
-            print(f"✅ OCI에서 {len(results)}개 팀 매핑 로드 완료")
+            logger.info(f"✅ OCI에서 {len(results)}개 팀 매핑 로드 완료")
             return True
 
         except (SQLAlchemyError, ValueError) as e:
-            print(f"⚠️ OCI 팀 매핑 로드 실패: {e}")
+            logger.exception(f"⚠️ OCI 팀 매핑 로드 실패: {e}")
             return False
 
     def get_team_code(self, team_name: str, year: int | None = None) -> str | None:
@@ -394,7 +397,7 @@ if __name__ == "__main__":
         ("청보", 1983),
     ]
 
-    print("🔍 팀 매핑 테스트:")
+    logger.info("🔍 팀 매핑 테스트:")
     for team_name, year in test_cases:
         code = mapper.get_team_code(team_name, year)
-        print(f"  {year}년 '{team_name}' → '{code}'")
+        logger.info(f"  {year}년 '{team_name}' → '{code}'")

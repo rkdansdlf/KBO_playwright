@@ -33,7 +33,7 @@ def save_kbo_player_season_batting(player_data: dict[str, Any]) -> bool:
             required_fields = ["player_id", "year", "league", "team_code"]
             for field in required_fields:
                 if field not in player_data or player_data[field] is None:
-                    print(f"   ⚠️ 필수 필드 누락: {field}")
+                    logger.warning(f"   ⚠️ 필수 필드 누락: {field}")
                     return False
 
             # 데이터 매핑
@@ -117,17 +117,17 @@ def save_kbo_batting_batch(players_data: dict[int, dict[str, Any]], series_name:
     saved_count = 0
     total_count = len(players_data)
 
-    print(f"💾 {series_name} 데이터 저장 중... (총 {total_count}명)")
+    logger.info(f"💾 {series_name} 데이터 저장 중... (총 {total_count}명)")
 
     for _player_id, player_data in players_data.items():
         try:
             if save_kbo_player_season_batting(player_data):
                 saved_count += 1
                 if saved_count % 50 == 0:  # 50명마다 진행상황 출력
-                    print(f"   📊 진행상황: {saved_count}/{total_count}명 저장 완료")
+                    logger.info(f"   📊 진행상황: {saved_count}/{total_count}명 저장 완료")
         except Exception:
             logger.exception(f"   ⚠️ {player_data.get('player_name', 'Unknown')} 저장 실패")
             continue
 
-    print(f"   ✅ {saved_count}/{total_count}명 저장 완료")
+    logger.info(f"   ✅ {saved_count}/{total_count}명 저장 완료")
     return saved_count

@@ -1,3 +1,6 @@
+import logging
+
+logger = logging.getLogger(__name__)
 """
 KBO 연도별 시리즈 존재 여부 검증 유틸리티
 """
@@ -83,7 +86,7 @@ def filter_series_for_year(year: int, requested_series: list[str]) -> list[str]:
     # 제거된 시리즈가 있으면 알림
     removed = [series for series in requested_series if series not in available_series]
     if removed:
-        print(f"⚠️ {year}년에는 다음 시리즈가 존재하지 않아 제외됩니다: {', '.join(removed)}")
+        logger.warning(f"⚠️ {year}년에는 다음 시리즈가 존재하지 않아 제외됩니다: {', '.join(removed)}")
 
     return filtered
 
@@ -161,25 +164,25 @@ def get_recommended_series_for_period(start_year: int, end_year: int) -> list[st
 
 if __name__ == "__main__":
     # 테스트 코드
-    print("=== KBO 시리즈 연도별 검증 테스트 ===")
+    logger.info("=== KBO 시리즈 연도별 검증 테스트 ===")
 
     test_years = [1990, 2000, 2001, 2002, 2010, 2015, 2025]
 
     for year in test_years:
         available = get_available_series_by_year(year)
-        print(f"{year}년: {', '.join(available)}")
+        logger.info(f"{year}년: {', '.join(available)}")
 
-    print("\n=== 특정 조합 검증 ===")
+    logger.info("\n=== 특정 조합 검증 ===")
     test_cases = [(2001, "playoff"), (2000, "korean_series"), (1990, "wildcard"), (2015, "wildcard")]
 
     for year, series in test_cases:
         valid, msg = validate_year_series_combination(year, series)
         status = "✅" if valid else "❌"
-        print(f"{status} {year}년 {series}: {msg}")
+        logger.info(f"{status} {year}년 {series}: {msg}")
 
-    print("\n=== 기간별 권장 시리즈 ===")
+    logger.info("\n=== 기간별 권장 시리즈 ===")
     periods = [(1990, 2000), (2000, 2010), (2010, 2025)]
 
     for start, end in periods:
         recommended = get_recommended_series_for_period(start, end)
-        print(f"{start}-{end}년: {', '.join(recommended)}")
+        logger.info(f"{start}-{end}년: {', '.join(recommended)}")

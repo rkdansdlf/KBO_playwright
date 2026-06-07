@@ -6,6 +6,7 @@ Formula: (RS + RA)_home / (RS + RA)_away  (standardized to 1.00 = neutral)
 
 from __future__ import annotations
 
+import logging
 from collections import defaultdict
 
 from sqlalchemy.orm import Session
@@ -14,6 +15,8 @@ from src.models.game import Game
 from src.models.season import KboSeason
 from src.utils.game_status import COMPLETED_LIKE_GAME_STATUSES
 from src.utils.safe_print import safe_print as print
+
+logger = logging.getLogger(__name__)
 
 
 class ParkFactorCalculator:
@@ -35,7 +38,7 @@ class ParkFactorCalculator:
         )
 
         if not games:
-            print(f"[ParkFactor] {year}년 완료 경기 없음.")
+            logger.info(f"[ParkFactor] {year}년 완료 경기 없음.")
             return []
 
         # Standard simplified Park Factor:
@@ -106,13 +109,13 @@ class ParkFactorCalculator:
         if not results:
             return
 
-        print(f"\n{'=' * 80}")
-        print(f"  KBO {year}년 구장별 파크팩터 (Park Factor)")
-        print(f"{'=' * 70}")
-        print(f"  KBO {year}년 구장별 파크팩터 (Park Factor)")
-        print(f"{'=' * 70}")
-        print(f"{'구장':<18} {'경기':>4} {'RPG':>5} {'PF':>6}  평가")
-        print(f"{'-' * 70}")
+        logger.info(f"\n{'=' * 80}")
+        logger.info(f"  KBO {year}년 구장별 파크팩터 (Park Factor)")
+        logger.info(f"{'=' * 70}")
+        logger.info(f"  KBO {year}년 구장별 파크팩터 (Park Factor)")
+        logger.info(f"{'=' * 70}")
+        logger.info(f"{'구장':<18} {'경기':>4} {'RPG':>5} {'PF':>6}  평가")
+        logger.info(f"{'-' * 70}")
 
         for r in sorted(results, key=lambda x: x["park_factor"], reverse=True):
             pf_label = r["park_factor_label"]
@@ -120,8 +123,8 @@ class ParkFactorCalculator:
                 f"  {r['stadium']:<18} {r['games']:>4} {r['runs_per_game']:>5.1f} {r['park_factor']:>5.3f}  {pf_label}"
             )
 
-        print(f"{'=' * 70}")
-        print(f"  리그 평균: {results[0]['league_avg_rpg']:.2f} 점/경기")
+        logger.info(f"{'=' * 70}")
+        logger.info(f"  리그 평균: {results[0]['league_avg_rpg']:.2f} 점/경기")
 
 
 if __name__ == "__main__":
@@ -143,6 +146,6 @@ if __name__ == "__main__":
         else:
             results = calc.calculate(args.year)
             for r in results:
-                print(r)
+                logger.info(r)
     finally:
         session.close()

@@ -1,3 +1,6 @@
+import logging
+
+logger = logging.getLogger(__name__)
 """Safe print utility for Windows console encoding issues."""
 
 
@@ -7,7 +10,7 @@ def safe_print(*args, **kwargs):
     Falls back to ASCII representation if encoding fails.
     """
     try:
-        print(*args, **kwargs)
+        logger.info(*args, **kwargs)
     except UnicodeEncodeError:
         # Convert all args to strings and encode/decode with error handling
         safe_args = []
@@ -16,4 +19,4 @@ def safe_print(*args, **kwargs):
                 safe_args.append(str(arg).encode("ascii", "replace").decode("ascii"))
             except Exception:
                 safe_args.append(repr(arg))
-        print(*safe_args, **kwargs)
+        logger.exception(*safe_args, **kwargs)

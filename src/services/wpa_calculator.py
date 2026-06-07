@@ -1,3 +1,6 @@
+import logging
+
+logger = logging.getLogger(__name__)
 """
 WPA (Win Probability Added) Calculator Service.
 Uses a Win Expectancy Matrix (CSV) to calculate the shift in win probability for each event.
@@ -26,7 +29,7 @@ class WPACalculator:
         Expected columns: inning, half, outs, runners, score_diff, win_prob
         """
         if not os.path.exists(path):
-            print(f"⚠️ Win Expectancy Matrix not found at {path}. Using fallback formula.")
+            logger.warning(f"⚠️ Win Expectancy Matrix not found at {path}. Using fallback formula.")
             return
 
         with open(path) as f:
@@ -41,7 +44,7 @@ class WPACalculator:
                 )
                 self._matrix[key] = float(row["win_prob"])
 
-        print(f"✅ Loaded {len(self._matrix)} Win Expectancy entries from {path}")
+        logger.info(f"✅ Loaded {len(self._matrix)} Win Expectancy entries from {path}")
 
     def calculate_wpa(
         self,

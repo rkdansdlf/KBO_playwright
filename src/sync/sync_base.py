@@ -423,7 +423,9 @@ def _log_sync_eligibility(eligibility: GameSyncEligibility) -> None:
     for reason, game_ids in samples.items():
         if not game_ids:
             continue
-        print(f"⚠️ {reason}={len(game_ids)} sample={', '.join(game_ids[:10])}" + (" ..." if len(game_ids) > 10 else ""))
+        logger.warning(
+            f"⚠️ {reason}={len(game_ids)} sample={', '.join(game_ids[:10])}" + (" ..." if len(game_ids) > 10 else "")
+        )
 
 
 class OCISyncBase:
@@ -527,7 +529,7 @@ class OCISyncBase:
         """Test OCI connection"""
         try:
             self.target_session.execute(text("SELECT 1"))
-            print("✅ OCI connection successful")
+            logger.info("✅ OCI connection successful")
             return True
         except Exception as e:
             logger.exception("❌ OCI connection failed: %s", e)
@@ -550,7 +552,7 @@ class OCISyncBase:
                 logger.info("Retrying alternate query: %s", e)
                 continue
 
-        print("⚠️ Warning: Could not fetch season map from OCI")
+        logger.warning("⚠️ Warning: Could not fetch season map from OCI")
         return {}
 
     def _get_franchise_id_mapping(self) -> dict[int, int]:
@@ -622,7 +624,7 @@ class OCISyncBase:
                     time.sleep(wait)
                     self._reconnect_oci()
 
-        print(f"❌ Batch COPY Error on {table_name} after {max_attempts} attempts: {last_exception}")
+        logger.error(f"❌ Batch COPY Error on {table_name} after {max_attempts} attempts: {last_exception}")
         raise last_exception  # type: ignore[misc]
 
     def _reconnect_oci(self) -> None:
@@ -720,7 +722,7 @@ class OCISyncBase:
             exclude_cols.append("id")
 
         if not self._target_table_exists(model):
-            print(f"ℹ️ Skipping missing OCI table: {model.__tablename__}")
+            logger.info(f"ℹ️ Skipping missing OCI table: {model.__tablename__}")
             return 0
 
         # Use all columns except those explicitly excluded and not present in target DB.
@@ -760,9 +762,9 @@ class OCISyncBase:
             source_payload_length = getattr(source_payload_type, "length", None)
             if source_payload_length and source_payload_length <= 255:
                 columns.remove("source_payload")
-                print("ℹ️ Skipping game_metadata.source_payload for legacy OCI varchar column")
+                logger.info("ℹ️ Skipping game_metadata.source_payload for legacy OCI varchar column")
         if not columns:
-            print(f"ℹ️ No compatible columns for {model.__tablename__}")
+            logger.info(f"ℹ️ No compatible columns for {model.__tablename__}")
             return 0
 
         query = self.sqlite_session.query(*[getattr(model, column) for column in columns])
@@ -771,10 +773,10 @@ class OCISyncBase:
 
         total_count = query.count()
         if total_count == 0:
-            print(f"ℹ️  No records for {model.__tablename__}")
+            logger.info(f"ℹ️  No records for {model.__tablename__}")
             return 0
 
-        print(f"🚚 Syncing {model.__tablename__} ({total_count} rows, batch={batch_size})...")
+        logger.info(f"🚚 Syncing {model.__tablename__} ({total_count} rows, batch={batch_size})...")
 
         # Always use Bulk COPY Upsert to be safe from schema mismatches (e.g. created_at/updated_at missing on OCI).
         synced = 0
@@ -815,7 +817,7 @@ class OCISyncBase:
                 model.__tablename__, records, conflict_keys, update_timestamp=effective_update_timestamp
             )
             synced += len(records)
-            print(f"   Synced {synced}/{total_count} rows via COPY...")
+            logger.info(f"   Synced {synced}/{total_count} rows via COPY...")
 
         return synced
 

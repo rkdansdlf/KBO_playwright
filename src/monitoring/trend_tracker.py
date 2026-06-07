@@ -7,11 +7,14 @@ Detects metric degradation (recent trend worsening).
 from __future__ import annotations
 
 import json
+import logging
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 
 from src.utils.alerting import SlackWebhookClient
+
+logger = logging.getLogger(__name__)
 
 QUALITY_REPORT_DIR = Path("logs/quality_reports")
 
@@ -95,12 +98,12 @@ class TrendTracker:
     def print_trend_summary(self, days: int = 14):
         reports = self.load_reports(days=days)
         if not reports:
-            print(f"[TrendTracker] No quality reports found in last {days} days.")
+            logger.info(f"[TrendTracker] No quality reports found in last {days} days.")
             return
 
-        print(f"\n{'=' * 60}")
-        print(f"  Quality Metric Trends (last {days} days)")
-        print(f"{'=' * 60}")
+        logger.info(f"\n{'=' * 60}")
+        logger.info(f"  Quality Metric Trends (last {days} days)")
+        logger.info(f"{'=' * 60}")
 
         keys_to_track = [
             "metrics.completed_count",
@@ -120,7 +123,7 @@ class TrendTracker:
                 direction = (
                     "↑" if trend["direction"] == "increasing" else "↓" if trend["direction"] == "decreasing" else "→"
                 )
-                print(f"  {key:<50} {first['value']} → {last['value']} {direction}")
+                logger.info(f"  {key:<50} {first['value']} → {last['value']} {direction}")
 
         deg = self.detect_degradations(
             {
@@ -129,10 +132,10 @@ class TrendTracker:
             }
         )
         if deg:
-            print("\n  ⚠️  Degradations detected:")
+            logger.warning("\n  ⚠️  Degradations detected:")
             for d in deg:
-                print(f"    {d['metric']}: {d['pct_change']:+.1f}% ({d['severity']})")
-        print()
+                logger.info(f"    {d['metric']}: {d['pct_change']:+.1f}% ({d['severity']})")
+        logger.info()
 
     def send_degradation_alert(self, days: int = 14) -> None:
         """
