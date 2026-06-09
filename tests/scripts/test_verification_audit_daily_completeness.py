@@ -1,3 +1,4 @@
+import os
 from datetime import date
 from unittest.mock import MagicMock, patch
 
@@ -6,6 +7,7 @@ from scripts.verification.audit_daily_completeness import (
     _format_scope,
     _parse_statuses,
     audit_completeness,
+    main,
 )
 
 
@@ -31,9 +33,16 @@ class TestParseStatuses:
         result = _parse_statuses("", include_incomplete=False)
         assert "COMPLETED" in result
 
-    def test_with_incomplete(self):
-        result = _parse_statuses("DRAW", include_incomplete=True)
+    def test_empty_with_incomplete_includes_completed_and_incomplete(self):
+        result = _parse_statuses("", include_incomplete=True)
+        assert "COMPLETED" in result
         assert "DRAW" in result
+        assert "SCHEDULED" in result
+        assert "UNRESOLVED_MISSING" in result
+
+    def test_custom_with_incomplete(self):
+        result = _parse_statuses("DRAW", include_incomplete=True)
+        assert result == ["DRAW", "SCHEDULED", "UNRESOLVED_MISSING"]
 
     def test_custom(self):
         result = _parse_statuses("LIVE, FINAL", include_incomplete=False)
@@ -56,7 +65,7 @@ class TestFormatScope:
 
 class TestAuditCompleteness:
     @patch("scripts.verification.audit_daily_completeness.create_engine")
-    def test_no_rows(self, mock_create_engine):
+    def test_rolling_no_rows_pass(self, mock_create_engine):
         mock_conn = MagicMock()
         mock_engine = MagicMock()
         mock_engine.connect.return_value.__enter__.return_value = mock_conn
@@ -64,6 +73,38 @@ class TestAuditCompleteness:
         mock_conn.execute.return_value.fetchall.return_value = []
 
         result = audit_completeness("sqlite:///test", 7, statuses=["COMPLETED"])
+        assert result == 0
+
+    @patch("scripts.verification.audit_daily_completeness.create_engine")
+    def test_non_monday_target_date_no_rows_fails(self, mock_create_engine):
+        mock_conn = MagicMock()
+        mock_engine = MagicMock()
+        mock_engine.connect.return_value.__enter__.return_value = mock_conn
+        mock_create_engine.return_value = mock_engine
+        mock_conn.execute.return_value.fetchall.return_value = []
+
+        result = audit_completeness(
+            "sqlite:///test",
+            7,
+            target_date=date(2025, 4, 8),
+            statuses=["COMPLETED"],
+        )
+        assert result == 1
+
+    @patch("scripts.verification.audit_daily_completeness.create_engine")
+    def test_monday_target_date_no_rows_passes(self, mock_create_engine):
+        mock_conn = MagicMock()
+        mock_engine = MagicMock()
+        mock_engine.connect.return_value.__enter__.return_value = mock_conn
+        mock_create_engine.return_value = mock_engine
+        mock_conn.execute.return_value.fetchall.return_value = []
+
+        result = audit_completeness(
+            "sqlite:///test",
+            7,
+            target_date=date(2025, 4, 7),
+            statuses=["COMPLETED"],
+        )
         assert result == 0
 
     @patch("scripts.verification.audit_daily_completeness.create_engine")
@@ -91,3 +132,95 @@ class TestAuditCompleteness:
 
         result = audit_completeness("sqlite:///test", 7, statuses=["COMPLETED"])
         assert result == 0
+
+    @patch("scripts.verification.audit_daily_completeness.create_engine")
+    def test_monday_target_date_with_incomplete_row_still_fails_strict(self, mock_create_engine):
+        mock_conn = MagicMock()
+        mock_engine = MagicMock()
+        mock_engine.connect.return_value.__enter__.return_value = mock_conn
+        mock_create_engine.return_value = mock_engine
+        mock_conn.execute.return_value.fetchall.return_value = [
+            (
+                "G1",
+                "2025-04-07",
+                None,
+                None,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+            ),
+        ]
+
+        result = audit_completeness(
+            "sqlite:///test",
+            7,
+            target_date=date(2025, 4, 7),
+            statuses=["COMPLETED"],
+            strict=True,
+        )
+        assert result == 1
+
+    @patch("scripts.verification.audit_daily_completeness.create_engine")
+    def test_monday_target_date_with_complete_row_passes_strict(self, mock_create_engine):
+        mock_conn = MagicMock()
+        mock_engine = MagicMock()
+        mock_engine.connect.return_value.__enter__.return_value = mock_conn
+        mock_create_engine.return_value = mock_engine
+        mock_conn.execute.return_value.fetchall.return_value = [
+            (
+                "G1",
+                "2025-04-07",
+                3,
+                2,
+                1,
+                9,
+                9,
+                9,
+                9,
+                10,
+                10,
+                3,
+                3,
+                0,
+                20,
+            ),
+        ]
+
+        result = audit_completeness(
+            "sqlite:///test",
+            7,
+            target_date=date(2025, 4, 7),
+            statuses=["COMPLETED"],
+            strict=True,
+        )
+        assert result == 0
+
+
+class TestMain:
+    def test_missing_env_db_url_returns_2(self):
+        with (
+            patch.dict(os.environ, {}, clear=True),
+            patch("scripts.verification.audit_daily_completeness.load_dotenv"),
+            patch("scripts.verification.audit_daily_completeness.audit_completeness") as mock_audit,
+            patch("sys.argv", ["audit_daily_completeness.py", "--db-url", "env:OCI_DB_URL"]),
+        ):
+            assert main() == 2
+            mock_audit.assert_not_called()
+
+    def test_invalid_date_returns_2(self):
+        with (
+            patch.dict(os.environ, {"DATABASE_URL": "sqlite:///test"}, clear=True),
+            patch("scripts.verification.audit_daily_completeness.load_dotenv"),
+            patch("scripts.verification.audit_daily_completeness.audit_completeness") as mock_audit,
+            patch("sys.argv", ["audit_daily_completeness.py", "--date", "invalid"]),
+        ):
+            assert main() == 2
+            mock_audit.assert_not_called()

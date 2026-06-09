@@ -40,11 +40,11 @@ def _parse_statuses(raw: str | None, include_incomplete: bool) -> list[str]:
         if token:
             statuses.append(token)
 
-    if include_incomplete:
-        statuses.extend([GAME_STATUS_SCHEDULED, GAME_STATUS_UNRESOLVED])
-
     if not statuses:
         statuses = sorted(COMPLETED_LIKE_GAME_STATUSES)
+
+    if include_incomplete:
+        statuses.extend([GAME_STATUS_SCHEDULED, GAME_STATUS_UNRESOLVED])
 
     return list(dict.fromkeys(statuses))
 
@@ -76,6 +76,20 @@ def _coerce_date(raw: str | None) -> date | None:
     raise ValueError(f"Unsupported date format: {raw}. Use YYYYMMDD or YYYY-MM-DD.")
 
 
+def _resolve_db_url(raw: str | None) -> str:
+    if raw and raw.startswith("env:"):
+        env_name = raw[4:]
+        db_url = os.getenv(env_name)
+        if not db_url:
+            raise ValueError(f"Environment variable {env_name} is not set for --db-url.")
+        return db_url
+
+    if raw:
+        return raw
+
+    return os.getenv("DATABASE_URL") or _ENGINE_DB_URL
+
+
 def audit_completeness(
     db_url: str,
     lookback_days: int,
@@ -90,13 +104,13 @@ def audit_completeness(
     if target_date:
         params = {"target_date": target_date.isoformat()}
         where_clause = "g.game_date = :target_date"
-        logger.info(f"🔍 Auditing games for {_format_scope(target_date, lookback_days, statuses, strict)}")
+        logger.info("🔍 Auditing games for %s", _format_scope(target_date, lookback_days, statuses, strict))
     else:
         start_date = (today - timedelta(days=lookback_days)).isoformat()
         end_date = today.isoformat()
         params = {"start_date": start_date, "end_date": end_date}
         where_clause = "g.game_date >= :start_date AND g.game_date < :end_date"
-        logger.info(f"🔍 Auditing games for {_format_scope(None, lookback_days, statuses, strict)}")
+        logger.info("🔍 Auditing games for %s", _format_scope(None, lookback_days, statuses, strict))
 
     if strict:
         template_query = """
@@ -202,27 +216,43 @@ def audit_completeness(
                 if missing:
                     failures.append(f"  - [{g_date}] {g_id}: missing {', '.join(missing)}")
 
-    except Exception as e:  # noqa: BLE001
-        logger.info(f"❌ Database error during audit: {e}")
+    except Exception as e:
+        logger.info("❌ Database error during audit: %s", e)
         return 2
 
     if failures:
-        logger.info(f"❌ Found {len(failures)} incomplete games out of {game_count} checked:")
+        logger.info("❌ Found %s incomplete games out of %s checked:", len(failures), game_count)
         for f in failures:
-            logger.info(f)
+            logger.info("%s", f)
         logger.info("\nPossible causes: crawler timeout, site structure change, or database connection issues.")
         logger.info("Action: run backfill for the missing game IDs.")
         return 1
 
     if game_count == 0:
-        logger.info(f"ℹ️  No matching games found for scope: {_format_scope(target_date, lookback_days, statuses, strict)}")
+        if target_date and target_date.weekday() == 0:
+            logger.info(
+                "ℹ️  No matching games found for target Monday %s; treating as KBO rest day.",
+                target_date.isoformat(),
+            )
+            return 0
+        if target_date:
+            logger.info(
+                "❌ No matching games found for target date %s with scope: %s",
+                target_date.isoformat(),
+                _format_scope(target_date, lookback_days, statuses, strict),
+            )
+            return 1
+        logger.info(
+            "ℹ️  No matching games found for scope: %s",
+            _format_scope(target_date, lookback_days, statuses, strict),
+        )
     else:
-        logger.info(f"✅ All {game_count} matching games have sufficient detail data.")
+        logger.info("✅ All %s matching games have sufficient detail data.", game_count)
 
     return 0
 
 
-def main():
+def main() -> int:
     parser = argparse.ArgumentParser(description="Audit daily game data completeness")
     parser.add_argument("--date", type=str, help="Target date in YYYYMMDD or YYYY-MM-DD format")
     parser.add_argument("--db-url", help="Database URL (can be env:VAR_NAME)")
@@ -247,12 +277,11 @@ def main():
         logging.basicConfig(level=logging.INFO, format="%(message)s")
 
     load_dotenv()
-    db_url = args.db_url
-    if db_url and db_url.startswith("env:"):
-        db_url = os.getenv(db_url[4:])
-
-    if not db_url:
-        db_url = os.getenv("DATABASE_URL") or _ENGINE_DB_URL
+    try:
+        db_url = _resolve_db_url(args.db_url)
+    except ValueError as e:
+        logger.error(str(e))
+        return 2
 
     try:
         target_date = _coerce_date(args.date)
@@ -261,16 +290,14 @@ def main():
         return 2
 
     statuses = _parse_statuses(args.statuses, include_incomplete=args.include_incomplete)
-    sys.exit(
-        audit_completeness(
-            db_url,
-            args.days,
-            target_date=target_date,
-            statuses=statuses,
-            strict=args.strict,
-        )
+    return audit_completeness(
+        db_url,
+        args.days,
+        target_date=target_date,
+        statuses=statuses,
+        strict=args.strict,
     )
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())
