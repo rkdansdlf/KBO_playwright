@@ -55,6 +55,9 @@ from src.services.schedule_collection_service import save_schedule_games
 from src.sync.oci_sync import OCISync
 from src.utils.alerting import SlackWebhookClient
 from src.utils.game_status import GAME_STATUS_CANCELLED, GAME_STATUS_SCHEDULED, GAME_STATUS_UNRESOLVED
+from src.utils.refresh_manifest import write_refresh_manifest
+from src.utils.schedule_validation import is_detail_candidate_game
+from src.utils.team_codes import normalize_kbo_game_id
 
 logger = logging.getLogger(__name__)
 
@@ -259,20 +262,14 @@ def format_stability_alert_summary(result: object) -> str | None:
     relay = stability.get("relay") if isinstance(stability.get("relay"), dict) else {}
     oci = stability.get("oci") if isinstance(stability.get("oci"), dict) else {}
     quality_gates = stability.get("quality_gates") if isinstance(stability.get("quality_gates"), dict) else {}
-    detail_recovery = (
-        stability.get("detail_recovery") if isinstance(stability.get("detail_recovery"), dict) else {}
-    )
+    detail_recovery = stability.get("detail_recovery") if isinstance(stability.get("detail_recovery"), dict) else {}
     detail_counts = detail.get("failure_counts") if isinstance(detail, dict) else {}
     oci_counts = oci.get("skip_counts") if isinstance(oci, dict) else {}
     non_p0_counts = quality_gates.get("non_p0_failure_counts") if isinstance(quality_gates, dict) else {}
     relay_targets = relay.get("target_count", 0) if isinstance(relay, dict) else 0
     recovery_passes = detail_recovery.get("passes", 0) if isinstance(detail_recovery, dict) else 0
-    recovered_after_retry = (
-        detail_recovery.get("recovered_after_retry", 0) if isinstance(detail_recovery, dict) else 0
-    )
-    still_missing_count = (
-        detail_recovery.get("still_missing_count", 0) if isinstance(detail_recovery, dict) else 0
-    )
+    recovered_after_retry = detail_recovery.get("recovered_after_retry", 0) if isinstance(detail_recovery, dict) else 0
+    still_missing_count = detail_recovery.get("still_missing_count", 0) if isinstance(detail_recovery, dict) else 0
 
     return (
         f"target_date={result.get('target_date', 'unknown')} "
@@ -536,7 +533,9 @@ async def run_update(
 
         for _ in range(max_recovery_rounds - 1):
             retry_game_ids = sorted(
-                game_id for game_id in recoverable_failure_ids if detail_recovery_attempts.get(game_id, 0) < max_recovery_rounds
+                game_id
+                for game_id in recoverable_failure_ids
+                if detail_recovery_attempts.get(game_id, 0) < max_recovery_rounds
             )
             if not retry_game_ids:
                 break
