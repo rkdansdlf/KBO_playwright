@@ -17,7 +17,7 @@ from src.models.player import PlayerBasic
 logger = logging.getLogger(__name__)
 
 
-async def discover_and_save_players(start_year: int, end_year: int, active_year: int):
+async def discover_and_save_players(start_year: int, end_year: int, active_year: int) -> None:
     crawler = RetiredPlayerListingCrawler(request_delay=1.0)
 
     logger.info(f"🚀 Starting historical player discovery from {start_year} to {end_year}...")

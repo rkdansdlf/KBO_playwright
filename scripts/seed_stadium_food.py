@@ -11,8 +11,11 @@ logger = logging.getLogger(__name__)
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from src.db.engine import SessionLocal
-from src.repositories.stadium_food_repository import StadiumFoodMenuItemRepository, StadiumFoodVendorRepository
+from src.db.engine import SessionLocal  # noqa: E402
+from src.repositories.stadium_food_repository import (  # noqa: E402
+    StadiumFoodMenuItemRepository,
+    StadiumFoodVendorRepository,
+)
 
 FOOD_DATA: list[dict] = [
     # === 잠실 ===

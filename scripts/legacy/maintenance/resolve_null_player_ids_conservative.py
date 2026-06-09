@@ -25,7 +25,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[3]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from src.db.engine import DATABASE_URL, SessionLocal
+from src.db.engine import DATABASE_URL, SessionLocal  # noqa: E402
 
 DEFAULT_OVERRIDES_CSV = PROJECT_ROOT / "data/player_id_overrides.csv"
 DEFAULT_OUTPUT_DIR = PROJECT_ROOT / "data"

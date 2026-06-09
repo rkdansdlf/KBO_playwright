@@ -27,8 +27,8 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from src.db.engine import DATABASE_URL
-from src.utils.team_codes import resolve_team_code, team_code_from_game_id_segment
+from src.db.engine import DATABASE_URL  # noqa: E402
+from src.utils.team_codes import resolve_team_code, team_code_from_game_id_segment  # noqa: E402
 
 PSEUDO_MIN_PLAYER_ID = 900000
 DEFAULT_OUTPUT_DIR = PROJECT_ROOT / "data" / "repair_duplicate_pseudo_players"

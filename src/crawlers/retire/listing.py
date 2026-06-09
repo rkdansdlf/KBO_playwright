@@ -5,18 +5,15 @@ Determine retired/inactive player IDs by comparing historical rosters with curre
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
 from collections.abc import Iterable
-
-logger = logging.getLogger(__name__)
-
-import contextlib
 
 from src.utils.compliance import compliance
 from src.utils.playwright_pool import AsyncPlaywrightPool
 from src.utils.throttle import throttle
 
-
+logger = logging.getLogger(__name__)
 class RetiredPlayerListingCrawler:
     """
     Fetch player ID sets for historical seasons and compute inactive (retired) candidates.
@@ -80,7 +77,6 @@ class RetiredPlayerListingCrawler:
         except Exception:  # noqa: BLE001
             logger.warning("Failed to select all series option, continuing")
             pass
-
 
         return await self._collect_ids_from_pages(page, year)
 

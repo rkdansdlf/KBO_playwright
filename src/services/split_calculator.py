@@ -9,15 +9,15 @@ Computes RISP (Runners In Scoring Position) and L/R splits
 by querying the game_events PBP data with game_batting_stats.
 """
 
-import os
-import sys
-from typing import Any
+import os  # noqa: E402
+import sys  # noqa: E402
+from typing import Any  # noqa: E402
 
-from sqlalchemy import text
+from sqlalchemy import text  # noqa: E402
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
-from src.db.engine import SessionLocal
+from src.db.engine import SessionLocal  # noqa: E402
 
 
 class SituationalSplitCalculator:

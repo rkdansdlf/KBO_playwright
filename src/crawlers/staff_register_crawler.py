@@ -21,10 +21,10 @@ from datetime import date as date_type
 
 logger = logging.getLogger(__name__)
 
-from playwright.async_api import BrowserContext, Page, async_playwright
+from playwright.async_api import BrowserContext, Page, async_playwright  # noqa: E402
 
-from src.utils.request_policy import RequestPolicy
-from src.utils.team_codes import resolve_team_code
+from src.utils.request_policy import RequestPolicy  # noqa: E402
+from src.utils.team_codes import resolve_team_code  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # Constants

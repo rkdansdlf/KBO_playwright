@@ -11,7 +11,7 @@ from src.models.player import PlayerSeasonBatting, PlayerSeasonPitching
 logger = logging.getLogger(__name__)
 
 
-def batch_calculate_sabermetrics(years: list[int], sync_oci: bool = False):
+def batch_calculate_sabermetrics(years: list[int], sync_oci: bool = False) -> None:
     """
     Batches through years and updates all players with advanced Sabermetrics.
     """
@@ -23,7 +23,9 @@ def batch_calculate_sabermetrics(years: list[int], sync_oci: bool = False):
                 lg = SabermetricsCalculator.get_league_constants(session, year)
                 logger.info(
                     "   League Constants: wOBA=%.3f, FIP_C=%.2f, R/PA=%.3f",
-                    lg["lg_woba"], lg["fip_constant"], lg["lg_r_per_pa"],
+                    lg["lg_woba"],
+                    lg["fip_constant"],
+                    lg["lg_r_per_pa"],
                 )
             except Exception:
                 logger.exception(f"   ⚠️ Could not calculate league constants for {year}")
@@ -95,4 +97,5 @@ def main(argv: Sequence[str] | None = None) -> int:
 
 if __name__ == "__main__":
     import sys
+
     sys.exit(main())

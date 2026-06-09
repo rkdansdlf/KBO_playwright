@@ -113,11 +113,13 @@ def main() -> int:
         logger.info("  Example: python3 -m src.cli.fix_player_names --crawl --save")
         return
 
-    asyncio.run(fix_player_names(
-        max_pages=args.max_pages,
-        save=args.save,
-        sync_oci=args.sync_oci,
-    ))
+    asyncio.run(
+        fix_player_names(
+            max_pages=args.max_pages,
+            save=args.save,
+            sync_oci=args.sync_oci,
+        )
+    )
 
 
 if __name__ == "__main__":

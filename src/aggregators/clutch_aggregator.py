@@ -166,7 +166,12 @@ class ClutchAggregator:
         for i, r in enumerate(results[:top_n]):
             logger.info(
                 "  %2d  %9s %8.4f %8.4f %8.4f %9d",
-                i + 1, r['batter_id'], r['wpa_sum'], r['avg_wpa'], r['high_leverage_wpa'], r['high_leverage_count'],
+                i + 1,
+                r["batter_id"],
+                r["wpa_sum"],
+                r["avg_wpa"],
+                r["high_leverage_wpa"],
+                r["high_leverage_count"],
             )
 
         logger.info(f"{'=' * 60}")

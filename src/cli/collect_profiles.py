@@ -18,7 +18,7 @@ from src.utils.playwright_pool import AsyncPlaywrightPool
 logger = logging.getLogger(__name__)
 
 
-async def collect_profiles(limit: int = 100, target_ids: list[str] | None = None):
+async def collect_profiles(limit: int = 100, target_ids: list[str] | None = None) -> None:
     session = SessionLocal()
     repo = PlayerRepository()
     pool = AsyncPlaywrightPool(max_pages=1)

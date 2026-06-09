@@ -30,7 +30,7 @@ from src.models.game import (
 
 logger = logging.getLogger(__name__)
 
-from src.sync.sync_base import (
+from src.sync.sync_base import (  # noqa: E402
     _log_sync_eligibility,
     build_game_sync_eligibility,
     detect_dirty_game_ids,

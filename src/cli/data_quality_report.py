@@ -2,18 +2,18 @@ import logging
 from collections.abc import Sequence
 
 logger = logging.getLogger(__name__)
-import argparse
-import csv
-import json
-import os
-from datetime import datetime
+import argparse  # noqa: E402
+import csv  # noqa: E402
+import json  # noqa: E402
+import os  # noqa: E402
+from datetime import datetime  # noqa: E402
 
-from sqlalchemy import func
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy import func  # noqa: E402
+from sqlalchemy.orm import sessionmaker  # noqa: E402
 
-from src.aggregators.season_stat_aggregator import SeasonStatAggregator
-from src.db.engine import SessionLocal, create_engine_for_url
-from src.models.player import (
+from src.aggregators.season_stat_aggregator import SeasonStatAggregator  # noqa: E402
+from src.db.engine import SessionLocal, create_engine_for_url  # noqa: E402
+from src.models.player import (  # noqa: E402
     PlayerBasic,
     PlayerSeasonBaserunning,
     PlayerSeasonBatting,
@@ -22,7 +22,7 @@ from src.models.player import (
 )
 
 
-def generate_report(years: list[int], output_format: str, output_dir: str, db_url: str = None):
+def generate_report(years: list[int], output_format: str, output_dir: str, db_url: str | None = None) -> None:
     report_data = {
         "generated_at": datetime.now().isoformat(),
         "db_target": "LOCAL" if not db_url else "REMOTE",

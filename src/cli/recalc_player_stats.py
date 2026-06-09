@@ -337,9 +337,13 @@ def _print_batting_results(records: list[dict[str, Any]]) -> None:
     for r in sorted(records, key=lambda x: x["plate_appearances"], reverse=True)[:20]:
         logger.info(
             "  PID=%-6s Team=%-4s G=%-2s PA=%-3s H=%-2s AVG=%-5s OPS=%-5s",
-            r["player_id"], str(r.get("canonical_team_code", "")),
-            r["games"], r["plate_appearances"], r["hits"],
-            r["avg"], r["ops"],
+            r["player_id"],
+            str(r.get("canonical_team_code", "")),
+            r["games"],
+            r["plate_appearances"],
+            r["hits"],
+            r["avg"],
+            r["ops"],
         )
 
 
@@ -347,9 +351,13 @@ def _print_pitching_results(records: list[dict[str, Any]]) -> None:
     for r in sorted(records, key=lambda x: x["innings_pitched"] or 0, reverse=True)[:20]:
         logger.info(
             "  PID=%-6s Team=%-4s G=%-2s IP=%-5s ERA=%-5s WHIP=%-5s K=%-3s",
-            r["player_id"], str(r.get("canonical_team_code", "")),
-            r["games"], r["innings_pitched"], r["era"],
-            r["whip"], r["strikeouts"],
+            r["player_id"],
+            str(r.get("canonical_team_code", "")),
+            r["games"],
+            r["innings_pitched"],
+            r["era"],
+            r["whip"],
+            r["strikeouts"],
         )
 
 

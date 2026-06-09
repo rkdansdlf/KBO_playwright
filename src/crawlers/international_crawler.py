@@ -1,16 +1,14 @@
 import logging
-from typing import Any
-
-logger = logging.getLogger(__name__)
 import re
 from datetime import datetime
+from typing import Any
 
 from playwright.async_api import Locator, async_playwright
 
 from src.utils.playwright_blocking import install_async_resource_blocking
 from src.utils.team_codes import resolve_team_code
 
-
+logger = logging.getLogger(__name__)
 class InternationalScheduleCrawler:
     """
     Crawler for KBO International Games (e.g., Premier 12, WBC).

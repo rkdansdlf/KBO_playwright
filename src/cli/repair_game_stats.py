@@ -16,7 +16,7 @@ from src.services.stat_calculator import BattingStatCalculator, PitchingStatCalc
 logger = logging.getLogger(__name__)
 
 
-def _repair_batting():
+def _repair_batting() -> None:
     logger.info("[REPAIR] Starting batting stat repair...")
     with SessionLocal() as session:
         query = session.query(GameBattingStat).filter((GameBattingStat.avg.is_(None)) | (GameBattingStat.avg == 0.0))
@@ -63,7 +63,7 @@ def _repair_batting():
         logger.info(f"[REPAIR] Batting: Updated {updated} rows.")
 
 
-def _repair_pitching():
+def _repair_pitching() -> None:
     logger.info("[REPAIR] Starting pitching stat repair...")
     with SessionLocal() as session:
         query = session.query(GamePitchingStat).filter((GamePitchingStat.era.is_(None)) | (GamePitchingStat.era == 0.0))

@@ -8,6 +8,7 @@ import logging
 from datetime import UTC, date, datetime
 
 from sqlalchemy import and_, select
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from ..models.stadium_congestion import StadiumCongestion
@@ -61,7 +62,7 @@ class CongestionRepository:
                     created += 1
                 else:
                     updated += 1
-            except Exception:
+            except SQLAlchemyError:
                 logger.exception(
                     "Congestion upsert failed: location=%s at=%s",
                     rec.get("location_label"),

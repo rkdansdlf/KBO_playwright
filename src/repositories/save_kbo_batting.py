@@ -6,7 +6,6 @@ Compatible with SQLite, PostgreSQL, and MySQL.
 import logging
 from typing import Any
 
-logger = logging.getLogger(__name__)
 from sqlalchemy.dialects.mysql import insert as mysql_insert
 from sqlalchemy.dialects.postgresql import insert as postgresql_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
@@ -14,7 +13,7 @@ from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from src.db.engine import Engine, SessionLocal
 from src.models.player import PlayerSeasonBatting
 
-
+logger = logging.getLogger(__name__)
 def save_kbo_player_season_batting(player_data: dict[str, Any]) -> bool:
     """
     Save KBO player season batting stats to player_season_batting table.

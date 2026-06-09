@@ -45,7 +45,7 @@ def find_advanced_stats():
                     if page.query_selector(series_selector):
                         page.select_option(series_selector, value="0")
                         time.sleep(2)
-                except:
+                except Exception:  # noqa: BLE001
                     pass
 
                 # 테이블 헤더 확인

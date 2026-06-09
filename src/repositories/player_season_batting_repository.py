@@ -8,6 +8,7 @@ from typing import Any
 
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from src.db.engine import Engine, SessionLocal
@@ -48,7 +49,7 @@ class PlayerSeasonBattingRepository:
                     self._upsert_one(session, stats_data)
                 session.commit()
                 return len(batting_stats)
-            except Exception:
+            except SQLAlchemyError:
                 session.rollback()
                 logger.exception("[ERROR] Error upserting batting stats")
                 raise
@@ -175,7 +176,7 @@ class PlayerSeasonBattingRepository:
                 )
                 session.commit()
                 return deleted > 0
-            except Exception:
+            except SQLAlchemyError:
                 session.rollback()
                 logger.exception("[ERROR] Error deleting batting stats")
                 raise

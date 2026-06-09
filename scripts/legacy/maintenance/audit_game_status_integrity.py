@@ -22,8 +22,8 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from src.db.engine import SessionLocal
-from src.utils.game_status import (
+from src.db.engine import SessionLocal  # noqa: E402
+from src.utils.game_status import (  # noqa: E402
     GAME_STATUS_CANCELLED,
     GAME_STATUS_COMPLETED,
     GAME_STATUS_DRAW,

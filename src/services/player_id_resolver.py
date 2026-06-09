@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
 
-from src.models.player import Player, PlayerBasic, PlayerSeasonBatting, PlayerSeasonPitching
+from src.models.player import Player, PlayerBasic, PlayerSeasonBatting, PlayerSeasonPitching  # noqa: E402
 
 ALIAS_CSV_PATH = os.path.join(os.path.dirname(__file__), "..", "..", "data", "player_name_aliases.csv")
 

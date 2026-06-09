@@ -10,6 +10,7 @@ from typing import Any
 from zoneinfo import ZoneInfo
 
 from sqlalchemy import func
+from sqlalchemy.exc import SQLAlchemyError
 
 from src.db.engine import SessionLocal
 from src.models.game import (
@@ -42,7 +43,7 @@ def update_game_status(game_id: str, status: str) -> bool:
             game.game_status = status
             session.commit()
             return True
-        except Exception:
+        except SQLAlchemyError:
             session.rollback()
             logger.exception("[ERROR] DB Error (Status)")
             return False
@@ -112,7 +113,7 @@ def refresh_game_status_for_date(target_date: str, today: date | None = None) ->
                 "updated_game_ids": sorted(updated_game_ids),
                 "game_ids_by_status": {status: sorted(ids) for status, ids in game_ids_by_status.items()},
             }
-        except Exception:
+        except SQLAlchemyError:
             session.rollback()
             logger.exception("[ERROR] DB Error (Status Refresh)")
             return {"target_date": target_date, "total": 0, "updated": 0, "status_counts": {}}

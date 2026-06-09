@@ -12,11 +12,11 @@ from playwright.sync_api import sync_playwright
 from src.utils.playwright_blocking import install_sync_resource_blocking
 
 logger = logging.getLogger(__name__)
-import contextlib
+import contextlib  # noqa: E402
 
-from src.utils.player_season_stat_validation import filter_valid_season_stat_payloads
-from src.utils.request_policy import RequestPolicy
-from src.utils.team_codes import resolve_team_code
+from src.utils.player_season_stat_validation import filter_valid_season_stat_payloads  # noqa: E402
+from src.utils.request_policy import RequestPolicy  # noqa: E402
+from src.utils.team_codes import resolve_team_code  # noqa: E402
 
 
 def build_fielding_crawl_summary(records):

@@ -5,11 +5,14 @@
 """
 
 import argparse
+import logging
 import subprocess
 import sys
 from datetime import datetime
 
 from src.utils.series_validation import get_available_series_by_year
+
+logger = logging.getLogger(__name__)
 
 
 def recrawl_legacy_years(start_year: int = 1982, end_year: int = 2001, reset_first: bool = True, headless: bool = True):

@@ -130,7 +130,10 @@ class TeamFieldingAggregator:
         valid_teams = [code for code in team_codes if code in active_in_db and code in kbo_teams]
         logger.info(
             "[TeamFieldingAggregator] Season %s filtering: original=%d teams -> valid=%d teams (%s)",
-            season, len(team_codes), len(valid_teams), ', '.join(valid_teams),
+            season,
+            len(team_codes),
+            len(valid_teams),
+            ", ".join(valid_teams),
         )
 
         for code in valid_teams:

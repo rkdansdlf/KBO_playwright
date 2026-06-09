@@ -16,7 +16,7 @@ project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(_
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
-from src.sources.relay import derive_bucket_id
+from src.sources.relay import derive_bucket_id  # noqa: E402
 
 WAYBACK_CDX_URL = "https://web.archive.org/cdx/search/cdx"
 WAYBACK_CAPTURE_URL = "https://web.archive.org/web/{timestamp}id_/{original}"

@@ -356,7 +356,7 @@ async def crawl_futures(args: argparse.Namespace) -> dict[str, Any]:
     results: list[dict] = []
     failure_counts: Counter = Counter()
 
-    async def runner(pid: str, meta: dict):
+    async def runner(pid: str, meta: dict) -> None:
         async with semaphore:
             pos = meta["position"]
             name = meta["name"]

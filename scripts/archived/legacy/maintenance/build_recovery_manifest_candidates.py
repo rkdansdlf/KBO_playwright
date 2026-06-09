@@ -10,7 +10,7 @@ project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(_
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
-from src.sources.relay import default_source_order_for_bucket, derive_bucket_id
+from src.sources.relay import default_source_order_for_bucket, derive_bucket_id  # noqa: E402
 
 
 def _recommend_seed(source_order: list[str]) -> tuple[str, str]:

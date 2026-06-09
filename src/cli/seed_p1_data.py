@@ -6,25 +6,25 @@ import argparse
 from collections.abc import Sequence
 
 
-def run_seat(dry_run: bool = False):
+def run_seat(dry_run: bool = False) -> None:
     from scripts.seed_seat_sections import run as seat_run
 
     seat_run(dry_run=dry_run)
 
 
-def run_parking(dry_run: bool = False):
+def run_parking(dry_run: bool = False) -> None:
     from scripts.seed_parking import run as parking_run
 
     parking_run(dry_run=dry_run)
 
 
-def run_food(dry_run: bool = False):
+def run_food(dry_run: bool = False) -> None:
     from scripts.seed_stadium_food import run as food_run
 
     food_run(dry_run=dry_run)
 
 
-def run_all(dry_run: bool = False):
+def run_all(dry_run: bool = False) -> None:
     run_seat(dry_run=dry_run)
     run_parking(dry_run=dry_run)
     run_food(dry_run=dry_run)

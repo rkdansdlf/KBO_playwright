@@ -12,8 +12,6 @@ import sys
 from datetime import datetime
 from typing import Any
 
-logger = logging.getLogger(__name__)
-
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
 from playwright.sync_api import Page, sync_playwright
@@ -23,7 +21,7 @@ from src.utils.playwright_blocking import install_sync_resource_blocking
 from src.utils.playwright_helpers import goto_next_page
 from src.utils.request_policy import RequestPolicy
 
-
+logger = logging.getLogger(__name__)
 def safe_parse_number(value_str: str, data_type: type, allow_zero: bool = True) -> int | float | None:
     """안전한 숫자 파싱 (0값 보존)"""
     if not value_str:
@@ -254,7 +252,9 @@ def parse_other_series_stats(cells: list) -> dict[str, Any]:
     return stats
 
 
-def crawl_basic2_with_headers(page: Page, year: int, series_info: dict, policy: RequestPolicy | None = None) -> dict[int, dict]:
+def crawl_basic2_with_headers(
+    page: Page, year: int, series_info: dict, policy: RequestPolicy | None = None
+) -> dict[int, dict]:
     """
     Basic2 헤더 클릭으로 추가 데이터 수집
     컬럼: BB,IBB,HBP,SO,GDP,SLG,OBP,OPS,MH,RISP,PH-BA
@@ -466,7 +466,9 @@ def extract_basic2_stats(cells: list, sort_field: str) -> dict[str, Any]:
     return stats
 
 
-def crawl_other_series_data(page: Page, year: int, series_list: list[dict], policy: RequestPolicy | None = None) -> dict[str, dict[int, dict]]:
+def crawl_other_series_data(
+    page: Page, year: int, series_list: list[dict], policy: RequestPolicy | None = None
+) -> dict[str, dict[int, dict]]:
     """기타 시리즈 데이터 크롤링 (기본 데이터만)"""
     all_series_data = {}
 

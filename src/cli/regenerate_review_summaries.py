@@ -102,7 +102,7 @@ def _default_backup_path() -> Path:
     return Path("data/recovery") / f"review_summary_regen_backup_{stamp}.csv"
 
 
-def _season_filters(seasons: Iterable[int]):
+def _season_filters(seasons: Iterable[int]) -> list:
     filters = []
     for season in sorted(set(seasons)):
         filters.append(
@@ -114,7 +114,7 @@ def _season_filters(seasons: Iterable[int]):
     return filters
 
 
-def _query_target_games(session, *, game_ids: Sequence[str], dates: Sequence[str], seasons: Sequence[int]):
+def _query_target_games(session, *, game_ids: Sequence[str], dates: Sequence[str], seasons: Sequence[int]) -> list:
     query = session.query(Game)
     filters = []
     if game_ids:

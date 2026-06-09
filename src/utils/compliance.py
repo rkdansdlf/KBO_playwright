@@ -6,12 +6,12 @@ Robots.txt compliance checker for KBO Data Crawler.
 Ensures that we follow Disallow rules from koreabaseball.com.
 """
 
-import asyncio
-import time
-import urllib.robotparser
-from typing import Optional
+import asyncio  # noqa: E402
+import time  # noqa: E402
+import urllib.robotparser  # noqa: E402
+from typing import Optional  # noqa: E402
 
-import httpx
+import httpx  # noqa: E402
 
 
 class ComplianceChecker:

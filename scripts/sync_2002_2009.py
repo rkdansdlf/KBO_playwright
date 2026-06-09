@@ -7,9 +7,9 @@ from dotenv import load_dotenv
 logger = logging.getLogger(__name__)
 
 sys.path.insert(0, os.getcwd())
-from src.db.engine import SessionLocal
-from src.models.player import PlayerSeasonBatting, PlayerSeasonPitching
-from src.sync.oci_sync import OCISync
+from src.db.engine import SessionLocal  # noqa: E402
+from src.models.player import PlayerSeasonBatting, PlayerSeasonPitching  # noqa: E402
+from src.sync.oci_sync import OCISync  # noqa: E402
 
 
 def sync_2002_2009():

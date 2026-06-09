@@ -21,7 +21,7 @@ from src.utils.game_status import COMPLETED_LIKE_GAME_STATUSES
 logger = logging.getLogger(__name__)
 
 
-def calculate_games_behind(wins, losses, leader_wins, leader_losses):
+def calculate_games_behind(wins: int, losses: int, leader_wins: int, leader_losses: int) -> float:
     return ((leader_wins - wins) + (losses - leader_losses)) / 2.0
 
 
@@ -31,10 +31,10 @@ def iso_week_number(d: date) -> str:
 
 
 class StandingsCalculator:
-    def __init__(self, session):
+    def __init__(self, session) -> None:
         self.session = session
 
-    def calculate_year(self, year: int):
+    def calculate_year(self, year: int) -> None:
         games = (
             self.session.query(Game)
             .join(KboSeason, Game.season_id == KboSeason.season_id)
@@ -54,7 +54,7 @@ class StandingsCalculator:
         logger.info(f"[Standings] {year}년 {len(games)}경기 로드. 순위 연산 시작...")
 
         class TeamState:
-            def __init__(self, team_code):
+            def __init__(self, team_code: str) -> None:
                 self.team_code = team_code
                 self.wins = 0
                 self.losses = 0
@@ -71,27 +71,27 @@ class StandingsCalculator:
                 self.weekly_losses: dict[str, int] = defaultdict(int)
 
             @property
-            def games_played(self):
+            def games_played(self) -> int:
                 return self.wins + self.losses + self.draws
 
             @property
-            def win_pct(self):
+            def win_pct(self) -> float:
                 total = self.wins + self.losses
                 return self.wins / total if total > 0 else 0.0
 
             @property
-            def recent_10_wins(self):
+            def recent_10_wins(self) -> int:
                 return sum(1 for r in self.recent_games if r == "W")
 
             @property
-            def recent_10_losses(self):
+            def recent_10_losses(self) -> int:
                 return sum(1 for r in self.recent_games if r == "L")
 
             @property
-            def recent_10_draws(self):
+            def recent_10_draws(self) -> int:
                 return sum(1 for r in self.recent_games if r == "D")
 
-            def add_game(self, is_win, is_loss, is_draw, runs_for, runs_against, is_home, game_date):
+            def add_game(self, is_win: bool, is_loss: bool, is_draw: bool, runs_for: int, runs_against: int, is_home: bool, game_date: date) -> None:
                 self.runs_scored += runs_for
                 self.runs_allowed += runs_against
 
@@ -205,7 +205,7 @@ class StandingsCalculator:
         self.session.commit()
         logger.info(f"[Standings] {year} 시즌 순위표 계산 완료!")
 
-    def print_report(self, year: int, target_date: date = None):
+    def print_report(self, year: int, target_date: date | None = None) -> None:
         query = self.session.query(TeamStandingsDaily).filter(
             extract("year", TeamStandingsDaily.standings_date) == year
         )
@@ -230,7 +230,17 @@ class StandingsCalculator:
         logger.info(f"{'=' * 70}")
         logger.info(
             "%-4s %-6s %4s %4s %3s %7s %5s %8s %4s %8s %8s",
-            "순위", "팀", "승", "패", "무", "승률", "승차", "최근10", "연속", "홈", "원정",
+            "순위",
+            "팀",
+            "승",
+            "패",
+            "무",
+            "승률",
+            "승차",
+            "최근10",
+            "연속",
+            "홈",
+            "원정",
         )
         logger.info("%s", "-" * 70)
 
@@ -244,7 +254,17 @@ class StandingsCalculator:
             away_s = f"{r.away_wins}승{r.away_losses}패"
             logger.info(
                 "  ★%2d  %-6s %4d %4d %3d  %.3f  %4.1f  %8s %4s %8s %8s",
-                r.rank, r.team_code, r.wins, r.losses, r.draws, r.win_pct, r.games_behind, recent, streak_s, home_s, away_s,
+                r.rank,
+                r.team_code,
+                r.wins,
+                r.losses,
+                r.draws,
+                r.win_pct,
+                r.games_behind,
+                recent,
+                streak_s,
+                home_s,
+                away_s,
             )
 
         if bottom_5_rows:
@@ -256,13 +276,23 @@ class StandingsCalculator:
                 away_s = f"{r.away_wins}승{r.away_losses}패"
                 logger.info(
                     "    %2d  %-6s %4d %4d %3d  %.3f  %4.1f  %8s %4s %8s %8s",
-                    r.rank, r.team_code, r.wins, r.losses, r.draws, r.win_pct, r.games_behind, recent, streak_s, home_s, away_s,
+                    r.rank,
+                    r.team_code,
+                    r.wins,
+                    r.losses,
+                    r.draws,
+                    r.win_pct,
+                    r.games_behind,
+                    recent,
+                    streak_s,
+                    home_s,
+                    away_s,
                 )
 
         logger.info(f"{'=' * 70}")
         logger.info("  ★ 상위 5팀 (5강)" if top_5_rows else "")
 
-    def print_trend(self, year: int, team_code: str = None):
+    def print_trend(self, year: int, team_code: str | None = None) -> None:
         rows = (
             self.session.query(TeamStandingsDaily)
             .filter(extract("year", TeamStandingsDaily.standings_date) == year)
@@ -294,7 +324,12 @@ class StandingsCalculator:
                 recent = f"{last.recent_10_wins}승{last.recent_10_losses}패"
                 logger.info(
                     "  %s  %3d %3d  %.3f  %d위  %s",
-                    last.standings_date, last.wins, last.losses, last.win_pct, last.rank, recent,
+                    last.standings_date,
+                    last.wins,
+                    last.losses,
+                    last.win_pct,
+                    last.rank,
+                    recent,
                 )
 
 

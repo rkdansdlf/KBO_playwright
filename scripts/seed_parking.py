@@ -11,8 +11,8 @@ logger = logging.getLogger(__name__)
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from src.db.engine import SessionLocal
-from src.repositories.parking_lot_repository import ParkingFeeRuleRepository, ParkingLotRepository
+from src.db.engine import SessionLocal  # noqa: E402
+from src.repositories.parking_lot_repository import ParkingFeeRuleRepository, ParkingLotRepository  # noqa: E402
 
 PARKING_DATA = [
     {

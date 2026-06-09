@@ -6,8 +6,8 @@ WPA (Win Probability Added) Calculator Service.
 Uses a Win Expectancy Matrix (CSV) to calculate the shift in win probability for each event.
 """
 
-import csv
-import os
+import csv  # noqa: E402
+import os  # noqa: E402
 
 
 class WPACalculator:

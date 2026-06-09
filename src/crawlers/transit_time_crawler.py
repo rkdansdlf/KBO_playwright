@@ -148,10 +148,10 @@ class TransitTimeCrawler:
             for rec in records:
                 logger.info(
                     "  %s | %s | %smin | %s",
-                    rec['origin_label'],
-                    rec['transport_mode'],
-                    rec['duration_minutes'],
-                    rec['source_api'],
+                    rec["origin_label"],
+                    rec["transport_mode"],
+                    rec["duration_minutes"],
+                    rec["source_api"],
                 )
 
         return records

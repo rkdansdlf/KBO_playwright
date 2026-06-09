@@ -7,6 +7,7 @@ import logging
 from typing import Any
 
 from sqlalchemy import text
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from src.db.engine import SessionLocal
@@ -57,7 +58,7 @@ def save_pitching_stats(pitching_stats: list[dict[str, Any]]) -> int:
             session.commit()
             return saved_count
 
-        except Exception:
+        except SQLAlchemyError:
             session.rollback()
             logger.exception("[ERROR] 투수 기록 저장 실패")
             raise

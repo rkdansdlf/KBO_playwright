@@ -44,7 +44,7 @@ def resolve_event_games(dry_run=False):
             # Extract season from game_id (e.g. 20220716...) -> 2022
             try:
                 season = int(row.game_id[:4])
-            except:
+            except Exception:  # noqa: BLE001
                 print(f"⚠️  Invalid game_id: {row.game_id}")
                 continue
 
@@ -76,7 +76,7 @@ def resolve_event_games(dry_run=False):
         for row in rows:
             try:
                 season = int(row.game_id[:4])
-            except:
+            except Exception:  # noqa: BLE001
                 continue
 
             pid = resolver.resolve_id(row.player_name, row.team_code, season, row.uniform_no)

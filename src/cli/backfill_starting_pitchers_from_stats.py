@@ -333,7 +333,8 @@ def main() -> int:
         updated_target_rows = update_target_pitcher_fields(target_missing_ready_rows)
         logger.info(
             "target_missing_pitcher_update: candidates=%d, updated=%s",
-            len(target_missing_ready_rows), updated_target_rows,
+            len(target_missing_ready_rows),
+            updated_target_rows,
         )
         return 0
 

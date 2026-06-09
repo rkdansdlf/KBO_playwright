@@ -19,8 +19,8 @@ logger = logging.getLogger(__name__)
 ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(ROOT))
 
-from src.db.engine import SessionLocal
-from src.repositories.fan_culture_repository import FanCultureRepository
+from src.db.engine import SessionLocal  # noqa: E402
+from src.repositories.fan_culture_repository import FanCultureRepository  # noqa: E402
 
 RIVALRIES_CSV = ROOT / "data" / "seed" / "team_rivalries.csv"
 

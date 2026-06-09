@@ -51,7 +51,7 @@ def cleanup_ghost_games():
 
         deleted_count = 0
 
-        for g_date, home, away, count in duplicates:
+        for g_date, home, away, _ in duplicates:
             # Get all game records for this pair
             games = session.query(Game).filter_by(game_date=g_date, home_team=home, away_team=away).all()
 

@@ -11,7 +11,7 @@ project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(_
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
-from src.sources.relay import CapabilityRecord, upsert_capability_record
+from src.sources.relay import CapabilityRecord, upsert_capability_record  # noqa: E402
 
 
 def apply_overrides(override_path: Path, capability_path: Path) -> int:

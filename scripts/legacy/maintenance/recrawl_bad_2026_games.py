@@ -8,10 +8,10 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from src.crawlers.game_detail_crawler import GameDetailCrawler
-from src.db.engine import SessionLocal
-from src.repositories.game_repository import save_game_detail
-from src.services.player_id_resolver import PlayerIdResolver
+from src.crawlers.game_detail_crawler import GameDetailCrawler  # noqa: E402
+from src.db.engine import SessionLocal  # noqa: E402
+from src.repositories.game_repository import save_game_detail  # noqa: E402
+from src.services.player_id_resolver import PlayerIdResolver  # noqa: E402
 
 
 async def recrawl_bad_games(year=2026, limit=10):
