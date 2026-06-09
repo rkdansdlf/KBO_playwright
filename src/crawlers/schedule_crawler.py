@@ -10,8 +10,6 @@ from typing import Any
 
 from playwright.async_api import Page
 
-logger = logging.getLogger(__name__)
-
 from src.utils.compliance import compliance
 from src.utils.game_status import (
     GAME_STATUS_CANCELLED,
@@ -28,7 +26,7 @@ from src.utils.request_policy import RequestPolicy
 from src.utils.schedule_validation import validate_schedule_game_payload
 from src.utils.team_codes import normalize_kbo_game_id, resolve_team_code, team_code_from_game_id_segment
 
-
+logger = logging.getLogger(__name__)
 class ScheduleCrawler:
     """KBO 공식 사이트의 월별 경기 일정 페이지에서 경기 정보를 크롤링하는 클래스.
 
@@ -539,7 +537,7 @@ class ScheduleCrawler:
                 if not is_valid:
                     logger.warning(
                         "Filtered schedule row: %s reason=%s",
-                        schedule_game.get('game_id') or '<missing>',
+                        schedule_game.get("game_id") or "<missing>",
                         failure_reason,
                     )
                     continue

@@ -34,7 +34,7 @@ async def collect_games(
     game_ids: list[str] | None = None,
     force: bool = False,
     concurrency: int | None = None,
-):
+) -> None:
     if game_ids:
         targets = load_game_targets_by_ids(game_ids)
     else:

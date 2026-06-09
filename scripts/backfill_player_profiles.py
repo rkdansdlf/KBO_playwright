@@ -16,13 +16,13 @@ logger = logging.getLogger(__name__)
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 
-from sqlalchemy import or_
+from sqlalchemy import or_  # noqa: E402
 
-from src.crawlers.player_profile_crawler import PlayerProfileCrawler
-from src.db.engine import SessionLocal
-from src.models.player import PlayerBasic
-from src.repositories.player_basic_repository import PlayerBasicRepository
-from src.utils.playwright_pool import AsyncPlaywrightPool
+from src.crawlers.player_profile_crawler import PlayerProfileCrawler  # noqa: E402
+from src.db.engine import SessionLocal  # noqa: E402
+from src.models.player import PlayerBasic  # noqa: E402
+from src.repositories.player_basic_repository import PlayerBasicRepository  # noqa: E402
+from src.utils.playwright_pool import AsyncPlaywrightPool  # noqa: E402
 
 
 async def backfill(limit: int, delay: float, ids: list[str] | None = None):

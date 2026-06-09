@@ -20,11 +20,11 @@ ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from src.models.franchise import Franchise
-from src.models.team import Team, TeamCodeMap
-from src.models.team_history import TeamHistory
-from src.utils.team_codes import team_code_from_game_id_segment
-from src.utils.team_history import FRANCHISE_CANONICAL_CODE, find_team_history_entry, iter_team_history
+from src.models.franchise import Franchise  # noqa: E402
+from src.models.team import Team, TeamCodeMap  # noqa: E402
+from src.models.team_history import TeamHistory  # noqa: E402
+from src.utils.team_codes import team_code_from_game_id_segment  # noqa: E402
+from src.utils.team_history import FRANCHISE_CANONICAL_CODE, find_team_history_entry, iter_team_history  # noqa: E402
 
 DEFAULT_DB_URL = "sqlite:///./data/kbo_dev.db"
 SOURCE_URL = "https://www.koreabaseball.com/Kbo/League/TeamHistory.aspx"

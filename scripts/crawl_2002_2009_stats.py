@@ -12,15 +12,19 @@ logger = logging.getLogger(__name__)
 
 sys.path.insert(0, os.getcwd())
 
-from playwright.sync_api import sync_playwright
-from src.repositories.safe_pitching_repository import save_pitching_stats_safe
+from playwright.sync_api import sync_playwright  # noqa: E402
+from src.repositories.safe_pitching_repository import save_pitching_stats_safe  # noqa: E402
 
-from src.crawlers.player_batting_all_series_crawler import _build_batting_data
-from src.crawlers.player_batting_all_series_crawler import get_series_mapping as get_batting_series_mapping
-from src.crawlers.player_pitching_all_series_crawler import _build_pitching_data
-from src.crawlers.player_pitching_all_series_crawler import get_series_mapping as get_pitching_series_mapping
-from src.repositories.safe_batting_repository import save_batting_stats_safe
-from src.utils.team_codes import resolve_team_code
+from src.crawlers.player_batting_all_series_crawler import _build_batting_data  # noqa: E402
+from src.crawlers.player_batting_all_series_crawler import (
+    get_series_mapping as get_batting_series_mapping,  # noqa: E402
+)
+from src.crawlers.player_pitching_all_series_crawler import _build_pitching_data  # noqa: E402
+from src.crawlers.player_pitching_all_series_crawler import (
+    get_series_mapping as get_pitching_series_mapping,  # noqa: E402
+)
+from src.repositories.safe_batting_repository import save_batting_stats_safe  # noqa: E402
+from src.utils.team_codes import resolve_team_code  # noqa: E402
 
 # Custom extraction scripts
 EXTRACT_BATTING_JS = r"""

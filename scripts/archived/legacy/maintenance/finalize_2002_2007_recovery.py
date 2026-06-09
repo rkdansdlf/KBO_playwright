@@ -12,7 +12,7 @@ def is_process_running(process_name_pattern):
         # Check if recover_historical_games.py is running
         res = subprocess.run(["ps", "aux"], capture_output=True, text=True)
         return process_name_pattern in res.stdout
-    except:
+    except Exception:  # noqa: BLE001
         return False
 
 

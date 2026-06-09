@@ -137,7 +137,7 @@ def robust_crawl_2001():
                     page1_btn.click()
                     page.wait_for_load_state("networkidle")
                     time.sleep(2)
-            except:
+            except Exception:  # noqa: BLE001
                 pass
 
             page_num = 1
@@ -180,7 +180,7 @@ def robust_crawl_2001():
                             arg=first_player_before,
                             timeout=5000,
                         )
-                    except:
+                    except Exception:  # noqa: BLE001
                         pass
 
                     time.sleep(2)

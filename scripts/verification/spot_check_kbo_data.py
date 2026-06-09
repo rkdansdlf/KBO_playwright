@@ -23,12 +23,12 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from src.crawlers.game_detail_crawler import GameDetailCrawler
-from src.crawlers.player_profile_crawler import PlayerProfileCrawler
-from src.db.engine import SessionLocal
-from src.models.game import Game, GameBattingStat, GameInningScore, GamePitchingStat
-from src.models.player import PlayerBasic
-from src.utils.playwright_pool import AsyncPlaywrightPool
+from src.crawlers.game_detail_crawler import GameDetailCrawler  # noqa: E402
+from src.crawlers.player_profile_crawler import PlayerProfileCrawler  # noqa: E402
+from src.db.engine import SessionLocal  # noqa: E402
+from src.models.game import Game, GameBattingStat, GameInningScore, GamePitchingStat  # noqa: E402
+from src.models.player import PlayerBasic  # noqa: E402
+from src.utils.playwright_pool import AsyncPlaywrightPool  # noqa: E402
 
 
 class SpotChecker:

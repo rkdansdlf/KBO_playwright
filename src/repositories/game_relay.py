@@ -10,6 +10,8 @@ from collections.abc import Iterable
 from datetime import datetime
 from typing import Any
 
+from sqlalchemy.exc import SQLAlchemyError
+
 from src.db.engine import SessionLocal
 from src.models.game import (
     Game,
@@ -201,7 +203,7 @@ def backfill_game_play_by_play_from_existing_events(game_id: str) -> int:
             session.commit()
             _auto_sync_to_oci(game_id)
             return len(pbp_mappings)
-        except Exception:
+        except SQLAlchemyError:
             session.rollback()
             logger.exception("[ERROR] DB Error (Derived Relay Backfill)")
             return 0
@@ -243,7 +245,7 @@ def backfill_missing_game_stubs_for_relays(
                 _ensure_game_stub(session, game_id)
 
             session.commit()
-        except Exception:
+        except SQLAlchemyError:
             session.rollback()
             logger.exception("[ERROR] DB Error (Game Stub Backfill)")
             return 0
@@ -294,7 +296,7 @@ def mark_relay_source_unavailable(
                 evidence=evidence or {"reason": reason},
             )
             session.commit()
-        except Exception:
+        except SQLAlchemyError:
             session.rollback()
             logger.exception("[ERROR] DB Error (Relay Source Unavailable)")
             return False
@@ -392,7 +394,7 @@ def repair_game_parent_from_existing_children(
             _apply_game_team_identity(game, season_year)
             _enrich_existing_child_team_identity(session, game_id, season_year)
             session.commit()
-        except Exception:
+        except SQLAlchemyError:
             session.rollback()
             logger.exception("[ERROR] DB Error (Game Parent Repair)")
             return False
@@ -769,12 +771,15 @@ def save_relay_data(
             if events and not valid_event_rows:
                 logger.warning(
                     "Relay save for %s: saved_event_rows=0 saved_pbp_rows=%d skipped_event_rows_reason=insufficient_relay_state",
-                    game_id, len(pbp_rows),
+                    game_id,
+                    len(pbp_rows),
                 )
             else:
                 logger.info(
                     "Relay save for %s: saved_event_rows=%d saved_pbp_rows=%d",
-                    game_id, len(event_rows) if event_rows else 0, len(pbp_rows),
+                    game_id,
+                    len(event_rows) if event_rows else 0,
+                    len(pbp_rows),
                 )
             return len(event_rows) if event_rows else len(pbp_rows)
         except Exception:

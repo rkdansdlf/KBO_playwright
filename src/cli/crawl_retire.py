@@ -127,7 +127,7 @@ async def crawl_retired_players(args: argparse.Namespace) -> None:
     repository = PlayerRepository()
     semaphore = asyncio.Semaphore(args.concurrency)  # 동시 요청 수 제어
 
-    async def runner(pid: str):
+    async def runner(pid: str) -> None:
         async with semaphore:
             try:
                 logger.info(f"📡 Processing player {pid}...")

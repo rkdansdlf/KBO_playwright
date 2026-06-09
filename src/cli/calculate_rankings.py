@@ -21,7 +21,7 @@ from src.models.rankings import StatRanking
 logger = logging.getLogger(__name__)
 
 
-def _dictify_rows(rows, label_lookup):
+def _dictify_rows(rows, label_lookup) -> list[dict]:
     """Convert ORM rows to dicts and inject player names."""
     result = []
     for row in rows:

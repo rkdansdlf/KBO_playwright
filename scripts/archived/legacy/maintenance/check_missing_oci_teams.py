@@ -19,7 +19,7 @@ ROOT = pathlib.Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from src.db.engine import create_engine_for_url
+from src.db.engine import create_engine_for_url  # noqa: E402
 
 
 def fetch_team_ids(engine, query: str) -> set[str]:

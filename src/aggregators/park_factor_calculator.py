@@ -120,7 +120,11 @@ class ParkFactorCalculator:
             pf_label = r["park_factor_label"]
             logger.info(
                 "  %-18s %4d %5.1f %5.3f  %s",
-                r['stadium'], r['games'], r['runs_per_game'], r['park_factor'], pf_label,
+                r["stadium"],
+                r["games"],
+                r["runs_per_game"],
+                r["park_factor"],
+                pf_label,
             )
 
         logger.info(f"{'=' * 70}")

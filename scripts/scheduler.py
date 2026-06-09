@@ -46,22 +46,22 @@ PROJECT_ROOT = Path(__file__).parent.parent
 sys.path.append(str(PROJECT_ROOT))
 load_dotenv(PROJECT_ROOT / ".env")
 
-from apscheduler.events import EVENT_JOB_ERROR
-from apscheduler.schedulers.blocking import BlockingScheduler
-from apscheduler.triggers.cron import CronTrigger
-from sqlalchemy import text
-from tenacity import retry, stop_after_attempt, wait_exponential
+from apscheduler.events import EVENT_JOB_ERROR  # noqa: E402
+from apscheduler.schedulers.blocking import BlockingScheduler  # noqa: E402
+from apscheduler.triggers.cron import CronTrigger  # noqa: E402
+from sqlalchemy import text  # noqa: E402
+from tenacity import retry, stop_after_attempt, wait_exponential  # noqa: E402
 
-from src.cli.crawl_futures import main as crawl_futures_main
-from src.cli.crawl_retire import main as crawl_retire_main
-from src.cli.daily_preview_batch import run_preview_batch
-from src.cli.live_crawler import run_live_crawler_cycle
-from src.cli.monthly_unified_audit import crawl_monthly_unified_audit_job
-from src.cli.run_daily_update import format_stability_alert_summary
-from src.cli.run_daily_update import main as run_daily_update_main
-from src.db.engine import SessionLocal
-from src.sync.oci_sync import OCISync
-from src.utils.alerting import SlackWebhookClient
+from src.cli.crawl_futures import main as crawl_futures_main  # noqa: E402
+from src.cli.crawl_retire import main as crawl_retire_main  # noqa: E402
+from src.cli.daily_preview_batch import run_preview_batch  # noqa: E402
+from src.cli.live_crawler import run_live_crawler_cycle  # noqa: E402
+from src.cli.monthly_unified_audit import crawl_monthly_unified_audit_job  # noqa: E402
+from src.cli.run_daily_update import format_stability_alert_summary  # noqa: E402
+from src.cli.run_daily_update import main as run_daily_update_main  # noqa: E402
+from src.db.engine import SessionLocal  # noqa: E402
+from src.sync.oci_sync import OCISync  # noqa: E402
+from src.utils.alerting import SlackWebhookClient  # noqa: E402
 
 # Stadium real-time data job functions (imported lazily inside job bodies to avoid startup overhead)
 

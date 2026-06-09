@@ -26,7 +26,7 @@ KST = ZoneInfo("Asia/Seoul")
 async def run_weekly_maintenance(
     profile_limit: int = 100,
     sync: bool = False,
-):
+) -> None:
     logger.info(f"\n{'=' * 60}")
     logger.info(f"🚀 KBO Weekly Maintenance Started: {datetime.now(KST).strftime('%Y-%m-%d %H:%M:%S')}")
     logger.info(f"{'=' * 60}")

@@ -14,10 +14,10 @@ logger = logging.getLogger(__name__)
 # Add project root to sys.path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from sqlalchemy import select, update
+from sqlalchemy import select, update  # noqa: E402
 
-from src.db.engine import SessionLocal
-from src.models.player import PlayerBasic
+from src.db.engine import SessionLocal  # noqa: E402
+from src.models.player import PlayerBasic  # noqa: E402
 
 # Standard formatting options for direct datetime.strptime parsing
 _FORMATS: tuple[str, ...] = (

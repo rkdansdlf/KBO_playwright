@@ -46,7 +46,7 @@ def run_monthly_team_audit(year: int) -> dict[str, Any]:
         return result
 
 
-def crawl_monthly_team_audit_job():
+def crawl_monthly_team_audit_job() -> None:
     """Scheduled job entry point — logs results, saves report, raises on failure."""
     KST = ZoneInfo("Asia/Seoul")
     current_year = datetime.now(KST).year

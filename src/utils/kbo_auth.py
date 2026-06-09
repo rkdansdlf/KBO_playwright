@@ -7,11 +7,10 @@ import asyncio
 import logging
 import os
 
-logger = logging.getLogger(__name__)
-
 from dotenv import load_dotenv
 from playwright.async_api import async_playwright
 
+logger = logging.getLogger(__name__)
 load_dotenv()
 
 

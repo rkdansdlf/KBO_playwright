@@ -78,7 +78,7 @@ def enrich_and_prepare_contents(all_chunks: list[dict[str, Any]]) -> list[str]:
     return contents_to_embed
 
 
-async def run_static_pipeline(pdf_path: str | None = None):
+async def run_static_pipeline(pdf_path: str | None = None) -> None:
     """
     Runs extraction, chunking, and embedding for static rulebooks and wikis.
     """
@@ -206,7 +206,7 @@ async def run_static_pipeline(pdf_path: str | None = None):
                         syncer.close()
 
 
-async def run_dynamic_pipeline():
+async def run_dynamic_pipeline() -> None:
     """
     Runs extraction and DB updates for schedules, rosters, and ticket times.
     """
@@ -248,7 +248,7 @@ async def run_dynamic_pipeline():
                     syncer.close()
 
 
-async def run_realtime_pipeline():
+async def run_realtime_pipeline() -> None:
     """
     Runs news and community thread crawler, transforms text, embeds and loads.
     """
@@ -316,7 +316,7 @@ async def run_realtime_pipeline():
                         syncer.close()
 
 
-def run_consistency_check(deep: bool = False):
+def run_consistency_check(deep: bool = False) -> None:
     """
     Runs a post-sync consistency audit between local SQLite and OCI.
     Sends an alert if mismatches are found. Skips silently if OCI is not configured.
@@ -339,7 +339,7 @@ def run_consistency_check(deep: bool = False):
         SlackWebhookClient.send_error_alert(f"Consistency audit error:\n{err_msg}")
 
 
-def run_pipeline_sync(pipeline_type: str, pdf_path: str | None = None):
+def run_pipeline_sync(pipeline_type: str, pdf_path: str | None = None) -> None:
     """
     Helper to run async pipeline synchronously and catch errors for Telegram alerts.
     After OCI sync completes, automatically runs a count-level consistency audit.
@@ -367,7 +367,7 @@ def run_pipeline_sync(pipeline_type: str, pdf_path: str | None = None):
         run_consistency_check(deep=False)
 
 
-def start_scheduler():
+def start_scheduler() -> None:
     """
     Starts APScheduler daemon in the background to execute pipelines periodically.
     """

@@ -1,6 +1,5 @@
 import logging
 
-logger = logging.getLogger(__name__)
 from sqlalchemy import case, func, select
 
 from src.db.engine import SessionLocal
@@ -16,7 +15,7 @@ from src.models.matchup import (
 )
 from src.models.player import PlayerBasic
 
-
+logger = logging.getLogger(__name__)
 class MatchupEngine:
     """Service to aggregate splits matrices natively from Box Scores and Play-by-Play."""
 

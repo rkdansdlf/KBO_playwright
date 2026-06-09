@@ -11,11 +11,11 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
-from bs4 import BeautifulSoup
-from pypdf import PdfReader
+from bs4 import BeautifulSoup  # noqa: E402
+from pypdf import PdfReader  # noqa: E402
 
-from src.db.engine import SessionLocal
-from src.utils.playwright_pool import AsyncPlaywrightPool
+from src.db.engine import SessionLocal  # noqa: E402
+from src.utils.playwright_pool import AsyncPlaywrightPool  # noqa: E402
 
 
 class StaticTextCrawler:

@@ -805,7 +805,9 @@ class OCISyncBase:
                 else:
                     effective_update_timestamp = update_timestamp
                 self._bulk_copy_upsert(
-                    model.__tablename__, records, conflict_keys,
+                    model.__tablename__,
+                    records,
+                    conflict_keys,
                     update_timestamp=effective_update_timestamp,
                     connection=connection,
                 )

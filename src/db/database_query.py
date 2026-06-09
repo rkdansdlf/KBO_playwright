@@ -6,14 +6,12 @@ Provides specialized query functions for player and game data.
 import logging
 from typing import Any
 
-logger = logging.getLogger(__name__)
-
 from sqlalchemy import and_, select
 
 from src.db.engine import SessionLocal
 from src.models.player import PlayerBasic, PlayerSeasonFielding
 
-
+logger = logging.getLogger(__name__)
 def get_player_defensive_stats(player_name: str, year: int) -> list[dict[str, Any]]:
     """
     Retrieves defensive statistics for a specific player and year.

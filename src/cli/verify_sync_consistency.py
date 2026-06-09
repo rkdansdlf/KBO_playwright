@@ -110,7 +110,7 @@ def check_deep_ids(sqlite_conn, oci_conn, table_name: str, pk_cols: list[str]) -
         res_oci = oci_conn.execute(text(f"SELECT {cols_str} FROM {table_name}"))
         oci_rows = res_oci.fetchall()
 
-        def stringify_row(row):
+        def stringify_row(row) -> str:
             return tuple(val.isoformat() if hasattr(val, "isoformat") else str(val) for val in row)
 
         sqlite_ids = {stringify_row(row) for row in sqlite_rows}

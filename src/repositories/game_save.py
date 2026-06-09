@@ -9,6 +9,8 @@ import logging
 from datetime import datetime
 from typing import Any
 
+from sqlalchemy.exc import SQLAlchemyError
+
 from src.db.engine import SessionLocal
 from src.models.game import (
     Game,
@@ -241,7 +243,7 @@ def save_schedule_game(
 
             session.commit()
             return True
-        except Exception:
+        except SQLAlchemyError:
             session.rollback()
             logger.exception("[ERROR] DB Error (Schedule)")
             return False

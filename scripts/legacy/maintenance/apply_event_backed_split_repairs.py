@@ -16,7 +16,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from scripts.legacy.maintenance.propose_event_backed_split_repairs import ADDITIVE_BATTING_COLUMNS
+from scripts.legacy.maintenance.propose_event_backed_split_repairs import ADDITIVE_BATTING_COLUMNS  # noqa: E402
 
 DEFAULT_DB_PATH = Path("data/kbo_dev.db")
 DEFAULT_OUTPUT_DIR = Path("data/event_backed_split_repairs")

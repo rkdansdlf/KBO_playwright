@@ -18,12 +18,12 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-import logging
+import logging  # noqa: E402
 
-from src.crawlers.player_profile_crawler import PlayerProfileCrawler
-from src.db.engine import SessionLocal
-from src.repositories.player_basic_repository import PlayerBasicRepository
-from src.utils.player_validation import validate_player_payload
+from src.crawlers.player_profile_crawler import PlayerProfileCrawler  # noqa: E402
+from src.db.engine import SessionLocal  # noqa: E402
+from src.repositories.player_basic_repository import PlayerBasicRepository  # noqa: E402
+from src.utils.player_validation import validate_player_payload  # noqa: E402
 
 logger = logging.getLogger(__name__)
 DEFAULT_REPORT_DIR = Path("data/player_profile_backfill")

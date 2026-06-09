@@ -100,7 +100,6 @@ def backfill_fact_tables(conn):
     with conn.begin():
         # 1. Update Game Franchise IDs
         print("    - Updating Game table...")
-        game_updates = []
         for code, fid in code_to_fid.items():
             # Using param binding would be safer but constructing raw sql for speed
             # These are internal codes, safe from injection

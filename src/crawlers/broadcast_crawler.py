@@ -8,9 +8,9 @@ from sqlalchemy.exc import SQLAlchemyError
 from src.db.engine import SessionLocal
 
 logger = logging.getLogger(__name__)
-from src.repositories.broadcast_repository import BroadcastRepository
-from src.utils.playwright_blocking import install_async_resource_blocking
-from src.utils.team_codes import build_kbo_game_id
+from src.repositories.broadcast_repository import BroadcastRepository  # noqa: E402
+from src.utils.playwright_blocking import install_async_resource_blocking  # noqa: E402
+from src.utils.team_codes import build_kbo_game_id  # noqa: E402
 
 
 class BroadcastCrawler:

@@ -109,8 +109,12 @@ class SlaTracker:
             totals["completed"] += s["completed"]
             logger.info(
                 "  %-10s %6d %10d %6.0f%% %6.0f%% %7.0f%%",
-                s['date'], s['total'], s['completed'],
-                s['completion_rate'] * 100, s['pbp_coverage'] * 100, s['detail_coverage'] * 100,
+                s["date"],
+                s["total"],
+                s["completed"],
+                s["completion_rate"] * 100,
+                s["pbp_coverage"] * 100,
+                s["detail_coverage"] * 100,
             )
 
         if totals["games"] > 0:

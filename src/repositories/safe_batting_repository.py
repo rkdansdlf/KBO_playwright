@@ -5,20 +5,20 @@ Safe batting data repository with foreign key constraint bypass
 
 import logging
 from collections import Counter
-
-logger = logging.getLogger(__name__)
 from typing import Any
 
 from sqlalchemy import func, text
 from sqlalchemy.dialects.mysql import insert as mysql_insert
 from sqlalchemy.dialects.postgresql import insert as postgresql_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from src.db.engine import SessionLocal, get_database_type
 from src.models.player import PlayerSeasonBatting
 from src.utils.player_season_stat_validation import filter_valid_season_stat_payloads
 
+logger = logging.getLogger(__name__)
 LAST_FILTER_COUNTS: Counter = Counter()
 
 
@@ -125,7 +125,7 @@ def save_batting_stats_safe(payloads: list[dict[str, Any]]) -> int:
                 try:
                     session.execute(stmt)
                     saved_count = len(rows)
-                except Exception:
+                except SQLAlchemyError:
                     session.rollback()
                     logger.exception("⚠️ 배치 UPSERT 실패, 개별 처리로 전환합니다")
                     for data in rows:
@@ -139,7 +139,7 @@ def save_batting_stats_safe(payloads: list[dict[str, Any]]) -> int:
                         try:
                             session.execute(row_stmt)
                             saved_count += 1
-                        except Exception:
+                        except SQLAlchemyError:
                             logger.exception(f"⚠️ UPSERT 실패 (player_id={data.get('player_id')})")
                             session.rollback()
             elif db_type == "mysql":
@@ -153,7 +153,7 @@ def save_batting_stats_safe(payloads: list[dict[str, Any]]) -> int:
                 try:
                     session.execute(stmt)
                     saved_count = len(rows)
-                except Exception:
+                except SQLAlchemyError:
                     session.rollback()
                     logger.exception("⚠️ 배치 UPSERT 실패, 개별 처리로 전환합니다")
                     for data in rows:
@@ -167,7 +167,7 @@ def save_batting_stats_safe(payloads: list[dict[str, Any]]) -> int:
                         try:
                             session.execute(row_stmt)
                             saved_count += 1
-                        except Exception:
+                        except SQLAlchemyError:
                             logger.exception(f"⚠️ UPSERT 실패 (player_id={data.get('player_id')})")
                             session.rollback()
             elif db_type == "postgresql":
@@ -181,7 +181,7 @@ def save_batting_stats_safe(payloads: list[dict[str, Any]]) -> int:
                 try:
                     session.execute(stmt)
                     saved_count = len(rows)
-                except Exception:
+                except SQLAlchemyError:
                     session.rollback()
                     logger.exception("⚠️ 배치 UPSERT 실패, 개별 처리로 전환합니다")
                     for data in rows:
@@ -195,7 +195,7 @@ def save_batting_stats_safe(payloads: list[dict[str, Any]]) -> int:
                         try:
                             session.execute(row_stmt)
                             saved_count += 1
-                        except Exception:
+                        except SQLAlchemyError:
                             logger.exception(f"⚠️ UPSERT 실패 (player_id={data.get('player_id')})")
                             session.rollback()
             else:
@@ -224,7 +224,7 @@ def save_batting_stats_safe(payloads: list[dict[str, Any]]) -> int:
             session.commit()
             logger.info(f"✅ 타자 데이터 {saved_count}건 저장 완료 (player_season_batting 테이블)")
 
-        except Exception:
+        except SQLAlchemyError:
             session.rollback()
             logger.exception("❌ 타자 데이터 저장 실패")
             return 0
@@ -270,7 +270,7 @@ def cleanup_invalid_batting_data(session: Session | None = None) -> int:
 
         return deleted
 
-    except Exception:
+    except SQLAlchemyError:
         if not session:
             cleanup_session.rollback()
         logger.exception("⚠️ 타자 데이터 정리 실패")

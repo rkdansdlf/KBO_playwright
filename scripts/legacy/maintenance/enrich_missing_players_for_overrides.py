@@ -28,9 +28,9 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from src.db.engine import SessionLocal
-from src.parsers.player_profile_parser import parse_birth_date, tokenize_profile
-from src.repositories.player_basic_repository import PlayerBasicRepository
+from src.db.engine import SessionLocal  # noqa: E402
+from src.parsers.player_profile_parser import parse_birth_date, tokenize_profile  # noqa: E402
+from src.repositories.player_basic_repository import PlayerBasicRepository  # noqa: E402
 
 DEFAULT_OVERRIDES_CSV = PROJECT_ROOT / "data/player_id_overrides.csv"
 DEFAULT_REPORT_DIR = PROJECT_ROOT / "data"

@@ -81,7 +81,7 @@ def seed_pre_existing(conn, all_migrations):
     if not pre_existing:
         return
     applied = get_applied(conn)
-    for num, fname, _ in pre_existing:
+    for _, fname, _ in pre_existing:
         if fname not in applied:
             conn.execute(
                 "INSERT INTO _migrations (filename) VALUES (?)",
@@ -125,7 +125,7 @@ def run():
         return
 
     count = 0
-    for num, fname, ext in migrations:
+    for _, fname, ext in migrations:
         if fname in applied:
             print(f"  [SKIP] {fname} already applied")
             continue

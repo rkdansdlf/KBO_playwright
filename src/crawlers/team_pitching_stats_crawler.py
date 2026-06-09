@@ -10,16 +10,16 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
-from bs4 import BeautifulSoup
-from playwright.sync_api import Page, sync_playwright
+from bs4 import BeautifulSoup  # noqa: E402
+from playwright.sync_api import Page, sync_playwright  # noqa: E402
 
-from src.aggregators.team_stat_aggregator import TeamStatAggregator
-from src.db.engine import SessionLocal
-from src.repositories.team_stats_repository import TeamSeasonPitchingRepository
-from src.utils.playwright_blocking import install_sync_resource_blocking
-from src.utils.request_policy import RequestPolicy
-from src.utils.team_mapping import get_team_mapping_for_year
-from src.utils.team_stats_helpers import get_cell_value, parse_numeric, resolve_team_id
+from src.aggregators.team_stat_aggregator import TeamStatAggregator  # noqa: E402
+from src.db.engine import SessionLocal  # noqa: E402
+from src.repositories.team_stats_repository import TeamSeasonPitchingRepository  # noqa: E402
+from src.utils.playwright_blocking import install_sync_resource_blocking  # noqa: E402
+from src.utils.request_policy import RequestPolicy  # noqa: E402
+from src.utils.team_mapping import get_team_mapping_for_year  # noqa: E402
+from src.utils.team_stats_helpers import get_cell_value, parse_numeric, resolve_team_id  # noqa: E402
 
 TEAM_PITCHING_URLS = [
     "https://www.koreabaseball.com/Record/Team/Pitcher/Basic.aspx",

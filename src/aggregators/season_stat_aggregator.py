@@ -1,6 +1,4 @@
 import logging
-
-logger = logging.getLogger(__name__)
 from typing import Any
 
 from sqlalchemy import Integer, case, func, or_
@@ -11,7 +9,7 @@ from src.models.player import PlayerBasic
 from src.models.season import KboSeason
 from src.services.stat_calculator import BattingStatCalculator, PitchingStatCalculator
 
-
+logger = logging.getLogger(__name__)
 class SeasonStatAggregator:
     """
     Service to aggregate transactional game stats into season-level cumulative stats.

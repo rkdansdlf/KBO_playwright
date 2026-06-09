@@ -56,7 +56,7 @@ def run_pa_audit(year: int) -> dict[str, Any]:
     }
 
 
-def crawl_monthly_unified_audit_job():
+def crawl_monthly_unified_audit_job() -> None:
     """Scheduled job entry point — runs PA fix + both audits, saves reports."""
     KST = ZoneInfo("Asia/Seoul")
     current_year = datetime.now(KST).year

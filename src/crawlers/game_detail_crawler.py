@@ -10,17 +10,17 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
-import contextlib
-from datetime import datetime
+import contextlib  # noqa: E402
+from datetime import datetime  # noqa: E402
 
-from playwright.async_api import Error as PlaywrightError
-from playwright.async_api import Page
+from playwright.async_api import Error as PlaywrightError  # noqa: E402
+from playwright.async_api import Page  # noqa: E402
 
-from src.db.engine import SessionLocal
-from src.utils.compliance import compliance
-from src.utils.playwright_pool import AsyncPlaywrightPool
-from src.utils.request_policy import RequestPolicy
-from src.utils.team_codes import normalize_kbo_game_id, resolve_team_code, team_code_from_game_id_segment
+from src.db.engine import SessionLocal  # noqa: E402
+from src.utils.compliance import compliance  # noqa: E402
+from src.utils.playwright_pool import AsyncPlaywrightPool  # noqa: E402
+from src.utils.request_policy import RequestPolicy  # noqa: E402
+from src.utils.team_codes import normalize_kbo_game_id, resolve_team_code, team_code_from_game_id_segment  # noqa: E402
 
 HITTER_HEADER_MAP = {
     "타석": "plate_appearances",

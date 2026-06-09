@@ -13,15 +13,15 @@ ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from src.crawlers.game_detail_crawler import GameDetailCrawler
-from src.crawlers.relay_crawler import RelayCrawler
-from src.db.engine import DATABASE_URL
-from src.services.game_collection_service import (
+from src.crawlers.game_detail_crawler import GameDetailCrawler  # noqa: E402
+from src.crawlers.relay_crawler import RelayCrawler  # noqa: E402
+from src.db.engine import DATABASE_URL  # noqa: E402
+from src.services.game_collection_service import (  # noqa: E402
     GameCollectionTarget,
     crawl_and_save_game_details,
     inspect_existing_game_data,
 )
-from src.utils.team_codes import normalize_kbo_game_id
+from src.utils.team_codes import normalize_kbo_game_id  # noqa: E402
 
 ACTIONABLE_CLASSIFICATIONS = {"pending_recrawl", "past_scheduled_missing_detail", "dry_run_target"}
 

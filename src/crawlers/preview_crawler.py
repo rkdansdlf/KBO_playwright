@@ -13,12 +13,10 @@ from typing import Any
 
 import httpx
 
-logger = logging.getLogger(__name__)
-
 from src.utils.playwright_pool import AsyncPlaywrightPool
 from src.utils.team_codes import normalize_kbo_game_id
 
-
+logger = logging.getLogger(__name__)
 class PreviewCrawler:
     GAME_LIST_URL = "https://www.koreabaseball.com/ws/Main.asmx/GetKboGameList"
     LINEUP_URL = "https://www.koreabaseball.com/ws/Schedule.asmx/GetLineUpAnalysis"
@@ -329,8 +327,8 @@ class PreviewCrawler:
                     game_id,
                     away_starter,
                     home_starter,
-                    len(preview_data['away_lineup']),
-                    len(preview_data['home_lineup']),
+                    len(preview_data["away_lineup"]),
+                    len(preview_data["home_lineup"]),
                 )
 
             return results

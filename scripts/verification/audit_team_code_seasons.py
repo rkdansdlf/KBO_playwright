@@ -17,9 +17,9 @@ ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-import logging
+import logging  # noqa: E402
 
-from src.utils.team_history import iter_team_history
+from src.utils.team_history import iter_team_history  # noqa: E402
 
 logger = logging.getLogger(__name__)
 DEFAULT_DB_URL = "sqlite:///./data/kbo_dev.db"

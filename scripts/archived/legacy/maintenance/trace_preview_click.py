@@ -24,7 +24,7 @@ async def trace_preview_click():
                         print(f"  Content: {(await response.text())[:500]}")
                     else:
                         print(f"  JSON: {str(await response.json())[:500]}")
-                except:
+                except Exception:  # noqa: BLE001
                     pass
 
         page.on("response", handle_response)

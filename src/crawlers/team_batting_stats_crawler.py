@@ -102,7 +102,6 @@ class TeamBattingStatsCrawler:
         except Exception as crawl_err:  # noqa: BLE001
             logger.warning("Team batting crawl failed: %s. Falling back...", crawl_err)
 
-
         if not stats:
             logger.warning(f"⚠️ KBO 팀 타격 페이지 오류. DB에서 폴백 집계를 시작합니다 (시즌: {season})...")
             try:
@@ -181,7 +180,6 @@ class TeamBattingStatsCrawler:
             except Exception:  # noqa: BLE001
                 logger.warning("Failed to select season dropdown, trying next selector")
                 continue
-
 
 
 def parse_team_batting_html(

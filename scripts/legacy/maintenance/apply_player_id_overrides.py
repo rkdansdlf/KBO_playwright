@@ -26,7 +26,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from src.db.engine import DATABASE_URL
+from src.db.engine import DATABASE_URL  # noqa: E402
 
 DEFAULT_GROUP_OVERRIDES = PROJECT_ROOT / "data/player_id_overrides.csv"
 DEFAULT_ROW_OVERRIDES = PROJECT_ROOT / "data/player_id_row_overrides.csv"

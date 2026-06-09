@@ -23,7 +23,7 @@ async def trace_preview():
                     data = await response.json()
                     print(f"✅ XHR Found: {response.url}")
                     print(json.dumps(data, indent=2, ensure_ascii=False)[:1000])
-                except:
+                except Exception:  # noqa: BLE001
                     pass
 
         page.on("response", handle_response)

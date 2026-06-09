@@ -11,11 +11,11 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
-from playwright.async_api import Page
-from playwright.async_api import TimeoutError as PlaywrightTimeoutError
-from tenacity import AsyncRetrying, retry_if_exception_type, stop_after_attempt, wait_exponential
+from playwright.async_api import Page  # noqa: E402
+from playwright.async_api import TimeoutError as PlaywrightTimeoutError  # noqa: E402
+from tenacity import AsyncRetrying, retry_if_exception_type, stop_after_attempt, wait_exponential  # noqa: E402
 
-from src.utils.playwright_pool import AsyncPlaywrightPool
+from src.utils.playwright_pool import AsyncPlaywrightPool  # noqa: E402
 
 
 class PlayerMovementCrawler:

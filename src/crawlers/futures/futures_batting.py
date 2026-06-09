@@ -1,22 +1,22 @@
 import logging
 from typing import Any
 
-logger = logging.getLogger(__name__)
 """
 Futures League Batting Stats Crawler
 Fetches year-by-year Futures batting statistics from player profile pages.
 """
 
-import asyncio
-import re
+import asyncio  # noqa: E402
+import re  # noqa: E402
 
-from bs4 import BeautifulSoup
-from playwright.async_api import Error as PlaywrightError
+from bs4 import BeautifulSoup  # noqa: E402
+from playwright.async_api import Error as PlaywrightError  # noqa: E402
 
-from src.utils.compliance import compliance
-from src.utils.playwright_pool import AsyncPlaywrightPool
-from src.utils.throttle import throttle
+from src.utils.compliance import compliance  # noqa: E402
+from src.utils.playwright_pool import AsyncPlaywrightPool  # noqa: E402
+from src.utils.throttle import throttle  # noqa: E402
 
+logger = logging.getLogger(__name__)
 FUTURES_KEYS = ["season", "AVG", "G", "AB", "R", "H", "2B", "3B", "HR", "RBI", "SB", "BB", "HBP", "SO", "SLG", "OBP"]
 
 HEADER_MAP = {

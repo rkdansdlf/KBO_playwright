@@ -13,14 +13,14 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
-import contextlib
-import re
+import contextlib  # noqa: E402
+import re  # noqa: E402
 
-from sqlalchemy import text
-from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy import text  # noqa: E402
+from sqlalchemy.exc import SQLAlchemyError  # noqa: E402
 
-from src.db.engine import SessionLocal
-from src.models.game import (
+from src.db.engine import SessionLocal  # noqa: E402
+from src.models.game import (  # noqa: E402
     Game,
     GameBattingStat,
     GameIdAlias,
@@ -30,10 +30,10 @@ from src.models.game import (
     GamePitchingStat,
     GameSummary,
 )
-from src.models.player import PlayerBasic
-from src.services.game_write_contract import GameWriteContract, GameWriteSource
-from src.services.player_id_resolver import PlayerIdResolver
-from src.utils.game_status import (
+from src.models.player import PlayerBasic  # noqa: E402
+from src.services.game_write_contract import GameWriteContract, GameWriteSource  # noqa: E402
+from src.services.player_id_resolver import PlayerIdResolver  # noqa: E402
+from src.utils.game_status import (  # noqa: E402
     GAME_STATUS_CANCELLED,
     GAME_STATUS_COMPLETED,
     GAME_STATUS_DRAW,
@@ -43,13 +43,13 @@ from src.utils.game_status import (
     GAME_STATUS_UNRESOLVED,
     LIVE_GAME_STATUSES,
 )
-from src.utils.player_positions import get_primary_position
-from src.utils.team_codes import (
+from src.utils.player_positions import get_primary_position  # noqa: E402
+from src.utils.team_codes import (  # noqa: E402
     build_kbo_game_id,
     normalize_kbo_game_id,
     team_code_from_game_id_segment,
 )
-from src.utils.team_history import FRANCHISE_CANONICAL_CODE, find_team_history_entry
+from src.utils.team_history import FRANCHISE_CANONICAL_CODE, find_team_history_entry  # noqa: E402
 
 SEASON_TYPE_TO_LEAGUE_CODE = {
     "regular": 0,

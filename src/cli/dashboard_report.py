@@ -149,7 +149,6 @@ def _build_freshness(session, date_str: str) -> dict[str, Any]:
 
 def _build_sync() -> dict[str, Any]:
     try:
-
         from scripts.verification.verify_sync_consistency import check_table_counts
 
         from src.db.engine import create_engine_for_url
@@ -169,7 +168,7 @@ def _build_sync() -> dict[str, Any]:
 # ─── Formatters ──────────────────────────────────────────────────────────
 
 
-def _format_terminal(data: dict[str, Any], sections: list[str]):
+def _format_terminal(data: dict[str, Any], sections: list[str]) -> None:
     year = datetime.now(KST).year
 
     if "standings" in sections and data.get("standings"):
