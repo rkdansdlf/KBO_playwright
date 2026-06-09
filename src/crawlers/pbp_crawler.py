@@ -15,6 +15,7 @@ from playwright.async_api import Page
 from src.services.wpa_calculator import WPACalculator
 from src.utils.compliance import compliance
 from src.utils.playwright_pool import AsyncPlaywrightPool
+from src.utils.playwright_retry import LONG_TIMEOUT
 from src.utils.request_policy import RequestPolicy
 from src.utils.text_parser import KBOTextParser
 
@@ -73,7 +74,7 @@ class PBPCrawler:
                         # Step 2: Navigate to the actual relay page with explicit Referer
                         logger.info(f"[FETCH] Navigating to Relay page with Referer: {url}")
                         # Use 'domcontentloaded' as KBO pages often have persistent tracking scripts/images that block 'load' or 'networkidle'
-                        await page.goto(url, wait_until="domcontentloaded", timeout=60000, referer=parent_url)
+                        await page.goto(url, wait_until="domcontentloaded", timeout=LONG_TIMEOUT, referer=parent_url)
 
                         # Check for redirects
                         if "Error.html" in page.url or "Login.aspx" in page.url:

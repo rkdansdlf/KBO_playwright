@@ -37,7 +37,7 @@ def add_column_if_not_exists(engine, table, column, type_def):
                 conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {column} {type_def}"))
 
         conn.commit()
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         print(f"    ⚠️ Error adding {column} to {table}: {e}")
     finally:
         conn.close()
@@ -73,7 +73,7 @@ def migrate_database(url):
         # Create all tables that don't exist, specifically TeamCodeMap
         Base.metadata.create_all(bind=engine, tables=[TeamCodeMap.__table__])
         print("    ✅ TeamCodeMap table ensured.")
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         print(f"    ⚠️ Error creating TeamCodeMap: {e}")
 
     print("✅ Migration complete.")

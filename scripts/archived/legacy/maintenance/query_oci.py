@@ -22,7 +22,7 @@ def run_query(query):
 
         cur.close()
         conn.close()
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         print(f"Error: {e}")
 
 

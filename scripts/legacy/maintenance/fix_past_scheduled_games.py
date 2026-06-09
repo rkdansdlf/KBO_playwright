@@ -4,6 +4,10 @@ Fix past games stuck in 'SCHEDULED' status.
 Updates them to 'UNRESOLVED_MISSING' so the refresh logic will attempt to find their results.
 """
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -19,7 +23,7 @@ from src.db.engine import SessionLocal  # noqa: E402
 
 def fix_scheduled_games():
     today = datetime.now().strftime("%Y-%m-%d")
-    print(f"Checking for games scheduled on or before {today} that are still 'SCHEDULED'...")
+    logger.info(f"Checking for games scheduled on or before {today} that are still 'SCHEDULED'...")
 
     with SessionLocal() as session:
         # Find affected games
@@ -30,10 +34,10 @@ def fix_scheduled_games():
         rows = session.execute(select_sql, {"today": today}).fetchall()
 
         if not rows:
-            print("No stale scheduled games found.")
+            logger.info("No stale scheduled games found.")
             return
 
-        print(f"Found {len(rows)} stale games. Updating to 'UNRESOLVED_MISSING'...")
+        logger.info(f"Found {len(rows)} stale games. Updating to 'UNRESOLVED_MISSING'...")
 
         update_sql = text("""
             UPDATE game
@@ -43,9 +47,9 @@ def fix_scheduled_games():
         result = session.execute(update_sql, {"today": today})
         session.commit()
 
-        print(f"Successfully updated {result.rowcount} rows.")
+        logger.info(f"Successfully updated {result.rowcount} rows.")
         for row in rows:
-            print(f"  - {row[0]} ({row[1]})")
+            logger.info(f"  - {row[0]} ({row[1]})")
 
 
 if __name__ == "__main__":

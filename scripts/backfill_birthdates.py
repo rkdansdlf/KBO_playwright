@@ -75,7 +75,7 @@ def _parse_birth_date(raw: str | None) -> date | None:
 
             if 1900 <= y <= 2100 and 1 <= m <= 12 and 1 <= d <= 31:
                 return datetime(y, m, d).date()
-        except Exception:
+        except Exception:  # noqa: BLE001
             pass
 
     return None

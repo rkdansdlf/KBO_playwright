@@ -10,6 +10,8 @@ import os
 from dotenv import load_dotenv
 from playwright.async_api import async_playwright
 
+from src.utils.playwright_retry import SEL_TIMEOUT
+
 logger = logging.getLogger(__name__)
 load_dotenv()
 
@@ -72,7 +74,7 @@ class KboAuthenticator:
                         await page.goto(
                             "https://www.koreabaseball.com/Schedule/GameCenter/Main.aspx",
                             wait_until="networkidle",
-                            timeout=15000,
+                            timeout=SEL_TIMEOUT,
                         )
 
                         # 2. Mimic human behavior (Scroll)

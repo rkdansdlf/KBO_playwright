@@ -44,7 +44,7 @@ def sync_headers():
                     )
                     print(f"  ✅ Synced {synced_meta} metadata records.")
                     break  # Success, move to next year
-                except Exception as e:
+                except Exception as e:  # noqa: BLE001
                     print(f"  ❌ Error syncing {year}: {e}")
                     if attempt < max_retries - 1:
                         print("  🔄 Retrying in 5 seconds...")

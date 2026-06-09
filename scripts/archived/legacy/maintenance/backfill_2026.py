@@ -54,7 +54,7 @@ async def main():
                 run_auto_healer=False,
             )
             print(f"✅ Finished processing {date_str}")
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             print(f"❌ Error processing {date_str}: {e}")
 
     print("\n✨ All backfill tasks completed!")

@@ -1,5 +1,10 @@
 from __future__ import annotations
 
+import logging
+
+logger = logging.getLogger(__name__)
+
+
 import argparse
 import csv
 import json
@@ -175,7 +180,7 @@ def discover_captures(
                 if capture and download_dir is not None:
                     saved = _download_capture(game_id, target["url_kind"], capture, download_dir, timeout)
                     download_path = str(saved)
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001
                 notes = f"{type(exc).__name__}: {exc}"
             if capture:
                 found = True
@@ -217,7 +222,7 @@ def discover_captures(
     if workers <= 1:
         for index, row in enumerate(rows, start=1):
             game_id = str(row.get("game_id") or "").strip()
-            print(f"[WAYBACK] {index}/{total}: {game_id}")
+            logger.info(f"[WAYBACK] {index}/{total}: {game_id}")
             report_rows.extend(_process_row(row))
     else:
         with ThreadPoolExecutor(max_workers=workers) as executor:
@@ -226,7 +231,7 @@ def discover_captures(
             for future in as_completed(future_map):
                 completed += 1
                 game_id = future_map[future]
-                print(f"[WAYBACK] {completed}/{total}: {game_id}")
+                logger.info(f"[WAYBACK] {completed}/{total}: {game_id}")
                 report_rows.extend(future.result())
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -324,7 +329,7 @@ def main() -> None:
         sleep_seconds=args.sleep_seconds,
         workers=max(1, args.workers),
     )
-    print(f"Wrote {written} wayback discovery rows to {args.output}")
+    logger.info(f"Wrote {written} wayback discovery rows to {args.output}")
 
 
 if __name__ == "__main__":

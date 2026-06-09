@@ -6,6 +6,10 @@ Performs:
 3. Retirement Audit (Stale 'ACTIVE' status)
 """
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 import os
 import sys
 
@@ -20,27 +24,27 @@ from src.db.engine import SessionLocal
 
 def run_audit():
     load_dotenv()
-    print("🔍 Starting Player Master Data Integrity Audit...")
+    logger.info("🔍 Starting Player Master Data Integrity Audit...")
 
     with SessionLocal() as session:
         # 1. Stub Detection: Records with zero height or no photo_url
-        print("\n[STUB DETECTION]")
+        logger.info("\n[STUB DETECTION]")
         stubs = session.execute(
             text("""
             SELECT player_id, name, team FROM player_basic
             WHERE status = 'active' AND (photo_url IS NULL OR height_cm IS NULL)
         """)
         ).fetchall()
-        print(f"  ⚠️  Found {len(stubs)} active players with missing profile metadata.")
+        logger.warning(f"  ⚠️  Found {len(stubs)} active players with missing profile metadata.")
         if stubs:
             for s in stubs[:5]:
-                print(f"    - {s.player_id}: {s.name} ({s.team})")
+                logger.info(f"    - {s.player_id}: {s.name} ({s.team})")
             if len(stubs) > 5:
-                print(f"    ... and {len(stubs) - 5} more.")
+                logger.info(f"    ... and {len(stubs) - 5} more.")
 
         # 2. Statistical Reconciliation: 2024 Hits Check
         # Comparing sum of game_batting_stats with player_season_batting
-        print("\n[STATISTICAL RECONCILIATION - 2024 HITS]")
+        logger.info("\n[STATISTICAL RECONCILIATION - 2024 HITS]")
         recon_query = """
         WITH game_sums AS (
             SELECT gbs.player_id, SUM(gbs.hits) as total_hits
@@ -58,15 +62,17 @@ def run_audit():
         """
         mismatches = session.execute(text(recon_query)).fetchall()
         if mismatches:
-            print(f"  ❌ Found {len(mismatches)} players with 2024 hits mismatch between games and season table:")
+            logger.error(
+                f"  ❌ Found {len(mismatches)} players with 2024 hits mismatch between games and season table:"
+            )
             for m in mismatches[:5]:
-                print(f"    - {m.name} ({m.player_id}): Season={m.season_hits}, Calculated={m.calc_hits}")
+                logger.info(f"    - {m.name} ({m.player_id}): Season={m.season_hits}, Calculated={m.calc_hits}")
         else:
-            print("  ✅ 2024 Hits reconciliation passed for all players.")
+            logger.info("  ✅ 2024 Hits reconciliation passed for all players.")
 
         # 3. Retirement Audit (Heuristic)
         # Players marked 'active' but no games played in 2025 or 2026
-        print("\n[RETIREMENT AUDIT]")
+        logger.info("\n[RETIREMENT AUDIT]")
         stale_query = """
         SELECT player_id, name, team FROM player_basic
         WHERE status = 'active' AND player_id NOT IN (
@@ -76,11 +82,11 @@ def run_audit():
         )
         """
         stale_players = session.execute(text(stale_query)).fetchall()
-        print(f"  ⚠️  Found {len(stale_players)} players marked 'active' who haven't played since 2024.")
+        logger.warning(f"  ⚠️  Found {len(stale_players)} players marked 'active' who haven't played since 2024.")
         if stale_players:
-            print("     (These are likely retired but status hasn't been updated)")
+            logger.info("     (These are likely retired but status hasn't been updated)")
 
-    print("\n✨ Audit Finished.")
+    logger.info("\n✨ Audit Finished.")
 
 
 if __name__ == "__main__":

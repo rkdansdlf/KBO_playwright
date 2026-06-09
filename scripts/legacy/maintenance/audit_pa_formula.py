@@ -151,20 +151,20 @@ def fix_year_formula(year: int, dry_run: bool = False) -> int:
         candidates = _get_fix_candidates(year, session)
 
     if not candidates:
-        print(f"  No fixable rows for {year}")
+        logger.info(f"  No fixable rows for {year}")
         return 0
 
     if dry_run:
-        print(f"  [DRY RUN] Would fix {len(candidates)} rows for {year}")
+        logger.info(f"  [DRY RUN] Would fix {len(candidates)} rows for {year}")
         game_ids = set(c["game_id"] for c in candidates)
         player_ids = set(c["player_id"] for c in candidates)
-        print(f"    Games affected: {len(game_ids)}")
-        print(f"    Players affected: {len(player_ids)}")
+        logger.info(f"    Games affected: {len(game_ids)}")
+        logger.info(f"    Players affected: {len(player_ids)}")
         missing_pa_total = sum(c["missing_pa"] for c in candidates)
-        print(f"    Total missing PA to allocate: {missing_pa_total}")
+        logger.info(f"    Total missing PA to allocate: {missing_pa_total}")
         sh_total = sum(int(c["missing_pa"] * 0.54) for c in candidates)
         sf_total = sum(c["missing_pa"] - int(c["missing_pa"] * 0.54) for c in candidates)
-        print(f"    SH to assign: {sh_total} | SF to assign: {sf_total}")
+        logger.info(f"    SH to assign: {sh_total} | SF to assign: {sf_total}")
         return len(candidates)
 
     with SessionLocal() as session:
@@ -199,10 +199,10 @@ def fix_year_formula(year: int, dry_run: bool = False) -> int:
     sh_total = sum(int(c["missing_pa"] * 0.54) for c in candidates)
     sf_total = sum(c["missing_pa"] - int(c["missing_pa"] * 0.54) for c in candidates)
 
-    print(f"  Fixed {count} rows for {year}")
-    print(f"    Games affected: {len(game_ids)}")
-    print(f"    Players affected: {len(player_ids)}")
-    print(f"    Total missing PA allocated: {missing_pa_total} (SH: {sh_total}, SF: {sf_total})")
+    logger.info(f"  Fixed {count} rows for {year}")
+    logger.info(f"    Games affected: {len(game_ids)}")
+    logger.info(f"    Players affected: {len(player_ids)}")
+    logger.info(f"    Total missing PA allocated: {missing_pa_total} (SH: {sh_total}, SF: {sf_total})")
     return count
 
 
@@ -244,10 +244,10 @@ def auto_fix_year(year: int) -> int:
         game_ids = [str(r[0]) for r in rows]
 
     if not game_ids:
-        print(f"No PA formula violations found for year {year}.")
+        logger.info(f"No PA formula violations found for year {year}.")
         return 0
 
-    print(f"Found {len(game_ids)} games with PA formula violations in {year}. Starting auto-fix...")
+    logger.info(f"Found {len(game_ids)} games with PA formula violations in {year}. Starting auto-fix...")
 
     pbp_fixed_games = []
     for game_id in game_ids:
@@ -262,64 +262,64 @@ def auto_fix_year(year: int) -> int:
                     if updated:
                         session.commit()
                         pbp_fixed_games.append(game_id)
-                        print(f"  Applied PBP SH/SF correction for game {game_id}: {updated} rows updated")
-                except Exception as exc:
+                        logger.info(f"  Applied PBP SH/SF correction for game {game_id}: {updated} rows updated")
+                except Exception as exc:  # noqa: BLE001
                     session.rollback()
                     logger.warning("Error applying PBP fix for game %s: %s", game_id, exc)
-                    print(f"  Error applying PBP fix for game {game_id}: {exc}")
+                    logger.error(f"  Error applying PBP fix for game {game_id}: {exc}")
 
     # Ratio fallback for 2020-2021
     ratio_fixed_rows = 0
     if year in (2020, 2021):
         ratio_fixed_rows = fix_year_formula(year)
         if ratio_fixed_rows:
-            print(f"  Applied ratio-based fallback correction for {year}: {ratio_fixed_rows} rows updated")
+            logger.info(f"  Applied ratio-based fallback correction for {year}: {ratio_fixed_rows} rows updated")
 
     # Recalculate stats for all violated games
-    print(f"Recalculating player game stats for {len(game_ids)} games...")
+    logger.info(f"Recalculating player game stats for {len(game_ids)} games...")
     for game_id in game_ids:
         try:
             recalc_game_stats(game_id=game_id, dry_run=False)
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001
             logger.warning("Error recalculating game stats for %s: %s", game_id, exc)
-            print(f"  Error recalculating game stats for {game_id}: {exc}")
+            logger.error(f"  Error recalculating game stats for {game_id}: {exc}")
 
     # Recalculate player season stats
-    print(f"Recalculating player season stats for {year}...")
+    logger.info(f"Recalculating player season stats for {year}...")
     try:
         recalc_season_stats(season=year, dry_run=False)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001
         logger.warning("Error recalculating season stats for %s: %s", year, exc)
-        print(f"  Error recalculating season stats for {year}: {exc}")
+        logger.error(f"  Error recalculating season stats for {year}: {exc}")
 
     # Sync to OCI
     oci_url = os.getenv("OCI_DB_URL")
     if oci_url:
-        print("OCI_DB_URL found. Synchronizing corrected data to OCI...")
+        logger.info("OCI_DB_URL found. Synchronizing corrected data to OCI...")
         try:
             from src.sync.oci_sync import OCISync
 
             with SessionLocal() as sqlite_session:
                 syncer = OCISync(oci_url, sqlite_session)
-                print("  Syncing player basics first...")
+                logger.info("  Syncing player basics first...")
                 syncer.sync_player_basic()
                 syncer.sync_players()
 
-                print(f"  Syncing {len(game_ids)} games to OCI...")
+                logger.info(f"  Syncing {len(game_ids)} games to OCI...")
                 for game_id in game_ids:
                     syncer.sync_specific_game(game_id)
 
-                print(f"  Syncing player season stats for {year} to OCI...")
+                logger.info(f"  Syncing player season stats for {year} to OCI...")
                 syncer.sync_player_season_batting(year=year)
                 syncer.sync_player_season_pitching(year=year)
 
                 syncer.close()
-                print("  OCI synchronization completed successfully.")
-        except Exception as exc:
+                logger.info("  OCI synchronization completed successfully.")
+        except Exception as exc:  # noqa: BLE001
             logger.warning("Error syncing to OCI: %s", exc)
-            print(f"  Error syncing to OCI: {exc}")
+            logger.error(f"  Error syncing to OCI: {exc}")
     else:
-        print("OCI_DB_URL not set. Skipping OCI synchronization.")
+        logger.info("OCI_DB_URL not set. Skipping OCI synchronization.")
 
     return len(game_ids)
 
@@ -411,12 +411,12 @@ def main():
         r["elapsed_seconds"] = round(elapsed, 2)
 
     if args.json:
-        print(json.dumps(results, indent=2, ensure_ascii=False))
+        logger.info(json.dumps(results, indent=2, ensure_ascii=False))
     else:
         print(
             f"{'Year':>6} {'Games':>6} {'Rows':>8} {'Violations':>12} {'V Games':>8}  FIXABLE_PBP FIXABLE_FMLA UNFIXABLE"
         )
-        print("-" * 85)
+        logger.info("-" * 85)
         total_v = 0
         for r in results:
             print(
@@ -424,9 +424,9 @@ def main():
                 f"{r['categories'].get('FIXABLE_PBP', 0):>10} {r['categories'].get('FIXABLE_FORMULA', 0):>10} {r['categories'].get('UNFIXABLE', 0):>10}"
             )
             total_v += r["violation_rows"]
-        print("-" * 85)
-        print(f"{'TOTAL':>6} {'':>6} {'':>8} {total_v:>12}")
-        print(f"\nElapsed: {elapsed:.2f}s  |  Log: {log_file}")
+        logger.info("-" * 85)
+        logger.info(f"{'TOTAL':>6} {'':>6} {'':>8} {total_v:>12}")
+        logger.info(f"\nElapsed: {elapsed:.2f}s  |  Log: {log_file}")
 
     logger.info("Audit completed. Total elapsed: %.2fs", elapsed)
 

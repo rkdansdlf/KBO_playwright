@@ -9,6 +9,11 @@ one source row with a concrete source player id.
 
 from __future__ import annotations
 
+import logging
+
+logger = logging.getLogger(__name__)
+
+
 import argparse
 import asyncio
 import csv
@@ -526,9 +531,9 @@ def main() -> None:
         f"evidence_rows={result['evidence_rows']} proposed_updates={result['proposed_updates']} "
         f"blocked_rows={result['blocked_rows']}"
     )
-    print(f"[REPORT] evidence_csv={result['evidence_csv']}")
-    print(f"[REPORT] proposed_csv={result['proposed_csv']}")
-    print(f"[REPORT] blocked_csv={result['blocked_csv']}")
+    logger.info(f"[REPORT] evidence_csv={result['evidence_csv']}")
+    logger.info(f"[REPORT] proposed_csv={result['proposed_csv']}")
+    logger.info(f"[REPORT] blocked_csv={result['blocked_csv']}")
 
 
 if __name__ == "__main__":

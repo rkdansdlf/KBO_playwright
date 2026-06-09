@@ -15,6 +15,7 @@ logger = logging.getLogger(__name__)
 import contextlib  # noqa: E402
 
 from src.utils.player_season_stat_validation import filter_valid_season_stat_payloads  # noqa: E402
+from src.utils.playwright_retry import LONG_TIMEOUT, SEL_TIMEOUT
 from src.utils.request_policy import RequestPolicy  # noqa: E402
 from src.utils.team_codes import resolve_team_code  # noqa: E402
 
@@ -61,8 +62,8 @@ def crawl_all_fielding_stats(year=None):
         url = "https://www.koreabaseball.com/Record/Player/Defense/Basic.aspx"
         logger.info(f"📊 수비 기록 페이지 접속: {url}")
         try:
-            page.goto(url, wait_until="load", timeout=60000)
-            page.wait_for_load_state("networkidle", timeout=15000)
+            page.goto(url, wait_until="load", timeout=LONG_TIMEOUT)
+            page.wait_for_load_state("networkidle", timeout=SEL_TIMEOUT)
         except Exception:
             logger.exception("⚠️ 페이지 초기 대기 중 경고 (무시 가능)")
         policy.delay()
@@ -73,7 +74,7 @@ def crawl_all_fielding_stats(year=None):
             if year_select:
                 page.select_option("select#cphContents_cphContents_cphContents_ddlSeason_ddlSeason", str(year))
                 with contextlib.suppress(Exception):
-                    page.wait_for_load_state("networkidle", timeout=15000)
+                    page.wait_for_load_state("networkidle", timeout=SEL_TIMEOUT)
                 policy.delay()
                 logger.info(f"✅ {year}년 데이터 선택 완료")
 
@@ -119,7 +120,7 @@ def crawl_all_fielding_stats(year=None):
 
                     with page.expect_response("**/Record/Player/Defense/Basic.aspx", timeout=20000):
                         page.select_option("select#cphContents_cphContents_cphContents_ddlTeam_ddlTeam", value=team_val)
-                    page.wait_for_load_state("networkidle", timeout=15000)
+                    page.wait_for_load_state("networkidle", timeout=SEL_TIMEOUT)
                     policy.delay()
 
                     pagination = page.query_selector(".paging")
@@ -147,7 +148,7 @@ def crawl_all_fielding_stats(year=None):
                                 if page_link:
                                     with page.expect_response("**/Record/Player/Defense/Basic.aspx", timeout=20000):
                                         page_link.click()
-                                    page.wait_for_load_state("networkidle", timeout=15000)
+                                    page.wait_for_load_state("networkidle", timeout=SEL_TIMEOUT)
                                     policy.delay()
                             except Exception:
                                 logger.exception(f"   ⚠️ 페이지 {current_page} 이동 중 오류")
@@ -233,14 +234,14 @@ def crawl_all_fielding_stats(year=None):
             logger.info("\n🏃 [상세] 포수 전문 지표 수집 중 (전체 팀)...")
             try:
                 # 페이지 초기화
-                page.goto(url, wait_until="load", timeout=60000)
-                page.wait_for_load_state("networkidle", timeout=15000)
+                page.goto(url, wait_until="load", timeout=LONG_TIMEOUT)
+                page.wait_for_load_state("networkidle", timeout=SEL_TIMEOUT)
                 policy.delay()
 
                 # 1단계: 포지션 "포수(2)" 선택
                 with page.expect_response("**/Record/Player/Defense/Basic.aspx", timeout=20000):
                     page.select_option("select#cphContents_cphContents_cphContents_ddlPos_ddlPos", value="2")
-                page.wait_for_load_state("networkidle", timeout=15000)
+                page.wait_for_load_state("networkidle", timeout=SEL_TIMEOUT)
                 policy.delay()
 
                 # 2단계: 팀 "전체" 선택 (이미 전체일 수도 있으므로 확인 후 선택)
@@ -250,7 +251,7 @@ def crawl_all_fielding_stats(year=None):
                 if team_val != "":
                     with page.expect_response("**/Record/Player/Defense/Basic.aspx", timeout=20000):
                         page.select_option("select#cphContents_cphContents_cphContents_ddlTeam_ddlTeam", value="")
-                    page.wait_for_load_state("networkidle", timeout=15000)
+                    page.wait_for_load_state("networkidle", timeout=SEL_TIMEOUT)
                     policy.delay()
 
                 # 페이지네이션 (포수가 많을 경우 대비)
@@ -279,7 +280,7 @@ def crawl_all_fielding_stats(year=None):
                         if p_link:
                             with page.expect_response("**/Record/Player/Defense/Basic.aspx", timeout=20000):
                                 p_link.click()
-                            page.wait_for_load_state("networkidle", timeout=15000)
+                            page.wait_for_load_state("networkidle", timeout=SEL_TIMEOUT)
                             policy.delay()
 
                     table = page.query_selector("table.tData01.tt")

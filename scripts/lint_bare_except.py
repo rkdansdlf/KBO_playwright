@@ -5,6 +5,11 @@ Usage: python scripts/lint_bare_except.py [--fix FILE]
 
 from __future__ import annotations
 
+import logging
+
+logger = logging.getLogger(__name__)
+
+
 import ast
 import sys
 from pathlib import Path
@@ -68,9 +73,9 @@ def main():
     for f in files:
         issues = scan_file(f)
         for path, lineno, name in issues:
-            print(f"{path}:{lineno}: bare except Exception (name={name})")
+            logger.info(f"{path}:{lineno}: bare except Exception (name={name})")
             total += 1
-    print(f"\nTotal: {total} bare except Exception in {len(files)} files")
+    logger.info(f"\nTotal: {total} bare except Exception in {len(files)} files")
     return total
 
 

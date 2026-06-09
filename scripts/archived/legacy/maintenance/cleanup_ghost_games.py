@@ -100,7 +100,7 @@ def cleanup_ghost_games():
         session.commit()
         print(f"✅ Cleanup complete. Total {deleted_count} records removed.")
 
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         print(f"❌ Error during cleanup: {e}")
         session.rollback()
     finally:

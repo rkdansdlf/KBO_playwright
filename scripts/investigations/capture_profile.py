@@ -1,3 +1,7 @@
+import logging
+
+logger = logging.getLogger(__name__)
+
 import asyncio
 
 from playwright.async_api import async_playwright
@@ -7,7 +11,7 @@ async def main():
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=True)
         page = await browser.new_page()
-        print("Navigating to profile...")
+        logger.info("Navigating to profile...")
         await page.goto(
             "https://www.koreabaseball.com/Record/Player/PitcherDetail/Basic.aspx?playerId=79171",
             wait_until="networkidle",
@@ -20,13 +24,13 @@ async def main():
             draft = await page.locator("#cphContents_cphContents_cphContents_playerProfile_lblDraft").text_content()
             payment = await page.locator("#cphContents_cphContents_cphContents_playerProfile_lblPayment").text_content()
 
-            print(f"IMG: {img_src}")
-            print(f"Salary: {salary.strip() if salary else 'None'}")
-            print(f"Draft: {draft.strip() if draft else 'None'}")
-            print(f"Payment: {payment.strip() if payment else 'None'}")
+            logger.info(f"IMG: {img_src}")
+            logger.info(f"Salary: {salary.strip() if salary else 'None'}")
+            logger.info(f"Draft: {draft.strip() if draft else 'None'}")
+            logger.info(f"Payment: {payment.strip() if payment else 'None'}")
 
-        except Exception as e:
-            print(f"Error extracting DOM elements: {e}")
+        except Exception as e:  # noqa: BLE001
+            logger.error(f"Error extracting DOM elements: {e}")
 
         await browser.close()
 

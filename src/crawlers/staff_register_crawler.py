@@ -23,6 +23,7 @@ logger = logging.getLogger(__name__)
 
 from playwright.async_api import BrowserContext, Page, async_playwright  # noqa: E402
 
+from src.utils.playwright_retry import NAV_TIMEOUT
 from src.utils.request_policy import RequestPolicy  # noqa: E402
 from src.utils.team_codes import resolve_team_code  # noqa: E402
 
@@ -257,7 +258,7 @@ class StaffRegisterCrawler:
 
             try:
                 logger.info(f"🌍 Navigating to {REGISTER_URL} ...")
-                await page.goto(REGISTER_URL, wait_until="domcontentloaded", timeout=30000)
+                await page.goto(REGISTER_URL, wait_until="domcontentloaded", timeout=NAV_TIMEOUT)
                 await page.wait_for_timeout(1500)
 
                 for code in targets:

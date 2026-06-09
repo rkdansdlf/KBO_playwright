@@ -12,6 +12,7 @@ from playwright.async_api import Page
 
 from src.utils.compliance import compliance
 from src.utils.playwright_pool import AsyncPlaywrightPool
+from src.utils.playwright_retry import NAV_TIMEOUT
 from src.utils.throttle import throttle
 
 logger = logging.getLogger(__name__)
@@ -67,7 +68,7 @@ class FuturesProfileCrawler:
 
         try:
             await self._wait()
-            await page.goto(url, wait_until="domcontentloaded", timeout=30000)
+            await page.goto(url, wait_until="domcontentloaded", timeout=NAV_TIMEOUT)
         except PlaywrightError:
             return None
 

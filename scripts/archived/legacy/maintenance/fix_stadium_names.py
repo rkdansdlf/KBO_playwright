@@ -40,7 +40,7 @@ def fix_stadium_names():
                         {"normalized": normalized, "raw": raw_name},
                     )
                     counts["updated"] += 1
-                except Exception as e:
+                except Exception as e:  # noqa: BLE001
                     print(f"  ❌ Error updating '{raw_name}': {e}")
                     counts["errors"] += 1
             else:
@@ -68,7 +68,7 @@ def fix_stadium_names():
                             {"normalized": normalized, "raw": raw_name},
                         )
             print("✅ OCI synchronization successful.")
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             print(f"⚠️ OCI Sync failed: {e}")
     else:
         print("\n⚠️ OCI_DB_URL not found. Skipping sync.")

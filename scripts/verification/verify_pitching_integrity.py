@@ -4,6 +4,8 @@ import sqlite3
 import pandas as pd
 
 logger = logging.getLogger(__name__)
+
+
 def verify_pitching_integrity():
     conn = sqlite3.connect("data/kbo_dev.db")
 

@@ -5,6 +5,11 @@ Defaults to dry-run and requires --apply before deleting rows.
 
 from __future__ import annotations
 
+import logging
+
+logger = logging.getLogger(__name__)
+
+
 import argparse
 import os
 
@@ -98,20 +103,20 @@ def main() -> int:
     args = build_arg_parser().parse_args()
     database_url = args.database_url or os.getenv("OCI_DB_URL") or os.getenv("TARGET_DATABASE_URL")
     if not database_url:
-        print("[ERROR] OCI_DB_URL or TARGET_DATABASE_URL is required.")
+        logger.info("[ERROR] OCI_DB_URL or TARGET_DATABASE_URL is required.")
         return 1
 
     if not args.apply:
-        print("[DRY-RUN] No changes will be committed. Pass --apply to delete rows.")
+        logger.info("[DRY-RUN] No changes will be committed. Pass --apply to delete rows.")
 
     counts = cleanup_oci_duplicates(database_url=database_url, apply=args.apply)
     for key, value in counts.items():
-        print(f"{key}: {value}")
+        logger.info(f"{key}: {value}")
 
     if args.apply:
-        print("[DONE] OCI duplicate cleanup committed.")
+        logger.info("[DONE] OCI duplicate cleanup committed.")
     else:
-        print("[DONE] Dry-run rolled back.")
+        logger.info("[DONE] Dry-run rolled back.")
     return 0
 
 

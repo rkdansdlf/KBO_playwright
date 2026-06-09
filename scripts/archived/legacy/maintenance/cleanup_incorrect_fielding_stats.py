@@ -65,7 +65,7 @@ def cleanup_oci():
                 print(f"   - {legacy_code} ({start_yr}~{end_yr}): {deleted}건 삭제 완료")
             transaction.commit()
             print(f"✅ OCI PostgreSQL 클린업 완료! 총 {total_deleted}건 삭제됨.\n")
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             transaction.rollback()
             print(f"❌ OCI PostgreSQL 클린업 실패: {e}")
 

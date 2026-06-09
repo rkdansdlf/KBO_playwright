@@ -40,7 +40,7 @@ async def main():
             )
         else:
             print(f"❌ Failed to crawl {game_id}")
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         print(f"💥 Error: {e}")
     # No crawler.close() needed here as pool closes in crawl_games if owned
 

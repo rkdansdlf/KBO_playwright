@@ -5,6 +5,11 @@ Defaults to dry-run and requires --apply before committing updates.
 
 from __future__ import annotations
 
+import logging
+
+logger = logging.getLogger(__name__)
+
+
 import argparse
 import os
 import sys
@@ -87,13 +92,13 @@ def main() -> int:
     load_dotenv()
     args = build_arg_parser().parse_args()
     if not args.apply:
-        print("[DRY-RUN] No changes will be committed. Pass --apply to update rows.")
+        logger.info("[DRY-RUN] No changes will be committed. Pass --apply to update rows.")
 
     fix_2024_seasons(apply=args.apply)
     if args.apply:
-        print("[DONE] 2024 season_id cleanup committed.")
+        logger.info("[DONE] 2024 season_id cleanup committed.")
     else:
-        print("[DONE] Dry-run rolled back.")
+        logger.info("[DONE] Dry-run rolled back.")
     return 0
 
 

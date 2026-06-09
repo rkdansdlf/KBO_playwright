@@ -773,7 +773,7 @@ def _get_live_poll_interval_seconds() -> int:
 
                 if earliest_start_time is None or start_time < earliest_start_time:
                     earliest_start_time = start_time
-            except Exception:
+            except Exception:  # noqa: BLE001
                 logger.warning("[LiveInterval] Failed to parse start_time: %s", start_time_raw)
 
         # Track latest update time for terminal/finished games
@@ -791,7 +791,7 @@ def _get_live_poll_interval_seconds() -> int:
 
                 if latest_update_time is None or updated_kst > latest_update_time:
                     latest_update_time = updated_kst
-            except Exception:
+            except Exception:  # noqa: BLE001
                 pass
 
     # Apply interval rules

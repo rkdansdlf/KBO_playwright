@@ -175,7 +175,7 @@ def run_batch_parse(
                 logger.exception(f"Parse failed for snapshot {snapshot.id} ({ds.source_key})")
                 stats["failed"] += 1
 
-    logger.info("[PARSE] Done: %d, Failed: %d, Skipped: %d", stats['done'], stats['failed'], stats['skipped'])
+    logger.info("[PARSE] Done: %d, Failed: %d, Skipped: %d", stats["done"], stats["failed"], stats["skipped"])
     return stats
 
 

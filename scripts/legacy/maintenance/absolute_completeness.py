@@ -1,3 +1,7 @@
+import logging
+
+logger = logging.getLogger(__name__)
+
 from src.services.game_deduplication_service import DeduplicationWindow, mark_primary_games
 
 WINDOWS = [
@@ -8,9 +12,9 @@ WINDOWS = [
 
 
 def absolute_completeness():
-    print("Zeroing all is_primary...")
+    logger.info("Zeroing all is_primary...")
     result = mark_primary_games("data/kbo_dev.db", windows=WINDOWS, reset_all=True)
-    print(f"Completeness calibration done. {result.marked_primary} primary games marked.")
+    logger.info(f"Completeness calibration done. {result.marked_primary} primary games marked.")
 
 
 if __name__ == "__main__":

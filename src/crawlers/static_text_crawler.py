@@ -16,6 +16,7 @@ from pypdf import PdfReader  # noqa: E402
 
 from src.db.engine import SessionLocal  # noqa: E402
 from src.utils.playwright_pool import AsyncPlaywrightPool  # noqa: E402
+from src.utils.playwright_retry import NAV_TIMEOUT
 
 
 class StaticTextCrawler:
@@ -79,7 +80,7 @@ class StaticTextCrawler:
             page = await pool.acquire()
             try:
                 # Go to the url and wait for it to load
-                await page.goto(url, wait_until="domcontentloaded", timeout=30000)
+                await page.goto(url, wait_until="domcontentloaded", timeout=NAV_TIMEOUT)
                 # Wait a brief moment for dynamic rendering
                 await page.wait_for_timeout(2000)
                 html_content = await page.content()

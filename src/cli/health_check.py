@@ -88,7 +88,7 @@ def run_health_check() -> None:
     logger.info(" KBO Pipeline Health Check")
     logger.info("=" * 60)
     logger.info(f" Timestamp: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-    logger.info()
+    logger.info("")
 
     stale_count = sum(1 for r in ds_rows if r["stale"].startswith("STALE"))
     never_count = sum(1 for r in ds_rows if r["stale"] == "NEVER")
@@ -96,7 +96,7 @@ def run_health_check() -> None:
 
     logger.info(f" DataSources: {len(ds_rows)} active ({stale_count} stale, {never_count} never crawled)")
     logger.info(f" Tables: {len(table_rows)} checked ({empty_count} issues)")
-    logger.info()
+    logger.info("")
 
     logger.info("--- DataSources ---")
     logger.info(f"  {'Key':<30} {'Domain':<12} {'Freq':<10} {'Status':<20} {'Hash'}")
@@ -104,14 +104,14 @@ def run_health_check() -> None:
     for r in ds_rows:
         logger.info(f"  {r['key']:<30} {r['domain']:<12} {r['freq']:<10} {r['stale']:<20} {r['hash']}")
 
-    logger.info()
+    logger.info("")
     logger.info("--- Tables ---")
     logger.info(f"  {'Table':<30} {'Rows':<10} {'Latest'}")
     logger.info(f"  {'-' * 30} {'-' * 10} {'-' * 30}")
     for r in table_rows:
         logger.info(f"  {r['table']:<30} {str(r['rows']):<10} {r['latest']}")
 
-    logger.info()
+    logger.info("")
     if stale_count or never_count or empty_count:
         logger.info(f" ⚠ {stale_count} stale, {never_count} never crawled, {empty_count} table issues")
     else:

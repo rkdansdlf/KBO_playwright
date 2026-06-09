@@ -4,6 +4,8 @@ import sqlalchemy
 from sqlalchemy import text
 
 logger = logging.getLogger(__name__)
+
+
 def check_oci_orphans():
     engine = sqlalchemy.create_engine("postgresql://postgres:rkdansdlf@134.185.107.178:5432/bega_backend")
     with engine.connect() as conn:

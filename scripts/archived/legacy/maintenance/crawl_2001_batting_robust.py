@@ -80,7 +80,7 @@ def extract_players_custom(page, series_key, year, league_name):
 
             players.append(data)
         return players
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         print(f"⚠️ Custom extraction error: {e}")
         return []
 

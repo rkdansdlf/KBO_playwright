@@ -4,6 +4,8 @@ import logging
 from playwright.async_api import async_playwright
 
 logger = logging.getLogger(__name__)
+
+
 async def main():
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=True)

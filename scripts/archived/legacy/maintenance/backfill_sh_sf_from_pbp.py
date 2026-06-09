@@ -123,7 +123,7 @@ def main():
                     session.commit()
                     total_updated += updated
                     total_games += 1
-            except Exception as e:
+            except Exception as e:  # noqa: BLE001
                 session.rollback()
                 print(f"Error processing {gid}: {e}")
 

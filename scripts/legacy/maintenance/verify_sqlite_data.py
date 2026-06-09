@@ -86,7 +86,7 @@ def main():
             else:
                 logger.warning("Please review the mathematical anomalies above.")
 
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             logger.error("Verification error: %s", e)
             traceback.print_exc()
 

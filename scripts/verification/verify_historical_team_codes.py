@@ -9,6 +9,8 @@ import logging
 from src.utils.team_codes import resolve_team_code, team_code_from_game_id_segment
 
 logger = logging.getLogger(__name__)
+
+
 def test_resolution(name, year, expected, type="name"):
     try:
         if type == "name":
@@ -21,7 +23,7 @@ def test_resolution(name, year, expected, type="name"):
         else:
             logger.info(f"❌ [FAIL] {year} {name} -> Expected {expected}, got {result}")
             return False
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         logger.info(f"❌ [ERROR] {year} {name} -> {e}")
         return False
     return True

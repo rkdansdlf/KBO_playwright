@@ -17,6 +17,7 @@ import contextlib  # noqa: E402
 from src.utils.compliance import compliance  # noqa: E402
 from src.utils.player_validation import validate_player_payload  # noqa: E402
 from src.utils.playwright_pool import AsyncPlaywrightPool  # noqa: E402
+from src.utils.playwright_retry import SEL_TIMEOUT
 from src.utils.request_policy import RequestPolicy  # noqa: E402
 
 # KBO profile page selectors (common across Hitter/Pitcher detail pages)
@@ -337,7 +338,7 @@ class PlayerProfileCrawler:
 
         # Wait for any name element to be attached
         with contextlib.suppress(Exception):
-            await page.wait_for_selector('[id$="lblName"], .player_basic, .player_info', timeout=15000)
+            await page.wait_for_selector('[id$="lblName"], .player_basic, .player_info', timeout=SEL_TIMEOUT)
 
         # Wait for potential AJAX content or image source update
         try:

@@ -19,6 +19,7 @@ from playwright.async_api import Page  # noqa: E402
 from src.db.engine import SessionLocal  # noqa: E402
 from src.utils.compliance import compliance  # noqa: E402
 from src.utils.playwright_pool import AsyncPlaywrightPool  # noqa: E402
+from src.utils.playwright_retry import NAV_TIMEOUT, SEL_TIMEOUT
 from src.utils.request_policy import RequestPolicy  # noqa: E402
 from src.utils.team_codes import normalize_kbo_game_id, resolve_team_code, team_code_from_game_id_segment  # noqa: E402
 
@@ -398,7 +399,7 @@ class GameDetailCrawler:
             # and better targets for the actual score board area.
             await page.wait_for_selector(
                 "#tblAwayHitter1, #tblHomeHitter1, #tblAwayPitcher, #tblHomePitcher, li.game-cont.on p.status, li.game-cont.on p.staus, .game-status.cancel",
-                timeout=15000,
+                timeout=SEL_TIMEOUT,
             )
 
             # Check the status of the CURRENTLY SELECTED game in the carousel
@@ -1024,7 +1025,7 @@ class GameDetailCrawler:
                 await page.goto(lineup_url, wait_until="domcontentloaded", timeout=20000)
                 with contextlib.suppress(Exception):
                     await page.wait_for_selector(
-                        'a[href*="Player/PlayerDetail"], a[href*="playerId="], a[href*="p_id="]', timeout=15000
+                        'a[href*="Player/PlayerDetail"], a[href*="playerId="], a[href*="p_id="]', timeout=SEL_TIMEOUT
                     )
 
             try:
@@ -1040,7 +1041,7 @@ class GameDetailCrawler:
 
             async def _navigate_back():
                 await self.policy.delay_async()
-                await page.goto(review_url, wait_until="domcontentloaded", timeout=30000)
+                await page.goto(review_url, wait_until="domcontentloaded", timeout=NAV_TIMEOUT)
 
             await self.policy.run_with_retry_async(_navigate_back)
             await self._wait_for_boxscore(page)

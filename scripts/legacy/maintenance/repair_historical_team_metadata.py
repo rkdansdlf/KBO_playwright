@@ -3,6 +3,11 @@
 
 from __future__ import annotations
 
+import logging
+
+logger = logging.getLogger(__name__)
+
+
 import argparse
 import os
 import re
@@ -927,9 +932,9 @@ def main() -> None:
     for url in urls:
         result = run(db_url=url, max_year=args.max_year, apply=not args.dry_run, include_facts=not args.skip_facts)
         mode = "dry_run" if args.dry_run else "applied"
-        print(f"{mode}: {_mask_url(url)}")
+        logger.info(f"{mode}: {_mask_url(url)}")
         for key, value in result.items():
-            print(f"  {key}: {value}")
+            logger.info(f"  {key}: {value}")
 
 
 if __name__ == "__main__":

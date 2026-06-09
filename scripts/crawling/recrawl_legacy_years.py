@@ -174,19 +174,19 @@ with SessionLocal() as session:
         )
     ).group_by(PlayerSeasonPitching.league).all()
 
-    print("📊 타자 데이터 (시리즈별):")
+    logger.info("📊 타자 데이터 (시리즈별):")
     for league, count in batting_stats:
-        print(f"  - {{league}}: {{count:,}}명")
+        logger.info(f"  - {{league}}: {{count:,}}명")
 
-    print("📊 투수 데이터 (시리즈별):")
+    logger.info("📊 투수 데이터 (시리즈별):")
     for league, count in pitching_stats:
-        print(f"  - {{league}}: {{count:,}}명")
+        logger.info(f"  - {{league}}: {{count:,}}명")
 """,
     ]
 
     try:
         subprocess.run(check_cmd)
-    except Exception:
+    except Exception:  # noqa: BLE001
         logger.info("  ⚠️ 데이터베이스 확인 실패")
 
     return overall_success_rate >= 80
@@ -216,7 +216,7 @@ def main():
     except KeyboardInterrupt:
         logger.info("\n❌ 사용자가 중단했습니다.")
         sys.exit(130)
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         logger.info(f"\n❌ 예상치 못한 오류: {e}")
         sys.exit(1)
 

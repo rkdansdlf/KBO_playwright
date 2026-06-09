@@ -2,6 +2,7 @@ import logging
 
 from playwright.sync_api import Page
 
+from src.utils.playwright_retry import NAV_TIMEOUT
 from src.utils.request_policy import RequestPolicy
 
 logger = logging.getLogger(__name__)
@@ -18,7 +19,7 @@ def goto_next_page(page: Page, policy: RequestPolicy | None = None) -> bool:
                 href = link.get_attribute("href")
                 if href and "javascript:" not in href:
                     link.click()
-                    page.wait_for_load_state("networkidle", timeout=30000)
+                    page.wait_for_load_state("networkidle", timeout=NAV_TIMEOUT)
                     if policy:
                         policy.delay()
                     return True

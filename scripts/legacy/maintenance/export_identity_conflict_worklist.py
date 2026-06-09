@@ -8,6 +8,11 @@ stat rows generally do not, so most rows are marked for source review.
 
 from __future__ import annotations
 
+import logging
+
+logger = logging.getLogger(__name__)
+
+
 import argparse
 import csv
 import sqlite3
@@ -382,12 +387,14 @@ def main() -> None:
         team_code=args.team_code,
         table_name=args.table,
     )
-    print(f"[REPORT] groups={result['groups']} rows={result['rows']} source_review_rows={result['source_review_rows']}")
+    logger.info(
+        f"[REPORT] groups={result['groups']} rows={result['rows']} source_review_rows={result['source_review_rows']}"
+    )
     for key in sorted(result["summary"]):
-        print(f"  {key}={result['summary'][key]}")
-    print(f"[REPORT] groups_csv={result['groups_csv']}")
-    print(f"[REPORT] rows_csv={result['rows_csv']}")
-    print(f"[REPORT] manifest_csv={result['manifest_csv']}")
+        logger.info(f"  {key}={result['summary'][key]}")
+    logger.info(f"[REPORT] groups_csv={result['groups_csv']}")
+    logger.info(f"[REPORT] rows_csv={result['rows_csv']}")
+    logger.info(f"[REPORT] manifest_csv={result['manifest_csv']}")
 
 
 if __name__ == "__main__":

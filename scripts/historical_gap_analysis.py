@@ -79,20 +79,20 @@ def analyze_gaps():
                 status = "NO_DATA"
                 gaps["all"].append(year)
 
-            logger.info("  %5s %8s %8s %9s %7s  %-30s", year, str(year) + '시즌', bat, pit, gms, status)
+            logger.info("  %5s %8s %8s %9s %7s  %-30s", year, str(year) + "시즌", bat, pit, gms, status)
 
         logger.info("-" * 80)
 
         if gaps["game_detail"]:
             logger.info(
                 "  Game detail gap: %s years (%s–%s)",
-                len(gaps['game_detail']),
-                min(gaps['game_detail']),
-                max(gaps['game_detail']),
+                len(gaps["game_detail"]),
+                min(gaps["game_detail"]),
+                max(gaps["game_detail"]),
             )
             logger.info("  → player_season_batting exists but game table is empty for these years.")
         if gaps["all"]:
-            logger.info("  No data at all: %s years: %s", len(gaps['all']), gaps['all'])
+            logger.info("  No data at all: %s years: %s", len(gaps["all"]), gaps["all"])
 
         logger.info("  2000년 이전 게임 데이터는 KBO 웹사이트에서 제공하지 않음.")
         logger.info("  대안: static CSV seeding 또는 KBO 기록실 PDF 수집.")

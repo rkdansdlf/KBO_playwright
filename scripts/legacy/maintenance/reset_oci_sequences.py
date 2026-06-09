@@ -1,3 +1,7 @@
+import logging
+
+logger = logging.getLogger(__name__)
+
 import argparse
 import os
 import sys
@@ -18,10 +22,10 @@ def reset_sequences(target_url=None):
         load_dotenv()
         target_url = os.getenv("OCI_DB_URL")
     if not target_url:
-        print("❌ OCI_DB_URL not found")
+        logger.error("❌ OCI_DB_URL not found")
         return
 
-    print(f"🔄 Resetting sequences on {target_url.split('@')[-1]}...")
+    logger.info(f"🔄 Resetting sequences on {target_url.split('@')[-1]}...")
     engine = create_engine_for_url(target_url)
 
     # Query to find all sequences and their associated tables/columns
@@ -42,13 +46,13 @@ def reset_sequences(target_url=None):
             cmds = [row[0] for row in result]
 
             for cmd in cmds:
-                print(f"  Exectuing: {cmd}")
+                logger.info(f"  Exectuing: {cmd}")
                 conn.execute(text(cmd))
 
             conn.commit()
-            print("✅ All sequences reset successfully")
-    except Exception as e:
-        print(f"❌ Failed to reset sequences: {e}")
+            logger.info("✅ All sequences reset successfully")
+    except Exception as e:  # noqa: BLE001
+        logger.error(f"❌ Failed to reset sequences: {e}")
 
 
 if __name__ == "__main__":

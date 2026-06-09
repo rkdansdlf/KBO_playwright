@@ -37,7 +37,7 @@ def fix_oci_player_basic():
             conn.execute(text("ALTER TABLE player_basic ADD PRIMARY KEY (player_id)"))
             conn.commit()
             print("✅ Primary Key added successfully.")
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             print(f"⚠️  Could not add PK (might already exist or other error): {e}")
 
 

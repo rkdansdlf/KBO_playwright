@@ -61,7 +61,7 @@ def main():
                 result = conn.execute(text(f"UPDATE {table} SET team_code = 'OB' WHERE team_code = 'DO'"))
                 if result.rowcount > 0:
                     print(f"  - Updated DO -> OB: {result.rowcount} rows")
-            except Exception as e:
+            except Exception as e:  # noqa: BLE001
                 print(f"  ⚠️ Error updating {table}: {e}")
 
         conn.commit()

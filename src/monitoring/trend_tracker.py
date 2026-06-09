@@ -135,7 +135,7 @@ class TrendTracker:
             logger.warning("\n  ⚠️  Degradations detected:")
             for d in deg:
                 logger.info(f"    {d['metric']}: {d['pct_change']:+.1f}% ({d['severity']})")
-        logger.info()
+        logger.info("")
 
     def send_degradation_alert(self, days: int = 14) -> None:
         """
