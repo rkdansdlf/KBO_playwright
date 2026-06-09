@@ -188,13 +188,13 @@ async def run_smoke(
 def _print_human_summary(result: Mapping[str, Any]) -> None:
     status = "passed" if result.get("ok") else "failed"
     logger.info(
-        f"[SMOKE] {status}: date={result.get('target_date')} "
+        f"[SMOKE] {status}: date={result.get('target_date')} "  # noqa: G004
         f"scope={result.get('scope')} candidates={len(result.get('candidates') or [])}",
     )
     for game_result in result.get("results") or []:
-        logger.info(f"  - {game_result.get('game_id')}: {game_result}")
+        logger.info(f"  - {game_result.get('game_id')}: {game_result}")  # noqa: G004
     if result.get("failure_reasons"):
-        logger.info(f"[SMOKE] failure_reasons={result['failure_reasons']}")
+        logger.info(f"[SMOKE] failure_reasons={result['failure_reasons']}")  # noqa: G004
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
@@ -248,7 +248,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             )
             _print_human_summary(result)
     except ValueError as exc:
-        logger.exception(f"[ERROR] {exc}")
+        logger.exception("[ERROR] %s", exc)
         return 2
 
     return 0 if result.get("ok") else 1

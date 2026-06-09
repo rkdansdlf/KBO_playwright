@@ -214,7 +214,7 @@ async def fetch_and_parse_futures_batting(
         page = await active_pool.acquire()
         try:
             if not await compliance.is_allowed(profile_url):
-                logger.info(f"[COMPLIANCE] Blocked futures batting: {profile_url}")
+                logger.info("[COMPLIANCE] Blocked futures batting: %s", profile_url)
                 return []
 
             await throttle.wait()
@@ -262,10 +262,10 @@ async def main() -> None:
     profile_url = f"https://www.koreabaseball.com/Futures/Player/HitterTotal.aspx?playerId={player_id}"
 
     rows = await fetch_and_parse_futures_batting(player_id, profile_url)
-    logger.info(f"\nParsed {len(rows)} Futures season records for player {player_id}")
+    logger.info("\nParsed %s Futures season records for player %s", len(rows), player_id)
 
     for row in rows:
-        logger.info(f"  Season {row.get('season')}: AVG={row.get('AVG')}, G={row.get('G')}, H={row.get('H')}")
+        logger.info(f"  Season {row.get('season')}: AVG={row.get('AVG')}, G={row.get('G')}, H={row.get('H')}")  # noqa: G004
 
 
 if __name__ == "__main__":

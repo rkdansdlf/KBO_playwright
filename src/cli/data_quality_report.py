@@ -34,7 +34,7 @@ def generate_report(years: list[int], output_format: str, output_dir: str, db_ur
 
     with SessionFactory() as session:
         for year in years:
-            logger.info(f"📊 Processing {year}...")
+            logger.info("📊 Processing %s...", year)
             year_data = {
                 "batting": {"total": 0, "sources": {}, "consistency_rate": 0.0},
                 "pitching": {"total": 0, "sources": {}, "consistency_rate": 0.0},
@@ -100,7 +100,7 @@ def generate_report(years: list[int], output_format: str, output_dir: str, db_ur
             year_data["baserunning"]["total"] = total_br
 
             # 5. Sample Consistency Check
-            logger.info(f"   🔍 Auditing consistency for {year} (sample)...")
+            logger.info("   🔍 Auditing consistency for %s (sample)...", year)
             sample_players = (
                 session.query(PlayerSeasonBatting).filter(PlayerSeasonBatting.season == year).limit(50).all()
             )
@@ -140,7 +140,7 @@ def generate_report(years: list[int], output_format: str, output_dir: str, db_ur
         path = os.path.join(output_dir, f"{filename}.json")
         with open(path, "w", encoding="utf-8") as f:
             json.dump(report_data, f, indent=2, ensure_ascii=False)
-        logger.info(f"✅ Report saved to {path}")
+        logger.info("✅ Report saved to %s", path)
     else:
         path = os.path.join(output_dir, f"{filename}.csv")
         with open(path, "w", encoding="utf-8", newline="") as f:
@@ -152,7 +152,7 @@ def generate_report(years: list[int], output_format: str, output_dir: str, db_ur
                     writer.writerow(
                         [yr, cat.upper(), data[cat]["total"], data[cat].get("consistency_rate", "N/A"), sources],
                     )
-        logger.info(f"✅ Report saved to {path}")
+        logger.info("✅ Report saved to %s", path)
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -175,4 +175,5 @@ def main(argv: Sequence[str] | None = None) -> int:
 
 if __name__ == "__main__":
     import sys
+
     sys.exit(main())

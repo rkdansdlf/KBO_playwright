@@ -20,8 +20,8 @@ logger = logging.getLogger(__name__)
 async def discover_and_save_players(start_year: int, end_year: int, active_year: int) -> None:
     crawler = RetiredPlayerListingCrawler(request_delay=1.0)
 
-    logger.info(f"🚀 Starting historical player discovery from {start_year} to {end_year}...")
-    logger.info(f"📡 Comparing against active roster year: {active_year}")
+    logger.info("🚀 Starting historical player discovery from %s to %s...", start_year, end_year)
+    logger.info("📡 Comparing against active roster year: %s", active_year)
 
     seasons = range(start_year, end_year + 1)
     historical_players = await crawler.collect_historical_player_ids(seasons)
@@ -29,7 +29,7 @@ async def discover_and_save_players(start_year: int, end_year: int, active_year:
 
     active_ids = set(active_players.keys())
 
-    logger.info(f"✨ Discovered {len(historical_players)} unique historical player IDs.")
+    logger.info("✨ Discovered %s unique historical player IDs.", len(historical_players))
 
     # Save to DB
     with SessionLocal() as session:
@@ -44,7 +44,10 @@ async def discover_and_save_players(start_year: int, end_year: int, active_year:
             if not existing:
                 # New player discovered
                 new_player = PlayerBasic(
-                    player_id=pid, name=name, status="active" if is_active else "retired", status_source="discovery",
+                    player_id=pid,
+                    name=name,
+                    status="active" if is_active else "retired",
+                    status_source="discovery",
                 )
                 session.add(new_player)
                 new_count += 1
@@ -61,7 +64,7 @@ async def discover_and_save_players(start_year: int, end_year: int, active_year:
                 session.commit()
 
         session.commit()
-        logger.info(f"✅ DB Update complete: {new_count} new players added, {update_count} players updated.")
+        logger.info("✅ DB Update complete: %s new players added, %s players updated.", new_count, update_count)
 
 
 def main(argv: Sequence[str] | None = None) -> int:

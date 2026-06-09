@@ -87,7 +87,7 @@ class RequestPolicy:
                 last_exc = exc
                 if attempt >= self.max_retries:
                     raise
-                logger.info(f"Retrying function due to error: {exc}")
+                logger.info("Retrying function due to error: %s", exc)
                 time.sleep(self._backoff_delay(attempt))
         if last_exc:
             raise last_exc
@@ -101,7 +101,7 @@ class RequestPolicy:
                 last_exc = exc
                 if attempt >= self.max_retries:
                     raise
-                logger.info(f"Retrying async function due to error: {exc}")
+                logger.info("Retrying async function due to error: %s", exc)
                 await asyncio.sleep(self._backoff_delay(attempt))
         if last_exc:
             raise last_exc

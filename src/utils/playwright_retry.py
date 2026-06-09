@@ -37,17 +37,17 @@ def retry_navigation(
     """Retry page.goto with simple incremental backoff."""
     for attempt in range(1, max_retries + 1):
         try:
-            logger.info(f"Navigating to {url} (Attempt {attempt}/{max_retries})")
+            logger.info("Navigating to %s (Attempt %s/%s)", url, attempt, max_retries)
             page.goto(url, wait_until=wait_until, timeout=timeout)
             page.wait_for_load_state("networkidle", timeout=timeout)
             return True
         except PlaywrightTimeout:
-            logger.warning(f"Timeout navigating to {url} on attempt {attempt}")
+            logger.warning("Timeout navigating to %s on attempt %s", url, attempt)
             if attempt == max_retries:
                 return False
             _policy.delay()
         except Exception as e:
-            logger.error(f"Error navigating to {url} on attempt {attempt}: {e}")
+            logger.error("Error navigating to %s on attempt %s: %s", url, attempt, e)
             if attempt == max_retries:
                 return False
             _policy.delay()
@@ -70,7 +70,7 @@ def retry_click(
         except PlaywrightTimeout:
             if attempt == max_retries:
                 return False
-            logger.warning(f"Click on {selector} timed out on attempt {attempt}, retrying...")
+            logger.warning("Click on %s timed out on attempt %s, retrying...", selector, attempt)
             with contextlib.suppress(Exception):
                 page.reload(wait_until="networkidle", timeout=timeout)
             _policy.delay()
@@ -92,7 +92,7 @@ def retry_wait_for_selector(
         except PlaywrightTimeout:
             if attempt == max_retries:
                 return False
-            logger.warning(f"Selector {selector} not found on attempt {attempt}, retrying...")
+            logger.warning("Selector %s not found on attempt %s, retrying...", selector, attempt)
             # Try reloading if it's a transient issue
             with contextlib.suppress(Exception):
                 page.reload(wait_until="networkidle", timeout=timeout)

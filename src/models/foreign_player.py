@@ -13,17 +13,24 @@ class ForeignPlayerChange(Base, TimestampMixin):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     player_id: Mapped[int | None] = mapped_column(
-        Integer, ForeignKey("player_basic.player_id", ondelete="RESTRICT"), nullable=True, index=True,
+        Integer,
+        ForeignKey("player_basic.player_id", ondelete="RESTRICT"),
+        nullable=True,
+        index=True,
     )
     player_name: Mapped[str] = mapped_column(String(100), nullable=False, comment="Foreign player name")
     team_id: Mapped[str] = mapped_column(String(10), nullable=False, index=True, comment="Team code")
     season: Mapped[int] = mapped_column(Integer, nullable=False, comment="Season year")
     change_type: Mapped[str] = mapped_column(
-        String(20), nullable=False, comment="SIGNED / RELEASED / REPLACED / RENEWED",
+        String(20),
+        nullable=False,
+        comment="SIGNED / RELEASED / REPLACED / RENEWED",
     )
     previous_team: Mapped[str | None] = mapped_column(String(100), nullable=True, comment="Previous team/league")
     replacement_reason: Mapped[str | None] = mapped_column(
-        String(50), nullable=True, comment="INJURY / PERFORMANCE / ETC",
+        String(50),
+        nullable=True,
+        comment="INJURY / PERFORMANCE / ETC",
     )
     announcement_date: Mapped[date | None] = mapped_column(Date, nullable=True, comment="Announcement date")
     contract_amount: Mapped[str | None] = mapped_column(String(100), nullable=True, comment="Contract amount text")

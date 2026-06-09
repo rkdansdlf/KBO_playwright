@@ -12,6 +12,8 @@ from src.db.engine import SessionLocal
 from src.models.player import PlayerBasic, PlayerSeasonFielding
 
 logger = logging.getLogger(__name__)
+
+
 def get_player_defensive_stats(player_name: str, year: int) -> list[dict[str, Any]]:
     """
     Retrieves defensive statistics for a specific player and year.
@@ -40,7 +42,7 @@ def get_player_defensive_stats(player_name: str, year: int) -> list[dict[str, An
 
         results = []
         for row in session.execute(fielding_stmt).scalars().all():
-            results.append(
+            results.append(  # noqa: PERF401
                 {
                     "player_id": row.player_id,
                     "team_id": row.team_id,

@@ -41,7 +41,8 @@ class SituationalSplitCalculator:
     def _resolve_name(self, player_id: int, session) -> str | None:
         """Returns the Korean name for a given player_id."""
         row = session.execute(
-            text("SELECT name FROM player_basic WHERE player_id = :pid"), {"pid": player_id},
+            text("SELECT name FROM player_basic WHERE player_id = :pid"),
+            {"pid": player_id},
         ).fetchone()
         return row.name if row else None
 

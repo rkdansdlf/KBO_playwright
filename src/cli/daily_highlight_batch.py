@@ -30,12 +30,12 @@ async def run_highlight_batch(
     sync_to_oci: bool | None = None,
     notify: bool = True,
 ) -> list[str]:
-    logger.info(f"🎬 Starting Daily Highlight Batch for {target_date_str}...")
+    logger.info("🎬 Starting Daily Highlight Batch for %s...", target_date_str)
 
     try:
         target_date = datetime.strptime(target_date_str, "%Y%m%d").date()
     except ValueError:
-        logger.exception(f"❌ Invalid date format: {target_date_str}. Expected YYYYMMDD.")
+        logger.exception("❌ Invalid date format: %s. Expected YYYYMMDD.", target_date_str)
         return []
 
     processed_game_ids: list[str] = []
@@ -54,7 +54,7 @@ async def run_highlight_batch(
         )
 
         if not games:
-            logger.info(f"ℹ️ No completed games found for {target_date_str}.")
+            logger.info("ℹ️ No completed games found for %s.", target_date_str)
             return []
 
         aggregator = HighlightAggregator(session)
@@ -67,26 +67,26 @@ async def run_highlight_batch(
             if not force and not dry_run:
                 exists = session.query(GameHighlight).filter(GameHighlight.game_id == game_id).first() is not None
                 if exists:
-                    logger.info(f"   ⏩ Skipping {game_id}: Highlights already exist (use --force to overwrite)")
+                    logger.info("   ⏩ Skipping %s: Highlights already exist (use --force to overwrite)", game_id)
                     # Load existing highlights for notification purposes
                     existing = session.query(GameHighlight).filter(GameHighlight.game_id == game_id).all()
                     game_highlights_map[game_id] = existing
                     processed_game_ids.append(game_id)
                     continue
 
-            logger.info(f"📊 Aggregating highlights for {game_id} ({game.away_team} vs {game.home_team})...")
+            logger.info("📊 Aggregating highlights for %s (%s vs %s)...", game_id, game.away_team, game.home_team)
             highlights = aggregator.aggregate_game_highlights(game_id)
 
             if not highlights:
-                logger.warning(f"   ⚠️ No significant highlight plays found for {game_id}.")
+                logger.warning("   ⚠️ No significant highlight plays found for %s.", game_id)
                 continue
 
-            logger.info(f"   ✨ Generated {len(highlights)} highlights.")
+            logger.info("   ✨ Generated %s highlights.", len(highlights))
             game_highlights_map[game_id] = highlights
 
             if not dry_run:
                 saved_count = aggregator.save_highlights(game_id, highlights)
-                logger.info(f"   💾 Saved {saved_count} highlights to local DB.")
+                logger.info("   💾 Saved %s highlights to local DB.", saved_count)
             else:
                 logger.info("   🧪 [DRY-RUN] Highlights not saved.")
 
@@ -97,14 +97,14 @@ async def run_highlight_batch(
     if should_sync and processed_game_ids and not dry_run:
         oci_url = os.getenv("OCI_DB_URL")
         if oci_url:
-            logger.info(f"🔄 Syncing highlights for {len(processed_game_ids)} games to OCI PostgreSQL...")
+            logger.info("🔄 Syncing highlights for %s games to OCI PostgreSQL...", len(processed_game_ids))
             with SessionLocal() as sync_session:
                 syncer = OCISync(oci_url, sync_session)
                 try:
                     for game_id in sorted(set(processed_game_ids)):
                         syncer.sync_specific_game(game_id)
                 except Exception as e:
-                    logger.error(f"OCI Sync failed: {e}", exc_info=True)
+                    logger.exception(f"OCI Sync failed: {e}")  # noqa: G004
                 finally:
                     syncer.close()
 
@@ -169,7 +169,7 @@ async def run_highlight_batch(
             else:
                 logger.warning("   ⚠️ Failed to send Telegram alert.")
 
-    logger.info(f"✅ Highlight batch finished. Processed={len(processed_game_ids)} games.")
+    logger.info("✅ Highlight batch finished. Processed=%s games.", len(processed_game_ids))
     return processed_game_ids
 
 

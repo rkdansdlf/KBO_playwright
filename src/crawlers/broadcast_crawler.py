@@ -31,12 +31,12 @@ class BroadcastCrawler:
             page = await context.new_page()
 
             url = f"{self.url}?year={year}&month={month:02d}"
-            logger.info(f"Loading {url}...")
+            logger.info("Loading %s...", url)
             await page.goto(url, wait_until="networkidle", timeout=NAV_TIMEOUT)
             await page.wait_for_timeout(2000)
 
             data = await self._extract_broadcast_data(page, year)
-            logger.info(f"Found {len(data)} broadcast entries.")
+            logger.info("Found %s broadcast entries.", len(data))
 
             await browser.close()
 
@@ -119,12 +119,12 @@ class BroadcastCrawler:
                     repo.save_broadcast(item)
                     count += 1
                 except SQLAlchemyError as ex:
-                    logger.warning(f"Broadcast save failed for item: {ex}")
+                    logger.warning("Broadcast save failed for item: %s", ex)
             session.commit()
-            logger.info(f"Saved {count} broadcast records.")
+            logger.info("Saved %s broadcast records.", count)
         except SQLAlchemyError as e:
             session.rollback()
-            logger.error(f"Database error saving broadcasts: {e}", exc_info=True)
+            logger.exception(f"Database error saving broadcasts: {e}")  # noqa: G004
         finally:
             session.close()
 

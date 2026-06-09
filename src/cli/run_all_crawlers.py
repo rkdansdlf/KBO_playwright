@@ -55,9 +55,9 @@ def enrich_and_prepare_contents(all_chunks: list[dict[str, Any]]) -> list[str]:
     enrich_svc = MetadataEnrichmentService()
 
     if enrich_svc.enabled:
-        logger.info(f"✨ LLM Metadata Enrichment enabled. Processing {len(all_chunks)} chunks...")
+        logger.info("✨ LLM Metadata Enrichment enabled. Processing %s chunks...", len(all_chunks))
         for idx, chunk in enumerate(all_chunks):
-            logger.info(f"   [{idx + 1}/{len(all_chunks)}] Analyzing chunk...")
+            logger.info("   [%s/%s] Analyzing chunk...", idx + 1, len(all_chunks))
             enrichment = enrich_svc.enrich_chunk(chunk["content"])
             chunk["meta"].update(enrichment)
 
@@ -97,12 +97,12 @@ async def run_static_pipeline(pdf_path: str | None = None) -> None:
             pdf_docs = crawler.parse_local_pdf(pdf_path)
             raw_docs.extend(pdf_docs)
         else:
-            logger.warning(f"⚠️ Specified PDF path does not exist: {pdf_path}")
+            logger.warning("⚠️ Specified PDF path does not exist: %s", pdf_path)
 
     # Check if there are local rules markdown files under Docs/baseball to load as fallback/addition
     rules_dir = "Docs/baseball"
     if os.path.exists(rules_dir):
-        logger.info(f"📁 Scanning directory '{rules_dir}' for static markdown files...")
+        logger.info(f"📁 Scanning directory '{rules_dir}' for static markdown files...")  # noqa: G004
         md_count = 0
         for root, _, files in os.walk(rules_dir):
             for file in files:
@@ -148,7 +148,7 @@ async def run_static_pipeline(pdf_path: str | None = None) -> None:
                     )
                     md_count += 1
                 except Exception:
-                    logger.exception(f"⚠️ Error reading local markdown {file}")
+                    logger.exception("⚠️ Error reading local markdown %s", file)
 
     # 2. Crawl Namuwiki pages (e.g. KBO rule list or history)
     # We use a default page for Namuwiki, or mock if offline/anti-scrape triggers
@@ -161,23 +161,23 @@ async def run_static_pipeline(pdf_path: str | None = None) -> None:
             wiki_doc = await crawler.crawl_namuwiki(url)
             raw_docs.append(wiki_doc)
         except Exception:
-            logger.exception(f"⚠️ Namuwiki crawl skipped/failed for {url}")
+            logger.exception("⚠️ Namuwiki crawl skipped/failed for %s", url)
 
     if not raw_docs:
         logger.info("ℹ️ No static documents found to process.")
         return
 
     # 3. Transform & Chunk
-    logger.info(f"🔄 Cleansing and chunking {len(raw_docs)} documents...")
+    logger.info("🔄 Cleansing and chunking %s documents...", len(raw_docs))
     all_chunks = []
     for doc in raw_docs:
         chunks = transformer.chunk_document(doc)
         all_chunks.extend(chunks)
-    logger.info(f"   Generated {len(all_chunks)} semantic chunks.")
+    logger.info("   Generated %s semantic chunks.", len(all_chunks))
 
     # 4. Generate Embeddings & Load to Database
     if all_chunks:
-        logger.info(f"⚡ Fetching vector embeddings for {len(all_chunks)} chunks...")
+        logger.info("⚡ Fetching vector embeddings for %s chunks...", len(all_chunks))
         # Extract and enrich contents to batch embed
         contents_to_embed = enrich_and_prepare_contents(all_chunks)
         embeddings = embedding_svc.get_embeddings_batch(contents_to_embed)
@@ -189,7 +189,7 @@ async def run_static_pipeline(pdf_path: str | None = None) -> None:
         logger.info("💾 Saving chunks to local database...")
         with get_db_session() as session:
             upserted = repo.upsert_chunks(session, all_chunks)
-            logger.info(f"✅ Upserted {upserted} RAG chunks to local DB.")
+            logger.info("✅ Upserted %s RAG chunks to local DB.", upserted)
 
             # Automatically sync to OCI if config allows
             if os.getenv("RUN_SYNC_SUPABASE") == "1" or os.getenv("RUN_SYNC_OCI") == "1":
@@ -201,7 +201,7 @@ async def run_static_pipeline(pdf_path: str | None = None) -> None:
                     syncer = OCISync(oci_url, session)
                     try:
                         synced = syncer.sync_rag_chunks()
-                        logger.info(f"✅ Synced {synced} static RAG chunks to OCI.")
+                        logger.info("✅ Synced %s static RAG chunks to OCI.", synced)
                     finally:
                         syncer.close()
 
@@ -228,7 +228,7 @@ async def run_dynamic_pipeline() -> None:
 
             r_repo = TeamRepository(session)
             inserted_count = r_repo.save_daily_rosters(roster_records)
-            logger.info(f"✅ Dynamic rosters updated successfully ({inserted_count} records processed).")
+            logger.info("✅ Dynamic rosters updated successfully (%s records processed).", inserted_count)
         except Exception:
             logger.exception("⚠️ Roster crawler execution failure")
 
@@ -243,7 +243,7 @@ async def run_dynamic_pipeline() -> None:
                 try:
                     synced_tickets = syncer.sync_ticket_schedules()
                     synced_rosters = syncer.sync_daily_rosters()
-                    logger.info(f"✅ Synced {synced_tickets} ticket schedules and {synced_rosters} rosters to OCI.")
+                    logger.info("✅ Synced %s ticket schedules and %s rosters to OCI.", synced_tickets, synced_rosters)
                 finally:
                     syncer.close()
 
@@ -280,16 +280,16 @@ async def run_realtime_pipeline() -> None:
         return
 
     # 3. Transform & Chunk
-    logger.info(f"🔄 Cleansing and chunking {len(raw_docs)} articles...")
+    logger.info("🔄 Cleansing and chunking %s articles...", len(raw_docs))
     all_chunks = []
     for doc in raw_docs:
         chunks = transformer.chunk_document(doc)
         all_chunks.extend(chunks)
-    logger.info(f"   Generated {len(all_chunks)} news chunks.")
+    logger.info("   Generated %s news chunks.", len(all_chunks))
 
     # 4. Generate Embeddings & Load to Database
     if all_chunks:
-        logger.info(f"⚡ Fetching vector embeddings for {len(all_chunks)} chunks...")
+        logger.info("⚡ Fetching vector embeddings for %s chunks...", len(all_chunks))
         contents_to_embed = enrich_and_prepare_contents(all_chunks)
         embeddings = embedding_svc.get_embeddings_batch(contents_to_embed)
 
@@ -299,7 +299,7 @@ async def run_realtime_pipeline() -> None:
         logger.info("💾 Saving chunks to local database...")
         with get_db_session() as session:
             upserted = repo.upsert_chunks(session, all_chunks)
-            logger.info(f"✅ Upserted {upserted} realtime RAG chunks to local DB.")
+            logger.info("✅ Upserted %s realtime RAG chunks to local DB.", upserted)
 
             # Automatically sync to OCI if config allows
             if os.getenv("RUN_SYNC_SUPABASE") == "1" or os.getenv("RUN_SYNC_OCI") == "1":
@@ -311,7 +311,7 @@ async def run_realtime_pipeline() -> None:
                     syncer = OCISync(oci_url, session)
                     try:
                         synced = syncer.sync_rag_chunks()
-                        logger.info(f"✅ Synced {synced} realtime RAG chunks to OCI.")
+                        logger.info("✅ Synced %s realtime RAG chunks to OCI.", synced)
                     finally:
                         syncer.close()
 
@@ -335,7 +335,7 @@ def run_consistency_check(deep: bool = False) -> None:
             logger.info("🚨 Consistency audit found mismatches — alert sent.")
     except Exception:
         err_msg = traceback.format_exc()
-        logger.error(f"Consistency audit raised an unexpected error:\n{err_msg}")
+        logger.error("Consistency audit raised an unexpected error:\n%s", err_msg)
         SlackWebhookClient.send_error_alert(f"Consistency audit error:\n{err_msg}")
 
 
@@ -353,7 +353,7 @@ def run_pipeline_sync(pipeline_type: str, pdf_path: str | None = None) -> None:
         elif pipeline_type == "realtime":
             asyncio.run(run_realtime_pipeline())
         else:
-            logger.error(f"❌ Unknown pipeline type: {pipeline_type}")
+            logger.error("❌ Unknown pipeline type: %s", pipeline_type)
             return
     except Exception:
         logger.exception("Critical Pipeline Failure")
@@ -422,7 +422,7 @@ def start_scheduler() -> None:
 
     logger.info("   Jobs scheduled:")
     for job in scheduler.get_jobs():
-        logger.info(f"   - [{job.id}] {job.name} (Next run: {job.next_run_time})")
+        logger.info("   - [%s] %s (Next run: %s)", job.id, job.name, job.next_run_time)
 
     try:
         scheduler.start()
@@ -433,11 +433,15 @@ def start_scheduler() -> None:
 def main() -> int:
     parser = argparse.ArgumentParser(description="KBO Knowledge & Issue Crawler Pipeline Orchestrator")
     parser.add_argument(
-        "--type", choices=["static", "dynamic", "realtime"], help="Execute specific crawler pipeline type immediately.",
+        "--type",
+        choices=["static", "dynamic", "realtime"],
+        help="Execute specific crawler pipeline type immediately.",
     )
     parser.add_argument("--pdf", type=str, help="Local KBO rules PDF file path. (Used only with --type static)")
     parser.add_argument(
-        "--daemon", action="store_true", help="Run scheduler daemon in background to execute jobs periodically.",
+        "--daemon",
+        action="store_true",
+        help="Run scheduler daemon in background to execute jobs periodically.",
     )
 
     args = parser.parse_args()

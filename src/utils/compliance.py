@@ -41,7 +41,7 @@ class ComplianceChecker:
             async with self._lock:
                 # Double check inside lock
                 if now - self.last_fetch_time > self.fetch_interval:
-                    logger.info(f"[COMPLIANCE] Fetching robots.txt from {self.robots_url}")
+                    logger.info("[COMPLIANCE] Fetching robots.txt from %s", self.robots_url)
                     try:
                         async with httpx.AsyncClient() as client:
                             response = await client.get(self.robots_url, timeout=10.0)
@@ -63,9 +63,9 @@ class ComplianceChecker:
                                         f.write(f"# Source: {self.robots_url}\n")
                                         f.write(f"# Fetched at: {datetime.now().isoformat()}\n\n")
                                         f.write(content)
-                                    logger.info(f"[COMPLIANCE] robots.txt snapshot saved to {snapshot_path}")
+                                    logger.info("[COMPLIANCE] robots.txt snapshot saved to %s", snapshot_path)
                                 except OSError as se:
-                                    logger.exception(f"[COMPLIANCE] Failed to save snapshot: {se}")
+                                    logger.exception("[COMPLIANCE] Failed to save snapshot: %s", se)
 
                                 logger.info("[COMPLIANCE] robots.txt loaded successfully.")
                             else:
@@ -77,7 +77,7 @@ class ComplianceChecker:
                                 self.parser.parse(["User-agent: *", "Disallow:"])
                                 self.last_fetch_time = now
                     except httpx.HTTPError as e:
-                        logger.exception(f"[COMPLIANCE] Error fetching robots.txt: {e}")
+                        logger.exception("[COMPLIANCE] Error fetching robots.txt: %s", e)
                         # Fallback on error
                         self.parser.parse(["User-agent: *", "Disallow:"])
                         self.last_fetch_time = now
@@ -87,7 +87,7 @@ class ComplianceChecker:
         await self._ensure_loaded()
         allowed = self.parser.can_fetch(user_agent, url)
         if not allowed:
-            logger.info(f"[COMPLIANCE] BLOCKED: {url} is DISALLOWED by robots.txt")
+            logger.info("[COMPLIANCE] BLOCKED: %s is DISALLOWED by robots.txt", url)
         return allowed
 
     def is_allowed_sync(self, url: str, user_agent: str = "*") -> bool:
@@ -95,7 +95,7 @@ class ComplianceChecker:
         # If not loaded, we perform a sync fetch (minimal blocking)
         now = time.time()
         if now - self.last_fetch_time > self.fetch_interval:
-            logger.info(f"[COMPLIANCE] Sync fetching robots.txt from {self.robots_url}")
+            logger.info("[COMPLIANCE] Sync fetching robots.txt from %s", self.robots_url)
             try:
                 import httpx
 
@@ -107,13 +107,13 @@ class ComplianceChecker:
                     self.parser.parse(["User-agent: *", "Disallow:"])
                     self.last_fetch_time = now
             except httpx.HTTPError as e:
-                logger.exception(f"[COMPLIANCE] Error sync fetching robots.txt: {e}")
+                logger.exception("[COMPLIANCE] Error sync fetching robots.txt: %s", e)
                 self.parser.parse(["User-agent: *", "Disallow:"])
                 self.last_fetch_time = now
 
         allowed = self.parser.can_fetch(user_agent, url)
         if not allowed:
-            logger.info(f"[COMPLIANCE] BLOCKED (sync): {url} is DISALLOWED by robots.txt")
+            logger.info("[COMPLIANCE] BLOCKED (sync): %s is DISALLOWED by robots.txt", url)
         return allowed
 
 

@@ -43,16 +43,19 @@ def ingest_mock_html(args: argparse.Namespace) -> None:
         # 변환된 데이터를 데이터베이스에 저장합니다.
         success = save_game_detail(payload)
         if success:
-            logger.info(f"✅ Ingested mock game {game_id}")
+            logger.info("✅ Ingested mock game %s", game_id)
         else:
-            logger.info(f"❌ Failed to ingest mock game {game_id}")
+            logger.info("❌ Failed to ingest mock game %s", game_id)
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
     """CLI 인자 파서를 생성합니다."""
     parser = argparse.ArgumentParser(description="Ingest saved GameCenter HTML fixtures")
     parser.add_argument(
-        "--fixtures-dir", type=str, default="tests/fixtures/game_details", help="HTML fixture 파일이 있는 디렉터리",
+        "--fixtures-dir",
+        type=str,
+        default="tests/fixtures/game_details",
+        help="HTML fixture 파일이 있는 디렉터리",
     )
     parser.add_argument("--limit", type=int, default=None, help="처리할 최대 파일 수")
     return parser

@@ -73,7 +73,7 @@ def save_batting_stats_safe(payloads: list[dict[str, Any]]) -> int:
 
             rows = []
             for payload in unique_payloads.values():
-                rows.append(
+                rows.append(  # noqa: PERF401
                     {
                         "player_id": payload.get("player_id"),
                         "season": payload.get("season"),
@@ -140,7 +140,7 @@ def save_batting_stats_safe(payloads: list[dict[str, Any]]) -> int:
                             session.execute(row_stmt)
                             saved_count += 1
                         except SQLAlchemyError:
-                            logger.exception(f"⚠️ UPSERT 실패 (player_id={data.get('player_id')})")
+                            logger.exception(f"⚠️ UPSERT 실패 (player_id={data.get('player_id')})")  # noqa: G004
                             session.rollback()
             elif db_type == "mysql":
                 stmt = mysql_insert(PlayerSeasonBatting).values(rows)
@@ -168,7 +168,7 @@ def save_batting_stats_safe(payloads: list[dict[str, Any]]) -> int:
                             session.execute(row_stmt)
                             saved_count += 1
                         except SQLAlchemyError:
-                            logger.exception(f"⚠️ UPSERT 실패 (player_id={data.get('player_id')})")
+                            logger.exception(f"⚠️ UPSERT 실패 (player_id={data.get('player_id')})")  # noqa: G004
                             session.rollback()
             elif db_type == "postgresql":
                 stmt = postgresql_insert(PlayerSeasonBatting).values(rows)
@@ -196,7 +196,7 @@ def save_batting_stats_safe(payloads: list[dict[str, Any]]) -> int:
                             session.execute(row_stmt)
                             saved_count += 1
                         except SQLAlchemyError:
-                            logger.exception(f"⚠️ UPSERT 실패 (player_id={data.get('player_id')})")
+                            logger.exception(f"⚠️ UPSERT 실패 (player_id={data.get('player_id')})")  # noqa: G004
                             session.rollback()
             else:
                 for data in rows:
@@ -222,7 +222,7 @@ def save_batting_stats_safe(payloads: list[dict[str, Any]]) -> int:
                     saved_count += 1
 
             session.commit()
-            logger.info(f"✅ 타자 데이터 {saved_count}건 저장 완료 (player_season_batting 테이블)")
+            logger.info("✅ 타자 데이터 %s건 저장 완료 (player_season_batting 테이블)", saved_count)
 
         except SQLAlchemyError:
             session.rollback()

@@ -123,7 +123,7 @@ def test_crawl_single_uses_review_fallback_when_direct_sections_are_empty(monkey
         sections.append(section)
         return True, "ok", crawler._section_url(game_id, game_date, section)
 
-    async def fake_wait(page, lightweight=False):
+    async def fake_wait(page, **kwargs):
         return True, "ok"
 
     async def fake_roster(page, game_id, game_date, review_url):
@@ -142,18 +142,14 @@ def test_crawl_single_uses_review_fallback_when_direct_sections_are_empty(monkey
         page, team_side, team_code, season_year, roster_map=None, use_hitter_section=False, db_session=None
     ):
         if not use_hitter_section:
-            # First try on REVIEW page is mocked empty
             return [], {}
-        # Fallback to dedicated section returns actual data
         return [_hitter(team_side)], {"hits": 1, "at_bats": 3}
 
     async def fake_pitchers(
         page, team_side, team_code, season_year, roster_map=None, use_pitcher_section=False, db_session=None
     ):
         if not use_pitcher_section:
-            # First try on REVIEW page is mocked empty
             return []
-        # Fallback to dedicated section returns actual data
         return [_pitcher(team_side)]
 
     monkeypatch.setattr(crawler, "_navigate_section", fake_navigate)
@@ -182,7 +178,7 @@ def test_crawl_single_marks_incomplete_detail_when_fallback_is_empty(monkeypatch
     async def fake_navigate(page, game_id, game_date, section, **kwargs):
         return True, "ok", crawler._section_url(game_id, game_date, section)
 
-    async def fake_wait(page, lightweight=False):
+    async def fake_wait(page, **kwargs):
         return True, "ok"
 
     async def fake_roster(*_args):

@@ -18,7 +18,7 @@ def batch_calculate_matchups(years: list[int], sync_oci: bool = False) -> None:
         try:
             engine.execute_all(year)
         except Exception:
-            logger.exception(f"⚠️ Failed to calculate matchups for {year}")
+            logger.exception("⚠️ Failed to calculate matchups for %s", year)
 
     if sync_oci:
         logger.info("🚀 Syncing Matchups to OCI...")

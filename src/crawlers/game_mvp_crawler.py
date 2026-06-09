@@ -38,7 +38,7 @@ class GameMvpCrawler:
                     logger.info(d)
         else:
             data = await self._fetch_recent_mvp_news()
-            logger.info(f"Found {len(data)} MVP entries.")
+            logger.info("Found %s MVP entries.", len(data))
             if save:
                 self._save_to_db(data)
             else:
@@ -70,7 +70,7 @@ class GameMvpCrawler:
                         "award_source": "NAVER",
                     }
         except Exception as e:
-            logger.warning(f"Error searching MVP for game {game_id}: {e}", exc_info=True)
+            logger.warning(f"Error searching MVP for game {game_id}: {e}", exc_info=True)  # noqa: G004
         finally:
             client.close()
         return None
@@ -108,7 +108,7 @@ class GameMvpCrawler:
                         },
                     )
             except Exception as e:
-                logger.warning(f"Game MVP news fetch failed: {e}")
+                logger.warning("Game MVP news fetch failed: %s", e)
 
         client.close()
         return results
@@ -154,12 +154,12 @@ class GameMvpCrawler:
                     repo.save_mvp(item)
                     count += 1
                 except SQLAlchemyError as e:
-                    logger.warning(f"Game MVP save failed: {e}")
+                    logger.warning("Game MVP save failed: %s", e)
             session.commit()
-            logger.info(f"Saved {count} MVP records.")
+            logger.info("Saved %s MVP records.", count)
         except SQLAlchemyError as e:
             session.rollback()
-            logger.error(f"Database error saving MVP records: {e}", exc_info=True)
+            logger.exception(f"Database error saving MVP records: {e}")  # noqa: G004
         finally:
             session.close()
 

@@ -17,7 +17,7 @@ def main(argv: list[str] | None = None) -> None:
 
     crawler = SeatCrawler()
     result = asyncio.run(crawler.run(save=args.save, team_filter=args.team))
-    logger.info(f"[SEAT] Done: {len(result)} sections")
+    logger.info("[SEAT] Done: %s sections", len(result))
 
 
 if __name__ == "__main__":

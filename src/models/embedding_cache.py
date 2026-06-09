@@ -23,7 +23,9 @@ class EmbeddingCache(Base, TimestampMixin):
     text_hash: Mapped[str] = mapped_column(String(64), primary_key=True, comment="SHA-256 hash of cleaned text content")
     model_name: Mapped[str] = mapped_column(String(50), primary_key=True, comment="Name of the embedding model used")
     embedding: Mapped[Any] = mapped_column(
-        JSON, nullable=False, comment="List of floats representing the embedding vector",
+        JSON,
+        nullable=False,
+        comment="List of floats representing the embedding vector",
     )
 
     def __repr__(self) -> str:

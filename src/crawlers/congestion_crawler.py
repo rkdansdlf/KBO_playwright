@@ -79,15 +79,15 @@ class CongestionCrawler:
         game_date = game_date or date.today()
         measured_at = datetime.now(UTC).replace(tzinfo=None)
 
-        logger.info(f"[Congestion] Collecting for {game_date} at {measured_at.strftime('%H:%M')} UTC")
+        logger.info(f"[Congestion] Collecting for {game_date} at {measured_at.strftime('%H:%M')} UTC")  # noqa: G004
 
         # Source 1: Seoul Open Data API
         snapshots = await self._collect_seoul_api()
-        logger.info(f"[Congestion] Seoul API: {len(snapshots)} zones")
+        logger.info("[Congestion] Seoul API: %s zones", len(snapshots))
 
         records = [_snapshot_to_record(snap, game_date, measured_at) for snap in snapshots]
 
-        logger.info(f"[Congestion] Total records: {len(records)}")
+        logger.info("[Congestion] Total records: %s", len(records))
 
         if save:
             self._save_to_db(records)
@@ -116,10 +116,10 @@ class CongestionCrawler:
                 repo = CongestionRepository(session)
                 created, updated = repo.bulk_upsert(records)
                 session.commit()
-                logger.info(f"[Congestion] Saved: {created} new, {updated} updated.")
+                logger.info("[Congestion] Saved: %s new, %s updated.", created, updated)
             except SQLAlchemyError as e:
                 session.rollback()
-                logger.error(f"[Congestion] Database error: {e}", exc_info=True)
+                logger.exception(f"[Congestion] Database error: {e}")  # noqa: G004
 
 
 if __name__ == "__main__":

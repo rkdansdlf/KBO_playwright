@@ -22,14 +22,22 @@ class StadiumFoodMenuItem(Base, TimestampMixin):
     menu_name: Mapped[str] = mapped_column(String(200), nullable=False, comment="Menu item name")
     price: Mapped[int | None] = mapped_column(Integer, nullable=True, comment="Price in KRW")
     category: Mapped[str | None] = mapped_column(
-        String(30), nullable=True, comment="chicken / snack / meal / dessert / drink / beer / etc",
+        String(30),
+        nullable=True,
+        comment="chicken / snack / meal / dessert / drink / beer / etc",
     )
     is_signature: Mapped[bool] = mapped_column(
-        Boolean, default=False, server_default="0", comment="Signature/recommended item",
+        Boolean,
+        default=False,
+        server_default="0",
+        comment="Signature/recommended item",
     )
     tags_json: Mapped[str | None] = mapped_column(Text, nullable=True, comment="JSON array of tags")
     source_id: Mapped[int | None] = mapped_column(
-        Integer, ForeignKey("data_sources.id", ondelete="SET NULL"), nullable=True, comment="DataSource ID",
+        Integer,
+        ForeignKey("data_sources.id", ondelete="SET NULL"),
+        nullable=True,
+        comment="DataSource ID",
     )
     effective_from: Mapped[date | None] = mapped_column(Date, nullable=True, comment="Menu available from")
     effective_to: Mapped[date | None] = mapped_column(Date, nullable=True, comment="Menu available until")

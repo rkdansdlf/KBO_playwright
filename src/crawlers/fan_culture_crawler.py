@@ -132,24 +132,24 @@ class FanCultureCrawler:
 
         for team_id, ch_info in teams.items():
             channel_id = ch_info["channel_id"]
-            logger.info(f"[FanCulture] {team_id} ({ch_info['name']}) — searching YouTube...")
+            logger.info(f"[FanCulture] {team_id} ({ch_info['name']}) — searching YouTube...")  # noqa: G004
 
             team_songs = await self._crawl_team(team_id, channel_id, ch_info["search_queries"])
             all_songs.extend(team_songs)
-            logger.info(f"[FanCulture]   → {len(team_songs)} cheer songs found")
+            logger.info("[FanCulture]   → %s cheer songs found", len(team_songs))
 
             # API 호출 간격 (rate limit 준수)
             await asyncio.sleep(0.5)
 
-        logger.info(f"[FanCulture] Total: {len(all_songs)} songs across {len(teams)} teams")
+        logger.info("[FanCulture] Total: %s songs across %s teams", len(all_songs), len(teams))
 
         if dry_run or not save:
             for s in all_songs[:5]:
                 logger.info(
-                    f"  [{s['team_id']}] {s['song_name']} | type={s['song_type']} | player={s.get('player_name')}",
+                    f"  [{s['team_id']}] {s['song_name']} | type={s['song_type']} | player={s.get('player_name')}",  # noqa: G004
                 )
             if len(all_songs) > 5:
-                logger.info(f"  ... and {len(all_songs) - 5} more")
+                logger.info("  ... and %s more", len(all_songs) - 5)
         elif save:
             self._save_to_db(all_songs)
 
@@ -196,7 +196,7 @@ class FanCultureCrawler:
                     except Exception:
                         logger.exception("Failed to save song: %s", item.get("song_name", ""))
                 session.commit()
-                logger.info(f"[FanCulture] Saved {saved} cheer songs to DB.")
+                logger.info("[FanCulture] Saved %s cheer songs to DB.", saved)
             except Exception:
                 session.rollback()
                 logger.exception("[FanCulture] DB save failed")

@@ -17,7 +17,7 @@ def batch_calculate_sabermetrics(years: list[int], sync_oci: bool = False) -> No
     """
     with SessionLocal() as session:
         for year in years:
-            logger.info(f"📈 Calculating Sabermetrics for {year}...")
+            logger.info("📈 Calculating Sabermetrics for %s...", year)
 
             try:
                 lg = SabermetricsCalculator.get_league_constants(session, year)
@@ -28,7 +28,7 @@ def batch_calculate_sabermetrics(years: list[int], sync_oci: bool = False) -> No
                     lg["lg_r_per_pa"],
                 )
             except Exception:
-                logger.exception(f"   ⚠️ Could not calculate league constants for {year}")
+                logger.exception("   ⚠️ Could not calculate league constants for %s", year)
                 continue
 
             # 1. Update Batting Sabermetrics
@@ -45,7 +45,7 @@ def batch_calculate_sabermetrics(years: list[int], sync_oci: bool = False) -> No
                 extra.update(metrics)
                 bat.extra_stats = extra
 
-            logger.info(f"   ✅ Updated {len(batters)} batters.")
+            logger.info("   ✅ Updated %s batters.", len(batters))
 
             # 2. Update Pitching Sabermetrics
             pitchers = (
@@ -62,7 +62,7 @@ def batch_calculate_sabermetrics(years: list[int], sync_oci: bool = False) -> No
                 extra.update({"fip_adj": metrics["fip_adj"], "lob_pct": metrics.get("lob_pct"), "war": metrics["war"]})
                 pit.extra_stats = extra
 
-            logger.info(f"   ✅ Updated {len(pitchers)} pitchers.")
+            logger.info("   ✅ Updated %s pitchers.", len(pitchers))
 
             session.commit()
 

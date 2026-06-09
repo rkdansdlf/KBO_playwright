@@ -315,7 +315,7 @@ def run_gap_report(alert: bool = True, dry_run: bool = False) -> dict[str, Any]:
 
     report = build_gap_report()
     summary = format_report_summary(report)
-    logger.info(f"[GAP-REPORT] {summary}")
+    logger.info("[GAP-REPORT] %s", summary)
 
     for gap_type, gap_data in report.get("gaps", {}).items():
         sev = _gap_severity(gap_data)
@@ -332,7 +332,7 @@ def run_gap_report(alert: bool = True, dry_run: bool = False) -> dict[str, Any]:
             count = f" ({gap_data['total']})"
         elif "violation_count" in gap_data:
             count = f" ({gap_data['violation_count']})"
-        logger.info(f"  {icon} {emoji} {gap_type}: {sev}{count}")
+        logger.info("  %s %s %s: %s%s", icon, emoji, gap_type, sev, count)
 
     if alert and not dry_run:
         send_gap_alerts(report)

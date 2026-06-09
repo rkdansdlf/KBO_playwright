@@ -162,13 +162,13 @@ async def run_backfill(args: argparse.Namespace) -> int:
     )
 
     if not targets:
-        logger.info(f"No missing scheduled pregame dates found between {start_date} and {end_date}.")
+        logger.info("No missing scheduled pregame dates found between %s and %s.", start_date, end_date)
         return 0
 
-    logger.info(f"Pregame backfill targets ({start_date}..{end_date}): {len(targets)} date(s)")
+    logger.info("Pregame backfill targets (%s..%s): %s date(s)", start_date, end_date, len(targets))
     for target in targets:
         logger.info(
-            f"  {target.target_date}: "
+            f"  {target.target_date}: "  # noqa: G004
             f"starters={target.starters_complete}/{target.scheduled_total}, "
             f"preview={target.preview_rows}/{target.scheduled_total}, "
             f"preview_missing_starters={target.preview_missing_starters}",
@@ -181,11 +181,11 @@ async def run_backfill(args: argparse.Namespace) -> int:
     incomplete: list[str] = []
     saved_total = 0
     for target in targets:
-        logger.info(f"\nRunning pregame backfill for {target.target_date}...")
+        logger.info("\nRunning pregame backfill for %s...", target.target_date)
         saved_ids = await run_preview_batch(target.target_date, sync_to_oci=not args.no_sync)
         saved_count = len(saved_ids)
         saved_total += saved_count
-        logger.info(f"Backfill result for {target.target_date}: saved={saved_count}")
+        logger.info("Backfill result for %s: saved=%s", target.target_date, saved_count)
         if args.fail_on_empty and target.scheduled_total and saved_count == 0:
             failed.append(target.target_date)
         if args.fail_on_incomplete:
@@ -201,17 +201,17 @@ async def run_backfill(args: argparse.Namespace) -> int:
                 )
 
     logger.info(
-        "\nPregame backfill finished. "
+        "\nPregame backfill finished. "  # noqa: G004
         f"saved_total={saved_total}, failed_empty={len(failed)}, incomplete={len(incomplete)}",
     )
     if failed:
         logger.info("Dates with scheduled games but no preview rows saved:")
         for target_date in failed:
-            logger.info(f"  {target_date}")
+            logger.info("  %s", target_date)
     if incomplete:
         logger.info("Dates still missing complete starting pitchers:")
         for target in incomplete:
-            logger.info(f"  {target}")
+            logger.info("  %s", target)
     if failed or incomplete:
         return 1
     return 0

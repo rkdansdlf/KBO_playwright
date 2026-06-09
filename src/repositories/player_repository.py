@@ -456,7 +456,7 @@ class PlayerRepository:
             contextual_matches = []
             for c in candidates:
                 if c.team and any(term in c.team for term in team_terms):
-                    contextual_matches.append(c)
+                    contextual_matches.append(c)  # noqa: PERF401
 
             if len(contextual_matches) == 1:
                 return contextual_matches[0].player_id

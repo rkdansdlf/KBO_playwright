@@ -45,7 +45,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             preserve_aliases=args.preserve_aliases,
         )
 
-    logger.info(f"✅ Hydrated runtime cache for {args.year}: {summary}")
+    logger.info("✅ Hydrated runtime cache for %s: %s", args.year, summary)
     source_engine.dispose()
     return 0
 

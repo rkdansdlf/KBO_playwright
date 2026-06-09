@@ -34,7 +34,7 @@ class StatsSyncMixin:
         missing_count = self.sqlite_session.query(model).filter(*filters, ~existing_player_filter).count()
         if missing_count:
             logger.warning(
-                f"⚠️ Skipping {missing_count} {model.__tablename__} rows with missing local player_basic references",
+                f"⚠️ Skipping {missing_count} {model.__tablename__} rows with missing local player_basic references",  # noqa: G004
             )
         return [*filters, existing_player_filter]
 
@@ -65,7 +65,7 @@ class StatsSyncMixin:
             )
 
             actual_count = result.fetchone()[0]
-            logger.info(f"🔍 OCI 투수 데이터 확인: {actual_count}건 (예상: {expected_count}건)")
+            logger.info("🔍 OCI 투수 데이터 확인: %s건 (예상: %s건)", actual_count, expected_count)
 
             if actual_count >= expected_count:
                 logger.info("✅ 투수 데이터 동기화 검증 성공!")
@@ -73,7 +73,7 @@ class StatsSyncMixin:
                 logger.warning("⚠️ 동기화된 투수 데이터 수가 예상보다 적습니다.")
 
         except SQLAlchemyError as e:
-            logger.exception(f"⚠️ 투수 데이터 동기화 검증 실패: {e}")
+            logger.exception("⚠️ 투수 데이터 동기화 검증 실패: %s", e)
 
     def verify_batting_sync(self, expected_count: int) -> None:
         """타자 데이터 동기화 결과 검증"""
@@ -86,7 +86,7 @@ class StatsSyncMixin:
             )
 
             actual_count = result.fetchone()[0]
-            logger.info(f"🔍 OCI 타자 데이터 확인: {actual_count}건 (예상: {expected_count}건)")
+            logger.info("🔍 OCI 타자 데이터 확인: %s건 (예상: %s건)", actual_count, expected_count)
 
             if actual_count >= expected_count:
                 logger.info("✅ 타자 데이터 동기화 검증 성공!")
@@ -94,7 +94,7 @@ class StatsSyncMixin:
                 logger.warning("⚠️ 동기화된 타자 데이터 수가 예상보다 적습니다.")
 
         except SQLAlchemyError as e:
-            logger.exception(f"⚠️ 타자 데이터 동기화 검증 실패: {e}")
+            logger.exception("⚠️ 타자 데이터 동기화 검증 실패: %s", e)
 
     def show_oci_data_sample(self) -> None:
         """OCI의 데이터 샘플 표시"""
@@ -112,8 +112,10 @@ class StatsSyncMixin:
             if pitcher_rows:
                 logger.info("\n📊 OCI 투수 데이터 샘플:")
                 for i, row in enumerate(pitcher_rows):
-                    logger.info(f"  {i + 1}. player_id: {row[0]}, season: {row[1]}")
-                    logger.info(f"     게임수: {row[2]}, 승패: {row[3]}-{row[4]}, ERA: {row[5]}, 이닝: {row[6]}")
+                    logger.info("  %s. player_id: %s, season: %s", i + 1, row[0], row[1])
+                    logger.info(
+                        "     게임수: %s, 승패: %s-%s, ERA: %s, 이닝: %s", row[2], row[3], row[4], row[5], row[6],
+                    )
 
             # 타자 데이터 샘플
             batting_result = self.target_session.execute(
@@ -128,11 +130,11 @@ class StatsSyncMixin:
             if batting_rows:
                 logger.info("\n🏏 OCI 타자 데이터 샘플:")
                 for i, row in enumerate(batting_rows):
-                    logger.info(f"  {i + 1}. player_id: {row[0]}, season: {row[1]}")
-                    logger.info(f"     게임수: {row[2]}, 타율: {row[3]}, 안타: {row[4]}, 홈런: {row[5]}")
+                    logger.info("  %s. player_id: %s, season: %s", i + 1, row[0], row[1])
+                    logger.info("     게임수: %s, 타율: %s, 안타: %s, 홈런: %s", row[2], row[3], row[4], row[5])
 
         except SQLAlchemyError as e:
-            logger.exception(f"⚠️ OCI 데이터 조회 실패: {e}")
+            logger.exception("⚠️ OCI 데이터 조회 실패: %s", e)
 
     def _get_table_signature(self, model: type, year: int | None = None, year_col: str = "season") -> dict[str, Any]:
         """
@@ -179,7 +181,7 @@ class StatsSyncMixin:
         if year and not force:
             sig = self._get_table_signature(PlayerSeasonBatting, year)
             if sig["match"]:
-                logger.info(f"   ⏩ Skipping player_season_batting for {year} (No changes detected)")
+                logger.info("   ⏩ Skipping player_season_batting for %s (No changes detected)", year)
                 return 0
 
         filters = []
@@ -203,7 +205,7 @@ class StatsSyncMixin:
         if year and not force:
             sig = self._get_table_signature(PlayerSeasonPitching, year)
             if sig["match"]:
-                logger.info(f"   ⏩ Skipping player_season_pitching for {year} (No changes detected)")
+                logger.info("   ⏩ Skipping player_season_pitching for %s (No changes detected)", year)
                 return 0
 
         filters = []
@@ -238,7 +240,7 @@ class StatsSyncMixin:
         if year and not force:
             sig = self._get_table_signature(TeamSeasonBatting, year)
             if sig["match"]:
-                logger.info(f"   ⏩ Skipping team_season_batting for {year} (No changes detected)")
+                logger.info("   ⏩ Skipping team_season_batting for %s (No changes detected)", year)
                 return 0
 
         filters = []
@@ -259,7 +261,7 @@ class StatsSyncMixin:
         if year and not force:
             sig = self._get_table_signature(TeamSeasonPitching, year)
             if sig["match"]:
-                logger.info(f"   ⏩ Skipping team_season_pitching for {year} (No changes detected)")
+                logger.info("   ⏩ Skipping team_season_pitching for %s (No changes detected)", year)
                 return 0
 
         filters = []
@@ -317,7 +319,7 @@ class StatsSyncMixin:
         if year and not force:
             sig = self._get_table_signature(PlayerSeasonFielding, year, year_col="year")
             if sig["match"]:
-                logger.info(f"   ⏩ Skipping fielding stats for {year} (No changes detected)")
+                logger.info("   ⏩ Skipping fielding stats for %s (No changes detected)", year)
                 return 0
 
         filters = [PlayerSeasonFielding.year == year] if year else None
@@ -334,7 +336,7 @@ class StatsSyncMixin:
         if year and not force:
             sig = self._get_table_signature(PlayerSeasonBaserunning, year, year_col="year")
             if sig["match"]:
-                logger.info(f"   ⏩ Skipping baserunning stats for {year} (No changes detected)")
+                logger.info("   ⏩ Skipping baserunning stats for %s (No changes detected)", year)
                 return 0
 
         filters = [PlayerSeasonBaserunning.year == year] if year else None
@@ -353,7 +355,7 @@ class StatsSyncMixin:
         if year and not force:
             sig = self._get_table_signature(TeamSeasonFielding, year)
             if sig["match"]:
-                logger.info(f"   ⏩ Skipping team_season_fielding for {year} (No changes detected)")
+                logger.info("   ⏩ Skipping team_season_fielding for %s (No changes detected)", year)
                 return 0
 
         filters = [TeamSeasonFielding.season == year] if year else None
@@ -372,7 +374,7 @@ class StatsSyncMixin:
         if year and not force:
             sig = self._get_table_signature(TeamSeasonBaserunning, year)
             if sig["match"]:
-                logger.info(f"   ⏩ Skipping team_season_baserunning for {year} (No changes detected)")
+                logger.info("   ⏩ Skipping team_season_baserunning for %s (No changes detected)", year)
                 return 0
 
         filters = [TeamSeasonBaserunning.season == year] if year else None
@@ -406,4 +408,4 @@ class StatsSyncMixin:
             year_col = "year" if use_year_col else "season"
             self.target_session.execute(text(f'DELETE FROM "{table_name}" WHERE "{year_col}" = :year'), {"year": year})
         self.target_session.commit()
-        logger.info(f"🧹 Purged OCI season stats for {year} (type={type})")
+        logger.info("🧹 Purged OCI season stats for %s (type=%s)", year, type)

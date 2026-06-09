@@ -151,7 +151,10 @@ def save_pitching_stats_to_db(payloads: list[dict[str, Any]]) -> int:
                 existing = (
                     session.query(PlayerSeasonPitching)
                     .filter_by(
-                        player_id=data["player_id"], season=data["season"], league=data["league"], level=data["level"],
+                        player_id=data["player_id"],
+                        season=data["season"],
+                        league=data["league"],
+                        level=data["level"],
                     )
                     .first()
                 )
@@ -170,13 +173,13 @@ def save_pitching_stats_to_db(payloads: list[dict[str, Any]]) -> int:
                 session.execute(stmt)
                 saved_count += 1
             except SQLAlchemyError:
-                logger.exception(f"⚠️ UPSERT 실패 (player_id={data.get('player_id')})")
+                logger.exception(f"⚠️ UPSERT 실패 (player_id={data.get('player_id')})")  # noqa: G004
                 session.rollback()
                 continue
 
         try:
             session.commit()
-            logger.info(f"✅ 투수 데이터 {saved_count}건 저장 완료 (player_season_pitching 테이블)")
+            logger.info("✅ 투수 데이터 %s건 저장 완료 (player_season_pitching 테이블)", saved_count)
         except SQLAlchemyError:
             session.rollback()
             logger.exception("❌ 커밋 실패")

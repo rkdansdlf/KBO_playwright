@@ -14,20 +14,29 @@ class TicketOpenRule(Base, TimestampMixin):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     team_id: Mapped[str] = mapped_column(String(10), nullable=False, index=True, comment="Team code")
     platform: Mapped[str] = mapped_column(
-        String(50), nullable=False, comment="Ticketing platform (Ticketlink / Interpark / self)",
+        String(50),
+        nullable=False,
+        comment="Ticketing platform (Ticketlink / Interpark / self)",
     )
     open_offset_days: Mapped[int] = mapped_column(
-        Integer, nullable=False, comment="Days before game day (e.g. 7 = N일 전)",
+        Integer,
+        nullable=False,
+        comment="Days before game day (e.g. 7 = N일 전)",
     )
     open_time: Mapped[time] = mapped_column(Time, nullable=False, comment="Opening time on open day (e.g. 11:00)")
     sales_close_rule: Mapped[str | None] = mapped_column(Text, nullable=True, comment="Sales close rule description")
     max_tickets_per_user: Mapped[int | None] = mapped_column(
-        Integer, nullable=True, comment="Maximum tickets per person",
+        Integer,
+        nullable=True,
+        comment="Maximum tickets per person",
     )
     fee_rule: Mapped[str | None] = mapped_column(Text, nullable=True, comment="Ticketing fee description")
     cancel_rule: Mapped[str | None] = mapped_column(Text, nullable=True, comment="Cancellation policy")
     source_id: Mapped[int | None] = mapped_column(
-        Integer, ForeignKey("data_sources.id", ondelete="SET NULL"), nullable=True, comment="DataSource ID",
+        Integer,
+        ForeignKey("data_sources.id", ondelete="SET NULL"),
+        nullable=True,
+        comment="DataSource ID",
     )
     note: Mapped[str | None] = mapped_column(String(500), nullable=True, comment="Additional notes")
 

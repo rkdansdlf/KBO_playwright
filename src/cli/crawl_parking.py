@@ -17,7 +17,7 @@ def main(argv: list[str] | None = None) -> None:
 
     crawler = ParkingCrawler()
     result = asyncio.run(crawler.run(save=args.save, team_filter=args.team))
-    logger.info(f"[PARKING] Done: {len(result)} lots")
+    logger.info("[PARKING] Done: %s lots", len(result))
 
 
 if __name__ == "__main__":

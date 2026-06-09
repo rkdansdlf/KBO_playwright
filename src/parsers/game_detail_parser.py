@@ -68,7 +68,9 @@ def _extract_pitcher_tables(tables: list[pd.DataFrame]) -> list[pd.DataFrame]:
 
 
 def _build_team_info(
-    scoreboard: pd.DataFrame | None, game_id: str, season_year: int | None,
+    scoreboard: pd.DataFrame | None,
+    game_id: str,
+    season_year: int | None,
 ) -> dict[str, dict[str, Any]]:
     away_info = {
         "name": None,
@@ -113,7 +115,9 @@ def _build_team_info(
 
 
 def _build_hitter_payload(
-    tables: list[pd.DataFrame], teams: dict[str, dict[str, Any]], db_session=None,
+    tables: list[pd.DataFrame],
+    teams: dict[str, dict[str, Any]],
+    db_session=None,
 ) -> dict[str, list[dict[str, Any]]]:
     results = {"away": [], "home": []}
     team_cycle = ["away", "home"]
@@ -174,7 +178,9 @@ def _build_hitter_payload(
 
 
 def _build_pitcher_payload(
-    tables: list[pd.DataFrame], teams: dict[str, dict[str, Any]], db_session=None,
+    tables: list[pd.DataFrame],
+    teams: dict[str, dict[str, Any]],
+    db_session=None,
 ) -> dict[str, list[dict[str, Any]]]:
     results = {"away": [], "home": []}
     team_cycle = ["away", "home"]

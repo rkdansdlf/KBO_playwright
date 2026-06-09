@@ -25,7 +25,9 @@ class TeamHistory(Base, TimestampMixin):
 
     team_name: Mapped[str] = mapped_column(String(50), nullable=False)
     team_code: Mapped[str] = mapped_column(
-        ForeignKey("teams.team_id"), nullable=False, comment="The code used in that season (e.g. OB)",
+        ForeignKey("teams.team_id"),
+        nullable=False,
+        comment="The code used in that season (e.g. OB)",
     )
 
     logo_url: Mapped[str | None] = mapped_column(String(255), nullable=True)

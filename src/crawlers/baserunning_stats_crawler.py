@@ -53,7 +53,7 @@ def crawl_baserunning_stats(year=None, max_retries=3, timeout=LONG_TIMEOUT) -> l
             except Exception:
                 if attempt < max_retries - 1:
                     wait_time = (attempt + 1) * 2
-                    logger.exception(f"   ⚠️  재시도 {attempt + 1}/{max_retries} ({wait_time}초 후 재시도)")
+                    logger.exception("   ⚠️  재시도 %s/%s (%s초 후 재시도)", attempt + 1, max_retries, wait_time)
                     policy.delay()
                 else:
                     logger.exception("   ❌ 최대 재시도 횟수 초과")
@@ -68,7 +68,7 @@ def crawl_baserunning_stats(year=None, max_retries=3, timeout=LONG_TIMEOUT) -> l
                 tbody = tables[0].query_selector("tbody")
                 rows = tbody.query_selector_all("tr") if tbody else []
 
-                logger.info(f"   ✓ {len(rows)}명의 주루 기록 발견")
+                logger.info("   ✓ %s명의 주루 기록 발견", len(rows))
 
                 for row in rows:
                     cells = row.query_selector_all("td")
@@ -127,7 +127,7 @@ def crawl_baserunning_stats(year=None, max_retries=3, timeout=LONG_TIMEOUT) -> l
                         except (ValueError, AttributeError, IndexError) as e:
                             logger.warning(
                                 "   ⚠️  선수 데이터 파싱 오류 (%s): %s",
-                                player_name if 'player_name' in locals() else '알 수 없음',
+                                player_name if "player_name" in locals() else "알 수 없음",
                                 e,
                             )
                             continue
@@ -153,9 +153,9 @@ def save_baserunning_stats(player_list, year=None, db_path=None) -> None:
         year = datetime.now().year
     if db_path is None:
         db_path = f"data/kbo_{year}.db"
-    logger.info(f"\n{'=' * 60}")
-    logger.info(f"🏃 {year}년 주루 기록 수집 시작")
-    logger.info(f"{'=' * 60}\n")
+    logger.info(f"\n{'=' * 60}")  # noqa: G004
+    logger.info("🏃 %s년 주루 기록 수집 시작", year)
+    logger.info(f"{'=' * 60}\n")  # noqa: G004
 
     conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
@@ -239,23 +239,23 @@ def save_baserunning_stats(player_list, year=None, db_path=None) -> None:
                 success_count += 1
 
                 if idx % 10 == 0:
-                    logger.info(f"[{idx}/{len(baserunning_data)}] {player_name} 저장 완료")
+                    logger.info("[%s/%s] %s 저장 완료", idx, len(baserunning_data), player_name)
 
             except Exception:
                 fail_count += 1
-                logger.exception(f"   ❌ {player_name} 저장 실패")
+                logger.exception("   ❌ %s 저장 실패", player_name)
         else:
             fail_count += 1
-            logger.warning(f"   ⚠️  {player_name}: player_id를 찾을 수 없음")
+            logger.warning("   ⚠️  %s: player_id를 찾을 수 없음", player_name)
 
     conn.close()
 
-    logger.info(f"\n{'=' * 60}")
+    logger.info(f"\n{'=' * 60}")  # noqa: G004
     logger.info("✅ 주루 기록 저장 완료!")
-    logger.info(f"{'=' * 60}")
-    logger.info(f"  - 성공: {success_count}명")
-    logger.info(f"  - 실패: {fail_count}명")
-    logger.info(f"{'=' * 60}\n")
+    logger.info(f"{'=' * 60}")  # noqa: G004
+    logger.info("  - 성공: %s명", success_count)
+    logger.info("  - 실패: %s명", fail_count)
+    logger.info(f"{'=' * 60}\n")  # noqa: G004
 
 
 if __name__ == "__main__":

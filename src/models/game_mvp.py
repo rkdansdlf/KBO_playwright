@@ -12,14 +12,20 @@ class GameMvp(Base, TimestampMixin):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     game_id: Mapped[str] = mapped_column(String(20), nullable=False, index=True)
     player_id: Mapped[int | None] = mapped_column(
-        Integer, ForeignKey("player_basic.player_id", ondelete="RESTRICT"), nullable=True, index=True,
+        Integer,
+        ForeignKey("player_basic.player_id", ondelete="RESTRICT"),
+        nullable=True,
+        index=True,
     )
     player_name: Mapped[str] = mapped_column(String(100), nullable=False, comment="MVP player name")
     team_id: Mapped[str | None] = mapped_column(String(10), nullable=True, comment="MVP team code")
     mvp_type: Mapped[str] = mapped_column(String(20), nullable=False, default="GAME", comment="GAME / WEEKLY / MONTHLY")
     reason: Mapped[str | None] = mapped_column(Text, nullable=True, comment="MVP selection reason / highlights")
     award_source: Mapped[str] = mapped_column(
-        String(20), nullable=False, default="NAVER", comment="Source: KBO_POSTGAME / NAVER / MEDIA",
+        String(20),
+        nullable=False,
+        default="NAVER",
+        comment="Source: KBO_POSTGAME / NAVER / MEDIA",
     )
 
     __table_args__ = (

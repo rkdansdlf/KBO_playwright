@@ -37,6 +37,8 @@ from src.utils.team_codes import resolve_team_code
 from src.utils.team_mapping import get_team_code, get_team_mapping_for_year
 
 logger = logging.getLogger(__name__)
+
+
 def get_series_mapping() -> dict[str, dict[str, str]]:
     """시리즈 이름과 선택 값 매핑 (실제 페이지에서 확인된 값)"""
     return {
@@ -360,16 +362,19 @@ def go_to_next_page(page: Page, current_page_num: int, policy: RequestPolicy | N
         # 직접 클릭 시도 (Attached 여부 확인하며)
         page.click(selector, timeout=SEL_TIMEOUT)
         page.wait_for_load_state("networkidle", timeout=NAV_TIMEOUT)
-        logger.info(f"➡️ {desc}")
+        logger.info("➡️ %s", desc)
         return True
 
     except Exception:
-        logger.exception(f"❌ 페이지 이동 실패 ({current_page_num}p -> next)")
+        logger.exception("❌ 페이지 이동 실패 (%sp -> next)", current_page_num)
         return False
 
 
 def crawl_basic2_with_headers(
-    page: Page, year: int, series_info: dict, policy: RequestPolicy | None = None,
+    page: Page,
+    year: int,
+    series_info: dict,
+    policy: RequestPolicy | None = None,
 ) -> dict[int, dict]:
     """
     정규시즌용 Basic2 페이지에서 각 헤더를 클릭하여 고급 통계 데이터 수집
@@ -431,7 +436,7 @@ def crawl_basic2_with_headers(
         while True:
             # 테이블 헤더가 나타날 때까지 대기
             if not retry_wait_for_selector(page, "table.tData01.tt thead th", timeout=SEL_TIMEOUT):
-                logger.warning(f"   ⚠️ {page_num}페이지 테이블 헤더 로딩 실패")
+                logger.warning("   ⚠️ %s페이지 테이블 헤더 로딩 실패", page_num)
                 break
 
             current_page_data = parse_batting_stats_table(page, "regular", year)
@@ -446,7 +451,7 @@ def crawl_basic2_with_headers(
                 break
             page_num += 1
 
-        logger.info(f"   ✅ Basic2 전체 수집 완료: {len(all_player_data)}명")
+        logger.info("   ✅ Basic2 전체 수집 완료: %s명", len(all_player_data))
 
     except Exception:
         logger.exception("   ❌ Basic2 크롤링 중 오류")
@@ -487,15 +492,15 @@ def _parse_basic2_header_data_legacy(
         if thead:
             header_cells = thead.query_selector_all("th")
             headers = [cell.text_content().strip() for cell in header_cells]
-            logger.info(f"      🔍 {description} 기준 테이블 헤더: {headers}")
+            logger.info("      🔍 %s 기준 테이블 헤더: %s", description, headers)
 
         # 첫 번째 행 샘플 확인 (디버깅용)
         if len(rows) > 0:
             first_row_cells = rows[0].query_selector_all("td")
-            logger.info(f"      🔍 {description} 기준 첫 행 데이터 ({len(first_row_cells)}개 컬럼):")
+            logger.info("      🔍 %s 기준 첫 행 데이터 (%s개 컬럼):", description, len(first_row_cells))
             for i, cell in enumerate(first_row_cells[:10]):  # 처음 10개만
                 content = cell.text_content().strip()
-                logger.info(f"         [{i}]: '{content}'")
+                logger.info(f"         [{i}]: '{content}'")  # noqa: G004
 
         for row_idx, row in enumerate(rows):
             cells = row.query_selector_all("td")
@@ -523,7 +528,7 @@ def _parse_basic2_header_data_legacy(
                 if not team_code:
                     # 정적 매핑 폴백
                     team_code = team_mapping.get(team_name, team_name)
-                    logger.warning(f"⚠️ {year}년 '{team_name}' 팀 매핑 실패, 폴백: {team_code}")
+                    logger.warning(f"⚠️ {year}년 '{team_name}' 팀 매핑 실패, 폴백: {team_code}")  # noqa: G004
 
                 # 헤더별로 해당 데이터만 추출
                 batting_data = {
@@ -565,7 +570,8 @@ def _parse_basic2_header_data_legacy(
                     if "extra_stats" not in batting_data:
                         batting_data["extra_stats"] = {}
                     batting_data["extra_stats"]["pinch_hit_avg"] = safe_parse_number(
-                        cells[14].text_content().strip(), float,
+                        cells[14].text_content().strip(),
+                        float,
                     )
 
                 players_data[player_id] = batting_data
@@ -576,17 +582,18 @@ def _parse_basic2_header_data_legacy(
                         sort_value = batting_data.get(current_header.lower(), "N/A")
                     elif current_header in ["MH", "RISP", "PH-BA"]:
                         sort_value = batting_data.get("extra_stats", {}).get(
-                            current_header.lower().replace("-", "_"), "N/A",
+                            current_header.lower().replace("-", "_"),
+                            "N/A",
                         )
 
-                    logger.info(f"      ✅ {player_name} ({team_name}) - {current_header}: {sort_value}")
+                    logger.info("      ✅ %s (%s) - %s: %s", player_name, team_name, current_header, sort_value)
 
             except (ValueError, AttributeError) as e:
-                logger.exception(f"      ⚠️ {description} 행 파싱 오류: {e}")
+                logger.exception("      ⚠️ %s 행 파싱 오류: %s", description, e)
                 continue
 
     except Exception:
-        logger.exception(f"      ❌ {description} 테이블 파싱 오류")
+        logger.exception("      ❌ %s 테이블 파싱 오류", description)
 
     return players_data
 
@@ -609,14 +616,14 @@ def _parse_basic2_header_data_fast(
     if thead:
         header_cells = thead.query_selector_all("th")
         headers = [cell.text_content().strip() for cell in header_cells]
-        logger.info(f"      🔍 {description} 기준 테이블 헤더: {headers}")
+        logger.info("      🔍 %s 기준 테이블 헤더: %s", description, headers)
 
     if rows_data:
         first_row = rows_data[0]
         cells = first_row.get("cells") or []
-        logger.info(f"      🔍 {description} 기준 첫 행 데이터 ({len(cells)}개 컬럼):")
+        logger.info("      🔍 %s 기준 첫 행 데이터 (%s개 컬럼):", description, len(cells))
         for idx, value in enumerate(cells[:10]):
-            logger.info(f"         [{idx}]: '{value}'")
+            logger.info(f"         [{idx}]: '{value}'")  # noqa: G004
 
     for row in rows_data:
         cells = row.get("cells") or []
@@ -696,7 +703,7 @@ def fallback_batting_from_db(year: int, series_key: str, reason: str = "Manual T
     KBO 페이지 장애 시 로컬 DB의 상세 기록을 합산하여 타자 시즌 기록을 생성합니다.
     """
     FallbackMonitor.log_fallback(year, series_key, "BATTING", reason)
-    logger.info(f"🔄 로컬 DB 기반 타자 기록 집계 시작 (연도: {year}, 시리즈: {series_key})...")
+    logger.info("🔄 로컬 DB 기반 타자 기록 집계 시작 (연도: %s, 시리즈: %s)...", year, series_key)
     all_players_data = []
 
     with SessionLocal() as session:
@@ -713,7 +720,7 @@ def fallback_batting_from_db(year: int, series_key: str, reason: str = "Manual T
         )
 
         player_ids = [p[0] for p in player_ids_query.all() if p[0]]
-        logger.info(f"🔍 DB에서 {len(player_ids)}명의 타자를 발견했습니다.")
+        logger.info("🔍 DB에서 %s명의 타자를 발견했습니다.", len(player_ids))
 
         series_mapping = get_series_mapping()
         series_info = series_mapping.get(series_key, {})
@@ -755,7 +762,7 @@ def fallback_batting_from_db(year: int, series_key: str, reason: str = "Manual T
 
             all_players_data.append(player_data)
 
-    logger.info(f"✅ DB 집계 완료: 총 {len(all_players_data)}명")
+    logger.info("✅ DB 집계 완료: 총 %s명", len(all_players_data))
     return all_players_data
 
 
@@ -784,7 +791,7 @@ def crawl_series_batting_stats(
     series_mapping = get_series_mapping()
 
     if series_key not in series_mapping:
-        logger.error(f"❌ 지원하지 않는 시리즈: {series_key}")
+        logger.error("❌ 지원하지 않는 시리즈: %s", series_key)
         return []
 
     series_info = series_mapping[series_key]
@@ -802,13 +809,13 @@ def crawl_series_batting_stats(
         install_sync_resource_blocking(page)
 
         try:
-            logger.info(f"\n📊 {year}년 {series_info['name']} 타자 기록 수집 시작 (by_team={by_team})")
+            logger.info(f"\n📊 {year}년 {series_info['name']} 타자 기록 수집 시작 (by_team={by_team})")  # noqa: G004
             logger.info("-" * 60)
 
             # 페이지로 이동 (Basic1 사용)
             url = "https://www.koreabaseball.com/Record/Player/HitterBasic/Basic1.aspx"
             if not compliance.is_allowed_sync(url):
-                logger.info(f"[COMPLIANCE] Navigation to {url} aborted.")
+                logger.info("[COMPLIANCE] Navigation to %s aborted.", url)
                 return []
 
             policy.delay(host="www.koreabaseball.com")
@@ -823,7 +830,7 @@ def crawl_series_batting_stats(
                 )
                 policy.delay()
                 page.select_option(season_selector, str(year))
-                logger.info(f"✅ {year}년 시즌 선택")
+                logger.info("✅ %s년 시즌 선택", year)
                 page.wait_for_load_state("networkidle", timeout=NAV_TIMEOUT)
 
                 # 시리즈 선택
@@ -833,7 +840,7 @@ def crawl_series_batting_stats(
 
                 policy.delay()
                 page.select_option(series_selector, value=series_info["value"])
-                logger.info(f"✅ {series_info['name']} 선택")
+                logger.info(f"✅ {series_info['name']} 선택")  # noqa: G004
                 page.wait_for_load_state("networkidle", timeout=NAV_TIMEOUT)
 
             except Exception as e:
@@ -846,7 +853,11 @@ def crawl_series_batting_stats(
                     s["source"] = "FALLBACK_AUTO"
 
                 FallbackMonitor.log_fallback(
-                    year, series_key, "BATTING", f"Fallback completed via {reason}", player_count=len(all_players_data),
+                    year,
+                    series_key,
+                    "BATTING",
+                    f"Fallback completed via {reason}",
+                    player_count=len(all_players_data),
                 )
                 if save_to_db and all_players_data:
                     save_batting_stats_safe(all_players_data)
@@ -865,7 +876,7 @@ def crawl_series_batting_stats(
                         "options => options.map(o => ({text: o.textContent, value: o.value}))",
                     )
                     team_options = [opt for opt in options if opt["value"]]  # Empty value is "Team Selection"
-                    logger.info(f"ℹ️ 팀별 순회 모드: {len(team_options)}개 팀 발견")
+                    logger.info("ℹ️ 팀별 순회 모드: %s개 팀 발견", len(team_options))
                 except Exception:
                     logger.exception("⚠️ 팀 목록 추출 실패, 전체 모드로 진행")
                     team_options = []
@@ -876,7 +887,7 @@ def crawl_series_batting_stats(
 
             for tm in iteration_targets:
                 if team_options:  # 팀 선택 모드면 팀 선택
-                    logger.info(f"🔍 팀 선택: {tm['text']} ({tm['value']})")
+                    logger.info(f"🔍 팀 선택: {tm['text']} ({tm['value']})")  # noqa: G004
                     try:
                         page.select_option(
                             'select[name="ctl00$ctl00$ctl00$cphContents$cphContents$cphContents$ddlTeam$ddlTeam"]',
@@ -885,7 +896,7 @@ def crawl_series_batting_stats(
                         page.wait_for_load_state("networkidle", timeout=NAV_TIMEOUT)
                         policy.delay()
                     except Exception:
-                        logger.exception(f"⚠️ 팀 선택 실패 ({tm['text']})")
+                        logger.exception(f"⚠️ 팀 선택 실패 ({tm['text']})")  # noqa: G004
                         continue
 
                 # 타석(PA) 기준 정렬 (팀 선택 후 다시 적용)
@@ -915,10 +926,12 @@ def crawl_series_batting_stats(
                                     all_players_data[i].update(player_stat)
                                     break
 
-                    logger.info(f"   ▶ {page_num}페이지: {len(current_page_data)}명 처리 (누적 {total_collected}명)")
+                    logger.info(
+                        "   ▶ %s페이지: %s명 처리 (누적 %s명)", page_num, len(current_page_data), total_collected,
+                    )
 
                     if limit and total_collected >= limit:
-                        logger.info(f"🎯 목표 수({limit}명) 달성. 수집 중단.")
+                        logger.info("🎯 목표 수(%s명) 달성. 수집 중단.", limit)
                         break
 
                     # 다음 페이지로 이동
@@ -958,7 +971,7 @@ def crawl_series_batting_stats(
                 else:
                     logger.warning("⚠️ Basic2 데이터 수집 실패, Basic1 데이터만 사용")
 
-            logger.info(f"✅ {series_info['name']} 데이터 수집 완료")
+            logger.info(f"✅ {series_info['name']} 데이터 수집 완료")  # noqa: G004
 
         except Exception:
             logger.exception("❌ 크롤링 중 오류")
@@ -967,10 +980,10 @@ def crawl_series_batting_stats(
             browser.close()
 
     logger.info("-" * 60)
-    logger.info(f"✅ {series_info['name']} 크롤링 완료! 총 {len(all_players_data)}명 수집")
+    logger.info(f"✅ {series_info['name']} 크롤링 완료! 총 {len(all_players_data)}명 수집")  # noqa: G004
     summary, valid_players_data = build_batting_crawl_summary(all_players_data)
     if summary["filtered_rows"]:
-        logger.warning(f"⚠️ 타자 시즌 row 필터링: {summary['filtered_rows']}건 ({summary['failure_counts']})")
+        logger.warning(f"⚠️ 타자 시즌 row 필터링: {summary['filtered_rows']}건 ({summary['failure_counts']})")  # noqa: G004
     all_players_data = valid_players_data
 
     # DB 저장 (안전한 외래키 제약조건 우회)
@@ -978,7 +991,7 @@ def crawl_series_batting_stats(
         logger.info("\n💾 타자 데이터 DB 저장 시작 (외래키 제약조건 임시 비활성화)...")
         try:
             saved_count = save_batting_stats_safe(all_players_data)
-            logger.info(f"✅ 타자 데이터 저장 완료: {saved_count}명")
+            logger.info("✅ 타자 데이터 저장 완료: %s명", saved_count)
         except Exception:
             logger.exception("❌ 타자 데이터 저장 실패")
 
@@ -986,7 +999,11 @@ def crawl_series_batting_stats(
 
 
 def crawl_all_series(
-    year: int | None = None, limit: int = None, save_to_db: bool = False, headless: bool = False, by_team: bool = False,
+    year: int | None = None,
+    limit: int = None,
+    save_to_db: bool = False,
+    headless: bool = False,
+    by_team: bool = False,
 ) -> dict[str, list[dict]]:
     """
     모든 시리즈의 타자 기록을 크롤링
@@ -1000,7 +1017,7 @@ def crawl_all_series(
     all_series_data = {}
 
     for series_key, series_info in series_mapping.items():
-        logger.info(f"\n🚀 {series_info['name']} 시작...")
+        logger.info(f"\n🚀 {series_info['name']} 시작...")  # noqa: G004
         series_data = crawl_series_batting_stats(year, series_key, limit, save_to_db, headless, by_team=by_team)
         all_series_data[series_key] = series_data
 
@@ -1029,15 +1046,15 @@ def main() -> None:
         all_data = crawl_all_series(args.year, args.limit, args.save, args.headless, by_team=args.by_team)
 
         # 전체 요약
-        logger.info("\n" + "=" * 60)
-        logger.info(f"📈 전체 수집 요약 ({args.year}년)")
+        logger.info("\n" + "=" * 60)  # noqa: G003
+        logger.info("📈 전체 수집 요약 (%s년)", args.year)
         logger.info("=" * 60)
         for series_key, data in all_data.items():
             series_name = get_series_mapping()[series_key]["name"]
-            logger.info(f"  {series_name}: {len(data)}명")
+            logger.info("  %s: %s명", series_name, len(data))
 
         total_players = sum(len(data) for data in all_data.values())
-        logger.info(f"\n총 수집 선수: {total_players}명")
+        logger.info("\n총 수집 선수: %s명", total_players)
 
 
 if __name__ == "__main__":

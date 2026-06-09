@@ -101,7 +101,7 @@ async def crawl_retired_players(args: argparse.Namespace) -> None:
     """은퇴 선수 데이터 수집 파이프라인의 메인 로직."""
     # 1단계: 은퇴/비활동 선수 ID 목록을 결정합니다.
     if args.seed_file:
-        logger.info(f"📂 Loading seed IDs from {args.seed_file}...")
+        logger.info("📂 Loading seed IDs from %s...", args.seed_file)
         with open(args.seed_file) as f:
             inactive_ids = {line.strip() for line in f if line.strip()}
     else:
@@ -116,7 +116,7 @@ async def crawl_retired_players(args: argparse.Namespace) -> None:
     if args.limit:
         inactive_list = inactive_list[: args.limit]
 
-    logger.info(f"📋 Retired candidates: {len(inactive_list)}")
+    logger.info("📋 Retired candidates: %s", len(inactive_list))
     if not inactive_list:
         return
 
@@ -128,11 +128,11 @@ async def crawl_retired_players(args: argparse.Namespace) -> None:
     async def runner(pid: str) -> None:
         async with semaphore:
             try:
-                logger.info(f"📡 Processing player {pid}...")
+                logger.info("📡 Processing player %s...", pid)
                 await process_player(pid, detail_crawler, repository)
-                logger.info(f"✅ Processed retired player {pid}")
+                logger.info("✅ Processed retired player %s", pid)
             except Exception:
-                logger.exception(f"❌ Failed to process player {pid}")
+                logger.exception("❌ Failed to process player %s", pid)
 
     try:
         await asyncio.gather(*(runner(pid) for pid in inactive_list))

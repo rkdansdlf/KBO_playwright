@@ -120,7 +120,7 @@ class GameDetailCrawler:
     ) -> tuple[bool, str, str]:
         url = self._section_url(game_id, game_date, section)
         if not await compliance.is_allowed(url):
-            logger.error(f"❌ BLOCKED by compliance policy: {url}")
+            logger.error("❌ BLOCKED by compliance policy: %s", url)
             return False, "blocked", url
 
         async def _navigate() -> None:
@@ -134,7 +134,7 @@ class GameDetailCrawler:
         try:
             await self.policy.run_with_retry_async(_navigate)
         except Exception:
-            logger.exception(f"❌ Failed to navigate {section} for {game_id}")
+            logger.exception("❌ Failed to navigate %s for %s", section, game_id)
             return False, "navigation_error", url
 
         return True, "ok", url
@@ -208,7 +208,7 @@ class GameDetailCrawler:
                             results[idx] = payload
                         except Exception:  # pragma: no cover - resilience path
                             self._last_failure_reason[game_id] = "exception"
-                            logger.exception(f"❌ Error crawling {game_id}")
+                            logger.exception("❌ Error crawling %s", game_id)
                         finally:
                             queue.task_done()
                 finally:
@@ -224,10 +224,14 @@ class GameDetailCrawler:
         return [payload for payload in results if payload]
 
     async def _crawl_single(
-        self, page: Page, game_id: str, game_date: str, lightweight: bool = False,
+        self,
+        page: Page,
+        game_id: str,
+        game_date: str,
+        lightweight: bool = False,
     ) -> dict[str, Any] | None:
         review_url = self._section_url(game_id, game_date, "REVIEW")
-        logger.info(f"📡 Navigating to REVIEW: {review_url}")
+        logger.info("📡 Navigating to REVIEW: %s", review_url)
 
         ok, reason, _ = await self._navigate_section(page, game_id, game_date, "REVIEW")
         if not ok:
@@ -292,7 +296,7 @@ class GameDetailCrawler:
                     break
 
                 logger.warning(
-                    f"⚠️  Incomplete stats on REVIEW for {game_id}. "
+                    f"⚠️  Incomplete stats on REVIEW for {game_id}. "  # noqa: G004
                     f"Trying HITTER/PITCHER tabs (attempt {attempt}/{max_fallback_attempts})...",
                 )
                 if not has_hitters:
@@ -301,9 +305,7 @@ class GameDetailCrawler:
                         game_id,
                         game_date,
                         "HITTER",
-                        required_selector=(
-                            "#tblAwayHitter1, #tblHomeHitter1, #tblAwayHitter3, #tblHomeHitter3"
-                        ),
+                        required_selector=("#tblAwayHitter1, #tblHomeHitter1, #tblAwayHitter3, #tblHomeHitter3"),
                         selector_timeout=10000,
                     )
                     if ok:
@@ -324,7 +326,7 @@ class GameDetailCrawler:
                             use_hitter_section=True,
                         )
                     else:
-                        logger.warning(f"⚠️ HITTER section navigation failed for {game_id}: {reason}")
+                        logger.warning("⚠️ HITTER section navigation failed for %s: %s", game_id, reason)
 
                 if not (bool(pitchers["away"]) and bool(pitchers["home"])):
                     ok, reason, _ = await self._navigate_section(
@@ -355,7 +357,7 @@ class GameDetailCrawler:
                             ),
                         }
                     else:
-                        logger.warning(f"⚠️ PITCHER section navigation failed for {game_id}: {reason}")
+                        logger.warning("⚠️ PITCHER section navigation failed for %s: %s", game_id, reason)
 
                 if attempt < max_fallback_attempts:
                     await asyncio.sleep(0.4)
@@ -389,7 +391,7 @@ class GameDetailCrawler:
 
                 if sum_hits != total_row.get("hits") or sum_ab != total_row.get("at_bats"):
                     error_msg = f"Integrity check FAILED for {game_id} ({side}): Players Sum({sum_hits}H, {sum_ab}AB) != Team Total({total_row.get('hits')}H, {total_row.get('at_bats')}AB)"
-                    logger.warning(f"⚠️ {error_msg}")
+                    logger.warning("⚠️ %s", error_msg)
                     # Capture debug screenshot
                     await page.screenshot(path=f"data/integrity_warning_{game_id}_{side}.png")
                     # DANGEROUS: Returning payload anyway for final calibration
@@ -450,7 +452,7 @@ class GameDetailCrawler:
                 except PlaywrightError:
                     continue
                 if any(cancel_word in txt for cancel_word in ["경기취소", "취소", "우천취소"]):
-                    logger.info(f"ℹ️ Game {page.url} is marked as CANCELLED in UI: '{txt}'")
+                    logger.info(f"ℹ️ Game {page.url} is marked as CANCELLED in UI: '{txt}'")  # noqa: G004
                     return True
             try:
                 content_area = await page.query_selector("#contents, .box-score-area")
@@ -469,7 +471,7 @@ class GameDetailCrawler:
             await page.wait_for_selector(", ".join(boxscore_selectors), timeout=SEL_TIMEOUT)
             return True, "ok"
         except PlaywrightError:
-            logger.warning(f"⚠️ Timeout waiting for boxscore selectors. Page URL: {page.url}")
+            logger.warning("⚠️ Timeout waiting for boxscore selectors. Page URL: %s", page.url)
 
             if await _is_cancelled():
                 return False, "cancelled"
@@ -482,9 +484,9 @@ class GameDetailCrawler:
             os.makedirs("data", exist_ok=True)
             try:
                 await page.screenshot(path=debug_path)
-                logger.warning(f"📸 Boxscore timeout debug screenshot saved to: {debug_path}")
+                logger.warning("📸 Boxscore timeout debug screenshot saved to: %s", debug_path)
             except PlaywrightError:
-                logger.exception(f"⚠️ Failed to save timeout debug screenshot for {page.url}")
+                logger.exception("⚠️ Failed to save timeout debug screenshot for %s", page.url)
 
             return False, "timeout"
 
@@ -712,7 +714,8 @@ class GameDetailCrawler:
 
         base_rows = tables[0] if tables else []
         inning_rows = await self._extract_table_rows(
-            page, "#tblAwayHitter2" if team_side == "away" else "#tblHomeHitter2",
+            page,
+            "#tblAwayHitter2" if team_side == "away" else "#tblHomeHitter2",
         )
         extra_rows = tables[1] if len(tables) > 1 else []
 
@@ -764,10 +767,14 @@ class GameDetailCrawler:
             # Key fix for Task 3: Use resolver for exhibition/missing IDs
             if p_id is None and self.resolver and team_code and season_year:
                 p_id = self.resolver.resolve_id(
-                    player_name, team_code, season_year, uniform_no=uniform_no, is_pitcher=False,
+                    player_name,
+                    team_code,
+                    season_year,
+                    uniform_no=uniform_no,
+                    is_pitcher=False,
                 )
                 if p_id:
-                    logger.info(f"   [RESOLVED] {player_name} ({team_code}) -> {p_id}")
+                    logger.info("   [RESOLVED] %s (%s) -> %s", player_name, team_code, p_id)
 
             # Merge Strategy: Name-based OR Index-based
             if extra_has_names:
@@ -875,7 +882,11 @@ class GameDetailCrawler:
             # AND: Auto-search and register if still unknown
             if p_id is None and self.resolver and team_code and season_year:
                 p_id = self.resolver.resolve_id(
-                    player_name, team_code, season_year, uniform_no=uniform_no, is_pitcher=True,
+                    player_name,
+                    team_code,
+                    season_year,
+                    uniform_no=uniform_no,
+                    is_pitcher=True,
                 )
 
                 can_register_from_search = not getattr(self.resolver, "strict_game_resolution", False) and getattr(
@@ -885,7 +896,7 @@ class GameDetailCrawler:
                 )
                 if p_id is None and can_register_from_search:
                     # PROACTIVE SEARCH: If not found in DB, try to find on KBO site and register
-                    logger.info(f"🔍 Unknown player '{player_name}' ({team_code}) found. Searching KBO...")
+                    logger.info(f"🔍 Unknown player '{player_name}' ({team_code}) found. Searching KBO...")  # noqa: G004
                     from src.crawlers.player_search_crawler import PlayerSearchCrawler
 
                     search_crawler = PlayerSearchCrawler()
@@ -900,11 +911,11 @@ class GameDetailCrawler:
                                 from src.repositories.player_basic_repository import save_player_basic
 
                                 save_player_basic(profile)
-                                logger.info(f"✅ Registered new player: {player_name} ({p_id})")
+                                logger.info("✅ Registered new player: %s (%s)", player_name, p_id)
                                 break
 
                 if p_id:
-                    logger.info(f"   [RESOLVED] {player_name} ({team_code}) -> {p_id}")
+                    logger.info("   [RESOLVED] %s (%s) -> %s", player_name, team_code, p_id)
 
             # Optimization: Check roster_map if ID is missing
             if not p_id and roster_map and player_name in roster_map:
@@ -1065,7 +1076,8 @@ class GameDetailCrawler:
                 await page.goto(lineup_url, wait_until="domcontentloaded", timeout=20000)
                 with contextlib.suppress(Exception):
                     await page.wait_for_selector(
-                        'a[href*="Player/PlayerDetail"], a[href*="playerId="], a[href*="p_id="]', timeout=SEL_TIMEOUT,
+                        'a[href*="Player/PlayerDetail"], a[href*="playerId="], a[href*="p_id="]',
+                        timeout=SEL_TIMEOUT,
                     )
 
             try:
@@ -1074,7 +1086,7 @@ class GameDetailCrawler:
                 if roster_map:
                     break
             except Exception:
-                logger.exception(f"⚠️  Failed lineup roster crawl for {game_id} ({section})")
+                logger.exception("⚠️  Failed lineup roster crawl for %s (%s)", game_id, section)
 
         # Always return to REVIEW page for box score extraction.
         try:
@@ -1086,7 +1098,7 @@ class GameDetailCrawler:
             await self.policy.run_with_retry_async(_navigate_back)
             await self._wait_for_boxscore(page, game_id=game_id)
         except Exception:
-            logger.exception(f"⚠️  Failed to return to review page for {game_id}")
+            logger.exception("⚠️  Failed to return to review page for %s", game_id)
         return roster_map
 
     def _log_unresolved_player_ids(
@@ -1099,15 +1111,15 @@ class GameDetailCrawler:
         for team_side in ("away", "home"):
             for row in hitters.get(team_side, []):
                 if row.get("player_name") and not row.get("player_id"):
-                    unresolved.append((row.get("player_name"), row.get("team_code"), row.get("uniform_no")))
+                    unresolved.append((row.get("player_name"), row.get("team_code"), row.get("uniform_no")))  # noqa: PERF401
             for row in pitchers.get(team_side, []):
                 if row.get("player_name") and not row.get("player_id"):
-                    unresolved.append((row.get("player_name"), row.get("team_code"), row.get("uniform_no")))
+                    unresolved.append((row.get("player_name"), row.get("team_code"), row.get("uniform_no")))  # noqa: PERF401
         if not unresolved:
             return
-        logger.warning(f"⚠️  Unresolved player_id entries for {game_id}: {len(unresolved)}")
+        logger.warning("⚠️  Unresolved player_id entries for %s: %s", game_id, len(unresolved))
         for name, team_code, uniform_no in unresolved:
-            logger.info(f"   - name={name}, team_code={team_code or 'N/A'}, uniform_no={uniform_no or 'N/A'}")
+            logger.info(f"   - name={name}, team_code={team_code or 'N/A'}, uniform_no={uniform_no or 'N/A'}")  # noqa: G004
 
     def _derive_hitter_stats_from_inning_cells(self, cells: dict[str, str]) -> dict[str, int]:
         """Counts stats from inning breakdown cells (e.g. '삼진', '4구')."""
@@ -1162,7 +1174,10 @@ class GameDetailCrawler:
                 stats[key] = self._safe_int(value)
 
     def _parse_scoreboard_row(
-        self, headers: list[str], row: list[str], season_year: int | None = None,
+        self,
+        headers: list[str],
+        row: list[str],
+        season_year: int | None = None,
     ) -> dict[str, Any]:
         if not row:
             return {
@@ -1359,7 +1374,7 @@ class GameDetailCrawler:
         try:
             return await page.evaluate(script)
         except PlaywrightError as e:
-            logger.warning(f"Error executing roster extraction script: {e}", exc_info=True)
+            logger.warning(f"Error executing roster extraction script: {e}", exc_info=True)  # noqa: G004
             return {}
 
 
@@ -1379,7 +1394,7 @@ async def main() -> None:  # pragma: no cover
     game_id = normalize_kbo_game_id(args.game_id)
     game_date = args.date or game_id[:8]
 
-    logger.info(f"🚀 Starting crawl for game {game_id} ({game_date})...")
+    logger.info("🚀 Starting crawl for game %s (%s)...", game_id, game_date)
     crawler = GameDetailCrawler()
     game_data = await crawler.crawl_game(game_id, game_date)
     if game_data and args.save:
@@ -1391,11 +1406,11 @@ async def main() -> None:  # pragma: no cover
 
         success = save_game_detail(game_data)
         if success:
-            logger.info(f"✅ Successfully saved and triggered sync for {game_id}")
+            logger.info("✅ Successfully saved and triggered sync for %s", game_id)
         else:
-            logger.error(f"❌ Failed to save {game_id}")
+            logger.error("❌ Failed to save %s", game_id)
     elif not game_data:
-        logger.error(f"❌ Failed to crawl {game_id}")
+        logger.error("❌ Failed to crawl %s", game_id)
     else:
         logger.info(game_data)
 

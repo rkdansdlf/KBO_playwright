@@ -47,7 +47,15 @@ _PITCHING_SUM_FIELDS = [
 
 
 def _compute_batting_rates(
-    hits: int, at_bats: int, walks: int, hbp: int, sf: int, strikeouts: int, doubles: int, triples: int, home_runs: int,
+    hits: int,
+    at_bats: int,
+    walks: int,
+    hbp: int,
+    sf: int,
+    strikeouts: int,
+    doubles: int,
+    triples: int,
+    home_runs: int,
 ) -> dict[str, float]:
     ab = at_bats or 0
     pa_base = ab + walks + hbp + sf

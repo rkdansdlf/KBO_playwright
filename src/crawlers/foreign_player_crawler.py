@@ -37,7 +37,8 @@ class ForeignPlayerCrawler(NaverNewsCrawlerBase):
 
         # Try matching foreign player name near change keywords
         fp_match = re.search(
-            r"([가-힣]{2,5}|[A-Z][a-z]+(?:\s[A-Z][a-z]+)*)\s*(?:교체|대체|방출|영입|재계약|웨이버)", text,
+            r"([가-힣]{2,5}|[A-Z][a-z]+(?:\s[A-Z][a-z]+)*)\s*(?:교체|대체|방출|영입|재계약|웨이버)",
+            text,
         )
         if fp_match:
             player_name = fp_match.group(1)
@@ -107,12 +108,12 @@ class ForeignPlayerCrawler(NaverNewsCrawlerBase):
                     repo.save_change(item)
                     count += 1
                 except SQLAlchemyError as e:
-                    logger.warning(f"Foreign player save failed: {e}")
+                    logger.warning("Foreign player save failed: %s", e)
             session.commit()
-            logger.info(f"Saved {count} foreign player change records.")
+            logger.info("Saved %s foreign player change records.", count)
         except SQLAlchemyError as e:
             session.rollback()
-            logger.error(f"Database error saving foreign players: {e}", exc_info=True)
+            logger.exception(f"Database error saving foreign players: {e}")  # noqa: G004
         finally:
             session.close()
 

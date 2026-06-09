@@ -24,9 +24,9 @@ async def run_periodic_extras(
     year: int,
     sync: bool = False,
 ) -> None:
-    logger.info(f"\n{'=' * 60}")
-    logger.info(f"🚀 KBO Periodic Extras Started for Year: {year}")
-    logger.info(f"{'=' * 60}")
+    logger.info(f"\n{'=' * 60}")  # noqa: G004
+    logger.info("🚀 KBO Periodic Extras Started for Year: %s", year)
+    logger.info(f"{'=' * 60}")  # noqa: G004
 
     # 1. Futures League Data (Hitter)
     # Note: We assume these crawlers have a main() or similar entrypoint
@@ -38,9 +38,9 @@ async def run_periodic_extras(
         cmd = [sys.executable, "-m", "src.crawlers.futures.futures_batting", "--year", str(year), "--save"]
         result = subprocess.run(cmd, capture_output=True, text=True)
         if result.returncode == 0:
-            logger.info(f"   ✅ Futures Hitter output:\n{result.stdout}")
+            logger.info("   ✅ Futures Hitter output:\n%s", result.stdout)
         else:
-            logger.error(f"   ❌ Futures Hitter failed:\n{result.stderr}")
+            logger.error("   ❌ Futures Hitter failed:\n%s", result.stderr)
     except Exception:
         logger.exception("   ❌ Error crawling futures stats")
 
@@ -51,9 +51,9 @@ async def run_periodic_extras(
         cmd = [sys.executable, "-m", "src.crawlers.retire.listing", "--save"]
         result = subprocess.run(cmd, capture_output=True, text=True)
         if result.returncode == 0:
-            logger.info(f"   ✅ Retired Listing output:\n{result.stdout}")
+            logger.info("   ✅ Retired Listing output:\n%s", result.stdout)
         else:
-            logger.error(f"   ❌ Retired Listing failed:\n{result.stderr}")
+            logger.error("   ❌ Retired Listing failed:\n%s", result.stderr)
     except Exception:
         logger.exception("   ❌ Error crawling retired players")
 
@@ -77,9 +77,9 @@ async def run_periodic_extras(
                 finally:
                     syncer.close()
 
-    logger.info(f"\n{'=' * 60}")
+    logger.info(f"\n{'=' * 60}")  # noqa: G004
     logger.info("🏁 Periodic Extras Finished")
-    logger.info(f"{'=' * 60}\n")
+    logger.info(f"{'=' * 60}\n")  # noqa: G004
 
 
 def main() -> int:

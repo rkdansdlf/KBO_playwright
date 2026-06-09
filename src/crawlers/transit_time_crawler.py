@@ -100,7 +100,7 @@ class TransitTimeCrawler:
         measured_at = datetime.now(UTC).replace(tzinfo=None)
 
         logger.info(
-            f"[Transit] Measuring {len(self.origins)} origins for {game_date} at {measured_at.strftime('%H:%M')} UTC",
+            f"[Transit] Measuring {len(self.origins)} origins for {game_date} at {measured_at.strftime('%H:%M')} UTC",  # noqa: G004
         )
 
         # Fetch transit times for each mode
@@ -140,7 +140,7 @@ class TransitTimeCrawler:
             for r in all_results
         ]
 
-        logger.info(f"[Transit] Got {len(records)} measurements")
+        logger.info("[Transit] Got %s measurements", len(records))
 
         if save:
             self._save_to_db(records)
@@ -162,7 +162,7 @@ class TransitTimeCrawler:
                 repo = TransitTimeRepository(session)
                 created, updated = repo.bulk_upsert(records)
                 session.commit()
-                logger.info(f"[Transit] Saved: {created} new, {updated} updated.")
+                logger.info("[Transit] Saved: %s new, %s updated.", created, updated)
             except Exception:
                 session.rollback()
                 logger.exception("Transit time batch save error")

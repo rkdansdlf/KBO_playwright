@@ -98,7 +98,10 @@ class RelayCrawler:
         return f"{kbo_game_id}{year}"
 
     def _schedule_query_context(
-        self, kbo_game_id: str | None = None, *, query_date: str | None = None,
+        self,
+        kbo_game_id: str | None = None,
+        *,
+        query_date: str | None = None,
     ) -> dict[str, str]:
         if kbo_game_id and len(kbo_game_id) >= 8:
             date_part = kbo_game_id[:8]
@@ -163,7 +166,7 @@ class RelayCrawler:
     ) -> tuple[dict[str, Any] | None, str | None]:
         full_url = str(httpx.URL(url, params=params or {}))
         if not await compliance.is_allowed(full_url):
-            logger.info(f"[COMPLIANCE] Relay request blocked: {full_url}")
+            logger.info("[COMPLIANCE] Relay request blocked: %s", full_url)
             return None, "blocked"
 
         async def _fetch() -> dict[str, Any]:
@@ -187,7 +190,7 @@ class RelayCrawler:
         try:
             return await self.policy.run_with_retry_async(_fetch), None
         except _PermanentStatusError as exc:
-            logger.exception(f"[INFO] Relay API permanent error: {full_url} status={exc.status_code}")
+            logger.exception("[INFO] Relay API permanent error: %s status=%s", full_url, exc.status_code)
             return None, f"http_{exc.status_code}"
         except Exception as exc:
             logger.warning("Relay API request failed: %s reason=%s", full_url, exc)
@@ -208,13 +211,22 @@ class RelayCrawler:
         teams_match = g_away == away_code and g_home == home_code
         if teams_match:
             return 50, True
+        score = 0
         if g_away == away_code or g_home == home_code:
-            return 10, False
+            score += 10
         if (g_away and g_away != away_code) or (g_home and g_home != home_code):
-            return -150, False
-        return 0, False
+            score -= 150
+        return score, False
 
-    def _resolve_dh_no(self, game: dict, games: list, dh_no_val, away_code: str, home_code: str, game_date_str: str) -> str:
+    def _resolve_dh_no(
+        self,
+        game: dict,
+        games: list,
+        dh_no_val,
+        away_code: str,
+        home_code: str,
+        game_date_str: str,
+    ) -> str:
         dh_no_str = str(dh_no_val or "").strip()
         if dh_no_str in {"1", "2"}:
             return dh_no_str
@@ -222,8 +234,7 @@ class RelayCrawler:
         for g in games:
             g_away_t = self._naver_team_code(str(g.get("awayTeamCode") or "").strip())
             g_home_t = self._naver_team_code(str(g.get("homeTeamCode") or "").strip())
-            if ((g_away_t == away_code and g_home_t == home_code)
-                    or (g_away_t == home_code and g_home_t == away_code)):
+            if (g_away_t == away_code and g_home_t == home_code) or (g_away_t == home_code and g_home_t == away_code):
                 g_date = str(g.get("gameDate") or "").replace("-", "").strip()
                 if not g_date:
                     g_id_temp = str(g.get("gameId") or "").strip()
@@ -241,7 +252,15 @@ class RelayCrawler:
                 return "1"
         return "1"
 
-    def _score_doubleheader(self, game: dict, dh_no: str, game_date_str: str, away_code: str, home_code: str, games: list[dict]) -> int:
+    def _score_doubleheader(
+        self,
+        game: dict,
+        dh_no: str,
+        game_date_str: str,
+        away_code: str,
+        home_code: str,
+        games: list[dict],
+    ) -> int:
         def is_dh_truthy(v) -> bool:
             if isinstance(v, bool):
                 return v
@@ -348,10 +367,14 @@ class RelayCrawler:
                 g_away = g_home_raw if swapped else g_away_raw
                 g_home = g_away_raw if swapped else g_home_raw
 
-                cur_exact = f"{game_date_str[4:8]}{home_code}{away_code}{dh_no}{season_year}" if swapped else exact_suffix
+                cur_exact = (
+                    f"{game_date_str[4:8]}{home_code}{away_code}{dh_no}{season_year}" if swapped else exact_suffix
+                )
                 cur_legacy = f"{game_date_str[4:8]}{home_code}{away_code}{dh_no}" if swapped else legacy_suffix
                 suffixes = {
-                    "exact": cur_exact, "legacy": cur_legacy, "team": team_suffix,
+                    "exact": cur_exact,
+                    "legacy": cur_legacy,
+                    "team": team_suffix,
                     "id_has_teams": self._is_team_in_id(away_code, game_id) and self._is_team_in_id(home_code, game_id),
                     "dh_no": dh_no,
                 }
@@ -383,7 +406,13 @@ class RelayCrawler:
         best_game, best_score = max(candidates, key=lambda x: x[1])
         threshold = 80 if allow_team_fallback else 120
         if best_score < threshold:
-            logger.info("Scores for %s: best=%s, score=%d, below threshold=%d", kbo_game_id, best_game.get("gameId"), best_score, threshold)
+            logger.info(
+                "Scores for %s: best=%s, score=%d, below threshold=%d",
+                kbo_game_id,
+                best_game.get("gameId"),
+                best_score,
+                threshold,
+            )
             return None
 
         logger.info("Matched %s to Naver gameId=%s score=%d", kbo_game_id, best_game.get("gameId"), best_score)
@@ -522,7 +551,10 @@ class RelayCrawler:
                 all_text_relays = await self._fetch_text_relays(client, naver_id)
                 if not all_text_relays:
                     resolved_naver_id = await self._resolve_naver_game_id(
-                        client, kbo_game_id, stadium=stadium, game_time=game_time,
+                        client,
+                        kbo_game_id,
+                        stadium=stadium,
+                        game_time=game_time,
                     )
                     if resolved_naver_id and resolved_naver_id != direct_naver_id:
                         self.last_resolved_naver_game_id = resolved_naver_id

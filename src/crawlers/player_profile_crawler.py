@@ -223,7 +223,7 @@ class PlayerProfileCrawler:
             try:
                 return await self._fetch_profile(page, player_id, position)
             except Exception:
-                logger.exception(f"❌ Profile crawl failed for {player_id}")
+                logger.exception("❌ Profile crawl failed for %s", player_id)
                 return None
             finally:
                 await pool.release(page)
@@ -236,9 +236,9 @@ class PlayerProfileCrawler:
         last_reason = "profile_not_found"
 
         for url in urls:
-            logger.info(f"📡 Attempting profile [{player_id}]: {url}")
+            logger.info("📡 Attempting profile [%s]: %s", player_id, url)
             if not await compliance.is_allowed(url):
-                logger.warning(f"⚠️  BLOCKED by compliance: {url}")
+                logger.warning("⚠️  BLOCKED by compliance: %s", url)
                 last_reason = "blocked"
                 continue
 
@@ -257,7 +257,7 @@ class PlayerProfileCrawler:
                 # but usually stub means no data on any of them.
                 ok, reason = validate_player_payload({"player_id": player_id, "name": raw.get("name")})
                 if not ok:
-                    logger.warning(f"⚠️  Stub profile detected at {url}")
+                    logger.warning("⚠️  Stub profile detected at %s", url)
                     last_reason = (
                         "profile_stub"
                         if reason in {"missing_player_name", "unknown_player_name"}
@@ -324,7 +324,7 @@ class PlayerProfileCrawler:
                 self._last_failure_reason.pop(str(player_id), None)
                 return result
             except Exception:
-                logger.exception(f"   (Failed attempt at {url})")
+                logger.exception("   (Failed attempt at %s)", url)
                 last_reason = "selector_timeout"
                 continue
 
@@ -364,7 +364,7 @@ async def main() -> None:
     if result:
         logger.info("✅ Success:")
         for k, v in result.items():
-            logger.info(f"  {k}: {v}")
+            logger.info("  %s: %s", k, v)
     else:
         logger.error("❌ No result (Expected for stub/empty profiles)")
 

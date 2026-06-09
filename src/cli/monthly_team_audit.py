@@ -101,10 +101,10 @@ def main() -> int:
     target_year = args.year if args.year else current_year - 1
 
     if target_year < 2020:
-        logger.info(f"Skipping team audit for year {target_year} (before 2020)")
+        logger.info("Skipping team audit for year %s (before 2020)", target_year)
         return
 
-    logger.info(f"Running team stats audit for year {target_year}...")
+    logger.info("Running team stats audit for year %s...", target_year)
     result = run_monthly_team_audit(target_year)
 
     if args.json:
@@ -116,17 +116,17 @@ def main() -> int:
     bat_miss = len(result["batting"]["mismatches"])
     pit_miss = len(result["pitching"]["mismatches"])
 
-    logger.info(f"\nTeam Batting: {'PASS' if bat_ok else 'FAIL'} ({bat_miss} mismatches)")
+    logger.info(f"\nTeam Batting: {'PASS' if bat_ok else 'FAIL'} ({bat_miss} mismatches)")  # noqa: G004
     for m in result["batting"]["mismatches"]:
-        logger.info(f"  - [{m['team_id']}] {m['issue']}")
+        logger.info(f"  - [{m['team_id']}] {m['issue']}")  # noqa: G004
         for d in (m.get("diffs") or [])[:3]:
-            logger.info(f"    {d}")
+            logger.info("    %s", d)
 
-    logger.info(f"\nTeam Pitching: {'PASS' if pit_ok else 'FAIL'} ({pit_miss} mismatches)")
+    logger.info(f"\nTeam Pitching: {'PASS' if pit_ok else 'FAIL'} ({pit_miss} mismatches)")  # noqa: G004
     for m in result["pitching"]["mismatches"]:
-        logger.info(f"  - [{m['team_id']}] {m['issue']}")
+        logger.info(f"  - [{m['team_id']}] {m['issue']}")  # noqa: G004
         for d in (m.get("diffs") or [])[:3]:
-            logger.info(f"    {d}")
+            logger.info("    %s", d)
 
     if not bat_ok or not pit_ok:
         sys.exit(1)

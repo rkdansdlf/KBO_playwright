@@ -91,7 +91,11 @@ def _compute_batting_rates(row) -> dict[str, Any]:
 
 
 def _aggregate_batting(
-    session: Session, season_ids: list[int], season: int, league: str, level: str,
+    session: Session,
+    season_ids: list[int],
+    season: int,
+    league: str,
+    level: str,
 ) -> list[dict[str, Any]]:
     rows = (
         session.query(
@@ -179,7 +183,11 @@ def _compute_pitching_rates(total_outs: int, hits: int, bb: int, er: int, k: int
 
 
 def _aggregate_pitching(
-    session: Session, season_ids: list[int], season: int, league: str, level: str,
+    session: Session,
+    season_ids: list[int],
+    season: int,
+    league: str,
+    level: str,
 ) -> list[dict[str, Any]]:
     rows = (
         session.query(
@@ -288,7 +296,7 @@ def _upsert_batting(session: Session, records: list[dict[str, Any]], dialect: st
             session.execute(stmt)
             saved += 1
         except SQLAlchemyError as e:
-            logger.warning(f"Batting upsert failed for player {data.get('player_id')}: {e}")
+            logger.warning(f"Batting upsert failed for player {data.get('player_id')}: {e}")  # noqa: G004
             session.rollback()
 
     session.commit()
@@ -326,7 +334,7 @@ def _upsert_pitching(session: Session, records: list[dict[str, Any]], dialect: s
             session.execute(stmt)
             saved += 1
         except SQLAlchemyError as e:
-            logger.warning(f"Pitching upsert failed for player {data.get('player_id')}: {e}")
+            logger.warning(f"Pitching upsert failed for player {data.get('player_id')}: {e}")  # noqa: G004
             session.rollback()
 
     session.commit()
@@ -373,34 +381,34 @@ def run_recalc(
     with SessionLocal() as session:
         season_ids = _get_regular_season_ids(session, season)
         if not season_ids:
-            logger.error(f"No Regular Season IDs found for season {season}")
+            logger.error("No Regular Season IDs found for season %s", season)
             return 1
 
         dialect = Engine.dialect.name
 
         if not pitching_only:
-            logger.info(f"Aggregating batting stats from game data for season={season}...")
+            logger.info("Aggregating batting stats from game data for season=%s...", season)
             batting_records = _aggregate_batting(session, season_ids, season, league, level)
-            logger.info(f"  Found {len(batting_records)} players with batting game data")
+            logger.info("  Found %s players with batting game data", len(batting_records))
 
             if dry_run:
                 logger.info("[DRY-RUN] Batting records that would be saved:")
                 _print_batting_results(batting_records)
             else:
                 saved = _upsert_batting(session, batting_records, dialect)
-                logger.info(f"  Upserted {saved} batting records")
+                logger.info("  Upserted %s batting records", saved)
 
         if not batting_only:
-            logger.info(f"Aggregating pitching stats from game data for season={season}...")
+            logger.info("Aggregating pitching stats from game data for season=%s...", season)
             pitching_records = _aggregate_pitching(session, season_ids, season, league, level)
-            logger.info(f"  Found {len(pitching_records)} players with pitching game data")
+            logger.info("  Found %s players with pitching game data", len(pitching_records))
 
             if dry_run:
                 logger.info("[DRY-RUN] Pitching records that would be saved:")
                 _print_pitching_results(pitching_records)
             else:
                 saved = _upsert_pitching(session, pitching_records, dialect)
-                logger.info(f"  Upserted {saved} pitching records")
+                logger.info("  Upserted %s pitching records", saved)
 
     return 0
 

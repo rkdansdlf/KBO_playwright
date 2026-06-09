@@ -112,7 +112,7 @@ class OperationNoticeLGCrawler:
                     notices, hit_stop = self._parse_page(html, stop_at_external_id)
                     all_notices.extend(notices)
 
-                    logger.info(f"[LG Notice] page {page}: {len(notices)} notices")
+                    logger.info("[LG Notice] page %s: %s notices", page, len(notices))
                     if hit_stop or not notices:
                         break
 
@@ -120,7 +120,7 @@ class OperationNoticeLGCrawler:
                     logger.exception("[LG Notice] Failed to fetch page %d", page)
                     break
 
-        logger.info(f"[LG Notice] Total: {len(all_notices)} notices")
+        logger.info("[LG Notice] Total: %s notices", len(all_notices))
 
         if save:
             self._save_to_db(all_notices)
@@ -189,10 +189,10 @@ class OperationNoticeLGCrawler:
                 repo = OperationNoticeRepository(session)
                 created, updated = repo.bulk_upsert(notices)
                 session.commit()
-                logger.info(f"[LG Notice] Saved: {created} new, {updated} updated.")
+                logger.info("[LG Notice] Saved: %s new, %s updated.", created, updated)
             except SQLAlchemyError as e:
                 session.rollback()
-                logger.error(f"[LG Notice] Database error: {e}", exc_info=True)
+                logger.exception(f"[LG Notice] Database error: {e}")  # noqa: G004
             finally:
                 self._raw_pages.clear()
 
