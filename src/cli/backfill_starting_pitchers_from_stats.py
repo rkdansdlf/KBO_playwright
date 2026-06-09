@@ -323,7 +323,11 @@ def main() -> int:
 
     action = "would update" if args.dry_run else "updated"
     logger.info(
-        "%s: games=%s, away_pitcher=%s, home_pitcher=%s", action, len(updated_game_ids), away_updates, home_updates,
+        "%s: games=%s, away_pitcher=%s, home_pitcher=%s",
+        action,
+        len(updated_game_ids),
+        away_updates,
+        home_updates,
     )
 
     if args.sync_target_missing:

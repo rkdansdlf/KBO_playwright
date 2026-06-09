@@ -927,7 +927,10 @@ def crawl_series_batting_stats(
                                     break
 
                     logger.info(
-                        "   ▶ %s페이지: %s명 처리 (누적 %s명)", page_num, len(current_page_data), total_collected,
+                        "   ▶ %s페이지: %s명 처리 (누적 %s명)",
+                        page_num,
+                        len(current_page_data),
+                        total_collected,
                     )
 
                     if limit and total_collected >= limit:
