@@ -1,9 +1,9 @@
-from typing import Any
 import argparse
 import contextlib
 import logging
 import re
 from datetime import datetime
+from typing import Any
 
 from sqlalchemy.exc import SQLAlchemyError
 
@@ -35,7 +35,7 @@ class ManagerChangeCrawler(NaverNewsCrawlerBase):
             "SSG": "SSG",
         }
 
-        if not any(kw in text for kw in MANAGER_KEYWORDS):
+        if not any(kw in text for kw in self.KEYWORDS):
             return None
 
         team_id = None

@@ -8,10 +8,11 @@ import hashlib
 import json
 import logging
 import os
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from datetime import date, datetime
 from pathlib import Path
-from collections.abc import Iterable, Sequence
+from typing import Any
 
 from sqlalchemy import and_, or_
 
@@ -26,7 +27,6 @@ from src.services.context_aggregator import ContextAggregator
 from src.sync.oci_sync import OCISync
 from src.utils.game_status import COMPLETED_LIKE_GAME_STATUSES
 from src.utils.relay_text import is_relay_noise_text
-
 
 logger = logging.getLogger(__name__)
 

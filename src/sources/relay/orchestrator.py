@@ -8,9 +8,9 @@ try:
     from datetime import UTC
 except ImportError:
     UTC = UTC
+from collections.abc import Callable, Iterable
 from pathlib import Path
 from typing import Any
-from collections.abc import Callable, Iterable
 
 from .base import (
     CapabilityRecord,

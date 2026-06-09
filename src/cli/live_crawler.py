@@ -11,9 +11,9 @@ import argparse
 import asyncio
 import logging
 import os
+from collections.abc import Sequence
 from datetime import datetime
 from typing import Any
-from collections.abc import Sequence
 from zoneinfo import ZoneInfo
 
 import httpx
@@ -33,7 +33,6 @@ from src.utils.game_state import (
     derive_lifecycle_from_naver_status,
 )
 from src.utils.refresh_manifest import write_refresh_manifest
-
 
 
 def _has_ending_header(raw_pbp_rows: list[dict[str, Any]]) -> bool:

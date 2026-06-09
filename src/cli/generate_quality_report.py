@@ -8,10 +8,10 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+from collections.abc import Sequence
 from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any
-from collections.abc import Sequence
 from zoneinfo import ZoneInfo
 
 from sqlalchemy import MetaData, Table, func, inspect, or_, select

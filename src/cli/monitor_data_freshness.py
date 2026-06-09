@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import argparse
 import logging
-from datetime import UTC, datetime, timedelta
 from collections.abc import Sequence
+from datetime import UTC, datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from sqlalchemy import text

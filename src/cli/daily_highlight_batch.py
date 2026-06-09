@@ -9,8 +9,8 @@ import argparse
 import asyncio
 import logging
 import os
-from datetime import datetime
 from collections.abc import Sequence
+from datetime import datetime
 
 from src.aggregators.highlight_aggregator import HighlightAggregator
 from src.db.engine import SessionLocal

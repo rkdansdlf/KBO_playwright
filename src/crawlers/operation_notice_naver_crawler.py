@@ -17,6 +17,7 @@ from __future__ import annotations
 import logging
 import re
 from datetime import date
+from typing import Any
 
 from src.db.engine import SessionLocal
 from src.repositories.operation_notice_repository import OperationNoticeRepository

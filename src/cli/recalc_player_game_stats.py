@@ -15,8 +15,8 @@ from __future__ import annotations
 import argparse
 import logging
 import sys
-from datetime import date as date_type
 from collections.abc import Sequence
+from datetime import date as date_type
 
 from sqlalchemy import text
 

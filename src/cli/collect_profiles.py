@@ -15,7 +15,6 @@ from src.models.player import Player
 from src.repositories.player_repository import PlayerRepository
 from src.utils.playwright_pool import AsyncPlaywrightPool
 
-
 logger = logging.getLogger(__name__)
 
 

@@ -81,7 +81,7 @@ class RetiredPlayerListingCrawler:
             logger.warning("Failed to select all series option, continuing")
             pass
 
-            
+
         return await self._collect_ids_from_pages(page, year)
 
     async def _select_option_and_dispatch(self, page, selector: str, value: str) -> None:

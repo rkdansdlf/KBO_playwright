@@ -1,8 +1,8 @@
-from typing import Any
 import argparse
 import logging
 import re
 from datetime import datetime, timedelta
+from typing import Any
 
 import httpx
 from sqlalchemy.exc import SQLAlchemyError

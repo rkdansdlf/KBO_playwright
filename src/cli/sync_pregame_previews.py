@@ -11,9 +11,9 @@ from __future__ import annotations
 import argparse
 import logging
 import sys
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-from collections.abc import Sequence
 from zoneinfo import ZoneInfo
 
 from dotenv import load_dotenv
@@ -21,7 +21,6 @@ from sqlalchemy import text
 
 from src.db.engine import SessionLocal, get_oci_url
 from src.sync.oci_sync import OCISync
-
 
 logger = logging.getLogger(__name__)
 

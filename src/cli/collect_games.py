@@ -17,7 +17,6 @@ from src.services.game_collection_service import (
     load_game_targets_by_ids,
     load_game_targets_from_db,
 )
-
 from src.utils.team_codes import normalize_kbo_game_id
 
 logger = logging.getLogger(__name__)

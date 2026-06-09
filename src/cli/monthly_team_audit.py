@@ -8,12 +8,12 @@ Imported by scripts/scheduler.py as the crawl_monthly_team_audit_job target.
 Runs on the 1st of every month at 04:00 KST via APScheduler.
 """
 
-from typing import Any
 import json
 import logging
 import sys
 from datetime import datetime
 from pathlib import Path
+from typing import Any
 from zoneinfo import ZoneInfo
 
 from src.db.engine import SessionLocal

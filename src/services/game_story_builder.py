@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
 from typing import Any
-from collections.abc import Iterable, Sequence
 
 from src.models.game import Game, GameEvent
 from src.utils.relay_text import compact_relay_text, is_relay_noise_text

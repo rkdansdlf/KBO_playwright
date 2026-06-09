@@ -23,6 +23,7 @@ import asyncio
 import logging
 import re
 from datetime import datetime
+from typing import Any
 
 from src.db.engine import SessionLocal
 from src.repositories.fan_culture_repository import FanCultureRepository

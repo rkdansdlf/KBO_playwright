@@ -6,10 +6,10 @@ from __future__ import annotations
 
 import logging
 import os
+from collections.abc import Iterable
 from datetime import UTC, date, datetime
 from decimal import Decimal, InvalidOperation
 from typing import Any
-from collections.abc import Iterable
 
 logger = logging.getLogger(__name__)
 

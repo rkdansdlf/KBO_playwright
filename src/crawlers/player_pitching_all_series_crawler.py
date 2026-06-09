@@ -22,8 +22,8 @@ import argparse
 import logging
 import os
 import re
-from datetime import datetime
 from dataclasses import dataclass, field
+from datetime import datetime
 
 logger = logging.getLogger(__name__)
 
@@ -37,8 +37,8 @@ from src.models.player import PlayerBasic
 from src.models.season import KboSeason
 from src.repositories.player_season_pitching_repository import save_pitching_stats_to_db
 from src.utils.fallback_monitor import FallbackMonitor
-from src.utils.player_stats_helpers import extract_rows_fast
 from src.utils.player_season_stat_validation import filter_valid_season_stat_payloads
+from src.utils.player_stats_helpers import extract_rows_fast
 from src.utils.playwright_retry import retry_wait_for_selector
 from src.utils.request_policy import RequestPolicy
 from src.utils.team_codes import resolve_team_code

@@ -20,7 +20,6 @@ from typing import Any
 
 from src.db.engine import SessionLocal, get_oci_url
 
-
 logger = logging.getLogger(__name__)
 KST = __import__("zoneinfo").ZoneInfo("Asia/Seoul")
 
