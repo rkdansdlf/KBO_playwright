@@ -55,7 +55,7 @@ def _check_datasource_health(session) -> list[dict[str, Any]]:
                 "freq": ds.crawl_frequency or "-",
                 "stale": stale,
                 "hash": (ds.last_content_hash or "-")[:12],
-            }
+            },
         )
     return rows
 
@@ -71,9 +71,9 @@ def _check_table_health(session) -> list[dict[str, Any]]:
                     "table": table,
                     "rows": count,
                     "latest": str(latest or "-")[:20],
-                }
+                },
             )
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             logger.warning("Health check table %s query failed: %s", table, e)
             rows.append({"table": table, "rows": "ERR", "latest": str(e)[:40]})
     return rows

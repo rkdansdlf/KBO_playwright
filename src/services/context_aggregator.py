@@ -27,7 +27,7 @@ from src.utils.relay_text import is_relay_noise_text
 
 
 class ContextAggregator:
-    def __init__(self, session):
+    def __init__(self, session) -> None:
         self.session = session
 
     @staticmethod
@@ -209,7 +209,7 @@ class ContextAggregator:
                         "player_id": row.player_id,
                         "player_name": row.player_name,
                         "role": payload_row["role"],
-                    }
+                    },
                 )
 
             if bool(row.is_starting):
@@ -471,7 +471,7 @@ class ContextAggregator:
                     "score": f"{e.away_score}:{e.home_score}",
                     "batter": e.batter_name,
                     "pitcher": e.pitcher_name,
-                }
+                },
             )
             if len(moments) >= limit:
                 break
@@ -499,7 +499,7 @@ class ContextAggregator:
         # 팀 타율 계산
         batting = (
             self.session.query(
-                func.sum(GameBattingStat.hits).label("hits"), func.sum(GameBattingStat.at_bats).label("ab")
+                func.sum(GameBattingStat.hits).label("hits"), func.sum(GameBattingStat.at_bats).label("ab"),
             )
             .filter(GameBattingStat.game_id.in_(game_ids), GameBattingStat.team_code == team_code)
             .first()
@@ -553,7 +553,7 @@ class ContextAggregator:
         }
 
     def get_postseason_series_summary(
-        self, team_a: str, team_b: str, season_year: int, target_date: date
+        self, team_a: str, team_b: str, season_year: int, target_date: date,
     ) -> dict[str, Any] | None:
         """포스트시즌 시리즈 전적(예: 준플레이오프 1승 2패) 계산"""
         # 현재 경기의 시리즈 유형 파악을 위해 1경기 조회
@@ -740,7 +740,7 @@ class ContextAggregator:
                     "section": m.section,
                     "player": m.player_name,
                     "remarks": m.remarks,
-                }
+                },
             )
         return results
 
@@ -776,7 +776,7 @@ class ContextAggregator:
         return {"added": added, "removed": removed}
 
     def get_team_error_games(
-        self, team_code: str, season_year: int, target_date: Any | None = None
+        self, team_code: str, season_year: int, target_date: Any | None = None,
     ) -> list[dict[str, Any]]:
         """팀이 특정 경기에서 실책을 범한 경기 목록 및 실책 상세 정보 반환"""
         if isinstance(target_date, str):
@@ -857,7 +857,7 @@ class ContextAggregator:
         return list(games_dict.values())
 
     def get_toughest_opponents(
-        self, team_code: str, season_year: int, target_date: Any | None = None
+        self, team_code: str, season_year: int, target_date: Any | None = None,
     ) -> list[dict[str, Any]]:
         """상대팀별 승률을 계산하여 가장 까다로운(우리팀 승률이 낮은) 순으로 정렬하여 반환"""
         if isinstance(target_date, str):
@@ -908,7 +908,7 @@ class ContextAggregator:
                     "draws": d,
                     "win_rate": round(win_rate, 3),
                     "summary_text": f"{w}승 {losses}패 {d}무",
-                }
+                },
             )
 
         results.sort(key=lambda x: (x["win_rate"], -x["losses"]))

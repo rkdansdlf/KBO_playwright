@@ -192,7 +192,7 @@ class YouTubeAPIClient:
                     thumbnail_url=snippet.get("thumbnails", {}).get("default", {}).get("url", ""),
                     channel_id=channel_id,
                     raw=item,
-                )
+                ),
             )
         return items
 
@@ -248,7 +248,7 @@ class YouTubeAPIClient:
                         playlist_id=playlist_id,
                         channel_id=snippet.get("channelId"),
                         raw=item,
-                    )
+                    ),
                 )
                 if len(items) >= max_results:
                     break

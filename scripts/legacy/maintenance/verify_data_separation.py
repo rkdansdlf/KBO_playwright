@@ -40,10 +40,11 @@ def verify_data_separation():
 
                 # extra_stats 확인
                 if batting.extra_stats:
-                    print(
-                        f"     extra_stats: {list(batting.extra_stats.keys()) if isinstance(batting.extra_stats, dict) else 'N/A'}"
+                    logger.info(
+                        "     extra_stats: %s",
+                        list(batting.extra_stats.keys()) if isinstance(batting.extra_stats, dict) else 'N/A',
                     )
-                print()
+                logger.info("")
 
         # 3. 투수 데이터 샘플 확인
         if pitching_count > 0:
@@ -75,10 +76,11 @@ def verify_data_separation():
 
                 # extra_stats 확인
                 if pitching.extra_stats:
-                    print(
-                        f"     extra_stats: {list(pitching.extra_stats.keys()) if isinstance(pitching.extra_stats, dict) else 'N/A'}"
+                    logger.info(
+                        "     extra_stats: %s",
+                        list(pitching.extra_stats.keys()) if isinstance(pitching.extra_stats, dict) else 'N/A',
                     )
-                print()
+                logger.info("")
 
         # 4. 데이터 품질 검증
         logger.info("🔍 데이터 품질 검증:")

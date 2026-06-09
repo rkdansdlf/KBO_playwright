@@ -38,7 +38,7 @@ class AwardRepository:
             return existing
 
         new_award = Award(
-            year=year, award_type=award_type, category=category, player_name=player_name, team_name=team_name
+            year=year, award_type=award_type, category=category, player_name=player_name, team_name=team_name,
         )
         self.session.add(new_award)
         # We don't commit here to allow batch processing by the caller

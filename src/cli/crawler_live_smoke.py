@@ -189,7 +189,7 @@ def _print_human_summary(result: Mapping[str, Any]) -> None:
     status = "passed" if result.get("ok") else "failed"
     logger.info(
         f"[SMOKE] {status}: date={result.get('target_date')} "
-        f"scope={result.get('scope')} candidates={len(result.get('candidates') or [])}"
+        f"scope={result.get('scope')} candidates={len(result.get('candidates') or [])}",
     )
     for game_result in result.get("results") or []:
         logger.info(f"  - {game_result.get('game_id')}: {game_result}")
@@ -234,7 +234,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                         scope=args.scope,
                         game_id=args.game_id,
                         limit=args.limit,
-                    )
+                    ),
                 )
             logger.info(json.dumps(result, ensure_ascii=False, indent=2))
         else:
@@ -244,7 +244,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                     scope=args.scope,
                     game_id=args.game_id,
                     limit=args.limit,
-                )
+                ),
             )
             _print_human_summary(result)
     except ValueError as exc:

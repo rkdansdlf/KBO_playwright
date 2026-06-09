@@ -13,8 +13,8 @@ from src.utils.playwright_blocking import install_sync_resource_blocking
 
 logger = logging.getLogger(__name__)
 from src.utils.playwright_retry import LONG_TIMEOUT
-from src.utils.request_policy import RequestPolicy  # noqa: E402
-from src.utils.team_codes import resolve_team_code  # noqa: E402
+from src.utils.request_policy import RequestPolicy
+from src.utils.team_codes import resolve_team_code
 
 
 def crawl_baserunning_stats(year=None, max_retries=3, timeout=LONG_TIMEOUT) -> list[dict[str, Any]]:

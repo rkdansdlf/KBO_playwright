@@ -138,7 +138,7 @@ def save_pitching_stats_to_db(payloads: list[dict[str, Any]]) -> int:
             elif db_type == "mysql":
                 stmt = mysql_insert(PlayerSeasonPitching).values(**data)
                 stmt = stmt.on_duplicate_key_update(
-                    {k: stmt.inserted[k] for k in data if k not in ["player_id", "season", "league", "level"]}
+                    {k: stmt.inserted[k] for k in data if k not in ["player_id", "season", "league", "level"]},
                 )
             elif db_type == "postgresql":
                 stmt = postgresql_insert(PlayerSeasonPitching).values(**data)
@@ -151,7 +151,7 @@ def save_pitching_stats_to_db(payloads: list[dict[str, Any]]) -> int:
                 existing = (
                     session.query(PlayerSeasonPitching)
                     .filter_by(
-                        player_id=data["player_id"], season=data["season"], league=data["league"], level=data["level"]
+                        player_id=data["player_id"], season=data["season"], league=data["league"], level=data["level"],
                     )
                     .first()
                 )

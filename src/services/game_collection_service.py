@@ -17,6 +17,24 @@ from src.services.pbp_sh_sf_derivation import apply_sh_sf_to_batting_stats
 from src.utils.team_codes import normalize_kbo_game_id
 
 logger = logging.getLogger(__name__)
+
+DETAIL_COLLECTION_FAILURE_REASONS_RETRYABLE = {
+    "no_detail_payload",
+    "incomplete_detail",
+    "navigation_error",
+    "timeout",
+    "exception",
+    "missing",
+}
+DETAIL_COLLECTION_FAILURE_REASONS_NON_RETRYABLE = {
+    "filtered",
+    "save_failed",
+    "detail_payload_filtered",
+    "detail_save_failed",
+    "cancelled",
+}
+
+
 class DetailCrawler(Protocol):
     async def crawl_games(
         self,
@@ -303,7 +321,10 @@ async def _collect_detail_phase(
                 result.detail_failed += 1
                 item = result.items[target.game_id]
                 item.detail_status = "crawl_failed"
-                item.failure_reason = _get_failure_reason(detail_crawler, target.game_id) or "no_detail_payload"
+                item.failure_reason = _normalize_detail_failure_reason(
+                    _get_failure_reason(detail_crawler, target.game_id),
+                    default="no_detail_payload",
+                )
                 log("   [WARN] No detail payload returned")
                 continue
 
@@ -311,14 +332,20 @@ async def _collect_detail_phase(
                 result.detail_failed += 1
                 item = result.items[target.game_id]
                 item.detail_status = "filtered"
-                item.failure_reason = _get_failure_reason(detail_crawler, target.game_id) or "incomplete_detail"
+                item.failure_reason = _normalize_detail_failure_reason(
+                    _get_failure_reason(detail_crawler, target.game_id),
+                    default="incomplete_detail",
+                )
                 log("   [WARN] Detail payload is missing required hitter/pitcher rows")
                 continue
             if should_save_detail and not should_save_detail(payload):
                 result.detail_failed += 1
                 item = result.items[target.game_id]
                 item.detail_status = "filtered"
-                item.failure_reason = "detail_payload_filtered"
+                item.failure_reason = _normalize_detail_failure_reason(
+                    "detail_payload_filtered",
+                    default="filtered",
+                )
                 log("   [WARN] Detail payload did not pass save predicate")
                 continue
             if save_game_detail(
@@ -339,7 +366,10 @@ async def _collect_detail_phase(
                 result.detail_failed += 1
                 item = result.items[target.game_id]
                 item.detail_status = "save_failed"
-                item.failure_reason = "detail_save_failed"
+                item.failure_reason = _normalize_detail_failure_reason(
+                    "detail_save_failed",
+                    default="save_failed",
+                )
                 log("   [ERROR] Detail save failed")
 
     return detail_ready
@@ -449,9 +479,26 @@ def _get_failure_reason(crawler: Any, game_id: str) -> str | None:
         return None
     try:
         return getter(game_id)
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         logger.warning("Failed to get last failure reason from crawler: %s", exc)
         return None
+
+
+def _normalize_detail_failure_reason(raw_reason: str | None, *, default: str) -> str:
+    reason = (raw_reason or "").strip().lower()
+    if not reason:
+        return default
+    if reason in DETAIL_COLLECTION_FAILURE_REASONS_NON_RETRYABLE:
+        if reason in {"filtered", "detail_payload_filtered"}:
+            return "filtered"
+        if reason in {"save_failed", "detail_save_failed"}:
+            return "save_failed"
+        return reason
+    if reason in DETAIL_COLLECTION_FAILURE_REASONS_RETRYABLE:
+        return reason
+    if reason in {"incomplete_detail", "no_detail_payload", "timeout", "navigation_error", "exception", "missing"}:
+        return reason
+    return default
 
 
 def _has_required_detail_rows(payload: dict[str, Any]) -> bool:

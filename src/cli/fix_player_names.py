@@ -118,7 +118,7 @@ def main() -> int:
             max_pages=args.max_pages,
             save=args.save,
             sync_oci=args.sync_oci,
-        )
+        ),
     )
 
 

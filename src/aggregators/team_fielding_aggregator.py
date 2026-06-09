@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 
 
 class TeamFieldingAggregator:
-    def __init__(self, session: Session):
+    def __init__(self, session: Session) -> None:
         self.session = session
 
     def aggregate_fielding(self, season: int, team_code: str) -> dict[str, Any]:

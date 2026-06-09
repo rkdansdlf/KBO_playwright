@@ -49,7 +49,7 @@ async def run_reconciliation(args: argparse.Namespace) -> int:
     logger.info(
         "[POSTGAME-RECONCILE] "
         f"range={result.start_date}-{result.end_date} "
-        f"candidates={result.candidates} changed={len(result.changes)}"
+        f"candidates={result.candidates} changed={len(result.changes)}",
     )
     logger.info(format_reconciliation_report(result.changes))
 
@@ -65,7 +65,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
         description=(
             "Revisit recently started KBO games and report rows whose final "
             "status or score changed during reconciliation."
-        )
+        ),
     )
     parser.add_argument("--date", help="Single target date in YYYYMMDD format")
     parser.add_argument("--start-date", help="Start date in YYYYMMDD format")

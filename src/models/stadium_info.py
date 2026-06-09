@@ -10,7 +10,7 @@ class StadiumInfo(Base, TimestampMixin):
     __tablename__ = "stadium_info"
 
     stadium_code: Mapped[str] = mapped_column(
-        String(10), primary_key=True, comment="Canonical stadium code (e.g. JAMSIL, MUNHAK)"
+        String(10), primary_key=True, comment="Canonical stadium code (e.g. JAMSIL, MUNHAK)",
     )
     name_kr: Mapped[str] = mapped_column(String(100), nullable=False, comment="Stadium name in Korean")
     name_en: Mapped[str | None] = mapped_column(String(100), nullable=True, comment="Stadium name in English")
@@ -21,10 +21,10 @@ class StadiumInfo(Base, TimestampMixin):
     address: Mapped[str | None] = mapped_column(String(300), nullable=True, comment="Full address")
     parking_info: Mapped[str | None] = mapped_column(Text, nullable=True, comment="Parking details")
     public_transport: Mapped[dict | None] = mapped_column(
-        JSON, nullable=True, comment="Public transit info {subway, bus}"
+        JSON, nullable=True, comment="Public transit info {subway, bus}",
     )
     facilities: Mapped[dict | None] = mapped_column(
-        JSON, nullable=True, comment="Facilities list {restaurant, shop, etc}"
+        JSON, nullable=True, comment="Facilities list {restaurant, shop, etc}",
     )
     seat_map_url: Mapped[str | None] = mapped_column(String(500), nullable=True, comment="Seat map URL")
     latitude: Mapped[float | None] = mapped_column(Float, nullable=True, comment="Latitude")
@@ -42,7 +42,7 @@ class StadiumRegulation(Base, TimestampMixin):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     stadium_code: Mapped[str] = mapped_column(String(10), nullable=False, index=True, comment="Canonical stadium code")
     regulation_type: Mapped[str] = mapped_column(
-        String(50), nullable=False, comment="Type: GROUND_RULE/ADVERTISING/DUGOUT/ETC"
+        String(50), nullable=False, comment="Type: GROUND_RULE/ADVERTISING/DUGOUT/ETC",
     )
     title: Mapped[str] = mapped_column(String(200), nullable=False, comment="Regulation title")
     description: Mapped[str] = mapped_column(Text, nullable=False, comment="Detailed regulation description")

@@ -116,7 +116,7 @@ class RawSourceSnapshotRepository:
                 and_(
                     RawSourceSnapshot.parse_status == "failed",
                     RawSourceSnapshot.fetched_at < cutoff,
-                )
+                ),
             )
             .order_by(RawSourceSnapshot.fetched_at.asc())
             .limit(limit)
@@ -133,7 +133,7 @@ class RawSourceSnapshotRepository:
         return list(self.session.execute(stmt).scalars().all())
 
     def update_parse_status(
-        self, snapshot_id: int, status: str, parser_version: str | None = None, error_message: str | None = None
+        self, snapshot_id: int, status: str, parser_version: str | None = None, error_message: str | None = None,
     ) -> None:
         record = self.session.get(RawSourceSnapshot, snapshot_id)
         if record:
@@ -169,7 +169,7 @@ def save_raw_snapshots(session, raw_pages: list[dict]) -> int:
                     "content_hash": content_hash,
                     "fetched_at": datetime.now(UTC).replace(tzinfo=None),
                     "status_code": page["status_code"],
-                }
+                },
             )
             saved += 1
     return saved

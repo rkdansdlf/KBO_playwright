@@ -146,7 +146,7 @@ class FanCultureCrawler:
         if dry_run or not save:
             for s in all_songs[:5]:
                 logger.info(
-                    f"  [{s['team_id']}] {s['song_name']} | type={s['song_type']} | player={s.get('player_name')}"
+                    f"  [{s['team_id']}] {s['song_name']} | type={s['song_type']} | player={s.get('player_name')}",
                 )
             if len(all_songs) > 5:
                 logger.info(f"  ... and {len(all_songs) - 5} more")
@@ -217,5 +217,5 @@ if __name__ == "__main__":
             save=args.save,
             team_filter=args.team,
             dry_run=args.dry_run,
-        )
+        ),
     )

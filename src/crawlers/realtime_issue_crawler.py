@@ -56,7 +56,7 @@ class RealtimeIssueCrawler:
                         "url": api_url,
                         "html": res.text,
                         "status_code": res.status_code,
-                    }
+                    },
                 )
                 if res.status_code == 200:
                     data = res.json()
@@ -84,7 +84,7 @@ class RealtimeIssueCrawler:
                                     "crawled_at": datetime.now().isoformat(),
                                     "category": "naver_news",
                                 },
-                            }
+                            },
                         )
                     logger.info("   Fetched %d headlines from JSON API.", len(articles))
                     return articles
@@ -105,7 +105,7 @@ class RealtimeIssueCrawler:
                         "url": fallback_url,
                         "html": res.text,
                         "status_code": res.status_code,
-                    }
+                    },
                 )
                 if res.status_code == 200:
                     soup = BeautifulSoup(res.text, "html.parser")
@@ -132,7 +132,7 @@ class RealtimeIssueCrawler:
                                     "crawled_at": datetime.now().isoformat(),
                                     "category": "naver_news",
                                 },
-                            }
+                            },
                         )
             logger.info(f"   Fetched {len(articles)} headlines from HTML fallback.")
         except httpx.HTTPError:
@@ -161,7 +161,7 @@ class RealtimeIssueCrawler:
                         "url": url,
                         "html": res.text,
                         "status_code": res.status_code,
-                    }
+                    },
                 )
                 if res.status_code == 200:
                     soup = BeautifulSoup(res.text, "html.parser")
@@ -194,7 +194,7 @@ class RealtimeIssueCrawler:
                                         "crawled_at": datetime.now().isoformat(),
                                         "category": "mlbpark",
                                     },
-                                }
+                                },
                             )
             logger.info("   Fetched %d posts from MLBPark.", len(posts))
         except httpx.HTTPError:

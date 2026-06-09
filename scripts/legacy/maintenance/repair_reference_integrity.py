@@ -434,9 +434,13 @@ def main() -> None:
     db_url = args.db_url or os.getenv("DATABASE_URL") or os.getenv("SOURCE_DATABASE_URL") or DEFAULT_DB_URL
     result = run(db_url=db_url, apply=args.apply, only=args.only, output_dir=Path(args.output_dir))
     mode = "APPLY" if result["apply"] else "DRY-RUN"
-    print(
-        f"[{mode}] actions={result['actions']} applied={result['applied']} "
-        f"dry_run={result['dry_run']} skipped={result['skipped']}"
+    logger.info(
+        "[%s] actions=%s applied=%s dry_run=%s skipped=%s",
+        mode,
+        result['actions'],
+        result['applied'],
+        result['dry_run'],
+        result['skipped'],
     )
     logger.info(f"report_csv={result['report_csv']}")
 

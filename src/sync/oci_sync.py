@@ -18,7 +18,7 @@ class OCISync(OCISyncBase, GameSyncMixin, PlayerSyncMixin, StatsSyncMixin, MiscS
     """Composite sync engine combining all domain mixins."""
 
 
-def main():
+def main() -> None:
     """타자 및 투수 데이터 OCI 동기화"""
     from src.db.engine import SessionLocal
 
@@ -56,10 +56,10 @@ def main():
                 logger.warning("⚠️ 동기화할 데이터가 없습니다.")
                 logger.info("📌 먼저 크롤러를 실행하세요:")
                 logger.info(
-                    "   ./venv/bin/python3 -m src.crawlers.player_batting_all_series_crawler --year 2025 --series regular --save"
+                    "   ./venv/bin/python3 -m src.crawlers.player_batting_all_series_crawler --year 2025 --series regular --save",
                 )
                 logger.info(
-                    "   ./venv/bin/python3 -m src.crawlers.player_pitching_all_series_crawler --year 2025 --series regular --save"
+                    "   ./venv/bin/python3 -m src.crawlers.player_pitching_all_series_crawler --year 2025 --series regular --save",
                 )
                 return
 

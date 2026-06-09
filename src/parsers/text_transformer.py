@@ -65,7 +65,7 @@ class TextTransformer:
                 return self.chunk_with_overlap(title, content, meta, chunk_char_limit=800, overlap_char_limit=150)
 
     def chunk_semantically(
-        self, doc_title: str, text: str, meta: dict[str, Any], similarity_threshold: float = 0.6
+        self, doc_title: str, text: str, meta: dict[str, Any], similarity_threshold: float = 0.6,
     ) -> list[dict[str, Any]]:
         """
         Splits text into sentences, generates embeddings, calculates cosine similarity between adjacent sentences,
@@ -83,7 +83,7 @@ class TextTransformer:
         embeddings = embedding_svc.get_embeddings_batch(sentences)
 
         # 3. Calculate cosine similarity between adjacent sentences
-        def cosine_similarity(v1, v2):
+        def cosine_similarity(v1, v2) -> float:
             # Since our embeddings are already L2 normalized: similarity = dot product
             return sum(x * y for x, y in zip(v1, v2, strict=False))
 
@@ -130,7 +130,7 @@ class TextTransformer:
         """
         # 1. Split into parent chunks using paragraph overlap
         parent_chunks = self.chunk_with_overlap(
-            doc_title, text, meta, chunk_char_limit=parent_size, overlap_char_limit=100
+            doc_title, text, meta, chunk_char_limit=parent_size, overlap_char_limit=100,
         )
 
         all_child_chunks = []
@@ -173,7 +173,7 @@ class TextTransformer:
                 child_meta["source_row_id"] = row_id_hash
 
                 all_child_chunks.append(
-                    {"title": f"{doc_title} (Child {child_idx})", "content": c_txt.strip(), "meta": child_meta}
+                    {"title": f"{doc_title} (Child {child_idx})", "content": c_txt.strip(), "meta": child_meta},
                 )
                 child_idx += 1
 
@@ -266,7 +266,7 @@ class TextTransformer:
                     "title": chunk_title,
                     "content": sec_clean,  # Maintain heading in contents for RAG context
                     "meta": chunk_meta,
-                }
+                },
             )
             section_idx += 1
 
@@ -283,7 +283,7 @@ class TextTransformer:
         _logger.debug(
             f"chunk_by_headings: {len(sections)} raw sections → "
             f"{len(chunks)} chunks → {len(merged)} after merge "
-            f"(keywords extracted: {len(keywords)})"
+            f"(keywords extracted: {len(keywords)})",
         )
 
         return merged

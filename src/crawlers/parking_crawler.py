@@ -34,7 +34,7 @@ TEAM_PARKING_SOURCES: dict[str, dict[str, Any]] = {
 }
 
 PARKING_FEE_PATTERN = re.compile(
-    r"(기본|추가|일일|행사|경기|무료)\s*(?:요금|시간|금액)?\s*:?\s*(\d{1,3}(?:,\d{3})*)\s*(?:원)"
+    r"(기본|추가|일일|행사|경기|무료)\s*(?:요금|시간|금액)?\s*:?\s*(\d{1,3}(?:,\d{3})*)\s*(?:원)",
 )
 
 
@@ -78,7 +78,7 @@ class ParkingCrawler:
                         "url": info["url"],
                         "html": html,
                         "status_code": resp.status_code,
-                    }
+                    },
                 )
                 lots = self._parse_parking_page(html, info)
             except httpx.HTTPError:

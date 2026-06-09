@@ -104,7 +104,7 @@ def build_retry_commands(
                 "--force",
                 "--concurrency",
                 "1",
-            ]
+            ],
         )
 
     if relay_ids:
@@ -115,7 +115,7 @@ def build_retry_commands(
                 "--game-ids",
                 ",".join(relay_ids),
                 "--force",
-            ]
+            ],
         )
 
     if sync:
@@ -129,7 +129,7 @@ def build_retry_commands(
                     "--game-details",
                     "--game-ids",
                     ",".join(sync_ids),
-                ]
+                ],
             )
 
     return commands

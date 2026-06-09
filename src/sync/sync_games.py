@@ -30,7 +30,7 @@ from src.models.game import (
 
 logger = logging.getLogger(__name__)
 
-from src.sync.sync_base import (  # noqa: E402
+from src.sync.sync_base import (
     _log_sync_eligibility,
     build_game_sync_eligibility,
     detect_dirty_game_ids,
@@ -113,7 +113,7 @@ class GameSyncMixin:
         # Load season map for mapping SQLite season_id (year) to OCI season_id (int)
         season_map = self._get_season_map()
 
-        def transform(data):
+        def transform(data) -> dict[str, Any]:
             # If season_id looks like a year (e.g. > 1900), map it
             raw_sid = data.get("season_id")
             if raw_sid and raw_sid > 1900:
@@ -136,7 +136,7 @@ class GameSyncMixin:
         ]
 
         return self.sync_simple_table(
-            Game, ["game_id"], exclude_cols=exclude_cols, filters=filters, transform_fn=transform, batch_size=batch_size
+            Game, ["game_id"], exclude_cols=exclude_cols, filters=filters, transform_fn=transform, batch_size=batch_size,
         )
 
     def sync_player_game_batting(self, limit: int = None) -> int:
@@ -196,7 +196,7 @@ class GameSyncMixin:
         return detect_dirty_game_ids(self.sqlite_session, self.target_session)
 
     def sync_game_details(
-        self, days: int = None, year: int = None, unsynced_only: bool = False, batch_size: int = 10000
+        self, days: int = None, year: int = None, unsynced_only: bool = False, batch_size: int = 10000,
     ) -> dict[str, int]:
         """Sync all game detail tables to OCI"""
         results = {}
@@ -249,7 +249,7 @@ class GameSyncMixin:
         if unsynced_only and target_game_ids is not None:
             if publishable_parent_game_ids:
                 results["games"] = self.sync_games(
-                    filters=[Game.game_id.in_(publishable_parent_game_ids)], batch_size=batch_size
+                    filters=[Game.game_id.in_(publishable_parent_game_ids)], batch_size=batch_size,
                 )
             else:
                 results["games"] = 0
@@ -291,7 +291,7 @@ class GameSyncMixin:
             # Remove existing year-scoped child rows first to avoid stale/null duplicates.
             self._purge_game_detail_children_for_year(year)
 
-        def get_child_filters(model_cls):
+        def get_child_filters(model_cls) -> list | None:
             if model_cls in {GameEvent, GamePlayByPlay}:
                 return [model_cls.game_id.in_(eligibility.relay_game_ids)]
             if model_cls is GameValidationMetrics:
@@ -394,7 +394,7 @@ class GameSyncMixin:
 
         # Sync Game record
         results["game"] = self.sync_simple_table(
-            Game, ["game_id"], exclude_cols=["created_at", "updated_at"], filters=filters
+            Game, ["game_id"], exclude_cols=["created_at", "updated_at"], filters=filters,
         )
         results["game_id_aliases"] = self.sync_simple_table(
             GameIdAlias,
@@ -425,7 +425,7 @@ class GameSyncMixin:
                     logger.info(f"ℹ️ Skipping delete for missing OCI table: {child_model.__tablename__}")
                     continue
                 self.target_session.query(child_model).filter(child_model.game_id == game_id).delete(
-                    synchronize_session=False
+                    synchronize_session=False,
                 )
         if eligibility.relay_game_ids:
             for child_model in relay_child_models:
@@ -433,7 +433,7 @@ class GameSyncMixin:
                     logger.info(f"ℹ️ Skipping delete for missing OCI table: {child_model.__tablename__}")
                     continue
                 self.target_session.query(child_model).filter(child_model.game_id == game_id).delete(
-                    synchronize_session=False
+                    synchronize_session=False,
                 )
         self.target_session.commit()
 
@@ -640,7 +640,7 @@ class GameSyncMixin:
 
         for batch in self._chunked(game_ids, 500):
             self.target_session.query(GamePlayByPlay).filter(GamePlayByPlay.game_id.in_(batch)).delete(
-                synchronize_session=False
+                synchronize_session=False,
             )
         self.target_session.commit()
 

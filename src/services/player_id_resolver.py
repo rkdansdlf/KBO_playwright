@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
 
-from src.models.player import Player, PlayerBasic, PlayerSeasonBatting, PlayerSeasonPitching  # noqa: E402
+from src.models.player import Player, PlayerBasic, PlayerSeasonBatting, PlayerSeasonPitching
 
 ALIAS_CSV_PATH = os.path.join(os.path.dirname(__file__), "..", "..", "data", "player_name_aliases.csv")
 
@@ -25,7 +25,7 @@ class PlayerIdResolver:
         *,
         strict_game_resolution: bool = False,
         allow_auto_register: bool | None = None,
-    ):
+    ) -> None:
         self.session = session
         if allow_auto_register is not None:
             allow_unknown_registration = allow_auto_register
@@ -119,7 +119,7 @@ class PlayerIdResolver:
         return aliases
 
     def _return_ambiguous(
-        self, cache_key: str, player_name: str, team_code: str, season: int, candidate_ids
+        self, cache_key: str, player_name: str, team_code: str, season: int, candidate_ids,
     ) -> int | None:
         candidates = sorted({int(pid) for pid in candidate_ids if pid is not None})
         logger.warning(
@@ -134,7 +134,7 @@ class PlayerIdResolver:
             return candidate_ids
 
         stmt = select(Player.id, Player.kbo_person_id).where(
-            Player.id.in_(list(candidate_ids)), Player.kbo_person_id.isnot(None)
+            Player.id.in_(list(candidate_ids)), Player.kbo_person_id.isnot(None),
         )
         rows = self.session.execute(stmt).fetchall()
 
@@ -433,7 +433,7 @@ class PlayerIdResolver:
         # If we have uniform_no, try unique by (name, uniform_no) global
         if uniform_no:
             stmt = select(PlayerBasic.player_id).where(
-                PlayerBasic.name == player_name, PlayerBasic.uniform_no == str(uniform_no)
+                PlayerBasic.name == player_name, PlayerBasic.uniform_no == str(uniform_no),
             )
             results = self.session.execute(stmt).fetchall()
             candidate_ids = self._filter_surrogate_ids({row[0] for row in results})

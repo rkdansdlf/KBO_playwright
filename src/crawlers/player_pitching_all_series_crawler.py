@@ -251,7 +251,7 @@ def go_to_next_page(page: Page, current_page: int, policy: RequestPolicy | None 
 
 
 def apply_sort(
-    page: Page, header_label: str, sort_code: str | None = None, policy: RequestPolicy | None = None
+    page: Page, header_label: str, sort_code: str | None = None, policy: RequestPolicy | None = None,
 ) -> bool:
     try:
         if sort_code:
@@ -268,7 +268,7 @@ def apply_sort(
                     if policy:
                         policy.delay()
                     return True
-            except Exception:  # noqa: BLE001
+            except Exception:
                 logger.warning("Sort toggle click failed, falling back to JS execution")
 
             # Fallback to direct JS execution if DOM is un-clickable
@@ -403,7 +403,7 @@ def parse_basic1_page(
     # Wait for the table to be visible (more resilient than specific header th)
     try:
         page.wait_for_selector("table.tData01", timeout=SEL_TIMEOUT)
-    except Exception:  # noqa: BLE001
+    except Exception:
         logger.warning("기록 테이블을 찾을 수 없습니다. (타임아웃)")
         content = page.content()
         logger.debug("Page content length: %d | tData01 found: %s", len(content), "tData01" in content)
@@ -861,7 +861,7 @@ def crawl_pitcher_series(
                 s.source = "FALLBACK_AUTO"
 
             FallbackMonitor.log_fallback(
-                year, series_key, "PITCHING", f"Fallback completed via {reason}", player_count=len(stats_list)
+                year, series_key, "PITCHING", f"Fallback completed via {reason}", player_count=len(stats_list),
             )
             if save_to_db and stats_list:
                 payloads = [stat.to_repository_payload() for stat in stats_list]

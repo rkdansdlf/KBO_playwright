@@ -53,7 +53,7 @@ def save_schedule_games(
                 log(
                     "[WARN] Filtered schedule game: "
                     f"{game.get('game_id') or '<missing>'} "
-                    f"reason={filtered_game['failure_reason']}"
+                    f"reason={filtered_game['failure_reason']}",
                 )
             continue
 

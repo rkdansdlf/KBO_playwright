@@ -214,7 +214,7 @@ def parse_regular_season_basic1_stats(cells: list) -> dict[str, Any]:
                     "rbis": safe_parse_number(cells[13].inner_text().strip(), int),
                     "sacrifice_bunts": safe_parse_number(cells[14].inner_text().strip(), int),
                     "sacrifice_flies": safe_parse_number(cells[15].inner_text().strip(), int),
-                }
+                },
             )
     except Exception:
         logger.exception("      ⚠️ 정규시즌 Basic1 통계 파싱 오류")
@@ -245,7 +245,7 @@ def parse_other_series_stats(cells: list) -> dict[str, Any]:
                     "strikeouts": safe_parse_number(cells[16].inner_text().strip(), int),
                     "gdp": safe_parse_number(cells[17].inner_text().strip(), int),
                     "errors": safe_parse_number(cells[18].inner_text().strip(), int) if len(cells) > 18 else None,
-                }
+                },
             )
     except Exception:
         logger.exception("      ⚠️ 기타시리즈 통계 파싱 오류")
@@ -254,7 +254,7 @@ def parse_other_series_stats(cells: list) -> dict[str, Any]:
 
 
 def crawl_basic2_with_headers(
-    page: Page, year: int, series_info: dict, policy: RequestPolicy | None = None
+    page: Page, year: int, series_info: dict, policy: RequestPolicy | None = None,
 ) -> dict[int, dict]:
     """
     Basic2 헤더 클릭으로 추가 데이터 수집
@@ -468,7 +468,7 @@ def extract_basic2_stats(cells: list, sort_field: str) -> dict[str, Any]:
 
 
 def crawl_other_series_data(
-    page: Page, year: int, series_list: list[dict], policy: RequestPolicy | None = None
+    page: Page, year: int, series_list: list[dict], policy: RequestPolicy | None = None,
 ) -> dict[str, dict[int, dict]]:
     """기타 시리즈 데이터 크롤링 (기본 데이터만)"""
     all_series_data = {}

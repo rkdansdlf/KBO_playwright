@@ -6,7 +6,7 @@ from .base import NormalizedRelayResult, RelaySourceAdapter, events_have_minimum
 
 
 class NaverRelayAdapter(RelaySourceAdapter):
-    def __init__(self, crawler: RelayCrawler | None = None):
+    def __init__(self, crawler: RelayCrawler | None = None) -> None:
         super().__init__("naver")
         self.crawler = crawler or RelayCrawler()
 

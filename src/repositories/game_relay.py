@@ -182,7 +182,7 @@ def backfill_game_play_by_play_from_existing_events(game_id: str) -> int:
                         "result_code": event.result_code,
                     }
                     for event in stored_events
-                ]
+                ],
             )
             session.query(GamePlayByPlay).filter(GamePlayByPlay.game_id == game_id).delete()
             session.add_all(
@@ -198,7 +198,7 @@ def backfill_game_play_by_play_from_existing_events(game_id: str) -> int:
                         result=row.get("result"),
                     )
                     for row in pbp_mappings
-                ]
+                ],
             )
             session.commit()
             _auto_sync_to_oci(game_id)
@@ -479,7 +479,7 @@ def save_relay_data(
             game_status = str(getattr(game_row, "game_status", "") or "").upper()
             is_terminal_game = bool(
                 game_lifecycle_state in ("final", "result_pending_stabilization", "cancelled")
-                or game_status in COMPLETED_LIKE_GAME_STATUSES
+                or game_status in COMPLETED_LIKE_GAME_STATUSES,
             )
             if raw_pbp_rows and not valid_event_rows and is_terminal_game:
                 validation_status = VALIDATION_SOURCE_INCOMPLETE
@@ -577,7 +577,7 @@ def save_relay_data(
                 from src.services.player_id_resolver import PlayerIdResolver
 
                 resolver = PlayerIdResolver(session, allow_unknown_registration=False)
-            except Exception:  # noqa: BLE001
+            except Exception:
                 logger.warning("Failed to initialize PlayerIdResolver — player_id resolution will be skipped")
                 resolver = None
 
@@ -591,7 +591,7 @@ def save_relay_data(
                     return None, None, None
                 try:
                     pid = resolver.resolve_id(name, team_code, season_year, is_pitcher=is_pitcher)
-                except Exception as exc:  # noqa: BLE001
+                except Exception as exc:
                     logger.warning("Player ID resolution encountered exception: %s", exc)
                     return None, "error", "resolve_exception"
                 if pid is None:
@@ -661,7 +661,7 @@ def save_relay_data(
                         provider_log_id=row.get("provider_log_id"),
                         source_row_index=row.get("source_row_index"),
                         source_name=row.get("source_name") or source_name,
-                    )
+                    ),
                 )
             for idx, event in enumerate(valid_event_rows, start=1):
                 inning = event.get("inning")
@@ -743,7 +743,7 @@ def save_relay_data(
                         at_bat_confidence=event.get("at_bat_confidence"),
                         balls=event.get("balls"),
                         strikes=event.get("strikes"),
-                    )
+                    ),
                 )
 
             changed = False

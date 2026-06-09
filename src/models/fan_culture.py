@@ -13,7 +13,7 @@ class TeamRivalry(Base, TimestampMixin):
     team_id_a: Mapped[str] = mapped_column(String(10), nullable=False, comment="First team code")
     team_id_b: Mapped[str] = mapped_column(String(10), nullable=False, comment="Second team code")
     rivalry_name: Mapped[str] = mapped_column(
-        String(100), nullable=False, comment="Rivalry name (e.g. Korean Series, Cannons Derby)"
+        String(100), nullable=False, comment="Rivalry name (e.g. Korean Series, Cannons Derby)",
     )
     description: Mapped[str | None] = mapped_column(Text, nullable=True, comment="Rivalry description and history")
     intensity: Mapped[str] = mapped_column(String(10), nullable=False, default="MEDIUM", comment="HIGH / MEDIUM / LOW")
@@ -30,7 +30,7 @@ class CheerSong(Base, TimestampMixin):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     team_id: Mapped[str] = mapped_column(String(10), nullable=False, index=True, comment="Team code")
     player_id: Mapped[int | None] = mapped_column(
-        Integer, ForeignKey("player_basic.player_id", ondelete="SET NULL"), nullable=True, index=True
+        Integer, ForeignKey("player_basic.player_id", ondelete="SET NULL"), nullable=True, index=True,
     )
     song_name: Mapped[str] = mapped_column(String(200), nullable=False, comment="Song title")
     song_type: Mapped[str] = mapped_column(String(20), nullable=False, comment="TEAM / PERSONAL / FIGHT_SONG")
@@ -55,7 +55,7 @@ class CheerChant(Base, TimestampMixin):
     team_id: Mapped[str] = mapped_column(String(10), nullable=False, index=True, comment="Team code")
     chant_text: Mapped[str] = mapped_column(String(500), nullable=False, comment="Cheer chant text")
     situation: Mapped[str | None] = mapped_column(
-        String(100), nullable=True, comment="When used (e.g. TOP_1ST, AFTER_HR, DEFENSE)"
+        String(100), nullable=True, comment="When used (e.g. TOP_1ST, AFTER_HR, DEFENSE)",
     )
     description: Mapped[str | None] = mapped_column(Text, nullable=True, comment="Description of the chant")
 

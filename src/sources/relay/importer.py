@@ -27,7 +27,7 @@ class ImportRelayAdapter(RelaySourceAdapter):
         source_name: str = "import",
         allowed_source_types: set[str] | None = None,
         manifest_base_dir: str | Path | None = None,
-    ):
+    ) -> None:
         super().__init__(source_name)
         self.supports_bucket_probe = False
         self.cache_negative_probe = False
@@ -195,7 +195,7 @@ class ImportRelayAdapter(RelaySourceAdapter):
                         "inning_half": normalize_inning_half(current_half),
                         "play_description": line,
                         "event_type": "unknown",
-                    }
-                )
+                    },
+                ),
             )
         return rows

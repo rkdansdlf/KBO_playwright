@@ -301,8 +301,8 @@ def _parse_json_team_events(
                 or row.get("created_date")
                 or row.get("show_date")
                 or row.get("date")
-                or ""
-            )
+                or "",
+            ),
         )
         if not published_at or published_at < cutoff_date:
             continue
@@ -323,7 +323,7 @@ def _parse_json_team_events(
                 "source_url": source_url,
                 "last_seen_at": fetched_at,
                 "status": "unknown",
-            }
+            },
         )
 
     return events
@@ -378,7 +378,7 @@ def parse_team_events(html: str, source_key: str, metadata: dict | None = None) 
                 "source_url": source_url or page_url,
                 "last_seen_at": fetched_at,
                 "status": "unknown",
-            }
+            },
         )
 
     return events

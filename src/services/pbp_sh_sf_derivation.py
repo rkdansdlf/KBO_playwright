@@ -35,7 +35,7 @@ def derive_sh_sf_for_game(session: Any, game_id: str) -> dict[int | str, dict[st
 
     # Build name-to-id mapping from game_batting_stats for this game
     stats_rows = session.execute(
-        text("SELECT player_id, player_name FROM game_batting_stats WHERE game_id = :game_id"), {"game_id": game_id}
+        text("SELECT player_id, player_name FROM game_batting_stats WHERE game_id = :game_id"), {"game_id": game_id},
     ).all()
 
     # Map player_name -> set of player_ids (in case of duplicate names, though rare)

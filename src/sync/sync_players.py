@@ -9,17 +9,17 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
-from src.models.base import Base  # noqa: E402
-from src.models.crawl import CrawlRun  # noqa: E402
-from src.models.fa_contract import FAContract  # noqa: E402
-from src.models.game import (  # noqa: E402
+from src.models.base import Base
+from src.models.crawl import CrawlRun
+from src.models.fa_contract import FAContract
+from src.models.game import (
     GameBattingStat,
     GameEvent,
     GameLineup,
     GamePitchingStat,
     GameSummary,
 )
-from src.models.player import (  # noqa: E402
+from src.models.player import (
     Player,
     PlayerBasic,
     PlayerIdentity,

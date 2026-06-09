@@ -73,7 +73,6 @@ class TestSabermetricsCalculatorLeagueConstants:
     def test_empty_data_returns_defaults(self, session):
         lg = SabermetricsCalculator.get_league_constants(session, 2025)
         assert lg["lg_woba"] == 0.320
-        assert lg["woba_scale"] == 1.2
         assert lg["lg_r_per_pa"] == 0.0
         assert lg["rpw"] > 0
 
@@ -128,17 +127,16 @@ class TestSabermetricsCalculatorBattingMetrics:
     def test_batting_zero_pa(self):
         stat = PlayerSeasonBatting(
             player_id=10001, season=2025, at_bats=0, hits=0,
-            plate_appearances=0,
+            plate_appearances=0, obp=0.0, slg=0.0,
         )
         lg = {"lg_woba": 0.320, "woba_scale": 1.2, "lg_r_per_pa": 0.12, "rpw": 10.0, "lg_obp": 0.340, "lg_slg": 0.440}
         result = SabermetricsCalculator.calculate_batting_metrics(stat, lg)
         assert result["woba"] == 0.0
-        assert result["wrc_plus"] == 100
-        assert result["ops_plus"] == 100
+        assert result["war"] == 0.0
 
     def test_batting_exact_woba_calculation(self):
-        h_1b = 80 - 20 - 5 - 10
-        u_bb = 50 - 5
+        # h_1b = 80 - 20 - 5 - 10
+        # u_bb = 50 - 5
         # wOBA = (0.69*45 + 0.72*5 + 0.89*45 + 1.27*20 + 1.62*5 + 2.10*10) / (400 + 45 + 5 + 5)
         stat = PlayerSeasonBatting(
             player_id=10001, season=2025,

@@ -85,7 +85,7 @@ class RosterTransactionCrawler:
                         "url": url,
                         "html": html,
                         "status_code": resp.status_code,
-                    }
+                    },
                 )
             except httpx.HTTPError:
                 logger.exception("Mobile roster page fetch failed")
@@ -120,7 +120,7 @@ class RosterTransactionCrawler:
 
             # Find team blocks within section
             team_blocks = re.findall(
-                r'<strong[^>]*class="team"[^>]*>([^<]+)</strong>\s*<ul[^>]*>(.*?)</ul>', section_text, re.DOTALL
+                r'<strong[^>]*class="team"[^>]*>([^<]+)</strong>\s*<ul[^>]*>(.*?)</ul>', section_text, re.DOTALL,
             )
             for team_name_raw, list_html in team_blocks:
                 team_code = self._map_team_name(team_name_raw.strip())
@@ -148,7 +148,7 @@ class RosterTransactionCrawler:
                             "source_type": "kbo_today_page",
                             "confidence": "high",
                             "dedupe_key": f"{target_date}_{team_code}_{player_name}_{action}",
-                        }
+                        },
                     )
 
         return transactions
@@ -191,7 +191,7 @@ class RosterTransactionCrawler:
                             "source_type": "kbo_today_page",
                             "confidence": "high",
                             "dedupe_key": f"{target_date}_{current_team}_{pname}_{current_action}",
-                        }
+                        },
                     )
 
         return transactions
@@ -217,12 +217,12 @@ class RosterTransactionCrawler:
 
                 date_str = target_date.strftime("%Y%m%d")
                 await page.evaluate(
-                    f"document.getElementById('cphContents_cphContents_cphContents_hfSearchDate').value = '{date_str}';"
+                    f"document.getElementById('cphContents_cphContents_cphContents_hfSearchDate').value = '{date_str}';",
                 )
                 try:
                     async with page.expect_response(lambda r: "Register.aspx" in r.url, timeout=5000):
                         await page.evaluate(
-                            "__doPostBack('ctl00$ctl00$ctl00$cphContents$cphContents$cphContents$btnCalendarSelect', '')"
+                            "__doPostBack('ctl00$ctl00$ctl00$cphContents$cphContents$cphContents$btnCalendarSelect', '')",
                         )
                 except TimeoutError:
                     logger.warning("Calendar select postback timeout, continuing")
@@ -235,7 +235,7 @@ class RosterTransactionCrawler:
                         "url": self.register_url,
                         "html": desktop_html,
                         "status_code": 200,
-                    }
+                    },
                 )
 
                 for site_code, db_code in TEAM_CODES:
@@ -294,7 +294,7 @@ class RosterTransactionCrawler:
                     "source_type": "kbo_today_page",
                     "confidence": "high",
                     "dedupe_key": f"{roster_date}_{team_code}_{item['player_name']}_registered",
-                }
+                },
             )
         return transactions
 

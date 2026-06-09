@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 
 
 class CrawlGate:
-    def __init__(self, session: Session, enforce: bool = False):
+    def __init__(self, session: Session, enforce: bool = False) -> None:
         self.session = session
         self.enforce = enforce
         self.issues: list[str] = []

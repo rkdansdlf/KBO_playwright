@@ -1,5 +1,6 @@
 from unittest.mock import AsyncMock
 
+import httpx
 import pytest
 
 from src.utils.map_api_client import (
@@ -37,7 +38,7 @@ class TestCallKakao:
     async def test_http_error_returns_none(self, monkeypatch):
         monkeypatch.setenv("KAKAO_REST_API_KEY", "test-key")
         client = AsyncMock()
-        client.get.side_effect = Exception("HTTP error")
+        client.get.side_effect = httpx.HTTPError("HTTP error")
         result = await _call_kakao(client, 37.0, 127.0, 37.5, 127.1, "car")
         assert result is None
 
@@ -55,7 +56,7 @@ class TestCallNaver:
         monkeypatch.setenv("NAVER_CLIENT_ID", "id")
         monkeypatch.setenv("NAVER_CLIENT_SECRET", "secret")
         client = AsyncMock()
-        client.get.side_effect = Exception("HTTP error")
+        client.get.side_effect = httpx.HTTPError("HTTP error")
         result = await _call_naver(client, 37.0, 127.0, 37.5, 127.1, "car")
         assert result is None
 
@@ -71,7 +72,7 @@ class TestCallTmap:
     async def test_http_error_returns_none(self, monkeypatch):
         monkeypatch.setenv("TMAP_API_KEY", "tmap-key")
         client = AsyncMock()
-        client.post.side_effect = Exception("HTTP error")
+        client.post.side_effect = httpx.HTTPError("HTTP error")
         result = await _call_tmap(client, 37.0, 127.0, 37.5, 127.1, "mixed")
         assert result is None
 

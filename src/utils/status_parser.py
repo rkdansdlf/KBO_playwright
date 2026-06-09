@@ -13,7 +13,7 @@ def parse_status_from_text(text: str) -> tuple[str, str | None] | None:
     """
     lowered = text.lower()
 
-    def contains(keywords):
+    def contains(keywords) -> bool:
         return any(keyword in lowered for keyword in keywords)
 
     if contains(PROFILE_MANAGER_KEYWORDS):

@@ -19,7 +19,7 @@ from src.crawlers.legacy_game_detail_crawler import LegacyGameDetailCrawler
 
 
 def run_prototype():
-    print(
+    logger.info(
         "[DEBUG] scripts/maintenance/prototype_2000_crawler.py performs a live legacy parser probe only. "
         "It does not persist data."
     )

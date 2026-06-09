@@ -19,7 +19,7 @@ async def run_fetcher(argv: Sequence[str] | None = None) -> int:
         description=(
             "Deprecated KBO play-by-play fetcher alias. Prefer "
             "`python scripts/fetch_kbo_pbp.py ...` for completed-game relay recovery."
-        )
+        ),
     )
     parser.add_argument("--season", type=int, help="Season year to fetch (e.g. 2024)")
     parser.add_argument("--month", type=int, help="Optional month to filter games")
@@ -42,7 +42,7 @@ async def run_fetcher(argv: Sequence[str] | None = None) -> int:
 
     logger.info(
         "[DEPRECATED] src.cli.fetch_kbo_pbp is a compatibility alias. "
-        "Prefer `python scripts/fetch_kbo_pbp.py` for completed-game relay recovery."
+        "Prefer `python scripts/fetch_kbo_pbp.py` for completed-game relay recovery.",
     )
     if args.concurrency != 1:
         logger.info("[WARN] --concurrency is ignored by the shared relay recovery service.")

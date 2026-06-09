@@ -103,7 +103,7 @@ class DynamicDataCrawler:
                     TicketSchedule.game_date == g.game_date,
                     TicketSchedule.home_team == g.home_team,
                     TicketSchedule.platform == platform,
-                )
+                ),
             )
 
             if existing_ticket:

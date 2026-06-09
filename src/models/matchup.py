@@ -106,7 +106,7 @@ class BatterStadiumSplit(Base, TimestampMixin):
     __tablename__ = "matchup_batter_stadium_split"
     __table_args__ = (
         UniqueConstraint(
-            "season_year", "league_type_code", "player_id", "team_code", "stadium_name", name="uq_batter_stadium_split"
+            "season_year", "league_type_code", "player_id", "team_code", "stadium_name", name="uq_batter_stadium_split",
         ),
     )
 

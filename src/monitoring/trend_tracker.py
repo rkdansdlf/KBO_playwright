@@ -20,7 +20,7 @@ QUALITY_REPORT_DIR = Path("logs/quality_reports")
 
 
 class TrendTracker:
-    def __init__(self, report_dir: str | Path = QUALITY_REPORT_DIR):
+    def __init__(self, report_dir: str | Path = QUALITY_REPORT_DIR) -> None:
         self.report_dir = Path(report_dir)
 
     def load_reports(self, days: int = 30) -> list[dict]:
@@ -79,7 +79,7 @@ class TrendTracker:
                             "last": last_val,
                             "pct_change": round(pct_change, 1),
                             "severity": "WARN",
-                        }
+                        },
                     )
         return alerts
 
@@ -95,7 +95,7 @@ class TrendTracker:
             return float(val)
         return None
 
-    def print_trend_summary(self, days: int = 14):
+    def print_trend_summary(self, days: int = 14) -> None:
         reports = self.load_reports(days=days)
         if not reports:
             logger.info(f"[TrendTracker] No quality reports found in last {days} days.")
@@ -129,7 +129,7 @@ class TrendTracker:
             {
                 "metrics.relay_integrity.recent_missing_count": 50.0,
                 "metrics.completed_count": -20.0,
-            }
+            },
         )
         if deg:
             logger.warning("\n  ⚠️  Degradations detected:")

@@ -16,7 +16,7 @@ from src.utils.game_status import COMPLETED_LIKE_GAME_STATUSES
 class QualityGate:
     """Validate consistency between cumulative and game-by-game records."""
 
-    def __init__(self, session: Session):
+    def __init__(self, session: Session) -> None:
         self.session = session
 
     def _get_regular_season_ids(self, year: int) -> list[int]:
@@ -105,7 +105,7 @@ class QualityGate:
                         "player_id": pid,
                         "issue": "Missing cumulative record",
                         "transactional": {"pa": row.pa, "hits": row.hits},
-                    }
+                    },
                 )
                 continue
 
@@ -120,7 +120,7 @@ class QualityGate:
                         "issue": "Transactional PA > Cumulative PA",
                         "cumulative": cum.plate_appearances,
                         "transactional": row.pa,
-                    }
+                    },
                 )
 
         return self._result(
@@ -189,7 +189,7 @@ class QualityGate:
                         "player_id": pid,
                         "issue": "Missing cumulative record",
                         "transactional": {"outs": row.outs, "wins": row.wins},
-                    }
+                    },
                 )
                 continue
 
@@ -220,7 +220,7 @@ class QualityGate:
                         "issue": "Transactional Outs > Cumulative Outs",
                         "cumulative": cum_outs,
                         "transactional": row.outs,
-                    }
+                    },
                 )
 
         return self._result(
@@ -286,7 +286,7 @@ class QualityGate:
                         "expected_pa": expected_pa,
                         "actual_pa": actual_pa,
                         "difference": actual_pa - expected_pa,
-                    }
+                    },
                 )
 
         return self._result(
@@ -344,7 +344,7 @@ class QualityGate:
         player_agg = (
             select(
                 func.coalesce(PlayerSeasonBatting.canonical_team_code, PlayerSeasonBatting.team_code).label(
-                    "team_code"
+                    "team_code",
                 ),
                 func.sum(PlayerSeasonBatting.games).label("games"),
                 func.sum(PlayerSeasonBatting.plate_appearances).label("plate_appearances"),
@@ -382,7 +382,7 @@ class QualityGate:
                     {
                         "team_id": team_id,
                         "issue": "No player season batting records for this team",
-                    }
+                    },
                 )
                 continue
 
@@ -419,7 +419,7 @@ class QualityGate:
                         "team_id": team_id,
                         "issue": "Team batting stats mismatch with player sum",
                         "diffs": diffs[:10],
-                    }
+                    },
                 )
 
         return self._result(
@@ -481,7 +481,7 @@ class QualityGate:
         player_agg = (
             select(
                 func.coalesce(PlayerSeasonPitching.canonical_team_code, PlayerSeasonPitching.team_code).label(
-                    "team_code"
+                    "team_code",
                 ),
                 func.sum(PlayerSeasonPitching.games).label("games"),
                 func.sum(PlayerSeasonPitching.wins).label("wins"),
@@ -522,7 +522,7 @@ class QualityGate:
                     {
                         "team_id": team_id,
                         "issue": "No player season pitching records for this team",
-                    }
+                    },
                 )
                 continue
 
@@ -569,7 +569,7 @@ class QualityGate:
                         "team_id": team_id,
                         "issue": "Team pitching stats mismatch with player sum",
                         "diffs": diffs[:10],
-                    }
+                    },
                 )
 
         return self._result(

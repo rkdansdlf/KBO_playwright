@@ -74,7 +74,7 @@ def validate_standings_integrity(session: Session, target_date: date) -> dict[st
                     "team_code": team_code,
                     "issue": "missing_standings_row",
                     "expected": expected_values,
-                }
+                },
             )
             continue
 
@@ -94,7 +94,7 @@ def validate_standings_integrity(session: Session, target_date: date) -> dict[st
                     "team_code": team_code,
                     "issue": "value_mismatch",
                     "differences": differences,
-                }
+                },
             )
 
     for team_code, row in sorted(actual.items()):
@@ -105,7 +105,7 @@ def validate_standings_integrity(session: Session, target_date: date) -> dict[st
                 "team_code": team_code,
                 "issue": "extra_standings_row",
                 "actual": {field: int(getattr(row, field) or 0) for field in STANDINGS_FIELDS},
-            }
+            },
         )
 
     return {
@@ -117,7 +117,7 @@ def validate_standings_integrity(session: Session, target_date: date) -> dict[st
     }
 
 
-def _regular_season_filter():
+def _regular_season_filter() -> Any:
     return or_(
         KboSeason.league_type_code == 0,
         KboSeason.league_type_name.in_(REGULAR_SEASON_NAMES),

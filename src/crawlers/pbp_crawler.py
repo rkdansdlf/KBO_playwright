@@ -90,7 +90,7 @@ class PBPCrawler:
                         try:
                             # Try to wait for any of the containers (1-12)
                             await page.wait_for_selector('div[id^="numCont"]', timeout=20000)
-                        except Exception:  # noqa: BLE001
+                        except Exception:
                             logger.warning("No PBP containers found for %s", game_id)
                             body = await page.content()
                             if "데이터가 없습니다" in body or "취소" in body:
@@ -233,10 +233,10 @@ class PBPCrawler:
 
                     # WPA
                     wp_before = self.wpa_calc.get_win_probability(
-                        current_inning, is_bottom, outs_before, runners_before, score_diff_before
+                        current_inning, is_bottom, outs_before, runners_before, score_diff_before,
                     )
                     wp_after = self.wpa_calc.get_win_probability(
-                        current_inning, is_bottom, outs_after, runners_after, home_score - away_score
+                        current_inning, is_bottom, outs_after, runners_after, home_score - away_score,
                     )
                     wpa = round(wp_after - wp_before if is_bottom else wp_before - wp_after, 4)
 

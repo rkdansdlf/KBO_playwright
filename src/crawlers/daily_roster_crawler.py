@@ -12,13 +12,13 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
-from playwright.async_api import Page  # noqa: E402
-from playwright.async_api import TimeoutError as PlaywrightTimeoutError  # noqa: E402
-from tenacity import AsyncRetrying, retry_if_exception_type, stop_after_attempt, wait_exponential  # noqa: E402
+from playwright.async_api import Page
+from playwright.async_api import TimeoutError as PlaywrightTimeoutError
+from tenacity import AsyncRetrying, retry_if_exception_type, stop_after_attempt, wait_exponential
 
-from src.utils.playwright_pool import AsyncPlaywrightPool  # noqa: E402
+from src.utils.playwright_pool import AsyncPlaywrightPool
 from src.utils.playwright_retry import NAV_TIMEOUT
-from src.utils.team_codes import resolve_team_code  # noqa: E402
+from src.utils.team_codes import resolve_team_code
 
 
 class DailyRosterCrawler:
@@ -85,7 +85,7 @@ class DailyRosterCrawler:
         # 1. Set hidden input `hfSearchDate`
         # 2. Call `javascript:__doPostBack(...)`
         await page.evaluate(
-            f"document.getElementById('cphContents_cphContents_cphContents_hfSearchDate').value = '{date_str}';"
+            f"document.getElementById('cphContents_cphContents_cphContents_hfSearchDate').value = '{date_str}';",
         )
 
         # Alternative: We are already on the page. Use JS to trigger the actual change function if exposed?
@@ -102,7 +102,7 @@ class DailyRosterCrawler:
 
         # DEBUG: Check visible date
         visible_date = await page.evaluate(
-            "document.querySelector('.date') ? document.querySelector('.date').innerText : 'No Date Element'"
+            "document.querySelector('.date') ? document.querySelector('.date').innerText : 'No Date Element'",
         )
         logger.debug("   Visible Page Date: %s", visible_date)
 
@@ -213,7 +213,7 @@ class DailyRosterCrawler:
                     "player_name": item["player_name"],
                     "position": self._clean_category(item["category"]),
                     "back_number": item["back_number"],
-                }
+                },
             )
         return cleaned
 

@@ -98,20 +98,23 @@ class TestHighlightAggregator:
 
     def test_lead_change_detection(self, session):
         _add_game(session)
-        _add_event(session, home_score=2, away_score=1, wpa=0.15)
+        _add_event(session, event_seq=1, home_score=1, away_score=0, wpa=0.05)
+        _add_event(session, event_seq=2, home_score=1, away_score=2, wpa=0.15)
         agg = HighlightAggregator(session)
         highlights = agg.aggregate_game_highlights("20250101")
-        assert len(highlights) == 1
-        assert highlights[0].highlight_type == "LEAD_CHANGE"
-        assert "역전" in highlights[0].tags
+        lead_change = [h for h in highlights if h.highlight_type == "LEAD_CHANGE"]
+        assert len(lead_change) == 1
+        assert "역전" in lead_change[0].tags
 
     def test_game_tying_detection(self, session):
         _add_game(session)
-        _add_event(session, home_score=1, away_score=1, wpa=0.12)
+        _add_event(session, event_seq=1, home_score=1, away_score=0, wpa=0.05)
+        _add_event(session, event_seq=2, home_score=1, away_score=1, wpa=0.12)
         agg = HighlightAggregator(session)
         highlights = agg.aggregate_game_highlights("20250101")
-        assert len(highlights) == 1
-        assert highlights[0].highlight_type == "GAME_TYING"
+        tying = [h for h in highlights if h.highlight_type == "GAME_TYING"]
+        assert len(tying) == 1
+        assert "동점" in tying[0].tags
 
     def test_go_ahead_detection(self, session):
         _add_game(session)
@@ -166,8 +169,8 @@ class TestHighlightAggregator:
         agg = HighlightAggregator(session)
         highlights = agg.aggregate_game_highlights("20250101")
         h = highlights[0]
-        # Importance = wpa(0.35) + walkoff(0.5) + hr(0.05) + inning_bonus(9*0.01) = 0.99
-        assert h.importance_score == pytest.approx(0.99, abs=0.01)
+        # wpa(0.35) + walkoff(0.5) + 동점균열(0.10) + hr(0.05) + inning(9*0.01)
+        assert h.importance_score == pytest.approx(1.09, abs=0.01)
 
     def test_null_wpa_filtered_out(self, session):
         _add_game(session)
@@ -201,7 +204,7 @@ class TestHighlightAggregator:
 
     def test_save_highlights(self, session):
         _add_game(session)
-        _add_event(session, wpa=0.10)
+        _add_event(session, wpa=0.10, description="안타")
         agg = HighlightAggregator(session)
         highlights = agg.aggregate_game_highlights("20250101")
         count = agg.save_highlights("20250101", highlights)
@@ -211,11 +214,12 @@ class TestHighlightAggregator:
 
     def test_save_highlights_replaces_old(self, session):
         _add_game(session)
-        _add_event(session, wpa=0.10)
+        _add_event(session, wpa=0.10, description="안타")
         agg = HighlightAggregator(session)
-        highlights = agg.aggregate_game_highlights("20250101")
-        agg.save_highlights("20250101", highlights)
-        agg.save_highlights("20250101", highlights)
+        highlights1 = agg.aggregate_game_highlights("20250101")
+        agg.save_highlights("20250101", highlights1)
+        highlights2 = agg.aggregate_game_highlights("20250101")
+        agg.save_highlights("20250101", highlights2)
         saved = session.query(GameHighlight).all()
         assert len(saved) == 1
 

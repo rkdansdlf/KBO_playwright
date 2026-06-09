@@ -12,14 +12,14 @@ class GameBroadcast(Base, TimestampMixin):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     game_id: Mapped[str] = mapped_column(String(20), nullable=False, index=True)
     broadcaster: Mapped[str] = mapped_column(
-        String(50), nullable=False, comment="Broadcaster name (e.g. MBC, SBS, KBS, SPOTV, CPBC)"
+        String(50), nullable=False, comment="Broadcaster name (e.g. MBC, SBS, KBS, SPOTV, CPBC)",
     )
     channel_name: Mapped[str | None] = mapped_column(String(50), nullable=True, comment="TV channel name")
     streaming_platform: Mapped[str | None] = mapped_column(
-        String(50), nullable=True, comment="Streaming platform (e.g. Tving, Naver, Wavve)"
+        String(50), nullable=True, comment="Streaming platform (e.g. Tving, Naver, Wavve)",
     )
     casters: Mapped[dict | None] = mapped_column(
-        JSON, nullable=True, comment="Caster/commentator info {caster, commentator}"
+        JSON, nullable=True, comment="Caster/commentator info {caster, commentator}",
     )
     source: Mapped[str] = mapped_column(String(20), nullable=False, default="KBO", comment="Data source (KBO/NAVER)")
 

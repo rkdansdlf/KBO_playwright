@@ -92,7 +92,7 @@ PITCHING_METRICS: list[MetricConfig] = [
 class RankingAggregator:
     """Aggregates per-metric rankings across stat categories."""
 
-    def __init__(self, repository: RankingRepository | None = None):
+    def __init__(self, repository: RankingRepository | None = None) -> None:
         self.repository = repository or RankingRepository()
 
     def generate_rankings(
@@ -128,7 +128,7 @@ class RankingAggregator:
                             descending=cfg.descending,
                             entity_type=cfg.entity_type,
                             min_pa=min_pa,
-                        )
+                        ),
                     )
                     # 2. Complete Leaderboard (including unqualified)
                     batting_configs.append(
@@ -139,7 +139,7 @@ class RankingAggregator:
                             descending=cfg.descending,
                             entity_type=cfg.entity_type,
                             min_pa=1,  # Require at least 1 PA to filter out 0 PA records
-                        )
+                        ),
                     )
                 else:
                     batting_configs.append(cfg)
@@ -159,7 +159,7 @@ class RankingAggregator:
                             descending=cfg.descending,
                             entity_type=cfg.entity_type,
                             min_ip_outs=min_ip_outs,
-                        )
+                        ),
                     )
                     # 2. Complete Leaderboard (including unqualified)
                     pitching_configs.append(
@@ -170,7 +170,7 @@ class RankingAggregator:
                             descending=cfg.descending,
                             entity_type=cfg.entity_type,
                             min_ip_outs=1,  # Require at least 1 out to filter out 0 IP records
-                        )
+                        ),
                     )
                 else:
                     pitching_configs.append(cfg)
@@ -195,8 +195,8 @@ class RankingAggregator:
         for config in metrics:
             rankings.extend(
                 self._rank_single_metric(
-                    season, rows_list, config, kbo_min_pa=kbo_min_pa, kbo_min_ip_outs=kbo_min_ip_outs
-                )
+                    season, rows_list, config, kbo_min_pa=kbo_min_pa, kbo_min_ip_outs=kbo_min_ip_outs,
+                ),
             )
         return rankings
 
@@ -258,7 +258,7 @@ class RankingAggregator:
                     "team_id": row.get("team_id") or row.get("team_code"),
                     "value": float(value),
                     "raw": row,
-                }
+                },
             )
 
         processed.sort(key=lambda item: item["value"], reverse=config.descending)
@@ -283,7 +283,7 @@ class RankingAggregator:
                         "pa": pa,
                         "min_pa": min_pa_threshold,
                         "qualified": pa >= min_pa_threshold,
-                    }
+                    },
                 )
             elif config.source == "PITCHING":
                 ip_outs = entry["raw"].get("innings_outs") or 0
@@ -293,7 +293,7 @@ class RankingAggregator:
                         "innings_outs": ip_outs,
                         "min_ip_outs": min_ip_outs_threshold,
                         "qualified": ip_outs >= min_ip_outs_threshold,
-                    }
+                    },
                 )
 
             entity_extra["rank_mode"] = "all" if config.name.endswith("_all") else "qualified"
@@ -312,7 +312,7 @@ class RankingAggregator:
                     "is_tie": previous_value is not None and value == previous_value,
                     "source": config.source,
                     "extra": entity_extra,
-                }
+                },
             )
             previous_value = value
         return ranked

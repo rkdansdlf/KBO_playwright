@@ -82,7 +82,7 @@ class NormalizedRelayResult:
 
 
 class RelaySourceAdapter(ABC):
-    def __init__(self, source_name: str):
+    def __init__(self, source_name: str) -> None:
         self.source_name = source_name
         self.supports_bucket_probe = True
         self.cache_negative_probe = True
@@ -124,7 +124,7 @@ def event_to_pbp_row(event: dict[str, Any]) -> dict[str, Any]:
             "result": event.get("result_code")
             or event.get("result")
             or trailing_result_from_description(event.get("description")),
-        }
+        },
     )
 
 
@@ -305,5 +305,5 @@ def upsert_capability_record(capability_path: str | Path, record: CapabilityReco
                     "supported": str(bool(row.supported)).lower(),
                     "last_checked_at": row.last_checked_at or datetime.now(UTC).isoformat(),
                     "notes": row.notes or "",
-                }
+                },
             )

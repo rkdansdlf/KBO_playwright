@@ -130,7 +130,7 @@ class PlayerRepository:
         except (TypeError, ValueError):
             return None
         exists = session.execute(
-            select(PlayerBasic.player_id).where(PlayerBasic.player_id == candidate_id)
+            select(PlayerBasic.player_id).where(PlayerBasic.player_id == candidate_id),
         ).scalar_one_or_none()
         return int(exists) if exists is not None else None
 
@@ -187,7 +187,7 @@ class PlayerRepository:
         identity = session.execute(
             select(PlayerIdentity)
             .where(PlayerIdentity.player_id == player.id)
-            .where(PlayerIdentity.name_kor == profile.player_name)
+            .where(PlayerIdentity.name_kor == profile.player_name),
         ).scalar_one_or_none()
 
         if identity:
@@ -196,7 +196,7 @@ class PlayerRepository:
         else:
             # demote existing primaries
             session.execute(
-                update(PlayerIdentity).where(PlayerIdentity.player_id == player.id).values(is_primary=False)
+                update(PlayerIdentity).where(PlayerIdentity.player_id == player.id).values(is_primary=False),
             )
             identity = PlayerIdentity(
                 player_id=player.id,
@@ -237,7 +237,7 @@ class PlayerRepository:
                     model.season == data.get("season"),
                     model.league == data.get("league", "REGULAR"),
                     model.level == data.get("level", "KBO1"),
-                )
+                ),
             ).scalar_one_or_none()
 
             if existing:
@@ -365,7 +365,7 @@ class PlayerRepository:
             rows = session.execute(
                 select(model.team_code)
                 .where(model.player_id.in_(candidate_ids), model.season <= season, model.team_code.isnot(None))
-                .distinct()
+                .distinct(),
             ).fetchall()
             team_ids.update(str(row[0]) for row in rows if row[0])
         if len(team_ids) != 1:
@@ -415,7 +415,7 @@ class PlayerRepository:
         profile_matches = []
         for c in candidates:
             has_profile = session.execute(
-                select(Player.id).where(Player.player_basic_id == c.player_id)
+                select(Player.id).where(Player.player_basic_id == c.player_id),
             ).scalar_one_or_none()
             if has_profile:
                 profile_matches.append(c)
@@ -487,7 +487,7 @@ class PlayerRepository:
                     TeamDailyRoster.roster_date >= start_date,
                     TeamDailyRoster.roster_date < end_date,
                 )
-                .distinct()
+                .distinct(),
             ).fetchall()
             if row[0] is not None
         }
@@ -505,7 +505,7 @@ class PlayerRepository:
         if not canonical_team_id or not season or not candidate_ids:
             return None
         franchise_id = session.execute(
-            select(Team.franchise_id).where(Team.team_id == canonical_team_id)
+            select(Team.franchise_id).where(Team.team_id == canonical_team_id),
         ).scalar_one_or_none()
         if franchise_id is None:
             return None
@@ -526,7 +526,7 @@ class PlayerRepository:
                     model.season.in_((season - 1, season)),
                     model.team_code.in_(franchise_team_ids),
                 )
-                .distinct()
+                .distinct(),
             ).fetchall()
             season_ids.update(int(row[0]) for row in rows if row[0] is not None)
         return next(iter(season_ids)) if len(season_ids) == 1 else None

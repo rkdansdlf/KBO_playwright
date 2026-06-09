@@ -33,7 +33,11 @@ from src.sources.relay import (
     normalize_pbp_row,
     read_manifest_entries,
 )
-from src.utils.game_status import COMPLETED_LIKE_GAME_STATUSES
+from src.utils.game_status import (
+    COMPLETED_LIKE_GAME_STATUSES,
+    GAME_STATUS_SCHEDULED,
+    GAME_STATUS_UNRESOLVED,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -135,8 +139,13 @@ def load_relay_recovery_targets(
     game_ids_file: str | Path | None = None,
     bucket: str | None = None,
     missing_only: bool = True,
+    include_incomplete: bool = False,
     log: Callable[[str], None] = logger.info,
 ) -> list[RelayRecoveryTarget]:
+    allowed_statuses = list(COMPLETED_LIKE_GAME_STATUSES)
+    if include_incomplete:
+        allowed_statuses.extend([GAME_STATUS_SCHEDULED, GAME_STATUS_UNRESOLVED])
+
     requested_ids = _dedupe([*(game_ids or []), *load_game_ids_from_file(game_ids_file)])
 
     if not requested_ids and not date and not season:
@@ -148,6 +157,7 @@ def load_relay_recovery_targets(
             season=season,
             month=month,
             date=date,
+            allowed_statuses=allowed_statuses,
             requested_ids=requested_ids,
         )
         row_game_ids = [row[0] for row in rows]
@@ -182,7 +192,7 @@ def load_relay_recovery_targets(
                 has_events=has_events,
                 has_event_state=has_event_state,
                 has_pbp=has_pbp,
-            )
+            ),
         )
 
     if missing_only:
@@ -247,7 +257,7 @@ async def recover_relay_data(
                 saved_rows = 0 if dry_run else backfill_game_play_by_play_from_existing_events(target.game_id)
                 log(
                     f"[SUCCESS] {'Would derive' if dry_run else 'Derived'} "
-                    f"{saved_rows if not dry_run else 'missing'} play_by_play rows from game_events"
+                    f"{saved_rows if not dry_run else 'missing'} play_by_play rows from game_events",
                 )
                 run_result.derived_pbp_games += 1
                 run_result.saved_rows += saved_rows
@@ -264,7 +274,7 @@ async def recover_relay_data(
                         "has_event_state": True,
                         "has_raw_pbp": True,
                         "notes": "Derived game_play_by_play from existing game_events",
-                    }
+                    },
                 )
                 continue
 
@@ -280,7 +290,7 @@ async def recover_relay_data(
                 )
 
             relay_result, attempts = await orchestrator.fetch_game(
-                target.game_id, bucket_id, source_order, validator=_validator
+                target.game_id, bucket_id, source_order, validator=_validator,
             )
             run_result.report_rows.extend(attempts)
             if relay_result.is_empty:
@@ -317,7 +327,7 @@ async def recover_relay_data(
                             "has_event_state": False,
                             "has_raw_pbp": False,
                             "notes": relay_result.notes,
-                        }
+                        },
                     )
                 log(f"[SKIP] No relay data extracted for {target.game_id}")
                 continue
@@ -338,7 +348,7 @@ async def recover_relay_data(
                         "has_event_state": relay_result.has_event_state,
                         "has_raw_pbp": relay_result.has_raw_pbp,
                         "notes": notes,
-                    }
+                    },
                 )
                 continue
 
@@ -351,12 +361,12 @@ async def recover_relay_data(
             if dry_run:
                 log(
                     f"[DRY-RUN] Would save events={save_counts.saved_event_rows} "
-                    f"pbp={save_counts.saved_pbp_rows} from {relay_result.source_name} for {target.game_id}"
+                    f"pbp={save_counts.saved_pbp_rows} from {relay_result.source_name} for {target.game_id}",
                 )
             else:
                 log(
                     f"[SUCCESS] Saved events={save_counts.saved_event_rows} "
-                    f"pbp={save_counts.saved_pbp_rows} for {target.game_id} via {relay_result.source_name}"
+                    f"pbp={save_counts.saved_pbp_rows} for {target.game_id} via {relay_result.source_name}",
                 )
 
             if save_counts.saved_rows:
@@ -375,7 +385,7 @@ async def recover_relay_data(
                     "has_event_state": relay_result.has_event_state,
                     "has_raw_pbp": relay_result.has_raw_pbp or bool(relay_result.raw_pbp_rows),
                     "notes": _join_notes(relay_result.notes, *filter_notes),
-                }
+                },
             )
             if sleep_seconds > 0:
                 await asyncio.sleep(sleep_seconds)
@@ -452,15 +462,18 @@ def _load_target_rows(
     season: int | None,
     month: int | None,
     date: str | None,
+    allowed_statuses: list[str],
     requested_ids: list[str],
 ) -> list[tuple[str, str | None]]:
+    if not allowed_statuses:
+        allowed_statuses = list(COMPLETED_LIKE_GAME_STATUSES)
     if requested_ids:
         found_rows = (
             session.query(Game.game_id, KboSeason.league_type_name)
             .outerjoin(KboSeason, KboSeason.season_id == Game.season_id)
             .filter(
                 Game.game_id.in_(requested_ids),
-                Game.game_status.in_(tuple(COMPLETED_LIKE_GAME_STATUSES)),
+                Game.game_status.in_(tuple(allowed_statuses)),
             )
             .all()
         )
@@ -469,8 +482,8 @@ def _load_target_rows(
 
     query = (
         session.query(Game.game_id, KboSeason.league_type_name)
-        .outerjoin(KboSeason, KboSeason.season_id == Game.season_id)
-        .filter(Game.game_status.in_(tuple(COMPLETED_LIKE_GAME_STATUSES)))
+            .outerjoin(KboSeason, KboSeason.season_id == Game.season_id)
+            .filter(Game.game_status.in_(tuple(allowed_statuses)))
     )
     if date:
         try:
@@ -611,7 +624,7 @@ def _should_mark_source_unavailable(
             str(relay_result.notes or ""),
             *[str(attempt.get("status") or "") for attempt in attempts],
             *[str(attempt.get("notes") or "") for attempt in attempts],
-        ]
+        ],
     ).lower()
     transient_tokens = ("timeout", "exception", "api", "http_5", "rate", "blocked")
     return not any(token in failure_text for token in transient_tokens)

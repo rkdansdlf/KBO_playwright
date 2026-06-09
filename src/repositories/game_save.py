@@ -535,14 +535,14 @@ def save_game_detail(
                             "player_name": None,
                             "player_id": None,
                             "detail_text": detail_text,
-                        }
+                        },
                     )
                 else:
                     for p_name, p_detail in entries:
                         p_id = participant_map.get(p_name)
                         if not p_id and summary_type != "심판":
                             p_id = resolver.resolve_id(
-                                p_name, None, game_date.year
+                                p_name, None, game_date.year,
                             )  # Try global resolve if not in participant list
 
                         summary_rows.append(
@@ -552,7 +552,7 @@ def save_game_detail(
                                 "player_name": p_name,
                                 "player_id": p_id,
                                 "detail_text": p_detail or detail_text,
-                            }
+                            },
                         )
             if summary_rows:
                 changed |= _replace_records(

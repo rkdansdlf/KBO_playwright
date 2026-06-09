@@ -46,7 +46,7 @@ async def collect_profiles(limit: int = 100, target_ids: list[str] | None = None
                     continue
 
                 logger.info(
-                    f"[{idx}/{len(target_players)}] Crawling profile for {pid} ({getattr(player, 'name_kor', 'Unknown')})"
+                    f"[{idx}/{len(target_players)}] Crawling profile for {pid} ({getattr(player, 'name_kor', 'Unknown')})",
                 )
 
                 data = await crawler.crawl_player_profile(str(pid))

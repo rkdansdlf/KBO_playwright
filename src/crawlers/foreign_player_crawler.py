@@ -37,7 +37,7 @@ class ForeignPlayerCrawler(NaverNewsCrawlerBase):
 
         # Try matching foreign player name near change keywords
         fp_match = re.search(
-            r"([가-힣]{2,5}|[A-Z][a-z]+(?:\s[A-Z][a-z]+)*)\s*(?:교체|대체|방출|영입|재계약|웨이버)", text
+            r"([가-힣]{2,5}|[A-Z][a-z]+(?:\s[A-Z][a-z]+)*)\s*(?:교체|대체|방출|영입|재계약|웨이버)", text,
         )
         if fp_match:
             player_name = fp_match.group(1)

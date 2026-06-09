@@ -90,7 +90,7 @@ def _get_new_players(session, target_dt: date) -> list[dict[str, Any]]:
         select(table.c.player_id, table.c.name)
         .where(table.c.created_at >= day_start)
         .where(table.c.created_at <= day_end)
-        .order_by(table.c.player_id)
+        .order_by(table.c.player_id),
     ).all()
     return [{"id": player_id, "name": name} for player_id, name in rows]
 
@@ -217,7 +217,7 @@ def get_auto_remediation_summary(target_date_str: str, audit_dir: Path | None = 
                         "player_id": m.get("player_id"),
                         "category": category,
                         "diffs": m.get("diffs", []),
-                    }
+                    },
                 )
 
         else:
@@ -261,7 +261,7 @@ def get_auto_remediation_summary(target_date_str: str, audit_dir: Path | None = 
                             diffs.append(f"{k}: {o_val}→{c_val}")
 
                 summary["players_fixed"].append(
-                    {"name": player_name, "player_id": player_id, "category": category, "diffs": diffs}
+                    {"name": player_name, "player_id": player_id, "category": category, "diffs": diffs},
                 )
 
     if has_abort:
@@ -285,8 +285,8 @@ def get_pa_formula_integrity(session, year: int) -> dict[str, Any]:
                 or_(
                     KboSeason.league_type_code == 0,
                     KboSeason.league_type_name.in_(_REGULAR_SEASON_NAMES),
-                )
-            )
+                ),
+            ),
         ).all()
     ]
     if not season_ids:
@@ -315,9 +315,9 @@ def get_pa_formula_integrity(session, year: int) -> dict[str, Any]:
                 + func.coalesce(GameBattingStat.hbp, 0)
                 + func.coalesce(GameBattingStat.sacrifice_hits, 0)
                 + func.coalesce(GameBattingStat.sacrifice_flies, 0)
-            )
+            ),
         )
-        .order_by(Game.game_date, GameBattingStat.game_id)
+        .order_by(Game.game_date, GameBattingStat.game_id),
     ).all()
 
     violations = [
@@ -353,8 +353,8 @@ def get_pa_formula_trend(session, months: int = 6) -> dict[str, Any]:
                 or_(
                     KboSeason.league_type_code == 0,
                     KboSeason.league_type_name.in_(_REGULAR_SEASON_NAMES),
-                )
-            )
+                ),
+            ),
         ).all()
     ]
     if not season_ids:
@@ -374,7 +374,7 @@ def get_pa_formula_trend(session, months: int = 6) -> dict[str, Any]:
         .where(Game.season_id.in_(season_ids))
         .where(Game.game_status.in_(tuple(COMPLETED_LIKE_GAME_STATUSES)))
         .where(Game.game_date >= start_date)
-        .order_by(Game.game_date)
+        .order_by(Game.game_date),
     ).all()
 
     monthly: dict[str, dict[str, int]] = {}
@@ -458,7 +458,7 @@ def get_team_stats_trend(session, months: int = 6, gate_result: dict[str, Any] |
                 "total_violations": integrity["total_mismatches"],
                 "teams_checked": checked,
                 "ok": integrity["ok"],
-            }
+            },
         ],
         "direction": "stable",
         "ok": integrity["ok"],
@@ -592,7 +592,7 @@ def format_telegram_report(metrics: dict[str, Any], gate_result: dict[str, Any])
     # Parity Check
     if not parity.get("ok", True):
         lines.append(
-            f"❓ <b>Parity</b>: Local {parity.get('local_count')} / OCI {parity.get('oci_count')} (Diff: {parity.get('diff')})"
+            f"❓ <b>Parity</b>: Local {parity.get('local_count')} / OCI {parity.get('oci_count')} (Diff: {parity.get('diff')})",
         )
 
     # Detail Integrity
@@ -668,7 +668,7 @@ def format_telegram_report(metrics: dict[str, Any], gate_result: dict[str, Any])
             cat_counts[cat] = cat_counts.get(cat, 0) + 1
         cat_str = ", ".join([f"{k} {v}" for k, v in cat_counts.items()])
         lines.append(
-            f"⚠️ <b>Auto-Remediation</b>: mismatch {auto_rem.get('total_warning')}건 발견 (수정 비활성화) ({cat_str})"
+            f"⚠️ <b>Auto-Remediation</b>: mismatch {auto_rem.get('total_warning')}건 발견 (수정 비활성화) ({cat_str})",
         )
         for p in auto_rem.get("players_warning", [])[:3]:
             diffs_str = ", ".join(p.get("diffs", [])[:2])

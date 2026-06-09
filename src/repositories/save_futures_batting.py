@@ -107,7 +107,7 @@ def save_futures_batting(player_id_db: int, rows: list[dict], league: str = "FUT
                             "slg",
                             "source",
                         ]
-                    }
+                    },
                 )
 
             session.execute(stmt)

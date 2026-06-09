@@ -49,7 +49,7 @@ def _upsert_review_summary(session, game_id: str, review_json: str) -> None:
             game_id=game_id,
             summary_type=REVIEW_SUMMARY_TYPE,
             detail_text=review_json,
-        )
+        ),
     )
 
 
@@ -112,7 +112,7 @@ async def run_review_batch(target_date: str, *, sync_to_oci: bool | None = None)
         logger.info(
             "🔄 Refreshed game statuses before review: "
             f"updated={status_result.get('updated', 0)} "
-            f"counts={status_result.get('status_counts', {})}"
+            f"counts={status_result.get('status_counts', {})}",
         )
     saved_ids: list[str] = []
 
@@ -156,7 +156,7 @@ async def run_review_batch(target_date: str, *, sync_to_oci: bool | None = None)
 
             if not review_data["crucial_moments"]:
                 logger.info(
-                    f"  ⚠️ No WPA-backed game_events found for {game_id}. Raw event crawl may be missing or incomplete."
+                    f"  ⚠️ No WPA-backed game_events found for {game_id}. Raw event crawl may be missing or incomplete.",
                 )
 
             review_json = json.dumps(review_data, ensure_ascii=False)

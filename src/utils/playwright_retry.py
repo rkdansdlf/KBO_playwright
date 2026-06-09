@@ -46,7 +46,7 @@ def retry_navigation(
             if attempt == max_retries:
                 return False
             _policy.delay()
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             logger.error(f"Error navigating to {url} on attempt {attempt}: {e}")
             if attempt == max_retries:
                 return False

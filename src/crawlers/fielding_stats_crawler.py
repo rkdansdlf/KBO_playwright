@@ -13,12 +13,12 @@ from playwright.sync_api import sync_playwright
 from src.utils.playwright_blocking import install_sync_resource_blocking
 
 logger = logging.getLogger(__name__)
-import contextlib  # noqa: E402
+import contextlib
 
-from src.utils.player_season_stat_validation import filter_valid_season_stat_payloads  # noqa: E402
+from src.utils.player_season_stat_validation import filter_valid_season_stat_payloads
 from src.utils.playwright_retry import LONG_TIMEOUT, SEL_TIMEOUT
-from src.utils.request_policy import RequestPolicy  # noqa: E402
-from src.utils.team_codes import resolve_team_code  # noqa: E402
+from src.utils.request_policy import RequestPolicy
+from src.utils.team_codes import resolve_team_code
 
 
 def build_fielding_crawl_summary(records) -> tuple[dict[str, Any], list[dict[str, Any]]]:
@@ -247,7 +247,7 @@ def crawl_all_fielding_stats(year=None) -> list[dict[str, Any]]:
 
                 # 2단계: 팀 "전체" 선택 (이미 전체일 수도 있으므로 확인 후 선택)
                 team_val = page.evaluate(
-                    "document.querySelector('select#cphContents_cphContents_cphContents_ddlTeam_ddlTeam').value"
+                    "document.querySelector('select#cphContents_cphContents_cphContents_ddlTeam_ddlTeam').value",
                 )
                 if team_val != "":
                     with page.expect_response("**/Record/Player/Defense/Basic.aspx", timeout=20000):
@@ -324,7 +324,7 @@ def crawl_all_fielding_stats(year=None) -> list[dict[str, Any]]:
                                         "stolen_bases_allowed": s_int(cells[14]),
                                         "caught_stealing": s_int(cells[15]),
                                         "cs_pct": s_float(cells[16]),
-                                    }
+                                    },
                                 )
                             else:
                                 # 수비 데이터 맵에 없는 경우 (드문 케이스지만 추가)

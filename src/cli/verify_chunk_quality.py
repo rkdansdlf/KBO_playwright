@@ -81,7 +81,7 @@ def load_chunks(session, source_filter: str | None = None) -> list[dict[str, Any
                 "source_row_id": row.source_row_id or "",
                 "content": row.content or "",
                 "meta": meta,
-            }
+            },
         )
     return chunks
 
@@ -247,7 +247,7 @@ def print_report(chunks: list[dict], source_filter: str | None) -> bool:
             logger.info(f"   {did}")
 
     logger.error(
-        f"\n{'✅  All quality checks passed!' if all_ok else '❌  Some quality checks failed — review above.'}\n"
+        f"\n{'✅  All quality checks passed!' if all_ok else '❌  Some quality checks failed — review above.'}\n",
     )
     return all_ok
 
@@ -272,7 +272,7 @@ def remove_duplicate_chunks(session) -> int:
             FROM rag_chunks
             GROUP BY source_row_id
         )
-    """)
+    """),
     )
     session.commit()
     return result.rowcount

@@ -113,7 +113,7 @@ def _build_rankings(session, year: int) -> dict[str, Any]:
                     "player_name": r.get("player_name", r.get("entity_name", "?")),
                     "value": r.get("value", 0),
                     "rank": r.get("rank", 0),
-                }
+                },
             )
     return {"top5": top5, "year": year}
 
@@ -178,7 +178,7 @@ def _format_terminal(data: dict[str, Any], sections: list[str]) -> None:
         logger.info(f"  KBO {year}년 순위표 (기준: {date_label})")
         logger.info(f"{'=' * 70}")
         logger.info(
-            f"{'순위':>4} {'팀':<6} {'승':>4} {'패':>4} {'무':>3} {'승률':>7} {'승차':>5} {'최근10':>8} {'연속':>4} {'홈':>8} {'원정':>8}"
+            f"{'순위':>4} {'팀':<6} {'승':>4} {'패':>4} {'무':>3} {'승률':>7} {'승차':>5} {'최근10':>8} {'연속':>4} {'홈':>8} {'원정':>8}",
         )
         logger.info(f"{'-' * 70}")
         for r in s.get("rows", []):
@@ -204,7 +204,7 @@ def _format_terminal(data: dict[str, Any], sections: list[str]) -> None:
             logger.info(
                 f"  {top5}{rank:>2} {tc:<6} {w:>4} {losses:>4} "
                 f"{d:>3} {wp:>7.3f} {gb:>5} "
-                f"{recent:>8} {streak_str:>4} {home:>8} {away:>8}"
+                f"{recent:>8} {streak_str:>4} {home:>8} {away:>8}",
             )
         sum(1 for r in s.get("rows", []) if (r.top_5 if hasattr(r, "top_5") else r.get("top_5")))
         logger.info(f"{'=' * 70}")
@@ -221,7 +221,7 @@ def _format_terminal(data: dict[str, Any], sections: list[str]) -> None:
             logger.info(f"{'-' * 65}")
             for r in sorted(results, key=lambda x: x["park_factor"], reverse=True):
                 logger.info(
-                    f"  {r['stadium']:<18} {r['games']:>4} {r['runs_per_game']:>5.1f} {r['park_factor']:>5.3f}  {r['park_factor_label']}"
+                    f"  {r['stadium']:<18} {r['games']:>4} {r['runs_per_game']:>5.1f} {r['park_factor']:>5.3f}  {r['park_factor_label']}",
                 )
 
     if "rankings" in sections and data.get("rankings"):
@@ -362,7 +362,7 @@ def main() -> int:
     parser.add_argument("--date", help="날짜 (YYYYMMDD, 기본: 오늘)")
     parser.add_argument("--year", type=int, default=datetime.now(KST).year, help="시즌 연도")
     parser.add_argument(
-        "--sections", nargs="+", default=["all"], choices=AVAILABLE_SECTIONS, help="출력할 섹션 (기본: all)"
+        "--sections", nargs="+", default=["all"], choices=AVAILABLE_SECTIONS, help="출력할 섹션 (기본: all)",
     )
     parser.add_argument("--format", choices=["terminal", "json"], default="terminal", help="출력 포맷")
     parser.add_argument("--report", action="store_true", help="대시보드 리포트 실행 (기본과 동일)")

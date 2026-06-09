@@ -276,7 +276,7 @@ KBO_GAME_ID_TEAM_CODES = tuple(
             "NX",
         },
         key=lambda code: (-len(code), code),
-    )
+    ),
 )
 
 

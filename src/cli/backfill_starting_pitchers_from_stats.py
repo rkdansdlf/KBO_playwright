@@ -126,7 +126,7 @@ def load_candidates(session, args: argparse.Namespace) -> list[dict[str, Any]]:
           AND {overwrite_filter}
         ORDER BY g.game_date, g.game_id
         {limit_clause}
-        """
+        """,
     )
     params: dict[str, Any] = {"start_date": start_date, "end_date": end_date}
     if args.limit:
@@ -152,7 +152,7 @@ def repair_candidates(
             away_pitcher = :away_pitcher,
             home_pitcher = :home_pitcher
         WHERE game_id = :game_id
-        """
+        """,
     )
 
     for row in candidates:
@@ -208,7 +208,7 @@ def sync_to_oci(game_ids: list[str]) -> tuple[int, int]:
                     success += 1
                 else:
                     failed += 1
-            except Exception as exc:  # noqa: BLE001
+            except Exception as exc:
                 failed += 1
                 logger.error(f"OCI sync failed for {game_id}: {exc}", exc_info=True)
     return success, failed
@@ -232,7 +232,7 @@ def find_target_missing_ready_games(session, args: argparse.Namespace) -> list[d
           AND game_date < CURRENT_DATE
           AND coalesce(game_status, '') <> 'SCHEDULED'
           AND (coalesce(trim(away_pitcher), '') = '' OR coalesce(trim(home_pitcher), '') = '')
-        """
+        """,
     )
     with target_engine.connect() as target_conn:
         target_missing_ids = {
@@ -259,7 +259,7 @@ def find_target_missing_ready_games(session, args: argparse.Namespace) -> list[d
           AND coalesce(g.game_status, '') <> 'SCHEDULED'
           AND coalesce(trim(g.away_pitcher), '') <> ''
           AND coalesce(trim(g.home_pitcher), '') <> ''
-        """
+        """,
     )
     local_ready_rows = [
         dict(row)
@@ -300,7 +300,7 @@ def update_target_pitcher_fields(rows: list[dict[str, Any]]) -> int:
             END
         WHERE game_id = :game_id
           AND (coalesce(trim(away_pitcher), '') = '' OR coalesce(trim(home_pitcher), '') = '')
-        """
+        """,
     )
 
     with target_engine.begin() as target_conn:

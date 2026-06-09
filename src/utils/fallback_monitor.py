@@ -1,4 +1,5 @@
 import logging
+from typing import Any
 
 from src.utils.alerting import SlackWebhookClient
 
@@ -14,7 +15,7 @@ class FallbackMonitor:
     """
 
     @staticmethod
-    def log_fallback(year: int, series: str, stat_type: str, reason: str, player_count: int | None = None):
+    def log_fallback(year: int, series: str, stat_type: str, reason: str, player_count: int | None = None) -> None:
         """
         폴백 이벤트 로그 기록 및 알림 전송.
         """
@@ -58,7 +59,7 @@ class FallbackMonitor:
         from pathlib import Path
 
         class DateTimeEncoder(json.JSONEncoder):
-            def default(self, o):
+            def default(self, o) -> Any:
                 if isinstance(o, (datetime, date)):
                     return o.isoformat()
                 return super().default(o)

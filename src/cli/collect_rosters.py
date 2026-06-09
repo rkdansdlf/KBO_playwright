@@ -45,7 +45,7 @@ async def collect_rosters(year: int, month: int | None = None) -> None:
     logger.info(f"🗓️  Collecting Daily Rosters: {start_date} ~ {end_date}")
 
     await crawler.crawl_date_range(
-        start_date=start_date.strftime("%Y-%m-%d"), end_date=end_date.strftime("%Y-%m-%d"), save_callback=save_chunk
+        start_date=start_date.strftime("%Y-%m-%d"), end_date=end_date.strftime("%Y-%m-%d"), save_callback=save_chunk,
     )
 
     logger.info(f"✅ Finished Roster Collection for {year}" + (f"-{month}" if month else ""))

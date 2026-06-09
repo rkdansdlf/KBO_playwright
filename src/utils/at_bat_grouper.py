@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 AT_BAT_TERMINAL_EVENTS = frozenset(
     {
         "batting",
-    }
+    },
 )
 
 # Event roles within an at-bat

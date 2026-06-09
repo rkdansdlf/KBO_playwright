@@ -86,7 +86,7 @@ def check_table_completeness(dry_run: bool = False) -> list[str]:
                     recent = session.execute(text(f"SELECT MAX({date_col}) FROM {table}")).scalar()
                     msg = f"[OK] {table}: {row} rows, latest {date_col}={recent}"
                     logger.info(msg)
-            except Exception as e:  # noqa: BLE001
+            except Exception as e:
                 msg = f"[ERROR] Table check failed for {table}: {e}"
                 logger.error(msg)
                 if not dry_run:

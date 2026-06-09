@@ -13,7 +13,7 @@ class DataSource(Base, TimestampMixin):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     source_key: Mapped[str] = mapped_column(
-        String(100), nullable=False, unique=True, comment="Unique source key (e.g. kbo_schedule, lg_ticket_general)"
+        String(100), nullable=False, unique=True, comment="Unique source key (e.g. kbo_schedule, lg_ticket_general)",
     )
     source_type: Mapped[str] = mapped_column(
         String(30),
@@ -23,20 +23,20 @@ class DataSource(Base, TimestampMixin):
     team_id: Mapped[str | None] = mapped_column(String(10), nullable=True, comment="Associated team code")
     stadium_id: Mapped[str | None] = mapped_column(String(10), nullable=True, comment="Associated stadium code")
     target_domain: Mapped[str] = mapped_column(
-        String(30), nullable=False, comment="ticket / seat / parking / food / roster / event / broadcast / injury / etc"
+        String(30), nullable=False, comment="ticket / seat / parking / food / roster / event / broadcast / injury / etc",
     )
     reliability: Mapped[str] = mapped_column(
-        String(10), nullable=False, default="medium", comment="high / medium / low"
+        String(10), nullable=False, default="medium", comment="high / medium / low",
     )
     parser_name: Mapped[str | None] = mapped_column(String(100), nullable=True, comment="Name of parser class/module")
     crawl_frequency: Mapped[str | None] = mapped_column(
-        String(30), nullable=True, comment="daily / weekly / seasonal / ondemand / event_driven"
+        String(30), nullable=True, comment="daily / weekly / seasonal / ondemand / event_driven",
     )
     base_url: Mapped[str | None] = mapped_column(String(500), nullable=True, comment="Base URL of the source")
     last_success_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, comment="Last successful fetch")
     last_content_hash: Mapped[str | None] = mapped_column(String(64), nullable=True, comment="SHA-256 of last content")
     is_active: Mapped[bool] = mapped_column(
-        default=True, server_default="1", comment="Whether this source is actively monitored"
+        default=True, server_default="1", comment="Whether this source is actively monitored",
     )
 
     __table_args__ = (
@@ -54,22 +54,22 @@ class RawSourceSnapshot(Base, TimestampMixin):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     data_source_id: Mapped[int] = mapped_column(
-        Integer, ForeignKey("data_sources.id", ondelete="CASCADE"), nullable=False, index=True
+        Integer, ForeignKey("data_sources.id", ondelete="CASCADE"), nullable=False, index=True,
     )
     fetched_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, comment="When the data was fetched")
     content_hash: Mapped[str | None] = mapped_column(String(64), nullable=True, comment="SHA-256 of raw content")
     raw_html_or_json_path: Mapped[str | None] = mapped_column(
-        String(500), nullable=True, comment="Path to stored raw content file"
+        String(500), nullable=True, comment="Path to stored raw content file",
     )
     status_code: Mapped[int | None] = mapped_column(Integer, nullable=True, comment="HTTP status code")
     parse_status: Mapped[str] = mapped_column(
-        String(20), nullable=False, default="pending", comment="pending / done / failed"
+        String(20), nullable=False, default="pending", comment="pending / done / failed",
     )
     parser_version: Mapped[str | None] = mapped_column(
-        String(30), nullable=True, comment="Parser version used for this snapshot"
+        String(30), nullable=True, comment="Parser version used for this snapshot",
     )
     reprocess_status: Mapped[str | None] = mapped_column(
-        String(20), nullable=True, default=None, comment="pending / done / failed (for batch reprocessing)"
+        String(20), nullable=True, default=None, comment="pending / done / failed (for batch reprocessing)",
     )
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True, comment="Error details if parse failed")
 

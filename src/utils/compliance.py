@@ -6,12 +6,12 @@ Robots.txt compliance checker for KBO Data Crawler.
 Ensures that we follow Disallow rules from koreabaseball.com.
 """
 
-import asyncio  # noqa: E402
-import time  # noqa: E402
-import urllib.robotparser  # noqa: E402
-from typing import Optional  # noqa: E402
+import asyncio
+import time
+import urllib.robotparser
+from typing import Optional
 
-import httpx  # noqa: E402
+import httpx
 
 
 class ComplianceChecker:
@@ -21,7 +21,7 @@ class ComplianceChecker:
 
     _instance: Optional["ComplianceChecker"] = None
 
-    def __init__(self, robots_url: str = "https://www.koreabaseball.com/robots.txt"):
+    def __init__(self, robots_url: str = "https://www.koreabaseball.com/robots.txt") -> None:
         self.robots_url = robots_url
         self.parser = urllib.robotparser.RobotFileParser()
         self.last_fetch_time = 0
@@ -34,7 +34,7 @@ class ComplianceChecker:
             cls._instance = cls()
         return cls._instance
 
-    async def _ensure_loaded(self):
+    async def _ensure_loaded(self) -> None:
         """Fetch and parse robots.txt if needed."""
         now = time.time()
         if now - self.last_fetch_time > self.fetch_interval:
