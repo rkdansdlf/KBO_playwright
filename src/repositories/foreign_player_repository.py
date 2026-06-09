@@ -5,7 +5,7 @@ from ..models.foreign_player import ForeignPlayerChange
 
 
 class ForeignPlayerRepository:
-    def __init__(self, session: Session):
+    def __init__(self, session: Session) -> None:
         self.session = session
 
     def save_change(self, data: dict) -> ForeignPlayerChange:

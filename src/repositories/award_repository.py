@@ -5,7 +5,7 @@ from ..models.award import Award
 
 
 class AwardRepository:
-    def __init__(self, session: Session):
+    def __init__(self, session: Session) -> None:
         self.session = session
 
     def save_award(self, award_data: dict) -> Award:
@@ -48,6 +48,6 @@ class AwardRepository:
         stmt = select(Award).where(Award.year == year)
         return list(self.session.execute(stmt).scalars().all())
 
-    def clear_awards_by_year(self, year: int):
+    def clear_awards_by_year(self, year: int) -> None:
         stmt = delete(Award).where(Award.year == year)
         self.session.execute(stmt)

@@ -225,9 +225,12 @@ def main() -> None:
         apply=bool(args.apply),
     )
     mode = "APPLY" if args.apply else "DRY-RUN"
-    print(
-        f"[{mode}] resolved_rows={result['resolved_rows']} "
-        f"unresolved_rows={result['unresolved_rows']} updated_rows={result['updated_rows']}"
+    logger.info(
+        "[%s] resolved_rows=%s unresolved_rows=%s updated_rows=%s",
+        mode,
+        result['resolved_rows'],
+        result['unresolved_rows'],
+        result['updated_rows'],
     )
     logger.info(f"[REPORT] resolved={result['resolved_csv']}")
     logger.info(f"[REPORT] unresolved={result['unresolved_csv']}")

@@ -19,7 +19,7 @@ from src.models.team_stats import TeamSeasonBatting, TeamSeasonPitching
 class BaseStatsUpsertRepository:
     """Shared UPSERT helpers for stat tables."""
 
-    def __init__(self, model, unique_keys: list[str]):
+    def __init__(self, model, unique_keys: list[str]) -> None:
         self.model = model
         self.unique_keys = unique_keys
         self.dialect = Engine.dialect.name
@@ -55,7 +55,7 @@ class BaseStatsUpsertRepository:
         model_columns = self.model.__table__.columns.keys()
         return {k: v for k, v in payload.items() if k in model_columns}
 
-    def _build_insert_stmt(self, payload: dict[str, Any]):
+    def _build_insert_stmt(self, payload: dict[str, Any]) -> text | str:
         if self.dialect == "sqlite":
             stmt = sqlite_insert(self.model).values(**payload)
             update_dict = {k: v for k, v in payload.items() if k not in self.unique_keys}
@@ -93,12 +93,12 @@ class BaseStatsUpsertRepository:
 class TeamSeasonBattingRepository(BaseStatsUpsertRepository):
     """UPSERT logic for team-level batting aggregates."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__(TeamSeasonBatting, ["team_id", "season", "league"])
 
 
 class TeamSeasonPitchingRepository(BaseStatsUpsertRepository):
     """UPSERT logic for team-level pitching aggregates."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__(TeamSeasonPitching, ["team_id", "season", "league"])

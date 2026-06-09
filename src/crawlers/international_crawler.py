@@ -16,20 +16,20 @@ class InternationalScheduleCrawler:
     Targets static HTML tables in /Schedule/International/ sections.
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.browser = None
         self.page = None
         self.playwright = None
         self.context = None
 
-    async def start_browser(self):
+    async def start_browser(self) -> None:
         self.playwright = await async_playwright().start()
         self.browser = await self.playwright.chromium.launch(headless=True)
         self.context = await self.browser.new_context()
         await install_async_resource_blocking(self.context)
         self.page = await self.context.new_page()
 
-    async def close(self):
+    async def close(self) -> None:
         if self.context:
             await self.context.close()
         if self.browser:

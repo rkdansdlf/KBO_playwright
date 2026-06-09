@@ -23,7 +23,7 @@ class TestRunPeriodicExtrasCLI:
     def test_main_with_year_and_sync(self):
         with patch("sys.argv", ["run_periodic_extras", "--year", "2024", "--sync"]), \
              patch("subprocess.run") as mock_run, \
-             patch("src.cli.run_periodic_extras.SessionLocal") as mock_sesh, \
+             patch("src.cli.run_periodic_extras.SessionLocal"), \
              patch("src.cli.run_periodic_extras.OCISync") as MockSync:
             mock_result = MagicMock()
             mock_result.returncode = 0

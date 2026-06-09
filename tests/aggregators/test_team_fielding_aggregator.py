@@ -1,10 +1,9 @@
 """Tests for TeamFieldingAggregator — fielding and baserunning team rollup."""
 
-from unittest.mock import MagicMock, patch
 
 import pytest
 from sqlalchemy import create_engine
-from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy.orm import sessionmaker
 
 from src.aggregators.team_fielding_aggregator import TeamFieldingAggregator
 from src.models.player import PlayerSeasonBaserunning, PlayerSeasonFielding

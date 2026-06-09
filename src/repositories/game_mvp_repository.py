@@ -5,7 +5,7 @@ from ..models.game_mvp import GameMvp
 
 
 class GameMvpRepository:
-    def __init__(self, session: Session):
+    def __init__(self, session: Session) -> None:
         self.session = session
 
     def save_mvp(self, data: dict) -> GameMvp:
@@ -34,6 +34,6 @@ class GameMvpRepository:
         stmt = select(GameMvp).where(GameMvp.game_id == game_id)
         return list(self.session.execute(stmt).scalars().all())
 
-    def delete_by_game(self, game_id: str):
+    def delete_by_game(self, game_id: str) -> None:
         stmt = delete(GameMvp).where(GameMvp.game_id == game_id)
         self.session.execute(stmt)

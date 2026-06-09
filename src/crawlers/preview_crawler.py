@@ -31,7 +31,7 @@ class PreviewCrawler:
         "X-Requested-With": "XMLHttpRequest",
     }
 
-    def __init__(self, request_delay: float = 1.0, pool: AsyncPlaywrightPool | None = None):
+    def __init__(self, request_delay: float = 1.0, pool: AsyncPlaywrightPool | None = None) -> None:
         self.request_delay = request_delay
         self.pool = pool
 

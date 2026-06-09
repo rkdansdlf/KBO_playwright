@@ -1,8 +1,6 @@
 """Tests for player_stats_helpers — table row extraction via JS."""
 
-from unittest.mock import MagicMock, patch
-
-import pytest
+from unittest.mock import MagicMock
 
 from src.utils.player_stats_helpers import extract_rows_fast
 

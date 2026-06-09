@@ -393,7 +393,7 @@ def main():
             fixed = fix_year_formula(y, dry_run=args.dry_run)
             if not args.dry_run:
                 logger.info("Fixed %d rows for %s", fixed, y)
-        print()
+        logger.info("")
 
     # Audit phase
     years = (
@@ -413,15 +413,27 @@ def main():
     if args.json:
         logger.info(json.dumps(results, indent=2, ensure_ascii=False))
     else:
-        print(
-            f"{'Year':>6} {'Games':>6} {'Rows':>8} {'Violations':>12} {'V Games':>8}  FIXABLE_PBP FIXABLE_FMLA UNFIXABLE"
+        logger.info(
+            "%s  %s  %s  %s  %s  FIXABLE_PBP FIXABLE_FMLA UNFIXABLE",
+            f"{'Year':>6}",
+            f"{'Games':>6}",
+            f"{'Rows':>8}",
+            f"{'Violations':>12}",
+            f"{'V Games':>8}",
         )
         logger.info("-" * 85)
         total_v = 0
         for r in results:
-            print(
-                f"{r['year']:>6} {r['total_games']:>6} {r['total_batting_rows']:>8} {r['violation_rows']:>12} {r['violation_games']:>8}  "
-                f"{r['categories'].get('FIXABLE_PBP', 0):>10} {r['categories'].get('FIXABLE_FORMULA', 0):>10} {r['categories'].get('UNFIXABLE', 0):>10}"
+            logger.info(
+                "%s %s %s %s %s  %s %s %s",
+                f"{r['year']:>6}",
+                f"{r['total_games']:>6}",
+                f"{r['total_batting_rows']:>8}",
+                f"{r['violation_rows']:>12}",
+                f"{r['violation_games']:>8}",
+                f"{r['categories'].get('FIXABLE_PBP', 0):>10}",
+                f"{r['categories'].get('FIXABLE_FORMULA', 0):>10}",
+                f"{r['categories'].get('UNFIXABLE', 0):>10}",
             )
             total_v += r["violation_rows"]
         logger.info("-" * 85)

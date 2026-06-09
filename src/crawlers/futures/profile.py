@@ -208,7 +208,7 @@ class FuturesProfileCrawler:
         return None
 
 
-async def main():
+async def main() -> None:
     crawler = FuturesProfileCrawler()
     sample_id = "78137"
     payload = await crawler.fetch_player_futures(sample_id)

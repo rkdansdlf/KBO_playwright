@@ -1,4 +1,4 @@
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
 from src.cli.diagnose_coach_pitching import main
 
@@ -7,7 +7,7 @@ class TestDiagnoseCoachPitching:
     def test_no_date_or_game_id(self):
         try:
             main([])
-            assert False, "Should have raised SystemExit"
+            raise AssertionError("Should have raised SystemExit")
         except SystemExit:
             pass
 

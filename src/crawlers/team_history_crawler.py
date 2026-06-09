@@ -23,21 +23,21 @@ class TeamHistoryCrawler:
 
     BASE_URL = "https://www.koreabaseball.com/Kbo/League/TeamHistory.aspx"
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.browser = None
         self.page = None
         self.playwright = None
         self.context = None
         self._raw_pages: list[dict] = []
 
-    async def start(self):
+    async def start(self) -> None:
         self.playwright = await async_playwright().start()
         self.browser = await self.playwright.chromium.launch(headless=True)
         self.context = await self.browser.new_context()
         await install_async_resource_blocking(self.context)
         self.page = await self.context.new_page()
 
-    async def close(self):
+    async def close(self) -> None:
         if self.context:
             await self.context.close()
         if self.browser:
@@ -45,7 +45,7 @@ class TeamHistoryCrawler:
         if self.playwright:
             await self.playwright.stop()
 
-    async def crawl(self):
+    async def crawl(self) -> list[dict]:
         logger.info(f"📜 Crawling Team History from {self.BASE_URL}")
         if not self.page:
             await self.start()
@@ -145,7 +145,7 @@ class TeamHistoryCrawler:
 
         return history_data
 
-    async def save(self, data: list[dict]):
+    async def save(self, data: list[dict]) -> None:
         logger.info(f"💾 Saving {len(data)} history entries...")
         with SessionLocal() as session:
             try:

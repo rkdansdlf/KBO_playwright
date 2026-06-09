@@ -1,14 +1,13 @@
 """Tests for relay_text — relay text parsing utilities."""
 
-import pytest
 
 from src.utils.relay_text import (
-    compact_relay_text,
-    parse_pitch_count,
     advance_pitch_count,
+    compact_relay_text,
+    detect_relay_event_type,
     is_relay_noise_text,
     is_relay_result_event_text,
-    detect_relay_event_type,
+    parse_pitch_count,
 )
 
 

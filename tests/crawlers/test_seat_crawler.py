@@ -1,4 +1,3 @@
-import pytest
 
 from src.crawlers.seat_crawler import SeatCrawler
 

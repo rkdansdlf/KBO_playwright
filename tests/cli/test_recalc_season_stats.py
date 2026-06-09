@@ -8,7 +8,7 @@ class TestRecalcSeasonStats:
     def test_required_year(self):
         try:
             main()
-            assert False, "Should have raised SystemExit"
+            raise AssertionError("Should have raised SystemExit")
         except SystemExit:
             pass
 

@@ -1,4 +1,3 @@
-import pytest
 
 from src.crawlers.preview_crawler import PreviewCrawler
 

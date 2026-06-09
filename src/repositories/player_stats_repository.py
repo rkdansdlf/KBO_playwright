@@ -16,7 +16,7 @@ from .team_stats_repository import BaseStatsUpsertRepository
 class PlayerSeasonFieldingRepository(BaseStatsUpsertRepository):
     """UPSERT logic for player-level fielding aggregates."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__(PlayerSeasonFielding, ["player_id", "team_id", "year", "position_id"])
         self.last_filter_counts: Counter = Counter()
 
@@ -32,5 +32,5 @@ class PlayerSeasonFieldingRepository(BaseStatsUpsertRepository):
 class PlayerSeasonBaserunningRepository(BaseStatsUpsertRepository):
     """UPSERT logic for player-level baserunning aggregates."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__(PlayerSeasonBaserunning, ["player_id", "team_id", "year"])

@@ -4,7 +4,7 @@ from unittest.mock import MagicMock
 
 import pytest
 from sqlalchemy import create_engine
-from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy.orm import sessionmaker
 
 from src.aggregators.sabermetrics_calculator import SabermetricsCalculator
 from src.models.player import PlayerSeasonBatting, PlayerSeasonPitching

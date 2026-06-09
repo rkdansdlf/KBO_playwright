@@ -43,7 +43,7 @@ class ScheduleCrawler:
         request_delay: float = 1.5,
         pool: AsyncPlaywrightPool | None = None,
         policy: RequestPolicy | None = None,
-    ):
+    ) -> None:
         self.base_url = "https://www.koreabaseball.com/Schedule/Schedule.aspx"
         self.request_delay = request_delay
         self.pool = pool
@@ -587,7 +587,7 @@ class ScheduleCrawler:
         return ""
 
 
-async def main():
+async def main() -> None:
     """Test the schedule crawler"""
     crawler = ScheduleCrawler()
 

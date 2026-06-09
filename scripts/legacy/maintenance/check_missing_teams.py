@@ -187,10 +187,10 @@ def generate_missing_teams_sql():
     logger.info("\n📝 누락된 팀들을 위한 SQL:")
     logger.info("=" * 50)
     logger.info("-- OCI PostgreSQL에서 실행할 SQL")
-    print()
+    logger.info("")
 
     for team in missing_teams_data:
-        print(f"""
+        logger.info(f"""
 -- {team["team_name"]} ({team["team_code"]})
 INSERT INTO public.teams (
     team_code, team_name, team_name_en, city,

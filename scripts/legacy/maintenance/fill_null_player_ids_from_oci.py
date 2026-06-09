@@ -260,9 +260,12 @@ def main() -> None:
         backup=not args.no_backup,
     )
     mode = "APPLY" if args.apply else "DRY-RUN"
-    print(
-        f"[{mode}] resolved_rows={result['resolved_rows']} "
-        f"unresolved_rows={result['unresolved_rows']} updated_rows={result['updated_rows']}"
+    logger.info(
+        "[%s] resolved_rows=%s unresolved_rows=%s updated_rows=%s",
+        mode,
+        result['resolved_rows'],
+        result['unresolved_rows'],
+        result['updated_rows'],
     )
     if result["backup_path"]:
         logger.info(f"[BACKUP] {result['backup_path']}")

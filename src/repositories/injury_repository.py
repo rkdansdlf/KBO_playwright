@@ -7,7 +7,7 @@ from ..models.injury import InjuryEntry
 
 
 class InjuryRepository:
-    def __init__(self, session: Session):
+    def __init__(self, session: Session) -> None:
         self.session = session
 
     def save_injury(self, data: dict) -> InjuryEntry:
@@ -49,7 +49,7 @@ class InjuryRepository:
         )
         return list(self.session.execute(stmt).scalars().all())
 
-    def mark_returned(self, injury_id: int, return_date: date):
+    def mark_returned(self, injury_id: int, return_date: date) -> None:
         record = self.session.get(InjuryEntry, injury_id)
         if record:
             record.status = "RETURNED"

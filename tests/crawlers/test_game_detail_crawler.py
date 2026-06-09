@@ -1,12 +1,11 @@
-import pytest
 
 from src.crawlers.game_detail_crawler import (
-    HITTER_HEADER_MAP,
-    PITCHER_HEADER_MAP,
     HITTER_FLOAT_KEYS,
+    HITTER_HEADER_MAP,
     PITCHER_FLOAT_KEYS,
+    PITCHER_HEADER_MAP,
+    GameDetailCrawler,
 )
-from src.crawlers.game_detail_crawler import GameDetailCrawler
 
 
 class TestHitterHeaderMap:

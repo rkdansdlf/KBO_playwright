@@ -522,7 +522,7 @@ def parse_basic1_page(
             stats.team_code = team_code
 
             # Helper to get raw value safely
-            def get_val(key):
+            def get_val(key: str) -> str | None:
                 return raw.get(key)
 
             stats.games = safe_int(get_val("G")) if "G" in raw else stats.games
@@ -647,7 +647,7 @@ def parse_basic2_page(
 
         metrics = stats.extra_stats.setdefault("metrics", {})
 
-        def set_metric(header_name: str, key: str, caster):
+        def set_metric(header_name: str, key: str, caster) -> None:
             if header_name in header_index:
                 value = caster(cell_text(header_index[header_name]))
                 if value is not None:
@@ -1028,7 +1028,7 @@ def parse_arguments() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def main():
+def main() -> None:
     args = parse_arguments()
     policy = RequestPolicy()
 

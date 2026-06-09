@@ -90,7 +90,7 @@ BATTING_FIELDS = {
 class TeamBattingStatsCrawler:
     """Collects and persists team-level batting stats for a season."""
 
-    def __init__(self, league: str = "REGULAR", policy: RequestPolicy | None = None):
+    def __init__(self, league: str = "REGULAR", policy: RequestPolicy | None = None) -> None:
         self.league = league
         self.repo = TeamSeasonBattingRepository()
         self.policy = policy or RequestPolicy()
@@ -257,7 +257,7 @@ def _build_column_map(headers: list[str]) -> dict[str, int]:
     return indexes
 
 
-def main():
+def main() -> None:
     parser = argparse.ArgumentParser(description="Crawl team-level batting stats.")
     parser.add_argument("--season", type=int, required=True, help="Season year (e.g., 2023)")
     parser.add_argument("--league", type=str, default="REGULAR", help="League code (default: REGULAR)")

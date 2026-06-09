@@ -87,7 +87,7 @@ class GameDetailCrawler:
         request_delay: float | None = None,
         resolver: Any | None = None,
         pool: AsyncPlaywrightPool | None = None,
-    ):
+    ) -> None:
         self.base_url = "https://www.koreabaseball.com/Schedule/GameCenter/Main.aspx"
         self.policy = RequestPolicy(min_delay=request_delay)
         self.resolver = resolver
@@ -1020,7 +1020,7 @@ class GameDetailCrawler:
         for section in ("ENTRY", "LINEUP"):
             lineup_url = f"{self.base_url}?gameDate={game_date}&gameId={game_id}&section={section}"
 
-            async def _navigate_lineup():
+            async def _navigate_lineup() -> None:
                 await self.policy.delay_async()
                 await page.goto(lineup_url, wait_until="domcontentloaded", timeout=20000)
                 with contextlib.suppress(Exception):
@@ -1039,7 +1039,7 @@ class GameDetailCrawler:
         # Always return to REVIEW page for box score extraction.
         try:
 
-            async def _navigate_back():
+            async def _navigate_back() -> None:
                 await self.policy.delay_async()
                 await page.goto(review_url, wait_until="domcontentloaded", timeout=NAV_TIMEOUT)
 
@@ -1323,7 +1323,7 @@ class GameDetailCrawler:
             return {}
 
 
-async def main():  # pragma: no cover
+async def main() -> None:  # pragma: no cover
     import argparse
 
     parser = argparse.ArgumentParser()

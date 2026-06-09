@@ -1,13 +1,12 @@
 """Tests for player_validation — player name/ID validation utilities."""
 
-import pytest
 
 from src.utils.player_validation import (
-    normalize_player_name,
+    filter_valid_player_payloads,
     is_invalid_player_name,
     normalize_player_id,
+    normalize_player_name,
     validate_player_payload,
-    filter_valid_player_payloads,
 )
 
 

@@ -22,7 +22,7 @@ class TestDailyPreviewBatchCLI:
 
     def test_main_with_previews(self):
         with patch("src.cli.daily_preview_batch.PreviewCrawler") as MockCrawler, \
-             patch("src.cli.daily_preview_batch.SessionLocal") as mock_sesh, \
+             patch("src.cli.daily_preview_batch.SessionLocal"), \
              patch("src.cli.daily_preview_batch.ContextAggregator"), \
              patch("src.cli.daily_preview_batch.save_pregame_lineups") as mock_save, \
              patch("src.cli.daily_preview_batch.write_refresh_manifest"), \

@@ -1,6 +1,6 @@
 """Tests for team_mapping — KBO team name-to-code mapping."""
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 

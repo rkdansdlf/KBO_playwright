@@ -44,7 +44,7 @@ TEAM_CODES = [
 
 
 class RosterTransactionCrawler:
-    def __init__(self, request_delay: float = 1.0, pool: AsyncPlaywrightPool | None = None):
+    def __init__(self, request_delay: float = 1.0, pool: AsyncPlaywrightPool | None = None) -> None:
         self.mobile_url = "https://m.koreabaseball.com/Kbo/PlayerAdd.aspx"
         self.register_url = "https://www.koreabaseball.com/Player/Register.aspx"
         self.request_delay = request_delay

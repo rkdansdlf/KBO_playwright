@@ -101,7 +101,7 @@ TEAM_TICKET_INFO: dict[str, dict[str, Any]] = {
 
 
 class TicketCrawler:
-    def __init__(self):
+    def __init__(self) -> None:
         self.kbo_ticket_url = "https://www.koreabaseball.com/Kbo/League/Map.aspx"
         self.current_season = datetime.now().year
         self._raw_pages: list[dict] = []

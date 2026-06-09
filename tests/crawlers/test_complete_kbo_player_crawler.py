@@ -1,11 +1,10 @@
-import pytest
 
 from src.crawlers.complete_kbo_player_crawler import (
-    parse_player_id_from_link,
-    safe_parse_number,
-    parse_regular_season_basic1_stats,
-    parse_other_series_stats,
     extract_basic2_stats,
+    parse_other_series_stats,
+    parse_player_id_from_link,
+    parse_regular_season_basic1_stats,
+    safe_parse_number,
 )
 
 

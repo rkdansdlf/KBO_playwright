@@ -96,7 +96,7 @@ class ManagerChangeCrawler(NaverNewsCrawlerBase):
             "source_url": url,
         }
 
-    def _save_to_db(self, data: list[dict]):
+    def _save_to_db(self, data: list[dict]) -> None:
         session = SessionLocal()
         repo = ManagerChangeRepository(session)
         count = 0

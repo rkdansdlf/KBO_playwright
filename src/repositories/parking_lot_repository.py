@@ -10,7 +10,7 @@ from ..models.parking_lot import ParkingLot
 
 
 class ParkingLotRepository:
-    def __init__(self, session: Session):
+    def __init__(self, session: Session) -> None:
         self.session = session
 
     def save(self, data: dict) -> ParkingLot:
@@ -46,7 +46,7 @@ class ParkingLotRepository:
 
 
 class ParkingFeeRuleRepository:
-    def __init__(self, session: Session):
+    def __init__(self, session: Session) -> None:
         self.session = session
 
     def save(self, data: dict) -> ParkingFeeRule:

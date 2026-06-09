@@ -1,4 +1,4 @@
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
 from src.cli.backfill_starting_pitchers_from_stats import main
 

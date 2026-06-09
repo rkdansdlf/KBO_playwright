@@ -40,7 +40,7 @@ SECTION_PATTERNS = [
 
 
 class SeatCrawler:
-    def __init__(self):
+    def __init__(self) -> None:
         self._raw_pages: list[dict] = []
 
     async def run(self, save: bool = False, team_filter: str | None = None) -> list[dict[str, Any]]:

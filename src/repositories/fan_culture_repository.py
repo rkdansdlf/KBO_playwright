@@ -5,7 +5,7 @@ from ..models.fan_culture import CheerChant, CheerSong, TeamRivalry
 
 
 class FanCultureRepository:
-    def __init__(self, session: Session):
+    def __init__(self, session: Session) -> None:
         self.session = session
 
     # TeamRivalry

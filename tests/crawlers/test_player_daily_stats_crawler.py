@@ -1,4 +1,3 @@
-import pytest
 
 from src.crawlers.player_daily_stats_crawler import PlayerDailyStatsCrawler
 

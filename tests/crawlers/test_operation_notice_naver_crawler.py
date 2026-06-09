@@ -2,8 +2,6 @@ from __future__ import annotations
 
 from datetime import datetime
 
-import pytest
-
 from src.crawlers.operation_notice_naver_crawler import (
     _classify,
     _infer_game_date,

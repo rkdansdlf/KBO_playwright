@@ -1,6 +1,5 @@
 """Tests for KBOTextParser — relay text parsing."""
 
-import pytest
 
 from src.utils.text_parser import KBOTextParser
 
