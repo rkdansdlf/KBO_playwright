@@ -44,6 +44,16 @@ _COMPACT_METADATA_SOURCE_PAYLOAD_KEYS = (
     "source_schema_version",
     "payload_hash",
 )
+_DETAIL_REPLACE_CHILD_MODELS = (
+    GameMetadata,
+    GameInningScore,
+    GameLineup,
+    GameBattingStat,
+    GamePitchingStat,
+    GameSummary,
+    GameHighlight,
+)
+_RELAY_REPLACE_CHILD_MODELS = (GameEvent, GamePlayByPlay, GameValidationMetrics)
 
 
 def _serialized_payload_length(payload: object) -> int:
@@ -205,6 +215,27 @@ class GameSyncMixin:
         self.target_session.commit()
         logger.info("🧹 Purged OCI child game-detail rows for year %s", year)
 
+    def _replace_target_child_rows_for_games(
+        self,
+        child_models: tuple[type, ...],
+        game_ids: list[str],
+        *,
+        label: str,
+    ) -> None:
+        target_game_ids = sorted(set(game_id for game_id in game_ids if game_id))
+        if not target_game_ids:
+            return
+
+        for child_model in child_models:
+            if not self._target_table_exists(child_model):
+                logger.info("ℹ️ Skipping delete for missing OCI table: %s", child_model.__tablename__)
+                continue
+            self.target_session.query(child_model).filter(child_model.game_id.in_(target_game_ids)).delete(
+                synchronize_session=False,
+            )
+        self.target_session.commit()
+        logger.info("🧹 Replaced OCI %s child rows for %s game(s)", label, len(target_game_ids))
+
     def get_unsynced_or_modified_game_ids(self) -> list[str]:
         """Detect dirty game_ids by comparing game + child-table signatures across local/OCI."""
         return detect_dirty_game_ids(self.sqlite_session, self.target_session)
@@ -309,6 +340,17 @@ class GameSyncMixin:
         if year and not unsynced_only:
             # Remove existing year-scoped child rows first to avoid stale/null duplicates.
             self._purge_game_detail_children_for_year(year)
+        else:
+            self._replace_target_child_rows_for_games(
+                _DETAIL_REPLACE_CHILD_MODELS,
+                eligibility.detail_game_ids,
+                label="detail",
+            )
+            self._replace_target_child_rows_for_games(
+                _RELAY_REPLACE_CHILD_MODELS,
+                eligibility.relay_game_ids,
+                label="relay",
+            )
 
         def get_child_filters(model_cls) -> list | None:
             if model_cls in {GameEvent, GamePlayByPlay}:
@@ -346,6 +388,7 @@ class GameSyncMixin:
             filters=get_child_filters(GameLineup),
             transform_fn=self._transform_game_lineup_for_target,
             batch_size=batch_size,
+            dedupe_keys=["game_id", "player_id"],
         )
 
         # 4. Batting Stats
@@ -355,6 +398,7 @@ class GameSyncMixin:
             exclude_cols=["created_at", "id"],
             filters=get_child_filters(GameBattingStat),
             batch_size=batch_size,
+            dedupe_keys=["game_id", "player_id"],
         )
 
         # 5. Pitching Stats
@@ -364,6 +408,7 @@ class GameSyncMixin:
             exclude_cols=["created_at", "id"],
             filters=get_child_filters(GamePitchingStat),
             batch_size=batch_size,
+            dedupe_keys=["game_id", "player_id"],
         )
 
         results["play_by_play"] = self._sync_game_play_by_play(filters=get_child_filters(GamePlayByPlay))
@@ -432,33 +477,18 @@ class GameSyncMixin:
         # treats NULL values as distinct in unique constraints, an upsert keyed
         # by player_id would otherwise leave stale NULL-player rows beside the
         # repaired rows. For one-game publishing, replace child snapshots.
-        detail_child_models = (
-            GameMetadata,
-            GameInningScore,
-            GameLineup,
-            GameBattingStat,
-            GamePitchingStat,
-            GameSummary,
-            GameHighlight,
-        )
-        relay_child_models = (GameEvent, GamePlayByPlay, GameValidationMetrics)
         if eligibility.detail_game_ids:
-            for child_model in detail_child_models:
-                if not self._target_table_exists(child_model):
-                    logger.info("ℹ️ Skipping delete for missing OCI table: %s", child_model.__tablename__)
-                    continue
-                self.target_session.query(child_model).filter(child_model.game_id == game_id).delete(
-                    synchronize_session=False,
-                )
+            self._replace_target_child_rows_for_games(
+                _DETAIL_REPLACE_CHILD_MODELS,
+                eligibility.detail_game_ids,
+                label="detail",
+            )
         if eligibility.relay_game_ids:
-            for child_model in relay_child_models:
-                if not self._target_table_exists(child_model):
-                    logger.info("ℹ️ Skipping delete for missing OCI table: %s", child_model.__tablename__)
-                    continue
-                self.target_session.query(child_model).filter(child_model.game_id == game_id).delete(
-                    synchronize_session=False,
-                )
-        self.target_session.commit()
+            self._replace_target_child_rows_for_games(
+                _RELAY_REPLACE_CHILD_MODELS,
+                eligibility.relay_game_ids,
+                label="relay",
+            )
 
         # Sync children
         results["metadata"] = self.sync_simple_table(
@@ -480,18 +510,21 @@ class GameSyncMixin:
             exclude_cols=["id", "created_at"],
             filters=[GameLineup.game_id.in_(eligibility.detail_game_ids)],
             transform_fn=self._transform_game_lineup_for_target,
+            dedupe_keys=["game_id", "player_id"],
         )
         results["batting_stats"] = self.sync_simple_table(
             GameBattingStat,
             ["game_id", "player_id", "appearance_seq"],
             exclude_cols=["id", "created_at"],
             filters=[GameBattingStat.game_id.in_(eligibility.detail_game_ids)],
+            dedupe_keys=["game_id", "player_id"],
         )
         results["pitching_stats"] = self.sync_simple_table(
             GamePitchingStat,
             ["game_id", "player_id", "appearance_seq"],
             exclude_cols=["id", "created_at"],
             filters=[GamePitchingStat.game_id.in_(eligibility.detail_game_ids)],
+            dedupe_keys=["game_id", "player_id"],
         )
         results["play_by_play"] = self._sync_game_play_by_play(filters=relay_filters)
         results["events"] = self.sync_simple_table(

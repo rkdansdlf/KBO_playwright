@@ -238,8 +238,7 @@ def _is_game_dirty_by_game_section(game_id: str, local_sig: dict, remote_sig: di
         if local_game.get(key) != remote_game.get(key):
             return True
     return local_game.get("updated_at") is not None and (
-        remote_game.get("updated_at") is None
-        or str(local_game.get("updated_at")) > str(remote_game.get("updated_at"))
+        remote_game.get("updated_at") is None or str(local_game.get("updated_at")) > str(remote_game.get("updated_at"))
     )
 
 
@@ -281,7 +280,10 @@ def _is_game_dirty(game_id: str, local_sig: dict, remote_sig: dict) -> bool:
 
 
 def detect_dirty_game_ids(
-    local_session_or_conn, remote_session_or_conn, *, game_ids: list[str] | None = None,
+    local_session_or_conn,
+    remote_session_or_conn,
+    *,
+    game_ids: list[str] | None = None,
 ) -> list[str]:
     local_signatures = load_game_sync_signatures(local_session_or_conn, game_ids=game_ids)
     remote_signatures = load_game_sync_signatures(remote_session_or_conn, game_ids=list(local_signatures.keys()))
@@ -369,7 +371,8 @@ def build_game_sync_eligibility(session, game_ids: list[str]) -> GameSyncEligibi
         is_completed = game_status in COMPLETED_LIKE_GAME_STATUSES
         has_score = home_score is not None or away_score is not None
         has_complete_detail = _has_both_team_sides(batting_sides, game_id) and _has_both_team_sides(
-            pitching_sides, game_id,
+            pitching_sides,
+            game_id,
         )
         has_any_detail_or_relay = (
             any(game_id in ids for ids in (inning_ids, lineup_ids, summary_ids, event_ids, pbp_ids))
@@ -423,7 +426,11 @@ def _log_sync_eligibility(eligibility: GameSyncEligibility) -> None:
         if not game_ids:
             continue
         logger.warning(
-            f"⚠️ {reason}={len(game_ids)} sample={', '.join(game_ids[:10])}" + (" ..." if len(game_ids) > 10 else ""),
+            "⚠️ %s=%s sample=%s%s",
+            reason,
+            len(game_ids),
+            ", ".join(game_ids[:10]),
+            " ..." if len(game_ids) > 10 else "",
         )
 
 
@@ -617,7 +624,11 @@ class OCISyncBase:
         for attempt in range(1, max_attempts + 1):
             try:
                 return self._do_bulk_copy_upsert(
-                    table_name, records, unique_cols, update_timestamp, connection=connection,
+                    table_name,
+                    records,
+                    unique_cols,
+                    update_timestamp,
+                    connection=connection,
                 )
             except Exception as e:
                 last_exception = e
@@ -635,7 +646,7 @@ class OCISyncBase:
                     self._reconnect_oci()
                     connection = None
 
-        logger.error(f"❌ Batch COPY Error on {table_name} after {max_attempts} attempts: {last_exception}")
+        logger.error("❌ Batch COPY Error on %s after %s attempts: %s", table_name, max_attempts, last_exception)
         raise last_exception  # type: ignore[misc]
 
     def _reconnect_oci(self) -> None:
@@ -765,6 +776,7 @@ class OCISyncBase:
         transform_fn: Callable | None = None,
         batch_size: int = 10000,
         update_timestamp: bool | None = None,
+        dedupe_keys: list[str] | None = None,
     ) -> int:
         """Generic sync parameter for simple tables using Batched UPSERT or COPY."""
         if exclude_cols is None:
@@ -773,12 +785,12 @@ class OCISyncBase:
             exclude_cols.append("id")
 
         if not self._target_table_exists(model):
-            logger.info(f"ℹ️ Skipping missing OCI table: {model.__tablename__}")
+            logger.info("ℹ️ Skipping missing OCI table: %s", model.__tablename__)
             return 0
 
         columns = self._resolve_sync_columns(model, exclude_cols)
         if not columns:
-            logger.info(f"ℹ️ No compatible columns for {model.__tablename__}")
+            logger.info("ℹ️ No compatible columns for %s", model.__tablename__)
             return 0
 
         query = self.sqlite_session.query(*[getattr(model, column) for column in columns])
@@ -787,16 +799,38 @@ class OCISyncBase:
 
         total_count = query.count()
         if total_count == 0:
-            logger.info(f"ℹ️  No records for {model.__tablename__}")
+            logger.info("ℹ️  No records for %s", model.__tablename__)
             return 0
 
-        logger.info(f"🚚 Syncing {model.__tablename__} ({total_count} rows, batch={batch_size})...")
+        logger.info("🚚 Syncing %s (%s rows, batch=%s)...", model.__tablename__, total_count, batch_size)
         if update_timestamp is None:
             update_timestamp = "updated_at" not in exclude_cols
 
-        return self._sync_in_batches(model, query, total_count, columns, conflict_keys, transform_fn, batch_size, update_timestamp)
+        return self._sync_in_batches(
+            model,
+            query,
+            total_count,
+            columns,
+            conflict_keys,
+            transform_fn,
+            batch_size,
+            update_timestamp,
+            dedupe_keys=dedupe_keys,
+        )
 
-    def _sync_in_batches(self, model, query, total_count, columns, conflict_keys, transform_fn, batch_size, update_timestamp) -> int:
+    def _sync_in_batches(
+        self,
+        model,
+        query,
+        total_count,
+        columns,
+        conflict_keys,
+        transform_fn,
+        batch_size,
+        update_timestamp,
+        *,
+        dedupe_keys=None,
+    ) -> int:
         connection = None
         if self.oci_engine is not None:
             connection = self.oci_engine.raw_connection()
@@ -805,7 +839,7 @@ class OCISyncBase:
             for offset in range(0, total_count, batch_size):
                 rows = query.offset(offset).limit(batch_size).all()
                 records = [_row_to_record(row, columns, transform_fn) for row in rows]
-                records = _dedupe_records_for_conflict_keys(records, conflict_keys)
+                records = _dedupe_records_for_conflict_keys(records, dedupe_keys or conflict_keys)
                 self._bulk_copy_upsert(
                     model.__tablename__,
                     records,
@@ -814,7 +848,7 @@ class OCISyncBase:
                     connection=connection,
                 )
                 synced += len(records)
-                logger.info(f"   Synced {synced}/{total_count} rows via COPY...")
+                logger.info("   Synced %s/%s rows via COPY...", synced, total_count)
         finally:
             if connection is not None:
                 try:
@@ -850,7 +884,8 @@ class OCISyncBase:
 
             columns_str = ", ".join([f'"{k}"' for k in keys])
             cursor.copy_expert(
-                f"COPY {temp_table} ({columns_str}) FROM STDIN WITH (FORMAT CSV, DELIMITER '\t', NULL '\\N')", output,
+                f"COPY {temp_table} ({columns_str}) FROM STDIN WITH (FORMAT CSV, DELIMITER '\t', NULL '\\N')",
+                output,
             )
 
             update_cols = [k for k in keys if k not in unique_cols and k not in ("created_at", "id")]
