@@ -95,10 +95,10 @@ class CongestionCrawler:
             for rec in records:
                 logger.info(
                     "  %s | %s | level=%s | index=%s",
-                    rec['location_label'],
-                    rec['location_type'],
-                    rec['congestion_level'],
-                    rec['congestion_index'],
+                    rec["location_label"],
+                    rec["location_type"],
+                    rec["congestion_level"],
+                    rec["congestion_index"],
                 )
 
         return records

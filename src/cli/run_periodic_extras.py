@@ -23,7 +23,7 @@ KST = ZoneInfo("Asia/Seoul")
 async def run_periodic_extras(
     year: int,
     sync: bool = False,
-):
+) -> None:
     logger.info(f"\n{'=' * 60}")
     logger.info(f"🚀 KBO Periodic Extras Started for Year: {year}")
     logger.info(f"{'=' * 60}")

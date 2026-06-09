@@ -9,9 +9,9 @@ project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
-import logging
+import logging  # noqa: E402
 
-from src.services.relay_recovery_service import (
+from src.services.relay_recovery_service import (  # noqa: E402
     DEFAULT_MANIFEST_PATH,
     load_relay_recovery_targets,
     parse_source_order,

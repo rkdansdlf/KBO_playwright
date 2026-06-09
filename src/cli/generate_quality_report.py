@@ -527,7 +527,6 @@ def get_daily_metrics(session, target_date_str: str, gate_result: dict[str, Any]
     # 5. Data Parity (Local vs OCI)
     parity_info = {"ok": True, "local_count": 0, "oci_count": 0, "diff": 0}
     try:
-
         from sqlalchemy import create_engine, text
 
         local_count = session.query(func.count(Game.game_id)).scalar()

@@ -10,7 +10,7 @@ project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(_
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
-from src.sources.relay import read_manifest_entries
+from src.sources.relay import read_manifest_entries  # noqa: E402
 
 FIELDNAMES = ["game_id", "source_type", "locator", "format", "priority", "notes"]
 

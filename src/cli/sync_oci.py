@@ -34,7 +34,7 @@ def run_parallel_sync(
     """연도별로 병렬 동기화 작업을 수행합니다."""
     logger.info(f"🚀 Starting parallel sync with {workers} workers for years: {years}")
 
-    def sync_worker(year: int):
+    def sync_worker(year: int) -> None:
         logger.info(f"🧵 Worker started for year {year}")
         with SessionLocal() as session:
             try:
@@ -315,12 +315,14 @@ def build_arg_parser() -> argparse.ArgumentParser:
     return parser
 
 
-_ALLOWED_YEAR_COLUMNS = frozenset({
-    "season",
-    "season_year",
-    "strftime('%Y', game_date)",
-    "strftime('%Y', standings_date)",
-})
+_ALLOWED_YEAR_COLUMNS = frozenset(
+    {
+        "season",
+        "season_year",
+        "strftime('%Y', game_date)",
+        "strftime('%Y', standings_date)",
+    }
+)
 
 
 def get_available_years(session: Session, model: Any, column_name: str = "season") -> list[int]:
@@ -332,7 +334,7 @@ def get_available_years(session: Session, model: Any, column_name: str = "season
     return sorted(years, reverse=True)
 
 
-def _run_sync(args, sync_fn, *, parallel_support=False, header=None, years_getter=None, completion_msg=None):
+def _run_sync(args, sync_fn, *, parallel_support=False, header=None, years_getter=None, completion_msg=None) -> None:
     if header:
         logger.info(header)
 
@@ -582,7 +584,7 @@ def _detect_active_flag(args, all_flags: list[str]) -> str | None:
     return None
 
 
-def _maybe_purge(syncer, year, truncate):
+def _maybe_purge(syncer, year, truncate) -> None:
     if truncate and year:
         syncer.purge_season_stats(year)
 

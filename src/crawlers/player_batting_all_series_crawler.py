@@ -18,8 +18,6 @@ import re
 from datetime import datetime
 from typing import Any
 
-logger = logging.getLogger(__name__)
-
 from playwright.sync_api import Page, sync_playwright
 
 from src.aggregators.season_stat_aggregator import SeasonStatAggregator
@@ -38,7 +36,7 @@ from src.utils.request_policy import RequestPolicy
 from src.utils.team_codes import resolve_team_code
 from src.utils.team_mapping import get_team_code, get_team_mapping_for_year
 
-
+logger = logging.getLogger(__name__)
 def get_series_mapping() -> dict[str, dict[str, str]]:
     """시리즈 이름과 선택 값 매핑 (실제 페이지에서 확인된 값)"""
     return {

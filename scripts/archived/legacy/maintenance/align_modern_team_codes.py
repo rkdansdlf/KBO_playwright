@@ -35,7 +35,7 @@ def main():
                 else:
                     # might be a date object
                     year = game_date_str.year
-            except:
+            except Exception:  # noqa: BLE001
                 continue
 
             new_home = resolve_team_code_for_season(home_team, year) or home_team

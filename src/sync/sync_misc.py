@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Any
 
 from sqlalchemy import text
+from sqlalchemy.exc import SQLAlchemyError
 
 from src.models.award import Award
 from src.models.base import Base
@@ -154,7 +155,7 @@ class MiscSyncMixin:
                 self.target_session.execute(text(sql))
                 self.target_session.commit()
                 logger.info("✅ Applied awards migration")
-        except Exception:
+        except SQLAlchemyError:
             logger.exception("Failed to apply awards migration")
             self.target_session.rollback()
 
@@ -169,7 +170,7 @@ class MiscSyncMixin:
         logger.info("📁 Ensure RAG chunks table exists on OCI...")
         try:
             Base.metadata.create_all(self.oci_engine)
-        except Exception:
+        except SQLAlchemyError:
             logger.exception("metadata create_all error (might already exist)")
 
         def transform_rag_chunk(data: dict[str, Any]) -> dict[str, Any]:
@@ -183,7 +184,6 @@ class MiscSyncMixin:
                     except json.JSONDecodeError:
                         logger.debug("Failed to parse embedding JSON")
                 if isinstance(embedding, list):
-
                     target_dim = 256
                     current_dim = len(embedding)
                     if current_dim != target_dim:
@@ -214,7 +214,7 @@ class MiscSyncMixin:
         logger.info("📁 Ensure Ticket schedules table exists on OCI...")
         try:
             Base.metadata.create_all(self.oci_engine)
-        except Exception:
+        except SQLAlchemyError:
             logger.exception("metadata create_all error (might already exist)")
 
         return self.sync_simple_table(
@@ -229,7 +229,7 @@ class MiscSyncMixin:
         logger.info("📁 Ensure Stadium foods table exists on OCI...")
         try:
             Base.metadata.create_all(self.oci_engine)
-        except Exception:
+        except SQLAlchemyError:
             logger.exception("metadata create_all error (might already exist)")
 
         return self.sync_simple_table(

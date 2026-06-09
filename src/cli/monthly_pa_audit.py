@@ -29,7 +29,7 @@ def run_monthly_pa_audit(target_year: int) -> int:
     return fixed_rows
 
 
-def crawl_monthly_pa_audit_job():
+def crawl_monthly_pa_audit_job() -> None:
     """
     Audit PA formula for the previous year and apply ratio-based fix.
     """

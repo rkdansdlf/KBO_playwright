@@ -26,26 +26,26 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from src.db.engine import SessionLocal
-from src.utils.game_status import (
+from src.db.engine import SessionLocal  # noqa: E402
+from src.utils.game_status import (  # noqa: E402
     GAME_STATUS_CANCELLED as STATUS_CANCELLED,
 )
-from src.utils.game_status import (
+from src.utils.game_status import (  # noqa: E402
     GAME_STATUS_COMPLETED as STATUS_COMPLETED,
 )
-from src.utils.game_status import (
+from src.utils.game_status import (  # noqa: E402
     GAME_STATUS_DRAW as STATUS_DRAW,
 )
-from src.utils.game_status import (
+from src.utils.game_status import (  # noqa: E402
     GAME_STATUS_LIVE as STATUS_LIVE,
 )
-from src.utils.game_status import (
+from src.utils.game_status import (  # noqa: E402
     GAME_STATUS_POSTPONED as STATUS_POSTPONED,
 )
-from src.utils.game_status import (
+from src.utils.game_status import (  # noqa: E402
     GAME_STATUS_SCHEDULED as STATUS_SCHEDULED,
 )
-from src.utils.game_status import (
+from src.utils.game_status import (  # noqa: E402
     GAME_STATUS_UNRESOLVED as STATUS_UNRESOLVED,
 )
 

@@ -29,7 +29,7 @@ async def run_advanced_update(
     year: int,
     sync: bool = False,
     headless: bool = True,
-):
+) -> None:
     logger.info(f"\n{'=' * 60}")
     logger.info(f"🚀 KBO Advanced Daily Sync Started for Year: {year}")
     logger.info(f"{'=' * 60}")

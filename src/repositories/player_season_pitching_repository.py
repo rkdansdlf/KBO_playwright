@@ -5,19 +5,19 @@ PlayerSeasonPitching 전용 리포지토리
 
 import logging
 from collections import Counter
-
-logger = logging.getLogger(__name__)
 from typing import Any
 
 from sqlalchemy.dialects.mysql import insert as mysql_insert
 from sqlalchemy.dialects.postgresql import insert as postgresql_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from src.db.engine import SessionLocal, get_database_type
 from src.models.player import PlayerSeasonPitching
 from src.utils.player_season_stat_validation import filter_valid_season_stat_payloads
 
+logger = logging.getLogger(__name__)
 LAST_FILTER_COUNTS: Counter = Counter()
 
 
@@ -169,7 +169,7 @@ def save_pitching_stats_to_db(payloads: list[dict[str, Any]]) -> int:
             try:
                 session.execute(stmt)
                 saved_count += 1
-            except Exception:
+            except SQLAlchemyError:
                 logger.exception(f"⚠️ UPSERT 실패 (player_id={data.get('player_id')})")
                 session.rollback()
                 continue
@@ -177,7 +177,7 @@ def save_pitching_stats_to_db(payloads: list[dict[str, Any]]) -> int:
         try:
             session.commit()
             logger.info(f"✅ 투수 데이터 {saved_count}건 저장 완료 (player_season_pitching 테이블)")
-        except Exception:
+        except SQLAlchemyError:
             session.rollback()
             logger.exception("❌ 커밋 실패")
             return 0
@@ -220,7 +220,7 @@ def cleanup_invalid_pitching_data(session: Session | None = None) -> int:
 
         return deleted
 
-    except Exception:
+    except SQLAlchemyError:
         if not session:
             cleanup_session.rollback()
         logger.exception("⚠️ 투수 데이터 정리 실패")

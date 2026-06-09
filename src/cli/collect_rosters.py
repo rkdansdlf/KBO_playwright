@@ -14,7 +14,7 @@ from src.repositories.team_repository import TeamRepository
 logger = logging.getLogger(__name__)
 
 
-def save_chunk(chunk):
+def save_chunk(chunk) -> None:
     session = SessionLocal()
     try:
         repo = TeamRepository(session)
@@ -26,7 +26,7 @@ def save_chunk(chunk):
         session.close()
 
 
-async def collect_rosters(year: int, month: int = None):
+async def collect_rosters(year: int, month: int | None = None) -> None:
     crawler = DailyRosterCrawler()
 
     # Define date range

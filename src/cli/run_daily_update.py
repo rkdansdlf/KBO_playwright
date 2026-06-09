@@ -338,7 +338,7 @@ async def run_update(
     skip_season_stats: bool = False,
     skip_oci_supporting_sync: bool = False,
     run_p0_non_game: bool = True,
-):
+) -> None:
     """Main orchestration logic for postgame finalize and daily reconciliation."""
     runner = step_runner or _run_python_step
 

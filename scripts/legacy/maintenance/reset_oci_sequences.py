@@ -7,10 +7,10 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from dotenv import load_dotenv
-from sqlalchemy import text
+from dotenv import load_dotenv  # noqa: E402
+from sqlalchemy import text  # noqa: E402
 
-from src.db.engine import create_engine_for_url
+from src.db.engine import create_engine_for_url  # noqa: E402
 
 
 def reset_sequences(target_url=None):

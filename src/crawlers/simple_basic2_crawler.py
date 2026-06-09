@@ -8,8 +8,6 @@ import os
 import sys
 from datetime import datetime
 
-logger = logging.getLogger(__name__)
-
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
 from playwright.sync_api import Page, sync_playwright
@@ -19,7 +17,7 @@ from src.utils.playwright_blocking import install_sync_resource_blocking
 from src.utils.playwright_helpers import goto_next_page
 from src.utils.request_policy import RequestPolicy
 
-
+logger = logging.getLogger(__name__)
 def safe_parse_number(value_str: str, data_type: type) -> int | float | None:
     """안전한 숫자 파싱 (0값 보존)"""
     if not value_str:

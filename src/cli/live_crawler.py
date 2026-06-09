@@ -22,17 +22,17 @@ logger = logging.getLogger(__name__)
 
 _LIVE_SHARD_CURSOR_BY_DATE: dict[str, int] = {}
 
-from src.crawlers.game_detail_crawler import GameDetailCrawler
-from src.crawlers.naver_relay_crawler import NaverRelayCrawler
-from src.crawlers.schedule_crawler import ScheduleCrawler
-from src.db.engine import SessionLocal
-from src.repositories.game_repository import GAME_STATUS_LIVE, save_game_snapshot, save_relay_data
-from src.sync.oci_sync import OCISync
-from src.utils.game_state import (
+from src.crawlers.game_detail_crawler import GameDetailCrawler  # noqa: E402
+from src.crawlers.naver_relay_crawler import NaverRelayCrawler  # noqa: E402
+from src.crawlers.schedule_crawler import ScheduleCrawler  # noqa: E402
+from src.db.engine import SessionLocal  # noqa: E402
+from src.repositories.game_repository import GAME_STATUS_LIVE, save_game_snapshot, save_relay_data  # noqa: E402
+from src.sync.oci_sync import OCISync  # noqa: E402
+from src.utils.game_state import (  # noqa: E402
     TERMINAL_STATES,
     derive_lifecycle_from_naver_status,
 )
-from src.utils.refresh_manifest import write_refresh_manifest
+from src.utils.refresh_manifest import write_refresh_manifest  # noqa: E402
 
 
 def _has_ending_header(raw_pbp_rows: list[dict[str, Any]]) -> bool:

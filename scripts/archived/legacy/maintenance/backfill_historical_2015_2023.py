@@ -64,7 +64,7 @@ async def backfill_historical_rosters(year: int, start_month: int = 3, end_month
     await pool.close()
 
 
-from datetime import date
+from datetime import date  # noqa: E402
 
 
 async def main():

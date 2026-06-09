@@ -8,14 +8,15 @@ from collections import Counter
 from typing import Any
 
 logger = logging.getLogger(__name__)
-from sqlalchemy.dialects.mysql import insert as mysql_insert
-from sqlalchemy.dialects.postgresql import insert as pg_insert
-from sqlalchemy.dialects.sqlite import insert as sqlite_insert
-from sqlalchemy.orm import Session
+from sqlalchemy.dialects.mysql import insert as mysql_insert  # noqa: E402
+from sqlalchemy.dialects.postgresql import insert as pg_insert  # noqa: E402
+from sqlalchemy.dialects.sqlite import insert as sqlite_insert  # noqa: E402
+from sqlalchemy.exc import SQLAlchemyError  # noqa: E402
+from sqlalchemy.orm import Session  # noqa: E402
 
-from src.db.engine import Engine, SessionLocal
-from src.models.player import PlayerBasic
-from src.utils.player_validation import filter_valid_player_payloads, validate_player_payload
+from src.db.engine import Engine, SessionLocal  # noqa: E402
+from src.models.player import PlayerBasic  # noqa: E402
+from src.utils.player_validation import filter_valid_player_payloads, validate_player_payload  # noqa: E402
 
 
 class PlayerBasicRepository:
@@ -143,7 +144,7 @@ class PlayerBasicRepository:
                 session.execute(stmt)
                 session.commit()
                 return len(rows)
-            except Exception:
+            except SQLAlchemyError:
                 session.rollback()
                 logger.exception("[ERROR] Error upserting players")
                 raise
@@ -291,7 +292,7 @@ class PlayerBasicRepository:
                     )
                 session.commit()
                 return len(updates)
-            except Exception:
+            except SQLAlchemyError:
                 session.rollback()
                 raise
 

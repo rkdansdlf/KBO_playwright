@@ -11,6 +11,7 @@ import logging
 from datetime import UTC, date, datetime
 
 from sqlalchemy import and_, select
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from ..models.stadium_operation_notice import StadiumOperationNotice
@@ -101,7 +102,7 @@ class OperationNoticeRepository:
                     created += 1
                 else:
                     updated += 1
-            except Exception:
+            except SQLAlchemyError:
                 logger.exception("Notice upsert failed: %s", notice.get("title", "")[:60])
         return created, updated
 

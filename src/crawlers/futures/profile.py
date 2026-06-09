@@ -6,8 +6,6 @@ import asyncio
 import logging
 from typing import Any
 
-logger = logging.getLogger(__name__)
-
 from bs4 import BeautifulSoup
 from playwright.async_api import Error as PlaywrightError
 from playwright.async_api import Page
@@ -16,7 +14,7 @@ from src.utils.compliance import compliance
 from src.utils.playwright_pool import AsyncPlaywrightPool
 from src.utils.throttle import throttle
 
-
+logger = logging.getLogger(__name__)
 class FuturesProfileCrawler:
     hitter_profile_url = "https://www.koreabaseball.com/Futures/Player/HitterDetail.aspx"
     pitcher_profile_url = "https://www.koreabaseball.com/Futures/Player/PitcherDetail.aspx"

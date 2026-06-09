@@ -14,11 +14,9 @@ from src.models.game import Game, GameBattingStat, GameEvent, GamePitchingStat, 
 from src.repositories.game_repository import save_game_detail, save_relay_data
 from src.services.game_write_contract import GameWriteContract, GameWriteSource
 from src.services.pbp_sh_sf_derivation import apply_sh_sf_to_batting_stats
-
-logger = logging.getLogger(__name__)
 from src.utils.team_codes import normalize_kbo_game_id
 
-
+logger = logging.getLogger(__name__)
 class DetailCrawler(Protocol):
     async def crawl_games(
         self,

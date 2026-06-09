@@ -8,7 +8,7 @@ from src.services.matchup_engine import MatchupEngine
 logger = logging.getLogger(__name__)
 
 
-def batch_calculate_matchups(years: list[int], sync_oci: bool = False):
+def batch_calculate_matchups(years: list[int], sync_oci: bool = False) -> None:
     """
     Runs the MatchupEngine for a range of years to compute BvP and Splits.
     """
@@ -54,4 +54,5 @@ def main(argv: Sequence[str] | None = None) -> int:
 
 if __name__ == "__main__":
     import sys
+
     sys.exit(main())

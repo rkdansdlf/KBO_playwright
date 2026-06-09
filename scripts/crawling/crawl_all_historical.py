@@ -6,11 +6,15 @@ KBO 전체 연도 크롤링 - 자동 전략 선택
 """
 
 import argparse
+import logging
 import subprocess
 import sys
 from datetime import datetime
+from typing import Any
 
 from src.utils.series_validation import filter_series_for_year
+
+logger = logging.getLogger(__name__)
 
 
 def get_year_range_validation(start_year: int, end_year: int) -> tuple:

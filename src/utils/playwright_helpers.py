@@ -1,12 +1,10 @@
 import logging
 
-logger = logging.getLogger(__name__)
-
 from playwright.sync_api import Page
 
 from src.utils.request_policy import RequestPolicy
 
-
+logger = logging.getLogger(__name__)
 def goto_next_page(page: Page, policy: RequestPolicy | None = None) -> bool:
     try:
         pagination = page.query_selector(".paging")

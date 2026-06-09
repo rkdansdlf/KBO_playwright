@@ -20,13 +20,13 @@ ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from src.utils.team_codes import (
+from src.utils.team_codes import (  # noqa: E402
     build_kbo_game_id,
     normalize_kbo_game_id,
     resolve_team_code,
     team_code_from_game_id_segment,
 )
-from src.utils.team_history import find_team_history_entry, iter_team_history
+from src.utils.team_history import find_team_history_entry, iter_team_history  # noqa: E402
 
 DEFAULT_DB_URL = "sqlite:///./data/kbo_dev.db"
 

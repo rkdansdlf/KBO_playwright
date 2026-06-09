@@ -1,14 +1,12 @@
-import logging
-
-logger = logging.getLogger(__name__)
 import argparse
+import logging
 
 from src.crawlers.player_batting_all_series_crawler import fallback_batting_from_db
 from src.crawlers.player_pitching_all_series_crawler import fallback_pitching_from_db
 from src.repositories.player_season_pitching_repository import save_pitching_stats_to_db
 from src.repositories.safe_batting_repository import save_batting_stats_safe
 
-
+logger = logging.getLogger(__name__)
 def main() -> int:
     parser = argparse.ArgumentParser(description="Recalculate season cumulative stats from transactional game details.")
     parser.add_argument("--year", type=int, required=True, help="Season year")

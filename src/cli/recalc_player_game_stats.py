@@ -51,23 +51,29 @@ def _game_ids_for_date(session, target_date: str) -> list[str]:
     ]
 
 
-def _print_batting_records(records):
+def _print_batting_records(records) -> None:
     for r in sorted(records, key=lambda x: x.get("plate_appearances", 0), reverse=True)[:20]:
         logger.info(
             "  PID=%-6s %-8s PA=%-3s H=%-2s AVG=%-5s OPS=%-5s",
-            r.get("player_id", ""), r.get("player_name", ""),
-            r.get("plate_appearances", 0), r.get("hits", 0),
-            r.get("avg", 0), r.get("ops", 0),
+            r.get("player_id", ""),
+            r.get("player_name", ""),
+            r.get("plate_appearances", 0),
+            r.get("hits", 0),
+            r.get("avg", 0),
+            r.get("ops", 0),
         )
 
 
-def _print_pitching_records(records):
+def _print_pitching_records(records) -> None:
     for r in sorted(records, key=lambda x: x.get("innings_outs", 0), reverse=True)[:20]:
         ip = r.get("innings_outs", 0) / 3.0
         logger.info(
             "  PID=%-6s %-8s IP=%-5.1f ERA=%-5s WHIP=%-5s",
-            r.get("player_id", ""), r.get("player_name", ""),
-            ip, r.get("era", 0), r.get("whip", 0),
+            r.get("player_id", ""),
+            r.get("player_name", ""),
+            ip,
+            r.get("era", 0),
+            r.get("whip", 0),
         )
 
 

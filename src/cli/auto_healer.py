@@ -433,8 +433,8 @@ async def run_pbp_healer_async(
         source_order_override=["kbo", "naver", "import", "manual"],
         allow_derived_pbp=False,
         sleep_seconds=0,
-                log=logger.info,
-            )
+        log=logger.info,
+    )
     recovered_ids = {
         str(row.get("game_id"))
         for row in recovery_result.report_rows

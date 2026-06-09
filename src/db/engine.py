@@ -10,9 +10,9 @@ import sqlite3
 from dotenv import load_dotenv
 
 logger = logging.getLogger(__name__)
-from sqlalchemy import create_engine, event
-from sqlalchemy.exc import SQLAlchemyError
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy import create_engine, event  # noqa: E402
+from sqlalchemy.exc import SQLAlchemyError  # noqa: E402
+from sqlalchemy.orm import sessionmaker  # noqa: E402
 
 load_dotenv()
 
@@ -60,7 +60,7 @@ def create_engine_for_url(url: str, *, disable_sqlite_wal: bool = False):
 Engine = create_engine_for_url(DATABASE_URL, disable_sqlite_wal=DISABLE_SQLITE_WAL)
 SessionLocal = sessionmaker(bind=Engine, autoflush=False, autocommit=False, expire_on_commit=False)
 
-from contextlib import contextmanager
+from contextlib import contextmanager  # noqa: E402
 
 
 @contextmanager

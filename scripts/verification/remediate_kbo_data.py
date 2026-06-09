@@ -17,13 +17,13 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-import logging
+import logging  # noqa: E402
 
-from scripts.verification.audit_game_logic import audit_game_logic
-from src.crawlers.game_detail_crawler import GameDetailCrawler
-from src.db.engine import SessionLocal
-from src.services.game_collection_service import crawl_and_save_game_details
-from src.services.player_id_resolver import PlayerIdResolver
+from scripts.verification.audit_game_logic import audit_game_logic  # noqa: E402
+from src.crawlers.game_detail_crawler import GameDetailCrawler  # noqa: E402
+from src.db.engine import SessionLocal  # noqa: E402
+from src.services.game_collection_service import crawl_and_save_game_details  # noqa: E402
+from src.services.player_id_resolver import PlayerIdResolver  # noqa: E402
 
 logger = logging.getLogger(__name__)
 def get_invalid_games_for_year(year: int) -> list[dict[str, str]]:

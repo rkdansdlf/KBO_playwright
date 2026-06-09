@@ -13,55 +13,55 @@ import sys
 logger = logging.getLogger(__name__)
 
 
-async def run_broadcast(save: bool = False):
+async def run_broadcast(save: bool = False) -> None:
     from src.crawlers.broadcast_crawler import BroadcastCrawler
 
     crawler = BroadcastCrawler()
     await crawler.run(save=save)
 
 
-async def run_game_mvp(game_ids: list[str] | None = None, save: bool = False):
+async def run_game_mvp(game_ids: list[str] | None = None, save: bool = False) -> None:
     from src.crawlers.game_mvp_crawler import GameMvpCrawler
 
     crawler = GameMvpCrawler()
     await crawler.run(game_ids=game_ids, save=save)
 
 
-async def run_injury(save: bool = False):
+async def run_injury(save: bool = False) -> None:
     from src.crawlers.injury_crawler import InjuryCrawler
 
     crawler = InjuryCrawler()
     await crawler.run(save=save)
 
 
-async def run_foreign_player(save: bool = False):
+async def run_foreign_player(save: bool = False) -> None:
     from src.crawlers.foreign_player_crawler import ForeignPlayerCrawler
 
     crawler = ForeignPlayerCrawler()
     await crawler.run(save=save)
 
 
-async def run_manager_change(save: bool = False):
+async def run_manager_change(save: bool = False) -> None:
     from src.crawlers.manager_change_crawler import ManagerChangeCrawler
 
     crawler = ManagerChangeCrawler()
     await crawler.run(save=save)
 
 
-async def run_fan_culture(save: bool = False):
+async def run_fan_culture(save: bool = False) -> None:
     from src.crawlers.fan_culture_crawler import FanCultureCrawler
 
     crawler = FanCultureCrawler()
     await crawler.run(save=save)
 
 
-def seed_stadium_info():
+def seed_stadium_info() -> None:
     from scripts.seed_stadium_info import seed_stadium_info
 
     seed_stadium_info()
 
 
-async def run_all_crawlers(save: bool = False):
+async def run_all_crawlers(save: bool = False) -> None:
     """Run all news-based crawlers (broadcast, mvp, injury, foreign, manager)."""
     logger.info("Starting Phase 1 news-based crawlers...")
     await run_broadcast(save=save)
@@ -72,14 +72,14 @@ async def run_all_crawlers(save: bool = False):
     logger.info("Phase 1 news-based crawlers complete.")
 
 
-def run_all_seeds():
+def run_all_seeds() -> None:
     """Run all seed data (stadium info, fan culture)."""
     logger.info("Starting Phase 1 seed data...")
     seed_stadium_info()
     logger.info("Phase 1 seed data complete.")
 
 
-async def run_all(save: bool = False):
+async def run_all(save: bool = False) -> None:
     """Run all Phase 1 crawlers and seeds (legacy compat)."""
     await run_all_crawlers(save=save)
     run_all_seeds()

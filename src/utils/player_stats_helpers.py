@@ -1,10 +1,8 @@
 import logging
 
-logger = logging.getLogger(__name__)
-
 from playwright.sync_api import Page
 
-
+logger = logging.getLogger(__name__)
 def extract_rows_fast(
     page: Page,
     selector: str = "table",
