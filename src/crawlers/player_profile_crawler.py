@@ -350,7 +350,7 @@ class PlayerProfileCrawler:
                 }""",
                 timeout=2000,
             )
-        except Exception:
+        except Exception:  # noqa: BLE001
             logger.info("No real image found for player (expected for some players)")
             pass
 

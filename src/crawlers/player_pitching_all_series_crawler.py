@@ -269,7 +269,7 @@ def apply_sort(
                     if policy:
                         policy.delay()
                     return True
-            except Exception:
+            except Exception:  # noqa: BLE001
                 logger.warning("Sort toggle click failed, falling back to JS execution")
 
             # Fallback to direct JS execution if DOM is un-clickable
@@ -404,7 +404,7 @@ def parse_basic1_page(
     # Wait for the table to be visible (more resilient than specific header th)
     try:
         page.wait_for_selector("table.tData01", timeout=15000)
-    except Exception:
+    except Exception:  # noqa: BLE001
         logger.warning("기록 테이블을 찾을 수 없습니다. (타임아웃)")
         content = page.content()
         logger.debug("Page content length: %d | tData01 found: %s", len(content), "tData01" in content)
