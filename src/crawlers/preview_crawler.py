@@ -14,6 +14,7 @@ from typing import Any
 import httpx
 
 from src.utils.playwright_pool import AsyncPlaywrightPool
+from src.utils.playwright_retry import NAV_TIMEOUT
 from src.utils.team_codes import normalize_kbo_game_id
 
 logger = logging.getLogger(__name__)
@@ -236,7 +237,7 @@ class PreviewCrawler:
                     logger.exception("⚠️ Playwright fallback failed")
                     raise RuntimeError("Failed to start Playwright fallback pool") from e
                 page = await pool.acquire()
-                await page.goto(self.BASE_REFERER, wait_until="domcontentloaded", timeout=30000)
+                await page.goto(self.BASE_REFERER, wait_until="domcontentloaded", timeout=NAV_TIMEOUT)
                 await asyncio.sleep(self.request_delay)
                 list_data = await self._fetch_api_json(
                     self.GAME_LIST_URL,

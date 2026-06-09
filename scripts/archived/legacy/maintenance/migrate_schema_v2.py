@@ -28,7 +28,7 @@ def migrate_db(url):
         cur.close()
         conn.close()
         print("✅ Migration successful.")
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         print(f"❌ Migration failed: {e}")
 
 

@@ -56,7 +56,7 @@ async def get_games_to_recover(session, year: int, pool: AsyncPlaywrightPool) ->
             monthly_games = await schedule_crawler.crawl_schedule(year, int(month), series_id=series_regular)
             if monthly_games:
                 games.extend(monthly_games)
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             logger.error(f"Error crawling schedule for {year}-{month}: {e}")
 
     # Filter for Regular Season only (usually checks game_id or league_id if available)
@@ -90,7 +90,7 @@ async def get_games_to_recover(session, year: int, pool: AsyncPlaywrightPool) ->
             g_date = int(raw_date) if raw_date else 0
             if g_date >= start_date:
                 valid_games.append(g)
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             logger.error(f"Error parsing date for game {g}: {e}")
 
     logger.info(

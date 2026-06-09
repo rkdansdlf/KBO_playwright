@@ -57,7 +57,7 @@ def migrate():
                 print(f"  - Updated KI -> KH in {table}: {res.rowcount} rows")
                 res = conn.execute(text(f"UPDATE {table} SET team_code = 'DB' WHERE team_code = 'DO'"))
                 print(f"  - Updated DO -> DB in {table}: {res.rowcount} rows")
-            except Exception as e:
+            except Exception as e:  # noqa: BLE001
                 print(f"  ⚠️ Skipping {table} (or error): {e}")
 
         conn.commit()

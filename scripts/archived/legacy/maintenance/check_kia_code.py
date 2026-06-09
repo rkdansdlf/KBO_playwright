@@ -44,7 +44,7 @@ async def check_kia_code():
                     print(f"   First Player: {data['hitters']['away'][0]['player_name']}")
                 else:
                     print(f"❌ FAILED for {game_id} (No data/players)")
-            except Exception as e:
+            except Exception as e:  # noqa: BLE001
                 print(f"❌ ERROR for {game_id}: {e}")
 
     finally:

@@ -3,6 +3,10 @@
 누락된 팀 코드 확인 및 해결 스크립트
 """
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 from sqlalchemy import text
 
 from src.db.engine import SessionLocal
@@ -11,7 +15,7 @@ from src.db.engine import SessionLocal
 def check_missing_team_codes():
     """SQLite 데이터에서 누락된 팀 코드 확인"""
     with SessionLocal() as session:
-        print("🔍 SQLite 데이터에서 팀 코드 분석 중...")
+        logger.info("🔍 SQLite 데이터에서 팀 코드 분석 중...")
 
         # 타자 데이터의 모든 팀 코드
         batting_teams = session.execute(
@@ -24,9 +28,9 @@ def check_missing_team_codes():
         """)
         ).fetchall()
 
-        print(f"\n📊 타자 데이터 팀 코드: {len(batting_teams)}개")
+        logger.info(f"\n📊 타자 데이터 팀 코드: {len(batting_teams)}개")
         for team_code, count, first_year, last_year in batting_teams:
-            print(f"  - {team_code}: {count}명 ({first_year}-{last_year})")
+            logger.info(f"  - {team_code}: {count}명 ({first_year}-{last_year})")
 
         # 투수 데이터의 모든 팀 코드
         pitching_teams = session.execute(
@@ -39,9 +43,9 @@ def check_missing_team_codes():
         """)
         ).fetchall()
 
-        print(f"\n📊 투수 데이터 팀 코드: {len(pitching_teams)}개")
+        logger.info(f"\n📊 투수 데이터 팀 코드: {len(pitching_teams)}개")
         for team_code, count, first_year, last_year in pitching_teams:
-            print(f"  - {team_code}: {count}명 ({first_year}-{last_year})")
+            logger.info(f"  - {team_code}: {count}명 ({first_year}-{last_year})")
 
         # 모든 고유 팀 코드
         all_teams = set()
@@ -50,10 +54,10 @@ def check_missing_team_codes():
         for team_code, _, _, _ in pitching_teams:
             all_teams.add(team_code)
 
-        print(f"\n🎯 전체 고유 팀 코드: {len(all_teams)}개")
+        logger.info(f"\n🎯 전체 고유 팀 코드: {len(all_teams)}개")
         sorted_teams = sorted(all_teams)
         for i, team in enumerate(sorted_teams, 1):
-            print(f"  {i:2d}. {team}")
+            logger.info(f"  {i:2d}. {team}")
 
         return sorted_teams
 
@@ -86,16 +90,16 @@ def identify_team_codes():
         "PACIFIC": "태평양 돌핀스 (1988-1995)",
     }
 
-    print("\n🏟️ 팀 코드 식별 정보:")
-    print("=" * 50)
+    logger.info("\n🏟️ 팀 코드 식별 정보:")
+    logger.info("=" * 50)
 
     missing_teams = check_missing_team_codes()
 
     for team_code in missing_teams:
         if team_code in team_mapping:
-            print(f"✅ {team_code}: {team_mapping[team_code]}")
+            logger.info(f"✅ {team_code}: {team_mapping[team_code]}")
         else:
-            print(f"❓ {team_code}: 미식별 팀 코드")
+            logger.info(f"❓ {team_code}: 미식별 팀 코드")
 
 
 def generate_missing_teams_sql():
@@ -180,9 +184,9 @@ def generate_missing_teams_sql():
         },
     ]
 
-    print("\n📝 누락된 팀들을 위한 SQL:")
-    print("=" * 50)
-    print("-- OCI PostgreSQL에서 실행할 SQL")
+    logger.info("\n📝 누락된 팀들을 위한 SQL:")
+    logger.info("=" * 50)
+    logger.info("-- OCI PostgreSQL에서 실행할 SQL")
     print()
 
     for team in missing_teams_data:
@@ -205,13 +209,13 @@ INSERT INTO public.teams (
     NOW()
 ) ON CONFLICT (team_code) DO NOTHING;""")
 
-    print("\n💡 이 SQL을 OCI PostgreSQL 접속 세션에서 실행하세요!")
+    logger.info("\n💡 이 SQL을 OCI PostgreSQL 접속 세션에서 실행하세요!")
 
 
 def main():
     try:
-        print("🔍 KBO 팀 코드 분석 및 누락 팀 식별")
-        print("=" * 50)
+        logger.info("🔍 KBO 팀 코드 분석 및 누락 팀 식별")
+        logger.info("=" * 50)
 
         # 1. 팀 코드 식별
         identify_team_codes()
@@ -219,12 +223,12 @@ def main():
         # 2. SQL 생성
         generate_missing_teams_sql()
 
-        print("\n🎯 다음 단계:")
-        print("1. 위의 SQL을 OCI PostgreSQL에서 실행")
-        print("2. ./venv/bin/python3 -m src.cli.sync_oci --teams 재시도")
+        logger.info("\n🎯 다음 단계:")
+        logger.info("1. 위의 SQL을 OCI PostgreSQL에서 실행")
+        logger.info("2. ./venv/bin/python3 -m src.cli.sync_oci --teams 재시도")
 
-    except Exception as e:
-        print(f"❌ 오류 발생: {e}")
+    except Exception as e:  # noqa: BLE001
+        logger.error(f"❌ 오류 발생: {e}")
 
 
 if __name__ == "__main__":

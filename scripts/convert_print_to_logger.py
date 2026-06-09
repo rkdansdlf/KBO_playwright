@@ -1,3 +1,6 @@
+import logging
+
+logger = logging.getLogger(__name__)
 """
 Convert print() calls to logger calls in Python files.
 
@@ -124,7 +127,7 @@ def process_file(path: Path) -> int:
                 count=1,
             )
         path.write_text(new_source)
-        print(f"  {path.name}: {changed} converted, {deleted} removed")
+        logger.info(f"  {path.name}: {changed} converted, {deleted} removed")
 
     return changed + deleted
 
@@ -134,7 +137,7 @@ def main():
     total = 0
     for f in files:
         total += process_file(f)
-    print(f"\nTotal: {total} print() calls handled across {len(files)} files")
+    logger.info(f"\nTotal: {total} print() calls handled across {len(files)} files")
 
 
 if __name__ == "__main__":

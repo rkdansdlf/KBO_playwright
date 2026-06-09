@@ -22,6 +22,7 @@ from src.utils.game_status import (
     normalize_game_status,
 )
 from src.utils.playwright_pool import AsyncPlaywrightPool
+from src.utils.playwright_retry import SEL_TIMEOUT
 from src.utils.request_policy import RequestPolicy
 from src.utils.schedule_validation import validate_schedule_game_payload
 from src.utils.team_codes import normalize_kbo_game_id, resolve_team_code, team_code_from_game_id_segment
@@ -162,7 +163,7 @@ class ScheduleCrawler:
         async def _select() -> None:
             await self.policy.delay_async(host="www.koreabaseball.com")
             await page.select_option(selector, value)
-            await page.wait_for_load_state("networkidle", timeout=15000)
+            await page.wait_for_load_state("networkidle", timeout=SEL_TIMEOUT)
             await page.wait_for_timeout(500)
             await page.wait_for_selector(".tbl", timeout=10000)
 

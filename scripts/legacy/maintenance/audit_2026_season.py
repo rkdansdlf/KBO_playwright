@@ -3,6 +3,10 @@ Audit 2026 Season Game Data.
 Checks for missing boxscore scores or missing pitcher/hitter stats for all games in the 2026 season.
 """
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 import os
 import sys
 
@@ -16,7 +20,7 @@ from src.models.game import Game, GameBattingStat, GameInningScore, GamePitching
 
 
 def audit_2026_season():
-    print("📊 Auditing 2026 season data for missing stats...")
+    logger.info("📊 Auditing 2026 season data for missing stats...")
 
     with SessionLocal() as session:
         # 1. Get all games for 2026 that should have completed-game detail rows
@@ -26,7 +30,7 @@ def audit_2026_season():
             .all()
         )
 
-        print(f"🔍 Total games found for 2026: {len(games)}")
+        logger.info(f"🔍 Total games found for 2026: {len(games)}")
 
         missing_stats_games = []
 
@@ -52,18 +56,20 @@ def audit_2026_season():
                 issue_reasons.append("Missing Pitcher Stats")
 
             if issue_reasons:
-                print(f"❌ {game_id} ({game.game_date}): {', '.join(issue_reasons)} | Status: {game.game_status}")
+                logger.error(
+                    f"❌ {game_id} ({game.game_date}): {', '.join(issue_reasons)} | Status: {game.game_status}"
+                )
                 missing_stats_games.append(game_id)
 
-        print(f"\n✅ Audit complete. Found {len(missing_stats_games)} games with missing or incomplete data.")
+        logger.info(f"\n✅ Audit complete. Found {len(missing_stats_games)} games with missing or incomplete data.")
 
         if missing_stats_games:
-            print("\n💡 Recommendation: Run the following command to repair these games:")
-            print("venv/bin/python3 -m src.cli.run_daily_update --date 20260322...20261030 (as needed)")
+            logger.info("\n💡 Recommendation: Run the following command to repair these games:")
+            logger.info("venv/bin/python3 -m src.cli.run_daily_update --date 20260322...20261030 (as needed)")
 
             # Group by date for easier re-running
             dates = sorted(list(set([gid[:8] for gid in missing_stats_games])))
-            print(f"Affected dates: {', '.join(dates)}")
+            logger.info(f"Affected dates: {', '.join(dates)}")
 
 
 if __name__ == "__main__":

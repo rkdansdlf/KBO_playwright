@@ -1,3 +1,7 @@
+import logging
+
+logger = logging.getLogger(__name__)
+
 from src.utils.team_codes import normalize_kbo_game_id
 
 
@@ -5,7 +9,7 @@ def main():
     test_ids = ["20200827KHLT0", "20200827WOLT0", "20240323SKSS0", "20240323SSGSS0"]
     for gid in test_ids:
         norm = normalize_kbo_game_id(gid)
-        print(f"{gid} -> {norm}")
+        logger.info(f"{gid} -> {norm}")
 
 
 if __name__ == "__main__":

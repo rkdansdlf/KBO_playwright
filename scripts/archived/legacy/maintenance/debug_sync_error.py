@@ -41,7 +41,7 @@ def debug_pg_insert():
             conn.execute(stmt)
             conn.commit()
             print("✅ Success with pg_insert")
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             print(f"❌ Failed with pg_insert: {e}")
 
 

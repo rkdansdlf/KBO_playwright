@@ -12,6 +12,8 @@ from sqlalchemy import text  # noqa: E402
 from src.db.engine import SessionLocal  # noqa: E402
 
 logger = logging.getLogger(__name__)
+
+
 def main():
     session = SessionLocal()
     logger.info("\n--- 20250308HTLT0 Game Batting Stats in DB ---")
@@ -23,7 +25,9 @@ def main():
     """)
     ).fetchall()
     for row in rows:
-        logger.info(f"Name: {row[0]}, AB: {row[1]}, H: {row[2]}, SO: {row[3]}, BB: {row[4]}, HBP: {row[5]}, PA: {row[6]}")
+        logger.info(
+            f"Name: {row[0]}, AB: {row[1]}, H: {row[2]}, SO: {row[3]}, BB: {row[4]}, HBP: {row[5]}, PA: {row[6]}"
+        )
 
     session.close()
 

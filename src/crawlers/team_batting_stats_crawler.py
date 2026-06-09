@@ -15,6 +15,7 @@ from src.aggregators.team_stat_aggregator import TeamStatAggregator
 from src.db.engine import SessionLocal
 from src.repositories.team_stats_repository import TeamSeasonBattingRepository
 from src.utils.playwright_blocking import install_sync_resource_blocking
+from src.utils.playwright_retry import LONG_TIMEOUT
 from src.utils.request_policy import RequestPolicy
 from src.utils.team_mapping import get_team_mapping_for_year
 from src.utils.team_stats_helpers import get_cell_value, parse_numeric, resolve_team_id
@@ -146,7 +147,7 @@ class TeamBattingStatsCrawler:
             for url in TEAM_BATTING_URLS:
                 try:
                     self.policy.delay()
-                    self.policy.run_with_retry(page.goto, url, wait_until="networkidle", timeout=60000)
+                    self.policy.run_with_retry(page.goto, url, wait_until="networkidle", timeout=LONG_TIMEOUT)
                     self.policy.delay()
                     self._select_season(page, season)
                     self.policy.delay()

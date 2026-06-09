@@ -9,6 +9,11 @@ misassignments.
 
 from __future__ import annotations
 
+import logging
+
+logger = logging.getLogger(__name__)
+
+
 import argparse
 import csv
 import os
@@ -498,8 +503,8 @@ def main() -> None:
         )
     except OverrideApplyError as exc:
         result = exc.result
-        print(f"[ERROR] {exc}")
-        print(f"[REPORT] {result['report_csv']}")
+        logger.info(f"[ERROR] {exc}")
+        logger.info(f"[REPORT] {result['report_csv']}")
         raise SystemExit(1) from exc
     mode = "APPLY" if args.apply else "DRY-RUN"
     print(
@@ -508,8 +513,8 @@ def main() -> None:
         f"invalid_row_overrides={result['invalid_row_overrides']}"
     )
     if result["backup_path"]:
-        print(f"[BACKUP] {result['backup_path']}")
-    print(f"[REPORT] {result['report_csv']}")
+        logger.info(f"[BACKUP] {result['backup_path']}")
+    logger.info(f"[REPORT] {result['report_csv']}")
 
 
 if __name__ == "__main__":

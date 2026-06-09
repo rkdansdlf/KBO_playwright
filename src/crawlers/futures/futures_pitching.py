@@ -12,6 +12,7 @@ from playwright.async_api import Error as PlaywrightError  # noqa: E402
 
 from src.utils.compliance import compliance  # noqa: E402
 from src.utils.playwright_pool import AsyncPlaywrightPool  # noqa: E402
+from src.utils.playwright_retry import LONG_TIMEOUT
 from src.utils.team_codes import resolve_kbo_legacy_team_code  # noqa: E402
 from src.utils.throttle import throttle  # noqa: E402
 
@@ -274,7 +275,7 @@ async def fetch_and_parse_futures_pitching(
                 return []
 
             await throttle.wait()
-            await page.goto(profile_url, wait_until="domcontentloaded", timeout=60000)
+            await page.goto(profile_url, wait_until="domcontentloaded", timeout=LONG_TIMEOUT)
             await throttle.wait()
 
             try:

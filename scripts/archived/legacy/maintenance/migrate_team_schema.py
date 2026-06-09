@@ -17,7 +17,7 @@ def run_migration():
             print("Checking team_franchises columns...")
             conn.execute(text("ALTER TABLE team_franchises ADD COLUMN metadata_json JSON"))
             print("✅ Added metadata_json to team_franchises")
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             if "duplicate column" in str(e).lower():
                 print("ℹ️  metadata_json already exists")
             else:
@@ -26,7 +26,7 @@ def run_migration():
         try:
             conn.execute(text("ALTER TABLE team_franchises ADD COLUMN web_url VARCHAR(255)"))
             print("✅ Added web_url to team_franchises")
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             if "duplicate column" in str(e).lower():
                 print("ℹ️  web_url already exists")
             else:
@@ -37,7 +37,7 @@ def run_migration():
             print("Checking teams columns...")
             conn.execute(text("ALTER TABLE teams ADD COLUMN is_active BOOLEAN DEFAULT 1"))
             print("✅ Added is_active to teams")
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             if "duplicate column" in str(e).lower():
                 print("ℹ️  is_active already exists")
             else:
@@ -46,7 +46,7 @@ def run_migration():
         try:
             conn.execute(text("ALTER TABLE teams ADD COLUMN aliases JSON"))
             print("✅ Added aliases to teams")
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             if "duplicate column" in str(e).lower():
                 print("ℹ️  aliases already exists")
             else:

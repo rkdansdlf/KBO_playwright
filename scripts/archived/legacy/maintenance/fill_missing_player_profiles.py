@@ -85,7 +85,7 @@ async def fill_missing_profiles(limit: int, delay: float, ids: list[int] | None 
                     # But if it's a transient error, we might want to retry later.
                     # For now, we only save if we find a name.
                     fail_count += 1
-            except Exception as e:
+            except Exception as e:  # noqa: BLE001
                 print(f"  ❌ Error for {pid}: {e}")
                 fail_count += 1
 

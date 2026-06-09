@@ -4,6 +4,10 @@ SQLite 데이터베이스 초기화 스크립트
 크롤링 시작 전 중복 데이터 방지를 위한 깨끗한 상태로 리셋
 """
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 import argparse
 
 from sqlalchemy import text
@@ -28,23 +32,23 @@ def reset_sqlite_data(tables_to_reset: list = None, confirm: bool = True):
         batting_count = session.query(PlayerSeasonBatting).count()
         pitching_count = session.query(PlayerSeasonPitching).count()
 
-        print("🗃️ 현재 SQLite 데이터 현황:")
-        print(f"  - player_season_batting: {batting_count:,}건")
-        print(f"  - player_season_pitching: {pitching_count:,}건")
-        print(f"  - 총합: {batting_count + pitching_count:,}건")
+        logger.info("🗃️ 현재 SQLite 데이터 현황:")
+        logger.info(f"  - player_season_batting: {batting_count:,}건")
+        logger.info(f"  - player_season_pitching: {pitching_count:,}건")
+        logger.info(f"  - 총합: {batting_count + pitching_count:,}건")
 
         if batting_count == 0 and pitching_count == 0:
-            print("✅ 이미 빈 데이터베이스입니다.")
+            logger.info("✅ 이미 빈 데이터베이스입니다.")
             return
 
         if confirm:
-            print("\n⚠️ 다음 테이블들이 초기화됩니다:")
+            logger.warning("\n⚠️ 다음 테이블들이 초기화됩니다:")
             for table in tables_to_reset:
-                print(f"  - {table}")
+                logger.info(f"  - {table}")
 
             response = input("\n정말로 진행하시겠습니까? (y/N): ")
             if response.lower() != "y":
-                print("❌ 사용자가 취소했습니다.")
+                logger.error("❌ 사용자가 취소했습니다.")
                 return
 
         # 외래키 제약조건 임시 비활성화
@@ -55,24 +59,24 @@ def reset_sqlite_data(tables_to_reset: list = None, confirm: bool = True):
             for table_name in tables_to_reset:
                 if table_name == "player_season_batting":
                     deleted = session.query(PlayerSeasonBatting).delete()
-                    print(f"🧹 player_season_batting: {deleted:,}건 삭제")
+                    logger.info(f"🧹 player_season_batting: {deleted:,}건 삭제")
                 elif table_name == "player_season_pitching":
                     deleted = session.query(PlayerSeasonPitching).delete()
-                    print(f"🧹 player_season_pitching: {deleted:,}건 삭제")
+                    logger.info(f"🧹 player_season_pitching: {deleted:,}건 삭제")
                 else:
                     # 다른 테이블은 직접 SQL로 삭제
                     result = session.execute(text(f"DELETE FROM {table_name}"))
-                    print(f"🧹 {table_name}: {result.rowcount:,}건 삭제")
+                    logger.info(f"🧹 {table_name}: {result.rowcount:,}건 삭제")
 
             # VACUUM으로 공간 회수
             session.commit()
             session.execute(text("VACUUM"))
 
-            print("✅ SQLite 데이터베이스 초기화 완료")
+            logger.info("✅ SQLite 데이터베이스 초기화 완료")
 
         except Exception as e:
             session.rollback()
-            print(f"❌ 초기화 중 오류 발생: {e}")
+            logger.error(f"❌ 초기화 중 오류 발생: {e}")
             raise
         finally:
             # 외래키 제약조건 복원
@@ -87,19 +91,19 @@ def reset_specific_year(year: int, confirm: bool = True):
         batting_count = session.query(PlayerSeasonBatting).filter_by(season=year).count()
         pitching_count = session.query(PlayerSeasonPitching).filter_by(season=year).count()
 
-        print(f"🗃️ {year}년 데이터 현황:")
-        print(f"  - 타자: {batting_count:,}건")
-        print(f"  - 투수: {pitching_count:,}건")
-        print(f"  - 합계: {batting_count + pitching_count:,}건")
+        logger.info(f"🗃️ {year}년 데이터 현황:")
+        logger.info(f"  - 타자: {batting_count:,}건")
+        logger.info(f"  - 투수: {pitching_count:,}건")
+        logger.info(f"  - 합계: {batting_count + pitching_count:,}건")
 
         if batting_count == 0 and pitching_count == 0:
-            print(f"✅ {year}년 데이터가 없습니다.")
+            logger.info(f"✅ {year}년 데이터가 없습니다.")
             return
 
         if confirm:
             response = input(f"\n⚠️ {year}년 데이터를 삭제하시겠습니까? (y/N): ")
             if response.lower() != "y":
-                print("❌ 사용자가 취소했습니다.")
+                logger.error("❌ 사용자가 취소했습니다.")
                 return
 
         try:
@@ -109,13 +113,13 @@ def reset_specific_year(year: int, confirm: bool = True):
 
             session.commit()
 
-            print(f"🧹 {year}년 데이터 삭제 완료:")
-            print(f"  - 타자: {batting_deleted:,}건")
-            print(f"  - 투수: {pitching_deleted:,}건")
+            logger.info(f"🧹 {year}년 데이터 삭제 완료:")
+            logger.info(f"  - 타자: {batting_deleted:,}건")
+            logger.info(f"  - 투수: {pitching_deleted:,}건")
 
         except Exception as e:
             session.rollback()
-            print(f"❌ 삭제 중 오류 발생: {e}")
+            logger.error(f"❌ 삭제 중 오류 발생: {e}")
             raise
 
 
@@ -135,19 +139,19 @@ def reset_specific_range(start_year: int, end_year: int, confirm: bool = True):
             .count()
         )
 
-        print(f"🗃️ {start_year}-{end_year}년 데이터 현황:")
-        print(f"  - 타자: {batting_count:,}건")
-        print(f"  - 투수: {pitching_count:,}건")
-        print(f"  - 합계: {batting_count + pitching_count:,}건")
+        logger.info(f"🗃️ {start_year}-{end_year}년 데이터 현황:")
+        logger.info(f"  - 타자: {batting_count:,}건")
+        logger.info(f"  - 투수: {pitching_count:,}건")
+        logger.info(f"  - 합계: {batting_count + pitching_count:,}건")
 
         if batting_count == 0 and pitching_count == 0:
-            print(f"✅ {start_year}-{end_year}년 데이터가 없습니다.")
+            logger.info(f"✅ {start_year}-{end_year}년 데이터가 없습니다.")
             return
 
         if confirm:
             response = input(f"\n⚠️ {start_year}-{end_year}년 데이터를 삭제하시겠습니까? (y/N): ")
             if response.lower() != "y":
-                print("❌ 사용자가 취소했습니다.")
+                logger.error("❌ 사용자가 취소했습니다.")
                 return
 
         try:
@@ -166,13 +170,13 @@ def reset_specific_range(start_year: int, end_year: int, confirm: bool = True):
 
             session.commit()
 
-            print(f"🧹 {start_year}-{end_year}년 데이터 삭제 완료:")
-            print(f"  - 타자: {batting_deleted:,}건")
-            print(f"  - 투수: {pitching_deleted:,}건")
+            logger.info(f"🧹 {start_year}-{end_year}년 데이터 삭제 완료:")
+            logger.info(f"  - 타자: {batting_deleted:,}건")
+            logger.info(f"  - 투수: {pitching_deleted:,}건")
 
         except Exception as e:
             session.rollback()
-            print(f"❌ 삭제 중 오류 발생: {e}")
+            logger.error(f"❌ 삭제 중 오류 발생: {e}")
             raise
 
 
@@ -198,32 +202,32 @@ def main():
 
     try:
         if args.all:
-            print("🗑️ 전체 플레이어 데이터 초기화")
+            logger.info("🗑️ 전체 플레이어 데이터 초기화")
             reset_sqlite_data(args.tables, confirm)
         elif args.year:
-            print(f"🗑️ {args.year}년 데이터 초기화")
+            logger.info(f"🗑️ {args.year}년 데이터 초기화")
             reset_specific_year(args.year, confirm)
         elif args.range:
             start_year, end_year = args.range
-            print(f"🗑️ {start_year}-{end_year}년 데이터 초기화")
+            logger.info(f"🗑️ {start_year}-{end_year}년 데이터 초기화")
             reset_specific_range(start_year, end_year, confirm)
         else:
-            print("❌ 옵션을 선택해주세요:")
-            print("  --all          : 모든 데이터 삭제")
-            print("  --year YYYY    : 특정 년도 삭제")
-            print("  --range A B    : 특정 범위 삭제")
-            print("  --tables T1 T2 : 특정 테이블만")
-            print("  --force        : 확인 없이 실행")
-            print("\n예시:")
-            print("  python3 reset_sqlite.py --all")
-            print("  python3 reset_sqlite.py --year 2025")
-            print("  python3 reset_sqlite.py --range 2020 2025")
-            print("  python3 reset_sqlite.py --all --tables player_season_batting")
+            logger.error("❌ 옵션을 선택해주세요:")
+            logger.info("  --all          : 모든 데이터 삭제")
+            logger.info("  --year YYYY    : 특정 년도 삭제")
+            logger.info("  --range A B    : 특정 범위 삭제")
+            logger.info("  --tables T1 T2 : 특정 테이블만")
+            logger.info("  --force        : 확인 없이 실행")
+            logger.info("\n예시:")
+            logger.info("  python3 reset_sqlite.py --all")
+            logger.info("  python3 reset_sqlite.py --year 2025")
+            logger.info("  python3 reset_sqlite.py --range 2020 2025")
+            logger.info("  python3 reset_sqlite.py --all --tables player_season_batting")
 
     except KeyboardInterrupt:
-        print("\n❌ 사용자가 중단했습니다.")
-    except Exception as e:
-        print(f"❌ 오류 발생: {e}")
+        logger.error("\n❌ 사용자가 중단했습니다.")
+    except Exception as e:  # noqa: BLE001
+        logger.error(f"❌ 오류 발생: {e}")
 
 
 if __name__ == "__main__":

@@ -33,8 +33,8 @@ class TestRunWeeklyMaintenanceCLI:
         with patch("sys.argv", ["run_weekly_maintenance", "--profile-limit", "50", "--sync"]), \
              patch("src.cli.run_weekly_maintenance.collect_profiles", new_callable=AsyncMock), \
              patch("src.cli.run_weekly_maintenance.healthcheck_main"), \
-             patch("src.crawlers.team_event_crawler.TeamEventCrawler"), \
-             patch("src.crawlers.fan_culture_crawler.FanCultureCrawler"), \
+             patch("src.crawlers.team_event_crawler.TeamEventCrawler") as MockEvents, \
+             patch("src.crawlers.fan_culture_crawler.FanCultureCrawler") as MockFC, \
              patch("src.cli.run_weekly_maintenance.SessionLocal") as mock_sesh, \
              patch("src.cli.run_weekly_maintenance.OCISync") as MockSync, \
              patch("src.cli.run_weekly_maintenance.cleanup_oci_duplicates") as mock_cleanup, \
@@ -42,5 +42,11 @@ class TestRunWeeklyMaintenanceCLI:
             mock_cleanup.return_value = {}
             mock_sync = MagicMock()
             MockSync.return_value.__enter__.return_value = mock_sync
+            mock_events = MagicMock()
+            mock_events.run = AsyncMock()
+            MockEvents.return_value = mock_events
+            mock_fc = MagicMock()
+            mock_fc.run = AsyncMock()
+            MockFC.return_value = mock_fc
             main()
             mock_cleanup.assert_called_once()

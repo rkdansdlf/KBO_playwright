@@ -11,6 +11,7 @@ from collections.abc import Iterable
 
 from src.utils.compliance import compliance
 from src.utils.playwright_pool import AsyncPlaywrightPool
+from src.utils.playwright_retry import NAV_TIMEOUT, SEL_TIMEOUT
 from src.utils.throttle import throttle
 
 logger = logging.getLogger(__name__)
@@ -60,11 +61,11 @@ class RetiredPlayerListingCrawler:
             return {}
 
         await self._wait()
-        await page.goto(base_url, wait_until="load", timeout=30000)
+        await page.goto(base_url, wait_until="load", timeout=NAV_TIMEOUT)
 
         season_selector = 'select[id$="ddlSeason_ddlSeason"], select[name*="ddlSeason"]'
         series_selector = 'select[id$="ddlSeries_ddlSeries"], select[name*="ddlSeries"]'
-        await page.wait_for_selector(season_selector, timeout=15000)
+        await page.wait_for_selector(season_selector, timeout=SEL_TIMEOUT)
         await self._select_option_and_dispatch(page, season_selector, str(year))
         with contextlib.suppress(Exception):
             await page.wait_for_load_state("load", timeout=10000)
@@ -105,11 +106,11 @@ class RetiredPlayerListingCrawler:
             return {}
 
         await self._wait()
-        await page.goto(base_url, wait_until="load", timeout=30000)
+        await page.goto(base_url, wait_until="load", timeout=NAV_TIMEOUT)
 
         # Select Year
         season_selector = 'select[id$="ddlSeason_ddlSeason"]'
-        await page.wait_for_selector(season_selector, timeout=15000)
+        await page.wait_for_selector(season_selector, timeout=SEL_TIMEOUT)
         await page.select_option(season_selector, str(year))
         await page.evaluate(
             "el => { if (el.onchange) el.onchange(); else el.dispatchEvent(new Event('change', { bubbles: true })); }",

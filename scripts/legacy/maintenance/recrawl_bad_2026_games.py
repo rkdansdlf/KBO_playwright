@@ -1,3 +1,7 @@
+import logging
+
+logger = logging.getLogger(__name__)
+
 import asyncio
 import sys
 from pathlib import Path
@@ -27,7 +31,7 @@ async def recrawl_bad_games(year=2026, limit=10):
               AND g.game_date LIKE :year_pattern
         """
         rows = session.execute(text(query), {"year_pattern": f"{year}%"}).all()
-        print(f"🛠️ Found {len(rows)} games to re-crawl.")
+        logger.info(f"🛠️ Found {len(rows)} games to re-crawl.")
 
         if not rows:
             return
@@ -39,7 +43,7 @@ async def recrawl_bad_games(year=2026, limit=10):
         targets = rows[:limit]
 
         for gid, gdate in targets:
-            print(f"🚀 Re-crawling {gid} ({gdate})...")
+            logger.info(f"🚀 Re-crawling {gid} ({gdate})...")
             # Format date as YYYYMMDD
             date_str = gdate.replace("-", "")
             try:
@@ -49,13 +53,13 @@ async def recrawl_bad_games(year=2026, limit=10):
                 if data:
                     saved = save_game_detail(data)
                     if saved:
-                        print(f"   ✅ Successfully re-crawled and saved {gid}")
+                        logger.info(f"   ✅ Successfully re-crawled and saved {gid}")
                     else:
-                        print(f"   ❌ Failed to save {gid}")
+                        logger.error(f"   ❌ Failed to save {gid}")
                 else:
-                    print(f"   ❌ Crawler returned no data for {gid}")
-            except Exception as e:
-                print(f"   🔥 Error re-crawling {gid}: {e}")
+                    logger.error(f"   ❌ Crawler returned no data for {gid}")
+            except Exception as e:  # noqa: BLE001
+                logger.error(f"   🔥 Error re-crawling {gid}: {e}")
 
 
 if __name__ == "__main__":

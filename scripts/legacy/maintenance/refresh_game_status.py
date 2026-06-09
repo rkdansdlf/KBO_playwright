@@ -12,6 +12,11 @@ Status rules:
 
 from __future__ import annotations
 
+import logging
+
+logger = logging.getLogger(__name__)
+
+
 import argparse
 import csv
 import sys
@@ -353,10 +358,10 @@ def main() -> None:
         overrides_csv=args.overrides_csv,
         evidence_csv=args.evidence_csv,
     )
-    print("✅ game_status refresh completed")
-    print(f"   dry_run: {result['dry_run']}")
-    print(f"   summary: {result['summary_csv']}")
-    print(f"   details: {result['detail_csv']}")
+    logger.info("✅ game_status refresh completed")
+    logger.info(f"   dry_run: {result['dry_run']}")
+    logger.info(f"   summary: {result['summary_csv']}")
+    logger.info(f"   details: {result['detail_csv']}")
     print(
         "   counts: "
         f"COMPLETED={result['status_counts'].get(STATUS_COMPLETED, 0)}, "
@@ -365,10 +370,10 @@ def main() -> None:
         f"POSTPONED={result['status_counts'].get(STATUS_POSTPONED, 0)}, "
         f"UNRESOLVED_MISSING={result['status_counts'].get(STATUS_UNRESOLVED, 0)}"
     )
-    print(f"   past_scheduled: {result['past_scheduled']}")
-    print(f"   past_missing_runs: {result['past_missing_runs']}")
-    print(f"   manual_override_applied: {result['manual_override_applied']}")
-    print(f"   manual_evidence_applied: {result['manual_evidence_applied']}")
+    logger.info(f"   past_scheduled: {result['past_scheduled']}")
+    logger.info(f"   past_missing_runs: {result['past_missing_runs']}")
+    logger.info(f"   manual_override_applied: {result['manual_override_applied']}")
+    logger.info(f"   manual_evidence_applied: {result['manual_evidence_applied']}")
 
 
 if __name__ == "__main__":

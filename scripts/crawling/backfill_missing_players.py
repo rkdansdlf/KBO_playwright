@@ -317,7 +317,7 @@ async def backfill_players(
                 crawler = PlayerProfileCrawler()
             try:
                 profile = await crawler.crawl_player_profile(player_id, position=candidate.position)
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001
                 profile = None
                 reason = f"crawl_error:{exc}"
             else:
@@ -375,7 +375,9 @@ async def backfill_players(
 
     report_path = report_dir / f"missing_player_backfill_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
     _write_report(report_path, report_rows)
-    logger.info(f"Backfill {'applied' if apply else 'dry-run'} complete: prepared={prepared} saved={saved} skipped={skipped}")
+    logger.info(
+        f"Backfill {'applied' if apply else 'dry-run'} complete: prepared={prepared} saved={saved} skipped={skipped}"
+    )
     logger.info(f"report_csv={report_path}")
     return {
         "candidates": len(candidates),

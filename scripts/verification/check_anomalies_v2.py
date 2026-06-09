@@ -3,6 +3,8 @@ import sqlite3
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
+
+
 def check_anomalies(db_path):
     conn = sqlite3.connect(db_path)
     logger.info(f"Checking anomalies for {db_path}...")

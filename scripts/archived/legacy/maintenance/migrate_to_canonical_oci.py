@@ -176,7 +176,7 @@ def main():
                     print(f"   Updated: {total_rows_updated} rows")
                     print(f"   Deleted (duplicates): {total_rows_deleted} rows")
 
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             print(f"❌ Error during migration of {url}: {e}")
             continue
 

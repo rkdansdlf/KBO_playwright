@@ -5,6 +5,10 @@ not persist schedules to the database. Use `src.cli.crawl_schedule` for DB
 schedule ingestion.
 """
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 import asyncio
 import json
 import os
@@ -29,8 +33,8 @@ async def collect_historical_game_ids(start_year: int, end_year: int):
         try:
             with open(output_file) as f:
                 all_games = json.load(f)
-            print(f"Loaded {len(all_games)} existing game IDs.")
-        except Exception:
+            logger.info(f"Loaded {len(all_games)} existing game IDs.")
+        except Exception:  # noqa: BLE001
             pass
 
     existing_ids = {g["game_id"] for g in all_games if g.get("game_id")}
@@ -41,7 +45,7 @@ async def collect_historical_game_ids(start_year: int, end_year: int):
         # Regular Season series_id is typically "0,9,6"
         series_id = "0,9,6"
         for month in range(4, 11):
-            print(f"---> Processing {year}-{month:02d}")
+            logger.info(f"---> Processing {year}-{month:02d}")
             try:
                 month_games = await crawler.crawl_schedule(year, month, series_id=series_id)
 
@@ -52,20 +56,20 @@ async def collect_historical_game_ids(start_year: int, end_year: int):
                         existing_ids.add(g["game_id"])
                         new_count += 1
 
-                print(f"   Fetched {len(month_games)} games. New: {new_count}")
+                logger.info(f"   Fetched {len(month_games)} games. New: {new_count}")
 
                 # Intermediate save
                 with open(output_file, "w") as f:
                     json.dump(all_games, f, indent=2, ensure_ascii=False)
 
-            except Exception as e:
-                print(f"❌ Error for {year}-{month}: {e}")
+            except Exception as e:  # noqa: BLE001
+                logger.error(f"❌ Error for {year}-{month}: {e}")
 
             # Tiny sleep between months
             await asyncio.sleep(0.5)
 
-    print(f"✅ Total collected games: {len(all_games)}")
-    print(f"💾 Saved to {output_file}")
+    logger.info(f"✅ Total collected games: {len(all_games)}")
+    logger.info(f"💾 Saved to {output_file}")
 
 
 if __name__ == "__main__":

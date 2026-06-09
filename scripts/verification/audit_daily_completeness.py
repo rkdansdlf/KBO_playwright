@@ -18,6 +18,8 @@ from sqlalchemy import create_engine, text
 from src.db.engine import DATABASE_URL as _ENGINE_DB_URL
 
 logger = logging.getLogger(__name__)
+
+
 def audit_completeness(db_url: str, lookback_days: int) -> int:
     engine = create_engine(db_url)
 
@@ -69,7 +71,7 @@ def audit_completeness(db_url: str, lookback_days: int) -> int:
                 if missing:
                     failures.append(f"  - [{g_date}] {g_id}: missing {', '.join(missing)}")
 
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         logger.info(f"❌ Database error during audit: {e}")
         return 2
 

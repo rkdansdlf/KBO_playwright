@@ -5,8 +5,11 @@ Adds logger.exception() before pass/continue/return to prevent silent error swal
 
 from __future__ import annotations
 
+import logging
 import re
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 SRC = Path("src")
 FIX_PATTERNS = [
@@ -69,9 +72,9 @@ def main():
     for f in files:
         try:
             fixed += fix_file(f)
-        except Exception as e:
-            print(f"Error fixing {f}: {e}")
-    print(f"Fixed {fixed} files.")
+        except Exception as e:  # noqa: BLE001
+            logger.error(f"Error fixing {f}: {e}")
+    logger.info(f"Fixed {fixed} files.")
 
 
 if __name__ == "__main__":

@@ -76,7 +76,7 @@ def populate_team_code_map(engine):
     try:
         session.bulk_save_objects(entries_to_add)  # bulk_save is faster
         session.commit()
-    except Exception:
+    except Exception:  # noqa: BLE001
         session.rollback()
         # Fallback to individual add
         for e_obj in entries_to_add:

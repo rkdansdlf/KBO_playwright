@@ -15,12 +15,12 @@ def dump_defense_html():
         # Print all <a> tags that might be tabs
         tabs = page.query_selector_all("ul.tab-tit li a")
         for tab in tabs:
-            logger.info("Tab: %s -> %s", tab.inner_text(), tab.get_attribute('href'))
+            logger.info("Tab: %s -> %s", tab.inner_text(), tab.get_attribute("href"))
 
         # Print side menu links
         side_links = page.query_selector_all(".lnb a")
         for link in side_links:
-            logger.info("Side Link: %s -> %s", link.inner_text(), link.get_attribute('href'))
+            logger.info("Side Link: %s -> %s", link.inner_text(), link.get_attribute("href"))
 
         browser.close()
 

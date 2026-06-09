@@ -347,7 +347,7 @@ def _format_terminal(data: dict[str, Any], sections: list[str]) -> None:
         else:
             logger.warning(f"  ⚠️  {sync.get('status')}: {sync.get('reason', '')}")
 
-    logger.info()
+    logger.info("")
 
 
 def _format_json(data: dict[str, Any]) -> str:

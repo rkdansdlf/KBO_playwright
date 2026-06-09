@@ -5,6 +5,7 @@ import asyncio
 from playwright.async_api import Page
 
 from src.utils.playwright_pool import AsyncPlaywrightPool
+from src.utils.playwright_retry import NAV_TIMEOUT
 from src.utils.status_parser import parse_status_from_text
 
 
@@ -59,7 +60,7 @@ class PlayerStatusConfirmer:
 
     async def _confirm_single(self, page: Page, player_id: str) -> dict[str, str] | None:
         url = f"{self.base_url}?playerId={player_id}"
-        await page.goto(url, wait_until="domcontentloaded", timeout=30000)
+        await page.goto(url, wait_until="domcontentloaded", timeout=NAV_TIMEOUT)
         await asyncio.sleep(self.request_delay)
         text = await page.inner_text("body")
         parsed = parse_status_from_text(text)

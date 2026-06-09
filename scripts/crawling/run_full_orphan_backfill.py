@@ -136,7 +136,7 @@ async def run_backfill(chunk_size: int = 100, max_total: int = 10000):
                                 success_count += 1
                                 break
                         logger.warning(f"⚠️  No payload for {game_id} (Reason: {reason})")
-                except Exception as e:
+                except Exception as e:  # noqa: BLE001
                     if "locked" in str(e).lower() and attempt < retry_attempts:
                         logger.warning(f"🔒 DB Locked. Retrying {game_id} (Attempt {attempt + 1})...")
                         await asyncio.sleep(2)

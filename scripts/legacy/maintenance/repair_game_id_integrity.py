@@ -1,5 +1,10 @@
 from __future__ import annotations
 
+import logging
+
+logger = logging.getLogger(__name__)
+
+
 import argparse
 import csv
 import json
@@ -1364,20 +1369,20 @@ def run(
             print(
                 f"[DRY-RUN] duplicate_groups={len(groups)} conflicts={len(conflicts)} 2024_backfill={actionable_backfill_2024}"
             )
-            print(f"[DRY-RUN] reports written to {output_dir}")
+            logger.info(f"[DRY-RUN] reports written to {output_dir}")
             return 0 if not conflicts else 2
 
         if conflicts:
-            print(f"[ABORT] {len(conflicts)} conflicts found. Resolve conflict CSV before --apply.")
+            logger.info(f"[ABORT] {len(conflicts)} conflicts found. Resolve conflict CSV before --apply.")
             return 2
 
         if backup:
             backup_path = _backup_sqlite_database(db_url, output_dir)
             if backup_path:
-                print(f"[BACKUP] {backup_path}")
+                logger.info(f"[BACKUP] {backup_path}")
             affected_backup_path = _backup_affected_rows(conn, tables, years, groups, output_dir, stamp)
             if affected_backup_path:
-                print(f"[BACKUP] {affected_backup_path}")
+                logger.info(f"[BACKUP] {affected_backup_path}")
 
         franchise_updates = standardize_game_franchise_ids(conn, tables, years)
         season_updates = standardize_game_season_ids(conn, tables, years)

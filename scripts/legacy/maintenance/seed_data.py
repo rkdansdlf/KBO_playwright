@@ -1,3 +1,7 @@
+import logging
+
+logger = logging.getLogger(__name__)
+
 import csv
 import os
 import sys
@@ -397,16 +401,16 @@ def _is_valid_team_row(row: dict) -> bool:
 
 
 def _seed_default_teams(session: Session):
-    print("   ℹ️  Falling back to built-in team seed list.")
+    logger.info("   ℹ️  Falling back to built-in team seed list.")
     for team_data in DEFAULT_TEAMS:
         session.merge(Team(**team_data))
     session.commit()
-    print(f"✅ Upserted {len(DEFAULT_TEAMS)} default teams.")
+    logger.info(f"✅ Upserted {len(DEFAULT_TEAMS)} default teams.")
 
 
 def seed_teams(session: Session, csv_path: str | Path):
     """Seed the teams table from a CSV file."""
-    print(f"\n🌱 Seeding teams from {csv_path}...")
+    logger.info(f"\n🌱 Seeding teams from {csv_path}...")
     teams_to_upsert = []
     csv_path = Path(csv_path)
 
@@ -429,9 +433,9 @@ def seed_teams(session: Session, csv_path: str | Path):
 
     if teams_to_upsert:
         session.commit()
-        print(f"✅ Upserted {len(teams_to_upsert)} teams from CSV.")
+        logger.info(f"✅ Upserted {len(teams_to_upsert)} teams from CSV.")
     else:
-        print("⚠️  No valid teams in CSV; using default seed data.")
+        logger.warning("⚠️  No valid teams in CSV; using default seed data.")
         _seed_default_teams(session)
 
 
@@ -464,12 +468,12 @@ def _seed_default_seasons(session: Session):
             )
             count += 1
     session.commit()
-    print(f"   ✅ Upserted {count} default season entries.")
+    logger.info(f"   ✅ Upserted {count} default season entries.")
 
 
 def seed_kbo_seasons(session: Session, csv_path: str | Path):
     """Seed the kbo_seasons table from a CSV file, with programmatic fallback."""
-    print(f"\n🌱 Seeding KBO seasons from {csv_path}...")
+    logger.info(f"\n🌱 Seeding KBO seasons from {csv_path}...")
     csv_path = Path(csv_path)
     seasons_to_add = []
 
@@ -495,7 +499,7 @@ def seed_kbo_seasons(session: Session, csv_path: str | Path):
                 )
                 seasons_to_add.append(season)
     else:
-        print(f"⚠️  Seasons CSV not found: {csv_path}. Generating defaults...")
+        logger.warning(f"⚠️  Seasons CSV not found: {csv_path}. Generating defaults...")
         _seed_default_seasons(session)
         return
 
@@ -503,14 +507,14 @@ def seed_kbo_seasons(session: Session, csv_path: str | Path):
         for s in seasons_to_add:
             session.merge(s)
         session.commit()
-        print(f"✅ Upserted {len(seasons_to_add)} seasons.")
+        logger.info(f"✅ Upserted {len(seasons_to_add)} seasons.")
     else:
-        print("✅ No new seasons to add.")
+        logger.info("✅ No new seasons to add.")
 
 
 def seed_stadium_foods(session: Session, csv_path: str | Path):
     """Seed the stadium_foods table from a CSV file."""
-    print(f"\n🌱 Seeding stadium foods from {csv_path}...")
+    logger.info(f"\n🌱 Seeding stadium foods from {csv_path}...")
     csv_path = Path(csv_path)
     foods_to_upsert = []
 
@@ -558,24 +562,24 @@ def seed_stadium_foods(session: Session, csv_path: str | Path):
 
     if foods_to_upsert:
         session.commit()
-        print(f"✅ Upserted {len(foods_to_upsert)} stadium foods from CSV.")
+        logger.info(f"✅ Upserted {len(foods_to_upsert)} stadium foods from CSV.")
     else:
-        print("⚠️ No valid stadium foods found in CSV.")
+        logger.warning("⚠️ No valid stadium foods found in CSV.")
 
 
 def drop_raw_table(engine, table_name: str):
     """Drop a table if it exists."""
-    print(f"\n🗑️ Attempting to drop raw table: {table_name}...")
+    logger.info(f"\n🗑️ Attempting to drop raw table: {table_name}...")
     try:
         with engine.connect() as connection:
             connection.execute(f"DROP TABLE IF EXISTS {table_name}")
-            print(f"✅ Table {table_name} dropped successfully (if it existed).")
+            logger.info(f"✅ Table {table_name} dropped successfully (if it existed).")
     except SQLAlchemyError as e:
-        print(f"⚠️ Could not drop table {table_name}. It might not exist. Error: {e}")
+        logger.error(f"⚠️ Could not drop table {table_name}. It might not exist. Error: {e}")
 
 
 if __name__ == "__main__":
-    print("--- Starting Database Seeding ---")
+    logger.info("--- Starting Database Seeding ---")
     project_root = get_project_root()
 
     # Define paths to CSV files
@@ -599,9 +603,9 @@ if __name__ == "__main__":
         drop_raw_table(Engine, "kbo_season_batting_raw")
 
     except Exception as e:
-        print(f"\n❌ An error occurred during seeding: {e}")
+        logger.error(f"\n❌ An error occurred during seeding: {e}")
         db_session.rollback()
         raise
     finally:
         db_session.close()
-        print("\n--- Database Seeding Complete ---")
+        logger.info("\n--- Database Seeding Complete ---")

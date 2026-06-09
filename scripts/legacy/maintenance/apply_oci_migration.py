@@ -1,3 +1,7 @@
+import logging
+
+logger = logging.getLogger(__name__)
+
 import os
 import shutil
 import subprocess
@@ -49,23 +53,23 @@ def apply_migration(file_path: str):
     load_dotenv()
     oci_url = os.getenv("OCI_DB_URL")
     if not oci_url:
-        print("❌ OCI_DB_URL environment variable not set")
+        logger.error("❌ OCI_DB_URL environment variable not set")
         return
 
     if not os.path.exists(file_path):
-        print(f"❌ Migration file not found: {file_path}")
+        logger.error(f"❌ Migration file not found: {file_path}")
         return
 
-    print(f"🔌 Connecting to OCI for migration: {file_path}")
+    logger.info(f"🔌 Connecting to OCI for migration: {file_path}")
 
     try:
         command, env = _psql_command(oci_url, file_path)
-        print(f"📜 Executing SQL from {file_path}...")
+        logger.info(f"📜 Executing SQL from {file_path}...")
         subprocess.run(command, env=env, check=True)
-        print("✅ Migration applied successfully.")
+        logger.info("✅ Migration applied successfully.")
 
     except (Exception, subprocess.CalledProcessError) as e:
-        print(f"❌ Migration failed: {e}")
+        logger.error(f"❌ Migration failed: {e}")
         raise SystemExit(1) from e
 
 

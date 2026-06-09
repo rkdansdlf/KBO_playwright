@@ -11,7 +11,7 @@ def run_crawler(year, crawler_type):
     try:
         result = subprocess.run(cmd, capture_output=False, text=True)
         return result.returncode == 0
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         print(f"❌ Error running {crawler_type} for {year}: {e}")
         return False
 

@@ -48,7 +48,7 @@ def verify_oci_2001():
             for row in result:
                 print(f"   - {row[0]}: season_id={row[1]}")
 
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         print(f"❌ Error connecting/querying OCI: {e}")
 
 

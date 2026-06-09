@@ -38,7 +38,7 @@ async def debug_preview():
                         break
                     parent = parent.parent
 
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         print(f"Error: {e}")
     finally:
         await pool.close()

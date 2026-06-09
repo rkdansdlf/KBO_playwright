@@ -13,6 +13,8 @@ from src.db.engine import SessionLocal
 from src.models.team import TeamDailyRoster
 
 logger = logging.getLogger(__name__)
+
+
 def check_integrity(year: int):
     logger.info(f"🧐 Auditing Team Daily Roster Integrity for Year: {year}...")
 

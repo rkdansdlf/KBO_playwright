@@ -34,7 +34,7 @@ def detect_unresolved():
                     WHERE player_id IS NULL AND player_name IS NOT NULL
                 """)
             ).fetchall()
-        except Exception:
+        except Exception:  # noqa: BLE001
             batting_nulls = []
 
         # Use raw SQL for compatibility
@@ -53,7 +53,7 @@ def detect_unresolved():
             )
             batting_nulls = result.fetchall()
             print(f"Found {len(batting_nulls)} unique unresolved batters.")
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             batting_nulls = []
             print(f"No game_batting_stats table or error: {e}")
 
@@ -70,7 +70,7 @@ def detect_unresolved():
             )
             pitching_nulls = result.fetchall()
             print(f"Found {len(pitching_nulls)} unique unresolved pitchers.")
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             pitching_nulls = []
             print(f"No game_pitching_stats table or error: {e}")
 

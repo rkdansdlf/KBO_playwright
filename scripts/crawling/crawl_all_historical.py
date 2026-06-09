@@ -82,7 +82,7 @@ def run_legacy_crawling(year: int, series: str, data_type: str, headless: bool =
         return success, result.stdout + result.stderr
     except subprocess.TimeoutExpired:
         return False, "크롤링 타임아웃"
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         return False, f"크롤링 실행 오류: {e}"
 
 
@@ -127,7 +127,7 @@ def run_modern_crawling(year: int, series: str, data_type: str, headless: bool =
         return success, result.stdout + result.stderr
     except subprocess.TimeoutExpired:
         return False, "크롤링 타임아웃"
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         return False, f"크롤링 실행 오류: {e}"
 
 
@@ -254,7 +254,9 @@ def crawl_historical_data(
         # 년도별 결과
         year_duration = (datetime.now() - year_start).total_seconds()
         success_rate = (year_success / year_total) * 100
-        logger.info(f"  📊 {year}년 결과: {year_success}/{year_total} 성공 ({success_rate:.1f}%) - {year_duration:.0f}초")
+        logger.info(
+            f"  📊 {year}년 결과: {year_success}/{year_total} 성공 ({success_rate:.1f}%) - {year_duration:.0f}초"
+        )
 
     # 최종 결과
     logger.info("\n" + "=" * 50)
@@ -301,15 +303,15 @@ with SessionLocal() as session:
         )
     ).count()
 
-    print(f"  📊 타자 데이터: {{batting_count:,}}건")
-    print(f"  📊 투수 데이터: {{pitching_count:,}}건")
-    print(f"  📊 총 데이터: {{batting_count + pitching_count:,}}건")
+    logger.info(f"  📊 타자 데이터: {{batting_count:,}}건")
+    logger.info(f"  📊 투수 데이터: {{pitching_count:,}}건")
+    logger.info(f"  📊 총 데이터: {{batting_count + pitching_count:,}}건")
 """,
     ]
 
     try:
         subprocess.run(check_cmd)
-    except Exception:
+    except Exception:  # noqa: BLE001
         logger.info("  ⚠️ 데이터베이스 확인 실패")
 
     return results
@@ -370,7 +372,7 @@ def main():
     except KeyboardInterrupt:
         logger.info("\n❌ 사용자가 중단했습니다.")
         sys.exit(130)
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         logger.info(f"\n❌ 예상치 못한 오류: {e}")
         sys.exit(1)
 

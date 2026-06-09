@@ -4,6 +4,10 @@ team_history 테이블 기반 외래키 제약조건 문제 해결
 같은 team_code를 여러 시대가 공유하는 문제 해결
 """
 
+
+import logging
+logger = logging.getLogger(__name__)
+
 import os
 
 import psycopg2
@@ -25,7 +29,7 @@ def analyze_team_history():
         conn.set_isolation_level(ISOLATION_LEVEL_AUTOCOMMIT)
         cursor = conn.cursor()
 
-        print("🔍 team_history 테이블 분석 중...")
+        logger.info("🔍 team_history 테이블 분석 중...")
 
         # 테이블 구조 확인
         cursor.execute("""
@@ -37,9 +41,9 @@ def analyze_team_history():
         """)
 
         columns = cursor.fetchall()
-        print(f"📊 team_history 테이블 컬럼: {len(columns)}개")
+        logger.info(f"📊 team_history 테이블 컬럼: {len(columns)}개")
         for col_name, data_type, nullable in columns:
-            print(f"  - {col_name}: {data_type} ({'NULL' if nullable == 'YES' else 'NOT NULL'})")
+            logger.info(f"  - {col_name}: {data_type} ({'NULL' if nullable == 'YES' else 'NOT NULL'})")
 
         print()
 
@@ -59,10 +63,10 @@ def analyze_team_history():
         """)
 
         duplicates = cursor.fetchall()
-        print(f"🔄 중복 team_code: {len(duplicates)}개")
+        logger.info(f"🔄 중복 team_code: {len(duplicates)}개")
         for team_code, count, teams, first_year, last_year in duplicates:
-            print(f"  - {team_code}: {count}개 팀 ({first_year}-{last_year})")
-            print(f"    → {teams}")
+            logger.info(f"  - {team_code}: {count}개 팀 ({first_year}-{last_year})")
+            logger.info(f"    → {teams}")
 
         print()
 
@@ -76,23 +80,23 @@ def analyze_team_history():
         """)
 
         all_codes = cursor.fetchall()
-        print(f"📋 전체 team_code: {len(all_codes)}개")
+        logger.info(f"📋 전체 team_code: {len(all_codes)}개")
         for team_code, count in all_codes:
             status = "🔄" if count > 1 else "✅"
-            print(f"  {status} {team_code} ({count}개)")
+            logger.info(f"  {status} {team_code} ({count}개)")
 
         return all_codes, duplicates
 
 
 def create_solution_options():
     """해결 방안 제시"""
-    print("\n🔧 해결 방안 옵션:")
-    print("=" * 50)
+    logger.info("\n🔧 해결 방안 옵션:")
+    logger.info("=" * 50)
 
-    print("\n📋 옵션 1: 외래키 제약조건 제거 (빠른 해결)")
-    print("장점: 즉시 해결, 기존 데이터 구조 유지")
-    print("단점: 데이터 무결성 검증 없음")
-    print("SQL:")
+    logger.info("\n📋 옵션 1: 외래키 제약조건 제거 (빠른 해결)")
+    logger.info("장점: 즉시 해결, 기존 데이터 구조 유지")
+    logger.info("단점: 데이터 무결성 검증 없음")
+    logger.info("SQL:")
     print("""
 -- 타자 테이블 외래키 제거
 ALTER TABLE public.player_season_batting
@@ -103,10 +107,10 @@ ALTER TABLE public.player_season_pitching
 DROP CONSTRAINT IF EXISTS fk_player_season_pitching_team;
 """)
 
-    print("\n📋 옵션 2: 외래키를 team_history.id로 변경")
-    print("장점: 정확한 시대별 팀 연결, 데이터 무결성 유지")
-    print("단점: 기존 team_code를 team_history_id로 변경 필요")
-    print("SQL:")
+    logger.info("\n📋 옵션 2: 외래키를 team_history.id로 변경")
+    logger.info("장점: 정확한 시대별 팀 연결, 데이터 무결성 유지")
+    logger.info("단점: 기존 team_code를 team_history_id로 변경 필요")
+    logger.info("SQL:")
     print("""
 -- 타자 테이블에 team_history_id 컬럼 추가
 ALTER TABLE public.player_season_batting
@@ -126,13 +130,13 @@ ADD CONSTRAINT fk_player_season_pitching_team_history
 FOREIGN KEY (team_history_id) REFERENCES team_history(id);
 """)
 
-    print("\n📋 옵션 3: teams 테이블에 모든 team_code 추가")
-    print("장점: 기존 구조 유지, 간단한 해결")
-    print("단점: 중복 코드 문제 해결 안됨")
+    logger.info("\n📋 옵션 3: teams 테이블에 모든 team_code 추가")
+    logger.info("장점: 기존 구조 유지, 간단한 해결")
+    logger.info("단점: 중복 코드 문제 해결 안됨")
 
-    print("\n📋 옵션 4: 외래키를 NULL 허용으로 변경")
-    print("장점: 일부 데이터는 검증, 문제 데이터는 허용")
-    print("단점: 불완전한 해결")
+    logger.info("\n📋 옵션 4: 외래키를 NULL 허용으로 변경")
+    logger.info("장점: 일부 데이터는 검증, 문제 데이터는 허용")
+    logger.info("단점: 불완전한 해결")
 
 
 def implement_option1():
@@ -141,31 +145,31 @@ def implement_option1():
         conn.set_isolation_level(ISOLATION_LEVEL_AUTOCOMMIT)
         cursor = conn.cursor()
 
-        print("\n🔧 옵션 1 실행: 외래키 제약조건 제거")
-        print("-" * 40)
+        logger.info("\n🔧 옵션 1 실행: 외래키 제약조건 제거")
+        logger.info("-" * 40)
 
         try:
             # 타자 테이블 외래키 제거
-            print("1️⃣ 타자 테이블 외래키 제거...")
+            logger.info("1️⃣ 타자 테이블 외래키 제거...")
             cursor.execute("""
                 ALTER TABLE public.player_season_batting
                 DROP CONSTRAINT IF EXISTS fk_player_season_batting_team;
             """)
-            print("   ✅ 타자 테이블 외래키 제거 완료")
+            logger.info("   ✅ 타자 테이블 외래키 제거 완료")
 
             # 투수 테이블 외래키 제거
-            print("2️⃣ 투수 테이블 외래키 제거...")
+            logger.info("2️⃣ 투수 테이블 외래키 제거...")
             cursor.execute("""
                 ALTER TABLE public.player_season_pitching
                 DROP CONSTRAINT IF EXISTS fk_player_season_pitching_team;
             """)
-            print("   ✅ 투수 테이블 외래키 제거 완료")
+            logger.info("   ✅ 투수 테이블 외래키 제거 완료")
 
-            print("\n✅ 모든 외래키 제약조건 제거 완료!")
-            print("💡 이제 ./venv/bin/python3 -m src.sync.supabase_sync 를 실행해보세요.")
+            logger.info("\n✅ 모든 외래키 제약조건 제거 완료!")
+            logger.info("💡 이제 ./venv/bin/python3 -m src.sync.supabase_sync 를 실행해보세요.")
 
         except Exception as e:
-            print(f"❌ 외래키 제거 실패: {e}")
+            logger.error(f"❌ 외래키 제거 실패: {e}")
             raise
 
 
@@ -175,8 +179,8 @@ def create_teams_from_history():
         conn.set_isolation_level(ISOLATION_LEVEL_AUTOCOMMIT)
         cursor = conn.cursor()
 
-        print("\n🔧 옵션 3 실행: team_history → teams 복사")
-        print("-" * 40)
+        logger.info("\n🔧 옵션 3 실행: team_history → teams 복사")
+        logger.info("-" * 40)
 
         try:
             # teams 테이블 존재 확인
@@ -190,11 +194,11 @@ def create_teams_from_history():
 
             teams_exists = cursor.fetchone()[0]
             if not teams_exists:
-                print("❌ teams 테이블이 존재하지 않습니다.")
+                logger.error("❌ teams 테이블이 존재하지 않습니다.")
                 return
 
             # team_history에서 고유 team_code들을 teams에 삽입
-            print("1️⃣ team_history에서 고유 team_code 추출 중...")
+            logger.info("1️⃣ team_history에서 고유 team_code 추출 중...")
             cursor.execute("""
                 INSERT INTO public.teams (
                     team_code, team_name, team_name_en, city,
@@ -217,20 +221,20 @@ def create_teams_from_history():
             """)
 
             inserted_count = cursor.rowcount
-            print(f"   ✅ {inserted_count}개 팀 코드 추가 완료")
+            logger.info(f"   ✅ {inserted_count}개 팀 코드 추가 완료")
 
-            print("\n✅ teams 테이블 업데이트 완료!")
-            print("💡 이제 ./venv/bin/python3 -m src.sync.supabase_sync 를 실행해보세요.")
+            logger.info("\n✅ teams 테이블 업데이트 완료!")
+            logger.info("💡 이제 ./venv/bin/python3 -m src.sync.supabase_sync 를 실행해보세요.")
 
         except Exception as e:
-            print(f"❌ teams 테이블 업데이트 실패: {e}")
+            logger.error(f"❌ teams 테이블 업데이트 실패: {e}")
             raise
 
 
 def main():
     try:
-        print("🚀 team_history 기반 외래키 문제 해결")
-        print("=" * 50)
+        logger.info("🚀 team_history 기반 외래키 문제 해결")
+        logger.info("=" * 50)
 
         # 1. 현재 상태 분석
         all_codes, duplicates = analyze_team_history()
@@ -239,10 +243,10 @@ def main():
         create_solution_options()
 
         # 3. 사용자 선택
-        print("\n❓ 어떤 해결 방안을 사용하시겠습니까?")
-        print("1: 외래키 제약조건 제거 (빠름)")
-        print("2: teams 테이블에 모든 team_code 추가")
-        print("3: 수동 SQL 실행 안내")
+        logger.info("\n❓ 어떤 해결 방안을 사용하시겠습니까?")
+        logger.info("1: 외래키 제약조건 제거 (빠름)")
+        logger.info("2: teams 테이블에 모든 team_code 추가")
+        logger.info("3: 수동 SQL 실행 안내")
 
         choice = input("선택 (1/2/3): ").strip()
 
@@ -251,16 +255,16 @@ def main():
         elif choice == "2":
             create_teams_from_history()
         elif choice == "3":
-            print("\n📝 수동 SQL 실행 방법:")
-            print("Supabase 대시보드 → SQL Editor에서 다음 중 하나 실행:")
-            print("\n-- 외래키 제거 (추천)")
-            print("ALTER TABLE player_season_batting DROP CONSTRAINT IF EXISTS fk_player_season_batting_team;")
-            print("ALTER TABLE player_season_pitching DROP CONSTRAINT IF EXISTS fk_player_season_pitching_team;")
+            logger.info("\n📝 수동 SQL 실행 방법:")
+            logger.info("Supabase 대시보드 → SQL Editor에서 다음 중 하나 실행:")
+            logger.info("\n-- 외래키 제거 (추천)")
+            logger.info("ALTER TABLE player_season_batting DROP CONSTRAINT IF EXISTS fk_player_season_batting_team;")
+            logger.info("ALTER TABLE player_season_pitching DROP CONSTRAINT IF EXISTS fk_player_season_pitching_team;")
         else:
-            print("❌ 잘못된 선택입니다.")
+            logger.error("❌ 잘못된 선택입니다.")
 
     except Exception as e:
-        print(f"\n❌ 오류 발생: {e}")
+        logger.error(f"\n❌ 오류 발생: {e}")
 
 
 if __name__ == "__main__":

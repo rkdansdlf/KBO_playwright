@@ -13,6 +13,11 @@ Evidence status mapping:
 
 from __future__ import annotations
 
+import logging
+
+logger = logging.getLogger(__name__)
+
+
 import argparse
 import csv
 import html
@@ -244,7 +249,7 @@ def collect_schedule_status_evidence(
                     series_ids=series_ids,
                 )
                 all_rows.extend(rows)
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001
                 error_months.append(f"{year}-{int(month):02d}: {exc}")
 
     evidence_by_game_id: dict[str, ScheduleStatusRow] = {}
@@ -417,16 +422,16 @@ def main() -> None:
         evidence_csv=Path(args.evidence_csv),
         unmatched_csv=Path(args.unmatched_csv),
     )
-    print("✅ Schedule status evidence collection completed")
-    print(f"   unresolved_games: {result['unresolved_games']}")
-    print(f"   evidence_rows: {result['evidence_rows']}")
-    print(f"   unmatched_rows: {result['unmatched_rows']}")
-    print(f"   evidence_csv: {result['evidence_csv']}")
-    print(f"   unmatched_csv: {result['unmatched_csv']}")
+    logger.info("✅ Schedule status evidence collection completed")
+    logger.info(f"   unresolved_games: {result['unresolved_games']}")
+    logger.info(f"   evidence_rows: {result['evidence_rows']}")
+    logger.info(f"   unmatched_rows: {result['unmatched_rows']}")
+    logger.info(f"   evidence_csv: {result['evidence_csv']}")
+    logger.info(f"   unmatched_csv: {result['unmatched_csv']}")
     if result["error_months"]:
-        print("   warnings:")
+        logger.warning("   warnings:")
         for msg in result["error_months"]:
-            print(f"   - {msg}")
+            logger.info(f"   - {msg}")
 
 
 if __name__ == "__main__":

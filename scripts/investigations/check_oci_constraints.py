@@ -1,3 +1,7 @@
+import logging
+
+logger = logging.getLogger(__name__)
+
 import os
 
 from sqlalchemy import create_engine, text
@@ -6,7 +10,7 @@ from sqlalchemy import create_engine, text
 def main():
     engine = create_engine(os.environ["OCI_DB_URL"])
     with engine.connect() as conn:
-        print("Unique Constraints:")
+        logger.info("Unique Constraints:")
         res = conn.execute(
             text("""
             SELECT conname, pg_get_constraintdef(oid)
@@ -15,9 +19,9 @@ def main():
         """)
         ).fetchall()
         for row in res:
-            print(row)
+            logger.info(row)
 
-        print("\nPrimary Key:")
+        logger.info("\nPrimary Key:")
         res = conn.execute(
             text("""
             SELECT conname, pg_get_constraintdef(oid)
@@ -26,7 +30,7 @@ def main():
         """)
         ).fetchall()
         for row in res:
-            print(row)
+            logger.info(row)
 
 
 if __name__ == "__main__":

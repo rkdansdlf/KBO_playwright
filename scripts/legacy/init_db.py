@@ -2,9 +2,13 @@
 Initialize database (create all tables)
 """
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 from src.db.engine import init_db
 
 if __name__ == "__main__":
-    print("🔧 Initializing database...")
+    logger.info("🔧 Initializing database...")
     init_db()
-    print("✅ Database initialization complete!")
+    logger.info("✅ Database initialization complete!")

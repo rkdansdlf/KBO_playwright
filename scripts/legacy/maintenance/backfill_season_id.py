@@ -1,3 +1,7 @@
+import logging
+
+logger = logging.getLogger(__name__)
+
 from sqlalchemy import text
 from sqlalchemy.orm import sessionmaker
 
@@ -9,7 +13,7 @@ def backfill_season_id(year: int):
     session = Session()
 
     try:
-        print(f"🔄 Backfilling season_id for year {year}...")
+        logger.info(f"🔄 Backfilling season_id for year {year}...")
 
         # Target season_id format: e.g. 2001 -> 20010
         # NOTE: This assumes Regular Season (0). If post-season, might be different.
@@ -29,11 +33,11 @@ def backfill_season_id(year: int):
         result = session.execute(stmt, {"sid": target_season_id})
         session.commit()
 
-        print(f"✅ Updated {result.rowcount} games to season_id={target_season_id}")
+        logger.info(f"✅ Updated {result.rowcount} games to season_id={target_season_id}")
 
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         session.rollback()
-        print(f"❌ Error: {e}")
+        logger.error(f"❌ Error: {e}")
     finally:
         session.close()
 

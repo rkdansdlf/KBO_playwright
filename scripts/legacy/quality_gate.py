@@ -14,6 +14,11 @@ sessions that should not create artifact directories.
 
 from __future__ import annotations
 
+import logging
+
+logger = logging.getLogger(__name__)
+
+
 import argparse
 import csv
 import json
@@ -102,7 +107,7 @@ def collect_metrics(session_or_conn) -> dict[str, int]:
     has_game_status = True
     try:
         session_or_conn.execute(text("SELECT game_status FROM game LIMIT 1")).fetchall()
-    except BaseException:
+    except BaseException:  # noqa: BLE001
         has_game_status = False
 
     metrics["game_status_column_present"] = int(has_game_status)
@@ -370,7 +375,7 @@ def main() -> None:
     args = parser.parse_args()
 
     if args.skip_oci and args.oci_only:
-        print("Error: cannot use both --skip-oci and --oci-only")
+        logger.error("Error: cannot use both --skip-oci and --oci-only")
         sys.exit(1)
 
     load_dotenv()
@@ -385,20 +390,20 @@ def main() -> None:
         strict_zero=args.strict_zero,
     )
 
-    print("✅ Quality gate finished")
+    logger.info("✅ Quality gate finished")
     if result["artifacts_written"]:
-        print(f"   local snapshot: {result['local_snapshot']}")
-        print(f"   oci snapshot: {result['oci_snapshot']}")
-        print(f"   missing-set diff: {result['set_diff_csv']}")
+        logger.info(f"   local snapshot: {result['local_snapshot']}")
+        logger.info(f"   oci snapshot: {result['oci_snapshot']}")
+        logger.info(f"   missing-set diff: {result['set_diff_csv']}")
     else:
-        print("   artifacts: disabled (--no-write)")
+        logger.info("   artifacts: disabled (--no-write)")
     if result["ok"]:
-        print("   status: PASS")
+        logger.info("   status: PASS")
         return
 
-    print("   status: FAIL")
+    logger.info("   status: FAIL")
     for failure in result["failures"]:
-        print(f"   - {failure}")
+        logger.info(f"   - {failure}")
     sys.exit(1)
 
 

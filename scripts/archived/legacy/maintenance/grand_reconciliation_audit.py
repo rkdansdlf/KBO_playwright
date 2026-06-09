@@ -41,7 +41,7 @@ def get_stats(engine, db_type="local"):
         try:
             count = conn.execute(text(f"SELECT COUNT(*) FROM {table}")).fetchone()[0]
             stats["tables"][table] = count
-        except Exception:
+        except Exception:  # noqa: BLE001
             stats["tables"][table] = -1
 
     # Game distribution

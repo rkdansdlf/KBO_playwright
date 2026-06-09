@@ -16,7 +16,7 @@ import argparse
 import logging
 import sys
 from collections.abc import Sequence
-from datetime import date as date_type
+from datetime import datetime
 
 from sqlalchemy import text
 
@@ -38,7 +38,7 @@ logger = logging.getLogger(__name__)
 
 
 def _game_ids_for_date(session, target_date: str) -> list[str]:
-    target = date_type.strptime(target_date, "%Y%m%d")
+    target = datetime.strptime(target_date, "%Y%m%d").date()
     return [
         row[0]
         for row in session.query(Game.game_id)

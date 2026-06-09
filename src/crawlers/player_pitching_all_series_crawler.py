@@ -37,7 +37,7 @@ from src.repositories.player_season_pitching_repository import save_pitching_sta
 from src.utils.fallback_monitor import FallbackMonitor
 from src.utils.player_season_stat_validation import filter_valid_season_stat_payloads
 from src.utils.player_stats_helpers import extract_rows_fast
-from src.utils.playwright_retry import retry_wait_for_selector
+from src.utils.playwright_retry import LONG_TIMEOUT, NAV_TIMEOUT, SEL_TIMEOUT, retry_wait_for_selector
 from src.utils.request_policy import RequestPolicy
 from src.utils.team_codes import resolve_team_code
 from src.utils.team_mapping import get_team_mapping_for_year
@@ -227,7 +227,7 @@ def go_to_next_page(page: Page, current_page: int, policy: RequestPolicy | None 
             desc = f"{next_page}페이지로 이동 (btnNo{relative})"
 
         # 버튼 존재 여부 및 상태 확인 (reload+retry 포함)
-        if not retry_wait_for_selector(page, selector, timeout=15000, state="visible"):
+        if not retry_wait_for_selector(page, selector, timeout=SEL_TIMEOUT, state="visible"):
             return False
         btn = page.query_selector(selector)
         if not btn or btn.get_attribute("disabled") or "disabled" in (btn.get_attribute("class") or ""):
@@ -237,8 +237,8 @@ def go_to_next_page(page: Page, current_page: int, policy: RequestPolicy | None 
             policy.delay()
 
         # 직접 클릭 시도
-        page.click(selector, timeout=15000)
-        page.wait_for_load_state("networkidle", timeout=30000)
+        page.click(selector, timeout=SEL_TIMEOUT)
+        page.wait_for_load_state("networkidle", timeout=NAV_TIMEOUT)
         logger.info(f"➡️ {desc}")
 
         # 페이지 이동 후 테이블 대기
@@ -258,13 +258,13 @@ def apply_sort(
             # Prioritize actual DOM click (safer postback triggers)
             selector = f"a[href=\"javascript:sort('{sort_code}');\"]"
             try:
-                page.wait_for_selector(selector, timeout=15000)
+                page.wait_for_selector(selector, timeout=SEL_TIMEOUT)
                 anchor = page.query_selector(selector)
                 if anchor:
                     if policy:
                         policy.delay()
                     anchor.click()
-                    page.wait_for_load_state("networkidle", timeout=60000)
+                    page.wait_for_load_state("networkidle", timeout=LONG_TIMEOUT)
                     if policy:
                         policy.delay()
                     return True
@@ -277,7 +277,7 @@ def apply_sort(
                 if policy:
                     policy.delay()
                 page.evaluate(f"sort('{sort_code}')")
-                page.wait_for_load_state("networkidle", timeout=60000)
+                page.wait_for_load_state("networkidle", timeout=LONG_TIMEOUT)
                 if policy:
                     policy.delay()
                 return True
@@ -291,7 +291,7 @@ def apply_sort(
             label = normalize_header(anchor.text_content())
             if label == header_label:
                 anchor.click()
-                page.wait_for_load_state("networkidle", timeout=60000)
+                page.wait_for_load_state("networkidle", timeout=LONG_TIMEOUT)
                 page.wait_for_timeout(800)
                 return True
 
@@ -402,7 +402,7 @@ def parse_basic1_page(
 ) -> int:
     # Wait for the table to be visible (more resilient than specific header th)
     try:
-        page.wait_for_selector("table.tData01", timeout=15000)
+        page.wait_for_selector("table.tData01", timeout=SEL_TIMEOUT)
     except Exception:  # noqa: BLE001
         logger.warning("기록 테이블을 찾을 수 없습니다. (타임아웃)")
         content = page.content()
@@ -590,7 +590,7 @@ def parse_basic2_page(
     sort_key: str,
     max_players: int | None = None,
 ) -> int:
-    if not retry_wait_for_selector(page, "table.tData01 thead th", timeout=30000):
+    if not retry_wait_for_selector(page, "table.tData01 thead th", timeout=NAV_TIMEOUT):
         logger.warning("⚠️  Basic2 테이블 헤더 파싱 실패 (타임아웃)")
         return 0
 
@@ -700,7 +700,7 @@ def setup_pitcher_page(page: Page, url: str, year: int, series_value: str, polic
 
     logger.info(f"   🌐 Navigating to {url}...")
     try:
-        page.goto(url, wait_until="networkidle", timeout=60000)
+        page.goto(url, wait_until="networkidle", timeout=LONG_TIMEOUT)
     except Exception:
         logger.exception(f"   ❌ {url} 페이지 로딩 실패")
         return False
@@ -714,13 +714,13 @@ def setup_pitcher_page(page: Page, url: str, year: int, series_value: str, polic
 
         logger.info(f"   ⚙️  Selecting Season {year}...")
         page.select_option(season_selector, str(year))
-        page.wait_for_load_state("networkidle", timeout=30000)
+        page.wait_for_load_state("networkidle", timeout=NAV_TIMEOUT)
         if policy:
             policy.delay()
 
         logger.info(f"   ⚙️  Selecting Series {series_value}...")
         page.select_option(series_selector, value=series_value)
-        page.wait_for_load_state("networkidle", timeout=30000)
+        page.wait_for_load_state("networkidle", timeout=NAV_TIMEOUT)
         if policy:
             policy.delay()
 
@@ -898,7 +898,7 @@ def crawl_pitcher_series(
                         'select[name="ctl00$ctl00$ctl00$cphContents$cphContents$cphContents$ddlTeam$ddlTeam"]',
                         tm["value"],
                     )
-                    page.wait_for_load_state("networkidle", timeout=60000)
+                    page.wait_for_load_state("networkidle", timeout=LONG_TIMEOUT)
                     policy.delay()
                 except Exception:
                     logger.exception(f"⚠️ 팀 선택 실패 ({tm['text']})")

@@ -13,6 +13,7 @@ from playwright.async_api import Page
 
 from src.utils.compliance import compliance
 from src.utils.playwright_pool import AsyncPlaywrightPool
+from src.utils.playwright_retry import LONG_TIMEOUT
 from src.utils.throttle import throttle
 
 logger = logging.getLogger(__name__)
@@ -88,7 +89,7 @@ class RetiredPlayerDetailCrawler:
 
         # One policy wait is enough before navigation.
         await self._wait()
-        await page.goto(url, wait_until="domcontentloaded", timeout=60000)
+        await page.goto(url, wait_until="domcontentloaded", timeout=LONG_TIMEOUT)
 
         profile_text = await self._extract_profile_text(page)
         photo_url = await self._extract_photo_url(page)

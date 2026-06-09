@@ -19,6 +19,7 @@ from src.models.fa_contract import FAContract  # noqa: E402
 from src.models.player import PlayerBasic, PlayerMovement  # noqa: E402
 from src.models.team import Team  # noqa: E402
 from src.utils.playwright_blocking import install_async_resource_blocking  # noqa: E402
+from src.utils.playwright_retry import LONG_TIMEOUT, NAV_TIMEOUT
 from src.utils.team_codes import resolve_team_code  # noqa: E402
 
 
@@ -109,11 +110,11 @@ class FACrawler:
 
             try:
                 logger.info(f"🌍 Navigating to {self.url}...")
-                await page.goto(self.url, wait_until="domcontentloaded", timeout=60000)
+                await page.goto(self.url, wait_until="domcontentloaded", timeout=LONG_TIMEOUT)
 
                 # Wait for table or specific content wrapper
                 try:
-                    await page.wait_for_selector(".wiki-table-wrap table, #content .table, table", timeout=30000)
+                    await page.wait_for_selector(".wiki-table-wrap table, #content .table, table", timeout=NAV_TIMEOUT)
                 except TimeoutError:
                     logger.exception("⚠️ Timeout waiting for table selector. Exploring content...")
 

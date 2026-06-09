@@ -169,17 +169,17 @@ class BenchSuite:
 
     def print_report(self):
         if self.title:
-            print(f"\n{'=' * 60}")
-            print(f"  {self.title}")
-            print(f"{'=' * 60}")
-        print(f"  {'Label':<50} {'Rows':>8} {'Batch':>7} {'Time(s)':>10} {'Rows/s':>10}")
-        print(f"  {'-' * 50} {'-' * 8} {'-' * 7} {'-' * 10} {'-' * 10}")
+            logger.info(f"\n{'=' * 60}")
+            logger.info(f"  {self.title}")
+            logger.info(f"{'=' * 60}")
+        logger.info(f"  {'Label':<50} {'Rows':>8} {'Batch':>7} {'Time(s)':>10} {'Rows/s':>10}")
+        logger.info(f"  {'-' * 50} {'-' * 8} {'-' * 7} {'-' * 10} {'-' * 10}")
         for r in self.results:
             rows_s = f"{r.rows / r.elapsed:>10.0f}" if r.elapsed > 0 else "         -"
             label = r.label
             if r.note:
                 label += f" ({r.note})"
-            print(f"  {label:<50} {r.rows:>8} {r.batch_size:>7} {r.elapsed:>10.3f} {rows_s}")
+            logger.info(f"  {label:<50} {r.rows:>8} {r.batch_size:>7} {r.elapsed:>10.3f} {rows_s}")
         print()
 
 
@@ -263,7 +263,7 @@ def bench_dirty_detection(quick: bool = False) -> BenchSuite:
             start = time.perf_counter()
             try:
                 _detect_dirty(src_session, tgt_session, game_ids=game_ids)
-            except Exception as e:
+            except Exception as e:  # noqa: BLE001
                 suite.add(f"n={n}", 0, rows=n, note=f"ERROR: {e}")
                 continue
             elapsed = time.perf_counter() - start
@@ -320,7 +320,7 @@ def bench_copy_engine(oci_url: str, quick: bool = False) -> BenchSuite:
                 start = time.perf_counter()
                 try:
                     syncer._bulk_copy_upsert("bench_table", records, ["name"])
-                except Exception as e:
+                except Exception as e:  # noqa: BLE001
                     elapsed = time.perf_counter() - start
                     suite.add(f"n={n}", elapsed, rows=n, note=f"ERROR: {e}")
                     continue
@@ -348,12 +348,12 @@ def main():
 
     run_all = not (args.table_sweep or args.copy_sweep or args.dirty_sweep or args.connection_sweep)
 
-    print(f"\n{'#' * 60}")
-    print("  OCI Sync Benchmark")
-    print(f"  Mode: {'quick' if args.quick else 'full'}")
-    print("  Target: SQLite \u2192 SQLite" + (f" \u2192 {args.oci_url[:50]}..." if args.oci_url else ""))
-    print(f"  Timestamp: {datetime.now().isoformat()}")
-    print(f"{'#' * 60}")
+    logger.info(f"\n{'#' * 60}")
+    logger.info("  OCI Sync Benchmark")
+    logger.info(f"  Mode: {'quick' if args.quick else 'full'}")
+    logger.info("  Target: SQLite \u2192 SQLite" + (f" \u2192 {args.oci_url[:50]}..." if args.oci_url else ""))
+    logger.info(f"  Timestamp: {datetime.now().isoformat()}")
+    logger.info(f"{'#' * 60}")
 
     if run_all or args.table_sweep:
         bench_table_sweep(quick=args.quick).print_report()
@@ -368,9 +368,9 @@ def main():
         if args.oci_url:
             bench_copy_engine(args.oci_url, quick=args.quick).print_report()
         else:
-            print("\n  [SKIP] COPY engine benchmark requires --oci-url")
+            logger.info("\n  [SKIP] COPY engine benchmark requires --oci-url")
 
-    print("Done.\n")
+    logger.info("Done.\n")
 
 
 if __name__ == "__main__":

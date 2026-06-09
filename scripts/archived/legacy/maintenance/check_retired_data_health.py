@@ -40,7 +40,7 @@ def check_health():
         try:
             with oci_engine.connect() as conn:
                 oci_count = conn.execute(text(f"SELECT COUNT(*) FROM {table_name}")).scalar()
-        except Exception:
+        except Exception:  # noqa: BLE001
             oci_count = "Error"
 
         print(f"{desc:<22} | Local: {local_count:<6} | OCI: {oci_count:<6}")

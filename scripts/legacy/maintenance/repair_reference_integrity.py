@@ -3,6 +3,11 @@
 
 from __future__ import annotations
 
+import logging
+
+logger = logging.getLogger(__name__)
+
+
 import argparse
 import csv
 import os
@@ -433,7 +438,7 @@ def main() -> None:
         f"[{mode}] actions={result['actions']} applied={result['applied']} "
         f"dry_run={result['dry_run']} skipped={result['skipped']}"
     )
-    print(f"report_csv={result['report_csv']}")
+    logger.info(f"report_csv={result['report_csv']}")
 
 
 if __name__ == "__main__":

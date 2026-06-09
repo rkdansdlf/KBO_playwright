@@ -98,10 +98,10 @@ async def backfill(limit: int, delay: float, ids: list[str] | None = None):
                             education_or_career_path=profile.get("education_path") or [],
                         )
                         detailed_repo.upsert_player_profile(str(p.player_id), parsed)
-                    except Exception as repo_err:
+                    except Exception as repo_err:  # noqa: BLE001
                         logger.warning("  ⚠️ Detailed player sync warning: %s", repo_err)
 
-                    logger.info("  ✅ Updated: photo=%s, salary=%s", profile['photo_url'], profile['salary_original'])
+                    logger.info("  ✅ Updated: photo=%s, salary=%s", profile["photo_url"], profile["salary_original"])
                     success_count += 1
                 else:
                     logger.warning("  ⚠️ No profile found for %s. Marking as NOT_FOUND.", p.player_id)
@@ -110,7 +110,7 @@ async def backfill(limit: int, delay: float, ids: list[str] | None = None):
                         [{"player_id": p.player_id, "name": p.name, "photo_url": "NOT_FOUND", "status": "NOT_FOUND"}]
                     )
                     fail_count += 1
-            except Exception as e:
+            except Exception as e:  # noqa: BLE001
                 logger.error("  ❌ Error processing %s: %s", p.player_id, e)
                 fail_count += 1
 

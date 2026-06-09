@@ -91,7 +91,7 @@ def repair_direct(conn, table, season_col, team_col, dry_run=True):
                     res = conn.execute(delete_query, {"season": season, "current": current_code})
                     print(f"      🗑️ Deleted {res.rowcount} duplicate rows.")
                     total_repaired += res.rowcount
-                except Exception as e:
+                except Exception as e:  # noqa: BLE001
                     conn.execute(text("ROLLBACK TO SAVEPOINT repair_row"))
                     print(f"      ❌ Failed update {season} {current_code}->{correct_code}: {e}")
             else:
@@ -137,7 +137,7 @@ def repair_by_date(conn, table, date_col, team_col, dry_run=True, is_sqlite=Fals
                     res = conn.execute(delete_query, {"year": year, "current": current_code})
                     print(f"      🗑️ Deleted {res.rowcount} duplicate rows.")
                     total_repaired += res.rowcount
-                except Exception as e:
+                except Exception as e:  # noqa: BLE001
                     conn.execute(text("ROLLBACK TO SAVEPOINT repair_row"))
                     print(f"      ❌ Failed update {year} {current_code}->{correct_code}: {e}")
             else:
@@ -179,7 +179,7 @@ def repair_by_game_id(conn, table, id_col, team_col, dry_run=True, is_sqlite=Fal
                     delete_query = text(f"DELETE FROM {table} WHERE {year_extract} = :year AND {team_col} = :current")
                     res = conn.execute(delete_query, {"year": year, "current": current_code})
                     print(f"      🗑️ Deleted {res.rowcount} problematic rows.")
-                except Exception as e:
+                except Exception as e:  # noqa: BLE001
                     conn.execute(text("ROLLBACK TO SAVEPOINT repair_row"))
                     print(f"      ❌ Failed update {year} {current_code}->{correct_code}: {e}")
             else:
@@ -262,7 +262,7 @@ def main():
                         repaired_count += repair_by_game_id(conn, table, icol, tcol, args.dry_run, is_sqlite)
 
                 trans.commit()
-            except Exception as e:
+            except Exception as e:  # noqa: BLE001
                 trans.rollback()
                 print(f"💥 Failed to process {_mask_url(url)}: {e}")
 

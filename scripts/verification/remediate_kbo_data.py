@@ -26,6 +26,8 @@ from src.services.game_collection_service import crawl_and_save_game_details  # 
 from src.services.player_id_resolver import PlayerIdResolver  # noqa: E402
 
 logger = logging.getLogger(__name__)
+
+
 def get_invalid_games_for_year(year: int) -> list[dict[str, str]]:
     """
     Identifies all completed games for a year that are logically inconsistent

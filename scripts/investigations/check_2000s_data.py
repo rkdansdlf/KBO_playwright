@@ -1,3 +1,7 @@
+import logging
+
+logger = logging.getLogger(__name__)
+
 import asyncio
 import os
 
@@ -12,32 +16,32 @@ async def check_historical_data(game_id, game_date):
 
         # Test Review section
         url = f"https://www.koreabaseball.com/Schedule/GameCenter/Main.aspx?gameDate={game_date}&gameId={game_id}&section=REVIEW"
-        print(f"[*] Testing {game_id} ({game_date}) - {url}")
+        logger.info(f"[*] Testing {game_id} ({game_date}) - {url}")
 
         try:
             await page.goto(url, wait_until="networkidle", timeout=60000)
             await page.wait_for_timeout(3000)
 
             content = await page.content()
-            print(f"   - Final URL: {page.url}")
-            print(f"   - Content Length: {len(content)}")
+            logger.info(f"   - Final URL: {page.url}")
+            logger.info(f"   - Content Length: {len(content)}")
 
             # Check for box score tables
             hitter_tables = await page.query_selector_all("table[id*='Hitter']")
             pitcher_tables = await page.query_selector_all("table[id*='Pitcher']")
-            print(f"   - Hitter Tables: {len(hitter_tables)}, Pitcher Tables: {len(pitcher_tables)}")
+            logger.info(f"   - Hitter Tables: {len(hitter_tables)}, Pitcher Tables: {len(pitcher_tables)}")
 
             if len(hitter_tables) > 0:
                 header = await hitter_tables[0].query_selector("thead tr")
                 if header:
-                    print(f"   - Hitter Header: {await header.inner_text()}")
+                    logger.info(f"   - Hitter Header: {await header.inner_text()}")
 
             # Take screenshot
             os.makedirs("debug_shots/historical", exist_ok=True)
             await page.screenshot(path=f"debug_shots/historical/{game_id}.png")
 
-        except Exception as e:
-            print(f"   [X] Error: {e}")
+        except Exception as e:  # noqa: BLE001
+            logger.error(f"   [X] Error: {e}")
         finally:
             await browser.close()
 

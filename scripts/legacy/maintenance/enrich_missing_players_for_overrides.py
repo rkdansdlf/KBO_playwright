@@ -10,6 +10,11 @@ For missing player IDs:
 
 from __future__ import annotations
 
+import logging
+
+logger = logging.getLogger(__name__)
+
+
 import argparse
 import csv
 import re
@@ -87,7 +92,7 @@ def extract_player_id_from_href(href: str) -> int | None:
         raw = normalize_text(query.get("playerId", [None])[0])
         if raw and raw.isdigit():
             return int(raw)
-    except Exception:
+    except Exception:  # noqa: BLE001
         return None
     match = re.search(r"playerId=(\d+)", href)
     if match:
@@ -178,7 +183,7 @@ def fetch_from_profile(client: httpx.Client, player_id: int) -> dict[str, Any]:
             response = client.get(url, timeout=30.0)
             if response.status_code != 200:
                 continue
-        except Exception:
+        except Exception:  # noqa: BLE001
             continue
         soup = BeautifulSoup(response.text, "lxml")
         text_blob = " ".join(soup.stripped_strings)
@@ -300,14 +305,14 @@ def enrich_missing_players(
             for candidate_name in sorted(group.names):
                 try:
                     search_data = fetch_from_search(client, candidate_name, player_id)
-                except Exception:
+                except Exception:  # noqa: BLE001
                     search_data = {}
                 if search_data:
                     break
 
             try:
                 profile_data = fetch_from_profile(client, player_id)
-            except Exception:
+            except Exception:  # noqa: BLE001
                 profile_data = {}
 
             payload = choose_best_player_payload(group, search_data, profile_data)
@@ -372,16 +377,16 @@ def main() -> None:
         overrides_csv=Path(args.overrides_csv),
         report_dir=Path(args.report_dir),
     )
-    print("✅ Player override enrichment completed")
-    print(f"   total_override_ids: {result['total_override_ids']}")
-    print(f"   already_present: {result['already_present']}")
-    print(f"   missing_before: {result['missing_before']}")
-    print(f"   prepared_payloads: {result['prepared_payloads']}")
-    print(f"   upserted: {result['upserted']}")
-    print(f"   remaining_missing: {result['remaining_missing']}")
+    logger.info("✅ Player override enrichment completed")
+    logger.info(f"   total_override_ids: {result['total_override_ids']}")
+    logger.info(f"   already_present: {result['already_present']}")
+    logger.info(f"   missing_before: {result['missing_before']}")
+    logger.info(f"   prepared_payloads: {result['prepared_payloads']}")
+    logger.info(f"   upserted: {result['upserted']}")
+    logger.info(f"   remaining_missing: {result['remaining_missing']}")
     if result["remaining_missing_ids"]:
-        print(f"   remaining_missing_ids: {','.join(str(x) for x in result['remaining_missing_ids'])}")
-    print(f"   report_csv: {result['report_csv']}")
+        logger.info(f"   remaining_missing_ids: {','.join(str(x) for x in result['remaining_missing_ids'])}")
+    logger.info(f"   report_csv: {result['report_csv']}")
 
 
 if __name__ == "__main__":
