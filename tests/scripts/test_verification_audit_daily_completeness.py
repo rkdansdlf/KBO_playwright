@@ -5,6 +5,7 @@ from unittest.mock import MagicMock, patch
 from scripts.verification.audit_daily_completeness import (
     _coerce_date,
     _format_scope,
+    _has_required_home_innings,
     _parse_statuses,
     audit_completeness,
     main,
@@ -47,6 +48,14 @@ class TestParseStatuses:
     def test_custom(self):
         result = _parse_statuses("LIVE, FINAL", include_incomplete=False)
         assert "LIVE" in result
+
+
+class TestRequiredHomeInnings:
+    def test_home_win_allows_eight_home_innings(self):
+        assert _has_required_home_innings(home_score=5, away_score=2, inning_home_cnt=8)
+
+    def test_home_loss_requires_nine_home_innings(self):
+        assert not _has_required_home_innings(home_score=2, away_score=5, inning_home_cnt=8)
 
 
 class TestFormatScope:
@@ -198,6 +207,41 @@ class TestAuditCompleteness:
             "sqlite:///test",
             7,
             target_date=date(2025, 4, 7),
+            statuses=["COMPLETED"],
+            strict=True,
+        )
+        assert result == 0
+
+    @patch("scripts.verification.audit_daily_completeness.create_engine")
+    def test_home_win_with_eight_home_innings_passes_strict(self, mock_create_engine):
+        mock_conn = MagicMock()
+        mock_engine = MagicMock()
+        mock_engine.connect.return_value.__enter__.return_value = mock_conn
+        mock_create_engine.return_value = mock_engine
+        mock_conn.execute.return_value.fetchall.return_value = [
+            (
+                "G1",
+                "2025-04-08",
+                5,
+                2,
+                1,
+                9,
+                8,
+                9,
+                9,
+                10,
+                10,
+                3,
+                3,
+                0,
+                20,
+            ),
+        ]
+
+        result = audit_completeness(
+            "sqlite:///test",
+            7,
+            target_date=date(2025, 4, 8),
             statuses=["COMPLETED"],
             strict=True,
         )
