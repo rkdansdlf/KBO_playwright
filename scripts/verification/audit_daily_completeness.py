@@ -33,6 +33,12 @@ logger = logging.getLogger(__name__)
 _REQUIRED_INNINGS = 9
 
 
+def _has_required_home_innings(home_score: int | None, away_score: int | None, inning_home_cnt: int) -> bool:
+    if home_score is not None and away_score is not None and home_score > away_score:
+        return inning_home_cnt >= _REQUIRED_INNINGS - 1
+    return inning_home_cnt >= _REQUIRED_INNINGS
+
+
 def _parse_statuses(raw: str | None, include_incomplete: bool) -> list[str]:
     statuses: list[str] = []
     for token in (raw or "").split(","):
@@ -188,7 +194,7 @@ def audit_completeness(
                         missing.append("metadata")
                     if inning_away_cnt < _REQUIRED_INNINGS:
                         missing.append("away_inning_scores")
-                    if inning_home_cnt < _REQUIRED_INNINGS:
+                    if not _has_required_home_innings(home_score, away_score, inning_home_cnt):
                         missing.append("home_inning_scores")
                     if lineup_away_cnt == 0:
                         missing.append("away_lineups")
