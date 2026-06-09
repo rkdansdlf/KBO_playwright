@@ -37,7 +37,10 @@ def _is_sqlite(url: str) -> bool:
 def create_engine_for_url(url: str, *, disable_sqlite_wal: bool = False) -> Engine:
     if _is_sqlite(url):
         engine = create_engine(
-            url, connect_args={"check_same_thread": False, "timeout": 120}, pool_pre_ping=True, echo=False,
+            url,
+            connect_args={"check_same_thread": False, "timeout": 120},
+            pool_pre_ping=True,
+            echo=False,
         )
 
         @event.listens_for(engine, "connect")
@@ -311,6 +314,7 @@ def _migrate_game_summary_table(conn) -> None:
 
 def init_db() -> None:
     # Import all models to ensure they are registered in Base.metadata
+    import src.models  # noqa: F401
     from src.models.base import Base
 
     Base.metadata.create_all(bind=Engine)
