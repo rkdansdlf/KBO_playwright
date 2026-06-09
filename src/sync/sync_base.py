@@ -854,7 +854,9 @@ class OCISyncBase:
                     synced += len(records)
                     logger.info("   Synced %s/%s rows via COPY...", synced, total_count)
                 except Exception as batch_err:
-                    logger.warning("Batch COPY failed for %s, falling back to row-by-row: %s", model.__tablename__, batch_err)
+                    logger.warning(
+                        "Batch COPY failed for %s, falling back to row-by-row: %s", model.__tablename__, batch_err
+                    )
                     for record in records:
                         try:
                             self._bulk_copy_upsert(

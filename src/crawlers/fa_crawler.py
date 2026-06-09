@@ -397,7 +397,9 @@ class FACrawler:
             if not team_code:
                 if item.get("type") == "transfer" and not item.get("new_team"):
                     logger.warning(
-                        "   ⚠️ Skipping record for %s (%s): No valid team (likely overseas split).", name, year,
+                        "   ⚠️ Skipping record for %s (%s): No valid team (likely overseas split).",
+                        name,
+                        year,
                     )
                     continue
 

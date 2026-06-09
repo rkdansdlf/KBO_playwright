@@ -114,7 +114,12 @@ class StatsSyncMixin:
                 for i, row in enumerate(pitcher_rows):
                     logger.info("  %s. player_id: %s, season: %s", i + 1, row[0], row[1])
                     logger.info(
-                        "     게임수: %s, 승패: %s-%s, ERA: %s, 이닝: %s", row[2], row[3], row[4], row[5], row[6],
+                        "     게임수: %s, 승패: %s-%s, ERA: %s, 이닝: %s",
+                        row[2],
+                        row[3],
+                        row[4],
+                        row[5],
+                        row[6],
                     )
 
             # 타자 데이터 샘플

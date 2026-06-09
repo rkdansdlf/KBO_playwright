@@ -1310,7 +1310,9 @@ async def run_update(
                 )
             SlackWebhookClient.send_alert(msg, blocks=blocks)
             logger.info(
-                "   ✅ Sent PBP recovery summary to Slack (Success: %s, Failed: %s)", success_count, failed_count,
+                "   ✅ Sent PBP recovery summary to Slack (Success: %s, Failed: %s)",
+                success_count,
+                failed_count,
             )
         except Exception:
             logger.exception("   ❌ Error sending PBP recovery summary")
