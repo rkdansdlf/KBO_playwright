@@ -69,7 +69,7 @@ class GameMvpCrawler:
                         "reason": title[:300],
                         "award_source": "NAVER",
                     }
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             logger.warning(f"Error searching MVP for game {game_id}: {e}", exc_info=True)
         finally:
             client.close()
@@ -107,7 +107,7 @@ class GameMvpCrawler:
                             "award_source": "NAVER",
                         }
                     )
-            except Exception as e:
+            except Exception as e:  # noqa: BLE001
                 logger.warning(f"Game MVP news fetch failed: {e}")
 
         client.close()

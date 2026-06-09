@@ -536,7 +536,7 @@ class OCISyncBase:
                 rows = self.target_session.execute(text(q)).all()
                 self._season_map_cache = {(row.season_year, row.league_type_code): row.season_id for row in rows}
                 return self._season_map_cache
-            except Exception:
+            except SQLAlchemyError:
                 logger.warning("Season map query failed, trying next fallback")
                 continue
 
@@ -599,7 +599,7 @@ class OCISyncBase:
                 return self._do_bulk_copy_upsert(
                     table_name, records, unique_cols, update_timestamp, connection=connection
                 )
-            except Exception as e:
+            except Exception as e:  # noqa: BLE001
                 last_exception = e
                 if attempt < max_attempts:
                     wait = 1 * (3 ** (attempt - 1))
@@ -623,7 +623,7 @@ class OCISyncBase:
         try:
             self.target_session.close()
             self.oci_engine.dispose()
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             logger.warning("Ignore exception during OCI reconnection cleanup: %s", e)
         target_session_factory = sessionmaker(bind=self.oci_engine)
         self.target_session = target_session_factory()
@@ -652,7 +652,7 @@ class OCISyncBase:
     def _rollback_target_session(self, *, label: str) -> None:
         try:
             self.target_session.rollback()
-        except Exception as rollback_exc:
+        except Exception as rollback_exc:  # noqa: BLE001
             logger.warning("OCI rollback failed label=%s error=%s", label, rollback_exc)
 
     def _run_target_session_with_retries(
@@ -815,7 +815,7 @@ class OCISyncBase:
             if connection is not None:
                 try:
                     connection.close()
-                except Exception:
+                except Exception:  # noqa: BLE001
                     logger.warning("Failed to close connection, already closed or aborted", exc_info=True)
 
         return synced

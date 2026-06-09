@@ -14,6 +14,8 @@ from __future__ import annotations
 import argparse
 import logging
 import sys
+
+from sqlalchemy.exc import SQLAlchemyError
 from typing import Any
 from collections.abc import Sequence
 
@@ -286,7 +288,7 @@ def _upsert_batting(session: Session, records: list[dict[str, Any]], dialect: st
                 stmt = stmt.on_duplicate_key_update(**{k: stmt.inserted[k] for k in data if k not in conflict_keys})
             session.execute(stmt)
             saved += 1
-        except Exception as e:
+        except SQLAlchemyError as e:
             logger.warning(f"Batting upsert failed for player {data.get('player_id')}: {e}")
             session.rollback()
 
@@ -324,7 +326,7 @@ def _upsert_pitching(session: Session, records: list[dict[str, Any]], dialect: s
                 stmt = stmt.on_duplicate_key_update(**{k: stmt.inserted[k] for k in data if k not in conflict_keys})
             session.execute(stmt)
             saved += 1
-        except Exception as e:
+        except SQLAlchemyError as e:
             logger.warning(f"Pitching upsert failed for player {data.get('player_id')}: {e}")
             session.rollback()
 

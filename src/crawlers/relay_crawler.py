@@ -189,7 +189,7 @@ class RelayCrawler:
         except _PermanentStatusError as exc:
             logger.exception(f"[INFO] Relay API permanent error: {full_url} status={exc.status_code}")
             return None, f"http_{exc.status_code}"
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001
             logger.warning("Relay API request failed: %s reason=%s", full_url, exc)
             return None, "relay_api_error"
 
@@ -325,7 +325,7 @@ class RelayCrawler:
                                 try:
                                     h, m = map(int, t_clean.split(":"))
                                     return h * 60 + m
-                                except Exception:
+                                except (ValueError, TypeError):
                                     logger.warning("Failed to parse time string: %s", t_clean)
                                     pass
                             return 0
@@ -373,7 +373,7 @@ class RelayCrawler:
                             score += 15
                         elif diff_mins > 120:
                             score -= 30
-                    except Exception:
+                    except (ValueError, TypeError):
                         logger.warning("Failed to compute time diff score")
                         pass
 
@@ -551,7 +551,7 @@ class RelayCrawler:
                                 game_time = getattr(meta_row, "start_time", None)
                                 if hasattr(game_time, "strftime"):
                                     game_time = game_time.strftime("%H:%M")
-            except Exception:
+            except Exception:  # noqa: BLE001
                 logger.warning("Failed to extract game metadata for relay relay")
                 pass
 
@@ -724,7 +724,7 @@ class RelayCrawler:
                 def to_int(val, default=0):
                     try:
                         return int(val) if val is not None else default
-                    except Exception:
+                    except (TypeError, ValueError):
                         logger.warning("Failed to convert to int: %s", val)
                         return default
 

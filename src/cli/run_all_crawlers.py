@@ -333,7 +333,7 @@ def run_consistency_check(deep: bool = False):
             logger.info("✅ Consistency audit passed — databases are in sync.")
         else:
             logger.info("🚨 Consistency audit found mismatches — alert sent.")
-    except Exception:
+    except Exception:  # noqa: BLE001
         err_msg = traceback.format_exc()
         logger.error(f"Consistency audit raised an unexpected error:\n{err_msg}")
         SlackWebhookClient.send_error_alert(f"Consistency audit error:\n{err_msg}")
