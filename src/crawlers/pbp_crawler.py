@@ -58,27 +58,27 @@ class PBPCrawler:
                 try:
                     page = await pool.acquire()
                     try:
-                        logger.info(f"[FETCH] PBP Data: {url}")
+                        logger.info("[FETCH] PBP Data: %s", url)
                         if not await compliance.is_allowed(url):
-                            logger.info(f"[COMPLIANCE] Navigation to {url} aborted.")
+                            logger.info("[COMPLIANCE] Navigation to %s aborted.", url)
                             return None
 
                         await self.policy.delay_async(host="www.koreabaseball.com")
 
                         # Step 1: Warm up the session by visiting the Scoreboard page
                         parent_url = f"https://www.koreabaseball.com/Schedule/ScoreBoard.aspx?gameDate={game_date}"
-                        logger.info(f"[AUTH] Warming up session on Scoreboard: {parent_url}")
+                        logger.info("[AUTH] Warming up session on Scoreboard: %s", parent_url)
                         await page.goto(parent_url, wait_until="networkidle", timeout=20000)
                         await asyncio.sleep(2)
 
                         # Step 2: Navigate to the actual relay page with explicit Referer
-                        logger.info(f"[FETCH] Navigating to Relay page with Referer: {url}")
+                        logger.info("[FETCH] Navigating to Relay page with Referer: %s", url)
                         # Use 'domcontentloaded' as KBO pages often have persistent tracking scripts/images that block 'load' or 'networkidle'
                         await page.goto(url, wait_until="domcontentloaded", timeout=LONG_TIMEOUT, referer=parent_url)
 
                         # Check for redirects
                         if "Error.html" in page.url or "Login.aspx" in page.url:
-                            logger.info(f"[ERROR] Redirected to {page.url}.")
+                            logger.info("[ERROR] Redirected to %s.", page.url)
                             self.last_failure_reason = "auth_required"
                             if retry_count == 0:
                                 await pool.close()
@@ -233,10 +233,18 @@ class PBPCrawler:
 
                     # WPA
                     wp_before = self.wpa_calc.get_win_probability(
-                        current_inning, is_bottom, outs_before, runners_before, score_diff_before,
+                        current_inning,
+                        is_bottom,
+                        outs_before,
+                        runners_before,
+                        score_diff_before,
                     )
                     wp_after = self.wpa_calc.get_win_probability(
-                        current_inning, is_bottom, outs_after, runners_after, home_score - away_score,
+                        current_inning,
+                        is_bottom,
+                        outs_after,
+                        runners_after,
+                        home_score - away_score,
                     )
                     wpa = round(wp_after - wp_before if is_bottom else wp_before - wp_after, 4)
 

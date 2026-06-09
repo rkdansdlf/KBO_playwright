@@ -134,7 +134,7 @@ class RealtimeIssueCrawler:
                                 },
                             },
                         )
-            logger.info(f"   Fetched {len(articles)} headlines from HTML fallback.")
+            logger.info("   Fetched %s headlines from HTML fallback.", len(articles))
         except httpx.HTTPError:
             logger.exception("Naver News HTML fallback also failed")
 

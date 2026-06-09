@@ -141,7 +141,10 @@ class TeamStatAggregator:
             raise ValueError("Either an integer season or rows iterable must be provided")
 
     def aggregate_all(
-        self, season: int, team_id: str | None = None, dry_run: bool = False,
+        self,
+        season: int,
+        team_id: str | None = None,
+        dry_run: bool = False,
     ) -> dict[str, list[dict[str, Any]]]:
         """
         Aggregates and updates both batting and pitching stats.
@@ -154,12 +157,15 @@ class TeamStatAggregator:
         }
 
     def _aggregate_batting_db(
-        self, season: int, team_id: str | None = None, dry_run: bool = False,
+        self,
+        season: int,
+        team_id: str | None = None,
+        dry_run: bool = False,
     ) -> list[dict[str, Any]]:
         if not self.session:
             raise ValueError("Database session is required for database aggregation")
 
-        logger.info(f"Aggregating player batting stats via database query for season={season}, team_id={team_id}")
+        logger.info("Aggregating player batting stats via database query for season=%s, team_id=%s", season, team_id)
 
         query = (
             self.session.query(
@@ -201,7 +207,7 @@ class TeamStatAggregator:
         rows = query.all()
 
         if not rows:
-            logger.warning(f"No player batting stats aggregated for season={season}, team_id={team_id}")
+            logger.warning("No player batting stats aggregated for season=%s, team_id=%s", season, team_id)
             return []
 
         teams = self.session.query(Team).all()
@@ -249,12 +255,15 @@ class TeamStatAggregator:
         return results
 
     def _aggregate_pitching_db(
-        self, season: int, team_id: str | None = None, dry_run: bool = False,
+        self,
+        season: int,
+        team_id: str | None = None,
+        dry_run: bool = False,
     ) -> list[dict[str, Any]]:
         if not self.session:
             raise ValueError("Database session is required for database aggregation")
 
-        logger.info(f"Aggregating player pitching stats via database query for season={season}, team_id={team_id}")
+        logger.info("Aggregating player pitching stats via database query for season=%s, team_id=%s", season, team_id)
 
         query = (
             self.session.query(
@@ -299,7 +308,7 @@ class TeamStatAggregator:
         rows = query.all()
 
         if not rows:
-            logger.warning(f"No player pitching stats aggregated for season={season}, team_id={team_id}")
+            logger.warning("No player pitching stats aggregated for season=%s, team_id=%s", season, team_id)
             return []
 
         teams = self.session.query(Team).all()
@@ -432,10 +441,10 @@ class TeamStatAggregator:
         for r in rows:
             tc = r.team_code
             if not tc or tc in ("합계", "TOTAL", "ALL", "-"):
-                logger.warning(f"[WARN] Skipping PlayerSeasonBatting row ID {r.id}: Invalid team_code '{tc}'")
+                logger.warning(f"[WARN] Skipping PlayerSeasonBatting row ID {r.id}: Invalid team_code '{tc}'")  # noqa: G004
                 continue
             if not r.season:
-                logger.warning(f"[WARN] Skipping PlayerSeasonBatting row ID {r.id}: Missing season")
+                logger.warning("[WARN] Skipping PlayerSeasonBatting row ID %s: Missing season", r.id)
                 continue
 
             key = (r.season, tc)
@@ -527,10 +536,10 @@ class TeamStatAggregator:
         for r in rows:
             tc = r.team_code
             if not tc or tc in ("합계", "TOTAL", "ALL", "-"):
-                logger.warning(f"[WARN] Skipping PlayerSeasonPitching row ID {r.id}: Invalid team_code '{tc}'")
+                logger.warning(f"[WARN] Skipping PlayerSeasonPitching row ID {r.id}: Invalid team_code '{tc}'")  # noqa: G004
                 continue
             if not r.season:
-                logger.warning(f"[WARN] Skipping PlayerSeasonPitching row ID {r.id}: Missing season")
+                logger.warning("[WARN] Skipping PlayerSeasonPitching row ID %s: Missing season", r.id)
                 continue
 
             key = (r.season, tc)

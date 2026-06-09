@@ -19,6 +19,8 @@ from src.utils.playwright_retry import NAV_TIMEOUT
 from src.utils.request_policy import RequestPolicy
 
 logger = logging.getLogger(__name__)
+
+
 def safe_parse_number(value_str: str, data_type: type) -> int | float | None:
     """안전한 숫자 파싱 (0값 보존)"""
     if not value_str:
@@ -47,12 +49,12 @@ def crawl_bb_basic2_data(page: Page, year: int, policy: RequestPolicy | None = N
     """
     BB 헤더만 클릭하는 단순화된 Basic2 크롤링
     """
-    logger.info(f"📊 {year}년 정규시즌 BB 헤더 Basic2 크롤링 시작...")
+    logger.info("📊 %s년 정규시즌 BB 헤더 Basic2 크롤링 시작...", year)
 
     try:
         # 1. Basic1 페이지로 이동
         url = "https://www.koreabaseball.com/Record/Player/HitterBasic/Basic1.aspx"
-        logger.info(f"   🔍 Basic1 페이지로 이동: {url}")
+        logger.info("   🔍 Basic1 페이지로 이동: %s", url)
         page.goto(url, wait_until="load", timeout=NAV_TIMEOUT)
         page.wait_for_load_state("networkidle", timeout=NAV_TIMEOUT)
         if policy:
@@ -61,7 +63,7 @@ def crawl_bb_basic2_data(page: Page, year: int, policy: RequestPolicy | None = N
         # 2. 연도 선택
         season_selector = 'select[name="ctl00$ctl00$ctl00$cphContents$cphContents$cphContents$ddlSeason$ddlSeason"]'
         page.select_option(season_selector, str(year))
-        logger.info(f"   ✅ {year}년 연도 선택")
+        logger.info("   ✅ %s년 연도 선택", year)
         if policy:
             policy.delay()
 
@@ -85,7 +87,7 @@ def crawl_bb_basic2_data(page: Page, year: int, policy: RequestPolicy | None = N
             policy.delay()
 
         current_url = page.url
-        logger.info(f"   ✅ Basic2 페이지 접속: {current_url}")
+        logger.info("   ✅ Basic2 페이지 접속: %s", current_url)
 
         # 5. BB 헤더 클릭
         logger.info("   📊 BB(볼넷) 헤더 클릭...")
@@ -112,19 +114,19 @@ def crawl_bb_basic2_data(page: Page, year: int, policy: RequestPolicy | None = N
         if thead:
             header_cells = thead.query_selector_all("th")
             headers = [cell.inner_text().strip() for cell in header_cells]
-            logger.info(f"   📋 테이블 헤더: {headers}")
+            logger.info("   📋 테이블 헤더: %s", headers)
 
         # 7. 모든 페이지 데이터 수집
         all_player_data = {}
         page_num = 1
 
         while True:
-            logger.info(f"      📄 페이지 {page_num} 처리 중...")
+            logger.info("      📄 페이지 %s 처리 중...", page_num)
 
             # 현재 페이지 데이터 수집
             page_data = collect_current_page_bb_data(page, year)
             if not page_data:
-                logger.warning(f"      ⚠️ 페이지 {page_num}에 데이터가 없습니다.")
+                logger.warning("      ⚠️ 페이지 %s에 데이터가 없습니다.", page_num)
                 break
 
             # 데이터 병합
@@ -134,7 +136,7 @@ def crawl_bb_basic2_data(page: Page, year: int, policy: RequestPolicy | None = N
                 else:
                     all_player_data[player_id].update(data)
 
-            logger.info(f"         ✅ {len(page_data)}명 데이터 수집, 총 {len(all_player_data)}명")
+            logger.info("         ✅ %s명 데이터 수집, 총 %s명", len(page_data), len(all_player_data))
 
             # 다음 페이지로 이동
             if not goto_next_page(page, policy=policy):
@@ -144,7 +146,7 @@ def crawl_bb_basic2_data(page: Page, year: int, policy: RequestPolicy | None = N
             if policy:
                 policy.delay()
 
-        logger.info(f"   ✅ BB 헤더 기준 데이터 수집 완료: {len(all_player_data)}명")
+        logger.info("   ✅ BB 헤더 기준 데이터 수집 완료: %s명", len(all_player_data))
         return all_player_data
 
     except Exception:
@@ -232,7 +234,7 @@ def collect_current_page_bb_data(page: Page, year: int) -> dict[int, dict]:
                     player_data["extra_stats"] = extra_stats
 
             except Exception:
-                logger.exception(f"         ⚠️ {player_name} 스탯 파싱 오류")
+                logger.exception("         ⚠️ %s 스탯 파싱 오류", player_name)
 
             page_data[player_id] = player_data
 
@@ -246,7 +248,7 @@ def main() -> None:
     """메인 실행 함수"""
     YEAR = datetime.now().year
 
-    logger.info(f"🚀 KBO {YEAR}년 BB 헤더 Basic2 크롤링 테스트 시작")
+    logger.info("🚀 KBO %s년 BB 헤더 Basic2 크롤링 테스트 시작", YEAR)
 
     policy = RequestPolicy()
 
@@ -260,23 +262,23 @@ def main() -> None:
             bb_data = crawl_bb_basic2_data(page, YEAR, policy=policy)
 
             if bb_data:
-                logger.info(f"\n📊 수집 결과: {len(bb_data)}명")
+                logger.info("\n📊 수집 결과: %s명", len(bb_data))
 
                 # 샘플 데이터 출력
                 if bb_data:
                     first_player = next(iter(bb_data.values()))
                     logger.info("\n📋 샘플 데이터:")
                     for key, value in first_player.items():
-                        logger.info(f"   {key}: {value}")
+                        logger.info("   %s: %s", key, value)
 
                 # SQLite 저장
                 logger.info("\n💾 SQLite 저장 시작...")
                 saved_count = save_kbo_batting_batch(bb_data, "정규시즌 BB 테스트")
 
                 logger.info("\n🎉 완료!")
-                logger.info(f"   📊 수집: {len(bb_data)}명")
-                logger.info(f"   💾 저장: {saved_count}명")
-                logger.info(f"   📅 시간: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+                logger.info("   📊 수집: %s명", len(bb_data))
+                logger.info("   💾 저장: %s명", saved_count)
+                logger.info(f"   📅 시간: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")  # noqa: G004
 
             else:
                 logger.error("❌ 데이터를 수집하지 못했습니다.")

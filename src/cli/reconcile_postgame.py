@@ -47,7 +47,7 @@ async def run_reconciliation(args: argparse.Namespace) -> int:
         session.close()
 
     logger.info(
-        "[POSTGAME-RECONCILE] "
+        "[POSTGAME-RECONCILE] "  # noqa: G004
         f"range={result.start_date}-{result.end_date} "
         f"candidates={result.candidates} changed={len(result.changes)}",
     )
@@ -55,7 +55,7 @@ async def run_reconciliation(args: argparse.Namespace) -> int:
 
     if args.output_csv:
         output_path = write_reconciliation_csv(result.changes, args.output_csv)
-        logger.info(f"[POSTGAME-RECONCILE] report_csv={output_path}")
+        logger.info("[POSTGAME-RECONCILE] report_csv=%s", output_path)
 
     return 0
 

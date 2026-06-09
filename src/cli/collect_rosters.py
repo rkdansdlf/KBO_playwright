@@ -19,7 +19,7 @@ def save_chunk(chunk) -> None:
     try:
         repo = TeamRepository(session)
         count = repo.save_daily_rosters(chunk)
-        logger.info(f"   💾 Saved chunk of {len(chunk)} records (New/Updated: {count})")
+        logger.info("   💾 Saved chunk of %s records (New/Updated: %s)", len(chunk), count)
     except Exception:
         logger.exception("   ⚠️ Error saving chunk")
     finally:
@@ -42,13 +42,15 @@ async def collect_rosters(year: int, month: int | None = None) -> None:
         start_date = date(year, 3, 1)
         end_date = date(year, 11, 30)
 
-    logger.info(f"🗓️  Collecting Daily Rosters: {start_date} ~ {end_date}")
+    logger.info("🗓️  Collecting Daily Rosters: %s ~ %s", start_date, end_date)
 
     await crawler.crawl_date_range(
-        start_date=start_date.strftime("%Y-%m-%d"), end_date=end_date.strftime("%Y-%m-%d"), save_callback=save_chunk,
+        start_date=start_date.strftime("%Y-%m-%d"),
+        end_date=end_date.strftime("%Y-%m-%d"),
+        save_callback=save_chunk,
     )
 
-    logger.info(f"✅ Finished Roster Collection for {year}" + (f"-{month}" if month else ""))
+    logger.info("✅ Finished Roster Collection for %s%s", year, f"-{month}" if month else "")
 
 
 def main() -> int:

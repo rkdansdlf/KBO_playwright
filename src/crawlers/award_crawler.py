@@ -39,10 +39,10 @@ class AwardCrawler:
             for atype in award_types:
                 url = self.base_url_map.get(atype)
                 if not url:
-                    logger.info(f"Unknown award type: {atype}")
+                    logger.info("Unknown award type: %s", atype)
                     continue
 
-                logger.info(f"Crawling {atype} from {url}...")
+                logger.info("Crawling %s from %s...", atype, url)
                 await page.goto(url, wait_until="networkidle")
 
                 try:
@@ -57,14 +57,14 @@ class AwardCrawler:
                     else:
                         data = []
                 except Exception as e:
-                    logger.error(f"Error crawling {atype}: {e}", exc_info=True)
+                    logger.exception(f"Error crawling {atype}: {e}")  # noqa: G004
                     import traceback
 
                     traceback.print_exc()
                     data = []
 
                 all_data.extend(data)
-                logger.info(f"  > Found {len(data)} records for {atype}")
+                logger.info("  > Found %s records for %s", len(data), atype)
 
             await browser.close()
 
@@ -74,7 +74,7 @@ class AwardCrawler:
                 # Dry run print
                 for d in all_data[:5]:
                     logger.info(d)
-                logger.info(f"... and {len(all_data) - 5} more.")
+                logger.info("... and %s more.", len(all_data) - 5)
 
     async def crawl_player_prize(self, page: Page) -> list[dict]:
         """
@@ -316,12 +316,12 @@ class AwardCrawler:
                     repo.save_award(item)
                     count += 1
                 except Exception as ex:
-                    logger.warning(f"Skipping duplicate or error: {item} - {ex}", exc_info=True)
+                    logger.warning(f"Skipping duplicate or error: {item} - {ex}", exc_info=True)  # noqa: G004
             session.commit()
-            logger.info(f"✅ Saved {count} awards to database.")
+            logger.info("✅ Saved %s awards to database.", count)
         except Exception as e:
             session.rollback()
-            logger.error(f"Error saving to DB: {e}", exc_info=True)
+            logger.exception(f"Error saving to DB: {e}")  # noqa: G004
         finally:
             session.close()
 

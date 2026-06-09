@@ -111,7 +111,7 @@ class HomeAwaySplitAggregator:
         for r in results:
             self.session.add(BatterHomeAwaySplit(**r))
         self.session.commit()
-        logger.info(f"[HomeAway] {len(results)} batting split rows saved for {year}.")
+        logger.info("[HomeAway] %s batting split rows saved for %s.", len(results), year)
 
     def print_report(self, year: int, top_n: int = 5) -> None:
         results = self.aggregate_batting(year)
@@ -125,11 +125,11 @@ class HomeAwaySplitAggregator:
                 players[pid] = {}
             players[pid][r["location"]] = r
 
-        logger.info(f"\n{'=' * 70}")
-        logger.info(f"  KBO {year}년 홈/원정 OPS 차이 Top {top_n}")
-        logger.info(f"{'=' * 70}")
-        logger.info(f"{'PlayerID':>9} {'홈OPS':>7} {'원정OPS':>8} {'차이':>6}")
-        logger.info(f"{'-' * 70}")
+        logger.info(f"\n{'=' * 70}")  # noqa: G004
+        logger.info("  KBO %s년 홈/원정 OPS 차이 Top %s", year, top_n)
+        logger.info(f"{'=' * 70}")  # noqa: G004
+        logger.info(f"{'PlayerID':>9} {'홈OPS':>7} {'원정OPS':>8} {'차이':>6}")  # noqa: G004
+        logger.info(f"{'-' * 70}")  # noqa: G004
 
         diffs = []
         for pid, locs in players.items():
@@ -148,7 +148,7 @@ class HomeAwaySplitAggregator:
             and players[pid].get("AWAY", {}).get("plate_appearances", 0) >= 50
         ]
         for pid, h_ops, a_ops, diff in diffs[:top_n]:
-            logger.info(f"  {pid:>9} {h_ops:>7.3f} {a_ops:>8.3f} {diff:>+6.3f}")
+            logger.info(f"  {pid:>9} {h_ops:>7.3f} {a_ops:>8.3f} {diff:>+6.3f}")  # noqa: G004
 
 
 if __name__ == "__main__":

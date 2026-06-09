@@ -24,7 +24,7 @@ logger = logging.getLogger(__name__)
 
 
 async def run_preview_batch(target_date: str, *, sync_to_oci: bool | None = None) -> list[str]:
-    logger.info(f"🚀 Starting Preview Data Batch for {target_date}...")
+    logger.info("🚀 Starting Preview Data Batch for %s...", target_date)
 
     crawler = PreviewCrawler(request_delay=1.0)
     previews = await crawler.crawl_preview_for_date(target_date)
@@ -35,7 +35,7 @@ async def run_preview_batch(target_date: str, *, sync_to_oci: bool | None = None
             game_ids=[],
             datasets=["game", "game_metadata", "game_lineups", "game_summary"],
         )
-        logger.info(f"ℹ️ No preview data found. manifest={manifest_path}")
+        logger.info("ℹ️ No preview data found. manifest=%s", manifest_path)
         return []
 
     saved_ids: list[str] = []
@@ -54,9 +54,12 @@ async def run_preview_batch(target_date: str, *, sync_to_oci: bool | None = None
 
             if away_code and home_code:
                 try:
-                    logger.info(f"📊 Aggregating pregame context for {game_id}...")
+                    logger.info("📊 Aggregating pregame context for %s...", game_id)
                     preview["matchup_h2h"] = agg.get_head_to_head_summary(
-                        away_code, home_code, season_year, target_dt_obj,
+                        away_code,
+                        home_code,
+                        season_year,
+                        target_dt_obj,
                     )
                     preview["away_recent_l10"] = agg.get_team_l10_summary(away_code, target_dt_obj)
                     preview["home_recent_l10"] = agg.get_team_l10_summary(home_code, target_dt_obj)
@@ -71,7 +74,7 @@ async def run_preview_batch(target_date: str, *, sync_to_oci: bool | None = None
                     if series_context:
                         preview["series_context"] = series_context
                 except Exception:
-                    logger.exception(f"⚠️ Context aggregation failed for {game_id}")
+                    logger.exception("⚠️ Context aggregation failed for %s", game_id)
 
             away_starter_id = preview.get("away_starter_id")
             home_starter_id = preview.get("home_starter_id")
@@ -81,7 +84,7 @@ async def run_preview_batch(target_date: str, *, sync_to_oci: bool | None = None
                 if home_starter_id:
                     preview["home_starter_stats"] = agg.get_pitcher_season_stats(home_starter_id, season_year)
             except Exception:
-                logger.exception(f"⚠️ Pitcher stats aggregation failed for {game_id}")
+                logger.exception("⚠️ Pitcher stats aggregation failed for %s", game_id)
 
             if save_pregame_lineups(preview):
                 saved_ids.append(game_id)
@@ -105,7 +108,7 @@ async def run_preview_batch(target_date: str, *, sync_to_oci: bool | None = None
         game_ids=saved_ids,
         datasets=["game", "game_metadata", "game_lineups", "game_summary"],
     )
-    logger.info(f"✅ Pregame batch finished. saved={len(saved_ids)} manifest={manifest_path}")
+    logger.info("✅ Pregame batch finished. saved=%s manifest=%s", len(saved_ids), manifest_path)
     return saved_ids
 
 

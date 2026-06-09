@@ -28,6 +28,8 @@ from src.utils.schedule_validation import validate_schedule_game_payload
 from src.utils.team_codes import normalize_kbo_game_id, resolve_team_code, team_code_from_game_id_segment
 
 logger = logging.getLogger(__name__)
+
+
 class ScheduleCrawler:
     """KBO 공식 사이트의 월별 경기 일정 페이지에서 경기 정보를 크롤링하는 클래스.
 
@@ -69,7 +71,7 @@ class ScheduleCrawler:
         Returns:
             경기 정보 딕셔너리가 담긴 리스트.
         """
-        logger.info(f"🔍 Crawling schedule for {year}-{month:02d} (Series: {series_id})...")
+        logger.info(f"🔍 Crawling schedule for {year}-{month:02d} (Series: {series_id})...")  # noqa: G004
 
         pool = self.pool or AsyncPlaywrightPool(max_pages=1)
         owns_pool = self.pool is None
@@ -78,7 +80,7 @@ class ScheduleCrawler:
             page = await pool.acquire()
             try:
                 games = await self._crawl_month(page, year, month, series_id=series_id)
-                logger.info(f"✅ Found {len(games)} games")
+                logger.info(f"✅ Found {len(games)} games")  # noqa: G004
                 return games
             except Exception:
                 logger.exception("❌ Error crawling schedule")
@@ -127,7 +129,7 @@ class ScheduleCrawler:
         selector_timeout: int = 10000,
     ) -> tuple[bool, str]:
         if not await compliance.is_allowed(self.base_url):
-            logger.info(f"[COMPLIANCE] Navigation to {self.base_url} aborted.")
+            logger.info(f"[COMPLIANCE] Navigation to {self.base_url} aborted.")  # noqa: G004
             return False, "blocked"
 
         async def _navigate() -> None:
@@ -170,7 +172,7 @@ class ScheduleCrawler:
         try:
             await self.policy.run_with_retry_async(_select)
         except Exception:
-            logger.exception(f"[WARN] Schedule {label} select failed ({value})")
+            logger.exception(f"[WARN] Schedule {label} select failed ({value})")  # noqa: G004
             return False, "schedule_navigation_failed"
 
         return True, "ok"
@@ -200,7 +202,8 @@ class ScheduleCrawler:
 
         # 2. 시리즈 목록 확인
         all_series_options = await page.eval_on_selector_all(
-            "#ddlSeries option", "elements => elements.map(el => ({text: el.innerText, value: el.value}))",
+            "#ddlSeries option",
+            "elements => elements.map(el => ({text: el.innerText, value: el.value}))",
         )
 
         target_series = [series_id] if series_id else [opt["value"] for opt in all_series_options if opt["value"]]
@@ -220,7 +223,7 @@ class ScheduleCrawler:
         }
 
         for sid in target_series:
-            logger.info(f"[NAV] Selecting Series: {sid} for {year}-{month:02d}")
+            logger.info(f"[NAV] Selecting Series: {sid} for {year}-{month:02d}")  # noqa: G004
             try:
                 ok, failure_reason = await self._select_option_with_retry(
                     page,
@@ -240,7 +243,7 @@ class ScheduleCrawler:
                         all_games.append(g)
                         seen_game_ids.add(gid)
             except Exception:
-                logger.exception(f"[WARN] Error crawling series {sid}")
+                logger.exception(f"[WARN] Error crawling series {sid}")  # noqa: G004
 
         if not all_games and not self._last_failure_reason.get(crawl_key):
             self._last_failure_reason[crawl_key] = "schedule_empty"
@@ -487,7 +490,7 @@ class ScheduleCrawler:
                     home_code = resolve_team_code(home_name, year)
 
                     if not away_code or not home_code:
-                        logger.info(f"[WARN] Skipping game due to unresolved team names: {away_name} vs {home_name}")
+                        logger.info(f"[WARN] Skipping game due to unresolved team names: {away_name} vs {home_name}")  # noqa: G004
                         continue
 
                     # KBO Website uses LEGACY codes in Game IDs.
@@ -596,12 +599,12 @@ async def main() -> None:
     games = await crawler.crawl_schedule(now.year, now.month)
 
     logger.info("\n📊 Schedule Summary:")
-    logger.info(f"Total games found: {len(games)}")
+    logger.info(f"Total games found: {len(games)}")  # noqa: G004
 
     if games:
         logger.info("\n📝 First 5 games:")
         for game in games[:5]:
-            logger.info(f"  - {game['game_id']} | {game['game_date']}")
+            logger.info(f"  - {game['game_id']} | {game['game_date']}")  # noqa: G004
 
 
 if __name__ == "__main__":

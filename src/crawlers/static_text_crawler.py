@@ -33,14 +33,14 @@ class StaticTextCrawler:
         """
         Parses a local PDF rulebook using pypdf and extracts text by page.
         """
-        logger.info(f"📄 Parsing local PDF: {pdf_path}")
+        logger.info("📄 Parsing local PDF: %s", pdf_path)
         if not os.path.exists(pdf_path):
             raise FileNotFoundError(f"PDF file not found at: {pdf_path}")
 
         chunks = []
         reader = PdfReader(pdf_path)
         total_pages = len(reader.pages)
-        logger.info(f"   Total pages: {total_pages}")
+        logger.info("   Total pages: %s", total_pages)
 
         for page_idx in range(total_pages):
             page = reader.pages[page_idx]
@@ -69,7 +69,7 @@ class StaticTextCrawler:
         Crawls a Namuwiki page using Playwright to bypass Cloudflare protection
         and extracts cleaned main content with BeautifulSoup.
         """
-        logger.info(f"🌐 Crawling Namuwiki page: {url}")
+        logger.info("🌐 Crawling Namuwiki page: %s", url)
 
         html_content = ""
         pool = self.pool or AsyncPlaywrightPool(max_pages=1)

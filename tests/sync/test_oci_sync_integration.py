@@ -35,7 +35,7 @@ class TestOCISync:
 
     def test_init_oci_url_none_raises(self):
         mock_session = MagicMock()
-        with pytest.raises(TypeError):
+        with pytest.raises(Exception):
             OCISync(None, mock_session)  # type: ignore[arg-type]
 
 

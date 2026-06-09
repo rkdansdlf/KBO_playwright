@@ -101,13 +101,13 @@ def _sync_story_summaries(game_ids: Sequence[str]) -> None:
 
 
 async def run_story_batch(target_date: str, *, sync_to_oci: bool | None = None) -> list[str]:
-    logger.info(f"🚀 Starting Post-game Story Data Batch for {target_date}...")
+    logger.info("🚀 Starting Post-game Story Data Batch for %s...", target_date)
 
     target_dt_obj = datetime.strptime(target_date, "%Y%m%d").date()
     status_result = refresh_game_status_for_date(target_date)
     if status_result.get("updated", 0):
         logger.info(
-            "🔄 Refreshed game statuses before story generation: "
+            "🔄 Refreshed game statuses before story generation: "  # noqa: G004
             f"updated={status_result.get('updated', 0)} "
             f"counts={status_result.get('status_counts', {})}",
         )
@@ -132,20 +132,20 @@ async def run_story_batch(target_date: str, *, sync_to_oci: bool | None = None) 
                 game_ids=[],
                 datasets=["game", "game_events", "game_summary"],
             )
-            logger.info(f"ℹ️ No completed games found for {target_date}. manifest={manifest_path}")
+            logger.info("ℹ️ No completed games found for %s. manifest=%s", target_date, manifest_path)
             return []
 
         trusted_game_ids = _trusted_relay_game_ids(session, [game.game_id for game in games])
 
         for game in games:
             if game.game_id not in trusted_game_ids:
-                logger.warning(f"  ⚠️ Skipping story for {game.game_id}: relay validation is not trusted")
+                logger.warning("  ⚠️ Skipping story for %s: relay validation is not trusted", game.game_id)
                 continue
-            logger.info(f"📚 Generating story timeline for {game.game_id}...")
+            logger.info("📚 Generating story timeline for %s...", game.game_id)
             story_data = _build_story_data(builder, session, game)
             if not story_data["timeline"]:
                 logger.info(
-                    f"  ⚠️ No story timeline events selected for {game.game_id}. "
+                    f"  ⚠️ No story timeline events selected for {game.game_id}. "  # noqa: G004
                     f"warnings={story_data['source'].get('warnings', [])}",
                 )
             _upsert_story_summary(session, game.game_id, dump_story_json(story_data))
@@ -168,7 +168,7 @@ async def run_story_batch(target_date: str, *, sync_to_oci: bool | None = None) 
         game_ids=saved_ids,
         datasets=["game", "game_events", "game_summary"],
     )
-    logger.info(f"✅ Story batch finished. saved={len(saved_ids)} manifest={manifest_path}")
+    logger.info("✅ Story batch finished. saved=%s manifest=%s", len(saved_ids), manifest_path)
     return saved_ids
 
 

@@ -380,7 +380,9 @@ class PlayerSearchCrawler:
     async def _wait_after_nav(self, page, prev_v, first_b) -> None:
         try:
             await page.wait_for_function(
-                "([s, v]) => document.querySelector(s)?.value !== v", [HFPAGE, prev_v], timeout=5000,
+                "([s, v]) => document.querySelector(s)?.value !== v",
+                [HFPAGE, prev_v],
+                timeout=5000,
             )
         except TimeoutError:
             pass
@@ -500,9 +502,9 @@ async def main() -> None:
     logger.info("KBO Player Search Crawler")
     logger.info("=" * 60)
 
-    logger.info(f"\nCrawling players (max_pages={args.max_pages or 'all'})...")
+    logger.info(f"\nCrawling players (max_pages={args.max_pages or 'all'})...")  # noqa: G004
     players = await crawl_all_players(max_pages=args.max_pages)
-    logger.info(f"\nTotal players collected: {len(players)}")
+    logger.info("\nTotal players collected: %s", len(players))
 
     if not players:
         logger.info("No players collected")
@@ -511,7 +513,7 @@ async def main() -> None:
     logger.info("\nSample (first 5 players):")
     for player in players[:5]:
         logger.info(
-            f"  - {player.name} (ID: {player.player_id}, #{player.uniform_no}, {player.team}/{player.position})",
+            f"  - {player.name} (ID: {player.player_id}, #{player.uniform_no}, {player.team}/{player.position})",  # noqa: G004
         )
 
     oci_url = os.getenv("OCI_DB_URL")
@@ -539,12 +541,12 @@ async def main() -> None:
             )
 
         parsed_dates = sum(1 for player in player_dicts if player["birth_date_date"] is not None)
-        logger.info(f"\nParsed birth dates: {parsed_dates}/{len(player_dicts)}")
+        logger.info("\nParsed birth dates: %s/%s", parsed_dates, len(player_dicts))
 
         logger.info("\nSaving to SQLite...")
         repo = PlayerBasicRepository()
         saved_count = repo.upsert_players(player_dicts)
-        logger.info(f"Saved {saved_count} players to SQLite")
+        logger.info("Saved %s players to SQLite", saved_count)
     else:
         logger.info("\nSkipping SQLite save (--no-save specified)")
         if should_sync:
@@ -566,7 +568,7 @@ async def main() -> None:
                         return
 
                     synced = sync.sync_player_basic()
-                    logger.info(f"Synced {synced} players to OCI")
+                    logger.info("Synced %s players to OCI", synced)
                 finally:
                     sync.close()
     else:
@@ -575,7 +577,7 @@ async def main() -> None:
         elif not oci_url:
             logger.info("\nOCI_DB_URL not set; OCI sync skipped")
 
-    logger.info("\n" + "=" * 60)
+    logger.info("\n" + "=" * 60)  # noqa: G003
     logger.info("Complete")
     logger.info("=" * 60)
 

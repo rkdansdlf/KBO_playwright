@@ -518,7 +518,7 @@ def save_relay_data(
                 metadata_payload["payload_hash"] = payload_hash
 
             if validation_status in (VALIDATION_UNVERIFIED, VALIDATION_PENDING_LIVE) and error_reason:
-                logger.info(f"[PBP VALIDATION] Game {game_id} status={validation_status} reason={error_reason}")
+                logger.info("[PBP VALIDATION] Game %s status=%s reason=%s", game_id, validation_status, error_reason)
 
             _upsert_metadata(session, game_id, metadata_payload)
             _upsert_validation_metrics(

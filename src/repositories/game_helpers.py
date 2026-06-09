@@ -429,7 +429,9 @@ def _infer_pitcher_from_children(session, game_id: str, team_side: str) -> str |
     row = (
         session.query(GamePitchingStat.player_name)
         .filter(
-            GamePitchingStat.game_id == game_id, GamePitchingStat.team_side == team_side, GamePitchingStat.is_starting,
+            GamePitchingStat.game_id == game_id,
+            GamePitchingStat.team_side == team_side,
+            GamePitchingStat.is_starting,
         )
         .first()
     )
@@ -637,7 +639,7 @@ def _dedupe_exact_player_rows(game_id: str, dataset: str, mappings: list[dict[st
         seen.add(key)
         deduped.append(mapping)
     if removed:
-        logger.info(f"[WARN] Removed {removed} exact duplicate rows from {dataset} for {game_id}")
+        logger.info("[WARN] Removed %s exact duplicate rows from %s for %s", removed, dataset, game_id)
     return deduped
 
 
@@ -700,7 +702,7 @@ def _ensure_player_basic_stubs(session, mappings: Iterable[dict[str, Any]]) -> b
             ),
         )
     session.flush()
-    logger.info(f"[WARN] Created {len(missing_ids)} player_basic stub(s) for game detail save")
+    logger.info("[WARN] Created %s player_basic stub(s) for game detail save", len(missing_ids))
     return True
 
 
@@ -948,7 +950,10 @@ def _resolve_team_identity(team_code: Any, season_year: int | None) -> tuple[int
 
 
 def _build_inning_scores(
-    game_id: str, teams: dict[str, Any], *, season_year: int | None = None,
+    game_id: str,
+    teams: dict[str, Any],
+    *,
+    season_year: int | None = None,
 ) -> list[dict[str, Any]]:
     records = []
     for side in ("away", "home"):
@@ -973,7 +978,10 @@ def _build_inning_scores(
 
 
 def _build_lineups(
-    game_id: str, hitters: dict[str, list[dict[str, Any]]], *, season_year: int | None = None,
+    game_id: str,
+    hitters: dict[str, list[dict[str, Any]]],
+    *,
+    season_year: int | None = None,
 ) -> list[dict[str, Any]]:
     records = []
     for side, entries in hitters.items():
@@ -1014,7 +1022,10 @@ def _format_notes(extras: dict[str, Any] | None) -> str | None:
 
 
 def _build_batting_stats(
-    game_id: str, hitters: dict[str, list[dict[str, Any]]], *, season_year: int | None = None,
+    game_id: str,
+    hitters: dict[str, list[dict[str, Any]]],
+    *,
+    season_year: int | None = None,
 ) -> list[dict[str, Any]]:
     records = []
     for side, entries in hitters.items():
@@ -1067,7 +1078,10 @@ def _build_batting_stats(
 
 
 def _build_pitching_stats(
-    game_id: str, pitchers: dict[str, list[dict[str, Any]]], *, season_year: int | None = None,
+    game_id: str,
+    pitchers: dict[str, list[dict[str, Any]]],
+    *,
+    season_year: int | None = None,
 ) -> list[dict[str, Any]]:
     records = []
     for side, entries in pitchers.items():
@@ -1264,6 +1278,6 @@ def _auto_sync_to_oci(game_id: str) -> None:
                     syncer = OCISync(oci_url, sync_session)
                     syncer.sync_specific_game(game_id)
                     syncer.close()
-                logger.info(f" ✨ Auto-synced {game_id} to OCI")
+                logger.info(" ✨ Auto-synced %s to OCI", game_id)
         except Exception:
             logger.exception(" ⚠️ Auto-sync OCI failed")

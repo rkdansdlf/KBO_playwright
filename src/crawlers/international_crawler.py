@@ -10,6 +10,8 @@ from src.utils.playwright_retry import NAV_TIMEOUT
 from src.utils.team_codes import resolve_team_code
 
 logger = logging.getLogger(__name__)
+
+
 class InternationalScheduleCrawler:
     """
     Crawler for KBO International Games (e.g., Premier 12, WBC).
@@ -41,7 +43,7 @@ class InternationalScheduleCrawler:
         """
         Crawls the international schedule from the given URL.
         """
-        logger.info(f"🌍 Crawling International Schedule: {url}")
+        logger.info("🌍 Crawling International Schedule: %s", url)
         if not self.page:
             await self.start_browser()
 
@@ -62,7 +64,7 @@ class InternationalScheduleCrawler:
             if game_data:
                 games.append(game_data)
 
-        logger.info(f"✅ Found {len(games)} international games.")
+        logger.info("✅ Found %s international games.", len(games))
         return games
 
     async def _parse_row(self, row: Locator, year: int) -> dict[str, Any] | None:
@@ -104,7 +106,7 @@ class InternationalScheduleCrawler:
         home_code = resolve_team_code(home_name)
 
         if not away_code or not home_code:
-            logger.warning(f"⚠️  Unknown team code for: {away_name} vs {home_name}")
+            logger.warning("⚠️  Unknown team code for: %s vs %s", away_name, home_name)
             return None
 
         # 3. Score (if played)

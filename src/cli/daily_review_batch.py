@@ -104,13 +104,13 @@ def _trusted_relay_game_ids(session, game_ids: Sequence[str]) -> set[str]:
 
 
 async def run_review_batch(target_date: str, *, sync_to_oci: bool | None = None) -> list[str]:
-    logger.info(f"🚀 Starting Post-game Review Data Batch for {target_date}...")
+    logger.info("🚀 Starting Post-game Review Data Batch for %s...", target_date)
 
     target_dt_obj = datetime.strptime(target_date, "%Y%m%d").date()
     status_result = refresh_game_status_for_date(target_date)
     if status_result.get("updated", 0):
         logger.info(
-            "🔄 Refreshed game statuses before review: "
+            "🔄 Refreshed game statuses before review: "  # noqa: G004
             f"updated={status_result.get('updated', 0)} "
             f"counts={status_result.get('status_counts', {})}",
         )
@@ -140,7 +140,7 @@ async def run_review_batch(target_date: str, *, sync_to_oci: bool | None = None)
                     "game_summary",
                 ],
             )
-            logger.info(f"ℹ️ No completed games found for {target_date}. manifest={manifest_path}")
+            logger.info("ℹ️ No completed games found for %s. manifest=%s", target_date, manifest_path)
             return []
 
         trusted_game_ids = _trusted_relay_game_ids(session, [game.game_id for game in games])
@@ -148,15 +148,15 @@ async def run_review_batch(target_date: str, *, sync_to_oci: bool | None = None)
         for game in games:
             game_id = game.game_id
             if game_id not in trusted_game_ids:
-                logger.warning(f"  ⚠️ Skipping review for {game_id}: relay validation is not trusted")
+                logger.warning("  ⚠️ Skipping review for %s: relay validation is not trusted", game_id)
                 continue
 
-            logger.info(f"📊 Generating review context for {game_id}...")
+            logger.info("📊 Generating review context for %s...", game_id)
             review_data = _build_review_data(agg, game)
 
             if not review_data["crucial_moments"]:
                 logger.info(
-                    f"  ⚠️ No WPA-backed game_events found for {game_id}. Raw event crawl may be missing or incomplete.",
+                    f"  ⚠️ No WPA-backed game_events found for {game_id}. Raw event crawl may be missing or incomplete.",  # noqa: G004
                 )
 
             review_json = json.dumps(review_data, ensure_ascii=False)
@@ -194,7 +194,7 @@ async def run_review_batch(target_date: str, *, sync_to_oci: bool | None = None)
             "game_summary",
         ],
     )
-    logger.info(f"✅ Review batch finished. saved={len(saved_ids)} manifest={manifest_path}")
+    logger.info("✅ Review batch finished. saved=%s manifest=%s", len(saved_ids), manifest_path)
     return saved_ids
 
 

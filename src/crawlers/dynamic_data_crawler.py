@@ -56,10 +56,10 @@ class DynamicDataCrawler:
         """
         Crawls daily 1st team registration changes using the existing DailyRosterCrawler.
         """
-        logger.info(f"📋 Crawling roster changes from {start_date} to {end_date}...")
+        logger.info("📋 Crawling roster changes from %s to %s...", start_date, end_date)
         try:
             records = await self.roster_crawler.crawl_date_range(start_date, end_date)
-            logger.info(f"   Collected {len(records)} roster movements.")
+            logger.info("   Collected %s roster movements.", len(records))
             return records
         except Exception as e:
             logger.exception("⚠️ Error crawling roster")
@@ -72,12 +72,12 @@ class DynamicDataCrawler:
         """
         today_val = datetime.now().date()
         future_val = today_val + timedelta(days=lookahead_days)
-        logger.info(f"🎟️ Calculating ticket opening times for games between {today_val} and {future_val}...")
+        logger.info("🎟️ Calculating ticket opening times for games between %s and %s...", today_val, future_val)
 
         # Fetch upcoming games from database
         query = select(Game).where(Game.game_date >= today_val, Game.game_date <= future_val)
         games = self.db_session.scalars(query).all()
-        logger.info(f"   Found {len(games)} scheduled games in local DB.")
+        logger.info("   Found %s scheduled games in local DB.", len(games))
 
         ticket_records = []
         for g in games:
@@ -129,5 +129,5 @@ class DynamicDataCrawler:
                 ticket_records.append(new_ticket)
 
         self.db_session.commit()
-        logger.info(f"   Successfully upserted {len(ticket_records)} ticketing schedules.")
+        logger.info("   Successfully upserted %s ticketing schedules.", len(ticket_records))
         return ticket_records

@@ -6,6 +6,8 @@ from src.utils.playwright_retry import NAV_TIMEOUT
 from src.utils.request_policy import RequestPolicy
 
 logger = logging.getLogger(__name__)
+
+
 def goto_next_page(page: Page, policy: RequestPolicy | None = None) -> bool:
     try:
         pagination = page.query_selector(".paging")

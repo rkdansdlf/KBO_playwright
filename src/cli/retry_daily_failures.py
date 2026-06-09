@@ -153,13 +153,13 @@ def run_retry(
     commands = build_retry_commands(summary, sync=sync, python_bin=python_bin)
 
     if not commands:
-        logger.info(f"No retry candidates found in {summary_file}")
+        logger.info("No retry candidates found in %s", summary_file)
         return 0
 
     action = "apply" if apply else "dry-run"
-    logger.info(f"Daily failure retry {action}: date={target_date} commands={len(commands)}")
+    logger.info("Daily failure retry %s: date=%s commands=%s", action, target_date, len(commands))
     for command in commands:
-        logger.info(f"  $ {shlex.join(command)}")
+        logger.info("  $ %s", shlex.join(command))
 
     if not apply:
         logger.info("Dry run only. Re-run with --apply to execute these commands.")
@@ -202,12 +202,12 @@ def main(argv: Sequence[str] | None = None, *, runner: Runner | None = None) -> 
             runner=runner,
         )
     except (FileNotFoundError, ValueError) as exc:
-        logger.exception(f"{exc}")
-        logger.error(f"{exc}")
+        logger.exception("%s", exc)
+        logger.error("%s", exc)
         return 2
     except subprocess.CalledProcessError as exc:
-        logger.exception(f"Retry command failed with exit code {exc.returncode}: {shlex.join(exc.cmd)}")
-        logger.error(f"Retry command failed with exit code {exc.returncode}: {shlex.join(exc.cmd)}")
+        logger.exception("Retry command failed with exit code %s: %s", exc.returncode, shlex.join(exc.cmd))
+        logger.error("Retry command failed with exit code %s: %s", exc.returncode, shlex.join(exc.cmd))
         return exc.returncode or 1
 
 

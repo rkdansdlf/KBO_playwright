@@ -30,9 +30,9 @@ def main() -> None:
         logger.info("   export OCI_DB_URL='postgresql://user:pass@host:5432/dbname'")
         return
 
-    logger.info("\n" + "🔄" * 30)
+    logger.info("\n" + "🔄" * 30)  # noqa: G003
     logger.info("KBO 데이터 OCI 동기화")
-    logger.info("🔄" * 30 + "\n")
+    logger.info("🔄" * 30 + "\n")  # noqa: G003
 
     from src.models.player import PlayerSeasonBatting, PlayerSeasonPitching
 
@@ -49,8 +49,8 @@ def main() -> None:
             pitching_count = sqlite_session.query(PlayerSeasonPitching).count()
 
             logger.info("📊 SQLite 데이터 현황:")
-            logger.info(f"   타자 데이터: {batting_count}건")
-            logger.info(f"   투수 데이터: {pitching_count}건")
+            logger.info("   타자 데이터: %s건", batting_count)
+            logger.info("   투수 데이터: %s건", pitching_count)
 
             if batting_count == 0 and pitching_count == 0:
                 logger.warning("⚠️ 동기화할 데이터가 없습니다.")
@@ -82,14 +82,14 @@ def main() -> None:
             # OCI 데이터 샘플 표시
             sync.show_oci_data_sample()
 
-            logger.info("\n" + "=" * 50)
+            logger.info("\n" + "=" * 50)  # noqa: G003
             logger.info("📈 동기화 완료")
             logger.info("=" * 50)
-            logger.info(f"총 동기화된 데이터: {total_synced}건")
+            logger.info("총 동기화된 데이터: %s건", total_synced)
             if batting_count > 0:
-                logger.info(f"  - 타자 데이터: {batting_count}건")
+                logger.info("  - 타자 데이터: %s건", batting_count)
             if pitching_count > 0:
-                logger.info(f"  - 투수 데이터: {pitching_count}건")
+                logger.info("  - 투수 데이터: %s건", pitching_count)
             logger.info("\n🎉 OCI에서 데이터를 확인할 수 있습니다!")
 
             sync.close()

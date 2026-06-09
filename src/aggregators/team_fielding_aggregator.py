@@ -169,7 +169,7 @@ class TeamFieldingAggregator:
             else:
                 self.session.add(TeamSeasonBaserunning(**br))
 
-            logger.info(f"  {season} {code}: fielding={fdata.get('fielding_pct')}, sb_rate={br.get('sb_success_rate')}")
+            logger.info(f"  {season} {code}: fielding={fdata.get('fielding_pct')}, sb_rate={br.get('sb_success_rate')}")  # noqa: G004
 
         self.session.commit()
 

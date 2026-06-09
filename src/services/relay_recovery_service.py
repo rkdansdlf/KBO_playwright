@@ -290,7 +290,10 @@ async def recover_relay_data(
                 )
 
             relay_result, attempts = await orchestrator.fetch_game(
-                target.game_id, bucket_id, source_order, validator=_validator,
+                target.game_id,
+                bucket_id,
+                source_order,
+                validator=_validator,
             )
             run_result.report_rows.extend(attempts)
             if relay_result.is_empty:
@@ -482,8 +485,8 @@ def _load_target_rows(
 
     query = (
         session.query(Game.game_id, KboSeason.league_type_name)
-            .outerjoin(KboSeason, KboSeason.season_id == Game.season_id)
-            .filter(Game.game_status.in_(tuple(allowed_statuses)))
+        .outerjoin(KboSeason, KboSeason.season_id == Game.season_id)
+        .filter(Game.game_status.in_(tuple(allowed_statuses)))
     )
     if date:
         try:

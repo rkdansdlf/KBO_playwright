@@ -78,7 +78,7 @@ class SlackWebhookClient:
         webhook_url = os.getenv("SLACK_WEBHOOK_URL")
         if not webhook_url:
             if not os.getenv("TELEGRAM_BOT_TOKEN"):
-                logger.info(f"[ALERT-SKIP] No alerting (Slack/Telegram) configured. Message: {message}")
+                logger.info("[ALERT-SKIP] No alerting (Slack/Telegram) configured. Message: %s", message)
             return True
 
         payload: dict[str, Any] = {"text": message}

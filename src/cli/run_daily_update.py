@@ -392,9 +392,9 @@ async def run_update(
     """Main orchestration logic for postgame finalize and daily reconciliation."""
     runner = step_runner or _run_python_step
 
-    logger.info(f"\n{'=' * 60}")
-    logger.info(f"🚀 KBO Daily Finalize Started for Date: {target_date}")
-    logger.info(f"{'=' * 60}")
+    logger.info(f"\n{'=' * 60}")  # noqa: G004
+    logger.info("🚀 KBO Daily Finalize Started for Date: %s", target_date)
+    logger.info(f"{'=' * 60}")  # noqa: G004
 
     year = int(target_date[:4])
     month = int(target_date[4:6])
@@ -436,7 +436,7 @@ async def run_update(
             logger.exception("   ⚠️ Auto-Healer encountered an error (continuing anyway)")
             healer_recovery_targets = []
         if healer_recovery_targets:
-            logger.info(f"   ✅ Auto-Healer recovery candidates tracked: {len(healer_recovery_targets)}")
+            logger.info("   ✅ Auto-Healer recovery candidates tracked: %s", len(healer_recovery_targets))
     else:
         logger.info("\n🩺 Step 0: Auto-Healer skipped for scoped backfill run.")
 
@@ -450,7 +450,7 @@ async def run_update(
         source_reason=f"monthly_schedule_refresh:{year}-{month:02d}",
     )
     logger.info(
-        f"   ✅ Schedule discovered={schedule_result.discovered} "
+        f"   ✅ Schedule discovered={schedule_result.discovered} "  # noqa: G004
         f"saved={schedule_result.saved} failed={schedule_result.failed}",
     )
 
@@ -458,11 +458,11 @@ async def run_update(
     detail_games = [g for g in daily_games if is_detail_candidate_game(g, today=today_kst)]
     skipped_detail_games = len(daily_games) - len(detail_games)
     if skipped_detail_games:
-        logger.info(f"   ℹ️ Skipping {skipped_detail_games} non-detail schedule games")
+        logger.info("   ℹ️ Skipping %s non-detail schedule games", skipped_detail_games)
     if limit and len(detail_games) > limit:
         detail_games = detail_games[:limit]
-        logger.info(f"   [LIMIT] Restricted to first {limit} games")
-    logger.info(f"   ✅ Found {len(daily_games)} games for {target_date}")
+        logger.info("   [LIMIT] Restricted to first %s games", limit)
+    logger.info("   ✅ Found %s games for %s", len(daily_games), target_date)
 
     logger.info("\n🎮 Step 2: Crawling full postgame details...")
     resolver_session = SessionLocal()
@@ -494,7 +494,7 @@ async def run_update(
         queued_recovery_game_count += 1
     if queued_recovery_game_count > 0:
         logger.info(
-            f"   ♻️ Re-prioritizing {queued_recovery_game_count} queued detail-recovery game(s)",
+            f"   ♻️ Re-prioritizing {queued_recovery_game_count} queued detail-recovery game(s)",  # noqa: G004
         )
 
     try:
@@ -545,7 +545,7 @@ async def run_update(
             for game_id in retry_game_ids:
                 detail_recovery_attempts[game_id] = detail_recovery_attempts.get(game_id, 0) + 1
 
-            logger.info(f"   🔁 Detail recovery pass #{detail_recovery_passes} ({len(retry_targets)} game(s))")
+            logger.info("   🔁 Detail recovery pass #%s (%s game(s))", detail_recovery_passes, len(retry_targets))
             retry_result = await crawl_and_save_game_details(
                 retry_targets,
                 detail_crawler=g_crawler,
@@ -589,14 +589,14 @@ async def run_update(
         for game_id in sorted(detail_games_by_id):
             item = detail_results_by_game.get(game_id)
             if item and item.detail_saved:
-                logger.info(f"   ✅ Successfully saved {game_id}")
+                logger.info("   ✅ Successfully saved %s", game_id)
                 continue
 
             reason = item.failure_reason if item else "exception"
             if item and item.detail_status == "save_failed":
-                logger.error(f"   ❌ Failed to save details for {game_id} to local DB")
+                logger.error("   ❌ Failed to save details for %s to local DB", game_id)
             else:
-                logger.warning(f"   ⚠️ Could not fetch details for {game_id} (reason={reason or 'unknown'})")
+                logger.warning(f"   ⚠️ Could not fetch details for {game_id} (reason={reason or 'unknown'})")  # noqa: G004
 
             detail_still_missing.add(game_id)
             if detail_recovery_attempts.get(game_id, 0) >= DETAIL_RECOVERY_RETRY_ALERT_THRESHOLD + 1:
@@ -618,20 +618,20 @@ async def run_update(
                         and fallback != GAME_STATUS_CANCELLED
                     ):
                         logger.info(
-                            f"   ℹ️ Preservation: Keeping terminal status '{current_game.game_status}' for {game_id}",
+                            f"   ℹ️ Preservation: Keeping terminal status '{current_game.game_status}' for {game_id}",  # noqa: G004
                         )
                     else:
                         update_game_status(game_id, fallback)
 
         logger.info(
-            f"   ✅ Detail result success={len(processed_game_ids)} failed={len(detail_still_missing)} "
+            f"   ✅ Detail result success={len(processed_game_ids)} failed={len(detail_still_missing)} "  # noqa: G004
             f"recovery_passes={detail_recovery_passes}",
         )
         if detail_failure_counts:
-            logger.info(f"   ℹ️ Detail failure reasons: {_format_counts(detail_failure_counts)}")
+            logger.info("   ℹ️ Detail failure reasons: %s", _format_counts(detail_failure_counts))
         if detail_recovery_passes:
             logger.info(
-                f"   ℹ️ Detail recovery recovered_after_retry={detail_recovered_after_retry}, "
+                f"   ℹ️ Detail recovery recovered_after_retry={detail_recovered_after_retry}, "  # noqa: G004
                 f"still_missing={len(detail_still_missing)}, escalated={len(detail_retry_escalation_game_ids)}",
             )
 
@@ -649,7 +649,7 @@ async def run_update(
             reconcile_start = (
                 datetime.strptime(target_date, "%Y%m%d") - timedelta(days=max(0, postgame_reconcile_lookback_days))
             ).strftime("%Y%m%d")
-            logger.info(f"\n🧩 Step 2.5: Reconciling recently started games ({reconcile_start}~{target_date})...")
+            logger.info("\n🧩 Step 2.5: Reconciling recently started games (%s~%s)...", reconcile_start, target_date)
             reconciliation_result = await reconcile_postgame_range(
                 reconcile_start,
                 target_date,
@@ -662,11 +662,11 @@ async def run_update(
             reconciliation_changed_ids = reconciliation_result.changed_game_ids
             reconciliation_dates = sorted({change.game_date for change in reconciliation_result.changes})
             logger.info(
-                f"   ✅ candidates={reconciliation_result.candidates} changed={len(reconciliation_result.changes)}",
+                f"   ✅ candidates={reconciliation_result.candidates} changed={len(reconciliation_result.changes)}",  # noqa: G004
             )
             if reconciliation_result.changes:
                 for line in format_reconciliation_report(reconciliation_result.changes).splitlines():
-                    logger.info(f"   {line}")
+                    logger.info("   %s", line)
         else:
             logger.info("\n🧩 Step 2.5: Postgame reconciliation skipped.")
     except Exception:
@@ -691,7 +691,7 @@ async def run_update(
         normalized for game_id in status_result.get("game_ids", []) if (normalized := normalize_kbo_game_id(game_id))
     ]
     logger.info(
-        "   ✅ "
+        "   ✅ "  # noqa: G004
         f"total={status_result.get('total', 0)} "
         f"updated={status_result.get('updated', 0)} "
         f"counts={status_result.get('status_counts', {})}",
@@ -702,7 +702,7 @@ async def run_update(
         relay_game_ids = sorted(set(processed_game_ids) | set(reconciliation_changed_ids))
         if relay_game_ids:
             relay_recovery_target_ids.update(relay_game_ids)
-            logger.info(f"   ℹ️ Relay candidates={len(relay_game_ids)}")
+            logger.info("   ℹ️ Relay candidates=%s", len(relay_game_ids))
             runner(
                 [
                     "scripts/fetch_kbo_pbp.py",
@@ -778,7 +778,7 @@ async def run_update(
 
             if missing_relay_game_ids:
                 logger.info(
-                    f"   ⚠️ Found {len(missing_relay_game_ids)} games missing PBP/event/WPA data. Attempting recovery...",
+                    f"   ⚠️ Found {len(missing_relay_game_ids)} games missing PBP/event/WPA data. Attempting recovery...",  # noqa: G004
                 )
                 # Filter out ones already in relay_recovery_target_ids to avoid redundant runs
                 # (though fetch_kbo_pbp handles it, cleaner to show accurate count here)
@@ -795,7 +795,7 @@ async def run_update(
                         ],
                     )
                     relay_recovery_target_ids.update(to_recover)
-                    logger.info(f"   ✅ Proactive recovery initiated for {len(to_recover)} games")
+                    logger.info("   ✅ Proactive recovery initiated for %s games", len(to_recover))
                 else:
                     logger.info("   ℹ️ Missing games already covered in Step 4")
             else:
@@ -843,11 +843,11 @@ async def run_update(
         if not active_series:
             active_series = ["regular"]  # Fallback
 
-        logger.info(f"   🔍 Active series detected: {active_series}")
+        logger.info("   🔍 Active series detected: %s", active_series)
 
         try:
             for series_key in active_series:
-                logger.info(f"   [{series_key}] Updating Batting Stats...")
+                logger.info("   [%s] Updating Batting Stats...", series_key)
                 await asyncio.to_thread(
                     crawl_series_batting_stats,
                     year=year,
@@ -856,7 +856,7 @@ async def run_update(
                     headless=headless,
                     limit=limit,
                 )
-                logger.info(f"   [{series_key}] Updating Pitching Stats...")
+                logger.info("   [%s] Updating Pitching Stats...", series_key)
                 await asyncio.to_thread(
                     crawl_pitcher_series,
                     year=year,
@@ -865,7 +865,7 @@ async def run_update(
                     headless=headless,
                     limit=limit,
                 )
-            logger.info(f"   ✅ Local cumulative stats for {year} {active_series} series updated")
+            logger.info("   ✅ Local cumulative stats for %s %s series updated", year, active_series)
         except Exception:
             logger.exception("   ❌ Error during stats update")
 
@@ -905,7 +905,7 @@ async def run_update(
         if movements:
             m_repo = PlayerRepository()
             m_count = m_repo.save_player_movements(movements)
-            logger.info(f"   ✅ Saved {m_count} player movements for {year}")
+            logger.info("   ✅ Saved %s player movements for %s", m_count, year)
 
         r_crawler = DailyRosterCrawler()
         rosters = await r_crawler.crawl_date_range(r_target_date, r_target_date)
@@ -913,12 +913,12 @@ async def run_update(
             with SessionLocal() as session:
                 r_repo = TeamRepository(session)
                 r_count = r_repo.save_daily_rosters(rosters)
-                logger.info(f"   ✅ Saved {r_count} daily roster records for {r_target_date}")
+                logger.info("   ✅ Saved %s daily roster records for %s", r_count, r_target_date)
 
         rt_crawler = RosterTransactionCrawler()
         roster_transactions = await rt_crawler.run(save=True, target_date=r_target_date)
         p0_non_game_counts["roster_transactions"] = len(roster_transactions)
-        logger.info(f"   ✅ Roster transactions checked for {r_target_date}: {len(roster_transactions)} rows")
+        logger.info("   ✅ Roster transactions checked for %s: %s rows", r_target_date, len(roster_transactions))
     except Exception:
         logger.exception("   ❌ Error updating player movements/rosters")
         p0_non_game_errors["roster_transactions"] = "roster_pipeline_failed"
@@ -929,7 +929,7 @@ async def run_update(
             event_crawler = TeamEventCrawler(days_back=3)
             team_events = await event_crawler.run(save=True)
             p0_non_game_counts["team_events"] = len(team_events)
-            logger.info(f"   ✅ Team events checked: {len(team_events)} rows")
+            logger.info("   ✅ Team events checked: %s rows", len(team_events))
         except Exception as exc:
             logger.exception("   ⚠️ Team event crawler failed")
             p0_non_game_errors["team_events"] = str(exc) or exc.__class__.__name__
@@ -938,7 +938,7 @@ async def run_update(
             ticket_crawler = TicketCrawler()
             ticket_prices = await ticket_crawler.run(save=True, season=year)
             p0_non_game_counts["ticket_prices"] = len(ticket_prices)
-            logger.info(f"   ✅ Ticket prices checked for {year}: {len(ticket_prices)} rows")
+            logger.info("   ✅ Ticket prices checked for %s: %s rows", year, len(ticket_prices))
         except Exception as exc:
             logger.exception("   ⚠️ Ticket crawler failed")
             p0_non_game_errors["ticket_prices"] = str(exc) or exc.__class__.__name__
@@ -993,8 +993,8 @@ async def run_update(
 
         if violations:
             inconsistent_ids = sorted({v["game_id"] for v in violations})
-            logger.warning(f"   ⚠️  Audit found {len(violations)} inconsistencies in {len(inconsistent_ids)} games.")
-            logger.info(f"   🚀 Triggering targeted self-healing for: {', '.join(inconsistent_ids[:5])}...")
+            logger.warning("   ⚠️  Audit found %s inconsistencies in %s games.", len(violations), len(inconsistent_ids))
+            logger.info(f"   🚀 Triggering targeted self-healing for: {', '.join(inconsistent_ids[:5])}...")  # noqa: G004
 
             await run_healer_async(target_game_ids=inconsistent_ids)
 
@@ -1005,7 +1005,7 @@ async def run_update(
             else:
                 remaining_ids = sorted({v["game_id"] for v in violations_after})
                 logger.error(
-                    f"   ❌ {len(violations_after)} inconsistencies still remain in {len(remaining_ids)} games.",
+                    f"   ❌ {len(violations_after)} inconsistencies still remain in {len(remaining_ids)} games.",  # noqa: G004
                 )
         else:
             logger.info("   ✅ Deep statistical logic audit complete (No issues found)")
@@ -1030,7 +1030,7 @@ async def run_update(
                 runner(["-m", "src.cli.freshness_gate", "--date", freshness_date])
             except subprocess.CalledProcessError:
                 freshness_ok = False
-                logger.exception(f"   ⚠️ Freshness gate found issues for {freshness_date} (continuing)")
+                logger.exception("   ⚠️ Freshness gate found issues for %s (continuing)", freshness_date)
         if freshness_ok:
             logger.info("   ✅ Freshness gate passed")
 
@@ -1039,7 +1039,7 @@ async def run_update(
             _run_game_status_integrity_audit()
             logger.info("   ✅ Local integrity audit passed")
         except Exception as exc:
-            logger.exception(f"   ❌ Local integrity audit FAILED: {exc}")
+            logger.exception("   ❌ Local integrity audit FAILED: %s", exc)
             raise RuntimeError("Aborting OCI sync due to local data integrity violations.") from exc
 
         logger.info("\n⚖️ Step 12: Statistical quality gate check...")
@@ -1050,7 +1050,7 @@ async def run_update(
             reason = "non_p0_statistical_quality_gate_failed"
             non_p0_quality_gate_counts[reason] = non_p0_quality_gate_counts.get(reason, 0) + 1
             non_p0_quality_gate_ids.setdefault(reason, []).append(f"season:{year}")
-            logger.exception(f"   ⚠️ Non-P0 statistical quality gate failed (continuing OCI game publish): {exc}")
+            logger.exception("   ⚠️ Non-P0 statistical quality gate failed (continuing OCI game publish): %s", exc)
 
         logger.info("\n☁️ Step 13: Synchronizing to OCI...")
         oci_url = os.getenv("OCI_DB_URL")
@@ -1094,7 +1094,7 @@ async def run_update(
                         )
                         oci_skip_game_ids.setdefault("non_p0_supporting_sync_failed", []).append(f"season:{year}")
                 if oci_skip_counts:
-                    logger.info(f"   ℹ️ OCI skip summary: {_format_counts(oci_skip_counts)}")
+                    logger.info("   ℹ️ OCI skip summary: %s", _format_counts(oci_skip_counts))
             finally:
                 syncer.close()
 
@@ -1103,7 +1103,7 @@ async def run_update(
             try:
                 runner(["-m", "src.cli.freshness_gate", "--date", freshness_date, "--source-url-env", "OCI_DB_URL"])
             except subprocess.CalledProcessError:
-                logger.exception(f"   ⚠️ OCI freshness gate found issues for {freshness_date} (continuing)")
+                logger.exception("   ⚠️ OCI freshness gate found issues for %s (continuing)", freshness_date)
 
         logger.info("\n⚖️ Step 13.6: OCI parity quality gate check...")
         try:
@@ -1117,7 +1117,7 @@ async def run_update(
 
     if seed_tomorrow_preview:
         tomorrow_date = (datetime.strptime(target_date, "%Y%m%d") + timedelta(days=1)).strftime("%Y%m%d")
-        logger.info(f"\n🔮 Step 14: Seeding tomorrow preview contexts ({tomorrow_date})...")
+        logger.info("\n🔮 Step 14: Seeding tomorrow preview contexts (%s)...", tomorrow_date)
         try:
             preview_args = ["-m", "src.cli.daily_preview_batch", "--date", tomorrow_date]
             if not sync:
@@ -1211,7 +1211,7 @@ async def run_update(
 
     logger.info(write_contract.summary())
     logger.info(
-        "🔎 Stability summary: "
+        "🔎 Stability summary: "  # noqa: G004
         f"detail_failures={_format_counts(detail_failure_counts)} "
         f"detail_recovery_passes={detail_recovery_passes} "
         f"detail_recovered_after_retry={detail_recovered_after_retry} "
@@ -1221,7 +1221,7 @@ async def run_update(
         f"non_p0_quality_gates={_format_counts(non_p0_quality_gate_counts)} "
         f"p0_non_game={_format_counts(p0_non_game_counts)}",
     )
-    logger.info(f"🎯 P0 readiness: {format_p0_readiness_summary(p0_readiness)}")
+    logger.info("🎯 P0 readiness: %s", format_p0_readiness_summary(p0_readiness))
 
     logger.info("\n📣 Step 14: PBP Recovery Alerting...")
     if relay_recovery_target_ids:
@@ -1309,17 +1309,19 @@ async def run_update(
                     },
                 )
             SlackWebhookClient.send_alert(msg, blocks=blocks)
-            logger.info(f"   ✅ Sent PBP recovery summary to Slack (Success: {success_count}, Failed: {failed_count})")
+            logger.info(
+                "   ✅ Sent PBP recovery summary to Slack (Success: %s, Failed: %s)", success_count, failed_count,
+            )
         except Exception:
             logger.exception("   ❌ Error sending PBP recovery summary")
     else:
         logger.info("   ℹ️ No PBP recovery targets for today.")
 
-    logger.info(f"\n{'=' * 60}")
-    logger.info(f"🏁 Daily Finalize Finished for {target_date}")
-    logger.info(f"📄 Refresh Manifest: {manifest_path}")
-    logger.info(f"📄 Daily Summary: {summary_path}")
-    logger.info(f"{'=' * 60}\n")
+    logger.info(f"\n{'=' * 60}")  # noqa: G004
+    logger.info("🏁 Daily Finalize Finished for %s", target_date)
+    logger.info("📄 Refresh Manifest: %s", manifest_path)
+    logger.info("📄 Daily Summary: %s", summary_path)
+    logger.info(f"{'=' * 60}\n")  # noqa: G004
 
     return {
         "phase": "postgame_finalize",
@@ -1417,7 +1419,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     if not target_date:
         target_date = (datetime.now(KST) - timedelta(days=1)).strftime("%Y%m%d")
     elif len(target_date) != 8 or not target_date.isdigit():
-        logger.error(f"❌ Invalid date format: {target_date}. Please use YYYYMMDD.")
+        logger.error("❌ Invalid date format: %s. Please use YYYYMMDD.", target_date)
         sys.exit(1)
 
     return asyncio.run(

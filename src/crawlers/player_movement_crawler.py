@@ -56,7 +56,7 @@ class PlayerMovementCrawler:
         return results
 
     async def _crawl_year(self, page: Page, year: int) -> list[dict[str, Any]]:
-        logger.info(f"🔄 Crawling Player Movements for Year: {year}...")
+        logger.info("🔄 Crawling Player Movements for Year: %s...", year)
         results = []
 
         # Select Year
@@ -80,7 +80,7 @@ class PlayerMovementCrawler:
             prev_page_data_str = ""
 
             while True:
-                logger.info(f"   PAGE {page_num}: Extracting...")
+                logger.info("   PAGE %s: Extracting...", page_num)
 
                 # Extract current page rows
                 data = await self._extract_table(page)
@@ -90,7 +90,7 @@ class PlayerMovementCrawler:
                 # Check for duplicates (Stop infinite loop)
                 current_data_str = str(data)
                 if current_data_str == prev_page_data_str:
-                    logger.info(f"   🛑 Duplicate data detected (Same as Page {page_num - 1}). Stopping.")
+                    logger.info("   🛑 Duplicate data detected (Same as Page %s). Stopping.", page_num - 1)
                     break
                 prev_page_data_str = current_data_str
 
@@ -121,7 +121,7 @@ class PlayerMovementCrawler:
                         pass
 
                 if not clicked:
-                    logger.info(f"   ✅ Finished Year {year}. No more next pages.")
+                    logger.info("   ✅ Finished Year %s. No more next pages.", year)
                     break
 
                 # Wait for table update
@@ -135,12 +135,12 @@ class PlayerMovementCrawler:
                 page_num += 1
 
         except Exception:
-            logger.exception(f"⚠️ Error processing year {year}")
+            logger.exception("⚠️ Error processing year %s", year)
             import traceback
 
             traceback.print_exc()
 
-        logger.info(f"✅ Year {year}: Collected {len(results)} records.")
+        logger.info("✅ Year %s: Collected %s records.", year, len(results))
         return results
 
     async def _extract_table(self, page: Page) -> list[dict[str, Any]]:
@@ -180,7 +180,7 @@ class PlayerMovementCrawler:
         valid_data = []
         for item in data:
             if item["date"] and item["section"]:
-                valid_data.append(item)
+                valid_data.append(item)  # noqa: PERF401
 
         return valid_data
 
@@ -189,7 +189,7 @@ async def main() -> None:
     # Test run
     crawler = PlayerMovementCrawler()
     data = await crawler.crawl_years(2023, 2023)
-    logger.info(f"Total collected: {len(data)}")
+    logger.info("Total collected: %s", len(data))
     for d in data[:5]:
         logger.info(d)
 

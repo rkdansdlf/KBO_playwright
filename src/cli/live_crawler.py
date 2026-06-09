@@ -27,12 +27,12 @@ from src.crawlers.naver_relay_crawler import NaverRelayCrawler
 from src.crawlers.schedule_crawler import ScheduleCrawler
 from src.db.engine import SessionLocal
 from src.repositories.game_repository import save_game_snapshot, save_relay_data
-from src.utils.game_status import GAME_STATUS_LIVE
 from src.sync.oci_sync import OCISync
 from src.utils.game_state import (
     TERMINAL_STATES,
     derive_lifecycle_from_naver_status,
 )
+from src.utils.game_status import GAME_STATUS_LIVE
 from src.utils.refresh_manifest import write_refresh_manifest
 
 
@@ -178,23 +178,23 @@ async def _run_kbo_fallback_healing(game_id: str) -> None:
         from src.utils.alerting import SlackWebhookClient
 
         logger.info(
-            f"[FALLBACK TRIGGER] PBP for {game_id} is unverified. Triggering KBO website re-crawl in background...",
+            f"[FALLBACK TRIGGER] PBP for {game_id} is unverified. Triggering KBO website re-crawl in background...",  # noqa: G004
         )
         kbo_crawler = PBPCrawler()
         kbo_data = None
         max_attempts = 3
         for attempt in range(1, max_attempts + 1):
             try:
-                logger.info(f"[FALLBACK TRIGGER] Attempt {attempt} to crawl KBO PBP for {game_id}...")
+                logger.info("[FALLBACK TRIGGER] Attempt %s to crawl KBO PBP for %s...", attempt, game_id)
                 kbo_data = await kbo_crawler.crawl_game_events(game_id)
                 if kbo_data and kbo_data.get("events"):
                     break
                 else:
                     raise ValueError("KBO PBP crawl returned no events")
             except Exception as fallback_err:
-                logger.warning(f"KBO fallback attempt {attempt} failed for {game_id}: {fallback_err}", exc_info=True)
+                logger.warning(f"KBO fallback attempt {attempt} failed for {game_id}: {fallback_err}", exc_info=True)  # noqa: G004
                 if attempt == max_attempts:
-                    logger.error(f"[FALLBACK ERROR] KBO fallback failed all {max_attempts} attempts for {game_id}")
+                    logger.error("[FALLBACK ERROR] KBO fallback failed all %s attempts for %s", max_attempts, game_id)
                     break
                 else:
                     backoff = 2.0**attempt
@@ -210,12 +210,12 @@ async def _run_kbo_fallback_healing(game_id: str) -> None:
                 )
                 if saved:
                     msg = f"✅ KBO Fallback Success: Recovered {saved} unverified Naver PBP events from KBO for game {game_id}"
-                    logger.info(f"[FALLBACK SUCCESS] {msg}")
+                    logger.info("[FALLBACK SUCCESS] %s", msg)
                     SlackWebhookClient.send_alert(msg)
             except Exception as db_err:
-                logger.error(f"Failed to save KBO fallback data for {game_id}: {db_err}", exc_info=True)
+                logger.exception(f"Failed to save KBO fallback data for {game_id}: {db_err}")  # noqa: G004
     except Exception as exc:
-        logger.error(f"Unexpected exception in background KBO healing for {game_id}: {exc}", exc_info=True)
+        logger.exception(f"Unexpected exception in background KBO healing for {game_id}: {exc}")  # noqa: G004
     finally:
         _ACTIVE_HEALING_GAMES.discard(game_id)
 
@@ -235,7 +235,7 @@ async def _process_single_live_game(
     game_id = game["game_id"]
 
     logger.info(
-        f"[LIVE] 🔍 Crawling active game: {game_id} (lifecycle={lifecycle_state}, nav_status={nav_status_raw or 'UNKNOWN'})",
+        f"[LIVE] 🔍 Crawling active game: {game_id} (lifecycle={lifecycle_state}, nav_status={nav_status_raw or 'UNKNOWN'})",  # noqa: G004
     )
 
     relay_data = await relay_crawler.crawl_game_events(game_id)
@@ -284,12 +284,12 @@ async def _process_single_live_game(
         )
         if saved_rows:
             touched = True
-            logger.info(f"[LIVE] 📝 Synced {saved_rows} relay rows for {game_id}")
+            logger.info("[LIVE] 📝 Synced %s relay rows for %s", saved_rows, game_id)
 
         detail = await detail_crawler.crawl_game(game_id, today_str, lightweight=True)
         if detail and save_game_snapshot(detail, status=GAME_STATUS_LIVE):
             touched = True
-            logger.info(f"[LIVE] 📊 Updated scoreboard snapshot for {game_id}")
+            logger.info("[LIVE] 📊 Updated scoreboard snapshot for %s", game_id)
 
         # Fallback auto-healing trigger: if the game is finished but validation failed
         if resolved_lifecycle == "result_pending_stabilization":
@@ -319,14 +319,14 @@ async def run_live_crawler_cycle(
     now = datetime.now(seoul_tz)
     today_str = now.strftime("%Y%m%d")
 
-    logger.info(f"\n[{now.strftime('%Y-%m-%d %H:%M:%S')}] 🚨 Live Crawl Cycle Started")
+    logger.info(f"\n[{now.strftime('%Y-%m-%d %H:%M:%S')}] 🚨 Live Crawl Cycle Started")  # noqa: G004
 
     sched_crawler = ScheduleCrawler()
     games = await sched_crawler.crawl_schedule(now.year, now.month)
     today_games = [g for g in games if g["game_date"].replace("-", "") == today_str]
 
     if not today_games:
-        logger.info(f"[INFO] No games scheduled for today ({today_str}).")
+        logger.info("[INFO] No games scheduled for today (%s).", today_str)
         return {
             "active": False,
             "active_playing": False,
@@ -378,10 +378,10 @@ async def run_live_crawler_cycle(
         lifecycle_state = derive_lifecycle_from_naver_status(nav_status_raw)
 
         if lifecycle_state == "cancelled":
-            logger.info(f"[SKIP] {game_id} is CANCELLED.")
+            logger.info("[SKIP] %s is CANCELLED.", game_id)
             continue
         if lifecycle_state == "before":
-            logger.info(f"[SKIP] {game_id} has not started yet.")
+            logger.info("[SKIP] %s has not started yet.", game_id)
             all_finished = False
             continue
         if lifecycle_state == "result_pending_stabilization":
@@ -393,10 +393,10 @@ async def run_live_crawler_cycle(
                 if g_row and g_row.game_lifecycle_state in TERMINAL_STATES:
                     terminal_state = g_row.game_lifecycle_state
             if terminal_state:
-                logger.info(f"[SKIP] {game_id} is already final in DB (game_lifecycle_state={terminal_state}).")
+                logger.info("[SKIP] %s is already final in DB (game_lifecycle_state=%s).", game_id, terminal_state)
                 continue
             else:
-                logger.info(f"[LIVE] Game {game_id} transitioned to RESULT. Crawling final state to finalize...")
+                logger.info("[LIVE] Game %s transitioned to RESULT. Crawling final state to finalize...", game_id)
 
         all_finished = False
         active_candidates.append((game, lifecycle_state, nav_status_raw))
@@ -409,7 +409,7 @@ async def run_live_crawler_cycle(
     if len(selected_candidates) < len(active_candidates):
         selected_ids = [item[0]["game_id"] for item in selected_candidates]
         logger.info(
-            "[LIVE] Sharding active games: "
+            "[LIVE] Sharding active games: "  # noqa: G004
             f"processing {len(selected_candidates)}/{len(active_candidates)} this cycle "
             f"(max_active_games={max_active_games}, selected={','.join(selected_ids)})",
         )
@@ -426,7 +426,7 @@ async def run_live_crawler_cycle(
         else:
             min_delay = 0.0
         logger.info(
-            f"[LIVE] Dynamic request delay scaling: factor {scale_factor:.2f}x for {num_active_games} active games "
+            f"[LIVE] Dynamic request delay scaling: factor {scale_factor:.2f}x for {num_active_games} active games "  # noqa: G004
             f"(min_delay={min_delay:.2f}s)",
         )
 
@@ -461,7 +461,7 @@ async def run_live_crawler_cycle(
     )
 
     if not touched_game_ids:
-        logger.info(f"[INFO] No live games currently active right now. manifest={manifest_path}")
+        logger.info("[INFO] No live games currently active right now. manifest=%s", manifest_path)
         return {
             "active": False,
             "active_playing": False,
@@ -481,7 +481,7 @@ async def run_live_crawler_cycle(
                     for game_id in sorted(touched_game_ids):
                         try:
                             sync_engine.sync_specific_game(game_id)
-                            logger.info(f"[SYNC] ✅ Synced {game_id} to OCI.")
+                            logger.info("[SYNC] ✅ Synced %s to OCI.", game_id)
                         except Exception as exc:
                             oci_sync_failures.append(
                                 {
@@ -505,11 +505,11 @@ async def run_live_crawler_cycle(
             ",".join(failed_ids),
         )
         logger.info(
-            "[SYNC] ⚠️ Live crawl succeeded with OCI partial failures: "
+            "[SYNC] ⚠️ Live crawl succeeded with OCI partial failures: "  # noqa: G004
             f"failed={len(oci_sync_failures)} game_ids={','.join(failed_ids)}",
         )
 
-    logger.info(f"[INFO] Live cycle finished. updated={len(touched_game_ids)} manifest={manifest_path}")
+    logger.info("[INFO] Live cycle finished. updated=%s manifest=%s", len(touched_game_ids), manifest_path)
     return {
         "active": True,
         "active_playing": active_playing_flag,
@@ -613,7 +613,10 @@ def _compute_base_dynamic_interval(
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="KBO Live Score & PBP Daemon")
     parser.add_argument(
-        "--interval", type=int, default=2, help="Crawling polling interval in minutes (default for fixed mode)",
+        "--interval",
+        type=int,
+        default=2,
+        help="Crawling polling interval in minutes (default for fixed mode)",
     )
     parser.add_argument(
         "--dynamic",
@@ -628,7 +631,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         asyncio.run(run_live_crawler_cycle(sync_to_oci=not args.no_sync))
     else:
         mode = "DYNAMIC" if args.dynamic else f"FIXED ({args.interval}m)"
-        logger.info(f"🚀 Starting Real-time Daemon... Mode: {mode}")
+        logger.info("🚀 Starting Real-time Daemon... Mode: %s", mode)
         asyncio.run(main_loop(args.interval, sync_to_oci=not args.no_sync, dynamic=args.dynamic))
     return 0
 

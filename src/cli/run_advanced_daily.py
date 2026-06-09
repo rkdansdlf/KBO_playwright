@@ -30,9 +30,9 @@ async def run_advanced_update(
     sync: bool = False,
     headless: bool = True,
 ) -> None:
-    logger.info(f"\n{'=' * 60}")
-    logger.info(f"🚀 KBO Advanced Daily Sync Started for Year: {year}")
-    logger.info(f"{'=' * 60}")
+    logger.info(f"\n{'=' * 60}")  # noqa: G004
+    logger.info("🚀 KBO Advanced Daily Sync Started for Year: %s", year)
+    logger.info(f"{'=' * 60}")  # noqa: G004
 
     any_error = False
 
@@ -56,7 +56,7 @@ async def run_advanced_update(
 
             fielding_repo = PlayerSeasonFieldingRepository()
             saved = fielding_repo.upsert_many(processed)
-            logger.info(f"   ✅ Saved {saved} fielding records")
+            logger.info("   ✅ Saved %s fielding records", saved)
     except Exception:
         logger.exception("   ❌ Error crawling fielding stats")
         any_error = True
@@ -79,7 +79,7 @@ async def run_advanced_update(
 
             baserunning_repo = PlayerSeasonBaserunningRepository()
             saved = baserunning_repo.upsert_many(processed)
-            logger.info(f"   ✅ Saved {saved} baserunning records")
+            logger.info("   ✅ Saved %s baserunning records", saved)
     except Exception:
         logger.exception("   ❌ Error crawling baserunning stats")
         any_error = True
@@ -89,7 +89,7 @@ async def run_advanced_update(
     try:
         batting_crawler = TeamBattingStatsCrawler()
         batting_stats = await asyncio.to_thread(batting_crawler.crawl, year, persist=True, headless=headless)
-        logger.info(f"   ✅ Saved {len(batting_stats)} team batting records")
+        logger.info("   ✅ Saved %s team batting records", len(batting_stats))
     except Exception:
         logger.exception("   ❌ Error crawling team batting stats")
         any_error = True
@@ -99,7 +99,7 @@ async def run_advanced_update(
     try:
         pitching_crawler = TeamPitchingStatsCrawler()
         pitching_stats = await asyncio.to_thread(pitching_crawler.crawl, year, persist=True, headless=headless)
-        logger.info(f"   ✅ Saved {len(pitching_stats)} team pitching records")
+        logger.info("   ✅ Saved %s team pitching records", len(pitching_stats))
     except Exception:
         logger.exception("   ❌ Error crawling team pitching stats")
         any_error = True
@@ -114,7 +114,7 @@ async def run_advanced_update(
             active_teams = [t.team_id for t in session.query(Team.team_id).filter(Team.is_active).all()]
             agg = TeamFieldingAggregator(session)
             agg.run_all(year, active_teams)
-        logger.info(f"   ✅ Team defense aggregated for {len(active_teams)} teams")
+        logger.info("   ✅ Team defense aggregated for %s teams", len(active_teams))
     except Exception:
         logger.exception("   ❌ Error aggregating team defense stats")
         any_error = True
@@ -125,7 +125,7 @@ async def run_advanced_update(
         from src.cli.calculate_rankings import rebuild_rankings
 
         saved_rankings = await asyncio.to_thread(rebuild_rankings, year)
-        logger.info(f"   ✅ Recalculated {saved_rankings} ranking records")
+        logger.info("   ✅ Recalculated %s ranking records", saved_rankings)
     except Exception:
         logger.exception("   ❌ Error recalculating rankings")
         any_error = True
@@ -153,9 +153,9 @@ async def run_advanced_update(
                 finally:
                     syncer.close()
 
-    logger.info(f"\n{'=' * 60}")
-    logger.info(f"🏁 Advanced Daily Sync Finished for {year}")
-    logger.info(f"{'=' * 60}\n")
+    logger.info(f"\n{'=' * 60}")  # noqa: G004
+    logger.info("🏁 Advanced Daily Sync Finished for %s", year)
+    logger.info(f"{'=' * 60}\n")  # noqa: G004
 
     if any_error:
         raise RuntimeError(f"Advanced Daily Sync finished with errors for {year}")

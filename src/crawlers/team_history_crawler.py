@@ -46,7 +46,7 @@ class TeamHistoryCrawler:
             await self.playwright.stop()
 
     async def crawl(self) -> list[dict]:
-        logger.info(f"📜 Crawling Team History from {self.BASE_URL}")
+        logger.info("📜 Crawling Team History from %s", self.BASE_URL)
         if not self.page:
             await self.start()
 
@@ -56,7 +56,7 @@ class TeamHistoryCrawler:
         self._raw_pages.append({"url": self.BASE_URL, "html": raw_html, "source_key": "kbo_team_history"})
 
         rows = await self.page.locator("table.tData.tbd02 tbody tr").all()
-        logger.info(f"Found {len(rows)} year entries.")
+        logger.info("Found %s year entries.", len(rows))
 
         history_data = []
 
@@ -141,12 +141,12 @@ class TeamHistoryCrawler:
                             },
                         )
 
-            logger.info(f"Processed {year}: {len([h for h in history_data if h['season'] == year])} teams.")
+            logger.info(f"Processed {year}: {len([h for h in history_data if h['season'] == year])} teams.")  # noqa: G004
 
         return history_data
 
     async def save(self, data: list[dict]) -> None:
-        logger.info(f"💾 Saving {len(data)} history entries...")
+        logger.info("💾 Saving %s history entries...", len(data))
         with SessionLocal() as session:
             try:
                 saved_snaps = save_raw_snapshots(session, self._raw_pages)
@@ -161,12 +161,12 @@ class TeamHistoryCrawler:
 
                     code = resolve_team_code(team_name)
                     if not code:
-                        logger.warning(f"   ⚠️ Could not resolve code for '{team_name}' ({season})")
+                        logger.warning(f"   ⚠️ Could not resolve code for '{team_name}' ({season})")  # noqa: G004
                         continue
 
                     franchise_id = team_map.get(code)
                     if not franchise_id:
-                        logger.warning(f"   ⚠️ No franchise_id for code '{code}'")
+                        logger.warning(f"   ⚠️ No franchise_id for code '{code}'")  # noqa: G004
                         continue
 
                     stmt = select(TeamHistory).where(TeamHistory.season == season, TeamHistory.team_code == code)
@@ -191,7 +191,7 @@ class TeamHistoryCrawler:
                     saved_count += 1
 
                 session.commit()
-                logger.info(f"✅ Saved/Updated {saved_count} records ({saved_snaps} snapshots).")
+                logger.info("✅ Saved/Updated %s records (%s snapshots).", saved_count, saved_snaps)
             except Exception:
                 session.rollback()
                 logger.exception("Error saving team history")

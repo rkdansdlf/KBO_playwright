@@ -60,7 +60,7 @@ class RosterTransactionCrawler:
             # Fallback to desktop page via Playwright
             data = await self._crawl_desktop_page(crawl_date)
 
-        logger.info(f"[ROSTER] {crawl_date}: {len(data)} transactions found")
+        logger.info("[ROSTER] %s: %s transactions found", crawl_date, len(data))
         if save:
             self._save_to_db(data)
         else:
@@ -120,7 +120,9 @@ class RosterTransactionCrawler:
 
             # Find team blocks within section
             team_blocks = re.findall(
-                r'<strong[^>]*class="team"[^>]*>([^<]+)</strong>\s*<ul[^>]*>(.*?)</ul>', section_text, re.DOTALL,
+                r'<strong[^>]*class="team"[^>]*>([^<]+)</strong>\s*<ul[^>]*>(.*?)</ul>',
+                section_text,
+                re.DOTALL,
             )
             for team_name_raw, list_html in team_blocks:
                 team_code = self._map_team_name(team_name_raw.strip())
@@ -283,7 +285,7 @@ class RosterTransactionCrawler:
         data = await page.evaluate(script)
         transactions = []
         for item in data:
-            transactions.append(
+            transactions.append(  # noqa: PERF401
                 {
                     "transaction_date": roster_date,
                     "team_id": team_code,
@@ -337,7 +339,7 @@ class RosterTransactionCrawler:
                     except Exception:
                         logger.exception("Roster transaction save failed: %s", item.get("dedupe_key", ""))
                 session.commit()
-                logger.info(f"[ROSTER] Saved {count} transaction records, {saved_snaps} snapshots.")
+                logger.info("[ROSTER] Saved %s transaction records, %s snapshots.", count, saved_snaps)
             except Exception:
                 session.rollback()
                 logger.exception("Roster batch save error")

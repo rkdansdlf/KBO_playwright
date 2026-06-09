@@ -60,7 +60,7 @@ async def run_fetcher(argv: Sequence[str] | None = None) -> int:
             log=logger.info,
         )
     except (FileNotFoundError, ValueError) as exc:
-        logger.exception(f"[ERROR] {exc}")
+        logger.exception("[ERROR] %s", exc)
         return 1
 
     if not targets:

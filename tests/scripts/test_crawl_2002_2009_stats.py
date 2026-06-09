@@ -5,7 +5,6 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 
-# The script imports modules that may not exist yet; mock them
 @pytest.fixture(autouse=True)
 def _mock_missing_modules():
     for mod_name in [
@@ -28,6 +27,12 @@ def _mock_missing_modules():
             m.get_series_mapping = MagicMock(return_value={"regular": {}})
             m._build_pitching_data = MagicMock()
             sys.modules[mod_name] = m
+        else:
+            m = sys.modules[mod_name]
+            if not hasattr(m, "_build_pitching_data"):
+                m._build_pitching_data = MagicMock()
+            if not hasattr(m, "get_series_mapping"):
+                m.get_series_mapping = MagicMock(return_value={"regular": {}})
     if "src.utils.team_codes" not in sys.modules:
         m = types.ModuleType("src.utils.team_codes")
         m.resolve_team_code = MagicMock()

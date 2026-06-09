@@ -18,6 +18,8 @@ from src.utils.playwright_retry import NAV_TIMEOUT
 from src.utils.team_codes import normalize_kbo_game_id
 
 logger = logging.getLogger(__name__)
+
+
 class PreviewCrawler:
     GAME_LIST_URL = "https://www.koreabaseball.com/ws/Main.asmx/GetKboGameList"
     LINEUP_URL = "https://www.koreabaseball.com/ws/Schedule.asmx/GetLineUpAnalysis"
@@ -187,10 +189,10 @@ class PreviewCrawler:
                 payload = self._coerce_api_payload(response.json())
                 if isinstance(payload, (dict, list)):
                     return payload
-                logger.warning(f"⚠️ Unexpected response type from {url}: {type(payload).__name__}")
+                logger.warning("⚠️ Unexpected response type from %s: %s", url, type(payload).__name__)
         except Exception:
             # Keep logs concise; caller may still recover via Playwright.
-            logger.exception(f"⚠️ HTTP API call failed for {url}")
+            logger.exception("⚠️ HTTP API call failed for %s", url)
 
         # 2) Fallback via Playwright request, when a page is available.
         if page is None:
@@ -202,9 +204,9 @@ class PreviewCrawler:
                 payload = self._coerce_api_payload(await response.json())
                 if isinstance(payload, (dict, list)):
                     return payload
-                logger.warning(f"⚠️ Unexpected Playwright response type from {url}: {type(payload).__name__}")
+                logger.warning("⚠️ Unexpected Playwright response type from %s: %s", url, type(payload).__name__)
         except Exception:
-            logger.exception(f"⚠️ Playwright API call failed for {url}")
+            logger.exception("⚠️ Playwright API call failed for %s", url)
         return None
 
     async def crawl_preview_for_date(self, game_date: str) -> list[dict[str, Any]]:
@@ -212,7 +214,7 @@ class PreviewCrawler:
         주어진 날짜(game_date: 'YYYYMMDD')의 모든 경기에 대해
         선발투수와 선발 라인업(발표되었을 경우) 정보를 수집합니다.
         """
-        logger.info(f"🔍 Fetching Pre-game preview data for {game_date}...")
+        logger.info("🔍 Fetching Pre-game preview data for %s...", game_date)
 
         pool = self.pool
         owns_pool = False
@@ -250,7 +252,7 @@ class PreviewCrawler:
 
             games = self._extract_list_payload(list_data)
             if not games:
-                logger.info(f"ℹ️ No games found or no starting pitchers announced for {game_date}.")
+                logger.info("ℹ️ No games found or no starting pitchers announced for %s.", game_date)
                 return []
 
             for g in games:
@@ -320,7 +322,7 @@ class PreviewCrawler:
                         if len(lineup_rows) > 4:
                             preview_data["away_lineup"] = self._parse_lineup_grid(lineup_rows[4])
                     except Exception:
-                        logger.exception(f"⚠️ Error parsing lineup for {game_id}")
+                        logger.exception("⚠️ Error parsing lineup for %s", game_id)
 
                 results.append(preview_data)
                 logger.info(

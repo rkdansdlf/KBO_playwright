@@ -314,7 +314,6 @@ def _migrate_game_summary_table(conn) -> None:
 
 def init_db() -> None:
     # Import all models to ensure they are registered in Base.metadata
-    import src.models  # noqa: F401
     from src.models.base import Base
 
     Base.metadata.create_all(bind=Engine)

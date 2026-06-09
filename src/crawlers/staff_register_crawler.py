@@ -233,7 +233,7 @@ class StaffRegisterCrawler:
             "  [%s] Found %d staff (%s...)",
             kbo_team_code,
             len(records),
-            '→'.join(str(r['player_id']) for r in records[:3]),
+            "→".join(str(r["player_id"]) for r in records[:3]),
         )
         return records
 
@@ -257,7 +257,7 @@ class StaffRegisterCrawler:
             page = await context.new_page()
 
             try:
-                logger.info(f"🌍 Navigating to {REGISTER_URL} ...")
+                logger.info("🌍 Navigating to %s ...", REGISTER_URL)
                 await page.goto(REGISTER_URL, wait_until="domcontentloaded", timeout=NAV_TIMEOUT)
                 await page.wait_for_timeout(1500)
 
@@ -266,7 +266,7 @@ class StaffRegisterCrawler:
                         records = await self.crawl_team(page, code)
                         all_records.extend(records)
                     except Exception:
-                        logger.exception(f"  ⚠️  Error crawling team {code}")
+                        logger.exception("  ⚠️  Error crawling team %s", code)
 
             finally:
                 await browser.close()
@@ -293,13 +293,13 @@ class StaffRegisterCrawler:
 
         if skipped:
             logger.warning(
-                f"  ⚠️  {len(skipped)} record(s) skipped (no player_id): " + ", ".join(r["name"] for r in skipped),
+                f"  ⚠️  {len(skipped)} record(s) skipped (no player_id): " + ", ".join(r["name"] for r in skipped),  # noqa: G003
             )
 
         if dry_run:
-            logger.info(f"  [DRY-RUN] Would upsert {len(valid)} staff record(s) into player_basic.")
+            logger.info("  [DRY-RUN] Would upsert %s staff record(s) into player_basic.", len(valid))
             for r in valid:
-                logger.info(f"    → {r['name']} ({r['staff_role']}) pid={r['player_id']} team={r['team']}")
+                logger.info(f"    → {r['name']} ({r['staff_role']}) pid={r['player_id']} team={r['team']}")  # noqa: G004
             return len(valid)
 
         if not valid:
@@ -308,7 +308,7 @@ class StaffRegisterCrawler:
 
         repo = PlayerBasicRepository()
         count = repo.upsert_players(valid)
-        logger.info(f"  ✅ Upserted {count} staff record(s) into player_basic.")
+        logger.info("  ✅ Upserted %s staff record(s) into player_basic.", count)
         return count
 
 
@@ -316,17 +316,17 @@ async def main() -> None:
     """Quick standalone test – print staff for LG and Kiwoom."""
     crawler = StaffRegisterCrawler(headless=True)
     records = await crawler.crawl_all_teams(team_codes=["LG", "WO"])
-    logger.info(f"\nTotal staff records collected: {len(records)}")
+    logger.info("\nTotal staff records collected: %s", len(records))
     for r in records:
         logger.info(
             "  [%s] %s (pid=%s, team=%s, birth=%s, %scm/%skg)",
-            r['staff_role'].upper(),
-            r['name'],
-            r['player_id'],
-            r['team'],
-            r['birth_date'],
-            r['height_cm'],
-            r['weight_kg'],
+            r["staff_role"].upper(),
+            r["name"],
+            r["player_id"],
+            r["team"],
+            r["birth_date"],
+            r["height_cm"],
+            r["weight_kg"],
         )
 
 

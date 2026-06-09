@@ -23,13 +23,15 @@ def backfill_stats(years: list[int], series: str) -> None:
 
     with SessionLocal() as session:
         for year in years:
-            logger.info(f"🛠️  Backfilling Advanced Stats for {year} {series}...")
+            logger.info("🛠️  Backfilling Advanced Stats for %s %s...", year, series)
 
             # 1. Resolve team_id for all players in this season (most frequent team)
             team_map = {}
             team_query = (
                 session.query(
-                    GameBattingStat.player_id, GameBattingStat.team_code, func.count(GameBattingStat.id).label("cnt"),
+                    GameBattingStat.player_id,
+                    GameBattingStat.team_code,
+                    func.count(GameBattingStat.id).label("cnt"),
                 )
                 .group_by(GameBattingStat.player_id, GameBattingStat.team_code)
                 .all()
@@ -41,7 +43,9 @@ def backfill_stats(years: list[int], series: str) -> None:
             # Pitching team map
             p_team_query = (
                 session.query(
-                    GamePitchingStat.player_id, GamePitchingStat.team_code, func.count(GamePitchingStat.id).label("cnt"),
+                    GamePitchingStat.player_id,
+                    GamePitchingStat.team_code,
+                    func.count(GamePitchingStat.id).label("cnt"),
                 )
                 .group_by(GamePitchingStat.player_id, GamePitchingStat.team_code)
                 .all()
@@ -52,7 +56,10 @@ def backfill_stats(years: list[int], series: str) -> None:
 
             # 2. Batting Backfill
             bat_stats = SeasonStatAggregator.aggregate_batting_season_bulk(
-                session, year, series, source="FALLBACK_BACKFILL",
+                session,
+                year,
+                series,
+                source="FALLBACK_BACKFILL",
             )
             if bat_stats:
                 for stat in bat_stats:
@@ -61,11 +68,14 @@ def backfill_stats(years: list[int], series: str) -> None:
 
                 valid_bat = [s for s in bat_stats if s["team_code"]]
                 save_batting_stats_safe(valid_bat)
-                logger.info(f"   ✅ Batting: {len(valid_bat)} records saved.")
+                logger.info("   ✅ Batting: %s records saved.", len(valid_bat))
 
             # 3. Pitching Backfill
             pit_stats = SeasonStatAggregator.aggregate_pitching_season_bulk(
-                session, year, series, source="FALLBACK_BACKFILL",
+                session,
+                year,
+                series,
+                source="FALLBACK_BACKFILL",
             )
             if pit_stats:
                 for stat in pit_stats:
@@ -74,11 +84,14 @@ def backfill_stats(years: list[int], series: str) -> None:
 
                 valid_pit = [s for s in pit_stats if s["team_code"]]
                 save_pitching_stats_to_db(valid_pit)
-                logger.info(f"   ✅ Pitching: {len(valid_pit)} records saved.")
+                logger.info("   ✅ Pitching: %s records saved.", len(valid_pit))
 
             # 4. Baserunning Backfill
             br_stats = SeasonStatAggregator.aggregate_baserunning_season_bulk(
-                session, year, series, source="FALLBACK_BACKFILL",
+                session,
+                year,
+                series,
+                source="FALLBACK_BACKFILL",
             )
             if br_stats:
                 for stat in br_stats:
@@ -87,11 +100,14 @@ def backfill_stats(years: list[int], series: str) -> None:
 
                 valid_br = [s for s in br_stats if s["team_id"]]
                 cnt = baserun_repo.upsert_many(valid_br)
-                logger.info(f"   ✅ Baserunning: {cnt} records saved.")
+                logger.info("   ✅ Baserunning: %s records saved.", cnt)
 
             # 5. Fielding Backfill
             fld_stats = SeasonStatAggregator.aggregate_fielding_season_bulk(
-                session, year, series, source="FALLBACK_BACKFILL",
+                session,
+                year,
+                series,
+                source="FALLBACK_BACKFILL",
             )
             if fld_stats:
                 for stat in fld_stats:
@@ -100,7 +116,7 @@ def backfill_stats(years: list[int], series: str) -> None:
 
                 valid_fld = [s for s in fld_stats if s["team_id"]]
                 cnt = fielding_repo.upsert_many(valid_fld)
-                logger.info(f"   ✅ Fielding: {cnt} records saved.")
+                logger.info("   ✅ Fielding: %s records saved.", cnt)
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -121,4 +137,5 @@ def main(argv: Sequence[str] | None = None) -> int:
 
 if __name__ == "__main__":
     import sys
+
     sys.exit(main())

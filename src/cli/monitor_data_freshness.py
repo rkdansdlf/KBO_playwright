@@ -132,7 +132,7 @@ def run_monitor(alert: bool = True, dry_run: bool = False) -> dict[str, list[str
             SlackWebhookClient.send_alert(header + "\n" + body)
         logger.info(summary)
         for issue in all_issues:
-            logger.info(f"  {issue}")
+            logger.info("  %s", issue)
     else:
         logger.info("[MONITOR] All data sources and tables look healthy.")
 

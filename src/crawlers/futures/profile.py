@@ -16,6 +16,8 @@ from src.utils.playwright_retry import NAV_TIMEOUT
 from src.utils.throttle import throttle
 
 logger = logging.getLogger(__name__)
+
+
 class FuturesProfileCrawler:
     hitter_profile_url = "https://www.koreabaseball.com/Futures/Player/HitterDetail.aspx"
     pitcher_profile_url = "https://www.koreabaseball.com/Futures/Player/PitcherDetail.aspx"
@@ -63,7 +65,7 @@ class FuturesProfileCrawler:
     async def _scrape_profile(self, page: Page, base_url: str, player_id: str) -> dict[str, Any] | None:
         url = f"{base_url}?playerId={player_id}"
         if not await compliance.is_allowed(url):
-            logger.info(f"[COMPLIANCE] Blocked futures profile: {url}")
+            logger.info("[COMPLIANCE] Blocked futures profile: %s", url)
             return None
 
         try:
@@ -212,7 +214,7 @@ async def main() -> None:
     crawler = FuturesProfileCrawler()
     sample_id = "78137"
     payload = await crawler.fetch_player_futures(sample_id)
-    logger.info(f"Fetched Futures tables for {sample_id}: {len(payload['tables'])}")
+    logger.info(f"Fetched Futures tables for {sample_id}: {len(payload['tables'])}")  # noqa: G004
 
 
 if __name__ == "__main__":

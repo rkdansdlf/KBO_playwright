@@ -49,11 +49,11 @@ class FoodCrawler:
             try:
                 vendors = await self._crawl_team_food(team_code, info)
                 all_vendors.extend(vendors)
-                logger.info(f"[FOOD] {team_code}: {len(vendors)} vendors found")
+                logger.info("[FOOD] %s: %s vendors found", team_code, len(vendors))
             except Exception:
                 logger.exception("Failed to crawl food for %s", team_code)
 
-        logger.info(f"[FOOD] Total: {len(all_vendors)} vendors")
+        logger.info("[FOOD] Total: %s vendors", len(all_vendors))
         if save:
             self._save_to_db(all_vendors)
         else:
@@ -133,9 +133,9 @@ class FoodCrawler:
                     except Exception:
                         logger.exception("Food save failed: %s", entry.get("vendor", {}).get("vendor_name", ""))
                 session.commit()
-                logger.info(f"[FOOD] Saved {vendor_count} vendors, {menu_count} menus, {saved_snaps} snapshots.")
+                logger.info("[FOOD] Saved %s vendors, %s menus, %s snapshots.", vendor_count, menu_count, saved_snaps)
             except SQLAlchemyError as e:
                 session.rollback()
-                logger.error(f"[FOOD] Database error: {e}", exc_info=True)
+                logger.exception(f"[FOOD] Database error: {e}")  # noqa: G004
             finally:
                 self._raw_pages.clear()

@@ -17,5 +17,9 @@ class TimestampMixin:
 
     created_at = mapped_column(DateTime, default=func.now(), server_default=func.now(), nullable=False)
     updated_at = mapped_column(
-        DateTime, default=func.now(), onupdate=func.now(), server_default=func.now(), nullable=False,
+        DateTime,
+        default=func.now(),
+        onupdate=func.now(),
+        server_default=func.now(),
+        nullable=False,
     )

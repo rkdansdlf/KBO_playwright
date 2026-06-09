@@ -195,7 +195,11 @@ class RankingAggregator:
         for config in metrics:
             rankings.extend(
                 self._rank_single_metric(
-                    season, rows_list, config, kbo_min_pa=kbo_min_pa, kbo_min_ip_outs=kbo_min_ip_outs,
+                    season,
+                    rows_list,
+                    config,
+                    kbo_min_pa=kbo_min_pa,
+                    kbo_min_ip_outs=kbo_min_ip_outs,
                 ),
             )
         return rankings

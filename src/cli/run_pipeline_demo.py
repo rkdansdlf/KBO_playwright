@@ -38,7 +38,7 @@ def ingest_schedule_fixtures(fixtures_dir: Path, season_type: str, default_year:
             continue
         result = save_schedule_games(rows)
         total += result.saved
-        logger.info(f"✅ Schedule ingest: {html_file.name} ({result.saved} saved, {result.failed} failed)")
+        logger.info("✅ Schedule ingest: %s (%s saved, %s failed)", html_file.name, result.saved, result.failed)
     return total
 
 
@@ -51,7 +51,7 @@ def ingest_game_fixtures(fixtures_dir: Path) -> int:
         payload = parse_game_detail_html(html, game_id, game_id[:8])
         if save_game_detail(payload):
             count += 1
-            logger.info(f"✅ Game ingest: {game_id}")
+            logger.info("✅ Game ingest: %s", game_id)
     return count
 
 
@@ -85,7 +85,7 @@ def show_schedule_totals() -> None:
     counts = _count_games_by_season_id()
     logger.info("\n📊 Schedule totals:")
     for season_id, count in sorted(counts.items()):
-        logger.info(f"  - season_id {season_id}: {count}")
+        logger.info("  - season_id %s: %s", season_id, count)
 
 
 def show_summary(game_ids: list[str]) -> None:
@@ -98,15 +98,15 @@ def show_summary(game_ids: list[str]) -> None:
             batting_rows = session.query(GameBattingStat).filter(GameBattingStat.game_id == game_id).count()
             pitching_rows = session.query(GamePitchingStat).filter(GamePitchingStat.game_id == game_id).count()
 
-            logger.info(f"\n🎯 Game summary: {game_id}")
+            logger.info("\n🎯 Game summary: %s", game_id)
             if game:
-                logger.info(f"  Game date:  {game.game_date}")
-                logger.info(f"  Season ID:  {game.season_id}")
-                logger.info(f"  Stored scores: away {game.away_score} / home {game.home_score}")
+                logger.info("  Game date:  %s", game.game_date)
+                logger.info("  Season ID:  %s", game.season_id)
+                logger.info("  Stored scores: away %s / home %s", game.away_score, game.home_score)
             else:
                 logger.info("  Game: not found")
-            logger.info(f"  Batting rows:  {batting_rows}")
-            logger.info(f"  Pitching rows: {pitching_rows}")
+            logger.info("  Batting rows:  %s", batting_rows)
+            logger.info("  Pitching rows: %s", pitching_rows)
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
@@ -141,7 +141,7 @@ def main(argv: Sequence[str] | None = None) -> None:
         if not fixtures_dir.exists():
             raise SystemExit(f"Schedule fixtures directory not found: {fixtures_dir}")
         total = ingest_schedule_fixtures(fixtures_dir, args.schedule_season_type, args.schedule_year)
-        logger.info(f"\n✅ Schedule ingest complete ({total} rows processed)")
+        logger.info("\n✅ Schedule ingest complete (%s rows processed)", total)
 
     game_ids = list(args.report_game_id)
     if args.game_fixtures:
@@ -149,7 +149,7 @@ def main(argv: Sequence[str] | None = None) -> None:
         if not game_dir.exists():
             raise SystemExit(f"Game fixtures directory not found: {game_dir}")
         ingested = ingest_game_fixtures(game_dir)
-        logger.info(f"\n✅ Game detail ingest complete ({ingested} files)")
+        logger.info("\n✅ Game detail ingest complete (%s files)", ingested)
         if ingested and not game_ids:
             game_ids = [path.stem for path in sorted(game_dir.glob("*.html"))]
 

@@ -86,7 +86,8 @@ class EmbeddingService:
 
             with SessionLocal() as session:
                 stmt = select(EmbeddingCache).where(
-                    EmbeddingCache.text_hash.in_(hashes), EmbeddingCache.model_name == model_name,
+                    EmbeddingCache.text_hash.in_(hashes),
+                    EmbeddingCache.model_name == model_name,
                 )
                 cache_rows = session.scalars(stmt).all()
                 for row in cache_rows:
@@ -169,7 +170,7 @@ class EmbeddingService:
                     embeddings = [item.get("embedding") for item in sorted_records]
                     return embeddings
                 else:
-                    logger.error(f"❌ OpenRouter Embedding API returned status {res.status_code}: {res.text}")
+                    logger.error("❌ OpenRouter Embedding API returned status %s: %s", res.status_code, res.text)
         except Exception:
             logger.exception("❌ Exception fetching OpenRouter embeddings")
 
@@ -186,7 +187,7 @@ class EmbeddingService:
 
         requests_payload = []
         for text in texts:
-            requests_payload.append(
+            requests_payload.append(  # noqa: PERF401
                 {
                     "model": "models/text-embedding-004",
                     "content": {"parts": [{"text": text}]},
@@ -205,7 +206,7 @@ class EmbeddingService:
                     embeddings_data = data.get("embeddings", [])
                     return [item.get("values", []) for item in embeddings_data]
                 else:
-                    logger.error(f"❌ Google Embedding API returned status {res.status_code}: {res.text}")
+                    logger.error("❌ Google Embedding API returned status %s: %s", res.status_code, res.text)
         except Exception:
             logger.exception("❌ Exception fetching Google embeddings")
 

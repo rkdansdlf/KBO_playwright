@@ -108,7 +108,10 @@ def _select_tables(tables: list[dict[str, Any]]) -> tuple[list[dict[str, str]], 
 
 
 def parse_retired_hitter_tables(
-    tables: list[dict[str, Any]], *, league: str = "REGULAR", level: str = "KBO1",
+    tables: list[dict[str, Any]],
+    *,
+    league: str = "REGULAR",
+    level: str = "KBO1",
 ) -> list[dict[str, Any]]:
     base_rows, adv_rows = _select_tables(tables)
     advanced_map = {row.get("연도") or row.get("년도"): row for row in adv_rows}
@@ -184,7 +187,10 @@ def parse_retired_hitter_tables(
 
 
 def parse_retired_pitcher_table(
-    table: dict[str, Any], *, league: str = "REGULAR", level: str = "KBO1",
+    table: dict[str, Any],
+    *,
+    league: str = "REGULAR",
+    level: str = "KBO1",
 ) -> list[dict[str, Any]]:
     _, rows = _table_to_dicts(table)
     records: list[dict[str, Any]] = []

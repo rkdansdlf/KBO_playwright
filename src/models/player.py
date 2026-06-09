@@ -65,34 +65,50 @@ class PlayerBasic(Base, TimestampMixin):
     throws: Mapped[str | None] = mapped_column(String(4), nullable=True, comment="Throwing hand: R/L")
     debut_year: Mapped[int | None] = mapped_column(Integer, nullable=True, comment="Year of entry/debut")
     salary_original: Mapped[str | None] = mapped_column(
-        String(50), nullable=True, comment="Salary as shown on KBO site (e.g. '1억 5천만원')",
+        String(50),
+        nullable=True,
+        comment="Salary as shown on KBO site (e.g. '1억 5천만원')",
     )
     signing_bonus_original: Mapped[str | None] = mapped_column(
-        String(50), nullable=True, comment="Signing bonus original string",
+        String(50),
+        nullable=True,
+        comment="Signing bonus original string",
     )
     draft_info: Mapped[str | None] = mapped_column(
-        String(100), nullable=True, comment="Draft info string (e.g. '23 KT 2라운드 10순위')",
+        String(100),
+        nullable=True,
+        comment="Draft info string (e.g. '23 KT 2라운드 10순위')",
     )
 
     # Parsed structured profile details
     salary_amount: Mapped[int | None] = mapped_column(Integer, nullable=True, comment="Parsed salary amount")
     salary_currency: Mapped[str | None] = mapped_column(
-        String(8), nullable=True, comment="Salary currency (KRW or USD)",
+        String(8),
+        nullable=True,
+        comment="Salary currency (KRW or USD)",
     )
     signing_bonus_amount: Mapped[int | None] = mapped_column(Integer, nullable=True, comment="Parsed signing bonus")
     signing_bonus_currency: Mapped[str | None] = mapped_column(
-        String(8), nullable=True, comment="Signing bonus currency",
+        String(8),
+        nullable=True,
+        comment="Signing bonus currency",
     )
     draft_year: Mapped[int | None] = mapped_column(Integer, nullable=True, comment="Draft year")
     draft_round: Mapped[int | None] = mapped_column(Integer, nullable=True, comment="Draft round number")
     draft_pick_overall: Mapped[int | None] = mapped_column(
-        Integer, nullable=True, comment="Draft pick overall position",
+        Integer,
+        nullable=True,
+        comment="Draft pick overall position",
     )
     draft_type: Mapped[str | None] = mapped_column(
-        String(32), nullable=True, comment="Draft type (e.g. 1차, 2차, 자유선발)",
+        String(32),
+        nullable=True,
+        comment="Draft type (e.g. 1차, 2차, 자유선발)",
     )
     education_path: Mapped[list | None] = mapped_column(
-        JSON, nullable=True, comment="Structured education/career history path",
+        JSON,
+        nullable=True,
+        comment="Structured education/career history path",
     )
 
     __table_args__ = (
@@ -144,22 +160,32 @@ class Player(Base, TimestampMixin):
     # Parsed structured profile details
     salary_amount: Mapped[int | None] = mapped_column(Integer, nullable=True, comment="Parsed salary amount")
     salary_currency: Mapped[str | None] = mapped_column(
-        String(8), nullable=True, comment="Salary currency (KRW or USD)",
+        String(8),
+        nullable=True,
+        comment="Salary currency (KRW or USD)",
     )
     signing_bonus_amount: Mapped[int | None] = mapped_column(Integer, nullable=True, comment="Parsed signing bonus")
     signing_bonus_currency: Mapped[str | None] = mapped_column(
-        String(8), nullable=True, comment="Signing bonus currency",
+        String(8),
+        nullable=True,
+        comment="Signing bonus currency",
     )
     draft_year: Mapped[int | None] = mapped_column(Integer, nullable=True, comment="Draft year")
     draft_round: Mapped[int | None] = mapped_column(Integer, nullable=True, comment="Draft round number")
     draft_pick_overall: Mapped[int | None] = mapped_column(
-        Integer, nullable=True, comment="Draft pick overall position",
+        Integer,
+        nullable=True,
+        comment="Draft pick overall position",
     )
     draft_type: Mapped[str | None] = mapped_column(
-        String(32), nullable=True, comment="Draft type (e.g. 1차, 2차, 자유선발)",
+        String(32),
+        nullable=True,
+        comment="Draft type (e.g. 1차, 2차, 자유선발)",
     )
     education_path: Mapped[list | None] = mapped_column(
-        JSON, nullable=True, comment="Structured education/career history path",
+        JSON,
+        nullable=True,
+        comment="Structured education/career history path",
     )
 
     def __repr__(self) -> str:
@@ -208,7 +234,10 @@ class PlayerSeasonBatting(Base, TimestampMixin):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     player_id: Mapped[int] = mapped_column(
-        Integer, ForeignKey("player_basic.player_id"), nullable=False, comment="KBO player ID",
+        Integer,
+        ForeignKey("player_basic.player_id"),
+        nullable=False,
+        comment="KBO player ID",
     )
     season: Mapped[int] = mapped_column(Integer, nullable=False)
     league: Mapped[str] = mapped_column(String(16), nullable=False, default="REGULAR")
@@ -217,7 +246,9 @@ class PlayerSeasonBatting(Base, TimestampMixin):
     team_code: Mapped[str | None] = mapped_column(String(10), ForeignKey("teams.team_id"), nullable=True)
     franchise_id: Mapped[int | None] = mapped_column(Integer, nullable=True, comment="Canonical franchise ID")
     canonical_team_code: Mapped[str | None] = mapped_column(
-        String(10), nullable=True, comment="Modern canonical team code",
+        String(10),
+        nullable=True,
+        comment="Modern canonical team code",
     )
     games: Mapped[int | None] = mapped_column(Integer, nullable=True)
     plate_appearances: Mapped[int | None] = mapped_column(Integer, nullable=True)
@@ -266,7 +297,10 @@ class PlayerSeasonPitching(Base, TimestampMixin):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     player_id: Mapped[int] = mapped_column(
-        Integer, ForeignKey("player_basic.player_id"), nullable=False, comment="KBO player ID",
+        Integer,
+        ForeignKey("player_basic.player_id"),
+        nullable=False,
+        comment="KBO player ID",
     )
     season: Mapped[int] = mapped_column(Integer, nullable=False)
     league: Mapped[str] = mapped_column(String(16), nullable=False, default="REGULAR")
@@ -275,7 +309,9 @@ class PlayerSeasonPitching(Base, TimestampMixin):
     team_code: Mapped[str | None] = mapped_column(String(10), ForeignKey("teams.team_id"), nullable=True)
     franchise_id: Mapped[int | None] = mapped_column(Integer, nullable=True, comment="Canonical franchise ID")
     canonical_team_code: Mapped[str | None] = mapped_column(
-        String(10), nullable=True, comment="Modern canonical team code",
+        String(10),
+        nullable=True,
+        comment="Modern canonical team code",
     )
 
     # Basic pitching stats

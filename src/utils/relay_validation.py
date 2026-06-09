@@ -131,7 +131,8 @@ def cross_validate_with_box_score(
     )
     if not inning_rows:
         logger.warning(
-            "cross_validate_with_box_score: no inning_scores found for game %s — skipping validation", game_id,
+            "cross_validate_with_box_score: no inning_scores found for game %s — skipping validation",
+            game_id,
         )
         return True, None  # No box score data to compare against
 

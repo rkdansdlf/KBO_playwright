@@ -37,7 +37,7 @@ class ClutchAggregator:
         )
 
         if not events:
-            logger.info(f"[Clutch] {year}년 WPA 데이터 없음.")
+            logger.info("[Clutch] %s년 WPA 데이터 없음.", year)
             return []
 
         # Aggregate by batter
@@ -120,12 +120,12 @@ class ClutchAggregator:
 
         try:
             self.session.commit()
-            logger.info(f"[Clutch] {len(results)} batters updated for {year}.")
+            logger.info("[Clutch] %s batters updated for %s.", len(results), year)
         except SQLAlchemyError as e:
             err_str = str(e)
             self.session.rollback()
             if "foreign key" in err_str.lower() or "Foreign key" in err_str:
-                logger.exception(f"[Clutch] FK constraint ({err_str[:80]}...), trying raw SQL fallback...")
+                logger.exception("[Clutch] FK constraint (%s...), trying raw SQL fallback...", err_str[:80])
                 import json
 
                 from sqlalchemy import text
@@ -148,9 +148,9 @@ class ClutchAggregator:
                         {"e": json.dumps(extra, ensure_ascii=False), "s": year, "p": pid},
                     )
                 self.session.commit()
-                logger.exception(f"[Clutch] {len(results)} batters updated via raw SQL.")
+                logger.exception("[Clutch] %s batters updated via raw SQL.", len(results))
             else:
-                logger.exception(f"[Clutch] Non-FK error: {err_str[:200]}")
+                logger.exception("[Clutch] Non-FK error: %s", err_str[:200])
                 raise
 
     def print_report(self, year: int, top_n: int = 10) -> None:
@@ -158,11 +158,11 @@ class ClutchAggregator:
         if not results:
             return
 
-        logger.info(f"\n{'=' * 60}")
-        logger.info(f"  KBO {year}년 Clutch/WPA Top {top_n}")
-        logger.info(f"{'=' * 60}")
-        logger.info(f"{'순위':>4} {'BatterID':>9} {'WPA합계':>8} {'평균WPA':>8} {'Clutch':>8} {'고레버리지':>9}")
-        logger.info(f"{'-' * 60}")
+        logger.info(f"\n{'=' * 60}")  # noqa: G004
+        logger.info("  KBO %s년 Clutch/WPA Top %s", year, top_n)
+        logger.info(f"{'=' * 60}")  # noqa: G004
+        logger.info(f"{'순위':>4} {'BatterID':>9} {'WPA합계':>8} {'평균WPA':>8} {'Clutch':>8} {'고레버리지':>9}")  # noqa: G004
+        logger.info(f"{'-' * 60}")  # noqa: G004
         for i, r in enumerate(results[:top_n]):
             logger.info(
                 "  %2d  %9s %8.4f %8.4f %8.4f %9d",
@@ -174,7 +174,7 @@ class ClutchAggregator:
                 r["high_leverage_count"],
             )
 
-        logger.info(f"{'=' * 60}")
+        logger.info(f"{'=' * 60}")  # noqa: G004
 
 
 if __name__ == "__main__":
@@ -197,4 +197,4 @@ if __name__ == "__main__":
             agg.print_report(args.year)
         else:
             results = agg.aggregate(args.year)
-            logger.info(f"Computed clutch for {len(results)} batters in {args.year}")
+            logger.info("Computed clutch for %s batters in %s", len(results), args.year)

@@ -37,7 +37,7 @@ class PBPBS4Crawler:
         url = f"{self.base_url}?gameDate={game_date}&gameId={game_id}"
 
         try:
-            logger.info(f"[FETCH] BS4 PBP Data: {url}")
+            logger.info("[FETCH] BS4 PBP Data: %s", url)
             # Use a longer timeout for KBO server stability, though 15s is usually plenty.
             response = httpx.get(url, headers=self.headers, timeout=15.0, follow_redirects=True)
             response.raise_for_status()
@@ -45,16 +45,16 @@ class PBPBS4Crawler:
 
             # If redirected to KBO global Error page
             if "Error.html" in str(response.url):
-                logger.info(f"[WARN] Redirected to Error page for {game_id} (No PBP data available).")
+                logger.info("[WARN] Redirected to Error page for %s (No PBP data available).", game_id)
                 return None
 
             if "경기 준비중" in html or "취소" in html:
-                logger.info(f"[INFO] Game {game_id} seems to have no relay data.")
+                logger.info("[INFO] Game %s seems to have no relay data.", game_id)
                 return None
 
             # Quick check for relay elements before full BS4 parsing
             if "relay-bx" not in html and "relay-txt" not in html:
-                logger.info(f"[WARN] No relay containers found in HTML for {game_id}.")
+                logger.info("[WARN] No relay containers found in HTML for %s.", game_id)
                 return None
 
             logger.info("[INFO] Extracting Relay Data via BeautifulSoup...")
@@ -66,7 +66,7 @@ class PBPBS4Crawler:
             return {"game_id": game_id, "game_date": game_date, "events": events}
 
         except httpx.HTTPError as e:
-            logger.exception(f"[ERROR] HTTP fetch failed for {game_id}: {e}")
+            logger.exception("[ERROR] HTTP fetch failed for %s: %s", game_id, e)
             return None
         except Exception:
             logger.exception("BS4 PBP crawl failed for %s", game_id)
@@ -158,10 +158,18 @@ class PBPBS4Crawler:
 
                 # 4. Calculate WPA
                 wp_before = self.wpa_calc.get_win_probability(
-                    inning, is_bottom, outs_before, runners_before, score_diff_before,
+                    inning,
+                    is_bottom,
+                    outs_before,
+                    runners_before,
+                    score_diff_before,
                 )
                 wp_after = self.wpa_calc.get_win_probability(
-                    inning, is_bottom, outs_after, runners_after, score_diff_after,
+                    inning,
+                    is_bottom,
+                    outs_after,
+                    runners_after,
+                    score_diff_after,
                 )
 
                 wpa = round(wp_after - wp_before if is_bottom else wp_before - wp_after, 4)

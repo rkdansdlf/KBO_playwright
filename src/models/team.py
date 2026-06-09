@@ -38,7 +38,9 @@ class Team(Base, TimestampMixin):
     from sqlalchemy.dialects.postgresql import ARRAY as PG_ARRAY
 
     aliases: Mapped[list] = mapped_column(
-        JSON().with_variant(PG_ARRAY(String), "postgresql"), nullable=True, comment="List of team name aliases",
+        JSON().with_variant(PG_ARRAY(String), "postgresql"),
+        nullable=True,
+        comment="List of team name aliases",
     )
 
     # franchise: Mapped["Franchise"] = relationship(back_populates="teams")
@@ -59,7 +61,10 @@ class TeamDailyRoster(Base, TimestampMixin):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     roster_date: Mapped[Date] = mapped_column(Date, nullable=False, index=True)
     team_code: Mapped[str] = mapped_column(
-        String(10), ForeignKey("teams.team_id", ondelete="RESTRICT"), nullable=False, index=True,
+        String(10),
+        ForeignKey("teams.team_id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
     )
     player_id: Mapped[int] = mapped_column(Integer, nullable=False)
     player_basic_id: Mapped[int | None] = mapped_column(
@@ -101,7 +106,9 @@ class TeamCodeMap(Base, TimestampMixin):
     season: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
     curr_code: Mapped[str] = mapped_column(String(10), nullable=False, comment="The code used in that season (e.g. SK)")
     canonical_code: Mapped[str] = mapped_column(
-        String(10), nullable=False, comment="Active/final franchise code (e.g. SSG)",
+        String(10),
+        nullable=False,
+        comment="Active/final franchise code (e.g. SSG)",
     )
     is_canonical: Mapped[bool] = mapped_column(Boolean, default=False, comment="Is this the modern canonical code?")
 
@@ -156,10 +163,16 @@ class TeamSeasonBaserunning(Base, TimestampMixin):
 
     # Extra base running
     extra_bases_taken: Mapped[int] = mapped_column(
-        Integer, nullable=False, default=0, comment="1st→3rd on single, 1st→home on double, etc.",
+        Integer,
+        nullable=False,
+        default=0,
+        comment="1st→3rd on single, 1st→home on double, etc.",
     )
     out_on_base: Mapped[int] = mapped_column(
-        Integer, nullable=False, default=0, comment="Picked off / thrown out advancing",
+        Integer,
+        nullable=False,
+        default=0,
+        comment="Picked off / thrown out advancing",
     )
 
     # Bunting

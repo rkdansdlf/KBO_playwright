@@ -17,18 +17,18 @@ from src.repositories.game_repository import (
     repair_game_parent_from_existing_children,
     update_game_status,
 )
-from src.utils.game_status import (
-    GAME_STATUS_CANCELLED,
-    GAME_STATUS_COMPLETED,
-    GAME_STATUS_DRAW,
-    LIVE_GAME_STATUSES,
-)
 from src.services.game_collection_service import (
     GameCollectionResult,
     GameCollectionTarget,
     crawl_and_save_game_details,
 )
 from src.services.game_write_contract import GameWriteContract
+from src.utils.game_status import (
+    GAME_STATUS_CANCELLED,
+    GAME_STATUS_COMPLETED,
+    GAME_STATUS_DRAW,
+    LIVE_GAME_STATUSES,
+)
 from src.utils.team_codes import normalize_kbo_game_id
 
 logger = logging.getLogger(__name__)
@@ -231,7 +231,7 @@ def format_reconciliation_report(changes: Iterable[PostgameReconciliationChange]
     header = "game_id | date | status | score | detail | reason"
     lines = [header, "-" * len(header)]
     for change in rows:
-        lines.append(
+        lines.append(  # noqa: PERF401
             " | ".join(
                 [
                     change.game_id,

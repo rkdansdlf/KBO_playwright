@@ -105,7 +105,7 @@ def _default_backup_path() -> Path:
 def _season_filters(seasons: Iterable[int]) -> list:
     filters = []
     for season in sorted(set(seasons)):
-        filters.append(
+        filters.append(  # noqa: PERF401
             and_(
                 Game.game_date >= date(season, 1, 1),
                 Game.game_date <= date(season, 12, 31),
@@ -238,7 +238,7 @@ def regenerate_review_summaries(
             log(f"Backed up existing review summaries: {backup_path}")
 
         for requested_id in sorted(set(target_game_ids) - set(games_by_id)):
-            rows.append(
+            rows.append(  # noqa: PERF401
                 ReviewRegenReportRow(
                     game_id=requested_id,
                     game_date="",
@@ -340,7 +340,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--date", action="append", default=[], help="Target date YYYYMMDD. May be repeated.")
     parser.add_argument("--season", action="append", type=int, default=[], help="Target season. May be repeated.")
     parser.add_argument(
-        "--dry-run", action="store_true", help="Report only. This is the default unless --apply is set.",
+        "--dry-run",
+        action="store_true",
+        help="Report only. This is the default unless --apply is set.",
     )
     parser.add_argument("--apply", action="store_true", help="Persist regenerated review summaries locally.")
     parser.add_argument("--sync-oci", action="store_true", help="Sync successful review summary rows to OCI.")
@@ -365,7 +367,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     status_counts = {}
     for row in rows:
         status_counts[row.status] = status_counts.get(row.status, 0) + 1
-    logger.info(f"Done. apply={args.apply} total={len(rows)} statuses={status_counts}")
+    logger.info("Done. apply=%s total=%s statuses=%s", args.apply, len(rows), status_counts)
     return 0
 
 

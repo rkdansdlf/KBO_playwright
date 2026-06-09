@@ -119,12 +119,20 @@ class PlayerIdResolver:
         return aliases
 
     def _return_ambiguous(
-        self, cache_key: str, player_name: str, team_code: str, season: int, candidate_ids,
+        self,
+        cache_key: str,
+        player_name: str,
+        team_code: str,
+        season: int,
+        candidate_ids,
     ) -> int | None:
         candidates = sorted({int(pid) for pid in candidate_ids if pid is not None})
         logger.warning(
             "   [AMBIGUOUS PLAYER] %s (%s, %s) matches multiple official candidates: %s. Leaving player_id NULL.",
-            player_name, team_code, season, candidates,
+            player_name,
+            team_code,
+            season,
+            candidates,
         )
         self._cache[cache_key] = None
         return None
@@ -134,7 +142,8 @@ class PlayerIdResolver:
             return candidate_ids
 
         stmt = select(Player.id, Player.kbo_person_id).where(
-            Player.id.in_(list(candidate_ids)), Player.kbo_person_id.isnot(None),
+            Player.id.in_(list(candidate_ids)),
+            Player.kbo_person_id.isnot(None),
         )
         rows = self.session.execute(stmt).fetchall()
 
@@ -177,7 +186,7 @@ class PlayerIdResolver:
         return self._return_ambiguous(cache_key, player_name, team_code, season, candidates)
 
     def preload_season_index(self, season: int) -> None:
-        logger.info(f"🔄 Preloading player index for season {season}...")
+        logger.info("🔄 Preloading player index for season %s...", season)
         season_index: dict[str, set[int]] = {}
 
         # Batters
@@ -334,7 +343,11 @@ class PlayerIdResolver:
             resolved_id = overrides[override_key]
             logger.info(
                 "   [OVERRIDE RESOLVED] %s (%s, %s, is_pitcher=%s) -> %s",
-                player_name, team_code, season, is_pitcher, resolved_id,
+                player_name,
+                team_code,
+                season,
+                is_pitcher,
+                resolved_id,
             )
             return resolved_id
 
@@ -342,7 +355,9 @@ class PlayerIdResolver:
         override_key_no_pitcher = (player_name, team_code, season, None)
         if override_key_no_pitcher in overrides:
             resolved_id = overrides[override_key_no_pitcher]
-            logger.info(f"   [OVERRIDE RESOLVED (relaxed)] {player_name} ({team_code}, {season}) -> {resolved_id}")
+            logger.info(
+                "   [OVERRIDE RESOLVED (relaxed)] %s (%s, %s) -> %s", player_name, team_code, season, resolved_id,
+            )
             return resolved_id
 
         # Samsung Lee Seung-hyun disambiguation (two pitchers with same name)
@@ -433,7 +448,8 @@ class PlayerIdResolver:
         # If we have uniform_no, try unique by (name, uniform_no) global
         if uniform_no:
             stmt = select(PlayerBasic.player_id).where(
-                PlayerBasic.name == player_name, PlayerBasic.uniform_no == str(uniform_no),
+                PlayerBasic.name == player_name,
+                PlayerBasic.uniform_no == str(uniform_no),
             )
             results = self.session.execute(stmt).fetchall()
             candidate_ids = self._filter_surrogate_ids({row[0] for row in results})
@@ -465,7 +481,9 @@ class PlayerIdResolver:
 
             logger.warning(
                 "   [UNRESOLVED PLAYER] %s (%s, %s) lacked strict team/season/uniform evidence. Leaving player_id NULL.",
-                player_name, team_code, season,
+                player_name,
+                team_code,
+                season,
             )
             self._cache[cache_key] = None
             return None
@@ -498,7 +516,9 @@ class PlayerIdResolver:
         if not self.allow_unknown_registration:
             logger.warning(
                 "   [UNKNOWN PLAYER] %s (%s, %s) was not resolved. Leaving player_id NULL; automatic local profile registration is disabled.",
-                player_name, team_code, season,
+                player_name,
+                team_code,
+                season,
             )
             self._cache[cache_key] = None
             return None
@@ -506,7 +526,8 @@ class PlayerIdResolver:
         if not team_code:
             logger.warning(
                 "   [UNKNOWN PLAYER] %s (%s) has no team context. Leaving player_id NULL instead of auto-registering.",
-                player_name, season,
+                player_name,
+                season,
             )
             self._cache[cache_key] = None
             return None
@@ -591,10 +612,10 @@ class PlayerIdResolver:
     def register_unknown_player(self, name: str, team_code: str, uniform_no: str | None) -> int | None:
         existing_id = self._find_existing_unknown_player(name, team_code, uniform_no)
         if existing_id:
-            logger.info(f"   [UNKNOWN PLAYER REUSED] {name} ({team_code}) -> {existing_id}")
+            logger.info("   [UNKNOWN PLAYER REUSED] %s (%s) -> %s", name, team_code, existing_id)
             return existing_id
 
-        logger.info(f"   [NEW PLAYER ADDED] Auto-registering local profile for {name} ({team_code})")
+        logger.info("   [NEW PLAYER ADDED] Auto-registering local profile for %s (%s)", name, team_code)
         # Generate a large fake ID (>900000)
         stmt = (
             select(PlayerBasic.player_id)

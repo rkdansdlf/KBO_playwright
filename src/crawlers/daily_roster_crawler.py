@@ -79,7 +79,7 @@ class DailyRosterCrawler:
 
     async def _crawl_date(self, page: Page, target_date: date) -> list[dict[str, Any]]:
         date_str = target_date.strftime("%Y%m%d")
-        logger.info(f"📅 Crawling Roster for {target_date}...")
+        logger.info("📅 Crawling Roster for %s...", target_date)
 
         # Strategy:
         # 1. Set hidden input `hfSearchDate`
@@ -128,7 +128,7 @@ class DailyRosterCrawler:
                 records = await self._extract_table(page, t_code, target_date)
                 daily_records.extend(records)
             except Exception:
-                logger.exception(f"⚠️ Error crawling team {t_code}")
+                logger.exception("⚠️ Error crawling team %s", t_code)
 
         return daily_records
 
@@ -205,7 +205,7 @@ class DailyRosterCrawler:
         # Post-process
         cleaned = []
         for item in data:
-            cleaned.append(
+            cleaned.append(  # noqa: PERF401
                 {
                     "roster_date": roster_date,
                     "team_code": self._normalize_team(team_code, roster_date.year),
@@ -233,7 +233,7 @@ async def main() -> None:
     # Test for yesterday
     (datetime.now().date()).strftime("%Y-%m-%d")
     data = await crawler.crawl_date_range("2024-05-20", "2024-05-20")
-    logger.info(f"Crawled {len(data)} records.")
+    logger.info("Crawled %s records.", len(data))
     for r in data[:5]:
         logger.info(r)
 
