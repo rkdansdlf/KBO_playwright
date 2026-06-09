@@ -101,12 +101,12 @@ class InjuryCrawler(NaverNewsCrawlerBase):
                     repo.save_injury(item)
                     count += 1
                 except SQLAlchemyError as e:
-                    logger.warning(f"Injury save failed: {e}")
+                    logger.warning("Injury save failed: %s", e)
             session.commit()
-            logger.info(f"Saved {count} injury records.")
+            logger.info("Saved %s injury records.", count)
         except SQLAlchemyError as e:
             session.rollback()
-            logger.error(f"Database error saving injury records: {e}", exc_info=True)
+            logger.exception(f"Database error saving injury records: {e}")  # noqa: G004
         finally:
             session.close()
 

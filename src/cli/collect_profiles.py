@@ -27,7 +27,7 @@ async def collect_profiles(limit: int = 100, target_ids: list[str] | None = None
     try:
         if target_ids:
             stmt = select(Player).where(Player.kbo_person_id.in_(target_ids))
-            logger.info(f"🎯 Targeted processing for {len(target_ids)} IDs")
+            logger.info("🎯 Targeted processing for %s IDs", len(target_ids))
         else:
             stmt = select(Player).where(or_(Player.birth_date is None, Player.debut_year is None)).limit(limit)
 
@@ -37,7 +37,7 @@ async def collect_profiles(limit: int = 100, target_ids: list[str] | None = None
             logger.info("✅ No matching players found for profile collection.")
             return
 
-        logger.info(f"🎯 Processing {len(target_players)} player profiles...")
+        logger.info("🎯 Processing %s player profiles...", len(target_players))
 
         async with pool:
             for idx, player in enumerate(target_players, 1):
@@ -46,12 +46,12 @@ async def collect_profiles(limit: int = 100, target_ids: list[str] | None = None
                     continue
 
                 logger.info(
-                    f"[{idx}/{len(target_players)}] Crawling profile for {pid} ({getattr(player, 'name_kor', 'Unknown')})",
+                    f"[{idx}/{len(target_players)}] Crawling profile for {pid} ({getattr(player, 'name_kor', 'Unknown')})",  # noqa: G004
                 )
 
                 data = await crawler.crawl_player_profile(str(pid))
                 if data:
-                    logger.info(f"   ✅ Fetched profile for {pid}")
+                    logger.info("   ✅ Fetched profile for %s", pid)
                     from src.parsers.player_profile_parser import PlayerProfileParsed
 
                     # Manually populate parsed object since we already have parsed data
@@ -79,9 +79,9 @@ async def collect_profiles(limit: int = 100, target_ids: list[str] | None = None
 
                     # The repo.upsert_player_profile expects a PlayerProfileParsed object
                     repo.upsert_player_profile(str(pid), parsed)
-                    logger.info(f"   ✅ Saved profile metadata for {pid}")
+                    logger.info("   ✅ Saved profile metadata for %s", pid)
                 else:
-                    logger.warning(f"   ⚠️  Crawl skipped or no data for {pid}")
+                    logger.warning("   ⚠️  Crawl skipped or no data for %s", pid)
 
                 if idx % 5 == 0:
                     await asyncio.sleep(1)

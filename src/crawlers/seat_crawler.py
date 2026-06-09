@@ -51,11 +51,11 @@ class SeatCrawler:
             try:
                 sections = await self._crawl_team_seats(team_code, info)
                 all_sections.extend(sections)
-                logger.info(f"[SEAT] {team_code}: {len(sections)} sections found")
+                logger.info("[SEAT] %s: %s sections found", team_code, len(sections))
             except Exception:
                 logger.exception("Failed to crawl seats for %s", team_code)
 
-        logger.info(f"[SEAT] Total: {len(all_sections)} sections")
+        logger.info("[SEAT] Total: %s sections", len(all_sections))
 
         if save:
             self._save_to_db(all_sections)
@@ -125,7 +125,7 @@ class SeatCrawler:
                     except Exception:
                         logger.exception("Seat section save failed: %s", item.get("section_name", ""))
                 session.commit()
-                logger.info(f"[SEAT] Saved {count} section records, {saved_snaps} snapshots.")
+                logger.info("[SEAT] Saved %s section records, %s snapshots.", count, saved_snaps)
             except Exception:
                 session.rollback()
                 logger.exception("Seat batch save error")

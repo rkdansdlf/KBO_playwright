@@ -207,7 +207,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--date", type=str, help="Target date in YYYYMMDD format")
     parser.add_argument("--days", type=int, help="Validate completed games from the last N days")
     parser.add_argument(
-        "--source-url", type=str, help="Optional database URL to validate instead of local DATABASE_URL",
+        "--source-url",
+        type=str,
+        help="Optional database URL to validate instead of local DATABASE_URL",
     )
     parser.add_argument(
         "--source-url-env",
@@ -242,7 +244,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         if failures:
             logger.error("❌ Freshness gate failed")
             for failure in failures:
-                logger.info(f"  - {failure}")
+                logger.info("  - %s", failure)
         else:
             logger.info("✅ Freshness gate passed")
 

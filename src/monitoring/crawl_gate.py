@@ -28,7 +28,7 @@ class CrawlGate:
                 for issue in issue_list:
                     msg = f"[{game_id}] {issue}"
                     self.issues.append(msg)
-                    logger.warning(f"  ⚠️  {msg}")
+                    logger.warning("  ⚠️  %s", msg)
         return len(issues) == 0
 
     def check_game_completion_rate(self, target_date: str) -> bool:
@@ -37,7 +37,7 @@ class CrawlGate:
 
         games = self.session.query(Game).filter(Game.game_date == target_date).all()
         if not games:
-            logger.info(f"  ℹ️  No games on {target_date}")
+            logger.info("  ℹ️  No games on %s", target_date)
             return True
 
         completed = sum(1 for g in games if g.game_status in COMPLETED_LIKE_GAME_STATUSES)
@@ -47,7 +47,7 @@ class CrawlGate:
         if rate < threshold:
             msg = f"Completion rate {rate:.0%} ({completed}/{len(games)}) below {threshold:.0%}"
             self.issues.append(msg)
-            logger.warning(f"  ⚠️  {msg}")
+            logger.warning("  ⚠️  %s", msg)
             return False
         return True
 
@@ -61,18 +61,18 @@ class CrawlGate:
             if mismatches:
                 msg = f"Standings: {len(mismatches)} mismatches"
                 self.issues.append(msg)
-                logger.warning(f"  ⚠️  {msg}")
+                logger.warning("  ⚠️  %s", msg)
             if missing_games:
                 msg = f"Standings: {len(missing_games)} games with missing scores"
                 self.issues.append(msg)
-                logger.warning(f"  ⚠️  {msg}")
+                logger.warning("  ⚠️  %s", msg)
             return False
         return True
 
     def run_all_checks(self, target_date: str) -> bool:
-        logger.info(f"\n{'=' * 50}")
-        logger.info(f"  CrawlGate: Checking {target_date}")
-        logger.info(f"{'=' * 50}")
+        logger.info(f"\n{'=' * 50}")  # noqa: G004
+        logger.info("  CrawlGate: Checking %s", target_date)
+        logger.info(f"{'=' * 50}")  # noqa: G004
 
         results = [
             ("Freshness", self.check_freshness(target_date)),
@@ -84,10 +84,10 @@ class CrawlGate:
         logger.info("\n  Results:")
         for name, ok in results:
             icon = "✅" if ok else "❌"
-            logger.info(f"    {icon} {name}")
+            logger.info("    %s %s", icon, name)
 
         if not all_pass and self.enforce:
-            logger.error(f"\n  ❌ CrawlGate ENFORCE mode: blocking pipeline ({len(self.issues)} issues)\n")
+            logger.error("\n  ❌ CrawlGate ENFORCE mode: blocking pipeline (%s issues)\n", len(self.issues))
             sys.exit(1)
 
         logger.info("")

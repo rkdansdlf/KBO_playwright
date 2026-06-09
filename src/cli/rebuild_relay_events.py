@@ -430,7 +430,10 @@ def run(argv: Sequence[str] | None = None) -> int:
         help="OCI sync mode for applied games. Default only replaces game_events.",
     )
     parser.add_argument(
-        "--min-events", type=int, default=DEFAULT_MIN_EVENTS, help="Minimum rebuilt event rows required",
+        "--min-events",
+        type=int,
+        default=DEFAULT_MIN_EVENTS,
+        help="Minimum rebuilt event rows required",
     )
     parser.add_argument("--report-out", type=str, help="CSV report output path")
     parser.add_argument("--backup-out", type=str, help="CSV backup output path used with --apply")

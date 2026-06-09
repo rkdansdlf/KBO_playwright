@@ -83,10 +83,10 @@ def recalc_for_game(session, game_id: str, dry_run: bool = False) -> dict[str, i
 
     if dry_run:
         if batting:
-            logger.info(f"[DRY-RUN] {game_id} batting ({len(batting)} players):")
+            logger.info("[DRY-RUN] %s batting (%s players):", game_id, len(batting))
             _print_batting_records(batting)
         if pitching:
-            logger.info(f"[DRY-RUN] {game_id} pitching ({len(pitching)} players):")
+            logger.info("[DRY-RUN] %s pitching (%s players):", game_id, len(pitching))
             _print_pitching_records(pitching)
         return {"batting": len(batting), "pitching": len(pitching)}
 
@@ -101,13 +101,13 @@ def recalc_for_games_batch(session, game_ids: list[str], dry_run: bool = False) 
     pitching = aggregate_game_pitching_batch(session, game_ids)
 
     if dry_run:
-        logger.info(f"[DRY-RUN] {len(game_ids)} games, batting={len(batting)}, pitching={len(pitching)}")
+        logger.info("[DRY-RUN] %s games, batting=%s, pitching=%s", len(game_ids), len(batting), len(pitching))
         return {"batting": len(batting), "pitching": len(pitching)}
 
     b_saved = bulk_upsert_player_game_batting(session, batting)
     p_saved = bulk_upsert_player_game_pitching(session, pitching)
     session.commit()
-    logger.info(f"Batch done: {len(game_ids)} games, upserted batting={b_saved}, pitching={p_saved}")
+    logger.info("Batch done: %s games, upserted batting=%s, pitching=%s", len(game_ids), b_saved, p_saved)
     return {"batting": b_saved, "pitching": p_saved}
 
 
@@ -168,11 +168,11 @@ def run_recalc(
 
         if dry_run:
             logger.info(
-                f"[DRY-RUN] Total: {len(game_ids)} games, batting={totals['batting']}, pitching={totals['pitching']}",
+                f"[DRY-RUN] Total: {len(game_ids)} games, batting={totals['batting']}, pitching={totals['pitching']}",  # noqa: G004
             )
         else:
             logger.info(
-                f"Done: {len(game_ids)} games, upserted batting={totals['batting']}, pitching={totals['pitching']}",
+                f"Done: {len(game_ids)} games, upserted batting={totals['batting']}, pitching={totals['pitching']}",  # noqa: G004
             )
 
     return 0
@@ -184,7 +184,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--date", help="Game date (YYYYMMDD) to recalc all completed games")
     parser.add_argument("--season", type=int, help="Season year to recalc all completed games")
     parser.add_argument(
-        "--include-futures", action="store_true", help="Include Futures (2nd league) games (default: KBO only)",
+        "--include-futures",
+        action="store_true",
+        help="Include Futures (2nd league) games (default: KBO only)",
     )
     parser.add_argument("--dry-run", action="store_true", help="Print results without saving")
     parser.add_argument("--save", action="store_true", help="Persist results (default if not --dry-run)")

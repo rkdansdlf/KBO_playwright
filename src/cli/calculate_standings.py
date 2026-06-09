@@ -48,10 +48,10 @@ class StandingsCalculator:
         )
 
         if not games:
-            logger.info(f"[Standings] {year} 시즌 완료 경기 없음.")
+            logger.info("[Standings] %s 시즌 완료 경기 없음.", year)
             return
 
-        logger.info(f"[Standings] {year}년 {len(games)}경기 로드. 순위 연산 시작...")
+        logger.info("[Standings] %s년 %s경기 로드. 순위 연산 시작...", year, len(games))
 
         class TeamState:
             def __init__(self, team_code: str) -> None:
@@ -91,7 +91,16 @@ class StandingsCalculator:
             def recent_10_draws(self) -> int:
                 return sum(1 for r in self.recent_games if r == "D")
 
-            def add_game(self, is_win: bool, is_loss: bool, is_draw: bool, runs_for: int, runs_against: int, is_home: bool, game_date: date) -> None:
+            def add_game(
+                self,
+                is_win: bool,
+                is_loss: bool,
+                is_draw: bool,
+                runs_for: int,
+                runs_against: int,
+                is_home: bool,
+                game_date: date,
+            ) -> None:
                 self.runs_scored += runs_for
                 self.runs_allowed += runs_against
 
@@ -197,13 +206,13 @@ class StandingsCalculator:
                 )
                 daily_snapshots.append(snapshot)
 
-        logger.info(f"[Standings] {len(daily_snapshots)}건 스냅샷 DB 저장 중...")
+        logger.info("[Standings] %s건 스냅샷 DB 저장 중...", len(daily_snapshots))
         self.session.query(TeamStandingsDaily).filter(
             extract("year", TeamStandingsDaily.standings_date) == year,
         ).delete(synchronize_session=False)
         self.session.bulk_save_objects(daily_snapshots)
         self.session.commit()
-        logger.info(f"[Standings] {year} 시즌 순위표 계산 완료!")
+        logger.info("[Standings] %s 시즌 순위표 계산 완료!", year)
 
     def print_report(self, year: int, target_date: date | None = None) -> None:
         query = self.session.query(TeamStandingsDaily).filter(
@@ -214,7 +223,7 @@ class StandingsCalculator:
 
         latest_date = query.order_by(TeamStandingsDaily.standings_date.desc()).first()
         if not latest_date:
-            logger.info(f"[Report] {year}년 순위 데이터 없음.")
+            logger.info("[Report] %s년 순위 데이터 없음.", year)
             return
 
         d = latest_date.standings_date
@@ -225,9 +234,9 @@ class StandingsCalculator:
             .all()
         )
 
-        logger.info(f"\n{'=' * 70}")
-        logger.info(f"  KBO {year}년 순위표 (기준: {d})")
-        logger.info(f"{'=' * 70}")
+        logger.info(f"\n{'=' * 70}")  # noqa: G004
+        logger.info("  KBO %s년 순위표 (기준: %s)", year, d)
+        logger.info(f"{'=' * 70}")  # noqa: G004
         logger.info(
             "%-4s %-6s %4s %4s %3s %7s %5s %8s %4s %8s %8s",
             "순위",
@@ -289,7 +298,7 @@ class StandingsCalculator:
                     away_s,
                 )
 
-        logger.info(f"{'=' * 70}")
+        logger.info(f"{'=' * 70}")  # noqa: G004
         logger.info("  ★ 상위 5팀 (5강)" if top_5_rows else "")
 
     def print_trend(self, year: int, team_code: str | None = None) -> None:
@@ -310,14 +319,14 @@ class StandingsCalculator:
             if tc not in team_rows:
                 continue
             data = team_rows[tc]
-            logger.info(f"\n[{tc}] 승률 추이 ({year})")
-            logger.info(f"{'날짜':<12} {'승':>3} {'패':>3} {'승률':>7} {'순위':>4} {'최근10':>8}")
-            logger.info(f"{'-' * 45}")
+            logger.info("\n[%s] 승률 추이 (%s)", tc, year)
+            logger.info(f"{'날짜':<12} {'승':>3} {'패':>3} {'승률':>7} {'순위':>4} {'최근10':>8}")  # noqa: G004
+            logger.info(f"{'-' * 45}")  # noqa: G004
             step = max(1, len(data) // 15)
             for r in data[::step]:
                 recent = f"{r.recent_10_wins}승{r.recent_10_losses}패"
                 logger.info(
-                    f"  {r.standings_date}  {r.wins:>3} {r.losses:>3}  {r.win_pct:.3f}  {r.rank:>3}위  {recent:>8}",
+                    f"  {r.standings_date}  {r.wins:>3} {r.losses:>3}  {r.win_pct:.3f}  {r.rank:>3}위  {recent:>8}",  # noqa: G004
                 )
             if data:
                 last = data[-1]

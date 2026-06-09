@@ -29,7 +29,7 @@ class PlayerDailyStatsCrawler:
             page = await browser.new_page()
 
             try:
-                logger.info(f"📡 Navigating to {url}...")
+                logger.info("📡 Navigating to %s...", url)
                 await page.goto(url, wait_until="networkidle")
 
                 # 1. Select Year
@@ -39,7 +39,7 @@ class PlayerDailyStatsCrawler:
                     await page.wait_for_load_state("networkidle")
                     await asyncio.sleep(1.5)  # Wait for AJAX/Postback
                 except Exception:
-                    logger.exception(f"   ❌ Failed to select year {season}")
+                    logger.exception("   ❌ Failed to select year %s", season)
                     return []
 
                 # 2. Parse All Tables
@@ -60,7 +60,7 @@ class PlayerDailyStatsCrawler:
                     return results;
                 }""")
 
-                logger.info(f"   📊 Found {len(rows)} raw data rows on page.")
+                logger.info("   📊 Found %s raw data rows on page.", len(rows))
 
                 all_games = []
                 for row in rows:
@@ -74,7 +74,7 @@ class PlayerDailyStatsCrawler:
                 return all_games
 
             except Exception:
-                logger.exception(f"   ❌ Error crawling player {player_id}")
+                logger.exception("   ❌ Error crawling player %s", player_id)
                 return []
             finally:
                 await browser.close()
@@ -187,13 +187,13 @@ if __name__ == "__main__":
         crawler = PlayerDailyStatsCrawler()
         # Jose Fernandez 2020
         data = await crawler.crawl_player_season(69209, False, 2020)
-        logger.info(f"Collected {len(data)} games for hitter.")
+        logger.info("Collected %s games for hitter.", len(data))
         if data:
             logger.info(data[0])
 
         # Pinto 2020
         data_p = await crawler.crawl_player_season(50815, True, 2020)
-        logger.info(f"Collected {len(data_p)} games for pitcher.")
+        logger.info("Collected %s games for pitcher.", len(data_p))
         if data_p:
             logger.info(data_p[0])
 

@@ -17,15 +17,23 @@ class TicketPrice(Base, TimestampMixin):
     season: Mapped[int] = mapped_column(Integer, nullable=False, comment="Season year")
     seat_grade: Mapped[str] = mapped_column(String(50), nullable=False, comment="Seat grade name (e.g. 블루석)")
     day_type: Mapped[str] = mapped_column(
-        String(20), nullable=False, default="weekday", comment="weekday / weekend / holiday / special",
+        String(20),
+        nullable=False,
+        default="weekday",
+        comment="weekday / weekend / holiday / special",
     )
     audience_type: Mapped[str | None] = mapped_column(
-        String(30), nullable=True, comment="general / adult_member / child_member / youth / military / disabled",
+        String(30),
+        nullable=True,
+        comment="general / adult_member / child_member / youth / military / disabled",
     )
     price: Mapped[int] = mapped_column(Integer, nullable=False, comment="Price in KRW")
     currency: Mapped[str] = mapped_column(String(10), nullable=False, default="KRW")
     source_id: Mapped[int | None] = mapped_column(
-        Integer, ForeignKey("data_sources.id", ondelete="SET NULL"), nullable=True, comment="DataSource ID",
+        Integer,
+        ForeignKey("data_sources.id", ondelete="SET NULL"),
+        nullable=True,
+        comment="DataSource ID",
     )
     source_url: Mapped[str | None] = mapped_column(String(500), nullable=True, comment="Source URL")
     effective_from: Mapped[date | None] = mapped_column(Date, nullable=True, comment="Effective start date")

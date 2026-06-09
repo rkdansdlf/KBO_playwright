@@ -61,7 +61,7 @@ def crawl_all_fielding_stats(year=None) -> list[dict[str, Any]]:
 
         # 포지션별 수비 랭킹 페이지
         url = "https://www.koreabaseball.com/Record/Player/Defense/Basic.aspx"
-        logger.info(f"📊 수비 기록 페이지 접속: {url}")
+        logger.info("📊 수비 기록 페이지 접속: %s", url)
         try:
             page.goto(url, wait_until="load", timeout=LONG_TIMEOUT)
             page.wait_for_load_state("networkidle", timeout=SEL_TIMEOUT)
@@ -77,7 +77,7 @@ def crawl_all_fielding_stats(year=None) -> list[dict[str, Any]]:
                 with contextlib.suppress(Exception):
                     page.wait_for_load_state("networkidle", timeout=SEL_TIMEOUT)
                 policy.delay()
-                logger.info(f"✅ {year}년 데이터 선택 완료")
+                logger.info("✅ %s년 데이터 선택 완료", year)
 
             # 포지션 한글 → ID 매핑
             position_mapping = {
@@ -110,11 +110,11 @@ def crawl_all_fielding_stats(year=None) -> list[dict[str, Any]]:
                 if val and val != "":
                     teams.append((val, text))
 
-            logger.info(f"📋 발견된 팀 목록: {[t[1] for t in teams]}")
+            logger.info("📋 발견된 팀 목록: %s", [t[1] for t in teams])
 
             for team_val, team_name in teams:
                 try:
-                    logger.info(f"\n🏢 [{team_name}] 수비 기록 크롤링 중...")
+                    logger.info("\n🏢 [%s] 수비 기록 크롤링 중...", team_name)
                     # 포지션 선택을 "전체"로 초기화 (중요)
                     page.select_option("select#cphContents_cphContents_cphContents_ddlPos_ddlPos", value="")
                     policy.delay()
@@ -152,7 +152,7 @@ def crawl_all_fielding_stats(year=None) -> list[dict[str, Any]]:
                                     page.wait_for_load_state("networkidle", timeout=SEL_TIMEOUT)
                                     policy.delay()
                             except Exception:
-                                logger.exception(f"   ⚠️ 페이지 {current_page} 이동 중 오류")
+                                logger.exception("   ⚠️ 페이지 %s 이동 중 오류", current_page)
                                 break
 
                         table = page.query_selector("table.tData01.tt")
@@ -228,7 +228,7 @@ def crawl_all_fielding_stats(year=None) -> list[dict[str, Any]]:
                                     logger.exception("   ⚠️ 데이터 행 파싱 오류")
                                     continue
                 except Exception:
-                    logger.exception(f"   ⚠️ [{team_name}] 처리 중 오류")
+                    logger.exception("   ⚠️ [%s] 처리 중 오류", team_name)
                     continue
 
             # 2. 포수 상세 수집 (전체 팀, 17개 컬럼)
@@ -268,7 +268,7 @@ def crawl_all_fielding_stats(year=None) -> list[dict[str, Any]]:
                         total_pages = max(p_nums)
 
                 for current_page in range(1, total_pages + 1):
-                    logger.info(f"   📄 포수 상세 페이지 {current_page}/{total_pages} 크롤링 중...")
+                    logger.info("   📄 포수 상세 페이지 %s/%s 크롤링 중...", current_page, total_pages)
                     if current_page > 1:
                         p_link = next(
                             (
@@ -334,7 +334,7 @@ def crawl_all_fielding_stats(year=None) -> list[dict[str, Any]]:
 
             fielding_data = list(fielding_data_map.values())
             summary, fielding_data = build_fielding_crawl_summary(fielding_data)
-            logger.info(f"\n✅ 총 {len(fielding_data)}개의 수비 기록 수집 완료!")
+            logger.info("\n✅ 총 %s개의 수비 기록 수집 완료!", len(fielding_data))
 
         except Exception:
             logger.exception("⚠️ 수비 기록 크롤링 중 오류")
@@ -414,14 +414,14 @@ def save_fielding_stats(year=None, db_path=None) -> None:
             saved_count += 1
 
         except Exception:
-            logger.exception(f"⚠️ DB 저장 오류: {record['player_name']}")
+            logger.exception(f"⚠️ DB 저장 오류: {record['player_name']}")  # noqa: G004
             skipped_count += 1
             continue
 
     conn.commit()
     conn.close()
 
-    logger.info(f"✅ 수비 기록 저장 완료! (저장: {saved_count}건, 스킵: {skipped_count}건)")
+    logger.info("✅ 수비 기록 저장 완료! (저장: %s건, 스킵: %s건)", saved_count, skipped_count)
 
 
 if __name__ == "__main__":
@@ -433,9 +433,9 @@ if __name__ == "__main__":
     args = parser.parse_args()
     year = args.year or datetime.now().year
 
-    logger.info(f"📊 수비 크롤러 실행 (연도: {year}, 저장 여부: {args.save})")
+    logger.info("📊 수비 크롤러 실행 (연도: %s, 저장 여부: %s)", year, args.save)
     if args.save:
         save_fielding_stats(year)
     else:
         data = crawl_all_fielding_stats(args.year)
-        logger.info(f"🔍 Dry-run completed: {len(data)} records found.")
+        logger.info("🔍 Dry-run completed: %s records found.", len(data))

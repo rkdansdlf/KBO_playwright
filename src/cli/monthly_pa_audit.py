@@ -57,19 +57,19 @@ def main(argv: Sequence[str] | None = None) -> int:
     target_year = args.year if args.year else current_year - 1
 
     if target_year < 2020:
-        logger.info(f"Skipping PA formula audit for year {target_year} (before 2020)")
+        logger.info("Skipping PA formula audit for year %s (before 2020)", target_year)
         return
 
     try:
-        logger.info(f"Starting PA formula audit for year {target_year}")
+        logger.info("Starting PA formula audit for year %s", target_year)
         fixed_rows = run_monthly_pa_audit(target_year)
     except Exception as exc:
         logger.exception("PA formula audit failed")
         logger.error("PA formula audit failed: %s", exc)
         sys.exit(1)
 
-    logger.info(f"PA formula audit completed for {target_year}")
-    logger.info(f"Fixed rows: {fixed_rows}")
+    logger.info("PA formula audit completed for %s", target_year)
+    logger.info("Fixed rows: %s", fixed_rows)
 
 
 if __name__ == "__main__":

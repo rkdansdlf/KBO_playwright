@@ -29,20 +29,24 @@ logger = logging.getLogger(__name__)
 
 
 def run_parallel_sync(
-    sync_fn: Callable[[OCISync, Any], None], target_url: str, years: list[int], workers: int, **kwargs,
+    sync_fn: Callable[[OCISync, Any], None],
+    target_url: str,
+    years: list[int],
+    workers: int,
+    **kwargs,
 ) -> None:
     """연도별로 병렬 동기화 작업을 수행합니다."""
-    logger.info(f"🚀 Starting parallel sync with {workers} workers for years: {years}")
+    logger.info("🚀 Starting parallel sync with %s workers for years: %s", workers, years)
 
     def sync_worker(year: int) -> None:
-        logger.info(f"🧵 Worker started for year {year}")
+        logger.info("🧵 Worker started for year %s", year)
         with SessionLocal() as session:
             try:
                 syncer = OCISync(target_url, session)
                 sync_fn(syncer, year, **kwargs)
-                logger.info(f"✅ Worker finished for year {year}")
+                logger.info("✅ Worker finished for year %s", year)
             except Exception:
-                logger.exception(f"❌ Worker failed for year {year}")
+                logger.exception("❌ Worker failed for year %s", year)
 
     with ThreadPoolExecutor(max_workers=workers) as executor:
         executor.map(sync_worker, years)
@@ -468,7 +472,8 @@ def main(argv: Iterable[str] | None = None) -> None:
     }
 
     flag = _detect_active_flag(
-        args, list(SYNC_DISPATCH.keys()) + list(SIMPLE_FLAGS.keys()) + ["phase1_all", "stadium_realtime_all"],
+        args,
+        list(SYNC_DISPATCH.keys()) + list(SIMPLE_FLAGS.keys()) + ["phase1_all", "stadium_realtime_all"],
     )
 
     if flag in SYNC_DISPATCH:
@@ -490,14 +495,14 @@ def main(argv: Iterable[str] | None = None) -> None:
                     logger.info(header_str)
                     synced_info = syncer.sync_stadium_info()
                     synced_reg = syncer.sync_stadium_regulations()
-                    logger.info(f"✅ Stadium Info ({synced_info}) + Regulations ({synced_reg}) Sync Finished")
+                    logger.info("✅ Stadium Info (%s) + Regulations (%s) Sync Finished", synced_info, synced_reg)
                 elif flag == "fan_culture":
                     logger.info(header_str)
                     synced_r = syncer.sync_team_rivalries()
                     synced_s = syncer.sync_cheer_songs()
                     synced_c = syncer.sync_cheer_chants()
                     logger.info(
-                        f"✅ Fan Culture Sync Finished (Rivalries={synced_r}, Songs={synced_s}, Chants={synced_c})",
+                        f"✅ Fan Culture Sync Finished (Rivalries={synced_r}, Songs={synced_s}, Chants={synced_c})",  # noqa: G004
                     )
                 elif flag == "teams":
                     logger.info(header_str)
@@ -512,7 +517,7 @@ def main(argv: Iterable[str] | None = None) -> None:
                     syncer.sync_players()
                     logger.info("✅ Master Players Sync Finished")
                 elif flag == "player_basic":
-                    logger.info(f"🚀 Syncing Player Basic using specialized OCISync (limit={args.limit})...")
+                    logger.info("🚀 Syncing Player Basic using specialized OCISync (limit=%s)...", args.limit)
                     synced = syncer.sync_player_basic(limit=args.limit)
                     if isinstance(synced, int):
                         logger.info("✅ Player Basic Sync Finished (%d rows)", synced)
@@ -522,14 +527,14 @@ def main(argv: Iterable[str] | None = None) -> None:
                     logger.info(header_str)
                     results = syncer.sync_phase1_all()
                     for table, count in results.items():
-                        logger.info(f"  {table}: {count} rows")
+                        logger.info("  %s: %s rows", table, count)
                     logger.info("✅ All Phase 1 Tables Sync Finished")
                 elif flag == "stadium_realtime_all":
                     logger.info(header_str)
                     game_date = getattr(args, "realtime_game_date", None)
                     results = syncer.sync_stadium_realtime_all(game_date=game_date)
                     for table, count in results.items():
-                        logger.info(f"  {table}: {count} rows")
+                        logger.info("  %s: %s rows", table, count)
                     logger.info("✅ Stadium Real-Time All Sync Finished")
                 elif flag in ("transit_times", "congestion", "operation_notices"):
                     logger.info(header_str)

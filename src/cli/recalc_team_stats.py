@@ -38,14 +38,14 @@ def run_recalc(
 
         # A. Batting Recalculation
         if batting_recalc:
-            logger.info(f"🔄 Recalculating Team Batting Stats for season={season}...")
+            logger.info("🔄 Recalculating Team Batting Stats for season=%s...", season)
             try:
                 batting_results = aggregator.aggregate_batting(season, team_id, dry_run=dry_run)
 
                 if not batting_results:
                     logger.warning("  No batting stats aggregated.")
                 else:
-                    logger.info(f"  Aggregated {len(batting_results)} batting records.")
+                    logger.info("  Aggregated %s batting records.", len(batting_results))
 
                     if dry_run:
                         logger.info("  [DRY-RUN] Batting statistics that would be saved:")
@@ -63,22 +63,22 @@ def run_recalc(
                                 r["ops"],
                             )
                     else:
-                        logger.info(f"  💾 Upserted {len(batting_results)} team batting rows to DB.")
+                        logger.info("  💾 Upserted %s team batting rows to DB.", len(batting_results))
 
             except Exception as e:
-                logger.exception(f"❌ Failed batting stats rollup for season={season}: {e}")
+                logger.exception("❌ Failed batting stats rollup for season=%s: %s", season, e)
                 return 1
 
         # B. Pitching Recalculation
         if pitching_recalc:
-            logger.info(f"🔄 Recalculating Team Pitching Stats for season={season}...")
+            logger.info("🔄 Recalculating Team Pitching Stats for season=%s...", season)
             try:
                 pitching_results = aggregator.aggregate_pitching(season, team_id, dry_run=dry_run)
 
                 if not pitching_results:
                     logger.warning("  No pitching stats aggregated.")
                 else:
-                    logger.info(f"  Aggregated {len(pitching_results)} pitching records.")
+                    logger.info("  Aggregated %s pitching records.", len(pitching_results))
 
                     if dry_run:
                         logger.info("  [DRY-RUN] Pitching statistics that would be saved:")
@@ -97,10 +97,10 @@ def run_recalc(
                                 r["whip"],
                             )
                     else:
-                        logger.info(f"  💾 Upserted {len(pitching_results)} team pitching rows to DB.")
+                        logger.info("  💾 Upserted %s team pitching rows to DB.", len(pitching_results))
 
             except Exception as e:
-                logger.exception(f"❌ Failed pitching stats rollup for season={season}: {e}")
+                logger.exception("❌ Failed pitching stats rollup for season=%s: %s", season, e)
                 return 1
 
     logger.info("✨ Team statistics recalculation completed.")
@@ -134,7 +134,10 @@ def main() -> int:
         help="Save to DB (ignored as default is true, override with --dry-run)",
     )
     parser.add_argument(
-        "--type", choices=["batting", "pitching", "all"], default="all", help="Ignore this legacy argument",
+        "--type",
+        choices=["batting", "pitching", "all"],
+        default="all",
+        help="Ignore this legacy argument",
     )
     parser.add_argument("--league", type=str, default="REGULAR", help="Ignore this legacy argument")
 

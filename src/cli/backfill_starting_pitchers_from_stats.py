@@ -210,7 +210,7 @@ def sync_to_oci(game_ids: list[str]) -> tuple[int, int]:
                     failed += 1
             except Exception as exc:
                 failed += 1
-                logger.error(f"OCI sync failed for {game_id}: {exc}", exc_info=True)
+                logger.exception(f"OCI sync failed for {game_id}: {exc}")  # noqa: G004
     return success, failed
 
 
@@ -322,13 +322,15 @@ def main() -> int:
         )
 
     action = "would update" if args.dry_run else "updated"
-    logger.info(f"{action}: games={len(updated_game_ids)}, away_pitcher={away_updates}, home_pitcher={home_updates}")
+    logger.info(
+        "%s: games=%s, away_pitcher=%s, home_pitcher=%s", action, len(updated_game_ids), away_updates, home_updates,
+    )
 
     if args.sync_target_missing:
         with SessionLocal() as session:
             target_missing_ready_rows = find_target_missing_ready_games(session, args)
         if args.dry_run:
-            logger.info(f"target_missing_ready: games={len(target_missing_ready_rows)}")
+            logger.info("target_missing_ready: games=%s", len(target_missing_ready_rows))
             return 0
         updated_target_rows = update_target_pitcher_fields(target_missing_ready_rows)
         logger.info(
@@ -344,7 +346,7 @@ def main() -> int:
 
     if args.sync and updated_game_ids:
         success, failed = sync_to_oci(updated_game_ids)
-        logger.info(f"oci_sync: success={success}, failed={failed}")
+        logger.info("oci_sync: success=%s, failed=%s", success, failed)
         return 1 if failed else 0
 
     return 0

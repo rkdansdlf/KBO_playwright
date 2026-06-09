@@ -60,7 +60,7 @@ def _repair_batting() -> None:
             if idx % 500 == 0:
                 session.commit()
         session.commit()
-        logger.info(f"[REPAIR] Batting: Updated {updated} rows.")
+        logger.info("[REPAIR] Batting: Updated %s rows.", updated)
 
 
 def _repair_pitching() -> None:
@@ -102,7 +102,7 @@ def _repair_pitching() -> None:
             if idx % 500 == 0:
                 session.commit()
         session.commit()
-        logger.info(f"[REPAIR] Pitching: Updated {updated} rows.")
+        logger.info("[REPAIR] Pitching: Updated %s rows.", updated)
 
 
 def main(argv: Sequence[str] | None = None) -> None:

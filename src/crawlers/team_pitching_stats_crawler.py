@@ -99,9 +99,8 @@ class TeamPitchingStatsCrawler:
         except Exception as crawl_err:
             logger.warning("KBO team pitching crawl failed: %s. Falling back...", crawl_err)
 
-
         if not stats:
-            logger.warning(f"⚠️ KBO 팀 투구 페이지 오류. DB에서 폴백 집계를 시작합니다 (시즌: {season})...")
+            logger.warning("⚠️ KBO 팀 투구 페이지 오류. DB에서 폴백 집계를 시작합니다 (시즌: %s)...", season)
             try:
                 with SessionLocal() as session:
                     aggregator = TeamStatAggregator(session)
@@ -113,7 +112,7 @@ class TeamPitchingStatsCrawler:
                         s["team_name"] = reverse_mapping.get(s["team_id"], s["team_id"])
 
                     # 순위 데이터도 함께 재계산 (통합 폴백 로직)
-                    logger.warning(f"⚠️ 팀 순위 데이터도 함께 재계산합니다 (시즌: {season})...")
+                    logger.warning("⚠️ 팀 순위 데이터도 함께 재계산합니다 (시즌: %s)...", season)
                     try:
                         from src.cli.calculate_standings import StandingsCalculator
 
@@ -122,7 +121,7 @@ class TeamPitchingStatsCrawler:
                     except Exception:
                         logger.exception("[ERROR] 순위 연산 폴백 중 오류 발생")
             except Exception as fallback_error:
-                logger.exception(f"[ERROR] 팀 투구 집계 폴백 실패: {fallback_error}")
+                logger.exception("[ERROR] 팀 투구 집계 폴백 실패: %s", fallback_error)
                 raise
 
         elif persist:
@@ -149,7 +148,7 @@ class TeamPitchingStatsCrawler:
                         browser.close()
                         return stats
                 except Exception:
-                    logger.exception(f"[WARN] Failed to parse {url}")
+                    logger.exception("[WARN] Failed to parse %s", url)
             context.close()
             browser.close()
         return []
@@ -172,7 +171,6 @@ class TeamPitchingStatsCrawler:
             except Exception:
                 logger.warning("Failed to select option, trying next")
                 continue
-
 
 
 def parse_team_pitching_html(
@@ -285,7 +283,7 @@ def main() -> None:
 
     crawler = TeamPitchingStatsCrawler(league=args.league)
     stats = crawler.crawl(args.season, persist=not args.no_save, headless=not args.headed)
-    logger.info(f"Collected {len(stats)} team pitching rows for season {args.season}")
+    logger.info("Collected %s team pitching rows for season %s", len(stats), args.season)
 
 
 if __name__ == "__main__":

@@ -100,7 +100,7 @@ class OperationNoticeNaverCrawler:
         self.client = NaverSearchClient()
 
     async def run(self, save: bool = False) -> list[dict]:
-        logger.info(f"[NaverNotice] Searching for notices (last {self.days_back} days)...")
+        logger.info("[NaverNotice] Searching for notices (last %s days)...", self.days_back)
 
         if not self.client._is_configured():
             logger.warning("[NaverNotice] ⚠️  NAVER_CLIENT_ID / NAVER_CLIENT_SECRET not set.")
@@ -108,7 +108,7 @@ class OperationNoticeNaverCrawler:
             return []
 
         search_results = await self.client.search_kbo_notices(days_back=self.days_back)
-        logger.info(f"[NaverNotice] Found {len(search_results)} articles from Naver.")
+        logger.info("[NaverNotice] Found %s articles from Naver.", len(search_results))
 
         notices = [_result_to_notice(r) for r in search_results]
 
@@ -116,9 +116,9 @@ class OperationNoticeNaverCrawler:
             self._save_to_db(notices)
         else:
             for n in notices[:5]:
-                logger.info(f"  [{n['notice_type']}] {n['title'][:60]} | urgent={n['is_urgent']} | {n['published_at']}")
+                logger.info(f"  [{n['notice_type']}] {n['title'][:60]} | urgent={n['is_urgent']} | {n['published_at']}")  # noqa: G004
             if len(notices) > 5:
-                logger.info(f"  ... and {len(notices) - 5} more")
+                logger.info("  ... and %s more", len(notices) - 5)
 
         return notices
 
@@ -128,7 +128,7 @@ class OperationNoticeNaverCrawler:
                 repo = OperationNoticeRepository(session)
                 created, updated = repo.bulk_upsert(notices)
                 session.commit()
-                logger.info(f"[NaverNotice] Saved: {created} new, {updated} updated.")
+                logger.info("[NaverNotice] Saved: %s new, %s updated.", created, updated)
             except Exception:
                 session.rollback()
                 logger.exception("Error saving notices")

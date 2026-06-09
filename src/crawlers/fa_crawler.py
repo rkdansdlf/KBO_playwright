@@ -109,7 +109,7 @@ class FACrawler:
             await Stealth().apply_stealth_async(page)
 
             try:
-                logger.info(f"🌍 Navigating to {self.url}...")
+                logger.info("🌍 Navigating to %s...", self.url)
                 await page.goto(self.url, wait_until="domcontentloaded", timeout=LONG_TIMEOUT)
 
                 # Wait for table or specific content wrapper
@@ -127,16 +127,16 @@ class FACrawler:
                 ]
 
                 for section in sections:
-                    logger.info(f"🔍 Processing Section {section['id']} ({section['type']} - {section['pos']})...")
+                    logger.info(f"🔍 Processing Section {section['id']} ({section['type']} - {section['pos']})...")  # noqa: G004
                     section_data = await self._extract_section_table(page, section["type"], section["pos"])
 
                     # Filter by year
                     if target_years:
                         filtered = [d for d in section_data if d["year"] in target_years]
-                        logger.info(f"   => Found {len(filtered)} records for target years.")
+                        logger.info("   => Found %s records for target years.", len(filtered))
                         results.extend(filtered)
                     else:
-                        logger.info(f"   => Found {len(section_data)} records total.")
+                        logger.info("   => Found %s records total.", len(section_data))
                         results.extend(section_data)
 
             except Exception:
@@ -228,7 +228,7 @@ class FACrawler:
         raw_rows = await page.evaluate(full_script)
 
         if not raw_rows or len(raw_rows) < 2:
-            logger.warning(f"   ⚠️ No table found matching section {section_type} ({pos_type})")
+            logger.warning("   ⚠️ No table found matching section %s (%s)", section_type, pos_type)
             return []
 
         header = raw_rows[0]
@@ -265,11 +265,18 @@ class FACrawler:
 
         remarks_idx = find_index(["비고", "기타", "상세", "옵션"])
 
-        logger.info(f"   [Header Mapping] Section: {section_type} ({pos_type})")
-        logger.info(f"   => Header: {header}")
+        logger.info("   [Header Mapping] Section: %s (%s)", section_type, pos_type)
+        logger.info("   => Header: %s", header)
         logger.info(
             "   => Indices - year: %s, name: %s, team: %s, old_team: %s, new_team: %s, duration: %s, amount: %s, remarks: %s",
-            year_idx, name_idx, team_idx, old_team_idx, new_team_idx, duration_idx, amount_idx, remarks_idx,
+            year_idx,
+            name_idx,
+            team_idx,
+            old_team_idx,
+            new_team_idx,
+            duration_idx,
+            amount_idx,
+            remarks_idx,
         )
 
         if name_idx == -1 or amount_idx == -1:
@@ -355,11 +362,11 @@ class FACrawler:
 
     def load_from_json(self, filepath: str) -> list[dict[str, Any]]:
         """Loads FA data from a JSON file."""
-        logger.info(f"📂 Loading data from {filepath}...")
+        logger.info("📂 Loading data from %s...", filepath)
         try:
             with open(filepath, encoding="utf-8") as f:
                 data = json.load(f)
-            logger.info(f"   => Loaded {len(data)} records.")
+            logger.info("   => Loaded %s records.", len(data))
             return data
         except Exception:
             logger.exception("❌ Error loading JSON")
@@ -376,7 +383,7 @@ class FACrawler:
         new_fa_contracts = 0
         updated_fa_contracts = 0
 
-        logger.info(f"💾 processing {len(data)} records for Database...")
+        logger.info("💾 processing %s records for Database...", len(data))
 
         for item in data:
             if not item.get("player_name"):
@@ -389,10 +396,12 @@ class FACrawler:
 
             if not team_code:
                 if item.get("type") == "transfer" and not item.get("new_team"):
-                    logger.warning(f"   ⚠️ Skipping record for {name} ({year}): No valid team (likely overseas split).")
+                    logger.warning(
+                        "   ⚠️ Skipping record for %s (%s): No valid team (likely overseas split).", name, year,
+                    )
                     continue
 
-                logger.warning(f"   ⚠️ Could not resolve team code for '{team_raw}' ({name}, {year}). Skipping.")
+                logger.warning(f"   ⚠️ Could not resolve team code for '{team_raw}' ({name}, {year}). Skipping.")  # noqa: G004
                 continue
 
             # Construct Remarks string
@@ -445,11 +454,19 @@ class FACrawler:
             if dry_run:
                 logger.info(
                     "   [DRY RUN] player_movements: %s (%s): %s -> %s",
-                    name, year, 'MATCH FOUND' if existing else 'NEW RECORD', contract_info,
+                    name,
+                    year,
+                    "MATCH FOUND" if existing else "NEW RECORD",
+                    contract_info,
                 )
                 logger.info(
                     "   [DRY RUN] fa_contracts: %s (%s, %s): %s -> %s (%s만 원)",
-                    name, year, fa_type, 'MATCH FOUND' if existing_contract else 'NEW RECORD', amount_val, amount_krw,
+                    name,
+                    year,
+                    fa_type,
+                    "MATCH FOUND" if existing_contract else "NEW RECORD",
+                    amount_val,
+                    amount_krw,
                 )
                 continue
 
@@ -507,9 +524,9 @@ class FACrawler:
         if not dry_run:
             try:
                 session.commit()
-                logger.info(f"✅ player_movements Update Complete: {new_records} Inserted, {updates} Updated.")
+                logger.info("✅ player_movements Update Complete: %s Inserted, %s Updated.", new_records, updates)
                 logger.info(
-                    f"✅ fa_contracts Update Complete: {new_fa_contracts} Inserted, {updated_fa_contracts} Updated.",
+                    f"✅ fa_contracts Update Complete: {new_fa_contracts} Inserted, {updated_fa_contracts} Updated.",  # noqa: G004
                 )
             except Exception:
                 session.rollback()
@@ -545,7 +562,7 @@ async def main() -> None:
         finally:
             session.close()
     else:
-        logger.info(f"Fetched {len(data)} records.")
+        logger.info("Fetched %s records.", len(data))
         for d in data[:5]:
             logger.info(d)
 

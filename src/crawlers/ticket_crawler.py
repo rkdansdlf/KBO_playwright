@@ -129,7 +129,7 @@ class TicketCrawler:
         if not prices:
             prices = await self._crawl_lg_ticket_page()
 
-        logger.info(f"[TICKET] Found {len(prices)} price entries, {len(open_rules)} open rules")
+        logger.info("[TICKET] Found %s price entries, %s open rules", len(prices), len(open_rules))
 
         if save:
             self._save_to_db(prices, open_rules)
@@ -314,7 +314,7 @@ class TicketCrawler:
                         logger.exception("Open rule save failed: %s", item)
 
                 session.commit()
-                logger.info(f"[TICKET] Saved {price_count} prices, {rule_count} rules, {saved_snaps} snapshots.")
+                logger.info("[TICKET] Saved %s prices, %s rules, %s snapshots.", price_count, rule_count, saved_snaps)
             except Exception:
                 session.rollback()
                 logger.exception("Ticket price batch save error")

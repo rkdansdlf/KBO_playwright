@@ -65,7 +65,11 @@ class TextTransformer:
                 return self.chunk_with_overlap(title, content, meta, chunk_char_limit=800, overlap_char_limit=150)
 
     def chunk_semantically(
-        self, doc_title: str, text: str, meta: dict[str, Any], similarity_threshold: float = 0.6,
+        self,
+        doc_title: str,
+        text: str,
+        meta: dict[str, Any],
+        similarity_threshold: float = 0.6,
     ) -> list[dict[str, Any]]:
         """
         Splits text into sentences, generates embeddings, calculates cosine similarity between adjacent sentences,
@@ -130,7 +134,11 @@ class TextTransformer:
         """
         # 1. Split into parent chunks using paragraph overlap
         parent_chunks = self.chunk_with_overlap(
-            doc_title, text, meta, chunk_char_limit=parent_size, overlap_char_limit=100,
+            doc_title,
+            text,
+            meta,
+            chunk_char_limit=parent_size,
+            overlap_char_limit=100,
         )
 
         all_child_chunks = []
@@ -281,7 +289,7 @@ class TextTransformer:
                 merged.append(chunk)
 
         _logger.debug(
-            f"chunk_by_headings: {len(sections)} raw sections → "
+            f"chunk_by_headings: {len(sections)} raw sections → "  # noqa: G004
             f"{len(chunks)} chunks → {len(merged)} after merge "
             f"(keywords extracted: {len(keywords)})",
         )

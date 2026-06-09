@@ -38,7 +38,10 @@ class TeamEvent(Base, TimestampMixin):
     benefit_text: Mapped[str | None] = mapped_column(String(500), nullable=True, comment="Benefit/giveaway details")
     image_url: Mapped[str | None] = mapped_column(String(500), nullable=True, comment="Event image URL")
     source_id: Mapped[int | None] = mapped_column(
-        Integer, ForeignKey("data_sources.id", ondelete="SET NULL"), nullable=True, comment="DataSource ID",
+        Integer,
+        ForeignKey("data_sources.id", ondelete="SET NULL"),
+        nullable=True,
+        comment="DataSource ID",
     )
     source_url: Mapped[str | None] = mapped_column(String(500), nullable=True, comment="Original source URL")
     published_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, comment="When published")
@@ -49,7 +52,10 @@ class TeamEvent(Base, TimestampMixin):
         comment="Last time this event was observed",
     )
     status: Mapped[str] = mapped_column(
-        String(20), nullable=False, default="unknown", comment="scheduled / open / closed / ended / unknown",
+        String(20),
+        nullable=False,
+        default="unknown",
+        comment="scheduled / open / closed / ended / unknown",
     )
 
     __table_args__ = (

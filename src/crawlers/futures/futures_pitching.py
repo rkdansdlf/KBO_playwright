@@ -272,7 +272,7 @@ async def fetch_and_parse_futures_pitching(
         page = await active_pool.acquire()
         try:
             if not await compliance.is_allowed(profile_url):
-                logger.info(f"[COMPLIANCE] Blocked futures pitching: {profile_url}")
+                logger.info("[COMPLIANCE] Blocked futures pitching: %s", profile_url)
                 return []
 
             await throttle.wait()

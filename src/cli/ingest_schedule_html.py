@@ -41,7 +41,7 @@ def ingest_schedule_html(args: argparse.Namespace) -> None:
             season_type=args.season_type,
         )
         all_games.extend(games)
-        logger.info(f"📄 Parsed {len(games)} games from {html_file.name}")
+        logger.info("📄 Parsed %s games from %s", len(games), html_file.name)
 
     if not all_games:
         logger.info("ℹ️  No games parsed from fixtures.")
@@ -49,7 +49,7 @@ def ingest_schedule_html(args: argparse.Namespace) -> None:
 
     # 파싱된 모든 경기 일정을 데이터베이스에 저장합니다.
     result = save_schedule_games(all_games)
-    logger.info(f"✅ Ingested {result.saved} games from fixtures. Failed: {result.failed}")
+    logger.info("✅ Ingested %s games from fixtures. Failed: %s", result.saved, result.failed)
 
 
 def build_arg_parser() -> argparse.ArgumentParser:

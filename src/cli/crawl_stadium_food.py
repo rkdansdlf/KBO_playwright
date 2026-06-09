@@ -17,7 +17,7 @@ def main(argv: list[str] | None = None) -> None:
 
     crawler = FoodCrawler()
     result = asyncio.run(crawler.run(save=args.save, team_filter=args.team))
-    logger.info(f"[FOOD] Done: {len(result)} vendors")
+    logger.info("[FOOD] Done: %s vendors", len(result))
 
 
 if __name__ == "__main__":

@@ -49,10 +49,10 @@ def check_table_counts(sqlite_conn, oci_conn) -> list[dict[str, Any]]:
         oci_exists = inspect(oci_conn).has_table(table_name)
 
         if not sqlite_exists:
-            logger.warning(f"⚠️  Table {table_name} does not exist in local SQLite.")
+            logger.warning("⚠️  Table %s does not exist in local SQLite.", table_name)
             continue
         if not oci_exists:
-            logger.warning(f"⚠️  Table {table_name} does not exist in remote OCI.")
+            logger.warning("⚠️  Table %s does not exist in remote OCI.", table_name)
             results.append(
                 {
                     "table_name": table_name,
@@ -93,7 +93,7 @@ def get_row_count(conn, table_name: str) -> int:
         res = conn.execute(text(f"SELECT COUNT(*) FROM {table_name}"))
         return res.scalar() or 0
     except Exception:
-        logger.exception(f"Error getting count for {table_name}")
+        logger.exception("Error getting count for %s", table_name)
         return 0
 
 
@@ -129,7 +129,7 @@ def check_deep_ids(sqlite_conn, oci_conn, table_name: str, pk_cols: list[str]) -
 
         return int(match_rate), sample_keys
     except Exception:
-        logger.exception(f"Error performing deep check for {table_name}")
+        logger.exception("Error performing deep check for %s", table_name)
         return 0, []
 
 
@@ -164,7 +164,7 @@ def run_consistency_audit(deep: bool = False, trigger_alert: bool = True) -> boo
                 delta = str(res["delta"]).rjust(12)
                 status = res["status"].ljust(10)
 
-                logger.info(f"│ {t_name} │ {sq_c} │ {oci_c} │ {delta} │ {status} │")
+                logger.info("│ %s │ %s │ %s │ %s │ %s │", t_name, sq_c, oci_c, delta, status)
 
                 if not deep:
                     if res["status"] in ("MISMATCH", "MISSING_ON_OCI"):
@@ -189,11 +189,11 @@ def run_consistency_audit(deep: bool = False, trigger_alert: bool = True) -> boo
                     pk_cols = res["pk_cols"]
 
                     match_rate, missing_sample = check_deep_ids(sqlite_conn, oci_conn, table_name, pk_cols)
-                    logger.info(f"  - {table_name}: Match Rate = {match_rate}%")
+                    logger.info("  - %s: Match Rate = %s%%", table_name, match_rate)
 
                     if match_rate < 100.0:
                         sample_str = ", ".join(str(k) for k in missing_sample)
-                        logger.warning(f"    ⚠️  Missing sample IDs in OCI: {sample_str}")
+                        logger.warning("    ⚠️  Missing sample IDs in OCI: %s", sample_str)
                         mismatches.append(res)
                         alert_lines.append(
                             f"• <b>{table_name}</b>: Key ID match rate is {match_rate}% (Sample missing keys: {sample_str})",
@@ -206,7 +206,7 @@ def run_consistency_audit(deep: bool = False, trigger_alert: bool = True) -> boo
         return False
 
     if mismatches:
-        logger.info(f"\n🚨 Discovered {len(mismatches)} database mismatch alerts!")
+        logger.info("\n🚨 Discovered %s database mismatch alerts!", len(mismatches))
         if trigger_alert:
             alert_msg = "<b>⚠️ KBO DB Consistency Mismatch Alert</b>\n\n" + "\n".join(alert_lines)
             logger.info("📬 Sending alert webhook...")
@@ -220,10 +220,14 @@ def run_consistency_audit(deep: bool = False, trigger_alert: bool = True) -> boo
 def main() -> int:
     parser = argparse.ArgumentParser(description="KBO SQLite to OCI PostgreSQL consistency auditor")
     parser.add_argument(
-        "--deep", action="store_true", help="Perform deep ID-level matching to catch record discrepancies.",
+        "--deep",
+        action="store_true",
+        help="Perform deep ID-level matching to catch record discrepancies.",
     )
     parser.add_argument(
-        "--no-alert", action="store_true", help="Disable sending slack/telegram notifications on mismatch.",
+        "--no-alert",
+        action="store_true",
+        help="Disable sending slack/telegram notifications on mismatch.",
     )
     args = parser.parse_args()
 

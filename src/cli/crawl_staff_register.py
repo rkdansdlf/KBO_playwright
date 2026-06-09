@@ -24,21 +24,21 @@ async def run_crawler(args: argparse.Namespace) -> int:
     elif args.team:
         team_upper = args.team.upper()
         if team_upper not in KBO_TEAM_MAP:
-            logger.error(f"❌ Invalid team code: {args.team}. Must be one of: {list(KBO_TEAM_MAP.keys())}")
+            logger.error("❌ Invalid team code: %s. Must be one of: %s", args.team, list(KBO_TEAM_MAP.keys()))
             return 1
         team_codes = [team_upper]
     else:
         logger.error("❌ Please specify either --team <TEAM_CODE> or --all-teams.")
         return 1
 
-    logger.info(f"🚀 Starting KBO Staff Register Crawler for teams: {team_codes}")
-    logger.info(f"   Dry run: {args.dry_run}")
+    logger.info("🚀 Starting KBO Staff Register Crawler for teams: %s", team_codes)
+    logger.info("   Dry run: %s", args.dry_run)
 
     # 2. Instantiate and run crawler
     crawler = StaffRegisterCrawler(headless=True)
     records = await crawler.crawl_all_teams(team_codes=team_codes)
 
-    logger.info(f"📊 Crawled {len(records)} staff records.")
+    logger.info("📊 Crawled %s staff records.", len(records))
 
     # 3. Save to local SQLite
     crawler.save_to_db(records, dry_run=args.dry_run)
@@ -55,7 +55,7 @@ async def run_crawler(args: argparse.Namespace) -> int:
         else:
             player_ids = [r["player_id"] for r in records if r.get("player_id")]
             if player_ids:
-                logger.info(f"🔄 Synchronizing {len(player_ids)} staff records to OCI...")
+                logger.info("🔄 Synchronizing %s staff records to OCI...", len(player_ids))
                 from src.db.engine import SessionLocal
                 from src.sync.oci_sync import OCISync
 
@@ -63,7 +63,7 @@ async def run_crawler(args: argparse.Namespace) -> int:
                     syncer = OCISync(oci_url, session)
                     try:
                         synced_count = syncer.sync_player_basic_by_ids(player_ids)
-                        logger.info(f"✅ Successfully synchronized {synced_count} player_basic records to OCI.")
+                        logger.info("✅ Successfully synchronized %s player_basic records to OCI.", synced_count)
                     except Exception:
                         logger.exception("❌ Failed to sync player basic records to OCI")
                     finally:

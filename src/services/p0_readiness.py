@@ -354,11 +354,19 @@ def build_p0_readiness(
             )
         if not _meta_has_start_time(meta):
             _add_failure(
-                failures, dataset="schedule", game_id=game.game_id, game_date=game_date, reason="missing_start_time",
+                failures,
+                dataset="schedule",
+                game_id=game.game_id,
+                game_date=game_date,
+                reason="missing_start_time",
             )
         if not _meta_has_stadium(game, meta):
             _add_failure(
-                failures, dataset="schedule", game_id=game.game_id, game_date=game_date, reason="missing_stadium",
+                failures,
+                dataset="schedule",
+                game_id=game.game_id,
+                game_date=game_date,
+                reason="missing_stadium",
             )
 
     lineup_sides = _lineup_sides_by_game(session, [game.game_id for game in scheduled_games])
@@ -371,17 +379,29 @@ def build_p0_readiness(
             starters_complete += 1
         else:
             _add_failure(
-                failures, dataset="pregame", game_id=game.game_id, game_date=game_date, reason="missing_starter",
+                failures,
+                dataset="pregame",
+                game_id=game.game_id,
+                game_date=game_date,
+                reason="missing_starter",
             )
         if {"away", "home"} <= lineup_sides.get(game.game_id, set()):
             lineups_complete += 1
         else:
             _add_failure(
-                failures, dataset="pregame", game_id=game.game_id, game_date=game_date, reason="missing_lineup",
+                failures,
+                dataset="pregame",
+                game_id=game.game_id,
+                game_date=game_date,
+                reason="missing_lineup",
             )
         if game.game_id not in preview_ids:
             _add_failure(
-                failures, dataset="pregame", game_id=game.game_id, game_date=game_date, reason="missing_preview",
+                failures,
+                dataset="pregame",
+                game_id=game.game_id,
+                game_date=game_date,
+                reason="missing_preview",
             )
 
     event_counts = _count_by_game(session, GameEvent, relay_games)
@@ -400,11 +420,19 @@ def build_p0_readiness(
         has_relay = event_counts.get(game.game_id, 0) > 0 or pbp_counts.get(game.game_id, 0) > 0
         if not has_relay:
             _add_failure(
-                failures, dataset="live", game_id=game.game_id, game_date=game_date, reason="missing_live_relay",
+                failures,
+                dataset="live",
+                game_id=game.game_id,
+                game_date=game_date,
+                reason="missing_live_relay",
             )
         if not _score_present(game):
             _add_failure(
-                failures, dataset="live", game_id=game.game_id, game_date=game_date, reason="missing_live_score",
+                failures,
+                dataset="live",
+                game_id=game.game_id,
+                game_date=game_date,
+                reason="missing_live_score",
             )
 
     inning_counts = _count_by_game(session, GameInningScore, [game.game_id for game in completed_games])
@@ -445,7 +473,11 @@ def build_p0_readiness(
             inning_scores_ok += 1
         else:
             _add_failure(
-                failures, dataset="postgame", game_id=game.game_id, game_date=game_date, reason="missing_inning_score",
+                failures,
+                dataset="postgame",
+                game_id=game.game_id,
+                game_date=game_date,
+                reason="missing_inning_score",
             )
         if game.game_id in decision_ids:
             decisions_ok += 1

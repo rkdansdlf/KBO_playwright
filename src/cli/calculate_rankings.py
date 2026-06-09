@@ -141,7 +141,7 @@ def rebuild_rankings(season: int) -> int:
         # (완료 시즌: 고정 기준 / 진행 중 시즌: 완화된 기준)
         min_pa = _compute_min_pa(session, season)
         min_ip_outs = _compute_min_ip_outs(session, season)
-        logger.info(f"[Rankings] 자격 기준 — min_pa={min_pa}, min_ip_outs={min_ip_outs} (season={season})")
+        logger.info("[Rankings] 자격 기준 — min_pa=%s, min_ip_outs=%s (season=%s)", min_pa, min_ip_outs, season)
 
         # Clear existing rankings for the season before regenerating
         session.query(StatRanking).filter(StatRanking.season == season).delete(synchronize_session=False)
@@ -160,10 +160,10 @@ def rebuild_rankings(season: int) -> int:
     )
 
     if not rankings:
-        logger.info(f"[Rankings] ℹ️ No season stats available for {season}.")
+        logger.info("[Rankings] ℹ️ No season stats available for %s.", season)
         return 0
 
-    logger.info(f"[Rankings] ✅ Rebuilt {len(rankings)} ranking rows for {season}")
+    logger.info("[Rankings] ✅ Rebuilt %s ranking rows for %s", len(rankings), season)
     return len(rankings)
 
 

@@ -38,7 +38,7 @@ class TicketParser(BaseStadiumParser):
         if not team_info:
             import logging
 
-            logging.getLogger(__name__).warning(f"No team mapping for source_key={self.source_key}")
+            logging.getLogger(__name__).warning(f"No team mapping for source_key={self.source_key}")  # noqa: G004
             return []
 
         team_code, stadium_id = team_info

@@ -15,6 +15,8 @@ from src.utils.playwright_retry import NAV_TIMEOUT, SEL_TIMEOUT
 from src.utils.throttle import throttle
 
 logger = logging.getLogger(__name__)
+
+
 class RetiredPlayerListingCrawler:
     """
     Fetch player ID sets for historical seasons and compute inactive (retired) candidates.
@@ -57,7 +59,7 @@ class RetiredPlayerListingCrawler:
         team-aware path for production collection.
         """
         if not await compliance.is_allowed(base_url):
-            logger.info(f"[COMPLIANCE] Blocked record listing: {base_url}")
+            logger.info("[COMPLIANCE] Blocked record listing: %s", base_url)
             return {}
 
         await self._wait()
@@ -102,7 +104,7 @@ class RetiredPlayerListingCrawler:
     async def _crawl_record_page_ids_with_teams(self, page, base_url: str, year: int) -> dict[str, str]:
         """Navigate to record page, select year, and iterate through all teams to collect IDs and names."""
         if not await compliance.is_allowed(base_url):
-            logger.info(f"[COMPLIANCE] Blocked record listing: {base_url}")
+            logger.info("[COMPLIANCE] Blocked record listing: %s", base_url)
             return {}
 
         await self._wait()
@@ -135,7 +137,7 @@ class RetiredPlayerListingCrawler:
 
         all_players: dict[str, str] = {}
         for code in team_codes:
-            logger.info(f"    [Year {year}] Fetching team {code}")
+            logger.info("    [Year %s] Fetching team %s", year, code)
             await page.select_option(team_selector, code)
             await page.evaluate(
                 "el => { if (el.onchange) el.onchange(); else el.dispatchEvent(new Event('change', { bubbles: true })); }",
@@ -206,24 +208,24 @@ class RetiredPlayerListingCrawler:
     async def collect_historical_player_ids(self, seasons: Iterable[int]) -> dict[str, str]:
         historical_players: dict[str, str] = {}
         seasons_list = list(seasons)
-        logger.info(f"🔍 Collecting historical player IDs for {len(seasons_list)} seasons in parallel...")
+        logger.info("🔍 Collecting historical player IDs for %s seasons in parallel...", len(seasons_list))
 
         semaphore = asyncio.Semaphore(10)  # Allow 10 concurrent years
 
         async def fetch_year(season: int) -> dict[str, str]:
             async with semaphore:
-                logger.info(f"  Fetching IDs for {season}...")
+                logger.info("  Fetching IDs for %s...", season)
                 try:
                     return await self.collect_player_ids_for_year(season)
                 except Exception:
-                    logger.exception(f"  ❌ Error fetching IDs for {season}")
+                    logger.exception("  ❌ Error fetching IDs for %s", season)
                     return {}
 
         results = await asyncio.gather(*(fetch_year(s) for s in seasons_list))
         for season_players in results:
             historical_players.update(season_players)
 
-        logger.info(f"✨ Total unique IDs found: {len(historical_players)}")
+        logger.info("✨ Total unique IDs found: %s", len(historical_players))
         return historical_players
 
     async def determine_inactive_player_ids(
@@ -241,14 +243,14 @@ class RetiredPlayerListingCrawler:
 
         seasons = range(start_year, end_year + 1)
         historical_players = await self.collect_historical_player_ids(seasons)
-        logger.info(f"📡 Fetching active player IDs for {active_year}...")
+        logger.info("📡 Fetching active player IDs for %s...", active_year)
         active_players = await self.collect_player_ids_for_year(active_year)
 
         historical_ids = set(historical_players.keys())
         active_ids = set(active_players.keys())
 
         inactive = {pid for pid in historical_ids if pid and pid not in active_ids}
-        logger.info(f"✨ Found {len(inactive)} inactive players out of {len(historical_ids)} total unique IDs.")
+        logger.info("✨ Found %s inactive players out of %s total unique IDs.", len(inactive), len(historical_ids))
         return inactive
 
     def _extract_ids(self, data: dict[str, list[dict]]) -> set[str]:
@@ -264,7 +266,7 @@ class RetiredPlayerListingCrawler:
 async def main() -> None:
     crawler = RetiredPlayerListingCrawler(request_delay=1.0)
     inactive_ids = await crawler.determine_inactive_player_ids(start_year=1982, end_year=2023, active_year=2024)
-    logger.info(f"Inactive player IDs discovered: {len(inactive_ids)}")
+    logger.info("Inactive player IDs discovered: %s", len(inactive_ids))
 
 
 if __name__ == "__main__":

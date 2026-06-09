@@ -113,7 +113,7 @@ def _build_telegram_message(
     if relay_failures:
         lines.append(f"❌ <b>Failed Relay</b>: {len(relay_failures)} games")
         for gid in relay_failures[:10]:
-            lines.append(f"   - {gid}")
+            lines.append(f"   - {gid}")  # noqa: PERF401
         if len(relay_failures) > 10:
             lines.append(f"   ... and {len(relay_failures) - 10} more")
     else:
@@ -123,7 +123,7 @@ def _build_telegram_message(
     if detail_failures:
         lines.append(f"⚠️ <b>Failed Detail</b>: {len(detail_failures)} games")
         for gid in detail_failures[:5]:
-            lines.append(f"   - {gid}")
+            lines.append(f"   - {gid}")  # noqa: PERF401
 
     # OCI skip info
     skip_counts = oci_data.get("skip_counts", {})
@@ -158,7 +158,7 @@ def _build_telegram_message(
     if affected:
         lines.append(f"\n📋 <b>Affected Games</b>: {len(affected)} total")
         for gid in affected[:10]:
-            lines.append(f"   - {gid}")
+            lines.append(f"   - {gid}")  # noqa: PERF401
         if len(affected) > 10:
             lines.append(f"   ... and {len(affected) - 10} more")
 

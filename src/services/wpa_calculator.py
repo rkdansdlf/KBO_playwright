@@ -29,7 +29,7 @@ class WPACalculator:
         Expected columns: inning, half, outs, runners, score_diff, win_prob
         """
         if not os.path.exists(path):
-            logger.warning(f"⚠️ Win Expectancy Matrix not found at {path}. Using fallback formula.")
+            logger.warning("⚠️ Win Expectancy Matrix not found at %s. Using fallback formula.", path)
             return
 
         with open(path) as f:
@@ -44,7 +44,7 @@ class WPACalculator:
                 )
                 self._matrix[key] = float(row["win_prob"])
 
-        logger.info(f"✅ Loaded {len(self._matrix)} Win Expectancy entries from {path}")
+        logger.info("✅ Loaded %s Win Expectancy entries from %s", len(self._matrix), path)
 
     def calculate_wpa(
         self,

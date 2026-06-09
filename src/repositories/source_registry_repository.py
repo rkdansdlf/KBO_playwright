@@ -133,7 +133,11 @@ class RawSourceSnapshotRepository:
         return list(self.session.execute(stmt).scalars().all())
 
     def update_parse_status(
-        self, snapshot_id: int, status: str, parser_version: str | None = None, error_message: str | None = None,
+        self,
+        snapshot_id: int,
+        status: str,
+        parser_version: str | None = None,
+        error_message: str | None = None,
     ) -> None:
         record = self.session.get(RawSourceSnapshot, snapshot_id)
         if record:

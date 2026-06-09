@@ -102,18 +102,18 @@ def run_sync(args: argparse.Namespace) -> int:
     targets = find_pregame_sync_targets(start_date, end_date)
 
     if not targets:
-        logger.info(f"No local pregame preview targets found between {start_date} and {end_date}.")
+        logger.info("No local pregame preview targets found between %s and %s.", start_date, end_date)
         return 0
 
     complete_starters = sum(1 for target in targets if target.away_pitcher and target.home_pitcher)
     preview_rows = sum(1 for target in targets if target.has_preview)
     logger.info(
-        f"Pregame sync targets ({start_date}..{end_date}): "
+        f"Pregame sync targets ({start_date}..{end_date}): "  # noqa: G004
         f"games={len(targets)}, starters_complete={complete_starters}, previews={preview_rows}",
     )
     for target in targets:
         logger.info(
-            f"  {target.game_date} {target.game_id}: "
+            f"  {target.game_date} {target.game_id}: "  # noqa: G004
             f"starter='{target.away_pitcher}' vs '{target.home_pitcher}', "
             f"preview={int(target.has_preview)}",
         )
@@ -128,11 +128,11 @@ def run_sync(args: argparse.Namespace) -> int:
             for target in targets:
                 result = syncer.sync_specific_game(target.game_id)
                 synced += 1
-                logger.info(f"Synced {target.game_id}: {result}")
+                logger.info("Synced %s: %s", target.game_id, result)
         finally:
             syncer.close()
 
-    logger.info(f"Pregame preview sync finished. synced_games={synced}")
+    logger.info("Pregame preview sync finished. synced_games=%s", synced)
     return 0
 
 

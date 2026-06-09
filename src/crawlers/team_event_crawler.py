@@ -92,11 +92,11 @@ class TeamEventCrawler:
             try:
                 events = await self._crawl_team(team_code, config)
                 all_events.extend(events)
-                logger.info(f"[EVENT] {team_code}: {len(events)} events found")
+                logger.info("[EVENT] %s: %s events found", team_code, len(events))
             except Exception:
                 logger.exception("Failed to crawl events for %s", team_code)
 
-        logger.info(f"[EVENT] Total: {len(all_events)} events")
+        logger.info("[EVENT] Total: %s events", len(all_events))
 
         if save:
             self._save_to_db(all_events)
@@ -169,7 +169,7 @@ class TeamEventCrawler:
                     except Exception:
                         logger.exception("Event save failed: %s", item.get("title", "")[:50])
                 session.commit()
-                logger.info(f"[EVENT] Saved {count} event records, {saved_snaps} snapshots.")
+                logger.info("[EVENT] Saved %s event records, %s snapshots.", count, saved_snaps)
             except Exception:
                 session.rollback()
                 logger.exception("Event batch save error")

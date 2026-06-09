@@ -40,7 +40,7 @@ async def collect_games(
     else:
         targets = load_game_targets_from_db(year, month)
     logger.info(
-        f"Target: {len(targets)} games" + (f" for {year}" + (f"-{month}" if month else "") if not game_ids else ""),
+        f"Target: {len(targets)} games" + (f" for {year}" + (f"-{month}" if month else "") if not game_ids else ""),  # noqa: G003
     )
 
     session = SessionLocal()
@@ -68,7 +68,7 @@ async def collect_games(
             log=logger.info,
         )
         logger.info(
-            "[FINISH] "
+            "[FINISH] "  # noqa: G004
             f"detail_saved={result.detail_saved} detail_failed={result.detail_failed} "
             f"detail_skipped={result.detail_skipped_existing} "
             f"relay_games={result.relay_saved_games} relay_rows={result.relay_rows_saved} "

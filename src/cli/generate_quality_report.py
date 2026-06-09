@@ -191,7 +191,7 @@ def get_auto_remediation_summary(target_date_str: str, audit_dir: Path | None = 
             with open(f, encoding="utf-8") as file_handle:
                 content = json.load(file_handle)
         except SQLAlchemyError as e:
-            _LOGGER.error(f"Failed to read/parse audit fix file {filename}: {e}")
+            _LOGGER.error(f"Failed to read/parse audit fix file {filename}: {e}")  # noqa: G004
             continue
 
         # Check file type based on naming pattern
@@ -541,7 +541,7 @@ def get_daily_metrics(session, target_date_str: str, gate_result: dict[str, Any]
                 parity_info["diff"] = oci_count - local_count
                 parity_info["ok"] = parity_info["diff"] == 0
     except SQLAlchemyError as e:
-        _LOGGER.error(f"Parity check failed: {e}")
+        _LOGGER.error(f"Parity check failed: {e}")  # noqa: G004
         parity_info["ok"] = False
         parity_info["error"] = str(e)
 
@@ -602,7 +602,7 @@ def format_telegram_report(metrics: dict[str, Any], gate_result: dict[str, Any])
     else:
         lines.append(f"⚠️ <b>Integrity</b>: {len(incomplete)} games missing details")
         for gid in incomplete[:3]:
-            lines.append(f"   - {gid}")
+            lines.append(f"   - {gid}")  # noqa: PERF401
 
     # Player Statistical Consistency
     player_bat_ok = gate_result.get("batting", {}).get("ok", True)
@@ -632,7 +632,7 @@ def format_telegram_report(metrics: dict[str, Any], gate_result: dict[str, Any])
         season_count = relay_integrity.get("current_season_missing_count", 0)
         lines.append(f"⚠️ <b>PBP</b>: {recent_count} recent / {season_count} current-season games missing")
         for gid in list(relay_integrity.get("missing_game_ids") or [])[:5]:
-            lines.append(f"   - {gid}")
+            lines.append(f"   - {gid}")  # noqa: PERF401
 
     standings_integrity = metrics.get("standings_integrity") or {}
     if standings_integrity.get("ok", True):
@@ -679,7 +679,7 @@ def format_telegram_report(metrics: dict[str, Any], gate_result: dict[str, Any])
         cats_str = ", ".join(auto_rem.get("categories_aborted", []))
         lines.append(f"🛑 <b>Auto-Remediation</b>: 작업 중단 ({cats_str})")
         for r in auto_rem.get("abort_reasons", [])[:3]:
-            lines.append(f"   - {r}")
+            lines.append(f"   - {r}")  # noqa: PERF401
     else:
         lines.append("✅ <b>Auto-Remediation</b>: No issues detected")
 
@@ -691,7 +691,7 @@ def format_telegram_report(metrics: dict[str, Any], gate_result: dict[str, Any])
         count = pa_formula.get("violation_count", 0)
         lines.append(f"❌ <b>PA Formula</b>: {count} violations")
         for v in (pa_formula.get("violations") or [])[:3]:
-            lines.append(f"   - {v['game_date']} {v['player_name']} PA={v['pa']} ≠ AB+BB+HBP+SH+SF")
+            lines.append(f"   - {v['game_date']} {v['player_name']} PA={v['pa']} ≠ AB+BB+HBP+SH+SF")  # noqa: PERF401
 
     # PA Formula Trend
     trend = metrics.get("pa_formula_trend") or {}
@@ -714,11 +714,11 @@ def format_telegram_report(metrics: dict[str, Any], gate_result: dict[str, Any])
         for m in team_stats["batting_mismatches"]:
             lines.append(f"   ❌ Batting [{m.get('team_id', '?')}]: {m.get('issue', 'mismatch')}")
             for d in m.get("diffs", [])[:2]:
-                lines.append(f"      {d}")
+                lines.append(f"      {d}")  # noqa: PERF401
         for m in team_stats["pitching_mismatches"]:
             lines.append(f"   ❌ Pitching [{m.get('team_id', '?')}]: {m.get('issue', 'mismatch')}")
             for d in m.get("diffs", [])[:2]:
-                lines.append(f"      {d}")
+                lines.append(f"      {d}")  # noqa: PERF401
 
     # Team Stats Trend
     ts_trend = metrics.get("team_stats_trend") or {}
@@ -777,7 +777,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     with open(log_dir / f"{target_date}.json", "w", encoding="utf-8") as f:
         json.dump(report_json, f, indent=2, ensure_ascii=False)
 
-    logger.info(f"✅ Quality report saved to {log_dir}/{target_date}.json")
+    logger.info("✅ Quality report saved to %s/%s.json", log_dir, target_date)
 
     # Telegram Notification
     telegram_msg = format_telegram_report(metrics, gate_result)
@@ -788,7 +788,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         logger.info("🚀 Sending report to Telegram...")
         SlackWebhookClient.send_alert(telegram_msg)
     else:
-        logger.info("\n" + telegram_msg.replace("<b>", "").replace("</b>", ""))
+        logger.info("\n" + telegram_msg.replace("<b>", "").replace("</b>", ""))  # noqa: G003
 
     return 0
 

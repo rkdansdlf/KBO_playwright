@@ -108,7 +108,11 @@ class PlayerSeasonBattingRepository:
         session.execute(stmt)
 
     def get_by_player_season(
-        self, player_id: int, season: int, league: str = "REGULAR", level: str = "KBO1",
+        self,
+        player_id: int,
+        season: int,
+        league: str = "REGULAR",
+        level: str = "KBO1",
     ) -> PlayerSeasonBatting | None:
         """Get batting stats for specific player and season"""
         with SessionLocal() as session:
@@ -129,7 +133,11 @@ class PlayerSeasonBattingRepository:
             )
 
     def get_by_season(
-        self, season: int, league: str = "REGULAR", level: str = "KBO1", limit: int = None,
+        self,
+        season: int,
+        league: str = "REGULAR",
+        level: str = "KBO1",
+        limit: int = None,
     ) -> list[PlayerSeasonBatting]:
         """Get all batting stats for a specific season"""
         with SessionLocal() as session:
@@ -144,7 +152,11 @@ class PlayerSeasonBattingRepository:
             return list(query.all())
 
     def get_by_team_season(
-        self, team_code: str, season: int, league: str = "REGULAR", level: str = "KBO1",
+        self,
+        team_code: str,
+        season: int,
+        league: str = "REGULAR",
+        level: str = "KBO1",
     ) -> list[PlayerSeasonBatting]:
         """Get batting stats for a team in a specific season"""
         with SessionLocal() as session:
@@ -164,7 +176,11 @@ class PlayerSeasonBattingRepository:
             return query.count()
 
     def delete_by_player_season(
-        self, player_id: int, season: int, league: str = "REGULAR", level: str = "KBO1",
+        self,
+        player_id: int,
+        season: int,
+        league: str = "REGULAR",
+        level: str = "KBO1",
     ) -> bool:
         """Delete batting stats for specific player and season"""
         with SessionLocal() as session:

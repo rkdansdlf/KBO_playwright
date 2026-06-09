@@ -7,6 +7,8 @@ from src.repositories.player_season_pitching_repository import save_pitching_sta
 from src.repositories.safe_batting_repository import save_batting_stats_safe
 
 logger = logging.getLogger(__name__)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Recalculate season cumulative stats from transactional game details.")
     parser.add_argument("--year", type=int, required=True, help="Season year")
@@ -27,11 +29,11 @@ def main() -> int:
     else:
         series_list = [args.series]
 
-    logger.info(f"🚀 Starting Recalculation for {args.year} (Type: {args.type}, Series: {args.series})")
+    logger.info("🚀 Starting Recalculation for %s (Type: %s, Series: %s)", args.year, args.type, args.series)
 
     for series in series_list:
         if args.type in ["batting", "all"]:
-            logger.info(f"\n[BATTING] Processing {args.year} {series}...")
+            logger.info("\n[BATTING] Processing %s %s...", args.year, series)
             batting_data = fallback_batting_from_db(args.year, series, reason="Manual CLI Trigger")
             # Set source to MANUAL_RECALC
             for s in batting_data:
@@ -40,10 +42,10 @@ def main() -> int:
             if args.save and batting_data:
                 save_batting_stats_safe(batting_data)
             elif not batting_data:
-                logger.info(f"   ℹ️ No batting transactional data found for {args.year} {series}.")
+                logger.info("   ℹ️ No batting transactional data found for %s %s.", args.year, series)
 
         if args.type in ["pitching", "all"]:
-            logger.info(f"\n[PITCHING] Processing {args.year} {series}...")
+            logger.info("\n[PITCHING] Processing %s %s...", args.year, series)
             pitching_data = fallback_pitching_from_db(args.year, series, reason="Manual CLI Trigger")
             # Set source to MANUAL_RECALC
             for s in pitching_data:
@@ -53,7 +55,7 @@ def main() -> int:
                 payloads = [stat.to_repository_payload() for stat in pitching_data]
                 save_pitching_stats_to_db(payloads)
             elif not pitching_data:
-                logger.info(f"   ℹ️ No pitching transactional data found for {args.year} {series}.")
+                logger.info("   ℹ️ No pitching transactional data found for %s %s.", args.year, series)
 
     logger.info("\n✅ Recalculation task finished.")
 

@@ -418,7 +418,7 @@ def run_seed(dry_run: bool = False) -> None:
                 created += 1
         if not dry_run:
             session.commit()
-        logger.info(f"[SEED] DataSource: {created} created, {updated} updated (dry_run={dry_run})")
+        logger.info("[SEED] DataSource: %s created, %s updated (dry_run=%s)", created, updated, dry_run)
 
 
 def build_arg_parser() -> argparse.ArgumentParser:

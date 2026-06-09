@@ -21,5 +21,7 @@ class CrawlRun(Base):
     confirmed_profiles: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     heuristic_only: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     created_at: Mapped[datetime] = mapped_column(
-        DateTime, nullable=False, default=lambda: datetime.now(UTC).replace(tzinfo=None),
+        DateTime,
+        nullable=False,
+        default=lambda: datetime.now(UTC).replace(tzinfo=None),
     )

@@ -134,7 +134,7 @@ class MiscSyncMixin:
             )
 
         self._bulk_copy_upsert(Team.__tablename__, records, ["team_id"])
-        logger.info(f"✅ Synced {len(records)} teams to OCI")
+        logger.info("✅ Synced %s teams to OCI", len(records))
         return len(records)
 
     def sync_stadium_info(self) -> int:
@@ -372,7 +372,7 @@ class MiscSyncMixin:
             filters=filters,
             batch_size=batch_size,
         )
-        logger.info(f"✅ Synced {count} transit time records to OCI")
+        logger.info("✅ Synced %s transit time records to OCI", count)
         return count
 
     def sync_congestion(
@@ -398,7 +398,7 @@ class MiscSyncMixin:
             filters=filters,
             batch_size=batch_size,
         )
-        logger.info(f"✅ Synced {count} congestion records to OCI")
+        logger.info("✅ Synced %s congestion records to OCI", count)
         return count
 
     def sync_operation_notices(
@@ -424,7 +424,7 @@ class MiscSyncMixin:
             filters=filters,
             batch_size=batch_size,
         )
-        logger.info(f"✅ Synced {count} operation notice records to OCI")
+        logger.info("✅ Synced %s operation notice records to OCI", count)
         return count
 
     def sync_stadium_realtime_all(
@@ -437,7 +437,7 @@ class MiscSyncMixin:
             "congestion": self.sync_congestion(game_date=game_date),
             "operation_notices": self.sync_operation_notices(game_date=game_date),
         }
-        logger.info(f"✅ Stadium Realtime All Sync Summary: {results}")
+        logger.info("✅ Stadium Realtime All Sync Summary: %s", results)
         return results
 
     def sync_daily_rosters(
@@ -453,7 +453,7 @@ class MiscSyncMixin:
         if start and end and start > end:
             raise ValueError("daily roster start_date must be earlier than or equal to end_date")
         scope = _format_daily_roster_scope(start, end)
-        logger.info(f"INFO: Syncing daily rosters{scope}...")
+        logger.info("INFO: Syncing daily rosters%s...", scope)
 
         filters = []
         if start:
@@ -520,7 +520,7 @@ class MiscSyncMixin:
             return 0
 
         self._bulk_copy_upsert(TeamHistory.__tablename__, records, ["id"])
-        logger.info(f"✅ Synced {len(records)} team history records to OCI")
+        logger.info("✅ Synced %s team history records to OCI", len(records))
         return len(records)
 
     def sync_team_code_map(self) -> int:
@@ -580,7 +580,10 @@ class MiscSyncMixin:
         )
 
         results["matchup_bvp"] = self.sync_simple_table(
-            MatchupBvP, ["batter_id", "pitcher_id"], exclude_cols=["created_at", "id"], batch_size=batch_size,
+            MatchupBvP,
+            ["batter_id", "pitcher_id"],
+            exclude_cols=["created_at", "id"],
+            batch_size=batch_size,
         )
 
         results["batter_splits"] = self.sync_simple_table(
@@ -598,5 +601,5 @@ class MiscSyncMixin:
             batch_size=batch_size,
         )
 
-        logger.info(f"✅ Matchup Splits Sync Summary: {results}")
+        logger.info("✅ Matchup Splits Sync Summary: %s", results)
         return results

@@ -73,9 +73,9 @@ class TeamMapper:
                     ORDER BY ordinal_position
                 """)
                 columns = session.execute(structure_query).fetchall()
-                logger.info(f"📋 team_history 테이블 컬럼: {[col[0] for col in columns]}")
+                logger.info("📋 team_history 테이블 컬럼: %s", [col[0] for col in columns])
             except SQLAlchemyError as e:
-                logger.exception(f"⚠️ 테이블 구조 확인 실패: {e}")
+                logger.exception("⚠️ 테이블 구조 확인 실패: %s", e)
 
             # 가능한 컬럼명으로 쿼리 시도
             possible_queries = [
@@ -144,10 +144,10 @@ class TeamMapper:
                     session.rollback()
                     query = text(query_sql)
                     query_result = session.execute(query).fetchall()
-                    logger.info(f"✅ 쿼리 패턴 {i + 1} 성공: {len(query_result)}개 행 조회")
+                    logger.info("✅ 쿼리 패턴 %s 성공: %s개 행 조회", i + 1, len(query_result))
                     break
                 except SQLAlchemyError as e:
-                    logger.exception(f"⚠️ 쿼리 패턴 {i + 1} 실패: {e}")
+                    logger.exception("⚠️ 쿼리 패턴 %s 실패: %s", i + 1, e)
                     session.rollback()  # 실패시 트랜잭션 롤백
                     continue
 
@@ -193,11 +193,11 @@ class TeamMapper:
             engine.dispose()
 
             self._oci_loaded = True
-            logger.info(f"✅ OCI에서 {len(results)}개 팀 매핑 로드 완료")
+            logger.info("✅ OCI에서 %s개 팀 매핑 로드 완료", len(results))
             return True
 
         except (SQLAlchemyError, ValueError) as e:
-            logger.exception(f"⚠️ OCI 팀 매핑 로드 실패: {e}")
+            logger.exception("⚠️ OCI 팀 매핑 로드 실패: %s", e)
             return False
 
     def get_team_code(self, team_name: str, year: int | None = None) -> str | None:
@@ -401,4 +401,4 @@ if __name__ == "__main__":
     logger.info("🔍 팀 매핑 테스트:")
     for team_name, year in test_cases:
         code = mapper.get_team_code(team_name, year)
-        logger.info(f"  {year}년 '{team_name}' → '{code}'")
+        logger.info(f"  {year}년 '{team_name}' → '{code}'")  # noqa: G004

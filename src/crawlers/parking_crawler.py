@@ -50,11 +50,11 @@ class ParkingCrawler:
             try:
                 lots = await self._crawl_team_parking(team_code, info)
                 all_lots.extend(lots)
-                logger.info(f"[PARKING] {team_code}: {len(lots)} lots found")
+                logger.info("[PARKING] %s: %s lots found", team_code, len(lots))
             except Exception:
                 logger.exception("Failed to crawl parking for %s", team_code)
 
-        logger.info(f"[PARKING] Total: {len(all_lots)} lots")
+        logger.info("[PARKING] Total: %s lots", len(all_lots))
         if save:
             self._save_to_db(all_lots)
         else:
@@ -125,7 +125,7 @@ class ParkingCrawler:
                     except Exception:
                         logger.exception("Parking save failed: %s", entry.get("lot", {}).get("name", ""))
                 session.commit()
-                logger.info(f"[PARKING] Saved {lot_count} lots, {fee_count} fee rules, {saved_snaps} snapshots.")
+                logger.info("[PARKING] Saved %s lots, %s fee rules, %s snapshots.", lot_count, fee_count, saved_snaps)
             except Exception:
                 session.rollback()
                 logger.exception("Parking batch save error")

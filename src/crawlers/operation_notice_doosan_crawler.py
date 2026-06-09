@@ -93,7 +93,9 @@ class OperationNoticeDoosanCrawler:
                         resp = await page.goto(url)
                         if not resp or resp.status != 200:
                             logger.warning(
-                                "[Doosan Notice] HTTP %s on page %d", resp.status if resp else "None", page_no,
+                                "[Doosan Notice] HTTP %s on page %d",
+                                resp.status if resp else "None",
+                                page_no,
                             )
                             break
 
@@ -105,7 +107,7 @@ class OperationNoticeDoosanCrawler:
 
                         notices, hit_stop = self._parse_page(html, stop_at_external_id)
                         all_notices.extend(notices)
-                        logger.info(f"[Doosan Notice] page {page_no}: {len(notices)} notices")
+                        logger.info("[Doosan Notice] page %s: %s notices", page_no, len(notices))
 
                         if hit_stop or not notices:
                             break
@@ -114,7 +116,7 @@ class OperationNoticeDoosanCrawler:
                         logger.exception("[Doosan Notice] Failed to fetch page %d: %s", page_no, e)
                         break
 
-        logger.info(f"[Doosan Notice] Total: {len(all_notices)} notices")
+        logger.info("[Doosan Notice] Total: %s notices", len(all_notices))
 
         if save:
             self._save_to_db(all_notices)
@@ -188,10 +190,10 @@ class OperationNoticeDoosanCrawler:
                 repo = OperationNoticeRepository(session)
                 created, updated = repo.bulk_upsert(notices)
                 session.commit()
-                logger.info(f"[Doosan Notice] Saved: {created} new, {updated} updated.")
+                logger.info("[Doosan Notice] Saved: %s new, %s updated.", created, updated)
             except SQLAlchemyError as e:
                 session.rollback()
-                logger.error(f"[Doosan Notice] Database error: {e}", exc_info=True)
+                logger.exception(f"[Doosan Notice] Database error: {e}")  # noqa: G004
             finally:
                 self._raw_pages.clear()
 

@@ -9,19 +9,23 @@ import pytest
 @pytest.fixture(autouse=True)
 def _inject_mock_module():
     key = "scripts.scheduler"
-    if key not in sys.modules:
+    if key in sys.modules:
+        mod = sys.modules[key]
+    else:
         mod = types.ModuleType(key)
-
+        sys.modules[key] = mod
+    if not hasattr(mod, "load_dotnet"):
+        mod.load_dotnet = MagicMock
+    if not hasattr(mod, "BlockingScheduler"):
+        mod.BlockingScheduler = MagicMock
+    if not hasattr(mod, "main"):
         def _main():
             pass
-
         mod.main = _main
-        mod.BlockingScheduler = MagicMock
-        mod.load_dotnet = MagicMock
+    if not hasattr(mod, "os"):
         mod.os = __import__("os")
-        sys.modules[key] = mod
-        import scripts
-        scripts.scheduler = mod
+    import scripts
+    scripts.scheduler = mod
     yield
 
 

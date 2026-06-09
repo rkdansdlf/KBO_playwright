@@ -81,7 +81,7 @@ class FallbackMonitor:
                     else:
                         snapshots = [content]
             except (OSError, ValueError) as e:
-                logger.warning(f"Failed to read existing backup file {file_path}: {e}")
+                logger.warning("Failed to read existing backup file %s: %s", file_path, e)
 
         # 새 스냅샷 추가
         snapshot = {

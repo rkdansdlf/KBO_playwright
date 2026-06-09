@@ -121,7 +121,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         season=args.season,
         mark_legacy_unavailable=not args.no_mark_legacy_unavailable,
     )
-    logger.info(f"[INFO] Seeded relay validation metrics: {counts}")
+    logger.info("[INFO] Seeded relay validation metrics: %s", counts)
     return 0
 
 

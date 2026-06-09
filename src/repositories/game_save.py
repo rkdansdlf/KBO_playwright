@@ -542,7 +542,9 @@ def save_game_detail(
                         p_id = participant_map.get(p_name)
                         if not p_id and summary_type != "심판":
                             p_id = resolver.resolve_id(
-                                p_name, None, game_date.year,
+                                p_name,
+                                None,
+                                game_date.year,
                             )  # Try global resolve if not in participant list
 
                         summary_rows.append(

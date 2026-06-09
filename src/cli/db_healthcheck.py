@@ -27,8 +27,8 @@ def main(argv: list[str] | None = None) -> None:
     dialect = Engine.url.get_backend_name()
 
     logger.info("\n=== DB Healthcheck ===")
-    logger.info(f"URL: {url}")
-    logger.info(f"Dialect: {dialect}")
+    logger.info("URL: %s", url)
+    logger.info("Dialect: %s", dialect)
 
     # 1. 데이터베이스 연결 테스트
     try:
@@ -36,20 +36,20 @@ def main(argv: list[str] | None = None) -> None:
             conn.execute(text("SELECT 1"))
         logger.info("Connectivity: OK")
     except SQLAlchemyError as e:
-        logger.exception(f"Connectivity: FAILED -> {e}")
+        logger.exception("Connectivity: FAILED -> %s", e)
         return
 
     # 2. 테이블 목록 조회
     try:
         insp = inspect(Engine)
         tables = insp.get_table_names()
-        logger.info(f"Tables: {len(tables)} found")
+        logger.info("Tables: %s found", len(tables))
         if tables:
             # 최대 10개의 테이블 이름 출력
             for t in tables[:10]:
-                logger.info(f"  - {t}")
+                logger.info("  - %s", t)
     except SQLAlchemyError as e:
-        logger.exception(f"Introspection failed: {e}")
+        logger.exception("Introspection failed: %s", e)
 
     # 3. 주요 테이블의 레코드 수 집계
     for table in [
@@ -67,7 +67,7 @@ def main(argv: list[str] | None = None) -> None:
             with Engine.connect() as conn:
                 result = conn.execute(text(f"SELECT COUNT(*) FROM {table}"))
                 count = result.scalar_one()
-                logger.info(f"{table}: {count}")
+                logger.info("%s: %s", table, count)
         except SQLAlchemyError:
             # 테이블이 존재하지 않으면 조용히 넘어감
             continue

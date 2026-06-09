@@ -30,7 +30,7 @@ class KboAuthenticator:
             logger.info("[AUTH] Error: KBO_USER_ID or KBO_USER_PWD not set.")
             return False
 
-        logger.info(f"[AUTH] Attempting login for user: {self.user_id}...")
+        logger.info("[AUTH] Attempting login for user: %s...", self.user_id)
 
         async with async_playwright() as p:
             # Replicate stealth launch args
@@ -83,7 +83,7 @@ class KboAuthenticator:
                         await page.evaluate("window.scrollTo(0, 0)")
                         await asyncio.sleep(2)  # Wait for Akamai to finalize _abck cookie
                     except Exception as e:
-                        logger.warning(f"[AUTH] Session warm-up warning (ignoring): {e}")
+                        logger.warning("[AUTH] Session warm-up warning (ignoring): %s", e)
 
                     # Save state
                     os.makedirs(os.path.dirname(self.AUTH_STATE_PATH), exist_ok=True)
@@ -94,7 +94,7 @@ class KboAuthenticator:
                     return False
 
             except Exception as e:
-                logger.error(f"[AUTH] Exception during login: {e}")
+                logger.error("[AUTH] Exception during login: %s", e)
                 return False
             finally:
                 await browser.close()

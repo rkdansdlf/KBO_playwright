@@ -67,7 +67,9 @@ def parse_mobile_roster(html: str, source_key: str, metadata: dict | None = None
             continue
 
         team_blocks = re.findall(
-            r'<strong[^>]*class="team"[^>]*>([^<]+)</strong>\s*<ul[^>]*>(.*?)</ul>', section_text, re.DOTALL,
+            r'<strong[^>]*class="team"[^>]*>([^<]+)</strong>\s*<ul[^>]*>(.*?)</ul>',
+            section_text,
+            re.DOTALL,
         )
         for team_name_raw, list_html in team_blocks:
             team_code = _map_team_name(team_name_raw.strip())
