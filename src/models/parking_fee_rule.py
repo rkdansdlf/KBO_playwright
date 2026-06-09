@@ -22,15 +22,15 @@ class ParkingFeeRule(Base, TimestampMixin):
     base_minutes: Mapped[int] = mapped_column(Integer, nullable=False, comment="Base fee duration in minutes")
     additional_fee: Mapped[int | None] = mapped_column(Integer, nullable=True, comment="Additional fee per extra unit")
     additional_minutes: Mapped[int | None] = mapped_column(
-        Integer, nullable=True, comment="Extra minutes per additional fee unit"
+        Integer, nullable=True, comment="Extra minutes per additional fee unit",
     )
     daily_max_fee: Mapped[int | None] = mapped_column(Integer, nullable=True, comment="Daily maximum fee")
     event_flat_fee: Mapped[int | None] = mapped_column(
-        Integer, nullable=True, comment="Event day flat fee (instead of regular)"
+        Integer, nullable=True, comment="Event day flat fee (instead of regular)",
     )
     discount_json: Mapped[str | None] = mapped_column(Text, nullable=True, comment="JSON string of discount rules")
     free_exit_minutes: Mapped[int | None] = mapped_column(
-        Integer, nullable=True, comment="Free exit minutes after payment"
+        Integer, nullable=True, comment="Free exit minutes after payment",
     )
 
     __table_args__ = (UniqueConstraint("parking_lot_id", "vehicle_type", name="uq_parking_fee"),)

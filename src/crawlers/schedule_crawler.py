@@ -200,7 +200,7 @@ class ScheduleCrawler:
 
         # 2. 시리즈 목록 확인
         all_series_options = await page.eval_on_selector_all(
-            "#ddlSeries option", "elements => elements.map(el => ({text: el.innerText, value: el.value}))"
+            "#ddlSeries option", "elements => elements.map(el => ({text: el.innerText, value: el.value}))",
         )
 
         target_series = [series_id] if series_id else [opt["value"] for opt in all_series_options if opt["value"]]
@@ -571,7 +571,7 @@ class ScheduleCrawler:
                 try:
                     rows_text = await page.evaluate(debug_script)
                     logger.info("Table rows sample: %s", rows_text)
-                except Exception:  # noqa: BLE001
+                except Exception:
                     logger.info("Debug evaluate failed")
 
         return games

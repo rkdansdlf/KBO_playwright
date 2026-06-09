@@ -77,7 +77,7 @@ class FoodCrawler:
                         "url": info["url"],
                         "html": html,
                         "status_code": resp.status_code,
-                    }
+                    },
                 )
                 vendors = self._parse_food_page(html, info)
             except httpx.HTTPError:
@@ -97,7 +97,7 @@ class FoodCrawler:
                     "menu_name": name.strip(),
                     "price": int(price_str.replace(",", "")),
                     "category": "etc",
-                }
+                },
             )
 
         if menus:
@@ -110,7 +110,7 @@ class FoodCrawler:
                         "confidence": "low",
                     },
                     "menus": menus,
-                }
+                },
             )
 
         return vendors

@@ -2,18 +2,18 @@ import logging
 from collections.abc import Sequence
 
 logger = logging.getLogger(__name__)
-import argparse  # noqa: E402
-import csv  # noqa: E402
-import json  # noqa: E402
-import os  # noqa: E402
-from datetime import datetime  # noqa: E402
+import argparse
+import csv
+import json
+import os
+from datetime import datetime
 
-from sqlalchemy import func  # noqa: E402
-from sqlalchemy.orm import sessionmaker  # noqa: E402
+from sqlalchemy import func
+from sqlalchemy.orm import sessionmaker
 
-from src.aggregators.season_stat_aggregator import SeasonStatAggregator  # noqa: E402
-from src.db.engine import SessionLocal, create_engine_for_url  # noqa: E402
-from src.models.player import (  # noqa: E402
+from src.aggregators.season_stat_aggregator import SeasonStatAggregator
+from src.db.engine import SessionLocal, create_engine_for_url
+from src.models.player import (
     PlayerBasic,
     PlayerSeasonBaserunning,
     PlayerSeasonBatting,
@@ -123,7 +123,7 @@ def generate_report(years: list[int], output_format: str, output_dir: str, db_ur
                             "name": player.name if player else "Unknown",
                             "type": "BATTING",
                             "details": f"AB: {off.at_bats} vs {calc.get('at_bats')}, H: {off.hits} vs {calc.get('hits')}",
-                        }
+                        },
                     )
 
             if total_checked > 0:
@@ -150,7 +150,7 @@ def generate_report(years: list[int], output_format: str, output_dir: str, db_ur
                 for cat in ["batting", "pitching", "fielding", "baserunning"]:
                     sources = "; ".join([f"{k}:{v}" for k, v in data[cat].get("sources", {}).items()])
                     writer.writerow(
-                        [yr, cat.upper(), data[cat]["total"], data[cat].get("consistency_rate", "N/A"), sources]
+                        [yr, cat.upper(), data[cat]["total"], data[cat].get("consistency_rate", "N/A"), sources],
                     )
         logger.info(f"✅ Report saved to {path}")
 

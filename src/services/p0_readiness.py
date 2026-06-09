@@ -142,7 +142,7 @@ def _query_games(session, start: date, end: date) -> list[Any]:
                     FROM game
                     WHERE game_date BETWEEN :start_date AND :end_date
                     ORDER BY game_date, game_id
-                    """
+                    """,
                 ),
                 {"start_date": start, "end_date": end},
             )
@@ -183,7 +183,7 @@ def _lineup_sides_by_game(session, game_ids: Iterable[str]) -> dict[str, set[str
     rows = _safe_rows(
         session.query(GameLineup.game_id, GameLineup.team_side)
         .filter(GameLineup.game_id.in_(ids), GameLineup.is_starter.is_(True))
-        .group_by(GameLineup.game_id, GameLineup.team_side)
+        .group_by(GameLineup.game_id, GameLineup.team_side),
     )
     sides: dict[str, set[str]] = {}
     for game_id, team_side in rows:
@@ -199,7 +199,7 @@ def _side_counts_by_game(session, model, game_ids: Iterable[str]) -> dict[str, s
     rows = _safe_rows(
         session.query(model.game_id, model.team_side)
         .filter(model.game_id.in_(ids))
-        .group_by(model.game_id, model.team_side)
+        .group_by(model.game_id, model.team_side),
     )
     sides: dict[str, set[str]] = {}
     for game_id, team_side in rows:
@@ -215,7 +215,7 @@ def _preview_games(session, game_ids: Iterable[str]) -> set[str]:
     rows = _safe_rows(
         session.query(GameSummary.game_id)
         .filter(GameSummary.game_id.in_(ids), GameSummary.summary_type == "프리뷰")
-        .group_by(GameSummary.game_id)
+        .group_by(GameSummary.game_id),
     )
     return {str(row[0]) for row in rows}
 
@@ -236,7 +236,7 @@ def _pitching_decision_games(session, game_ids: Iterable[str]) -> set[str]:
                 | GamePitchingStat.decision.is_not(None)
             ),
         )
-        .group_by(GamePitchingStat.game_id)
+        .group_by(GamePitchingStat.game_id),
     )
     return {str(row[0]) for row in rows}
 
@@ -265,7 +265,7 @@ def _add_failure(
             "game_date": game_date,
             "reason": reason,
             "severity": severity,
-        }
+        },
     )
 
 
@@ -283,7 +283,7 @@ def _meta_has_start_time(meta: GameMetadata | None) -> bool:
 
 def _meta_has_stadium(game: Any, meta: GameMetadata | None) -> bool:
     return _has_text(getattr(game, "stadium", None)) or bool(
-        meta and (_has_text(meta.stadium_name) or _has_text(meta.stadium_code))
+        meta and (_has_text(meta.stadium_name) or _has_text(meta.stadium_code)),
     )
 
 
@@ -354,11 +354,11 @@ def build_p0_readiness(
             )
         if not _meta_has_start_time(meta):
             _add_failure(
-                failures, dataset="schedule", game_id=game.game_id, game_date=game_date, reason="missing_start_time"
+                failures, dataset="schedule", game_id=game.game_id, game_date=game_date, reason="missing_start_time",
             )
         if not _meta_has_stadium(game, meta):
             _add_failure(
-                failures, dataset="schedule", game_id=game.game_id, game_date=game_date, reason="missing_stadium"
+                failures, dataset="schedule", game_id=game.game_id, game_date=game_date, reason="missing_stadium",
             )
 
     lineup_sides = _lineup_sides_by_game(session, [game.game_id for game in scheduled_games])
@@ -371,17 +371,17 @@ def build_p0_readiness(
             starters_complete += 1
         else:
             _add_failure(
-                failures, dataset="pregame", game_id=game.game_id, game_date=game_date, reason="missing_starter"
+                failures, dataset="pregame", game_id=game.game_id, game_date=game_date, reason="missing_starter",
             )
         if {"away", "home"} <= lineup_sides.get(game.game_id, set()):
             lineups_complete += 1
         else:
             _add_failure(
-                failures, dataset="pregame", game_id=game.game_id, game_date=game_date, reason="missing_lineup"
+                failures, dataset="pregame", game_id=game.game_id, game_date=game_date, reason="missing_lineup",
             )
         if game.game_id not in preview_ids:
             _add_failure(
-                failures, dataset="pregame", game_id=game.game_id, game_date=game_date, reason="missing_preview"
+                failures, dataset="pregame", game_id=game.game_id, game_date=game_date, reason="missing_preview",
             )
 
     event_counts = _count_by_game(session, GameEvent, relay_games)
@@ -391,7 +391,7 @@ def build_p0_readiness(
         rows = _safe_rows(
             session.query(GamePlayByPlay.game_id, func.max(GamePlayByPlay.inning))
             .filter(GamePlayByPlay.game_id.in_(relay_games))
-            .group_by(GamePlayByPlay.game_id)
+            .group_by(GamePlayByPlay.game_id),
         )
         max_innings = {str(game_id): int(max_inning or 0) for game_id, max_inning in rows}
 
@@ -400,11 +400,11 @@ def build_p0_readiness(
         has_relay = event_counts.get(game.game_id, 0) > 0 or pbp_counts.get(game.game_id, 0) > 0
         if not has_relay:
             _add_failure(
-                failures, dataset="live", game_id=game.game_id, game_date=game_date, reason="missing_live_relay"
+                failures, dataset="live", game_id=game.game_id, game_date=game_date, reason="missing_live_relay",
             )
         if not _score_present(game):
             _add_failure(
-                failures, dataset="live", game_id=game.game_id, game_date=game_date, reason="missing_live_score"
+                failures, dataset="live", game_id=game.game_id, game_date=game_date, reason="missing_live_score",
             )
 
     inning_counts = _count_by_game(session, GameInningScore, [game.game_id for game in completed_games])
@@ -445,7 +445,7 @@ def build_p0_readiness(
             inning_scores_ok += 1
         else:
             _add_failure(
-                failures, dataset="postgame", game_id=game.game_id, game_date=game_date, reason="missing_inning_score"
+                failures, dataset="postgame", game_id=game.game_id, game_date=game_date, reason="missing_inning_score",
             )
         if game.game_id in decision_ids:
             decisions_ok += 1

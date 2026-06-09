@@ -106,7 +106,7 @@ def save_batting_stats_safe(payloads: list[dict[str, Any]]) -> int:
                         "iso": payload.get("iso"),
                         "babip": payload.get("babip"),
                         "extra_stats": payload.get("extra_stats"),
-                    }
+                    },
                 )
 
             if not rows:

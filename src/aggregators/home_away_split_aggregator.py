@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 
 
 class HomeAwaySplitAggregator:
-    def __init__(self, session: Session):
+    def __init__(self, session: Session) -> None:
         self.session = session
 
     def aggregate_batting(self, year: int) -> list[dict]:
@@ -98,14 +98,14 @@ class HomeAwaySplitAggregator:
                         "obp": obp,
                         "slg": slg,
                         "ops": ops,
-                    }
+                    },
                 )
         return results
 
-    def persist_batting(self, year: int):
+    def persist_batting(self, year: int) -> None:
         results = self.aggregate_batting(year)
         self.session.query(BatterHomeAwaySplit).filter(BatterHomeAwaySplit.season_year == year).delete(
-            synchronize_session=False
+            synchronize_session=False,
         )
 
         for r in results:
@@ -113,7 +113,7 @@ class HomeAwaySplitAggregator:
         self.session.commit()
         logger.info(f"[HomeAway] {len(results)} batting split rows saved for {year}.")
 
-    def print_report(self, year: int, top_n: int = 5):
+    def print_report(self, year: int, top_n: int = 5) -> None:
         results = self.aggregate_batting(year)
         if not results:
             return

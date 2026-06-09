@@ -45,13 +45,13 @@ class FAContract(Base, TimestampMixin):
 
     # Financial details
     contract_duration: Mapped[str | None] = mapped_column(
-        String(50), nullable=True, comment="Original contract duration text (e.g. '4년')"
+        String(50), nullable=True, comment="Original contract duration text (e.g. '4년')",
     )
     total_amount: Mapped[str | None] = mapped_column(
-        String(50), nullable=True, comment="Original total contract amount text (e.g. '75억원')"
+        String(50), nullable=True, comment="Original total contract amount text (e.g. '75억원')",
     )
     total_amount_krw: Mapped[int | None] = mapped_column(
-        Integer, nullable=True, comment="Parsed total contract amount in 10,000 KRW (만원) units"
+        Integer, nullable=True, comment="Parsed total contract amount in 10,000 KRW (만원) units",
     )
     signing_bonus: Mapped[str | None] = mapped_column(String(50), nullable=True, comment="Original signing bonus text")
     annual_salary: Mapped[str | None] = mapped_column(String(50), nullable=True, comment="Original annual salary text")

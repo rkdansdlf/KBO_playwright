@@ -45,7 +45,7 @@ class OperationNoticeRepository:
                     StadiumOperationNotice.stadium_code == stadium_code,
                     StadiumOperationNotice.source_name == source_name,
                     StadiumOperationNotice.external_id == external_id,
-                )
+                ),
             )
             existing = self.session.execute(stmt).scalar_one_or_none()
 
@@ -60,7 +60,7 @@ class OperationNoticeRepository:
                         StadiumOperationNotice.source_name == source_name,
                         StadiumOperationNotice.title == title,
                         StadiumOperationNotice.published_at == published_at,
-                    )
+                    ),
                 )
                 existing = self.session.execute(stmt).scalar_one_or_none()
 
@@ -121,7 +121,7 @@ class OperationNoticeRepository:
             and_(
                 StadiumOperationNotice.stadium_code == stadium_code,
                 StadiumOperationNotice.game_date == game_date,
-            )
+            ),
         )
         if urgent_only:
             stmt = stmt.where(StadiumOperationNotice.is_urgent.is_(True))
@@ -159,7 +159,7 @@ class OperationNoticeRepository:
                     StadiumOperationNotice.stadium_code == stadium_code,
                     StadiumOperationNotice.source_name == source_name,
                     StadiumOperationNotice.external_id.isnot(None),
-                )
+                ),
             )
             .order_by(StadiumOperationNotice.published_at.desc().nullslast())
             .limit(1)

@@ -1,5 +1,4 @@
 from src.utils.team_codes import (
-    GAME_ID_SEGMENT_TO_CODE,
     KBO_GAME_ID_TEAM_CODES,
     KBO_LEGACY_TECHNICAL_CODE,
     STANDARD_TEAM_CODES,

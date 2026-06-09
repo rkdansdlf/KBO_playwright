@@ -167,7 +167,7 @@ class NaverSearchClient:
                     source_type=search_type,
                     team_hint=None,
                     raw=item,
-                )
+                ),
             )
         return results
 

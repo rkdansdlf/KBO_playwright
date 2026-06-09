@@ -217,7 +217,7 @@ def collect_current_page_bb_data(page: Page, year: int) -> dict[int, dict]:
                             "slg": safe_parse_number(cells[9].inner_text().strip(), float),
                             "obp": safe_parse_number(cells[10].inner_text().strip(), float),
                             "ops": safe_parse_number(cells[11].inner_text().strip(), float),
-                        }
+                        },
                     )
 
                     # 확장 스탯 (JSON)

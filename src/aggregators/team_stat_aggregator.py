@@ -39,7 +39,7 @@ class TeamStatAggregator:
     Provides pure in-memory aggregation methods for testability and DB-integrated methods for CLI/Crawlers.
     """
 
-    def __init__(self, session: Session | None = None):
+    def __init__(self, session: Session | None = None) -> None:
         self.session = session
 
     @staticmethod
@@ -141,7 +141,7 @@ class TeamStatAggregator:
             raise ValueError("Either an integer season or rows iterable must be provided")
 
     def aggregate_all(
-        self, season: int, team_id: str | None = None, dry_run: bool = False
+        self, season: int, team_id: str | None = None, dry_run: bool = False,
     ) -> dict[str, list[dict[str, Any]]]:
         """
         Aggregates and updates both batting and pitching stats.
@@ -154,7 +154,7 @@ class TeamStatAggregator:
         }
 
     def _aggregate_batting_db(
-        self, season: int, team_id: str | None = None, dry_run: bool = False
+        self, season: int, team_id: str | None = None, dry_run: bool = False,
     ) -> list[dict[str, Any]]:
         if not self.session:
             raise ValueError("Database session is required for database aggregation")
@@ -249,7 +249,7 @@ class TeamStatAggregator:
         return results
 
     def _aggregate_pitching_db(
-        self, season: int, team_id: str | None = None, dry_run: bool = False
+        self, season: int, team_id: str | None = None, dry_run: bool = False,
     ) -> list[dict[str, Any]]:
         if not self.session:
             raise ValueError("Database session is required for database aggregation")

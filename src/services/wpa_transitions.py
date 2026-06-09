@@ -66,7 +66,7 @@ def event_has_transition_state(event: Any) -> bool:
             coerce_int(get_event_value(event, "home_score")) is not None,
             coerce_int(get_event_value(event, "away_score")) is not None,
             event_runner_state(event) is not None,
-        )
+        ),
     )
 
 
@@ -77,7 +77,7 @@ def event_has_wpa_state(event: Any) -> bool:
             get_event_value(event, "wpa") is not None,
             get_event_value(event, "win_expectancy_before") is not None,
             get_event_value(event, "win_expectancy_after") is not None,
-        )
+        ),
     )
 
 

@@ -146,14 +146,14 @@ def build_gap_report() -> dict[str, Any]:
             "total_issues": total_issues,
             "details": {k: v for k, v in freshness.items() if v},
         }
-    except Exception as e:  # noqa: BLE001
+    except Exception as e:
         logger.error("FRESHNESS gap check failed: %s", e)
         report["gaps"]["FRESHNESS"] = {"ok": False, "error": str(e)}
 
     # 2. Relay/PBP gaps
     try:
         report["gaps"]["RELAY"] = check_relay_gaps()
-    except Exception as e:  # noqa: BLE001
+    except Exception as e:
         logger.error("RELAY gap check failed: %s", e)
         report["gaps"]["RELAY"] = {"ok": False, "error": str(e)}
 
@@ -165,7 +165,7 @@ def build_gap_report() -> dict[str, Any]:
             "stale_count": len(stale),
             "details": stale,
         }
-    except Exception as e:  # noqa: BLE001
+    except Exception as e:
         logger.error("STALENESS gap check failed: %s", e)
         report["gaps"]["STALENESS"] = {"ok": False, "error": str(e)}
 
@@ -179,35 +179,35 @@ def build_gap_report() -> dict[str, Any]:
             "mismatches": len(standings.get("mismatches", [])),
             "missing_scores": len(standings.get("missing_score_games", [])),
         }
-    except Exception as e:  # noqa: BLE001
+    except Exception as e:
         logger.error("STANDINGS gap check failed: %s", e)
         report["gaps"]["STANDINGS"] = {"ok": False, "error": str(e)}
 
     # 5. Player profile gaps
     try:
         report["gaps"]["PROFILE"] = check_profile_gaps()
-    except Exception as e:  # noqa: BLE001
+    except Exception as e:
         logger.error("PROFILE gap check failed: %s", e)
         report["gaps"]["PROFILE"] = {"ok": False, "error": str(e)}
 
     # 6. Player ID resolution gaps
     try:
         report["gaps"]["ID_RESOLUTION"] = check_id_resolution_gaps()
-    except Exception as e:  # noqa: BLE001
+    except Exception as e:
         logger.error("ID_RESOLUTION gap check failed: %s", e)
         report["gaps"]["ID_RESOLUTION"] = {"ok": False, "error": str(e)}
 
     # 7. PA formula gaps
     try:
         report["gaps"]["PA_FORMULA"] = check_pa_formula_gaps()
-    except Exception as e:  # noqa: BLE001
+    except Exception as e:
         logger.error("PA_FORMULA gap check failed: %s", e)
         report["gaps"]["PA_FORMULA"] = {"ok": False, "error": str(e)}
 
     # 8. Team stats consistency
     try:
         report["gaps"]["TEAM_STATS"] = check_team_stats_gaps()
-    except Exception as e:  # noqa: BLE001
+    except Exception as e:
         logger.error("TEAM_STATS gap check failed: %s", e)
         report["gaps"]["TEAM_STATS"] = {"ok": False, "error": str(e)}
 
@@ -242,14 +242,14 @@ def send_gap_alerts(report: dict[str, Any]) -> None:
             summary_parts.append(f"{gap_data.get('stale_count', 0)} stale sources")
         elif gap_type == "STANDINGS":
             summary_parts.append(
-                f"{gap_data.get('mismatches', 0)} mismatches, {gap_data.get('missing_scores', 0)} missing scores"
+                f"{gap_data.get('mismatches', 0)} mismatches, {gap_data.get('missing_scores', 0)} missing scores",
             )
         elif gap_type == "PROFILE":
             summary_parts.append(f"{gap_data.get('missing_count', 0)} players missing profiles")
         elif gap_type == "ID_RESOLUTION":
             counts = gap_data.get("counts", {})
             summary_parts.append(
-                f"{gap_data.get('total', 0)} NULL player_ids (batting={counts.get('batting')}, pitching={counts.get('pitching')}, lineups={counts.get('lineups')})"
+                f"{gap_data.get('total', 0)} NULL player_ids (batting={counts.get('batting')}, pitching={counts.get('pitching')}, lineups={counts.get('lineups')})",
             )
         elif gap_type == "PA_FORMULA":
             summary_parts.append(f"{gap_data.get('violation_count', 0)} PA formula violations")

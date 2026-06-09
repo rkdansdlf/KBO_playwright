@@ -8,19 +8,19 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
-import contextlib  # noqa: E402
+import contextlib
 
-from playwright.async_api import Page, TimeoutError, async_playwright  # noqa: E402
-from playwright_stealth import Stealth  # noqa: E402
-from sqlalchemy.orm import Session  # noqa: E402
+from playwright.async_api import Page, TimeoutError, async_playwright
+from playwright_stealth import Stealth
+from sqlalchemy.orm import Session
 
-from src.db.engine import SessionLocal  # noqa: E402
-from src.models.fa_contract import FAContract  # noqa: E402
-from src.models.player import PlayerBasic, PlayerMovement  # noqa: E402
-from src.models.team import Team  # noqa: E402
-from src.utils.playwright_blocking import install_async_resource_blocking  # noqa: E402
+from src.db.engine import SessionLocal
+from src.models.fa_contract import FAContract
+from src.models.player import PlayerBasic, PlayerMovement
+from src.models.team import Team
+from src.utils.playwright_blocking import install_async_resource_blocking
 from src.utils.playwright_retry import LONG_TIMEOUT, NAV_TIMEOUT
-from src.utils.team_codes import resolve_team_code  # noqa: E402
+from src.utils.team_codes import resolve_team_code
 
 
 def parse_amount_krw(amount_str: str | None) -> int | None:
@@ -509,7 +509,7 @@ class FACrawler:
                 session.commit()
                 logger.info(f"✅ player_movements Update Complete: {new_records} Inserted, {updates} Updated.")
                 logger.info(
-                    f"✅ fa_contracts Update Complete: {new_fa_contracts} Inserted, {updated_fa_contracts} Updated."
+                    f"✅ fa_contracts Update Complete: {new_fa_contracts} Inserted, {updated_fa_contracts} Updated.",
                 )
             except Exception:
                 session.rollback()
@@ -526,7 +526,7 @@ async def main() -> None:
     args = parser.parse_args()
 
     crawler = FACrawler(
-        headless=False
+        headless=False,
     )  # Headless false helps bypass Namuwiki protection if run interactively, though we support it
 
     data = []

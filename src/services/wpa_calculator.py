@@ -6,12 +6,12 @@ WPA (Win Probability Added) Calculator Service.
 Uses a Win Expectancy Matrix (CSV) to calculate the shift in win probability for each event.
 """
 
-import csv  # noqa: E402
-import os  # noqa: E402
+import csv
+import os
 
 
 class WPACalculator:
-    def __init__(self, matrix_path: str = None):
+    def __init__(self, matrix_path: str = None) -> None:
         """
         Initialize calculator with Win Expectancy Matrix from CSV.
         """
@@ -23,7 +23,7 @@ class WPACalculator:
         self._matrix: dict[tuple, float] = {}
         self._load_matrix(matrix_path)
 
-    def _load_matrix(self, path: str):
+    def _load_matrix(self, path: str) -> None:
         """
         Load Win Expectancy Matrix from CSV.
         Expected columns: inning, half, outs, runners, score_diff, win_prob

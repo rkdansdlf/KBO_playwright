@@ -138,7 +138,7 @@ class TeamHistoryCrawler:
                                 "logo_url": current_logo,
                                 "ranking": rank,
                                 "slot_index": i,  # Debug info
-                            }
+                            },
                         )
 
             logger.info(f"Processed {year}: {len([h for h in history_data if h['season'] == year])} teams.")
@@ -186,7 +186,7 @@ class TeamHistoryCrawler:
                                 logo_url=entry["logo_url"],
                                 ranking=entry["ranking"],
                                 franchise_id=franchise_id,
-                            )
+                            ),
                         )
                     saved_count += 1
 

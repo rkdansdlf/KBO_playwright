@@ -28,7 +28,7 @@ class SourceCircuitBreaker:
         threshold: int = 3,
         cooldown_seconds: float = 60.0,
         persist_path: str | Path | None = None,
-    ):
+    ) -> None:
         self._threshold = threshold
         self._cooldown = cooldown_seconds
         self._failures: dict[tuple[str, str], int] = {}

@@ -14,7 +14,7 @@ class AsyncThrottle:
     Respects global delays configured via environment variables.
     """
 
-    def __init__(self, delay: float = 1.0, jitter: float = 0.3):
+    def __init__(self, delay: float = 1.0, jitter: float = 0.3) -> None:
         # Override with env vars if present
         env_delay = os.getenv("KBO_REQUEST_DELAY")
         env_jitter = os.getenv("KBO_REQUEST_JITTER")
@@ -39,7 +39,7 @@ class AsyncThrottle:
         return self._default_delay
 
     @default_delay.setter
-    def default_delay(self, val: float):
+    def default_delay(self, val: float) -> None:
         self._default_delay = val
 
     def _get_target_delay(self) -> float:

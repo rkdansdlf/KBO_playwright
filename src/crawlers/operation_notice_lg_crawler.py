@@ -106,7 +106,7 @@ class OperationNoticeLGCrawler:
 
                     html = resp.text
                     self._raw_pages.append(
-                        {"source_key": "lg_twins_notices", "url": url, "html": html, "status_code": 200}
+                        {"source_key": "lg_twins_notices", "url": url, "html": html, "status_code": 200},
                     )
 
                     notices, hit_stop = self._parse_page(html, stop_at_external_id)
@@ -178,7 +178,7 @@ class OperationNoticeLGCrawler:
                     "is_urgent": _is_urgent(title),
                     "is_confirmed": True,
                     "raw_snapshot": {"href": href_clean, "title": title},
-                }
+                },
             )
 
         return notices, hit_stop

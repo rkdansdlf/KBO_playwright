@@ -58,8 +58,8 @@ def check_schedules(session) -> dict[str, Any]:
                 SELECT COUNT(*)
                 FROM game
                 WHERE UPPER(COALESCE(game_status, '')) = 'SCHEDULED'
-                """
-                )
+                """,
+                ),
             ).scalar()
             or 0
         )
@@ -110,7 +110,7 @@ def check_schedules(session) -> dict[str, Any]:
     if total == 0 and operational_total > 0:
         try:
             game_min_date, game_max_date = session.execute(
-                text("SELECT MIN(game_date), MAX(game_date) FROM game")
+                text("SELECT MIN(game_date), MAX(game_date) FROM game"),
             ).first()
         except SQLAlchemyError:
             game_min_date, game_max_date = None, None
@@ -213,13 +213,13 @@ def check_game_data(session) -> dict[str, Any]:
     # Duplicate check
     dup_b = session.execute(
         text(
-            "SELECT COALESCE(COUNT(*), 0) FROM (SELECT game_id, player_id, COUNT(*) FROM player_game_batting GROUP BY game_id, player_id HAVING COUNT(*) > 1)"
-        )
+            "SELECT COALESCE(COUNT(*), 0) FROM (SELECT game_id, player_id, COUNT(*) FROM player_game_batting GROUP BY game_id, player_id HAVING COUNT(*) > 1)",
+        ),
     ).scalar()
     dup_p = session.execute(
         text(
-            "SELECT COALESCE(COUNT(*), 0) FROM (SELECT game_id, player_id, COUNT(*) FROM player_game_pitching GROUP BY game_id, player_id HAVING COUNT(*) > 1)"
-        )
+            "SELECT COALESCE(COUNT(*), 0) FROM (SELECT game_id, player_id, COUNT(*) FROM player_game_pitching GROUP BY game_id, player_id HAVING COUNT(*) > 1)",
+        ),
     ).scalar()
     if dup_b or dup_p:
         logger.info(f"  Duplicates: batting={dup_b}, pitching={dup_p} [WARN]")
@@ -238,7 +238,7 @@ def check_game_data(session) -> dict[str, Any]:
 
     # Rate stat anomaly check (avg > obp — documented as expected with SF)
     avg_gt_obp = session.execute(
-        text("SELECT COUNT(*) FROM player_game_batting WHERE avg IS NOT NULL AND obp IS NOT NULL AND avg > obp")
+        text("SELECT COUNT(*) FROM player_game_batting WHERE avg IS NOT NULL AND obp IS NOT NULL AND avg > obp"),
     ).scalar()
     logger.info(f"  Batting avg > obp: {avg_gt_obp} (expected when sacrifice flies exist)")
 
@@ -251,7 +251,7 @@ def check_game_data(session) -> dict[str, Any]:
         ("player_game_pitching", "whip", 0, 30, "whip"),
     ]:
         n = session.execute(
-            text(f"SELECT COUNT(*) FROM {tbl} WHERE {col} IS NOT NULL AND ({col} < {lo} OR {col} > {hi})")
+            text(f"SELECT COUNT(*) FROM {tbl} WHERE {col} IS NOT NULL AND ({col} < {lo} OR {col} > {hi})"),
         ).scalar()
         if n:
             logger.info(f"  {tbl}.{col}: {n} outside [{lo}, {hi}]")
@@ -266,7 +266,7 @@ def check_game_data(session) -> dict[str, Any]:
         LEFT JOIN player_game_batting pgb ON pgb.game_id = g.game_id
         WHERE g.game_status IN ('COMPLETED', 'DRAW')
         GROUP BY g.game_status
-    """)
+    """),
     ).fetchall()
     for status, total, covered in cov:
         pct = 100.0 * covered / total if total else 0
@@ -280,7 +280,7 @@ def check_game_data(session) -> dict[str, Any]:
         LEFT JOIN game_batting_stats gbs ON gbs.game_id = g.game_id
         WHERE g.game_status IN ('COMPLETED', 'DRAW')
           AND gbs.game_id IS NULL
-    """)
+    """),
     ).scalar()
     logger.info(f"  Games without source batting stats: {missing_games}")
 
@@ -327,14 +327,14 @@ def check_pregame_pitcher_coverage(session, *, verbose: bool = False) -> dict[st
             scheduled_filter,
             Game.away_pitcher.is_not(None),
             Game.away_pitcher != "",
-        )
+        ),
     ).scalar()
     home_ok = session.execute(
         select(func.count(Game.id)).where(
             scheduled_filter,
             Game.home_pitcher.is_not(None),
             Game.home_pitcher != "",
-        )
+        ),
     ).scalar()
     both_ok = session.execute(
         select(func.count(Game.id)).where(
@@ -343,14 +343,14 @@ def check_pregame_pitcher_coverage(session, *, verbose: bool = False) -> dict[st
             Game.away_pitcher != "",
             Game.home_pitcher.is_not(None),
             Game.home_pitcher != "",
-        )
+        ),
     ).scalar()
     both_missing = session.execute(
         select(func.count(Game.id)).where(
             scheduled_filter,
             (Game.away_pitcher.is_(None) | (Game.away_pitcher == "")),
             (Game.home_pitcher.is_(None) | (Game.home_pitcher == "")),
-        )
+        ),
     ).scalar()
     preview_rows = (
         session.execute(
@@ -361,8 +361,8 @@ def check_pregame_pitcher_coverage(session, *, verbose: bool = False) -> dict[st
             JOIN game_summary gs ON gs.game_id = g.game_id
             WHERE UPPER(g.game_status) = 'SCHEDULED'
               AND gs.summary_type = '프리뷰'
-            """
-            )
+            """,
+            ),
         ).scalar()
         or 0
     )
@@ -379,8 +379,8 @@ def check_pregame_pitcher_coverage(session, *, verbose: bool = False) -> dict[st
                 g.away_pitcher IS NULL OR g.away_pitcher = ''
                 OR g.home_pitcher IS NULL OR g.home_pitcher = ''
               )
-            """
-            )
+            """,
+            ),
         ).scalar()
         or 0
     )
@@ -401,8 +401,8 @@ def check_pregame_pitcher_coverage(session, *, verbose: bool = False) -> dict[st
                 OR (g.away_pitcher IS NOT NULL AND g.away_pitcher != '')
                 OR (g.home_pitcher IS NOT NULL AND g.home_pitcher != '')
               )
-            """
-            )
+            """,
+            ),
         ).scalar()
         or 0
     )
@@ -425,8 +425,8 @@ def check_pregame_pitcher_coverage(session, *, verbose: bool = False) -> dict[st
               )
               AND g.away_pitcher IS NOT NULL AND g.away_pitcher != ''
               AND g.home_pitcher IS NOT NULL AND g.home_pitcher != ''
-            """
-            )
+            """,
+            ),
         ).scalar()
         or 0
     )
@@ -478,14 +478,14 @@ def check_pregame_pitcher_coverage(session, *, verbose: bool = False) -> dict[st
                 GROUP BY g.game_date
                 ORDER BY g.game_date
                 LIMIT 40
-                """
-            )
+                """,
+            ),
         ).all()
 
         logger.info("\nScheduled pregame by date:")
         for game_date, date_total, date_both_ok, date_preview_rows in rows:
             logger.info(
-                f"  {game_date}: starters={date_both_ok}/{date_total}, preview={date_preview_rows}/{date_total}"
+                f"  {game_date}: starters={date_both_ok}/{date_total}, preview={date_preview_rows}/{date_total}",
             )
 
     return {
@@ -549,7 +549,7 @@ def main(argv: Sequence[str] | None = None) -> None:
                     f"{failure['dataset']} "
                     f"{failure.get('game_date') or '-'} "
                     f"{failure.get('game_id') or '-'} "
-                    f"{failure['reason']}"
+                    f"{failure['reason']}",
                 )
         return
 
@@ -579,18 +579,18 @@ def main(argv: Sequence[str] | None = None) -> None:
         "  Scheduled pregame pitchers: "
         f"both={pregame_pitcher_stats['both_ok']} / "
         f"{pregame_pitcher_stats['scheduled_total']} "
-        f"({pregame_pitcher_stats['coverage_pct']:.1f}%)"
+        f"({pregame_pitcher_stats['coverage_pct']:.1f}%)",
     )
     logger.info(
         "  Scheduled preview summaries: "
         f"{pregame_pitcher_stats['preview_rows']} "
-        f"(missing starters={pregame_pitcher_stats['preview_missing_starters']})"
+        f"(missing starters={pregame_pitcher_stats['preview_missing_starters']})",
     )
     logger.info(
         "  Pregame OCI sync: "
         f"candidates={pregame_pitcher_stats['sync_candidate_games']}, "
         f"complete_starters={pregame_pitcher_stats['sync_complete_starters']}, "
-        f"ready={pregame_pitcher_stats['oci_sync_ready']}"
+        f"ready={pregame_pitcher_stats['oci_sync_ready']}",
     )
 
     # 경고 목록 취합 및 출력

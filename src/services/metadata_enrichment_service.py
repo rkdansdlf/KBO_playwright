@@ -20,7 +20,7 @@ class MetadataEnrichmentService:
     Calls Gemini API to analyze text content and extract keywords, summaries, and questions.
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.api_key = os.getenv("GEMINI_API_KEY")
         self.enabled = os.getenv("ENABLE_METADATA_ENRICHMENT", "0") == "1"
         if not self.api_key:

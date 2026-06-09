@@ -1,8 +1,7 @@
 """Tests for RankingAggregator — fielding, baserunning, batting, pitching rankings."""
 
-import pytest
 
-from src.aggregators.ranking_aggregator import RankingAggregator, FIELDING_METRICS, BATTING_METRICS, PITCHING_METRICS, BASERUNNING_METRICS
+from src.aggregators.ranking_aggregator import RankingAggregator
 
 
 def _make_fielder(player_id=10001, name="홍길동", team="LG",
@@ -184,13 +183,27 @@ class TestRankingAggregatorBatting:
         assert "home_runs" in metrics
         assert "home_runs_all" not in metrics
 
-    def test_batting_sorts_by_wrc_plus_exist(self):
+    def test_batting_sorts_by_hr(self):
         agg = RankingAggregator()
-        rows = [_make_batter(player_id=10001, wrc_plus=130, pa=500),
-                _make_batter(player_id=10002, wrc_plus=110, pa=500)]
+        rows = [_make_batter(player_id=10001, home_runs=30, pa=500),
+                _make_batter(player_id=10002, home_runs=20, pa=500)]
+        results = agg.generate_rankings(2025, batting_stats=rows, persist=False, min_pa=100)
+        hr = [r for r in results if r["metric"] == "home_runs"]
+        assert hr[0]["entity_id"] == "10001"
+
+    def test_batting_saber_metric_from_extra_stats(self):
+        agg = RankingAggregator()
+        rows = [
+            {"player_id": 10001, "player_name": "A", "team_id": "LG",
+             "plate_appearances": 500, "extra_stats": {"wrc_plus": 130}},
+            {"player_id": 10002, "player_name": "B", "team_id": "SS",
+             "plate_appearances": 500, "extra_stats": {"wrc_plus": 110}},
+        ]
         results = agg.generate_rankings(2025, batting_stats=rows, persist=False, min_pa=100)
         wrc = [r for r in results if r["metric"] == "wrc_plus"]
+        assert len(wrc) == 2
         assert wrc[0]["entity_id"] == "10001"
+        assert wrc[0]["value"] == 130
 
 
 class TestRankingAggregatorPitching:
@@ -294,11 +307,12 @@ class TestRankingAggregatorNullHandling:
         agg = RankingAggregator()
         rows = [_make_fielder(player_id=10001, fielding_pct=None)]
         results = agg.generate_rankings(2025, fielding_stats=rows, persist=False)
-        assert len(results) == 0
+        fld = [r for r in results if r["metric"] == "fielding_pct"]
+        assert len(fld) == 0
 
-    def test_null_player_id_skipped(self):
+    def test_null_player_id_and_name_skipped(self):
         agg = RankingAggregator()
-        rows = [{"fielding_pct": 0.990, "player_name": "Test"}]
+        rows = [{"fielding_pct": 0.990}]
         results = agg.generate_rankings(2025, fielding_stats=rows, persist=False)
         assert len(results) == 0
 

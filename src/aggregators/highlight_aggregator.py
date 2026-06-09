@@ -9,7 +9,7 @@ from src.models.game import GameEvent, GameHighlight
 class HighlightAggregator:
     """Computes and tags game highlights from Play-by-Play event records."""
 
-    def __init__(self, session: Session):
+    def __init__(self, session: Session) -> None:
         self.session = session
 
     def aggregate_game_highlights(self, game_id: str, min_wpa_threshold: float = 0.05) -> list[GameHighlight]:

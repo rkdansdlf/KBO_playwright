@@ -371,7 +371,7 @@ class PreviewCrawler:
                                 "batting_order": int(order),
                                 "position": pos,
                                 "player_name": name,
-                            }
+                            },
                         )
         except (json.JSONDecodeError, TypeError, KeyError, IndexError) as e:
             logger.debug("Failed to parse lineup grid row: %s", e)

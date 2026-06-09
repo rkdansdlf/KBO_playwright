@@ -134,7 +134,7 @@ def main() -> int:
         help="Save to DB (ignored as default is true, override with --dry-run)",
     )
     parser.add_argument(
-        "--type", choices=["batting", "pitching", "all"], default="all", help="Ignore this legacy argument"
+        "--type", choices=["batting", "pitching", "all"], default="all", help="Ignore this legacy argument",
     )
     parser.add_argument("--league", type=str, default="REGULAR", help="Ignore this legacy argument")
 
@@ -158,7 +158,7 @@ def main() -> int:
             batting_only=bat_only,
             pitching_only=pit_only,
             verbose=args.verbose,
-        )
+        ),
     )
 
 

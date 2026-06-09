@@ -29,7 +29,7 @@ def analyze_events() -> list[dict[str, Any]]:
                 FROM team_events
                 GROUP BY team_id, event_type
                 ORDER BY team_id, cnt DESC
-            """)
+            """),
         ).fetchall()
         total = session.execute(text("SELECT COUNT(*) FROM team_events")).scalar()
         recent = session.execute(
@@ -49,7 +49,7 @@ def analyze_roster() -> list[dict[str, Any]]:
             text("""
                 SELECT action, COUNT(*) AS cnt
                 FROM roster_transactions GROUP BY action
-            """)
+            """),
         ).fetchall()
         by_team = session.execute(
             text("""
@@ -57,7 +57,7 @@ def analyze_roster() -> list[dict[str, Any]]:
                        MAX(transaction_date) AS last_txn
                 FROM roster_transactions
                 GROUP BY team_id ORDER BY team_id
-            """)
+            """),
         ).fetchall()
         recent = session.execute(
             text("SELECT COUNT(*) FROM roster_transactions WHERE transaction_date >= :cutoff"),
@@ -81,7 +81,7 @@ def analyze_tickets() -> list[dict[str, Any]]:
                        season
                 FROM ticket_prices
                 GROUP BY team_id, season ORDER BY team_id
-            """)
+            """),
         ).fetchall()
         rules = session.execute(text("SELECT COUNT(*) FROM ticket_open_rules")).scalar()
     result = [{"section": "Ticket", "total": _int(total), "open_rules": _int(rules)}]
@@ -93,7 +93,7 @@ def analyze_tickets() -> list[dict[str, Any]]:
                 "min": _int(r.min_price),
                 "max": _int(r.max_price),
                 "season": _fmt(r.season),
-            }
+            },
         )
     return result
 
@@ -107,7 +107,7 @@ def analyze_seats() -> list[dict[str, Any]]:
                        COUNT(DISTINCT seat_grade) AS grades
                 FROM stadium_seat_sections
                 GROUP BY stadium_id ORDER BY stadium_id
-            """)
+            """),
         ).fetchall()
     result = [{"section": "Seats", "total": _int(total)}]
     for r in by_stadium:
@@ -124,7 +124,7 @@ def analyze_parking() -> list[dict[str, Any]]:
                 SELECT l.stadium_id, COUNT(*) AS cnt
                 FROM parking_lots l
                 GROUP BY l.stadium_id ORDER BY l.stadium_id
-            """)
+            """),
         ).fetchall()
     result = [{"section": "Parking", "lots": _int(total), "fee_rules": _int(fees)}]
     for r in by_stadium:
@@ -143,7 +143,7 @@ def analyze_food() -> list[dict[str, Any]]:
                 FROM stadium_food_vendors v
                 LEFT JOIN stadium_food_menu_items m ON m.vendor_id = v.id
                 GROUP BY v.stadium_id ORDER BY v.stadium_id
-            """)
+            """),
         ).fetchall()
     result = [{"section": "Food", "vendors": _int(vendors), "menu_items": _int(menus)}]
     for r in by_stadium:
@@ -152,7 +152,7 @@ def analyze_food() -> list[dict[str, Any]]:
                 "stadium": r.stadium_id,
                 "vendors": _int(r.vendors),
                 "menu_items": _int(r.menu_items),
-            }
+            },
         )
     return result
 

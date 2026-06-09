@@ -144,7 +144,7 @@ async def run_static_pipeline(pdf_path: str | None = None) -> None:
                                 "category": category,
                                 **({"subcategory": subcategory} if subcategory else {}),
                             },
-                        }
+                        },
                     )
                     md_count += 1
                 except Exception:
@@ -333,7 +333,7 @@ def run_consistency_check(deep: bool = False) -> None:
             logger.info("✅ Consistency audit passed — databases are in sync.")
         else:
             logger.info("🚨 Consistency audit found mismatches — alert sent.")
-    except Exception:  # noqa: BLE001
+    except Exception:
         err_msg = traceback.format_exc()
         logger.error(f"Consistency audit raised an unexpected error:\n{err_msg}")
         SlackWebhookClient.send_error_alert(f"Consistency audit error:\n{err_msg}")
@@ -433,11 +433,11 @@ def start_scheduler() -> None:
 def main() -> int:
     parser = argparse.ArgumentParser(description="KBO Knowledge & Issue Crawler Pipeline Orchestrator")
     parser.add_argument(
-        "--type", choices=["static", "dynamic", "realtime"], help="Execute specific crawler pipeline type immediately."
+        "--type", choices=["static", "dynamic", "realtime"], help="Execute specific crawler pipeline type immediately.",
     )
     parser.add_argument("--pdf", type=str, help="Local KBO rules PDF file path. (Used only with --type static)")
     parser.add_argument(
-        "--daemon", action="store_true", help="Run scheduler daemon in background to execute jobs periodically."
+        "--daemon", action="store_true", help="Run scheduler daemon in background to execute jobs periodically.",
     )
 
     args = parser.parse_args()

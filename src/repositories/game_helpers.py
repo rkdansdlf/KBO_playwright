@@ -13,14 +13,14 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
-import contextlib  # noqa: E402
-import re  # noqa: E402
+import contextlib
+import re
 
-from sqlalchemy import text  # noqa: E402
-from sqlalchemy.exc import SQLAlchemyError  # noqa: E402
+from sqlalchemy import text
+from sqlalchemy.exc import SQLAlchemyError
 
-from src.db.engine import SessionLocal  # noqa: E402
-from src.models.game import (  # noqa: E402
+from src.db.engine import SessionLocal
+from src.models.game import (
     Game,
     GameBattingStat,
     GameIdAlias,
@@ -30,10 +30,10 @@ from src.models.game import (  # noqa: E402
     GamePitchingStat,
     GameSummary,
 )
-from src.models.player import PlayerBasic  # noqa: E402
-from src.services.game_write_contract import GameWriteContract, GameWriteSource  # noqa: E402
-from src.services.player_id_resolver import PlayerIdResolver  # noqa: E402
-from src.utils.game_status import (  # noqa: E402
+from src.models.player import PlayerBasic
+from src.services.game_write_contract import GameWriteContract, GameWriteSource
+from src.services.player_id_resolver import PlayerIdResolver
+from src.utils.game_status import (
     GAME_STATUS_CANCELLED,
     GAME_STATUS_COMPLETED,
     GAME_STATUS_DRAW,
@@ -43,13 +43,13 @@ from src.utils.game_status import (  # noqa: E402
     GAME_STATUS_UNRESOLVED,
     LIVE_GAME_STATUSES,
 )
-from src.utils.player_positions import get_primary_position  # noqa: E402
-from src.utils.team_codes import (  # noqa: E402
+from src.utils.player_positions import get_primary_position
+from src.utils.team_codes import (
     build_kbo_game_id,
     normalize_kbo_game_id,
     team_code_from_game_id_segment,
 )
-from src.utils.team_history import FRANCHISE_CANONICAL_CODE, find_team_history_entry  # noqa: E402
+from src.utils.team_history import FRANCHISE_CANONICAL_CODE, find_team_history_entry
 
 SEASON_TYPE_TO_LEAGUE_CODE = {
     "regular": 0,
@@ -136,10 +136,10 @@ def _query_db_season_by_date_range(session, season_year: int, game_date: date) -
                       AND start_date IS NOT NULL
                       AND end_date IS NOT NULL
                       AND :game_date BETWEEN start_date AND end_date
-                    """
+                    """,
                 ),
                 {"season_year": season_year, "game_date": game_date},
-            ).scalar()
+            ).scalar(),
         )
     except SQLAlchemyError:
         logger.warning("Failed to query season_id from database")
@@ -161,10 +161,10 @@ def _apply_season_date_rules(session, season_year: int, game_date: date) -> int 
                             FROM kbo_seasons
                             WHERE season_year = :season_year
                               AND league_type_name = :league_type_name
-                            """
+                            """,
                         ),
                         {"season_year": season_year, "league_type_name": type_name},
-                    ).scalar()
+                    ).scalar(),
                 )
                 if mapped is not None:
                     return mapped
@@ -183,10 +183,10 @@ def _query_db_season_by_code(session, season_year: int, league_type_code: int) -
                     FROM kbo_seasons
                     WHERE season_year = :season_year
                       AND league_type_code = :league_type_code
-                    """
+                    """,
                 ),
                 {"season_year": season_year, "league_type_code": league_type_code},
-            ).scalar()
+            ).scalar(),
         )
     except SQLAlchemyError:
         logger.warning("Failed to query season_id from kbo_seasons")
@@ -304,7 +304,7 @@ def _record_game_id_alias(
             canonical_game_id=canonical_game_id,
             source=source,
             reason=reason,
-        )
+        ),
     )
 
 
@@ -429,7 +429,7 @@ def _infer_pitcher_from_children(session, game_id: str, team_side: str) -> str |
     row = (
         session.query(GamePitchingStat.player_name)
         .filter(
-            GamePitchingStat.game_id == game_id, GamePitchingStat.team_side == team_side, GamePitchingStat.is_starting
+            GamePitchingStat.game_id == game_id, GamePitchingStat.team_side == team_side, GamePitchingStat.is_starting,
         )
         .first()
     )
@@ -490,10 +490,10 @@ def _ensure_game_stub(session, game_id: str) -> None:
                         FROM kbo_seasons
                         WHERE season_year = :season_year
                           AND league_type_code = 0
-                        """
+                        """,
                     ),
                     {"season_year": season_year},
-                ).scalar()
+                ).scalar(),
             )
         except SQLAlchemyError:
             logger.warning("Failed to query min season_id for year")
@@ -509,7 +509,7 @@ def _ensure_game_stub(session, game_id: str) -> None:
             home_team=home_team,
             season_id=season_id,
             game_status=GAME_STATUS_COMPLETED,
-        )
+        ),
     )
     session.flush()
     _record_game_id_alias(
@@ -660,7 +660,7 @@ def _assert_no_player_team_collisions(game_id: str, dataset: str, mappings: list
     preview = ", ".join(f"{player_id}:{team_keys}" for player_id, team_keys in list(collisions.items())[:5])
     raise ValueError(
         f"{dataset} has player_id team collisions for {game_id}: {preview}. "
-        "Refusing to save ambiguous game detail rows."
+        "Refusing to save ambiguous game detail rows.",
     )
 
 
@@ -697,7 +697,7 @@ def _ensure_player_basic_stubs(session, mappings: Iterable[dict[str, Any]]) -> b
                 position=str(mapping.get("position") or ("투수" if standard_position == "P" else "")) or None,
                 status="STUB",
                 status_source="game_detail",
-            )
+            ),
         )
     session.flush()
     logger.info(f"[WARN] Created {len(missing_ids)} player_basic stub(s) for game detail save")
@@ -948,7 +948,7 @@ def _resolve_team_identity(team_code: Any, season_year: int | None) -> tuple[int
 
 
 def _build_inning_scores(
-    game_id: str, teams: dict[str, Any], *, season_year: int | None = None
+    game_id: str, teams: dict[str, Any], *, season_year: int | None = None,
 ) -> list[dict[str, Any]]:
     records = []
     for side in ("away", "home"):
@@ -966,14 +966,14 @@ def _build_inning_scores(
                     "inning": idx,
                     "runs": runs,
                     "is_extra": idx > 9,
-                }
+                },
             )
     _apply_team_identity_to_mappings(records, season_year)
     return records
 
 
 def _build_lineups(
-    game_id: str, hitters: dict[str, list[dict[str, Any]]], *, season_year: int | None = None
+    game_id: str, hitters: dict[str, list[dict[str, Any]]], *, season_year: int | None = None,
 ) -> list[dict[str, Any]]:
     records = []
     for side, entries in hitters.items():
@@ -995,7 +995,7 @@ def _build_lineups(
                     "is_starter": bool(entry.get("is_starter")),
                     "appearance_seq": entry.get("appearance_seq") or len(records) + 1,
                     "notes": _format_notes(entry.get("extras")),
-                }
+                },
             )
     _apply_team_identity_to_mappings(records, season_year)
     return records
@@ -1014,7 +1014,7 @@ def _format_notes(extras: dict[str, Any] | None) -> str | None:
 
 
 def _build_batting_stats(
-    game_id: str, hitters: dict[str, list[dict[str, Any]]], *, season_year: int | None = None
+    game_id: str, hitters: dict[str, list[dict[str, Any]]], *, season_year: int | None = None,
 ) -> list[dict[str, Any]]:
     records = []
     for side, entries in hitters.items():
@@ -1060,14 +1060,14 @@ def _build_batting_stats(
                     "iso": _stat_float(stats, "iso"),
                     "babip": _stat_float(stats, "babip"),
                     "extra_stats": _clean_extras(entry.get("extras")),
-                }
+                },
             )
     _apply_team_identity_to_mappings(records, season_year)
     return records
 
 
 def _build_pitching_stats(
-    game_id: str, pitchers: dict[str, list[dict[str, Any]]], *, season_year: int | None = None
+    game_id: str, pitchers: dict[str, list[dict[str, Any]]], *, season_year: int | None = None,
 ) -> list[dict[str, Any]]:
     records = []
     for side, entries in pitchers.items():
@@ -1112,7 +1112,7 @@ def _build_pitching_stats(
                     "bb_per_nine": _stat_float(stats, "bb_per_nine"),
                     "kbb": _stat_float(stats, "kbb"),
                     "extra_stats": _clean_extras(entry.get("extras")),
-                }
+                },
             )
     _apply_team_identity_to_mappings(records, season_year)
     return records
@@ -1152,7 +1152,7 @@ def _build_pregame_lineup_rows(
                 "is_starter": True,
                 "appearance_seq": _coerce_int(entry.get("appearance_seq")) or batting_order,
                 "notes": None,
-            }
+            },
         )
     _apply_team_identity_to_mappings(rows, season_year)
     return rows
@@ -1188,7 +1188,7 @@ def _upsert_game_summary_entry(
             player_name=player_name,
             player_id=player_id,
             detail_text=detail_text,
-        )
+        ),
     )
 
 

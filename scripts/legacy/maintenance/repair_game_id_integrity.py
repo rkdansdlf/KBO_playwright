@@ -1366,8 +1366,11 @@ def run(
 
         if not apply:
             actionable_backfill_2024 = sum(1 for row in backfill_2024 if is_actionable_backfill_candidate(row))
-            print(
-                f"[DRY-RUN] duplicate_groups={len(groups)} conflicts={len(conflicts)} 2024_backfill={actionable_backfill_2024}"
+            logger.info(
+                "[DRY-RUN] duplicate_groups=%s conflicts=%s 2024_backfill=%s",
+                len(groups),
+                len(conflicts),
+                actionable_backfill_2024,
             )
             logger.info(f"[DRY-RUN] reports written to {output_dir}")
             return 0 if not conflicts else 2
@@ -1389,9 +1392,11 @@ def run(
         for group in groups:
             apply_duplicate_group(conn, tables, group)
 
-        print(
-            f"[APPLY] merged_duplicate_groups={len(groups)} "
-            f"franchise_id_updates={franchise_updates} season_id_updates={season_updates}"
+        logger.info(
+            "[APPLY] merged_duplicate_groups=%s franchise_id_updates=%s season_id_updates=%s",
+            len(groups),
+            franchise_updates,
+            season_updates,
         )
         return 0
 

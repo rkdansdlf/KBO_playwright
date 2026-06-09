@@ -50,7 +50,7 @@ async def run_crawler(args: argparse.Namespace) -> int:
         oci_url = get_oci_url()
         if not oci_url:
             logger.warning(
-                "⚠️ sync-oci requested, but OCI_DB_URL/TARGET_DATABASE_URL env var not found. Skipping OCI sync."
+                "⚠️ sync-oci requested, but OCI_DB_URL/TARGET_DATABASE_URL env var not found. Skipping OCI sync.",
             )
         else:
             player_ids = [r["player_id"] for r in records if r.get("player_id")]

@@ -35,7 +35,7 @@ class RequestPolicy:
         user_agents: Iterable[str] | None = None,
         max_retries: int | None = None,
         backoff_factor: float | None = None,
-    ):
+    ) -> None:
         env_min = float(os.getenv("KBO_REQUEST_DELAY_MIN", min_delay or 1.5))
         env_max = float(os.getenv("KBO_REQUEST_DELAY_MAX", max_delay or 2.5))
         if env_min > env_max:
@@ -70,15 +70,15 @@ class RequestPolicy:
     def _random_delay(self) -> float:
         return random.uniform(self.min_delay, self.max_delay)
 
-    def delay(self, host: str = "koreabaseball.com"):
+    def delay(self, host: str = "koreabaseball.com") -> None:
         throttle.default_delay = self.min_delay  # Dynamic adjustment based on policy
         throttle.wait_sync(host)
 
-    async def delay_async(self, host: str = "koreabaseball.com"):
+    async def delay_async(self, host: str = "koreabaseball.com") -> None:
         throttle.default_delay = self.min_delay
         await throttle.wait(host)
 
-    def run_with_retry(self, func: Callable, *args, **kwargs):
+    def run_with_retry(self, func: Callable, *args, **kwargs) -> Any:
         last_exc = None
         for attempt in range(1, self.max_retries + 1):
             try:
@@ -92,7 +92,7 @@ class RequestPolicy:
         if last_exc:
             raise last_exc
 
-    async def run_with_retry_async(self, func: Callable, *args, **kwargs):
+    async def run_with_retry_async(self, func: Callable, *args, **kwargs) -> Any:
         last_exc = None
         for attempt in range(1, self.max_retries + 1):
             try:

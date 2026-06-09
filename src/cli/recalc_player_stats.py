@@ -91,7 +91,7 @@ def _compute_batting_rates(row) -> dict[str, Any]:
 
 
 def _aggregate_batting(
-    session: Session, season_ids: list[int], season: int, league: str, level: str
+    session: Session, season_ids: list[int], season: int, league: str, level: str,
 ) -> list[dict[str, Any]]:
     rows = (
         session.query(
@@ -156,7 +156,7 @@ def _aggregate_batting(
                 "sacrifice_flies": row.sacrifice_flies or 0,
                 "gdp": row.gdp or 0,
                 **rates,
-            }
+            },
         )
     return results
 
@@ -179,7 +179,7 @@ def _compute_pitching_rates(total_outs: int, hits: int, bb: int, er: int, k: int
 
 
 def _aggregate_pitching(
-    session: Session, season_ids: list[int], season: int, league: str, level: str
+    session: Session, season_ids: list[int], season: int, league: str, level: str,
 ) -> list[dict[str, Any]]:
     rows = (
         session.query(
@@ -252,7 +252,7 @@ def _aggregate_pitching(
                 "holds": row.holds or 0,
                 "tbf": row.batters_faced or 0,
                 "np": row.pitches or 0,
-            }
+            },
         )
     return results
 

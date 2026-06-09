@@ -1,4 +1,5 @@
-import asyncio
+
+import pytest
 
 from src.utils.throttle import AsyncThrottle
 
@@ -55,15 +56,19 @@ class TestAsyncThrottle:
     @pytest.mark.asyncio
     async def test_wait_async_tracks_hosts(self, monkeypatch):
         throttle = AsyncThrottle(delay=0.1, jitter=0.0)
+        now = {"value": 0.0}
         sleeps = []
+
+        monkeypatch.setattr("src.utils.throttle.time.monotonic", lambda: now["value"])
 
         async def _asleep(seconds):
             sleeps.append(seconds)
+            now["value"] += seconds
 
         monkeypatch.setattr("src.utils.throttle.asyncio.sleep", _asleep)
 
         await throttle.wait("host_a")
-        await throttle.wait("host_b")
+        await throttle.wait("host_a")
         assert len(sleeps) == 2
 
     def test_setter_updates_delay(self):

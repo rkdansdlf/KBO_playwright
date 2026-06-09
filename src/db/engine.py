@@ -10,9 +10,9 @@ import sqlite3
 from dotenv import load_dotenv
 
 logger = logging.getLogger(__name__)
-from sqlalchemy import create_engine, event  # noqa: E402
-from sqlalchemy.exc import SQLAlchemyError  # noqa: E402
-from sqlalchemy.orm import sessionmaker  # noqa: E402
+from sqlalchemy import Engine, create_engine, event
+from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.orm import Session, sessionmaker
 
 load_dotenv()
 
@@ -34,14 +34,14 @@ def _is_sqlite(url: str) -> bool:
     return url.startswith("sqlite:")
 
 
-def create_engine_for_url(url: str, *, disable_sqlite_wal: bool = False):
+def create_engine_for_url(url: str, *, disable_sqlite_wal: bool = False) -> Engine:
     if _is_sqlite(url):
         engine = create_engine(
-            url, connect_args={"check_same_thread": False, "timeout": 120}, pool_pre_ping=True, echo=False
+            url, connect_args={"check_same_thread": False, "timeout": 120}, pool_pre_ping=True, echo=False,
         )
 
         @event.listens_for(engine, "connect")
-        def _sqlite_pragmas(dbapi_con, _):
+        def _sqlite_pragmas(dbapi_con, _) -> None:
             try:
                 cursor = dbapi_con.cursor()
                 cursor.execute("PRAGMA foreign_keys = ON;")
@@ -60,11 +60,12 @@ def create_engine_for_url(url: str, *, disable_sqlite_wal: bool = False):
 Engine = create_engine_for_url(DATABASE_URL, disable_sqlite_wal=DISABLE_SQLITE_WAL)
 SessionLocal = sessionmaker(bind=Engine, autoflush=False, autocommit=False, expire_on_commit=False)
 
-from contextlib import contextmanager  # noqa: E402
+from collections.abc import Iterator
+from contextlib import contextmanager
 
 
 @contextmanager
-def get_db_session():
+def get_db_session() -> Iterator[Session]:
     session = SessionLocal()
     try:
         yield session
@@ -88,7 +89,7 @@ def get_database_type() -> str:
         return "unknown"
 
 
-def _ensure_player_batting_team_code_column():
+def _ensure_player_batting_team_code_column() -> None:
     """Rename player_season_batting.team_id -> team_code for legacy SQLite DBs."""
     if not _is_sqlite(DATABASE_URL):
         return
@@ -103,7 +104,7 @@ def _ensure_player_batting_team_code_column():
         logger.warning("Could not migrate player_season_batting.team_id column: %s", exc)
 
 
-def _ensure_player_basic_status_columns():
+def _ensure_player_basic_status_columns() -> None:
     """Ensure player_basic has status/staff_role/status_source columns (SQLite)."""
     if not _is_sqlite(DATABASE_URL):
         return
@@ -124,7 +125,7 @@ def _ensure_player_basic_status_columns():
         logger.warning("Could not ensure player_basic status columns: %s", exc)
 
 
-def _ensure_game_core_tables():
+def _ensure_game_core_tables() -> None:
     """Align game, box_score, and game_summary tables with CSV schema for SQLite."""
     if not _is_sqlite(DATABASE_URL):
         return
@@ -136,7 +137,7 @@ def _ensure_game_core_tables():
         logger.warning("Could not align game tables: %s", exc)
 
 
-def _ensure_game_status_column():
+def _ensure_game_status_column() -> None:
     """Ensure game table has game_status column (SQLite)."""
     if not _is_sqlite(DATABASE_URL):
         return
@@ -150,7 +151,7 @@ def _ensure_game_status_column():
         logger.warning("Could not ensure game.game_status column: %s", exc)
 
 
-def _ensure_game_identity_columns():
+def _ensure_game_identity_columns() -> None:
     """Ensure game identity repair columns exist on SQLite databases."""
     if not _is_sqlite(DATABASE_URL):
         return
@@ -170,7 +171,7 @@ def _ensure_game_identity_columns():
         logger.warning("Could not ensure game identity columns: %s", exc)
 
 
-def _migrate_game_table(conn):
+def _migrate_game_table(conn) -> None:
     info_rows = conn.exec_driver_sql("PRAGMA table_info(game);").fetchall()
     column_names = {row[1] for row in info_rows}
     required_cols = {
@@ -230,7 +231,7 @@ def _migrate_game_table(conn):
             created_at DATETIME NOT NULL,
             updated_at DATETIME NOT NULL
         );
-        """
+        """,
     )
     insert_sql = f"""
         INSERT INTO game (
@@ -267,7 +268,7 @@ def _migrate_game_table(conn):
     conn.exec_driver_sql("PRAGMA foreign_keys=ON;")
 
 
-def _migrate_game_summary_table(conn):
+def _migrate_game_summary_table(conn) -> None:
     info_rows = conn.exec_driver_sql("PRAGMA table_info(game_summary);").fetchall()
     column_names = {row[1] for row in info_rows}
     fk_rows = conn.exec_driver_sql("PRAGMA foreign_key_list(game_summary);").fetchall()
@@ -294,7 +295,7 @@ def _migrate_game_summary_table(conn):
             updated_at DATETIME NOT NULL,
             FOREIGN KEY(game_id) REFERENCES game (game_id)
         );
-        """
+        """,
     )
     has_player_id = "player_id" in column_names
     conn.exec_driver_sql(
@@ -302,15 +303,14 @@ def _migrate_game_summary_table(conn):
         INSERT INTO game_summary (id, game_id, summary_type, player_id, player_name, detail_text, created_at, updated_at)
         SELECT id, game_id, {select_summary}, {"player_id" if has_player_id else "NULL"}, player_name, {select_detail}, created_at, updated_at
         FROM game_summary_old;
-        """
+        """,
     )
     conn.exec_driver_sql("DROP TABLE game_summary_old;")
     conn.exec_driver_sql("PRAGMA foreign_keys=ON;")
 
 
-def init_db():
+def init_db() -> None:
     # Import all models to ensure they are registered in Base.metadata
-    import src.models  # noqa: F401
     from src.models.base import Base
 
     Base.metadata.create_all(bind=Engine)

@@ -2,19 +2,19 @@ import logging
 from collections.abc import Sequence
 
 logger = logging.getLogger(__name__)
-import argparse  # noqa: E402
+import argparse
 
-from sqlalchemy import func  # noqa: E402
+from sqlalchemy import func
 
-from src.aggregators.season_stat_aggregator import SeasonStatAggregator  # noqa: E402
-from src.db.engine import SessionLocal  # noqa: E402
-from src.models.game import GameBattingStat, GamePitchingStat  # noqa: E402
-from src.repositories.player_season_pitching_repository import save_pitching_stats_to_db  # noqa: E402
-from src.repositories.player_stats_repository import (  # noqa: E402
+from src.aggregators.season_stat_aggregator import SeasonStatAggregator
+from src.db.engine import SessionLocal
+from src.models.game import GameBattingStat, GamePitchingStat
+from src.repositories.player_season_pitching_repository import save_pitching_stats_to_db
+from src.repositories.player_stats_repository import (
     PlayerSeasonBaserunningRepository,
     PlayerSeasonFieldingRepository,
 )
-from src.repositories.safe_batting_repository import save_batting_stats_safe  # noqa: E402
+from src.repositories.safe_batting_repository import save_batting_stats_safe
 
 
 def backfill_stats(years: list[int], series: str) -> None:
@@ -29,7 +29,7 @@ def backfill_stats(years: list[int], series: str) -> None:
             team_map = {}
             team_query = (
                 session.query(
-                    GameBattingStat.player_id, GameBattingStat.team_code, func.count(GameBattingStat.id).label("cnt")
+                    GameBattingStat.player_id, GameBattingStat.team_code, func.count(GameBattingStat.id).label("cnt"),
                 )
                 .group_by(GameBattingStat.player_id, GameBattingStat.team_code)
                 .all()
@@ -41,7 +41,7 @@ def backfill_stats(years: list[int], series: str) -> None:
             # Pitching team map
             p_team_query = (
                 session.query(
-                    GamePitchingStat.player_id, GamePitchingStat.team_code, func.count(GamePitchingStat.id).label("cnt")
+                    GamePitchingStat.player_id, GamePitchingStat.team_code, func.count(GamePitchingStat.id).label("cnt"),
                 )
                 .group_by(GamePitchingStat.player_id, GamePitchingStat.team_code)
                 .all()
@@ -52,7 +52,7 @@ def backfill_stats(years: list[int], series: str) -> None:
 
             # 2. Batting Backfill
             bat_stats = SeasonStatAggregator.aggregate_batting_season_bulk(
-                session, year, series, source="FALLBACK_BACKFILL"
+                session, year, series, source="FALLBACK_BACKFILL",
             )
             if bat_stats:
                 for stat in bat_stats:
@@ -65,7 +65,7 @@ def backfill_stats(years: list[int], series: str) -> None:
 
             # 3. Pitching Backfill
             pit_stats = SeasonStatAggregator.aggregate_pitching_season_bulk(
-                session, year, series, source="FALLBACK_BACKFILL"
+                session, year, series, source="FALLBACK_BACKFILL",
             )
             if pit_stats:
                 for stat in pit_stats:
@@ -78,7 +78,7 @@ def backfill_stats(years: list[int], series: str) -> None:
 
             # 4. Baserunning Backfill
             br_stats = SeasonStatAggregator.aggregate_baserunning_season_bulk(
-                session, year, series, source="FALLBACK_BACKFILL"
+                session, year, series, source="FALLBACK_BACKFILL",
             )
             if br_stats:
                 for stat in br_stats:
@@ -91,7 +91,7 @@ def backfill_stats(years: list[int], series: str) -> None:
 
             # 5. Fielding Backfill
             fld_stats = SeasonStatAggregator.aggregate_fielding_season_bulk(
-                session, year, series, source="FALLBACK_BACKFILL"
+                session, year, series, source="FALLBACK_BACKFILL",
             )
             if fld_stats:
                 for stat in fld_stats:

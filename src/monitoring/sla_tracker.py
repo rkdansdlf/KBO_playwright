@@ -25,7 +25,7 @@ logger = logging.getLogger(__name__)
 
 
 class SlaTracker:
-    def __init__(self, session: Session):
+    def __init__(self, session: Session) -> None:
         self.session = session
 
     def compute_daily_sla(self, target_date: str) -> dict[str, Any]:
@@ -89,7 +89,7 @@ class SlaTracker:
             results.append(self.compute_daily_sla(d))
         return results
 
-    def print_weekly_report(self, end_date: str):
+    def print_weekly_report(self, end_date: str) -> None:
         sla_data = self.compute_weekly_sla(end_date, days=7)
         if not sla_data or sla_data[0]["total"] == 0:
             logger.info(f"[SLA] No data for week ending {end_date}")

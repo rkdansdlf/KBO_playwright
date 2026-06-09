@@ -21,11 +21,11 @@ from datetime import date as date_type
 
 logger = logging.getLogger(__name__)
 
-from playwright.async_api import BrowserContext, Page, async_playwright  # noqa: E402
+from playwright.async_api import BrowserContext, Page, async_playwright
 
 from src.utils.playwright_retry import NAV_TIMEOUT
-from src.utils.request_policy import RequestPolicy  # noqa: E402
-from src.utils.team_codes import resolve_team_code  # noqa: E402
+from src.utils.request_policy import RequestPolicy
+from src.utils.team_codes import resolve_team_code
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -226,7 +226,7 @@ class StaffRegisterCrawler:
                     "status": "staff",
                     "staff_role": row["staff_role"],  # 'manager' | 'coach'
                     "status_source": "register",
-                }
+                },
             )
 
         logger.info(
@@ -293,7 +293,7 @@ class StaffRegisterCrawler:
 
         if skipped:
             logger.warning(
-                f"  ⚠️  {len(skipped)} record(s) skipped (no player_id): " + ", ".join(r["name"] for r in skipped)
+                f"  ⚠️  {len(skipped)} record(s) skipped (no player_id): " + ", ".join(r["name"] for r in skipped),
             )
 
         if dry_run:

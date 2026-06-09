@@ -18,7 +18,7 @@ class EmbeddingService:
     Connects to external embedding providers to generate vector arrays for chunk texts.
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.api_key = os.getenv("GEMINI_API_KEY")
         if not self.api_key:
             logger.warning("⚠️ Warning: GEMINI_API_KEY is not configured in environment.")
@@ -86,7 +86,7 @@ class EmbeddingService:
 
             with SessionLocal() as session:
                 stmt = select(EmbeddingCache).where(
-                    EmbeddingCache.text_hash.in_(hashes), EmbeddingCache.model_name == model_name
+                    EmbeddingCache.text_hash.in_(hashes), EmbeddingCache.model_name == model_name,
                 )
                 cache_rows = session.scalars(stmt).all()
                 for row in cache_rows:
@@ -191,7 +191,7 @@ class EmbeddingService:
                     "model": "models/text-embedding-004",
                     "content": {"parts": [{"text": text}]},
                     "outputDimensionality": 256,
-                }
+                },
             )
 
         payload = {"requests": requests_payload}

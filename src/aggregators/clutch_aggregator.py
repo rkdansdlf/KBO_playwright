@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 
 
 class ClutchAggregator:
-    def __init__(self, session: Session):
+    def __init__(self, session: Session) -> None:
         self.session = session
 
     def aggregate(self, year: int) -> list[dict]:
@@ -48,7 +48,7 @@ class ClutchAggregator:
                 "count": 0,
                 "high_leverage_wpa": 0.0,
                 "high_leverage_count": 0,
-            }
+            },
         )
 
         for e in events:
@@ -83,13 +83,13 @@ class ClutchAggregator:
                     "avg_wpa": avg_wpa,
                     "high_leverage_wpa": clutch,
                     "high_leverage_count": bs["high_leverage_count"],
-                }
+                },
             )
 
         results.sort(key=lambda r: r["wpa_sum"], reverse=True)
         return results
 
-    def persist_to_extra_stats(self, year: int):
+    def persist_to_extra_stats(self, year: int) -> None:
         results = self.aggregate(year)
         if not results:
             return
@@ -153,7 +153,7 @@ class ClutchAggregator:
                 logger.exception(f"[Clutch] Non-FK error: {err_str[:200]}")
                 raise
 
-    def print_report(self, year: int, top_n: int = 10):
+    def print_report(self, year: int, top_n: int = 10) -> None:
         results = self.aggregate(year)
         if not results:
             return

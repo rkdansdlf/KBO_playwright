@@ -135,7 +135,7 @@ def _row_to_record(row, columns: list[str], transform_fn: Callable | None = None
     return data
 
 
-def _execute_signature_query(session_or_conn, sql: str, *, game_ids: list[str] | None = None):
+def _execute_signature_query(session_or_conn, sql: str, *, game_ids: list[str] | None = None) -> Any:
     stmt = text(sql)
     params = {}
     if game_ids is not None:
@@ -155,12 +155,12 @@ def _build_composite_signature_query(game_ids: list[str] | None) -> str:
             child_subqueries.append(
                 f"(SELECT COUNT(*) FROM game_metadata {alias} WHERE {alias}.game_id = g.game_id) AS meta_count,\n"
                 f"            (SELECT MAX({alias}.updated_at) FROM game_metadata {alias} WHERE {alias}.game_id = g.game_id) AS meta_max_updated,\n"
-                f"            (SELECT MAX({alias}.start_time) FROM game_metadata {alias} WHERE {alias}.game_id = g.game_id) AS meta_start_time"
+                f"            (SELECT MAX({alias}.start_time) FROM game_metadata {alias} WHERE {alias}.game_id = g.game_id) AS meta_start_time",
             )
         else:
             child_subqueries.append(
                 f"(SELECT COUNT(*) FROM {table_name} {alias} WHERE {alias}.game_id = g.game_id) AS {alias}_count,\n"
-                f"            (SELECT MAX({alias}.updated_at) FROM {table_name} {alias} WHERE {alias}.game_id = g.game_id) AS {alias}_max_updated"
+                f"            (SELECT MAX({alias}.updated_at) FROM {table_name} {alias} WHERE {alias}.game_id = g.game_id) AS {alias}_max_updated",
             )
 
     children_sql = ",\n            ".join(child_subqueries)
@@ -199,7 +199,7 @@ def load_game_sync_signatures(session_or_conn, *, game_ids: list[str] | None = N
                 "home_team": row["home_team"],
                 "away_team": row["away_team"],
                 "updated_at": _serialize_scalar(row["updated_at"]),
-            }
+            },
         }
 
         for i, table_name in enumerate(GAME_SIGNATURE_CHILD_TABLES):
@@ -281,7 +281,7 @@ def _is_game_dirty(game_id: str, local_sig: dict, remote_sig: dict) -> bool:
 
 
 def detect_dirty_game_ids(
-    local_session_or_conn, remote_session_or_conn, *, game_ids: list[str] | None = None
+    local_session_or_conn, remote_session_or_conn, *, game_ids: list[str] | None = None,
 ) -> list[str]:
     local_signatures = load_game_sync_signatures(local_session_or_conn, game_ids=game_ids)
     remote_signatures = load_game_sync_signatures(remote_session_or_conn, game_ids=list(local_signatures.keys()))
@@ -369,7 +369,7 @@ def build_game_sync_eligibility(session, game_ids: list[str]) -> GameSyncEligibi
         is_completed = game_status in COMPLETED_LIKE_GAME_STATUSES
         has_score = home_score is not None or away_score is not None
         has_complete_detail = _has_both_team_sides(batting_sides, game_id) and _has_both_team_sides(
-            pitching_sides, game_id
+            pitching_sides, game_id,
         )
         has_any_detail_or_relay = (
             any(game_id in ids for ids in (inning_ids, lineup_ids, summary_ids, event_ids, pbp_ids))
@@ -423,14 +423,14 @@ def _log_sync_eligibility(eligibility: GameSyncEligibility) -> None:
         if not game_ids:
             continue
         logger.warning(
-            f"⚠️ {reason}={len(game_ids)} sample={', '.join(game_ids[:10])}" + (" ..." if len(game_ids) > 10 else "")
+            f"⚠️ {reason}={len(game_ids)} sample={', '.join(game_ids[:10])}" + (" ..." if len(game_ids) > 10 else ""),
         )
 
 
 class OCISyncBase:
     """Sync data from SQLite to OCI"""
 
-    def __init__(self, oci_url: str, sqlite_session: Session):
+    def __init__(self, oci_url: str, sqlite_session: Session) -> None:
         """
         Initialize OCI sync
 
@@ -522,7 +522,7 @@ class OCISyncBase:
                     COALESCE(MAX({quoted_column}), 0) > 0
                 )
                 FROM {quoted_table}
-                """
+                """,
             ),
             {"sequence_name": sequence_name},
         )
@@ -594,7 +594,7 @@ class OCISyncBase:
         unique_cols: list[str],
         update_timestamp: bool = True,
         connection=None,
-    ):
+    ) -> None:
         if not records:
             return
 
@@ -617,9 +617,9 @@ class OCISyncBase:
         for attempt in range(1, max_attempts + 1):
             try:
                 return self._do_bulk_copy_upsert(
-                    table_name, records, unique_cols, update_timestamp, connection=connection
+                    table_name, records, unique_cols, update_timestamp, connection=connection,
                 )
-            except Exception as e:  # noqa: BLE001
+            except Exception as e:
                 last_exception = e
                 if attempt < max_attempts:
                     wait = 1 * (3 ** (attempt - 1))
@@ -643,7 +643,7 @@ class OCISyncBase:
         try:
             self.target_session.close()
             self.oci_engine.dispose()
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             logger.warning("Ignore exception during OCI reconnection cleanup: %s", e)
         target_session_factory = sessionmaker(bind=self.oci_engine)
         self.target_session = target_session_factory()
@@ -672,7 +672,7 @@ class OCISyncBase:
     def _rollback_target_session(self, *, label: str) -> None:
         try:
             self.target_session.rollback()
-        except Exception as rollback_exc:  # noqa: BLE001
+        except Exception as rollback_exc:
             logger.warning("OCI rollback failed label=%s error=%s", label, rollback_exc)
 
     def _run_target_session_with_retries(
@@ -796,7 +796,7 @@ class OCISyncBase:
 
         return self._sync_in_batches(model, query, total_count, columns, conflict_keys, transform_fn, batch_size, update_timestamp)
 
-    def _sync_in_batches(self, model, query, total_count, columns, conflict_keys, transform_fn, batch_size, update_timestamp):
+    def _sync_in_batches(self, model, query, total_count, columns, conflict_keys, transform_fn, batch_size, update_timestamp) -> int:
         connection = None
         if self.oci_engine is not None:
             connection = self.oci_engine.raw_connection()
@@ -819,7 +819,7 @@ class OCISyncBase:
             if connection is not None:
                 try:
                     connection.close()
-                except Exception:  # noqa: BLE001
+                except Exception:
                     logger.warning("Failed to close connection, already closed or aborted", exc_info=True)
         return synced
 
@@ -830,7 +830,7 @@ class OCISyncBase:
         unique_cols: list[str],
         update_timestamp: bool,
         connection=None,
-    ):
+    ) -> None:
         close_connection = connection is None
         if connection is None:
             connection = self.oci_engine.raw_connection()
@@ -850,7 +850,7 @@ class OCISyncBase:
 
             columns_str = ", ".join([f'"{k}"' for k in keys])
             cursor.copy_expert(
-                f"COPY {temp_table} ({columns_str}) FROM STDIN WITH (FORMAT CSV, DELIMITER '\t', NULL '\\N')", output
+                f"COPY {temp_table} ({columns_str}) FROM STDIN WITH (FORMAT CSV, DELIMITER '\t', NULL '\\N')", output,
             )
 
             update_cols = [k for k in keys if k not in unique_cols and k not in ("created_at", "id")]
@@ -891,7 +891,7 @@ class OCISyncBase:
 
         Base.metadata.create_all(self.oci_engine, tables=[model.__table__])
 
-    def close(self):
+    def close(self) -> None:
         """Close OCI session"""
         self.target_session.close()
         self.oci_engine.dispose()

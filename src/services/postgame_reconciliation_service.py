@@ -14,12 +14,14 @@ from sqlalchemy import and_, func, or_
 from src.db.engine import SessionLocal
 from src.models.game import Game, GameBattingStat, GamePitchingStat
 from src.repositories.game_repository import (
+    repair_game_parent_from_existing_children,
+    update_game_status,
+)
+from src.utils.game_status import (
     GAME_STATUS_CANCELLED,
     GAME_STATUS_COMPLETED,
     GAME_STATUS_DRAW,
     LIVE_GAME_STATUSES,
-    repair_game_parent_from_existing_children,
-    update_game_status,
 )
 from src.services.game_collection_service import (
     GameCollectionResult,
@@ -140,7 +142,7 @@ def find_postgame_reconciliation_targets(
             GameCollectionTarget(
                 game_id=normalized,
                 game_date=_format_game_date(game_date, fallback_game_id=normalized),
-            )
+            ),
         )
         seen.add(normalized)
     return targets
@@ -215,7 +217,7 @@ async def reconcile_postgame_range(
                 after_home_score=after_snapshot.home_score,
                 detail_status=item.detail_status if item else "unknown",
                 failure_reason=item.failure_reason if item else None,
-            )
+            ),
         )
     return result
 
@@ -239,8 +241,8 @@ def format_reconciliation_report(changes: Iterable[PostgameReconciliationChange]
                     f"{_score(change.after_away_score, change.after_home_score)}",
                     change.detail_status,
                     change.failure_reason or "",
-                ]
-            )
+                ],
+            ),
         )
     return "\n".join(lines)
 
@@ -283,7 +285,7 @@ def write_reconciliation_csv(
                     "after_home_score": change.after_home_score,
                     "detail_status": change.detail_status,
                     "failure_reason": change.failure_reason,
-                }
+                },
             )
     return path
 

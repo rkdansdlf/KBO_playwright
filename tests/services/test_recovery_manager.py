@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from src.services.recovery_manager import RecoveryManager
@@ -101,3 +102,34 @@ class TestRecoveryManager:
         assert mgr.get_pending_targets() == []
         assert mgr.state["completed"] == []
         assert mgr.state["failed"] == {}
+
+
+class TestDetailRecoveryQueue:
+    def test_detail_recovery_queue_retries_after_cooldown(self, tmp_path: Path):
+        path = str(tmp_path / "detail_queue.json")
+        mgr = RecoveryManager(path)
+        base = datetime(2026, 6, 7, 10, 0, tzinfo=UTC)
+
+        mgr._utc_now = lambda: base  # type: ignore[method-assign]
+        mgr.mark_detail_recovery_failure("20260607", "20260607ABC")
+        assert mgr.get_due_detail_recovery_targets("20260607", cooldown_minutes=30) == []
+
+        mgr._utc_now = lambda: base + timedelta(minutes=31)  # type: ignore[method-assign]
+        assert mgr.get_due_detail_recovery_targets("20260607", cooldown_minutes=30) == ["20260607ABC"]
+
+        mgr.mark_detail_recovery_success("20260607", "20260607ABC")
+        assert mgr.get_due_detail_recovery_targets("20260607", cooldown_minutes=1) == []
+
+    def test_detail_recovery_queue_prunes_stale_entries(self, tmp_path: Path):
+        path = str(tmp_path / "detail_queue.json")
+        mgr = RecoveryManager(path)
+        old = datetime(2026, 6, 1, 0, 0, tzinfo=UTC)
+        fresh = datetime(2026, 6, 7, 0, 0, tzinfo=UTC)
+
+        mgr._utc_now = lambda: old  # type: ignore[method-assign]
+        mgr.mark_detail_recovery_failure("20260601", "20260601ABC")
+        mgr._utc_now = lambda: fresh  # type: ignore[method-assign]
+        mgr.mark_detail_recovery_failure("20260607", "20260607ABC")
+
+        mgr.purge_detail_recovery_queue(max_age_days=2)
+        assert mgr.get_due_detail_recovery_targets("20260601", cooldown_minutes=0) == []

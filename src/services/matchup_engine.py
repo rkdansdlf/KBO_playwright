@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 class MatchupEngine:
     """Service to aggregate splits matrices natively from Box Scores and Play-by-Play."""
 
-    def __init__(self, session=None):
+    def __init__(self, session=None) -> None:
         self.session = session
 
     def execute_all(self, season_year: int) -> None:
@@ -143,7 +143,7 @@ class MatchupEngine:
                 existing.avg, existing.obp, existing.slg, existing.ops = avg, obp, slg, ops
             else:
                 avg, obp, slg, ops = self._calc_rate_stats(
-                    s["h"], s["ab"], s["pa"], s["bb"], s["hbp"], s["d2"], s["d3"], s["hr"]
+                    s["h"], s["ab"], s["pa"], s["bb"], s["hbp"], s["d2"], s["d3"], s["hr"],
                 )
                 session.add(
                     MatchupBvP(
@@ -166,7 +166,7 @@ class MatchupEngine:
                         obp=obp,
                         slg=slg,
                         ops=ops,
-                    )
+                    ),
                 )
 
     def _calc_situational_splits(self, session, season_year: int) -> None:
@@ -198,7 +198,7 @@ class MatchupEngine:
 
             is_risp = "2" in (ev.bases_before or "") or "3" in (ev.bases_before or "")
 
-            def update_bat(pid, stype, is_hit, is_ab, is_pa, is_bb, is_sf, is_hr):
+            def update_bat(pid, stype, is_hit, is_ab, is_pa, is_bb, is_sf, is_hr) -> None:
                 if pid not in bat_splits:
                     bat_splits[pid] = {}
                 if stype not in bat_splits[pid]:
@@ -257,7 +257,7 @@ class MatchupEngine:
         for pid, splits in bat_splits.items():
             for stype, s in splits.items():
                 avg, obp, slg, ops = self._calc_rate_stats(
-                    s["h"], s["ab"], s["pa"], s["bb"], s["hbp"], 0, 0, s["hr"], is_full=False
+                    s["h"], s["ab"], s["pa"], s["bb"], s["hbp"], 0, 0, s["hr"], is_full=False,
                 )
                 session.add(
                     BatterSplit(
@@ -273,7 +273,7 @@ class MatchupEngine:
                         obp=obp,
                         slg=slg,
                         ops=ops,
-                    )
+                    ),
                 )
 
         for pid, splits in pit_splits.items():
@@ -294,14 +294,14 @@ class MatchupEngine:
                         strikeouts=s["so"],
                         avg_against=avg_against,
                         whip=whip,
-                    )
+                    ),
                 )
 
     def _calc_batter_team_splits(self, session, season_year: int) -> None:
         """Aggregates batter stats partitioned by the opposing team."""
         # Find which team is the opponent
         opponent_case = case((GameBattingStat.team_code == Game.home_team, Game.away_team), else_=Game.home_team).label(
-            "opponent_team_code"
+            "opponent_team_code",
         )
 
         stmt = (
@@ -376,13 +376,13 @@ class MatchupEngine:
                     obp=obp,
                     slg=slg,
                     ops=ops,
-                )
+                ),
             )
         session.add_all(splits)
 
     def _calc_pitcher_team_splits(self, session, season_year: int) -> None:
         opponent_case = case(
-            (GamePitchingStat.team_code == Game.home_team, Game.away_team), else_=Game.home_team
+            (GamePitchingStat.team_code == Game.home_team, Game.away_team), else_=Game.home_team,
         ).label("opponent_team_code")
 
         stmt = (
@@ -439,7 +439,7 @@ class MatchupEngine:
                     strikeouts=row.strikeouts,
                     era=era,
                     whip=whip,
-                )
+                ),
             )
         session.add_all(splits)
 
@@ -478,7 +478,7 @@ class MatchupEngine:
         splits = []
         for row in rows:
             avg, obp, slg, ops = self._calc_rate_stats(
-                row.hits, row.at_bats, row.plate_appearances, row.walks, 0, row.doubles, row.triples, row.home_runs
+                row.hits, row.at_bats, row.plate_appearances, row.walks, 0, row.doubles, row.triples, row.home_runs,
             )
             splits.append(
                 BatterStadiumSplit(
@@ -503,7 +503,7 @@ class MatchupEngine:
                     obp=obp,
                     slg=slg,
                     ops=ops,
-                )
+                ),
             )
         session.add_all(splits)
 
@@ -511,7 +511,7 @@ class MatchupEngine:
         """Determines the opposing starting pitcher heuristically and aggregates batter stats against them."""
         # Find which team is opposing, and get their starting pitcher from `Game`
         opposing_pitcher = case(
-            (GameBattingStat.team_code == Game.home_team, Game.away_pitcher), else_=Game.home_pitcher
+            (GameBattingStat.team_code == Game.home_team, Game.away_pitcher), else_=Game.home_pitcher,
         ).label("pitcher_name")
 
         stmt = (
@@ -543,7 +543,7 @@ class MatchupEngine:
         splits = []
         for row in rows:
             avg, obp, slg, ops = self._calc_rate_stats(
-                row.hits, row.at_bats, row.plate_appearances, row.walks, 0, 0, 0, row.home_runs, is_full=False
+                row.hits, row.at_bats, row.plate_appearances, row.walks, 0, 0, 0, row.home_runs, is_full=False,
             )
             splits.append(
                 BatterVsStarter(
@@ -563,11 +563,11 @@ class MatchupEngine:
                     obp=obp,
                     slg=slg,
                     ops=ops,
-                )
+                ),
             )
         session.add_all(splits)
 
-    def _calc_rate_stats(self, hits, ab, pa, walks, hbp, double, triple, hr, is_full=True):
+    def _calc_rate_stats(self, hits, ab, pa, walks, hbp, double, triple, hr, is_full=True) -> tuple[float, float, float, float]:
         """Helper to calculate composite rates safely."""
         h = hits or 0
         ab = ab or 0

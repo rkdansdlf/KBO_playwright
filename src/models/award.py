@@ -20,10 +20,10 @@ class Award(Base, TimestampMixin):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     year: Mapped[int] = mapped_column(Integer, nullable=False, comment="Award year")
     award_type: Mapped[str] = mapped_column(
-        String(50), nullable=False, comment="Type of award (e.g. MVP, Golden Glove)"
+        String(50), nullable=False, comment="Type of award (e.g. MVP, Golden Glove)",
     )
     category: Mapped[str | None] = mapped_column(
-        String(50), nullable=True, comment="Detailed category (e.g. Pitcher, 1B)"
+        String(50), nullable=True, comment="Detailed category (e.g. Pitcher, 1B)",
     )
     player_name: Mapped[str] = mapped_column(String(100), nullable=False, comment="Winner name")
     team_name: Mapped[str] = mapped_column(String(50), nullable=False, comment="Winner team")

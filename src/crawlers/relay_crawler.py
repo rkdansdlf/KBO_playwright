@@ -98,7 +98,7 @@ class RelayCrawler:
         return f"{kbo_game_id}{year}"
 
     def _schedule_query_context(
-        self, kbo_game_id: str | None = None, *, query_date: str | None = None
+        self, kbo_game_id: str | None = None, *, query_date: str | None = None,
     ) -> dict[str, str]:
         if kbo_game_id and len(kbo_game_id) >= 8:
             date_part = kbo_game_id[:8]
@@ -189,9 +189,133 @@ class RelayCrawler:
         except _PermanentStatusError as exc:
             logger.exception(f"[INFO] Relay API permanent error: {full_url} status={exc.status_code}")
             return None, f"http_{exc.status_code}"
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             logger.warning("Relay API request failed: %s reason=%s", full_url, exc)
             return None, "relay_api_error"
+
+    def _score_suffix_match(self, game_id: str, suffixes: dict) -> int:
+        if game_id.endswith(suffixes["exact"]):
+            return 100
+        if game_id.endswith(suffixes["legacy"]):
+            return 90
+        if game_id.endswith(suffixes["team"]):
+            return 80
+        if suffixes["id_has_teams"] and suffixes["dh_no"] in game_id:
+            return 20
+        return 0
+
+    def _score_team_match(self, g_away: str, g_home: str, away_code: str, home_code: str) -> tuple[int, bool]:
+        teams_match = g_away == away_code and g_home == home_code
+        if teams_match:
+            return 50, True
+        if g_away == away_code or g_home == home_code:
+            return 10, False
+        if (g_away and g_away != away_code) or (g_home and g_home != home_code):
+            return -150, False
+        return 0, False
+
+    def _resolve_dh_no(self, game: dict, games: list, dh_no_val, away_code: str, home_code: str, game_date_str: str) -> str:
+        dh_no_str = str(dh_no_val or "").strip()
+        if dh_no_str in {"1", "2"}:
+            return dh_no_str
+        same_team_games = []
+        for g in games:
+            g_away_t = self._naver_team_code(str(g.get("awayTeamCode") or "").strip())
+            g_home_t = self._naver_team_code(str(g.get("homeTeamCode") or "").strip())
+            if ((g_away_t == away_code and g_home_t == home_code)
+                    or (g_away_t == home_code and g_home_t == away_code)):
+                g_date = str(g.get("gameDate") or "").replace("-", "").strip()
+                if not g_date:
+                    g_id_temp = str(g.get("gameId") or "").strip()
+                    if len(g_id_temp) >= 8:
+                        date_match = re.search(r"(\d{8})", g_id_temp)
+                        if date_match:
+                            g_date = date_match.group(1)
+                if g_date == game_date_str:
+                    same_team_games.append(g)
+        if len(same_team_games) > 1:
+            same_team_games.sort(key=lambda g: self._game_time_mins(g))
+            try:
+                return str(same_team_games.index(game) + 1)
+            except ValueError:
+                return "1"
+        return "1"
+
+    def _score_doubleheader(self, game: dict, dh_no: str, game_date_str: str, away_code: str, home_code: str, games: list[dict]) -> int:
+        def is_dh_truthy(v) -> bool:
+            if isinstance(v, bool):
+                return v
+            if v is None:
+                return False
+            return str(v).strip().lower() in {"true", "y", "yes", "1", "2"}
+
+        dh_val = game.get("doubleHeader")
+        dh_no_val = game.get("doubleHeaderNo")
+        is_dh = is_dh_truthy(dh_val) or is_dh_truthy(dh_no_val)
+
+        g_dh = "0"
+        if is_dh:
+            g_dh = self._resolve_dh_no(game, games, dh_no_val, away_code, home_code, game_date_str)
+
+        if g_dh == dh_no:
+            return 30
+        return -50
+
+    def _score_date_match(self, game: dict, game_id: str, game_date_str: str) -> int:
+        g_date = str(game.get("gameDate") or "").replace("-", "").strip()
+        if not g_date and len(game_id) >= 8:
+            date_match = re.search(r"(\d{8})", game_id)
+            if date_match:
+                g_date = date_match.group(1)
+        if g_date == game_date_str:
+            return 30
+        if g_date and g_date[4:8] == game_date_str[4:8]:
+            return 10
+        return 0
+
+    def _score_time_match(self, game: dict, game_time: str | None) -> int:
+        if not game_time:
+            return 0
+        g_start_time = str(game.get("gameStartTime") or game.get("startTime") or "").strip()
+        if not g_start_time:
+            return 0
+        k_time_clean = re.sub(r"[^\d:]", "", game_time)
+        g_time_clean = re.sub(r"[^\d:]", "", g_start_time)
+        if ":" not in k_time_clean or ":" not in g_time_clean:
+            return 0
+        try:
+            k_hours, k_mins = map(int, k_time_clean.split(":"))
+            g_hours, g_mins = map(int, g_time_clean.split(":"))
+            diff_mins = abs((k_hours * 60 + k_mins) - (g_hours * 60 + g_mins))
+            if diff_mins == 0:
+                return 25
+            if diff_mins <= 30:
+                return 15
+            if diff_mins > 120:
+                return -30
+            return -10
+        except (ValueError, TypeError):
+            logger.warning("Failed to compute time diff score")
+            return 0
+
+    def _score_stadium_match(self, game: dict, stadium: str | None) -> int:
+        if not stadium:
+            return 0
+        g_stadium = str(game.get("stadium") or game.get("place") or "").strip().lower()
+        if g_stadium == stadium.strip().lower():
+            return 30
+        return 0
+
+    def _game_time_mins(self, game: dict) -> int:
+        t = str(game.get("gameStartTime") or game.get("startTime") or "").strip()
+        t_clean = re.sub(r"[^\d:]", "", t)
+        if ":" in t_clean:
+            try:
+                h, m = map(int, t_clean.split(":"))
+                return h * 60 + m
+            except (ValueError, TypeError):
+                pass
+        return 0
 
     def _match_schedule_game(
         self,
@@ -207,8 +331,6 @@ class RelayCrawler:
         """
         game_date_str, away_code, home_code, dh_no, season_year = self._expected_match_values(kbo_game_id)
 
-        # Suffix matching is the strongest signal for Naver's internal ID scheme
-        # Format: MMDDAWAYHOME{DH}{YEAR} e.g. 0510SSHH02024
         exact_suffix = f"{game_date_str[4:8]}{away_code}{home_code}{dh_no}{season_year}"
         team_suffix = f"{away_code}{home_code}{dh_no}{season_year}"
         legacy_suffix = f"{game_date_str[4:8]}{away_code}{home_code}{dh_no}"
@@ -216,222 +338,55 @@ class RelayCrawler:
         candidates = []
         for game in games:
             game_id = str(game.get("gameId") or "").strip()
-
-            # Normalize Naver-provided team codes for comparison
             g_away_raw = self._naver_team_code(str(game.get("awayTeamCode") or "").strip())
             g_home_raw = self._naver_team_code(str(game.get("homeTeamCode") or "").strip())
-
             is_reversed = bool(game.get("reversedHomeAway"))
 
-            # Try both normal and swapped matching
             best_iter_score = -1000
             for swapped in [False, True]:
                 score = 0
                 g_away = g_home_raw if swapped else g_away_raw
                 g_home = g_away_raw if swapped else g_home_raw
 
-                # 1. ID Suffix Match (Very Strong)
-                id_has_teams = self._is_team_in_id(away_code, game_id) and self._is_team_in_id(home_code, game_id)
-
-                # Suffixes might be flipped if teams are flipped
-                cur_exact = (
-                    f"{game_date_str[4:8]}{home_code}{away_code}{dh_no}{season_year}" if swapped else exact_suffix
-                )
+                cur_exact = f"{game_date_str[4:8]}{home_code}{away_code}{dh_no}{season_year}" if swapped else exact_suffix
                 cur_legacy = f"{game_date_str[4:8]}{home_code}{away_code}{dh_no}" if swapped else legacy_suffix
+                suffixes = {
+                    "exact": cur_exact, "legacy": cur_legacy, "team": team_suffix,
+                    "id_has_teams": self._is_team_in_id(away_code, game_id) and self._is_team_in_id(home_code, game_id),
+                    "dh_no": dh_no,
+                }
+                score += self._score_suffix_match(game_id, suffixes)
 
-                if game_id.endswith(cur_exact):
-                    score += 100
-                elif game_id.endswith(cur_legacy):
-                    score += 90
-                elif game_id.endswith(team_suffix):
-                    score += 80
-                elif id_has_teams and dh_no in game_id:
-                    score += 20
+                team_score, teams_match = self._score_team_match(g_away, g_home, away_code, home_code)
+                score += team_score
 
-                # 2. Team Code Match (Strong)
-                teams_match = g_away == away_code and g_home == home_code
-                if teams_match:
-                    score += 50
-                elif g_away == away_code or g_home == home_code:
-                    score += 10
-
-                # Penalty for ANY explicit mismatch
-                if (g_away and g_away != away_code) or (g_home and g_home != home_code):
-                    score -= 150
-
-                # Bonus for matching the reversed flag
                 if swapped == is_reversed and teams_match:
                     score += 10
 
                 best_iter_score = max(best_iter_score, score)
 
             score = best_iter_score
-            # If the MMDD in Naver's gameId does not match the MMDD of the KBO game, penalize heavily.
+
             if len(game_id) >= 8:
                 g_mmdd = game_id[4:8]
                 k_mmdd = game_date_str[4:8]
                 if g_mmdd.isdigit() and g_mmdd != k_mmdd:
                     score -= 100
 
-            # 3. Doubleheader Match
-            # Normalize g_dh.
-            # doubleHeader can be boolean, string (e.g., "True"/"False", "1"/"2"), or None.
-            # doubleHeaderNo can be "1"/"2" or other strings.
-            dh_val = game.get("doubleHeader")
-            dh_no_val = game.get("doubleHeaderNo")
+            score += self._score_doubleheader(game, dh_no, game_date_str, away_code, home_code, games)
+            score += self._score_date_match(game, game_id, game_date_str)
+            score += self._score_time_match(game, game_time)
+            score += self._score_stadium_match(game, stadium)
 
-            def is_dh_truthy(v) -> bool:
-                if isinstance(v, bool):
-                    return v
-                if v is None:
-                    return False
-                v_str = str(v).strip().lower()
-                return v_str in {"true", "y", "yes", "1", "2"}
+            candidates.append((game, score))
 
-            is_dh = is_dh_truthy(dh_val) or is_dh_truthy(dh_no_val)
-
-            g_dh = "0"
-            if is_dh:
-                dh_no_str = str(dh_no_val or "").strip()
-                if dh_no_str in {"1", "2"}:
-                    g_dh = dh_no_str
-                else:
-                    # Let's resolve via chronological sequence if there are multiple matches
-                    # between the same teams on this day
-                    same_team_games = []
-                    for g in games:
-                        g_away_t = self._naver_team_code(str(g.get("awayTeamCode") or "").strip())
-                        g_home_t = self._naver_team_code(str(g.get("homeTeamCode") or "").strip())
-                        if (g_away_t == away_code and g_home_t == home_code) or (
-                            g_away_t == home_code and g_home_t == away_code
-                        ):
-                            # Check date
-                            g_date = str(g.get("gameDate") or "").replace("-", "").strip()
-                            if not g_date:
-                                g_id_temp = str(g.get("gameId") or "").strip()
-                                if len(g_id_temp) >= 8:
-                                    date_match = re.search(r"(\d{8})", g_id_temp)
-                                    if date_match:
-                                        g_date = date_match.group(1)
-                            if g_date == game_date_str:
-                                same_team_games.append(g)
-
-                    if len(same_team_games) > 1:
-
-                        def get_time_mins(g_item) -> int:
-                            t = str(g_item.get("gameStartTime") or g_item.get("startTime") or "").strip()
-                            t_clean = re.sub(r"[^\d:]", "", t)
-                            if ":" in t_clean:
-                                try:
-                                    h, m = map(int, t_clean.split(":"))
-                                    return h * 60 + m
-                                except (ValueError, TypeError):
-                                    logger.warning("Failed to parse time string: %s", t_clean)
-                                    pass
-                            return 0
-
-                        same_team_games.sort(key=get_time_mins)
-                        try:
-                            idx = same_team_games.index(game)
-                            g_dh = str(idx + 1)
-                        except ValueError:
-                            g_dh = "1"
-                    else:
-                        g_dh = "1"
-
-            if g_dh == dh_no:
-                score += 30
-            else:
-                score -= 50
-
-            # 4. Date Match (if we are scanning nearby dates)
-            g_date = str(game.get("gameDate") or "").replace("-", "").strip()
-            if not g_date and len(game_id) >= 8:
-                # Try to extract date from game_id (usually starts with YYYYMMDD or contains MMDD)
-                date_match = re.search(r"(\d{8})", game_id)
-                if date_match:
-                    g_date = date_match.group(1)
-
-            if g_date == game_date_str:
-                score += 30
-            elif g_date and g_date[4:8] == game_date_str[4:8]:
-                score += 10
-
-            # 5. Start Time Match
-            g_start_time = str(game.get("gameStartTime") or game.get("startTime") or "").strip()
-            if game_time and g_start_time:
-                k_time_clean = re.sub(r"[^\d:]", "", game_time)
-                g_time_clean = re.sub(r"[^\d:]", "", g_start_time)
-                if ":" in k_time_clean and ":" in g_time_clean:
-                    try:
-                        k_hours, k_mins = map(int, k_time_clean.split(":"))
-                        g_hours, g_mins = map(int, g_time_clean.split(":"))
-                        diff_mins = abs((k_hours * 60 + k_mins) - (g_hours * 60 + g_mins))
-                        if diff_mins == 0:
-                            score += 25
-                        elif diff_mins <= 30:
-                            score += 15
-                        elif diff_mins > 120:
-                            score -= 30
-                    except (ValueError, TypeError):
-                        logger.warning("Failed to compute time diff score")
-                        pass
-
-            # 6. Stadium Match
-            g_stadium = str(game.get("stadiumName") or game.get("stadium") or "").strip()
-            if stadium and g_stadium:
-                k_clean = stadium.strip()
-                g_clean = g_stadium.strip()
-                if k_clean == g_clean or k_clean in g_clean or g_clean in k_clean:
-                    score += 20
-                else:
-                    stadium_synonyms = [
-                        {"문학", "인천", "랜더스필드"},
-                        {"대구", "라이온즈파크", "라팍"},
-                        {"고척", "돔", "스카이돔"},
-                        {"광주", "챔피언스필드", "기아챔피언스필드"},
-                        {"수원", "위즈파크", "케이티위즈파크"},
-                        {"창원", "NC파크", "엔씨파크"},
-                        {"대전", "이글스파크", "한화생명"},
-                        {"잠실", "서울"},
-                    ]
-                    matched_synonym = False
-                    for syn_set in stadium_synonyms:
-                        if any(s in k_clean for s in syn_set) and any(s in g_clean for s in syn_set):
-                            matched_synonym = True
-                            break
-                    if matched_synonym:
-                        score += 20
-                    else:
-                        score -= 15
-
-            if score > 0:
-                g_start_time_val = str(game.get("gameStartTime") or game.get("startTime") or "00:00")
-                candidates.append((score, g_start_time_val, game))
-
-        if not candidates:
+        best_game, best_score = max(candidates, key=lambda x: x[1])
+        threshold = 80 if allow_team_fallback else 120
+        if best_score < threshold:
+            logger.info("Scores for %s: best=%s, score=%d, below threshold=%d", kbo_game_id, best_game.get("gameId"), best_score, threshold)
             return None
 
-        # Sort by score descending. For tie-breakers on double headers, use startTime.
-        # DH2 favors later time. DH1/normal favors earlier time.
-        def sort_key(item: tuple[int, str, dict[str, Any]]) -> tuple[int, int]:
-            score, start_time, game = item
-            time_digits = re.sub(r"\D", "", start_time)
-            time_val = int(time_digits) if time_digits else 0
-            if dh_no == "2":
-                return (score, time_val)
-            else:
-                return (score, -time_val)
-
-        candidates.sort(key=sort_key, reverse=True)
-        best_score, best_time, best_game = candidates[0]
-
-        # Safety: require a minimum score to avoid false positives during broad date scans
-        # If we matched the suffix and at least one other field (or teams), we are likely good.
-        min_required = 100 if not allow_team_fallback else 60
-        if best_score < min_required:
-            return None
-
+        logger.info("Matched %s to Naver gameId=%s score=%d", kbo_game_id, best_game.get("gameId"), best_score)
         return best_game
 
     def _is_team_in_id(self, team_code: str, game_id: str) -> bool:
@@ -551,7 +506,7 @@ class RelayCrawler:
                                 game_time = getattr(meta_row, "start_time", None)
                                 if hasattr(game_time, "strftime"):
                                     game_time = game_time.strftime("%H:%M")
-            except Exception:  # noqa: BLE001
+            except Exception:
                 logger.warning("Failed to extract game metadata for relay relay")
                 pass
 
@@ -567,7 +522,7 @@ class RelayCrawler:
                 all_text_relays = await self._fetch_text_relays(client, naver_id)
                 if not all_text_relays:
                     resolved_naver_id = await self._resolve_naver_game_id(
-                        client, kbo_game_id, stadium=stadium, game_time=game_time
+                        client, kbo_game_id, stadium=stadium, game_time=game_time,
                     )
                     if resolved_naver_id and resolved_naver_id != direct_naver_id:
                         self.last_resolved_naver_game_id = resolved_naver_id
@@ -661,7 +616,7 @@ class RelayCrawler:
                             ),
                             "source_row_index": len(raw_pbp_rows),
                             "source_name": "naver",
-                        }
+                        },
                     )
                 else:
                     logger.debug("Skipping segment with unparseable inning/half and no title at index=%d", index)
@@ -707,7 +662,7 @@ class RelayCrawler:
                     ),
                     "source_row_index": header_index,
                     "source_name": "naver",
-                }
+                },
             )
 
             logs = segment.get("textOptions") or []
@@ -789,7 +744,7 @@ class RelayCrawler:
                         "provider_log_id": provider_log_id,
                         "source_row_index": current_pbp_index,
                         "source_name": "naver",
-                    }
+                    },
                 )
 
                 if not is_relay_result_event_text(description):
@@ -897,7 +852,7 @@ def _events_to_legacy_innings(events: list[dict[str, Any]]) -> list[dict[str, An
                     "pitcher": event.get("pitcher_name") or event.get("pitcher"),
                     "result": event.get("result_code") or event.get("result"),
                     "outs": event.get("outs"),
-                }
+                },
             )
     return innings
 
@@ -925,7 +880,7 @@ def _pbp_rows_to_legacy_innings(rows: list[dict[str, Any]]) -> list[dict[str, An
                     "pitcher": row.get("pitcher_name") or row.get("pitcher"),
                     "result": row.get("result"),
                     "outs": row.get("outs"),
-                }
+                },
             )
     return innings
 

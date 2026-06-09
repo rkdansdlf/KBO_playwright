@@ -134,7 +134,7 @@ def run_recalc(
             from sqlalchemy import bindparam
 
             stmt = text(
-                "SELECT season_id FROM kbo_seasons WHERE season_year = :year AND league_type_code IN :codes"
+                "SELECT season_id FROM kbo_seasons WHERE season_year = :year AND league_type_code IN :codes",
             ).bindparams(bindparam("codes", expanding=True))
             season_ids = (
                 session.execute(
@@ -168,11 +168,11 @@ def run_recalc(
 
         if dry_run:
             logger.info(
-                f"[DRY-RUN] Total: {len(game_ids)} games, batting={totals['batting']}, pitching={totals['pitching']}"
+                f"[DRY-RUN] Total: {len(game_ids)} games, batting={totals['batting']}, pitching={totals['pitching']}",
             )
         else:
             logger.info(
-                f"Done: {len(game_ids)} games, upserted batting={totals['batting']}, pitching={totals['pitching']}"
+                f"Done: {len(game_ids)} games, upserted batting={totals['batting']}, pitching={totals['pitching']}",
             )
 
     return 0
@@ -184,7 +184,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--date", help="Game date (YYYYMMDD) to recalc all completed games")
     parser.add_argument("--season", type=int, help="Season year to recalc all completed games")
     parser.add_argument(
-        "--include-futures", action="store_true", help="Include Futures (2nd league) games (default: KBO only)"
+        "--include-futures", action="store_true", help="Include Futures (2nd league) games (default: KBO only)",
     )
     parser.add_argument("--dry-run", action="store_true", help="Print results without saving")
     parser.add_argument("--save", action="store_true", help="Persist results (default if not --dry-run)")

@@ -32,7 +32,7 @@ class FoodParser(BaseStadiumParser):
                     "menu_name": name.strip(),
                     "price": int(price_str.replace(",", "")),
                     "category": "etc",
-                }
+                },
             )
 
         if menus:
@@ -45,7 +45,7 @@ class FoodParser(BaseStadiumParser):
                         "confidence": "low",
                     },
                     "menus": menus,
-                }
+                },
             )
 
         return vendors

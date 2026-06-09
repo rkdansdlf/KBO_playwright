@@ -70,7 +70,7 @@ class TeamRepository:
                     "player_name": r["player_name"],
                     "position": r["position"],
                     "back_number": r["back_number"],
-                }
+                },
             )
 
         if dialect == "sqlite":

@@ -23,18 +23,18 @@ class StadiumFoodVendor(Base, TimestampMixin):
     location_text: Mapped[str | None] = mapped_column(String(200), nullable=True, comment="Location description")
     floor_level: Mapped[str | None] = mapped_column(String(50), nullable=True, comment="Floor level")
     base_side: Mapped[str | None] = mapped_column(
-        String(20), nullable=True, comment="first_base / third_base / center / outfield"
+        String(20), nullable=True, comment="first_base / third_base / center / outfield",
     )
     gate_info: Mapped[str | None] = mapped_column(String(100), nullable=True, comment="Nearby gate")
     order_method: Mapped[str | None] = mapped_column(
-        String(20), nullable=True, default="onsite", comment="onsite / app / qr / delivery / unknown"
+        String(20), nullable=True, default="onsite", comment="onsite / app / qr / delivery / unknown",
     )
     source_id: Mapped[int | None] = mapped_column(
-        Integer, ForeignKey("data_sources.id", ondelete="SET NULL"), nullable=True, comment="DataSource ID"
+        Integer, ForeignKey("data_sources.id", ondelete="SET NULL"), nullable=True, comment="DataSource ID",
     )
     confidence: Mapped[str] = mapped_column(String(10), nullable=False, default="medium", comment="high / medium / low")
     last_verified_at: Mapped[datetime | None] = mapped_column(
-        DateTime, nullable=True, comment="Last verification timestamp"
+        DateTime, nullable=True, comment="Last verification timestamp",
     )
 
     __table_args__ = (

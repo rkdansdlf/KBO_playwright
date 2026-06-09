@@ -56,7 +56,7 @@ async def run_preview_batch(target_date: str, *, sync_to_oci: bool | None = None
                 try:
                     logger.info(f"📊 Aggregating pregame context for {game_id}...")
                     preview["matchup_h2h"] = agg.get_head_to_head_summary(
-                        away_code, home_code, season_year, target_dt_obj
+                        away_code, home_code, season_year, target_dt_obj,
                     )
                     preview["away_recent_l10"] = agg.get_team_l10_summary(away_code, target_dt_obj)
                     preview["home_recent_l10"] = agg.get_team_l10_summary(home_code, target_dt_obj)

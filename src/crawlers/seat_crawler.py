@@ -81,7 +81,7 @@ class SeatCrawler:
                         "url": info["url"],
                         "html": html,
                         "status_code": resp.status_code,
-                    }
+                    },
                 )
                 sections = self._parse_seat_page(html, team_code, info)
             except httpx.HTTPError:
@@ -107,7 +107,7 @@ class SeatCrawler:
                         "section_code": name,
                         "seat_grade": name,
                         "source_id": None,
-                    }
+                    },
                 )
 
         return sections

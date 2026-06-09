@@ -89,7 +89,7 @@ def save_kbo_player_season_batting(player_data: dict[str, Any]) -> bool:
             else:  # MySQL
                 stmt = mysql_insert(PlayerSeasonBatting).values(**values)
                 stmt = stmt.on_duplicate_key_update(
-                    **{k: stmt.inserted[k] for k in values if k not in ["player_id", "season", "league", "level"]}
+                    **{k: stmt.inserted[k] for k in values if k not in ["player_id", "season", "league", "level"]},
                 )
 
             session.execute(stmt)

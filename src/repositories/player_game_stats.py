@@ -47,7 +47,7 @@ _PITCHING_SUM_FIELDS = [
 
 
 def _compute_batting_rates(
-    hits: int, at_bats: int, walks: int, hbp: int, sf: int, strikeouts: int, doubles: int, triples: int, home_runs: int
+    hits: int, at_bats: int, walks: int, hbp: int, sf: int, strikeouts: int, doubles: int, triples: int, home_runs: int,
 ) -> dict[str, float]:
     ab = at_bats or 0
     pa_base = ab + walks + hbp + sf
@@ -142,7 +142,7 @@ def aggregate_game_batting(session: Session, game_id: str) -> list[dict[str, Any
                 "is_starter": any_starter,
                 **totals,
                 **rates,
-            }
+            },
         )
     return results
 
@@ -208,7 +208,7 @@ def aggregate_game_pitching(session: Session, game_id: str) -> list[dict[str, An
                 "decision": decision,
                 **totals,
                 **rates,
-            }
+            },
         )
     return results
 

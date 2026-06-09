@@ -20,7 +20,7 @@ class KboAuthenticator:
     LOGIN_URL = "https://www.koreabaseball.com/Member/Login.aspx"
     AUTH_STATE_PATH = "data/kbo_auth_state.json"
 
-    def __init__(self, user_id: str | None = None, user_pwd: str | None = None):
+    def __init__(self, user_id: str | None = None, user_pwd: str | None = None) -> None:
         self.user_id = user_id or os.getenv("KBO_USER_ID")
         self.user_pwd = user_pwd or os.getenv("KBO_USER_PWD")
 
@@ -46,7 +46,7 @@ class KboAuthenticator:
 
             # Add basic stealth init script
             await context.add_init_script(
-                "() => { Object.defineProperty(navigator, 'webdriver', { get: () => false }); }"
+                "() => { Object.defineProperty(navigator, 'webdriver', { get: () => false }); }",
             )
 
             page = await context.new_page()
@@ -82,7 +82,7 @@ class KboAuthenticator:
                         await asyncio.sleep(1)
                         await page.evaluate("window.scrollTo(0, 0)")
                         await asyncio.sleep(2)  # Wait for Akamai to finalize _abck cookie
-                    except Exception as e:  # noqa: BLE001
+                    except Exception as e:
                         logger.warning(f"[AUTH] Session warm-up warning (ignoring): {e}")
 
                     # Save state
@@ -93,7 +93,7 @@ class KboAuthenticator:
                     logger.info("[AUTH] Login failed: Logout button not found after redirection.")
                     return False
 
-            except Exception as e:  # noqa: BLE001
+            except Exception as e:
                 logger.error(f"[AUTH] Exception during login: {e}")
                 return False
             finally:
@@ -109,7 +109,7 @@ class KboAuthenticator:
         return cls.AUTH_STATE_PATH
 
 
-async def main():
+async def main() -> None:
     # Simple CLI tool to refresh login
     auth = KboAuthenticator()
     success = await auth.login(headless=True)

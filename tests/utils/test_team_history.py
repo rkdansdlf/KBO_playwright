@@ -1,6 +1,6 @@
 from src.utils.team_history import (
-    FRANCHISE_CANONICAL_CODE,
     _TEAM_HISTORY,
+    FRANCHISE_CANONICAL_CODE,
     canonical_code_for_team_code,
     find_team_history_entry,
     franchise_id_for_team_code,

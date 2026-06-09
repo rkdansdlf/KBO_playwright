@@ -65,8 +65,12 @@ async def verify_fix(game_id):
     if total_runs == expected_home and total_runs_away == expected_away:
         logger.info("✅ MATCH! verification successful.")
     else:
-        print(
-            f"❌ MISMATCH! Parsed Totals ({total_runs_away}-{total_runs}) != Scoreboard ({expected_away}-{expected_home})"
+        logger.error(
+            "❌ MISMATCH! Parsed Totals (%s-%s) != Scoreboard (%s-%s)",
+            total_runs_away,
+            total_runs,
+            expected_away,
+            expected_home,
         )
 
 

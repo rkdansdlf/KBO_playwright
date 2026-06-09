@@ -52,7 +52,7 @@ class GameWriteContract:
         claims.add(source)
         self._emit(
             f"[CLAIM] run={self.run_label} game={game_id} "
-            f"stage={source.stage} crawler={source.crawler} reason={source.reason or 'unspecified'}"
+            f"stage={source.stage} crawler={source.crawler} reason={source.reason or 'unspecified'}",
         )
 
     def field_updated(self, game_id: str, source: GameWriteSource, field: str, old: Any, new: Any) -> None:
@@ -61,12 +61,12 @@ class GameWriteContract:
         if previous and previous != source:
             self._emit(
                 f"[FIELD-OVERLAP] run={self.run_label} game={game_id} field={field} "
-                f"previous={previous.label()} current={source.label()}"
+                f"previous={previous.label()} current={source.label()}",
             )
         self.field_claims[(game_id, field)] = source
         self._emit(
             f"[WRITE] run={self.run_label} game={game_id} stage={source.stage} "
-            f"crawler={source.crawler} field={field} old={_format_value(old)} new={_format_value(new)}"
+            f"crawler={source.crawler} field={field} old={_format_value(old)} new={_format_value(new)}",
         )
 
     def field_duplicate(self, game_id: str, source: GameWriteSource, field: str, value: Any) -> None:
@@ -74,21 +74,21 @@ class GameWriteContract:
         if self.log_duplicate_fields:
             self._emit(
                 f"[SKIP] run={self.run_label} game={game_id} stage={source.stage} "
-                f"crawler={source.crawler} field={field} duplicate={_format_value(value)}"
+                f"crawler={source.crawler} field={field} duplicate={_format_value(value)}",
             )
 
     def dataset_replaced(self, game_id: str, source: GameWriteSource, dataset: str, rows: int) -> None:
         self.replaced_datasets += 1
         self._emit(
             f"[WRITE] run={self.run_label} game={game_id} stage={source.stage} "
-            f"crawler={source.crawler} dataset={dataset} rows={rows}"
+            f"crawler={source.crawler} dataset={dataset} rows={rows}",
         )
 
     def dataset_duplicate(self, game_id: str, source: GameWriteSource, dataset: str, rows: int) -> None:
         self.duplicate_datasets += 1
         self._emit(
             f"[SKIP] run={self.run_label} game={game_id} stage={source.stage} "
-            f"crawler={source.crawler} dataset={dataset} duplicate_rows={rows}"
+            f"crawler={source.crawler} dataset={dataset} duplicate_rows={rows}",
         )
 
     def summary(self) -> str:

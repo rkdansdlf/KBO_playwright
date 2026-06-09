@@ -369,7 +369,7 @@ def go_to_next_page(page: Page, current_page_num: int, policy: RequestPolicy | N
 
 
 def crawl_basic2_with_headers(
-    page: Page, year: int, series_info: dict, policy: RequestPolicy | None = None
+    page: Page, year: int, series_info: dict, policy: RequestPolicy | None = None,
 ) -> dict[int, dict]:
     """
     정규시즌용 Basic2 페이지에서 각 헤더를 클릭하여 고급 통계 데이터 수집
@@ -565,7 +565,7 @@ def _parse_basic2_header_data_legacy(
                     if "extra_stats" not in batting_data:
                         batting_data["extra_stats"] = {}
                     batting_data["extra_stats"]["pinch_hit_avg"] = safe_parse_number(
-                        cells[14].text_content().strip(), float
+                        cells[14].text_content().strip(), float,
                     )
 
                 players_data[player_id] = batting_data
@@ -576,7 +576,7 @@ def _parse_basic2_header_data_legacy(
                         sort_value = batting_data.get(current_header.lower(), "N/A")
                     elif current_header in ["MH", "RISP", "PH-BA"]:
                         sort_value = batting_data.get("extra_stats", {}).get(
-                            current_header.lower().replace("-", "_"), "N/A"
+                            current_header.lower().replace("-", "_"), "N/A",
                         )
 
                     logger.info(f"      ✅ {player_name} ({team_name}) - {current_header}: {sort_value}")
@@ -846,7 +846,7 @@ def crawl_series_batting_stats(
                     s["source"] = "FALLBACK_AUTO"
 
                 FallbackMonitor.log_fallback(
-                    year, series_key, "BATTING", f"Fallback completed via {reason}", player_count=len(all_players_data)
+                    year, series_key, "BATTING", f"Fallback completed via {reason}", player_count=len(all_players_data),
                 )
                 if save_to_db and all_players_data:
                     save_batting_stats_safe(all_players_data)
@@ -986,7 +986,7 @@ def crawl_series_batting_stats(
 
 
 def crawl_all_series(
-    year: int | None = None, limit: int = None, save_to_db: bool = False, headless: bool = False, by_team: bool = False
+    year: int | None = None, limit: int = None, save_to_db: bool = False, headless: bool = False, by_team: bool = False,
 ) -> dict[str, list[dict]]:
     """
     모든 시리즈의 타자 기록을 크롤링

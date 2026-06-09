@@ -21,10 +21,10 @@ class Franchise(Base, TimestampMixin):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     name: Mapped[str] = mapped_column(String(50), nullable=False)
     original_code: Mapped[str] = mapped_column(
-        String(10), unique=True, nullable=False, comment="KBO game_id technical segment"
+        String(10), unique=True, nullable=False, comment="KBO game_id technical segment",
     )
     current_code: Mapped[str] = mapped_column(
-        String(10), nullable=False, comment="Active code, or final code for dissolved franchises"
+        String(10), nullable=False, comment="Active code, or final code for dissolved franchises",
     )
 
     # New Fields for Phase 7

@@ -358,7 +358,7 @@ def parse_profile(
             "salary_amount": sal["amount"],
             "salary_currency": sal["currency"],
             "salary_original": sal["original"],
-        }
+        },
     )
 
     # Draft & Entry Year details

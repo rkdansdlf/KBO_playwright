@@ -7,7 +7,7 @@ from .base import NormalizedRelayResult, RelaySourceAdapter, events_have_minimum
 
 
 class KboRelayAdapter(RelaySourceAdapter):
-    def __init__(self, crawler: PBPCrawler | None = None):
+    def __init__(self, crawler: PBPCrawler | None = None) -> None:
         super().__init__("kbo")
         self.crawler = crawler or PBPCrawler()
 

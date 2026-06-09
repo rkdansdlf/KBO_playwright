@@ -56,7 +56,7 @@ class RuntimeHydrator:
         PlayerGamePitching: ("game_id", "player_id"),
     }
 
-    def __init__(self, source_session: Session, target_session: Session):
+    def __init__(self, source_session: Session, target_session: Session) -> None:
         self.source_session = source_session
         self.target_session = target_session
 
@@ -249,7 +249,7 @@ class RuntimeHydrator:
 
     def _delete_alias_scope(self, year: int) -> None:
         self.target_session.query(GameIdAlias).filter(GameIdAlias.canonical_game_id.like(f"{year}%")).delete(
-            synchronize_session=False
+            synchronize_session=False,
         )
 
     def _restore_aliases(self, aliases: list[dict[str, Any]]) -> int:
