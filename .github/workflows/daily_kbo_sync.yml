@@ -121,13 +121,8 @@ jobs:
 
       - name: Compute Rankings
         run: |
-          python3 -c "
-          from src.aggregators.ranking_aggregator import RankingAggregator
-          from src.db.engine import SessionLocal
-          year = ${{ steps.job-setup.outputs.KST_YEAR }}
-          with SessionLocal() as session:
-              RankingAggregator(session).run_for_season(year)
-          "
+          python3 -m src.cli.calculate_rankings \
+            --year ${{ steps.job-setup.outputs.KST_YEAR }}
 
       - name: OCI Freshness Gate
         env:
