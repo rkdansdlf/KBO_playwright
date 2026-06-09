@@ -134,6 +134,21 @@ class TestGameSyncMixin:
         result = mixin.sync_game_details(year=2025)
         assert isinstance(result, dict)
 
+    def test_transform_game_lineup_keeps_starter_batting_order(self, mixin):
+        data = {"is_starter": True, "batting_order": 2, "appearance_seq": 2}
+        result = mixin._transform_game_lineup_for_target(data)
+        assert result["batting_order"] == 2
+
+    def test_transform_game_lineup_nulls_substitute_batting_order(self, mixin):
+        data = {"is_starter": False, "batting_order": 2, "appearance_seq": 3}
+        result = mixin._transform_game_lineup_for_target(data)
+        assert result["batting_order"] is None
+
+    def test_transform_game_lineup_uses_appearance_seq_over_starter_flag(self, mixin):
+        data = {"is_starter": True, "batting_order": 2, "appearance_seq": 3}
+        result = mixin._transform_game_lineup_for_target(data)
+        assert result["batting_order"] is None
+
 
 class TestGameSyncMixinMetadataPayloadLimit:
     @pytest.fixture
