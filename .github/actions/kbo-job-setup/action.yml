@@ -1,0 +1,64 @@
+name: 'KBO Job Setup'
+description: 'Checkout, setup Python env, optionally resolve date and hydrate from OCI'
+inputs:
+  playwright:
+    description: 'Install Playwright browser'
+    required: false
+    default: 'false'
+  init-db:
+    description: 'Initialize database and seed metadata'
+    required: false
+    default: 'true'
+  hydrate:
+    description: 'Hydrate runtime cache from OCI'
+    required: false
+    default: 'false'
+  hydrate-year:
+    description: 'Year for OCI hydration'
+    required: false
+    default: ''
+  hydrate-date:
+    description: 'Date for OCI hydration (YYYYMMDD)'
+    required: false
+    default: ''
+  resolve-date:
+    description: 'Resolve KST date outputs (for first job in pipeline)'
+    required: false
+    default: 'false'
+  target-date:
+    description: 'Target date override (YYYYMMDD). Empty = previous KST day.'
+    required: false
+    default: ''
+outputs:
+  KST_DATE:
+    description: 'Resolved KST date (YYYYMMDD)'
+    value: ${{ steps.date.outputs.KST_DATE }}
+  KST_YEAR:
+    description: 'Resolved KST year'
+    value: ${{ steps.date.outputs.KST_YEAR }}
+
+runs:
+  using: 'composite'
+  steps:
+    - uses: actions/checkout@v4
+
+    - uses: ./.github/actions/python-env
+      with:
+        playwright: ${{ inputs.playwright }}
+        init-db: ${{ inputs.init-db }}
+        hydrate: ${{ inputs.hydrate }}
+        hydrate-year: ${{ inputs.hydrate-year }}
+        hydrate-date: ${{ inputs.hydrate-date }}
+
+    - name: Resolve target date in KST
+      if: ${{ inputs.resolve-date == 'true' }}
+      id: date
+      shell: bash
+      run: |
+        if [ -n "${{ inputs.target-date }}" ]; then
+          KST_DATE="${{ inputs.target-date }}"
+        else
+          KST_DATE="$(TZ='Asia/Seoul' date -d 'yesterday' +'%Y%m%d')"
+        fi
+        echo "KST_DATE=${KST_DATE}" | tee -a $GITHUB_OUTPUT
+        echo "KST_YEAR=${KST_DATE:0:4}" | tee -a $GITHUB_OUTPUT
