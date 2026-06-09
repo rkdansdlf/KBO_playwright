@@ -107,7 +107,7 @@ class SpotChecker:
                         if db_val and live_val and db_val != live_val:
                             self.log_mismatch("Player", pid_str, db_f, db_val, live_val)
 
-                except Exception as e:
+                except Exception as e:  # noqa: BLE001
                     logger.info(f"   ❌ Error checking player {p.name} ({pid_str}): {e}")
 
             return checked_count
@@ -175,7 +175,9 @@ class SpotChecker:
                                 f"DB: {db_side_innings} vs Live: {live_line}",
                             )
                         else:
-                            for inning_idx, (db_runs, live_runs) in enumerate(zip(db_side_innings, live_line, strict=False), 1):
+                            for inning_idx, (db_runs, live_runs) in enumerate(
+                                zip(db_side_innings, live_line, strict=False), 1
+                            ):
                                 if db_runs != live_runs:
                                     self.log_mismatch(
                                         "GameInnings", g.game_id, f"{side}_inning_{inning_idx}", db_runs, live_runs
@@ -254,7 +256,7 @@ class SpotChecker:
                                         "GamePitching", g.game_id, f"{p_name}_{stat_key}", db_val, live_val
                                     )
 
-                except Exception as e:
+                except Exception as e:  # noqa: BLE001
                     logger.info(f"   ❌ Error checking game {g.game_id}: {e}")
                     import traceback
 
@@ -313,7 +315,9 @@ async def main():
             for _p_id in remedy_players:
                 logger.info("    python3 -m src.crawlers.player_profile_crawler --year 2025 --force")
         else:
-            logger.info("\n✅ Perfect agreement! No mismatches found between the sampled DB data and the live KBO website.")
+            logger.info(
+                "\n✅ Perfect agreement! No mismatches found between the sampled DB data and the live KBO website."
+            )
 
         if args.output:
             import json

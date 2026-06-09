@@ -4,6 +4,10 @@ Supabase teams 데이터를 SQLite로 가져와서 팀 매핑 업데이트
 team_name이나 team_short_name으로 강제 매핑하여 데이터 정리
 """
 
+
+import logging
+logger = logging.getLogger(__name__)
+
 import os
 
 import psycopg2
@@ -26,7 +30,7 @@ def fetch_teams_from_supabase() -> list[dict]:
     with get_supabase_connection() as conn:
         cursor = conn.cursor()
 
-        print("📥 Supabase에서 teams 데이터 가져오는 중...")
+        logger.info("📥 Supabase에서 teams 데이터 가져오는 중...")
 
         # teams 테이블과 team_history 테이블 조인으로 완전한 데이터 가져오기
         cursor.execute("""
@@ -73,14 +77,14 @@ def fetch_teams_from_supabase() -> list[dict]:
                 }
             )
 
-        print(f"✅ {len(teams_data)}개 팀 데이터 가져오기 완료")
+        logger.info(f"✅ {len(teams_data)}개 팀 데이터 가져오기 완료")
         return teams_data
 
 
 def analyze_sqlite_team_mapping() -> dict[str, list[dict]]:
     """SQLite 데이터의 팀 매핑 분석"""
     with SessionLocal() as session:
-        print("\n🔍 SQLite 데이터 팀 매핑 분석 중...")
+        logger.info("\n🔍 SQLite 데이터 팀 매핑 분석 중...")
 
         # 타자 데이터 팀 분포
         batting_teams = session.execute(
@@ -126,20 +130,20 @@ def analyze_sqlite_team_mapping() -> dict[str, list[dict]]:
         """)
         ).fetchall()
 
-        print(f"📊 SQLite 타자 데이터: {len(batting_teams)}개 팀")
+        logger.info(f"📊 SQLite 타자 데이터: {len(batting_teams)}개 팀")
         for team_id, count, first_year, last_year, team_names in batting_teams:
-            print(f"  - {team_id}: {count}명 ({first_year}-{last_year}) → {team_names}")
+            logger.info(f"  - {team_id}: {count}명 ({first_year}-{last_year}) → {team_names}")
 
-        print(f"\n📊 SQLite 투수 데이터: {len(pitching_teams)}개 팀")
+        logger.info(f"\n📊 SQLite 투수 데이터: {len(pitching_teams)}개 팀")
         for team_code, count, first_year, last_year, team_names in pitching_teams:
-            print(f"  - {team_code}: {count}명 ({first_year}-{last_year}) → {team_names}")
+            logger.info(f"  - {team_code}: {count}명 ({first_year}-{last_year}) → {team_names}")
 
         return {"batting": batting_teams, "pitching": pitching_teams}
 
 
 def create_team_mapping_rules(teams_data: list[dict]) -> dict[str, str]:
     """팀 매핑 규칙 생성"""
-    print("\n🗺️ 팀 매핑 규칙 생성 중...")
+    logger.info("\n🗺️ 팀 매핑 규칙 생성 중...")
 
     # SQLite team_id → Supabase team_code 매핑
     mapping_rules = {
@@ -175,9 +179,9 @@ def create_team_mapping_rules(teams_data: list[dict]) -> dict[str, str]:
         "SW": "SAMSUNG",  # SW삼성전자 등 → 삼성 계열로 분류
     }
 
-    print(f"📋 생성된 매핑 규칙: {len(mapping_rules)}개")
+    logger.info(f"📋 생성된 매핑 규칙: {len(mapping_rules)}개")
     for sqlite_id, supabase_code in mapping_rules.items():
-        print(f"  {sqlite_id} → {supabase_code}")
+        logger.info(f"  {sqlite_id} → {supabase_code}")
 
     return mapping_rules
 
@@ -185,18 +189,18 @@ def create_team_mapping_rules(teams_data: list[dict]) -> dict[str, str]:
 def update_sqlite_team_mapping(mapping_rules: dict[str, str], dry_run: bool = True) -> dict[str, int]:
     """SQLite 데이터의 team_id를 Supabase team_code로 업데이트"""
     with SessionLocal() as session:
-        print(f"\n🔄 SQLite 팀 매핑 업데이트 {'(시뮬레이션)' if dry_run else '(실제 적용)'}")
-        print("-" * 50)
+        logger.info(f"\n🔄 SQLite 팀 매핑 업데이트 {'(시뮬레이션)' if dry_run else '(실제 적용)'}")
+        logger.info("-" * 50)
 
         # 외래키 제약조건 비활성화 (실제 업데이트시에만)
         if not dry_run:
             session.execute(text("PRAGMA foreign_keys = OFF"))
-            print("🔓 SQLite 외래키 제약조건 비활성화")
+            logger.info("🔓 SQLite 외래키 제약조건 비활성화")
 
         results = {"batting_updated": 0, "pitching_updated": 0, "unmapped": []}
 
         # 타자 데이터 업데이트
-        print("1️⃣ 타자 데이터 업데이트 중...")
+        logger.info("1️⃣ 타자 데이터 업데이트 중...")
         for sqlite_id, supabase_code in mapping_rules.items():
             if dry_run:
                 # 시뮬레이션: 업데이트될 행 수만 확인
@@ -210,7 +214,7 @@ def update_sqlite_team_mapping(mapping_rules: dict[str, str], dry_run: bool = Tr
                 ).scalar()
 
                 if result > 0:
-                    print(f"  📊 {sqlite_id} → {supabase_code}: {result}명")
+                    logger.info(f"  📊 {sqlite_id} → {supabase_code}: {result}명")
                     results["batting_updated"] += result
             else:
                 # 실제 업데이트
@@ -224,11 +228,11 @@ def update_sqlite_team_mapping(mapping_rules: dict[str, str], dry_run: bool = Tr
                 )
 
                 if result.rowcount > 0:
-                    print(f"  ✅ {sqlite_id} → {supabase_code}: {result.rowcount}명 업데이트")
+                    logger.info(f"  ✅ {sqlite_id} → {supabase_code}: {result.rowcount}명 업데이트")
                     results["batting_updated"] += result.rowcount
 
         # 투수 데이터 업데이트
-        print("\n2️⃣ 투수 데이터 업데이트 중...")
+        logger.info("\n2️⃣ 투수 데이터 업데이트 중...")
         for sqlite_id, supabase_code in mapping_rules.items():
             if dry_run:
                 # 시뮬레이션
@@ -242,7 +246,7 @@ def update_sqlite_team_mapping(mapping_rules: dict[str, str], dry_run: bool = Tr
                 ).scalar()
 
                 if result > 0:
-                    print(f"  📊 {sqlite_id} → {supabase_code}: {result}명")
+                    logger.info(f"  📊 {sqlite_id} → {supabase_code}: {result}명")
                     results["pitching_updated"] += result
             else:
                 # 실제 업데이트
@@ -256,11 +260,11 @@ def update_sqlite_team_mapping(mapping_rules: dict[str, str], dry_run: bool = Tr
                 )
 
                 if result.rowcount > 0:
-                    print(f"  ✅ {sqlite_id} → {supabase_code}: {result.rowcount}명 업데이트")
+                    logger.info(f"  ✅ {sqlite_id} → {supabase_code}: {result.rowcount}명 업데이트")
                     results["pitching_updated"] += result
 
         # 매핑되지 않은 팀 확인
-        print("\n3️⃣ 매핑되지 않은 팀 확인...")
+        logger.info("\n3️⃣ 매핑되지 않은 팀 확인...")
         unmapped_batting = session.execute(
             text(
                 """
@@ -284,28 +288,28 @@ def update_sqlite_team_mapping(mapping_rules: dict[str, str], dry_run: bool = Tr
         ).fetchall()
 
         if unmapped_batting:
-            print("  📊 매핑되지 않은 타자 팀:")
+            logger.info("  📊 매핑되지 않은 타자 팀:")
             for team_id, count in unmapped_batting:
-                print(f"    - {team_id}: {count}명")
+                logger.info(f"    - {team_id}: {count}명")
                 results["unmapped"].append(f"batting:{team_id}({count})")
 
         if unmapped_pitching:
-            print("  📊 매핑되지 않은 투수 팀:")
+            logger.info("  📊 매핑되지 않은 투수 팀:")
             for team_code, count in unmapped_pitching:
-                print(f"    - {team_code}: {count}명")
+                logger.info(f"    - {team_code}: {count}명")
                 results["unmapped"].append(f"pitching:{team_code}({count})")
 
         if not dry_run:
             session.commit()
-            print("\n✅ 업데이트 완료 및 커밋")
+            logger.info("\n✅ 업데이트 완료 및 커밋")
 
         return results
 
 
 def main():
     try:
-        print("🚀 Supabase teams 데이터 기반 SQLite 팀 매핑 업데이트")
-        print("=" * 60)
+        logger.info("🚀 Supabase teams 데이터 기반 SQLite 팀 매핑 업데이트")
+        logger.info("=" * 60)
 
         # 1. Supabase에서 teams 데이터 가져오기
         teams_data = fetch_teams_from_supabase()
@@ -317,37 +321,37 @@ def main():
         mapping_rules = create_team_mapping_rules(teams_data)
 
         # 4. 시뮬레이션 실행
-        print("\n🔍 업데이트 시뮬레이션 실행...")
+        logger.info("\n🔍 업데이트 시뮬레이션 실행...")
         sim_results = update_sqlite_team_mapping(mapping_rules, dry_run=True)
 
-        print("\n📊 시뮬레이션 결과:")
-        print(f"  - 타자 업데이트 예정: {sim_results['batting_updated']:,}명")
-        print(f"  - 투수 업데이트 예정: {sim_results['pitching_updated']:,}명")
-        print(f"  - 매핑되지 않은 데이터: {len(sim_results['unmapped'])}개")
+        logger.info("\n📊 시뮬레이션 결과:")
+        logger.info(f"  - 타자 업데이트 예정: {sim_results['batting_updated']:,}명")
+        logger.info(f"  - 투수 업데이트 예정: {sim_results['pitching_updated']:,}명")
+        logger.info(f"  - 매핑되지 않은 데이터: {len(sim_results['unmapped'])}개")
 
         if sim_results["unmapped"]:
-            print(f"  - 미매핑: {', '.join(sim_results['unmapped'])}")
+            logger.info(f"  - 미매핑: {', '.join(sim_results['unmapped'])}")
 
         # 5. 사용자 확인
-        print("\n❓ 실제 업데이트를 진행하시겠습니까?")
+        logger.info("\n❓ 실제 업데이트를 진행하시겠습니까?")
         choice = input("y/N: ").strip().lower()
 
         if choice == "y":
-            print("\n🔄 실제 업데이트 실행...")
+            logger.info("\n🔄 실제 업데이트 실행...")
             real_results = update_sqlite_team_mapping(mapping_rules, dry_run=False)
 
-            print("\n🎉 업데이트 완료!")
-            print(f"  - 타자: {real_results['batting_updated']:,}명")
-            print(f"  - 투수: {real_results['pitching_updated']:,}명")
+            logger.info("\n🎉 업데이트 완료!")
+            logger.info(f"  - 타자: {real_results['batting_updated']:,}명")
+            logger.info(f"  - 투수: {real_results['pitching_updated']:,}명")
 
-            print("\n💡 다음 단계:")
-            print("  1. ./venv/bin/python3 -m src.sync.supabase_sync")
-            print("  2. 데이터 동기화 확인")
+            logger.info("\n💡 다음 단계:")
+            logger.info("  1. ./venv/bin/python3 -m src.sync.supabase_sync")
+            logger.info("  2. 데이터 동기화 확인")
         else:
-            print("\n❌ 사용자가 취소했습니다.")
+            logger.error("\n❌ 사용자가 취소했습니다.")
 
     except Exception as e:
-        print(f"\n❌ 오류 발생: {e}")
+        logger.error(f"\n❌ 오류 발생: {e}")
         import traceback
 
         traceback.print_exc()

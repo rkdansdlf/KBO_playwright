@@ -42,10 +42,10 @@ def migrate_oci_schema():
                         conn.commit()
                         print("  ✅ Successfully added 'uniform_no'.")
 
-                except Exception as e:
+                except Exception as e:  # noqa: BLE001
                     print(f"  ❌ Error processing {table}: {e}")
 
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         print(f"❌ Connection failed: {e}")
 
 

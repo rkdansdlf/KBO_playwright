@@ -1,3 +1,7 @@
+import logging
+
+logger = logging.getLogger(__name__)
+
 import asyncio
 import json
 import os
@@ -12,7 +16,7 @@ from src.services.game_collection_service import crawl_and_save_game_details
 
 async def recover_historical_games(json_file: str, max_concurrency: int = 5):
     if not os.path.exists(json_file):
-        print(f"❌ File not found: {json_file}")
+        logger.error(f"❌ File not found: {json_file}")
         return
 
     with open(json_file) as f:
@@ -22,7 +26,7 @@ async def recover_historical_games(json_file: str, max_concurrency: int = 5):
     game_list.sort(key=lambda x: x.get("game_date", ""))
 
     total_games = len(game_list)
-    print(f"🚀 Starting recovery for {total_games} games...")
+    logger.info(f"🚀 Starting recovery for {total_games} games...")
 
     from src.db.engine import SessionLocal
     from src.services.player_id_resolver import PlayerIdResolver
@@ -38,10 +42,10 @@ async def recover_historical_games(json_file: str, max_concurrency: int = 5):
         if len(d) >= 4:
             try:
                 years.add(int(d[:4]))
-            except Exception:
+            except Exception:  # noqa: BLE001
                 pass
 
-    print(f"🔄 Preloading player data for {len(years)} seasons: {sorted(list(years))}")
+    logger.info(f"🔄 Preloading player data for {len(years)} seasons: {sorted(list(years))}")
     for year in sorted(list(years)):
         resolver.preload_season_index(year)
 
@@ -57,14 +61,14 @@ async def recover_historical_games(json_file: str, max_concurrency: int = 5):
     success_count = 0
     fail_count = 0
 
-    print(f"🚀 Processing in batches of {batch_size}...")
+    logger.info(f"🚀 Processing in batches of {batch_size}...")
 
     for i in range(0, total_games, batch_size):
         batch = tasks[i : i + batch_size]
         batch_num = i // batch_size + 1
         total_batches = (total_games + batch_size - 1) // batch_size
 
-        print(f"📦 Batch {batch_num}/{total_batches}: Processing {len(batch)} games...")
+        logger.info(f"📦 Batch {batch_num}/{total_batches}: Processing {len(batch)} games...")
 
         try:
             result = await crawl_and_save_game_details(
@@ -77,17 +81,17 @@ async def recover_historical_games(json_file: str, max_concurrency: int = 5):
             saved_in_batch = result.detail_saved
             success_count += result.detail_saved
             fail_count += result.detail_failed
-            print(f"   ✅ Saved {saved_in_batch} games in this batch.")
+            logger.info(f"   ✅ Saved {saved_in_batch} games in this batch.")
 
-        except Exception as e:
-            print(f"❌ Batch {batch_num} failed: {e}")
+        except Exception as e:  # noqa: BLE001
+            logger.error(f"❌ Batch {batch_num} failed: {e}")
 
     session.close()
 
-    print("\n✅ Recovery Summary:")
-    print(f"   Total Games: {total_games}")
-    print(f"   Successfully Saved: {success_count}")
-    print(f"   Failed: {fail_count}")
+    logger.info("\n✅ Recovery Summary:")
+    logger.info(f"   Total Games: {total_games}")
+    logger.info(f"   Successfully Saved: {success_count}")
+    logger.info(f"   Failed: {fail_count}")
 
 
 if __name__ == "__main__":

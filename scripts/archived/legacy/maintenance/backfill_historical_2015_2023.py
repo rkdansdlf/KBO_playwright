@@ -26,7 +26,7 @@ async def backfill_historical_movements(start_year: int, end_year: int):
         if movements:
             count = repo.save_player_movements(movements)
             print(f"  ✅ Saved {count} historical movements to SQLite.")
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         print(f"  ❌ Error during historical movements backfill: {e}")
 
 
@@ -56,7 +56,7 @@ async def backfill_historical_rosters(year: int, start_month: int = 3, end_month
                     repo = TeamRepository(session)
                     count = repo.save_daily_rosters(roster)
                     print(f"  ✅ Saved {count} roster records for {d_str}")
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             print(f"  ❌ Error for {d_str}: {e}")
 
         current_date += timedelta(days=1)

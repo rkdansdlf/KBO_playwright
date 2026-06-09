@@ -10,6 +10,7 @@ from src.db.engine import SessionLocal
 logger = logging.getLogger(__name__)
 from src.repositories.broadcast_repository import BroadcastRepository  # noqa: E402
 from src.utils.playwright_blocking import install_async_resource_blocking  # noqa: E402
+from src.utils.playwright_retry import NAV_TIMEOUT
 from src.utils.team_codes import build_kbo_game_id  # noqa: E402
 
 
@@ -31,7 +32,7 @@ class BroadcastCrawler:
 
             url = f"{self.url}?year={year}&month={month:02d}"
             logger.info(f"Loading {url}...")
-            await page.goto(url, wait_until="networkidle", timeout=30000)
+            await page.goto(url, wait_until="networkidle", timeout=NAV_TIMEOUT)
             await page.wait_for_timeout(2000)
 
             data = await self._extract_broadcast_data(page, year)

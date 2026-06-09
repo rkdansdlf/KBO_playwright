@@ -148,7 +148,7 @@ def crawl_stats_for_year(page, year, mode="batting"):
         all_players = {}
 
         for tm in teams:
-            logger.info("   🔍 %s (%s) 파싱 중...", tm['text'], tm['value'])
+            logger.info("   🔍 %s (%s) 파싱 중...", tm["text"], tm["value"])
 
             # Select team
             page.select_option(team_selector, tm["value"])
@@ -162,7 +162,7 @@ def crawl_stats_for_year(page, year, mode="batting"):
                     page1_btn.click()
                     page.wait_for_load_state("networkidle")
                     time.sleep(1)
-            except Exception:
+            except Exception:  # noqa: BLE001
                 pass
 
             page_num = 1
@@ -171,7 +171,7 @@ def crawl_stats_for_year(page, year, mode="batting"):
                 try:
                     res = page.evaluate(extract_js)
                     if "error" in res:
-                        logger.warning("      ⚠️ 테이블 못찾음: %s", res['error'])
+                        logger.warning("      ⚠️ 테이블 못찾음: %s", res["error"])
                         break
 
                     players = []
@@ -200,7 +200,7 @@ def crawl_stats_for_year(page, year, mode="batting"):
 
                     # print(f"      📄 {page_num}페이지: {len(players)}명 (누적: {count_after}명)")
 
-                except Exception as e:
+                except Exception as e:  # noqa: BLE001
                     logger.warning("      ⚠️ 파싱 에러: %s", e)
 
                 # Pagination
@@ -223,7 +223,7 @@ def crawl_stats_for_year(page, year, mode="batting"):
                             arg=first_player_before,
                             timeout=5000,
                         )
-                    except Exception:
+                    except Exception:  # noqa: BLE001
                         pass
                     page_num += 1
                 else:
@@ -231,7 +231,7 @@ def crawl_stats_for_year(page, year, mode="batting"):
 
         return list(all_players.values())
 
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         logger.error("❌ %s년 %s 크롤링 치명적 오류: %s", year, mode, e)
         return []
 

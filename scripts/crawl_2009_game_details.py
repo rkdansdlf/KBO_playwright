@@ -55,7 +55,7 @@ def crawl_2009_details():
         sys.stdout.flush()
         try:
             page.select_option("#ddlSeries", "0,9,6")
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             logger.warning("⚠️ Error selecting series: %s", e)
         time.sleep(2)
         logger.info("   Series selected.")
@@ -85,7 +85,7 @@ def crawl_2009_details():
                     full_url = f"https://www.koreabaseball.com{href}"
                     page.goto(full_url, wait_until="networkidle", timeout=30000)
                     logger.info("   [Driver] Navigation done.")
-                except Exception as e:
+                except Exception as e:  # noqa: BLE001
                     logger.warning("⚠️ [Driver] Navigation failed: %s", e)
 
                 # Extract Data
@@ -119,15 +119,15 @@ def crawl_2009_details():
                     logger.warning("   ❌ Failed to save game %s.", game_id)
 
                 logger.info("📊 Extracted Data Structure:")
-                logger.info("  Game ID: %s", data['game_id'])
-                logger.info("  Teams: %s", data['teams'])
+                logger.info("  Game ID: %s", data["game_id"])
+                logger.info("  Teams: %s", data["teams"])
 
                 # Go back for next game
                 logger.info("   [Driver] Going back...")
                 page.go_back()
                 time.sleep(2)
 
-            except Exception as e:
+            except Exception as e:  # noqa: BLE001
                 logger.error("🔥 [CRITICAL] Loop iteration failed: %s", e)
                 import traceback
 

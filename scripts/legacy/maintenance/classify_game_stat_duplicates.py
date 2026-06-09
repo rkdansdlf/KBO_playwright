@@ -9,6 +9,11 @@ provably exact duplicates when explicitly requested.
 
 from __future__ import annotations
 
+import logging
+
+logger = logging.getLogger(__name__)
+
+
 import argparse
 import csv
 import shutil
@@ -338,13 +343,13 @@ def main() -> None:
         backup=not args.no_backup,
     )
     mode = "APPLY-EXACT" if args.apply_exact else "DRY-RUN"
-    print(f"[{mode}] groups={result['groups']} rows={result['rows']} deleted_rows={result['deleted_rows']}")
+    logger.info(f"[{mode}] groups={result['groups']} rows={result['rows']} deleted_rows={result['deleted_rows']}")
     for key in sorted(result["summary"]):
-        print(f"  {key}={result['summary'][key]}")
+        logger.info(f"  {key}={result['summary'][key]}")
     if result["backup_path"]:
-        print(f"[BACKUP] {result['backup_path']}")
-    print(f"[REPORT] groups={result['groups_csv']}")
-    print(f"[REPORT] rows={result['details_csv']}")
+        logger.info(f"[BACKUP] {result['backup_path']}")
+    logger.info(f"[REPORT] groups={result['groups_csv']}")
+    logger.info(f"[REPORT] rows={result['details_csv']}")
 
 
 if __name__ == "__main__":

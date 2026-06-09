@@ -169,7 +169,7 @@ def repair_batting_collisions():
         session.commit()
         logger.info(f"Repaired {repaired_lineup_count} lineup rows.")
 
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         session.rollback()
         logger.error(f"Error repairing batting collisions: {e}")
     finally:

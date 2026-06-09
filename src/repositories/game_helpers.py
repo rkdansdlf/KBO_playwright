@@ -126,7 +126,7 @@ def _resolve_schedule_season_id(session, game_data: dict[str, Any], existing_sea
         except SQLAlchemyError:
             logger.warning("Failed to query season_id from database")
 
-        # 2. Fallback to hardcoded historical rules for 2023, 2024, and 2025
+        # 2. Fallback to hardcoded historical rules for 2023–2026
         SEASON_DATE_RULES = {
             2023: [
                 ("2023-03-13", "2023-03-28", "시범경기"),
@@ -149,6 +149,13 @@ def _resolve_schedule_season_id(session, game_data: dict[str, Any], existing_sea
                 ("2025-10-09", "2025-10-14", "준플레이오프"),
                 ("2025-10-18", "2025-10-24", "플레이오프"),
                 ("2025-10-26", "2025-11-01", "한국시리즈"),
+            ],
+            2026: [
+                ("2026-03-07", "2026-03-17", "시범경기"),
+                ("2026-10-06", "2026-10-07", "와일드카드"),
+                ("2026-10-09", "2026-10-14", "준플레이오프"),
+                ("2026-10-18", "2026-10-24", "플레이오프"),
+                ("2026-10-26", "2026-11-01", "한국시리즈"),
             ],
         }
 

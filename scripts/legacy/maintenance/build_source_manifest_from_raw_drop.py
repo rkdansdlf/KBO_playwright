@@ -1,5 +1,10 @@
 from __future__ import annotations
 
+import logging
+
+logger = logging.getLogger(__name__)
+
+
 import argparse
 import csv
 import os
@@ -112,7 +117,7 @@ def main():
         raw_root=Path(args.raw_root),
         output_path=Path(args.output),
     )
-    print(f"Wrote {written} manifest rows to {args.output}")
+    logger.info(f"Wrote {written} manifest rows to {args.output}")
 
 
 if __name__ == "__main__":

@@ -24,6 +24,7 @@ from src.repositories.roster_transaction_repository import RosterTransactionRepo
 from src.repositories.source_registry_repository import save_raw_snapshots
 from src.utils.http_client import DEFAULT_HEADERS as HEADERS
 from src.utils.playwright_pool import AsyncPlaywrightPool
+from src.utils.playwright_retry import NAV_TIMEOUT
 from src.utils.throttle import throttle
 
 logger = logging.getLogger(__name__)
@@ -212,7 +213,7 @@ class RosterTransactionCrawler:
                     retry=retry_if_exception_type(PlaywrightTimeoutError),
                 ):
                     with attempt:
-                        await page.goto(self.register_url, wait_until="networkidle", timeout=30000)
+                        await page.goto(self.register_url, wait_until="networkidle", timeout=NAV_TIMEOUT)
 
                 date_str = target_date.strftime("%Y%m%d")
                 await page.evaluate(

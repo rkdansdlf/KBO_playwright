@@ -43,7 +43,7 @@ def main():
                 # SSG -> SK
                 result = conn.execute(text(f"UPDATE {table} SET team_code = 'SK' WHERE team_code = 'SSG'"))
                 print(f"  - Updated SSG -> SK: {result.rowcount} rows")
-            except Exception as e:
+            except Exception as e:  # noqa: BLE001
                 print(f"  ⚠️ Error updating {table}: {e}")
 
         conn.commit()

@@ -1,3 +1,7 @@
+import logging
+
+logger = logging.getLogger(__name__)
+
 import argparse
 import csv
 import os
@@ -19,8 +23,8 @@ def audit_game_stats(year: int = None):
     Session = sessionmaker(bind=engine)
     session = Session()
 
-    print(f"🔍 Starting Data Integrity Audit{' for ' + str(year) if year else ''}...")
-    print("   Comparing Game Scores vs. Aggregated Batting Stats...")
+    logger.info(f"🔍 Starting Data Integrity Audit{' for ' + str(year) if year else ''}...")
+    logger.info("   Comparing Game Scores vs. Aggregated Batting Stats...")
 
     # 1. Fetch Game Scores
     games_query = session.query(Game.game_id, Game.home_team, Game.away_team, Game.home_score, Game.away_score)
@@ -40,7 +44,7 @@ def audit_game_stats(year: int = None):
         for g in games_results
     }
 
-    print(f"   Loaded {len(games_results)} games.")
+    logger.info(f"   Loaded {len(games_results)} games.")
 
     # 2. Aggregate Batting Stats Key Metrics
     stats_query = session.query(
@@ -151,20 +155,20 @@ def audit_game_stats(year: int = None):
         writer.writeheader()
         writer.writerows(discrepancies)
 
-    print("\n✅ Audit Complete.")
-    print(f"   Analyzed {len(processed_games)} games having stats.")
-    print(f"   Found {len(discrepancies)} issues.")
-    print(f"   Report saved to: {output_path}")
+    logger.info("\n✅ Audit Complete.")
+    logger.info(f"   Analyzed {len(processed_games)} games having stats.")
+    logger.info(f"   Found {len(discrepancies)} issues.")
+    logger.info(f"   Report saved to: {output_path}")
 
     by_type = defaultdict(int)
     for d in discrepancies:
         by_type[d["type"]] += 1
 
-    print("\n📊 Issue Summary:")
+    logger.info("\n📊 Issue Summary:")
     if not discrepancies:
-        print("   ✨ No issues found!")
+        logger.info("   ✨ No issues found!")
     for k, v in by_type.items():
-        print(f"   - {k}: {v}")
+        logger.info(f"   - {k}: {v}")
 
     session.close()
 
@@ -177,10 +181,10 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     if args.start_year and args.end_year:
-        print(f"🔍 Running Audit for range {args.start_year}-{args.end_year}...")
+        logger.info(f"🔍 Running Audit for range {args.start_year}-{args.end_year}...")
         for y in range(args.start_year, args.end_year + 1):
             audit_game_stats(y)
     elif args.year:
         audit_game_stats(args.year)
     else:
-        print("Please provide --year or --start-year/--end-year")
+        logger.info("Please provide --year or --start-year/--end-year")

@@ -30,7 +30,7 @@ def isolate_sync():
             print(f"Total metadata records available: {total_metadata}")
             res = syncer.sync_simple_table(GameMetadata, ["game_id"], exclude_cols=["created_at"], limit=10000)
             print(f"✅ Metadata sync result: {res}")
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             print(f"❌ Metadata sync failed: {e}")
             import traceback
 
@@ -45,7 +45,7 @@ def isolate_sync():
                 GameInningScore, ["game_id", "team_side", "inning"], exclude_cols=["id", "created_at"], limit=10000
             )
             print(f"✅ Inning score sync result: {res}")
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             print(f"❌ Inning score sync failed: {e}")
             import traceback
 

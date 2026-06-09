@@ -629,6 +629,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         mode = "DYNAMIC" if args.dynamic else f"FIXED ({args.interval}m)"
         logger.info(f"🚀 Starting Real-time Daemon... Mode: {mode}")
         asyncio.run(main_loop(args.interval, sync_to_oci=not args.no_sync, dynamic=args.dynamic))
+    return 0
 
 
 if __name__ == "__main__":

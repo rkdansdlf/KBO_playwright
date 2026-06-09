@@ -4,6 +4,10 @@ Supabase 데이터 현황 확인 스크립트
 기존 데이터 상태를 파악하여 안전한 작업 방향 제시
 """
 
+
+import logging
+logger = logging.getLogger(__name__)
+
 import os
 
 from sqlalchemy import create_engine, text
@@ -14,19 +18,19 @@ def check_supabase_data():
     supabase_url = os.getenv("SUPABASE_DB_URL")
 
     if not supabase_url:
-        print("❌ SUPABASE_DB_URL 환경변수가 설정되지 않았습니다.")
-        print("📌 먼저 환경변수를 설정하세요:")
-        print("   export SUPABASE_DB_URL='postgresql://postgres.xxx:[PASSWORD]@xxx.pooler.supabase.com:5432/postgres'")
+        logger.error("❌ SUPABASE_DB_URL 환경변수가 설정되지 않았습니다.")
+        logger.info("📌 먼저 환경변수를 설정하세요:")
+        logger.info("   export SUPABASE_DB_URL='postgresql://postgres.xxx:[PASSWORD]@xxx.pooler.supabase.com:5432/postgres'")
         return False
 
     try:
         engine = create_engine(supabase_url)
 
         with engine.connect() as conn:
-            print("✅ Supabase 연결 성공!")
-            print("\n" + "=" * 60)
-            print("📊 Supabase 데이터베이스 현황")
-            print("=" * 60)
+            logger.info("✅ Supabase 연결 성공!")
+            logger.info("\n" + "=" * 60)
+            logger.info("📊 Supabase 데이터베이스 현황")
+            logger.info("=" * 60)
 
             # 1. 테이블 존재 여부 확인
             tables_query = text("""
@@ -40,21 +44,21 @@ def check_supabase_data():
             tables_result = conn.execute(tables_query)
             existing_tables = [row[0] for row in tables_result]
 
-            print("\n🔍 관련 테이블 존재 여부:")
+            logger.info("\n🔍 관련 테이블 존재 여부:")
             for table in ["player_season_batting", "player_season_pitching"]:
                 if table in existing_tables:
-                    print(f"   ✅ {table}: 존재함")
+                    logger.info(f"   ✅ {table}: 존재함")
                 else:
-                    print(f"   ❌ {table}: 존재하지 않음")
+                    logger.error(f"   ❌ {table}: 존재하지 않음")
 
             # 2. 각 테이블별 데이터 현황
             for table in existing_tables:
-                print(f"\n📋 {table} 테이블 현황:")
+                logger.info(f"\n📋 {table} 테이블 현황:")
 
                 # 총 레코드 수
                 count_query = text(f"SELECT COUNT(*) FROM {table}")
                 total_count = conn.execute(count_query).scalar()
-                print(f"   총 레코드 수: {total_count:,}건")
+                logger.info(f"   총 레코드 수: {total_count:,}건")
 
                 if total_count > 0:
                     # 시즌별 분포
@@ -67,9 +71,9 @@ def check_supabase_data():
                     """)
 
                     seasons_result = conn.execute(season_query)
-                    print("   시즌별 분포:")
+                    logger.info("   시즌별 분포:")
                     for season, count in seasons_result:
-                        print(f"     {season}년: {count:,}건")
+                        logger.info(f"     {season}년: {count:,}건")
 
                     # 리그별 분포
                     league_query = text(f"""
@@ -80,9 +84,9 @@ def check_supabase_data():
                     """)
 
                     leagues_result = conn.execute(league_query)
-                    print("   리그별 분포:")
+                    logger.info("   리그별 분포:")
                     for league, count in leagues_result:
-                        print(f"     {league}: {count:,}건")
+                        logger.info(f"     {league}: {count:,}건")
 
                     # 소스별 분포
                     source_query = text(f"""
@@ -93,9 +97,9 @@ def check_supabase_data():
                     """)
 
                     sources_result = conn.execute(source_query)
-                    print("   소스별 분포:")
+                    logger.info("   소스별 분포:")
                     for source, count in sources_result:
-                        print(f"     {source}: {count:,}건")
+                        logger.info(f"     {source}: {count:,}건")
 
                     # 샘플 데이터 표시
                     sample_query = text(f"""
@@ -106,42 +110,42 @@ def check_supabase_data():
                     """)
 
                     sample_result = conn.execute(sample_query)
-                    print("   샘플 데이터:")
+                    logger.info("   샘플 데이터:")
                     for row in sample_result:
                         print(
                             f"     player_id={row[0]}, season={row[1]}, league={row[2]}, level={row[3]}, source={row[4]}"
                         )
 
             # 3. 권장 작업 방향 제시
-            print("\n" + "=" * 60)
-            print("💡 권장 작업 방향")
-            print("=" * 60)
+            logger.info("\n" + "=" * 60)
+            logger.info("💡 권장 작업 방향")
+            logger.info("=" * 60)
 
             if "player_season_batting" in existing_tables:
                 batting_count = conn.execute(text("SELECT COUNT(*) FROM player_season_batting")).scalar()
-                print(f"✅ player_season_batting 테이블 존재 ({batting_count:,}건)")
-                print("   → 타자 크롤링 시 UPSERT 방식으로 안전하게 업데이트 가능")
+                logger.info(f"✅ player_season_batting 테이블 존재 ({batting_count:,}건)")
+                logger.info("   → 타자 크롤링 시 UPSERT 방식으로 안전하게 업데이트 가능")
             else:
-                print("❌ player_season_batting 테이블 없음")
-                print("   → 타자 데이터 신규 생성 필요")
+                logger.error("❌ player_season_batting 테이블 없음")
+                logger.info("   → 타자 데이터 신규 생성 필요")
 
             if "player_season_pitching" in existing_tables:
                 pitching_count = conn.execute(text("SELECT COUNT(*) FROM player_season_pitching")).scalar()
-                print(f"✅ player_season_pitching 테이블 존재 ({pitching_count:,}건)")
-                print("   → 투수 크롤링 시 UPSERT 방식으로 안전하게 업데이트 가능")
+                logger.info(f"✅ player_season_pitching 테이블 존재 ({pitching_count:,}건)")
+                logger.info("   → 투수 크롤링 시 UPSERT 방식으로 안전하게 업데이트 가능")
             else:
-                print("❌ player_season_pitching 테이블 없음")
-                print("   → 투수 데이터 신규 생성 필요")
+                logger.error("❌ player_season_pitching 테이블 없음")
+                logger.info("   → 투수 데이터 신규 생성 필요")
 
-            print("\n📌 다음 단계:")
-            print("1. SQLite에서 크롤링 및 검증")
-            print("2. 검증된 데이터만 Supabase에 UPSERT")
-            print("3. 기존 데이터와 충돌 시 source 필드로 구분")
+            logger.info("\n📌 다음 단계:")
+            logger.info("1. SQLite에서 크롤링 및 검증")
+            logger.info("2. 검증된 데이터만 Supabase에 UPSERT")
+            logger.info("3. 기존 데이터와 충돌 시 source 필드로 구분")
 
             return True
 
     except Exception as e:
-        print(f"❌ Supabase 연결 실패: {e}")
+        logger.error(f"❌ Supabase 연결 실패: {e}")
         return False
 
 

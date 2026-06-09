@@ -96,7 +96,7 @@ def backfill_oci():
 
         conn.close()
         print("✅ OCI optimized backfill finished.")
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         print(f"❌ Failed to backfill OCI: {e}")
 
 

@@ -7,6 +7,11 @@ existing player_basic row. It never auto-registers placeholder players.
 
 from __future__ import annotations
 
+import logging
+
+logger = logging.getLogger(__name__)
+
+
 import argparse
 import csv
 import os
@@ -630,9 +635,9 @@ def main() -> None:
         f"duplicate_null_rows={result['duplicate_null_rows']}"
     )
     if result["backup_path"]:
-        print(f"[BACKUP] {result['backup_path']}")
-    print(f"[REPORT] resolved={result['resolved_csv']}")
-    print(f"[REPORT] unresolved={result['unresolved_csv']}")
+        logger.info(f"[BACKUP] {result['backup_path']}")
+    logger.info(f"[REPORT] resolved={result['resolved_csv']}")
+    logger.info(f"[REPORT] unresolved={result['unresolved_csv']}")
 
 
 if __name__ == "__main__":

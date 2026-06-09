@@ -71,7 +71,7 @@ def repair_season_boundaries():
         session.commit()
         print("✅ Season metadata repair complete.")
 
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         print(f"❌ Error during repair: {e}")
         session.rollback()
     finally:

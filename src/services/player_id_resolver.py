@@ -1,6 +1,7 @@
 import csv
 import logging
 import os
+from datetime import datetime
 
 from sqlalchemy import inspect, or_, select
 from sqlalchemy.orm import Session
@@ -344,8 +345,8 @@ class PlayerIdResolver:
             logger.info(f"   [OVERRIDE RESOLVED (relaxed)] {player_name} ({team_code}, {season}) -> {resolved_id}")
             return resolved_id
 
-        # 2026 Season Samsung Lee Seung-hyun disambiguation
-        if player_name == "이승현" and team_code == "SS" and season == 2026 and is_pitcher is True:
+        # Samsung Lee Seung-hyun disambiguation (two pitchers with same name)
+        if player_name == "이승현" and team_code == "SS" and season == datetime.now().year and is_pitcher is True:
             if uniform_no == "57":
                 return 51454  # Left-handed pitcher
             elif uniform_no in ("20", "26"):

@@ -11,6 +11,11 @@ This script is read-only. It writes merge proposals and blocked rows.
 
 from __future__ import annotations
 
+import logging
+
+logger = logging.getLogger(__name__)
+
+
 import argparse
 import csv
 import sqlite3
@@ -293,9 +298,9 @@ def main() -> None:
         player_name=args.player_name,
         team_code=args.team_code,
     )
-    print(f"[REPORT] proposed_groups={result['proposed_groups']} blocked_groups={result['blocked_groups']}")
-    print(f"[REPORT] proposed_csv={result['proposed_csv']}")
-    print(f"[REPORT] blocked_csv={result['blocked_csv']}")
+    logger.info(f"[REPORT] proposed_groups={result['proposed_groups']} blocked_groups={result['blocked_groups']}")
+    logger.info(f"[REPORT] proposed_csv={result['proposed_csv']}")
+    logger.info(f"[REPORT] blocked_csv={result['blocked_csv']}")
 
 
 if __name__ == "__main__":

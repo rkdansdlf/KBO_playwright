@@ -16,6 +16,7 @@ from playwright.async_api import TimeoutError as PlaywrightTimeoutError  # noqa:
 from tenacity import AsyncRetrying, retry_if_exception_type, stop_after_attempt, wait_exponential  # noqa: E402
 
 from src.utils.playwright_pool import AsyncPlaywrightPool  # noqa: E402
+from src.utils.playwright_retry import NAV_TIMEOUT
 
 
 class PlayerMovementCrawler:
@@ -42,7 +43,7 @@ class PlayerMovementCrawler:
                     retry=retry_if_exception_type(PlaywrightTimeoutError),
                 ):
                     with attempt:
-                        await page.goto(self.base_url, wait_until="networkidle", timeout=30000)
+                        await page.goto(self.base_url, wait_until="networkidle", timeout=NAV_TIMEOUT)
 
                 for year in range(start_year, end_year + 1):
                     year_data = await self._crawl_year(page, year)

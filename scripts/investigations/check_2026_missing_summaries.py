@@ -1,3 +1,7 @@
+import logging
+
+logger = logging.getLogger(__name__)
+
 from sqlalchemy import text
 
 from src.db.engine import SessionLocal
@@ -14,9 +18,9 @@ def check_missing_summaries():
         """)
         results = session.execute(query).fetchall()
 
-        print(f"Found {len(results)} completed games in 2026 missing summaries.")
+        logger.info(f"Found {len(results)} completed games in 2026 missing summaries.")
         for r in results:
-            print(f"Missing: {r.game_id} ({r.game_date}) - {r.away_team} @ {r.home_team}")
+            logger.info(f"Missing: {r.game_id} ({r.game_date}) - {r.away_team} @ {r.home_team}")
 
 
 if __name__ == "__main__":

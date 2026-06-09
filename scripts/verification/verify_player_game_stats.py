@@ -26,6 +26,8 @@ from sqlalchemy import text
 from src.db.engine import SessionLocal
 
 logger = logging.getLogger(__name__)
+
+
 def check_duplicates(session) -> list[str]:
     issues = []
     for tbl in ("player_game_batting", "player_game_pitching"):

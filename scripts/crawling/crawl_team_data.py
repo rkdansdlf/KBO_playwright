@@ -55,7 +55,7 @@ async def main():
                     else:
                         logger.info(f"   ⚠️ Franchise not found for {item['name']}")
                 session.commit()
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         logger.info(f"❌ TeamInfoCrawler Failed: {e}")
         if info_crawler:
             await info_crawler.close()
@@ -65,7 +65,7 @@ async def main():
     try:
         history_data = await hist_crawler.crawl()
         await hist_crawler.save(history_data)
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         logger.info(f"❌ TeamHistoryCrawler Failed: {e}")
         import traceback
 

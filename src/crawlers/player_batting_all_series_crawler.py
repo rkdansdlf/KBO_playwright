@@ -31,7 +31,7 @@ from src.utils.fallback_monitor import FallbackMonitor
 from src.utils.player_season_stat_validation import filter_valid_season_stat_payloads
 from src.utils.player_stats_helpers import extract_rows_fast
 from src.utils.playwright_blocking import install_sync_resource_blocking
-from src.utils.playwright_retry import retry_navigation, retry_wait_for_selector
+from src.utils.playwright_retry import NAV_TIMEOUT, SEL_TIMEOUT, retry_navigation, retry_wait_for_selector
 from src.utils.request_policy import RequestPolicy
 from src.utils.team_codes import resolve_team_code
 from src.utils.team_mapping import get_team_code, get_team_mapping_for_year
@@ -348,7 +348,7 @@ def go_to_next_page(page: Page, current_page_num: int, policy: RequestPolicy | N
             desc = f"{next_page_num}페이지로 이동 (btnNo{relative_page_num})"
 
         # 버튼 존재 여부 및 상태 확인 (reload+retry 포함)
-        if not retry_wait_for_selector(page, selector, timeout=15000, state="visible"):
+        if not retry_wait_for_selector(page, selector, timeout=SEL_TIMEOUT, state="visible"):
             return False
         btn = page.query_selector(selector)
         if not btn or btn.get_attribute("disabled") or "disabled" in (btn.get_attribute("class") or ""):
@@ -358,8 +358,8 @@ def go_to_next_page(page: Page, current_page_num: int, policy: RequestPolicy | N
             policy.delay()
 
         # 직접 클릭 시도 (Attached 여부 확인하며)
-        page.click(selector, timeout=15000)
-        page.wait_for_load_state("networkidle", timeout=30000)
+        page.click(selector, timeout=SEL_TIMEOUT)
+        page.wait_for_load_state("networkidle", timeout=NAV_TIMEOUT)
         logger.info(f"➡️ {desc}")
         return True
 
@@ -396,7 +396,7 @@ def crawl_basic2_with_headers(
                 if policy:
                     policy.delay()
                 page.select_option(season_selector, str(year))
-                page.wait_for_load_state("networkidle", timeout=30000)
+                page.wait_for_load_state("networkidle", timeout=NAV_TIMEOUT)
         except Exception:
             logger.exception("   ⚠️ 연도 선택 중 오류 (무시)")
 
@@ -407,7 +407,7 @@ def crawl_basic2_with_headers(
                 if policy:
                     policy.delay()
                 page.select_option(series_selector, value=series_info["value"])
-                page.wait_for_load_state("networkidle", timeout=30000)
+                page.wait_for_load_state("networkidle", timeout=NAV_TIMEOUT)
         except Exception:
             logger.exception("   ⚠️ 시리즈 선택 중 오류 (무시)")
 
@@ -418,7 +418,7 @@ def crawl_basic2_with_headers(
                 if policy:
                     policy.delay()
                 page.click(next_link_selector)
-                page.wait_for_load_state("networkidle", timeout=30000)
+                page.wait_for_load_state("networkidle", timeout=NAV_TIMEOUT)
             else:
                 logger.error("   ❌ Basic2 이동 링크를 찾을 수 없습니다.")
                 return {}
@@ -430,7 +430,7 @@ def crawl_basic2_with_headers(
         page_num = 1
         while True:
             # 테이블 헤더가 나타날 때까지 대기
-            if not retry_wait_for_selector(page, "table.tData01.tt thead th", timeout=15000):
+            if not retry_wait_for_selector(page, "table.tData01.tt thead th", timeout=SEL_TIMEOUT):
                 logger.warning(f"   ⚠️ {page_num}페이지 테이블 헤더 로딩 실패")
                 break
 
@@ -812,8 +812,8 @@ def crawl_series_batting_stats(
                 return []
 
             policy.delay(host="www.koreabaseball.com")
-            page.goto(url, wait_until="load", timeout=30000)
-            page.wait_for_load_state("networkidle", timeout=30000)
+            page.goto(url, wait_until="load", timeout=NAV_TIMEOUT)
+            page.wait_for_load_state("networkidle", timeout=NAV_TIMEOUT)
 
             # 시즌과 시리즈 설정
             try:
@@ -824,7 +824,7 @@ def crawl_series_batting_stats(
                 policy.delay()
                 page.select_option(season_selector, str(year))
                 logger.info(f"✅ {year}년 시즌 선택")
-                page.wait_for_load_state("networkidle", timeout=30000)
+                page.wait_for_load_state("networkidle", timeout=NAV_TIMEOUT)
 
                 # 시리즈 선택
                 series_selector = (
@@ -834,7 +834,7 @@ def crawl_series_batting_stats(
                 policy.delay()
                 page.select_option(series_selector, value=series_info["value"])
                 logger.info(f"✅ {series_info['name']} 선택")
-                page.wait_for_load_state("networkidle", timeout=30000)
+                page.wait_for_load_state("networkidle", timeout=NAV_TIMEOUT)
 
             except Exception as e:
                 reason = f"Season/Series selection error: {e}"
@@ -882,7 +882,7 @@ def crawl_series_batting_stats(
                             'select[name="ctl00$ctl00$ctl00$cphContents$cphContents$cphContents$ddlTeam$ddlTeam"]',
                             tm["value"],
                         )
-                        page.wait_for_load_state("networkidle", timeout=30000)
+                        page.wait_for_load_state("networkidle", timeout=NAV_TIMEOUT)
                         policy.delay()
                     except Exception:
                         logger.exception(f"⚠️ 팀 선택 실패 ({tm['text']})")
@@ -893,7 +893,7 @@ def crawl_series_batting_stats(
                 if page.query_selector(pa_sort_link):
                     page.click(pa_sort_link)
                     logger.info("✅ 타석(PA) 기준 정렬 적용")
-                    page.wait_for_load_state("networkidle", timeout=30000)
+                    page.wait_for_load_state("networkidle", timeout=NAV_TIMEOUT)
                     policy.delay()
                 else:
                     logger.warning("⚠️ 타석 정렬 버튼을 찾을 수 없습니다.")

@@ -19,6 +19,7 @@ from playwright.sync_api import Page, sync_playwright
 from src.repositories.save_futures_batting import save_futures_batting
 from src.utils.playwright_blocking import install_sync_resource_blocking
 from src.utils.playwright_helpers import goto_next_page
+from src.utils.playwright_retry import NAV_TIMEOUT
 from src.utils.request_policy import RequestPolicy
 
 logger = logging.getLogger(__name__)
@@ -87,8 +88,8 @@ def crawl_basic1_data(page: Page, year: int, series_info: dict, policy: RequestP
     try:
         # Basic1 페이지로 이동
         url = "https://www.koreabaseball.com/Record/Player/HitterBasic/Basic1.aspx"
-        page.goto(url, wait_until="load", timeout=30000)
-        page.wait_for_load_state("networkidle", timeout=30000)
+        page.goto(url, wait_until="load", timeout=NAV_TIMEOUT)
+        page.wait_for_load_state("networkidle", timeout=NAV_TIMEOUT)
         if policy:
             policy.delay()
 
@@ -280,8 +281,8 @@ def crawl_basic2_with_headers(
     try:
         # Basic1에서 시작하여 Basic2로 이동
         url = "https://www.koreabaseball.com/Record/Player/HitterBasic/Basic1.aspx"
-        page.goto(url, wait_until="load", timeout=30000)
-        page.wait_for_load_state("networkidle", timeout=30000)
+        page.goto(url, wait_until="load", timeout=NAV_TIMEOUT)
+        page.wait_for_load_state("networkidle", timeout=NAV_TIMEOUT)
         if policy:
             policy.delay()
 
@@ -303,7 +304,7 @@ def crawl_basic2_with_headers(
             return {}
 
         next_link.click()
-        page.wait_for_load_state("networkidle", timeout=30000)
+        page.wait_for_load_state("networkidle", timeout=NAV_TIMEOUT)
         if policy:
             policy.delay()
 
@@ -319,7 +320,7 @@ def crawl_basic2_with_headers(
                     continue
 
                 header_link.click()
-                page.wait_for_load_state("networkidle", timeout=30000)
+                page.wait_for_load_state("networkidle", timeout=NAV_TIMEOUT)
                 if policy:
                     policy.delay()
 

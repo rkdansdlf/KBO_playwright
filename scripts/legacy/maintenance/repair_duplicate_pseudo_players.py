@@ -8,6 +8,11 @@ uniform number. Ambiguous duplicate names are reported and left untouched.
 
 from __future__ import annotations
 
+import logging
+
+logger = logging.getLogger(__name__)
+
+
 import argparse
 import csv
 import json
@@ -889,8 +894,8 @@ def main() -> None:
         f"deleted_player_basic_rows={result['deleted_player_basic_rows']}"
     )
     if result["backup_path"]:
-        print(f"[BACKUP] {result['backup_path']}")
-    print(f"[REPORT] {result['output_dir']}")
+        logger.info(f"[BACKUP] {result['backup_path']}")
+    logger.info(f"[REPORT] {result['output_dir']}")
 
 
 if __name__ == "__main__":

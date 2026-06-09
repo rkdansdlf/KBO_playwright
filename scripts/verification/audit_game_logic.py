@@ -27,6 +27,8 @@ import logging  # noqa: E402
 from src.db.engine import SessionLocal  # noqa: E402
 
 logger = logging.getLogger(__name__)
+
+
 def audit_game_logic(year: int | None = None, game_id: str | None = None) -> list[dict[str, Any]]:
     violations = []
 

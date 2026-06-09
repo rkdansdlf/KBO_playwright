@@ -15,7 +15,7 @@ def main():
     try:
         data = crawl_series_batting_stats(year=2001, series_key="regular", save_to_db=True, headless=True, by_team=True)
         print(f"✅ 2001년 타자 수집 완료: {len(data)}명")
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         print(f"❌ 오류 발생: {e}")
 
 

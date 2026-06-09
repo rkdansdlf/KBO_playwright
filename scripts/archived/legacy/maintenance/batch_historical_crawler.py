@@ -76,7 +76,7 @@ async def process_batch(year: int, start_month: int, end_month: int, sync: bool)
             # Note: run_update is an async function in run_daily_update.py
             await run_update(date_str, sync=sync, run_auto_healer=False)
             save_status(year, date_str)
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             print(f"❌ Error on {date_str}: {e}")
             # We don't stop unless it's a critical error (optional: add retry logic)
 

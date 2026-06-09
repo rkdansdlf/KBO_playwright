@@ -103,7 +103,7 @@ def resolve_event_games(dry_run=False):
         print(f"Batting Updated: {updated_batting}")
         print(f"Pitching Updated: {updated_pitching}")
 
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         session.rollback()
         print(f"Error: {e}")
     finally:

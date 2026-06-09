@@ -327,7 +327,7 @@ def main():
 
     except KeyboardInterrupt:
         print("\n❌ 사용자가 중단했습니다.")
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         print(f"❌ 오류 발생: {e}")
 
 

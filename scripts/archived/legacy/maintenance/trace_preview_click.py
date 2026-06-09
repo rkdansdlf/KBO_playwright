@@ -56,7 +56,7 @@ async def trace_preview_click():
         else:
             print("No preview container found")
 
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         print(f"Error: {e}")
     finally:
         await pool.close()

@@ -6,6 +6,11 @@ Focuses on 'active' players to ensure 100% integrity for current/recent seasons.
 
 from __future__ import annotations
 
+import logging
+
+logger = logging.getLogger(__name__)
+
+
 import argparse
 import asyncio
 import os
@@ -113,10 +118,10 @@ async def enrich_stubs(limit: int = 200, player_ids: list[int] | None = None) ->
         stubs = session.execute(query, params).fetchall()
 
         if not stubs:
-            print("✨ No active stubs found. Player metadata is already enriched!")
+            logger.info("✨ No active stubs found. Player metadata is already enriched!")
             return 0
 
-        print(f"🎯 Found {len(stubs)} active players to enrich.")
+        logger.info(f"🎯 Found {len(stubs)} active players to enrich.")
 
         repo = PlayerBasicRepository()
         pool = AsyncPlaywrightPool(max_pages=2)
@@ -129,7 +134,7 @@ async def enrich_stubs(limit: int = 200, player_ids: list[int] | None = None) ->
             name = _row_value(row, "name")
             pos = _row_value(row, "position")
 
-            print(f"[{idx}/{len(stubs)}] Processing {name} ({pid})...")
+            logger.info(f"[{idx}/{len(stubs)}] Processing {name} ({pid})...")
 
             try:
                 data = await crawler.crawl_player_profile(pid, position=pos)
@@ -160,17 +165,17 @@ async def enrich_stubs(limit: int = 200, player_ids: list[int] | None = None) ->
 
                     repo.upsert_players([update_payload])
                     enriched_count += 1
-                    print(f"   ✅ Enriched {name}")
+                    logger.info(f"   ✅ Enriched {name}")
                 else:
-                    print(f"   ⚠️  Could not find profile for {name}")
-            except Exception as exc:
-                print(f"   ❌ Error processing {name}: {exc}")
+                    logger.warning(f"   ⚠️  Could not find profile for {name}")
+            except Exception as exc:  # noqa: BLE001
+                logger.error(f"   ❌ Error processing {name}: {exc}")
 
             # Periodic sleep to be extra safe
             if idx % 10 == 0:
                 await asyncio.sleep(2)
 
-        print(f"\n🚀 Enrichment complete! Successfully updated {enriched_count} players.")
+        logger.info(f"\n🚀 Enrichment complete! Successfully updated {enriched_count} players.")
         return enriched_count
 
     finally:

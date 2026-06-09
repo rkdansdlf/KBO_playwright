@@ -44,7 +44,7 @@ def seed_rivalries(dry_run: bool = False) -> int:
 
     if dry_run:
         for r in rows:
-            logger.info("  %s vs %s: %s (%s)", r['team_id_a'], r['team_id_b'], r['rivalry_name'], r['intensity'])
+            logger.info("  %s vs %s: %s (%s)", r["team_id_a"], r["team_id_b"], r["rivalry_name"], r["intensity"])
         return len(rows)
 
     with SessionLocal() as session:
@@ -56,7 +56,7 @@ def seed_rivalries(dry_run: bool = False) -> int:
                 repo.save_rivalry(r)
                 session.flush()
                 saved += 1
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001
                 session.rollback()
                 skipped += 1
                 logger.warning("Skipped rivalry %s-%s: %s", r["team_id_a"], r["team_id_b"], exc)

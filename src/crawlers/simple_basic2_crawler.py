@@ -15,6 +15,7 @@ from playwright.sync_api import Page, sync_playwright
 from src.repositories.save_kbo_batting import save_kbo_batting_batch
 from src.utils.playwright_blocking import install_sync_resource_blocking
 from src.utils.playwright_helpers import goto_next_page
+from src.utils.playwright_retry import NAV_TIMEOUT
 from src.utils.request_policy import RequestPolicy
 
 logger = logging.getLogger(__name__)
@@ -52,8 +53,8 @@ def crawl_bb_basic2_data(page: Page, year: int, policy: RequestPolicy | None = N
         # 1. Basic1 페이지로 이동
         url = "https://www.koreabaseball.com/Record/Player/HitterBasic/Basic1.aspx"
         logger.info(f"   🔍 Basic1 페이지로 이동: {url}")
-        page.goto(url, wait_until="load", timeout=30000)
-        page.wait_for_load_state("networkidle", timeout=30000)
+        page.goto(url, wait_until="load", timeout=NAV_TIMEOUT)
+        page.wait_for_load_state("networkidle", timeout=NAV_TIMEOUT)
         if policy:
             policy.delay()
 
@@ -79,7 +80,7 @@ def crawl_bb_basic2_data(page: Page, year: int, policy: RequestPolicy | None = N
 
         logger.info("   🔗 'Basic2' 다음 링크 클릭...")
         next_link.click()
-        page.wait_for_load_state("networkidle", timeout=30000)
+        page.wait_for_load_state("networkidle", timeout=NAV_TIMEOUT)
         if policy:
             policy.delay()
 
@@ -95,7 +96,7 @@ def crawl_bb_basic2_data(page: Page, year: int, policy: RequestPolicy | None = N
             return {}
 
         bb_link.click()
-        page.wait_for_load_state("networkidle", timeout=30000)
+        page.wait_for_load_state("networkidle", timeout=NAV_TIMEOUT)
         if policy:
             policy.delay()
 

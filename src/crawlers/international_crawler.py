@@ -6,6 +6,7 @@ from typing import Any
 from playwright.async_api import Locator, async_playwright
 
 from src.utils.playwright_blocking import install_async_resource_blocking
+from src.utils.playwright_retry import NAV_TIMEOUT
 from src.utils.team_codes import resolve_team_code
 
 logger = logging.getLogger(__name__)
@@ -44,7 +45,7 @@ class InternationalScheduleCrawler:
         if not self.page:
             await self.start_browser()
 
-        await self.page.goto(url, wait_until="networkidle", timeout=30000)
+        await self.page.goto(url, wait_until="networkidle", timeout=NAV_TIMEOUT)
 
         # Determine year from URL or page context
         year_match = re.search(r"(\d{4})", url)

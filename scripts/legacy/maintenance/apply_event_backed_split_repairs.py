@@ -3,6 +3,11 @@
 
 from __future__ import annotations
 
+import logging
+
+logger = logging.getLogger(__name__)
+
+
 import argparse
 import csv
 import shutil
@@ -172,9 +177,9 @@ def main() -> None:
         backup=not args.no_backup,
     )
     mode = "APPLY" if args.apply else "DRY-RUN"
-    print(f"[{mode}] merged_groups={result['merged_groups']} deleted_rows={result['deleted_rows']}")
+    logger.info(f"[{mode}] merged_groups={result['merged_groups']} deleted_rows={result['deleted_rows']}")
     if result["backup_path"]:
-        print(f"[BACKUP] {result['backup_path']}")
+        logger.info(f"[BACKUP] {result['backup_path']}")
 
 
 if __name__ == "__main__":

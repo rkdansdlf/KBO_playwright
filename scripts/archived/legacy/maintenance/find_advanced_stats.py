@@ -75,7 +75,7 @@ def find_advanced_stats():
             print("\n⏸️  수동 확인을 위해 15초 대기...")
             time.sleep(15)
 
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             print(f"❌ 오류: {e}")
 
         finally:

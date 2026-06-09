@@ -1,3 +1,7 @@
+import logging
+
+logger = logging.getLogger(__name__)
+
 from pathlib import Path
 
 from src.services.game_deduplication_service import DeduplicationWindow, mark_primary_games
@@ -12,9 +16,9 @@ REGULAR_SEASONS = [
 
 
 def hard_deduplicate_all():
-    print("Hard reset: Setting all is_primary to 0...")
+    logger.info("Hard reset: Setting all is_primary to 0...")
     result = mark_primary_games(DB_PATH, windows=REGULAR_SEASONS, reset_all=True)
-    print(f"Successfully marked {result.marked_primary} primary games across 2024-2026.")
+    logger.info(f"Successfully marked {result.marked_primary} primary games across 2024-2026.")
 
 
 if __name__ == "__main__":

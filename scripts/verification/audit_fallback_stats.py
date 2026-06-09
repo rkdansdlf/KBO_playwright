@@ -54,7 +54,7 @@ class StatAudit:
         SlackWebhookClient.send_alert(msg, blocks=blocks)
         try:
             FallbackMonitor.save_audit_event(category, "abort", {"year": year, "series": series, "reason": reason})
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             logger.error(f"Failed to save audit abort event: {e}")
 
     @staticmethod
@@ -141,7 +141,7 @@ class StatAudit:
             FallbackMonitor.save_audit_event(
                 category, "warning", {"year": year, "series": series, "mismatches": mismatch_data}
             )
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             logger.error(f"Failed to save audit warning event: {e}")
 
     @staticmethod
@@ -267,7 +267,7 @@ class StatAudit:
                     save_batting_stats_safe([calc])
                     logger.info(f"      ✅ Fixed {name} in DB. (Backup: {backup_name})")
                     fix_count += 1
-                except Exception as e:
+                except Exception as e:  # noqa: BLE001
                     logger.info(f"      ⚠️ Failed to fix {name}: {e}")
                     logger.error(f"Failed to fix {name} batting: {e}")
 
@@ -418,7 +418,7 @@ class StatAudit:
                     save_pitching_stats_to_db([calc])
                     logger.info(f"      ✅ Fixed {name} in DB. (Backup: {backup_name})")
                     fix_count += 1
-                except Exception as e:
+                except Exception as e:  # noqa: BLE001
                     logger.info(f"      ⚠️ Failed to fix {name}: {e}")
                     logger.error(f"Failed to fix {name} pitching: {e}")
 
@@ -550,7 +550,7 @@ class StatAudit:
                     repo.upsert_many([calc])
                     logger.info(f"      ✅ Fixed {name} ({off.position_id}) in DB. (Backup: {backup_name})")
                     fix_count += 1
-                except Exception as e:
+                except Exception as e:  # noqa: BLE001
                     logger.info(f"      ⚠️ Failed to fix {name}: {e}")
                     logger.error(f"Failed to fix {name} fielding: {e}")
 
@@ -686,7 +686,7 @@ class StatAudit:
                     repo.upsert_many([calc])
                     logger.info(f"      ✅ Fixed {name} in DB. (Backup: {backup_name})")
                     fix_count += 1
-                except Exception as e:
+                except Exception as e:  # noqa: BLE001
                     logger.info(f"      ⚠️ Failed to fix {name}: {e}")
                     logger.error(f"Failed to fix {name} baserunning: {e}")
 

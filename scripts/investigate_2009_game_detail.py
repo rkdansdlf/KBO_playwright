@@ -47,7 +47,7 @@ def investigate_2009_game_detail():
                 if "투수" in text and "타자" in text:
                     logger.info("    -> Potential Lineup/Boxscore Table")
 
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             logger.error("❌ Error: %s", e)
         finally:
             browser.close()

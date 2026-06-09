@@ -4,6 +4,11 @@ Generate a KBO win expectancy matrix from historical game events.
 
 from __future__ import annotations
 
+import logging
+
+logger = logging.getLogger(__name__)
+
+
 import argparse
 import json
 import sys
@@ -36,7 +41,7 @@ def build_matrix(
     min_sample_size: int,
 ) -> WinExpectancyMatrix:
     load_dotenv()
-    print("📊 Extracting game event states and final outcomes...")
+    logger.info("📊 Extracting game event states and final outcomes...")
 
     query = text(
         """
@@ -57,7 +62,7 @@ def build_matrix(
     with SessionLocal() as session:
         df = pd.read_sql(query, session.connection(), params={"max_inning": max_inning})
 
-    print(f"✅ Extracted {len(df)} event points.")
+    logger.info(f"✅ Extracted {len(df)} event points.")
     if df.empty:
         return {}
 
@@ -82,7 +87,7 @@ def build_matrix(
             runners
         ] = win_prob
 
-    print(f"📈 Total states covered: {len(we_matrix)}")
+    logger.info(f"📈 Total states covered: {len(we_matrix)}")
     return result
 
 
@@ -90,7 +95,7 @@ def write_matrix(matrix: WinExpectancyMatrix, output_path: Path) -> None:
     output_path.parent.mkdir(parents=True, exist_ok=True)
     with output_path.open("w", encoding="utf-8") as file:
         json.dump(matrix, file, ensure_ascii=False, indent=2)
-    print(f"✨ Win expectancy matrix saved to {output_path}")
+    logger.info(f"✨ Win expectancy matrix saved to {output_path}")
 
 
 def build_arg_parser() -> argparse.ArgumentParser:

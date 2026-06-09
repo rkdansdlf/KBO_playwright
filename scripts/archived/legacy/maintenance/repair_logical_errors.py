@@ -65,7 +65,7 @@ def repair_logical_errors():
         session.commit()
         logger.info("Logical error repair complete.")
 
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         session.rollback()
         logger.error(f"Error repairing logical errors: {e}")
     finally:

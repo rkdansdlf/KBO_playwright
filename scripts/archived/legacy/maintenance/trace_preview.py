@@ -32,7 +32,7 @@ async def trace_preview():
         await page.goto(url, wait_until="networkidle", timeout=30000)
         await asyncio.sleep(5)
 
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         print(f"Error: {e}")
     finally:
         await pool.close()

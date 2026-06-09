@@ -17,6 +17,7 @@ from playwright.async_api import TimeoutError as PlaywrightTimeoutError  # noqa:
 from tenacity import AsyncRetrying, retry_if_exception_type, stop_after_attempt, wait_exponential  # noqa: E402
 
 from src.utils.playwright_pool import AsyncPlaywrightPool  # noqa: E402
+from src.utils.playwright_retry import NAV_TIMEOUT
 from src.utils.team_codes import resolve_team_code  # noqa: E402
 
 
@@ -47,7 +48,7 @@ class DailyRosterCrawler:
                     retry=retry_if_exception_type(PlaywrightTimeoutError),
                 ):
                     with attempt:
-                        await page.goto(self.base_url, wait_until="networkidle", timeout=30000)
+                        await page.goto(self.base_url, wait_until="networkidle", timeout=NAV_TIMEOUT)
 
                 # Create a date range list
                 from datetime import timedelta

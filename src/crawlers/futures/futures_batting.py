@@ -14,6 +14,7 @@ from playwright.async_api import Error as PlaywrightError  # noqa: E402
 
 from src.utils.compliance import compliance  # noqa: E402
 from src.utils.playwright_pool import AsyncPlaywrightPool  # noqa: E402
+from src.utils.playwright_retry import LONG_TIMEOUT
 from src.utils.throttle import throttle  # noqa: E402
 
 logger = logging.getLogger(__name__)
@@ -217,7 +218,7 @@ async def fetch_and_parse_futures_batting(
                 return []
 
             await throttle.wait()
-            await page.goto(profile_url, wait_until="domcontentloaded", timeout=60000)
+            await page.goto(profile_url, wait_until="domcontentloaded", timeout=LONG_TIMEOUT)
             await throttle.wait()  # Wait for dynamic content using throttle instead of sleep
 
             # Try to click Futures tab if it exists

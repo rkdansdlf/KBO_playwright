@@ -4,6 +4,10 @@
 시즌 기록 동기화 전에 player_basic 테이블을 먼저 채움
 """
 
+
+import logging
+logger = logging.getLogger(__name__)
+
 import os
 
 from sqlalchemy import create_engine, text
@@ -25,7 +29,7 @@ def sync_player_basic():
 
     # SQLite에서 데이터 읽기
     with SessionLocal() as sqlite_session:
-        print("📥 SQLite에서 선수 기본정보 가져오는 중...")
+        logger.info("📥 SQLite에서 선수 기본정보 가져오는 중...")
 
         players = sqlite_session.execute(
             text("""
@@ -36,13 +40,13 @@ def sync_player_basic():
         """)
         ).fetchall()
 
-        print(f"📊 SQLite 선수 기본정보: {len(players)}명")
+        logger.info(f"📊 SQLite 선수 기본정보: {len(players)}명")
 
     # Supabase에 저장
     supabase_engine = get_supabase_connection()
 
     with supabase_engine.begin() as conn:
-        print("📤 Supabase로 선수 기본정보 동기화 중...")
+        logger.info("📤 Supabase로 선수 기본정보 동기화 중...")
 
         synced_count = 0
 
@@ -89,14 +93,14 @@ def sync_player_basic():
             synced_count += 1
 
             if synced_count % 100 == 0:
-                print(f"   📝 {synced_count}명 동기화 중...")
+                logger.info(f"   📝 {synced_count}명 동기화 중...")
 
-        print(f"✅ {synced_count}명의 선수 기본정보 동기화 완료")
+        logger.info(f"✅ {synced_count}명의 선수 기본정보 동기화 완료")
 
 
 def verify_sync():
     """동기화 결과 확인"""
-    print("\n🔍 동기화 결과 확인 중...")
+    logger.info("\n🔍 동기화 결과 확인 중...")
 
     with SessionLocal() as sqlite_session:
         sqlite_count = sqlite_session.execute(text("SELECT COUNT(*) FROM player_basic")).scalar()
@@ -105,28 +109,28 @@ def verify_sync():
     with supabase_engine.connect() as conn:
         supabase_count = conn.execute(text("SELECT COUNT(*) FROM player_basic")).scalar()
 
-    print(f"📊 SQLite: {sqlite_count}명")
-    print(f"📊 Supabase: {supabase_count}명")
+    logger.info(f"📊 SQLite: {sqlite_count}명")
+    logger.info(f"📊 Supabase: {supabase_count}명")
 
     if sqlite_count == supabase_count:
-        print("✅ 동기화 성공: 데이터 수가 일치합니다!")
+        logger.info("✅ 동기화 성공: 데이터 수가 일치합니다!")
     else:
-        print(f"⚠️ 데이터 수 불일치: SQLite {sqlite_count}명 vs Supabase {supabase_count}명")
+        logger.warning(f"⚠️ 데이터 수 불일치: SQLite {sqlite_count}명 vs Supabase {supabase_count}명")
 
 
 def main():
     try:
-        print("🚀 선수 기본정보 Supabase 동기화")
-        print("=" * 50)
+        logger.info("🚀 선수 기본정보 Supabase 동기화")
+        logger.info("=" * 50)
 
         sync_player_basic()
         verify_sync()
 
-        print("\n💡 다음 단계:")
-        print("   ./venv/bin/python3 -m src.sync.supabase_sync")
+        logger.info("\n💡 다음 단계:")
+        logger.info("   ./venv/bin/python3 -m src.sync.supabase_sync")
 
     except Exception as e:
-        print(f"\n❌ 오류 발생: {e}")
+        logger.error(f"\n❌ 오류 발생: {e}")
         import traceback
 
         traceback.print_exc()

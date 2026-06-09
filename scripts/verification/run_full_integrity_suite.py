@@ -32,6 +32,8 @@ from src.models.game import Game  # noqa: E402
 from src.validators.standings_integrity import validate_standings_integrity  # noqa: E402
 
 logger = logging.getLogger(__name__)
+
+
 def get_latest_game_date() -> date | None:
     with SessionLocal() as session:
         latest_game = session.query(Game).order_by(Game.game_date.desc()).first()

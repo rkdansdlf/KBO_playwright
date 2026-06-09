@@ -3,6 +3,11 @@
 
 from __future__ import annotations
 
+import logging
+
+logger = logging.getLogger(__name__)
+
+
 import argparse
 import csv
 import os
@@ -224,8 +229,8 @@ def main() -> None:
         f"[{mode}] resolved_rows={result['resolved_rows']} "
         f"unresolved_rows={result['unresolved_rows']} updated_rows={result['updated_rows']}"
     )
-    print(f"[REPORT] resolved={result['resolved_csv']}")
-    print(f"[REPORT] unresolved={result['unresolved_csv']}")
+    logger.info(f"[REPORT] resolved={result['resolved_csv']}")
+    logger.info(f"[REPORT] unresolved={result['unresolved_csv']}")
 
 
 if __name__ == "__main__":

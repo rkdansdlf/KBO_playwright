@@ -65,7 +65,7 @@ async def backfill_year(year: int, series_list: list[str] = None):
                 logger.warning("Schedule save failed for %d rows", result.failed)
             for g in result.saved_games:
                 all_game_ids.append((g["game_id"], g["game_date"]))
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             logger.error("Error collecting schedule for %d (Series %s): %s", year, sid, e)
 
     # Remove duplicates from all_game_ids
@@ -119,7 +119,9 @@ async def backfill_year(year: int, series_list: list[str] = None):
             success_count += result.detail_saved
             for item in result.items.values():
                 if not item.detail_saved:
-                    logger.warning("Failed to crawl/save %s (reason=%s)", item.game_id, item.failure_reason or 'unknown')
+                    logger.warning(
+                        "Failed to crawl/save %s (reason=%s)", item.game_id, item.failure_reason or "unknown"
+                    )
 
     logger.info("Finished %d: %d/%d games completed.", year, success_count, len(unique_games))
 

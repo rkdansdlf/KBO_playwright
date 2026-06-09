@@ -10,6 +10,11 @@ Checks for:
 
 from __future__ import annotations
 
+import logging
+
+logger = logging.getLogger(__name__)
+
+
 import argparse
 import sys
 from datetime import date
@@ -157,16 +162,16 @@ def main():
     parser.add_argument("--fail", action="store_true", help="Exit with non-zero code if violations found")
     args = parser.parse_args()
 
-    print(f"🔍 Starting Game Status Integrity Audit (Today: {date.today()})...")
+    logger.info(f"🔍 Starting Game Status Integrity Audit (Today: {date.today()})...")
     violations = audit_game_status()
 
     if not violations:
-        print("✅ No integrity violations found.")
+        logger.info("✅ No integrity violations found.")
         sys.exit(0)
 
-    print(f"❌ Found {len(violations)} integrity violations:")
+    logger.error(f"❌ Found {len(violations)} integrity violations:")
     for v in violations:
-        print(f"  - [{v['game_id']}] {v['game_date']} | Status: {v['status']} | Reason: {v['reason']}")
+        logger.info(f"  - [{v['game_id']}] {v['game_date']} | Status: {v['status']} | Reason: {v['reason']}")
 
     if args.fail:
         sys.exit(1)

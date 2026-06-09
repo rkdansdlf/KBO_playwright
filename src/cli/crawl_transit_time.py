@@ -30,7 +30,7 @@ async def run(args: argparse.Namespace) -> None:
         origins = [o for o in JAMSIL_ORIGINS if o["label"] == args.origin]
         if not origins:
             logger.info(f"Unknown origin: {args.origin}")
-            logger.info("Available:", [o["label"] for o in JAMSIL_ORIGINS])
+            logger.info("Available: %s", [o["label"] for o in JAMSIL_ORIGINS])
             return
 
     crawler = TransitTimeCrawler(origins=origins)

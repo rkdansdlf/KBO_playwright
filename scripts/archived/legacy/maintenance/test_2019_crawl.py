@@ -36,7 +36,7 @@ async def test_single_game():
             print(f"🚀 Away Score: {data['teams']['away']['score']}")
         else:
             print("❌ Crawl returned None")
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         print(f"💥 Error: {e}")
     finally:
         await crawler.close()

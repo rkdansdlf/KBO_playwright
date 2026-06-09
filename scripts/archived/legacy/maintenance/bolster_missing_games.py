@@ -65,7 +65,7 @@ async def bolster_missing_games(year_start=2010, year_end=2024):
                         print(f"⚪ Cancelled/No Data: {game_id}")
                         mark_game_as_cancelled(game_id)
                     cancelled_count += 1
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             print(f"❌ Batch error: {e}")
             fail_count += len(batch_args)
 
@@ -236,7 +236,7 @@ def save_game_data(game_id, data):
                 print(f"⚠️ No pitcher data for {game_id}; keeping existing pitching stats.")
 
             session.commit()
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             session.rollback()
             print(f"⚠️ Error saving {game_id}: {e}")
 
@@ -263,5 +263,5 @@ def mark_game_as_cancelled(game_id):
                 game.game_status = "CANCELLED"
                 session.commit()
                 # print(f"📝 DB updated: {game_id} -> CANCELLED")
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             print(f"❌ Failed to mark as cancelled {game_id}: {e}")

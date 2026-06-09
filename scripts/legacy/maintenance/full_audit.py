@@ -3,6 +3,11 @@
 
 from __future__ import annotations
 
+import logging
+
+logger = logging.getLogger(__name__)
+
+
 import argparse
 import json
 import os
@@ -506,13 +511,13 @@ def evaluate_strict_zero(report: Mapping[str, Any]) -> list[str]:
 
 
 def _print_section(title: str, values: Mapping[str, Any]) -> None:
-    print(f"\n--- {title} ---")
+    logger.info(f"\n--- {title} ---")
     for key, value in values.items():
-        print(f"  {key}: {value}")
+        logger.info(f"  {key}: {value}")
 
 
 def print_human_report(report: Mapping[str, Any], strict_failures: list[str]) -> None:
-    print("=== KBO Database Comprehensive Audit ===")
+    logger.info("=== KBO Database Comprehensive Audit ===")
     _print_section("1. Orphaned Records", report["orphans"])
     _print_section("2. Duplicate Records", report["duplicates"])
     _print_section("3. Player Team Collisions", report["team_collisions"])
@@ -523,15 +528,15 @@ def print_human_report(report: Mapping[str, Any], strict_failures: list[str]) ->
     _print_section("8. Pseudo Profiles", report["pseudo_profiles"])
 
     distributions = report.get("distributions", {})
-    print("\n--- 9. Logical Error Distributions ---")
+    logger.error("\n--- 9. Logical Error Distributions ---")
     for key, values in distributions.items():
         preview = dict(list(values.items())[:10])
-        print(f"  {key}: {preview}")
+        logger.info(f"  {key}: {preview}")
 
     if strict_failures:
-        print("\n--- Strict Zero Failures ---")
+        logger.info("\n--- Strict Zero Failures ---")
         for failure in strict_failures:
-            print(f"  - {failure}")
+            logger.info(f"  - {failure}")
 
 
 def run_audit(
@@ -601,12 +606,12 @@ def main(argv: list[str] | None = None) -> int:
     )
 
     if args.json:
-        print(json.dumps(result, ensure_ascii=False, indent=2))
+        logger.info(json.dumps(result, ensure_ascii=False, indent=2))
     else:
         print_human_report(result["report"], result["strict_failures"])
         if result["artifact_path"]:
-            print(f"\nArtifact: {result['artifact_path']}")
-        print(f"\nStatus: {'PASS' if result['ok'] else 'FAIL'}")
+            logger.info(f"\nArtifact: {result['artifact_path']}")
+        logger.info(f"\nStatus: {'PASS' if result['ok'] else 'FAIL'}")
 
     return 0 if result["ok"] else 1
 

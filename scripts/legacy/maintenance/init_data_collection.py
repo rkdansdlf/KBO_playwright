@@ -15,6 +15,10 @@ Deprecated for operational DB writes:
 6. Game Detail - Collect box scores, player stats
 """
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 import argparse
 import asyncio
 import json
@@ -32,9 +36,9 @@ from src.services.player_status_confirmer import PlayerStatusConfirmer
 
 async def step1_collect_player_list(season_year: int = 2024, confirm_limit: int = 200):
     """1단계: KBO 리그의 모든 선수(타자, 투수) 목록을 수집합니다."""
-    print("\n" + "=" * 60)
-    print("STEP 1: Collect Player List")
-    print("=" * 60)
+    logger.info("\n" + "=" * 60)
+    logger.info("STEP 1: Collect Player List")
+    logger.info("=" * 60)
 
     crawler = PlayerListCrawler()
     result = await crawler.crawl_all_players(season_year)
@@ -49,7 +53,7 @@ async def step1_collect_player_list(season_year: int = 2024, confirm_limit: int 
     with open(output_file, "w", encoding="utf-8") as f:
         json.dump(result, f, ensure_ascii=False, indent=2)
 
-    print(f"\n💾 Saved player list to: {output_file}")
+    logger.info(f"\n💾 Saved player list to: {output_file}")
     retired_count = len(result.get("retired", []))
     staff_count = len(result.get("staff", []))
     confirmed = confirm_stats.get("confirmed", 0)
@@ -58,16 +62,16 @@ async def step1_collect_player_list(season_year: int = 2024, confirm_limit: int 
         f"| Retired: {retired_count} | Staff: {staff_count} | Profile-confirmed: {confirmed}"
     )
     if confirm_stats.get("attempted"):
-        print(f"   ↳ Profile checks attempted: {confirm_stats['attempted']}")
+        logger.info(f"   ↳ Profile checks attempted: {confirm_stats['attempted']}")
 
     return result, confirm_stats
 
 
 async def step2_collect_player_profiles(player_list: dict, limit: int = 5, concurrency: int = 5):
     """Step 2: Collect player profile data (limited for POC)"""
-    print("\n" + "=" * 60)
-    print("STEP 2: Collect Player Profiles")
-    print("=" * 60)
+    logger.info("\n" + "=" * 60)
+    logger.info("STEP 2: Collect Player Profiles")
+    logger.info("=" * 60)
 
     crawler = PlayerProfileCrawler()
     profiles = []
@@ -78,10 +82,10 @@ async def step2_collect_player_profiles(player_list: dict, limit: int = 5, concu
     async def fetch(idx: int, player: dict):
         player_id = player.get("player_id")
         if not player_id:
-            print(f"⚠️  Skipping {player.get('player_name')} - no player ID")
+            logger.warning(f"⚠️  Skipping {player.get('player_name')} - no player ID")
             return None
         async with semaphore:
-            print(f"\n[{idx}/{len(all_players)}] Crawling profile: {player.get('player_name')}")
+            logger.info(f"\n[{idx}/{len(all_players)}] Crawling profile: {player.get('player_name')}")
             return await crawler.crawl_player_profile(player_id)
 
     tasks = [fetch(i + 1, player) for i, player in enumerate(all_players)]
@@ -96,7 +100,7 @@ async def step2_collect_player_profiles(player_list: dict, limit: int = 5, concu
     with open(output_file, "w", encoding="utf-8") as f:
         json.dump(profiles, f, ensure_ascii=False, indent=2)
 
-    print(f"\n💾 Saved {len(profiles)} player profiles to: {output_file}")
+    logger.info(f"\n💾 Saved {len(profiles)} player profiles to: {output_file}")
     status_updates = []
     id_to_entry = {}
     for bucket in ("hitters", "pitchers", "retired", "staff"):
@@ -126,9 +130,9 @@ async def step2_collect_player_profiles(player_list: dict, limit: int = 5, concu
 
 async def step5_collect_schedule(year: int, month: int):
     """Step 5: Collect game schedule"""
-    print("\n" + "=" * 60)
-    print("STEP 5: Collect Game Schedule")
-    print("=" * 60)
+    logger.info("\n" + "=" * 60)
+    logger.info("STEP 5: Collect Game Schedule")
+    logger.info("=" * 60)
 
     crawler = ScheduleCrawler()
     games = await crawler.crawl_schedule(year, month)
@@ -141,17 +145,17 @@ async def step5_collect_schedule(year: int, month: int):
     with open(output_file, "w", encoding="utf-8") as f:
         json.dump(games, f, ensure_ascii=False, indent=2)
 
-    print(f"\n💾 Saved schedule to: {output_file}")
-    print(f"📊 Total games: {len(games)}")
+    logger.info(f"\n💾 Saved schedule to: {output_file}")
+    logger.info(f"📊 Total games: {len(games)}")
 
     return games
 
 
 async def step6_collect_game_details(games: list, limit: int = 3, concurrency: int = 3):
     """Step 6: Collect game detail data (limited for POC)"""
-    print("\n" + "=" * 60)
-    print("STEP 6: Collect Game Details")
-    print("=" * 60)
+    logger.info("\n" + "=" * 60)
+    logger.info("STEP 6: Collect Game Details")
+    logger.info("=" * 60)
 
     crawler = GameDetailCrawler()
     game_details = []
@@ -161,7 +165,7 @@ async def step6_collect_game_details(games: list, limit: int = 3, concurrency: i
 
     async def fetch(idx: int, game: dict):
         async with semaphore:
-            print(f"\n[{idx}/{len(targets)}] Crawling game: {game['game_id']}")
+            logger.info(f"\n[{idx}/{len(targets)}] Crawling game: {game['game_id']}")
             return await crawler.crawl_game(game["game_id"], game["game_date"])
 
     tasks = [fetch(i + 1, game) for i, game in enumerate(targets)]
@@ -176,7 +180,7 @@ async def step6_collect_game_details(games: list, limit: int = 3, concurrency: i
     with open(output_file, "w", encoding="utf-8") as f:
         json.dump(game_details, f, ensure_ascii=False, indent=2)
 
-    print(f"\n💾 Saved {len(game_details)} game details to: {output_file}")
+    logger.info(f"\n💾 Saved {len(game_details)} game details to: {output_file}")
 
     return game_details
 
@@ -203,10 +207,10 @@ async def run_pipeline(args: argparse.Namespace):
         "[DEPRECATED] scripts/maintenance/init_data_collection.py is a bootstrap/demo workflow. "
         "Prefer the dedicated src.cli entrypoints for operational collection."
     )
-    print("\n" + "🚀" * 30)
-    print("KBO Initial Data Collection")
-    print("Following ProjectOverview.md order")
-    print("🚀" * 30)
+    logger.info("\n" + "🚀" * 30)
+    logger.info("KBO Initial Data Collection")
+    logger.info("Following ProjectOverview.md order")
+    logger.info("🚀" * 30)
     run_label = args.label or datetime.now(UTC).strftime("init_run_%Y%m%d_%H%M%S")
     started_at = datetime.now(UTC)
 
@@ -226,12 +230,12 @@ async def run_pipeline(args: argparse.Namespace):
                 concurrency=args.profile_concurrency,
             )
         else:
-            print("\n⚠️  Skipping profile collection (requested or no players)")
+            logger.warning("\n⚠️  Skipping profile collection (requested or no players)")
 
         # Step 3-4: Retired/Futures (TODO: implement later)
-        print("\n" + "⏭️ " * 30)
-        print("Step 3-4 (Retired/Futures): TODO - will implement later")
-        print("⏭️ " * 30)
+        logger.info("\n" + "⏭️ " * 30)
+        logger.info("Step 3-4 (Retired/Futures): TODO - will implement later")
+        logger.info("⏭️ " * 30)
 
         # Step 5: Schedule
         games = []
@@ -247,14 +251,14 @@ async def run_pipeline(args: argparse.Namespace):
                     concurrency=args.game_concurrency,
                 )
             else:
-                print("\n⚠️  No games found, skipping game detail collection")
+                logger.warning("\n⚠️  No games found, skipping game detail collection")
 
-        print("\n" + "✅" * 30)
-        print("Initial Data Collection Complete!")
-        print("✅" * 30)
+        logger.info("\n" + "✅" * 30)
+        logger.info("Initial Data Collection Complete!")
+        logger.info("✅" * 30)
 
         # Summary
-        print("\n=== Player Classification Summary ===")
+        logger.info("\n=== Player Classification Summary ===")
         all_entries = (
             player_list.get("hitters", [])
             + player_list.get("pitchers", [])
@@ -266,15 +270,15 @@ async def run_pipeline(args: argparse.Namespace):
         active_total = len(player_list.get("hitters", [])) + len(player_list.get("pitchers", []))
         retired_total = len(player_list.get("retired", []))
         staff_total = len(player_list.get("staff", []))
-        print(f"Active players: {active_total}")
-        print(f"Retired players: {retired_total}")
-        print(f"Staff entries: {staff_total}")
-        print(f"Confirmed by profile: {confirmed_profiles}")
-        print(f"Heuristic only: {heuristic_only}")
-        print("\n📊 Collection Summary:")
-        print(f"  Profiles collected: {len(profiles)}")
-        print(f"  Games scheduled: {len(games)}")
-        print(f"  Game details collected: {len(game_details)}")
+        logger.info(f"Active players: {active_total}")
+        logger.info(f"Retired players: {retired_total}")
+        logger.info(f"Staff entries: {staff_total}")
+        logger.info(f"Confirmed by profile: {confirmed_profiles}")
+        logger.info(f"Heuristic only: {heuristic_only}")
+        logger.info("\n📊 Collection Summary:")
+        logger.info(f"  Profiles collected: {len(profiles)}")
+        logger.info(f"  Games scheduled: {len(games)}")
+        logger.info(f"  Game details collected: {len(game_details)}")
 
         repo = CrawlRunRepository()
         repo.create_run(
@@ -288,8 +292,8 @@ async def run_pipeline(args: argparse.Namespace):
             heuristic_only=heuristic_only,
         )
 
-    except Exception as e:
-        print(f"\n❌ Error during data collection: {e}")
+    except Exception as e:  # noqa: BLE001
+        logger.error(f"\n❌ Error during data collection: {e}")
         import traceback
 
         traceback.print_exc()

@@ -123,7 +123,7 @@ class SlaTracker:
             overall_rate = 0
         logger.info(f"{'-' * 12} {'-' * 6} {'-' * 10} {'-' * 7} {'-' * 7} {'-' * 8}")
         logger.info(f"  {'TOTAL':<10} {totals['games']:>6} {totals['completed']:>10} {overall_rate:>6.0%}")
-        logger.info()
+        logger.info("")
 
     def send_weekly_sla_report(self, end_date: str | None = None) -> None:
         """

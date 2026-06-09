@@ -333,7 +333,7 @@ def _sa_run_count_check(
             samples=samples,
             severity=severity,
         )
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001
         return CheckResult(name=name, status="ERROR", severity=severity, error=str(exc))
 
 
