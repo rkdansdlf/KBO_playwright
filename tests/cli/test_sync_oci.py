@@ -1,4 +1,4 @@
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
 from src.cli.sync_oci import main
 
@@ -8,7 +8,7 @@ class TestSyncOCI:
         with patch("src.cli.sync_oci.get_oci_url", return_value=None):
             try:
                 main(["--game-details"])
-                assert False, "Should have raised SystemExit"
+                raise AssertionError("Should have raised SystemExit")
             except SystemExit:
                 pass
 

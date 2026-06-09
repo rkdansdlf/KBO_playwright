@@ -19,7 +19,7 @@ class TestDbHealthcheckCLI:
         with (
             patch("src.cli.db_healthcheck.Engine", mock_engine),
             patch("src.cli.db_healthcheck.inspect") as mock_inspect,
-            patch("src.cli.db_healthcheck.text") as mock_text,
+            patch("src.cli.db_healthcheck.text"),
         ):
             mock_inspector = MagicMock()
             mock_inspector.get_table_names.return_value = ["players", "teams"]

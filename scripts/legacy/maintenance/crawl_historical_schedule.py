@@ -21,7 +21,7 @@ from src.crawlers.schedule_crawler import ScheduleCrawler
 
 
 async def main():
-    print(
+    logger.info(
         "[MANIFEST] scripts/maintenance/crawl_historical_schedule.py writes JSON only. "
         "Use src.cli.crawl_schedule for DB schedule ingestion."
     )

@@ -6,6 +6,7 @@
 import logging
 import sqlite3
 from datetime import datetime
+from typing import Any
 
 from playwright.sync_api import sync_playwright
 
@@ -20,7 +21,7 @@ from src.utils.request_policy import RequestPolicy  # noqa: E402
 from src.utils.team_codes import resolve_team_code  # noqa: E402
 
 
-def build_fielding_crawl_summary(records):
+def build_fielding_crawl_summary(records) -> tuple[dict[str, Any], list[dict[str, Any]]]:
     valid_records, failure_counts = filter_valid_season_stat_payloads(
         records,
         stat_type="fielding",
@@ -34,7 +35,7 @@ def build_fielding_crawl_summary(records):
     return summary, valid_records
 
 
-def crawl_all_fielding_stats(year=None):
+def crawl_all_fielding_stats(year=None) -> list[dict[str, Any]]:
     """
     KBO 공식 홈페이지에서 팀별 수비 기록을 크롤링하여 전체 선수의 수비 기록을 수집합니다.
     팀별로 조회하여 전체 수비수(투수 포함)를 누락 없이 가져옵니다.
@@ -177,7 +178,7 @@ def crawl_all_fielding_stats(year=None):
                                     pos_id = position_mapping.get(pos_text, pos_text)
                                     team_id = resolve_team_code(row_team, year) or row_team
 
-                                    def parse_inns(txt):
+                                    def parse_inns(txt) -> float:
                                         txt = txt.strip().replace(",", "")
                                         if not txt or txt == "-":
                                             return 0.0
@@ -193,13 +194,13 @@ def crawl_all_fielding_stats(year=None):
                                             return float(frac[0]) / float(frac[1])
                                         return float(txt)
 
-                                    def s_int(cell_el):
+                                    def s_int(cell_el) -> int:
                                         try:
                                             return int(cell_el.inner_text().strip().replace(",", ""))
                                         except (ValueError, TypeError):
                                             return 0
 
-                                    def s_float(cell_el):
+                                    def s_float(cell_el) -> float:
                                         try:
                                             return float(cell_el.inner_text().strip().replace(",", ""))
                                         except (ValueError, TypeError):
@@ -305,13 +306,13 @@ def crawl_all_fielding_stats(year=None):
 
                             if key in fielding_data_map:
 
-                                def s_int(cell_el):
+                                def s_int(cell_el) -> int:
                                     try:
                                         return int(cell_el.inner_text().strip().replace(",", ""))
                                     except (ValueError, TypeError):
                                         return 0
 
-                                def s_float(cell_el):
+                                def s_float(cell_el) -> float:
                                     try:
                                         return float(cell_el.inner_text().strip().replace(",", ""))
                                     except (ValueError, TypeError):
@@ -346,7 +347,7 @@ def crawl_all_fielding_stats(year=None):
     return fielding_data
 
 
-def save_fielding_stats(year=None, db_path=None):
+def save_fielding_stats(year=None, db_path=None) -> None:
     """
     수비 기록을 크롤링하여 DB에 저장합니다.
 

@@ -1,4 +1,3 @@
-import pytest
 
 from src.crawlers.fielding_stats_crawler import build_fielding_crawl_summary
 

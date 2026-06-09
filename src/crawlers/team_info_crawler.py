@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import asyncio
 import logging
 
@@ -20,21 +22,21 @@ class TeamInfoCrawler:
 
     BASE_URL = "https://www.koreabaseball.com/Kbo/League/TeamInfo.aspx"
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.browser = None
         self.page = None
         self.playwright = None
         self.context = None
         self._raw_pages: list[dict] = []
 
-    async def start(self):
+    async def start(self) -> None:
         self.playwright = await async_playwright().start()
         self.browser = await self.playwright.chromium.launch(headless=True)
         self.context = await self.browser.new_context()
         await install_async_resource_blocking(self.context)
         self.page = await self.context.new_page()
 
-    async def close(self):
+    async def close(self) -> None:
         if self.context:
             await self.context.close()
         if self.browser:
@@ -42,7 +44,7 @@ class TeamInfoCrawler:
         if self.playwright:
             await self.playwright.stop()
 
-    async def crawl(self, save: bool = False):
+    async def crawl(self, save: bool = False) -> list[dict]:
         logger.info("Crawling Team Info from %s", self.BASE_URL)
         if not self.page:
             await self.start()
@@ -85,7 +87,7 @@ class TeamInfoCrawler:
                 try:
                     await modal.wait_for(state="visible", timeout=3000)
 
-                    async def get_modal_field(label: str):
+                    async def get_modal_field(label: str) -> str | None:
                         xpath = f".//th[normalize-space(text())='{label}']/following-sibling::td[1]"
                         el = modal.locator(f"xpath={xpath}")
                         if await el.count() > 0:
@@ -143,7 +145,7 @@ class TeamInfoCrawler:
             count = save_raw_snapshots(session, self._raw_pages)
             logger.info("Saved %d raw snapshots for team info.", count)
 
-    async def save(self, data: list[dict]):
+    async def save(self, data: list[dict]) -> None:
         logger.info("Saving %d team profiles...", len(data))
         with SessionLocal() as session:
             for item in data:

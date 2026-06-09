@@ -83,7 +83,7 @@ def resolve_player_basic_id(session: Session, name: str, team_code: str) -> int 
 
 
 class FACrawler:
-    def __init__(self, headless: bool = False):
+    def __init__(self, headless: bool = False) -> None:
         self.url = "https://namu.wiki/w/KBO%20%EB%A6%AC%EA%B7%B8/%EC%97%AD%EB%8C%80%20FA"
         self.headless = headless
 
@@ -235,7 +235,7 @@ class FACrawler:
         header = [h.strip() for h in header]
 
         # Helper to find column index by matching substring
-        def find_index(candidates):
+        def find_index(candidates) -> int:
             for candidate in candidates:
                 for idx, col in enumerate(header):
                     if candidate in col:
@@ -315,7 +315,7 @@ class FACrawler:
                 remarks_parts.append(row[remarks_idx].strip())
 
             # Additional column checks to collect details if they exist in separate columns
-            def check_and_add_col(candidates, prefix):
+            def check_and_add_col(candidates, prefix) -> None:
                 idx = find_index(candidates)
                 if idx != -1 and idx not in [remarks_idx, amount_idx, name_idx, year_idx]:
                     val = row[idx].strip()
@@ -365,7 +365,7 @@ class FACrawler:
             logger.exception("❌ Error loading JSON")
             return []
 
-    def save_to_db(self, data: list[dict[str, Any]], session: Session, dry_run: bool = False):
+    def save_to_db(self, data: list[dict[str, Any]], session: Session, dry_run: bool = False) -> None:
         """
         Saves or updates FA data in the database.
         """
@@ -516,7 +516,7 @@ class FACrawler:
                 logger.exception("❌ DB Error")
 
 
-async def main():
+async def main() -> None:
     parser = argparse.ArgumentParser(description="Crawl KBO FA Contracts from Namu Wiki")
     parser.add_argument("--year", type=int, help="Specific year to crawl (e.g. 2024)")
     parser.add_argument("--save", action="store_true", help="Save changes to database")

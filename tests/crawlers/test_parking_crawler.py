@@ -1,4 +1,3 @@
-import pytest
 
 from src.crawlers.parking_crawler import ParkingCrawler
 
@@ -30,4 +29,3 @@ class TestParseParkingPage:
         result = self.crawler._parse_parking_page(html, info)
         assert result[0]["lot"]["lot_type"] == "official"
         assert result[0]["lot"]["is_event_day_available"] is True
-    

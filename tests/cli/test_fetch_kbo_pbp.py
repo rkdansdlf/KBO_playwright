@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 from src.cli.fetch_kbo_pbp import main
 
@@ -12,7 +12,7 @@ class TestFetchKboPbpCLI:
 
     def test_main_with_season(self):
         with patch("src.cli.fetch_kbo_pbp.load_relay_recovery_targets") as mock_load, \
-             patch("src.cli.fetch_kbo_pbp.recover_relay_data", new_callable=AsyncMock) as mock_recover:
+             patch("src.cli.fetch_kbo_pbp.recover_relay_data", new_callable=AsyncMock):
             mock_load.return_value = []
             result = main(["--season", "2025"])
             assert result == 0

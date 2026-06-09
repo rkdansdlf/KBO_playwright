@@ -1,4 +1,4 @@
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 
 from src.cli.calculate_rankings import main
 
@@ -15,6 +15,6 @@ class TestCalculateRankings:
         import argparse
         try:
             main([])
-            assert False, "Should have raised SystemExit"
+            raise AssertionError("Should have raised SystemExit")
         except (argparse.ArgumentError, SystemExit):
             pass

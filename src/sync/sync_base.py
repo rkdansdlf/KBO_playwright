@@ -116,6 +116,25 @@ def _dedupe_records_for_conflict_keys(
     return deduped_records
 
 
+def _row_to_record(row, columns: list[str], transform_fn: Callable | None = None) -> dict[str, Any]:
+    now = datetime.now()
+    mapping = getattr(row, "_mapping", None)
+    if mapping is not None:
+        data = {c: mapping[c] for c in columns if c in mapping}
+    else:
+        data = {c: getattr(row, c) for c in columns if hasattr(row, c)}
+    if "created_at" in columns and data.get("created_at") is None:
+        data["created_at"] = now
+    if "updated_at" in columns and data.get("updated_at") is None:
+        data["updated_at"] = now
+    if transform_fn:
+        data = transform_fn(data)
+    for k, v in data.items():
+        if isinstance(v, (dict, list)):
+            data[k] = json.dumps(v, ensure_ascii=False)
+    return data
+
+
 def _execute_signature_query(session_or_conn, sql: str, *, game_ids: list[str] | None = None):
     stmt = text(sql)
     params = {}
@@ -204,6 +223,63 @@ def load_game_sync_signatures(session_or_conn, *, game_ids: list[str] | None = N
     return signatures
 
 
+def _is_game_dirty_by_game_section(game_id: str, local_sig: dict, remote_sig: dict) -> bool:
+    local_game = local_sig.get("game", {})
+    remote_game = remote_sig.get("game", {})
+    for key in (
+        "game_status",
+        "home_score",
+        "away_score",
+        "home_pitcher",
+        "away_pitcher",
+        "home_team",
+        "away_team",
+    ):
+        if local_game.get(key) != remote_game.get(key):
+            return True
+    return local_game.get("updated_at") is not None and (
+        remote_game.get("updated_at") is None
+        or str(local_game.get("updated_at")) > str(remote_game.get("updated_at"))
+    )
+
+
+def _is_game_dirty_by_metadata_section(game_id: str, local_sig: dict, remote_sig: dict) -> bool:
+    metadata_local = local_sig.get("game_metadata", {})
+    metadata_remote = remote_sig.get("game_metadata", {})
+    if metadata_local.get("row_count") != metadata_remote.get("row_count"):
+        return True
+    if metadata_local.get("start_time") != metadata_remote.get("start_time"):
+        return True
+    return metadata_local.get("max_updated_at") is not None and (
+        metadata_remote.get("max_updated_at") is None
+        or str(metadata_local.get("max_updated_at")) > str(metadata_remote.get("max_updated_at"))
+    )
+
+
+def _is_game_dirty_by_child_tables(game_id: str, local_sig: dict, remote_sig: dict) -> bool:
+    for table_name in GAME_SIGNATURE_CHILD_TABLES:
+        if table_name == "game_metadata":
+            continue
+        local_child = local_sig.get(table_name, {})
+        remote_child = remote_sig.get(table_name, {})
+        if local_child.get("row_count") != remote_child.get("row_count"):
+            return True
+        if local_child.get("max_updated_at") is not None and (
+            remote_child.get("max_updated_at") is None
+            or str(local_child.get("max_updated_at")) > str(remote_child.get("max_updated_at"))
+        ):
+            return True
+    return False
+
+
+def _is_game_dirty(game_id: str, local_sig: dict, remote_sig: dict) -> bool:
+    return (
+        _is_game_dirty_by_game_section(game_id, local_sig, remote_sig)
+        or _is_game_dirty_by_metadata_section(game_id, local_sig, remote_sig)
+        or _is_game_dirty_by_child_tables(game_id, local_sig, remote_sig)
+    )
+
+
 def detect_dirty_game_ids(
     local_session_or_conn, remote_session_or_conn, *, game_ids: list[str] | None = None
 ) -> list[str]:
@@ -213,64 +289,8 @@ def detect_dirty_game_ids(
     dirty: list[str] = []
     for game_id, local_signature in local_signatures.items():
         remote_signature = remote_signatures.get(game_id)
-        if remote_signature is None:
+        if remote_signature is None or _is_game_dirty(game_id, local_signature, remote_signature):
             dirty.append(game_id)
-            continue
-
-        local_game = local_signature["game"]
-        remote_game = remote_signature.get("game", {})
-        for key in (
-            "game_status",
-            "home_score",
-            "away_score",
-            "home_pitcher",
-            "away_pitcher",
-            "home_team",
-            "away_team",
-        ):
-            if local_game.get(key) != remote_game.get(key):
-                dirty.append(game_id)
-                break
-        else:
-            if local_game.get("updated_at") is not None and (
-                remote_game.get("updated_at") is None
-                or str(local_game.get("updated_at")) > str(remote_game.get("updated_at"))
-            ):
-                dirty.append(game_id)
-                continue
-
-        if dirty and dirty[-1] == game_id:
-            continue
-
-        metadata_local = local_signature.get("game_metadata", {})
-        metadata_remote = remote_signature.get("game_metadata", {})
-        if metadata_local.get("row_count") != metadata_remote.get("row_count"):
-            dirty.append(game_id)
-            continue
-        if metadata_local.get("start_time") != metadata_remote.get("start_time"):
-            dirty.append(game_id)
-            continue
-        if metadata_local.get("max_updated_at") is not None and (
-            metadata_remote.get("max_updated_at") is None
-            or str(metadata_local.get("max_updated_at")) > str(metadata_remote.get("max_updated_at"))
-        ):
-            dirty.append(game_id)
-            continue
-
-        for table_name in GAME_SIGNATURE_CHILD_TABLES:
-            if table_name == "game_metadata":
-                continue
-            local_child = local_signature.get(table_name, {})
-            remote_child = remote_signature.get(table_name, {})
-            if local_child.get("row_count") != remote_child.get("row_count"):
-                dirty.append(game_id)
-                break
-            if local_child.get("max_updated_at") is not None and (
-                remote_child.get("max_updated_at") is None
-                or str(local_child.get("max_updated_at")) > str(remote_child.get("max_updated_at"))
-            ):
-                dirty.append(game_id)
-                break
 
     return dirty
 
@@ -696,27 +716,7 @@ class OCISyncBase:
                 self._reconnect_oci()
                 time.sleep(wait_seconds)
 
-    def sync_simple_table(
-        self,
-        model: type,
-        conflict_keys: list[str],
-        exclude_cols: list[str] = None,
-        filters: list = None,
-        transform_fn: Callable | None = None,
-        batch_size: int = 10000,
-        update_timestamp: bool | None = None,
-    ) -> int:
-        """Generic sync parameter for simple tables using Batched UPSERT or COPY."""
-        if exclude_cols is None:
-            exclude_cols = ["id"]  # Default to exclude ID for auto-inc compatibility
-        elif "id" not in exclude_cols:
-            exclude_cols.append("id")
-
-        if not self._target_table_exists(model):
-            logger.info(f"ℹ️ Skipping missing OCI table: {model.__tablename__}")
-            return 0
-
-        # Use all columns except those explicitly excluded and not present in target DB.
+    def _resolve_sync_columns(self, model: type, exclude_cols: list[str]) -> list[str]:
         if getattr(self, "oci_engine", None) is not None:
             target_column_defs = {c["name"]: c for c in inspect(self.oci_engine).get_columns(model.__tablename__)}
             target_columns = set(target_column_defs)
@@ -754,6 +754,29 @@ class OCISyncBase:
             if source_payload_length and source_payload_length <= 255:
                 columns.remove("source_payload")
                 logger.info("ℹ️ Skipping game_metadata.source_payload for legacy OCI varchar column")
+        return columns
+
+    def sync_simple_table(
+        self,
+        model: type,
+        conflict_keys: list[str],
+        exclude_cols: list[str] = None,
+        filters: list = None,
+        transform_fn: Callable | None = None,
+        batch_size: int = 10000,
+        update_timestamp: bool | None = None,
+    ) -> int:
+        """Generic sync parameter for simple tables using Batched UPSERT or COPY."""
+        if exclude_cols is None:
+            exclude_cols = ["id"]
+        elif "id" not in exclude_cols:
+            exclude_cols.append("id")
+
+        if not self._target_table_exists(model):
+            logger.info(f"ℹ️ Skipping missing OCI table: {model.__tablename__}")
+            return 0
+
+        columns = self._resolve_sync_columns(model, exclude_cols)
         if not columns:
             logger.info(f"ℹ️ No compatible columns for {model.__tablename__}")
             return 0
@@ -768,47 +791,26 @@ class OCISyncBase:
             return 0
 
         logger.info(f"🚚 Syncing {model.__tablename__} ({total_count} rows, batch={batch_size})...")
+        if update_timestamp is None:
+            update_timestamp = "updated_at" not in exclude_cols
 
+        return self._sync_in_batches(model, query, total_count, columns, conflict_keys, transform_fn, batch_size, update_timestamp)
+
+    def _sync_in_batches(self, model, query, total_count, columns, conflict_keys, transform_fn, batch_size, update_timestamp):
         connection = None
         if self.oci_engine is not None:
             connection = self.oci_engine.raw_connection()
+        synced = 0
         try:
-            synced = 0
             for offset in range(0, total_count, batch_size):
                 rows = query.offset(offset).limit(batch_size).all()
-                records = []
-                for row in rows:
-                    mapping = getattr(row, "_mapping", None)
-                    if mapping is not None:
-                        data = {c: mapping[c] for c in columns if c in mapping}
-                    else:
-                        data = {c: getattr(row, c) for c in columns if hasattr(row, c)}
-
-                    now = datetime.now()
-                    if "created_at" in columns and data.get("created_at") is None:
-                        data["created_at"] = now
-                    if "updated_at" in columns and data.get("updated_at") is None:
-                        data["updated_at"] = now
-
-                    if transform_fn:
-                        data = transform_fn(data)
-
-                    for k, v in data.items():
-                        if isinstance(v, (dict, list)):
-                            data[k] = json.dumps(v, ensure_ascii=False)
-                    records.append(data)
-
+                records = [_row_to_record(row, columns, transform_fn) for row in rows]
                 records = _dedupe_records_for_conflict_keys(records, conflict_keys)
-
-                if update_timestamp is None:
-                    effective_update_timestamp = "updated_at" not in exclude_cols
-                else:
-                    effective_update_timestamp = update_timestamp
                 self._bulk_copy_upsert(
                     model.__tablename__,
                     records,
                     conflict_keys,
-                    update_timestamp=effective_update_timestamp,
+                    update_timestamp=update_timestamp,
                     connection=connection,
                 )
                 synced += len(records)
@@ -819,7 +821,6 @@ class OCISyncBase:
                     connection.close()
                 except Exception:  # noqa: BLE001
                     logger.warning("Failed to close connection, already closed or aborted", exc_info=True)
-
         return synced
 
     def _do_bulk_copy_upsert(

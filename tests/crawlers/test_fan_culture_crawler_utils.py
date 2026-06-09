@@ -1,9 +1,5 @@
 from __future__ import annotations
 
-from datetime import datetime
-
-import pytest
-
 from src.crawlers.fan_culture_crawler import _extract_season, _video_to_song
 from src.utils.youtube_api_client import YouTubeVideoItem
 

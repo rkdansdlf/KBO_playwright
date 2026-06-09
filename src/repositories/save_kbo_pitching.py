@@ -64,7 +64,7 @@ def save_pitching_stats(pitching_stats: list[dict[str, Any]]) -> int:
             raise
 
 
-def _upsert_pitching_data(session: Session, data: dict[str, Any]):
+def _upsert_pitching_data(session: Session, data: dict[str, Any]) -> None:
     """투수 데이터를 player_season_batting 테이블에 UPSERT"""
 
     # SQLite UPSERT 구문

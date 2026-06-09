@@ -38,7 +38,7 @@ MENU_PATTERN = re.compile(r"([가-힣a-zA-Z0-9\s]{2,30})\s*:?\s*(\d{1,3}(?:,\d{3
 
 
 class FoodCrawler:
-    def __init__(self):
+    def __init__(self) -> None:
         self._raw_pages: list[dict] = []
 
     async def run(self, save: bool = False, team_filter: str | None = None) -> list[dict[str, Any]]:

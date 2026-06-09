@@ -17,7 +17,7 @@ from src.crawlers.schedule_crawler import ScheduleCrawler
 
 
 async def collect_historical_game_ids(start_year: int, end_year: int):
-    print(
+    logger.info(
         "[MANIFEST] scripts/maintenance/collect_historical_game_ids.py writes JSON only. "
         "Use src.cli.crawl_schedule for DB schedule ingestion."
     )

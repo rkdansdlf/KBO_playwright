@@ -22,7 +22,7 @@ from src.utils.player_validation import filter_valid_player_payloads, validate_p
 class PlayerBasicRepository:
     """Repository for player_basic table operations"""
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.dialect = Engine.dialect.name
         self.last_filter_counts: Counter = Counter()
 
@@ -149,7 +149,7 @@ class PlayerBasicRepository:
                 logger.exception("[ERROR] Error upserting players")
                 raise
 
-    def _upsert_one(self, session: Session, player_data: dict[str, Any]):
+    def _upsert_one(self, session: Session, player_data: dict[str, Any]) -> None:
         """UPSERT single player (SQLite/PostgreSQL compatible)"""
         ok, reason = validate_player_payload(player_data)
         if not ok:

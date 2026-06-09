@@ -1,11 +1,6 @@
-import pytest
-from datetime import datetime
 
 from src.crawlers.relay_crawler import (
     RelayCrawler,
-    KBO_TO_NAVER_TEAM_CODE,
-    _events_to_legacy_innings,
-    _pbp_rows_to_legacy_innings,
 )
 
 

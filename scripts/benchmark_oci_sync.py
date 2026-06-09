@@ -180,7 +180,7 @@ class BenchSuite:
             if r.note:
                 label += f" ({r.note})"
             logger.info(f"  {label:<50} {r.rows:>8} {r.batch_size:>7} {r.elapsed:>10.3f} {rows_s}")
-        print()
+        logger.info("")
 
 
 # ── benchmark 1: sync_simple_table read-side throughput ────────────────

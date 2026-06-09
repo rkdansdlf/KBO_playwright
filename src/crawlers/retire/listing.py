@@ -20,7 +20,7 @@ class RetiredPlayerListingCrawler:
     Fetch player ID sets for historical seasons and compute inactive (retired) candidates.
     """
 
-    def __init__(self, request_delay: float = 1.5, pool: AsyncPlaywrightPool | None = None):
+    def __init__(self, request_delay: float = 1.5, pool: AsyncPlaywrightPool | None = None) -> None:
         self.request_delay = request_delay
         self.pool = pool
         self.hitter_url = "https://www.koreabaseball.com/Record/Player/HitterBasic/Basic1.aspx"
@@ -210,7 +210,7 @@ class RetiredPlayerListingCrawler:
 
         semaphore = asyncio.Semaphore(10)  # Allow 10 concurrent years
 
-        async def fetch_year(season):
+        async def fetch_year(season: int) -> dict[str, str]:
             async with semaphore:
                 logger.info(f"  Fetching IDs for {season}...")
                 try:
@@ -261,7 +261,7 @@ class RetiredPlayerListingCrawler:
         return ids
 
 
-async def main():
+async def main() -> None:
     crawler = RetiredPlayerListingCrawler(request_delay=1.0)
     inactive_ids = await crawler.determine_inactive_player_ids(start_year=1982, end_year=2023, active_year=2024)
     logger.info(f"Inactive player IDs discovered: {len(inactive_ids)}")

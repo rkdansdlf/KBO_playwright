@@ -1,4 +1,4 @@
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 
 from src.cli.regenerate_review_summaries import main
 
@@ -7,7 +7,7 @@ class TestRegenerateReviewSummaries:
     def test_no_args_errors(self):
         try:
             main([])
-            assert False, "Should have raised SystemExit"
+            raise AssertionError("Should have raised SystemExit")
         except SystemExit:
             pass
 

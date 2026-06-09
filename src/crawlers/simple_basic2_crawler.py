@@ -242,7 +242,7 @@ def collect_current_page_bb_data(page: Page, year: int) -> dict[int, dict]:
     return page_data
 
 
-def main():
+def main() -> None:
     """메인 실행 함수"""
     YEAR = datetime.now().year
 

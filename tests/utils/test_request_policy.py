@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from src.utils.request_policy import RequestPolicy, DEFAULT_USER_AGENTS
+from src.utils.request_policy import DEFAULT_USER_AGENTS, RequestPolicy
 
 
 class TestInit:

@@ -1,11 +1,11 @@
 import pytest
 
 from src.crawlers.player_pitching_all_series_crawler import (
-    normalize_header,
-    safe_int,
-    safe_float,
-    parse_innings,
     extract_player_id,
+    normalize_header,
+    parse_innings,
+    safe_float,
+    safe_int,
 )
 
 

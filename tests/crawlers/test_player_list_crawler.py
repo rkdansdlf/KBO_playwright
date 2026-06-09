@@ -1,9 +1,5 @@
 from __future__ import annotations
 
-from unittest.mock import MagicMock
-
-import pytest
-
 from src.crawlers.player_list_crawler import _is_pitcher, _row_to_dict
 from src.crawlers.player_search_crawler import PlayerRow
 

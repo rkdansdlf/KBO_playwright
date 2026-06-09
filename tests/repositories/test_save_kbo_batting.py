@@ -7,7 +7,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from src.db.engine import Engine
-from src.repositories.save_kbo_batting import save_kbo_player_season_batting, save_kbo_batting_batch
+from src.repositories.save_kbo_batting import save_kbo_batting_batch, save_kbo_player_season_batting
 
 
 @pytest.fixture
@@ -18,8 +18,6 @@ def engine():
 @pytest.fixture
 def session(engine):
     from src.models.base import Base
-    from src.models.player import PlayerSeasonBatting
-    import src.models.team
 
     Base.metadata.create_all(bind=engine)
     Session = sessionmaker(bind=engine, expire_on_commit=False)

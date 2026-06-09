@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from src.crawlers.relay_crawler import RelayCrawler
 
 
 class NaverRelayCrawler(RelayCrawler):
-    async def crawl_game_events(self, game_id: str):
+    async def crawl_game_events(self, game_id: str) -> dict[str, Any] | None:
         return await self.crawl_game_relay(game_id)

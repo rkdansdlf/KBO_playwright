@@ -11,7 +11,6 @@ from src.models.season import KboSeason
 from src.models.standings import TeamStandingsDaily
 from src.validators.standings_integrity import validate_standings_integrity
 
-
 # ── Fixtures ─────────────────────────────────────────────────────────────────
 
 

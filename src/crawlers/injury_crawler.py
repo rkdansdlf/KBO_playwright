@@ -91,7 +91,7 @@ class InjuryCrawler(NaverNewsCrawlerBase):
             "source_url": url,
         }
 
-    def _save_to_db(self, data: list[dict]):
+    def _save_to_db(self, data: list[dict]) -> None:
         session = SessionLocal()
         repo = InjuryRepository(session)
         count = 0

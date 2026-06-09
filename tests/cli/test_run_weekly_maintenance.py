@@ -35,7 +35,7 @@ class TestRunWeeklyMaintenanceCLI:
              patch("src.cli.run_weekly_maintenance.healthcheck_main"), \
              patch("src.crawlers.team_event_crawler.TeamEventCrawler") as MockEvents, \
              patch("src.crawlers.fan_culture_crawler.FanCultureCrawler") as MockFC, \
-             patch("src.cli.run_weekly_maintenance.SessionLocal") as mock_sesh, \
+             patch("src.cli.run_weekly_maintenance.SessionLocal"), \
              patch("src.cli.run_weekly_maintenance.OCISync") as MockSync, \
              patch("src.cli.run_weekly_maintenance.cleanup_oci_duplicates") as mock_cleanup, \
              patch("src.cli.run_weekly_maintenance.os.getenv", return_value="postgresql://fake"):

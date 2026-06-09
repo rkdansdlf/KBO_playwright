@@ -7,7 +7,7 @@ from __future__ import annotations
 import logging
 import os
 from collections.abc import Iterable
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, time
 from decimal import Decimal, InvalidOperation
 from typing import Any
 
@@ -61,6 +61,38 @@ SEASON_TYPE_TO_LEAGUE_CODE = {
     "korean_series": 5,
 }
 
+SEASON_DATE_RULES: dict[int, list[tuple[str, str, str]]] = {
+    2023: [
+        ("2023-03-13", "2023-03-28", "시범경기"),
+        ("2023-10-19", "2023-10-19", "와일드카드"),
+        ("2023-10-22", "2023-10-25", "준플레이오프"),
+        ("2023-10-30", "2023-11-05", "플레이오프"),
+        ("2023-11-07", "2023-11-13", "한국시리즈"),
+    ],
+    2024: [
+        ("2024-03-09", "2024-03-19", "시범경기"),
+        ("2024-07-06", "2024-07-06", "올스타전"),
+        ("2024-10-02", "2024-10-03", "와일드카드"),
+        ("2024-10-05", "2024-10-11", "준플레이오프"),
+        ("2024-10-13", "2024-10-19", "플레이오프"),
+        ("2024-10-21", "2024-10-30", "한국시리즈"),
+    ],
+    2025: [
+        ("2025-03-08", "2025-03-18", "시범경기"),
+        ("2025-10-06", "2025-10-07", "와일드카드"),
+        ("2025-10-09", "2025-10-14", "준플레이오프"),
+        ("2025-10-18", "2025-10-24", "플레이오프"),
+        ("2025-10-26", "2025-11-01", "한국시리즈"),
+    ],
+    2026: [
+        ("2026-03-07", "2026-03-17", "시범경기"),
+        ("2026-10-06", "2026-10-07", "와일드카드"),
+        ("2026-10-09", "2026-10-14", "준플레이오프"),
+        ("2026-10-18", "2026-10-24", "플레이오프"),
+        ("2026-10-26", "2026-11-01", "한국시리즈"),
+    ],
+}
+
 
 def _coerce_int(value: Any) -> int | None:
     if value in (None, ""):
@@ -79,117 +111,71 @@ def _resolve_league_type_code(season_type: Any) -> int:
     return SEASON_TYPE_TO_LEAGUE_CODE.get(key, 0)
 
 
-def _resolve_schedule_season_id(session, game_data: dict[str, Any], existing_season_id: int | None) -> int | None:
-    from datetime import date, datetime
-
-    explicit = _coerce_int(game_data.get("season_id"))
-    if explicit is not None:
-        return explicit
-
-    season_year = _coerce_int(game_data.get("season_year"))
-
-    # Resolve game date object if available
-    raw_date = game_data.get("game_date")
-    game_date_obj = None
+def _resolve_game_date_obj(raw_date: Any) -> date | None:
     if isinstance(raw_date, date):
-        game_date_obj = raw_date
-    elif isinstance(raw_date, datetime):
-        game_date_obj = raw_date.date()
-    elif isinstance(raw_date, str):
+        return raw_date
+    if isinstance(raw_date, datetime):
+        return raw_date.date()
+    if isinstance(raw_date, str):
         val_clean = raw_date.replace("-", "").replace("/", "").strip()
         if len(val_clean) == 8 and val_clean.isdigit():
             with contextlib.suppress(ValueError):
-                game_date_obj = date(int(val_clean[:4]), int(val_clean[4:6]), int(val_clean[6:]))
+                return date(int(val_clean[:4]), int(val_clean[4:6]), int(val_clean[6:]))
+    return None
 
-    if game_date_obj is not None:
-        season_year = game_date_obj.year
 
-        # 1. Try to query database using start_date/end_date ranges
-        try:
-            mapped = _coerce_int(
-                session.execute(
-                    text(
-                        """
-                        SELECT MIN(season_id)
-                        FROM kbo_seasons
-                        WHERE season_year = :season_year
-                          AND start_date IS NOT NULL
-                          AND end_date IS NOT NULL
-                          AND :game_date BETWEEN start_date AND end_date
-                        """
-                    ),
-                    {"season_year": season_year, "game_date": game_date_obj},
-                ).scalar()
-            )
-            if mapped is not None:
-                return mapped
-        except SQLAlchemyError:
-            logger.warning("Failed to query season_id from database")
-
-        # 2. Fallback to hardcoded historical rules for 2023–2026
-        SEASON_DATE_RULES = {
-            2023: [
-                ("2023-03-13", "2023-03-28", "시범경기"),
-                ("2023-10-19", "2023-10-19", "와일드카드"),
-                ("2023-10-22", "2023-10-25", "준플레이오프"),
-                ("2023-10-30", "2023-11-05", "플레이오프"),
-                ("2023-11-07", "2023-11-13", "한국시리즈"),
-            ],
-            2024: [
-                ("2024-03-09", "2024-03-19", "시범경기"),
-                ("2024-07-06", "2024-07-06", "올스타전"),
-                ("2024-10-02", "2024-10-03", "와일드카드"),
-                ("2024-10-05", "2024-10-11", "준플레이오프"),
-                ("2024-10-13", "2024-10-19", "플레이오프"),
-                ("2024-10-21", "2024-10-30", "한국시리즈"),
-            ],
-            2025: [
-                ("2025-03-08", "2025-03-18", "시범경기"),
-                ("2025-10-06", "2025-10-07", "와일드카드"),
-                ("2025-10-09", "2025-10-14", "준플레이오프"),
-                ("2025-10-18", "2025-10-24", "플레이오프"),
-                ("2025-10-26", "2025-11-01", "한국시리즈"),
-            ],
-            2026: [
-                ("2026-03-07", "2026-03-17", "시범경기"),
-                ("2026-10-06", "2026-10-07", "와일드카드"),
-                ("2026-10-09", "2026-10-14", "준플레이오프"),
-                ("2026-10-18", "2026-10-24", "플레이오프"),
-                ("2026-10-26", "2026-11-01", "한국시리즈"),
-            ],
-        }
-
-        rules = SEASON_DATE_RULES.get(season_year, [])
-        for start_str, end_str, type_name in rules:
-            try:
-                start_dt = date.fromisoformat(start_str)
-                end_dt = date.fromisoformat(end_str)
-                if start_dt <= game_date_obj <= end_dt:
-                    mapped = _coerce_int(
-                        session.execute(
-                            text(
-                                """
-                                SELECT MIN(season_id)
-                                FROM kbo_seasons
-                                WHERE season_year = :season_year
-                                  AND league_type_name = :league_type_name
-                                """
-                            ),
-                            {"season_year": season_year, "league_type_name": type_name},
-                        ).scalar()
-                    )
-                    if mapped is not None:
-                        return mapped
-            except SQLAlchemyError:
-                logger.warning("Failed to apply season date rule")
-
-    if season_year is None:
-        return existing_season_id
-
-    league_type_code = _resolve_league_type_code(game_data.get("season_type"))
-    mapped: int | None = None
+def _query_db_season_by_date_range(session, season_year: int, game_date: date) -> int | None:
     try:
-        mapped = _coerce_int(
+        return _coerce_int(
+            session.execute(
+                text(
+                    """
+                    SELECT MIN(season_id)
+                    FROM kbo_seasons
+                    WHERE season_year = :season_year
+                      AND start_date IS NOT NULL
+                      AND end_date IS NOT NULL
+                      AND :game_date BETWEEN start_date AND end_date
+                    """
+                ),
+                {"season_year": season_year, "game_date": game_date},
+            ).scalar()
+        )
+    except SQLAlchemyError:
+        logger.warning("Failed to query season_id from database")
+        return None
+
+
+def _apply_season_date_rules(session, season_year: int, game_date: date) -> int | None:
+    rules = SEASON_DATE_RULES.get(season_year, [])
+    for start_str, end_str, type_name in rules:
+        try:
+            start_dt = date.fromisoformat(start_str)
+            end_dt = date.fromisoformat(end_str)
+            if start_dt <= game_date <= end_dt:
+                mapped = _coerce_int(
+                    session.execute(
+                        text(
+                            """
+                            SELECT MIN(season_id)
+                            FROM kbo_seasons
+                            WHERE season_year = :season_year
+                              AND league_type_name = :league_type_name
+                            """
+                        ),
+                        {"season_year": season_year, "league_type_name": type_name},
+                    ).scalar()
+                )
+                if mapped is not None:
+                    return mapped
+        except SQLAlchemyError:
+            logger.warning("Failed to apply season date rule")
+    return None
+
+
+def _query_db_season_by_code(session, season_year: int, league_type_code: int) -> int | None:
+    try:
+        return _coerce_int(
             session.execute(
                 text(
                     """
@@ -204,8 +190,31 @@ def _resolve_schedule_season_id(session, game_data: dict[str, Any], existing_sea
         )
     except SQLAlchemyError:
         logger.warning("Failed to query season_id from kbo_seasons")
-        mapped = None
+        return None
 
+
+def _resolve_schedule_season_id(session, game_data: dict[str, Any], existing_season_id: int | None) -> int | None:
+    explicit = _coerce_int(game_data.get("season_id"))
+    if explicit is not None:
+        return explicit
+
+    season_year = _coerce_int(game_data.get("season_year"))
+    game_date_obj = _resolve_game_date_obj(game_data.get("game_date"))
+
+    if game_date_obj is not None:
+        season_year = game_date_obj.year
+        mapped = _query_db_season_by_date_range(session, season_year, game_date_obj)
+        if mapped is not None:
+            return mapped
+        mapped = _apply_season_date_rules(session, season_year, game_date_obj)
+        if mapped is not None:
+            return mapped
+
+    if season_year is None:
+        return existing_season_id
+
+    league_type_code = _resolve_league_type_code(game_data.get("season_type"))
+    mapped = _query_db_season_by_code(session, season_year, league_type_code)
     if mapped is not None:
         return mapped
     if existing_season_id is not None:
@@ -564,81 +573,31 @@ def _upsert_metadata(
         if source and write_contract:
             write_contract.field_updated(game_id, source, "metadata.created", None, True)
 
-    if metadata.get("stadium_code") not in (None, ""):
-        changed |= _assign_field_if_changed(
-            meta,
-            "stadium_code",
-            metadata.get("stadium_code"),
-            game_id=game_id,
-            source=source or GameWriteSource("metadata", "unknown"),
-            write_contract=write_contract,
-            field="metadata.stadium_code",
-        )
-    if metadata.get("stadium") not in (None, ""):
-        changed |= _assign_field_if_changed(
-            meta,
-            "stadium_name",
-            metadata.get("stadium"),
-            game_id=game_id,
-            source=source or GameWriteSource("metadata", "unknown"),
-            write_contract=write_contract,
-            field="metadata.stadium_name",
-        )
-    if metadata.get("attendance") not in (None, ""):
-        changed |= _assign_field_if_changed(
-            meta,
-            "attendance",
-            metadata.get("attendance"),
-            game_id=game_id,
-            source=source or GameWriteSource("metadata", "unknown"),
-            write_contract=write_contract,
-            field="metadata.attendance",
-        )
+    _WRITE_SOURCE = source or GameWriteSource("metadata", "unknown")
 
-    start_time = _safe_time(metadata.get("start_time"))
-    if start_time is not None:
-        changed |= _assign_field_if_changed(
-            meta,
-            "start_time",
-            start_time,
-            game_id=game_id,
-            source=source or GameWriteSource("metadata", "unknown"),
-            write_contract=write_contract,
-            field="metadata.start_time",
-        )
-
-    end_time = _safe_time(metadata.get("end_time"))
-    if end_time is not None:
-        changed |= _assign_field_if_changed(
-            meta,
-            "end_time",
-            end_time,
-            game_id=game_id,
-            source=source or GameWriteSource("metadata", "unknown"),
-            write_contract=write_contract,
-            field="metadata.end_time",
-        )
-
-    if metadata.get("duration_minutes") not in (None, ""):
-        changed |= _assign_field_if_changed(
-            meta,
-            "game_time_minutes",
-            metadata.get("duration_minutes"),
-            game_id=game_id,
-            source=source or GameWriteSource("metadata", "unknown"),
-            write_contract=write_contract,
-            field="metadata.game_time_minutes",
-        )
-    if metadata.get("weather") not in (None, ""):
-        changed |= _assign_field_if_changed(
-            meta,
-            "weather",
-            metadata.get("weather"),
-            game_id=game_id,
-            source=source or GameWriteSource("metadata", "unknown"),
-            write_contract=write_contract,
-            field="metadata.weather",
-        )
+    FIELD_MAP: list[tuple[str, str, str, bool]] = [
+        ("stadium_code", "stadium_code", "metadata.stadium_code", False),
+        ("stadium", "stadium_name", "metadata.stadium_name", False),
+        ("attendance", "attendance", "metadata.attendance", False),
+        ("start_time", "start_time", "metadata.start_time", True),
+        ("end_time", "end_time", "metadata.end_time", True),
+        ("duration_minutes", "game_time_minutes", "metadata.game_time_minutes", False),
+        ("weather", "weather", "metadata.weather", False),
+    ]
+    for meta_key, attr_name, field_name, use_safe_time in FIELD_MAP:
+        raw = metadata.get(meta_key)
+        if raw not in (None, ""):
+            val = _safe_time(raw) if use_safe_time else raw
+            if val is not None:
+                changed |= _assign_field_if_changed(
+                    meta,
+                    attr_name,
+                    val,
+                    game_id=game_id,
+                    source=_WRITE_SOURCE,
+                    write_contract=write_contract,
+                    field=field_name,
+                )
 
     if metadata:
         existing_payload = meta.source_payload if isinstance(meta.source_payload, dict) else {}
@@ -651,7 +610,7 @@ def _upsert_metadata(
             "source_payload",
             merged_payload or None,
             game_id=game_id,
-            source=source or GameWriteSource("metadata", "unknown"),
+            source=_WRITE_SOURCE,
             write_contract=write_contract,
             field="metadata.source_payload",
             allow_empty=True,
@@ -921,7 +880,7 @@ def _outs_to_decimal(outs: Any) -> Any:
         return None
 
 
-def _safe_time(value: Any):
+def _safe_time(value: Any) -> time | None:
     if not value:
         return None
     if isinstance(value, datetime):
@@ -1292,7 +1251,7 @@ def _clean_extras(extras: dict[str, Any] | None) -> dict[str, Any] | None:
     return cleaned if cleaned else None
 
 
-def _auto_sync_to_oci(game_id: str):
+def _auto_sync_to_oci(game_id: str) -> None:
     """Helper to trigger OCI synchronization if enabled."""
     if os.getenv("AUTO_SYNC_OCI") == "true":
         try:

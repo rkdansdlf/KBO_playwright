@@ -16,7 +16,7 @@ _HEADERS = {
 
 
 class DataSourceRepository:
-    def __init__(self, session: Session):
+    def __init__(self, session: Session) -> None:
         self.session = session
 
     def save(self, data: dict) -> DataSource:
@@ -72,7 +72,7 @@ class DataSourceRepository:
 
 
 class RawSourceSnapshotRepository:
-    def __init__(self, session: Session):
+    def __init__(self, session: Session) -> None:
         self.session = session
 
     def save(self, data: dict) -> RawSourceSnapshot:

@@ -4,7 +4,7 @@ from datetime import date
 
 import pytest
 from sqlalchemy import create_engine
-from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy.orm import sessionmaker
 
 from src.aggregators.park_factor_calculator import ParkFactorCalculator
 from src.models.game import Game

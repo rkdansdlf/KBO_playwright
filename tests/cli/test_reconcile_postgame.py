@@ -7,7 +7,7 @@ from src.cli.reconcile_postgame import main
 
 class TestReconcilePostgameCLI:
     def test_main_single_date(self):
-        with patch("src.cli.reconcile_postgame.SessionLocal") as mock_sesh, \
+        with patch("src.cli.reconcile_postgame.SessionLocal"), \
              patch("src.cli.reconcile_postgame.PlayerIdResolver"), \
              patch("src.cli.reconcile_postgame.GameDetailCrawler"), \
              patch("src.cli.reconcile_postgame.reconcile_postgame_range", new_callable=AsyncMock) as mock_reconcile, \
@@ -25,7 +25,7 @@ class TestReconcilePostgameCLI:
             mock_reconcile.assert_called_once()
 
     def test_main_with_lookback(self):
-        with patch("src.cli.reconcile_postgame.SessionLocal") as mock_sesh, \
+        with patch("src.cli.reconcile_postgame.SessionLocal"), \
              patch("src.cli.reconcile_postgame.PlayerIdResolver"), \
              patch("src.cli.reconcile_postgame.GameDetailCrawler"), \
              patch("src.cli.reconcile_postgame.reconcile_postgame_range", new_callable=AsyncMock) as mock_reconcile, \
@@ -41,7 +41,7 @@ class TestReconcilePostgameCLI:
             assert result == 0
 
     def test_main_with_date_range(self):
-        with patch("src.cli.reconcile_postgame.SessionLocal") as mock_sesh, \
+        with patch("src.cli.reconcile_postgame.SessionLocal"), \
              patch("src.cli.reconcile_postgame.PlayerIdResolver"), \
              patch("src.cli.reconcile_postgame.GameDetailCrawler"), \
              patch("src.cli.reconcile_postgame.reconcile_postgame_range", new_callable=AsyncMock) as mock_reconcile, \

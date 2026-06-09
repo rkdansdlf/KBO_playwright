@@ -1,7 +1,7 @@
 """Tests for AsyncPlaywrightPool — browser/page pool."""
 
 import asyncio
-from unittest.mock import ANY, AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -87,7 +87,7 @@ class TestPageContextManager:
         pool.acquire = AsyncMock(return_value="mock_page")
         pool.release = AsyncMock()
         with pytest.raises(ValueError):
-            async with pool.page() as p:
+            async with pool.page():
                 raise ValueError("test")
         pool.release.assert_awaited_once_with("mock_page")
 

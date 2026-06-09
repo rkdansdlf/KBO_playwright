@@ -5,7 +5,7 @@ from ..models.broadcast import GameBroadcast
 
 
 class BroadcastRepository:
-    def __init__(self, session: Session):
+    def __init__(self, session: Session) -> None:
         self.session = session
 
     def save_broadcast(self, data: dict) -> GameBroadcast:
@@ -32,6 +32,6 @@ class BroadcastRepository:
         stmt = select(GameBroadcast).where(GameBroadcast.game_id == game_id)
         return list(self.session.execute(stmt).scalars().all())
 
-    def delete_by_game(self, game_id: str):
+    def delete_by_game(self, game_id: str) -> None:
         stmt = delete(GameBroadcast).where(GameBroadcast.game_id == game_id)
         self.session.execute(stmt)
