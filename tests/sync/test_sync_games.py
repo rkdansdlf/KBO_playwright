@@ -134,6 +134,32 @@ class TestGameSyncMixin:
         result = mixin.sync_game_details(year=2025)
         assert isinstance(result, dict)
 
+    def test_sync_game_details_replaces_partial_child_rows_and_dedupes_game_players(self, mixin):
+        from src.models.game import GameBattingStat, GameEvent, GameLineup, GamePitchingStat
+        from src.sync.sync_base import GameSyncEligibility
+
+        mixin.get_unsynced_or_modified_game_ids = MagicMock(return_value=["g1"])
+        mixin._sync_game_play_by_play = MagicMock(return_value=0)
+        mixin._sync_game_summary_rows = MagicMock(return_value=0)
+        mixin.sync_simple_table.return_value = 1
+
+        eligibility = GameSyncEligibility(
+            parent_game_ids=["g1"],
+            detail_game_ids=["g1"],
+            relay_game_ids=["g1"],
+        )
+        with patch("src.sync.sync_games.build_game_sync_eligibility", return_value=eligibility):
+            result = mixin.sync_game_details(unsynced_only=True)
+
+        assert result["pitching_stats"] == 1
+        mixin.target_session.query.assert_any_call(GamePitchingStat)
+        mixin.target_session.query.assert_any_call(GameEvent)
+
+        calls_by_model = {call.args[0]: call for call in mixin.sync_simple_table.call_args_list}
+        assert calls_by_model[GameLineup].kwargs["dedupe_keys"] == ["game_id", "player_id"]
+        assert calls_by_model[GameBattingStat].kwargs["dedupe_keys"] == ["game_id", "player_id"]
+        assert calls_by_model[GamePitchingStat].kwargs["dedupe_keys"] == ["game_id", "player_id"]
+
     def test_transform_game_lineup_keeps_starter_batting_order(self, mixin):
         data = {"is_starter": True, "batting_order": 2, "appearance_seq": 2}
         result = mixin._transform_game_lineup_for_target(data)
