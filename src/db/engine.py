@@ -314,9 +314,31 @@ def _migrate_game_summary_table(conn) -> None:
 
 def init_db() -> None:
     # Import all models to ensure they are registered in Base.metadata
+    from src.models import (  # noqa: F401
+        award,
+        crawl,
+        embedding_cache,
+        fa_contract,
+        game,
+        matchup,
+        player,
+        rag_chunk,
+        rankings,
+        season,
+        stadium_food,
+        standings,
+        team,
+        team_stats,
+        ticket_schedule,
+    )
     from src.models.base import Base
 
-    Base.metadata.create_all(bind=Engine)
+    try:
+        Base.metadata.create_all(bind=Engine)
+    except Exception as exc:
+        logger.error("[DB] Failed to create tables: %s", exc)
+        raise
+
     _ensure_player_batting_team_code_column()
     _ensure_player_basic_status_columns()
     _ensure_game_core_tables()

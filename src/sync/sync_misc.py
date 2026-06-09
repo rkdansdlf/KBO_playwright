@@ -462,19 +462,22 @@ class MiscSyncMixin:
             filters.append(TeamDailyRoster.roster_date <= end)
 
         def transform(data: dict) -> dict[str, Any]:
-            team_code = data.get("team_code", "")
-            roster_date = data.get("roster_date")
-            if team_code and roster_date:
-                season_year = roster_date.year if hasattr(roster_date, "year") else None
-                raw = team_code.strip().upper()
-                if raw == "LOT":
-                    raw = "LT"
-                elif raw == "KW":
-                    raw = "KH"
-                if season_year:
-                    resolved = resolve_team_code_for_season(raw, season_year)
-                    if resolved:
-                        data["team_code"] = resolved
+            try:
+                team_code = data.get("team_code", "")
+                roster_date = data.get("roster_date")
+                if team_code and roster_date:
+                    season_year = roster_date.year if hasattr(roster_date, "year") else None
+                    raw = team_code.strip().upper()
+                    if raw == "LOT":
+                        raw = "LT"
+                    elif raw == "KW":
+                        raw = "KH"
+                    if season_year:
+                        resolved = resolve_team_code_for_season(raw, season_year)
+                        if resolved:
+                            data["team_code"] = resolved
+            except Exception as exc:
+                logger.warning("Failed to resolve team code for roster row: %s", exc)
             return data
 
         return self.sync_simple_table(
