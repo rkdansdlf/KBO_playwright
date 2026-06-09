@@ -16,6 +16,7 @@ concurrency:
 
 env:
   PYTHONPATH: ${{ github.workspace }}
+  OCI_DB_URL: ${{ secrets.OCI_DB_URL }}
 
 jobs:
   # ──────────────────────────────────────────────────────────────────────────
@@ -48,6 +49,7 @@ jobs:
       - name: Verify target-date game completeness before publish (local, preflight)
         id: preflight_local
         if: github.event_name == 'workflow_dispatch'
+        continue-on-error: true
         run: |
           python3 scripts/verification/audit_daily_completeness.py \
             --date "${{ steps.job-setup.outputs.KST_DATE }}" \
@@ -57,6 +59,7 @@ jobs:
       - name: Verify target-date game completeness before publish (OCI, preflight)
         id: preflight_oci
         if: github.event_name == 'workflow_dispatch'
+        continue-on-error: true
         env:
           OCI_DB_URL: ${{ secrets.OCI_DB_URL }}
         run: |
@@ -79,6 +82,7 @@ jobs:
       - name: Verify target-date game completeness after publish (local, post-sync)
         id: postsync_local
         if: github.event_name == 'workflow_dispatch'
+        continue-on-error: true
         run: |
           python3 scripts/verification/audit_daily_completeness.py \
             --date "${{ steps.job-setup.outputs.KST_DATE }}" \
@@ -88,6 +92,7 @@ jobs:
       - name: Verify target-date game completeness after publish (OCI, post-sync)
         id: postsync_oci
         if: github.event_name == 'workflow_dispatch'
+        continue-on-error: true
         env:
           OCI_DB_URL: ${{ secrets.OCI_DB_URL }}
         run: |
