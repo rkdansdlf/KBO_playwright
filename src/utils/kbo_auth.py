@@ -81,7 +81,7 @@ class KboAuthenticator:
                         await asyncio.sleep(1)
                         await page.evaluate("window.scrollTo(0, 0)")
                         await asyncio.sleep(2)  # Wait for Akamai to finalize _abck cookie
-                    except Exception as e:
+                    except Exception as e:  # noqa: BLE001
                         logger.warning(f"[AUTH] Session warm-up warning (ignoring): {e}")
 
                     # Save state
@@ -92,7 +92,7 @@ class KboAuthenticator:
                     logger.info("[AUTH] Login failed: Logout button not found after redirection.")
                     return False
 
-            except Exception as e:
+            except Exception as e:  # noqa: BLE001
                 logger.error(f"[AUTH] Exception during login: {e}")
                 return False
             finally:

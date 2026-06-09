@@ -122,7 +122,7 @@ class PlayerSearchCrawler:
         try:
             await self.policy.run_with_retry_async(_navigate)
             return True, "ok"
-        except Exception:
+        except Exception:  # noqa: BLE001
             reason = "selector_timeout" if required_selector else "navigation_failed"
             logger.warning("Player search page navigation failed: %s", reason)
             self._record_failure(reason)
@@ -351,7 +351,7 @@ class PlayerSearchCrawler:
         # the ASP.NET postback mechanism.
         try:
             href = await anchor.get_attribute("href", timeout=5000)
-        except Exception:
+        except Exception:  # noqa: BLE001
             logger.warning("Timeout getting href from anchor", exc_info=True)
             href = None
 
@@ -424,7 +424,7 @@ def parse_birth_date(raw: str | None) -> date_type | None:
             year, month, day = (int(part) for part in parts)
             if 1900 <= year <= 2100 and 1 <= month <= 12 and 1 <= day <= 31:
                 return datetime(year, month, day).date()
-    except Exception:
+    except ValueError:
         logger.warning("Failed to parse date from text: %s", text)
         return None
     return None

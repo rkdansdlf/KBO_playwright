@@ -89,7 +89,7 @@ class PBPCrawler:
                         try:
                             # Try to wait for any of the containers (1-12)
                             await page.wait_for_selector('div[id^="numCont"]', timeout=20000)
-                        except Exception:
+                        except Exception:  # noqa: BLE001
                             logger.warning("No PBP containers found for %s", game_id)
                             body = await page.content()
                             if "데이터가 없습니다" in body or "취소" in body:

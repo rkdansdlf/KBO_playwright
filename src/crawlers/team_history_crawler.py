@@ -75,7 +75,7 @@ class TeamHistoryCrawler:
             year_text = await year_th.inner_text()
             try:
                 year = int(year_text.strip())
-            except Exception:
+            except ValueError:
                 logger.warning("Skipping invalid year: %s", year_text)
                 continue
 

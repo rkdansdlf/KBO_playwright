@@ -572,7 +572,7 @@ class ScheduleCrawler:
                 try:
                     rows_text = await page.evaluate(debug_script)
                     logger.info("Table rows sample: %s", rows_text)
-                except Exception:
+                except Exception:  # noqa: BLE001
                     logger.info("Debug evaluate failed")
 
         return games
@@ -583,7 +583,7 @@ class ScheduleCrawler:
             if "gameId=" in href:
                 game_id = href.split("gameId=")[1].split("&")[0]
                 return game_id
-        except Exception:
+        except (IndexError, ValueError):
             logger.warning("Failed to parse game_id from href")
         return ""
 

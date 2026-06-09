@@ -146,14 +146,14 @@ def build_gap_report() -> dict[str, Any]:
             "total_issues": total_issues,
             "details": {k: v for k, v in freshness.items() if v},
         }
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         logger.error("FRESHNESS gap check failed: %s", e)
         report["gaps"]["FRESHNESS"] = {"ok": False, "error": str(e)}
 
     # 2. Relay/PBP gaps
     try:
         report["gaps"]["RELAY"] = check_relay_gaps()
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         logger.error("RELAY gap check failed: %s", e)
         report["gaps"]["RELAY"] = {"ok": False, "error": str(e)}
 
@@ -165,7 +165,7 @@ def build_gap_report() -> dict[str, Any]:
             "stale_count": len(stale),
             "details": stale,
         }
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         logger.error("STALENESS gap check failed: %s", e)
         report["gaps"]["STALENESS"] = {"ok": False, "error": str(e)}
 
@@ -179,35 +179,35 @@ def build_gap_report() -> dict[str, Any]:
             "mismatches": len(standings.get("mismatches", [])),
             "missing_scores": len(standings.get("missing_score_games", [])),
         }
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         logger.error("STANDINGS gap check failed: %s", e)
         report["gaps"]["STANDINGS"] = {"ok": False, "error": str(e)}
 
     # 5. Player profile gaps
     try:
         report["gaps"]["PROFILE"] = check_profile_gaps()
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         logger.error("PROFILE gap check failed: %s", e)
         report["gaps"]["PROFILE"] = {"ok": False, "error": str(e)}
 
     # 6. Player ID resolution gaps
     try:
         report["gaps"]["ID_RESOLUTION"] = check_id_resolution_gaps()
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         logger.error("ID_RESOLUTION gap check failed: %s", e)
         report["gaps"]["ID_RESOLUTION"] = {"ok": False, "error": str(e)}
 
     # 7. PA formula gaps
     try:
         report["gaps"]["PA_FORMULA"] = check_pa_formula_gaps()
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         logger.error("PA_FORMULA gap check failed: %s", e)
         report["gaps"]["PA_FORMULA"] = {"ok": False, "error": str(e)}
 
     # 8. Team stats consistency
     try:
         report["gaps"]["TEAM_STATS"] = check_team_stats_gaps()
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         logger.error("TEAM_STATS gap check failed: %s", e)
         report["gaps"]["TEAM_STATS"] = {"ok": False, "error": str(e)}
 

@@ -7,7 +7,7 @@ from __future__ import annotations
 import logging
 import os
 from datetime import UTC, date, datetime
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from typing import Any
 from collections.abc import Iterable
 
@@ -17,6 +17,7 @@ import contextlib
 import re
 
 from sqlalchemy import text
+from sqlalchemy.exc import SQLAlchemyError
 
 from src.db.engine import SessionLocal
 from src.models.game import (
@@ -122,7 +123,7 @@ def _resolve_schedule_season_id(session, game_data: dict[str, Any], existing_sea
             )
             if mapped is not None:
                 return mapped
-        except Exception:
+        except SQLAlchemyError:
             logger.warning("Failed to query season_id from database")
 
         # 2. Fallback to hardcoded historical rules for 2023, 2024, and 2025
@@ -172,7 +173,7 @@ def _resolve_schedule_season_id(session, game_data: dict[str, Any], existing_sea
                     )
                     if mapped is not None:
                         return mapped
-            except Exception:
+            except SQLAlchemyError:
                 logger.warning("Failed to apply season date rule")
 
     if season_year is None:
@@ -194,7 +195,7 @@ def _resolve_schedule_season_id(session, game_data: dict[str, Any], existing_sea
                 {"season_year": season_year, "league_type_code": league_type_code},
             ).scalar()
         )
-    except Exception:
+    except SQLAlchemyError:
         logger.warning("Failed to query season_id from kbo_seasons")
         mapped = None
 
@@ -332,7 +333,7 @@ def _values_equal(left: Any, right: Any) -> bool:
     if isinstance(left, Decimal) or isinstance(right, Decimal):
         try:
             return Decimal(str(left)) == Decimal(str(right))
-        except Exception:
+        except (TypeError, ValueError, InvalidOperation):
             logger.info("Decimal comparison fallback to equality")
             return left == right
     return left == right
@@ -447,7 +448,7 @@ def _ensure_game_stub(session, game_id: str) -> None:
 
     try:
         game_date = datetime.strptime(game_id[:8], "%Y%m%d").date()
-    except Exception:
+    except ValueError:
         logger.warning("Failed to parse game date from game_id")
         game_date = datetime.now().date()
 
@@ -460,7 +461,7 @@ def _ensure_game_stub(session, game_id: str) -> None:
     season_id = None
     try:
         season_year = int(game_id[:4])
-    except Exception:
+    except ValueError:
         logger.warning("Failed to parse season year from game_id")
         season_year = None
     if season_year is not None:
@@ -478,7 +479,7 @@ def _ensure_game_stub(session, game_id: str) -> None:
                     {"season_year": season_year},
                 ).scalar()
             )
-        except Exception:
+        except SQLAlchemyError:
             logger.warning("Failed to query min season_id for year")
             season_id = None
         if season_id is None:
@@ -922,7 +923,7 @@ def _safe_time(value: Any):
         parts = str(value).split(":")
         if len(parts) >= 2:
             return datetime.strptime(":".join(parts[:2]), "%H:%M").time()
-    except Exception:
+    except ValueError:
         logger.info("Failed to parse start_time value")
         return None
     return None
