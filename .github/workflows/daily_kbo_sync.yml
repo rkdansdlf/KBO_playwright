@@ -24,34 +24,24 @@ jobs:
   finalize:
     runs-on: ubuntu-latest
     outputs:
-      date: ${{ steps.date.outputs.KST_DATE }}
-      year: ${{ steps.date.outputs.KST_YEAR }}
+      date: ${{ steps.job-setup.outputs.KST_DATE }}
+      year: ${{ steps.job-setup.outputs.KST_YEAR }}
     steps:
-      - uses: actions/checkout@v4
-
-      - uses: ./.github/actions/python-env
+      - uses: ./.github/actions/kbo-job-setup
+        id: job-setup
         with:
           playwright: 'true'
           init-db: 'true'
-
-      - name: Resolve target date in KST
-        id: date
-        run: |
-          if [ -n "${{ github.event.inputs.target_date }}" ]; then
-            KST_DATE="${{ github.event.inputs.target_date }}"
-          else
-            KST_DATE="$(TZ='Asia/Seoul' date -d 'yesterday' +'%Y%m%d')"
-          fi
-          echo "KST_DATE=${KST_DATE}" | tee -a $GITHUB_OUTPUT
-          echo "KST_YEAR=${KST_DATE:0:4}" | tee -a $GITHUB_OUTPUT
+          resolve-date: 'true'
+          target-date: ${{ github.event.inputs.target_date || '' }}
 
       - name: Hydrate Runtime Cache From OCI
         env:
           OCI_DB_URL: ${{ secrets.OCI_DB_URL }}
         run: |
           python3 -m src.cli.hydrate_runtime_from_oci \
-            --year "${{ steps.date.outputs.KST_YEAR }}" \
-            --date "${{ steps.date.outputs.KST_DATE }}"
+            --year "${{ steps.job-setup.outputs.KST_YEAR }}" \
+            --date "${{ steps.job-setup.outputs.KST_DATE }}"
 
       - name: Run Postgame Finalize & Sync
         env:
@@ -60,13 +50,13 @@ jobs:
           KBO_USER_PWD: ${{ secrets.KBO_USER_PWD }}
         run: |
           python3 -m src.cli.run_daily_update \
-            --date ${{ steps.date.outputs.KST_DATE }} \
+            --date ${{ steps.job-setup.outputs.KST_DATE }} \
             --sync --fix
 
       - name: Compute Standings
         run: |
           python3 -m src.cli.calculate_standings \
-            --year ${{ steps.date.outputs.KST_YEAR }}
+            --year ${{ steps.job-setup.outputs.KST_YEAR }}
 
       - name: Aggregate Team Defense
         run: |
@@ -74,7 +64,7 @@ jobs:
           from src.aggregators.team_fielding_aggregator import TeamFieldingAggregator
           from src.db.engine import SessionLocal
           from src.models.team import Team
-          year = ${{ steps.date.outputs.KST_YEAR }}
+          year = ${{ steps.job-setup.outputs.KST_YEAR }}
           with SessionLocal() as session:
               teams = [t.team_id for t in session.query(Team.team_id).filter(Team.is_active).all()]
               TeamFieldingAggregator(session).run_all(year, teams)
@@ -85,7 +75,7 @@ jobs:
           python3 -c "
           from src.aggregators.ranking_aggregator import RankingAggregator
           from src.db.engine import SessionLocal
-          year = ${{ steps.date.outputs.KST_YEAR }}
+          year = ${{ steps.job-setup.outputs.KST_YEAR }}
           with SessionLocal() as session:
               RankingAggregator(session).run_for_season(year)
           "
@@ -95,7 +85,7 @@ jobs:
           OCI_DB_URL: ${{ secrets.OCI_DB_URL }}
         run: |
           python3 -m src.cli.freshness_gate \
-            --date ${{ steps.date.outputs.KST_DATE }} \
+            --date ${{ steps.job-setup.outputs.KST_DATE }} \
             --source-url-env OCI_DB_URL
 
       - uses: ./.github/actions/notify
@@ -112,11 +102,7 @@ jobs:
     needs: finalize
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-
-      - uses: ./.github/actions/python-env
-        env:
-          OCI_DB_URL: ${{ secrets.OCI_DB_URL }}
+      - uses: ./.github/actions/kbo-job-setup
         with:
           playwright: 'true'
           init-db: 'true'
@@ -148,11 +134,7 @@ jobs:
     needs: [finalize, post-process]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-
-      - uses: ./.github/actions/python-env
-        env:
-          OCI_DB_URL: ${{ secrets.OCI_DB_URL }}
+      - uses: ./.github/actions/kbo-job-setup
         with:
           init-db: 'true'
           hydrate: 'true'
@@ -190,6 +172,7 @@ jobs:
       - name: Data Freshness Monitor
         run: |
           python3 -m src.cli.monitor_data_freshness
+
       - name: Recalc Player-Game Stats
         env:
           OCI_DB_URL: ${{ secrets.OCI_DB_URL }}
@@ -204,6 +187,7 @@ jobs:
       - name: Verify PlayerGame Data Quality
         run: |
           python3 -m scripts.verification.verify_player_game_stats --exit-code
+
       - uses: ./.github/actions/notify
         if: always()
         with:
@@ -212,17 +196,13 @@ jobs:
           channels: telegram
 
   # ──────────────────────────────────────────────────────────────────────────
-  # JOB 4 — Advanced Daily Sync (기존 advanced_daily_sync)
+  # JOB 4 — Advanced Daily Sync
   # ──────────────────────────────────────────────────────────────────────────
   advanced-sync:
     needs: [finalize, quality]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-
-      - uses: ./.github/actions/python-env
-        env:
-          OCI_DB_URL: ${{ secrets.OCI_DB_URL }}
+      - uses: ./.github/actions/kbo-job-setup
         with:
           init-db: 'true'
           hydrate: 'true'
