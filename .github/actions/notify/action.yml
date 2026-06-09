@@ -20,8 +20,8 @@ runs:
       if: ${{ contains(inputs.channels, 'telegram') || inputs.channels == 'both' }}
       shell: bash
       env:
-        TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-        TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        TELEGRAM_BOT_TOKEN: ${{ env.TELEGRAM_BOT_TOKEN }}
+        TELEGRAM_CHAT_ID: ${{ env.TELEGRAM_CHAT_ID }}
       run: |
         STATUS_INPUT="${{ inputs.status }}"
         WF_NAME="${{ inputs.workflow }}"
@@ -51,30 +51,53 @@ runs:
       if: ${{ contains(inputs.channels, 'slack') || inputs.channels == 'both' }}
       shell: bash
       env:
-        SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+        SLACK_WEBHOOK_URL: ${{ env.SLACK_WEBHOOK_URL }}
+        STATUS_INPUT: ${{ inputs.status }}
+        WORKFLOW_NAME: ${{ inputs.workflow || github.workflow }}
+        GITHUB_REPOSITORY_NAME: ${{ github.repository }}
+        GITHUB_RUN_ID_VALUE: ${{ github.run_id }}
       run: |
-        python3 -c "
-import json, os
-status = '${{ inputs.status }}'
-wf = '${{ inputs.workflow }}' or '${{ github.workflow }}'
-emoji, label = {'success': ('✅', 'Success'), 'failure': ('❌', 'Failure'), 'cancelled': ('⚠️', 'Cancelled')}.get(status, ('❓', status))
-color = 'good' if status == 'success' else 'danger'
-payload = {
-    'text': f'{emoji} KBO {wf} {label}',
-    'attachments': [{
-        'color': color,
-        'fields': [
-            {'title': 'Repository', 'value': '${{ github.repository }}', 'short': True},
-            {'title': 'Run', 'value': '<https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Details>', 'short': True},
-        ],
-    }],
-}
-url = os.environ.get('SLACK_WEBHOOK_URL')
-if url:
-    import urllib.request
-    req = urllib.request.Request(url, data=json.dumps(payload).encode(), headers={'Content-Type': 'application/json'})
-    urllib.request.urlopen(req)
-    print('Slack notification sent')
-else:
-    print('Slack webhook URL not set, skipping.')
-"
+        python3 <<'PY'
+        import json
+        import os
+        import urllib.request
+
+        status = os.environ.get("STATUS_INPUT", "")
+        workflow = os.environ.get("WORKFLOW_NAME", "")
+        repository = os.environ.get("GITHUB_REPOSITORY_NAME", "")
+        run_id = os.environ.get("GITHUB_RUN_ID_VALUE", "")
+        emoji, label = {
+            "success": ("✅", "Success"),
+            "failure": ("❌", "Failure"),
+            "cancelled": ("⚠️", "Cancelled"),
+        }.get(status, ("❓", status))
+        color = "good" if status == "success" else "danger"
+        payload = {
+            "text": f"{emoji} KBO {workflow} {label}",
+            "attachments": [
+                {
+                    "color": color,
+                    "fields": [
+                        {"title": "Repository", "value": repository, "short": True},
+                        {
+                            "title": "Run",
+                            "value": f"<https://github.com/{repository}/actions/runs/{run_id}|View Details>",
+                            "short": True,
+                        },
+                    ],
+                }
+            ],
+        }
+
+        url = os.environ.get("SLACK_WEBHOOK_URL")
+        if url:
+            req = urllib.request.Request(
+                url,
+                data=json.dumps(payload).encode(),
+                headers={"Content-Type": "application/json"},
+            )
+            urllib.request.urlopen(req)
+            print("Slack notification sent")
+        else:
+            print("Slack webhook URL not set, skipping.")
+        PY
