@@ -3,8 +3,11 @@ Seed script to populate stadium_seat_sections table with known seat section data
 This data should be updated when new seat configurations are announced.
 """
 
+import logging
 import os
 import sys
+
+logger = logging.getLogger(__name__)
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -271,7 +274,7 @@ def run(dry_run: bool = False) -> None:
         if not dry_run:
             session.flush()
             session.commit()
-        print(f"[SEED] Seat sections: {created} seed rows (dry_run={dry_run})")
+        logger.info("[SEED] Seat sections: %s seed rows (dry_run=%s)", created, dry_run)
 
 
 if __name__ == "__main__":

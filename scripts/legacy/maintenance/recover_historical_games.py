@@ -38,7 +38,7 @@ async def recover_historical_games(json_file: str, max_concurrency: int = 5):
         if len(d) >= 4:
             try:
                 years.add(int(d[:4]))
-            except:
+            except Exception:
                 pass
 
     print(f"🔄 Preloading player data for {len(years)} seasons: {sorted(list(years))}")

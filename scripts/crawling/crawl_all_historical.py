@@ -133,7 +133,7 @@ def crawl_historical_data(
     series_list: list[str] = None,
     headless: bool = True,
     reset_db: bool = True,
-) -> dict:
+) -> dict[str, Any]:
     """
     전체 KBO 역사 데이터 크롤링
     년도별 자동 전략 선택
@@ -147,37 +147,37 @@ def crawl_historical_data(
     # 유효성 검증
     start_year, end_year = get_year_range_validation(start_year, end_year)
 
-    print("🚀 KBO 전체 역사 데이터 크롤링 시작")
-    print("=" * 50)
-    print(f"📅 대상 기간: {start_year}년 ~ {end_year}년")
-    print(f"📊 시리즈: {', '.join(series_list)}")
-    print(f"🤖 헤드리스 모드: {'ON' if headless else 'OFF'}")
-    print(f"🗑️ DB 초기화: {'ON' if reset_db else 'OFF'}")
+    logger.info("🚀 KBO 전체 역사 데이터 크롤링 시작")
+    logger.info("=" * 50)
+    logger.info(f"📅 대상 기간: {start_year}년 ~ {end_year}년")
+    logger.info(f"📊 시리즈: {', '.join(series_list)}")
+    logger.info(f"🤖 헤드리스 모드: {'ON' if headless else 'OFF'}")
+    logger.info(f"🗑️ DB 초기화: {'ON' if reset_db else 'OFF'}")
 
     # 전략별 년도 분류
     legacy_years = [y for y in range(start_year, end_year + 1) if y <= 2001]
     modern_years = [y for y in range(start_year, end_year + 1) if y >= 2002]
 
-    print("\n📋 크롤링 전략:")
+    logger.info("\n📋 크롤링 전략:")
     if legacy_years:
-        print(f"  🕰️ 레거시 모드: {len(legacy_years)}년 ({min(legacy_years)}-{max(legacy_years)})")
+        logger.info(f"  🕰️ 레거시 모드: {len(legacy_years)}년 ({min(legacy_years)}-{max(legacy_years)})")
     if modern_years:
-        print(f"  🚀 현대 모드: {len(modern_years)}년 ({min(modern_years)}-{max(modern_years)})")
+        logger.info(f"  🚀 현대 모드: {len(modern_years)}년 ({min(modern_years)}-{max(modern_years)})")
 
     # 데이터베이스 초기화
     if reset_db:
-        print("\n🗑️ SQLite 데이터베이스 초기화 중...")
+        logger.info("\n🗑️ SQLite 데이터베이스 초기화 중...")
         reset_cmd = [sys.executable, "reset_sqlite.py", "--range", str(start_year), str(end_year), "--force"]
         try:
             subprocess.run(reset_cmd, check=True)
-            print("✅ 데이터베이스 초기화 완료")
+            logger.info("✅ 데이터베이스 초기화 완료")
         except subprocess.CalledProcessError:
-            print("⚠️ 데이터베이스 초기화 실패, 계속 진행")
+            logger.info("⚠️ 데이터베이스 초기화 실패, 계속 진행")
 
     # 결과 추적
     results = {"total_tasks": 0, "success_count": 0, "failed_tasks": [], "legacy_count": 0, "modern_count": 0}
 
-    total_years = len(range(start_year, end_year + 1))
+    len(range(start_year, end_year + 1))
 
     # 실제 크롤링 가능한 작업 수 계산 (연도별 시리즈 필터링 고려)
     actual_total_tasks = 0
@@ -187,16 +187,16 @@ def crawl_historical_data(
 
     results["total_tasks"] = actual_total_tasks
 
-    print(f"\n🎯 총 작업 수: {actual_total_tasks}개 (연도별 가능한 시리즈 × 타자/투수)")
-    print("\n" + "=" * 50)
+    logger.info(f"\n🎯 총 작업 수: {actual_total_tasks}개 (연도별 가능한 시리즈 × 타자/투수)")
+    logger.info("\n" + "=" * 50)
 
     # 년도별 크롤링
     for year in range(start_year, end_year + 1):
         strategy = determine_crawling_strategy(year)
         year_start = datetime.now()
 
-        print(f"\n📅 {year}년 크롤링 시작 ({strategy} 모드)")
-        print("-" * 30)
+        logger.info(f"\n📅 {year}년 크롤링 시작 ({strategy} 모드)")
+        logger.info("-" * 30)
 
         year_success = 0
         year_total = len(series_list) * 2
@@ -207,10 +207,10 @@ def crawl_historical_data(
 
         # 시리즈별 크롤링
         for series in available_series:
-            print(f"  📊 {series} 시리즈:")
+            logger.info(f"  📊 {series} 시리즈:")
 
             # 타자 데이터 크롤링
-            print("    🏏 타자 크롤링...", end=" ")
+            logger.info("    🏏 타자 크롤링...")
             if strategy == "legacy":
                 success, output = run_legacy_crawling(year, series, "batting", headless)
                 results["legacy_count"] += 1
@@ -219,17 +219,17 @@ def crawl_historical_data(
                 results["modern_count"] += 1
 
             if success:
-                print("✅")
+                logger.info("✅")
                 results["success_count"] += 1
                 year_success += 1
             else:
-                print("❌")
+                logger.info("❌")
                 results["failed_tasks"].append(f"{year}-{series}-batting")
                 if "타임아웃" in output or "실행 오류" in output:
-                    print(f"      💥 {output}")
+                    logger.info(f"      💥 {output}")
 
             # 투수 데이터 크롤링
-            print("    ⚾ 투수 크롤링...", end=" ")
+            logger.info("    ⚾ 투수 크롤링...")
             if strategy == "legacy":
                 success, output = run_legacy_crawling(year, series, "pitching", headless)
                 results["legacy_count"] += 1
@@ -238,39 +238,39 @@ def crawl_historical_data(
                 results["modern_count"] += 1
 
             if success:
-                print("✅")
+                logger.info("✅")
                 results["success_count"] += 1
                 year_success += 1
             else:
-                print("❌")
+                logger.info("❌")
                 results["failed_tasks"].append(f"{year}-{series}-pitching")
                 if "타임아웃" in output or "실행 오류" in output:
-                    print(f"      💥 {output}")
+                    logger.info(f"      💥 {output}")
 
         # 년도별 결과
         year_duration = (datetime.now() - year_start).total_seconds()
         success_rate = (year_success / year_total) * 100
-        print(f"  📊 {year}년 결과: {year_success}/{year_total} 성공 ({success_rate:.1f}%) - {year_duration:.0f}초")
+        logger.info(f"  📊 {year}년 결과: {year_success}/{year_total} 성공 ({success_rate:.1f}%) - {year_duration:.0f}초")
 
     # 최종 결과
-    print("\n" + "=" * 50)
-    print("🎉 전체 크롤링 완료!")
+    logger.info("\n" + "=" * 50)
+    logger.info("🎉 전체 크롤링 완료!")
 
     overall_success_rate = (results["success_count"] / results["total_tasks"]) * 100
-    print("\n📊 최종 결과:")
-    print(f"  ✅ 성공: {results['success_count']}/{results['total_tasks']} ({overall_success_rate:.1f}%)")
-    print(f"  🕰️ 레거시 모드: {results['legacy_count']}개 작업")
-    print(f"  🚀 현대 모드: {results['modern_count']}개 작업")
+    logger.info("\n📊 최종 결과:")
+    logger.info(f"  ✅ 성공: {results['success_count']}/{results['total_tasks']} ({overall_success_rate:.1f}%)")
+    logger.info(f"  🕰️ 레거시 모드: {results['legacy_count']}개 작업")
+    logger.info(f"  🚀 현대 모드: {results['modern_count']}개 작업")
 
     if results["failed_tasks"]:
-        print("\n❌ 실패한 작업들:")
+        logger.info("\n❌ 실패한 작업들:")
         for task in results["failed_tasks"][:10]:  # 처음 10개만 표시
-            print(f"    - {task}")
+            logger.info(f"    - {task}")
         if len(results["failed_tasks"]) > 10:
-            print(f"    ... 및 {len(results['failed_tasks']) - 10}개 더")
+            logger.info(f"    ... 및 {len(results['failed_tasks']) - 10}개 더")
 
     # 데이터베이스 상태 확인
-    print("\n🔍 최종 데이터베이스 확인:")
+    logger.info("\n🔍 최종 데이터베이스 확인:")
     check_cmd = [
         sys.executable,
         "-c",
@@ -278,7 +278,10 @@ def crawl_historical_data(
 from src.db.engine import SessionLocal
 from src.models.player import PlayerSeasonBatting, PlayerSeasonPitching
 from sqlalchemy import and_
+import logging
 
+
+logger = logging.getLogger(__name__)
 with SessionLocal() as session:
     batting_count = session.query(PlayerSeasonBatting).filter(
         and_(
@@ -302,8 +305,8 @@ with SessionLocal() as session:
 
     try:
         subprocess.run(check_cmd)
-    except:
-        print("  ⚠️ 데이터베이스 확인 실패")
+    except Exception:
+        logger.info("  ⚠️ 데이터베이스 확인 실패")
 
     return results
 
@@ -351,20 +354,20 @@ def main():
         success_rate = (results["success_count"] / results["total_tasks"]) * 100
 
         if success_rate >= 90:
-            print(f"\n🎉 크롤링 성공! 성공률 {success_rate:.1f}%")
+            logger.info(f"\n🎉 크롤링 성공! 성공률 {success_rate:.1f}%")
             sys.exit(0)
         elif success_rate >= 70:
-            print(f"\n⚠️ 크롤링 부분 성공. 성공률 {success_rate:.1f}%")
+            logger.info(f"\n⚠️ 크롤링 부분 성공. 성공률 {success_rate:.1f}%")
             sys.exit(1)
         else:
-            print(f"\n❌ 크롤링 실패. 성공률 {success_rate:.1f}%")
+            logger.info(f"\n❌ 크롤링 실패. 성공률 {success_rate:.1f}%")
             sys.exit(2)
 
     except KeyboardInterrupt:
-        print("\n❌ 사용자가 중단했습니다.")
+        logger.info("\n❌ 사용자가 중단했습니다.")
         sys.exit(130)
     except Exception as e:
-        print(f"\n❌ 예상치 못한 오류: {e}")
+        logger.info(f"\n❌ 예상치 못한 오류: {e}")
         sys.exit(1)
 
 

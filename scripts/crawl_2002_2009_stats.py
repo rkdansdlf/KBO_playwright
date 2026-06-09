@@ -3,9 +3,12 @@ Crawler for 2002-2009 batting and pitching stats.
 Adapts the robust 2001 crawler logic to loop through years.
 """
 
+import logging
 import os
 import sys
 import time
+
+logger = logging.getLogger(__name__)
 
 sys.path.insert(0, os.getcwd())
 
@@ -120,7 +123,7 @@ def crawl_stats_for_year(page, year, mode="batting"):
     series_info = mapping[series_key]
     league_name = series_info.get("league") or series_info.get("league_name") or "REGULAR"
 
-    print(f"📡 {year}년 {mode} 데이터 크롤링 시작 ({url})")
+    logger.info("📡 %s년 %s 데이터 크롤링 시작 (%s)", year, mode, url)
     try:
         page.goto(url, wait_until="load")
         time.sleep(1)
@@ -141,7 +144,7 @@ def crawl_stats_for_year(page, year, mode="batting"):
         all_players = {}
 
         for tm in teams:
-            print(f"   🔍 {tm['text']} ({tm['value']}) 파싱 중...")
+            logger.info("   🔍 %s (%s) 파싱 중...", tm['text'], tm['value'])
 
             # Select team
             page.select_option(team_selector, tm["value"])
@@ -155,7 +158,7 @@ def crawl_stats_for_year(page, year, mode="batting"):
                     page1_btn.click()
                     page.wait_for_load_state("networkidle")
                     time.sleep(1)
-            except:
+            except Exception:
                 pass
 
             page_num = 1
@@ -164,7 +167,7 @@ def crawl_stats_for_year(page, year, mode="batting"):
                 try:
                     res = page.evaluate(extract_js)
                     if "error" in res:
-                        print(f"      ⚠️ 테이블 못찾음: {res['error']}")
+                        logger.warning("      ⚠️ 테이블 못찾음: %s", res['error'])
                         break
 
                     players = []
@@ -185,16 +188,16 @@ def crawl_stats_for_year(page, year, mode="batting"):
                             data["source"] = "CRAWLER"
                             players.append(data)
 
-                    count_before = len(all_players)
+                    len(all_players)
                     for p in players:
                         if p and p.get("player_id"):
                             all_players[p["player_id"]] = p
-                    count_after = len(all_players)
+                    len(all_players)
 
                     # print(f"      📄 {page_num}페이지: {len(players)}명 (누적: {count_after}명)")
 
                 except Exception as e:
-                    print(f"      ⚠️ 파싱 에러: {e}")
+                    logger.warning("      ⚠️ 파싱 에러: %s", e)
 
                 # Pagination
                 next_page_num = page_num + 1
@@ -216,7 +219,7 @@ def crawl_stats_for_year(page, year, mode="batting"):
                             arg=first_player_before,
                             timeout=5000,
                         )
-                    except:
+                    except Exception:
                         pass
                     page_num += 1
                 else:
@@ -225,7 +228,7 @@ def crawl_stats_for_year(page, year, mode="batting"):
         return list(all_players.values())
 
     except Exception as e:
-        print(f"❌ {year}년 {mode} 크롤링 치명적 오류: {e}")
+        logger.error("❌ %s년 %s 크롤링 치명적 오류: %s", year, mode, e)
         return []
 
 
@@ -240,23 +243,23 @@ def main():
         page = context.new_page()
 
         for year in years:
-            print(f"\n🗓️ YEAR {year} Handling...")
+            logger.info("🗓️ YEAR %s Handling...", year)
 
             # 1. Batting
             batting_data = crawl_stats_for_year(page, year, "batting")
             if batting_data:
                 save_batting_stats_safe(batting_data)
-                print(f"✅ {year}년 타자 데이터 {len(batting_data)}건 저장 완료")
+                logger.info("✅ %s년 타자 데이터 %s건 저장 완료", year, len(batting_data))
             else:
-                print(f"⚠️ {year}년 타자 데이터 없음")
+                logger.warning("⚠️ %s년 타자 데이터 없음", year)
 
             # 2. Pitching
             pitching_data = crawl_stats_for_year(page, year, "pitching")
             if pitching_data:
                 save_pitching_stats_safe(pitching_data)
-                print(f"✅ {year}년 투수 데이터 {len(pitching_data)}건 저장 완료")
+                logger.info("✅ %s년 투수 데이터 %s건 저장 완료", year, len(pitching_data))
             else:
-                print(f"⚠️ {year}년 투수 데이터 없음")
+                logger.warning("⚠️ %s년 투수 데이터 없음", year)
 
         browser.close()
 

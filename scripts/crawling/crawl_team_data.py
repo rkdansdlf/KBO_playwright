@@ -1,6 +1,9 @@
 import asyncio
+import logging
 import os
 import sys
+
+logger = logging.getLogger(__name__)
 
 # Ensure project root is in path
 sys.path.append(os.getcwd())
@@ -14,7 +17,7 @@ from src.models.franchise import Franchise
 
 
 async def main():
-    print("🚀 Starting Team Data Quality Improvement Crawl...")
+    logger.info("🚀 Starting Team Data Quality Improvement Crawl...")
 
     # 1. Crawl Admin Info (TeamInfoCrawler)
     info_crawler = TeamInfoCrawler()
@@ -24,20 +27,13 @@ async def main():
 
         # Save Info Data
         if info_data:
-            print(f"💾 Updating Franchise Metadata for {len(info_data)} teams...")
+            logger.info(f"💾 Updating Franchise Metadata for {len(info_data)} teams...")
             with SessionLocal() as session:
                 for item in info_data:
-                    # Find Franchise by name (Assuming 'name' column in Franchise matches or contains crawled name)
-                    # "Samsung Lions" -> "Samsung"
-                    # Current Franchise names in DB are Korean? e.g. "삼성 라이온즈"
-                    # Crawled name is "삼성 라이온즈"
-                    # Perfect match likely.
-
                     stmt = select(Franchise).where(Franchise.name == item["name"])
                     result = session.execute(stmt).scalars().first()
 
                     if not result:
-                        # Try partial match
                         stmt = select(Franchise).where(Franchise.name.like(f"%{item['name']}%"))
                         result = session.execute(stmt).scalars().first()
 
@@ -55,12 +51,12 @@ async def main():
                         result.metadata_json = meta
                         result.web_url = item["homepage"]
                         session.add(result)
-                        print(f"   ✅ Updated {result.name}")
+                        logger.info(f"   ✅ Updated {result.name}")
                     else:
-                        print(f"   ⚠️ Franchise not found for {item['name']}")
+                        logger.info(f"   ⚠️ Franchise not found for {item['name']}")
                 session.commit()
     except Exception as e:
-        print(f"❌ TeamInfoCrawler Failed: {e}")
+        logger.info(f"❌ TeamInfoCrawler Failed: {e}")
         if info_crawler:
             await info_crawler.close()
 
@@ -70,7 +66,7 @@ async def main():
         history_data = await hist_crawler.crawl()
         await hist_crawler.save(history_data)
     except Exception as e:
-        print(f"❌ TeamHistoryCrawler Failed: {e}")
+        logger.info(f"❌ TeamHistoryCrawler Failed: {e}")
         import traceback
 
         traceback.print_exc()

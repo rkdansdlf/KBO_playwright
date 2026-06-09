@@ -40,11 +40,11 @@ def seed_rivalries(dry_run: bool = False) -> int:
                 }
             )
 
-    print(f"Loaded {len(rows)} rivalries from {RIVALRIES_CSV}")
+    logger.info("Loaded %s rivalries from %s", len(rows), RIVALRIES_CSV)
 
     if dry_run:
         for r in rows:
-            print(f"  {r['team_id_a']} vs {r['team_id_b']}: {r['rivalry_name']} ({r['intensity']})")
+            logger.info("  %s vs %s: %s (%s)", r['team_id_a'], r['team_id_b'], r['rivalry_name'], r['intensity'])
         return len(rows)
 
     with SessionLocal() as session:
@@ -60,9 +60,8 @@ def seed_rivalries(dry_run: bool = False) -> int:
                 session.rollback()
                 skipped += 1
                 logger.warning("Skipped rivalry %s-%s: %s", r["team_id_a"], r["team_id_b"], exc)
-                print(f"  Skipped {r['team_id_a']}-{r['team_id_b']}: {exc}")
         session.commit()
-        print(f"Seeded {saved} rivalries into team_rivalries. ({skipped} skipped/already exist)")
+        logger.info("Seeded %s rivalries into team_rivalries. (%s skipped/already exist)", saved, skipped)
     return saved
 
 

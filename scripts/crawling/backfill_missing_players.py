@@ -18,11 +18,14 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
+import logging
+
 from src.crawlers.player_profile_crawler import PlayerProfileCrawler
 from src.db.engine import SessionLocal
 from src.repositories.player_basic_repository import PlayerBasicRepository
 from src.utils.player_validation import validate_player_payload
 
+logger = logging.getLogger(__name__)
 DEFAULT_REPORT_DIR = Path("data/player_profile_backfill")
 
 
@@ -285,7 +288,7 @@ async def backfill_players(
         limit=limit,
     )
     if not candidates:
-        print("No missing or stub player profiles found.")
+        logger.info("No missing or stub player profiles found.")
         return {
             "candidates": 0,
             "prepared": 0,
@@ -294,7 +297,7 @@ async def backfill_players(
             "report_csv": None,
         }
 
-    print(f"Found {len(candidates)} player profile candidates.")
+    logger.info(f"Found {len(candidates)} player profile candidates.")
     local_profiles = load_local_canonical_profiles([candidate.player_id for candidate in candidates])
     crawler: PlayerProfileCrawler | None = None
     repo = PlayerBasicRepository()
@@ -305,7 +308,7 @@ async def backfill_players(
 
     for idx, candidate in enumerate(candidates, start=1):
         player_id = str(candidate.player_id)
-        print(f"[{idx}/{len(candidates)}] Processing player {player_id} ({candidate.source})...")
+        logger.info(f"[{idx}/{len(candidates)}] Processing player {player_id} ({candidate.source})...")
         profile = local_profiles.get(candidate.player_id)
         if profile:
             reason = "local_canonical_profile"
@@ -372,8 +375,8 @@ async def backfill_players(
 
     report_path = report_dir / f"missing_player_backfill_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
     _write_report(report_path, report_rows)
-    print(f"Backfill {'applied' if apply else 'dry-run'} complete: prepared={prepared} saved={saved} skipped={skipped}")
-    print(f"report_csv={report_path}")
+    logger.info(f"Backfill {'applied' if apply else 'dry-run'} complete: prepared={prepared} saved={saved} skipped={skipped}")
+    logger.info(f"report_csv={report_path}")
     return {
         "candidates": len(candidates),
         "prepared": prepared,

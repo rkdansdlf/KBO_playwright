@@ -47,7 +47,7 @@ def run_prototype():
                 page.wait_for_selector("#liBoxScore", timeout=5000)
                 page.click("#liBoxScore")
                 print("✅ Clicked #liBoxScore")
-            except:
+            except Exception:
                 print("⚠️ #liBoxScore not found. Trying direct BoxScore URL...")
                 direct_url = f"https://www.koreabaseball.com/Schedule/GameCenter/BoxScore.aspx?gameId={game_id}"
                 page.goto(direct_url, wait_until="networkidle")

@@ -1,24 +1,28 @@
+import logging
 import sqlite3
+from datetime import datetime
 from pathlib import Path
 
 import pandas as pd
 
+logger = logging.getLogger(__name__)
 DB_PATH = Path("data/kbo_dev.db")
 
 
 def run_audit():
     if not DB_PATH.exists():
-        print(f"DB not found at {DB_PATH}")
+        logger.info(f"DB not found at {DB_PATH}")
         return
 
     conn = sqlite3.connect(DB_PATH)
 
-    years = ["2024", "2025", "2026"]
+    current_year = datetime.now().year
+    years = [str(y) for y in range(current_year - 2, current_year + 1)]
 
-    print("=== KBO Stats Audit (2024-2026) ===")
+    logger.info(f"=== KBO Stats Audit ({years[0]}-{years[-1]}) ===")
 
     for year in years:
-        print(f"\n--- Year: {year} ---")
+        logger.info(f"\n--- Year: {year} ---")
 
         # 1. Batting Mismatch
         query_batting = f"""
@@ -62,11 +66,11 @@ def run_audit():
         """
 
         df_batting = pd.read_sql_query(query_batting, conn)
-        print("Batting Mismatches (Top 10):")
+        logger.info("Batting Mismatches (Top 10):")
         if df_batting.empty:
-            print("  None found in this sample.")
+            logger.info("  None found in this sample.")
         else:
-            print(df_batting.to_string(index=False))
+            logger.info(df_batting.to_string(index=False))
 
         # Count total batting mismatches
         count_query = f"""
@@ -83,7 +87,7 @@ def run_audit():
         """
         total_mismatch = conn.execute(count_query).fetchone()[0]
         total_players = conn.execute(f"SELECT COUNT(*) FROM player_season_batting WHERE season = {year}").fetchone()[0]
-        print(f"\nTotal Batting Mismatches: {total_mismatch} / {total_players} players")
+        logger.info(f"\nTotal Batting Mismatches: {total_mismatch} / {total_players} players")
 
         # 2. Pitching Mismatch
         query_pitching = f"""
@@ -126,11 +130,11 @@ def run_audit():
         LIMIT 10;
         """
         df_pitching = pd.read_sql_query(query_pitching, conn)
-        print("\nPitching Mismatches (Top 10):")
+        logger.info("\nPitching Mismatches (Top 10):")
         if df_pitching.empty:
-            print("  None found in this sample.")
+            logger.info("  None found in this sample.")
         else:
-            print(df_pitching.to_string(index=False))
+            logger.info(df_pitching.to_string(index=False))
 
         # Count total pitching mismatches
         count_pitching_query = f"""
@@ -149,7 +153,7 @@ def run_audit():
         total_p_players = conn.execute(f"SELECT COUNT(*) FROM player_season_pitching WHERE season = {year}").fetchone()[
             0
         ]
-        print(f"Total Pitching Mismatches: {total_p_mismatch} / {total_p_players} players")
+        logger.info(f"Total Pitching Mismatches: {total_p_mismatch} / {total_p_players} players")
 
     conn.close()
 

@@ -39,7 +39,7 @@ def _ensure_dirs():
         os.makedirs(dirpath, exist_ok=True)
 
 
-async def fetch_naver_schedule(game_id: str, crawler: RelayCrawler) -> dict | None:
+async def fetch_naver_schedule(game_id: str, crawler: RelayCrawler) -> dict[str, Any] | None:
     async with httpx.AsyncClient() as client:
         query_dates = crawler._schedule_query_dates(game_id)
         for qd in query_dates:
@@ -50,7 +50,7 @@ async def fetch_naver_schedule(game_id: str, crawler: RelayCrawler) -> dict | No
     return None
 
 
-async def fetch_naver_relay(naver_id: str, crawler: RelayCrawler) -> dict | None:
+async def fetch_naver_relay(naver_id: str, crawler: RelayCrawler) -> dict[str, Any] | None:
     async with httpx.AsyncClient() as client:
         innings_data = {}
         for inn in range(1, 16):

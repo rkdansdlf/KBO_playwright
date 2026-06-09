@@ -2,7 +2,10 @@
 Bulk recalculate team statistics for all years from 1982 to 2026.
 """
 
+import logging
 import subprocess
+
+logger = logging.getLogger(__name__)
 
 
 def main():
@@ -10,7 +13,7 @@ def main():
     end_year = 2026
 
     for year in range(start_year, end_year + 1):
-        print(f"📊 Processing Year {year}...")
+        logger.info("📊 Processing Year %s...", year)
         try:
             # Recalculate batting
             subprocess.run(
@@ -27,10 +30,10 @@ def main():
                 check=True,
             )
         except subprocess.CalledProcessError as e:
-            print(f"❌ Failed to recalculate stats for {year}: {e}")
+            logger.error("❌ Failed to recalculate stats for %s: %s", year, e)
             continue
 
-    print("✅ Bulk team statistics recalculation complete.")
+    logger.info("✅ Bulk team statistics recalculation complete.")
 
 
 if __name__ == "__main__":

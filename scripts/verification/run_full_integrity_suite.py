@@ -21,6 +21,8 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
+import logging
+
 from scripts.legacy.maintenance.quality_gate import run_quality_gate
 
 from scripts.verification.audit_game_logic import audit_game_logic
@@ -29,7 +31,7 @@ from src.db.engine import SessionLocal
 from src.models.game import Game
 from src.validators.standings_integrity import validate_standings_integrity
 
-
+logger = logging.getLogger(__name__)
 def get_latest_game_date() -> date | None:
     with SessionLocal() as session:
         latest_game = session.query(Game).order_by(Game.game_date.desc()).first()
@@ -173,23 +175,23 @@ def main():
     load_dotenv()
     timestamp = datetime.now()
 
-    print("🚀 Running KBO Data Integrity Audit Suite...")
-    print("-" * 50)
+    logger.info("🚀 Running KBO Data Integrity Audit Suite...")
+    logger.info("-" * 50)
 
     db_path = Path("data/kbo_dev.db")
 
     # 1. Referential & Orphan Checks
-    print("\n1️⃣ Running Referential & Orphan Checks...")
+    logger.info("\n1️⃣ Running Referential & Orphan Checks...")
     orphan_results = collect_report(db_path, sample_limit=20)
-    print(f"   Status: {'PASS' if orphan_results['ok'] else 'FAIL'}")
+    logger.info(f"   Status: {'PASS' if orphan_results['ok'] else 'FAIL'}")
 
     # 2. Game Logic Checks
-    print("\n2️⃣ Running Game Logic Checks...")
+    logger.info("\n2️⃣ Running Game Logic Checks...")
     logic_violations = audit_game_logic(year=args.year)
-    print(f"   Status: {'PASS' if not logic_violations else 'FAIL'} ({len(logic_violations)} violations)")
+    logger.info(f"   Status: {'PASS' if not logic_violations else 'FAIL'} ({len(logic_violations)} violations)")
 
     # 3. Quality Gate Checks
-    print("\n3️⃣ Running Quality Gate Checks...")
+    logger.info("\n3️⃣ Running Quality Gate Checks...")
     baseline_path = Path("Docs/quality_gate_baseline.json")
     oci_url = os.getenv("OCI_DB_URL")
 
@@ -202,16 +204,16 @@ def main():
         write_artifacts=True,
         strict_zero=args.strict_zero,
     )
-    print(f"   Status: {'PASS' if qgate_results['ok'] else 'FAIL'}")
+    logger.info(f"   Status: {'PASS' if qgate_results['ok'] else 'FAIL'}")
 
     # 4. Standings Rollup Checks
-    print("\n4️⃣ Running Standings Rollup Integrity...")
+    logger.info("\n4️⃣ Running Standings Rollup Integrity...")
     standings_results = []
 
     # Get latest game date
     latest_dt = get_latest_game_date()
     if latest_dt:
-        print(f"   - Validating standings for latest game date: {latest_dt.isoformat()}")
+        logger.info(f"   - Validating standings for latest game date: {latest_dt.isoformat()}")
         with SessionLocal() as session:
             latest_res = validate_standings_integrity(session, latest_dt)
             standings_results.append(latest_res)
@@ -221,15 +223,15 @@ def main():
             if all_game_dates and args.standings_days > 0:
                 sample_count = min(len(all_game_dates), args.standings_days)
                 sampled_dates = random.sample(all_game_dates, sample_count)
-                print(f"   - Validating standings for {sample_count} random past dates...")
+                logger.info(f"   - Validating standings for {sample_count} random past dates...")
                 for d in sampled_dates:
                     res = validate_standings_integrity(session, d)
                     standings_results.append(res)
     else:
-        print("   ⚠️ No games found in database to perform standings validation.")
+        logger.info("   ⚠️ No games found in database to perform standings validation.")
 
     # 5. Format & Save Report
-    print("\n📝 Generating report...")
+    logger.info("\n📝 Generating report...")
     report_md = format_report_md(
         timestamp=timestamp,
         orphan_results=orphan_results,
@@ -246,10 +248,10 @@ def main():
 
     report_path.write_text(report_md, encoding="utf-8")
 
-    print("-" * 50)
-    print("🎉 Audit Suite completed!")
-    print(f"💾 Report saved to: {report_path}")
-    print("-" * 50)
+    logger.info("-" * 50)
+    logger.info("🎉 Audit Suite completed!")
+    logger.info(f"💾 Report saved to: {report_path}")
+    logger.info("-" * 50)
 
     # Exit code based on overall status
     overall_ok = (
