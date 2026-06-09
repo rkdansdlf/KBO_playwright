@@ -11,7 +11,7 @@ from ..models.team_event import TeamEvent
 
 
 class TeamEventRepository:
-    def __init__(self, session: Session):
+    def __init__(self, session: Session) -> None:
         self.session = session
 
     def save(self, data: dict) -> TeamEvent:

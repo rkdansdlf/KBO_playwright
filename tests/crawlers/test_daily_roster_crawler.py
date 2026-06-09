@@ -1,4 +1,3 @@
-import pytest
 
 from src.crawlers.daily_roster_crawler import DailyRosterCrawler
 

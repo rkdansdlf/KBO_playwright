@@ -1,8 +1,6 @@
 """Tests for playwright_helpers — page navigation utilities."""
 
-from unittest.mock import MagicMock, patch
-
-import pytest
+from unittest.mock import MagicMock
 
 from src.utils.playwright_helpers import goto_next_page
 

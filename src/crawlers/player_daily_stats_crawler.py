@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 
 
 class PlayerDailyStatsCrawler:
-    def __init__(self, headless: bool = True):
+    def __init__(self, headless: bool = True) -> None:
         self.headless = headless
         self.base_url = "https://www.koreabaseball.com/Record/Player/{type}Detail/Daily.aspx?playerId={pid}"
 
@@ -183,7 +183,7 @@ class PlayerDailyStatsCrawler:
 
 if __name__ == "__main__":
 
-    async def test():
+    async def test() -> None:
         crawler = PlayerDailyStatsCrawler()
         # Jose Fernandez 2020
         data = await crawler.crawl_player_season(69209, False, 2020)

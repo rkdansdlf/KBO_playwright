@@ -1,4 +1,4 @@
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 
 from src.cli.retry_daily_failures import main
 
@@ -33,6 +33,6 @@ class TestRetryDailyFailures:
     def test_invalid_date_format(self):
         try:
             main(["--date", "2025"])
-            assert False, "Should have raised SystemExit"
+            raise AssertionError("Should have raised SystemExit")
         except SystemExit:
             pass

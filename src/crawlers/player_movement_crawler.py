@@ -22,7 +22,7 @@ from src.utils.playwright_retry import NAV_TIMEOUT
 class PlayerMovementCrawler:
     """Crawl player status changes (Trade, FA, Waiver, etc.)."""
 
-    def __init__(self, request_delay: float = 1.0, pool: AsyncPlaywrightPool | None = None):
+    def __init__(self, request_delay: float = 1.0, pool: AsyncPlaywrightPool | None = None) -> None:
         self.base_url = "https://www.koreabaseball.com/Player/Trade.aspx"
         self.request_delay = request_delay
         self.pool = pool
@@ -185,7 +185,7 @@ class PlayerMovementCrawler:
         return valid_data
 
 
-async def main():
+async def main() -> None:
     # Test run
     crawler = PlayerMovementCrawler()
     data = await crawler.crawl_years(2023, 2023)

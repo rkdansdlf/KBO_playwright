@@ -18,7 +18,6 @@ def engine():
 @pytest.fixture
 def session(engine):
     from src.models.base import Base
-    from src.models.rankings import StatRanking
 
     Base.metadata.create_all(bind=engine)
     Session = sessionmaker(bind=engine, expire_on_commit=False)

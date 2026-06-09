@@ -1,14 +1,14 @@
 """Tests for at_bat_grouper — PBP event grouping into at-bats."""
 
 from src.utils.at_bat_grouper import (
-    group_events_into_at_bats,
-    compute_at_bat_pitch_count,
-    ROLE_AT_BAT_RESULT,
     ROLE_AT_BAT_PITCH,
+    ROLE_AT_BAT_RESULT,
     ROLE_RUNNER_ADVANCE,
     ROLE_RUNNER_OUT,
     ROLE_STOLEN_BASE,
     ROLE_UNKNOWN,
+    compute_at_bat_pitch_count,
+    group_events_into_at_bats,
 )
 
 

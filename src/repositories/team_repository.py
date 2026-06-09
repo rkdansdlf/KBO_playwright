@@ -18,7 +18,7 @@ STAFF_ROSTER_POSITIONS = {"감독", "코치"}
 
 
 class TeamRepository:
-    def __init__(self, session: Session):
+    def __init__(self, session: Session) -> None:
         self.session = session
 
     def save_daily_rosters(self, rosters: list[dict[str, Any]]) -> int:

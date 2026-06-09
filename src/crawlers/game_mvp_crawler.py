@@ -24,7 +24,7 @@ HEADERS = {
 
 
 class GameMvpCrawler:
-    async def run(self, game_ids: list[str] = None, save: bool = False):
+    async def run(self, game_ids: list[str] = None, save: bool = False) -> None:
         if game_ids:
             results = []
             for gid in game_ids:
@@ -144,7 +144,7 @@ class GameMvpCrawler:
                 return code
         return None
 
-    def _save_to_db(self, data: list[dict]):
+    def _save_to_db(self, data: list[dict]) -> None:
         session = SessionLocal()
         repo = GameMvpRepository(session)
         count = 0

@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 
 
 class AwardCrawler:
-    def __init__(self):
+    def __init__(self) -> None:
         self.base_url_map = {
             "player_prize": "https://www.koreabaseball.com/Player/Awards/PlayerPrize.aspx",
             "golden_glove": "https://www.koreabaseball.com/Player/Awards/GoldenGlove.aspx",
@@ -25,7 +25,7 @@ class AwardCrawler:
             "series_prize": "https://www.koreabaseball.com/Player/Awards/SeriesPrize.aspx",
         }
 
-    async def run(self, award_types: list[str] = None, save: bool = False):
+    async def run(self, award_types: list[str] = None, save: bool = False) -> None:
         if not award_types or "all" in award_types:
             award_types = list(self.base_url_map.keys())
 
@@ -306,7 +306,7 @@ class AwardCrawler:
         """
         return await page.evaluate(script)
 
-    def save_to_db(self, data: list[dict]):
+    def save_to_db(self, data: list[dict]) -> None:
         session = SessionLocal()
         repo = AwardRepository(session)
         count = 0

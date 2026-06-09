@@ -166,7 +166,7 @@ def _parse_table(table) -> list[dict]:
     return out
 
 
-def _pick_futures_table(soup: BeautifulSoup):
+def _pick_futures_table(soup: BeautifulSoup) -> Any | None:
     """
     Find the Futures stats table safely:
     1. Look for table near '퓨처스' label
@@ -254,7 +254,7 @@ async def fetch_and_parse_futures_batting(
     return trimmed
 
 
-async def main():
+async def main() -> None:
     """Test the Futures batting crawler."""
     # Test with player 51868
     player_id = "51868"

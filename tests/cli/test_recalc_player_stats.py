@@ -1,4 +1,4 @@
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
 from src.cli.recalc_player_stats import main
 
@@ -7,7 +7,7 @@ class TestRecalcPlayerStats:
     def test_no_season_errors(self):
         try:
             main([])
-            assert False, "Should have raised SystemExit"
+            raise AssertionError("Should have raised SystemExit")
         except SystemExit:
             pass
 

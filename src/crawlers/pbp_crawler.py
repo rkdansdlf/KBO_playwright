@@ -28,7 +28,7 @@ class PBPCrawler:
         request_delay: float = 1.0,
         policy: RequestPolicy | None = None,
         pool: AsyncPlaywrightPool | None = None,
-    ):
+    ) -> None:
         # Using the older but more robust LiveText.aspx which behaves better with Referer checks
         self.base_url = "https://www.koreabaseball.com/Game/LiveText.aspx"
         self.policy = policy or RequestPolicy(min_delay=request_delay, max_delay=request_delay + 0.5)
@@ -54,7 +54,7 @@ class PBPCrawler:
 
         try:
 
-            async def do_crawl(retry_count=0):
+            async def do_crawl(retry_count=0) -> dict[str, Any] | None:
                 try:
                     page = await pool.acquire()
                     try:

@@ -25,7 +25,7 @@ class StaticTextCrawler:
     from local/remote PDFs and wikis.
     """
 
-    def __init__(self, pool: AsyncPlaywrightPool | None = None):
+    def __init__(self, pool: AsyncPlaywrightPool | None = None) -> None:
         self.pool = pool
         self._raw_pages: list[dict] = []
 

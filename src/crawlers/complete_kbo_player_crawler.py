@@ -486,7 +486,7 @@ def crawl_other_series_data(
     return all_series_data
 
 
-def save_to_database(player_data: dict[int, dict], series_name: str):
+def save_to_database(player_data: dict[int, dict], series_name: str) -> int:
     """데이터베이스에 저장"""
     try:
         logger.info(f"💾 {series_name} 데이터 저장 중...")
@@ -548,7 +548,7 @@ def save_to_database(player_data: dict[int, dict], series_name: str):
         return 0
 
 
-def main():
+def main() -> None:
     """메인 실행 함수"""
     # 크롤링 대상 설정
     YEAR = datetime.now().year

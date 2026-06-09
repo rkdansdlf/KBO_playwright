@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from datetime import datetime
-
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import sessionmaker
 

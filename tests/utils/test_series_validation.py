@@ -1,14 +1,13 @@
 """Tests for series_validation — KBO season series by year."""
 
-import pytest
 
 from src.utils.series_validation import (
-    get_available_series_by_year,
-    is_series_available,
     filter_series_for_year,
-    get_series_info,
-    validate_year_series_combination,
+    get_available_series_by_year,
     get_recommended_series_for_period,
+    get_series_info,
+    is_series_available,
+    validate_year_series_combination,
 )
 
 

@@ -5,6 +5,7 @@
 import logging
 import sqlite3
 from datetime import datetime
+from typing import Any
 
 from playwright.sync_api import sync_playwright
 
@@ -16,7 +17,7 @@ from src.utils.request_policy import RequestPolicy  # noqa: E402
 from src.utils.team_codes import resolve_team_code  # noqa: E402
 
 
-def crawl_baserunning_stats(year=None, max_retries=3, timeout=LONG_TIMEOUT):
+def crawl_baserunning_stats(year=None, max_retries=3, timeout=LONG_TIMEOUT) -> list[dict[str, Any]]:
     """
     전체 선수의 주루 기록을 크롤링합니다.
 
@@ -91,7 +92,7 @@ def crawl_baserunning_stats(year=None, max_retries=3, timeout=LONG_TIMEOUT):
                             team_name = cells[2].inner_text().strip()
                             team_id = resolve_team_code(team_name, year) or team_name
 
-                            def safe_int(text):
+                            def safe_int(text) -> int:
                                 if not text or text.strip() in ("-", ""):
                                     return 0
                                 try:
@@ -99,7 +100,7 @@ def crawl_baserunning_stats(year=None, max_retries=3, timeout=LONG_TIMEOUT):
                                 except (ValueError, TypeError):
                                     return 0
 
-                            def safe_float(text):
+                            def safe_float(text) -> float:
                                 if not text or text.strip() in ("-", ""):
                                     return 0.0
                                 try:
@@ -139,7 +140,7 @@ def crawl_baserunning_stats(year=None, max_retries=3, timeout=LONG_TIMEOUT):
     return baserunning_data
 
 
-def save_baserunning_stats(player_list, year=None, db_path=None):
+def save_baserunning_stats(player_list, year=None, db_path=None) -> None:
     """
     주루 기록을 크롤링하여 DB에 저장합니다.
 

@@ -1,10 +1,9 @@
-import pytest
 
 from src.crawlers.player_batting_all_series_crawler import (
-    get_series_mapping,
-    safe_parse_number,
     _extract_player_id_from_href,
     _is_basic2_headers,
+    get_series_mapping,
+    safe_parse_number,
 )
 
 

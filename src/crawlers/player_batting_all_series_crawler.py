@@ -1009,7 +1009,7 @@ def crawl_all_series(
     return all_series_data
 
 
-def main():
+def main() -> None:
     parser = argparse.ArgumentParser(description="KBO 전체 시리즈 타자 기록 크롤러")
 
     parser.add_argument("--year", type=int, default=datetime.now().year, help="시즌 연도 (기본값: 당해 연도)")

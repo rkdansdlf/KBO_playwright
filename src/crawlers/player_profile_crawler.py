@@ -168,7 +168,7 @@ class PlayerProfileCrawler:
     FUTURES_HITTER_URL = "https://www.koreabaseball.com/Futures/Player/HitterDetail.aspx"
     FUTURES_PITCHER_URL = "https://www.koreabaseball.com/Futures/Player/PitcherDetail.aspx"
 
-    def __init__(self, request_delay: float = 1.2, pool: AsyncPlaywrightPool | None = None):
+    def __init__(self, request_delay: float = 1.2, pool: AsyncPlaywrightPool | None = None) -> None:
         self.request_delay = request_delay
         self.pool = pool
         self.policy = RequestPolicy(min_delay=request_delay, max_delay=request_delay)
@@ -357,7 +357,7 @@ class PlayerProfileCrawler:
         return await page.evaluate(_EXTRACT_JS)
 
 
-async def main():
+async def main() -> None:
     """Quick test for a known problematic ID (900076)"""
     crawler = PlayerProfileCrawler()
     result = await crawler.crawl_player_profile("900076")

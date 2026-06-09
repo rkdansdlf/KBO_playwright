@@ -1,4 +1,3 @@
-import pytest
 
 from src.crawlers.food_crawler import FoodCrawler
 

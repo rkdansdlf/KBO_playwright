@@ -1,7 +1,6 @@
-import pytest
 from datetime import date
 
-from src.crawlers.staff_register_crawler import _parse_player_id, _parse_hw, _parse_birth_date, _parse_hands
+from src.crawlers.staff_register_crawler import _parse_birth_date, _parse_hands, _parse_hw, _parse_player_id
 
 
 class TestParsePlayerId:

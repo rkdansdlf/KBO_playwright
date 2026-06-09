@@ -4,6 +4,8 @@ Collects comprehensive player information from KBO Player Search page.
 Now refactored into a class as expected by GameDetailCrawler.
 """
 
+from __future__ import annotations
+
 import asyncio
 import logging
 import os
@@ -87,7 +89,7 @@ class PlayerSearchCrawler:
         pool: AsyncPlaywrightPool | None = None,
         request_delay: float = REQUEST_DELAY_SEC,
         headless: bool = True,
-    ):
+    ) -> None:
         self.pool = pool
         self.request_delay = request_delay
         self.headless = headless
@@ -113,7 +115,7 @@ class PlayerSearchCrawler:
             self._record_failure("blocked")
             return False, "blocked"
 
-        async def _navigate():
+        async def _navigate() -> None:
             await self.policy.delay_async(host="www.koreabaseball.com")
             await page.goto(url, wait_until="domcontentloaded", timeout=timeout)
             if required_selector:
@@ -206,7 +208,7 @@ class PlayerSearchCrawler:
             if owns_pool:
                 await active_pool.close()
 
-    async def _merge_rows(self, page, all_rows, seen_ids, limit):
+    async def _merge_rows(self, page, all_rows, seen_ids, limit) -> None:
         rows = await self._paginate_current_tab(page)
         for r in rows:
             if r.player_id not in seen_ids:
@@ -222,7 +224,7 @@ class PlayerSearchCrawler:
         collected: list[PlayerRow] = []
         seen: set[int] = set()
 
-        async def add_current():
+        async def add_current() -> None:
             for r in await self._collect_page_rows(page):
                 if r.player_id not in seen:
                     seen.add(r.player_id)
@@ -325,27 +327,27 @@ class PlayerSearchCrawler:
             )
         return res
 
-    def _extract_pid(self, href):
+    def _extract_pid(self, href: str | None) -> int | None:
         if not href:
             return None
         m = re.search(r"playerId=(\d+)", href.replace(",", ""))
         return int(m.group(1)) if m else None
 
-    def _parse_hw(self, s):
+    def _parse_hw(self, s: str) -> tuple[int, int] | None:
         m = re.search(r"(\d+)cm.*/(\d+)kg", s.replace(" ", ""))
-        return (int(m.group(1)), int(m.group(2))) if m else (None, None)
+        return (int(m.group(1)), int(m.group(2))) if m else None
 
-    async def _get_hfpage_value(self, page):
+    async def _get_hfpage_value(self, page: Page) -> str:
         return await page.evaluate("(sel) => document.querySelector(sel)?.value || ''", HFPAGE)
 
-    async def _get_first_player_name(self, page):
+    async def _get_first_player_name(self, page: Page) -> str:
         try:
             return (await page.locator(TABLE_ROWS).first.locator("td").nth(1).inner_text()).strip()
         except TimeoutError:
             logger.warning("Could not get first player name from table")
             return ""
 
-    async def _trigger_postback(self, page, anchor):
+    async def _trigger_postback(self, page, anchor) -> None:
         # Check href first — javascript:__doPostBack links must use manual evaluation
         # because Playwright click() returns success but does not actually trigger
         # the ASP.NET postback mechanism.
@@ -375,7 +377,7 @@ class PlayerSearchCrawler:
             logger.exception("Postback click failed: %s", href)
             return False
 
-    async def _wait_after_nav(self, page, prev_v, first_b):
+    async def _wait_after_nav(self, page, prev_v, first_b) -> None:
         try:
             await page.wait_for_function(
                 "([s, v]) => document.querySelector(s)?.value !== v", [HFPAGE, prev_v], timeout=5000
@@ -384,7 +386,7 @@ class PlayerSearchCrawler:
             pass
         await asyncio.sleep(self.request_delay)
 
-    async def _list_initial_links(self, page):
+    async def _list_initial_links(self, page) -> None:
         links = page.locator("a")
         res = []
         for i in range(await links.count()):
@@ -472,7 +474,7 @@ async def crawl_all_players(
     return await crawler.crawl_all_players(max_pages=max_pages)
 
 
-async def main():
+async def main() -> None:
     import argparse
 
     parser = argparse.ArgumentParser(description="KBO Player Search Crawler")

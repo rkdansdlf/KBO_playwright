@@ -507,10 +507,14 @@ def main() -> None:
         logger.info(f"[REPORT] {result['report_csv']}")
         raise SystemExit(1) from exc
     mode = "APPLY" if args.apply else "DRY-RUN"
-    print(
-        f"[{mode}] group_overrides={result['group_overrides']} row_overrides={result['row_overrides']} "
-        f"matched_rows={result['matched_rows']} updated_rows={result['updated_rows']} "
-        f"invalid_row_overrides={result['invalid_row_overrides']}"
+    logger.info(
+        "[%s] group_overrides=%s row_overrides=%s matched_rows=%s updated_rows=%s invalid_row_overrides=%s",
+        mode,
+        result['group_overrides'],
+        result['row_overrides'],
+        result['matched_rows'],
+        result['updated_rows'],
+        result['invalid_row_overrides'],
     )
     if result["backup_path"]:
         logger.info(f"[BACKUP] {result['backup_path']}")

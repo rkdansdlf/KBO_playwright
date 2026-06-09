@@ -1,4 +1,5 @@
 import logging
+from typing import Any
 
 """
 Futures League Pitching Stats Crawler
@@ -238,7 +239,7 @@ def _parse_table(table) -> list[dict]:
     return out
 
 
-def _pick_futures_pitching_table(soup: BeautifulSoup):
+def _pick_futures_pitching_table(soup: BeautifulSoup) -> Any | None:
     """Find the Futures pitching record table."""
     # Method 1: Find by ID
     tbl = soup.find("table", id="tblPitcherRecord")

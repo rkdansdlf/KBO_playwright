@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
 
-import pytest
 from bs4 import BeautifulSoup
 
 from src.services.hitter_page_fetcher import (

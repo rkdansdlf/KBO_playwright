@@ -8,7 +8,7 @@ class TestRunAllCrawlers:
     def test_no_args_prints_help(self):
         try:
             main()
-            assert False, "Should have raised SystemExit"
+            raise AssertionError("Should have raised SystemExit")
         except SystemExit:
             pass
 

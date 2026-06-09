@@ -1,5 +1,5 @@
 from argparse import Namespace
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
 from src.cli.dashboard_report import main
 

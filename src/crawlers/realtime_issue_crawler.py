@@ -24,7 +24,7 @@ class RealtimeIssueCrawler:
     Scrapes real-time baseball topics, headlines, and forum discussions.
     """
 
-    def __init__(self, timeout: int = 15):
+    def __init__(self, timeout: int = 15) -> None:
         self.timeout = timeout
         self._raw_pages: list[dict] = []
         self.headers = {

@@ -79,7 +79,7 @@ TEAM_TO_SOURCE_KEY = {
 
 
 class TeamEventCrawler:
-    def __init__(self, days_back: int = 30):
+    def __init__(self, days_back: int = 30) -> None:
         self.days_back = days_back
         self.cutoff_date = datetime.now() - timedelta(days=days_back)
         self._raw_pages: list[dict] = []

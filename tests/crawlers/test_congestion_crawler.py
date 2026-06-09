@@ -1,4 +1,3 @@
-import pytest
 from datetime import date, datetime
 
 from src.crawlers.congestion_crawler import _snapshot_to_record

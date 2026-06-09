@@ -25,7 +25,7 @@ class RetiredPlayerDetailCrawler:
     hitter_url = "https://www.koreabaseball.com/Record/Retire/Hitter.aspx"
     pitcher_url = "https://www.koreabaseball.com/Record/Retire/Pitcher.aspx"
 
-    def __init__(self, request_delay: float = 1.5, pool: AsyncPlaywrightPool | None = None):
+    def __init__(self, request_delay: float = 1.5, pool: AsyncPlaywrightPool | None = None) -> None:
         self.request_delay = request_delay
         self.pool = pool
         self._internal_pool = None
@@ -161,7 +161,7 @@ class RetiredPlayerDetailCrawler:
             return []
 
 
-async def main():
+async def main() -> None:
     crawler = RetiredPlayerDetailCrawler()
     sample_id = "78137"
     try:

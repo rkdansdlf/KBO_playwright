@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 
 
 class PBPBS4Crawler:
-    def __init__(self):
+    def __init__(self) -> None:
         self.base_url = "https://www.koreabaseball.com/Game/LiveTextView2.aspx"
         self.wpa_calc = WPACalculator()
         self.headers = {

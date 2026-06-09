@@ -49,7 +49,7 @@ def _row_to_dict(row: PlayerRow) -> dict[str, Any]:
 class PlayerListCrawler:
     """Legacy API wrapper used by init_data_collection.py and futures crawler."""
 
-    def __init__(self, *, request_delay: float = 1.5, headless: bool = True, max_pages: int | None = None):
+    def __init__(self, *, request_delay: float = 1.5, headless: bool = True, max_pages: int | None = None) -> None:
         self.request_delay = request_delay
         self.headless = headless
         self.max_pages = max_pages

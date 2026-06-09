@@ -86,7 +86,7 @@ PITCHING_FIELDS = {
 class TeamPitchingStatsCrawler:
     """Collects and persists team-level pitching stats for a season."""
 
-    def __init__(self, league: str = "REGULAR", policy: RequestPolicy | None = None):
+    def __init__(self, league: str = "REGULAR", policy: RequestPolicy | None = None) -> None:
         self.league = league
         self.repo = TeamSeasonPitchingRepository()
         self.policy = policy or RequestPolicy()
@@ -271,7 +271,7 @@ def _parse_innings(value: str) -> float | None:
         return None
 
 
-def main():
+def main() -> None:
     parser = argparse.ArgumentParser(description="Crawl team-level pitching stats.")
     parser.add_argument("--season", type=int, required=True, help="Season year (e.g., 2023)")
     parser.add_argument("--league", type=str, default="REGULAR", help="League code (default: REGULAR)")

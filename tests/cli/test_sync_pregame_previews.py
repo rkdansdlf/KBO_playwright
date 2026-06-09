@@ -1,4 +1,4 @@
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
 from src.cli.sync_pregame_previews import main
 
@@ -16,7 +16,7 @@ class TestSyncPregamePreviews:
         with patch("src.cli.sync_pregame_previews.get_oci_url", return_value=None):
             try:
                 main(["--dry-run"])
-                assert False, "Should have raised SystemExit"
+                raise AssertionError("Should have raised SystemExit")
             except SystemExit:
                 pass
 

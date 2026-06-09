@@ -35,7 +35,7 @@ SOURCE_SCHEMA_VERSION = "naver-relay-v1"
 class _PermanentStatusError(Exception):
     """Raised when the HTTP response indicates a permanent (non-retryable) error."""
 
-    def __init__(self, status_code: int):
+    def __init__(self, status_code: int) -> None:
         self.status_code = status_code
         super().__init__(f"permanent_http_{status_code}")
 
@@ -56,7 +56,7 @@ KBO_TO_NAVER_TEAM_CODE = {
 class RelayCrawler:
     schedule_fallback_window_days = 7
 
-    def __init__(self, request_delay: float = 1.0, policy=None, pool: AsyncPlaywrightPool | None = None):
+    def __init__(self, request_delay: float = 1.0, policy=None, pool: AsyncPlaywrightPool | None = None) -> None:
         """
         pool is retained for backward compatibility with GameDetailCrawler but is unused.
         """
@@ -414,7 +414,7 @@ class RelayCrawler:
 
         # Sort by score descending. For tie-breakers on double headers, use startTime.
         # DH2 favors later time. DH1/normal favors earlier time.
-        def sort_key(item):
+        def sort_key(item: tuple[int, str, dict[str, Any]]) -> tuple[int, int]:
             score, start_time, game = item
             time_digits = re.sub(r"\D", "", start_time)
             time_val = int(time_digits) if time_digits else 0
@@ -721,7 +721,7 @@ class RelayCrawler:
                 batter_record = log.get("batterRecord") or {}
 
                 # Naver fields are often strings
-                def to_int(val, default=0):
+                def to_int(val: Any, default: int = 0) -> int:
                     try:
                         return int(val) if val is not None else default
                     except (TypeError, ValueError):
@@ -870,7 +870,7 @@ class RelayCrawler:
     def _format_base_string(self, runners: int) -> str:
         return format_base_string(runners)
 
-    def _apply_wpa_transitions(self, events: list[dict[str, Any]]):
+    def _apply_wpa_transitions(self, events: list[dict[str, Any]]) -> None:
         apply_wpa_transitions(events, calculator=self.wpa_calc)
 
 

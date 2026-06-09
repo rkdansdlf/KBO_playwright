@@ -12,7 +12,6 @@ class TestRunDailyUpdateCLI:
             mock_now = MagicMock()
             mock_now.strftime.return_value = "20251014"
             mock_dt.now.return_value = mock_now
-            mock_timedelta = MagicMock()
             mock_dt.timedelta = MagicMock(return_value=MagicMock())
             mock_dt.strptime = __import__("datetime").datetime.strptime
 

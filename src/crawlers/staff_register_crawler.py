@@ -175,7 +175,7 @@ class StaffRegisterCrawler:
     }
     """
 
-    def __init__(self, headless: bool = True, request_delay: float = 1.5):
+    def __init__(self, headless: bool = True, request_delay: float = 1.5) -> None:
         self.headless = headless
         self.policy = RequestPolicy(min_delay=request_delay, max_delay=request_delay)
 
@@ -312,7 +312,7 @@ class StaffRegisterCrawler:
         return count
 
 
-async def main():
+async def main() -> None:
     """Quick standalone test – print staff for LG and Kiwoom."""
     crawler = StaffRegisterCrawler(headless=True)
     records = await crawler.crawl_all_teams(team_codes=["LG", "WO"])

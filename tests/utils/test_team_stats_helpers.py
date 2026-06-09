@@ -2,7 +2,7 @@
 
 import pytest
 
-from src.utils.team_stats_helpers import get_cell_value, resolve_team_id, parse_numeric
+from src.utils.team_stats_helpers import get_cell_value, parse_numeric, resolve_team_id
 
 
 class MockLocator:

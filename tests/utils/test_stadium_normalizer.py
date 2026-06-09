@@ -1,8 +1,7 @@
 """Tests for stadium_normalizer — stadium name normalization."""
 
-import pytest
 
-from src.utils.stadium_normalizer import normalize_stadium_name, get_stadium_code
+from src.utils.stadium_normalizer import get_stadium_code, normalize_stadium_name
 
 
 class TestNormalizeStadiumName:

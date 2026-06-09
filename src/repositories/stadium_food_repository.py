@@ -10,7 +10,7 @@ from ..models.stadium_food_vendor import StadiumFoodVendor
 
 
 class StadiumFoodVendorRepository:
-    def __init__(self, session: Session):
+    def __init__(self, session: Session) -> None:
         self.session = session
 
     def save(self, data: dict) -> StadiumFoodVendor:
@@ -48,7 +48,7 @@ class StadiumFoodVendorRepository:
 
 
 class StadiumFoodMenuItemRepository:
-    def __init__(self, session: Session):
+    def __init__(self, session: Session) -> None:
         self.session = session
 
     def save(self, data: dict) -> StadiumFoodMenuItem:

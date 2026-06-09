@@ -526,10 +526,13 @@ def main() -> None:
             delay=args.delay,
         )
     )
-    print(
-        f"[REPORT] targets={result['targets']} payloads={result['payloads']} "
-        f"evidence_rows={result['evidence_rows']} proposed_updates={result['proposed_updates']} "
-        f"blocked_rows={result['blocked_rows']}"
+    logger.info(
+        "[REPORT] targets=%s payloads=%s evidence_rows=%s proposed_updates=%s blocked_rows=%s",
+        result['targets'],
+        result['payloads'],
+        result['evidence_rows'],
+        result['proposed_updates'],
+        result['blocked_rows'],
     )
     logger.info(f"[REPORT] evidence_csv={result['evidence_csv']}")
     logger.info(f"[REPORT] proposed_csv={result['proposed_csv']}")

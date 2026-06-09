@@ -9,7 +9,7 @@ from ..models.ticket_price import TicketPrice
 
 
 class TicketPriceRepository:
-    def __init__(self, session: Session):
+    def __init__(self, session: Session) -> None:
         self.session = session
 
     def save(self, data: dict) -> TicketPrice:

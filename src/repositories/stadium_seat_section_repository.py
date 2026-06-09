@@ -9,7 +9,7 @@ from ..models.stadium_seat_section import StadiumSeatSection
 
 
 class StadiumSeatSectionRepository:
-    def __init__(self, session: Session):
+    def __init__(self, session: Session) -> None:
         self.session = session
 
     def save(self, data: dict) -> StadiumSeatSection:

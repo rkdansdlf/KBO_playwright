@@ -1,11 +1,10 @@
 """Tests for ClutchAggregator — WPA-based clutch metric aggregation."""
 
 from datetime import date
-from unittest.mock import MagicMock, patch
 
 import pytest
 from sqlalchemy import create_engine
-from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy.orm import sessionmaker
 
 from src.aggregators.clutch_aggregator import ClutchAggregator
 from src.models.game import Game, GameEvent

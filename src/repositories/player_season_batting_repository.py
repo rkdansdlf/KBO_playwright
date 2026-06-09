@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 class PlayerSeasonBattingRepository:
     """Repository for player_season_batting table operations"""
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.dialect = Engine.dialect.name
 
     def upsert_batting_stats(self, batting_stats: list[dict[str, Any]]) -> int:
@@ -54,7 +54,7 @@ class PlayerSeasonBattingRepository:
                 logger.exception("[ERROR] Error upserting batting stats")
                 raise
 
-    def _upsert_one(self, session: Session, stats_data: dict[str, Any]):
+    def _upsert_one(self, session: Session, stats_data: dict[str, Any]) -> None:
         """UPSERT single batting stat record (SQLite/PostgreSQL compatible)"""
         data = {
             "player_id": stats_data["player_id"],

@@ -15,10 +15,10 @@ from src.utils.team_codes import build_kbo_game_id  # noqa: E402
 
 
 class BroadcastCrawler:
-    def __init__(self):
+    def __init__(self) -> None:
         self.url = "https://www.koreabaseball.com/Schedule/Schedule.aspx"
 
-    async def run(self, year: int = None, month: int = None, save: bool = False):
+    async def run(self, year: int = None, month: int = None, save: bool = False) -> None:
         from datetime import datetime
 
         year = year or datetime.now().year
@@ -109,7 +109,7 @@ class BroadcastCrawler:
             )
         return normalized
 
-    def _save_to_db(self, data: list[dict]):
+    def _save_to_db(self, data: list[dict]) -> None:
         session = SessionLocal()
         repo = BroadcastRepository(session)
         count = 0

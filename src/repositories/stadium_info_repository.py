@@ -5,7 +5,7 @@ from ..models.stadium_info import StadiumInfo, StadiumRegulation
 
 
 class StadiumInfoRepository:
-    def __init__(self, session: Session):
+    def __init__(self, session: Session) -> None:
         self.session = session
 
     def save_stadium_info(self, data: dict) -> StadiumInfo:

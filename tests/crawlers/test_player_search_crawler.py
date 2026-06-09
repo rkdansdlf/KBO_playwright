@@ -1,6 +1,5 @@
-import pytest
-from datetime import date
 from dataclasses import dataclass
+from datetime import date
 
 from src.crawlers.player_search_crawler import parse_birth_date, player_row_to_dict
 

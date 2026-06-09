@@ -1,6 +1,5 @@
-import pytest
 
-from src.crawlers.simple_basic2_crawler import safe_parse_number, parse_player_id_from_link
+from src.crawlers.simple_basic2_crawler import parse_player_id_from_link, safe_parse_number
 
 
 class TestSafeParseNumber:
