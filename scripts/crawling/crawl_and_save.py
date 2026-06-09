@@ -9,7 +9,10 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import logging
 from typing import Sequence
+
+logger = logging.getLogger(__name__)
 
 DEPRECATION_MESSAGE = """
 [DEPRECATED] scripts/crawling/crawl_and_save.py is a legacy workflow.
@@ -55,18 +58,18 @@ async def run(argv: Sequence[str] | None = None) -> int:
     parser = build_arg_parser()
     args = parser.parse_args(argv)
 
-    print(DEPRECATION_MESSAGE.strip())
+    logger.info(DEPRECATION_MESSAGE.strip())
 
     if args.games_only:
         await _run_schedule_collection(args)
         return 0
 
-    print(
+    logger.info(
         "\nThe legacy player collection path was removed because it writes through "
         "obsolete models. This wrapper intentionally does not run a partial "
         "default pipeline."
     )
-    print("Use --games-only to delegate schedule collection, or run the supported CLI commands above.")
+    logger.info("Use --games-only to delegate schedule collection, or run the supported CLI commands above.")
     return 2
 
 

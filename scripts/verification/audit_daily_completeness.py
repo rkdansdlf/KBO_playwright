@@ -7,6 +7,7 @@ Checks game_batting_stats, game_pitching_stats, and game_play_by_play.
 from __future__ import annotations
 
 import argparse
+import logging
 import os
 import sys
 from datetime import date, timedelta
@@ -14,7 +15,9 @@ from datetime import date, timedelta
 from dotenv import load_dotenv
 from sqlalchemy import create_engine, text
 
+from src.db.engine import DATABASE_URL as _ENGINE_DB_URL
 
+logger = logging.getLogger(__name__)
 def audit_completeness(db_url: str, lookback_days: int) -> int:
     engine = create_engine(db_url)
 
@@ -23,7 +26,7 @@ def audit_completeness(db_url: str, lookback_days: int) -> int:
     start_date = (today - timedelta(days=lookback_days)).isoformat()
     end_date = today.isoformat()
 
-    print(f"🔍 Auditing COMPLETED games from {start_date} to {end_date}...")
+    logger.info(f"🔍 Auditing COMPLETED games from {start_date} to {end_date}...")
 
     # We use subqueries to count related records for each completed game.
     # This identifies "silent" gaps where a game is marked finished but collection failed.
@@ -67,21 +70,21 @@ def audit_completeness(db_url: str, lookback_days: int) -> int:
                     failures.append(f"  - [{g_date}] {g_id}: missing {', '.join(missing)}")
 
     except Exception as e:
-        print(f"❌ Database error during audit: {e}")
+        logger.info(f"❌ Database error during audit: {e}")
         return 2
 
     if failures:
-        print(f"❌ Found {len(failures)} incomplete games out of {game_count} checked:")
+        logger.info(f"❌ Found {len(failures)} incomplete games out of {game_count} checked:")
         for f in failures:
-            print(f)
-        print("\nPossible causes: Crawler timeout, KBO site structure change, or database connection issues.")
-        print("Action: Run backfill for the missing game IDs.")
+            logger.info(f)
+        logger.info("\nPossible causes: Crawler timeout, KBO site structure change, or database connection issues.")
+        logger.info("Action: Run backfill for the missing game IDs.")
         return 1
 
     if game_count == 0:
-        print(f"ℹ️  No completed games found in the last {lookback_days} days.")
+        logger.info(f"ℹ️  No completed games found in the last {lookback_days} days.")
     else:
-        print(f"✅ All {game_count} completed games have full detail data.")
+        logger.info(f"✅ All {game_count} completed games have full detail data.")
 
     return 0
 
@@ -99,7 +102,7 @@ def main():
 
     if not db_url:
         # Fallback to local dev DB
-        db_url = os.getenv("DATABASE_URL") or "sqlite:///./data/kbo_dev.db"
+        db_url = os.getenv("DATABASE_URL") or _ENGINE_DB_URL
 
     sys.exit(audit_completeness(db_url, args.days))
 

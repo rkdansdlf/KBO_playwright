@@ -143,7 +143,7 @@ class StatAudit:
 
     @staticmethod
     def audit_batting(year: int, series: str, fix: bool = False, max_mismatches: int = 10, max_game_diff: int = 15):
-        print(
+        logger.info(
             f"🕵️  Auditing BATTING stats for {year} {series} (fix={fix}, max_mismatches={max_mismatches}, max_game_diff={max_game_diff})..."
         )
         with SessionLocal() as session:
@@ -156,7 +156,7 @@ class StatAudit:
             )
 
             if not official_stats:
-                print("   ⚠️ No official batting stats found to compare.")
+                logger.info("   ⚠️ No official batting stats found to compare.")
                 return
 
             # Use BULK aggregation for performance
@@ -197,15 +197,15 @@ class StatAudit:
 
             mismatches_count = len(mismatches)
             if mismatches_count == 0:
-                print("   ✅ No batting mismatches found.")
+                logger.info("   ✅ No batting mismatches found.")
                 return
 
-            print(f"   ❌ Found {mismatches_count} batting mismatches.")
+            logger.info(f"   ❌ Found {mismatches_count} batting mismatches.")
             for m in mismatches:
-                print(f"      - {m['name']} (ID:{m['player_id']}): {', '.join(m['diffs'])}")
+                logger.info(f"      - {m['name']} (ID:{m['player_id']}): {', '.join(m['diffs'])}")
 
             if not fix:
-                print("   ℹ️ Fix is disabled. Mismatches not resolved in DB.")
+                logger.info("   ℹ️ Fix is disabled. Mismatches not resolved in DB.")
                 StatAudit.send_audit_warning_alert(year, series, "BATTING", mismatches)
                 return
 
@@ -231,7 +231,7 @@ class StatAudit:
                 msg = (
                     f"🛑 Auto-remediation ABORTED for BATTING ({year} {series}) due to safety violations: {reason_str}"
                 )
-                print(f"   {msg}")
+                logger.info(f"   {msg}")
                 logger.error(msg)
                 StatAudit.send_remediation_abort_alert(year, series, "BATTING", reason_str)
                 return
@@ -262,14 +262,14 @@ class StatAudit:
                         calc["team_code"] = off.team_code
 
                     save_batting_stats_safe([calc])
-                    print(f"      ✅ Fixed {name} in DB. (Backup: {backup_name})")
+                    logger.info(f"      ✅ Fixed {name} in DB. (Backup: {backup_name})")
                     fix_count += 1
                 except Exception as e:
-                    print(f"      ⚠️ Failed to fix {name}: {e}")
+                    logger.info(f"      ⚠️ Failed to fix {name}: {e}")
                     logger.error(f"Failed to fix {name} batting: {e}")
 
             summary_msg = f"Audited {len(official_stats)} records. Mismatches: {mismatches_count}, Fixed: {fix_count}"
-            print(f"   📊 {summary_msg}")
+            logger.info(f"   📊 {summary_msg}")
             if fix_count > 0:
                 fixed_players = [m for m in mismatches if m["name"] is not None][:fix_count]
                 StatAudit.send_remediation_success_alert(year, series, "BATTING", mismatches_count, fixed_players)
@@ -285,7 +285,7 @@ class StatAudit:
         max_game_diff: int = 15,
         max_innings_outs_diff: int = 45,
     ):
-        print(
+        logger.info(
             f"🕵️  Auditing PITCHING stats for {year} {series} (fix={fix}, max_mismatches={max_mismatches}, max_game_diff={max_game_diff}, max_innings_outs_diff={max_innings_outs_diff})..."
         )
         with SessionLocal() as session:
@@ -298,7 +298,7 @@ class StatAudit:
             )
 
             if not official_stats:
-                print("   ⚠️ No official pitching stats found to compare.")
+                logger.info("   ⚠️ No official pitching stats found to compare.")
                 return
 
             # Use BULK aggregation for performance
@@ -341,15 +341,15 @@ class StatAudit:
 
             mismatches_count = len(mismatches)
             if mismatches_count == 0:
-                print("   ✅ No pitching mismatches found.")
+                logger.info("   ✅ No pitching mismatches found.")
                 return
 
-            print(f"   ❌ Found {mismatches_count} pitching mismatches.")
+            logger.info(f"   ❌ Found {mismatches_count} pitching mismatches.")
             for m in mismatches:
-                print(f"      - {m['name']} (ID:{m['player_id']}): {', '.join(m['diffs'])}")
+                logger.info(f"      - {m['name']} (ID:{m['player_id']}): {', '.join(m['diffs'])}")
 
             if not fix:
-                print("   ℹ️ Fix is disabled. Mismatches not resolved in DB.")
+                logger.info("   ℹ️ Fix is disabled. Mismatches not resolved in DB.")
                 StatAudit.send_audit_warning_alert(year, series, "PITCHING", mismatches)
                 return
 
@@ -382,7 +382,7 @@ class StatAudit:
                 msg = (
                     f"🛑 Auto-remediation ABORTED for PITCHING ({year} {series}) due to safety violations: {reason_str}"
                 )
-                print(f"   {msg}")
+                logger.info(f"   {msg}")
                 logger.error(msg)
                 StatAudit.send_remediation_abort_alert(year, series, "PITCHING", reason_str)
                 return
@@ -413,14 +413,14 @@ class StatAudit:
                         calc["team_code"] = off.team_code
 
                     save_pitching_stats_to_db([calc])
-                    print(f"      ✅ Fixed {name} in DB. (Backup: {backup_name})")
+                    logger.info(f"      ✅ Fixed {name} in DB. (Backup: {backup_name})")
                     fix_count += 1
                 except Exception as e:
-                    print(f"      ⚠️ Failed to fix {name}: {e}")
+                    logger.info(f"      ⚠️ Failed to fix {name}: {e}")
                     logger.error(f"Failed to fix {name} pitching: {e}")
 
             summary_msg = f"Audited {len(official_stats)} records. Mismatches: {mismatches_count}, Fixed: {fix_count}"
-            print(f"   📊 {summary_msg}")
+            logger.info(f"   📊 {summary_msg}")
             if fix_count > 0:
                 fixed_players = [m for m in mismatches if m["name"] is not None][:fix_count]
                 StatAudit.send_remediation_success_alert(year, series, "PITCHING", mismatches_count, fixed_players)
@@ -429,7 +429,7 @@ class StatAudit:
 
     @staticmethod
     def audit_fielding(year: int, series: str, fix: bool = False, max_mismatches: int = 15, max_error_diff: int = 5):
-        print(
+        logger.info(
             f"🕵️  Auditing FIELDING stats for {year} {series} (fix={fix}, max_mismatches={max_mismatches}, max_error_diff={max_error_diff})..."
         )
         with SessionLocal() as session:
@@ -441,7 +441,7 @@ class StatAudit:
             )
 
             if not official_stats:
-                print("   ⚠️ No official fielding stats found to compare.")
+                logger.info("   ⚠️ No official fielding stats found to compare.")
                 return
 
             mismatches = []
@@ -482,15 +482,15 @@ class StatAudit:
 
             mismatches_count = len(mismatches)
             if mismatches_count == 0:
-                print("   ✅ No fielding mismatches found.")
+                logger.info("   ✅ No fielding mismatches found.")
                 return
 
-            print(f"   ❌ Found {mismatches_count} fielding mismatches.")
+            logger.info(f"   ❌ Found {mismatches_count} fielding mismatches.")
             for m in mismatches:
-                print(f"      - {m['name']} - {m['position_id']}: errors {m['off_errors']} vs {m['calc_errors']}")
+                logger.info(f"      - {m['name']} - {m['position_id']}: errors {m['off_errors']} vs {m['calc_errors']}")
 
             if not fix:
-                print("   ℹ️ Fix is disabled. Mismatches not resolved in DB.")
+                logger.info("   ℹ️ Fix is disabled. Mismatches not resolved in DB.")
                 StatAudit.send_audit_warning_alert(year, series, "FIELDING", mismatches)
                 return
 
@@ -516,7 +516,7 @@ class StatAudit:
                 msg = (
                     f"🛑 Auto-remediation ABORTED for FIELDING ({year} {series}) due to safety violations: {reason_str}"
                 )
-                print(f"   {msg}")
+                logger.info(f"   {msg}")
                 logger.error(msg)
                 StatAudit.send_remediation_abort_alert(year, series, "FIELDING", reason_str)
                 return
@@ -545,13 +545,13 @@ class StatAudit:
 
                     calc["team_id"] = off.team_id
                     repo.upsert_many([calc])
-                    print(f"      ✅ Fixed {name} ({off.position_id}) in DB. (Backup: {backup_name})")
+                    logger.info(f"      ✅ Fixed {name} ({off.position_id}) in DB. (Backup: {backup_name})")
                     fix_count += 1
                 except Exception as e:
-                    print(f"      ⚠️ Failed to fix {name}: {e}")
+                    logger.info(f"      ⚠️ Failed to fix {name}: {e}")
                     logger.error(f"Failed to fix {name} fielding: {e}")
 
-            print(f"   Done. Mismatches: {mismatches_count}, Fixed: {fix_count}")
+            logger.info(f"   Done. Mismatches: {mismatches_count}, Fixed: {fix_count}")
             if fix_count > 0:
                 fixed_players = [m for m in mismatches if m["name"] is not None][:fix_count]
                 StatAudit.send_remediation_success_alert(year, series, "FIELDING", mismatches_count, fixed_players)
@@ -560,7 +560,7 @@ class StatAudit:
     def audit_baserunning(
         year: int, series: str, fix: bool = False, max_mismatches: int = 15, max_sb_cs_diff: int = 10
     ):
-        print(
+        logger.info(
             f"🕵️  Auditing BASERUNNING stats for {year} {series} (fix={fix}, max_mismatches={max_mismatches}, max_sb_cs_diff={max_sb_cs_diff})..."
         )
         with SessionLocal() as session:
@@ -574,7 +574,7 @@ class StatAudit:
             )
 
             if not official_stats:
-                print("   ⚠️ No official baserunning stats found to compare.")
+                logger.info("   ⚠️ No official baserunning stats found to compare.")
                 return
 
             mismatches = []
@@ -614,15 +614,15 @@ class StatAudit:
 
             mismatches_count = len(mismatches)
             if mismatches_count == 0:
-                print("   ✅ No baserunning mismatches found.")
+                logger.info("   ✅ No baserunning mismatches found.")
                 return
 
-            print(f"   ❌ Found {mismatches_count} baserunning mismatches.")
+            logger.info(f"   ❌ Found {mismatches_count} baserunning mismatches.")
             for m in mismatches:
-                print(f"      - {m['name']} (ID:{m['player_id']}): {', '.join(m['diffs'])}")
+                logger.info(f"      - {m['name']} (ID:{m['player_id']}): {', '.join(m['diffs'])}")
 
             if not fix:
-                print("   ℹ️ Fix is disabled. Mismatches not resolved in DB.")
+                logger.info("   ℹ️ Fix is disabled. Mismatches not resolved in DB.")
                 StatAudit.send_audit_warning_alert(year, series, "BASERUNNING", mismatches)
                 return
 
@@ -653,7 +653,7 @@ class StatAudit:
             if abort_remediation:
                 reason_str = "; ".join(abort_reasons)
                 msg = f"🛑 Auto-remediation ABORTED for BASERUNNING ({year} {series}) due to safety violations: {reason_str}"
-                print(f"   {msg}")
+                logger.info(f"   {msg}")
                 logger.error(msg)
                 StatAudit.send_remediation_abort_alert(year, series, "BASERUNNING", reason_str)
                 return
@@ -681,13 +681,13 @@ class StatAudit:
 
                     calc["team_id"] = off.team_id
                     repo.upsert_many([calc])
-                    print(f"      ✅ Fixed {name} in DB. (Backup: {backup_name})")
+                    logger.info(f"      ✅ Fixed {name} in DB. (Backup: {backup_name})")
                     fix_count += 1
                 except Exception as e:
-                    print(f"      ⚠️ Failed to fix {name}: {e}")
+                    logger.info(f"      ⚠️ Failed to fix {name}: {e}")
                     logger.error(f"Failed to fix {name} baserunning: {e}")
 
-            print(f"   Done. Mismatches: {mismatches_count}, Fixed: {fix_count}")
+            logger.info(f"   Done. Mismatches: {mismatches_count}, Fixed: {fix_count}")
             if fix_count > 0:
                 fixed_players = [m for m in mismatches if m["name"] is not None][:fix_count]
                 StatAudit.send_remediation_success_alert(year, series, "BASERUNNING", mismatches_count, fixed_players)

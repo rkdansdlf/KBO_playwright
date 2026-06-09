@@ -3,8 +3,11 @@ Seed script to populate stadium_info and stadium_regulations tables.
 This data is static and should be updated manually when stadiums change.
 """
 
+import logging
 import os
 import sys
+
+logger = logging.getLogger(__name__)
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -227,10 +230,10 @@ def seed_stadium_info():
         for reg in REGULATION_DATA:
             repo.save_regulation(reg)
         session.commit()
-        print(f"Seeded {count} stadiums and {len(REGULATION_DATA)} regulations.")
+        logger.info("Seeded %s stadiums and %s regulations.", count, len(REGULATION_DATA))
     except Exception as e:
         session.rollback()
-        print(f"Error: {e}")
+        logger.error("Error: %s", e)
         raise
     finally:
         session.close()

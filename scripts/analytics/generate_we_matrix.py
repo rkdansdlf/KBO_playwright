@@ -8,7 +8,7 @@ import argparse
 import json
 import sys
 from pathlib import Path
-from typing import Any, TypeAlias
+from typing import Any
 
 import pandas as pd
 from dotenv import load_dotenv
@@ -19,7 +19,7 @@ sys.path.insert(0, str(PROJECT_ROOT))
 
 from src.db.engine import SessionLocal
 
-WinExpectancyMatrix: TypeAlias = dict[int, dict[int, dict[int, dict[int, dict[str, float]]]]]
+type WinExpectancyMatrix = dict[int, dict[int, dict[int, dict[int, dict[str, float]]]]]
 
 
 def parse_runners(value: Any) -> str:

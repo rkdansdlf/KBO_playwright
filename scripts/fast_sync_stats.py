@@ -1,7 +1,10 @@
+import logging
 import os
 import sys
 
 from dotenv import load_dotenv
+
+logger = logging.getLogger(__name__)
 
 sys.path.insert(0, os.getcwd())
 from src.db.engine import SessionLocal
@@ -13,22 +16,22 @@ def fast_sync_stats():
     load_dotenv()
     url = os.getenv("OCI_DB_URL")
     if not url:
-        print("OCI_DB_URL not found")
+        logger.error("OCI_DB_URL not found")
         return
 
     with SessionLocal() as session:
         syncer = OCISync(url, session)
 
-        print("🚀 Fast Syncing PlayerSeasonBatting...")
+        logger.info("🚀 Fast Syncing PlayerSeasonBatting...")
         syncer.sync_simple_table(
             PlayerSeasonBatting, ["player_id", "season", "league", "level"], exclude_cols=["created_at", "updated_at"]
         )
 
-        print("🚀 Fast Syncing PlayerSeasonPitching...")
+        logger.info("🚀 Fast Syncing PlayerSeasonPitching...")
         syncer.sync_simple_table(
             PlayerSeasonPitching, ["player_id", "season", "league", "level"], exclude_cols=["created_at", "updated_at"]
         )
-        print("✅ Finished fast sync of stats")
+        logger.info("✅ Finished fast sync of stats")
 
 
 if __name__ == "__main__":

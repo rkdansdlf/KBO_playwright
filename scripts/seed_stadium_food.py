@@ -3,8 +3,11 @@ Seed script to populate stadium_food_vendors and stadium_food_menu_items tables.
 Initial seed data based on known stadium food information.
 """
 
+import logging
 import os
 import sys
+
+logger = logging.getLogger(__name__)
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -262,7 +265,7 @@ def run(dry_run: bool = False) -> None:
 
         if not dry_run:
             session.commit()
-        print(f"[SEED] Food: {vendor_count} vendors, {menu_count} menu items (dry_run={dry_run})")
+        logger.info("[SEED] Food: %s vendors, %s menu items (dry_run=%s)", vendor_count, menu_count, dry_run)
 
 
 if __name__ == "__main__":

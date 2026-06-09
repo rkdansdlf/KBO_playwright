@@ -1,10 +1,11 @@
 import argparse
+import logging
 
 from src.aggregators.team_stat_aggregator import TeamStatAggregator
 from src.db.engine import SessionLocal
 from src.models.team_stats import TeamSeasonBatting, TeamSeasonPitching
 
-
+logger = logging.getLogger(__name__)
 class TeamStatAudit:
     """
     Audit tool to compare official team season stats with calculated fallback stats.
@@ -12,12 +13,12 @@ class TeamStatAudit:
 
     @staticmethod
     def audit_batting(year: int, league: str = "REGULAR"):
-        print(f"🕵️  Auditing TEAM BATTING stats for {year} {league}...")
+        logger.info(f"🕵️  Auditing TEAM BATTING stats for {year} {league}...")
         with SessionLocal() as session:
             # Get official stats (source is not FALLBACK)
             official = session.query(TeamSeasonBatting).filter_by(season=year, league=league.upper()).all()
             if not official:
-                print("   ⚠️ No official team batting stats found.")
+                logger.info("   ⚠️ No official team batting stats found.")
                 return
 
             calculated = TeamStatAggregator.aggregate_team_batting(session, year, league)
@@ -27,7 +28,7 @@ class TeamStatAudit:
             for off in official:
                 calc = calc_map.get(off.team_id)
                 if not calc:
-                    print(f"   ❌ Missing calculated data for {off.team_name} ({off.team_id})")
+                    logger.info(f"   ❌ Missing calculated data for {off.team_name} ({off.team_id})")
                     mismatches += 1
                     continue
 
@@ -41,21 +42,21 @@ class TeamStatAudit:
                         diffs.append(f"{k}: {off_val} vs {calc_val}")
 
                 if diffs:
-                    print(f"   ❌ Mismatch [{off.team_name}]: {', '.join(diffs)}")
+                    logger.info(f"   ❌ Mismatch [{off.team_name}]: {', '.join(diffs)}")
                     mismatches += 1
 
             if mismatches == 0:
-                print(f"   ✅ All {len(official)} team batting records match perfectly!")
+                logger.info(f"   ✅ All {len(official)} team batting records match perfectly!")
             else:
-                print(f"   ⚠️ Found {mismatches} mismatches.")
+                logger.info(f"   ⚠️ Found {mismatches} mismatches.")
 
     @staticmethod
     def audit_pitching(year: int, league: str = "REGULAR"):
-        print(f"🕵️  Auditing TEAM PITCHING stats for {year} {league}...")
+        logger.info(f"🕵️  Auditing TEAM PITCHING stats for {year} {league}...")
         with SessionLocal() as session:
             official = session.query(TeamSeasonPitching).filter_by(season=year, league=league.upper()).all()
             if not official:
-                print("   ⚠️ No official team pitching stats found.")
+                logger.info("   ⚠️ No official team pitching stats found.")
                 return
 
             calculated = TeamStatAggregator.aggregate_team_pitching(session, year, league)
@@ -65,7 +66,7 @@ class TeamStatAudit:
             for off in official:
                 calc = calc_map.get(off.team_id)
                 if not calc:
-                    print(f"   ❌ Missing calculated data for {off.team_name}")
+                    logger.info(f"   ❌ Missing calculated data for {off.team_name}")
                     mismatches += 1
                     continue
 
@@ -80,13 +81,13 @@ class TeamStatAudit:
                         diffs.append(f"{k}: {off_val} vs {calc_val}")
 
                 if diffs:
-                    print(f"   ❌ Mismatch [{off.team_name}]: {', '.join(diffs)}")
+                    logger.info(f"   ❌ Mismatch [{off.team_name}]: {', '.join(diffs)}")
                     mismatches += 1
 
             if mismatches == 0:
-                print(f"   ✅ All {len(official)} team pitching records match perfectly!")
+                logger.info(f"   ✅ All {len(official)} team pitching records match perfectly!")
             else:
-                print(f"   ⚠️ Found {mismatches} mismatches.")
+                logger.info(f"   ⚠️ Found {mismatches} mismatches.")
 
 
 def main():

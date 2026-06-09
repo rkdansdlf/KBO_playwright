@@ -8,8 +8,10 @@ guidance instead of crashing before the deprecation notice is printed.
 from __future__ import annotations
 
 import argparse
+import logging
 from typing import Sequence
 
+logger = logging.getLogger(__name__)
 DEPRECATION_MESSAGE = """
 [DEPRECATED] scripts/crawling/collect_detailed_data.py is a legacy workflow.
 
@@ -36,8 +38,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     """Print deprecation guidance and return a non-zero exit code."""
     build_arg_parser().parse_args(argv)
 
-    print(DEPRECATION_MESSAGE.strip())
-    print(
+    logger.info(DEPRECATION_MESSAGE.strip())
+    logger.info(
         "\nThis script cannot safely infer year/month targets from the removed "
         "pending-game queue. Use the supported CLI command that matches the "
         "collection window you want to run."

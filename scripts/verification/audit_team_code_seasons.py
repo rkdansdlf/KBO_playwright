@@ -17,8 +17,11 @@ ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+import logging
+
 from src.utils.team_history import iter_team_history
 
+logger = logging.getLogger(__name__)
 DEFAULT_DB_URL = "sqlite:///./data/kbo_dev.db"
 MANAGED_CODES = {entry.team_code.upper() for entry in iter_team_history()}
 VALID_RANGES = tuple(iter_team_history())
@@ -159,15 +162,15 @@ def main() -> None:
     args = parse_args()
     issues = collect_issues(_resolve_db_url(args.db_url), sample_limit=args.sample_limit)
     if args.json:
-        print(json.dumps({"ok": not issues, "issues": issues}, ensure_ascii=False, indent=2))
+        logger.info(json.dumps({"ok": not issues, "issues": issues}, ensure_ascii=False, indent=2))
     elif issues:
-        print("FAIL: team codes outside valid seasons")
+        logger.info("FAIL: team codes outside valid seasons")
         for issue in issues:
-            print(
+            logger.info(
                 f"  {issue['table']}.{issue['column']} {issue['season']} {issue['team_code']} rows={issue['row_count']}"
             )
     else:
-        print("PASS: all managed team codes are valid for their seasons")
+        logger.info("PASS: all managed team codes are valid for their seasons")
     if issues:
         raise SystemExit(1)
 

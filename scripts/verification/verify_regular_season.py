@@ -1,8 +1,10 @@
+import logging
 import sqlite3
 from pathlib import Path
 
 import pandas as pd
 
+logger = logging.getLogger(__name__)
 DB_PATH = Path("data/kbo_dev.db")
 
 
@@ -11,7 +13,7 @@ def verify_regular_season():
 
     years = [2024, 2025, 2026]
 
-    print("=== KBO Regular Season Integrity Verification (2025-2026) ===")
+    logger.info("=== KBO Regular Season Integrity Verification (2025-2026) ===")
 
     for year in years:
         # Resolve the active season_id for this year's regular season
@@ -19,7 +21,7 @@ def verify_regular_season():
         sid_map = {2024: 253, 2025: 259, 2026: 2026}
         sid = sid_map.get(year)
 
-        print(f"\n--- Testing Year: {year} (Regular Season, ID: {sid}) ---")
+        logger.info(f"\n--- Testing Year: {year} (Regular Season, ID: {sid}) ---")
 
         query = f"""
         WITH game_agg AS (
@@ -85,11 +87,11 @@ def verify_regular_season():
         mismatches = conn.execute(mismatch_count_query).fetchone()[0]
 
         if mismatches == 0:
-            print(f"✅ SUCCESS: All {total_players} players match perfectly!")
+            logger.info(f"✅ SUCCESS: All {total_players} players match perfectly!")
         else:
-            print(f"❌ MISMATCH: {mismatches} / {total_players} players have discrepancies.")
-            print("Sample Mismatches (Top 10 by Games Played):")
-            print(df.to_string(index=False))
+            logger.info(f"❌ MISMATCH: {mismatches} / {total_players} players have discrepancies.")
+            logger.info("Sample Mismatches (Top 10 by Games Played):")
+            logger.info(df.to_string(index=False))
 
     conn.close()
 

@@ -6,8 +6,11 @@ Usage: python3 scripts/backfill_player_profiles.py --limit 10 --delay 2.0
 
 import argparse
 import asyncio
+import logging
 import os
 import sys
+
+logger = logging.getLogger(__name__)
 
 # Add project root to sys.path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -29,22 +32,22 @@ async def backfill(limit: int, delay: float, ids: list[str] | None = None):
     with SessionLocal() as session:
         if ids:
             query = session.query(PlayerBasic).filter(PlayerBasic.player_id.in_(ids))
-            print(f"🎯 Targeted processing for {len(ids)} IDs")
+            logger.info("🎯 Targeted processing for %s IDs", len(ids))
         else:
             query = session.query(PlayerBasic).filter(
-                PlayerBasic.photo_url == None,
+                PlayerBasic.photo_url is None,
                 PlayerBasic.player_id >= 10000,
-                or_(PlayerBasic.status == None, PlayerBasic.status.not_in(["NOT_FOUND", "PSEUDO"])),
+                or_(PlayerBasic.status is None, PlayerBasic.status.not_in(["NOT_FOUND", "PSEUDO"])),
             )
         if limit > 0:
             query = query.limit(limit)
         targets = query.all()
 
     if not targets:
-        print("✅ No players need backfilling.")
+        logger.info("✅ No players need backfilling.")
         return
 
-    print(f"🚀 Starting backfill for {len(targets)} players (delay={delay}s)...")
+    logger.info("🚀 Starting backfill for %s players (delay=%ss)...", len(targets), delay)
 
     # Reuse a single pool for efficiency
     pool = AsyncPlaywrightPool(max_pages=1)
@@ -56,7 +59,7 @@ async def backfill(limit: int, delay: float, ids: list[str] | None = None):
 
     try:
         for i, p in enumerate(targets):
-            print(f"[{i + 1}/{len(targets)}] Processing {p.name} ({p.player_id})...")
+            logger.info("[%s/%s] Processing %s (%s)...", i + 1, len(targets), p.name, p.player_id)
 
             try:
                 profile = await crawler.crawl_player_profile(str(p.player_id), position=p.position)
@@ -96,19 +99,19 @@ async def backfill(limit: int, delay: float, ids: list[str] | None = None):
                         )
                         detailed_repo.upsert_player_profile(str(p.player_id), parsed)
                     except Exception as repo_err:
-                        print(f"  ⚠️ Detailed player sync warning: {repo_err}")
+                        logger.warning("  ⚠️ Detailed player sync warning: %s", repo_err)
 
-                    print(f"  ✅ Updated: photo={profile['photo_url']}, salary={profile['salary_original']}")
+                    logger.info("  ✅ Updated: photo=%s, salary=%s", profile['photo_url'], profile['salary_original'])
                     success_count += 1
                 else:
-                    print(f"  ⚠️ No profile found for {p.player_id}. Marking as NOT_FOUND.")
+                    logger.warning("  ⚠️ No profile found for %s. Marking as NOT_FOUND.", p.player_id)
                     # Mark as NOT_FOUND to avoid re-crawling
                     repo.upsert_players(
                         [{"player_id": p.player_id, "name": p.name, "photo_url": "NOT_FOUND", "status": "NOT_FOUND"}]
                     )
                     fail_count += 1
             except Exception as e:
-                print(f"  ❌ Error processing {p.player_id}: {e}")
+                logger.error("  ❌ Error processing %s: %s", p.player_id, e)
                 fail_count += 1
 
             # Additional safety delay (on top of crawler's internal delay if needed)
@@ -118,9 +121,9 @@ async def backfill(limit: int, delay: float, ids: list[str] | None = None):
     finally:
         await pool.close()
 
-    print("\n✨ Backfill complete!")
-    print(f"   - Success: {success_count}")
-    print(f"   - Failed:  {fail_count}")
+    logger.info("✨ Backfill complete!")
+    logger.info("   - Success: %s", success_count)
+    logger.info("   - Failed:  %s", fail_count)
 
 
 def main():

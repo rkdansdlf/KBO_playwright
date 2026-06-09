@@ -30,7 +30,7 @@ async def collect_historical_game_ids(start_year: int, end_year: int):
             with open(output_file) as f:
                 all_games = json.load(f)
             print(f"Loaded {len(all_games)} existing game IDs.")
-        except:
+        except Exception:
             pass
 
     existing_ids = {g["game_id"] for g in all_games if g.get("game_id")}

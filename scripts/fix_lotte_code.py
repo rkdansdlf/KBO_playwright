@@ -1,5 +1,8 @@
+import logging
 import os
 import sys
+
+logger = logging.getLogger(__name__)
 
 # Add the project root to the python path
 sys.path.append(os.getcwd())
@@ -13,7 +16,7 @@ def fix_lotte_code():
     """
     Updates the Lotte Giants team code in the team_franchises table from 'LOT' to 'LT'.
     """
-    print("Starting Lotte team code fix...")
+    logger.info("Starting Lotte team code fix...")
 
     with SessionLocal() as session:
         try:
@@ -24,15 +27,19 @@ def fix_lotte_code():
             result = session.execute(check_sql).fetchone()
 
             if not result:
-                print("Error: Could not find Lotte franchise with original_code='LT'")
+                logger.error("Error: Could not find Lotte franchise with original_code='LT'")
                 return
 
-            print(
-                f"Current state: ID={result.id}, Name={result.name}, Original={result.original_code}, Current={result.current_code}"
+            logger.info(
+                "Current state: ID=%s, Name=%s, Original=%s, Current=%s",
+                result.id,
+                result.name,
+                result.original_code,
+                result.current_code,
             )
 
             if result.current_code == "LT":
-                print("Code is already 'LT'. No action needed.")
+                logger.info("Code is already 'LT'. No action needed.")
                 return
 
             # Update
@@ -42,18 +49,22 @@ def fix_lotte_code():
 
             # Verify
             result_after = session.execute(check_sql).fetchone()
-            print(
-                f"New state: ID={result_after.id}, Name={result_after.name}, Original={result_after.original_code}, Current={result_after.current_code}"
+            logger.info(
+                "New state: ID=%s, Name=%s, Original=%s, Current=%s",
+                result_after.id,
+                result_after.name,
+                result_after.original_code,
+                result_after.current_code,
             )
 
             if result_after.current_code == "LT":
-                print("SUCCESS: Lotte team code updated to 'LT'.")
+                logger.info("SUCCESS: Lotte team code updated to 'LT'.")
             else:
-                print("FAILURE: Lotte team code was not updated.")
+                logger.info("FAILURE: Lotte team code was not updated.")
 
         except Exception as e:
             session.rollback()
-            print(f"An error occurred: {e}")
+            logger.error("An error occurred: %s", e)
 
 
 if __name__ == "__main__":

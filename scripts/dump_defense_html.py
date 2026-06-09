@@ -1,4 +1,8 @@
+import logging
+
 from playwright.sync_api import sync_playwright
+
+logger = logging.getLogger(__name__)
 
 
 def dump_defense_html():
@@ -11,12 +15,12 @@ def dump_defense_html():
         # Print all <a> tags that might be tabs
         tabs = page.query_selector_all("ul.tab-tit li a")
         for tab in tabs:
-            print(f"Tab: {tab.inner_text()} -> {tab.get_attribute('href')}")
+            logger.info("Tab: %s -> %s", tab.inner_text(), tab.get_attribute('href'))
 
         # Print side menu links
         side_links = page.query_selector_all(".lnb a")
         for link in side_links:
-            print(f"Side Link: {link.inner_text()} -> {link.get_attribute('href')}")
+            logger.info("Side Link: %s -> %s", link.inner_text(), link.get_attribute('href'))
 
         browser.close()
 

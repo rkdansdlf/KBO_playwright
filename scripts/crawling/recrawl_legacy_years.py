@@ -16,32 +16,32 @@ def recrawl_legacy_years(start_year: int = 1982, end_year: int = 2001, reset_fir
     """
     레거시 연도 재크롤링
     """
-    print("🔄 KBO 레거시 연도 재크롤링")
-    print("=" * 50)
-    print(f"📅 대상 기간: {start_year}년 ~ {end_year}년")
-    print(f"🗑️ 기존 데이터 삭제: {'ON' if reset_first else 'OFF'}")
-    print(f"🤖 헤드리스 모드: {'ON' if headless else 'OFF'}")
+    logger.info("🔄 KBO 레거시 연도 재크롤링")
+    logger.info("=" * 50)
+    logger.info(f"📅 대상 기간: {start_year}년 ~ {end_year}년")
+    logger.info(f"🗑️ 기존 데이터 삭제: {'ON' if reset_first else 'OFF'}")
+    logger.info(f"🤖 헤드리스 모드: {'ON' if headless else 'OFF'}")
 
     # 기존 데이터 삭제
     if reset_first:
-        print(f"\n🗑️ {start_year}-{end_year}년 기존 데이터 삭제 중...")
+        logger.info(f"\n🗑️ {start_year}-{end_year}년 기존 데이터 삭제 중...")
         reset_cmd = [sys.executable, "reset_sqlite.py", "--range", str(start_year), str(end_year), "--force"]
         try:
             subprocess.run(reset_cmd, check=True)
-            print("✅ 기존 데이터 삭제 완료")
+            logger.info("✅ 기존 데이터 삭제 완료")
         except subprocess.CalledProcessError:
-            print("❌ 데이터 삭제 실패")
+            logger.info("❌ 데이터 삭제 실패")
             return False
 
     # 결과 추적
     results = {"total_tasks": 0, "success_count": 0, "failed_tasks": []}
 
-    print("\n🕷️ 레거시 크롤링 시작...")
+    logger.info("\n🕷️ 레거시 크롤링 시작...")
     start_time = datetime.now()
 
     # 년도별 크롤링
     for year in range(start_year, end_year + 1):
-        print(f"\n📅 {year}년 크롤링 중...")
+        logger.info(f"\n📅 {year}년 크롤링 중...")
 
         # 해당 연도에 존재하는 시리즈 확인
         available_series = get_available_series_by_year(year)
@@ -52,10 +52,10 @@ def recrawl_legacy_years(start_year: int = 1982, end_year: int = 2001, reset_fir
         year_total = len(target_series) * 2
 
         for series in target_series:
-            print(f"  📊 {series} 시리즈:")
+            logger.info(f"  📊 {series} 시리즈:")
 
             # 타자 크롤링
-            print("    🏏 타자 크롤링...", end=" ")
+            logger.info("    🏏 타자 크롤링...")
             batting_cmd = [
                 sys.executable,
                 "-m",
@@ -72,18 +72,18 @@ def recrawl_legacy_years(start_year: int = 1982, end_year: int = 2001, reset_fir
             try:
                 result = subprocess.run(batting_cmd, capture_output=True, text=True, timeout=300)
                 if result.returncode == 0 and "크롤링 완료" in result.stdout:
-                    print("✅")
+                    logger.info("✅")
                     results["success_count"] += 1
                     year_success += 1
                 else:
-                    print("❌")
+                    logger.info("❌")
                     results["failed_tasks"].append(f"{year}-{series}-batting")
             except subprocess.TimeoutExpired:
-                print("❌ (타임아웃)")
+                logger.info("❌ (타임아웃)")
                 results["failed_tasks"].append(f"{year}-{series}-batting")
 
             # 투수 크롤링
-            print("    ⚾ 투수 크롤링...", end=" ")
+            logger.info("    ⚾ 투수 크롤링...")
             pitching_cmd = [
                 sys.executable,
                 "-m",
@@ -100,21 +100,21 @@ def recrawl_legacy_years(start_year: int = 1982, end_year: int = 2001, reset_fir
             try:
                 result = subprocess.run(pitching_cmd, capture_output=True, text=True, timeout=300)
                 if result.returncode == 0 and "크롤링 완료" in result.stdout:
-                    print("✅")
+                    logger.info("✅")
                     results["success_count"] += 1
                     year_success += 1
                 else:
-                    print("❌")
+                    logger.info("❌")
                     results["failed_tasks"].append(f"{year}-{series}-pitching")
             except subprocess.TimeoutExpired:
-                print("❌ (타임아웃)")
+                logger.info("❌ (타임아웃)")
                 results["failed_tasks"].append(f"{year}-{series}-pitching")
 
             results["total_tasks"] += 2
 
         # 년도별 결과
         success_rate = (year_success / year_total) * 100 if year_total > 0 else 0
-        print(f"  📊 {year}년 결과: {year_success}/{year_total} 성공 ({success_rate:.1f}%)")
+        logger.info(f"  📊 {year}년 결과: {year_success}/{year_total} 성공 ({success_rate:.1f}%)")
 
     # 최종 결과
     duration = (datetime.now() - start_time).total_seconds()
@@ -122,21 +122,21 @@ def recrawl_legacy_years(start_year: int = 1982, end_year: int = 2001, reset_fir
         (results["success_count"] / results["total_tasks"]) * 100 if results["total_tasks"] > 0 else 0
     )
 
-    print("\n" + "=" * 50)
-    print("🎉 레거시 재크롤링 완료!")
-    print("📊 최종 결과:")
-    print(f"  ✅ 성공: {results['success_count']}/{results['total_tasks']} ({overall_success_rate:.1f}%)")
-    print(f"  ⏱️ 소요시간: {duration:.0f}초")
+    logger.info("\n" + "=" * 50)
+    logger.info("🎉 레거시 재크롤링 완료!")
+    logger.info("📊 최종 결과:")
+    logger.info(f"  ✅ 성공: {results['success_count']}/{results['total_tasks']} ({overall_success_rate:.1f}%)")
+    logger.info(f"  ⏱️ 소요시간: {duration:.0f}초")
 
     if results["failed_tasks"]:
-        print("\n❌ 실패한 작업들:")
+        logger.info("\n❌ 실패한 작업들:")
         for task in results["failed_tasks"][:10]:
-            print(f"    - {task}")
+            logger.info(f"    - {task}")
         if len(results["failed_tasks"]) > 10:
-            print(f"    ... 및 {len(results['failed_tasks']) - 10}개 더")
+            logger.info(f"    ... 및 {len(results['failed_tasks']) - 10}개 더")
 
     # 최종 데이터 확인
-    print("\n🔍 최종 데이터베이스 확인:")
+    logger.info("\n🔍 최종 데이터베이스 확인:")
     check_cmd = [
         sys.executable,
         "-c",
@@ -144,7 +144,10 @@ def recrawl_legacy_years(start_year: int = 1982, end_year: int = 2001, reset_fir
 from src.db.engine import SessionLocal
 from src.models.player import PlayerSeasonBatting, PlayerSeasonPitching
 from sqlalchemy import and_, func
+import logging
 
+
+logger = logging.getLogger(__name__)
 with SessionLocal() as session:
     batting_stats = session.query(
         PlayerSeasonBatting.league,
@@ -180,8 +183,8 @@ with SessionLocal() as session:
 
     try:
         subprocess.run(check_cmd)
-    except:
-        print("  ⚠️ 데이터베이스 확인 실패")
+    except Exception:
+        logger.info("  ⚠️ 데이터베이스 확인 실패")
 
     return overall_success_rate >= 80
 
@@ -201,17 +204,17 @@ def main():
         )
 
         if success:
-            print("\n🎉 재크롤링 성공!")
+            logger.info("\n🎉 재크롤링 성공!")
             sys.exit(0)
         else:
-            print("\n❌ 재크롤링 실패")
+            logger.info("\n❌ 재크롤링 실패")
             sys.exit(1)
 
     except KeyboardInterrupt:
-        print("\n❌ 사용자가 중단했습니다.")
+        logger.info("\n❌ 사용자가 중단했습니다.")
         sys.exit(130)
     except Exception as e:
-        print(f"\n❌ 예상치 못한 오류: {e}")
+        logger.info(f"\n❌ 예상치 못한 오류: {e}")
         sys.exit(1)
 
 

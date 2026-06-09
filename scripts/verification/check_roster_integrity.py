@@ -7,12 +7,14 @@ from datetime import date, datetime, timedelta
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../")))
 
 
+import logging
+
 from src.db.engine import SessionLocal
 from src.models.team import TeamDailyRoster
 
-
+logger = logging.getLogger(__name__)
 def check_integrity(year: int):
-    print(f"🧐 Auditing Team Daily Roster Integrity for Year: {year}...")
+    logger.info(f"🧐 Auditing Team Daily Roster Integrity for Year: {year}...")
 
     # 2015 onwards should have 10 teams
     expected_team_count = 10
@@ -57,27 +59,27 @@ def check_integrity(year: int):
     total_days = (end_date - start_date).days + 1
     complete_days = total_days - len(missing_days) - len(partial_days)
 
-    print(f"\n{'=' * 40}")
-    print(f"📊 SUMMARY FOR {year}")
-    print(f"{'=' * 40}")
-    print(f"✅ Complete Days: {complete_days}/{total_days}")
-    print(f"❌ Missing Days:  {len(missing_days)}")
-    print(f"⚠️ Partial Days:  {len(partial_days)}")
-    print(f"{'=' * 40}")
+    logger.info(f"\n{'=' * 40}")
+    logger.info(f"📊 SUMMARY FOR {year}")
+    logger.info(f"{'=' * 40}")
+    logger.info(f"✅ Complete Days: {complete_days}/{total_days}")
+    logger.info(f"❌ Missing Days:  {len(missing_days)}")
+    logger.info(f"⚠️ Partial Days:  {len(partial_days)}")
+    logger.info(f"{'=' * 40}")
 
     if partial_days:
-        print("\n🔍 Details of Partial Days:")
+        logger.info("\n🔍 Details of Partial Days:")
         for d, missing in partial_days[:10]:
-            print(f"  - {d}: Missing teams {missing}")
+            logger.info(f"  - {d}: Missing teams {missing}")
         if len(partial_days) > 10:
-            print(f"  ... and {len(partial_days) - 10} more.")
+            logger.info(f"  ... and {len(partial_days) - 10} more.")
 
     if missing_days:
-        print("\n🚫 Sample of Missing Days:")
+        logger.info("\n🚫 Sample of Missing Days:")
         for d in missing_days[:10]:
-            print(f"  - {d}")
+            logger.info(f"  - {d}")
         if len(missing_days) > 10:
-            print(f"  ... and {len(missing_days) - 10} more.")
+            logger.info(f"  ... and {len(missing_days) - 10} more.")
 
 
 if __name__ == "__main__":
