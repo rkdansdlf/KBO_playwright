@@ -107,6 +107,15 @@ class GameSyncMixin:
             data["source_payload"] = _compact_metadata_source_payload_for_limit(data["source_payload"], limit)
         return data
 
+    def _transform_game_lineup_for_target(self, data: dict) -> dict[str, Any]:
+        batting_order = data.get("batting_order")
+        appearance_seq = data.get("appearance_seq")
+        if batting_order is None or appearance_seq == batting_order:
+            return data
+
+        data["batting_order"] = None
+        return data
+
     def sync_games(self, limit: int = None, filters: list = None, batch_size: int = 10000) -> int:
         """Sync game detail data from SQLite to OCI using Batched UPSERT or COPY"""
 
@@ -136,7 +145,12 @@ class GameSyncMixin:
         ]
 
         return self.sync_simple_table(
-            Game, ["game_id"], exclude_cols=exclude_cols, filters=filters, transform_fn=transform, batch_size=batch_size,
+            Game,
+            ["game_id"],
+            exclude_cols=exclude_cols,
+            filters=filters,
+            transform_fn=transform,
+            batch_size=batch_size,
         )
 
     def sync_player_game_batting(self, limit: int = None) -> int:
@@ -189,14 +203,18 @@ class GameSyncMixin:
                 {"pattern": pattern},
             )
         self.target_session.commit()
-        logger.info(f"🧹 Purged OCI child game-detail rows for year {year}")
+        logger.info("🧹 Purged OCI child game-detail rows for year %s", year)
 
     def get_unsynced_or_modified_game_ids(self) -> list[str]:
         """Detect dirty game_ids by comparing game + child-table signatures across local/OCI."""
         return detect_dirty_game_ids(self.sqlite_session, self.target_session)
 
     def sync_game_details(
-        self, days: int = None, year: int = None, unsynced_only: bool = False, batch_size: int = 10000,
+        self,
+        days: int = None,
+        year: int = None,
+        unsynced_only: bool = False,
+        batch_size: int = 10000,
     ) -> dict[str, int]:
         """Sync all game detail tables to OCI"""
         results = {}
@@ -217,9 +235,9 @@ class GameSyncMixin:
             target_game_ids = filter_game_ids_by_year(target_game_ids, year)
             if not target_game_ids:
                 year_msg = f" ({year})" if year else ""
-                logger.info(f"🎉 모든 게임 데이터{year_msg}가 이미 최신 상태입니다. 동기화를 건너뜁니다.")
+                logger.info("🎉 모든 게임 데이터%s가 이미 최신 상태입니다. 동기화를 건너뜁니다.", year_msg)
                 return results
-            logger.info(f"🎯 총 {len(target_game_ids)}개의 변경/누락된 게임을 발견했습니다.")
+            logger.info("🎯 총 %s개의 변경/누락된 게임을 발견했습니다.", len(target_game_ids))
             # target_game_ids가 너무 길면 sqlite in_ 절 한도를 초과할 수 있지만, 부분 업데이트라 대개 수십 건 내외임.
             filters.append(Game.game_id.in_(target_game_ids))
         else:
@@ -249,7 +267,8 @@ class GameSyncMixin:
         if unsynced_only and target_game_ids is not None:
             if publishable_parent_game_ids:
                 results["games"] = self.sync_games(
-                    filters=[Game.game_id.in_(publishable_parent_game_ids)], batch_size=batch_size,
+                    filters=[Game.game_id.in_(publishable_parent_game_ids)],
+                    batch_size=batch_size,
                 )
             else:
                 results["games"] = 0
@@ -325,6 +344,7 @@ class GameSyncMixin:
             ["game_id", "team_side", "appearance_seq"],
             exclude_cols=["created_at", "id"],
             filters=get_child_filters(GameLineup),
+            transform_fn=self._transform_game_lineup_for_target,
             batch_size=batch_size,
         )
 
@@ -375,7 +395,7 @@ class GameSyncMixin:
             batch_size=batch_size,
         )
 
-        logger.info(f"✅ Game Details Sync Summary: {results}")
+        logger.info("✅ Game Details Sync Summary: %s", results)
         return results
 
     def sync_specific_game(self, game_id: str) -> dict[str, int]:
@@ -394,7 +414,10 @@ class GameSyncMixin:
 
         # Sync Game record
         results["game"] = self.sync_simple_table(
-            Game, ["game_id"], exclude_cols=["created_at", "updated_at"], filters=filters,
+            Game,
+            ["game_id"],
+            exclude_cols=["created_at", "updated_at"],
+            filters=filters,
         )
         results["game_id_aliases"] = self.sync_simple_table(
             GameIdAlias,
@@ -422,7 +445,7 @@ class GameSyncMixin:
         if eligibility.detail_game_ids:
             for child_model in detail_child_models:
                 if not self._target_table_exists(child_model):
-                    logger.info(f"ℹ️ Skipping delete for missing OCI table: {child_model.__tablename__}")
+                    logger.info("ℹ️ Skipping delete for missing OCI table: %s", child_model.__tablename__)
                     continue
                 self.target_session.query(child_model).filter(child_model.game_id == game_id).delete(
                     synchronize_session=False,
@@ -430,7 +453,7 @@ class GameSyncMixin:
         if eligibility.relay_game_ids:
             for child_model in relay_child_models:
                 if not self._target_table_exists(child_model):
-                    logger.info(f"ℹ️ Skipping delete for missing OCI table: {child_model.__tablename__}")
+                    logger.info("ℹ️ Skipping delete for missing OCI table: %s", child_model.__tablename__)
                     continue
                 self.target_session.query(child_model).filter(child_model.game_id == game_id).delete(
                     synchronize_session=False,
@@ -456,6 +479,7 @@ class GameSyncMixin:
             ["game_id", "team_side", "appearance_seq"],
             exclude_cols=["id", "created_at"],
             filters=[GameLineup.game_id.in_(eligibility.detail_game_ids)],
+            transform_fn=self._transform_game_lineup_for_target,
         )
         results["batting_stats"] = self.sync_simple_table(
             GameBattingStat,
@@ -484,7 +508,7 @@ class GameSyncMixin:
                 filters=[GameValidationMetrics.game_id == game_id],
             )
         else:
-            logger.info(f"ℹ️ Skipping missing OCI table: {GameValidationMetrics.__tablename__}")
+            logger.info("ℹ️ Skipping missing OCI table: %s", GameValidationMetrics.__tablename__)
             results["validation_metrics"] = 0
         results["summary"] = self._sync_game_summary_rows(
             filters=[GameSummary.game_id.in_(eligibility.detail_game_ids)],
@@ -539,6 +563,7 @@ class GameSyncMixin:
             ["game_id", "team_side", "appearance_seq"],
             exclude_cols=["id", "created_at"],
             filters=[GameLineup.game_id == game_id],
+            transform_fn=self._transform_game_lineup_for_target,
         )
         results["summary"] = self._sync_game_summary_rows(
             filters=[
@@ -620,9 +645,9 @@ class GameSyncMixin:
             seen.add(key)
             records.append({column: getattr(row, column) for column in columns if hasattr(row, column)})
 
-        logger.info(f"🚚 Syncing game_summary ({len(records)} rows, batch={batch_size})...")
+        logger.info("🚚 Syncing game_summary (%s rows, batch=%s)...", len(records), batch_size)
         self._bulk_copy_upsert("game_summary", records, [], update_timestamp=False)
-        logger.info(f"   Synced {len(records)}/{len(records)} rows via COPY...")
+        logger.info("   Synced %s/%s rows via COPY...", len(records), len(records))
         return len(records)
 
     def _sync_game_play_by_play(self, filters: list = None) -> int:
