@@ -33,6 +33,7 @@ class TrendTracker:
                 report = json.loads(f.read_text(encoding="utf-8"))
                 report_date = datetime.strptime(f.stem, "%Y%m%d")
                 if report_date >= cutoff:
+                    report["_report_date"] = report_date
                     reports.append(report)
             except (json.JSONDecodeError, ValueError):
                 continue
@@ -64,11 +65,18 @@ class TrendTracker:
 
         first = reports[0]
         last = reports[-1]
+        now = datetime.now()
 
         for metric_key, threshold in threshold_map.items():
             first_val = self._resolve_key(first, metric_key)
             last_val = self._resolve_key(last, metric_key)
             if first_val is not None and last_val is not None:
+                # Skip false alarms: completed_count=0 on a very recent date
+                if metric_key == "metrics.completed_count" and last_val == 0:
+                    last_date = last.get("_report_date")
+                    if last_date and (now - last_date).days <= 2:
+                        continue
+
                 pct_change = (last_val - first_val) / max(abs(first_val), 1) * 100
                 is_degraded = (threshold > 0 and pct_change > threshold) or (threshold < 0 and pct_change < threshold)
                 if is_degraded:

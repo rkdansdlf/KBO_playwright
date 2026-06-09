@@ -1099,23 +1099,11 @@ def generate_daily_report_job():
     Runs daily at 05:15 KST.
     """
     from src.cli.generate_quality_report import main as report_main
-    from src.monitoring.trend_tracker import TrendTracker
 
     with MAINTENANCE_LOCK:
         logger.info("=== Starting Daily Quality Report Generation ===")
         target_date = _previous_day_kst()
-        # Run report and notify if issues found
         report_main(["--date", target_date, "--force-notify"])
-
-        # Detect metric degradation
-        try:
-            logger.info("=== Starting Trend Tracker Check ===")
-            tracker = TrendTracker()
-            tracker.send_degradation_alert(days=14)
-            logger.info("=== Trend Tracker Check Completed ===")
-        except Exception as e:
-            logger.exception("Failed to run TrendTracker alert: %s", e)
-
         logger.info("=== Daily Quality Report Generation Completed ===")
 
 
