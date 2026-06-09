@@ -36,13 +36,13 @@ TEAM_YOUTUBE_CHANNELS: dict[str, dict] = {
         "handle": "@LGTwinsTV",
         "channel_id": "UCiXGdRARMxrZ5kJLe7t4Xpg",
         "name": "LGTWINSTV",
-        "search_queries": ["응원가", "cheersong", "2026 응원"],
+        "search_queries": ["응원가", "cheersong"],
     },
     "OB": {
         "handle": "@bearstv1982",
         "channel_id": "UCL4Ku-H7OaF5r8Ol7SsJ6Lw",
         "name": "BEARS TV",
-        "search_queries": ["응원가", "cheersong", "2026 응원"],
+        "search_queries": ["응원가", "cheersong"],
     },
     "KIA": {
         "handle": "@kiatigerstv",
@@ -146,7 +146,7 @@ class YouTubeAPIClient:
     def is_configured(self) -> bool:
         return bool(self.api_key)
 
-    async def _get(self, endpoint: str, params: dict) -> dict:
+    async def _get(self, endpoint: str, params: dict) -> dict[str, Any]:
         params["key"] = self.api_key
         url = f"{YOUTUBE_API_BASE}/{endpoint}"
         async with httpx.AsyncClient(timeout=15) as client:

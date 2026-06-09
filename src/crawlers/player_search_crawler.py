@@ -5,10 +5,10 @@ Now refactored into a class as expected by GameDetailCrawler.
 """
 
 import asyncio
-import contextlib
 import logging
 import os
 import re
+from typing import Any
 from collections import Counter
 from dataclasses import dataclass
 from datetime import date as date_type
@@ -97,7 +97,7 @@ class PlayerSearchCrawler:
     def _record_failure(self, reason: str) -> None:
         self.failure_counts[reason] += 1
 
-    def get_failure_summary(self) -> dict:
+    def get_failure_summary(self) -> dict[str, Any]:
         return dict(self.failure_counts)
 
     async def _navigate_search_page(
@@ -149,8 +149,8 @@ class PlayerSearchCrawler:
                 await page.locator(SEARCH_BTN).click()
                 try:
                     await page.wait_for_selector(TABLE_ROWS, timeout=TIMEOUT_MS)
-                except Exception:
-                    logger.info("Table rows not found for player search")
+                except TimeoutError:
+                    logger.warning("Table rows not found for player search")
                     return []
                 rows = await self._paginate_current_tab(page)
                 return [self.row_to_dict(r) for r in rows]
@@ -341,8 +341,8 @@ class PlayerSearchCrawler:
     async def _get_first_player_name(self, page):
         try:
             return (await page.locator(TABLE_ROWS).first.locator("td").nth(1).inner_text()).strip()
-        except Exception:
-            logger.info("Could not get first player name from table")
+        except TimeoutError:
+            logger.warning("Could not get first player name from table")
             return ""
 
     async def _trigger_postback(self, page, anchor):
@@ -352,6 +352,7 @@ class PlayerSearchCrawler:
         try:
             href = await anchor.get_attribute("href", timeout=5000)
         except Exception:
+            logger.warning("Timeout getting href from anchor", exc_info=True)
             href = None
 
         if href and "javascript:__doPostBack" in href:
@@ -362,8 +363,8 @@ class PlayerSearchCrawler:
                     await page.wait_for_load_state("load", timeout=10000)
                     return True
                 except Exception:
-                    logger.warning("Manual postback evaluate failed")
-            return False
+                    logger.exception("Manual postback evaluate failed")
+                    return False
 
         # Normal (non-JS) links: use click()
         try:
@@ -371,14 +372,16 @@ class PlayerSearchCrawler:
             await page.wait_for_load_state("load", timeout=10000)
             return True
         except Exception:
-            logger.warning("Postback click failed: %s", href)
+            logger.exception("Postback click failed: %s", href)
             return False
 
     async def _wait_after_nav(self, page, prev_v, first_b):
-        with contextlib.suppress(Exception):
+        try:
             await page.wait_for_function(
                 "([s, v]) => document.querySelector(s)?.value !== v", [HFPAGE, prev_v], timeout=5000
             )
+        except TimeoutError:
+            pass
         await asyncio.sleep(self.request_delay)
 
     async def _list_initial_links(self, page):
@@ -391,7 +394,7 @@ class PlayerSearchCrawler:
         return res
 
     @staticmethod
-    def row_to_dict(row: PlayerRow) -> dict:
+    def row_to_dict(row: PlayerRow) -> dict[str, Any]:
         return player_row_to_dict(row)
 
 
@@ -427,7 +430,7 @@ def parse_birth_date(raw: str | None) -> date_type | None:
     return None
 
 
-def player_row_to_dict(row: PlayerRow) -> dict:
+def player_row_to_dict(row: PlayerRow) -> dict[str, Any]:
     category = classify_player({"team": row.team, "position": row.position})
     status = "active"
     staff_role = None

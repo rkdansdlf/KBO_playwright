@@ -93,7 +93,7 @@ async def collect_profiles(limit: int = 100, target_ids: list[str] | None = None
         session.close()
 
 
-def main():
+def main() -> int:
     parser = argparse.ArgumentParser(description="Collect Missing Player Profiles")
     parser.add_argument("--limit", type=int, default=1000, help="Max players to process")
     parser.add_argument("--ids", type=str, help="Comma-separated List of KBO Player IDs")

@@ -8,7 +8,8 @@ import logging
 import os
 from datetime import UTC, date, datetime
 from decimal import Decimal
-from typing import Any, Iterable
+from typing import Any
+from collections.abc import Iterable
 
 logger = logging.getLogger(__name__)
 

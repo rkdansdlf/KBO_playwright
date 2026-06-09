@@ -11,10 +11,12 @@ Usage:
     python -m src.crawlers.player_batting_all_series_crawler --year 2025 --series exhibition --save
 """
 
+from typing import Any
 import argparse
 import logging
 import os
 import re
+from datetime import datetime
 
 logger = logging.getLogger(__name__)
 
@@ -22,6 +24,7 @@ from playwright.sync_api import Page, sync_playwright
 
 from src.aggregators.season_stat_aggregator import SeasonStatAggregator
 from src.db.engine import SessionLocal
+from src.utils.player_stats_helpers import extract_rows_fast
 from src.models.game import Game, GameBattingStat
 from src.models.player import PlayerBasic
 from src.models.season import KboSeason
@@ -77,34 +80,6 @@ def safe_parse_number(value_str: str, data_type: type, allow_zero: bool = True) 
         return None
 
 
-def _extract_rows_fast(page: Page, table_selector: str = "table") -> list[dict[str, object]] | None:
-    try:
-        payload = page.evaluate(
-            """
-            (selector) => {
-                const table = document.querySelector(selector);
-                if (!table) return null;
-                const body = table.tBodies && table.tBodies.length ? table.tBodies[0] : table;
-                const rows = Array.from(body.querySelectorAll('tr'));
-                return rows.map((row) => {
-                    const cells = Array.from(row.querySelectorAll('td')).map(td => (td.textContent || '').trim());
-                    const link = row.querySelector('td:nth-child(2) a');
-                    return {
-                        cells,
-                        linkText: link ? (link.textContent || '').trim() : null,
-                        linkHref: link ? link.getAttribute('href') : null,
-                    };
-                });
-            }
-            """,
-            table_selector,
-        )
-        return payload or []
-    except Exception:
-        logger.exception("Failed to execute JS payload")
-        return None
-
-
 def _extract_player_id_from_href(href: str | None) -> int | None:
     if not href:
         return None
@@ -125,8 +100,9 @@ def _build_batting_data(
     team_code: str,
     series_key: str,
     is_basic2: bool,
-    year: int = 2026,
-) -> dict:
+    year: int | None = None,
+) -> dict[str, Any]:
+    year = year or datetime.now().year
     series_map = get_series_mapping()
     league_name = series_map.get(series_key, {}).get("league", "REGULAR")
 
@@ -202,10 +178,11 @@ def _build_batting_data(
     }
 
 
-def _parse_batting_stats_table_fast(page: Page, series_key: str, year: int = 2025) -> list[dict]:
+def _parse_batting_stats_table_fast(page: Page, series_key: str, year: int | None = None) -> list[dict]:
     """
     Parse batting table using JS extraction for reduced RPC.
     """
+    year = year or datetime.now().year
     get_team_mapping_for_year(year)
 
     extraction_script = r"""
@@ -279,7 +256,8 @@ def _parse_batting_stats_table_fast(page: Page, series_key: str, year: int = 202
         return []
 
 
-def _parse_batting_stats_table_legacy(page: Page, series_key: str, year: int = 2025) -> list[dict]:
+def _parse_batting_stats_table_legacy(page: Page, series_key: str, year: int | None = None) -> list[dict]:
+    year = year or datetime.now().year
     get_team_mapping_for_year(year)
     try:
         table = page.query_selector("table")
@@ -335,9 +313,10 @@ def _parse_batting_stats_table_legacy(page: Page, series_key: str, year: int = 2
 def parse_batting_stats_table(
     page: Page,
     series_key: str,
-    year: int = 2025,
+    year: int | None = None,
     use_fast: bool | None = None,
 ) -> list[dict]:
+    year = year or datetime.now().year
     if use_fast is None:
         use_fast = os.getenv("KBO_FAST_PARSE", "1") != "0"
     if use_fast:
@@ -481,12 +460,13 @@ def _parse_basic2_header_data_legacy(
     page: Page,
     current_header: str,
     description: str,
-    year: int = 2025,
+    year: int | None = None,
 ) -> dict[int, dict]:
     """
     Basic2 페이지에서 특정 헤더 클릭 후 데이터 파싱
     각 헤더 클릭시 해당 기준으로 정렬된 선수 데이터를 수집
     """
+    year = year or datetime.now().year
     players_data = {}
     team_mapping = get_team_mapping_for_year(year)
 
@@ -617,12 +597,13 @@ def _parse_basic2_header_data_fast(
     page: Page,
     current_header: str,
     description: str,
-    year: int = 2025,
+    year: int | None = None,
 ) -> dict[int, dict]:
+    year = year or datetime.now().year
     players_data: dict[int, dict] = {}
     team_mapping = get_team_mapping_for_year(year)
 
-    rows_data = _extract_rows_fast(page)
+    rows_data = extract_rows_fast(page)
     if not rows_data:
         return players_data
 
@@ -696,9 +677,10 @@ def parse_basic2_header_data(
     page: Page,
     current_header: str,
     description: str,
-    year: int = 2025,
+    year: int | None = None,
     use_fast: bool | None = None,
 ) -> dict[int, dict]:
+    year = year or datetime.now().year
     if use_fast is None:
         use_fast = os.getenv("KBO_FAST_PARSE", "1") != "0"
     if use_fast:
@@ -780,7 +762,7 @@ def fallback_batting_from_db(year: int, series_key: str, reason: str = "Manual T
 
 
 def crawl_series_batting_stats(
-    year: int = 2025,
+    year: int | None = None,
     series_key: str = "regular",
     limit: int = None,
     save_to_db: bool = False,
@@ -800,6 +782,7 @@ def crawl_series_batting_stats(
     Returns:
         수집된 타자 기록 리스트
     """
+    year = year or datetime.now().year
     series_mapping = get_series_mapping()
 
     if series_key not in series_mapping:
@@ -1005,7 +988,7 @@ def crawl_series_batting_stats(
 
 
 def crawl_all_series(
-    year: int = 2025, limit: int = None, save_to_db: bool = False, headless: bool = False, by_team: bool = False
+    year: int | None = None, limit: int = None, save_to_db: bool = False, headless: bool = False, by_team: bool = False
 ) -> dict[str, list[dict]]:
     """
     모든 시리즈의 타자 기록을 크롤링
@@ -1013,6 +996,7 @@ def crawl_all_series(
     Returns:
         시리즈별 수집된 데이터 딕셔너리
     """
+    year = year or datetime.now().year
     policy = RequestPolicy()
     series_mapping = get_series_mapping()
     all_series_data = {}
@@ -1030,7 +1014,7 @@ def crawl_all_series(
 def main():
     parser = argparse.ArgumentParser(description="KBO 전체 시리즈 타자 기록 크롤러")
 
-    parser.add_argument("--year", type=int, default=2025, help="시즌 연도 (기본값: 2025)")
+    parser.add_argument("--year", type=int, default=datetime.now().year, help="시즌 연도 (기본값: 당해 연도)")
     parser.add_argument("--series", type=str, help="특정 시리즈만 크롤링 (regular, exhibition, wildcard, etc.)")
     parser.add_argument("--limit", type=int, help="수집할 선수 수 제한")
     parser.add_argument("--save", action="store_true", help="DB에 저장")

@@ -28,8 +28,8 @@ def test_parse_basic2_page_does_not_create_pitcher_without_basic1(monkeypatch):
     monkeypatch.setattr(module, "retry_wait_for_selector", lambda *_args, **_kwargs: True)
     monkeypatch.setattr(
         module,
-        "_extract_rows_fast",
-        lambda _page: [
+        "extract_rows_fast",
+        lambda _page, **kwargs: [
             {
                 "cells": ["1", "Basic2전용", "삼성", "100"],
                 "linkText": "Basic2전용",
@@ -55,8 +55,8 @@ def test_parse_basic2_page_enriches_existing_basic1_pitcher(monkeypatch):
     monkeypatch.setattr(module, "retry_wait_for_selector", lambda *_args, **_kwargs: True)
     monkeypatch.setattr(
         module,
-        "_extract_rows_fast",
-        lambda _page: [
+        "extract_rows_fast",
+        lambda _page, **kwargs: [
             {
                 "cells": ["1", "원태인", "삼성", "100"],
                 "linkText": "원태인",

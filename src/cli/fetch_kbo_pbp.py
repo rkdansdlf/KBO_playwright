@@ -4,7 +4,7 @@ import argparse
 import asyncio
 import logging
 import sys
-from typing import Sequence
+from collections.abc import Sequence
 
 from src.services.relay_recovery_service import (
     load_relay_recovery_targets,

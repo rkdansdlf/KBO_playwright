@@ -15,7 +15,7 @@ import json
 import logging
 from collections import Counter
 from datetime import datetime
-from typing import Sequence
+from collections.abc import Sequence
 
 from sqlalchemy import select
 
@@ -116,7 +116,7 @@ async def process_player_result(
     repository: PlayerRepository,
     delay: float,
     pool,
-) -> dict:
+) -> dict[str, Any]:
     normalized_id = normalize_player_id(player_id)
     if normalized_id is None:
         return {
@@ -262,7 +262,7 @@ async def process_player_result(
     }
 
 
-async def crawl_futures(args: argparse.Namespace) -> dict:
+async def crawl_futures(args: argparse.Namespace) -> dict[str, Any]:
     """퓨처스리그 크롤링 메인 로직."""
     logger.info("\n=== Futures League Stats Crawler ===")
     logger.info(f"Season: {args.season}")
@@ -459,13 +459,13 @@ def build_arg_parser() -> argparse.ArgumentParser:
         "--changed-since",
         type=str,
         default=None,
-        help="ISO datetime string (e.g. '2026-06-03' or '2026-06-03T10:00:00'). "
+        help="ISO datetime string (e.g. '2026-06-08' or '2026-06-08T10:00:00'). "
         "Skips players whose FUTURES records were updated at or after this timestamp.",
     )
     return parser
 
 
-def main(argv: Sequence[str] | None = None) -> dict:
+def main(argv: Sequence[str] | None = None) -> dict[str, Any]:
     _configure_cli_logging()
     parser = build_arg_parser()
     args = parser.parse_args(argv)

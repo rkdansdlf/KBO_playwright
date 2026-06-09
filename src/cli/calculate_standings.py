@@ -298,7 +298,7 @@ class StandingsCalculator:
                 )
 
 
-def main():
+def main() -> int:
     parser = argparse.ArgumentParser(description="KBO Standings Calculator")
     parser.add_argument("--year", type=int, default=datetime.now().year, help="대상 년도")
     parser.add_argument("--all", action="store_true", help="전체 년도 재계산")

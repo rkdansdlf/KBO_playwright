@@ -7,7 +7,8 @@ import os
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Iterable, Sequence
+from typing import Any
+from collections.abc import Iterable, Sequence
 
 from sqlalchemy import or_
 from sqlalchemy.exc import SQLAlchemyError

@@ -12,7 +12,6 @@
 from __future__ import annotations
 
 import logging
-import os
 
 from sqlalchemy import inspect, text
 from sqlalchemy.exc import SQLAlchemyError
@@ -24,7 +23,7 @@ logger = logging.getLogger(__name__)
 
 def main(argv: list[str] | None = None) -> None:
     """데이터베이스 상태 점검을 수행하는 메인 함수."""
-    url = os.getenv("DATABASE_URL", DATABASE_URL)
+    url = DATABASE_URL
     dialect = Engine.url.get_backend_name()
 
     logger.info("\n=== DB Healthcheck ===")

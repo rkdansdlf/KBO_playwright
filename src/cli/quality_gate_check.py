@@ -8,7 +8,7 @@ import argparse
 import json
 import logging
 import sys
-from typing import Sequence
+from collections.abc import Sequence
 
 from src.db.engine import SessionLocal
 from src.validators.quality_gate import run_quality_gate

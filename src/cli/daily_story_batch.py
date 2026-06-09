@@ -8,7 +8,7 @@ import json
 import logging
 import os
 from datetime import datetime
-from typing import Sequence
+from collections.abc import Sequence
 
 from src.db.engine import SessionLocal
 from src.models.game import Game, GameEvent, GameSummary, GameValidationMetrics
@@ -50,7 +50,7 @@ def _upsert_story_summary(session, game_id: str, story_json: str) -> None:
     )
 
 
-def _build_story_data(builder: GameStoryBuilder, session, game: Game) -> dict:
+def _build_story_data(builder: GameStoryBuilder, session, game: Game) -> dict[str, Any]:
     events = (
         session.query(GameEvent)
         .filter(GameEvent.game_id == game.game_id)

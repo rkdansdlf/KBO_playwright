@@ -9,7 +9,7 @@ from src.repositories.player_season_pitching_repository import save_pitching_sta
 from src.repositories.safe_batting_repository import save_batting_stats_safe
 
 
-def main():
+def main() -> int:
     parser = argparse.ArgumentParser(description="Recalculate season cumulative stats from transactional game details.")
     parser.add_argument("--year", type=int, required=True, help="Season year")
     parser.add_argument(

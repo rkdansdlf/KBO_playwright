@@ -8,6 +8,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import logging
+from collections.abc import Sequence
 
 from src.crawlers.retire.listing import RetiredPlayerListingCrawler
 from src.db.engine import SessionLocal
@@ -63,7 +64,7 @@ async def discover_and_save_players(start_year: int, end_year: int, active_year:
         logger.info(f"✅ DB Update complete: {new_count} new players added, {update_count} players updated.")
 
 
-if __name__ == "__main__":
+def main(argv: Sequence[str] | None = None) -> int:
     from datetime import datetime
 
     _current_year = datetime.now().year
@@ -71,6 +72,13 @@ if __name__ == "__main__":
     parser.add_argument("--start", type=int, default=1982)
     parser.add_argument("--end", type=int, default=_current_year - 1)
     parser.add_argument("--active-year", type=int, default=_current_year)
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
 
     asyncio.run(discover_and_save_players(args.start, args.end, args.active_year))
+    return 0
+
+
+if __name__ == "__main__":
+    import sys
+
+    sys.exit(main())

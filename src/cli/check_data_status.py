@@ -12,7 +12,7 @@ import json
 import logging
 import os
 from datetime import datetime
-from typing import Sequence
+from collections.abc import Sequence
 
 from dotenv import load_dotenv
 from sqlalchemy import func, select, text
@@ -38,7 +38,7 @@ def _env_enabled(name: str, default: str = "1") -> bool:
     return os.getenv(name, default).strip().lower() not in FALSE_ENV_VALUES
 
 
-def check_schedules(session) -> dict:
+def check_schedules(session) -> dict[str, Any]:
     """`game_schedules` 테이블의 데이터 현황을 점검합니다."""
     logger.info("\n=== Game Schedules ===")
 
@@ -150,7 +150,7 @@ def check_schedules(session) -> dict:
     }
 
 
-def check_players(session) -> dict:
+def check_players(session) -> dict[str, Any]:
     """`players` 테이블의 데이터 현황을 점검합니다."""
     logger.info("\n=== Players ===")
 
@@ -170,7 +170,7 @@ def check_players(session) -> dict:
     return {"total": total}
 
 
-def check_futures_data(session) -> dict:
+def check_futures_data(session) -> dict[str, Any]:
     """퓨처스리그 관련 데이터(타자/투수 기록) 현황을 점검합니다."""
     logger.info("\n=== Futures League Data ===")
 
@@ -201,7 +201,7 @@ def check_futures_data(session) -> dict:
     return {"batting": batting_count, "pitching": pitching_count}
 
 
-def check_game_data(session) -> dict:
+def check_game_data(session) -> dict[str, Any]:
     from src.models.game import PlayerGameBatting, PlayerGamePitching
 
     logger.info("\n=== Game-Level Stats ===")
@@ -287,7 +287,7 @@ def check_game_data(session) -> dict:
     return {"batting": batting_count, "pitching": pitching_count}
 
 
-def check_pregame_pitcher_coverage(session, *, verbose: bool = False) -> dict:
+def check_pregame_pitcher_coverage(session, *, verbose: bool = False) -> dict[str, Any]:
     """예정 경기 선발투수 적재율을 점검합니다."""
     logger.info("\n=== Pregame Starting Pitchers ===")
 

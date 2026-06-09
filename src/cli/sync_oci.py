@@ -10,7 +10,8 @@ import argparse
 import logging
 import os
 from concurrent.futures import ThreadPoolExecutor
-from typing import Any, Callable, Iterable
+from typing import Any
+from collections.abc import Callable, Iterable
 
 from dotenv import load_dotenv
 from sqlalchemy import text

@@ -16,6 +16,7 @@ from playwright.sync_api import Page, sync_playwright
 
 from src.repositories.save_kbo_batting import save_kbo_batting_batch
 from src.utils.playwright_blocking import install_sync_resource_blocking
+from src.utils.playwright_helpers import goto_next_page
 from src.utils.request_policy import RequestPolicy
 
 
@@ -122,7 +123,7 @@ def crawl_bb_basic2_data(page: Page, year: int, policy: RequestPolicy | None = N
             logger.info(f"      📄 페이지 {page_num} 처리 중...")
 
             # 현재 페이지 데이터 수집
-            page_data = collect_current_page_bb_data(page)
+            page_data = collect_current_page_bb_data(page, year)
             if not page_data:
                 logger.warning(f"      ⚠️ 페이지 {page_num}에 데이터가 없습니다.")
                 break
@@ -152,7 +153,7 @@ def crawl_bb_basic2_data(page: Page, year: int, policy: RequestPolicy | None = N
         return {}
 
 
-def collect_current_page_bb_data(page: Page) -> dict[int, dict]:
+def collect_current_page_bb_data(page: Page, year: int) -> dict[int, dict]:
     """현재 페이지의 BB 기준 선수 데이터 수집"""
     page_data = {}
 
@@ -196,7 +197,7 @@ def collect_current_page_bb_data(page: Page) -> dict[int, dict]:
                 "player_id": player_id,
                 "player_name": player_name,
                 "team_code": team_code,
-                "year": 2025,  # 하드코딩 (테스트용)
+                "year": year,
                 "league": "KBO",
                 "source": "PROFILE",
                 "level": "KBO1",
@@ -240,34 +241,6 @@ def collect_current_page_bb_data(page: Page) -> dict[int, dict]:
         logger.exception("         ⚠️ 페이지 데이터 수집 중 오류")
 
     return page_data
-
-
-def goto_next_page(page: Page, policy: RequestPolicy | None = None) -> bool:
-    """다음 페이지로 이동"""
-    try:
-        # 페이지네이션 확인
-        pagination = page.query_selector(".paging")
-        if not pagination:
-            return False
-
-        # "다음" 링크 찾기
-        next_links = pagination.query_selector_all("a")
-        for link in next_links:
-            text = link.inner_text().strip()
-            if "다음" in text or ">" in text:
-                href = link.get_attribute("href")
-                if href and "javascript:" not in href:
-                    link.click()
-                    page.wait_for_load_state("networkidle", timeout=30000)
-                    if policy:
-                        policy.delay()
-                    return True
-
-        return False
-
-    except Exception:
-        logger.exception("      ⚠️ 페이지 이동 중 오류")
-        return False
 
 
 def main():

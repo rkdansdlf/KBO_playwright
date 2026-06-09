@@ -8,7 +8,7 @@ Runs on the 1st of every month at 03:00 KST via APScheduler.
 import logging
 import sys
 from datetime import datetime
-from typing import Sequence
+from collections.abc import Sequence
 from zoneinfo import ZoneInfo
 
 from scripts.legacy.maintenance.audit_pa_formula import fix_year_formula
@@ -44,7 +44,7 @@ def crawl_monthly_pa_audit_job():
     run_monthly_pa_audit(target_year)
 
 
-def main(argv: Sequence[str] | None = None):
+def main(argv: Sequence[str] | None = None) -> int:
     """CLI entry point for direct invocation (e.g., from GitHub Actions)."""
     import argparse
 

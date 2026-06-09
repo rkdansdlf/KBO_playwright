@@ -1,4 +1,5 @@
 import logging
+from collections.abc import Sequence
 
 logger = logging.getLogger(__name__)
 import argparse
@@ -154,14 +155,13 @@ def generate_report(years: list[int], output_format: str, output_dir: str, db_ur
         logger.info(f"✅ Report saved to {path}")
 
 
-if __name__ == "__main__":
+def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Generate KBO Data Quality Report")
     parser.add_argument("--years", type=str, default="2020-2026", help="Year range (e.g., 2020-2026)")
     parser.add_argument("--format", choices=["json", "csv"], default="json", help="Output format")
     parser.add_argument("--outdir", default="reports", help="Output directory")
     parser.add_argument("--db-url", help="Database URL (defaults to local SQLite)")
-
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
 
     if "-" in args.years:
         start, end = map(int, args.years.split("-"))
@@ -170,3 +170,9 @@ if __name__ == "__main__":
         target_years = [int(args.years)]
 
     generate_report(target_years, args.format, args.outdir, args.db_url)
+    return 0
+
+
+if __name__ == "__main__":
+    import sys
+    sys.exit(main())

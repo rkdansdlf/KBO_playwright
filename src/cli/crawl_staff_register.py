@@ -9,9 +9,8 @@ from __future__ import annotations
 import argparse
 import asyncio
 import logging
-import os
 import sys
-from typing import Sequence
+from collections.abc import Sequence
 
 from src.crawlers.staff_register_crawler import KBO_TEAM_MAP, StaffRegisterCrawler
 

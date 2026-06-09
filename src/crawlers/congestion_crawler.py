@@ -43,7 +43,7 @@ def _snapshot_to_record(
     snap: CongestionSnapshot,
     game_date: date,
     measured_at: datetime,
-) -> dict:
+) -> dict[str, Any]:
     meta = AREA_LOCATION_META.get(
         snap.location_label,
         {"location_type": "area", "location_label": snap.location_label},

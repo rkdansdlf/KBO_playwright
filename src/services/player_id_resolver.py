@@ -114,7 +114,7 @@ class PlayerIdResolver:
                     if old and new and old != new:
                         aliases[old] = new
         except Exception:
-            logger.warning("Failed to load aliases from CSV")
+            logger.exception("Failed to load aliases from CSV")
         return aliases
 
     def _return_ambiguous(

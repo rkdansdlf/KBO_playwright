@@ -38,7 +38,7 @@ class TrendTracker:
                 continue
         return reports
 
-    def get_trend(self, metric_key: str, days: int = 7) -> dict:
+    def get_trend(self, metric_key: str, days: int = 7) -> dict[str, Any]:
         reports = self.load_reports(days=days)
         values = []
         for r in reports:

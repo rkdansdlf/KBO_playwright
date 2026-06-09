@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import re
 from datetime import date, datetime
-from typing import Any, Mapping
+from typing import Any
+from collections.abc import Mapping
 
 from src.utils.game_status import (
     COMPLETED_LIKE_GAME_STATUSES,

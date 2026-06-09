@@ -6,7 +6,8 @@ import asyncio
 import logging
 from dataclasses import dataclass, field
 from datetime import date, datetime
-from typing import Any, Callable, Iterable, Protocol
+from typing import Any, Protocol
+from collections.abc import Callable, Iterable
 
 from src.db.engine import SessionLocal
 from src.models.game import Game, GameBattingStat, GameEvent, GamePitchingStat, GamePlayByPlay

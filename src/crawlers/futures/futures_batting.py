@@ -1,3 +1,4 @@
+from typing import Any
 import logging
 
 logger = logging.getLogger(__name__)
@@ -92,7 +93,7 @@ def _to_float(x: str | None) -> float | None:
         return None
 
 
-def _compute_missing(row: dict) -> dict:
+def _compute_missing(row: dict) -> dict[str, Any]:
     """Compute missing derived stats (SLG, OBP) if possible."""
     H = row.get("H")
     _2B = row.get("2B")
@@ -144,7 +145,7 @@ def _parse_table(table) -> list[dict]:
             key = _norm_header(h)
 
             if key == "season":
-                # Extract 4-digit year from "2023", "2023 (퓨처스)" etc
+                # Extract 4-digit year from season label
                 m = re.search(r"\d{4}", v)
                 if not m:
                     row["season"] = None

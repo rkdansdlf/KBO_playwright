@@ -11,7 +11,8 @@ import time
 from dataclasses import dataclass, field
 from datetime import datetime
 from itertools import count
-from typing import Any, Callable
+from typing import Any
+from collections.abc import Callable
 
 from sqlalchemy import bindparam, create_engine, inspect, text
 from sqlalchemy.exc import DBAPIError, OperationalError, SQLAlchemyError
@@ -536,6 +537,7 @@ class OCISyncBase:
                 self._season_map_cache = {(row.season_year, row.league_type_code): row.season_id for row in rows}
                 return self._season_map_cache
             except Exception:
+                logger.warning("Season map query failed, trying next fallback")
                 continue
 
         logger.warning("⚠️ Warning: Could not fetch season map from OCI")
@@ -622,7 +624,7 @@ class OCISyncBase:
             self.target_session.close()
             self.oci_engine.dispose()
         except Exception as e:
-            logger.info("Ignore exception during OCI reconnection cleanup: %s", e)
+            logger.warning("Ignore exception during OCI reconnection cleanup: %s", e)
         target_session_factory = sessionmaker(bind=self.oci_engine)
         self.target_session = target_session_factory()
 
@@ -768,8 +770,9 @@ class OCISyncBase:
         logger.info(f"🚚 Syncing {model.__tablename__} ({total_count} rows, batch={batch_size})...")
 
         connection = None
-        try:
+        if self.oci_engine is not None:
             connection = self.oci_engine.raw_connection()
+        try:
             synced = 0
             for offset in range(0, total_count, batch_size):
                 rows = query.offset(offset).limit(batch_size).all()
@@ -813,7 +816,7 @@ class OCISyncBase:
                 try:
                     connection.close()
                 except Exception:
-                    pass
+                    logger.warning("Failed to close connection, already closed or aborted", exc_info=True)
 
         return synced
 
@@ -823,8 +826,11 @@ class OCISyncBase:
         records: list[dict[str, Any]],
         unique_cols: list[str],
         update_timestamp: bool,
+        connection=None,
     ):
-        connection = self.oci_engine.raw_connection()
+        close_connection = connection is None
+        if connection is None:
+            connection = self.oci_engine.raw_connection()
         cursor = connection.cursor()
 
         try:
@@ -868,11 +874,13 @@ class OCISyncBase:
             connection.commit()
 
         except Exception as e:
+            logger.exception("Bulk COPY-INSERT failed for %s", table_name)
             connection.rollback()
             raise e
         finally:
             cursor.close()
-            connection.close()
+            if close_connection:
+                connection.close()
 
     def _ensure_table(self, model: type) -> None:
         """Create table on OCI if it doesn't exist."""

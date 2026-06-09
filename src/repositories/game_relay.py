@@ -7,7 +7,8 @@ from __future__ import annotations
 import logging
 import re
 from datetime import datetime
-from typing import Any, Iterable
+from typing import Any
+from collections.abc import Iterable
 
 from src.db.engine import SessionLocal
 from src.models.game import (

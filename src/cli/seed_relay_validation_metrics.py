@@ -10,7 +10,7 @@ from __future__ import annotations
 import argparse
 import logging
 from datetime import datetime
-from typing import Sequence
+from collections.abc import Sequence
 
 from sqlalchemy import func
 

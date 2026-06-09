@@ -100,7 +100,7 @@ class GameSyncMixin:
         self._cached_game_metadata_source_payload_limit = limit
         return limit
 
-    def _transform_game_metadata_for_target(self, data: dict) -> dict:
+    def _transform_game_metadata_for_target(self, data: dict) -> dict[str, Any]:
         limit = self._game_metadata_source_payload_limit()
         if limit and "source_payload" in data:
             data["source_payload"] = _compact_metadata_source_payload_for_limit(data["source_payload"], limit)

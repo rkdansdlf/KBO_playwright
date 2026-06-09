@@ -37,7 +37,7 @@ def test_bulk_copy_upsert_retries_on_transient_failure(monkeypatch):
     attempt_log = []
     reconnect_log = []
 
-    def _fake_do_copy(_self, table_name, records, unique_cols, update_timestamp):
+    def _fake_do_copy(_self, table_name, records, unique_cols, update_timestamp, **kwargs):
         attempt_log.append(table_name)
         if len(attempt_log) < 3:
             raise ConnectionError("connection lost (transient)")
@@ -57,7 +57,7 @@ def test_bulk_copy_upsert_raises_on_persistent_failure(monkeypatch):
     attempt_log = []
     reconnect_log = []
 
-    def _fake_do_copy(_self, table_name, records, unique_cols, update_timestamp):
+    def _fake_do_copy(_self, table_name, records, unique_cols, update_timestamp, **kwargs):
         attempt_log.append(table_name)
         raise RuntimeError("connection lost")
 

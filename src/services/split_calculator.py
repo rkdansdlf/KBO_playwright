@@ -1,4 +1,5 @@
 import logging
+from datetime import datetime
 
 logger = logging.getLogger(__name__)
 """
@@ -174,7 +175,7 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(description="Situational Splits Calculator")
     parser.add_argument("--player_id", type=int, required=True, help="KBO Player ID")
-    parser.add_argument("--season", type=int, default=2025, help="Season year")
+    parser.add_argument("--season", type=int, default=datetime.now().year, help="Season year")
     args = parser.parse_args()
 
     calc = SituationalSplitCalculator()

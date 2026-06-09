@@ -14,7 +14,7 @@ import argparse
 import asyncio
 import logging
 from pathlib import Path
-from typing import Sequence
+from collections.abc import Sequence
 
 from sqlalchemy import func
 

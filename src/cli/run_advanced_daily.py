@@ -161,7 +161,7 @@ async def run_advanced_update(
         raise RuntimeError(f"Advanced Daily Sync finished with errors for {year}")
 
 
-def main():
+def main() -> int:
     parser = argparse.ArgumentParser(description="KBO Advanced Daily Data Orchestrator")
     parser.add_argument("--year", type=int, help="Target year. Defaults to current year.")
     parser.add_argument("--sync", action="store_true", help="Sync to OCI")

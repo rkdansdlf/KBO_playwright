@@ -154,8 +154,8 @@ class MiscSyncMixin:
                 self.target_session.execute(text(sql))
                 self.target_session.commit()
                 logger.info("✅ Applied awards migration")
-        except Exception as exc:
-            logger.warning("Failed to apply awards migration: %s", exc)
+        except Exception:
+            logger.exception("Failed to apply awards migration")
             self.target_session.rollback()
 
         return self.sync_simple_table(
@@ -169,8 +169,8 @@ class MiscSyncMixin:
         logger.info("📁 Ensure RAG chunks table exists on OCI...")
         try:
             Base.metadata.create_all(self.oci_engine)
-        except Exception as exc:
-            logger.warning("metadata create_all error (might already exist): %s", exc)
+        except Exception:
+            logger.exception("metadata create_all error (might already exist)")
 
         def transform_rag_chunk(data: dict[str, Any]) -> dict[str, Any]:
             embedding = data.get("embedding")
@@ -183,6 +183,7 @@ class MiscSyncMixin:
                     except json.JSONDecodeError:
                         logger.debug("Failed to parse embedding JSON")
                 if isinstance(embedding, list):
+                        
                     target_dim = 256
                     current_dim = len(embedding)
                     if current_dim != target_dim:
@@ -213,8 +214,8 @@ class MiscSyncMixin:
         logger.info("📁 Ensure Ticket schedules table exists on OCI...")
         try:
             Base.metadata.create_all(self.oci_engine)
-        except Exception as exc:
-            logger.warning("metadata create_all error (might already exist): %s", exc)
+        except Exception:
+            logger.exception("metadata create_all error (might already exist)")
 
         return self.sync_simple_table(
             TicketSchedule,
@@ -228,8 +229,8 @@ class MiscSyncMixin:
         logger.info("📁 Ensure Stadium foods table exists on OCI...")
         try:
             Base.metadata.create_all(self.oci_engine)
-        except Exception as exc:
-            logger.warning("metadata create_all error (might already exist): %s", exc)
+        except Exception:
+            logger.exception("metadata create_all error (might already exist)")
 
         return self.sync_simple_table(
             StadiumFood,
@@ -460,7 +461,7 @@ class MiscSyncMixin:
         if end:
             filters.append(TeamDailyRoster.roster_date <= end)
 
-        def transform(data: dict) -> dict:
+        def transform(data: dict) -> dict[str, Any]:
             team_code = data.get("team_code", "")
             roster_date = data.get("roster_date")
             if team_code and roster_date:
@@ -526,7 +527,7 @@ class MiscSyncMixin:
         """Sync team_code_map table using bulk COPY upsert"""
         franchise_mapping = self._get_franchise_id_mapping()
 
-        def transform(data: dict) -> dict:
+        def transform(data: dict) -> dict[str, Any]:
             fid = data.get("franchise_id")
             if fid:
                 data["franchise_id"] = franchise_mapping.get(fid, fid)

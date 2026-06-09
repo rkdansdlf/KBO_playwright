@@ -12,7 +12,8 @@ import asyncio
 import logging
 import os
 from datetime import datetime
-from typing import Any, Sequence
+from typing import Any
+from collections.abc import Sequence
 from zoneinfo import ZoneInfo
 
 import httpx
@@ -520,7 +521,7 @@ async def run_live_crawler_cycle(
     }
 
 
-async def main_loop(base_interval_minutes: int, *, sync_to_oci: bool | None = None, dynamic: bool = False):
+async def main_loop(base_interval_minutes: int, *, sync_to_oci: bool | None = None, dynamic: bool = False) -> None:
     last_active_time = None
     last_event_counts: dict[str, int] = {}
     while True:
@@ -609,7 +610,7 @@ def _compute_base_dynamic_interval(
             return 1800, "OFF HOURS"
 
 
-def main(argv: Sequence[str] | None = None):
+def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="KBO Live Score & PBP Daemon")
     parser.add_argument(
         "--interval", type=int, default=2, help="Crawling polling interval in minutes (default for fixed mode)"

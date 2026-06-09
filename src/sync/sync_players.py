@@ -47,7 +47,7 @@ class PlayerSyncMixin:
 
         valid_ids = list(player_mapping.keys())
 
-        def _map_player_id(data: dict) -> dict:
+        def _map_player_id(data: dict) -> dict[str, Any]:
             data["player_id"] = player_mapping.get(data["player_id"], data["player_id"])
             return data
 
@@ -212,7 +212,7 @@ class PlayerSyncMixin:
     def sync_player_movements(self) -> int:
         """Sync player_movements from SQLite to OCI using bulk COPY upsert."""
 
-        def _fix_team_code(data: dict) -> dict:
+        def _fix_team_code(data: dict) -> dict[str, Any]:
             if not data.get("team_code"):
                 data["team_code"] = data.get("canonical_team_id") or "N/A"
             return data

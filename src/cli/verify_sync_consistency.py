@@ -217,7 +217,7 @@ def run_consistency_audit(deep: bool = False, trigger_alert: bool = True) -> boo
         return True
 
 
-def main():
+def main() -> int:
     parser = argparse.ArgumentParser(description="KBO SQLite to OCI PostgreSQL consistency auditor")
     parser.add_argument(
         "--deep", action="store_true", help="Perform deep ID-level matching to catch record discrepancies."

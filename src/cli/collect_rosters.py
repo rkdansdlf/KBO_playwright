@@ -51,7 +51,7 @@ async def collect_rosters(year: int, month: int = None):
     logger.info(f"✅ Finished Roster Collection for {year}" + (f"-{month}" if month else ""))
 
 
-def main():
+def main() -> int:
     parser = argparse.ArgumentParser(description="Collect Daily Rosters")
     parser.add_argument("--year", type=int, required=True, help="Target Year")
     parser.add_argument("--month", type=int, help="Target Month (Optional)")

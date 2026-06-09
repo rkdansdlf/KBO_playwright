@@ -1,3 +1,4 @@
+from typing import Any
 import logging
 
 logger = logging.getLogger(__name__)
@@ -65,7 +66,7 @@ class InternationalScheduleCrawler:
         logger.info(f"✅ Found {len(games)} international games.")
         return games
 
-    async def _parse_row(self, row: Locator, year: int) -> dict | None:
+    async def _parse_row(self, row: Locator, year: int) -> dict[str, Any] | None:
         """Parses a single row from the international schedule table."""
 
         cols = await row.locator("td").all()
@@ -128,12 +129,6 @@ class InternationalScheduleCrawler:
         # 5. Synthesize Game ID
         # Format: YYYYMMDD + Home + Away + 0
         game_id = f"{year}{month:02d}{day:02d}{away_code}{home_code}0"
-        # Wait, standard KBO ID is YYYYMMDD + Away + Home + DH?
-        # KBO Example: 20240323HHLG0 -> HH (Away) LG (Home).
-        # My previous thought was HomeAway? Let's check schedule_crawler logic.
-        # href: gameId=20240323HHLG0
-        # schedule_crawler: away_segment = game_id[8:10], home_segment = game_id[10:12]
-        # So YES: YYYYMMDD + AWAY + HOME + DH
 
         # Construct Game Object (Dict for now)
         return {
