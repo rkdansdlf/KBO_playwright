@@ -58,7 +58,7 @@ class TeamInfoCrawler:
                 "url": self.BASE_URL,
                 "html": html,
                 "status_code": 200,
-            }
+            },
         )
 
         rows = await self.page.locator("table.tData tbody tr").all()
@@ -107,7 +107,7 @@ class TeamInfoCrawler:
                             close_btn = self.page.locator("a.btn_close, img[alt='닫기']").first
                             if await close_btn.count() > 0:
                                 await close_btn.click()
-                    except Exception:  # noqa: BLE001
+                    except Exception:
                         logger.info("Popup close button not found, continuing")
 
                     await self.page.locator("div[id^='layerPop']").wait_for(state="hidden", timeout=3000)
@@ -160,7 +160,7 @@ class TeamInfoCrawler:
                             "ceo": item["ceo"],
                             "address": item["address"],
                             "phone": item["phone"],
-                        }
+                        },
                     )
                     result.metadata_json = meta
                     result.web_url = item["homepage"]

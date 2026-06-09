@@ -54,7 +54,7 @@ def _has_player_basic(player_id: str) -> bool:
     with SessionLocal() as session:
         return (
             session.execute(
-                select(PlayerBasic.player_id).where(PlayerBasic.player_id == player_id_db)
+                select(PlayerBasic.player_id).where(PlayerBasic.player_id == player_id_db),
             ).scalar_one_or_none()
             is not None
         )
@@ -86,7 +86,7 @@ async def gather_active_player_ids(season_year: int, delay: float) -> dict[str, 
     pitchers_cnt = sum(1 for m in player_positions.values() if m["position"] == "pitcher")
     both_cnt = sum(1 for m in player_positions.values() if m["position"] == "both")
     logger.info(
-        f"Found {len(player_positions)} active players (hitters: {hitters_cnt}, pitchers: {pitchers_cnt}, both: {both_cnt})"
+        f"Found {len(player_positions)} active players (hitters: {hitters_cnt}, pitchers: {pitchers_cnt}, both: {both_cnt})",
     )
     return player_positions
 
@@ -174,7 +174,7 @@ async def process_player_result(
 
     # 데이터베이스에 선수 정보가 없으면 새로 생성
     player = await asyncio.to_thread(
-        repository.upsert_player_profile, player_id, PlayerProfileParsed(is_active=True, player_name=player_name)
+        repository.upsert_player_profile, player_id, PlayerProfileParsed(is_active=True, player_name=player_name),
     )
 
     if not player:
@@ -232,7 +232,7 @@ async def process_player_result(
                         "strikeouts": row.get("strikeouts"),
                         "era": row.get("era"),
                         "tbf": row.get("tbf"),
-                    }
+                    },
                 )
             saved_pitching = await asyncio.to_thread(save_pitching_stats_to_db, payloads)
             saved += saved_pitching
@@ -410,7 +410,7 @@ async def crawl_futures(args: argparse.Namespace) -> dict[str, Any]:
             "total_saved": total_saved,
             "failure_counts": dict(failure_counts),
             "results": results,
-        }
+        },
     )
     if getattr(args, "json_summary", False):
         logger.info(json.dumps(summary, ensure_ascii=False, sort_keys=True))

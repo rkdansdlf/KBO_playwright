@@ -29,7 +29,7 @@ class SeasonStatAggregator:
 
     @staticmethod
     def aggregate_batting_season(
-        session: Session, player_id: int, year: int, series: str, source: str = "FALLBACK"
+        session: Session, player_id: int, year: int, series: str, source: str = "FALLBACK",
     ) -> dict[str, Any] | None:
         pattern = SeasonStatAggregator._get_league_name_pattern(series)
 
@@ -78,7 +78,7 @@ class SeasonStatAggregator:
 
     @staticmethod
     def aggregate_batting_season_bulk(
-        session: Session, year: int, series: str, source: str = "FALLBACK"
+        session: Session, year: int, series: str, source: str = "FALLBACK",
     ) -> list[dict[str, Any]]:
         """
         Aggregate batting stats for all players in a season/series in a single query.
@@ -130,7 +130,7 @@ class SeasonStatAggregator:
 
     @staticmethod
     def aggregate_pitching_season(
-        session: Session, player_id: int, year: int, series: str, source: str = "FALLBACK"
+        session: Session, player_id: int, year: int, series: str, source: str = "FALLBACK",
     ) -> dict[str, Any] | None:
         pattern = SeasonStatAggregator._get_league_name_pattern(series)
 
@@ -182,7 +182,7 @@ class SeasonStatAggregator:
 
     @staticmethod
     def aggregate_pitching_season_bulk(
-        session: Session, year: int, series: str, source: str = "FALLBACK"
+        session: Session, year: int, series: str, source: str = "FALLBACK",
     ) -> list[dict[str, Any]]:
         """
         Aggregate pitching stats for all players in a season/series in a single query.
@@ -235,7 +235,7 @@ class SeasonStatAggregator:
 
     @staticmethod
     def aggregate_baserunning_season(
-        session: Session, player_id: int, year: int, series: str, source: str = "FALLBACK"
+        session: Session, player_id: int, year: int, series: str, source: str = "FALLBACK",
     ) -> dict[str, Any] | None:
         """
         Aggregate cumulative baserunning stats from game batting stats.
@@ -271,7 +271,7 @@ class SeasonStatAggregator:
 
     @staticmethod
     def aggregate_baserunning_season_bulk(
-        session: Session, year: int, series: str, source: str = "FALLBACK"
+        session: Session, year: int, series: str, source: str = "FALLBACK",
     ) -> list[dict[str, Any]]:
         """
         Aggregate baserunning stats for all players in bulk.
@@ -309,7 +309,7 @@ class SeasonStatAggregator:
 
     @staticmethod
     def aggregate_fielding_season_bulk(
-        session: Session, year: int, series: str, source: str = "FALLBACK"
+        session: Session, year: int, series: str, source: str = "FALLBACK",
     ) -> list[dict[str, Any]]:
         """
         Aggregate fielding stats for all players and positions in bulk.
@@ -372,14 +372,14 @@ class SeasonStatAggregator:
                     "games": game_count,
                     "errors": error_map.get((pid, pos), 0),
                     "source": source,
-                }
+                },
             )
 
         return results
 
     @staticmethod
     def aggregate_fielding_season(
-        session: Session, player_id: int, year: int, series: str, source: str = "FALLBACK"
+        session: Session, player_id: int, year: int, series: str, source: str = "FALLBACK",
     ) -> list[dict[str, Any]]:
         """
         Aggregate fielding stats (primarily errors) by parsing GameEvents for a single player.
@@ -416,8 +416,8 @@ class SeasonStatAggregator:
                     GameEvent.game_id.in_(
                         session.query(GameLineup.game_id)
                         .filter(GameLineup.player_id == player_id)
-                        .filter(GameLineup.standard_position == pos)
-                    )
+                        .filter(GameLineup.standard_position == pos),
+                    ),
                 )
                 .filter(GameEvent.description.like("%실책%"))
                 .filter(or_(GameEvent.description.like(f"%{player.name}%"), GameEvent.description.like(f"%{pos}%")))
@@ -434,7 +434,7 @@ class SeasonStatAggregator:
                     "games": pos_row.games,
                     "errors": error_count,
                     "source": source,
-                }
+                },
             )
 
         return pos_stats

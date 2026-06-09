@@ -44,7 +44,7 @@ async def discover_and_save_players(start_year: int, end_year: int, active_year:
             if not existing:
                 # New player discovered
                 new_player = PlayerBasic(
-                    player_id=pid, name=name, status="active" if is_active else "retired", status_source="discovery"
+                    player_id=pid, name=name, status="active" if is_active else "retired", status_source="discovery",
                 )
                 session.add(new_player)
                 new_count += 1

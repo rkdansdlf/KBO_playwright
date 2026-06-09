@@ -93,14 +93,14 @@ class OperationNoticeDoosanCrawler:
                         resp = await page.goto(url)
                         if not resp or resp.status != 200:
                             logger.warning(
-                                "[Doosan Notice] HTTP %s on page %d", resp.status if resp else "None", page_no
+                                "[Doosan Notice] HTTP %s on page %d", resp.status if resp else "None", page_no,
                             )
                             break
 
                         await page.wait_for_timeout(2000)
                         html = await page.content()
                         self._raw_pages.append(
-                            {"source_key": "doosan_bears_notices", "url": url, "html": html, "status_code": 200}
+                            {"source_key": "doosan_bears_notices", "url": url, "html": html, "status_code": 200},
                         )
 
                         notices, hit_stop = self._parse_page(html, stop_at_external_id)
@@ -177,7 +177,7 @@ class OperationNoticeDoosanCrawler:
                     "is_urgent": _is_urgent(title),
                     "is_confirmed": True,
                     "raw_snapshot": {"href": href, "title": title},
-                }
+                },
             )
 
         return notices, hit_stop

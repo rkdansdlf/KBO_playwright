@@ -44,7 +44,7 @@ class RosterTransactionRepository:
             return True
         return (
             self.session.execute(
-                select(PlayerBasic.player_id).where(PlayerBasic.player_id == player_id)
+                select(PlayerBasic.player_id).where(PlayerBasic.player_id == player_id),
             ).scalar_one_or_none()
             is not None
         )

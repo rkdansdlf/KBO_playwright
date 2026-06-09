@@ -57,9 +57,13 @@ async def step1_collect_player_list(season_year: int = 2024, confirm_limit: int 
     retired_count = len(result.get("retired", []))
     staff_count = len(result.get("staff", []))
     confirmed = confirm_stats.get("confirmed", 0)
-    print(
-        f"📊 Active: {len(result['hitters'])} hitters, {len(result['pitchers'])} pitchers "
-        f"| Retired: {retired_count} | Staff: {staff_count} | Profile-confirmed: {confirmed}"
+    logger.info(
+        "📊 Active: %s hitters, %s pitchers | Retired: %s | Staff: %s | Profile-confirmed: %s",
+        len(result['hitters']),
+        len(result['pitchers']),
+        retired_count,
+        staff_count,
+        confirmed,
     )
     if confirm_stats.get("attempted"):
         logger.info(f"   ↳ Profile checks attempted: {confirm_stats['attempted']}")
@@ -203,7 +207,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
 
 async def run_pipeline(args: argparse.Namespace):
     """Run initial data collection in correct order"""
-    print(
+    logger.info(
         "[DEPRECATED] scripts/maintenance/init_data_collection.py is a bootstrap/demo workflow. "
         "Prefer the dedicated src.cli entrypoints for operational collection."
     )

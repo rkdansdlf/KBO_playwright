@@ -37,9 +37,6 @@ from src.crawlers.ticket_crawler import TicketCrawler
 from src.db.engine import SessionLocal
 from src.models.game import Game, GameEvent, GamePlayByPlay
 from src.repositories.game_repository import (
-    GAME_STATUS_CANCELLED,
-    GAME_STATUS_SCHEDULED,
-    GAME_STATUS_UNRESOLVED,
     refresh_game_status_for_date,
     update_game_status,
 )
@@ -53,11 +50,11 @@ from src.services.postgame_reconciliation_service import (
     format_reconciliation_report,
     reconcile_postgame_range,
 )
+from src.services.recovery_manager import RecoveryManager
 from src.services.schedule_collection_service import save_schedule_games
 from src.sync.oci_sync import OCISync
-from src.utils.refresh_manifest import write_refresh_manifest
-from src.utils.schedule_validation import is_detail_candidate_game
-from src.utils.team_codes import normalize_kbo_game_id
+from src.utils.alerting import SlackWebhookClient
+from src.utils.game_status import GAME_STATUS_CANCELLED, GAME_STATUS_SCHEDULED, GAME_STATUS_UNRESOLVED
 
 logger = logging.getLogger(__name__)
 
@@ -70,6 +67,23 @@ OCI_SKIP_KEYS = (
     "skipped_empty_relay",
     "skipped_cancelled",
 )
+DETAIL_RECOVERY_MAX_ROUNDS = int(os.getenv("DETAIL_RECOVERY_MAX_ROUNDS", "3"))
+DETAIL_RECOVERY_RETRY_ALERT_THRESHOLD = int(os.getenv("DETAIL_RECOVERY_RETRY_ALERT_THRESHOLD", "2"))
+DETAIL_RECOVERY_COOLDOWN_MINUTES = int(os.getenv("DETAIL_RECOVERY_COOLDOWN_MINUTES", "360"))
+DETAIL_RECOVERY_QUEUE_PATH = os.getenv("DETAIL_RECOVERY_QUEUE_PATH", "data/recovery/detail_recovery_queue.json")
+DETAIL_RECOVERY_ALLOWED_REASONS = {
+    "no_detail_payload",
+    "incomplete_detail",
+    "timeout",
+    "navigation_error",
+    "exception",
+    "missing",
+}
+
+
+def _is_recoverable_detail_reason(reason: str | None) -> bool:
+    normalized = (reason or "").strip().lower()
+    return normalized in DETAIL_RECOVERY_ALLOWED_REASONS
 
 
 def _today_kst() -> date:
@@ -140,11 +154,28 @@ def _build_stability_summary(
     non_p0_quality_gate_ids: Mapping[str, list[str]],
     p0_non_game_counts: Mapping[str, int],
     p0_non_game_errors: Mapping[str, str],
+    detail_recovery_passes: int,
+    detail_recovered_after_retry: int,
+    detail_still_missing: Sequence[str],
+    detail_recovery_attempts: Mapping[str, int],
+    detail_recovery_escalation_game_ids: Sequence[str],
     summary_path: Path,
 ) -> dict[str, Any]:
+    recoverable_reasons = {
+        "no_detail_payload",
+        "incomplete_detail",
+        "timeout",
+        "navigation_error",
+        "exception",
+        "missing",
+    }
     detail_retry_candidates = sorted(
-        set(detail_failure_game_ids.get("incomplete_detail", []))
-        | set(detail_failure_game_ids.get("detail_payload_filtered", []))
+        {
+            game_id
+            for reason, game_ids in detail_failure_game_ids.items()
+            if reason in recoverable_reasons
+            for game_id in game_ids
+        },
     )
     relay_retry_candidates = sorted(set(oci_skip_game_ids.get("skipped_empty_relay", [])))
     affected_game_ids = sorted(
@@ -153,7 +184,7 @@ def _build_stability_summary(
             for ids in [*detail_failure_game_ids.values(), *oci_skip_game_ids.values()]
             for game_id in ids
             if game_id
-        }
+        },
     )
     return {
         "summary_path": str(summary_path),
@@ -182,6 +213,15 @@ def _build_stability_summary(
         "retry_candidates": {
             "detail": detail_retry_candidates,
             "relay": relay_retry_candidates,
+        },
+        "detail_recovery": {
+            "passes": int(detail_recovery_passes),
+            "recovered_after_retry": int(detail_recovered_after_retry),
+            "still_missing_count": len(set(str(game_id) for game_id in detail_still_missing)),
+            "still_missing": sorted(set(str(game_id) for game_id in detail_still_missing)),
+            "attempts_by_game": {str(game_id): int(attempts) for game_id, attempts in detail_recovery_attempts.items()},
+            "escalation_threshold": DETAIL_RECOVERY_RETRY_ALERT_THRESHOLD,
+            "escalation_game_ids": sorted(set(str(game_id) for game_id in detail_recovery_escalation_game_ids)),
         },
         "affected_game_ids": affected_game_ids,
     }
@@ -219,14 +259,27 @@ def format_stability_alert_summary(result: object) -> str | None:
     relay = stability.get("relay") if isinstance(stability.get("relay"), dict) else {}
     oci = stability.get("oci") if isinstance(stability.get("oci"), dict) else {}
     quality_gates = stability.get("quality_gates") if isinstance(stability.get("quality_gates"), dict) else {}
+    detail_recovery = (
+        stability.get("detail_recovery") if isinstance(stability.get("detail_recovery"), dict) else {}
+    )
     detail_counts = detail.get("failure_counts") if isinstance(detail, dict) else {}
     oci_counts = oci.get("skip_counts") if isinstance(oci, dict) else {}
     non_p0_counts = quality_gates.get("non_p0_failure_counts") if isinstance(quality_gates, dict) else {}
     relay_targets = relay.get("target_count", 0) if isinstance(relay, dict) else 0
+    recovery_passes = detail_recovery.get("passes", 0) if isinstance(detail_recovery, dict) else 0
+    recovered_after_retry = (
+        detail_recovery.get("recovered_after_retry", 0) if isinstance(detail_recovery, dict) else 0
+    )
+    still_missing_count = (
+        detail_recovery.get("still_missing_count", 0) if isinstance(detail_recovery, dict) else 0
+    )
 
     return (
         f"target_date={result.get('target_date', 'unknown')} "
         f"detail_failures={_format_counts(detail_counts if isinstance(detail_counts, dict) else {})} "
+        f"detail_recovery_passes={recovery_passes} "
+        f"detail_recovered_after_retry={recovered_after_retry} "
+        f"detail_still_missing={still_missing_count} "
         f"relay_targets={relay_targets} "
         f"oci_skips={_format_counts(oci_counts if isinstance(oci_counts, dict) else {})} "
         f"non_p0_quality_gates={_format_counts(non_p0_counts if isinstance(non_p0_counts, dict) else {})} "
@@ -293,7 +346,7 @@ def _collect_past_scheduled_recovery_targets(today: date) -> list[dict[str, str]
             rows = (
                 session.query(Game.game_id, Game.game_date)
                 .filter(
-                    Game.game_status == GAME_STATUS_SCHEDULED,
+                    Game.game_status.in_([GAME_STATUS_SCHEDULED, GAME_STATUS_UNRESOLVED]),
                     Game.game_date <= yesterday,
                 )
                 .order_by(Game.game_date.asc(), Game.game_id.asc())
@@ -362,6 +415,19 @@ async def run_update(
     p0_non_game_counts: dict[str, int] = {}
     p0_non_game_errors: dict[str, str] = {}
     status_refresh_game_ids: list[str] = []
+    detail_recovery_passes = 0
+    detail_recovered_after_retry = 0
+    detail_retry_escalation_game_ids: list[str] = []
+    detail_recovery_attempts: dict[str, int] = {}
+    detail_still_missing: set[str] = set()
+    detail_recovery_queue = RecoveryManager(checkpoint_path=DETAIL_RECOVERY_QUEUE_PATH)
+    detail_recovery_queue.purge_detail_recovery_queue()
+    queued_recovery_game_ids = set(
+        detail_recovery_queue.get_due_detail_recovery_targets(
+            target_date,
+            cooldown_minutes=DETAIL_RECOVERY_COOLDOWN_MINUTES,
+        ),
+    )
     write_contract = GameWriteContract(run_label=f"daily_update:{target_date}", log=logger.info)
 
     if run_auto_healer:
@@ -388,7 +454,7 @@ async def run_update(
     )
     logger.info(
         f"   ✅ Schedule discovered={schedule_result.discovered} "
-        f"saved={schedule_result.saved} failed={schedule_result.failed}"
+        f"saved={schedule_result.saved} failed={schedule_result.failed}",
     )
 
     daily_games = [g for g in schedule_games if str(g.get("game_date", "")).replace("-", "") == target_date]
@@ -404,6 +470,36 @@ async def run_update(
     logger.info("\n🎮 Step 2: Crawling full postgame details...")
     resolver_session = SessionLocal()
     processed_game_ids: list[str] = []
+    processed_game_ids_set: set[str] = set()
+    detail_games_by_id: dict[str, dict[str, str]] = {}
+    for game in detail_games:
+        game_id = normalize_kbo_game_id(game.get("game_id"))
+        if not game_id:
+            continue
+        detail_games_by_id[game_id] = {
+            "game_id": game_id,
+            "game_date": str(game.get("game_date") or target_date),
+        }
+        detail_recovery_attempts[game_id] = 0
+
+    queued_recovery_game_count = 0
+    for queued_game_id in sorted(queued_recovery_game_ids):
+        if queued_game_id in detail_games_by_id:
+            continue
+        if limit is not None and len(detail_games_by_id) >= limit:
+            # Manual debug runs should stay bounded by --limit when explicitly used.
+            continue
+        detail_games_by_id[queued_game_id] = {
+            "game_id": queued_game_id,
+            "game_date": target_date,
+        }
+        detail_recovery_attempts[queued_game_id] = 0
+        queued_recovery_game_count += 1
+    if queued_recovery_game_count > 0:
+        logger.info(
+            f"   ♻️ Re-prioritizing {queued_recovery_game_count} queued detail-recovery game(s)",
+        )
+
     try:
         resolver = PlayerIdResolver(
             resolver_session,
@@ -414,7 +510,7 @@ async def run_update(
         g_crawler = GameDetailCrawler(resolver=resolver)
 
         collection_result = await crawl_and_save_game_details(
-            detail_games,
+            list(detail_games_by_id.values()),
             detail_crawler=g_crawler,
             force=True,
             concurrency=1,
@@ -422,21 +518,90 @@ async def run_update(
             write_contract=write_contract,
             source_reason=f"postgame_finalize:{target_date}",
         )
-        processed_game_ids = list(collection_result.processed_game_ids)
-        detail_failure_counts, detail_failure_game_ids = _failure_reason_summary(collection_result.items)
+        detail_results_by_game = dict(collection_result.items)
+        for game_id in detail_games_by_id:
+            detail_recovery_attempts[game_id] = detail_recovery_attempts.get(game_id, 0) + 1
 
-        for game in detail_games:
-            game_id = game["game_id"]
-            item = collection_result.items.get(normalize_kbo_game_id(game_id))
+        max_recovery_rounds = max(1, int(DETAIL_RECOVERY_MAX_ROUNDS))
+        unrecovered_game_ids = {
+            normalize_kbo_game_id(game_id)
+            for game_id, item in detail_results_by_game.items()
+            if item and not item.detail_saved
+        }
+        recoverable_failure_ids = {
+            game_id
+            for game_id in unrecovered_game_ids
+            if _is_recoverable_detail_reason(detail_results_by_game[game_id].failure_reason)
+        }
+
+        for _ in range(max_recovery_rounds - 1):
+            retry_game_ids = sorted(
+                game_id for game_id in recoverable_failure_ids if detail_recovery_attempts.get(game_id, 0) < max_recovery_rounds
+            )
+            if not retry_game_ids:
+                break
+
+            detail_recovery_passes += 1
+            retry_targets = [detail_games_by_id[game_id] for game_id in retry_game_ids if game_id in detail_games_by_id]
+            for game_id in retry_game_ids:
+                detail_recovery_attempts[game_id] = detail_recovery_attempts.get(game_id, 0) + 1
+
+            logger.info(f"   🔁 Detail recovery pass #{detail_recovery_passes} ({len(retry_targets)} game(s))")
+            retry_result = await crawl_and_save_game_details(
+                retry_targets,
+                detail_crawler=g_crawler,
+                force=True,
+                concurrency=1,
+                log=logger.info,
+                write_contract=write_contract,
+                source_reason=f"postgame_finalize:{target_date}:recovery",
+            )
+
+            for game_id, item in retry_result.items.items():
+                normalized_game_id = normalize_kbo_game_id(game_id)
+                detail_results_by_game[normalized_game_id] = item
+
+                if item.detail_saved:
+                    if normalized_game_id in unrecovered_game_ids:
+                        unrecovered_game_ids.remove(normalized_game_id)
+                        detail_recovered_after_retry += 1
+                    recoverable_failure_ids.discard(normalized_game_id)
+                elif not _is_recoverable_detail_reason(item.failure_reason):
+                    unrecovered_game_ids.discard(normalized_game_id)
+                    recoverable_failure_ids.discard(normalized_game_id)
+
+        for game_id, item in detail_results_by_game.items():
+            reason = item.failure_reason if item else None
+            if item.detail_saved:
+                processed_game_ids_set.add(game_id)
+                detail_recovery_queue.mark_detail_recovery_success(target_date, game_id)
+            elif _is_recoverable_detail_reason(reason):
+                detail_recovery_queue.mark_detail_recovery_failure(
+                    target_date,
+                    game_id,
+                    failure_reason=reason,
+                )
+            else:
+                detail_recovery_queue.mark_detail_recovery_success(target_date, game_id)
+
+        processed_game_ids = sorted(processed_game_ids_set)
+        detail_failure_counts, detail_failure_game_ids = _failure_reason_summary(detail_results_by_game)
+
+        for game_id in sorted(detail_games_by_id):
+            item = detail_results_by_game.get(game_id)
             if item and item.detail_saved:
                 logger.info(f"   ✅ Successfully saved {game_id}")
                 continue
 
             reason = item.failure_reason if item else "exception"
             if item and item.detail_status == "save_failed":
-                logger.error(f"   ❌ Failed to save {game_id} to local DB")
+                logger.error(f"   ❌ Failed to save details for {game_id} to local DB")
             else:
                 logger.warning(f"   ⚠️ Could not fetch details for {game_id} (reason={reason or 'unknown'})")
+
+            detail_still_missing.add(game_id)
+            if detail_recovery_attempts.get(game_id, 0) >= DETAIL_RECOVERY_RETRY_ALERT_THRESHOLD + 1:
+                detail_retry_escalation_game_ids.append(game_id)
 
             # 🛡️ Protection: If the game is already marked as terminal in the DB (e.g. by Auto-Healer),
             # don't overwrite it with a generic fallback status unless the reason is specifically 'cancelled'.
@@ -454,15 +619,32 @@ async def run_update(
                         and fallback != GAME_STATUS_CANCELLED
                     ):
                         logger.info(
-                            f"   ℹ️ Preservation: Keeping terminal status '{current_game.game_status}' for {game_id}"
+                            f"   ℹ️ Preservation: Keeping terminal status '{current_game.game_status}' for {game_id}",
                         )
                     else:
                         update_game_status(game_id, fallback)
+
         logger.info(
-            f"   ✅ Detail result success={collection_result.detail_saved} failed={collection_result.detail_failed}"
+            f"   ✅ Detail result success={len(processed_game_ids)} failed={len(detail_still_missing)} "
+            f"recovery_passes={detail_recovery_passes}",
         )
         if detail_failure_counts:
             logger.info(f"   ℹ️ Detail failure reasons: {_format_counts(detail_failure_counts)}")
+        if detail_recovery_passes:
+            logger.info(
+                f"   ℹ️ Detail recovery recovered_after_retry={detail_recovered_after_retry}, "
+                f"still_missing={len(detail_still_missing)}, escalated={len(detail_retry_escalation_game_ids)}",
+            )
+
+        if detail_retry_escalation_game_ids:
+            try:
+                SlackWebhookClient.send_alert(
+                    "⚠️ Detail recovery repeated failures: "
+                    f"target_date={target_date} threshold={DETAIL_RECOVERY_RETRY_ALERT_THRESHOLD} "
+                    f"game_ids={','.join(sorted(set(detail_retry_escalation_game_ids)))}",
+                )
+            except Exception:
+                logger.exception("   ❌ Failed to send detail recovery escalation alert")
 
         if run_postgame_reconciliation:
             reconcile_start = (
@@ -481,7 +663,7 @@ async def run_update(
             reconciliation_changed_ids = reconciliation_result.changed_game_ids
             reconciliation_dates = sorted({change.game_date for change in reconciliation_result.changes})
             logger.info(
-                f"   ✅ candidates={reconciliation_result.candidates} changed={len(reconciliation_result.changes)}"
+                f"   ✅ candidates={reconciliation_result.candidates} changed={len(reconciliation_result.changes)}",
             )
             if reconciliation_result.changes:
                 for line in format_reconciliation_report(reconciliation_result.changes).splitlines():
@@ -495,6 +677,7 @@ async def run_update(
             detail_failure_game_ids.setdefault("exception", []).extend(
                 str(game["game_id"]) for game in detail_games if game.get("game_id")
             )
+            detail_still_missing.update(str(game["game_id"]) for game in detail_games if game.get("game_id"))
         for game in detail_games:
             game_id = game["game_id"]
             fallback = _failure_status(target_date, "exception", today_kst)
@@ -512,7 +695,7 @@ async def run_update(
         "   ✅ "
         f"total={status_result.get('total', 0)} "
         f"updated={status_result.get('updated', 0)} "
-        f"counts={status_result.get('status_counts', {})}"
+        f"counts={status_result.get('status_counts', {})}",
     )
 
     logger.info("\n📝 Step 4: Relay recovery (events / PBP)...")
@@ -526,9 +709,10 @@ async def run_update(
                     "scripts/fetch_kbo_pbp.py",
                     "--game-ids",
                     ",".join(relay_game_ids),
+                    "--include-incomplete",
                     "--report-out",
                     f"logs/daily_update_summary/pbp_report_daily_{target_date}.csv",
-                ]
+                ],
             )
         else:
             logger.info("   ℹ️ No detail-success relay candidates for target date")
@@ -547,9 +731,10 @@ async def run_update(
                     "scripts/fetch_kbo_pbp.py",
                     "--game-ids",
                     ",".join(healer_ids),
+                    "--include-incomplete",
                     "--report-out",
                     f"logs/daily_update_summary/pbp_report_healer_{target_date}.csv",
-                ]
+                ],
             )
         logger.info("   ✅ Relay recovery complete")
     except Exception:
@@ -577,20 +762,24 @@ async def run_update(
             # Find completed games missing PBP, event rows, or WPA-backed event state.
             stmt = (
                 select(Game.game_id)
-                .where(Game.game_date >= thirty_days_ago, Game.game_status.in_(["COMPLETED", "DRAW"]))
+                .where(
+                    Game.game_date >= thirty_days_ago,
+                    Game.game_date <= datetime.now(KST).date(),
+                    Game.game_status.in_(["COMPLETED", "DRAW", GAME_STATUS_UNRESOLVED, GAME_STATUS_SCHEDULED]),
+                )
                 .where(
                     or_(
                         ~Game.game_id.in_(select(GamePlayByPlay.game_id).distinct()),
                         ~Game.game_id.in_(select(GameEvent.game_id).distinct()),
                         ~Game.game_id.in_(valid_wpa_event_ids),
-                    )
+                    ),
                 )
             )
             missing_relay_game_ids = session.execute(stmt).scalars().all()
 
             if missing_relay_game_ids:
                 logger.info(
-                    f"   ⚠️ Found {len(missing_relay_game_ids)} games missing PBP/event/WPA data. Attempting recovery..."
+                    f"   ⚠️ Found {len(missing_relay_game_ids)} games missing PBP/event/WPA data. Attempting recovery...",
                 )
                 # Filter out ones already in relay_recovery_target_ids to avoid redundant runs
                 # (though fetch_kbo_pbp handles it, cleaner to show accurate count here)
@@ -601,9 +790,10 @@ async def run_update(
                             "scripts/fetch_kbo_pbp.py",
                             "--game-ids",
                             ",".join(to_recover),
+                            "--include-incomplete",
                             "--report-out",
                             f"logs/daily_update_summary/pbp_report_proactive_{target_date}.csv",
-                        ]
+                        ],
                     )
                     relay_recovery_target_ids.update(to_recover)
                     logger.info(f"   ✅ Proactive recovery initiated for {len(to_recover)} games")
@@ -615,7 +805,7 @@ async def run_update(
         logger.exception("   ❌ Error in proactive relay recovery")
 
     freshness_dates = sorted(
-        {target_date} | set(reconciliation_dates) | {item["game_date"] for item in healer_recovery_targets}
+        {target_date} | set(reconciliation_dates) | {item["game_date"] for item in healer_recovery_targets},
     )
 
     logger.info("\n📝 Step 5: Post-game review/WPA generation...")
@@ -816,7 +1006,7 @@ async def run_update(
             else:
                 remaining_ids = sorted({v["game_id"] for v in violations_after})
                 logger.error(
-                    f"   ❌ {len(violations_after)} inconsistencies still remain in {len(remaining_ids)} games."
+                    f"   ❌ {len(violations_after)} inconsistencies still remain in {len(remaining_ids)} games.",
                 )
         else:
             logger.info("   ✅ Deep statistical logic audit complete (No issues found)")
@@ -829,7 +1019,7 @@ async def run_update(
         | set(processed_game_ids)
         | set(reconciliation_changed_ids)
         | {item["game_id"] for item in healer_recovery_targets}
-        | relay_recovery_target_ids
+        | relay_recovery_target_ids,
     )
     # Freshness dates already calculated before step 5
 
@@ -949,6 +1139,11 @@ async def run_update(
         non_p0_quality_gate_ids=non_p0_quality_gate_ids,
         p0_non_game_counts=p0_non_game_counts,
         p0_non_game_errors=p0_non_game_errors,
+        detail_recovery_passes=detail_recovery_passes,
+        detail_recovered_after_retry=detail_recovered_after_retry,
+        detail_still_missing=detail_still_missing,
+        detail_recovery_attempts=detail_recovery_attempts,
+        detail_recovery_escalation_game_ids=detail_retry_escalation_game_ids,
         summary_path=summary_path,
     )
     try:
@@ -980,7 +1175,7 @@ async def run_update(
                     "game_date": target_date,
                     "reason": "readiness_build_failed",
                     "severity": "critical",
-                }
+                },
             ],
             "summary": {"ok": False, "failure_count": 1, "critical_failure_count": 1, "warning_count": 0},
         }
@@ -1019,10 +1214,13 @@ async def run_update(
     logger.info(
         "🔎 Stability summary: "
         f"detail_failures={_format_counts(detail_failure_counts)} "
+        f"detail_recovery_passes={detail_recovery_passes} "
+        f"detail_recovered_after_retry={detail_recovered_after_retry} "
+        f"detail_still_missing={len(detail_still_missing)} "
         f"relay_targets={len(relay_recovery_target_ids)} "
         f"oci_skips={_format_counts(oci_skip_counts)} "
         f"non_p0_quality_gates={_format_counts(non_p0_quality_gate_counts)} "
-        f"p0_non_game={_format_counts(p0_non_game_counts)}"
+        f"p0_non_game={_format_counts(p0_non_game_counts)}",
     )
     logger.info(f"🎯 P0 readiness: {format_p0_readiness_summary(p0_readiness)}")
 
@@ -1034,7 +1232,7 @@ async def run_update(
                     session.execute(
                         select(GamePlayByPlay.game_id)
                         .where(GamePlayByPlay.game_id.in_(list(relay_recovery_target_ids)))
-                        .distinct()
+                        .distinct(),
                     )
                     .scalars()
                     .all()
@@ -1086,8 +1284,6 @@ async def run_update(
 
                 failed_details.append(f"- `{gid}`: " + " → ".join(attempt_summaries))
 
-            from src.utils.alerting import SlackWebhookClient
-
             msg = f"📊 *Daily PBP Recovery Report ({target_date})*"
             blocks = [
                 {"type": "header", "text": {"type": "plain_text", "text": "📊 Daily PBP Recovery Report"}},
@@ -1111,7 +1307,7 @@ async def run_update(
                             "type": "mrkdwn",
                             "text": f"*Detailed Failures:*\n{failed_text}",
                         },
-                    }
+                    },
                 )
             SlackWebhookClient.send_alert(msg, blocks=blocks)
             logger.info(f"   ✅ Sent PBP recovery summary to Slack (Success: {success_count}, Failed: {failed_count})")
@@ -1240,7 +1436,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             skip_season_stats=args.skip_season_stats,
             skip_oci_supporting_sync=args.skip_oci_supporting_sync,
             run_p0_non_game=not args.skip_p0_non_game,
-        )
+        ),
     )
 
 

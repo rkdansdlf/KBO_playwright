@@ -31,17 +31,14 @@ from sqlalchemy import select, text
 from src.crawlers.game_detail_crawler import GameDetailCrawler
 from src.db.engine import SessionLocal
 from src.models.game import Game
-from src.repositories.game_repository import (
-    GAME_STATUS_CANCELLED,
-    GAME_STATUS_SCHEDULED,
-    GAME_STATUS_UNRESOLVED,
-    update_game_status,
-)
+from src.repositories.game_repository import update_game_status
+from src.utils.game_status import GAME_STATUS_SCHEDULED, GAME_STATUS_UNRESOLVED
 from src.services.game_collection_service import crawl_and_save_game_details
 from src.services.game_write_contract import GameWriteContract
 from src.services.player_id_resolver import PlayerIdResolver
 from src.services.recovery_manager import RecoveryManager
 from src.utils.alerting import SlackWebhookClient, TelegramBotClient
+from src.utils.game_status import GAME_STATUS_CANCELLED
 
 logger = logging.getLogger(__name__)
 
@@ -51,7 +48,7 @@ def _find_stuck_games() -> list[Game]:
     yesterday = datetime.now().date() - timedelta(days=1)
     with SessionLocal() as session:
         stmt = select(Game).where(
-            Game.game_status == GAME_STATUS_SCHEDULED,
+            Game.game_status.in_([GAME_STATUS_SCHEDULED, GAME_STATUS_UNRESOLVED]),
             Game.game_date <= yesterday,
         )
         return list(session.execute(stmt).scalars().all())
@@ -74,7 +71,7 @@ def _find_inconsistent_games() -> list[Game]:
             WHERE g.game_status IN ('COMPLETED', 'DRAW')
         ) sub ON g.game_id = sub.game_id
         WHERE (sub.away_score != sub.away_sum OR sub.home_score != sub.home_sum)
-    """
+    """,
     )
     with SessionLocal() as session:
         game_ids = session.execute(query).scalars().all()
@@ -268,7 +265,7 @@ async def run_healer_async(
             SlackWebhookClient.send_alert(f"✅ Auto-healing complete. {results['completed']} games recovered.")
         else:
             SlackWebhookClient.send_alert(
-                f"⚠️ Auto-healing complete. {results['completed']} recovered, {unresolved_count} failed."
+                f"⚠️ Auto-healing complete. {results['completed']} recovered, {unresolved_count} failed.",
             )
 
     return results["unresolved"]
@@ -301,7 +298,7 @@ def _find_unverified_pbp_games(lookback_days: int = 3) -> list[dict]:
           AND g.game_date >= :cutoff
           AND json_extract(m.source_payload, '$.pbp_validation_status') = 'unverified'
         ORDER BY g.game_date, g.game_id
-        """
+        """,
     )
 
     results = []
@@ -324,7 +321,7 @@ def _find_unverified_pbp_games(lookback_days: int = 3) -> list[dict]:
                     "away_team": row.away_team or "?",
                     "home_team": row.home_team or "?",
                     "error_reason": error_reason,
-                }
+                },
             )
     return results
 
@@ -354,7 +351,7 @@ async def run_pbp_healer_async(
             FROM game g
             LEFT JOIN game_metadata m ON g.game_id = m.game_id
             WHERE g.game_id IN :ids
-            """
+            """,
         )
         results = []
         import json
@@ -380,7 +377,7 @@ async def run_pbp_healer_async(
                         "away_team": row.away_team or "?",
                         "home_team": row.home_team or "?",
                         "error_reason": error_reason,
-                    }
+                    },
                 )
     else:
         results = _find_unverified_pbp_games(lookback_days=lookback_days)
@@ -491,7 +488,7 @@ def run_pbp_healer(argv: Sequence[str] | None = None) -> int:
             dry_run=args.dry_run,
             lookback_days=args.lookback_days,
             target_game_ids=args.game_id,
-        )
+        ),
     )
     # Exit code: 0 if all healed, 1 if some failed
     return 1 if result.get("failed", 0) > 0 else 0
@@ -539,8 +536,8 @@ def run_healer(argv: Sequence[str] | None = None) -> int:
                 *(["--dry-run"] if args.dry_run else []),
                 "--lookback-days",
                 str(args.lookback_days),
-                *(["--game-id"] + args.game_id if args.game_id else []),
-            ]
+                *(["--game-id", *args.game_id] if args.game_id else []),
+            ],
         )
 
     return asyncio.run(run_healer_async(dry_run=args.dry_run, reset_checkpoint=args.reset))

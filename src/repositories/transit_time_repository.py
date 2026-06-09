@@ -37,7 +37,7 @@ class TransitTimeRepository:
                 StadiumTransitTime.origin_label == data.get("origin_label"),
                 StadiumTransitTime.transport_mode == data.get("transport_mode"),
                 StadiumTransitTime.measured_at == data.get("measured_at"),
-            )
+            ),
         )
         existing = self.session.execute(stmt).scalar_one_or_none()
 
@@ -87,7 +87,7 @@ class TransitTimeRepository:
             and_(
                 StadiumTransitTime.stadium_code == stadium_code,
                 StadiumTransitTime.game_date == game_date,
-            )
+            ),
         )
         if origin_label:
             stmt = stmt.where(StadiumTransitTime.origin_label == origin_label)
@@ -109,7 +109,7 @@ class TransitTimeRepository:
                     StadiumTransitTime.stadium_code == stadium_code,
                     StadiumTransitTime.origin_label == origin_label,
                     StadiumTransitTime.transport_mode == transport_mode,
-                )
+                ),
             )
             .order_by(StadiumTransitTime.measured_at.desc())
             .limit(1)
@@ -131,7 +131,7 @@ class TransitTimeRepository:
                 StadiumTransitTime.stadium_code == stadium_code,
                 StadiumTransitTime.origin_label == origin_label,
                 StadiumTransitTime.game_date == game_date,
-            )
+            ),
         )
         if transport_mode:
             stmt = stmt.where(StadiumTransitTime.transport_mode == transport_mode)

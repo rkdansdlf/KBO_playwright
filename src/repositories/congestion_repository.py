@@ -36,7 +36,7 @@ class CongestionRepository:
                 StadiumCongestion.stadium_code == data.get("stadium_code"),
                 StadiumCongestion.location_label == data.get("location_label"),
                 StadiumCongestion.measured_at == data.get("measured_at"),
-            )
+            ),
         )
         existing = self.session.execute(stmt).scalar_one_or_none()
 
@@ -86,7 +86,7 @@ class CongestionRepository:
             and_(
                 StadiumCongestion.stadium_code == stadium_code,
                 StadiumCongestion.game_date == game_date,
-            )
+            ),
         )
         if location_type:
             stmt = stmt.where(StadiumCongestion.location_type == location_type)
@@ -106,7 +106,7 @@ class CongestionRepository:
                 and_(
                     StadiumCongestion.stadium_code == stadium_code,
                     StadiumCongestion.location_label == location_label,
-                )
+                ),
             )
             .order_by(StadiumCongestion.measured_at.desc())
             .limit(1)
@@ -128,7 +128,7 @@ class CongestionRepository:
                     StadiumCongestion.stadium_code == stadium_code,
                     StadiumCongestion.game_date == game_date,
                     StadiumCongestion.congestion_index.isnot(None),
-                )
+                ),
             )
             .order_by(desc(StadiumCongestion.congestion_index))
             .limit(1)

@@ -8,15 +8,15 @@ from collections import Counter
 from typing import Any
 
 logger = logging.getLogger(__name__)
-from sqlalchemy.dialects.mysql import insert as mysql_insert  # noqa: E402
-from sqlalchemy.dialects.postgresql import insert as pg_insert  # noqa: E402
-from sqlalchemy.dialects.sqlite import insert as sqlite_insert  # noqa: E402
-from sqlalchemy.exc import SQLAlchemyError  # noqa: E402
-from sqlalchemy.orm import Session  # noqa: E402
+from sqlalchemy.dialects.mysql import insert as mysql_insert
+from sqlalchemy.dialects.postgresql import insert as pg_insert
+from sqlalchemy.dialects.sqlite import insert as sqlite_insert
+from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.orm import Session
 
-from src.db.engine import Engine, SessionLocal  # noqa: E402
-from src.models.player import PlayerBasic  # noqa: E402
-from src.utils.player_validation import filter_valid_player_payloads, validate_player_payload  # noqa: E402
+from src.db.engine import Engine, SessionLocal
+from src.models.player import PlayerBasic
+from src.utils.player_validation import filter_valid_player_payloads, validate_player_payload
 
 
 class PlayerBasicRepository:
@@ -288,7 +288,7 @@ class PlayerBasicRepository:
                             "status": entry.get("status"),
                             "staff_role": entry.get("staff_role"),
                             "status_source": entry.get("status_source"),
-                        }
+                        },
                     )
                 session.commit()
                 return len(updates)

@@ -52,7 +52,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     """CLI 인자 파서를 생성합니다."""
     parser = argparse.ArgumentParser(description="Ingest saved GameCenter HTML fixtures")
     parser.add_argument(
-        "--fixtures-dir", type=str, default="tests/fixtures/game_details", help="HTML fixture 파일이 있는 디렉터리"
+        "--fixtures-dir", type=str, default="tests/fixtures/game_details", help="HTML fixture 파일이 있는 디렉터리",
     )
     parser.add_argument("--limit", type=int, default=None, help="처리할 최대 파일 수")
     return parser

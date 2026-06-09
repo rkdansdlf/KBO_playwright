@@ -152,7 +152,7 @@ class TicketCrawler:
                         "url": self.kbo_ticket_url,
                         "html": html,
                         "status_code": resp.status_code,
-                    }
+                    },
                 )
             except httpx.HTTPError:
                 logger.exception("KBO ticket map fetch failed")
@@ -221,7 +221,7 @@ class TicketCrawler:
                             "url": url,
                             "html": html,
                             "status_code": resp.status_code,
-                        }
+                        },
                     )
                     prices = parse_ticket_page(html, source_key, {"season": self.current_season})
                     all_prices.extend(prices)
@@ -251,7 +251,7 @@ class TicketCrawler:
                         "url": url,
                         "html": html,
                         "status_code": resp.status_code,
-                    }
+                    },
                 )
         except httpx.HTTPError:
             logger.exception("LG ticket page fetch failed")
@@ -271,7 +271,7 @@ class TicketCrawler:
                     "open_time": info["open_time"],
                     "source_id": None,
                     "note": None,
-                }
+                },
             )
         return rules
 

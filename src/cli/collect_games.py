@@ -40,7 +40,7 @@ async def collect_games(
     else:
         targets = load_game_targets_from_db(year, month)
     logger.info(
-        f"Target: {len(targets)} games" + (f" for {year}" + (f"-{month}" if month else "") if not game_ids else "")
+        f"Target: {len(targets)} games" + (f" for {year}" + (f"-{month}" if month else "") if not game_ids else ""),
     )
 
     session = SessionLocal()
@@ -72,7 +72,7 @@ async def collect_games(
             f"detail_saved={result.detail_saved} detail_failed={result.detail_failed} "
             f"detail_skipped={result.detail_skipped_existing} "
             f"relay_games={result.relay_saved_games} relay_rows={result.relay_rows_saved} "
-            f"relay_skipped={result.relay_skipped_existing}"
+            f"relay_skipped={result.relay_skipped_existing}",
         )
     finally:
         session.close()
@@ -83,7 +83,7 @@ def main(argv: Sequence[str] | None = None) -> None:
         description=(
             "Collect game details and direct Naver relay fallback rows. "
             "For completed-game relay recovery, prefer scripts/fetch_kbo_pbp.py."
-        )
+        ),
     )
     parser.add_argument("--year", type=int, required=True, help="Target Year (e.g. 2024)")
     parser.add_argument("--month", type=int, help="Target Month (Optional)")
@@ -94,7 +94,7 @@ def main(argv: Sequence[str] | None = None) -> None:
 
     game_ids = _parse_game_ids(args.game_ids)
     asyncio.run(
-        collect_games(args.year, month=args.month, game_ids=game_ids, force=args.force, concurrency=args.concurrency)
+        collect_games(args.year, month=args.month, game_ids=game_ids, force=args.force, concurrency=args.concurrency),
     )
 
 

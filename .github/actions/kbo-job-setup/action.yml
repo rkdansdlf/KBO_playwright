@@ -26,7 +26,7 @@ inputs:
     required: false
     default: 'false'
   target-date:
-    description: 'Target date override (YYYYMMDD). Empty = previous KST day.'
+    description: 'Target date override (YYYYMMDD or YYYY-MM-DD). Empty = previous KST day.'
     required: false
     default: ''
 outputs:
@@ -56,9 +56,18 @@ runs:
       shell: bash
       run: |
         if [ -n "${{ inputs.target-date }}" ]; then
-          KST_DATE="${{ inputs.target-date }}"
+          RAW_DATE="${{ inputs.target-date }}"
+          if [[ "$RAW_DATE" == *-* ]]; then
+            KST_DATE="${RAW_DATE//-/}"
+          else
+            KST_DATE="$RAW_DATE"
+          fi
         else
           KST_DATE="$(TZ='Asia/Seoul' date -d 'yesterday' +'%Y%m%d')"
+        fi
+        if [[ ! "$KST_DATE" =~ ^[0-9]{8}$ ]]; then
+          echo "Invalid target date format: ${KST_DATE}. expected YYYYMMDD." >&2
+          exit 1
         fi
         echo "KST_DATE=${KST_DATE}" | tee -a $GITHUB_OUTPUT
         echo "KST_YEAR=${KST_DATE:0:4}" | tee -a $GITHUB_OUTPUT

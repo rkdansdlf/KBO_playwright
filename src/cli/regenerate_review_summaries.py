@@ -109,7 +109,7 @@ def _season_filters(seasons: Iterable[int]) -> list:
             and_(
                 Game.game_date >= date(season, 1, 1),
                 Game.game_date <= date(season, 12, 31),
-            )
+            ),
         )
     return filters
 
@@ -182,7 +182,7 @@ def _write_backup(session, game_ids: Sequence[str], path: Path) -> None:
                     "player_id": row.player_id,
                     "player_name": row.player_name,
                     "detail_text": row.detail_text,
-                }
+                },
             )
 
 
@@ -243,7 +243,7 @@ def regenerate_review_summaries(
                     game_id=requested_id,
                     game_date="",
                     status="SKIPPED_GAME_NOT_FOUND",
-                )
+                ),
             )
 
         for game in games:
@@ -255,7 +255,7 @@ def regenerate_review_summaries(
                         game_date=game_date,
                         status="SKIPPED_NOT_COMPLETED",
                         message=f"status={game.game_status}",
-                    )
+                    ),
                 )
                 continue
 
@@ -340,7 +340,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--date", action="append", default=[], help="Target date YYYYMMDD. May be repeated.")
     parser.add_argument("--season", action="append", type=int, default=[], help="Target season. May be repeated.")
     parser.add_argument(
-        "--dry-run", action="store_true", help="Report only. This is the default unless --apply is set."
+        "--dry-run", action="store_true", help="Report only. This is the default unless --apply is set.",
     )
     parser.add_argument("--apply", action="store_true", help="Persist regenerated review summaries locally.")
     parser.add_argument("--sync-oci", action="store_true", help="Sync successful review summary rows to OCI.")

@@ -100,7 +100,7 @@ class TeamBattingStatsCrawler:
         stats = []
         try:
             stats = self._collect_from_site(season, team_mapping, headless=headless)
-        except Exception as crawl_err:  # noqa: BLE001
+        except Exception as crawl_err:
             logger.warning("Team batting crawl failed: %s. Falling back...", crawl_err)
 
         if not stats:
@@ -157,7 +157,7 @@ class TeamBattingStatsCrawler:
                         context.close()
                         browser.close()
                         return stats
-                except Exception as exc:  # noqa: BLE001
+                except Exception as exc:
                     logger.warning("Failed to parse %s: %s", url, exc)
             context.close()
             browser.close()
@@ -178,7 +178,7 @@ class TeamBattingStatsCrawler:
                 page.select_option(selector, str(season))
                 page.wait_for_load_state("networkidle")
                 return True
-            except Exception:  # noqa: BLE001
+            except Exception:
                 logger.warning("Failed to select season dropdown, trying next selector")
                 continue
 

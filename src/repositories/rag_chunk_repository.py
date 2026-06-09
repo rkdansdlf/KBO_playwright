@@ -42,7 +42,7 @@ class RagChunkRepository:
 
             # Check if chunk exists by source_table & source_row_id
             stmt = select(RagChunk).where(
-                RagChunk.source_table == source_table, RagChunk.source_row_id == source_row_id
+                RagChunk.source_table == source_table, RagChunk.source_row_id == source_row_id,
             )
             existing_chunk = session.scalar(stmt)
 

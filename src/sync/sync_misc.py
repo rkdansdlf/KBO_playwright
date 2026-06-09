@@ -130,7 +130,7 @@ class MiscSyncMixin:
                     "aliases": aliases_pg,
                     "created_at": team.created_at or datetime.now(),
                     "updated_at": team.updated_at or datetime.now(),
-                }
+                },
             )
 
         self._bulk_copy_upsert(Team.__tablename__, records, ["team_id"])
@@ -512,7 +512,7 @@ class MiscSyncMixin:
                     "color": h.color,
                     "created_at": h.created_at or datetime.now(),
                     "updated_at": h.updated_at or datetime.now(),
-                }
+                },
             )
 
         if not records:
@@ -580,7 +580,7 @@ class MiscSyncMixin:
         )
 
         results["matchup_bvp"] = self.sync_simple_table(
-            MatchupBvP, ["batter_id", "pitcher_id"], exclude_cols=["created_at", "id"], batch_size=batch_size
+            MatchupBvP, ["batter_id", "pitcher_id"], exclude_cols=["created_at", "id"], batch_size=batch_size,
         )
 
         results["batter_splits"] = self.sync_simple_table(

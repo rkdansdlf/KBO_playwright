@@ -362,13 +362,13 @@ def main() -> None:
     logger.info(f"   dry_run: {result['dry_run']}")
     logger.info(f"   summary: {result['summary_csv']}")
     logger.info(f"   details: {result['detail_csv']}")
-    print(
-        "   counts: "
-        f"COMPLETED={result['status_counts'].get(STATUS_COMPLETED, 0)}, "
-        f"SCHEDULED={result['status_counts'].get(STATUS_SCHEDULED, 0)}, "
-        f"CANCELLED={result['status_counts'].get(STATUS_CANCELLED, 0)}, "
-        f"POSTPONED={result['status_counts'].get(STATUS_POSTPONED, 0)}, "
-        f"UNRESOLVED_MISSING={result['status_counts'].get(STATUS_UNRESOLVED, 0)}"
+    logger.info(
+        "   counts: COMPLETED=%s SCHEDULED=%s CANCELLED=%s POSTPONED=%s UNRESOLVED_MISSING=%s",
+        result['status_counts'].get(STATUS_COMPLETED, 0),
+        result['status_counts'].get(STATUS_SCHEDULED, 0),
+        result['status_counts'].get(STATUS_CANCELLED, 0),
+        result['status_counts'].get(STATUS_POSTPONED, 0),
+        result['status_counts'].get(STATUS_UNRESOLVED, 0),
     )
     logger.info(f"   past_scheduled: {result['past_scheduled']}")
     logger.info(f"   past_missing_runs: {result['past_missing_runs']}")

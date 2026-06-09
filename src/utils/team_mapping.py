@@ -7,17 +7,17 @@ OCI team_history 테이블과 연동하여 동적 매핑 제공
 """
 
 
-from sqlalchemy import create_engine, text  # noqa: E402
-from sqlalchemy.exc import SQLAlchemyError  # noqa: E402
-from sqlalchemy.orm import sessionmaker  # noqa: E402
+from sqlalchemy import create_engine, text
+from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.orm import sessionmaker
 
-from src.utils.team_codes import resolve_team_code  # noqa: E402
+from src.utils.team_codes import resolve_team_code
 
 
 class TeamMapper:
     """팀명 매핑 관리 클래스"""
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.static_mapping = self._get_static_mapping()
         self.oci_mapping = {}
         self.year_specific_mapping = {}

@@ -883,15 +883,18 @@ def main() -> None:
         raise SystemExit(str(exc)) from exc
 
     mode = "APPLY" if args.apply else "DRY-RUN"
-    print(
-        f"[{mode}] mergeable_groups={result['mergeable_groups']} "
-        f"safe_mergeable_groups={result['safe_mergeable_groups']} "
-        f"skipped_conflict_groups={result['skipped_conflict_groups']} "
-        f"unresolved_rows={result['unresolved_rows']} conflicts={result['conflicts']} "
-        f"updated_rows={result['updated_rows']} "
-        f"deleted_duplicate_rows={result['deleted_duplicate_rows']} "
-        f"deleted_conflicting_reference_rows={result['deleted_conflicting_reference_rows']} "
-        f"deleted_player_basic_rows={result['deleted_player_basic_rows']}"
+    logger.info(
+        "[%s] mergeable_groups=%s safe_mergeable_groups=%s skipped_conflict_groups=%s unresolved_rows=%s conflicts=%s updated_rows=%s deleted_duplicate_rows=%s deleted_conflicting_reference_rows=%s deleted_player_basic_rows=%s",
+        mode,
+        result['mergeable_groups'],
+        result['safe_mergeable_groups'],
+        result['skipped_conflict_groups'],
+        result['unresolved_rows'],
+        result['conflicts'],
+        result['updated_rows'],
+        result['deleted_duplicate_rows'],
+        result['deleted_conflicting_reference_rows'],
+        result['deleted_player_basic_rows'],
     )
     if result["backup_path"]:
         logger.info(f"[BACKUP] {result['backup_path']}")

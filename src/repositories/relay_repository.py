@@ -28,7 +28,7 @@ def save_relay_data(game_id: str, innings_data: list[dict[str, Any]]) -> int:
                     "play_description": play.get("description"),
                     "event_type": play.get("event_type"),
                     "result": play.get("result"),
-                }
+                },
             )
     return save_normalized_relay_data(game_id, events=None, raw_pbp_rows=flat_rows, allow_derived_pbp=False)
 

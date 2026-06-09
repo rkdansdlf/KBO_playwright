@@ -19,8 +19,6 @@ from datetime import datetime
 from src.crawlers.retire import RetiredPlayerDetailCrawler, RetiredPlayerListingCrawler
 
 # Ensure all models are loaded to resolve foreign keys
-from src.models.player import Player, PlayerSeasonBatting, PlayerSeasonPitching  # noqa: F401
-from src.models.team import Team  # noqa: F401
 from src.parsers.player_profile_parser import PlayerProfileParsed, parse_profile
 from src.parsers.retired_player_parser import (
     parse_retired_hitter_tables,

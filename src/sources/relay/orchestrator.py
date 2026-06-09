@@ -34,7 +34,7 @@ class RelayRecoveryOrchestrator:
         sample_size: int = 3,
         timeout_seconds: float = 30.0,
         circuit_breaker: SourceCircuitBreaker | None = None,
-    ):
+    ) -> None:
         self.adapters = adapters
         self.capability_path = Path(capability_path)
         self.sample_size = sample_size
@@ -84,7 +84,7 @@ class RelayRecoveryOrchestrator:
                 ),
                 "timeout",
             )
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             logger.warning("Fetch failed for %s from %s: %s", game_id, adapter.source_name, exc)
             return (
                 NormalizedRelayResult(
@@ -176,7 +176,7 @@ class RelayRecoveryOrchestrator:
                         "source_name": source_name,
                         "status": "cb_open",
                         "notes": f"circuit breaker open, consecutive_failures={cb.consecutive_failures(source_name, bucket_id)}",
-                    }
+                    },
                 )
                 continue
 
@@ -190,7 +190,7 @@ class RelayRecoveryOrchestrator:
                         "source_name": source_name,
                         "status": "cached_unsupported",
                         "notes": capability.notes,
-                    }
+                    },
                 )
                 continue
 
@@ -202,7 +202,7 @@ class RelayRecoveryOrchestrator:
                         "source_name": source_name,
                         "status": "missing_adapter",
                         "notes": None,
-                    }
+                    },
                 )
                 continue
 
@@ -223,7 +223,7 @@ class RelayRecoveryOrchestrator:
                     "has_event_state": result.has_event_state,
                     "has_raw_pbp": result.has_raw_pbp,
                     "notes": validation_error or result.notes,
-                }
+                },
             )
 
             if result.is_empty or validation_error:

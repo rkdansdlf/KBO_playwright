@@ -41,7 +41,7 @@ class SeatSectionParser(BaseStadiumParser):
                         "section_code": name,
                         "seat_grade": name,
                         "source_id": None,
-                    }
+                    },
                 )
 
         return sections

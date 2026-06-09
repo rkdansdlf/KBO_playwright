@@ -34,7 +34,7 @@ class StatsSyncMixin:
         missing_count = self.sqlite_session.query(model).filter(*filters, ~existing_player_filter).count()
         if missing_count:
             logger.warning(
-                f"⚠️ Skipping {missing_count} {model.__tablename__} rows with missing local player_basic references"
+                f"⚠️ Skipping {missing_count} {model.__tablename__} rows with missing local player_basic references",
             )
         return [*filters, existing_player_filter]
 
@@ -54,14 +54,14 @@ class StatsSyncMixin:
             exclude_cols=["id", "created_at"],
         )
 
-    def verify_pitcher_sync(self, expected_count: int):
+    def verify_pitcher_sync(self, expected_count: int) -> None:
         """투수 데이터 동기화 결과 검증"""
         try:
             result = self.target_session.execute(
                 text("""
                 SELECT COUNT(*) as count
                 FROM player_season_pitching
-            """)
+            """),
             )
 
             actual_count = result.fetchone()[0]
@@ -75,14 +75,14 @@ class StatsSyncMixin:
         except SQLAlchemyError as e:
             logger.exception(f"⚠️ 투수 데이터 동기화 검증 실패: {e}")
 
-    def verify_batting_sync(self, expected_count: int):
+    def verify_batting_sync(self, expected_count: int) -> None:
         """타자 데이터 동기화 결과 검증"""
         try:
             result = self.target_session.execute(
                 text("""
                 SELECT COUNT(*) as count
                 FROM player_season_batting
-            """)
+            """),
             )
 
             actual_count = result.fetchone()[0]
@@ -96,7 +96,7 @@ class StatsSyncMixin:
         except SQLAlchemyError as e:
             logger.exception(f"⚠️ 타자 데이터 동기화 검증 실패: {e}")
 
-    def show_oci_data_sample(self):
+    def show_oci_data_sample(self) -> None:
         """OCI의 데이터 샘플 표시"""
         try:
             # 투수 데이터 샘플
@@ -105,7 +105,7 @@ class StatsSyncMixin:
                 SELECT player_id, season, games, wins, losses, era, innings_pitched
                 FROM player_season_pitching
                 LIMIT 3
-            """)
+            """),
             )
 
             pitcher_rows = pitcher_result.fetchall()
@@ -121,7 +121,7 @@ class StatsSyncMixin:
                 SELECT player_id, season, games, avg, hits, home_runs
                 FROM player_season_batting
                 LIMIT 3
-            """)
+            """),
             )
 
             batting_rows = batting_result.fetchall()
@@ -140,7 +140,7 @@ class StatsSyncMixin:
         Signature includes ROW COUNT and MAX(updated_at).
         """
 
-        def get_sig(session):
+        def get_sig(session) -> dict[str, Any]:
             table_name = model.__tablename__
             where_clause = ""
             params = {}

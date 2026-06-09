@@ -73,6 +73,8 @@ class TestNaverSearchClient:
         results = await client.search_kbo_notices(days_back=3)
         assert results == []
 
+
+class TestNaverSearchClientSync:
     def test_is_configured(self, monkeypatch):
         monkeypatch.setenv("NAVER_CLIENT_ID", "id")
         monkeypatch.setenv("NAVER_CLIENT_SECRET", "secret")

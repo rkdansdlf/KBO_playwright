@@ -18,7 +18,7 @@ class ManagerChange(Base, TimestampMixin):
     new_manager: Mapped[str] = mapped_column(String(100), nullable=False, comment="New manager name")
     change_date: Mapped[date | None] = mapped_column(Date, nullable=True, comment="Date of change")
     change_reason: Mapped[str | None] = mapped_column(
-        String(30), nullable=True, comment="RESIGN / FIRED / INTERIM / CONTRACT_END / PROMOTION"
+        String(30), nullable=True, comment="RESIGN / FIRED / INTERIM / CONTRACT_END / PROMOTION",
     )
     note: Mapped[str | None] = mapped_column(Text, nullable=True, comment="Additional notes")
     source_url: Mapped[str | None] = mapped_column(String(500), nullable=True, comment="Source URL")

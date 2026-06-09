@@ -190,7 +190,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             dry_run=args.dry_run,
             sync_to_oci=False if args.no_sync else None,
             notify=not args.no_notify,
-        )
+        ),
     )
     return 0
 

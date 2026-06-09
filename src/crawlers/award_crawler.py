@@ -315,7 +315,7 @@ class AwardCrawler:
                 try:
                     repo.save_award(item)
                     count += 1
-                except Exception as ex:  # noqa: BLE001
+                except Exception as ex:
                     logger.warning(f"Skipping duplicate or error: {item} - {ex}", exc_info=True)
             session.commit()
             logger.info(f"✅ Saved {count} awards to database.")

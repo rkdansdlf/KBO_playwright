@@ -6,16 +6,16 @@ Futures League Pitching Stats Crawler
 Fetches year-by-year Futures pitching statistics from player profile pages.
 """
 
-import re  # noqa: E402
+import re
 
-from bs4 import BeautifulSoup  # noqa: E402
-from playwright.async_api import Error as PlaywrightError  # noqa: E402
+from bs4 import BeautifulSoup
+from playwright.async_api import Error as PlaywrightError
 
-from src.utils.compliance import compliance  # noqa: E402
-from src.utils.playwright_pool import AsyncPlaywrightPool  # noqa: E402
+from src.utils.compliance import compliance
+from src.utils.playwright_pool import AsyncPlaywrightPool
 from src.utils.playwright_retry import LONG_TIMEOUT
-from src.utils.team_codes import resolve_kbo_legacy_team_code  # noqa: E402
-from src.utils.throttle import throttle  # noqa: E402
+from src.utils.team_codes import resolve_kbo_legacy_team_code
+from src.utils.throttle import throttle
 
 logger = logging.getLogger(__name__)
 FUTURES_PITCHER_KEYS = [

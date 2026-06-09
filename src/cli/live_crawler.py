@@ -22,17 +22,18 @@ logger = logging.getLogger(__name__)
 
 _LIVE_SHARD_CURSOR_BY_DATE: dict[str, int] = {}
 
-from src.crawlers.game_detail_crawler import GameDetailCrawler  # noqa: E402
-from src.crawlers.naver_relay_crawler import NaverRelayCrawler  # noqa: E402
-from src.crawlers.schedule_crawler import ScheduleCrawler  # noqa: E402
-from src.db.engine import SessionLocal  # noqa: E402
-from src.repositories.game_repository import GAME_STATUS_LIVE, save_game_snapshot, save_relay_data  # noqa: E402
-from src.sync.oci_sync import OCISync  # noqa: E402
-from src.utils.game_state import (  # noqa: E402
+from src.crawlers.game_detail_crawler import GameDetailCrawler
+from src.crawlers.naver_relay_crawler import NaverRelayCrawler
+from src.crawlers.schedule_crawler import ScheduleCrawler
+from src.db.engine import SessionLocal
+from src.repositories.game_repository import save_game_snapshot, save_relay_data
+from src.utils.game_status import GAME_STATUS_LIVE
+from src.sync.oci_sync import OCISync
+from src.utils.game_state import (
     TERMINAL_STATES,
     derive_lifecycle_from_naver_status,
 )
-from src.utils.refresh_manifest import write_refresh_manifest  # noqa: E402
+from src.utils.refresh_manifest import write_refresh_manifest
 
 
 def _has_ending_header(raw_pbp_rows: list[dict[str, Any]]) -> bool:
@@ -177,7 +178,7 @@ async def _run_kbo_fallback_healing(game_id: str) -> None:
         from src.utils.alerting import SlackWebhookClient
 
         logger.info(
-            f"[FALLBACK TRIGGER] PBP for {game_id} is unverified. Triggering KBO website re-crawl in background..."
+            f"[FALLBACK TRIGGER] PBP for {game_id} is unverified. Triggering KBO website re-crawl in background...",
         )
         kbo_crawler = PBPCrawler()
         kbo_data = None
@@ -190,7 +191,7 @@ async def _run_kbo_fallback_healing(game_id: str) -> None:
                     break
                 else:
                     raise ValueError("KBO PBP crawl returned no events")
-            except Exception as fallback_err:  # noqa: BLE001
+            except Exception as fallback_err:
                 logger.warning(f"KBO fallback attempt {attempt} failed for {game_id}: {fallback_err}", exc_info=True)
                 if attempt == max_attempts:
                     logger.error(f"[FALLBACK ERROR] KBO fallback failed all {max_attempts} attempts for {game_id}")
@@ -234,7 +235,7 @@ async def _process_single_live_game(
     game_id = game["game_id"]
 
     logger.info(
-        f"[LIVE] 🔍 Crawling active game: {game_id} (lifecycle={lifecycle_state}, nav_status={nav_status_raw or 'UNKNOWN'})"
+        f"[LIVE] 🔍 Crawling active game: {game_id} (lifecycle={lifecycle_state}, nav_status={nav_status_raw or 'UNKNOWN'})",
     )
 
     relay_data = await relay_crawler.crawl_game_events(game_id)
@@ -410,7 +411,7 @@ async def run_live_crawler_cycle(
         logger.info(
             "[LIVE] Sharding active games: "
             f"processing {len(selected_candidates)}/{len(active_candidates)} this cycle "
-            f"(max_active_games={max_active_games}, selected={','.join(selected_ids)})"
+            f"(max_active_games={max_active_games}, selected={','.join(selected_ids)})",
         )
 
     # Dynamic request delay scaling based on the number of active games
@@ -426,7 +427,7 @@ async def run_live_crawler_cycle(
             min_delay = 0.0
         logger.info(
             f"[LIVE] Dynamic request delay scaling: factor {scale_factor:.2f}x for {num_active_games} active games "
-            f"(min_delay={min_delay:.2f}s)"
+            f"(min_delay={min_delay:.2f}s)",
         )
 
     # Process all selected games in parallel
@@ -487,7 +488,7 @@ async def run_live_crawler_cycle(
                                     "game_id": game_id,
                                     "phase": "sync_specific_game",
                                     "error": str(exc),
-                                }
+                                },
                             )
                             logger.exception(
                                 "[SYNC] OCI sync failed game_id=%s phase=sync_specific_game",
@@ -505,7 +506,7 @@ async def run_live_crawler_cycle(
         )
         logger.info(
             "[SYNC] ⚠️ Live crawl succeeded with OCI partial failures: "
-            f"failed={len(oci_sync_failures)} game_ids={','.join(failed_ids)}"
+            f"failed={len(oci_sync_failures)} game_ids={','.join(failed_ids)}",
         )
 
     logger.info(f"[INFO] Live cycle finished. updated={len(touched_game_ids)} manifest={manifest_path}")
@@ -612,7 +613,7 @@ def _compute_base_dynamic_interval(
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="KBO Live Score & PBP Daemon")
     parser.add_argument(
-        "--interval", type=int, default=2, help="Crawling polling interval in minutes (default for fixed mode)"
+        "--interval", type=int, default=2, help="Crawling polling interval in minutes (default for fixed mode)",
     )
     parser.add_argument(
         "--dynamic",

@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
     inputs:
       target_date:
-        description: 'Target date (YYYYMMDD). Defaults to previous day in KST.'
+        description: 'Target date (YYYYMMDD or YYYY-MM-DD). Defaults to previous day in KST.'
         required: false
         default: ''
 
@@ -43,6 +43,27 @@ jobs:
             --year "${{ steps.job-setup.outputs.KST_YEAR }}" \
             --date "${{ steps.job-setup.outputs.KST_DATE }}"
 
+      - name: Verify target-date game completeness before publish (local, preflight)
+        id: preflight_local
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          python3 scripts/verification/audit_daily_completeness.py \
+            --date "${{ steps.job-setup.outputs.KST_DATE }}" \
+            --include-incomplete \
+            --strict
+
+      - name: Verify target-date game completeness before publish (OCI, preflight)
+        id: preflight_oci
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          OCI_DB_URL: ${{ secrets.OCI_DB_URL }}
+        run: |
+          python3 scripts/verification/audit_daily_completeness.py \
+            --date "${{ steps.job-setup.outputs.KST_DATE }}" \
+            --include-incomplete \
+            --strict \
+            --db-url env:OCI_DB_URL
+
       - name: Run Postgame Finalize & Sync
         env:
           OCI_DB_URL: ${{ secrets.OCI_DB_URL }}
@@ -52,6 +73,27 @@ jobs:
           python3 -m src.cli.run_daily_update \
             --date ${{ steps.job-setup.outputs.KST_DATE }} \
             --sync --fix
+
+      - name: Verify target-date game completeness after publish (local, post-sync)
+        id: postsync_local
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          python3 scripts/verification/audit_daily_completeness.py \
+            --date "${{ steps.job-setup.outputs.KST_DATE }}" \
+            --include-incomplete \
+            --strict
+
+      - name: Verify target-date game completeness after publish (OCI, post-sync)
+        id: postsync_oci
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          OCI_DB_URL: ${{ secrets.OCI_DB_URL }}
+        run: |
+          python3 scripts/verification/audit_daily_completeness.py \
+            --date "${{ steps.job-setup.outputs.KST_DATE }}" \
+            --include-incomplete \
+            --strict \
+            --db-url env:OCI_DB_URL
 
       - name: Compute Standings
         run: |

@@ -158,10 +158,10 @@ class PBPBS4Crawler:
 
                 # 4. Calculate WPA
                 wp_before = self.wpa_calc.get_win_probability(
-                    inning, is_bottom, outs_before, runners_before, score_diff_before
+                    inning, is_bottom, outs_before, runners_before, score_diff_before,
                 )
                 wp_after = self.wpa_calc.get_win_probability(
-                    inning, is_bottom, outs_after, runners_after, score_diff_after
+                    inning, is_bottom, outs_after, runners_after, score_diff_after,
                 )
 
                 wpa = round(wp_after - wp_before if is_bottom else wp_before - wp_after, 4)

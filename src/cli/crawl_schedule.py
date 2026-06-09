@@ -88,7 +88,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--months", type=str, default=None, help="크롤링할 월 (쉼표로 구분, 범위 지정 가능. 예: 3-5,8)")
     parser.add_argument("--delay", type=float, default=1.2, help="요청 간 지연 시간(초)")
     parser.add_argument(
-        "--upcoming", action="store_true", help="현재월+다음월 일정만 크롤링 (기존 crawl_upcoming 대체)"
+        "--upcoming", action="store_true", help="현재월+다음월 일정만 크롤링 (기존 crawl_upcoming 대체)",
     )
     return parser
 

@@ -36,6 +36,12 @@ async def run_fetcher(argv: list[str] | None = None) -> int:
         help="Only process games missing events or play-by-play (default: true)",
     )
     parser.add_argument("--force", action="store_true", help="Overwrite existing relay data")
+    parser.add_argument(
+        "--include-incomplete",
+        action="store_true",
+        default=False,
+        help="Include past SCHEDULED/UNRESOLVED games for recovery (default: false)",
+    )
     parser.add_argument("--source-order", type=str, help="Comma separated source order override")
     parser.add_argument(
         "--import-manifest",
@@ -91,6 +97,7 @@ async def run_fetcher(argv: list[str] | None = None) -> int:
             game_ids_file=args.game_ids_file,
             bucket=args.bucket,
             missing_only=args.missing_only,
+            include_incomplete=args.include_incomplete,
             log=logger.info,
         )
     except (FileNotFoundError, ValueError) as exc:

@@ -70,7 +70,7 @@ def _query_pbp_validation_summary() -> dict[str, int]:
                     SELECT validation_status AS status, COUNT(*)
                     FROM game_validation_metrics
                     GROUP BY validation_status
-                """)
+                """),
             ).fetchall()
             if not rows:
                 rows = session.execute(
@@ -79,7 +79,7 @@ def _query_pbp_validation_summary() -> dict[str, int]:
                         FROM game_metadata m
                         WHERE json_extract(m.source_payload, '$.pbp_validation_status') IS NOT NULL
                         GROUP BY json_extract(m.source_payload, '$.pbp_validation_status')
-                    """)
+                    """),
                 ).fetchall()
             for status, cnt in rows:
                 key = status if status in counts else "other"
@@ -148,7 +148,7 @@ def _build_telegram_message(
         lines.append(
             f"{icon} <b>Validation</b>: {verified} verified / {recovered} recovered / "
             f"{unver} unverified / {incomplete} incomplete / {unavailable} unavailable / "
-            f"{pending} pending / {oth} other"
+            f"{pending} pending / {oth} other",
         )
     else:
         lines.append("ℹ️ <b>Validation</b>: No data (pipeline may not have run yet)")

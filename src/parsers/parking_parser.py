@@ -10,7 +10,7 @@ from typing import Any
 from src.parsers.base_parser import BaseStadiumParser
 
 PARKING_FEE_PATTERN = re.compile(
-    r"(기본|추가|일일|행사|경기|무료)\s*(?:요금|시간|금액)?\s*:?\s*(\d{1,3}(?:,\d{3})*)\s*(?:원)"
+    r"(기본|추가|일일|행사|경기|무료)\s*(?:요금|시간|금액)?\s*:?\s*(\d{1,3}(?:,\d{3})*)\s*(?:원)",
 )
 
 STADIUM_FROM_SOURCE_KEY = {
@@ -42,7 +42,7 @@ class ParkingParser(BaseStadiumParser):
                     "reservation_required": False,
                 },
                 "fee_rules": fees,
-            }
+            },
         )
 
         return lots

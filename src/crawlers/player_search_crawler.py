@@ -124,7 +124,7 @@ class PlayerSearchCrawler:
         try:
             await self.policy.run_with_retry_async(_navigate)
             return True, "ok"
-        except Exception:  # noqa: BLE001
+        except Exception:
             reason = "selector_timeout" if required_selector else "navigation_failed"
             logger.warning("Player search page navigation failed: %s", reason)
             self._record_failure(reason)
@@ -323,7 +323,7 @@ class PlayerSearchCrawler:
                     height_cm=h,
                     weight_kg=w,
                     career=cells[6],
-                )
+                ),
             )
         return res
 
@@ -353,7 +353,7 @@ class PlayerSearchCrawler:
         # the ASP.NET postback mechanism.
         try:
             href = await anchor.get_attribute("href", timeout=5000)
-        except Exception:  # noqa: BLE001
+        except Exception:
             logger.warning("Timeout getting href from anchor", exc_info=True)
             href = None
 
@@ -380,7 +380,7 @@ class PlayerSearchCrawler:
     async def _wait_after_nav(self, page, prev_v, first_b) -> None:
         try:
             await page.wait_for_function(
-                "([s, v]) => document.querySelector(s)?.value !== v", [HFPAGE, prev_v], timeout=5000
+                "([s, v]) => document.querySelector(s)?.value !== v", [HFPAGE, prev_v], timeout=5000,
             )
         except TimeoutError:
             pass
@@ -511,7 +511,7 @@ async def main() -> None:
     logger.info("\nSample (first 5 players):")
     for player in players[:5]:
         logger.info(
-            f"  - {player.name} (ID: {player.player_id}, #{player.uniform_no}, {player.team}/{player.position})"
+            f"  - {player.name} (ID: {player.player_id}, #{player.uniform_no}, {player.team}/{player.position})",
         )
 
     oci_url = os.getenv("OCI_DB_URL")

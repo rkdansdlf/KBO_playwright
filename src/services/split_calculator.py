@@ -9,15 +9,16 @@ Computes RISP (Runners In Scoring Position) and L/R splits
 by querying the game_events PBP data with game_batting_stats.
 """
 
-import os  # noqa: E402
-import sys  # noqa: E402
-from typing import Any  # noqa: E402
+import os
+import sys
+from typing import Any
 
-from sqlalchemy import text  # noqa: E402
+from sqlalchemy import text
+from sqlalchemy.orm import Session
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
-from src.db.engine import SessionLocal  # noqa: E402
+from src.db.engine import SessionLocal
 
 
 class SituationalSplitCalculator:
@@ -25,10 +26,10 @@ class SituationalSplitCalculator:
     Computes situational batting splits from game_events (PBP) data.
     """
 
-    def __init__(self, session=None):
+    def __init__(self, session=None) -> None:
         self._session = session
 
-    def _session_ctx(self):
+    def _session_ctx(self) -> Session:
         if self._session:
             return self._session
         return SessionLocal()
@@ -40,7 +41,7 @@ class SituationalSplitCalculator:
     def _resolve_name(self, player_id: int, session) -> str | None:
         """Returns the Korean name for a given player_id."""
         row = session.execute(
-            text("SELECT name FROM player_basic WHERE player_id = :pid"), {"pid": player_id}
+            text("SELECT name FROM player_basic WHERE player_id = :pid"), {"pid": player_id},
         ).fetchone()
         return row.name if row else None
 

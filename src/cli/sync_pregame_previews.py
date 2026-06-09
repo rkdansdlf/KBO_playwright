@@ -74,7 +74,7 @@ def find_pregame_sync_targets(start_date: str, end_date: str) -> list[PregameSyn
             OR (g.home_pitcher IS NOT NULL AND g.home_pitcher != '')
           )
         ORDER BY g.game_date, g.game_id
-        """
+        """,
     )
     with SessionLocal() as session:
         rows = session.execute(query, {"start_date": start_date, "end_date": end_date}).all()
@@ -109,13 +109,13 @@ def run_sync(args: argparse.Namespace) -> int:
     preview_rows = sum(1 for target in targets if target.has_preview)
     logger.info(
         f"Pregame sync targets ({start_date}..{end_date}): "
-        f"games={len(targets)}, starters_complete={complete_starters}, previews={preview_rows}"
+        f"games={len(targets)}, starters_complete={complete_starters}, previews={preview_rows}",
     )
     for target in targets:
         logger.info(
             f"  {target.game_date} {target.game_id}: "
             f"starter='{target.away_pitcher}' vs '{target.home_pitcher}', "
-            f"preview={int(target.has_preview)}"
+            f"preview={int(target.has_preview)}",
         )
 
     if args.dry_run:

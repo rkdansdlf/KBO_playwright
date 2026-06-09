@@ -60,7 +60,7 @@ def check_table_counts(sqlite_conn, oci_conn) -> list[dict[str, Any]]:
                     "oci_count": -1,
                     "delta": -1,
                     "status": "MISSING_ON_OCI",
-                }
+                },
             )
             continue
 
@@ -82,7 +82,7 @@ def check_table_counts(sqlite_conn, oci_conn) -> list[dict[str, Any]]:
                 "delta": delta,
                 "status": status,
                 "pk_cols": pk_cols,
-            }
+            },
         )
 
     return results
@@ -170,7 +170,7 @@ def run_consistency_audit(deep: bool = False, trigger_alert: bool = True) -> boo
                     if res["status"] in ("MISMATCH", "MISSING_ON_OCI"):
                         mismatches.append(res)
                         alert_lines.append(
-                            f"• <b>{res['table_name']}</b>: SQLite={res['sqlite_count']} vs OCI={res['oci_count']} (Delta={res['delta']})"
+                            f"• <b>{res['table_name']}</b>: SQLite={res['sqlite_count']} vs OCI={res['oci_count']} (Delta={res['delta']})",
                         )
                 else:
                     if res["status"] == "MISSING_ON_OCI":
@@ -196,7 +196,7 @@ def run_consistency_audit(deep: bool = False, trigger_alert: bool = True) -> boo
                         logger.warning(f"    ⚠️  Missing sample IDs in OCI: {sample_str}")
                         mismatches.append(res)
                         alert_lines.append(
-                            f"• <b>{table_name}</b>: Key ID match rate is {match_rate}% (Sample missing keys: {sample_str})"
+                            f"• <b>{table_name}</b>: Key ID match rate is {match_rate}% (Sample missing keys: {sample_str})",
                         )
 
     except Exception as e:
@@ -220,10 +220,10 @@ def run_consistency_audit(deep: bool = False, trigger_alert: bool = True) -> boo
 def main() -> int:
     parser = argparse.ArgumentParser(description="KBO SQLite to OCI PostgreSQL consistency auditor")
     parser.add_argument(
-        "--deep", action="store_true", help="Perform deep ID-level matching to catch record discrepancies."
+        "--deep", action="store_true", help="Perform deep ID-level matching to catch record discrepancies.",
     )
     parser.add_argument(
-        "--no-alert", action="store_true", help="Disable sending slack/telegram notifications on mismatch."
+        "--no-alert", action="store_true", help="Disable sending slack/telegram notifications on mismatch.",
     )
     args = parser.parse_args()
 

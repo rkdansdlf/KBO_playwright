@@ -109,7 +109,7 @@ def rebuild_relay_events(
             report_rows.append(row)
             log(
                 f"[{index}/{len(candidate_game_ids)}] {game_id} {row.status} "
-                f"old={row.old_rows} new={row.new_rows} {row.notes}"
+                f"old={row.old_rows} new={row.new_rows} {row.notes}",
             )
 
     if apply and sync_oci and changed_game_ids:
@@ -327,7 +327,7 @@ def _sync_changed_events(
         try:
             for batch in _chunked(game_ids, 200):
                 syncer.target_session.query(GameEvent).filter(GameEvent.game_id.in_(list(batch))).delete(
-                    synchronize_session=False
+                    synchronize_session=False,
                 )
                 syncer.target_session.commit()
             synced = syncer.sync_simple_table(
@@ -363,7 +363,7 @@ def _write_report(report_path: Path, rows: Sequence[RebuildReportRow]) -> None:
                     "notes": row.notes,
                     "backup_path": row.backup_path,
                     "oci_status": row.oci_status,
-                }
+                },
             )
 
 
@@ -430,7 +430,7 @@ def run(argv: Sequence[str] | None = None) -> int:
         help="OCI sync mode for applied games. Default only replaces game_events.",
     )
     parser.add_argument(
-        "--min-events", type=int, default=DEFAULT_MIN_EVENTS, help="Minimum rebuilt event rows required"
+        "--min-events", type=int, default=DEFAULT_MIN_EVENTS, help="Minimum rebuilt event rows required",
     )
     parser.add_argument("--report-out", type=str, help="CSV report output path")
     parser.add_argument("--backup-out", type=str, help="CSV backup output path used with --apply")

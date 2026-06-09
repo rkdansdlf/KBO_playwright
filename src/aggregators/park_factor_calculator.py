@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 
 
 class ParkFactorCalculator:
-    def __init__(self, session: Session):
+    def __init__(self, session: Session) -> None:
         self.session = session
 
     def calculate(self, year: int) -> list[dict]:
@@ -48,7 +48,7 @@ class ParkFactorCalculator:
                 "home_runs": 0,
                 "away_runs": 0,
                 "games": 0,
-            }
+            },
         )
 
         for g in games:
@@ -86,7 +86,7 @@ class ParkFactorCalculator:
                     "league_avg_rpg": round(league_avg_rpg, 3),
                     "park_factor": round(pf, 3),
                     "park_factor_label": self._label(pf),
-                }
+                },
             )
 
         return results
@@ -103,7 +103,7 @@ class ParkFactorCalculator:
         else:
             return "투수친화"
 
-    def print_report(self, year: int):
+    def print_report(self, year: int) -> None:
         results = self.calculate(year)
         if not results:
             return

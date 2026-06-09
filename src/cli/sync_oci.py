@@ -29,7 +29,7 @@ logger = logging.getLogger(__name__)
 
 
 def run_parallel_sync(
-    sync_fn: Callable[[OCISync, Any], None], target_url: str, years: list[int], workers: int, **kwargs
+    sync_fn: Callable[[OCISync, Any], None], target_url: str, years: list[int], workers: int, **kwargs,
 ) -> None:
     """연도별로 병렬 동기화 작업을 수행합니다."""
     logger.info(f"🚀 Starting parallel sync with {workers} workers for years: {years}")
@@ -321,7 +321,7 @@ _ALLOWED_YEAR_COLUMNS = frozenset(
         "season_year",
         "strftime('%Y', game_date)",
         "strftime('%Y', standings_date)",
-    }
+    },
 )
 
 
@@ -468,7 +468,7 @@ def main(argv: Iterable[str] | None = None) -> None:
     }
 
     flag = _detect_active_flag(
-        args, list(SYNC_DISPATCH.keys()) + list(SIMPLE_FLAGS.keys()) + ["phase1_all", "stadium_realtime_all"]
+        args, list(SYNC_DISPATCH.keys()) + list(SIMPLE_FLAGS.keys()) + ["phase1_all", "stadium_realtime_all"],
     )
 
     if flag in SYNC_DISPATCH:
@@ -497,7 +497,7 @@ def main(argv: Iterable[str] | None = None) -> None:
                     synced_s = syncer.sync_cheer_songs()
                     synced_c = syncer.sync_cheer_chants()
                     logger.info(
-                        f"✅ Fan Culture Sync Finished (Rivalries={synced_r}, Songs={synced_s}, Chants={synced_c})"
+                        f"✅ Fan Culture Sync Finished (Rivalries={synced_r}, Songs={synced_s}, Chants={synced_c})",
                     )
                 elif flag == "teams":
                     logger.info(header_str)

@@ -19,7 +19,7 @@ class PlayerStatusConfirmer:
         max_confirmations: int = 200,
         headless: bool = True,
         pool: AsyncPlaywrightPool | None = None,
-    ):
+    ) -> None:
         self.base_url = "https://www.koreabaseball.com/Record/Player/HitterDetail/Basic.aspx"
         self.request_delay = request_delay
         self.max_confirmations = max_confirmations

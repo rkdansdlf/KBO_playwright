@@ -23,31 +23,31 @@ def get_available_series_by_year(year: int) -> list[str]:
     if year >= 1982:  # KBO 창설 이후
         if year <= 1985:
             # 1982-1985: 정규시즌 + 한국시리즈만
-            return base_series + ["korean_series"]
+            return [*base_series, "korean_series"]
 
         elif year <= 1988:
             # 1986-1988: 정규시즌 + 한국시리즈 + 시범경기
-            return base_series + ["korean_series", "exhibition"]
+            return [*base_series, "korean_series", "exhibition"]
 
         elif year <= 1999:
             # 1989-1999: 현재와 유사하지만 플레이오프 체계 다름
-            return base_series + ["korean_series", "exhibition"]
+            return [*base_series, "korean_series", "exhibition"]
 
         elif year <= 2001:
             # 2000-2001: 플레이오프 없음, 정규시즌 1위가 직접 한국시리즈
-            return base_series + ["korean_series", "exhibition"]
+            return [*base_series, "korean_series", "exhibition"]
 
         elif year <= 2006:
             # 2002-2006: 플레이오프 도입
-            return base_series + ["korean_series", "playoff", "exhibition"]
+            return [*base_series, "korean_series", "playoff", "exhibition"]
 
         elif year <= 2014:
             # 2007-2014: 플레이오프 확장
-            return base_series + ["korean_series", "playoff", "semi_playoff", "exhibition"]
+            return [*base_series, "korean_series", "playoff", "semi_playoff", "exhibition"]
 
         else:
             # 2015-현재: 와일드카드 도입
-            return base_series + ["korean_series", "playoff", "semi_playoff", "wildcard", "exhibition"]
+            return [*base_series, "korean_series", "playoff", "semi_playoff", "wildcard", "exhibition"]
 
     else:
         # 1982년 이전은 KBO 창설 전

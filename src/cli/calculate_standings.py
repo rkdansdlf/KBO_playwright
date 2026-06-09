@@ -199,7 +199,7 @@ class StandingsCalculator:
 
         logger.info(f"[Standings] {len(daily_snapshots)}건 스냅샷 DB 저장 중...")
         self.session.query(TeamStandingsDaily).filter(
-            extract("year", TeamStandingsDaily.standings_date) == year
+            extract("year", TeamStandingsDaily.standings_date) == year,
         ).delete(synchronize_session=False)
         self.session.bulk_save_objects(daily_snapshots)
         self.session.commit()
@@ -207,7 +207,7 @@ class StandingsCalculator:
 
     def print_report(self, year: int, target_date: date | None = None) -> None:
         query = self.session.query(TeamStandingsDaily).filter(
-            extract("year", TeamStandingsDaily.standings_date) == year
+            extract("year", TeamStandingsDaily.standings_date) == year,
         )
         if target_date:
             query = query.filter(TeamStandingsDaily.standings_date <= target_date)
@@ -317,7 +317,7 @@ class StandingsCalculator:
             for r in data[::step]:
                 recent = f"{r.recent_10_wins}승{r.recent_10_losses}패"
                 logger.info(
-                    f"  {r.standings_date}  {r.wins:>3} {r.losses:>3}  {r.win_pct:.3f}  {r.rank:>3}위  {recent:>8}"
+                    f"  {r.standings_date}  {r.wins:>3} {r.losses:>3}  {r.win_pct:.3f}  {r.rank:>3}위  {recent:>8}",
                 )
             if data:
                 last = data[-1]

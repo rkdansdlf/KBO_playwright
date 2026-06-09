@@ -46,7 +46,7 @@ def _upsert_story_summary(session, game_id: str, story_json: str) -> None:
             game_id=game_id,
             summary_type=STORY_SUMMARY_TYPE,
             detail_text=story_json,
-        )
+        ),
     )
 
 
@@ -109,7 +109,7 @@ async def run_story_batch(target_date: str, *, sync_to_oci: bool | None = None) 
         logger.info(
             "🔄 Refreshed game statuses before story generation: "
             f"updated={status_result.get('updated', 0)} "
-            f"counts={status_result.get('status_counts', {})}"
+            f"counts={status_result.get('status_counts', {})}",
         )
 
     saved_ids: list[str] = []
@@ -146,7 +146,7 @@ async def run_story_batch(target_date: str, *, sync_to_oci: bool | None = None) 
             if not story_data["timeline"]:
                 logger.info(
                     f"  ⚠️ No story timeline events selected for {game.game_id}. "
-                    f"warnings={story_data['source'].get('warnings', [])}"
+                    f"warnings={story_data['source'].get('warnings', [])}",
                 )
             _upsert_story_summary(session, game.game_id, dump_story_json(story_data))
             saved_ids.append(game.game_id)

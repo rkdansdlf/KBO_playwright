@@ -12,13 +12,13 @@ from typing import Any
 from playwright.async_api import Page
 
 logger = logging.getLogger(__name__)
-import contextlib  # noqa: E402
+import contextlib
 
-from src.utils.compliance import compliance  # noqa: E402
-from src.utils.player_validation import validate_player_payload  # noqa: E402
-from src.utils.playwright_pool import AsyncPlaywrightPool  # noqa: E402
+from src.utils.compliance import compliance
+from src.utils.player_validation import validate_player_payload
+from src.utils.playwright_pool import AsyncPlaywrightPool
 from src.utils.playwright_retry import SEL_TIMEOUT
-from src.utils.request_policy import RequestPolicy  # noqa: E402
+from src.utils.request_policy import RequestPolicy
 
 # KBO profile page selectors (common across Hitter/Pitcher detail pages)
 _PROFILE_PREFIXES = [
@@ -350,7 +350,7 @@ class PlayerProfileCrawler:
                 }""",
                 timeout=2000,
             )
-        except Exception:  # noqa: BLE001
+        except Exception:
             logger.info("No real image found for player (expected for some players)")
             pass
 

@@ -116,7 +116,7 @@ def crawl_monthly_unified_audit_job() -> None:
             f"Unified audit failed for {target_year}: "
             f"PA formula={'OK' if pa_ok else 'FAIL (' + str(pa_violations) + ' violations)'}, "
             f"Team batting={'OK' if team_bat_ok else 'FAIL (' + str(team_bat_miss) + ' mismatches)'}, "
-            f"Team pitching={'OK' if team_pit_ok else 'FAIL (' + str(team_pit_miss) + ' mismatches)'}"
+            f"Team pitching={'OK' if team_pit_ok else 'FAIL (' + str(team_pit_miss) + ' mismatches)'}",
         )
 
     logger.info("Unified audit completed for %s", target_year)

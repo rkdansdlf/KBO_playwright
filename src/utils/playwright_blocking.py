@@ -12,7 +12,7 @@ DEFAULT_BLOCKED_RESOURCE_TYPES: set[str] = {"image", "media", "font"}
 async def install_async_resource_blocking(target, blocked_types: Iterable[str] | None = None) -> None:
     types = set(blocked_types or DEFAULT_BLOCKED_RESOURCE_TYPES)
 
-    async def handler(route):
+    async def handler(route) -> None:
         if route.request.resource_type in types:
             await route.abort()
         else:
@@ -24,7 +24,7 @@ async def install_async_resource_blocking(target, blocked_types: Iterable[str] |
 def install_sync_resource_blocking(target, blocked_types: Iterable[str] | None = None) -> None:
     types = set(blocked_types or DEFAULT_BLOCKED_RESOURCE_TYPES)
 
-    def handler(route):
+    def handler(route) -> None:
         if route.request.resource_type in types:
             route.abort()
         else:

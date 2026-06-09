@@ -80,7 +80,7 @@ def refresh_game_status_for_date(target_date: str, today: date | None = None) ->
                         session.query(GameInningScore.team_side, func.sum(GameInningScore.runs))
                         .filter(GameInningScore.game_id == game.game_id)
                         .group_by(GameInningScore.team_side)
-                        .all()
+                        .all(),
                     )
                     if inning_totals.get("away") is not None and inning_totals.get("home") is not None:
                         game.away_score = int(inning_totals["away"] or 0)

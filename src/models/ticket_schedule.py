@@ -27,7 +27,7 @@ class TicketSchedule(Base, TimestampMixin):
     stadium: Mapped[str] = mapped_column(String(50), nullable=False, comment="Name of the stadium")
     open_time: Mapped[datetime] = mapped_column(DateTime, nullable=False, comment="Ticketing open date and time")
     platform: Mapped[str] = mapped_column(
-        String(50), nullable=False, comment="Ticketing platform (e.g., Interpark, Ticketlink)"
+        String(50), nullable=False, comment="Ticketing platform (e.g., Interpark, Ticketlink)",
     )
     url: Mapped[str | None] = mapped_column(String(255), nullable=True, comment="Ticketing link URL")
 

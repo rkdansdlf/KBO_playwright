@@ -431,9 +431,11 @@ def crawl_daily_games():
             if isinstance(update_result, dict):
                 stability = update_result.get("stability", {})
                 detail = stability.get("detail", {}) if isinstance(stability, dict) else {}
+                detail_recovery = stability.get("detail_recovery", {}) if isinstance(stability, dict) else {}
                 detail_counts = detail.get("failure_counts", {}) if isinstance(detail, dict) else {}
+                repeated_failures = detail_recovery.get("escalation_game_ids") if isinstance(detail_recovery, dict) else []
                 total_failures = sum(detail_counts.values()) if isinstance(detail_counts, dict) else 0
-                if total_failures > 0:
+                if repeated_failures or total_failures > 0:
                     alert_warning("crawl_daily_games", format_stability_alert_summary(update_result))
         except Exception as e:
             logger.error(f"Daily games crawl attempt failed: {e}")
@@ -441,7 +443,7 @@ def crawl_daily_games():
 
 
 def _find_detail_gaps(session, start_date: date) -> list[str]:
-    """Find dates with COMPLETED/DRAW games missing game_batting_stats."""
+    """Find dates with COMPLETED/DRAW games missing batting or pitching stats."""
     from sqlalchemy import text as sa_text
 
     rows = (
@@ -450,9 +452,10 @@ def _find_detail_gaps(session, start_date: date) -> list[str]:
             SELECT DISTINCT g.game_date
             FROM game g
             LEFT JOIN game_batting_stats b ON g.game_id = b.game_id
+            LEFT JOIN game_pitching_stats p ON g.game_id = p.game_id
             WHERE g.game_date >= :start
               AND g.game_status IN ('COMPLETED', 'DRAW')
-              AND b.game_id IS NULL
+              AND (b.game_id IS NULL OR p.game_id IS NULL)
             ORDER BY g.game_date
         """),
             {"start": start_date},
@@ -461,6 +464,16 @@ def _find_detail_gaps(session, start_date: date) -> list[str]:
         .all()
     )
     return [_compact_date(d) for d in rows]
+
+
+def _to_compact_date(value: str) -> str:
+    if isinstance(value, str) and len(value) == 8 and value.isdigit():
+        return value
+    raise ValueError(f"invalid compact date value: {value!r}")
+
+
+def _from_compact_date(value: str) -> date:
+    return datetime.strptime(_to_compact_date(value), "%Y%m%d").date()
 
 
 def _find_pbp_gaps(session, start_date: date) -> list[str]:
@@ -556,8 +569,13 @@ def backfill_missed_daily_crawls(lookback_days: int = 14) -> list[str]:
         logger.warning("Phase 1 — Detail backfill needed for %s", date_compact)
         try:
             run_daily_update_main(["--date", date_compact])
-            backfilled.append(f"detail:{date_compact}")
-            logger.info("Phase 1 — Detail backfill completed for %s", date_compact)
+            with SessionLocal() as verify_session:
+                verify_date = _from_compact_date(date_compact)
+                if date_compact in _find_detail_gaps(verify_session, verify_date):
+                    logger.warning("Phase 1 completed but %s still has detail gaps", date_compact)
+                else:
+                    backfilled.append(f"detail:{date_compact}")
+                    logger.info("Phase 1 — Detail backfill completed for %s", date_compact)
         except Exception:
             logger.exception("Phase 1 — Detail backfill failed for %s", date_compact)
 
@@ -566,8 +584,17 @@ def backfill_missed_daily_crawls(lookback_days: int = 14) -> list[str]:
         all_dates = sorted(set(detail_dates + _find_pbp_gaps(session, start)))
 
     for date_compact in all_dates:
-        if f"detail:{date_compact}" in backfilled:
+        with SessionLocal() as verify_session:
+            verify_date = _from_compact_date(date_compact)
+            detail_still_missing = date_compact in _find_detail_gaps(verify_session, verify_date)
+            pbp_still_missing = date_compact in _find_pbp_gaps(verify_session, verify_date)
+
+        if not (detail_still_missing or pbp_still_missing):
             continue
+
+        if detail_still_missing and f"detail:{date_compact}" in backfilled:
+            logger.info("Phase 1 still incomplete for %s; retrying via phase-2 workflow", date_compact)
+
         logger.warning("Phase 2 — PBP/relay backfill needed for %s", date_compact)
         try:
             run_daily_update_main(["--date", date_compact])

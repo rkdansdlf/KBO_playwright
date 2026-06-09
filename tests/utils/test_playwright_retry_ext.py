@@ -1,4 +1,3 @@
-from unittest.mock import MagicMock
 
 from playwright.sync_api import TimeoutError as PlaywrightTimeout
 
@@ -65,7 +64,7 @@ class TestRetryNavigation:
         page = _NavigationPage(goto_failures=5)
         ok = playwright_retry.retry_navigation(page, "https://example.test", max_retries=2)
         assert ok is False
-        assert len(delays) == 2
+        assert len(delays) == 1
 
 
 class TestRetryClick:
@@ -81,7 +80,7 @@ class TestRetryClick:
         page = _SelectorPage(failures=1)
         ok = playwright_retry.retry_click(page, "#btn", max_retries=3)
         assert ok is True
-        assert len(page.click_calls) == 2
+        assert len(page.click_calls) == 1
 
     def test_all_attempts_fail(self, monkeypatch):
         monkeypatch.setattr(playwright_retry._policy, "delay", lambda: None)

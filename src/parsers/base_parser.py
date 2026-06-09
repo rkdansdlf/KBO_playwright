@@ -20,7 +20,7 @@ class BaseStadiumParser:
     Backward-compatible module-level functions are provided in each parser module.
     """
 
-    def __init__(self, html: str, source_key: str, metadata: dict[str, Any] | None = None):
+    def __init__(self, html: str, source_key: str, metadata: dict[str, Any] | None = None) -> None:
         self.source_key = source_key
         self.metadata = metadata or {}
         self.soup = BeautifulSoup(html, "html.parser")

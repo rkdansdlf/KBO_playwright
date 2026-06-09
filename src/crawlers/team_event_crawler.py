@@ -131,7 +131,7 @@ class TeamEventCrawler:
                             "url": url,
                             "html": html,
                             "status_code": resp.status_code,
-                        }
+                        },
                     )
                     metadata = {
                         "url": url,

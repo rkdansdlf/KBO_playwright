@@ -11,11 +11,11 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
-from bs4 import BeautifulSoup  # noqa: E402
-from pypdf import PdfReader  # noqa: E402
+from bs4 import BeautifulSoup
+from pypdf import PdfReader
 
-from src.db.engine import SessionLocal  # noqa: E402
-from src.utils.playwright_pool import AsyncPlaywrightPool  # noqa: E402
+from src.db.engine import SessionLocal
+from src.utils.playwright_pool import AsyncPlaywrightPool
 from src.utils.playwright_retry import NAV_TIMEOUT
 
 
@@ -59,7 +59,7 @@ class StaticTextCrawler:
                         "crawled_at": datetime.now().isoformat(),
                         "category": "rulebook",
                     },
-                }
+                },
             )
 
         return chunks
@@ -99,7 +99,7 @@ class StaticTextCrawler:
                 "url": url,
                 "html": html_content,
                 "status_code": 200,
-            }
+            },
         )
 
         if save:

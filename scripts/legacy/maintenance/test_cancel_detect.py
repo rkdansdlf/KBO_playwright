@@ -19,7 +19,7 @@ from src.crawlers.game_detail_crawler import GameDetailCrawler
 
 
 async def main():
-    print(
+    logger.info(
         "[DEBUG] scripts/maintenance/test_cancel_detect.py performs a live parser probe only. It does not persist data."
     )
     crawler = GameDetailCrawler()

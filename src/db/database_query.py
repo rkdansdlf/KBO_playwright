@@ -35,7 +35,7 @@ def get_player_defensive_stats(player_name: str, year: int) -> list[dict[str, An
 
         # 2. Query fielding stats
         fielding_stmt = select(PlayerSeasonFielding).where(
-            and_(PlayerSeasonFielding.player_id.in_(player_ids), PlayerSeasonFielding.year == year)
+            and_(PlayerSeasonFielding.player_id.in_(player_ids), PlayerSeasonFielding.year == year),
         )
 
         results = []
@@ -56,7 +56,7 @@ def get_player_defensive_stats(player_name: str, year: int) -> list[dict[str, An
                     "fielding_pct": row.fielding_pct,
                     "pickoffs": row.pickoffs,
                     "source": row.source,
-                }
+                },
             )
 
         return results

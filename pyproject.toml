@@ -45,6 +45,11 @@ select = [
     "UP",      # pyupgrade (Python 3.10+)
     "B",       # flake8-bugbear (limited)
     "SIM",     # flake8-simplify (limited)
+    "G",       # logging (f-strings, format, exc_info)
+    "COM812",  # missing trailing comma (auto-fixable)
+    "RUF100",  # unused noqa
+    "RUF005",  # collection literal concatenation
+    "PERF401",  # manual list comprehension
 ]
 ignore = [
     "E402",    # module-import-not-at-top (lazy imports intentional)
@@ -60,6 +65,8 @@ ignore = [
     "SIM108",  # simplify-if-else (ternary, not always clearer)
     "SIM113",  # enumerate-for-loop (manual counter ok)
     "SIM117",  # merge-with-statements (nested contexts fine)
+    "G010",    # logging-warn vs logging-warning (redundant alias)
+    "G101",    # logging-extra-attr (extra kwargs pattern is intentional)
 ]
 
 [tool.ruff.format]
