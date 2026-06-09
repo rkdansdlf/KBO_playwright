@@ -728,12 +728,15 @@ class OCISyncBase:
                 time.sleep(wait_seconds)
 
     def _resolve_sync_columns(self, model: type, exclude_cols: list[str]) -> list[str]:
+        target_column_defs = {}
+        target_columns = {c.key for c in model.__table__.columns}
         if getattr(self, "oci_engine", None) is not None:
-            target_column_defs = {c["name"]: c for c in inspect(self.oci_engine).get_columns(model.__tablename__)}
-            target_columns = set(target_column_defs)
-        else:
-            target_column_defs = {}
-            target_columns = {c.key for c in model.__table__.columns}
+            try:
+                cols = inspect(self.oci_engine).get_columns(model.__tablename__)
+                target_column_defs = {c["name"]: c for c in cols}
+                target_columns = set(target_column_defs)
+            except Exception as exc:
+                logger.warning("Failed to inspect OCI columns for %s: %s", model.__tablename__, exc)
 
         sqlite_bind = None
         if hasattr(self.sqlite_session, "get_bind"):
@@ -840,15 +843,31 @@ class OCISyncBase:
                 rows = query.offset(offset).limit(batch_size).all()
                 records = [_row_to_record(row, columns, transform_fn) for row in rows]
                 records = _dedupe_records_for_conflict_keys(records, dedupe_keys or conflict_keys)
-                self._bulk_copy_upsert(
-                    model.__tablename__,
-                    records,
-                    conflict_keys,
-                    update_timestamp=update_timestamp,
-                    connection=connection,
-                )
-                synced += len(records)
-                logger.info("   Synced %s/%s rows via COPY...", synced, total_count)
+                try:
+                    self._bulk_copy_upsert(
+                        model.__tablename__,
+                        records,
+                        conflict_keys,
+                        update_timestamp=update_timestamp,
+                        connection=connection,
+                    )
+                    synced += len(records)
+                    logger.info("   Synced %s/%s rows via COPY...", synced, total_count)
+                except Exception as batch_err:
+                    logger.warning("Batch COPY failed for %s, falling back to row-by-row: %s", model.__tablename__, batch_err)
+                    for record in records:
+                        try:
+                            self._bulk_copy_upsert(
+                                model.__tablename__,
+                                [record],
+                                conflict_keys,
+                                update_timestamp=update_timestamp,
+                                connection=connection,
+                            )
+                            synced += 1
+                        except Exception as row_err:
+                            logger.warning("Skipping bad row in %s: %s", model.__tablename__, row_err)
+                    logger.info("   Synced %s/%s rows via row-by-row...", synced, total_count)
         finally:
             if connection is not None:
                 try:
