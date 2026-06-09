@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import argparse
 import logging
-from typing import Sequence
+from collections.abc import Sequence
 
 from src.db.engine import SessionLocal
 from src.models.game import GameBattingStat, GamePitchingStat

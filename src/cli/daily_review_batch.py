@@ -11,7 +11,7 @@ import json
 import logging
 import os
 from datetime import datetime
-from typing import Sequence
+from collections.abc import Sequence
 
 from src.db.engine import SessionLocal
 from src.models.game import Game, GameEvent, GameSummary, GameValidationMetrics
@@ -53,7 +53,7 @@ def _upsert_review_summary(session, game_id: str, review_json: str) -> None:
     )
 
 
-def _build_review_data(agg: ContextAggregator, game: Game) -> dict:
+def _build_review_data(agg: ContextAggregator, game: Game) -> dict[str, Any]:
     target_date = game.game_date.strftime("%Y%m%d")
     season_year = game.game_date.year
     away_code = team_code_from_game_id_segment(game.away_team, season_year)

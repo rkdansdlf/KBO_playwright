@@ -10,7 +10,8 @@ import json
 import logging
 from datetime import date, datetime, timedelta
 from pathlib import Path
-from typing import Any, Sequence
+from typing import Any
+from collections.abc import Sequence
 from zoneinfo import ZoneInfo
 
 from sqlalchemy import MetaData, Table, func, inspect, or_, select
@@ -526,7 +527,6 @@ def get_daily_metrics(session, target_date_str: str, gate_result: dict[str, Any]
     # 5. Data Parity (Local vs OCI)
     parity_info = {"ok": True, "local_count": 0, "oci_count": 0, "diff": 0}
     try:
-        import os
 
         from sqlalchemy import create_engine, text
 

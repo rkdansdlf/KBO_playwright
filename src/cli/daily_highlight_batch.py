@@ -10,7 +10,7 @@ import asyncio
 import logging
 import os
 from datetime import datetime
-from typing import Sequence
+from collections.abc import Sequence
 
 from src.aggregators.highlight_aggregator import HighlightAggregator
 from src.db.engine import SessionLocal

@@ -19,13 +19,16 @@ from __future__ import annotations
 
 import logging
 import re
-import time
 from typing import Any
 
 import httpx
 from bs4 import BeautifulSoup
 
+from src.utils.request_policy import RequestPolicy
+
 logger = logging.getLogger(__name__)
+
+_policy = RequestPolicy()
 
 KBO_GAME_CENTER_URL = "https://www.koreabaseball.com/Schedule/GameCenter/Main.aspx"
 
@@ -257,6 +260,6 @@ def derive_sh_sf_hybrid(
         return pbp_updated
 
     if pbp_delay > 0:
-        time.sleep(pbp_delay)
+        _policy.delay()
 
     return derive_sh_sf_from_hitter_page(session, game_id, game_date, client=client)

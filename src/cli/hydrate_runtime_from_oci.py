@@ -6,7 +6,7 @@ import argparse
 import logging
 import os
 from datetime import datetime
-from typing import Sequence
+from collections.abc import Sequence
 
 from dotenv import load_dotenv
 from sqlalchemy.orm import sessionmaker

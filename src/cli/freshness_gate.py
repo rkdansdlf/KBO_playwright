@@ -7,7 +7,7 @@ import json
 import logging
 import os
 from datetime import datetime, timedelta
-from typing import Sequence
+from collections.abc import Sequence
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker

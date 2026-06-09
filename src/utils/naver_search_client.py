@@ -111,7 +111,7 @@ class NaverSearchClient:
     def _is_configured(self) -> bool:
         return bool(self.client_id and self.client_secret)
 
-    def _headers(self) -> dict:
+    def _headers(self) -> dict[str, Any]:
         return {
             "X-Naver-Client-Id": self.client_id,
             "X-Naver-Client-Secret": self.client_secret,

@@ -10,6 +10,7 @@ Imported by scripts/scheduler.py as the crawl_monthly_unified_audit_job target.
 Runs on the 1st of every month at 03:00 KST via APScheduler.
 """
 
+from typing import Any
 import json
 import logging
 import sys
@@ -23,7 +24,7 @@ from src.cli.monthly_team_audit import run_monthly_team_audit
 logger = logging.getLogger(__name__)
 
 
-def run_pa_fix(year: int, dry_run: bool = False) -> dict:
+def run_pa_fix(year: int, dry_run: bool = False) -> dict[str, Any]:
     """Apply PA formula fix for a given year, returning result dict."""
     try:
         fixed_rows = fix_year_formula(year, dry_run=dry_run)
@@ -39,7 +40,7 @@ def run_pa_fix(year: int, dry_run: bool = False) -> dict:
     }
 
 
-def run_pa_audit(year: int) -> dict:
+def run_pa_audit(year: int) -> dict[str, Any]:
     """Run PA formula audit (read-only) and return JSON result."""
     try:
         data = audit_year(year)
@@ -121,7 +122,7 @@ def crawl_monthly_unified_audit_job():
     logger.info("Unified audit completed for %s", target_year)
 
 
-def main():
+def main() -> int:
     """CLI entry point for direct invocation (e.g., from GitHub Actions)."""
     import argparse
 

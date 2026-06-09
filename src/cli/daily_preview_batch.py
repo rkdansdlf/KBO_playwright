@@ -10,7 +10,7 @@ import asyncio
 import logging
 import os
 from datetime import datetime
-from typing import Sequence
+from collections.abc import Sequence
 
 from src.crawlers.preview_crawler import PreviewCrawler
 from src.db.engine import SessionLocal

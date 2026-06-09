@@ -55,12 +55,6 @@ class TeamHistoryCrawler:
         raw_html = await self.page.content()
         self._raw_pages.append({"url": self.BASE_URL, "html": raw_html, "source_key": "kbo_team_history"})
 
-        # Selectors validated by Subagent
-        # Table: table.tData.tbd02
-        # Row: tbody tr
-        # Year: th[scope='row']
-        # Cells: td (12 columns)
-
         rows = await self.page.locator("table.tData.tbd02 tbody tr").all()
         logger.info(f"Found {len(rows)} year entries.")
 
@@ -126,19 +120,6 @@ class TeamHistoryCrawler:
                     team_slots[i]["name"] = new_name
                 if new_logo:
                     team_slots[i]["logo"] = new_logo
-
-                # Create History Entry if there is a team in this slot (Rank is a good indicator of participation,
-                # but sometimes teams participate without rank? No, KBO always ranks)
-                # Or if we have a name in the slot state, it technically existed?
-                # Usually only active teams have a cell in the row?
-                # Wait, if the cell is empty, the team didn't play?
-                # Subagent said "Team Ranks: 2, 1, 7, (Empty), 3..."
-                # So if cell content implies participation.
-                # If rank is present, definitely participated.
-                # If rank is NOT present, did they participate?
-                # In 2024, some columns are empty (Empty in subagent text).
-                # So we only record if Rank is found? Or if name is explicitly shown?
-                # Actually, "active teams" have ranks.
 
                 if rank is not None:
                     # Identify Team Code from Name

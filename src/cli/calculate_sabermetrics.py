@@ -1,6 +1,7 @@
 import argparse
 import logging
 import os
+from collections.abc import Sequence
 
 from src.aggregators.sabermetrics_calculator import SabermetricsCalculator
 from src.cli.sync_oci import OCISync
@@ -76,12 +77,11 @@ def batch_calculate_sabermetrics(years: list[int], sync_oci: bool = False):
             logger.warning("⚠️ OCI_DB_URL not set, skipping sync.")
 
 
-if __name__ == "__main__":
+def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Calculate Sabermetrics for players.")
     parser.add_argument("--years", type=str, default="2020-2026")
     parser.add_argument("--sync", action="store_true", help="Sync results to OCI")
-
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
 
     if "-" in args.years:
         start, end = map(int, args.years.split("-"))
@@ -90,3 +90,9 @@ if __name__ == "__main__":
         target_years = [int(args.years)]
 
     batch_calculate_sabermetrics(target_years, sync_oci=args.sync)
+    return 0
+
+
+if __name__ == "__main__":
+    import sys
+    sys.exit(main())

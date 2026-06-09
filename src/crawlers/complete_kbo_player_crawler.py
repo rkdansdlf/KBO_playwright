@@ -6,6 +6,7 @@ Docs/schema/player_season_data.md 스키마를 기반으로 구현
 기타시리즈: Basic1 기본 데이터만 수집
 """
 
+from typing import Any
 import logging
 import os
 import sys
@@ -19,6 +20,7 @@ from playwright.sync_api import Page, sync_playwright
 
 from src.repositories.save_futures_batting import save_futures_batting
 from src.utils.playwright_blocking import install_sync_resource_blocking
+from src.utils.playwright_helpers import goto_next_page
 from src.utils.request_policy import RequestPolicy
 
 
@@ -193,7 +195,7 @@ def crawl_basic1_data(page: Page, year: int, series_info: dict, policy: RequestP
         return {}
 
 
-def parse_regular_season_basic1_stats(cells: list) -> dict:
+def parse_regular_season_basic1_stats(cells: list) -> dict[str, Any]:
     """정규시즌 Basic1 통계 파싱: AVG,G,PA,AB,R,H,2B,3B,HR,TB,RBI,SAC,SF"""
     stats = {}
     try:
@@ -221,7 +223,7 @@ def parse_regular_season_basic1_stats(cells: list) -> dict:
     return stats
 
 
-def parse_other_series_stats(cells: list) -> dict:
+def parse_other_series_stats(cells: list) -> dict[str, Any]:
     """기타시리즈 통계 파싱: AVG,G,PA,AB,H,2B,3B,HR,RBI,SB,CS,BB,HBP,SO,GDP,E"""
     stats = {}
     try:
@@ -408,7 +410,7 @@ def collect_current_page_data(page: Page, sort_field: str, policy: RequestPolicy
     return page_data
 
 
-def extract_basic2_stats(cells: list, sort_field: str) -> dict:
+def extract_basic2_stats(cells: list, sort_field: str) -> dict[str, Any]:
     """Basic2 통계 추출"""
     stats = {}
     try:
@@ -462,33 +464,6 @@ def extract_basic2_stats(cells: list, sort_field: str) -> dict:
         logger.exception("         ⚠️ Basic2 통계 추출 오류")
 
     return stats
-
-
-def goto_next_page(page: Page, policy: RequestPolicy | None = None) -> bool:
-    """다음 페이지로 이동"""
-    try:
-        # 페이지네이션 확인
-        pagination = page.query_selector(".paging")
-        if not pagination:
-            return False
-
-        # "다음" 링크 찾기
-        next_links = pagination.query_selector_all("a")
-        for link in next_links:
-            if "다음" in link.inner_text() or ">" in link.inner_text():
-                href = link.get_attribute("href")
-                if href and "javascript:" not in href:
-                    link.click()
-                    page.wait_for_load_state("networkidle", timeout=30000)
-                    if policy:
-                        policy.delay()
-                    return True
-
-        return False
-
-    except Exception:
-        logger.exception("      ⚠️ 페이지 이동 중 오류")
-        return False
 
 
 def crawl_other_series_data(page: Page, year: int, series_list: list[dict], policy: RequestPolicy | None = None) -> dict[str, dict[int, dict]]:

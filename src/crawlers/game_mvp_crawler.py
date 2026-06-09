@@ -1,3 +1,4 @@
+from typing import Any
 import argparse
 import logging
 import re
@@ -44,7 +45,7 @@ class GameMvpCrawler:
                 for d in data[:10]:
                     logger.info(d)
 
-    async def _search_mvp_for_game(self, game_id: str) -> dict | None:
+    async def _search_mvp_for_game(self, game_id: str) -> dict[str, Any] | None:
         date_str = game_id[:8]
         url = NAVER_API_URL.format(date=date_str)
         client = httpx.Client(headers=HEADERS, timeout=15)

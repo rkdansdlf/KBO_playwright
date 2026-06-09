@@ -37,9 +37,9 @@ class _SelectorPage:
 
 
 def test_retry_navigation_retries_then_succeeds(monkeypatch):
-    sleeps = []
+    delays = []
     page = _NavigationPage(goto_failures=1)
-    monkeypatch.setattr(playwright_retry.time, "sleep", lambda delay: sleeps.append(delay))
+    monkeypatch.setattr(playwright_retry._policy, "delay", lambda: delays.append(None))
 
     ok = playwright_retry.retry_navigation(
         page,
@@ -55,25 +55,25 @@ def test_retry_navigation_retries_then_succeeds(monkeypatch):
         ("https://example.test", "domcontentloaded", 123),
     ]
     assert page.load_calls == [("networkidle", 123)]
-    assert sleeps == [2]
+    assert len(delays) == 1
 
 
 def test_retry_navigation_returns_false_after_final_failure(monkeypatch):
-    sleeps = []
+    delays = []
     page = _NavigationPage(goto_failures=3)
-    monkeypatch.setattr(playwright_retry.time, "sleep", lambda delay: sleeps.append(delay))
+    monkeypatch.setattr(playwright_retry._policy, "delay", lambda: delays.append(None))
 
     ok = playwright_retry.retry_navigation(page, "https://example.test", max_retries=3)
 
     assert ok is False
     assert len(page.goto_calls) == 3
-    assert sleeps == [2, 4]
+    assert len(delays) == 2
 
 
 def test_retry_wait_for_selector_reloads_between_timeouts(monkeypatch):
-    sleeps = []
+    delays = []
     page = _SelectorPage(failures=1)
-    monkeypatch.setattr(playwright_retry.time, "sleep", lambda delay: sleeps.append(delay))
+    monkeypatch.setattr(playwright_retry._policy, "delay", lambda: delays.append(None))
 
     ok = playwright_retry.retry_wait_for_selector(
         page,
@@ -89,17 +89,17 @@ def test_retry_wait_for_selector_reloads_between_timeouts(monkeypatch):
         ("table.stats", 456, "attached"),
     ]
     assert page.reload_calls == [("networkidle", 456)]
-    assert sleeps == [2]
+    assert len(delays) == 1
 
 
 def test_retry_wait_for_selector_returns_false_without_extra_reload(monkeypatch):
-    sleeps = []
+    delays = []
     page = _SelectorPage(failures=2)
-    monkeypatch.setattr(playwright_retry.time, "sleep", lambda delay: sleeps.append(delay))
+    monkeypatch.setattr(playwright_retry._policy, "delay", lambda: delays.append(None))
 
     ok = playwright_retry.retry_wait_for_selector(page, "table.stats", max_retries=2)
 
     assert ok is False
     assert len(page.selector_calls) == 2
     assert len(page.reload_calls) == 1
-    assert sleeps == [2]
+    assert len(delays) == 1

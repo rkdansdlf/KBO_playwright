@@ -11,7 +11,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 from datetime import datetime
-from typing import Sequence
+from collections.abc import Sequence
 
 from src.crawlers.congestion_crawler import CongestionCrawler
 

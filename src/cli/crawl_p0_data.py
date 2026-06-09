@@ -6,7 +6,7 @@ import argparse
 import asyncio
 import logging
 from datetime import datetime
-from typing import Sequence
+from collections.abc import Sequence
 
 logger = logging.getLogger(__name__)
 

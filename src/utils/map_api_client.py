@@ -59,7 +59,7 @@ async def _call_kakao(
     dest_lat: float,
     dest_lng: float,
     mode: TransportMode,
-) -> dict | None:
+) -> dict[str, Any] | None:
     api_key = os.getenv("KAKAO_REST_API_KEY", "")
     if not api_key:
         return None
@@ -104,7 +104,7 @@ async def _call_naver(
     dest_lat: float,
     dest_lng: float,
     mode: TransportMode,
-) -> dict | None:
+) -> dict[str, Any] | None:
     client_id = os.getenv("NAVER_CLIENT_ID", "")
     client_secret = os.getenv("NAVER_CLIENT_SECRET", "")
     if not client_id or not client_secret:
@@ -152,7 +152,7 @@ async def _call_tmap(
     dest_lat: float,
     dest_lng: float,
     mode: TransportMode,
-) -> dict | None:
+) -> dict[str, Any] | None:
     api_key = os.getenv("TMAP_API_KEY", "")
     if not api_key:
         return None

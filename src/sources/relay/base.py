@@ -10,7 +10,8 @@ try:
 except ImportError:
     UTC = UTC
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any
+from collections.abc import Iterable
 
 from src.services.wpa_transitions import event_has_wpa_state
 

@@ -13,7 +13,7 @@ import json
 import logging
 import sys
 from datetime import datetime
-from typing import Sequence
+from collections.abc import Sequence
 
 from src.db.engine import SessionLocal
 from src.models.game import Game

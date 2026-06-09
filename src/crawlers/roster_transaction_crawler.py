@@ -223,8 +223,8 @@ class RosterTransactionCrawler:
                         await page.evaluate(
                             "__doPostBack('ctl00$ctl00$ctl00$cphContents$cphContents$cphContents$btnCalendarSelect', '')"
                         )
-                except Exception:
-                    logger.info("Calendar select postback timeout, continuing")
+                except TimeoutError:
+                    logger.warning("Calendar select postback timeout, continuing")
                 await page.wait_for_timeout(2000)
 
                 desktop_html = await page.content()

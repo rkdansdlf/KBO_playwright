@@ -430,7 +430,7 @@ def start_scheduler():
         logger.exception("⏰ Scheduler stopped.")
 
 
-def main():
+def main() -> int:
     parser = argparse.ArgumentParser(description="KBO Knowledge & Issue Crawler Pipeline Orchestrator")
     parser.add_argument(
         "--type", choices=["static", "dynamic", "realtime"], help="Execute specific crawler pipeline type immediately."

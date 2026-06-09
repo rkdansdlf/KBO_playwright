@@ -10,7 +10,8 @@ import logging
 import os
 from datetime import date, datetime, timedelta
 from types import SimpleNamespace
-from typing import Any, Iterable
+from typing import Any
+from collections.abc import Iterable
 from zoneinfo import ZoneInfo
 
 from sqlalchemy import func, inspect, text

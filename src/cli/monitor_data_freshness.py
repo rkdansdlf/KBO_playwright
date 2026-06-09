@@ -3,7 +3,7 @@ from __future__ import annotations
 import argparse
 import logging
 from datetime import UTC, datetime, timedelta
-from typing import Sequence
+from collections.abc import Sequence
 from zoneinfo import ZoneInfo
 
 from sqlalchemy import text

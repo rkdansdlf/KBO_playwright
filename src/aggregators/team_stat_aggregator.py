@@ -5,7 +5,8 @@ Acts as a fallback when KBO's team cumulative record pages are unavailable.
 
 import logging
 from datetime import date as date_type
-from typing import Any, Iterable
+from typing import Any
+from collections.abc import Iterable
 
 from sqlalchemy import func, text
 from sqlalchemy.orm import Session

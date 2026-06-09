@@ -6,7 +6,7 @@ import sqlite3
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Iterable, Sequence
+from collections.abc import Iterable, Sequence
 
 DEFAULT_DB_PATH = Path("data/kbo_dev.db")
 DEFAULT_PRIMARY_CODE_PREFERENCES = ("SSG", "KH", "DB", "KIA")

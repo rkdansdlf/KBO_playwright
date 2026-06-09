@@ -5,7 +5,7 @@ from __future__ import annotations
 import argparse
 import logging
 from datetime import date, datetime
-from typing import Sequence
+from collections.abc import Sequence
 
 from src.aggregators.ranking_aggregator import RankingAggregator
 from src.db.engine import SessionLocal

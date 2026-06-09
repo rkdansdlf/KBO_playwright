@@ -27,7 +27,7 @@ class SlaTracker:
     def __init__(self, session: Session):
         self.session = session
 
-    def compute_daily_sla(self, target_date: str) -> dict:
+    def compute_daily_sla(self, target_date: str) -> dict[str, Any]:
         from datetime import date as date_type
 
         if isinstance(target_date, str) and len(target_date) == 8:

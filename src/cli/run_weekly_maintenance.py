@@ -111,7 +111,7 @@ async def run_weekly_maintenance(
     logger.info(f"{'=' * 60}\n")
 
 
-def main():
+def main() -> int:
     parser = argparse.ArgumentParser(description="KBO Weekly Maintenance Orchestrator")
     parser.add_argument("--profile-limit", type=int, default=200, help="Max profiles to enrich")
     parser.add_argument("--sync", action="store_true", help="Sync updated profiles to OCI")

@@ -59,7 +59,7 @@ def _extract_season(title: str, fallback: int | None = None) -> int | None:
     return int(m.group(1)) if m else fallback
 
 
-def _video_to_song(item: YouTubeVideoItem, team_id: str, current_season: int) -> dict | None:
+def _video_to_song(item: YouTubeVideoItem, team_id: str, current_season: int) -> dict[str, Any] | None:
     """Convert a YouTube video item to a cheer_song dict."""
     title = item.title.strip()
 

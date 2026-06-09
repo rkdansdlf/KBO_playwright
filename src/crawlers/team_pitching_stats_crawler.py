@@ -19,6 +19,7 @@ from src.repositories.team_stats_repository import TeamSeasonPitchingRepository
 from src.utils.playwright_blocking import install_sync_resource_blocking
 from src.utils.request_policy import RequestPolicy
 from src.utils.team_mapping import get_team_mapping_for_year
+from src.utils.team_stats_helpers import get_cell_value, parse_numeric, resolve_team_id
 
 TEAM_PITCHING_URLS = [
     "https://www.koreabaseball.com/Record/Team/Pitcher/Basic.aspx",
@@ -200,10 +201,10 @@ def parse_team_pitching_html(
         cells = row.find_all("td")
         if len(cells) < len(indexes):
             continue
-        team_name = _get_cell_value(cells, indexes["team_name"])
+        team_name = get_cell_value(cells, indexes["team_name"])
         if not team_name:
             continue
-        team_id = _resolve_team_id(team_name, team_mapping)
+        team_id = resolve_team_id(team_name, team_mapping)
         payload: dict[str, Any] = {
             "team_id": team_id or team_name,
             "team_name": team_name,
@@ -215,13 +216,13 @@ def parse_team_pitching_html(
         for header_key, idx in indexes.items():
             if header_key == "team_name":
                 continue
-            value_str = _get_cell_value(cells, idx)
+            value_str = get_cell_value(cells, idx)
             if value_str is None:
                 continue
             parsed_value = (
                 _parse_innings(value_str)
                 if header_key == "innings_pitched"
-                else _parse_numeric(value_str, header_key in FLOAT_FIELDS)
+                else parse_numeric(value_str, header_key in FLOAT_FIELDS)
             )
             if header_key in PITCHING_FIELDS:
                 payload[header_key] = parsed_value
@@ -245,35 +246,6 @@ def _build_column_map(headers: list[str]) -> dict[str, int]:
     if "team_name" not in indexes:
         indexes["team_name"] = 1 if len(headers) > 1 else 0
     return indexes
-
-
-def _get_cell_value(cells, index: int) -> str | None:
-    if index >= len(cells):
-        return None
-    return cells[index].get_text(strip=True)
-
-
-def _resolve_team_id(team_name: str, mapping: dict[str, str]) -> str | None:
-    key = team_name.strip()
-    if key in mapping:
-        return mapping[key]
-    normalized = key.replace(" ", "")
-    if normalized in mapping:
-        return mapping[normalized]
-    return None
-
-
-def _parse_numeric(value: str, as_float: bool) -> float | int | None:
-    cleaned = value.replace(",", "").replace("%", "")
-    if cleaned in ("", "-", "N/A"):
-        return None
-    try:
-        return float(cleaned) if as_float else int(float(cleaned))
-    except ValueError:
-        try:
-            return float(cleaned)
-        except ValueError:
-            return None
 
 
 def _parse_innings(value: str) -> float | None:
