@@ -80,27 +80,12 @@ class DailyRosterCrawler:
         date_str = target_date.strftime("%Y%m%d")
         logger.info(f"📅 Crawling Roster for {target_date}...")
 
-        # Evaluate setting hidden field and posting back
-        # The page uses update panel, so we wait for network idle or specific element changes
-        # A more reliable way is to simulate what DatePicker does or use the search button if exists.
-        # But this page auto-refreshes on date change if using UI.
-        # Let's try injecting the value and triggering the postback the datepicker uses or just simple reload if query param works?
-        # Query params are NOT used here (stateful).
-
         # Strategy:
         # 1. Set hidden input `hfSearchDate`
         # 2. Call `javascript:__doPostBack(...)`
         await page.evaluate(
             f"document.getElementById('cphContents_cphContents_cphContents_hfSearchDate').value = '{date_str}';"
         )
-
-        # We need to trigger the update. The 'Previous' button ID is one way, but might shift date?
-        # Let's assume there's a refresh mechanism.
-        # Actually, clicking the 'Calendar' and picking date calls postback.
-        # Let's use the 'Previous Date' logic but FORCE the date in hidden field?
-        # If we click 'PreDate', backend might subtract 1 day from hidden field.
-        # Safe bet: Navigate via URL is NOT an option.
-        # Creating a specific POST might be hard with Playwright.
 
         # Alternative: We are already on the page. Use JS to trigger the actual change function if exposed?
         # Let's try the safest path: Set Value -> Call `__doPostBack` on a harmless control or just the one used by datepicker.
@@ -232,15 +217,6 @@ class DailyRosterCrawler:
         return cleaned
 
     def _normalize_team(self, code: str, season_year: int | None = None) -> str:
-        # Map website code to our DB code
-        # 'OB' -> we used 'OB' for Doosan? Or 'DO'?
-        # In our DB we have 'OB' as historical? Check `src/utils/team_codes.py`
-        # The site uses 'OB', 'SK', etc.
-        # Our `team_codes.py` should handle this or we store as is.
-        # Usually 'OB' -> 'OB' (Doosan Base).
-        # But wait, 'SK' is 'SSG' now?
-        # Site uses 'SK' for SSG (Landers).
-        # We should map to canonical if we want consistency with `teams` table.
         resolved = resolve_team_code(code, season_year)
         return resolved if resolved else code
 

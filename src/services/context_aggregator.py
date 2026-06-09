@@ -732,8 +732,6 @@ class ContextAggregator:
             .all()
         )
 
-        # DEBUG: print(f"🔍 Found {len(movements)} movements for {possible_names} from {start_date} to {target_date}")
-
         results = []
         for m in movements:
             results.append(

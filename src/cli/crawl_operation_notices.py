@@ -16,7 +16,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import logging
-from typing import Sequence
+from collections.abc import Sequence
 
 from src.crawlers.operation_notice_doosan_crawler import OperationNoticeDoosanCrawler
 from src.crawlers.operation_notice_lg_crawler import OperationNoticeLGCrawler

@@ -4,7 +4,7 @@ Resource blocking helpers for Playwright (sync + async).
 
 from __future__ import annotations
 
-from typing import Iterable
+from collections.abc import Iterable
 
 DEFAULT_BLOCKED_RESOURCE_TYPES: set[str] = {"image", "media", "font"}
 

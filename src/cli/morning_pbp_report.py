@@ -19,7 +19,8 @@ import logging
 import sys
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Any, Sequence
+from typing import Any
+from collections.abc import Sequence
 from zoneinfo import ZoneInfo
 
 logger = logging.getLogger(__name__)

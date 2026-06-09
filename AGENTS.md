@@ -73,10 +73,11 @@ This repository is a Playwright-based KBO data crawler with a two-track pipeline
 
 ## GitHub Actions Automation
 
-The CI/CD pipeline uses 14 workflows and 2 composite actions under `.github/`:
+The CI/CD pipeline uses 14 workflows and 3 composite actions under `.github/`:
 
 ### Composite Actions
-- `.github/actions/python-env/`: Shared setup for all workflows — checkout, setup-python (3.12), pip install, Playwright (cached via actions/cache, ~5s on hit), init-db + seed (optional), OCI hydration (optional). Used via `uses: ./.github/actions/python-env` with `playwright`, `init-db`, `hydrate` boolean inputs.
+- `.github/actions/python-env/`: Shared setup — checkout, setup-python (3.12), pip install, Playwright (cached via actions/cache, ~5s on hit), init-db + seed (optional), OCI hydration (optional). Used via `uses: ./.github/actions/python-env` with `playwright`, `init-db`, `hydrate` boolean inputs.
+- `.github/actions/kbo-job-setup/`: Reusable checkout + python-env + optional date resolution. Wraps python-env with `playwright`, `init-db`, `hydrate`, `hydrate-year`, `hydrate-date`, `resolve-date`, `target-date` inputs. Outputs `KST_DATE`, `KST_YEAR`. Used to eliminate boilerplate in multi-job workflows.
 - `.github/actions/notify/`: Status notification to Telegram and/or Slack. Inputs: `status` (success/failure/cancelled), `workflow` (name override), `channels` (telegram/slack/both).
 
 ### Consolidated Daily Pipeline (`daily_kbo_sync.yml`)
@@ -87,6 +88,7 @@ The CI/CD pipeline uses 14 workflows and 2 composite actions under `.github/`:
   3. `quality` — quality report + trend tracker + gap report (Tier 3) + data freshness monitor + recalc player-game stats
   4. `advanced-sync` — advanced daily sync + reference integrity gate + quality gate + completeness audit + freshness gate (extended)
 - **Environments**: `OCI_DB_URL`, `KBO_USER_ID`, `KBO_USER_PWD`, `TELEGRAM_BOT_TOKEN`, per-category `TELEGRAM_CHAT_ID_*` for gap report routing
+- **Note**: 271→251 lines after extracting `kbo-job-setup` composite action
 
 ### Backfill Workflows (Consolidated, Tier 2 on GH Actions)
 | Matrix ID | Cron (KST) | Purpose |

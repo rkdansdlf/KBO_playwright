@@ -37,7 +37,7 @@ def _repo_python_files():
     for root_name in ("src", "scripts"):
         root = REPO_ROOT / root_name
         for path in root.rglob("*.py"):
-            if "__pycache__" not in path.parts:
+            if "__pycache__" not in path.parts and "archived" not in path.parts:
                 yield path
 
 

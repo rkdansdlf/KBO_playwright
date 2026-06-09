@@ -1,5 +1,6 @@
 import argparse
 import logging
+from collections.abc import Sequence
 
 from src.db.engine import SessionLocal
 from src.services.matchup_engine import MatchupEngine
@@ -35,12 +36,11 @@ def batch_calculate_matchups(years: list[int], sync_oci: bool = False):
             logger.warning("⚠️ OCI_DB_URL not set, skipping sync.")
 
 
-if __name__ == "__main__":
+def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Calculate Matchup and Split matrices.")
     parser.add_argument("--years", type=str, default="2020-2026")
     parser.add_argument("--sync", action="store_true", help="Sync results to OCI")
-
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
 
     if "-" in args.years:
         start, end = map(int, args.years.split("-"))
@@ -49,3 +49,9 @@ if __name__ == "__main__":
         target_years = [int(args.years)]
 
     batch_calculate_matchups(target_years, sync_oci=args.sync)
+    return 0
+
+
+if __name__ == "__main__":
+    import sys
+    sys.exit(main())

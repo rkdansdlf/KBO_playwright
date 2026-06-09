@@ -11,7 +11,7 @@ import os
 from dataclasses import dataclass
 from datetime import date, datetime
 from pathlib import Path
-from typing import Iterable, Sequence
+from collections.abc import Iterable, Sequence
 
 from sqlalchemy import and_, or_
 
@@ -44,7 +44,7 @@ class ReviewRegenReportRow:
     oci_status: str = ""
     message: str = ""
 
-    def as_csv_row(self) -> dict:
+    def as_csv_row(self) -> dict[str, Any]:
         return {
             "game_id": self.game_id,
             "game_date": self.game_date,

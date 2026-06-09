@@ -4,7 +4,8 @@ import json
 import re
 from html import unescape
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any
+from collections.abc import Iterable
 
 from src.crawlers.relay_crawler import RelayCrawler
 

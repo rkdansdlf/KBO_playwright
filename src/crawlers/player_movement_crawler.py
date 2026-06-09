@@ -107,12 +107,6 @@ class PlayerMovementCrawler:
                     await next_page_link.click()
                     clicked = True
                 else:
-                    # Try "Next" arrow ( > ) or "Next 10" arrow ( >> )
-                    # Note: 'pg_next' is typically single page advance. 'pg_last' is next block.
-                    # If we are at end of block (e.g. Page 10), explicit '11' is NOT visible.
-                    # We MUST click arrow. which arrow?
-                    # The subagent said `pg_next` is for next page. `pg_last` is for next 10.
-                    # Let's try `pg_next` first.
                     next_arrow = page.locator("a.pg_next")
 
                     if await next_arrow.count() > 0 and await next_arrow.is_visible():

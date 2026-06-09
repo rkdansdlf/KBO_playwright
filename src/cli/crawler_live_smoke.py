@@ -10,7 +10,8 @@ import json
 import logging
 import os
 from datetime import datetime
-from typing import Any, Mapping, Sequence
+from typing import Any
+from collections.abc import Mapping, Sequence
 
 from src.crawlers.game_detail_crawler import GameDetailCrawler
 from src.crawlers.relay_crawler import RelayCrawler

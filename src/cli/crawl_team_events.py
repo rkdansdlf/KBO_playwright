@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
-from typing import Sequence
+from collections.abc import Sequence
 
 from src.crawlers.team_event_crawler import TeamEventCrawler
 

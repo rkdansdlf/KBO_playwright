@@ -16,7 +16,8 @@ import sys
 from collections import Counter
 from datetime import date, datetime, timedelta
 from pathlib import Path
-from typing import Any, Callable, Mapping, Sequence
+from typing import Any
+from collections.abc import Callable, Mapping, Sequence
 from zoneinfo import ZoneInfo
 
 from sqlalchemy import or_, select
@@ -1214,7 +1215,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def main(argv: Sequence[str] | None = None):
+def main(argv: Sequence[str] | None = None) -> int:
     parser = build_arg_parser()
     args = parser.parse_args(argv)
 

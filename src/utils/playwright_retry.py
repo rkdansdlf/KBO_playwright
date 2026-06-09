@@ -5,12 +5,15 @@ from __future__ import annotations
 import contextlib
 import logging
 import os
-import time
 
 from playwright.sync_api import Page
 from playwright.sync_api import TimeoutError as PlaywrightTimeout
 
+from src.utils.request_policy import RequestPolicy
+
 logger = logging.getLogger(__name__)
+
+_policy = RequestPolicy()
 
 # Environment-variable defaults (set in .env, evaluated once at import)
 _SELECTOR_TIMEOUT = int(os.getenv("KBO_PLAYWRIGHT_SELECTOR_TIMEOUT", "15000"))
@@ -37,12 +40,12 @@ def retry_navigation(
             logger.warning(f"Timeout navigating to {url} on attempt {attempt}")
             if attempt == max_retries:
                 return False
-            time.sleep(attempt * 2)
+            _policy.delay()
         except Exception as e:
             logger.error(f"Error navigating to {url} on attempt {attempt}: {e}")
             if attempt == max_retries:
                 return False
-            time.sleep(attempt * 2)
+            _policy.delay()
     return False
 
 
@@ -65,7 +68,7 @@ def retry_click(
             logger.warning(f"Click on {selector} timed out on attempt {attempt}, retrying...")
             with contextlib.suppress(Exception):
                 page.reload(wait_until="networkidle", timeout=timeout)
-            time.sleep(2)
+            _policy.delay()
     return False
 
 
@@ -88,5 +91,5 @@ def retry_wait_for_selector(
             # Try reloading if it's a transient issue
             with contextlib.suppress(Exception):
                 page.reload(wait_until="networkidle", timeout=timeout)
-            time.sleep(2)
+            _policy.delay()
     return False

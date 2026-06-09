@@ -82,7 +82,7 @@ async def run_periodic_extras(
     logger.info(f"{'=' * 60}\n")
 
 
-def main():
+def main() -> int:
     parser = argparse.ArgumentParser(description="KBO Periodic Extras Orchestrator")
     parser.add_argument("--year", type=int, help="Target year. Defaults to current year.")
     parser.add_argument("--sync", action="store_true", help="Sync to OCI")

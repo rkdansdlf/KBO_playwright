@@ -13,7 +13,7 @@ import argparse
 import asyncio
 import logging
 from datetime import datetime
-from typing import Sequence
+from collections.abc import Sequence
 
 from src.crawlers.transit_time_crawler import JAMSIL_ORIGINS, TransitTimeCrawler
 

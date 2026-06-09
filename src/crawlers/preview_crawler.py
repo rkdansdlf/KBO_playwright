@@ -15,8 +15,6 @@ import httpx
 
 logger = logging.getLogger(__name__)
 
-import contextlib
-
 from src.utils.playwright_pool import AsyncPlaywrightPool
 from src.utils.team_codes import normalize_kbo_game_id
 
@@ -342,11 +340,15 @@ class PreviewCrawler:
             return []
         finally:
             if page is not None and pool is not None:
-                with contextlib.suppress(Exception):
+                try:
                     await pool.release(page)
+                except Exception:
+                    logger.exception("Pool release failed")
             if owns_pool and pool is not None:
-                with contextlib.suppress(Exception):
+                try:
                     await pool.close()
+                except Exception:
+                    logger.exception("Pool close failed")
 
     def _parse_lineup_grid(self, grid_str_list: list[str]) -> list[dict[str, str]]:
         """Parses the nested KBO Lineup grid JSON string into a structured list."""

@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import argparse
 import logging
-from typing import Sequence
+from collections.abc import Sequence
 
 from src.db.engine import SessionLocal
 from src.repositories.source_registry_repository import DataSourceRepository

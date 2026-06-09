@@ -324,7 +324,6 @@ def crawl_all_fielding_stats(year=None):
                                         "cs_pct": s_float(cells[16]),
                                     }
                                 )
-                                # print(f"   ✓ {fielding_data_map[key]['player_name']} ({row_team}) 상세 추가 완료")
                             else:
                                 # 수비 데이터 맵에 없는 경우 (드문 케이스지만 추가)
                                 pass

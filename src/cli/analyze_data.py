@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import argparse
 import logging
-from typing import Sequence
+from collections.abc import Sequence
 
 from src.analyzers.data_summary import generate_report
 

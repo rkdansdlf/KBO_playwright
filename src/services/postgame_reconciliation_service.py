@@ -6,7 +6,8 @@ import logging
 from dataclasses import dataclass, field
 from datetime import date, datetime
 from pathlib import Path
-from typing import Any, Callable, Iterable, Protocol
+from typing import Any, Protocol
+from collections.abc import Callable, Iterable
 
 from sqlalchemy import and_, func, or_
 

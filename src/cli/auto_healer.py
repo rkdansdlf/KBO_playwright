@@ -23,7 +23,7 @@ import argparse
 import asyncio
 import logging
 from datetime import datetime, timedelta
-from typing import Sequence
+from collections.abc import Sequence
 
 from sqlalchemy import select, text
 
@@ -333,7 +333,7 @@ async def run_pbp_healer_async(
     dry_run: bool = False,
     lookback_days: int = 3,
     target_game_ids: list[str] | None = None,
-) -> dict:
+) -> dict[str, Any]:
     """
     PBP Auto-Healer:
       1. Scan DB for unverified PBP games.
@@ -546,7 +546,11 @@ def run_healer(argv: Sequence[str] | None = None) -> int:
     return asyncio.run(run_healer_async(dry_run=args.dry_run, reset_checkpoint=args.reset))
 
 
+def main(argv: Sequence[str] | None = None) -> int:
+    return run_healer(argv)
+
+
 if __name__ == "__main__":
     import sys
 
-    sys.exit(run_healer())
+    sys.exit(main())

@@ -9,7 +9,8 @@ try:
 except ImportError:
     UTC = UTC
 from pathlib import Path
-from typing import Any, Callable, Iterable
+from typing import Any
+from collections.abc import Callable, Iterable
 
 from .base import (
     CapabilityRecord,

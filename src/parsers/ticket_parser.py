@@ -4,14 +4,11 @@ Parser for team ticket pages. Extracts seat grades and prices (weekday/weekend).
 
 from __future__ import annotations
 
-import logging
 import re
 from datetime import datetime
 from typing import Any
 
-from bs4 import BeautifulSoup
-
-logger = logging.getLogger(__name__)
+from src.parsers.base_parser import BaseStadiumParser
 
 TEAM_CODE_FROM_SOURCE_KEY = {
     "lg_twins_ticket": ("LG", "JAMSIL"),
@@ -33,49 +30,32 @@ PRICE_PATTERN = re.compile(
 WEEKEND_PATTERN = re.compile(r"주말\s*([가-힣]+(?:석|존|zone|Zone))\s*:?\s*(\d{1,3}(?:,\d{3})*)", re.MULTILINE)
 
 
-def parse_ticket_page(html: str, source_key: str, metadata: dict | None = None) -> list[dict[str, Any]]:
-    team_info = TEAM_CODE_FROM_SOURCE_KEY.get(source_key)
-    if not team_info:
-        logger.warning(f"No team mapping for source_key={source_key}")
-        return []
+class TicketParser(BaseStadiumParser):
+    SOURCE_KEY_MAP = TEAM_CODE_FROM_SOURCE_KEY
 
-    team_code, stadium_id = team_info
-    season = datetime.now().year
-    meta_season = (metadata or {}).get("season")
-    if meta_season:
-        season = int(meta_season)
+    def parse(self) -> list[dict[str, Any]]:
+        team_info = self.SOURCE_KEY_MAP.get(self.source_key)
+        if not team_info:
+            import logging
+            logging.getLogger(__name__).warning(f"No team mapping for source_key={self.source_key}")
+            return []
 
-    soup = BeautifulSoup(html, "html.parser")
-    text_content = soup.get_text(separator=" ", strip=True)
+        team_code, stadium_id = team_info
+        season = datetime.now().year
+        meta_season = self.metadata.get("season")
+        if meta_season:
+            season = int(meta_season)
 
-    prices_dict = {}
-    for match in PRICE_PATTERN.finditer(text_content):
-        grade, price_str = match.group(1), match.group(2).replace(",", "")
-        key = (team_code, season, grade, "weekday", "general")
-        prices_dict[key] = {
-            "team_id": team_code,
-            "stadium_id": stadium_id,
-            "season": season,
-            "seat_grade": grade,
-            "day_type": "weekday",
-            "price": int(price_str),
-            "currency": "KRW",
-            "audience_type": "general",
-            "effective_from": None,
-            "effective_to": None,
-        }
-
-    for match in WEEKEND_PATTERN.finditer(text_content):
-        grade, price_str = match.group(1), match.group(2).replace(",", "")
-        key_weekday = (team_code, season, grade, "weekday", "general")
-        key_weekend = (team_code, season, grade, "weekend", "general")
-        if key_weekday in prices_dict:
-            prices_dict[key_weekend] = {
+        prices_dict = {}
+        for match in PRICE_PATTERN.finditer(self.text):
+            grade, price_str = match.group(1), match.group(2).replace(",", "")
+            key = (team_code, season, grade, "weekday", "general")
+            prices_dict[key] = {
                 "team_id": team_code,
                 "stadium_id": stadium_id,
                 "season": season,
                 "seat_grade": grade,
-                "day_type": "weekend",
+                "day_type": "weekday",
                 "price": int(price_str),
                 "currency": "KRW",
                 "audience_type": "general",
@@ -83,7 +63,29 @@ def parse_ticket_page(html: str, source_key: str, metadata: dict | None = None) 
                 "effective_to": None,
             }
 
-    return list(prices_dict.values())
+        for match in WEEKEND_PATTERN.finditer(self.text):
+            grade, price_str = match.group(1), match.group(2).replace(",", "")
+            key_weekday = (team_code, season, grade, "weekday", "general")
+            key_weekend = (team_code, season, grade, "weekend", "general")
+            if key_weekday in prices_dict:
+                prices_dict[key_weekend] = {
+                    "team_id": team_code,
+                    "stadium_id": stadium_id,
+                    "season": season,
+                    "seat_grade": grade,
+                    "day_type": "weekend",
+                    "price": int(price_str),
+                    "currency": "KRW",
+                    "audience_type": "general",
+                    "effective_from": None,
+                    "effective_to": None,
+                }
+
+        return list(prices_dict.values())
+
+
+def parse_ticket_page(html: str, source_key: str, metadata: dict[str, Any] | None = None) -> list[dict[str, Any]]:
+    return TicketParser(html, source_key, metadata).parse()
 
 
 if __name__ == "__main__":
@@ -92,4 +94,4 @@ if __name__ == "__main__":
     html = sys.stdin.read() if not sys.stdin.isatty() else "<html><body><p>테이블석 : 150,000원</p></body></html>"
     result = parse_ticket_page(html, "lg_twins_ticket", {"season": 2025})
     for item in result:
-        logger.info(item)
+        print(item)

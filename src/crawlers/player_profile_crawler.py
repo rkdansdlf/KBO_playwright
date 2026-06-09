@@ -4,9 +4,11 @@ Collects extended player profile: photo_url, bats, throws, salary, draft info, d
 Source: KBO HitterDetail/PitcherDetail Basic.aspx
 """
 
+from typing import Any
 import asyncio
 import logging
 import re
+from typing import Any
 
 from playwright.async_api import Page
 
@@ -207,7 +209,7 @@ class PlayerProfileCrawler:
         player_id: str,
         *,
         position: str | None = None,
-    ) -> dict | None:
+    ) -> dict[str, Any] | None:
         """
         Crawl the profile detail page for player_id.
         Returns a dict with photo_url, bats, throws, debut_year,
@@ -229,7 +231,7 @@ class PlayerProfileCrawler:
             if owns_pool:
                 await pool.close()
 
-    async def _fetch_profile(self, page: Page, player_id: str, position: str | None) -> dict | None:
+    async def _fetch_profile(self, page: Page, player_id: str, position: str | None) -> dict[str, Any] | None:
         urls = self._select_urls(player_id, position)
         last_reason = "profile_not_found"
 
@@ -329,7 +331,7 @@ class PlayerProfileCrawler:
         self._last_failure_reason[str(player_id)] = last_reason
         return None
 
-    async def _load_profile_page(self, page: Page, url: str) -> dict:
+    async def _load_profile_page(self, page: Page, url: str) -> dict[str, Any]:
         await self.policy.delay_async(host="www.koreabaseball.com")
         # domcontentloaded avoids networkidle timeout on KBO pages
         await page.goto(url, wait_until="domcontentloaded", timeout=20000)

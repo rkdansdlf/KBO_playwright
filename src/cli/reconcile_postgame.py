@@ -6,7 +6,7 @@ import argparse
 import asyncio
 import logging
 from datetime import datetime, timedelta
-from typing import Sequence
+from collections.abc import Sequence
 
 from src.crawlers.game_detail_crawler import GameDetailCrawler
 from src.db.engine import SessionLocal

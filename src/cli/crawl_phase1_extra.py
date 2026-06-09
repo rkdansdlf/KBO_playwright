@@ -85,7 +85,7 @@ async def run_all(save: bool = False):
     run_all_seeds()
 
 
-def main():
+def main() -> int:
     parser = argparse.ArgumentParser(description="Phase 1 Supplementary Crawlers")
     parser.add_argument(
         "--type",

@@ -65,7 +65,7 @@ def _infer_game_date(result: NaverSearchResult) -> date | None:
     return date.today()
 
 
-def _result_to_notice(result: NaverSearchResult) -> dict:
+def _result_to_notice(result: NaverSearchResult) -> dict[str, Any]:
     combined_text = f"{result.title} {result.description}"
     source_name = TEAM_SOURCE_MAP.get(result.team_hint, SOURCE_NAME)
     game_date = _infer_game_date(result)

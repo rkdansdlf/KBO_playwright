@@ -10,7 +10,8 @@ from __future__ import annotations
 import argparse
 import logging
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any
+from collections.abc import Iterable
 
 from src.parsers.schedule_parser import parse_schedule_html
 from src.services.schedule_collection_service import save_schedule_games

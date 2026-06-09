@@ -16,7 +16,7 @@ import argparse
 import logging
 import sys
 from datetime import date as date_type
-from typing import Sequence
+from collections.abc import Sequence
 
 from sqlalchemy import text
 

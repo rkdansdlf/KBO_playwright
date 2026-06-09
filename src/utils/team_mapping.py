@@ -6,7 +6,6 @@ KBO 팀명 매핑 유틸리티
 OCI team_history 테이블과 연동하여 동적 매핑 제공
 """
 
-import os
 
 from sqlalchemy import create_engine, text
 from sqlalchemy.exc import SQLAlchemyError

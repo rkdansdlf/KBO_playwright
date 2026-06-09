@@ -9,7 +9,8 @@ from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Callable, Iterable, Sequence
+from typing import Any
+from collections.abc import Callable, Iterable, Sequence
 
 from src.db.engine import SessionLocal
 from src.models.game import Game, GameEvent, GamePlayByPlay

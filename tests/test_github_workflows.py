@@ -107,10 +107,11 @@ def test_kbo_automation_recalc_stats_uses_supported_cli_flags_and_syncs():
 
 def test_local_github_actions_are_used_after_checkout():
     local_actions = ("uses: ./.github/actions/python-env", "uses: ./.github/actions/notify")
+    job_setup_actions = ("uses: ./.github/actions/kbo-job-setup",)
 
     for path in _workflow_files():
         for job_name, job_block in _job_blocks(_read(path)):
-            if not any(action in job_block for action in local_actions):
+            if not any(action in job_block for action in (*local_actions, *job_setup_actions)):
                 continue
 
             step_lines = [
@@ -119,16 +120,26 @@ def test_local_github_actions_are_used_after_checkout():
                 if line.strip().startswith("- uses:") or line.strip().startswith("- name:")
             ]
             assert step_lines, f"{path.name}:{job_name} has no steps"
-            assert step_lines[0] == "- uses: actions/checkout@v4", (
-                f"{path.name}:{job_name} must start with actions/checkout@v4"
+
+            first_step = step_lines[0]
+            uses_kbo_setup = "uses: ./.github/actions/kbo-job-setup" in first_step
+            uses_checkout = first_step == "- uses: actions/checkout@v4"
+            assert uses_kbo_setup or uses_checkout, (
+                f"{path.name}:{job_name} must start with actions/checkout@v4 or kbo-job-setup"
             )
 
-            first_checkout = job_block.find("uses: actions/checkout@v4")
-            first_local_action = min(job_block.find(action) for action in local_actions if action in job_block)
-            assert first_checkout < first_local_action, f"{path.name}:{job_name} local action before checkout"
+            if uses_checkout:
+                first_checkout = job_block.find("uses: actions/checkout@v4")
+                first_local_action = min(
+                    job_block.find(action) for action in local_actions if action in job_block
+                )
+                assert first_checkout < first_local_action, f"{path.name}:{job_name} local action before checkout"
 
     python_env = _read(ROOT / ".github/actions/python-env/action.yml")
     assert "actions/checkout" not in python_env
+
+    kbo_setup = _read(ROOT / ".github/actions/kbo-job-setup/action.yml")
+    assert "actions/checkout" in kbo_setup
 
 
 def test_daily_kbo_sync_hydrates_fresh_runner_jobs():

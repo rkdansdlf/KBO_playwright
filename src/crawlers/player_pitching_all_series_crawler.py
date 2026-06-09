@@ -22,6 +22,7 @@ import argparse
 import logging
 import os
 import re
+from datetime import datetime
 from dataclasses import dataclass, field
 
 logger = logging.getLogger(__name__)
@@ -36,6 +37,7 @@ from src.models.player import PlayerBasic
 from src.models.season import KboSeason
 from src.repositories.player_season_pitching_repository import save_pitching_stats_to_db
 from src.utils.fallback_monitor import FallbackMonitor
+from src.utils.player_stats_helpers import extract_rows_fast
 from src.utils.player_season_stat_validation import filter_valid_season_stat_payloads
 from src.utils.playwright_retry import retry_wait_for_selector
 from src.utils.request_policy import RequestPolicy
@@ -194,34 +196,6 @@ def extract_player_id(href: str | None) -> int | None:
         return None
     match = re.search(r"playerId=(\d+)", href)
     return int(match.group(1)) if match else None
-
-
-def _extract_rows_fast(page: Page, table_selector: str = "table.tData01") -> list[dict[str, object]] | None:
-    try:
-        payload = page.evaluate(
-            """
-            (selector) => {
-                const table = document.querySelector(selector);
-                if (!table) return null;
-                const body = table.tBodies && table.tBodies.length ? table.tBodies[0] : table;
-                const rows = Array.from(body.querySelectorAll('tr'));
-                return rows.map((row) => {
-                    const cells = Array.from(row.querySelectorAll('td')).map(td => (td.textContent || '').trim());
-                    const link = row.querySelector('a');
-                    return {
-                        cells,
-                        linkText: link ? (link.textContent || '').trim() : null,
-                        linkHref: link ? link.getAttribute('href') : null,
-                    };
-                });
-            }
-            """,
-            table_selector,
-        )
-        return payload or []
-    except Exception:
-        logger.exception("Failed to execute JS payload")
-        return None
 
 
 def wait_for_table(page: Page, timeout: int = 30000) -> None:
@@ -631,7 +605,7 @@ def parse_basic2_page(
         logger.warning("⚠️  Basic2 테이블 헤더 파싱 실패")
         return 0
 
-    rows_data = _extract_rows_fast(page) if use_fast else None
+    rows_data = extract_rows_fast(page, selector="table.tData01", link_query="a") if use_fast else None
     rows = rows_data if rows_data is not None else page.query_selector_all("table.tData01 tbody tr")
     processed = 0
 
@@ -968,13 +942,6 @@ def crawl_pitcher_series(
 
         logger.info(f"✅ Basic1 수집 완료: 총 {len(pitchers)}명")
 
-        # Step 2: Basic2 (정규시즌만 실행, by_team 여부와 상관없이 '전체'에서 시도하거나 무시)
-        # by_team일 때 Basic2를 팀별로 돌면 너무 오래 걸림.
-        # 일단 Basic2는 '전체' 모드에서만 돌리거나, by_team일 때는 스킵하는게 나을 수도 있음.
-        # 하지만 상세 스탯이 필요하다면 돌려야 함.
-        # 여기서는 by_team일 때 Basic2는 스킵하도록 함 (ID 확보 우선).
-        # 추후 필요시 Basic2 팀별 순회 추가.
-
         if series_key == "regular" and not by_team:
             if not setup_pitcher_page(page, BASIC2_URL, year, series_info["value"], policy=policy):
                 logger.warning("⚠️  Basic2 페이지 설정 실패. 추가 지표 없이 종료합니다.")
@@ -1044,7 +1011,7 @@ def crawl_pitcher_series(
 
 def parse_arguments() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="KBO 투수 기록 크롤러 (Basic1/Basic2)")
-    parser.add_argument("--year", type=int, default=2025, help="시즌 연도 (기본: 2025)")
+    parser.add_argument("--year", type=int, default=datetime.now().year, help="시즌 연도 (기본: 당해 연도)")
     parser.add_argument(
         "--series",
         type=str,

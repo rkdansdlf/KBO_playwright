@@ -24,11 +24,13 @@ class KBOTextParser:
             return 7
 
         runners = 0
-        if "1루" in text:
+        # Normalize comma-separated runners: "1,2루" -> "1루 2루"
+        normalized = text.replace(",", "루 ").replace("루루", "루")
+        if "1루" in normalized:
             runners |= 1
-        if "2루" in text:
+        if "2루" in normalized:
             runners |= 2
-        if "3루" in text:
+        if "3루" in normalized:
             runners |= 4
 
         return runners

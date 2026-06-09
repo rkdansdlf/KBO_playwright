@@ -283,7 +283,7 @@ def remove_duplicate_chunks(session) -> int:
 # ---------------------------------------------------------------------------
 
 
-def main():
+def main() -> int:
     parser = argparse.ArgumentParser(description="KBO RAG chunk quality verifier")
     parser.add_argument(
         "--source",

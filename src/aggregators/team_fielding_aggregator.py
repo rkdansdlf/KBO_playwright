@@ -18,7 +18,7 @@ class TeamFieldingAggregator:
     def __init__(self, session: Session):
         self.session = session
 
-    def aggregate_fielding(self, season: int, team_code: str) -> dict:
+    def aggregate_fielding(self, season: int, team_code: str) -> dict[str, Any]:
         rows = (
             self.session.query(PlayerSeasonFielding)
             .filter(
@@ -65,7 +65,7 @@ class TeamFieldingAggregator:
             "range_factor_per_game": round(rg, 3) if rg else None,
         }
 
-    def aggregate_baserunning(self, season: int, team_code: str) -> dict:
+    def aggregate_baserunning(self, season: int, team_code: str) -> dict[str, Any]:
         rows = (
             self.session.query(PlayerSeasonBaserunning)
             .filter(

@@ -8,6 +8,7 @@ Imported by scripts/scheduler.py as the crawl_monthly_team_audit_job target.
 Runs on the 1st of every month at 04:00 KST via APScheduler.
 """
 
+from typing import Any
 import json
 import logging
 import sys
@@ -21,7 +22,7 @@ from src.validators.quality_gate import run_quality_gate
 logger = logging.getLogger(__name__)
 
 
-def run_monthly_team_audit(year: int) -> dict:
+def run_monthly_team_audit(year: int) -> dict[str, Any]:
     """Run team stats consistency check and return results."""
     with SessionLocal() as session:
         gate = run_quality_gate(session, year)
@@ -86,7 +87,7 @@ def crawl_monthly_team_audit_job():
     logger.info("Monthly team stats audit completed for %s", target_year)
 
 
-def main():
+def main() -> int:
     """CLI entry point for direct invocation (e.g., from GitHub Actions)."""
     import argparse
 
