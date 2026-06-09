@@ -9,8 +9,8 @@ import logging
 import os
 import random
 import time
-from typing import Any
 from collections.abc import Callable, Iterable
+from typing import Any
 
 from src.utils.throttle import throttle
 

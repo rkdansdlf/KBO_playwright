@@ -8,11 +8,11 @@ import io
 import json
 import logging
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime
 from itertools import count
 from typing import Any
-from collections.abc import Callable
 
 from sqlalchemy import bindparam, create_engine, inspect, text
 from sqlalchemy.exc import DBAPIError, OperationalError, SQLAlchemyError

@@ -6,11 +6,11 @@ Docs/schema/player_season_data.md 스키마를 기반으로 구현
 기타시리즈: Basic1 기본 데이터만 수집
 """
 
-from typing import Any
 import logging
 import os
 import sys
 from datetime import datetime
+from typing import Any
 
 logger = logging.getLogger(__name__)
 

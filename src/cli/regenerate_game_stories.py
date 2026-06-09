@@ -7,10 +7,11 @@ import csv
 import hashlib
 import logging
 import os
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from datetime import date, datetime
 from pathlib import Path
-from collections.abc import Iterable, Sequence
+from typing import Any
 
 from sqlalchemy import and_, or_
 
@@ -22,7 +23,6 @@ from src.models.game import Game, GameEvent, GameSummary
 from src.services.game_story_builder import STORY_SUMMARY_TYPE, GameStoryBuilder
 from src.sync.oci_sync import OCISync
 from src.utils.game_status import COMPLETED_LIKE_GAME_STATUSES
-
 
 logger = logging.getLogger(__name__)
 

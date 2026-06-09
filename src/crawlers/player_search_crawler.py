@@ -8,11 +8,11 @@ import asyncio
 import logging
 import os
 import re
-from typing import Any
 from collections import Counter
 from dataclasses import dataclass
 from datetime import date as date_type
 from datetime import datetime
+from typing import Any
 
 from playwright.async_api import Page
 

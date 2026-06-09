@@ -2,10 +2,10 @@ from __future__ import annotations
 
 import json
 import re
+from collections.abc import Iterable
 from html import unescape
 from pathlib import Path
 from typing import Any
-from collections.abc import Iterable
 
 from src.crawlers.relay_crawler import RelayCrawler
 

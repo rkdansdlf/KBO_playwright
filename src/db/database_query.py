@@ -4,7 +4,6 @@ Provides specialized query functions for player and game data.
 """
 
 import logging
-
 from typing import Any
 
 logger = logging.getLogger(__name__)

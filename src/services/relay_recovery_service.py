@@ -6,11 +6,11 @@ import asyncio
 import csv
 import logging
 from collections import defaultdict
+from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 from typing import Any
-from collections.abc import Callable, Iterable, Sequence
 
 from src.db.engine import SessionLocal
 from src.models.game import Game, GameEvent, GamePlayByPlay

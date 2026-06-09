@@ -22,8 +22,9 @@ from __future__ import annotations
 import argparse
 import asyncio
 import logging
-from datetime import datetime, timedelta
 from collections.abc import Sequence
+from datetime import datetime, timedelta
+from typing import Any
 
 from sqlalchemy import select, text
 
@@ -41,7 +42,6 @@ from src.services.game_write_contract import GameWriteContract
 from src.services.player_id_resolver import PlayerIdResolver
 from src.services.recovery_manager import RecoveryManager
 from src.utils.alerting import SlackWebhookClient, TelegramBotClient
-
 
 logger = logging.getLogger(__name__)
 

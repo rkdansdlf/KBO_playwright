@@ -14,9 +14,9 @@ from __future__ import annotations
 
 import argparse
 import logging
+from collections.abc import Sequence
 from datetime import datetime, timedelta
 from typing import Any
-from collections.abc import Sequence
 from zoneinfo import ZoneInfo
 
 from src.cli.freshness_gate import collect_freshness_issues

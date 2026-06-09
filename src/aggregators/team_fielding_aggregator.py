@@ -5,6 +5,7 @@ Aggregate player-level fielding & baserunning stats to team-season level.
 from __future__ import annotations
 
 import logging
+from typing import Any
 
 from sqlalchemy.orm import Session
 

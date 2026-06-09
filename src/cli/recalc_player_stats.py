@@ -14,13 +14,12 @@ from __future__ import annotations
 import argparse
 import logging
 import sys
-
-from sqlalchemy.exc import SQLAlchemyError
-from typing import Any
 from collections.abc import Sequence
+from typing import Any
 
 from sqlalchemy import func, text
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from src.db.engine import Engine, SessionLocal

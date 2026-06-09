@@ -4,9 +4,9 @@ Ranking aggregator that normalizes fielding/baserunning stats.
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass
 from typing import Any
-from collections.abc import Iterable
 
 from src.repositories.ranking_repository import RankingRepository
 

@@ -6,8 +6,8 @@ import argparse
 import json
 import logging
 import os
-from datetime import datetime, timedelta
 from collections.abc import Sequence
+from datetime import datetime, timedelta
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker

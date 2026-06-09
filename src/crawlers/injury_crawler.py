@@ -1,9 +1,9 @@
-from typing import Any
 import argparse
 import contextlib
 import logging
 import re
 from datetime import datetime
+from typing import Any
 
 from sqlalchemy.exc import SQLAlchemyError
 

@@ -9,8 +9,8 @@ import argparse
 import asyncio
 import logging
 import os
-from datetime import datetime
 from collections.abc import Sequence
+from datetime import datetime
 
 from src.crawlers.preview_crawler import PreviewCrawler
 from src.db.engine import SessionLocal

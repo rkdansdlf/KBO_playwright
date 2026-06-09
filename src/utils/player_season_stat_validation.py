@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 from collections import Counter
-from typing import Any
 from collections.abc import Iterable, Mapping
+from typing import Any
 
 from src.utils.player_validation import normalize_player_id, normalize_player_name, validate_player_payload
 

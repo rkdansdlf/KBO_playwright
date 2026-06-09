@@ -9,8 +9,8 @@ from __future__ import annotations
 import argparse
 import asyncio
 import logging
-from datetime import datetime
 from collections.abc import Sequence
+from datetime import datetime
 
 from dateutil.relativedelta import relativedelta
 
