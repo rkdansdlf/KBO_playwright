@@ -356,7 +356,11 @@ class PlayerIdResolver:
         if override_key_no_pitcher in overrides:
             resolved_id = overrides[override_key_no_pitcher]
             logger.info(
-                "   [OVERRIDE RESOLVED (relaxed)] %s (%s, %s) -> %s", player_name, team_code, season, resolved_id,
+                "   [OVERRIDE RESOLVED (relaxed)] %s (%s, %s) -> %s",
+                player_name,
+                team_code,
+                season,
+                resolved_id,
             )
             return resolved_id
 

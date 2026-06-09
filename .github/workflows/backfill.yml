@@ -70,12 +70,7 @@ jobs:
             secrets_group: kbo_auth
 
     name: ${{ matrix.name }}
-    if: |
-      github.event_name == 'workflow_dispatch' && (
-        github.event.inputs.backfill_id == matrix.id ||
-        github.event.inputs.backfill_id == 'all'
-      ) ||
-      github.event_name == 'schedule' && github.event.schedule == matrix.cron
+    if: ${{ (github.event_name == 'workflow_dispatch' && (github.event.inputs.backfill_id == matrix.id || github.event.inputs.backfill_id == 'all')) || (github.event_name == 'schedule' && github.event.schedule == matrix.cron) }}
 
     runs-on: ubuntu-latest
 
