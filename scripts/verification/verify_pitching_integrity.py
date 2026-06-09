@@ -1,8 +1,9 @@
+import logging
 import sqlite3
 
 import pandas as pd
 
-
+logger = logging.getLogger(__name__)
 def verify_pitching_integrity():
     conn = sqlite3.connect("data/kbo_dev.db")
 
@@ -13,10 +14,10 @@ def verify_pitching_integrity():
         2026: (2026, "2026-03-28", "2026-04-19"),
     }
 
-    print("=== PITCHING STATS INTEGRITY VERIFICATION (2024-2026) ===")
+    logger.info("=== PITCHING STATS INTEGRITY VERIFICATION (2024-2026) ===")
 
     for year, (sid, start, end) in SEASONS.items():
-        print(f"\n--- {year} Regular Season (ID: {sid}) ---")
+        logger.info(f"\n--- {year} Regular Season (ID: {sid}) ---")
 
         query = f"""
         WITH game_agg AS (
@@ -78,12 +79,12 @@ def verify_pitching_integrity():
         mismatches = conn.execute(m_query).fetchone()[0]
 
         if mismatches == 0:
-            print(f"✅ PERFECT MATCH: All {total_p} pitchers match 100%!")
+            logger.info(f"✅ PERFECT MATCH: All {total_p} pitchers match 100%!")
         else:
             accuracy = ((total_p - mismatches) / total_p) * 100
-            print(f"📊 ACCURACY: {accuracy:.1f}% ({total_p - mismatches} / {total_p} pitchers match)")
-            print("Sample Mismatches (Sorted by innings/ER difference):")
-            print(df.to_string(index=False))
+            logger.info(f"📊 ACCURACY: {accuracy:.1f}% ({total_p - mismatches} / {total_p} pitchers match)")
+            logger.info("Sample Mismatches (Sorted by innings/ER difference):")
+            logger.info(df.to_string(index=False))
 
     conn.close()
 

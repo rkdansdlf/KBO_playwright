@@ -22,9 +22,11 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
+import logging
+
 from src.db.engine import SessionLocal
 
-
+logger = logging.getLogger(__name__)
 def audit_game_logic(year: int | None = None, game_id: str | None = None) -> list[dict[str, Any]]:
     violations = []
 
@@ -40,7 +42,7 @@ def audit_game_logic(year: int | None = None, game_id: str | None = None) -> lis
             params["game_id"] = game_id
 
         # 1. Score Consistency (Innings vs Final)
-        print("   - Checking Score Consistency (Innings vs Final)...")
+        logger.info("   - Checking Score Consistency (Innings vs Final)...")
         score_inconsistencies = (
             session.execute(
                 text(f"""
@@ -81,7 +83,7 @@ def audit_game_logic(year: int | None = None, game_id: str | None = None) -> lis
             )
 
         # 2. Batting Formula (PA = AB + BB + HBP + SH + SF)
-        print("   - Checking Batting Formula (PA = AB + BB + HBP + SH + SF)...")
+        logger.info("   - Checking Batting Formula (PA = AB + BB + HBP + SH + SF)...")
         batting_formula_violations = (
             session.execute(
                 text(f"""
@@ -113,7 +115,7 @@ def audit_game_logic(year: int | None = None, game_id: str | None = None) -> lis
             )
 
         # 3. Hit Consistency (H <= AB)
-        print("   - Checking Hit Consistency (H <= AB)...")
+        logger.info("   - Checking Hit Consistency (H <= AB)...")
         hit_violations = (
             session.execute(
                 text(f"""
@@ -146,7 +148,7 @@ def audit_game_logic(year: int | None = None, game_id: str | None = None) -> lis
 
         # 4. Cross-domain consistency (Batting H vs Pitching H Allowed)
         # Checking team totals: Away Batting H sum vs Home Pitching H_allowed sum
-        print("   - Checking Cross-domain consistency (Team Totals)...")
+        logger.info("   - Checking Cross-domain consistency (Team Totals)...")
         cross_domain_violations = (
             session.execute(
                 text(f"""
@@ -200,7 +202,7 @@ def audit_game_logic(year: int | None = None, game_id: str | None = None) -> lis
             )
 
         # 5. Earned Run Constraint (Team ER <= Opponent Runs)
-        print("   - Checking Earned Run Constraint (Team ER <= Opponent Runs)...")
+        logger.info("   - Checking Earned Run Constraint (Team ER <= Opponent Runs)...")
         er_violations = (
             session.execute(
                 text(f"""
@@ -241,19 +243,19 @@ def main():
     parser.add_argument("--fail", action="store_true", help="Exit with non-zero code if violations found")
     args = parser.parse_args()
 
-    print("🕵️  Starting Deep Statistical Audit...")
+    logger.info("🕵️  Starting Deep Statistical Audit...")
     if args.year:
-        print(f"   Filter: Year={args.year}")
+        logger.info(f"   Filter: Year={args.year}")
     if args.game_id:
-        print(f"   Filter: GameID={args.game_id}")
+        logger.info(f"   Filter: GameID={args.game_id}")
 
     violations = audit_game_logic(year=args.year, game_id=args.game_id)
 
     if not violations:
-        print("✅ No logical inconsistencies found.")
+        logger.info("✅ No logical inconsistencies found.")
         sys.exit(0)
 
-    print(f"❌ Found {len(violations)} logical inconsistencies:")
+    logger.info(f"❌ Found {len(violations)} logical inconsistencies:")
     # Group by Game ID for better readability
     grouped = {}
     for v in violations:
@@ -261,9 +263,9 @@ def main():
 
     for gid in sorted(grouped.keys()):
         msgs = grouped[gid]
-        print(f"  - [{gid}] {msgs[0]['game_date']}")
+        logger.info(f"  - [{gid}] {msgs[0]['game_date']}")
         for m in msgs:
-            print(f"    * {m['reason']}")
+            logger.info(f"    * {m['reason']}")
 
     if args.fail:
         sys.exit(1)

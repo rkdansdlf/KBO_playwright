@@ -3,13 +3,17 @@ Cleanup script to remove corrupted historical player records.
 Targets records with unrealistic values (e.g., wins > 35, games > 165).
 """
 
+import logging
+
 from src.db.engine import SessionLocal
 from src.models.player import PlayerSeasonBatting, PlayerSeasonPitching
+
+logger = logging.getLogger(__name__)
 
 
 def cleanup_corrupted_stats():
     with SessionLocal() as session:
-        print("🧹 Starting precision cleaning of historical data...")
+        logger.info("🧹 Starting precision cleaning of historical data...")
 
         # 1. Pitching Cleanup
         p_corrupted = (
@@ -18,7 +22,7 @@ def cleanup_corrupted_stats():
             .all()
         )
 
-        print(f"   Found {len(p_corrupted)} corrupted pitching records.")
+        logger.info("   Found %s corrupted pitching records.", len(p_corrupted))
         for rec in p_corrupted:
             session.delete(rec)
 
@@ -29,12 +33,12 @@ def cleanup_corrupted_stats():
             .all()
         )
 
-        print(f"   Found {len(b_corrupted)} corrupted batting records.")
+        logger.info("   Found %s corrupted batting records.", len(b_corrupted))
         for rec in b_corrupted:
             session.delete(rec)
 
         session.commit()
-        print("✅ Cleanup complete. Database is now purged of unrealistic outliers.")
+        logger.info("✅ Cleanup complete. Database is now purged of unrealistic outliers.")
 
 
 if __name__ == "__main__":

@@ -5,15 +5,19 @@ Generates Hall of Fame style rankings and historical team records.
 
 from __future__ import annotations
 
+import logging
+
 from sqlalchemy import desc, func
 
 from src.db.engine import SessionLocal
 from src.models.player import PlayerBasic, PlayerSeasonBatting, PlayerSeasonPitching
 
+logger = logging.getLogger(__name__)
+
 
 def analyze_historical_leaders():
     with SessionLocal() as session:
-        print("\n🏆 --- KBO HISTORICAL HALL OF FAME (1982-2026) ---\n")
+        logger.info("🏆 --- KBO HISTORICAL HALL OF FAME (1982-2026) ---")
 
         # Define a subquery to get the "best" record for each player-season-league
         # Priority: FINAL_VERIFICATION (1), CRAWLER (2), PROFILE (3)
@@ -31,7 +35,7 @@ def analyze_historical_leaders():
             pass
 
         # 1. Career Home Run Leaders
-        print("🔥 [CAREER HOME RUN LEADERS]")
+        logger.info("🔥 [CAREER HOME RUN LEADERS]")
         # To avoid double counting, we filter by source priority or just use a specific source.
         # Most historical data from my recent backfill is 'PROFILE'.
         # Most recent data is 'FINAL_VERIFICATION' or 'CRAWLER'.
@@ -88,10 +92,10 @@ def analyze_historical_leaders():
         for i, (name, total, start, end) in enumerate(hr_leaders, 1):
             if total is None:
                 continue
-            print(f"{i:2d}. {name:8s} | {int(total):3d} HR | ({start}~{end})")
+            logger.info("%2d. %-8s | %3d HR | (%s~%s)", i, name, int(total), start, end)
 
         # 2. Career Win Leaders (Pitchers)
-        print("\n⚾ [CAREER WIN LEADERS (PITCHERS)]")
+        logger.info("⚾ [CAREER WIN LEADERS (PITCHERS)]")
         pitching_cte = (
             select(
                 PlayerSeasonPitching.player_id,
@@ -120,10 +124,10 @@ def analyze_historical_leaders():
         for i, (name, total, start, end) in enumerate(win_leaders, 1):
             if total is None:
                 continue
-            print(f"{i:2d}. {name:8s} | {int(total):3d} Wins | ({start}~{end})")
+            logger.info("%2d. %-8s | %3d Wins | (%s~%s)", i, name, int(total), start, end)
 
         # 3. Best Single Season Batting Average (Min 300 PA)
-        print("\n📈 [HIGHEST SINGLE SEASON BATTING AVERAGE (Min 300 PA)]")
+        logger.info("📈 [HIGHEST SINGLE SEASON BATTING AVERAGE (Min 300 PA)]")
         avg_leaders = (
             session.query(PlayerBasic.name, batting_cte.c.season, batting_cte.c.avg)
             .join(PlayerBasic, batting_cte.c.player_id == PlayerBasic.player_id)
@@ -133,13 +137,13 @@ def analyze_historical_leaders():
             .all()
         )
         for i, (name, year, avg) in enumerate(avg_leaders, 1):
-            print(f"{i:2d}. {name:8s} ({year}) | {avg:.3f} AVG")
+            logger.info("%2d. %-8s (%s) | %.3f AVG", i, name, year, avg)
 
         # 4. Most Home Runs by a Team in a Single Season
         from src.models.team import Team
         from src.models.team_stats import TeamSeasonBatting
 
-        print("\n🏟️  [MOST TEAM HOME RUNS IN A SINGLE SEASON]")
+        logger.info("🏟️  [MOST TEAM HOME RUNS IN A SINGLE SEASON]")
         team_hr_leaders = (
             session.query(Team.team_name, TeamSeasonBatting.season, TeamSeasonBatting.home_runs)
             .join(Team, TeamSeasonBatting.team_id == Team.team_id)
@@ -148,7 +152,7 @@ def analyze_historical_leaders():
             .all()
         )
         for i, (name, year, hr) in enumerate(team_hr_leaders, 1):
-            print(f"{i:2d}. {name:15s} ({year}) | {hr:3d} HR")
+            logger.info("%2d. %-15s (%s) | %3d HR", i, name, year, hr)
 
 
 if __name__ == "__main__":

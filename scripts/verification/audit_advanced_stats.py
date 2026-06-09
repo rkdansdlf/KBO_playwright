@@ -1,12 +1,14 @@
+import logging
+
 from sqlalchemy.orm import Session
 
 from src.db.engine import SessionLocal
 from src.models.player import PlayerSeasonBatting, PlayerSeasonPitching
 from src.services.stat_calculator import BattingStatCalculator, PitchingStatCalculator
 
-
+logger = logging.getLogger(__name__)
 def audit_batting_stats(session: Session, limit: int = 5000):
-    print(f"--- Auditing Batting Stats (Seasons >= 2024, Sample: {limit}) ---")
+    logger.info(f"--- Auditing Batting Stats (Seasons >= 2024, Sample: {limit}) ---")
     records = session.query(PlayerSeasonBatting).filter(PlayerSeasonBatting.season >= 2024).limit(limit).all()
     errors = 0
     passed = 0
@@ -42,7 +44,7 @@ def audit_batting_stats(session: Session, limit: int = 5000):
             if stored_val is None:
                 continue
             if abs(recalc[key] - stored_val) > 0.002:
-                print(
+                logger.info(
                     f"❌ Batting Mismatch [ID:{rec.id}, S:{rec.season}, P:{rec.player_id}]: {key} Stored={stored_val}, Recalc={recalc[key]}"
                 )
                 errors += 1
@@ -51,11 +53,11 @@ def audit_batting_stats(session: Session, limit: int = 5000):
         if is_rec_valid:
             passed += 1
 
-    print(f"Batting Audit Complete. Passed: {passed}, Fails: {errors}")
+    logger.info(f"Batting Audit Complete. Passed: {passed}, Fails: {errors}")
 
 
 def audit_pitching_stats(session: Session, limit: int = 5000):
-    print(f"\n--- Auditing Pitching Stats (Seasons >= 2024, Sample: {limit}) ---")
+    logger.info(f"\n--- Auditing Pitching Stats (Seasons >= 2024, Sample: {limit}) ---")
     records = session.query(PlayerSeasonPitching).filter(PlayerSeasonPitching.season >= 2024).limit(limit).all()
     errors = 0
     passed = 0
@@ -96,7 +98,7 @@ def audit_pitching_stats(session: Session, limit: int = 5000):
             if stored_val is None:
                 continue
             if abs(recalc[key] - stored_val) > 0.02:
-                print(
+                logger.info(
                     f"❌ Pitching Mismatch [ID:{rec.id}, S:{rec.season}, P:{rec.player_id}]: {key} Stored={stored_val}, Recalc={recalc[key]} (Outs={innings_outs})"
                 )
                 errors += 1
@@ -105,7 +107,7 @@ def audit_pitching_stats(session: Session, limit: int = 5000):
         if is_rec_valid:
             passed += 1
 
-    print(f"Pitching Audit Complete. Passed: {passed}, Fails: {errors}")
+    logger.info(f"Pitching Audit Complete. Passed: {passed}, Fails: {errors}")
 
 
 if __name__ == "__main__":

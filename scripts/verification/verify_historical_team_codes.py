@@ -4,9 +4,11 @@ import sys
 # Add project root to path
 sys.path.append(os.getcwd())
 
+import logging
+
 from src.utils.team_codes import resolve_team_code, team_code_from_game_id_segment
 
-
+logger = logging.getLogger(__name__)
 def test_resolution(name, year, expected, type="name"):
     try:
         if type == "name":
@@ -15,18 +17,18 @@ def test_resolution(name, year, expected, type="name"):
             result = team_code_from_game_id_segment(name, year)
 
         if result == expected:
-            print(f"✅ [PASS] {year} {name} -> {result}")
+            logger.info(f"✅ [PASS] {year} {name} -> {result}")
         else:
-            print(f"❌ [FAIL] {year} {name} -> Expected {expected}, got {result}")
+            logger.info(f"❌ [FAIL] {year} {name} -> Expected {expected}, got {result}")
             return False
     except Exception as e:
-        print(f"❌ [ERROR] {year} {name} -> {e}")
+        logger.info(f"❌ [ERROR] {year} {name} -> {e}")
         return False
     return True
 
 
 def main():
-    print("Starting Historical Team Code Verification...\n")
+    logger.info("Starting Historical Team Code Verification...\n")
 
     failures = 0
     tests = [
@@ -80,12 +82,12 @@ def main():
         if not test_resolution(name, year, expected, type=test_type):
             failures += 1
 
-    print(f"\nVerification Complete. {len(tests) - failures}/{len(tests)} passed.")
+    logger.info(f"\nVerification Complete. {len(tests) - failures}/{len(tests)} passed.")
     if failures > 0:
-        print(f"❌ {failures} tests failed.")
+        logger.info(f"❌ {failures} tests failed.")
         sys.exit(1)
     else:
-        print("✅ All tests passed.")
+        logger.info("✅ All tests passed.")
 
 
 if __name__ == "__main__":

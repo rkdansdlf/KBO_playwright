@@ -1,14 +1,17 @@
+import logging
 import os
 
 import psycopg2
 from dotenv import load_dotenv
+
+logger = logging.getLogger(__name__)
 
 load_dotenv()
 url = os.getenv("OCI_DB_URL") or "postgresql://postgres:rkdansdlf@134.185.107.178:5432/bega_backend"
 
 
 def migrate_fielding():
-    print(f"Connecting to {url}...")
+    logger.info("Connecting to %s...", url)
     try:
         conn = psycopg2.connect(url)
         conn.autocommit = True
@@ -22,20 +25,20 @@ def migrate_fielding():
         ]
 
         for col_name, col_type in cols:
-            print(f"Adding column {col_name}...")
+            logger.info("Adding column %s...", col_name)
             try:
                 cur.execute(f"ALTER TABLE player_season_fielding ADD COLUMN {col_name} {col_type};")
-                print(f"  Column {col_name} added.")
+                logger.info("  Column %s added.", col_name)
             except psycopg2.errors.DuplicateColumn:
-                print(f"  Column {col_name} already exists.")
+                logger.info("  Column %s already exists.", col_name)
             except Exception as e:
-                print(f"  Error adding {col_name}: {e}")
+                logger.error("  Error adding %s: %s", col_name, e)
 
         cur.close()
         conn.close()
-        print("Migration complete.")
+        logger.info("Migration complete.")
     except Exception as e:
-        print(f"Connection failed: {e}")
+        logger.error("Connection failed: %s", e)
 
 
 if __name__ == "__main__":

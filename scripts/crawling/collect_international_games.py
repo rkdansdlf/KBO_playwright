@@ -7,11 +7,13 @@ game snapshot persistence path instead of direct ORM upserts.
 
 import argparse
 import asyncio
+import logging
 
 from src.crawlers.international_crawler import InternationalScheduleCrawler
 from src.repositories.game_repository import save_game_snapshot
 from src.utils.game_status import GAME_STATUS_COMPLETED, GAME_STATUS_SCHEDULED
 
+logger = logging.getLogger(__name__)
 # List of target international URLs
 # Ideally these would be dynamic, but for now we target the user's specific request (Premier 2024)
 TARGET_URLS = [
@@ -30,11 +32,11 @@ async def collect_international_games(save: bool = False):
             games = await crawler.crawl_schedule(url)
             total_games.extend(games)
 
-        print(f"\n📊 Collected {len(total_games)} total international games.")
+        logger.info(f"\n📊 Collected {len(total_games)} total international games.")
 
         if save:
             saved_count = save_games(total_games)
-            print(f"✅ Saved/Updated {saved_count}/{len(total_games)} international games.")
+            logger.info(f"✅ Saved/Updated {saved_count}/{len(total_games)} international games.")
 
     finally:
         await crawler.close()
@@ -86,7 +88,7 @@ def save_games(games_data: list) -> int:
         if save_game_snapshot(payload, status=status):
             saved_count += 1
         else:
-            print(f"❌ Failed to save international game {data.get('game_id')}")
+            logger.info(f"❌ Failed to save international game {data.get('game_id')}")
     return saved_count
 
 

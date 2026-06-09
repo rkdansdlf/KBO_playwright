@@ -6,12 +6,14 @@ Fetch and validate koreabaseball.com robots.txt before running crawlers.
 from __future__ import annotations
 
 import argparse
+import logging
 from datetime import UTC, datetime
 from pathlib import Path
 from urllib.robotparser import RobotFileParser
 
 import httpx
 
+logger = logging.getLogger(__name__)
 BASE_URL = "https://www.koreabaseball.com"
 ROBOTS_URL = f"{BASE_URL}/robots.txt"
 DEFAULT_PATHS = [
@@ -65,22 +67,22 @@ def main():
     )
     args = parser.parse_args()
 
-    print(f"[INFO] Fetching robots.txt from {ROBOTS_URL}")
+    logger.info(f"[INFO] Fetching robots.txt from {ROBOTS_URL}")
     content = fetch_robots(timeout=args.timeout)
     snapshot_path = save_snapshot(content)
-    print(f"[INFO] Saved robots snapshot to {snapshot_path}")
+    logger.info(f"[INFO] Saved robots snapshot to {snapshot_path}")
 
     blocked = validate_paths(content, args.paths)
     inspected_at = datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S UTC")
-    print(f"[INFO] Robots inspected at {inspected_at}")
+    logger.info(f"[INFO] Robots inspected at {inspected_at}")
 
     if blocked:
-        print("[ERROR] Crawling blocked for the following paths:")
+        logger.info("[ERROR] Crawling blocked for the following paths:")
         for rel_path in blocked:
-            print(f"  - {rel_path}")
+            logger.info(f"  - {rel_path}")
         raise SystemExit(1)
 
-    print("[OK] All monitored paths are allowed.")
+    logger.info("[OK] All monitored paths are allowed.")
 
 
 if __name__ == "__main__":

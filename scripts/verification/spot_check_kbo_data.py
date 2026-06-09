@@ -9,12 +9,15 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import logging
 import sys
 from datetime import datetime
 from pathlib import Path
 from typing import Any
 
 from sqlalchemy import func
+
+logger = logging.getLogger(__name__)
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(PROJECT_ROOT) not in sys.path:
@@ -45,17 +48,15 @@ class SpotChecker:
             "details": details,
         }
         self.mismatches.append(mismatch)
-        print(f"   [MISMATCH] {category} [{identifier}] - {field}: DB '{db_val}' vs Live '{live_val}' {details}")
+        logger.info(f"   [MISMATCH] {category} [{identifier}] - {field}: DB '{db_val}' vs Live '{live_val}' {details}")
 
     async def check_players(self, sample_players: int, year: int | None = None) -> int:
-        print(f"\n👥 Starting Spot-Check on {sample_players} Random Players...")
-        print("-" * 50)
+        logger.info(f"\n👥 Starting Spot-Check on {sample_players} Random Players...")
+        logger.info("-" * 50)
 
         with SessionLocal() as session:
             query = session.query(PlayerBasic)
-            # If a specific year is provided, filter players active in that season (optional heuristic)
             if year:
-                # SQLite-compatible random ordering
                 players = (
                     query.filter(
                         PlayerBasic.player_id.in_(
@@ -72,31 +73,27 @@ class SpotChecker:
                 players = query.order_by(func.random()).limit(sample_players).all()
 
             if not players:
-                print("⚠️ No players found matching search criteria.")
+                logger.info("⚠️ No players found matching search criteria.")
                 return 0
 
             checked_count = 0
             for idx, p in enumerate(players, 1):
                 pid_str = str(p.player_id)
-                print(f"[{idx}/{len(players)}] Checking Player: {p.name} (ID: {pid_str})")
+                logger.info(f"[{idx}/{len(players)}] Checking Player: {p.name} (ID: {pid_str})")
 
                 try:
                     live_profile = await self.profile_crawler.crawl_player_profile(pid_str, position=p.position)
                     if not live_profile:
-                        # Some players (e.g., historical or retired) might not be easily crawled, log warning
-                        print(
+                        logger.info(
                             f"   ⚠️ Could not load profile for {p.name} (ID: {pid_str}). (Possibly retired/inactive or layout mismatch)"
                         )
                         continue
 
                     checked_count += 1
 
-                    # Verify core attributes
-                    # Name check
                     if p.name != live_profile.get("name"):
                         self.log_mismatch("Player", pid_str, "name", p.name, live_profile.get("name"))
 
-                    # Physical details (tolerance ±1 for height/weight due to potential shifts or roundings)
                     for db_f, live_f in [("height_cm", "height_cm"), ("weight_kg", "weight_kg")]:
                         db_val = getattr(p, db_f)
                         live_val = live_profile.get(live_f)
@@ -104,7 +101,6 @@ class SpotChecker:
                             if abs(db_val - live_val) > 2:
                                 self.log_mismatch("Player", pid_str, db_f, db_val, live_val)
 
-                    # Bats/Throws
                     for db_f, live_f in [("bats", "bats"), ("throws", "throws")]:
                         db_val = getattr(p, db_f)
                         live_val = live_profile.get(live_f)
@@ -112,13 +108,13 @@ class SpotChecker:
                             self.log_mismatch("Player", pid_str, db_f, db_val, live_val)
 
                 except Exception as e:
-                    print(f"   ❌ Error checking player {p.name} ({pid_str}): {e}")
+                    logger.info(f"   ❌ Error checking player {p.name} ({pid_str}): {e}")
 
             return checked_count
 
     async def check_games(self, sample_games: int, year: int | None = None) -> int:
-        print(f"\n⚾ Starting Spot-Check on {sample_games} Random Games...")
-        print("-" * 50)
+        logger.info(f"\n⚾ Starting Spot-Check on {sample_games} Random Games...")
+        logger.info("-" * 50)
 
         with SessionLocal() as session:
             query = session.query(Game).filter(Game.game_status.in_(["COMPLETED", "종료", "DRAW"]))
@@ -127,25 +123,24 @@ class SpotChecker:
 
             games = query.order_by(func.random()).limit(sample_games).all()
             if not games:
-                print("⚠️ No completed games found matching search criteria.")
+                logger.info("⚠️ No completed games found matching search criteria.")
                 return 0
 
             checked_count = 0
             for idx, g in enumerate(games, 1):
                 game_date_str = g.game_date.strftime("%Y%m%d")
-                print(
+                logger.info(
                     f"[{idx}/{len(games)}] Checking Game: {g.game_id} ({g.away_team} @ {g.home_team}) - {game_date_str}"
                 )
 
                 try:
                     live_game = await self.game_crawler.crawl_game(g.game_id, game_date_str)
                     if not live_game:
-                        print(f"   ⚠️ Could not load game detail for {g.game_id}.")
+                        logger.info(f"   ⚠️ Could not load game detail for {g.game_id}.")
                         continue
 
                     checked_count += 1
 
-                    # 1. Verify basic scores and metadata
                     teams_info = live_game.get("teams") or {}
                     live_home_score = teams_info.get("home", {}).get("score")
                     live_away_score = teams_info.get("away", {}).get("score")
@@ -159,7 +154,6 @@ class SpotChecker:
                     if g.stadium and live_stadium and g.stadium != live_stadium:
                         self.log_mismatch("Game", g.game_id, "stadium", g.stadium, live_stadium)
 
-                    # 2. Verify Inning Scores
                     db_innings = (
                         session.query(GameInningScore)
                         .filter_by(game_id=g.game_id)
@@ -171,7 +165,6 @@ class SpotChecker:
                         live_line = teams_info.get(side, {}).get("line_score") or []
                         db_side_innings = [i.runs for i in db_innings if i.team_side == side]
 
-                        # Compare lists
                         if len(db_side_innings) != len(live_line):
                             self.log_mismatch(
                                 "GameInnings",
@@ -182,13 +175,12 @@ class SpotChecker:
                                 f"DB: {db_side_innings} vs Live: {live_line}",
                             )
                         else:
-                            for inning_idx, (db_runs, live_runs) in enumerate(zip(db_side_innings, live_line), 1):
+                            for inning_idx, (db_runs, live_runs) in enumerate(zip(db_side_innings, live_line, strict=False), 1):
                                 if db_runs != live_runs:
                                     self.log_mismatch(
                                         "GameInnings", g.game_id, f"{side}_inning_{inning_idx}", db_runs, live_runs
                                     )
 
-                    # 3. Verify Player Statistics (Batting Box Score)
                     db_batting = {
                         (b.player_name, b.appearance_seq): b
                         for b in session.query(GameBattingStat).filter_by(game_id=g.game_id).all()
@@ -202,7 +194,6 @@ class SpotChecker:
 
                             key = (h_name, h_seq)
                             if key not in db_batting:
-                                # Try fallback match by name only if sequence doesn't match perfectly
                                 fallback_matches = [b for (name, seq), b in db_batting.items() if name == h_name]
                                 if fallback_matches:
                                     db_hitter = fallback_matches[0]
@@ -214,7 +205,6 @@ class SpotChecker:
                             else:
                                 db_hitter = db_batting[key]
 
-                            # Verify key stats
                             live_stats = live_hitter.get("stats") or {}
                             for stat_key in ("at_bats", "hits", "runs", "home_runs", "rbi", "walks", "strikeouts"):
                                 db_val = getattr(db_hitter, stat_key) or 0
@@ -224,7 +214,6 @@ class SpotChecker:
                                         "GameBatting", g.game_id, f"{h_name}_{stat_key}", db_val, live_val
                                     )
 
-                    # 4. Verify Player Statistics (Pitching Box Score)
                     db_pitching = {
                         (p.player_name, p.appearance_seq): p
                         for p in session.query(GamePitchingStat).filter_by(game_id=g.game_id).all()
@@ -266,7 +255,7 @@ class SpotChecker:
                                     )
 
                 except Exception as e:
-                    print(f"   ❌ Error checking game {g.game_id}: {e}")
+                    logger.info(f"   ❌ Error checking game {g.game_id}: {e}")
                     import traceback
 
                     traceback.print_exc()
@@ -282,11 +271,10 @@ async def main():
     parser.add_argument("--output", type=str, help="Path to write verification results JSON")
     args = parser.parse_args()
 
-    print("🔬" * 20)
-    print(" KBO Live Data Spot-Checking Tool")
-    print("🔬" * 20)
+    logger.info("🔬" * 20)
+    logger.info(" KBO Live Data Spot-Checking Tool")
+    logger.info("🔬" * 20)
 
-    # Initialize Playwright and Checker
     pool = AsyncPlaywrightPool(max_pages=2)
     await pool.start()
 
@@ -302,33 +290,31 @@ async def main():
         if args.games > 0:
             games_checked = await checker.check_games(args.games, args.year)
 
-        print("\n" + "=" * 50)
-        print("📊 Spot-Check Summary")
-        print("=" * 50)
-        print(f"👥 Checked Players: {players_checked}")
-        print(f"⚾ Checked Games:   {games_checked}")
-        print(f"🚨 Total Mismatches Detected: {len(checker.mismatches)}")
+        logger.info("\n" + "=" * 50)
+        logger.info("📊 Spot-Check Summary")
+        logger.info("=" * 50)
+        logger.info(f"👥 Checked Players: {players_checked}")
+        logger.info(f"⚾ Checked Games:   {games_checked}")
+        logger.info(f"🚨 Total Mismatches Detected: {len(checker.mismatches)}")
 
         if checker.mismatches:
-            print("\n🚨 Mismatch details:")
+            logger.info("\n🚨 Mismatch details:")
             for m in checker.mismatches:
-                print(
+                logger.info(
                     f"  - [{m['category']}] {m['id']}: {m['field']} (DB: '{m['db_value']}' vs Live: '{m['live_value']}')"
                 )
 
-            # Print remediation tip
-            print("\n💡 Suggested Remediation Commands:")
+            logger.info("\n💡 Suggested Remediation Commands:")
             remedy_games = {m["id"] for m in checker.mismatches if m["category"].startswith("Game")}
             remedy_players = {m["id"] for m in checker.mismatches if m["category"] == "Player"}
 
             for g_id in remedy_games:
-                print(f"    python3 -m src.cli.collect_games --year {g_id[:4]} --month {g_id[4:6]} --force")
-            for p_id in remedy_players:
-                print("    python3 -m src.crawlers.player_profile_crawler --year 2025 --force")
+                logger.info(f"    python3 -m src.cli.collect_games --year {g_id[:4]} --month {g_id[4:6]} --force")
+            for _p_id in remedy_players:
+                logger.info("    python3 -m src.crawlers.player_profile_crawler --year 2025 --force")
         else:
-            print("\n✅ Perfect agreement! No mismatches found between the sampled DB data and the live KBO website.")
+            logger.info("\n✅ Perfect agreement! No mismatches found between the sampled DB data and the live KBO website.")
 
-        # Save to JSON output if requested
         if args.output:
             import json
 
@@ -342,7 +328,7 @@ async def main():
             }
             with open(out_path, "w", encoding="utf-8") as f:
                 json.dump(report_data, f, indent=2, ensure_ascii=False)
-            print(f"\n💾 Report saved to {out_path}")
+            logger.info(f"\n💾 Report saved to {out_path}")
 
     finally:
         await pool.close()

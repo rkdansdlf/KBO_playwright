@@ -14,6 +14,7 @@ _RELAY_NOISE_TOKENS 업데이트 필요성을 판단합니다.
 from __future__ import annotations
 
 import argparse
+import logging
 import re
 import sys
 from collections import Counter
@@ -23,6 +24,8 @@ sys.path.insert(0, ".")
 
 from src.db.engine import SessionLocal
 from src.models.game import Game, GamePlayByPlay
+
+logger = logging.getLogger(__name__)
 
 
 def collect_unclassified_text(
@@ -58,51 +61,44 @@ def collect_unclassified_text(
 def analyze_texts(rows: list[dict], top_words: int = 15) -> None:
     """Analyze unclassified texts for patterns."""
     if not rows:
-        print("No unclassified relay texts found. Good!")
+        logger.info("No unclassified relay texts found. Good!")
         return
 
     texts = [r["text"] for r in rows if r["text"]]
 
-    # Count by game
     games = Counter(r["game_id"] for r in rows)
-    print(f"\nTotal unclassified entries: {len(rows)}")
-    print(f"Across {len(games)} game(s)")
-    print("\nTop games by unclassified count:")
+    logger.info(f"\nTotal unclassified entries: {len(rows)}")
+    logger.info(f"Across {len(games)} game(s)")
+    logger.info("\nTop games by unclassified count:")
     for game_id, count in games.most_common(10):
-        print(f"  {game_id}: {count}")
+        logger.info(f"  {game_id}: {count}")
 
-    # Pattern analysis: common prefixes
     prefixes = Counter()
     for text in texts:
-        # Extract prefix before ":"
         if ":" in text:
             prefix = text.split(":", 1)[0].strip()
             prefixes[prefix] += 1
         else:
-            # Text without colon separator
             prefixes[f"[NO_COLON] {text[:50]}"] += 1
 
-    print(f"\nTop {top_words} most common prefixes:")
+    logger.info(f"\nTop {top_words} most common prefixes:")
     for prefix, count in prefixes.most_common(top_words):
-        print(f"  {count:4d}x  {prefix}")
+        logger.info(f"  {count:4d}x  {prefix}")
 
-    # Pattern analysis: result text keywords
     result_keywords = Counter()
     for text in texts:
         if ":" in text:
             result = text.split(":", 1)[1].strip()
-            # Extract first keyword-like token
             for token in re.findall(r"[\w]+", result):
                 result_keywords[token] += 1
 
-    print(f"\nTop {top_words} most common keywords in result text:")
+    logger.info(f"\nTop {top_words} most common keywords in result text:")
     for word, count in result_keywords.most_common(top_words):
-        print(f"  {count:4d}x  {word}")
+        logger.info(f"  {count:4d}x  {word}")
 
-    # Detect noise tokens that should be added
     from src.utils.relay_text import _RELAY_NOISE_PATTERNS, _RELAY_NOISE_TOKENS
 
-    known_tokens = set(t.lower() for t in _RELAY_NOISE_TOKENS)
+    set(t.lower() for t in _RELAY_NOISE_TOKENS)
     candidate_noise = Counter()
     for text in texts:
         text_lower = text.lower()
@@ -110,16 +106,15 @@ def analyze_texts(rows: list[dict], top_words: int = 15) -> None:
             token.lower() in text_lower for token in _RELAY_NOISE_TOKENS
         )
         if not is_known_noise:
-            # Extract first meaningful segment
             segment = text.split(":")[0].strip() if ":" in text else text.strip()
             if len(segment) > 3:
                 candidate_noise[segment] += 1
 
-    print(f"\nTop {top_words} potential new noise patterns (not in current filters):")
+    logger.info(f"\nTop {top_words} potential new noise patterns (not in current filters):")
     for segment, count in candidate_noise.most_common(top_words):
-        print(f"  {count:4d}x  '{segment}'")
+        logger.info(f"  {count:4d}x  '{segment}'")
 
-    print(f"\nRecommendation: {'UPDATE _RELAY_NOISE_TOKENS' if candidate_noise else 'No update needed'}")
+    logger.info(f"\nRecommendation: {'UPDATE _RELAY_NOISE_TOKENS' if candidate_noise else 'No update needed'}")
 
 
 def main():

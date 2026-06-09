@@ -4,11 +4,14 @@ Phase 4f: Historical gap analysis — identify missing data across seasons.
 
 from __future__ import annotations
 
+import logging
 from collections import defaultdict
 
 from sqlalchemy import text
 
 from src.db.engine import SessionLocal
+
+logger = logging.getLogger(__name__)
 
 
 def analyze_gaps():
@@ -50,11 +53,11 @@ def analyze_gaps():
         ).all()
         games_by_year = {row.yr: row.cnt for row in game_q}
 
-        print("=" * 80)
-        print("  KBO Historical Data Gap Analysis (1982–2000)")
-        print("=" * 80)
-        print(f"{'Year':>5} {'Season':>8} {'Batting':>8} {'Pitching':>9} {'Games':>7}  {'Status':<30}")
-        print("-" * 80)
+        logger.info("=" * 80)
+        logger.info("  KBO Historical Data Gap Analysis (1982–2000)")
+        logger.info("=" * 80)
+        logger.info("%5s %8s %8s %9s %7s  %-30s", "Year", "Season", "Batting", "Pitching", "Games", "Status")
+        logger.info("-" * 80)
 
         all_years = set(range(1982, 2001))
         gaps = defaultdict(list)
@@ -76,26 +79,28 @@ def analyze_gaps():
                 status = "NO_DATA"
                 gaps["all"].append(year)
 
-            print(f"  {year:>5} {str(year) + '시즌':>8} {bat:>8} {pit:>9} {gms:>7}  {status:<30}")
+            logger.info("  %5s %8s %8s %9s %7s  %-30s", year, str(year) + '시즌', bat, pit, gms, status)
 
-        print("-" * 80)
+        logger.info("-" * 80)
 
         if gaps["game_detail"]:
-            print(
-                f"\n  Game detail gap: {len(gaps['game_detail'])} years "
-                f"({min(gaps['game_detail'])}–{max(gaps['game_detail'])})"
+            logger.info(
+                "  Game detail gap: %s years (%s–%s)",
+                len(gaps['game_detail']),
+                min(gaps['game_detail']),
+                max(gaps['game_detail']),
             )
-            print("  → player_season_batting exists but game table is empty for these years.")
+            logger.info("  → player_season_batting exists but game table is empty for these years.")
         if gaps["all"]:
-            print(f"\n  No data at all: {len(gaps['all'])} years: {gaps['all']}")
+            logger.info("  No data at all: %s years: %s", len(gaps['all']), gaps['all'])
 
-        print()
-        print("  2000년 이전 게임 데이터는 KBO 웹사이트에서 제공하지 않음.")
-        print("  대안: static CSV seeding 또는 KBO 기록실 PDF 수집.")
-        print()
-        print(
-            f"  Contemporary data (2001+): {len(games_by_year)} years with games, "
-            f"{min(games_by_year.keys())}–{max(games_by_year.keys())}."
+        logger.info("  2000년 이전 게임 데이터는 KBO 웹사이트에서 제공하지 않음.")
+        logger.info("  대안: static CSV seeding 또는 KBO 기록실 PDF 수집.")
+        logger.info(
+            "  Contemporary data (2001+): %s years with games, %s–%s.",
+            len(games_by_year),
+            min(games_by_year.keys()),
+            max(games_by_year.keys()),
         )
 
 

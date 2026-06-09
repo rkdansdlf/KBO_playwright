@@ -5,9 +5,9 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 import os
 import sqlite3
-import sys
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
@@ -17,6 +17,7 @@ from dotenv import load_dotenv
 from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.engine import Connection
 
+logger = logging.getLogger(__name__)
 DEFAULT_DB_PATH = Path("data/kbo_dev.db")
 
 
@@ -978,18 +979,18 @@ def collect_report(db_path: Path, sample_limit: int) -> dict[str, Any]:
 
 
 def print_human_report(report: dict[str, Any]) -> None:
-    print("=== Orphan Data Verification Report ===")
-    print(f"Database: {report['database']}\n")
+    logger.info("=== Orphan Data Verification Report ===")
+    logger.info(f"Database: {report['database']}\n")
     for check in report["checks"]:
         status = check["status"]
-        print(f"[{status}] {check['name']}: rows={check['row_count']} distinct={check['distinct_count']}")
+        logger.info(f"[{status}] {check['name']}: rows={check['row_count']} distinct={check['distinct_count']}")
         if check.get("error"):
-            print(f"  error: {check['error']}")
+            logger.info(f"  error: {check['error']}")
         samples = check.get("samples") or []
         if samples:
             rendered = ", ".join(str(sample) for sample in samples)
-            print(f"  samples: {rendered}")
-    print(f"\nVerification {'passed' if report['ok'] else 'failed'}.")
+            logger.info(f"  samples: {rendered}")
+    logger.info(f"\nVerification {'passed' if report['ok'] else 'failed'}.")
 
 
 def parse_args() -> argparse.Namespace:
@@ -1006,13 +1007,13 @@ def main() -> None:
     load_dotenv()
     args = parse_args()
     if args.db_path and args.db_url:
-        print("Error: Use either --db-path or --db-url, not both", file=sys.stderr)
+        logger.error("Error: Use either --db-path or --db-url, not both")
         raise SystemExit(2)
 
     try:
         db_url = _resolve_db_url(args.db_url)
     except ValueError as exc:
-        print(f"Error: {exc}", file=sys.stderr)
+        logger.error(f"Error: {exc}")
         raise SystemExit(2)
 
     if db_url:
@@ -1020,11 +1021,11 @@ def main() -> None:
     else:
         db_path = Path(args.db_path) if args.db_path else DEFAULT_DB_PATH
         if not db_path.exists():
-            print(f"Error: Database not found at {db_path}", file=sys.stderr)
+            logger.error(f"Error: Database not found at {db_path}")
             raise SystemExit(2)
         report = collect_sqlite_report(db_path, args.sample_limit)
     if args.json:
-        print(json.dumps(report, ensure_ascii=False, indent=2))
+        logger.info(json.dumps(report, ensure_ascii=False, indent=2))
     else:
         print_human_report(report)
 

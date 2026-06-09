@@ -3,8 +3,11 @@ Seed script to populate parking_lots and parking_fee_rules tables.
 Sources: official stadium/team parking information pages.
 """
 
+import logging
 import os
 import sys
+
+logger = logging.getLogger(__name__)
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -284,7 +287,7 @@ def run(dry_run: bool = False) -> None:
 
         if not dry_run:
             session.commit()
-        print(f"[SEED] Parking: {lot_count} lots, {fee_count} fee rules (dry_run={dry_run})")
+        logger.info("[SEED] Parking: %s lots, %s fee rules (dry_run=%s)", lot_count, fee_count, dry_run)
 
 
 if __name__ == "__main__":

@@ -17,25 +17,27 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
+import logging
+
 from scripts.verification.audit_game_logic import audit_game_logic
 from src.crawlers.game_detail_crawler import GameDetailCrawler
 from src.db.engine import SessionLocal
 from src.services.game_collection_service import crawl_and_save_game_details
 from src.services.player_id_resolver import PlayerIdResolver
 
-
+logger = logging.getLogger(__name__)
 def get_invalid_games_for_year(year: int) -> list[dict[str, str]]:
     """
     Identifies all completed games for a year that are logically inconsistent
     or have missing child record data in the database.
     """
     # 1. Fetch game logic violations
-    print(f"🕵️  Checking game logic violations for year {year}...")
+    logger.info(f"🕵️  Checking game logic violations for year {year}...")
     violations = audit_game_logic(year=year)
     invalid_ids = {v["game_id"] for v in violations}
 
     # 2. Check for games with completely empty batting stats
-    print(f"🕵️  Checking for games with empty batting stats for year {year}...")
+    logger.info(f"🕵️  Checking for games with empty batting stats for year {year}...")
     with SessionLocal() as session:
         empty_games = (
             session.execute(
@@ -87,18 +89,18 @@ async def remediate_year(year: int, limit: int | None = None, request_delay: flo
     """
     Finds and repairs invalid games for a single year.
     """
-    print(f"\n📂 Processing Year: {year}")
-    print("-" * 40)
+    logger.info(f"\n📂 Processing Year: {year}")
+    logger.info("-" * 40)
 
     targets = get_invalid_games_for_year(year)
     if not targets:
-        print(f"✅ Year {year}: No inconsistent or empty game details found.")
+        logger.info(f"✅ Year {year}: No inconsistent or empty game details found.")
         return True
 
-    print(f"❌ Year {year}: Found {len(targets)} game(s) requiring remediation.")
+    logger.info(f"❌ Year {year}: Found {len(targets)} game(s) requiring remediation.")
     if limit:
         targets = targets[:limit]
-        print(f"⚠️ Limit applied: Restricting to first {limit} game(s).")
+        logger.info(f"⚠️ Limit applied: Restricting to first {limit} game(s).")
 
     # Setup resolver and crawlers
     with SessionLocal() as session:
@@ -111,7 +113,7 @@ async def remediate_year(year: int, limit: int | None = None, request_delay: flo
 
         detail_crawler = GameDetailCrawler(request_delay=request_delay, resolver=resolver)
 
-        print(f"🚀 Starting remediation crawl for {len(targets)} game(s)...")
+        logger.info(f"🚀 Starting remediation crawl for {len(targets)} game(s)...")
         result = await crawl_and_save_game_details(
             targets,
             detail_crawler=detail_crawler,
@@ -121,8 +123,8 @@ async def remediate_year(year: int, limit: int | None = None, request_delay: flo
             log=print,
         )
 
-        print(f"\n🎉 Remediation completed for {year}:")
-        print(f"   Saved={result.detail_saved} Failed={result.detail_failed}")
+        logger.info(f"\n🎉 Remediation completed for {year}:")
+        logger.info(f"   Saved={result.detail_saved} Failed={result.detail_failed}")
 
     return result.detail_failed == 0
 
@@ -138,10 +140,10 @@ async def main():
     parser.add_argument("--game-id", help="Specific game ID to remediate")
     args = parser.parse_args()
 
-    print("🛠️  KBO Data Remediation Tool initialized.")
+    logger.info("🛠️  KBO Data Remediation Tool initialized.")
 
     if args.game_id:
-        print(f"🎯 Target: Specific game ID {args.game_id}")
+        logger.info(f"🎯 Target: Specific game ID {args.game_id}")
         with SessionLocal() as session:
             game = (
                 session.execute(
@@ -151,7 +153,7 @@ async def main():
                 .first()
             )
             if not game:
-                print(f"❌ Game {args.game_id} not found in database.")
+                logger.info(f"❌ Game {args.game_id} not found in database.")
                 return
             game_date = (
                 game["game_date"].strftime("%Y%m%d")
@@ -169,7 +171,7 @@ async def main():
             resolver.preload_season_index(year)
             detail_crawler = GameDetailCrawler(request_delay=args.delay, resolver=resolver)
 
-            print(f"🚀 Starting remediation crawl for {args.game_id}...")
+            logger.info(f"🚀 Starting remediation crawl for {args.game_id}...")
             result = await crawl_and_save_game_details(
                 targets,
                 detail_crawler=detail_crawler,
@@ -178,20 +180,20 @@ async def main():
                 pause_seconds=2.0,
                 log=print,
             )
-            print(f"\n🎉 Remediation completed: Saved={result.detail_saved} Failed={result.detail_failed}")
+            logger.info(f"\n🎉 Remediation completed: Saved={result.detail_saved} Failed={result.detail_failed}")
         return
 
-    print(f"   Range: {args.start_year} down to {args.end_year}")
+    logger.info(f"   Range: {args.start_year} down to {args.end_year}")
     if args.limit:
-        print(f"   Per-year limit: {args.limit} game(s)")
-    print("-" * 50)
+        logger.info(f"   Per-year limit: {args.limit} game(s)")
+    logger.info("-" * 50)
 
     for year in range(args.start_year, args.end_year - 1, -1):
         success = await remediate_year(year, limit=args.limit, request_delay=args.delay)
         if not success:
-            print(f"⚠️ Warning: Remediation encountered failures in season {year}.")
+            logger.info(f"⚠️ Warning: Remediation encountered failures in season {year}.")
 
-    print("\n🏁 All specified seasons processed!")
+    logger.info("\n🏁 All specified seasons processed!")
 
 
 if __name__ == "__main__":

@@ -16,6 +16,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import logging
 import sys
 from datetime import datetime
 from typing import Sequence
@@ -24,7 +25,7 @@ from sqlalchemy import text
 
 from src.db.engine import SessionLocal
 
-
+logger = logging.getLogger(__name__)
 def check_duplicates(session) -> list[str]:
     issues = []
     for tbl in ("player_game_batting", "player_game_pitching"):
@@ -141,8 +142,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--verbose", "-v", action="store_true", help="Show detailed coverage breakdown")
     args = parser.parse_args(argv)
 
-    print(f"PlayerGame Data Quality Verification — {datetime.now():%Y-%m-%d %H:%M:%S}")
-    print("=" * 60)
+    logger.info(f"PlayerGame Data Quality Verification — {datetime.now():%Y-%m-%d %H:%M:%S}")
+    logger.info("=" * 60)
 
     with SessionLocal() as session:
         all_bad = []
@@ -153,29 +154,29 @@ def main(argv: Sequence[str] | None = None) -> int:
             ("DRAW source gaps", check_draw_missing_sources),
             ("Coverage", lambda s: check_coverage(s, verbose=args.verbose)),
         ]:
-            print(f"\n--- {label} ---")
+            logger.info(f"\n--- {label} ---")
             issues = fn(session)
             if issues:
                 for i in issues:
-                    print(f"  {i}")
+                    logger.info(f"  {i}")
                 all_bad.extend(issues)
             else:
-                print("  OK")
+                logger.info("  OK")
 
         total_batting = session.execute(text("SELECT COUNT(*) FROM player_game_batting")).scalar()
         total_pitching = session.execute(text("SELECT COUNT(*) FROM player_game_pitching")).scalar()
         total_games = session.execute(text("SELECT COUNT(DISTINCT game_id) FROM player_game_batting")).scalar()
 
-    print(f"\n{'=' * 60}")
-    print(f"Summary: batting={total_batting:,} pitching={total_pitching:,} games={total_games:,}")
+    logger.info(f"\n{'=' * 60}")
+    logger.info(f"Summary: batting={total_batting:,} pitching={total_pitching:,} games={total_games:,}")
     if all_bad:
         error_count = sum(1 for i in all_bad if i.startswith("WARN"))
         info_count = len(all_bad) - error_count
-        print(f"Issues: {len(all_bad)} ({error_count} warnings, {info_count} info)")
+        logger.info(f"Issues: {len(all_bad)} ({error_count} warnings, {info_count} info)")
         if args.exit_code:
             return 2 if any(i.startswith("WARN") for i in all_bad) else 1
     else:
-        print("All checks passed")
+        logger.info("All checks passed")
         return 0
 
     return 0

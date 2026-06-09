@@ -38,7 +38,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-def _cancelled_snapshot_payload(game_id: str, date_str: str) -> dict:
+def _cancelled_snapshot_payload(game_id: str, date_str: str) -> dict[str, Any]:
     try:
         season_year = int(date_str[:4])
     except (TypeError, ValueError):

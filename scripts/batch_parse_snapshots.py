@@ -99,7 +99,6 @@ def run_batch_parse(
 
     with SessionLocal() as session:
         snap_repo = RawSourceSnapshotRepository(session)
-        ds_repo = DataSourceRepository(session)
 
         pending = snap_repo.get_unparsed(limit=limit)
         if retry_failed:

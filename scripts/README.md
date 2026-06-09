@@ -5,7 +5,7 @@ This directory contains utility scripts for maintenance and operations.
 ## Usage
 
 All Python commands use `python3 -m src.cli.*` for active operations.
-Legacy scripts in `scripts/legacy/maintenance/` may still be run directly:
+Legacy scripts in `scripts/legacy/maintenance/` (36 active) may still be run directly:
 
 ```bash
 PYTHONPATH=. python3 scripts/legacy/maintenance/verify_sqlite_data.py
@@ -14,7 +14,9 @@ PYTHONPATH=. python3 scripts/legacy/maintenance/verify_sqlite_data.py
 ## Directory Structure
 
 - **crawling/** - Historical data crawling scripts
-- **legacy/maintenance/** - All 191 legacy maintenance scripts (consolidated)
+- **legacy/maintenance/** - 36 active legacy maintenance scripts
+- **archived/legacy/maintenance/** - 155 one-shot / historical scripts (no longer actively used)
+- **archived/supabase/** - 7 deprecated Supabase sync scripts
 - **legacy/** - Other legacy scripts (quality_gate.py, run_final_pipeline.sh)
 
 ## Operational Collection

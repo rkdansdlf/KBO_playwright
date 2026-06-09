@@ -1,8 +1,9 @@
+import logging
 import sqlite3
 
 import pandas as pd
 
-
+logger = logging.getLogger(__name__)
 def final_strict_verification():
     conn = sqlite3.connect("data/kbo_dev.db")
 
@@ -13,10 +14,10 @@ def final_strict_verification():
         2026: ("2026-03-28", "2026-04-19"),  # Today's date (Live)
     }
 
-    print("=== FINAL STRICT INTEGRITY VERIFICATION (2024-2026) ===")
+    logger.info("=== FINAL STRICT INTEGRITY VERIFICATION (2024-2026) ===")
 
     for year, (start, end) in SEASONS.items():
-        print(f"\n--- {year} Regular Season ({start} to {end}) ---")
+        logger.info(f"\n--- {year} Regular Season ({start} to {end}) ---")
 
         query = f"""
         WITH game_agg AS (
@@ -74,12 +75,12 @@ def final_strict_verification():
         mismatches = conn.execute(m_query).fetchone()[0]
 
         if mismatches == 0:
-            print(f"✅ PERFECT MATCH: All {total_p} players match 100% in this range!")
+            logger.info(f"✅ PERFECT MATCH: All {total_p} players match 100% in this range!")
         else:
             accuracy = ((total_p - mismatches) / total_p) * 100
-            print(f"📊 ACCURACY: {accuracy:.1f}% ({total_p - mismatches} / {total_p} players match)")
-            print("Sample Mismatches (Sorted by hit difference):")
-            print(df.to_string(index=False))
+            logger.info(f"📊 ACCURACY: {accuracy:.1f}% ({total_p - mismatches} / {total_p} players match)")
+            logger.info("Sample Mismatches (Sorted by hit difference):")
+            logger.info(df.to_string(index=False))
 
     conn.close()
 

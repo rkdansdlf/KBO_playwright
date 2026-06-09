@@ -9,13 +9,14 @@ project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
+import logging
+
 from src.services.relay_recovery_service import (
     DEFAULT_MANIFEST_PATH,
     load_relay_recovery_targets,
     parse_source_order,
     recover_relay_data,
 )
-import logging
 
 logger = logging.getLogger(__name__)
 

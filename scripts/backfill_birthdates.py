@@ -4,9 +4,12 @@ Parses various representations of birth_date into ISO standard birth_date_date c
 """
 
 import argparse
+import logging
 import os
 import sys
 from datetime import date, datetime
+
+logger = logging.getLogger(__name__)
 
 # Add project root to sys.path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -101,10 +104,10 @@ def backfill(limit: int = 0, dry_run: bool = False, verbose: bool = False) -> in
         players = session.scalars(stmt).all()
 
         if not players:
-            print("✅ No player records found needing birthdate backfill.")
+            logger.info("✅ No player records found needing birthdate backfill.")
             return 0
 
-        print(f"⚙️ Found {len(players)} player records to process (dry_run={dry_run})...")
+        logger.info("⚙️ Found %s player records to process (dry_run=%s)...", len(players), dry_run)
 
         for idx, p in enumerate(players):
             parsed_date = _parse_birth_date(p.birth_date)
@@ -112,8 +115,14 @@ def backfill(limit: int = 0, dry_run: bool = False, verbose: bool = False) -> in
             if parsed_date:
                 updated_count += 1
                 if verbose or dry_run:
-                    print(
-                        f" [{idx + 1}/{len(players)}] ID: {p.player_id} | Name: {p.name:<8} | Raw: {p.birth_date:<15} -> Parsed: {parsed_date}"
+                    logger.info(
+                        " [%s/%s] ID: %s | Name: %s | Raw: %s -> Parsed: %s",
+                        idx + 1,
+                        len(players),
+                        p.player_id,
+                        p.name,
+                        p.birth_date,
+                        parsed_date,
                     )
 
                 if not dry_run:
@@ -125,17 +134,22 @@ def backfill(limit: int = 0, dry_run: bool = False, verbose: bool = False) -> in
             else:
                 parse_fail_count += 1
                 if verbose or dry_run:
-                    print(
-                        f" ⚠️ [{idx + 1}/{len(players)}] ID: {p.player_id} | Name: {p.name:<8} | Raw: {p.birth_date:<15} -> PARSE FAILED"
+                    logger.warning(
+                        " ⚠️ [%s/%s] ID: %s | Name: %s | Raw: %s -> PARSE FAILED",
+                        idx + 1,
+                        len(players),
+                        p.player_id,
+                        p.name,
+                        p.birth_date,
                     )
 
         if not dry_run and updated_count > 0:
             session.commit()
-            print("💾 Changes committed successfully.")
+            logger.info("💾 Changes committed successfully.")
 
-    print("\n✨ Process completed!")
-    print(f"   - Successfully parsed/updated: {updated_count}")
-    print(f"   - Failed to parse:              {parse_fail_count}")
+    logger.info("✨ Process completed!")
+    logger.info("   - Successfully parsed/updated: %s", updated_count)
+    logger.info("   - Failed to parse:              %s", parse_fail_count)
     return updated_count
 
 
