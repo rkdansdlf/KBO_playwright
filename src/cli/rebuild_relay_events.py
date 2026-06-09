@@ -4,11 +4,11 @@ import argparse
 import csv
 import logging
 import os
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
-from collections.abc import Iterable, Sequence
 
 from sqlalchemy import or_
 from sqlalchemy.exc import SQLAlchemyError
@@ -23,7 +23,6 @@ from src.utils.relay_text import (
     is_relay_noise_text,
     is_relay_result_event_text,
 )
-
 
 logger = logging.getLogger(__name__)
 

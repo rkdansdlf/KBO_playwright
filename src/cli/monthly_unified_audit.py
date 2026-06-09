@@ -10,12 +10,12 @@ Imported by scripts/scheduler.py as the crawl_monthly_unified_audit_job target.
 Runs on the 1st of every month at 03:00 KST via APScheduler.
 """
 
-from typing import Any
 import json
 import logging
 import sys
 from datetime import datetime
 from pathlib import Path
+from typing import Any
 from zoneinfo import ZoneInfo
 
 from scripts.legacy.maintenance.audit_pa_formula import audit_year, fix_year_formula

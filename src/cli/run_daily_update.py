@@ -14,10 +14,10 @@ import os
 import subprocess
 import sys
 from collections import Counter
+from collections.abc import Callable, Mapping, Sequence
 from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any
-from collections.abc import Callable, Mapping, Sequence
 from zoneinfo import ZoneInfo
 
 from sqlalchemy import or_, select
@@ -56,7 +56,6 @@ from src.services.postgame_reconciliation_service import (
 from src.services.schedule_collection_service import save_schedule_games
 from src.sync.oci_sync import OCISync
 from src.utils.refresh_manifest import write_refresh_manifest
-
 from src.utils.schedule_validation import is_detail_candidate_game
 from src.utils.team_codes import normalize_kbo_game_id
 

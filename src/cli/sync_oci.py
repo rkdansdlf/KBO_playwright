@@ -9,9 +9,9 @@ from __future__ import annotations
 import argparse
 import logging
 import os
+from collections.abc import Callable, Iterable
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any
-from collections.abc import Callable, Iterable
 
 from dotenv import load_dotenv
 from sqlalchemy import text

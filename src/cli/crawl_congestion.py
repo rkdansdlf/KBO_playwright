@@ -10,8 +10,8 @@ from __future__ import annotations
 
 import argparse
 import asyncio
-from datetime import datetime
 from collections.abc import Sequence
+from datetime import datetime
 
 from src.crawlers.congestion_crawler import CongestionCrawler
 

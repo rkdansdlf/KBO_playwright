@@ -11,8 +11,9 @@ import argparse
 import json
 import logging
 import os
-from datetime import datetime
 from collections.abc import Sequence
+from datetime import datetime
+from typing import Any
 
 from dotenv import load_dotenv
 from sqlalchemy import func, select, text
@@ -22,7 +23,6 @@ from src.db.engine import SessionLocal
 from src.models.game import Game
 from src.models.player import Player, PlayerSeasonBatting, PlayerSeasonPitching
 from src.services.p0_readiness import build_p0_readiness, format_p0_readiness_summary, normalize_yyyymmdd
-
 
 logger = logging.getLogger(__name__)
 

@@ -5,8 +5,8 @@ from __future__ import annotations
 import argparse
 import asyncio
 import logging
-from datetime import datetime, timedelta
 from collections.abc import Sequence
+from datetime import datetime, timedelta
 
 from src.crawlers.game_detail_crawler import GameDetailCrawler
 from src.db.engine import SessionLocal
@@ -16,7 +16,6 @@ from src.services.postgame_reconciliation_service import (
     reconcile_postgame_range,
     write_reconciliation_csv,
 )
-
 
 logger = logging.getLogger(__name__)
 

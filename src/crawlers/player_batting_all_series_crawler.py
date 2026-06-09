@@ -11,12 +11,12 @@ Usage:
     python -m src.crawlers.player_batting_all_series_crawler --year 2025 --series exhibition --save
 """
 
-from typing import Any
 import argparse
 import logging
 import os
 import re
 from datetime import datetime
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -24,7 +24,6 @@ from playwright.sync_api import Page, sync_playwright
 
 from src.aggregators.season_stat_aggregator import SeasonStatAggregator
 from src.db.engine import SessionLocal
-from src.utils.player_stats_helpers import extract_rows_fast
 from src.models.game import Game, GameBattingStat
 from src.models.player import PlayerBasic
 from src.models.season import KboSeason
@@ -32,6 +31,7 @@ from src.repositories.safe_batting_repository import save_batting_stats_safe
 from src.utils.compliance import compliance
 from src.utils.fallback_monitor import FallbackMonitor
 from src.utils.player_season_stat_validation import filter_valid_season_stat_payloads
+from src.utils.player_stats_helpers import extract_rows_fast
 from src.utils.playwright_blocking import install_sync_resource_blocking
 from src.utils.playwright_retry import retry_navigation, retry_wait_for_selector
 from src.utils.request_policy import RequestPolicy

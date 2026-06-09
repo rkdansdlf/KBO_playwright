@@ -12,14 +12,13 @@ import argparse
 import json
 import logging
 import sys
-from datetime import datetime
 from collections.abc import Sequence
+from datetime import datetime
 
 from src.db.engine import SessionLocal
 from src.models.game import Game
 from src.services.context_aggregator import ContextAggregator
 from src.utils.game_status import COMPLETED_LIKE_GAME_STATUSES
-
 
 logger = logging.getLogger(__name__)
 

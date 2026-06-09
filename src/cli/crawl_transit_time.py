@@ -12,8 +12,8 @@ from __future__ import annotations
 import argparse
 import asyncio
 import logging
-from datetime import datetime
 from collections.abc import Sequence
+from datetime import datetime
 
 from src.crawlers.transit_time_crawler import JAMSIL_ORIGINS, TransitTimeCrawler
 

@@ -4,7 +4,6 @@ Collects extended player profile: photo_url, bats, throws, salary, draft info, d
 Source: KBO HitterDetail/PitcherDetail Basic.aspx
 """
 
-from typing import Any
 import asyncio
 import logging
 import re

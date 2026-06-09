@@ -7,8 +7,9 @@ import asyncio
 import json
 import logging
 import os
-from datetime import datetime
 from collections.abc import Sequence
+from datetime import datetime
+from typing import Any
 
 from src.db.engine import SessionLocal
 from src.models.game import Game, GameEvent, GameSummary, GameValidationMetrics
@@ -17,7 +18,6 @@ from src.services.game_story_builder import STORY_SUMMARY_TYPE, GameStoryBuilder
 from src.sync.oci_sync import OCISync
 from src.utils.game_status import COMPLETED_LIKE_GAME_STATUSES
 from src.utils.refresh_manifest import write_refresh_manifest
-
 
 logger = logging.getLogger(__name__)
 TRUSTED_RELAY_STATUSES = {"verified", "recovered"}

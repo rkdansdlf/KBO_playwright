@@ -11,7 +11,6 @@ from src.services.relay_recovery_service import (
     recover_relay_data,
 )
 
-
 logger = logging.getLogger(__name__)
 
 

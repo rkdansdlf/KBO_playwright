@@ -4,9 +4,9 @@ Team history helpers loaded from Docs/team_history definitions.
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass
 from functools import cache
-from collections.abc import Iterable
 
 
 @dataclass(frozen=True)

@@ -9,12 +9,11 @@ import shlex
 import subprocess
 import sys
 from collections import defaultdict
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from pathlib import Path
 from typing import Any
-from collections.abc import Callable, Iterable, Mapping, Sequence
 
 from src.cli.run_daily_update import DEFAULT_DAILY_SUMMARY_DIR
-
 from src.utils.team_codes import normalize_kbo_game_id
 
 logger = logging.getLogger(__name__)

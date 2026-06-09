@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from datetime import date
 from collections.abc import Iterable
+from datetime import date
 
 GAME_STATUS_SCHEDULED = "SCHEDULED"
 GAME_STATUS_LIVE = "LIVE"

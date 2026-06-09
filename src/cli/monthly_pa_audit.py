@@ -7,8 +7,8 @@ Runs on the 1st of every month at 03:00 KST via APScheduler.
 
 import logging
 import sys
-from datetime import datetime
 from collections.abc import Sequence
+from datetime import datetime
 from zoneinfo import ZoneInfo
 
 from scripts.legacy.maintenance.audit_pa_formula import fix_year_formula

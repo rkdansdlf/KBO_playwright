@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Iterable, Mapping, Sequence
 from datetime import datetime
 from pathlib import Path
 from typing import Any
-from collections.abc import Iterable, Mapping, Sequence
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_MANIFEST_DIR = PROJECT_ROOT / "data" / "refresh_manifests"

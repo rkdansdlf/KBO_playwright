@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from typing import Any
-from collections.abc import Callable, Iterable
 
 from src.repositories.game_repository import save_schedule_game
 from src.services.game_write_contract import GameWriteContract

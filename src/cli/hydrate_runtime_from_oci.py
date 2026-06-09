@@ -5,8 +5,8 @@ from __future__ import annotations
 import argparse
 import logging
 import os
-from datetime import datetime
 from collections.abc import Sequence
+from datetime import datetime
 
 from dotenv import load_dotenv
 from sqlalchemy.orm import sessionmaker

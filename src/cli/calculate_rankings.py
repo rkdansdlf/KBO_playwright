@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import argparse
 import logging
-from datetime import date, datetime
 from collections.abc import Sequence
+from datetime import date, datetime
 
 from src.aggregators.ranking_aggregator import RankingAggregator
 from src.db.engine import SessionLocal

@@ -10,8 +10,9 @@ import asyncio
 import json
 import logging
 import os
-from datetime import datetime
 from collections.abc import Sequence
+from datetime import datetime
+from typing import Any
 
 from src.db.engine import SessionLocal
 from src.models.game import Game, GameEvent, GameSummary, GameValidationMetrics
@@ -20,7 +21,6 @@ from src.services.context_aggregator import ContextAggregator
 from src.sync.oci_sync import OCISync
 from src.utils.game_status import COMPLETED_LIKE_GAME_STATUSES
 from src.utils.refresh_manifest import write_refresh_manifest
-
 from src.utils.team_codes import team_code_from_game_id_segment
 
 logger = logging.getLogger(__name__)
