@@ -43,6 +43,7 @@ supabase.db
 # Local crawler investigation artifacts
 scratch/
 inspect_*.py
+!scripts/investigations/inspect_tool.py
 find_boxscore.py
 scripts/investigations/dump_*.py
 gamecenter_*.png
