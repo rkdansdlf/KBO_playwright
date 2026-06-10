@@ -270,6 +270,17 @@ jobs:
             --year ${{ needs.finalize.outputs.year }} \
             --sync
 
+      - name: Resolve Null Player IDs (OCI)
+        env:
+          OCI_DB_URL: ${{ secrets.OCI_DB_URL }}
+        run: |
+          python3 -m scripts.legacy.maintenance.resolve_null_player_ids_conservative \
+            --oci \
+            --years ${{ needs.finalize.outputs.year }} \
+            --apply \
+            --no-backup \
+            --delete-duplicates
+
       - name: Reference Integrity Gate
         env:
           OCI_DB_URL: ${{ secrets.OCI_DB_URL }}
