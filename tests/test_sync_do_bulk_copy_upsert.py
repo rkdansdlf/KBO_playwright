@@ -29,11 +29,8 @@ def _mock_cursor(syncer):
 
 def _capture_sql_calls(mock_cursor):
     """Return all strings passed to cursor.execute() and cursor.copy_expert()."""
-    sql_calls = []
-    for c in mock_cursor.execute.call_args_list:
-        sql_calls.append(c[0][0])
-    for c in mock_cursor.copy_expert.call_args_list:
-        sql_calls.append(c[0][0])
+    sql_calls = [c[0][0] for c in mock_cursor.execute.call_args_list]
+    sql_calls.extend(c[0][0] for c in mock_cursor.copy_expert.call_args_list)
     return sql_calls
 
 

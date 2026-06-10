@@ -187,12 +187,9 @@ def test_chunks_per_document(docs):
 def test_chunk_metadata_integrity(all_chunks):
     """Every chunk must have required metadata fields populated."""
     required_fields = ["source", "category", "source_row_id", "chunk_index"]
-    missing = []
-    for chunk in all_chunks:
-        meta = chunk["meta"]
-        for field in required_fields:
-            if not meta.get(field):
-                missing.append((chunk["title"], field))
+    missing = [
+        (chunk["title"], field) for chunk in all_chunks for field in required_fields if not chunk["meta"].get(field)
+    ]
 
     assert len(missing) == 0, f"Chunks with missing metadata fields (showing up to 10): {missing[:10]}"
 

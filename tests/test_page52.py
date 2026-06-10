@@ -18,6 +18,7 @@ TABLE_ROWS = "table.tEx tbody tr"
 NEXT_BTN = "a[id$='ucPager_btnNext']"
 
 
+@pytest.mark.slow
 async def test_page_52():
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=False)
@@ -41,7 +42,7 @@ async def test_page_52():
                     is_visible = await next_btn.first.is_visible()
                     is_enabled = await next_btn.first.is_enabled()
                     print(f"Page {i + 1}: Next button visible={is_visible}, enabled={is_enabled}")
-                except Exception as e:
+                except Exception as e:  # noqa: BLE001
                     print(f"Page {i + 1}: Error checking button state: {e}")
                     break
 
@@ -49,7 +50,7 @@ async def test_page_52():
                 try:
                     await next_btn.first.click(timeout=5000)
                     await asyncio.sleep(2)  # Wait for page load
-                except Exception as e:
+                except Exception as e:  # noqa: BLE001
                     print(f"❌ Click failed at page {i + 1}: {e}")
                     break
 

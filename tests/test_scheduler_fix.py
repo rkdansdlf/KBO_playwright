@@ -31,10 +31,7 @@ def _make_patches(extra_patches=None):
 
 def _apply_all(patches):
     """Enter all patches and return mocks."""
-    mocks = []
-    for p in patches:
-        mocks.append(p.__enter__() if hasattr(p, "__enter__") else p.start())
-    return mocks
+    return [p.__enter__() if hasattr(p, "__enter__") else p.start() for p in patches]
 
 
 def _stop_all(patches):

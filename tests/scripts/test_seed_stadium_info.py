@@ -7,6 +7,7 @@ class TestSeedStadiumInfo:
             mock_session = MagicMock()
             mock_sf.return_value = mock_session
             from scripts.seed_stadium_info import seed_stadium_info
+
             seed_stadium_info()
             mock_session.commit.assert_called_once()
 
@@ -16,8 +17,9 @@ class TestSeedStadiumInfo:
             mock_sf.return_value = mock_session
             mock_session.commit.side_effect = Exception("db error")
             from scripts.seed_stadium_info import seed_stadium_info
+
             try:
                 seed_stadium_info()
-            except Exception:
+            except Exception:  # noqa: BLE001
                 pass
             mock_session.rollback.assert_called_once()
