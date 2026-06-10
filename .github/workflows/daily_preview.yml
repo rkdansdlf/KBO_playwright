@@ -25,30 +25,14 @@ jobs:
   pregame-refresh:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-
-      - uses: ./.github/actions/python-env
+      - uses: ./.github/actions/kbo-job-setup
         with:
           playwright: 'true'
           init-db: 'true'
-
-      - name: Get current date in KST
-        id: date
-        run: |
-          if [ -n "${{ github.event.inputs.target_date }}" ]; then
-            KST_DATE="${{ github.event.inputs.target_date }}"
-          else
-            KST_DATE="$(TZ='Asia/Seoul' date +'%Y%m%d')"
-          fi
-          echo "KST_DATE=${KST_DATE}" >> "$GITHUB_ENV"
-          echo "KST_YEAR=${KST_DATE:0:4}" >> "$GITHUB_ENV"
-
-      - name: Hydrate Runtime Cache From OCI
-        env:
-          OCI_DB_URL: ${{ secrets.OCI_DB_URL }}
-        run: |
-          python3 -m src.cli.hydrate_runtime_from_oci \
-            --year "${{ env.KST_YEAR }}" --date "${{ env.KST_DATE }}"
+          resolve-date: 'true'
+          target-date: ${{ github.event.inputs.target_date || '' }}
+          date-roll: '0'
+          hydrate: 'true'
 
       - name: Run Daily Preview Batch
         env:
