@@ -14,6 +14,7 @@ from playwright.async_api import Page
 logger = logging.getLogger(__name__)
 import contextlib
 
+from src.urls import HITTER_DETAIL, PITCHER_DETAIL
 from src.utils.compliance import compliance
 from src.utils.player_validation import validate_player_payload
 from src.utils.playwright_pool import AsyncPlaywrightPool
@@ -161,8 +162,8 @@ class PlayerProfileCrawler:
     타자/투수 페이지를 포지션 기준으로 자동 선택.
     """
 
-    HITTER_URL = "https://www.koreabaseball.com/Record/Player/HitterDetail/Basic.aspx"
-    PITCHER_URL = "https://www.koreabaseball.com/Record/Player/PitcherDetail/Basic.aspx"
+    HITTER_URL = HITTER_DETAIL
+    PITCHER_URL = PITCHER_DETAIL
     RETIRE_HITTER_URL = "https://www.koreabaseball.com/Record/Retire/Hitter.aspx"
     RETIRE_PITCHER_URL = "https://www.koreabaseball.com/Record/Retire/Pitcher.aspx"
     FUTURES_HITTER_URL = "https://www.koreabaseball.com/Futures/Player/HitterDetail.aspx"
@@ -350,7 +351,7 @@ class PlayerProfileCrawler:
                 }""",
                 timeout=2000,
             )
-        except Exception:
+        except Exception:  # noqa: BLE001
             logger.info("No real image found for player (expected for some players)")
             pass
 

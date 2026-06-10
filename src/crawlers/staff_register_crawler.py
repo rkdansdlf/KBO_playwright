@@ -23,14 +23,15 @@ logger = logging.getLogger(__name__)
 
 from playwright.async_api import BrowserContext, Page, async_playwright
 
+# ---------------------------------------------------------------------------
+# Constants
+# ---------------------------------------------------------------------------
+from src.urls import REGISTER
 from src.utils.playwright_retry import NAV_TIMEOUT
 from src.utils.request_policy import RequestPolicy
 from src.utils.team_codes import resolve_team_code
 
-# ---------------------------------------------------------------------------
-# Constants
-# ---------------------------------------------------------------------------
-REGISTER_URL = "https://www.koreabaseball.com/Player/Register.aspx"
+REGISTER_URL = REGISTER
 
 # Team codes used by KBO site -> canonical team code mapping seed
 KBO_TEAM_MAP: dict[str, str] = {

@@ -2,13 +2,14 @@ import argparse
 import asyncio
 import logging
 
-from playwright.async_api import async_playwright
+from playwright.async_api import Page, async_playwright
 from sqlalchemy.exc import SQLAlchemyError
 
 from src.db.engine import SessionLocal
 
 logger = logging.getLogger(__name__)
 from src.repositories.broadcast_repository import BroadcastRepository
+from src.urls import SCHEDULE
 from src.utils.playwright_blocking import install_async_resource_blocking
 from src.utils.playwright_retry import NAV_TIMEOUT
 from src.utils.team_codes import build_kbo_game_id
@@ -16,7 +17,7 @@ from src.utils.team_codes import build_kbo_game_id
 
 class BroadcastCrawler:
     def __init__(self) -> None:
-        self.url = "https://www.koreabaseball.com/Schedule/Schedule.aspx"
+        self.url = SCHEDULE
 
     async def run(self, year: int = None, month: int = None, save: bool = False) -> None:
         from datetime import datetime
@@ -47,7 +48,7 @@ class BroadcastCrawler:
                     logger.info(d)
                     logger.info("")
 
-    async def _extract_broadcast_data(self, page, year: int) -> list[dict]:
+    async def _extract_broadcast_data(self, page: Page, year: int) -> list[dict]:
         script = """
         (args) => {
             const year = args.year;

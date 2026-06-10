@@ -630,7 +630,7 @@ class OCISyncBase:
                     update_timestamp,
                     connection=connection,
                 )
-            except Exception as e:
+            except Exception as e:  # noqa: BLE001
                 last_exception = e
                 if attempt < max_attempts:
                     wait = 1 * (3 ** (attempt - 1))
@@ -654,7 +654,7 @@ class OCISyncBase:
         try:
             self.target_session.close()
             self.oci_engine.dispose()
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             logger.warning("Ignore exception during OCI reconnection cleanup: %s", e)
         target_session_factory = sessionmaker(bind=self.oci_engine)
         self.target_session = target_session_factory()
@@ -683,7 +683,7 @@ class OCISyncBase:
     def _rollback_target_session(self, *, label: str) -> None:
         try:
             self.target_session.rollback()
-        except Exception as rollback_exc:
+        except Exception as rollback_exc:  # noqa: BLE001
             logger.warning("OCI rollback failed label=%s error=%s", label, rollback_exc)
 
     def _run_target_session_with_retries(
@@ -735,7 +735,7 @@ class OCISyncBase:
                 cols = inspect(self.oci_engine).get_columns(model.__tablename__)
                 target_column_defs = {c["name"]: c for c in cols}
                 target_columns = set(target_column_defs)
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001
                 logger.warning("Failed to inspect OCI columns for %s: %s", model.__tablename__, exc)
 
         sqlite_bind = None
@@ -853,7 +853,7 @@ class OCISyncBase:
                     )
                     synced += len(records)
                     logger.info("   Synced %s/%s rows via COPY...", synced, total_count)
-                except Exception as batch_err:
+                except Exception as batch_err:  # noqa: BLE001
                     logger.warning(
                         "Batch COPY failed for %s, falling back to row-by-row: %s", model.__tablename__, batch_err
                     )
@@ -867,14 +867,14 @@ class OCISyncBase:
                                 connection=connection,
                             )
                             synced += 1
-                        except Exception as row_err:
+                        except Exception as row_err:  # noqa: BLE001
                             logger.warning("Skipping bad row in %s: %s", model.__tablename__, row_err)
                     logger.info("   Synced %s/%s rows via row-by-row...", synced, total_count)
         finally:
             if connection is not None:
                 try:
                     connection.close()
-                except Exception:
+                except Exception:  # noqa: BLE001
                     logger.warning("Failed to close connection, already closed or aborted", exc_info=True)
         return synced
 

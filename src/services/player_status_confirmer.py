@@ -4,6 +4,7 @@ import asyncio
 
 from playwright.async_api import Page
 
+from src.urls import HITTER_DETAIL
 from src.utils.playwright_pool import AsyncPlaywrightPool
 from src.utils.playwright_retry import NAV_TIMEOUT
 from src.utils.status_parser import parse_status_from_text
@@ -20,7 +21,7 @@ class PlayerStatusConfirmer:
         headless: bool = True,
         pool: AsyncPlaywrightPool | None = None,
     ) -> None:
-        self.base_url = "https://www.koreabaseball.com/Record/Player/HitterDetail/Basic.aspx"
+        self.base_url = HITTER_DETAIL
         self.request_delay = request_delay
         self.max_confirmations = max_confirmations
         self.headless = headless

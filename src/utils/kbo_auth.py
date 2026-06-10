@@ -10,6 +10,7 @@ import os
 from dotenv import load_dotenv
 from playwright.async_api import async_playwright
 
+from src.urls import GAME_CENTER
 from src.utils.playwright_retry import SEL_TIMEOUT
 
 logger = logging.getLogger(__name__)
@@ -72,7 +73,7 @@ class KboAuthenticator:
                     # 1. Natural navigation to GameCenter
                     try:
                         await page.goto(
-                            "https://www.koreabaseball.com/Schedule/GameCenter/Main.aspx",
+                            GAME_CENTER,
                             wait_until="networkidle",
                             timeout=SEL_TIMEOUT,
                         )
@@ -82,7 +83,7 @@ class KboAuthenticator:
                         await asyncio.sleep(1)
                         await page.evaluate("window.scrollTo(0, 0)")
                         await asyncio.sleep(2)  # Wait for Akamai to finalize _abck cookie
-                    except Exception as e:
+                    except Exception as e:  # noqa: BLE001
                         logger.warning("[AUTH] Session warm-up warning (ignoring): %s", e)
 
                     # Save state
@@ -93,7 +94,7 @@ class KboAuthenticator:
                     logger.info("[AUTH] Login failed: Logout button not found after redirection.")
                     return False
 
-            except Exception as e:
+            except Exception as e:  # noqa: BLE001
                 logger.error("[AUTH] Exception during login: %s", e)
                 return False
             finally:

@@ -24,13 +24,14 @@ from typing import Any
 import httpx
 from bs4 import BeautifulSoup
 
+from src.urls import GAME_CENTER
 from src.utils.request_policy import RequestPolicy
 
 logger = logging.getLogger(__name__)
 
 _policy = RequestPolicy()
 
-KBO_GAME_CENTER_URL = "https://www.koreabaseball.com/Schedule/GameCenter/Main.aspx"
+KBO_GAME_CENTER_URL = GAME_CENTER
 
 DEFAULT_HEADERS = {
     "User-Agent": (

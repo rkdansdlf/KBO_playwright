@@ -34,9 +34,11 @@ jobs:
         if: always()
         id: output
         run: |
-          echo "output<<EOF" >> "$GITHUB_OUTPUT"
-          cat pip-audit-output.txt >> "$GITHUB_OUTPUT"
-          echo "EOF" >> "$GITHUB_OUTPUT"
+          {
+            echo "output<<EOF"
+            cat pip-audit-output.txt
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
 
       - uses: ./.github/actions/notify
         if: always()

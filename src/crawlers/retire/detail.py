@@ -68,7 +68,7 @@ class RetiredPlayerDetailCrawler:
                         "hitter": hitter_payload,
                         "pitcher": pitcher_payload,
                     }
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001
                 if attempt == retries:
                     logger.error("❌ Failed to fetch player %s after %s retries: %s", player_id, retries, exc)
                     break

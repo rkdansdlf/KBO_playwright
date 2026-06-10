@@ -226,14 +226,19 @@ class GameSyncMixin:
         if not target_game_ids:
             return
 
+        target_session = getattr(self, "target_session", None)
+        if target_session is None:
+            logger.info("ℹ️ Skipping OCI %s child row replacement: no target session", label)
+            return
+
         for child_model in child_models:
             if not self._target_table_exists(child_model):
                 logger.info("ℹ️ Skipping delete for missing OCI table: %s", child_model.__tablename__)
                 continue
-            self.target_session.query(child_model).filter(child_model.game_id.in_(target_game_ids)).delete(
+            target_session.query(child_model).filter(child_model.game_id.in_(target_game_ids)).delete(
                 synchronize_session=False,
             )
-        self.target_session.commit()
+        target_session.commit()
         logger.info("🧹 Replaced OCI %s child rows for %s game(s)", label, len(target_game_ids))
 
     def get_unsynced_or_modified_game_ids(self) -> list[str]:
