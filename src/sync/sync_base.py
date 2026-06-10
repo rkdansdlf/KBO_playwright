@@ -674,11 +674,51 @@ class OCISyncBase:
             "connection not open",
             "connection already closed",
             "operation timed out",
+            "timeout expired",
             "ssl syscall",
             "terminating connection",
             "connection reset",
         )
         return any(marker in message for marker in transient_markers)
+
+    def _raw_oci_connection_with_retries(
+        self,
+        *,
+        label: str,
+        max_retries: int = 2,
+        base_delay_seconds: float = 1.0,
+    ):
+        """Open a raw OCI connection with bounded retry for transient network loss."""
+        max_attempts = max_retries + 1
+
+        for attempt in range(1, max_attempts + 1):
+            try:
+                return self.oci_engine.raw_connection()
+            except Exception as exc:
+                transient = self._is_transient_oci_error(exc)
+
+                if not transient or attempt >= max_attempts:
+                    logger.error(
+                        "OCI raw connection failed label=%s attempt=%d/%d transient=%s error=%s",
+                        label,
+                        attempt,
+                        max_attempts,
+                        transient,
+                        exc,
+                    )
+                    raise
+
+                wait_seconds = base_delay_seconds * (2 ** (attempt - 1))
+                logger.warning(
+                    "OCI raw connection transient failure label=%s attempt=%d/%d retry_in=%.1fs error=%s",
+                    label,
+                    attempt,
+                    max_attempts,
+                    wait_seconds,
+                    exc,
+                )
+                self._reconnect_oci()
+                time.sleep(wait_seconds)
 
     def _rollback_target_session(self, *, label: str) -> None:
         try:
@@ -836,7 +876,7 @@ class OCISyncBase:
     ) -> int:
         connection = None
         if self.oci_engine is not None:
-            connection = self.oci_engine.raw_connection()
+            connection = self._raw_oci_connection_with_retries(label=f"{model.__tablename__}.sync")
         synced = 0
         try:
             for offset in range(0, total_count, batch_size):
