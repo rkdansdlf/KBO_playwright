@@ -34,6 +34,11 @@ This repository is a Playwright-based KBO data crawler with a two-track pipeline
 - `python3 -m scripts.maintenance.audit_pa_formula --fix-year 2020`: Apply conservative SH fix to satisfy PA formula for a season with missing SH/SF data.
 - `python3 -m scripts.maintenance.backfill_sh_sf_from_pbp --year 2020`: Backfill SH/SF from PBP sacrifice descriptions.
 - `python3 -m src.cli.quality_gate_check --year 2025`: Run statistical quality gate (batting/pitching/pa_formula).
+- `python3 -m scripts.maintenance.backfill_player_ids`: Backfill NULL player_ids in game stats tables (uses PlayerIdResolver with name+team+season matching).
+- `python3 -m scripts.maintenance.backfill_player_ids --year 2026`: Single-year backfill.
+- `python3 -m scripts.maintenance.backfill_player_ids --dry-run`: Preview only (no writes).
+- `python3 -m scripts.maintenance.resolve_null_player_ids_conservative`: Conservative resolver using group evidence + overrides CSV.
+- `python3 -m scripts.maintenance.resolve_null_player_ids_conservative --year 2026 --apply`: Apply conservative resolution for 2026.
 - `python3 -m src.cli.monthly_pa_audit`: Run PA formula audit & fix for previous year.
 - `python3 -m src.cli.monthly_unified_audit`: Run unified audit (PA formula + team stats) for previous year.
 - `python3 -m src.cli.monthly_unified_audit --year 2025 --dry-run`: Preview unified audit (no changes).
@@ -57,6 +62,14 @@ This repository is a Playwright-based KBO data crawler with a two-track pipeline
 - `python3 -m src.cli.sync_oci --player-game-stats`: Sync player game-level stats to OCI.
 - `python3 -m scripts.verification.verify_player_game_stats --year YYYY`: Verify player game stat consistency.
 - `pytest`: Run the test suite.
+
+## Code Quality & Linting
+- `ruff check src/ tests/` = **0 errors** (enforced by pre-commit).
+- `ruff format --check` must pass.
+- `pyproject.toml` excludes `scripts/legacy/` and `scripts/investigations/` from ruff scope (debug/legacy files).
+- `G004` (logging-f-string) is globally ignored — f-strings in logging are intentional after print→logger conversion.
+- All `src/` modules have return-type annotations; use `X | None` (not `Optional[X]`) and `list[X]` (not `List[X]`).
+- `from __future__ import annotations` required before modern type syntax in Python 3.12.
 
 ## Coding Style & Naming Conventions
 - Python, 4-space indentation, type hints encouraged but not required.
@@ -97,6 +110,7 @@ The CI/CD pipeline uses 11 workflows and 3 composite actions under `.github/`:
 
 ### Consolidated Daily Pipeline (`daily_kbo_sync.yml`)
 - **Schedule**: 18:00 UTC (03:00 KST next day), `workflow_dispatch` available
+- **Concurrency**: `cancel-in-progress: true` — manual dispatch cancels pending scheduled runs (safe: all writes use UPSERT)
 - **Jobs** (4 sequential):
   1. `finalize` — run_daily_update + standings + defense + rankings + freshness gate
   2. `post-process` — PBP healer + batch parse snapshots

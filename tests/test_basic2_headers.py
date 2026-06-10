@@ -15,6 +15,7 @@ from playwright.sync_api import sync_playwright
 from src.crawlers.player_batting_all_series_crawler import crawl_basic2_with_headers
 
 
+@pytest.mark.slow
 def test_basic2_headers():
     """11개 Basic2 헤더가 모두 정상적으로 클릭되는지 테스트"""
     if os.getenv("KBO_RUN_LIVE_BASIC2_HEADERS") != "1":
@@ -67,7 +68,7 @@ def test_basic2_headers():
             else:
                 print("❌ 테스트 실패! 데이터가 수집되지 않았습니다.")
 
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             print(f"❌ 테스트 중 오류 발생: {e}")
 
         finally:
