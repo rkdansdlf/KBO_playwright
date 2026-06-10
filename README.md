@@ -58,7 +58,7 @@ python3 -m src.cli.monthly_unified_audit --year 2025
 | `weekly_maintenance.yml` | Sun 05:00 | Futures profiles, player enrichment |
 | `full_recalculation.yml` | Manual | Full season stat recalc + OCI sync |
 | `kbo_automation.yml` | Manual | 8-phase: pregame, live, finalize, freshness, quality, gap, backfill, recalc |
-| `test_suite.yml` | CI on push | Ruff lint + pytest (3.11, 3.12) |
+| `test_suite.yml` | CI on push | Ruff lint + pytest (3.12) |
 | `periodic_extras.yml` | Monthly 1st | Periodic data sync |
 
 See [`AGENTS.md`](AGENTS.md) for required secrets and composite actions.

@@ -22,13 +22,11 @@ class TestHydrateRuntimeFromOCICLI:
             mock_hydrator_instance.hydrate_year.return_value = {"players": 10}
             MockHydrator.return_value = mock_hydrator_instance
 
-            main(["--year", "2025"])
+            main(["--source-url", "postgresql://source", "--year", "2025"])
 
             mock_create_engine.assert_called_once()
             MockHydrator.assert_called_once()
-            mock_hydrator_instance.hydrate_year.assert_called_once_with(
-                2025, target_date=None, preserve_aliases=False
-            )
+            mock_hydrator_instance.hydrate_year.assert_called_once_with(2025, target_date=None, preserve_aliases=False)
 
     def test_main_with_date_and_preserve_aliases(self):
         with (
@@ -44,7 +42,7 @@ class TestHydrateRuntimeFromOCICLI:
             mock_hydrator_instance = MagicMock()
             MockHydrator.return_value = mock_hydrator_instance
 
-            main(["--year", "2025", "--date", "20250601", "--preserve-aliases"])
+            main(["--source-url", "postgresql://source", "--year", "2025", "--date", "20250601", "--preserve-aliases"])
 
             import datetime
 

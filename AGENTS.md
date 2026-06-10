@@ -108,7 +108,7 @@ All six backfill types are defined in a single `backfill.yml` using a job matrix
 - `periodic_extras.yml`: Monthly 1st — periodic data sync
 - `full_recalculation.yml`: Manual dispatch — season stat recalculation + OCI sync
 - `kbo_automation.yml`: Manual dispatch — 8 phases: pregame, live, finalize, freshness, quality-report, gap-report, backfill, recalc-stats
-- `test_suite.yml`: CI on push/PR — ruff lint + pytest matrix (3.11, 3.12)
+- `test_suite.yml`: CI on push/PR — ruff lint + pytest matrix (3.12)
 
 ### Required Secrets
 - `OCI_DB_URL`, `KBO_USER_ID`, `KBO_USER_PWD`, `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`

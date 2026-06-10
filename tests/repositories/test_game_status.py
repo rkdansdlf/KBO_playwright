@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import date
 from unittest.mock import patch
 
+import src.repositories.game_status as game_status_repo
 from src.models.game import (
     Game,
     GameBattingStat,
@@ -79,7 +80,7 @@ class TestGameStatus:
             "updated": 0,
             "status_counts": {"completed": 1},
         }
-        result = refresh_game_status_for_date("20241015")
+        result = game_status_repo.refresh_game_status_for_date("20241015")
         assert result["total"] == 1
 
     @patch("src.repositories.game_status.SessionLocal")
@@ -88,13 +89,12 @@ class TestGameStatus:
         MockSessionLocal.return_value.__enter__.return_value = session
         MockSessionLocal.return_value.__exit__.return_value = None
 
-        g = Game(game_id="20241015LGSSG0", game_date=date(2024, 10, 15),
-                 home_score=5, away_score=3, game_status="unresolved")
+        g = Game(
+            game_id="20241015LGSSG0", game_date=date(2024, 10, 15), home_score=5, away_score=3, game_status="unresolved"
+        )
         session.add(g)
-        session.add(GameInningScore(game_id="20241015LGSSG0", team_side="home",
-                                     inning=1, runs=5))
-        session.add(GameInningScore(game_id="20241015LGSSG0", team_side="away",
-                                     inning=1, runs=3))
+        session.add(GameInningScore(game_id="20241015LGSSG0", team_side="home", inning=1, runs=5))
+        session.add(GameInningScore(game_id="20241015LGSSG0", team_side="away", inning=1, runs=3))
         session.commit()
 
         result = refresh_game_status_for_date("20241015", today=date(2024, 10, 16))
