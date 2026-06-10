@@ -354,6 +354,7 @@ def run_quality_gate(
 
 
 def main() -> None:
+    logging.basicConfig(level=logging.INFO, format="%(levelname)s:%(name)s:%(message)s")
     parser = argparse.ArgumentParser(description="Run local/OCI data quality gate")
     parser.add_argument(
         "--baseline",
