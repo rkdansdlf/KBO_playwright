@@ -33,7 +33,7 @@ include = ["src*"]
 [tool.ruff]
 line-length = 120
 target-version = "py312"
-exclude = ["scripts/archived", "scripts/legacy"]
+exclude = ["scripts/legacy/", "scripts/investigations/"]
 
 [tool.ruff.lint]
 select = [
@@ -66,7 +66,15 @@ ignore = [
     "SIM117",  # merge-with-statements (nested contexts fine)
     "COM812",  # handled by formatter (conflicts with ruff format)
     "G010",    # logging-warn vs logging-warning (redundant alias)
+    "G004",    # logging-f-string (f-strings in logging intentional post print→logger conversion)
     "G101",    # logging-extra-attr (extra kwargs pattern is intentional)
+]
+
+[tool.ruff.lint.per-file-ignores]
+"scripts/**/*.py" = [
+    "G003",    # operational scripts often build concise status messages
+    "G004",    # operational scripts often use f-strings for CLI/log output
+    "PERF401", # readability is preferred in script/report builders
 ]
 
 [tool.ruff.format]

@@ -21,6 +21,7 @@ from datetime import date, datetime, timedelta
 
 from dotenv import load_dotenv
 from sqlalchemy import bindparam, create_engine, text
+from sqlalchemy.exc import SQLAlchemyError
 
 from src.db.engine import DATABASE_URL as _ENGINE_DB_URL
 from src.utils.game_status import (
@@ -222,7 +223,7 @@ def audit_completeness(
                 if missing:
                     failures.append(f"  - [{g_date}] {g_id}: missing {', '.join(missing)}")
 
-    except Exception as e:
+    except SQLAlchemyError as e:
         logger.info("❌ Database error during audit: %s", e)
         return 2
 

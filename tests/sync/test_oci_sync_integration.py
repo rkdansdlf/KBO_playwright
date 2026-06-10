@@ -3,6 +3,7 @@ from __future__ import annotations
 from unittest.mock import MagicMock, patch
 
 import pytest
+from sqlalchemy.exc import ArgumentError
 
 from src.sync.oci_sync import OCISync, main
 
@@ -35,7 +36,7 @@ class TestOCISync:
 
     def test_init_oci_url_none_raises(self):
         mock_session = MagicMock()
-        with pytest.raises(Exception):
+        with pytest.raises(ArgumentError):
             OCISync(None, mock_session)  # type: ignore[arg-type]
 
 

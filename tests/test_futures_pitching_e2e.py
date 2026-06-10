@@ -30,7 +30,13 @@ async def main():
     # Show sample
     for row in rows[:3]:
         logger.info(
-            "  %s: ERA=%s, G=%s, W=%s, L=%s, IP=%s", row.get('season'), row.get('era'), row.get('games'), row.get('wins'), row.get('losses'), row.get('innings_pitched')
+            "  %s: ERA=%s, G=%s, W=%s, L=%s, IP=%s",
+            row.get("season"),
+            row.get("era"),
+            row.get("games"),
+            row.get("wins"),
+            row.get("losses"),
+            row.get("innings_pitched"),
         )
     logger.info("")
 
@@ -52,7 +58,7 @@ async def main():
     logger.info("Step 3: Saving %d Futures pitching records to database...", len(rows))
     payloads = []
     for r in rows:
-        payloads.append(
+        payloads.append(  # noqa: PERF401
             {
                 "player_id": int(player.player_basic_id),
                 "player_name": "소형준",
@@ -104,7 +110,13 @@ async def main():
         logger.info("Found %d Futures pitching records in database:", len(results))
         for record in results:
             logger.info(
-                "  %s: ERA=%s, G=%s, W=%s, L=%s, IP=%s", record.season, record.era, record.games, record.wins, record.losses, record.innings_pitched
+                "  %s: ERA=%s, G=%s, W=%s, L=%s, IP=%s",
+                record.season,
+                record.era,
+                record.games,
+                record.wins,
+                record.losses,
+                record.innings_pitched,
             )
 
     logger.info("\n=== Test Complete ===")

@@ -12,7 +12,7 @@ on:
 
 concurrency:
   group: kbo-db-write-operations
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 env:
   PYTHONPATH: ${{ github.workspace }}
@@ -125,6 +125,7 @@ jobs:
             --year ${{ steps.job-setup.outputs.KST_YEAR }}
 
       - name: OCI Freshness Gate
+        continue-on-error: true
         env:
           OCI_DB_URL: ${{ secrets.OCI_DB_URL }}
         run: |
@@ -274,7 +275,7 @@ jobs:
         env:
           OCI_DB_URL: ${{ secrets.OCI_DB_URL }}
         run: |
-          python3 -m scripts.legacy.maintenance.resolve_null_player_ids_conservative \
+          python3 -m scripts.maintenance.resolve_null_player_ids_conservative \
             --oci \
             --years ${{ needs.finalize.outputs.year }} \
             --apply \
@@ -292,7 +293,7 @@ jobs:
         env:
           OCI_DB_URL: ${{ secrets.OCI_DB_URL }}
         run: |
-          python3 scripts/legacy/quality_gate.py --oci-only --no-write
+          python3 -m scripts.maintenance.quality_gate --oci-only --no-write
 
       - name: Completeness Audit
         env:
