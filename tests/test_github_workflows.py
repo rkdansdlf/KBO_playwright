@@ -158,3 +158,126 @@ def test_daily_kbo_sync_hydrates_fresh_runner_jobs():
     assert "--exit-code" in workflow
     assert "--player-game-stats \\\n            --year ${{ needs.finalize.outputs.year }}" in workflow
     assert "--player-game-stats \\\n            --date" not in workflow
+
+
+def test_daily_preview_uses_correct_cli_and_hydration():
+    workflow = _read(WORKFLOW_DIR / "daily_preview.yml")
+
+    assert "python3 -m src.cli.hydrate_runtime_from_oci" in workflow
+    assert "--year \"${{ env.KST_YEAR }}\" --date \"${{ env.KST_DATE }}\"" in workflow
+    assert "python3 -m src.cli.daily_preview_batch --date \"${{ env.KST_DATE }}\"" in workflow
+    assert "KST_DATE" in workflow
+    assert "KST_YEAR" in workflow
+    assert workflow.index("Hydrate Runtime Cache From OCI") < workflow.index("Run Daily Preview Batch")
+    assert "if: always()" in workflow
+
+
+def test_pitcher_backfill_uses_correct_cli_and_hydration():
+    workflow = _read(WORKFLOW_DIR / "pitcher_backfill.yml")
+
+    assert "python3 -m src.cli.hydrate_runtime_from_oci" in workflow
+    assert '--year "${KST_YEAR}" --date "${KST_DATE}"' in workflow
+    assert "python3 -m src.cli.backfill_pregame_previews" in workflow
+    assert '--days-ahead "${DAYS_AHEAD}"' in workflow
+    assert "DAYS_AHEAD" in workflow
+    assert "KST_DATE" in workflow
+    assert "KST_YEAR" in workflow
+    assert workflow.index("Hydrate Runtime Cache From OCI") < workflow.index("Run Pregame Backfill")
+
+
+def test_security_audit_uses_pip_audit():
+    workflow = _read(WORKFLOW_DIR / "security_audit.yml")
+
+    assert "pip-audit" in workflow
+    assert "--requirement requirements.txt" in workflow
+    assert "--desc on" in workflow
+    assert "continue-on-error: true" in workflow
+    assert "timeout-minutes: 10" in workflow
+    assert "Dependency Security Audit" in workflow
+    assert "actions/setup-python@v5" in workflow
+
+
+def test_test_suite_runs_lint_and_test_matrix():
+    workflow = _read(WORKFLOW_DIR / "test_suite.yml")
+
+    assert "ruff check" in workflow
+    assert "ruff format --check" in workflow
+    assert "scripts/lint_bare_except.py" in workflow
+    assert "pytest --tb=short -v --durations=10" in workflow
+    assert "matrix:" in workflow
+    assert 'python-version: ["3.12"]' in workflow
+    assert "cancel-in-progress: true" in workflow
+    assert "concurrency:" in workflow
+    assert "timeout-minutes: 30" in workflow
+
+    jobs = dict(_job_blocks(workflow))
+    assert "lint" in jobs
+    assert "test" in jobs
+    assert workflow.index("  lint:\n") < workflow.index("  test:\n")
+
+
+def test_docker_build_has_full_build_chain():
+    workflow = _read(WORKFLOW_DIR / "docker_build.yml")
+
+    assert "docker/setup-qemu-action@v3" in workflow
+    assert "docker/setup-buildx-action@v3" in workflow
+    assert "docker/login-action@v3" in workflow
+    assert "docker/metadata-action@v5" in workflow
+    assert "docker/build-push-action@v6" in workflow
+    assert "ghcr.io" in workflow
+    assert "secrets.GITHUB_TOKEN" in workflow
+    assert "packages: write" in workflow
+    assert "type=gha" in workflow
+
+    step_order = [
+        "Set up QEMU",
+        "Set up Docker Buildx",
+        "Login to GHCR",
+        "Generate tags",
+        "Build and push",
+    ]
+    prev_idx = -1
+    for step in step_order:
+        idx = workflow.index(step)
+        assert idx > prev_idx, f"{step} out of order"
+        prev_idx = idx
+
+
+def test_weekly_maintenance_uses_correct_cli_and_env():
+    workflow = _read(WORKFLOW_DIR / "weekly_maintenance.yml")
+
+    assert "python3 -m src.cli.run_weekly_maintenance" in workflow
+    assert "--profile-limit" in workflow
+    assert "--sync" in workflow
+    assert "YOUTUBE_API_KEY" in workflow
+    assert "NAVER_CLIENT_ID" in workflow
+    assert "NAVER_CLIENT_SECRET" in workflow
+    assert "OCI_DB_URL" in workflow
+    assert workflow.index("Run Weekly Maintenance & Sync") < workflow.index("uses: ./.github/actions/notify")
+
+
+def test_periodic_extras_runs_unified_audit_twice():
+    workflow = _read(WORKFLOW_DIR / "periodic_extras.yml")
+
+    assert "python3 -m src.cli.run_periodic_extras" in workflow
+    assert "--year" in workflow
+    assert "--sync" in workflow
+    assert "python3 -m src.cli.monthly_unified_audit --year \"$PREV_YEAR\"" in workflow
+    assert "python3 -m src.cli.monthly_unified_audit --year \"$YEAR\"" in workflow
+    assert workflow.index("Run Periodic Extras & Sync") < workflow.index("Monthly Unified Audit")
+
+
+def test_full_recalculation_full_pipeline():
+    workflow = _read(WORKFLOW_DIR / "full_recalculation.yml")
+
+    assert "python3 -m src.cli.recalc_season_stats" in workflow
+    assert "--year ${{ github.event.inputs.year }}" in workflow
+    assert "--series ${{ github.event.inputs.series }}" in workflow
+    assert "--save" in workflow
+    assert "python3 -m src.cli.recalc_player_game_stats" in workflow
+    assert "--season ${{ github.event.inputs.year }}" in workflow
+    assert "python3 -m src.cli.sync_oci --season-stats --player-game-stats" in workflow
+    assert "${{ github.event.inputs.sync == 'true' }}" in workflow
+    assert "python3 -m scripts.verification.verify_player_game_stats --exit-code" in workflow
+    assert "if: always()" in workflow
+    assert "concurrency:" in workflow

@@ -1,6 +1,10 @@
 name: 'KBO Job Setup'
 description: 'Checkout, setup Python env, optionally resolve date and hydrate from OCI'
 inputs:
+  python-version:
+    description: 'Python version'
+    required: false
+    default: '3.12'
   playwright:
     description: 'Install Playwright browser'
     required: false
@@ -26,9 +30,13 @@ inputs:
     required: false
     default: 'false'
   target-date:
-    description: 'Target date override (YYYYMMDD or YYYY-MM-DD). Empty = previous KST day.'
+    description: 'Target date override (YYYYMMDD or YYYY-MM-DD). Empty = current KST date rolled by date-roll.'
     required: false
     default: ''
+  date-roll:
+    description: 'Days to roll back for KST date (0=today, 1=yesterday). Default 1.'
+    required: false
+    default: '1'
 outputs:
   KST_DATE:
     description: 'Resolved KST date (YYYYMMDD)'
@@ -44,6 +52,7 @@ runs:
 
     - uses: ./.github/actions/python-env
       with:
+        python-version: ${{ inputs.python-version }}
         playwright: ${{ inputs.playwright }}
         init-db: ${{ inputs.init-db }}
         hydrate: ${{ inputs.hydrate }}
@@ -63,7 +72,12 @@ runs:
             KST_DATE="$RAW_DATE"
           fi
         else
-          KST_DATE="$(TZ='Asia/Seoul' date -d 'yesterday' +'%Y%m%d')"
+          ROLL="${{ inputs.date-roll }}"
+          if [ "$ROLL" = "0" ]; then
+            KST_DATE="$(TZ='Asia/Seoul' date +'%Y%m%d')"
+          else
+            KST_DATE="$(TZ='Asia/Seoul' date -d "${ROLL} day ago" +'%Y%m%d')"
+          fi
         fi
         if [[ ! "$KST_DATE" =~ ^[0-9]{8}$ ]]; then
           echo "Invalid target date format: ${KST_DATE}. expected YYYYMMDD." >&2

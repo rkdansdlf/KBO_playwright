@@ -25,6 +25,9 @@ logger = logging.getLogger(__name__)
 KST = ZoneInfo("Asia/Seoul")
 
 
+CRAWL_TIMEOUT = 300  # 5 minutes max per crawl step
+
+
 async def run_advanced_update(
     year: int,
     sync: bool = False,
@@ -39,7 +42,10 @@ async def run_advanced_update(
     # 1. Fielding Stats
     logger.info("\n🛡️ Step 1: Crawling Fielding Stats...")
     try:
-        fielding_records = await asyncio.to_thread(crawl_all_fielding_stats, year)
+        fielding_records = await asyncio.wait_for(
+            asyncio.to_thread(crawl_all_fielding_stats, year),
+            timeout=CRAWL_TIMEOUT,
+        )
         if fielding_records:
             from src.models.player import PlayerSeasonFielding
 
@@ -64,7 +70,10 @@ async def run_advanced_update(
     # 2. Baserunning Stats
     logger.info("\n🏃 Step 2: Crawling Baserunning Stats...")
     try:
-        baserunning_records = await asyncio.to_thread(crawl_baserunning_stats, year)
+        baserunning_records = await asyncio.wait_for(
+            asyncio.to_thread(crawl_baserunning_stats, year),
+            timeout=CRAWL_TIMEOUT,
+        )
         if baserunning_records:
             from src.models.player import PlayerSeasonBaserunning
 
@@ -88,7 +97,10 @@ async def run_advanced_update(
     logger.info("\n🏏 Step 3: Crawling Team Batting Stats...")
     try:
         batting_crawler = TeamBattingStatsCrawler()
-        batting_stats = await asyncio.to_thread(batting_crawler.crawl, year, persist=True, headless=headless)
+        batting_stats = await asyncio.wait_for(
+            asyncio.to_thread(batting_crawler.crawl, year, persist=True, headless=headless),
+            timeout=CRAWL_TIMEOUT,
+        )
         logger.info("   ✅ Saved %s team batting records", len(batting_stats))
     except Exception:
         logger.exception("   ❌ Error crawling team batting stats")
@@ -98,7 +110,10 @@ async def run_advanced_update(
     logger.info("\n⚾ Step 4: Crawling Team Pitching Stats...")
     try:
         pitching_crawler = TeamPitchingStatsCrawler()
-        pitching_stats = await asyncio.to_thread(pitching_crawler.crawl, year, persist=True, headless=headless)
+        pitching_stats = await asyncio.wait_for(
+            asyncio.to_thread(pitching_crawler.crawl, year, persist=True, headless=headless),
+            timeout=CRAWL_TIMEOUT,
+        )
         logger.info("   ✅ Saved %s team pitching records", len(pitching_stats))
     except Exception:
         logger.exception("   ❌ Error crawling team pitching stats")
@@ -124,7 +139,10 @@ async def run_advanced_update(
     try:
         from src.cli.calculate_rankings import rebuild_rankings
 
-        saved_rankings = await asyncio.to_thread(rebuild_rankings, year)
+        saved_rankings = await asyncio.wait_for(
+            asyncio.to_thread(rebuild_rankings, year),
+            timeout=CRAWL_TIMEOUT,
+        )
         logger.info("   ✅ Recalculated %s ranking records", saved_rankings)
     except Exception:
         logger.exception("   ❌ Error recalculating rankings")

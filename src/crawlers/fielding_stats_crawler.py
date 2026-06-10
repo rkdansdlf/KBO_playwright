@@ -16,9 +16,43 @@ logger = logging.getLogger(__name__)
 import contextlib
 
 from src.utils.player_season_stat_validation import filter_valid_season_stat_payloads
-from src.utils.playwright_retry import LONG_TIMEOUT, SEL_TIMEOUT
+from src.utils.playwright_retry import LONG_TIMEOUT, SEL_TIMEOUT, retry_navigation, retry_wait_for_selector
 from src.utils.request_policy import RequestPolicy
 from src.utils.team_codes import resolve_team_code
+
+
+def parse_inns(txt: str) -> float:
+    """이닝 문자열을 float으로 변환 (예: '112 1/3' -> 112.333...)."""
+    txt = txt.strip().replace(",", "")
+    if not txt or txt == "-":
+        return 0.0
+    if " " in txt:
+        parts = txt.split(" ")
+        val = float(parts[0])
+        if len(parts) > 1 and "/" in parts[1]:
+            frac = parts[1].split("/")
+            val += float(frac[0]) / float(frac[1])
+        return val
+    if "/" in txt:
+        frac = txt.split("/")
+        return float(frac[0]) / float(frac[1])
+    return float(txt)
+
+
+def _s_int(cell_el: Any) -> int:
+    """셀 요소에서 정수 값 추출."""
+    try:
+        return int(cell_el.inner_text().strip().replace(",", ""))
+    except (ValueError, TypeError):
+        return 0
+
+
+def _s_float(cell_el: Any) -> float:
+    """셀 요소에서 실수 값 추출."""
+    try:
+        return float(cell_el.inner_text().strip().replace(",", ""))
+    except (ValueError, TypeError):
+        return 0.0
 
 
 def build_fielding_crawl_summary(records) -> tuple[dict[str, Any], list[dict[str, Any]]]:
@@ -178,49 +212,21 @@ def crawl_all_fielding_stats(year=None) -> list[dict[str, Any]]:
                                     pos_id = position_mapping.get(pos_text, pos_text)
                                     team_id = resolve_team_code(row_team, year) or row_team
 
-                                    def parse_inns(txt) -> float:
-                                        txt = txt.strip().replace(",", "")
-                                        if not txt or txt == "-":
-                                            return 0.0
-                                        if " " in txt:
-                                            parts = txt.split(" ")
-                                            val = float(parts[0])
-                                            if len(parts) > 1 and "/" in parts[1]:
-                                                frac = parts[1].split("/")
-                                                val += float(frac[0]) / float(frac[1])
-                                            return val
-                                        if "/" in txt:
-                                            frac = txt.split("/")
-                                            return float(frac[0]) / float(frac[1])
-                                        return float(txt)
-
-                                    def s_int(cell_el) -> int:
-                                        try:
-                                            return int(cell_el.inner_text().strip().replace(",", ""))
-                                        except (ValueError, TypeError):
-                                            return 0
-
-                                    def s_float(cell_el) -> float:
-                                        try:
-                                            return float(cell_el.inner_text().strip().replace(",", ""))
-                                        except (ValueError, TypeError):
-                                            return 0.0
-
                                     record = {
                                         "player_id": player_id,
                                         "player_name": p_name,
                                         "team_id": team_id,
                                         "year": year,
                                         "position_id": pos_id,
-                                        "games": s_int(cells[4]),
-                                        "games_started": s_int(cells[5]),
+                                        "games": _s_int(cells[4]),
+                                        "games_started": _s_int(cells[5]),
                                         "innings": parse_inns(cells[6].inner_text()),
-                                        "errors": s_int(cells[7]),
-                                        "pickoffs": s_int(cells[8]),
-                                        "putouts": s_int(cells[9]),
-                                        "assists": s_int(cells[10]),
-                                        "double_plays": s_int(cells[11]),
-                                        "fielding_pct": s_float(cells[12]),
+                                        "errors": _s_int(cells[7]),
+                                        "pickoffs": _s_int(cells[8]),
+                                        "putouts": _s_int(cells[9]),
+                                        "assists": _s_int(cells[10]),
+                                        "double_plays": _s_int(cells[11]),
+                                        "fielding_pct": _s_float(cells[12]),
                                         "source": "CRAWLER",
                                     }
                                     fielding_data_map[(player_id, team_id, pos_id)] = record
@@ -305,30 +311,20 @@ def crawl_all_fielding_stats(year=None) -> list[dict[str, Any]]:
                             key = (player_id, team_id, "C")
 
                             if key in fielding_data_map:
-
-                                def s_int(cell_el) -> int:
-                                    try:
-                                        return int(cell_el.inner_text().strip().replace(",", ""))
-                                    except (ValueError, TypeError):
-                                        return 0
-
-                                def s_float(cell_el) -> float:
-                                    try:
-                                        return float(cell_el.inner_text().strip().replace(",", ""))
-                                    except (ValueError, TypeError):
-                                        return 0.0
-
                                 fielding_data_map[key].update(
                                     {
-                                        "passed_balls": s_int(cells[13]),
-                                        "stolen_bases_allowed": s_int(cells[14]),
-                                        "caught_stealing": s_int(cells[15]),
-                                        "cs_pct": s_float(cells[16]),
+                                        "passed_balls": _s_int(cells[13]),
+                                        "stolen_bases_allowed": _s_int(cells[14]),
+                                        "caught_stealing": _s_int(cells[15]),
+                                        "cs_pct": _s_float(cells[16]),
                                     },
                                 )
                             else:
-                                # 수비 데이터 맵에 없는 경우 (드문 케이스지만 추가)
-                                pass
+                                logger.warning(
+                                    "   ⚠️ 포수 상세 데이터에 없던 선수 발견 (player_id=%s, team=%s) - 추가 수집 생략",
+                                    player_id,
+                                    row_team,
+                                )
             except Exception:
                 logger.exception("   ⚠️ 포수 상세 수집 실패")
 
