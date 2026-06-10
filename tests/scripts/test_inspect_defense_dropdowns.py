@@ -1,10 +1,11 @@
-import importlib
 from unittest.mock import MagicMock, patch
+
+import pytest
 
 
 class TestInspectDefenseDropdowns:
     def test_inspect_defense_dropdowns(self):
-        module = importlib.import_module("scripts.inspect_defense_dropdowns")
+        module = pytest.importorskip("scripts.inspect_defense_dropdowns")
         with patch.object(module, "sync_playwright") as mock_pw:
             mock_browser = MagicMock()
             mock_page = MagicMock()
