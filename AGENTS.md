@@ -41,6 +41,21 @@ This repository is a Playwright-based KBO data crawler with a two-track pipeline
 - `python3 -m src.cli.monthly_unified_audit --year 2025 --pa-only`: Run only PA formula audit.
 - `python3 -m src.crawlers.fan_culture_crawler --save`: Crawl KBO cheer songs from YouTube channels.
 - `python3 scripts/seed_fan_culture.py`: Seed team rivalry data.
+- `python3 -m src.cli.backfill_advanced_stats --year YYYY`: Backfill advanced batting/pitching stats.
+- `python3 -m src.cli.daily_preview_batch --date YYYYMMDD`: Run pregame batch for a target date.
+- `python3 -m src.cli.freshness_gate [--max-hours N]`: Check data freshness against expected thresholds.
+- `python3 -m src.cli.gap_report [--category ...]`: Run gap analysis for missing/aged data.
+- `python3 -m src.cli.generate_quality_report --year YYYY`: Generate data quality statistics report.
+- `python3 -m src.cli.hydrate_runtime_from_oci [--year YYYY] [--date YYYYMMDD]`: Hydrate local runtime cache from OCI.
+- `python3 -m src.cli.live_crawler [--mode ...]`: Run live data crawler during game hours.
+- `python3 -m src.cli.recalc_player_game_stats --year YYYY`: Recalculate player game-level batting/pitching stats.
+- `python3 -m src.cli.recalc_season_stats --year YYYY`: Recalculate season-level player/team stats.
+- `python3 -m src.cli.run_daily_update`: Execute the full daily update pipeline (finalize + standings + defense + rankings).
+- `python3 -m src.cli.run_periodic_extras`: Run periodic data sync tasks.
+- `python3 -m src.cli.run_weekly_maintenance`: Run weekly maintenance tasks (futures profiles, enrichment).
+- `python3 -m src.cli.sync_oci --season-stats`: Sync season-level player/team stats to OCI.
+- `python3 -m src.cli.sync_oci --player-game-stats`: Sync player game-level stats to OCI.
+- `python3 -m scripts.verification.verify_player_game_stats --year YYYY`: Verify player game stat consistency.
 - `pytest`: Run the test suite.
 
 ## Coding Style & Naming Conventions
@@ -73,7 +88,7 @@ This repository is a Playwright-based KBO data crawler with a two-track pipeline
 
 ## GitHub Actions Automation
 
-The CI/CD pipeline uses 14 workflows and 3 composite actions under `.github/`:
+The CI/CD pipeline uses 11 workflows and 3 composite actions under `.github/`:
 
 ### Composite Actions
 - `.github/actions/python-env/`: Shared setup — checkout, setup-python (3.12), pip install, Playwright (cached via actions/cache, ~5s on hit), init-db + seed (optional), OCI hydration (optional). Used via `uses: ./.github/actions/python-env` with `playwright`, `init-db`, `hydrate` boolean inputs.
@@ -103,12 +118,15 @@ The CI/CD pipeline uses 14 workflows and 3 composite actions under `.github/`:
 All six backfill types are defined in a single `backfill.yml` using a job matrix. Trigger manually with `--backfill_id <id>` or `all`.
 
 ### Other Workflows
-- `daily_preview.yml` / `pitcher_backfill.yml`: Real-time pregame and live data (day-of-game cron windows)
+- `daily_preview.yml`: Pregame batch and live crawl (day-of-game cron windows)
+- `pitcher_backfill.yml`: Live pitcher stat backfill during game hours
 - `weekly_maintenance.yml`: Sunday 05:00 KST — futures profiles, player enrichment
 - `periodic_extras.yml`: Monthly 1st — periodic data sync
 - `full_recalculation.yml`: Manual dispatch — season stat recalculation + OCI sync
 - `kbo_automation.yml`: Manual dispatch — 8 phases: pregame, live, finalize, freshness, quality-report, gap-report, backfill, recalc-stats
 - `test_suite.yml`: CI on push/PR — ruff lint + pytest matrix (3.12)
+- `docker_build.yml`: Docker image build and push
+- `security_audit.yml`: Vulnerability scanning
 
 ### Required Secrets
 - `OCI_DB_URL`, `KBO_USER_ID`, `KBO_USER_PWD`, `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`
