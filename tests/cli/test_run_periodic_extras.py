@@ -7,9 +7,11 @@ from src.cli.run_periodic_extras import main
 
 class TestRunPeriodicExtrasCLI:
     def test_main_default_year(self):
-        with patch("sys.argv", ["run_periodic_extras"]), \
-             patch("subprocess.run") as mock_run, \
-             patch("src.cli.run_periodic_extras.datetime") as mock_dt:
+        with (
+            patch("sys.argv", ["run_periodic_extras"]),
+            patch("subprocess.run") as mock_run,
+            patch("src.cli.run_periodic_extras.datetime") as mock_dt,
+        ):
             mock_dt.now.return_value.year = 2025
             mock_result = MagicMock()
             mock_result.returncode = 0
@@ -21,10 +23,13 @@ class TestRunPeriodicExtrasCLI:
             assert mock_run.call_count == 2
 
     def test_main_with_year_and_sync(self):
-        with patch("sys.argv", ["run_periodic_extras", "--year", "2024", "--sync"]), \
-             patch("subprocess.run") as mock_run, \
-             patch("src.cli.run_periodic_extras.SessionLocal"), \
-             patch("src.cli.run_periodic_extras.OCISync") as MockSync:
+        with (
+            patch("sys.argv", ["run_periodic_extras", "--year", "2024", "--sync"]),
+            patch("subprocess.run") as mock_run,
+            patch.dict("os.environ", {"OCI_DB_URL": "postgresql://oci"}),
+            patch("src.cli.run_periodic_extras.SessionLocal"),
+            patch("src.cli.run_periodic_extras.OCISync") as MockSync,
+        ):
             mock_result = MagicMock()
             mock_result.returncode = 0
             mock_result.stdout = ""

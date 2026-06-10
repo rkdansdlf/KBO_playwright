@@ -7,14 +7,13 @@ name = "kbo-playwright"
 version = "1.0.0"
 description = "Korean Baseball Organization (KBO) data collection system using Playwright"
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.12"
 license = {text = "MIT"}
 authors = [
     {name = "anomalyco"},
 ]
 classifiers = [
     "Development Status :: 4 - Beta",
-    "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Topic :: Database",
     "Topic :: Internet :: WWW/HTTP :: Indexing/Search",
