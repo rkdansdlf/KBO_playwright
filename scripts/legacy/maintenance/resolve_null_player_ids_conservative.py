@@ -611,6 +611,7 @@ def parse_args() -> argparse.Namespace:
 
 
 def main() -> None:
+    logging.basicConfig(level=logging.INFO, format="%(levelname)s:%(name)s:%(message)s")
     load_dotenv()
     args = parse_args()
     db_url = args.db_url or (os.getenv("OCI_DB_URL") if args.oci else None)
