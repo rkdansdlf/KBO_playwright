@@ -184,6 +184,7 @@ jobs:
 
       - uses: ./.github/actions/kbo-job-setup
         with:
+          playwright: 'true'
           init-db: 'true'
           hydrate: 'true'
           hydrate-year: ${{ needs.finalize.outputs.year }}
