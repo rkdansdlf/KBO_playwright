@@ -18,6 +18,7 @@ import re
 
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.orm import Session
 
 from src.db.engine import SessionLocal
 from src.models.game import (
@@ -124,7 +125,7 @@ def _resolve_game_date_obj(raw_date: Any) -> date | None:
     return None
 
 
-def _query_db_season_by_date_range(session, season_year: int, game_date: date) -> int | None:
+def _query_db_season_by_date_range(session: Session, season_year: int, game_date: date) -> int | None:
     try:
         return _coerce_int(
             session.execute(
@@ -146,7 +147,7 @@ def _query_db_season_by_date_range(session, season_year: int, game_date: date) -
         return None
 
 
-def _apply_season_date_rules(session, season_year: int, game_date: date) -> int | None:
+def _apply_season_date_rules(session: Session, season_year: int, game_date: date) -> int | None:
     rules = SEASON_DATE_RULES.get(season_year, [])
     for start_str, end_str, type_name in rules:
         try:
@@ -173,7 +174,7 @@ def _apply_season_date_rules(session, season_year: int, game_date: date) -> int 
     return None
 
 
-def _query_db_season_by_code(session, season_year: int, league_type_code: int) -> int | None:
+def _query_db_season_by_code(session: Session, season_year: int, league_type_code: int) -> int | None:
     try:
         return _coerce_int(
             session.execute(
@@ -193,7 +194,9 @@ def _query_db_season_by_code(session, season_year: int, league_type_code: int) -
         return None
 
 
-def _resolve_schedule_season_id(session, game_data: dict[str, Any], existing_season_id: int | None) -> int | None:
+def _resolve_schedule_season_id(
+    session: Session, game_data: dict[str, Any], existing_season_id: int | None
+) -> int | None:
     explicit = _coerce_int(game_data.get("season_id"))
     if explicit is not None:
         return explicit
@@ -223,7 +226,7 @@ def _resolve_schedule_season_id(session, game_data: dict[str, Any], existing_sea
 
 
 def _resolve_game_season_id(
-    session,
+    session: Session,
     game_data: dict[str, Any],
     game_date: date,
     existing_season_id: int | None,
@@ -281,7 +284,7 @@ def _canonicalize_game_id_for_payload(
 
 
 def _record_game_id_alias(
-    session,
+    session: Session,
     alias_game_id: str | None,
     canonical_game_id: str | None,
     *,
@@ -308,7 +311,7 @@ def _record_game_id_alias(
     )
 
 
-def _new_strict_player_resolver(session) -> PlayerIdResolver:
+def _new_strict_player_resolver(session: Session) -> PlayerIdResolver:
     try:
         return PlayerIdResolver(
             session,
@@ -380,12 +383,12 @@ def _apply_game_team_identity_with_contract(
     return changed
 
 
-def _has_game_child_rows(session, model, game_id: str) -> bool:
+def _has_game_child_rows(session: Session, model: type[Any], game_id: str) -> bool:
     return session.query(model).filter(model.game_id == game_id).first() is not None
 
 
 def _infer_team_code_from_children(
-    session,
+    session: Session,
     game_id: str,
     team_side: str,
     season_year: int | None,
@@ -405,7 +408,7 @@ def _infer_team_code_from_children(
     return team_code_from_game_id_segment(segment, season_year)
 
 
-def _infer_score_from_children(session, game_id: str, team_side: str) -> int | None:
+def _infer_score_from_children(session: Session, game_id: str, team_side: str) -> int | None:
     inning_rows = (
         session.query(GameInningScore.runs)
         .filter(GameInningScore.game_id == game_id, GameInningScore.team_side == team_side)
@@ -424,7 +427,7 @@ def _infer_score_from_children(session, game_id: str, team_side: str) -> int | N
     return None
 
 
-def _infer_pitcher_from_children(session, game_id: str, team_side: str) -> str | None:
+def _infer_pitcher_from_children(session: Session, game_id: str, team_side: str) -> str | None:
     """Find starting pitcher name from game_pitching_stats."""
     row = (
         session.query(GamePitchingStat.player_name)
@@ -438,7 +441,7 @@ def _infer_pitcher_from_children(session, game_id: str, team_side: str) -> str |
     return row[0] if row else None
 
 
-def _enrich_existing_child_team_identity(session, game_id: str, season_year: int | None) -> None:
+def _enrich_existing_child_team_identity(session: Session, game_id: str, season_year: int | None) -> None:
     for model in (GameInningScore, GameLineup, GameBattingStat, GamePitchingStat):
         for row in session.query(model).filter(model.game_id == game_id).all():
             franchise_id, canonical_team_code, season_code = _resolve_team_identity(row.team_code, season_year)
@@ -448,7 +451,7 @@ def _enrich_existing_child_team_identity(session, game_id: str, season_year: int
             row.canonical_team_code = canonical_team_code
 
 
-def _ensure_game_stub(session, game_id: str) -> None:
+def _ensure_game_stub(session: Session, game_id: str) -> None:
     game_id, original_game_id = _canonicalize_game_id(game_id)
     if not game_id:
         return
@@ -557,7 +560,7 @@ def _derive_game_status(
 
 
 def _upsert_metadata(
-    session,
+    session: Session,
     game_id: str,
     metadata: dict[str, Any],
     *,
@@ -623,8 +626,66 @@ def _upsert_metadata(
 
 def _prepare_player_rows(game_id: str, dataset: str, mappings: list[dict[str, Any]]) -> list[dict[str, Any]]:
     deduped = _dedupe_exact_player_rows(game_id, dataset, mappings)
+    if dataset == "game_pitching_stats":
+        deduped = _merge_duplicate_pitching_player_rows(game_id, deduped)
     _assert_no_player_team_collisions(game_id, dataset, deduped)
     return deduped
+
+
+def _merge_duplicate_pitching_player_rows(game_id: str, mappings: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    merged: list[dict[str, Any]] = []
+    by_player_id: dict[int, dict[str, Any]] = {}
+    merged_count = 0
+    sum_fields = (
+        "innings_outs",
+        "batters_faced",
+        "pitches",
+        "hits_allowed",
+        "runs_allowed",
+        "earned_runs",
+        "home_runs_allowed",
+        "walks_allowed",
+        "strikeouts",
+        "hit_batters",
+        "wild_pitches",
+        "balks",
+        "wins",
+        "losses",
+        "saves",
+        "holds",
+    )
+
+    for mapping in mappings:
+        player_id = _normalize_player_id(mapping.get("player_id"))
+        if player_id is None:
+            merged.append(mapping)
+            continue
+
+        existing = by_player_id.get(player_id)
+        if existing is None:
+            row = dict(mapping)
+            by_player_id[player_id] = row
+            merged.append(row)
+            continue
+
+        merged_count += 1
+        for field in sum_fields:
+            existing[field] = (existing.get(field) or 0) + (mapping.get(field) or 0)
+
+        outs = existing.get("innings_outs")
+        if outs is not None:
+            existing["innings_pitched"] = outs / 3
+
+        existing["is_starting"] = bool(existing.get("is_starting")) or bool(mapping.get("is_starting"))
+        existing["appearance_seq"] = (
+            min(existing.get("appearance_seq") or 0, mapping.get("appearance_seq") or 0) or None
+        )
+        if not existing.get("decision") and mapping.get("decision"):
+            existing["decision"] = mapping.get("decision")
+
+    if merged_count:
+        logger.info("[WARN] Merged %s duplicate pitcher segment row(s) for %s", merged_count, game_id)
+    return merged
 
 
 def _dedupe_exact_player_rows(game_id: str, dataset: str, mappings: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -666,7 +727,7 @@ def _assert_no_player_team_collisions(game_id: str, dataset: str, mappings: list
     )
 
 
-def _ensure_player_basic_stubs(session, mappings: Iterable[dict[str, Any]]) -> bool:
+def _ensure_player_basic_stubs(session: Session, mappings: Iterable[dict[str, Any]]) -> bool:
     candidates: dict[int, dict[str, Any]] = {}
     for mapping in mappings:
         player_id = _normalize_player_id(mapping.get("player_id"))
@@ -707,8 +768,8 @@ def _ensure_player_basic_stubs(session, mappings: Iterable[dict[str, Any]]) -> b
 
 
 def _replace_records(
-    session,
-    model,
+    session: Session,
+    model: type[Any],
     game_id: str,
     mappings: list[dict[str, Any]],
     *,
@@ -740,8 +801,8 @@ def _replace_records(
 
 
 def _replace_records_for_side(
-    session,
-    model,
+    session: Session,
+    model: type[Any],
     game_id: str,
     team_side: str,
     mappings: list[dict[str, Any]],
@@ -774,8 +835,8 @@ def _replace_records_for_side(
 
 
 def _replace_orm_records(
-    session,
-    model,
+    session: Session,
+    model: type[Any],
     game_id: str,
     records: list[Any],
     *,
@@ -797,7 +858,7 @@ def _replace_orm_records(
     return True
 
 
-def _records_match_existing(existing_rows: list[Any], model, mappings: list[dict[str, Any]]) -> bool:
+def _records_match_existing(existing_rows: list[Any], model: type[Any], mappings: list[dict[str, Any]]) -> bool:
     if len(existing_rows) != len(mappings):
         return False
 
@@ -814,7 +875,7 @@ def _records_match_existing(existing_rows: list[Any], model, mappings: list[dict
     return sorted(existing, key=repr) == sorted(incoming, key=repr)
 
 
-def _records_match_existing_objects(existing_rows: list[Any], model, records: list[Any]) -> bool:
+def _records_match_existing_objects(existing_rows: list[Any], model: type[Any], records: list[Any]) -> bool:
     if len(existing_rows) != len(records):
         return False
 
@@ -1173,7 +1234,7 @@ def _build_pregame_lineup_rows(
 
 
 def _upsert_game_summary_entry(
-    session,
+    session: Session,
     *,
     game_id: str,
     summary_type: str,
