@@ -577,7 +577,7 @@ def save_relay_data(
                 from src.services.player_id_resolver import PlayerIdResolver
 
                 resolver = PlayerIdResolver(session, allow_unknown_registration=False)
-            except Exception:
+            except Exception:  # noqa: BLE001
                 logger.warning("Failed to initialize PlayerIdResolver — player_id resolution will be skipped")
                 resolver = None
 
@@ -591,7 +591,7 @@ def save_relay_data(
                     return None, None, None
                 try:
                     pid = resolver.resolve_id(name, team_code, season_year, is_pitcher=is_pitcher)
-                except Exception as exc:
+                except Exception as exc:  # noqa: BLE001
                     logger.warning("Player ID resolution encountered exception: %s", exc)
                     return None, "error", "resolve_exception"
                 if pid is None:

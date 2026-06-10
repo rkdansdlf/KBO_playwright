@@ -191,7 +191,7 @@ async def _run_kbo_fallback_healing(game_id: str) -> None:
                     break
                 else:
                     raise ValueError("KBO PBP crawl returned no events")
-            except Exception as fallback_err:
+            except Exception as fallback_err:  # noqa: BLE001
                 logger.warning(f"KBO fallback attempt {attempt} failed for {game_id}: {fallback_err}", exc_info=True)  # noqa: G004
                 if attempt == max_attempts:
                     logger.error("[FALLBACK ERROR] KBO fallback failed all %s attempts for %s", max_attempts, game_id)

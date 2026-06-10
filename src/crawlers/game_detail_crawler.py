@@ -17,6 +17,7 @@ from playwright.async_api import Error as PlaywrightError
 from playwright.async_api import Page
 
 from src.db.engine import SessionLocal
+from src.urls import GAME_CENTER
 from src.utils.compliance import compliance
 from src.utils.playwright_pool import AsyncPlaywrightPool
 from src.utils.playwright_retry import NAV_TIMEOUT, SEL_TIMEOUT
@@ -88,7 +89,7 @@ class GameDetailCrawler:
         resolver: Any | None = None,
         pool: AsyncPlaywrightPool | None = None,
     ) -> None:
-        self.base_url = "https://www.koreabaseball.com/Schedule/GameCenter/Main.aspx"
+        self.base_url = GAME_CENTER
         self.policy = RequestPolicy(min_delay=request_delay)
         self.resolver = resolver
         self.pool = pool

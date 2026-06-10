@@ -476,7 +476,7 @@ class MiscSyncMixin:
                         resolved = resolve_team_code_for_season(raw, season_year)
                         if resolved:
                             data["team_code"] = resolved
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001
                 logger.warning("Failed to resolve team code for roster row: %s", exc)
             return data
 

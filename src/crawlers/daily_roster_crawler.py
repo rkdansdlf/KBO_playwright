@@ -16,6 +16,7 @@ from playwright.async_api import Page
 from playwright.async_api import TimeoutError as PlaywrightTimeoutError
 from tenacity import AsyncRetrying, retry_if_exception_type, stop_after_attempt, wait_exponential
 
+from src.urls import REGISTER
 from src.utils.playwright_pool import AsyncPlaywrightPool
 from src.utils.playwright_retry import NAV_TIMEOUT
 from src.utils.team_codes import resolve_team_code
@@ -25,7 +26,7 @@ class DailyRosterCrawler:
     """Crawl daily roster changes."""
 
     def __init__(self, request_delay: float = 1.0, pool: AsyncPlaywrightPool | None = None) -> None:
-        self.base_url = "https://www.koreabaseball.com/Player/Register.aspx"
+        self.base_url = REGISTER
         self.request_delay = request_delay
         self.pool = pool
 

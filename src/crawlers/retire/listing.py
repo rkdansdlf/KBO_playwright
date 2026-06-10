@@ -9,6 +9,9 @@ import contextlib
 import logging
 from collections.abc import Iterable
 
+from playwright.async_api import Page
+
+from src.urls import HITTER_BASIC1, PITCHER_BASIC1
 from src.utils.compliance import compliance
 from src.utils.playwright_pool import AsyncPlaywrightPool
 from src.utils.playwright_retry import NAV_TIMEOUT, SEL_TIMEOUT
@@ -25,8 +28,8 @@ class RetiredPlayerListingCrawler:
     def __init__(self, request_delay: float = 1.5, pool: AsyncPlaywrightPool | None = None) -> None:
         self.request_delay = request_delay
         self.pool = pool
-        self.hitter_url = "https://www.koreabaseball.com/Record/Player/HitterBasic/Basic1.aspx"
-        self.pitcher_url = "https://www.koreabaseball.com/Record/Player/PitcherBasic/Basic1.aspx"
+        self.hitter_url = HITTER_BASIC1
+        self.pitcher_url = PITCHER_BASIC1
 
     async def _wait(self) -> None:
         await throttle.wait()
@@ -51,7 +54,7 @@ class RetiredPlayerListingCrawler:
             if owns_pool:
                 await pool.close()
 
-    async def _crawl_record_page_ids(self, page, base_url: str, year: int) -> dict[str, str]:
+    async def _crawl_record_page_ids(self, page: Page, base_url: str, year: int) -> dict[str, str]:
         """Navigate to one record page and collect IDs across its pagination.
 
         Kept as the stable no-team-filter path used by compatibility tests and
@@ -77,13 +80,13 @@ class RetiredPlayerListingCrawler:
             await self._select_option_and_dispatch(page, series_selector, "0")
             await page.wait_for_load_state("load", timeout=10000)
             await page.wait_for_timeout(500)
-        except Exception:
+        except Exception:  # noqa: BLE001
             logger.warning("Failed to select all series option, continuing")
             pass
 
         return await self._collect_ids_from_pages(page, year)
 
-    async def _select_option_and_dispatch(self, page, selector: str, value: str) -> None:
+    async def _select_option_and_dispatch(self, page: Page, selector: str, value: str) -> None:
         await page.select_option(selector, value)
         await page.evaluate(
             """
@@ -101,7 +104,7 @@ class RetiredPlayerListingCrawler:
             selector,
         )
 
-    async def _crawl_record_page_ids_with_teams(self, page, base_url: str, year: int) -> dict[str, str]:
+    async def _crawl_record_page_ids_with_teams(self, page: Page, base_url: str, year: int) -> dict[str, str]:
         """Navigate to record page, select year, and iterate through all teams to collect IDs and names."""
         if not await compliance.is_allowed(base_url):
             logger.info("[COMPLIANCE] Blocked record listing: %s", base_url)
@@ -152,7 +155,7 @@ class RetiredPlayerListingCrawler:
 
         return all_players
 
-    async def _collect_ids_from_pages(self, page, year: int) -> dict[str, str]:
+    async def _collect_ids_from_pages(self, page: Page, year: int) -> dict[str, str]:
         players: dict[str, str] = {}
         page_num = 1
         while True:
@@ -200,7 +203,7 @@ class RetiredPlayerListingCrawler:
                     page_num += 1
                 else:
                     break
-            except Exception:
+            except Exception:  # noqa: BLE001
                 logger.warning("Error during pagination, stopping")
                 break
         return players

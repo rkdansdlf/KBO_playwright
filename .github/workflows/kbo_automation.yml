@@ -44,11 +44,11 @@ jobs:
         id: target
         run: |
           if [ -n "${{ github.event.inputs.target_date }}" ]; then
-            echo "TARGET_DATE=${{ github.event.inputs.target_date }}" >> $GITHUB_OUTPUT
+            echo "TARGET_DATE=${{ github.event.inputs.target_date }}" >> "$GITHUB_OUTPUT"
           elif [ "${{ github.event.inputs.phase }}" = "finalize" ] || [ "${{ github.event.inputs.phase }}" = "freshness" ]; then
-            echo "TARGET_DATE=$(TZ='Asia/Seoul' date -d 'yesterday' +'%Y%m%d')" >> $GITHUB_OUTPUT
+            echo "TARGET_DATE=$(TZ='Asia/Seoul' date -d 'yesterday' +'%Y%m%d')" >> "$GITHUB_OUTPUT"
           else
-            echo "TARGET_DATE=$(TZ='Asia/Seoul' date +'%Y%m%d')" >> $GITHUB_OUTPUT
+            echo "TARGET_DATE=$(TZ='Asia/Seoul' date +'%Y%m%d')" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Hydrate Runtime Cache From OCI
@@ -65,10 +65,10 @@ jobs:
           KBO_USER_ID: ${{ secrets.KBO_USER_ID }}
           KBO_USER_PWD: ${{ secrets.KBO_USER_PWD }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TELEGRAM_CHAT_ID_RELAY: ${{ secrets.TELEGRAM_CHAT_ID_RELAY }}
-          TELEGRAM_CHAT_ID_STANDINGS: ${{ secrets.TELEGRAM_CHAT_ID_STANDINGS }}
-          TELEGRAM_CHAT_ID_PROFILE: ${{ secrets.TELEGRAM_CHAT_ID_PROFILE }}
-          TELEGRAM_CHAT_ID_FRESHNESS: ${{ secrets.TELEGRAM_CHAT_ID_FRESHNESS }}
+          TELEGRAM_CHAT_ID_RELAY: ${{ secrets.TELEGRAM_CHAT_ID_RELAY || secrets.TELEGRAM_CHAT_ID }}
+          TELEGRAM_CHAT_ID_STANDINGS: ${{ secrets.TELEGRAM_CHAT_ID_STANDINGS || secrets.TELEGRAM_CHAT_ID }}
+          TELEGRAM_CHAT_ID_PROFILE: ${{ secrets.TELEGRAM_CHAT_ID_PROFILE || secrets.TELEGRAM_CHAT_ID }}
+          TELEGRAM_CHAT_ID_FRESHNESS: ${{ secrets.TELEGRAM_CHAT_ID_FRESHNESS || secrets.TELEGRAM_CHAT_ID }}
         run: |
           TARGET_DATE="${{ steps.target.outputs.TARGET_DATE }}"
           echo "Running phase=${{ github.event.inputs.phase }} target_date=${TARGET_DATE}"

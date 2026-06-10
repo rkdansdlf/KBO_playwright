@@ -47,8 +47,10 @@ logger = logging.getLogger(__name__)
 # Constants & configuration
 # ---------------------------------------------------------------------------
 
-BASIC1_URL = "https://www.koreabaseball.com/Record/Player/PitcherBasic/Basic1.aspx"
-BASIC2_URL = "https://www.koreabaseball.com/Record/Player/PitcherBasic/Basic2.aspx"
+from src.urls import PITCHER_BASIC1, PITCHER_BASIC2
+
+BASIC1_URL = PITCHER_BASIC1
+BASIC2_URL = PITCHER_BASIC2
 
 BASIC1_SORT_CODE = "G_CN"  # 'G' (경기) 헤더
 
@@ -271,7 +273,7 @@ def apply_sort(
                     if policy:
                         policy.delay()
                     return True
-            except Exception:
+            except Exception:  # noqa: BLE001
                 logger.warning("Sort toggle click failed, falling back to JS execution")
 
             # Fallback to direct JS execution if DOM is un-clickable
@@ -406,7 +408,7 @@ def parse_basic1_page(
     # Wait for the table to be visible (more resilient than specific header th)
     try:
         page.wait_for_selector("table.tData01", timeout=SEL_TIMEOUT)
-    except Exception:
+    except Exception:  # noqa: BLE001
         logger.warning("기록 테이블을 찾을 수 없습니다. (타임아웃)")
         content = page.content()
         logger.debug("Page content length: %d | tData01 found: %s", len(content), "tData01" in content)

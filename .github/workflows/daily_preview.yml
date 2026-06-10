@@ -40,8 +40,8 @@ jobs:
           else
             KST_DATE="$(TZ='Asia/Seoul' date +'%Y%m%d')"
           fi
-          echo "KST_DATE=${KST_DATE}" >> $GITHUB_ENV
-          echo "KST_YEAR=${KST_DATE:0:4}" >> $GITHUB_ENV
+          echo "KST_DATE=${KST_DATE}" >> "$GITHUB_ENV"
+          echo "KST_YEAR=${KST_DATE:0:4}" >> "$GITHUB_ENV"
 
       - name: Hydrate Runtime Cache From OCI
         env:
@@ -56,7 +56,7 @@ jobs:
           KBO_USER_ID: ${{ secrets.KBO_USER_ID }}
           KBO_USER_PWD: ${{ secrets.KBO_USER_PWD }}
         run: |
-          python3 -m src.cli.daily_preview_batch --date ${{ env.KST_DATE }}
+          python3 -m src.cli.daily_preview_batch --date "${{ env.KST_DATE }}"
 
       - uses: ./.github/actions/notify
         if: always()
