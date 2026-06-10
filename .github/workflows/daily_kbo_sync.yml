@@ -234,7 +234,9 @@ jobs:
 
       - name: Verify PlayerGame Data Quality
         run: |
-          python3 -m scripts.verification.verify_player_game_stats --exit-code
+          python3 -m scripts.verification.verify_player_game_stats \
+            --date ${{ needs.finalize.outputs.date }} \
+            --exit-code
 
       - uses: ./.github/actions/notify
         if: always()

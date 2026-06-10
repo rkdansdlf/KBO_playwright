@@ -130,9 +130,7 @@ def test_local_github_actions_are_used_after_checkout():
 
             if uses_checkout:
                 first_checkout = job_block.find("uses: actions/checkout@v4")
-                first_local_action = min(
-                    job_block.find(action) for action in local_actions if action in job_block
-                )
+                first_local_action = min(job_block.find(action) for action in local_actions if action in job_block)
                 assert first_checkout < first_local_action, f"{path.name}:{job_name} local action before checkout"
 
     python_env = _read(ROOT / ".github/actions/python-env/action.yml")
@@ -155,6 +153,8 @@ def test_daily_kbo_sync_hydrates_fresh_runner_jobs():
         assert "hydrate-year: ${{ needs.finalize.outputs.year }}" in job_block
         assert "hydrate-date: ${{ needs.finalize.outputs.date }}" in job_block
 
-    assert "python3 -m scripts.verification.verify_player_game_stats --exit-code" in workflow
+    assert "python3 -m scripts.verification.verify_player_game_stats \\" in workflow
+    assert "--date ${{ needs.finalize.outputs.date }}" in workflow
+    assert "--exit-code" in workflow
     assert "--player-game-stats \\\n            --year ${{ needs.finalize.outputs.year }}" in workflow
     assert "--player-game-stats \\\n            --date" not in workflow
