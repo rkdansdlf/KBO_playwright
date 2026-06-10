@@ -22,6 +22,7 @@ from tenacity import AsyncRetrying, retry_if_exception_type, stop_after_attempt,
 from src.db.engine import SessionLocal
 from src.repositories.roster_transaction_repository import RosterTransactionRepository
 from src.repositories.source_registry_repository import save_raw_snapshots
+from src.urls import REGISTER
 from src.utils.http_client import DEFAULT_HEADERS as HEADERS
 from src.utils.playwright_pool import AsyncPlaywrightPool
 from src.utils.playwright_retry import NAV_TIMEOUT
@@ -46,7 +47,7 @@ TEAM_CODES = [
 class RosterTransactionCrawler:
     def __init__(self, request_delay: float = 1.0, pool: AsyncPlaywrightPool | None = None) -> None:
         self.mobile_url = "https://m.koreabaseball.com/Kbo/PlayerAdd.aspx"
-        self.register_url = "https://www.koreabaseball.com/Player/Register.aspx"
+        self.register_url = REGISTER
         self.request_delay = request_delay
         self.pool = pool
         self._raw_pages: list[dict] = []

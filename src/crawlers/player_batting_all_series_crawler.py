@@ -26,6 +26,7 @@ from src.models.game import Game, GameBattingStat
 from src.models.player import PlayerBasic
 from src.models.season import KboSeason
 from src.repositories.safe_batting_repository import save_batting_stats_safe
+from src.urls import HITTER_BASIC1
 from src.utils.compliance import compliance
 from src.utils.fallback_monitor import FallbackMonitor
 from src.utils.player_season_stat_validation import filter_valid_season_stat_payloads
@@ -385,7 +386,7 @@ def crawl_basic2_with_headers(
         logger.info("   🔍 Basic2 접근을 위해 Basic1에서 시작...")
 
         # 1. Basic1 페이지로 이동
-        url = "https://www.koreabaseball.com/Record/Player/HitterBasic/Basic1.aspx"
+        url = HITTER_BASIC1
         if policy:
             policy.delay()
         if not retry_navigation(page, url, timeout=45000):
@@ -813,7 +814,7 @@ def crawl_series_batting_stats(
             logger.info("-" * 60)
 
             # 페이지로 이동 (Basic1 사용)
-            url = "https://www.koreabaseball.com/Record/Player/HitterBasic/Basic1.aspx"
+            url = HITTER_BASIC1
             if not compliance.is_allowed_sync(url):
                 logger.info("[COMPLIANCE] Navigation to %s aborted.", url)
                 return []

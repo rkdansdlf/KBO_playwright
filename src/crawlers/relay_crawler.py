@@ -192,7 +192,7 @@ class RelayCrawler:
         except _PermanentStatusError as exc:
             logger.exception("[INFO] Relay API permanent error: %s status=%s", full_url, exc.status_code)
             return None, f"http_{exc.status_code}"
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001
             logger.warning("Relay API request failed: %s reason=%s", full_url, exc)
             return None, "relay_api_error"
 
@@ -360,6 +360,8 @@ class RelayCrawler:
             g_away_raw = self._naver_team_code(str(game.get("awayTeamCode") or "").strip())
             g_home_raw = self._naver_team_code(str(game.get("homeTeamCode") or "").strip())
             is_reversed = bool(game.get("reversedHomeAway"))
+            has_response_teams = bool(g_away_raw and g_home_raw)
+            any_full_team_match = False
 
             best_iter_score = -1000
             for swapped in [False, True]:
@@ -382,6 +384,7 @@ class RelayCrawler:
 
                 team_score, teams_match = self._score_team_match(g_away, g_home, away_code, home_code)
                 score += team_score
+                any_full_team_match = any_full_team_match or teams_match
 
                 if swapped == is_reversed and teams_match:
                     score += 10
@@ -389,6 +392,8 @@ class RelayCrawler:
                 best_iter_score = max(best_iter_score, score)
 
             score = best_iter_score
+            if has_response_teams and not any_full_team_match:
+                score -= 200
 
             if len(game_id) >= 8:
                 g_mmdd = game_id[4:8]
@@ -402,6 +407,9 @@ class RelayCrawler:
             score += self._score_stadium_match(game, stadium)
 
             candidates.append((game, score))
+
+        if not candidates:
+            return None
 
         best_game, best_score = max(candidates, key=lambda x: x[1])
         threshold = 80 if allow_team_fallback else 120
@@ -535,7 +543,7 @@ class RelayCrawler:
                                 game_time = getattr(meta_row, "start_time", None)
                                 if hasattr(game_time, "strftime"):
                                     game_time = game_time.strftime("%H:%M")
-            except Exception:
+            except Exception:  # noqa: BLE001
                 logger.warning("Failed to extract game metadata for relay relay")
                 pass
 

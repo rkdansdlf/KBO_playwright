@@ -10,6 +10,7 @@ from typing import Any
 
 from playwright.async_api import Page
 
+from src.urls import SCHEDULE
 from src.utils.compliance import compliance
 from src.utils.game_status import (
     GAME_STATUS_CANCELLED,
@@ -46,7 +47,7 @@ class ScheduleCrawler:
         pool: AsyncPlaywrightPool | None = None,
         policy: RequestPolicy | None = None,
     ) -> None:
-        self.base_url = "https://www.koreabaseball.com/Schedule/Schedule.aspx"
+        self.base_url = SCHEDULE
         self.request_delay = request_delay
         self.pool = pool
         self.policy = policy or RequestPolicy(min_delay=request_delay)
@@ -574,7 +575,7 @@ class ScheduleCrawler:
                 try:
                     rows_text = await page.evaluate(debug_script)
                     logger.info("Table rows sample: %s", rows_text)
-                except Exception:
+                except Exception:  # noqa: BLE001
                     logger.info("Debug evaluate failed")
 
         return games

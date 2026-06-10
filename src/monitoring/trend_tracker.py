@@ -24,20 +24,24 @@ class TrendTracker:
         self.report_dir = Path(report_dir)
 
     def load_reports(self, days: int = 30) -> list[dict]:
-        reports = []
+        reports_by_date: dict[str, dict] = {}
         cutoff = datetime.now() - timedelta(days=days)
         if not self.report_dir.exists():
-            return reports
+            return []
         for f in sorted(self.report_dir.glob("*.json")):
             try:
                 report = json.loads(f.read_text(encoding="utf-8"))
-                report_date = datetime.strptime(f.stem, "%Y%m%d")
+                report_date = self._extract_report_date(report, f)
                 if report_date >= cutoff:
                     report["_report_date"] = report_date
-                    reports.append(report)
+                    report["_report_path"] = str(f)
+                    key = report_date.strftime("%Y%m%d")
+                    current = reports_by_date.get(key)
+                    if current is None or self._generated_at_key(report) >= self._generated_at_key(current):
+                        reports_by_date[key] = report
             except (json.JSONDecodeError, ValueError):
                 continue
-        return reports
+        return sorted(reports_by_date.values(), key=lambda r: r["_report_date"])
 
     def get_trend(self, metric_key: str, days: int = 7) -> dict[str, Any]:
         reports = self.load_reports(days=days)
@@ -57,26 +61,19 @@ class TrendTracker:
 
         return {"metric": metric_key, "values": values, "direction": direction}
 
-    def detect_degradations(self, threshold_map: dict[str, float]) -> list[dict]:
+    def detect_degradations(self, threshold_map: dict[str, float], days: int = 14) -> list[dict]:
         alerts = []
-        reports = self.load_reports(days=14)
+        reports = self.load_reports(days=days)
         if len(reports) < 2:
             return alerts
 
         first = reports[0]
         last = reports[-1]
-        now = datetime.now()
 
         for metric_key, threshold in threshold_map.items():
             first_val = self._resolve_key(first, metric_key)
             last_val = self._resolve_key(last, metric_key)
             if first_val is not None and last_val is not None:
-                # Skip false alarms: completed_count=0 on a very recent date
-                if metric_key == "metrics.completed_count" and last_val == 0:
-                    last_date = last.get("_report_date")
-                    if last_date and (now - last_date).days <= 2:
-                        continue
-
                 pct_change = (last_val - first_val) / max(abs(first_val), 1) * 100
                 is_degraded = (threshold > 0 and pct_change > threshold) or (threshold < 0 and pct_change < threshold)
                 if is_degraded:
@@ -102,6 +99,20 @@ class TrendTracker:
         if isinstance(val, (int, float)):
             return float(val)
         return None
+
+    def _extract_report_date(self, report: dict, path: Path) -> datetime:
+        raw_date = (report.get("metrics") or {}).get("date")
+        if isinstance(raw_date, str):
+            normalized = raw_date.replace("-", "")
+            if len(normalized) == 8 and normalized.isdigit():
+                return datetime.strptime(normalized, "%Y%m%d")
+        return datetime.strptime(path.stem, "%Y%m%d")
+
+    def _generated_at_key(self, report: dict) -> str:
+        generated_at = report.get("generated_at")
+        if isinstance(generated_at, str):
+            return generated_at
+        return ""
 
     def print_trend_summary(self, days: int = 14) -> None:
         reports = self.load_reports(days=days)
@@ -136,8 +147,8 @@ class TrendTracker:
         deg = self.detect_degradations(
             {
                 "metrics.relay_integrity.recent_missing_count": 50.0,
-                "metrics.completed_count": -20.0,
             },
+            days=days,
         )
         if deg:
             logger.warning("\n  ⚠️  Degradations detected:")
@@ -152,10 +163,9 @@ class TrendTracker:
         """
         default_thresholds = {
             "metrics.relay_integrity.recent_missing_count": 50.0,  # +50% increase in missing PBP
-            "metrics.completed_count": -20.0,  # -20% drop in completed games
             "metrics.pa_formula_integrity.violation_count": 0.0,  # Any increase in violations
         }
-        degradations = self.detect_degradations(default_thresholds)
+        degradations = self.detect_degradations(default_thresholds, days=days)
         if not degradations:
             return  # Nothing to alert about
 

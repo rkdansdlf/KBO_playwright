@@ -96,7 +96,7 @@ class TeamPitchingStatsCrawler:
         stats = []
         try:
             stats = self._collect_from_site(season, mapping, headless=headless)
-        except Exception as crawl_err:
+        except Exception as crawl_err:  # noqa: BLE001
             logger.warning("KBO team pitching crawl failed: %s. Falling back...", crawl_err)
 
         if not stats:
@@ -168,7 +168,7 @@ class TeamPitchingStatsCrawler:
                 page.select_option(selector, str(season))
                 page.wait_for_load_state("networkidle")
                 return True
-            except Exception:
+            except Exception:  # noqa: BLE001
                 logger.warning("Failed to select option, trying next")
                 continue
 

@@ -124,7 +124,7 @@ class PlayerSearchCrawler:
         try:
             await self.policy.run_with_retry_async(_navigate)
             return True, "ok"
-        except Exception:
+        except Exception:  # noqa: BLE001
             reason = "selector_timeout" if required_selector else "navigation_failed"
             logger.warning("Player search page navigation failed: %s", reason)
             self._record_failure(reason)
@@ -208,7 +208,7 @@ class PlayerSearchCrawler:
             if owns_pool:
                 await active_pool.close()
 
-    async def _merge_rows(self, page, all_rows, seen_ids, limit) -> None:
+    async def _merge_rows(self, page: Page, all_rows, seen_ids, limit) -> None:
         rows = await self._paginate_current_tab(page)
         for r in rows:
             if r.player_id not in seen_ids:
@@ -347,13 +347,13 @@ class PlayerSearchCrawler:
             logger.warning("Could not get first player name from table")
             return ""
 
-    async def _trigger_postback(self, page, anchor) -> None:
+    async def _trigger_postback(self, page: Page, anchor) -> None:
         # Check href first — javascript:__doPostBack links must use manual evaluation
         # because Playwright click() returns success but does not actually trigger
         # the ASP.NET postback mechanism.
         try:
             href = await anchor.get_attribute("href", timeout=5000)
-        except Exception:
+        except Exception:  # noqa: BLE001
             logger.warning("Timeout getting href from anchor", exc_info=True)
             href = None
 
@@ -377,7 +377,7 @@ class PlayerSearchCrawler:
             logger.exception("Postback click failed: %s", href)
             return False
 
-    async def _wait_after_nav(self, page, prev_v, first_b) -> None:
+    async def _wait_after_nav(self, page: Page, prev_v, first_b) -> None:
         try:
             await page.wait_for_function(
                 "([s, v]) => document.querySelector(s)?.value !== v",
@@ -388,7 +388,7 @@ class PlayerSearchCrawler:
             pass
         await asyncio.sleep(self.request_delay)
 
-    async def _list_initial_links(self, page) -> None:
+    async def _list_initial_links(self, page: Page) -> None:
         links = page.locator("a")
         res = []
         for i in range(await links.count()):
