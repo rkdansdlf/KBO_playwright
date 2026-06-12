@@ -104,7 +104,7 @@ async def run_highlight_batch(
                     for game_id in sorted(set(processed_game_ids)):
                         syncer.sync_specific_game(game_id)
                 except Exception as e:
-                    logger.exception(f"OCI Sync failed: {e}")
+                    logger.exception("OCI Sync failed: %s", e)
                 finally:
                     syncer.close()
 

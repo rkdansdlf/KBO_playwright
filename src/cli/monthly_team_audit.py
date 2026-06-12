@@ -118,15 +118,15 @@ def main() -> int:
     bat_miss = len(result["batting"]["mismatches"])
     pit_miss = len(result["pitching"]["mismatches"])
 
-    logger.info(f"\nTeam Batting: {'PASS' if bat_ok else 'FAIL'} ({bat_miss} mismatches)")
+    logger.info("\nTeam Batting: %s (%s mismatches)", "PASS" if bat_ok else "FAIL", bat_miss)
     for m in result["batting"]["mismatches"]:
-        logger.info(f"  - [{m['team_id']}] {m['issue']}")
+        logger.info("  - [%s] %s", m["team_id"], m["issue"])
         for d in (m.get("diffs") or [])[:3]:
             logger.info("    %s", d)
 
-    logger.info(f"\nTeam Pitching: {'PASS' if pit_ok else 'FAIL'} ({pit_miss} mismatches)")
+    logger.info("\nTeam Pitching: %s (%s mismatches)", "PASS" if pit_ok else "FAIL", pit_miss)
     for m in result["pitching"]["mismatches"]:
-        logger.info(f"  - [{m['team_id']}] {m['issue']}")
+        logger.info("  - [%s] %s", m["team_id"], m["issue"])
         for d in (m.get("diffs") or [])[:3]:
             logger.info("    %s", d)
 

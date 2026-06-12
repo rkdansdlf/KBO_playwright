@@ -173,12 +173,12 @@ def print_report(chunks: list[dict], source_filter: str | None) -> bool:
 
     total = len(chunks)
     if total == 0:
-        logger.warning(f"\n⚠️  No chunks found{' for source=' + source_filter if source_filter else ''}.")
+        logger.warning("\n⚠️  No chunks found%s.", " for source=" + source_filter if source_filter else "")
         return False
 
-    logger.info(f"\n{'=' * 70}")
+    logger.info("\n%s", "=" * 70)
     logger.info("  📊  RAG Chunk Quality Report" + (f"  [filter: {source_filter}]" if source_filter else ""))  # noqa: G003
-    logger.info(f"{'=' * 70}\n")
+    logger.info("%s\n", "=" * 70)
 
     # --- Length stats ---
     stats = compute_length_stats(chunks)
@@ -225,29 +225,30 @@ def print_report(chunks: list[dict], source_filter: str | None) -> bool:
     logger.info(header)
     logger.info(sep)
     for metric, value, threshold, status in rows:
-        logger.info(f"│ {metric:<24}│ {value:>10} │ {threshold:>12} │ {status:>6} │")
+        logger.info("│ %-24s│ %10s │ %12s │ %6s │", metric, value, threshold, status)
     logger.info(bot)
 
     # Category distribution
     logger.info("\n📂  Category Distribution:")
     for cat, cnt in sorted(cat_dist.items(), key=lambda x: -x[1]):
         bar = "█" * min(cnt // 5 + 1, 30)
-        logger.info(f"   {cat:<30} {cnt:>5}  {bar}")
+        logger.info("   %-30s %5s  %s", cat, cnt, bar)
 
     # Under-chunked documents
     if under_chunked:
-        logger.warning(f"\n⚠️  Under-chunked documents (< {MIN_CHUNKS_PER_DOC} chunks):")
+        logger.warning("\n⚠️  Under-chunked documents (< %s chunks):", MIN_CHUNKS_PER_DOC)
         for src, cnt in sorted(under_chunked.items(), key=lambda x: x[1]):
-            logger.info(f"   [{cnt}]  {src}")
+            logger.info("   [%s]  %s", cnt, src)
 
     # Duplicate IDs sample
     if dup_ids:
         logger.warning("\n⚠️  Sample duplicate source_row_ids (showing up to 5):")
         for did in dup_ids[:5]:
-            logger.info(f"   {did}")
+            logger.info("   %s", did)
 
     logger.error(
-        f"\n{'✅  All quality checks passed!' if all_ok else '❌  Some quality checks failed — review above.'}\n",
+        "\n%s\n",
+        "✅  All quality checks passed!" if all_ok else "❌  Some quality checks failed — review above.",
     )
     return all_ok
 
@@ -308,7 +309,7 @@ def main() -> int:
 
         if args.fix_duplicates:
             deleted = remove_duplicate_chunks(session)
-            logger.info(f"🗑️  Removed {deleted} duplicate chunk row(s).")
+            logger.info("🗑️  Removed %s duplicate chunk row(s).", deleted)
             # Reload after fix
             chunks = load_chunks(session, args.source)
 

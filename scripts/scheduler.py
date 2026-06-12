@@ -1740,7 +1740,7 @@ def main(argv: Sequence[str] | None = None):
         except Exception:
             logger.exception("Startup backfill failed; scheduler will continue with cron jobs")
 
-    logger.info("\n" + "=" * 60)
+    logger.info("\n%s", "=" * 60)
     logger.info(" KBO Crawler Scheduler Started")
     logger.info("=" * 60)
     logger.info(" Timezone: Asia/Seoul")
@@ -1760,7 +1760,7 @@ def main(argv: Sequence[str] | None = None):
     logger.info(" 11. Operation Notices (Official): Daily 09:00 + 11:30 KST")
     logger.info(" 12. Operation Notices (Naver): Daily 09:30 + 13:00 KST")
     logger.info(" 13. Fan Culture (Cheer Songs/Chants): Weekly Saturday 04:00 KST")
-    logger.info("=" * 60 + "\n")
+    logger.info("%s\n", "=" * 60)
 
     try:
         scheduler.start()

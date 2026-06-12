@@ -24,9 +24,9 @@ async def run_periodic_extras(
     year: int,
     sync: bool = False,
 ) -> None:
-    logger.info(f"\n{'=' * 60}")
+    logger.info("\n%s", "=" * 60)
     logger.info("🚀 KBO Periodic Extras Started for Year: %s", year)
-    logger.info(f"{'=' * 60}")
+    logger.info("%s", "=" * 60)
 
     # 1. Futures League Data (Hitter)
     # Note: We assume these crawlers have a main() or similar entrypoint
@@ -77,9 +77,9 @@ async def run_periodic_extras(
                 finally:
                     syncer.close()
 
-    logger.info(f"\n{'=' * 60}")
+    logger.info("\n%s", "=" * 60)
     logger.info("🏁 Periodic Extras Finished")
-    logger.info(f"{'=' * 60}\n")
+    logger.info("%s\n", "=" * 60)
 
 
 def main() -> int:

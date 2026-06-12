@@ -214,7 +214,7 @@ async def main() -> None:
     crawler = FuturesProfileCrawler()
     sample_id = "78137"
     payload = await crawler.fetch_player_futures(sample_id)
-    logger.info(f"Fetched Futures tables for {sample_id}: {len(payload['tables'])}")
+    logger.info("Fetched Futures tables for %s: %s", sample_id, len(payload["tables"]))
 
 
 if __name__ == "__main__":

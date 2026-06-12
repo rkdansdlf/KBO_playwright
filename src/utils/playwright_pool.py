@@ -69,61 +69,65 @@ class AsyncPlaywrightPool:
                 logger.info("[POOL] Using saved session state.")
                 self.context_kwargs["storage_state"] = KboAuthenticator.get_auth_state_path()
 
-        self._playwright = await async_playwright().start()
-        browser_factory = getattr(self._playwright, self.browser_type)
+        try:
+            self._playwright = await async_playwright().start()
+            browser_factory = getattr(self._playwright, self.browser_type)
 
-        # Add evasion arguments
-        launch_args = [
-            "--disable-blink-features=AutomationControlled",
-        ]
-        self._browser = await browser_factory.launch(headless=self.headless, args=launch_args)
+            # Add evasion arguments
+            launch_args = [
+                "--disable-blink-features=AutomationControlled",
+            ]
+            self._browser = await browser_factory.launch(headless=self.headless, args=launch_args)
 
-        # Dynamic User-Agent Rotation
-        if "user_agent" not in self.context_kwargs:
-            from src.utils.request_policy import RequestPolicy
+            # Dynamic User-Agent Rotation
+            if "user_agent" not in self.context_kwargs:
+                from src.utils.request_policy import RequestPolicy
 
-            policy = RequestPolicy()
-            self.context_kwargs["user_agent"] = policy.random_user_agent()
+                policy = RequestPolicy()
+                self.context_kwargs["user_agent"] = policy.random_user_agent()
 
-        self._context = await self._browser.new_context(**self.context_kwargs)
+            self._context = await self._browser.new_context(**self.context_kwargs)
 
-        # Inject Stealth Script
-        stealth_script = """
-        () => {
-            // 1. Mask navigator.webdriver
-            Object.defineProperty(navigator, 'webdriver', { get: () => false });
+            # Inject Stealth Script
+            stealth_script = """
+            () => {
+                // 1. Mask navigator.webdriver
+                Object.defineProperty(navigator, 'webdriver', { get: () => false });
 
-            // 2. Mock chrome.runtime
-            window.chrome = { runtime: {} };
+                // 2. Mock chrome.runtime
+                window.chrome = { runtime: {} };
 
-            // 3. Fix navigator.languages
-            Object.defineProperty(navigator, 'languages', { get: () => ['ko-KR', 'ko', 'en-US', 'en'] });
+                // 3. Fix navigator.languages
+                Object.defineProperty(navigator, 'languages', { get: () => ['ko-KR', 'ko', 'en-US', 'en'] });
 
-            // 4. Mock WebGL vendor/renderer for high-end look
-            const getParameter = WebGLRenderingContext.prototype.getParameter;
-            WebGLRenderingContext.prototype.getParameter = function(parameter) {
-                if (parameter === 37445) return 'Intel Inc.';
-                if (parameter === 37446) return 'Intel(R) Iris(TM) Plus Graphics 640';
-                return getParameter.apply(this, arguments);
-            };
+                // 4. Mock WebGL vendor/renderer for high-end look
+                const getParameter = WebGLRenderingContext.prototype.getParameter;
+                WebGLRenderingContext.prototype.getParameter = function(parameter) {
+                    if (parameter === 37445) return 'Intel Inc.';
+                    if (parameter === 37446) return 'Intel(R) Iris(TM) Plus Graphics 640';
+                    return getParameter.apply(this, arguments);
+                };
 
-            // 5. Hide direct automation clues
-            delete navigator.__proto__.webdriver;
-        }
-        """
-        await self._context.add_init_script(stealth_script)
+                // 5. Hide direct automation clues
+                delete navigator.__proto__.webdriver;
+            }
+            """
+            await self._context.add_init_script(stealth_script)
 
-        if self.block_resources:
-            await install_async_resource_blocking(self._context)
+            if self.block_resources:
+                await install_async_resource_blocking(self._context)
 
-        self._queue = asyncio.Queue(maxsize=self.max_pages)
-        for _ in range(self.max_pages):
-            page = await self._context.new_page()
-            if self.timeout_ms:
-                page.set_default_timeout(self.timeout_ms)
-            self._pages.append(page)
-            await self._queue.put(page)
-        self._started = True
+            self._queue = asyncio.Queue(maxsize=self.max_pages)
+            for _ in range(self.max_pages):
+                page = await self._context.new_page()
+                if self.timeout_ms:
+                    page.set_default_timeout(self.timeout_ms)
+                self._pages.append(page)
+                await self._queue.put(page)
+            self._started = True
+        except Exception:
+            await self.close()
+            raise
 
     async def acquire(self) -> Page:
         if not self._started:
@@ -151,8 +155,6 @@ class AsyncPlaywrightPool:
             await self.release(page)
 
     async def close(self) -> None:
-        if not self._started:
-            return
         for page in self._pages:
             with suppress(Exception):
                 await page.close()

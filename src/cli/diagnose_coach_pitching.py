@@ -46,31 +46,31 @@ def _print_text_report(rows: list[dict]) -> None:
         raw = row["raw_tables"]
         repo = row["repository"]
         final = row["final_payload"]
-        logger.info(f"{row['game_id']}: {row['drop_stage']}")
+        logger.info("%s: %s", row["game_id"], row["drop_stage"])
         logger.info(
-            "  raw: "
-            f"pitching={raw['game_pitching_rows']} "
-            f"starters={raw['starter_rows']} "
-            f"bullpen={raw['bullpen_rows']} "
-            f"missing_player_ids={raw['player_id_missing_rows']}",
+            "  raw: pitching=%s starters=%s bullpen=%s missing_player_ids=%s",
+            raw["game_pitching_rows"],
+            raw["starter_rows"],
+            raw["bullpen_rows"],
+            raw["player_id_missing_rows"],
         )
         logger.info(
-            "  repository: "
-            f"starters={repo['starter_rows']} "
-            f"bullpen={repo['bullpen_rows']} "
-            f"season_matches={repo['season_pitching_matches']} "
-            f"unmatched={len(repo['unmatched_season_stats'])}",
+            "  repository: starters=%s bullpen=%s season_matches=%s unmatched=%s",
+            repo["starter_rows"],
+            repo["bullpen_rows"],
+            repo["season_pitching_matches"],
+            len(repo["unmatched_season_stats"]),
         )
         logger.info(
-            "  final_payload: "
-            f"review={final['review_summary_found']} "
-            f"summary_rows={final['review_summary_rows']} "
-            f"pitching_breakdown={final['pitching_breakdown_found']} "
-            f"starters={final['starter_rows']} "
-            f"bullpen={final['bullpen_rows']}",
+            "  final_payload: review=%s summary_rows=%s pitching_breakdown=%s starters=%s bullpen=%s",
+            final["review_summary_found"],
+            final["review_summary_rows"],
+            final["pitching_breakdown_found"],
+            final["starter_rows"],
+            final["bullpen_rows"],
         )
         if row.get("warnings"):
-            logger.info(f"  warnings: {', '.join(row['warnings'])}")
+            logger.info("  warnings: %s", ", ".join(row["warnings"]))
         if repo["unmatched_season_stats"]:
             examples = ", ".join(
                 f"{item.get('player_name')}({item.get('player_id')})" for item in repo["unmatched_season_stats"][:5]

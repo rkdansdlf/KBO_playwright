@@ -176,13 +176,24 @@ def _row_value(row: Any, key: str, default: Any = None) -> Any:
 
 def _format_standings_terminal(standings: dict[str, Any], year: int) -> None:
     date_label = standings.get("date", "") or ""
-    logger.info(f"\n{'=' * 70}")
-    logger.info(f"  KBO {year}년 순위표 (기준: {date_label})")
-    logger.info(f"{'=' * 70}")
+    logger.info("\n%s", "=" * 70)
+    logger.info("  KBO %s년 순위표 (기준: %s)", year, date_label)
+    logger.info("%s", "=" * 70)
     logger.info(
-        f"{'순위':>4} {'팀':<6} {'승':>4} {'패':>4} {'무':>3} {'승률':>7} {'승차':>5} {'최근10':>8} {'연속':>4} {'홈':>8} {'원정':>8}",
+        "%4s %-6s %4s %4s %3s %7s %5s %8s %4s %8s %8s",
+        "순위",
+        "팀",
+        "승",
+        "패",
+        "무",
+        "승률",
+        "승차",
+        "최근10",
+        "연속",
+        "홈",
+        "원정",
     )
-    logger.info(f"{'-' * 70}")
+    logger.info("%s", "-" * 70)
     for row in standings.get("rows", []):
         top5 = "★" if _row_value(row, "top_5") else " "
         current_streak = _row_value(row, "current_streak", 0)
@@ -191,13 +202,21 @@ def _format_standings_terminal(standings: dict[str, Any], year: int) -> None:
         home = f"{_row_value(row, 'home_wins', 0)}승{_row_value(row, 'home_losses', 0)}패"
         away = f"{_row_value(row, 'away_wins', 0)}승{_row_value(row, 'away_losses', 0)}패"
         logger.info(
-            f"  {top5}{_row_value(row, 'rank', '-'):>2} {_row_value(row, 'team_code', '?'):<6} "
-            f"{_row_value(row, 'wins', 0):>4} {_row_value(row, 'losses', 0):>4} "
-            f"{_row_value(row, 'draws', 0):>3} {_row_value(row, 'win_pct', 0):>7.3f} "
-            f"{_row_value(row, 'games_behind', '-'):>5} "
-            f"{recent:>8} {streak_str:>4} {home:>8} {away:>8}",
+            "  %s%2s %-6s %4s %4s %3s %7.3f %5s %8s %4s %8s %8s",
+            top5,
+            _row_value(row, "rank", "-"),
+            _row_value(row, "team_code", "?"),
+            _row_value(row, "wins", 0),
+            _row_value(row, "losses", 0),
+            _row_value(row, "draws", 0),
+            _row_value(row, "win_pct", 0),
+            _row_value(row, "games_behind", "-"),
+            recent,
+            streak_str,
+            home,
+            away,
         )
-    logger.info(f"{'=' * 70}")
+    logger.info("%s", "=" * 70)
     logger.info("  ★ 상위 5팀 (5강)")
 
 
@@ -205,34 +224,38 @@ def _format_park_factor_terminal(park_factor: dict[str, Any]) -> None:
     results = park_factor.get("results", [])
     if not results:
         return
-    logger.info(f"\n{'=' * 65}")
-    logger.info(f"  KBO {park_factor['year']}년 구장별 파크팩터")
-    logger.info(f"{'=' * 65}")
-    logger.info(f"{'구장':<20} {'경기':>4} {'RPG':>6} {'PF':>6}  평가")
-    logger.info(f"{'-' * 65}")
+    logger.info("\n%s", "=" * 65)
+    logger.info("  KBO %s년 구장별 파크팩터", park_factor["year"])
+    logger.info("%s", "=" * 65)
+    logger.info("%-20s %4s %6s %6s  평가", "구장", "경기", "RPG", "PF")
+    logger.info("%s", "-" * 65)
     for row in sorted(results, key=lambda x: x["park_factor"], reverse=True):
         logger.info(
-            f"  {row['stadium']:<18} {row['games']:>4} {row['runs_per_game']:>5.1f} "
-            f"{row['park_factor']:>5.3f}  {row['park_factor_label']}",
+            "  %-18s %4s %5.1f %5.3f  %s",
+            row["stadium"],
+            row["games"],
+            row["runs_per_game"],
+            row["park_factor"],
+            row["park_factor_label"],
         )
 
 
 def _format_rankings_terminal(rankings: dict[str, Any]) -> None:
-    logger.info(f"\n{'=' * 60}")
-    logger.info(f"  KBO {rankings['year']}년 세이버메트릭 TOP5")
-    logger.info(f"{'=' * 60}")
+    logger.info("\n%s", "=" * 60)
+    logger.info("  KBO %s년 세이버메트릭 TOP5", rankings["year"])
+    logger.info("%s", "=" * 60)
     for category, ranked in rankings.get("top5", {}).items():
         if ranked:
             names = ", ".join(f"{row.get('player_name', '?')} ({row.get('value', 0)})" for row in ranked[:3])
-            logger.info(f"  {category:<10}: {names}")
+            logger.info("  %-10s: %s", category, names)
 
 
 def _format_team_defense_terminal(team_defense: dict[str, Any]) -> None:
-    logger.info(f"\n{'=' * 60}")
-    logger.info(f"  KBO {team_defense['year']}년 팀 수비/주루")
-    logger.info(f"{'=' * 60}")
-    logger.info(f"{'팀':<6} {'수비율':>8} {'실책':>5} {'도루':>5} {'도실':>5} {'성공률':>7}")
-    logger.info(f"{'-' * 60}")
+    logger.info("\n%s", "=" * 60)
+    logger.info("  KBO %s년 팀 수비/주루", team_defense["year"])
+    logger.info("%s", "=" * 60)
+    logger.info("%-6s %8s %5s %5s %5s %7s", "팀", "수비율", "실책", "도루", "도실", "성공률")
+    logger.info("%s", "-" * 60)
     fielding_map = {row.get("team_code", row.get("team")): row for row in team_defense.get("fielding", [])}
     baserunning_map = {row.get("team_code", row.get("team")): row for row in team_defense.get("baserunning", [])}
     all_teams = sorted(set(list(fielding_map.keys()) + list(baserunning_map.keys())))
@@ -246,9 +269,13 @@ def _format_team_defense_terminal(team_defense: dict[str, Any]) -> None:
         if isinstance(success_rate, float):
             success_rate = f"{success_rate:.3f}"
         logger.info(
-            f"  {team:<6} {str(fielding.get('fielding_pct', '-') or '-'):>8} "
-            f"{str(fielding.get('errors', '-')):>5} {str(baserunning.get('stolen_bases', '-')):>5} "
-            f"{str(baserunning.get('caught_stealing', '-')):>5} {str(success_rate):>7}",
+            "  %-6s %8s %5s %5s %5s %7s",
+            team,
+            str(fielding.get("fielding_pct", "-") or "-"),
+            str(fielding.get("errors", "-")),
+            str(baserunning.get("stolen_bases", "-")),
+            str(baserunning.get("caught_stealing", "-")),
+            str(success_rate),
         )
 
 
@@ -256,11 +283,11 @@ def _format_team_gate_terminal(label: str, result: dict[str, Any]) -> None:
     if result.get("checked_players", 0) <= 0:
         return
     status = "✅" if result.get("ok") else "❌"
-    logger.info(f"  {label}: {status} ({result.get('checked_players', 0)}개 팀)")
+    logger.info("  %s: %s (%s개 팀)", label, status, result.get("checked_players", 0))
     for mismatch in result.get("mismatches", []):
-        logger.info(f"    - {mismatch.get('team_id')}: {mismatch.get('issue')}")
+        logger.info("    - %s: %s", mismatch.get("team_id"), mismatch.get("issue"))
         for diff in mismatch.get("diffs", [])[:2]:
-            logger.info(f"      {diff}")
+            logger.info("      %s", diff)
 
 
 def _format_quality_gate_terminal(quality: dict[str, Any]) -> None:
@@ -278,10 +305,10 @@ def _format_pa_trend_terminal(quality: dict[str, Any]) -> None:
     direction_icon = (
         "📈" if trend.get("direction") == "worsening" else "📉" if trend.get("direction") == "improving" else "➡️"
     )
-    logger.info(f"  PA 추세 ({len(trend['months'])}개월): {direction_icon} {trend['direction']}")
+    logger.info("  PA 추세 (%s개월): %s %s", len(trend["months"]), direction_icon, trend["direction"])
     for month in trend["months"][-3:]:
         icon = "❌" if month["violation_count"] > 0 else "✅"
-        logger.info(f"    {icon} {month['month']}: {month['violation_count']}/{month['total_checked']}")
+        logger.info("    %s %s: %s/%s", icon, month["month"], month["violation_count"], month["total_checked"])
 
 
 def _format_unified_audit_terminal(quality: dict[str, Any]) -> None:
@@ -301,48 +328,48 @@ def _format_unified_audit_terminal(quality: dict[str, Any]) -> None:
         issues.append("팀 타격")
     if not team_pit_ok:
         issues.append("팀 투수")
-    logger.error(f"  통합 감사: ❌ ({', '.join(issues)})")
+    logger.error("  통합 감사: ❌ (%s)", ", ".join(issues))
 
 
 def _format_quality_terminal(quality: dict[str, Any]) -> None:
-    logger.info(f"\n{'=' * 60}")
-    logger.info(f"  KBO Quality Report ({quality.get('date', '?')})")
-    logger.info(f"{'=' * 60}")
-    logger.info(f"  경기: {quality.get('completed_count', 0)}/{quality.get('total_games', 0)} 완료")
+    logger.info("\n%s", "=" * 60)
+    logger.info("  KBO Quality Report (%s)", quality.get("date", "?"))
+    logger.info("%s", "=" * 60)
+    logger.info("  경기: %s/%s 완료", quality.get("completed_count", 0), quality.get("total_games", 0))
     relay = quality.get("relay_integrity", {})
     if relay:
-        logger.info(f"  PBP 누락: 최근 {relay.get('recent_missing_count', 0)}건")
+        logger.info("  PBP 누락: 최근 %s건", relay.get("recent_missing_count", 0))
     standings = quality.get("standings_integrity", {})
     if standings:
-        logger.error(f"  순위 정합성: {'✅' if standings.get('ok') else '❌'}")
+        logger.error("  순위 정합성: %s", "✅" if standings.get("ok") else "❌")
     pa_formula = quality.get("pa_formula_integrity", {})
     if pa_formula and pa_formula.get("ok"):
         logger.info("  PA 공식: ✅ 일치")
     elif pa_formula:
-        logger.error(f"  PA 공식: ❌ ({pa_formula.get('violation_count', 0)}건 위반)")
+        logger.error("  PA 공식: ❌ (%s건 위반)", pa_formula.get("violation_count", 0))
     _format_quality_gate_terminal(quality)
     _format_pa_trend_terminal(quality)
     _format_unified_audit_terminal(quality)
 
 
 def _format_freshness_terminal(freshness: dict[str, Any]) -> None:
-    logger.info(f"\n{'=' * 60}")
-    logger.info(f"  Freshness Gate ({freshness.get('date', '?')})")
-    logger.info(f"{'=' * 60}")
-    logger.info(f"  총 {freshness.get('total_issues', 0)}개 이슈")
+    logger.info("\n%s", "=" * 60)
+    logger.info("  Freshness Gate (%s)", freshness.get("date", "?"))
+    logger.info("%s", "=" * 60)
+    logger.info("  총 %s개 이슈", freshness.get("total_issues", 0))
     for game_id, issues in freshness.get("issues", {}).items():
         for issue in issues:
-            logger.warning(f"  ⚠️  [{game_id}] {issue}")
+            logger.warning("  ⚠️  [%s] %s", game_id, issue)
 
 
 def _format_sync_terminal(sync: dict[str, Any]) -> None:
-    logger.info(f"\n{'=' * 60}")
+    logger.info("\n%s", "=" * 60)
     logger.info("  OCI Sync Status")
-    logger.info(f"{'=' * 60}")
+    logger.info("%s", "=" * 60)
     if sync.get("status") == "ok":
-        logger.info(f"  ✅ {sync.get('ok_count', 0)}/{sync.get('table_count', 0)} tables in sync")
+        logger.info("  ✅ %s/%s tables in sync", sync.get("ok_count", 0), sync.get("table_count", 0))
     else:
-        logger.warning(f"  ⚠️  {sync.get('status')}: {sync.get('reason', '')}")
+        logger.warning("  ⚠️  %s: %s", sync.get("status"), sync.get("reason", ""))
 
 
 def _format_terminal(data: dict[str, Any], sections: list[str]) -> None:

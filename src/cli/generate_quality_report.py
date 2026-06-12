@@ -290,7 +290,7 @@ def get_auto_remediation_summary(target_date_str: str, audit_dir: Path | None = 
             with open(f, encoding="utf-8") as file_handle:
                 content = json.load(file_handle)
         except SQLAlchemyError as e:
-            _LOGGER.error(f"Failed to read/parse audit fix file {filename}: {e}")
+            _LOGGER.error("Failed to read/parse audit fix file %s: %s", filename, e)
             continue
 
         if "_abort_" in filename:
@@ -574,7 +574,7 @@ def get_daily_metrics(session, target_date_str: str, gate_result: dict[str, Any]
                 parity_info["diff"] = oci_count - local_count
                 parity_info["ok"] = parity_info["diff"] == 0
     except SQLAlchemyError as e:
-        _LOGGER.error(f"Parity check failed: {e}")
+        _LOGGER.error("Parity check failed: %s", e)
         parity_info["ok"] = False
         parity_info["error"] = str(e)
 

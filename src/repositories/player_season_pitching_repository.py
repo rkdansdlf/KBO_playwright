@@ -175,7 +175,7 @@ def save_pitching_stats_to_db(payloads: list[dict[str, Any]]) -> int:
                 session.execute(stmt)
                 saved_count += 1
             except SQLAlchemyError:
-                logger.exception(f"⚠️ UPSERT 실패 (player_id={data.get('player_id')})")
+                logger.exception("⚠️ UPSERT 실패 (player_id=%s)", data.get("player_id"))
                 session.rollback()
                 continue
 

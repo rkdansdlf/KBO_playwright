@@ -129,7 +129,7 @@ def save_kbo_batting_batch(players_data: dict[int, dict[str, Any]], series_name:
                 if saved_count % 50 == 0:  # 50명마다 진행상황 출력
                     logger.info("   📊 진행상황: %s/%s명 저장 완료", saved_count, total_count)
         except Exception:
-            logger.exception(f"   ⚠️ {player_data.get('player_name', 'Unknown')} 저장 실패")
+            logger.exception("   ⚠️ %s 저장 실패", player_data.get("player_name", "Unknown"))
             continue
 
     logger.info("   ✅ %s/%s명 저장 완료", saved_count, total_count)

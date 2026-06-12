@@ -129,15 +129,14 @@ class StatAudit:
         ]
         SlackWebhookClient.send_alert(msg, blocks=blocks)
         try:
-            mismatch_data = []
-            for m in mismatches:
-                mismatch_data.append(
-                    {
-                        "player_id": str(m["player_id"]),
-                        "name": str(m["name"]),
-                        "diffs": m["diffs"],
-                    }
-                )
+            mismatch_data = [
+                {
+                    "player_id": str(m["player_id"]),
+                    "name": str(m["name"]),
+                    "diffs": m["diffs"],
+                }
+                for m in mismatches
+            ]
             FallbackMonitor.save_audit_event(
                 category, "warning", {"year": year, "series": series, "mismatches": mismatch_data}
             )

@@ -59,7 +59,7 @@ class AwardCrawler:
                     else:
                         data = []
                 except Exception as e:
-                    logger.exception(f"Error crawling {atype}: {e}")
+                    logger.exception("Error crawling %s: %s", atype, e)
                     import traceback
 
                     traceback.print_exc()
@@ -318,12 +318,12 @@ class AwardCrawler:
                     repo.save_award(item)
                     count += 1
                 except Exception as ex:  # noqa: BLE001
-                    logger.warning(f"Skipping duplicate or error: {item} - {ex}", exc_info=True)
+                    logger.warning("Skipping duplicate or error: %s - %s", item, ex, exc_info=True)
             session.commit()
             logger.info("✅ Saved %s awards to database.", count)
         except Exception as e:
             session.rollback()
-            logger.exception(f"Error saving to DB: {e}")
+            logger.exception("Error saving to DB: %s", e)
         finally:
             session.close()
 

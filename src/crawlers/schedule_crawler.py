@@ -74,7 +74,7 @@ class ScheduleCrawler:
         Returns:
             경기 정보 딕셔너리가 담긴 리스트.
         """
-        logger.info(f"🔍 Crawling schedule for {year}-{month:02d} (Series: {series_id})...")
+        logger.info("🔍 Crawling schedule for %s-%02d (Series: %s)...", year, month, series_id)
 
         pool = self.pool or AsyncPlaywrightPool(max_pages=1)
         owns_pool = self.pool is None
@@ -83,7 +83,7 @@ class ScheduleCrawler:
             page = await pool.acquire()
             try:
                 games = await self._crawl_month(page, year, month, series_id=series_id)
-                logger.info(f"✅ Found {len(games)} games")
+                logger.info("✅ Found %s games", len(games))
                 return games
             except Exception:
                 logger.exception("❌ Error crawling schedule")
@@ -132,7 +132,7 @@ class ScheduleCrawler:
         selector_timeout: int = 10000,
     ) -> tuple[bool, str]:
         if not await compliance.is_allowed(self.base_url):
-            logger.info(f"[COMPLIANCE] Navigation to {self.base_url} aborted.")
+            logger.info("[COMPLIANCE] Navigation to %s aborted.", self.base_url)
             return False, "blocked"
 
         async def _navigate() -> None:
@@ -175,7 +175,7 @@ class ScheduleCrawler:
         try:
             await self.policy.run_with_retry_async(_select)
         except Exception:
-            logger.exception(f"[WARN] Schedule {label} select failed ({value})")
+            logger.exception("[WARN] Schedule %s select failed (%s)", label, value)
             return False, "schedule_navigation_failed"
 
         return True, "ok"
@@ -226,7 +226,7 @@ class ScheduleCrawler:
         }
 
         for sid in target_series:
-            logger.info(f"[NAV] Selecting Series: {sid} for {year}-{month:02d}")
+            logger.info("[NAV] Selecting Series: %s for %s-%02d", sid, year, month)
             try:
                 ok, failure_reason = await self._select_option_with_retry(
                     page,
@@ -246,7 +246,7 @@ class ScheduleCrawler:
                         all_games.append(g)
                         seen_game_ids.add(gid)
             except Exception:
-                logger.exception(f"[WARN] Error crawling series {sid}")
+                logger.exception("[WARN] Error crawling series %s", sid)
 
         if not all_games and not self._last_failure_reason.get(crawl_key):
             self._last_failure_reason[crawl_key] = "schedule_empty"
@@ -493,7 +493,7 @@ class ScheduleCrawler:
                     home_code = resolve_team_code(home_name, year)
 
                     if not away_code or not home_code:
-                        logger.info(f"[WARN] Skipping game due to unresolved team names: {away_name} vs {home_name}")
+                        logger.info("[WARN] Skipping game due to unresolved team names: %s vs %s", away_name, home_name)
                         continue
 
                     # KBO Website uses LEGACY codes in Game IDs.
@@ -602,12 +602,12 @@ async def main() -> None:
     games = await crawler.crawl_schedule(now.year, now.month)
 
     logger.info("\n📊 Schedule Summary:")
-    logger.info(f"Total games found: {len(games)}")
+    logger.info("Total games found: %s", len(games))
 
     if games:
         logger.info("\n📝 First 5 games:")
         for game in games[:5]:
-            logger.info(f"  - {game['game_id']} | {game['game_date']}")
+            logger.info("  - %s | %s", game["game_id"], game["game_date"])
 
 
 if __name__ == "__main__":

@@ -298,8 +298,10 @@ class GameDetailCrawler:
                     break
 
                 logger.warning(
-                    f"⚠️  Incomplete stats on REVIEW for {game_id}. "
-                    f"Trying HITTER/PITCHER tabs (attempt {attempt}/{max_fallback_attempts})...",
+                    "⚠️  Incomplete stats on REVIEW for %s. Trying HITTER/PITCHER tabs (attempt %s/%s)...",
+                    game_id,
+                    attempt,
+                    max_fallback_attempts,
                 )
                 if not has_hitters:
                     ok, reason, _ = await self._navigate_section(
@@ -454,7 +456,7 @@ class GameDetailCrawler:
                 except PlaywrightError:
                     continue
                 if any(cancel_word in txt for cancel_word in ["경기취소", "취소", "우천취소"]):
-                    logger.info(f"ℹ️ Game {page.url} is marked as CANCELLED in UI: '{txt}'")
+                    logger.info("ℹ️ Game %s is marked as CANCELLED in UI: '%s'", page.url, txt)
                     return True
             try:
                 content_area = await page.query_selector("#contents, .box-score-area")
@@ -926,7 +928,7 @@ class GameDetailCrawler:
                 )
                 if p_id is None and can_register_from_search:
                     # PROACTIVE SEARCH: If not found in DB, try to find on KBO site and register
-                    logger.info(f"🔍 Unknown player '{player_name}' ({team_code}) found. Searching KBO...")
+                    logger.info("🔍 Unknown player '%s' (%s) found. Searching KBO...", player_name, team_code)
                     from src.crawlers.player_search_crawler import PlayerSearchCrawler
 
                     search_crawler = PlayerSearchCrawler()
@@ -1149,7 +1151,7 @@ class GameDetailCrawler:
             return
         logger.warning("⚠️  Unresolved player_id entries for %s: %s", game_id, len(unresolved))
         for name, team_code, uniform_no in unresolved:
-            logger.info(f"   - name={name}, team_code={team_code or 'N/A'}, uniform_no={uniform_no or 'N/A'}")
+            logger.info("   - name=%s, team_code=%s, uniform_no=%s", name, team_code or "N/A", uniform_no or "N/A")
 
     def _derive_hitter_stats_from_inning_cells(self, cells: dict[str, str]) -> dict[str, int]:
         """Counts stats from inning breakdown cells (e.g. '삼진', '4구')."""
@@ -1361,7 +1363,7 @@ class GameDetailCrawler:
         try:
             return await page.evaluate(script)
         except PlaywrightError as e:
-            logger.warning(f"Error executing roster extraction script: {e}", exc_info=True)
+            logger.warning("Error executing roster extraction script: %s", e, exc_info=True)
             return {}
 
 

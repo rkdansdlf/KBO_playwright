@@ -456,8 +456,10 @@ async def _step_1_schedule(ctx: _RunContext) -> None:
         source_reason=f"monthly_schedule_refresh:{ctx.year}-{ctx.month:02d}",
     )
     logger.info(
-        f"   \u2705 Schedule discovered={schedule_result.discovered} "
-        f"saved={schedule_result.saved} failed={schedule_result.failed}",
+        "   ✅ Schedule discovered=%s saved=%s failed=%s",
+        schedule_result.discovered,
+        schedule_result.saved,
+        schedule_result.failed,
     )
 
     daily_games = [g for g in schedule_games if str(g.get("game_date", "")).replace("-", "") == ctx.target_date]
@@ -567,7 +569,8 @@ def _prepare_detail_targets(ctx: _RunContext) -> None:
         queued_recovery_game_count += 1
     if queued_recovery_game_count > 0:
         logger.info(
-            f"   ♻️ Re-prioritizing {queued_recovery_game_count} queued detail-recovery game(s)",
+            "   ♻️ Re-prioritizing %s queued detail-recovery game(s)",
+            queued_recovery_game_count,
         )
 
 
@@ -620,7 +623,9 @@ def _apply_detail_failure_fallback(ctx: _RunContext, game_id: str, reason: str |
             and fallback != GAME_STATUS_CANCELLED
         ):
             logger.info(
-                f"   ℹ️ Preservation: Keeping terminal status '{current_game.game_status}' for {game_id}",
+                "   ℹ️ Preservation: Keeping terminal status '%s' for %s",
+                current_game.game_status,
+                game_id,
             )
         else:
             update_game_status(game_id, fallback)
@@ -635,7 +640,7 @@ def _record_detail_result_status(ctx: _RunContext, game_id: str, item: Any) -> N
     if item and item.detail_status == "save_failed":
         logger.error("   ❌ Failed to save details for %s to local DB", game_id)
     else:
-        logger.warning(f"   ⚠️ Could not fetch details for {game_id} (reason={reason or 'unknown'})")
+        logger.warning("   ⚠️ Could not fetch details for %s (reason=%s)", game_id, reason or "unknown")
 
     ctx.detail_still_missing.add(game_id)
     if ctx.detail_recovery_attempts.get(game_id, 0) >= DETAIL_RECOVERY_RETRY_ALERT_THRESHOLD + 1:
@@ -669,15 +674,19 @@ def _finalize_detail_results(
         _record_detail_result_status(ctx, game_id, detail_results_by_game.get(game_id))
 
     logger.info(
-        f"   ✅ Detail result success={len(ctx.processed_game_ids)} failed={len(ctx.detail_still_missing)} "
-        f"recovery_passes={ctx.detail_recovery_passes}",
+        "   ✅ Detail result success=%s failed=%s recovery_passes=%s",
+        len(ctx.processed_game_ids),
+        len(ctx.detail_still_missing),
+        ctx.detail_recovery_passes,
     )
     if ctx.detail_failure_counts:
         logger.info("   ℹ️ Detail failure reasons: %s", _format_counts(ctx.detail_failure_counts))
     if ctx.detail_recovery_passes:
         logger.info(
-            f"   ℹ️ Detail recovery recovered_after_retry={ctx.detail_recovered_after_retry}, "
-            f"still_missing={len(ctx.detail_still_missing)}, escalated={len(ctx.detail_retry_escalation_game_ids)}",
+            "   ℹ️ Detail recovery recovered_after_retry=%s, still_missing=%s, escalated=%s",
+            ctx.detail_recovered_after_retry,
+            len(ctx.detail_still_missing),
+            len(ctx.detail_retry_escalation_game_ids),
         )
     _send_detail_recovery_escalation_alert(ctx)
 
@@ -703,7 +712,9 @@ async def _run_postgame_reconciliation(ctx: _RunContext, g_crawler: GameDetailCr
     ctx.reconciliation_changed_ids = reconciliation_result.changed_game_ids
     ctx.reconciliation_dates = sorted({change.game_date for change in reconciliation_result.changes})
     logger.info(
-        f"   ✅ candidates={reconciliation_result.candidates} changed={len(reconciliation_result.changes)}",
+        "   ✅ candidates=%s changed=%s",
+        reconciliation_result.candidates,
+        len(reconciliation_result.changes),
     )
     if reconciliation_result.changes:
         for line in format_reconciliation_report(reconciliation_result.changes).splitlines():
@@ -758,10 +769,10 @@ async def _step_3_refresh_status(ctx: _RunContext) -> None:
         normalized for game_id in status_result.get("game_ids", []) if (normalized := normalize_kbo_game_id(game_id))
     ]
     logger.info(
-        "   \u2705 "
-        f"total={status_result.get('total', 0)} "
-        f"updated={status_result.get('updated', 0)} "
-        f"counts={status_result.get('status_counts', {})}",
+        "   ✅ total=%s updated=%s counts=%s",
+        status_result.get("total", 0),
+        status_result.get("updated", 0),
+        status_result.get("status_counts", {}),
     )
 
 
@@ -848,7 +859,8 @@ async def _step_4_5_proactive_relay(ctx: _RunContext) -> None:
 
             if missing_relay_game_ids:
                 logger.info(
-                    f"   \u26a0\ufe0f Found {len(missing_relay_game_ids)} games missing PBP/event/WPA data. Attempting recovery...",
+                    "   ⚠️ Found %s games missing PBP/event/WPA data. Attempting recovery...",
+                    len(missing_relay_game_ids),
                 )
                 to_recover = [gid for gid in missing_relay_game_ids if gid not in ctx.relay_recovery_target_ids]
                 if to_recover:
@@ -1078,7 +1090,7 @@ async def _step_10_7_enrichment(ctx: _RunContext) -> None:
             logger.warning(
                 "   \u26a0\ufe0f  Audit found %s inconsistencies in %s games.", len(violations), len(inconsistent_ids)
             )
-            logger.info(f"   \U0001f680 Triggering targeted self-healing for: {', '.join(inconsistent_ids[:5])}...")
+            logger.info("   🚀 Triggering targeted self-healing for: %s...", ", ".join(inconsistent_ids[:5]))
 
             await run_healer_async(target_game_ids=inconsistent_ids)
 
@@ -1089,7 +1101,9 @@ async def _step_10_7_enrichment(ctx: _RunContext) -> None:
             else:
                 remaining_ids = sorted({v["game_id"] for v in violations_after})
                 logger.error(
-                    f"   \u274c {len(violations_after)} inconsistencies still remain in {len(remaining_ids)} games.",
+                    "   ❌ %s inconsistencies still remain in %s games.",
+                    len(violations_after),
+                    len(remaining_ids),
                 )
         else:
             logger.info("   \u2705 Deep statistical logic audit complete (No issues found)")
@@ -1366,15 +1380,15 @@ def _write_finalize_outputs(
 def _log_finalize_summaries(ctx: _RunContext, p0_readiness: dict[str, Any]) -> None:
     logger.info(ctx.write_contract.summary())
     logger.info(
-        "Stability summary: "
-        f"detail_failures={_format_counts(ctx.detail_failure_counts)} "
-        f"detail_recovery_passes={ctx.detail_recovery_passes} "
-        f"detail_recovered_after_retry={ctx.detail_recovered_after_retry} "
-        f"detail_still_missing={len(ctx.detail_still_missing)} "
-        f"relay_targets={len(ctx.relay_recovery_target_ids)} "
-        f"oci_skips={_format_counts(ctx.oci_skip_counts)} "
-        f"non_p0_quality_gates={_format_counts(ctx.non_p0_quality_gate_counts)} "
-        f"p0_non_game={_format_counts(ctx.p0_non_game_counts)}",
+        "Stability summary: detail_failures=%s detail_recovery_passes=%s detail_recovered_after_retry=%s detail_still_missing=%s relay_targets=%s oci_skips=%s non_p0_quality_gates=%s p0_non_game=%s",
+        _format_counts(ctx.detail_failure_counts),
+        ctx.detail_recovery_passes,
+        ctx.detail_recovered_after_retry,
+        len(ctx.detail_still_missing),
+        len(ctx.relay_recovery_target_ids),
+        _format_counts(ctx.oci_skip_counts),
+        _format_counts(ctx.non_p0_quality_gate_counts),
+        _format_counts(ctx.p0_non_game_counts),
     )
     logger.info("P0 readiness: %s", format_p0_readiness_summary(p0_readiness))
 
@@ -1499,11 +1513,11 @@ def _finalize_run_update(ctx: _RunContext) -> dict[str, Any]:
     _log_finalize_summaries(ctx, p0_readiness)
     _send_pbp_recovery_report(ctx)
 
-    logger.info(f"\n{'=' * 60}")
+    logger.info("\n%s", "=" * 60)
     logger.info("Daily Finalize Finished for %s", ctx.target_date)
     logger.info("Refresh Manifest: %s", manifest_path)
     logger.info("Daily Summary: %s", summary_path)
-    logger.info(f"{'=' * 60}\n")
+    logger.info("%s\n", "=" * 60)
 
     return {
         "phase": "postgame_finalize",
@@ -1563,9 +1577,9 @@ async def run_update(
         ),
     )
 
-    logger.info(f"\n{'=' * 60}")
+    logger.info("\n%s", "=" * 60)
     logger.info("\U0001f680 KBO Daily Finalize Started for Date: %s", target_date)
-    logger.info(f"{'=' * 60}")
+    logger.info("%s", "=" * 60)
 
     await _step_0_auto_healer(ctx)
     await _step_1_schedule(ctx)

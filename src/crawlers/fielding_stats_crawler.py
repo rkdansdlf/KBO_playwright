@@ -381,7 +381,7 @@ def save_fielding_stats(year=None, db_path=None) -> None:
             saved_count += 1
 
         except Exception:
-            logger.exception(f"⚠️ DB 저장 오류: {record['player_name']}")
+            logger.exception("⚠️ DB 저장 오류: %s", record["player_name"])
             skipped_count += 1
             continue
 

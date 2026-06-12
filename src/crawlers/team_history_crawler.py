@@ -143,7 +143,7 @@ class TeamHistoryCrawler:
                             },
                         )
 
-            logger.info(f"Processed {year}: {len([h for h in history_data if h['season'] == year])} teams.")
+            logger.info("Processed %s: %s teams.", year, len([h for h in history_data if h["season"] == year]))
 
         return history_data
 
@@ -163,12 +163,12 @@ class TeamHistoryCrawler:
 
                     code = resolve_team_code(team_name)
                     if not code:
-                        logger.warning(f"   ⚠️ Could not resolve code for '{team_name}' ({season})")
+                        logger.warning("   ⚠️ Could not resolve code for '%s' (%s)", team_name, season)
                         continue
 
                     franchise_id = team_map.get(code)
                     if not franchise_id:
-                        logger.warning(f"   ⚠️ No franchise_id for code '{code}'")
+                        logger.warning("   ⚠️ No franchise_id for code '%s'", code)
                         continue
 
                     stmt = select(TeamHistory).where(TeamHistory.season == season, TeamHistory.team_code == code)

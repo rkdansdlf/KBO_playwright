@@ -125,11 +125,11 @@ class HomeAwaySplitAggregator:
                 players[pid] = {}
             players[pid][r["location"]] = r
 
-        logger.info(f"\n{'=' * 70}")
+        logger.info("\n%s", "=" * 70)
         logger.info("  KBO %s년 홈/원정 OPS 차이 Top %s", year, top_n)
-        logger.info(f"{'=' * 70}")
-        logger.info(f"{'PlayerID':>9} {'홈OPS':>7} {'원정OPS':>8} {'차이':>6}")
-        logger.info(f"{'-' * 70}")
+        logger.info("%s", "=" * 70)
+        logger.info("%9s %7s %8s %6s", "PlayerID", "홈OPS", "원정OPS", "차이")
+        logger.info("%s", "-" * 70)
 
         diffs = []
         for pid, locs in players.items():
@@ -148,7 +148,7 @@ class HomeAwaySplitAggregator:
             and players[pid].get("AWAY", {}).get("plate_appearances", 0) >= 50
         ]
         for pid, h_ops, a_ops, diff in diffs[:top_n]:
-            logger.info(f"  {pid:>9} {h_ops:>7.3f} {a_ops:>8.3f} {diff:>+6.3f}")
+            logger.info("  %9s %7.3f %8.3f %+6.3f", pid, h_ops, a_ops, diff)
 
 
 if __name__ == "__main__":

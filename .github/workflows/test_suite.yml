@@ -10,12 +10,15 @@ concurrency:
   group: test-suite-${{ github.ref_name }}
   cancel-in-progress: true
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
 jobs:
   lint:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - uses: ./.github/actions/kbo-job-setup
         with:
@@ -24,9 +27,9 @@ jobs:
       - name: Install lint dependencies
         run: pip install ruff pre-commit
       - name: Ruff lint check
-        run: ruff check --output-format=github src/ --exit-zero 2>&1
+        run: ruff check --output-format=github src/ tests/ 2>&1
       - name: Ruff format check
-        run: ruff format --check src/ 2>&1
+        run: ruff format --check src/ tests/ 2>&1
       - name: Bare except lint check
         run: python scripts/lint_bare_except.py 2>&1
 
@@ -37,7 +40,7 @@ jobs:
       matrix:
         python-version: ["3.12"]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - uses: ./.github/actions/kbo-job-setup
         with:

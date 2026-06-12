@@ -68,11 +68,13 @@ async def collect_games(
             log=logger.info,
         )
         logger.info(
-            "[FINISH] "
-            f"detail_saved={result.detail_saved} detail_failed={result.detail_failed} "
-            f"detail_skipped={result.detail_skipped_existing} "
-            f"relay_games={result.relay_saved_games} relay_rows={result.relay_rows_saved} "
-            f"relay_skipped={result.relay_skipped_existing}",
+            "[FINISH] detail_saved=%s detail_failed=%s detail_skipped=%s relay_games=%s relay_rows=%s relay_skipped=%s",
+            result.detail_saved,
+            result.detail_failed,
+            result.detail_skipped_existing,
+            result.relay_saved_games,
+            result.relay_rows_saved,
+            result.relay_skipped_existing,
         )
     finally:
         session.close()

@@ -27,9 +27,9 @@ async def run_weekly_maintenance(
     profile_limit: int = 100,
     sync: bool = False,
 ) -> None:
-    logger.info(f"\n{'=' * 60}")
-    logger.info(f"🚀 KBO Weekly Maintenance Started: {datetime.now(KST).strftime('%Y-%m-%d %H:%M:%S')}")
-    logger.info(f"{'=' * 60}")
+    logger.info("\n%s", "=" * 60)
+    logger.info("🚀 KBO Weekly Maintenance Started: %s", datetime.now(KST).strftime("%Y-%m-%d %H:%M:%S"))
+    logger.info("%s", "=" * 60)
 
     # 1. Player Profile Enrichment
     logger.info("\n👤 Step 1: Enriching Player Profiles...")
@@ -106,9 +106,9 @@ async def run_weekly_maintenance(
                 finally:
                     syncer.close()
 
-    logger.info(f"\n{'=' * 60}")
+    logger.info("\n%s", "=" * 60)
     logger.info("🏁 Weekly Maintenance Finished")
-    logger.info(f"{'=' * 60}\n")
+    logger.info("%s\n", "=" * 60)
 
 
 def main() -> int:
