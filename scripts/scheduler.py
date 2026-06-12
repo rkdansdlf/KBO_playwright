@@ -46,22 +46,22 @@ PROJECT_ROOT = Path(__file__).parent.parent
 sys.path.append(str(PROJECT_ROOT))
 load_dotenv(PROJECT_ROOT / ".env")
 
-from apscheduler.events import EVENT_JOB_ERROR  # noqa: E402
-from apscheduler.schedulers.blocking import BlockingScheduler  # noqa: E402
-from apscheduler.triggers.cron import CronTrigger  # noqa: E402
-from sqlalchemy import text  # noqa: E402
-from tenacity import retry, stop_after_attempt, wait_exponential  # noqa: E402
+from apscheduler.events import EVENT_JOB_ERROR
+from apscheduler.schedulers.blocking import BlockingScheduler
+from apscheduler.triggers.cron import CronTrigger
+from sqlalchemy import text
+from tenacity import retry, stop_after_attempt, wait_exponential
 
-from src.cli.crawl_futures import main as crawl_futures_main  # noqa: E402
-from src.cli.crawl_retire import main as crawl_retire_main  # noqa: E402
-from src.cli.daily_preview_batch import run_preview_batch  # noqa: E402
-from src.cli.live_crawler import run_live_crawler_cycle  # noqa: E402
-from src.cli.monthly_unified_audit import crawl_monthly_unified_audit_job  # noqa: E402
-from src.cli.run_daily_update import format_stability_alert_summary  # noqa: E402
-from src.cli.run_daily_update import main as run_daily_update_main  # noqa: E402
-from src.db.engine import SessionLocal  # noqa: E402
-from src.sync.oci_sync import OCISync  # noqa: E402
-from src.utils.alerting import SlackWebhookClient  # noqa: E402
+from src.cli.crawl_futures import main as crawl_futures_main
+from src.cli.crawl_retire import main as crawl_retire_main
+from src.cli.daily_preview_batch import run_preview_batch
+from src.cli.live_crawler import run_live_crawler_cycle
+from src.cli.monthly_unified_audit import crawl_monthly_unified_audit_job
+from src.cli.run_daily_update import format_stability_alert_summary
+from src.cli.run_daily_update import main as run_daily_update_main
+from src.db.engine import SessionLocal
+from src.sync.oci_sync import OCISync
+from src.utils.alerting import SlackWebhookClient
 
 # Stadium real-time data job functions (imported lazily inside job bodies to avoid startup overhead)
 
@@ -433,7 +433,9 @@ def crawl_daily_games():
                 detail = stability.get("detail", {}) if isinstance(stability, dict) else {}
                 detail_recovery = stability.get("detail_recovery", {}) if isinstance(stability, dict) else {}
                 detail_counts = detail.get("failure_counts", {}) if isinstance(detail, dict) else {}
-                repeated_failures = detail_recovery.get("escalation_game_ids") if isinstance(detail_recovery, dict) else []
+                repeated_failures = (
+                    detail_recovery.get("escalation_game_ids") if isinstance(detail_recovery, dict) else []
+                )
                 total_failures = sum(detail_counts.values()) if isinstance(detail_counts, dict) else 0
                 if repeated_failures or total_failures > 0:
                     alert_warning("crawl_daily_games", format_stability_alert_summary(update_result))
@@ -819,7 +821,7 @@ def _get_live_poll_interval_seconds() -> int:
                 if latest_update_time is None or updated_kst > latest_update_time:
                     latest_update_time = updated_kst
             except Exception:  # noqa: BLE001
-                pass
+                logger.debug("Skipping unparsable live game update timestamp", exc_info=True)
 
     # Apply interval rules
     if has_active:
@@ -1283,7 +1285,7 @@ def backfill_sh_sf_job():
     with MAINTENANCE_LOCK:
         logger.info("=== Starting SH/SF Backfill ===")
         try:
-            from scripts.legacy.maintenance.backfill_sh_sf_from_pbp import (
+            from scripts.maintenance.backfill_sh_sf_from_pbp import (
                 backfill_game,
                 find_candidate_games,
             )
@@ -1311,17 +1313,32 @@ def backfill_player_ids_job():
     with MAINTENANCE_LOCK:
         logger.info("=== Starting Player ID Backfill ===")
         try:
-            from scripts.legacy.maintenance.backfill_player_ids import backfill_year
-            from src.db.engine import SessionLocal
-            from src.services.player_id_resolver import PlayerIdResolver
+            from scripts.maintenance.resolve_null_player_ids_conservative import (
+                DEFAULT_OUTPUT_DIR,
+                DEFAULT_OVERRIDES_CSV,
+                DEFAULT_ROW_OVERRIDES_CSV,
+                DEFAULT_TABLES,
+                resolve_null_player_ids,
+            )
 
             year = datetime.now(KST).year
-            with SessionLocal() as session:
-                resolver = PlayerIdResolver(session)
-                result = backfill_year(session, resolver, year)
-                logger.info(
-                    "Player ID backfill: resolved=%d failed=%d", result.get("resolved", 0), result.get("failed", 0)
-                )
+            result = resolve_null_player_ids(
+                years=(year,),
+                tables=DEFAULT_TABLES,
+                overrides_csv=DEFAULT_OVERRIDES_CSV,
+                row_overrides_csv=DEFAULT_ROW_OVERRIDES_CSV,
+                output_dir=DEFAULT_OUTPUT_DIR,
+                apply=True,
+                backup=True,
+                delete_duplicates=True,
+            )
+            logger.info(
+                "Player ID backfill: resolved_groups=%d unresolved_groups=%d updated_rows=%d duplicate_null_rows=%d",
+                result.get("resolved_groups", 0),
+                result.get("unresolved_groups", 0),
+                result.get("updated_rows", 0),
+                result.get("duplicate_null_rows", 0),
+            )
         except Exception:
             logger.exception("Player ID backfill job failed")
 
@@ -1345,7 +1362,7 @@ def backfill_roster_job():
     with MAINTENANCE_LOCK:
         logger.info("=== Starting Roster Backfill ===")
         try:
-            from scripts.legacy.maintenance.backfill_roster_movements import (
+            from scripts.maintenance.backfill_roster_movements import (
                 backfill_daily_rosters,
                 backfill_player_movements,
             )

@@ -9,23 +9,23 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from src.aggregators.season_stat_aggregator import SeasonStatAggregator  # noqa: E402
-from src.db.engine import SessionLocal  # noqa: E402
-from src.models.player import (  # noqa: E402
+from src.aggregators.season_stat_aggregator import SeasonStatAggregator
+from src.db.engine import SessionLocal
+from src.models.player import (
     PlayerBasic,
     PlayerSeasonBaserunning,
     PlayerSeasonBatting,
     PlayerSeasonFielding,
     PlayerSeasonPitching,
 )
-from src.repositories.player_season_pitching_repository import save_pitching_stats_to_db  # noqa: E402
-from src.repositories.player_stats_repository import (  # noqa: E402
+from src.repositories.player_season_pitching_repository import save_pitching_stats_to_db
+from src.repositories.player_stats_repository import (
     PlayerSeasonBaserunningRepository,
     PlayerSeasonFieldingRepository,
 )
-from src.repositories.safe_batting_repository import save_batting_stats_safe  # noqa: E402
-from src.utils.alerting import SlackWebhookClient  # noqa: E402
-from src.utils.fallback_monitor import FallbackMonitor  # noqa: E402
+from src.repositories.safe_batting_repository import save_batting_stats_safe
+from src.utils.alerting import SlackWebhookClient
+from src.utils.fallback_monitor import FallbackMonitor
 
 logger = logging.getLogger("audit_fix")
 

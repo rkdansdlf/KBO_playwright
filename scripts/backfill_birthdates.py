@@ -14,10 +14,10 @@ logger = logging.getLogger(__name__)
 # Add project root to sys.path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from sqlalchemy import select, update  # noqa: E402
+from sqlalchemy import select, update
 
-from src.db.engine import SessionLocal  # noqa: E402
-from src.models.player import PlayerBasic  # noqa: E402
+from src.db.engine import SessionLocal
+from src.models.player import PlayerBasic
 
 # Standard formatting options for direct datetime.strptime parsing
 _FORMATS: tuple[str, ...] = (
@@ -76,7 +76,7 @@ def _parse_birth_date(raw: str | None) -> date | None:
             if 1900 <= y <= 2100 and 1 <= m <= 12 and 1 <= d <= 31:
                 return datetime(y, m, d).date()
         except Exception:  # noqa: BLE001
-            pass
+            logger.debug("Failed to parse birthdate value %r", raw, exc_info=True)
 
     return None
 
