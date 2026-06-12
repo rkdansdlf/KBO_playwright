@@ -1,6 +1,5 @@
 """Tests for src/models/game.py — all 14 model classes."""
 
-
 from src.models.game import (
     Game,
     GameBattingStat,
@@ -416,3 +415,93 @@ class TestGameRelationships:
         session.expire_all()
         loaded = session.query(Game).filter_by(game_id="20250401LGSS0").one()
         assert len(loaded.events) == 1
+
+    def test_game_delete_cascades_summary(self):
+        from sqlalchemy import delete
+
+        _, session = build_session()
+        _create_tables(session)
+        g = make_game()
+        session.add(g)
+        session.flush()
+        s = make_game_summary(game_id=g.game_id)
+        session.add(s)
+        session.commit()
+
+        session.execute(delete(Game).where(Game.game_id == g.game_id))
+        session.commit()
+        remaining = session.query(GameSummary).all()
+        assert len(remaining) == 0
+
+    def test_game_delete_cascades_events(self):
+        from sqlalchemy import delete
+
+        _, session = build_session()
+        _create_tables(session)
+        _seed_player_basic(session)
+        g = make_game()
+        session.add(g)
+        session.flush()
+        e = make_game_event(game_id=g.game_id)
+        session.add(e)
+        session.commit()
+
+        session.execute(delete(Game).where(Game.game_id == g.game_id))
+        session.commit()
+        remaining = session.query(GameEvent).all()
+        assert len(remaining) == 0
+
+    def test_game_delete_cascades_batting_stat(self):
+        from sqlalchemy import delete
+
+        _, session = build_session()
+        _create_tables(session)
+        _seed_player_basic(session)
+        g = make_game()
+        session.add(g)
+        session.flush()
+        b = make_game_batting_stat(game_id=g.game_id)
+        session.add(b)
+        session.commit()
+
+        session.execute(delete(Game).where(Game.game_id == g.game_id))
+        session.commit()
+        remaining = session.query(GameBattingStat).all()
+        assert len(remaining) == 0
+
+    def test_fk_violation_invalid_game_summary(self):
+        import pytest
+        from sqlalchemy.exc import IntegrityError
+
+        _, session = build_session()
+        _create_tables(session)
+        s = make_game_summary(game_id="NONEXISTENT")
+        session.add(s)
+        with pytest.raises(IntegrityError):
+            session.commit()
+
+    def test_fk_violation_invalid_player_game_batting(self):
+        import pytest
+        from sqlalchemy.exc import IntegrityError
+
+        _, session = build_session()
+        _create_tables(session)
+        session.add(make_game())
+        session.commit()
+        stat = make_player_game_batting(player_id=99999)
+        session.add(stat)
+        with pytest.raises(IntegrityError):
+            session.commit()
+
+    def test_empty_relationships(self):
+        _, session = build_session()
+        _create_tables(session)
+        g = make_game()
+        session.add(g)
+        session.commit()
+
+        session.expire_all()
+        loaded = session.query(Game).filter_by(game_id="20250401LGSS0").one()
+        assert loaded.summary == []
+        assert loaded.highlights == []
+        assert loaded.events == []

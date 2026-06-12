@@ -6,6 +6,7 @@ from src.crawlers.game_detail_crawler import (
     PITCHER_HEADER_MAP,
     GameDetailCrawler,
 )
+from src.utils.type_helpers import safe_int_or_none
 
 
 class TestHitterHeaderMap:
@@ -41,19 +42,16 @@ class TestFloatKeys:
 
 
 class TestSafeInt:
-    def setup_method(self):
-        self.crawler = GameDetailCrawler()
-
     def test_normal_int(self):
-        assert self.crawler._safe_int("42") == 42
+        assert safe_int_or_none("42") == 42
 
     def test_none_or_empty(self):
-        assert self.crawler._safe_int(None) is None
-        assert self.crawler._safe_int("") is None
-        assert self.crawler._safe_int("-") is None
+        assert safe_int_or_none(None) is None
+        assert safe_int_or_none("") is None
+        assert safe_int_or_none("-") is None
 
     def test_with_commas(self):
-        assert self.crawler._safe_int("1,234") == 1234
+        assert safe_int_or_none("1,234") == 1234
 
 
 class TestParseDurationMinutes:

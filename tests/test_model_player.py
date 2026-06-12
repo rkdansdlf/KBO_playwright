@@ -255,3 +255,44 @@ class TestPlayerSeasonBaserunning:
         pr = make_player_season_baserunning(stolen_bases=20, caught_stealing=3)
         assert pr.stolen_bases == 20
         assert pr.stolen_base_percentage is None
+
+
+class TestPlayerAdvanced:
+    def test_fk_violation_invalid_player_season_batting(self):
+        import pytest
+        from sqlalchemy.exc import IntegrityError
+
+        _, session = build_session()
+        _create_tables(session)
+        _seed_team_and_player(session)
+        sb = make_player_season_batting(player_id=99999)
+        session.add(sb)
+        with pytest.raises(IntegrityError):
+            session.commit()
+
+    def test_fk_violation_invalid_player_movement_team(self):
+        import pytest
+        from sqlalchemy.exc import IntegrityError
+
+        _, session = build_session()
+        _create_tables(session)
+        _seed_team_and_player(session)
+        pm = make_player_movement(canonical_team_id="ZZ")
+        session.add(pm)
+        with pytest.raises(IntegrityError):
+            session.commit()
+
+    def test_season_batting_composite_pk(self):
+        import pytest
+        from sqlalchemy.exc import IntegrityError
+
+        _, session = build_session()
+        _create_tables(session)
+        _seed_team_and_player(session)
+        s1 = make_player_season_batting()
+        s2 = make_player_season_batting()
+        session.add(s1)
+        session.commit()
+        session.add(s2)
+        with pytest.raises(IntegrityError):
+            session.commit()

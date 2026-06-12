@@ -327,3 +327,90 @@ def test_resolver_reuses_existing_unknown_exact_key():
         assert session.execute(text("SELECT COUNT(*) FROM player_basic WHERE name = '새선수'")).scalar() == 2
     finally:
         session.close()
+
+
+def test_resolver_cache_is_role_aware_for_same_name_same_team():
+    session = _build_resolver_session()
+    try:
+        session.execute(
+            text(
+                """
+                INSERT INTO player_basic (player_id, name, team)
+                VALUES
+                    (1001, '역할중복', 'LG'),
+                    (2001, '역할중복', 'LG')
+                """
+            )
+        )
+        session.execute(
+            text(
+                """
+                INSERT INTO player_season_batting (player_id, season, team_code)
+                VALUES (1001, 2026, 'LG')
+                """
+            )
+        )
+        session.execute(
+            text(
+                """
+                INSERT INTO player_season_pitching (player_id, season, team_code)
+                VALUES (2001, 2026, 'LG')
+                """
+            )
+        )
+        session.commit()
+
+        resolver = PlayerIdResolver(session)
+
+        assert resolver.resolve_id("역할중복", "LG", 2026, is_pitcher=False) == 1001
+        assert resolver.resolve_id("역할중복", "LG", 2026, is_pitcher=True) == 2001
+    finally:
+        session.close()
+
+
+def test_surrogate_filter_does_not_map_when_target_name_differs():
+    session = _build_resolver_session()
+    try:
+        session.execute(
+            text(
+                """
+                INSERT INTO player_basic (player_id, name, team)
+                VALUES
+                    (2438, '김민수', '롯데'),
+                    (67504, '김정율', '롯데'),
+                    (99999, '다른후보', '롯데')
+                """
+            )
+        )
+        session.execute(text("INSERT INTO players (id, kbo_person_id) VALUES (2438, '67504')"))
+        session.commit()
+
+        resolver = PlayerIdResolver(session)
+
+        assert resolver._filter_surrogate_ids({2438, 99999}, "김민수") == {2438, 99999}
+    finally:
+        session.close()
+
+
+def test_surrogate_filter_maps_when_target_name_matches():
+    session = _build_resolver_session()
+    try:
+        session.execute(
+            text(
+                """
+                INSERT INTO player_basic (player_id, name, team)
+                VALUES
+                    (101, '동일선수', 'LG'),
+                    (50101, '동일선수', 'LG'),
+                    (99999, '다른후보', 'LG')
+                """
+            )
+        )
+        session.execute(text("INSERT INTO players (id, kbo_person_id) VALUES (101, '50101')"))
+        session.commit()
+
+        resolver = PlayerIdResolver(session)
+
+        assert resolver._filter_surrogate_ids({101, 99999}, "동일선수") == {50101, 99999}
+    finally:
+        session.close()
