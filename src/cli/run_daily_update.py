@@ -23,8 +23,8 @@ from zoneinfo import ZoneInfo
 
 from sqlalchemy import or_, select
 
-from scripts.legacy.maintenance.audit_game_status_integrity import audit_game_status
-from scripts.legacy.quality_gate import run_quality_gate as run_legacy_quality_gate
+from scripts.maintenance.audit_game_status_integrity import audit_game_status
+from scripts.maintenance.quality_gate import run_quality_gate as run_legacy_quality_gate
 from src.cli.auto_healer import run_healer_async
 from src.crawlers.daily_roster_crawler import DailyRosterCrawler
 from src.crawlers.game_detail_crawler import GameDetailCrawler
@@ -55,7 +55,12 @@ from src.services.recovery_manager import RecoveryManager
 from src.services.schedule_collection_service import save_schedule_games
 from src.sync.oci_sync import OCISync
 from src.utils.alerting import SlackWebhookClient
-from src.utils.game_status import GAME_STATUS_CANCELLED, GAME_STATUS_SCHEDULED, GAME_STATUS_UNRESOLVED
+from src.utils.game_status import (
+    GAME_STATUS_CANCELLED,
+    GAME_STATUS_POSTPONED,
+    GAME_STATUS_SCHEDULED,
+    GAME_STATUS_UNRESOLVED,
+)
 from src.utils.refresh_manifest import write_refresh_manifest
 from src.utils.schedule_validation import is_detail_candidate_game
 from src.utils.team_codes import normalize_kbo_game_id
@@ -425,7 +430,6 @@ def _format_target_date(value: object, *, fallback_game_id: str) -> str:
     return fallback_game_id[:8]
 
 
-
 async def _step_0_auto_healer(ctx: _RunContext) -> None:
     if ctx.run_auto_healer:
         logger.info("\n\U0001fa7a Step 0: Running Auto-Healer...")
@@ -452,7 +456,7 @@ async def _step_1_schedule(ctx: _RunContext) -> None:
         source_reason=f"monthly_schedule_refresh:{ctx.year}-{ctx.month:02d}",
     )
     logger.info(
-        f"   \u2705 Schedule discovered={schedule_result.discovered} "  # noqa: G004
+        f"   \u2705 Schedule discovered={schedule_result.discovered} "
         f"saved={schedule_result.saved} failed={schedule_result.failed}",
     )
 
@@ -462,7 +466,7 @@ async def _step_1_schedule(ctx: _RunContext) -> None:
     if skipped_detail_games:
         logger.info("   \u2139\ufe0f Skipping %s non-detail schedule games", skipped_detail_games)
     if ctx.limit and len(detail_games) > ctx.limit:
-        detail_games = detail_games[:ctx.limit]
+        detail_games = detail_games[: ctx.limit]
         logger.info("   [LIMIT] Restricted to first %s games", ctx.limit)
     logger.info("   \u2705 Found %s games for %s", len(daily_games), ctx.target_date)
     ctx.daily_games = daily_games
@@ -487,11 +491,15 @@ async def _run_detail_recovery_passes(
             break
 
         ctx.detail_recovery_passes += 1
-        retry_targets = [ctx.detail_games_by_id[game_id] for game_id in retry_game_ids if game_id in ctx.detail_games_by_id]
+        retry_targets = [
+            ctx.detail_games_by_id[game_id] for game_id in retry_game_ids if game_id in ctx.detail_games_by_id
+        ]
         for game_id in retry_game_ids:
             ctx.detail_recovery_attempts[game_id] = ctx.detail_recovery_attempts.get(game_id, 0) + 1
 
-        logger.info("   \U0001f501 Detail recovery pass #%s (%s game(s))", ctx.detail_recovery_passes, len(retry_targets))
+        logger.info(
+            "   \U0001f501 Detail recovery pass #%s (%s game(s))", ctx.detail_recovery_passes, len(retry_targets)
+        )
         retry_result = await crawl_and_save_game_details(
             retry_targets,
             detail_crawler=g_crawler,
@@ -516,7 +524,9 @@ async def _run_detail_recovery_passes(
                 recoverable_failure_ids.discard(normalized_game_id)
 
 
-def _process_detail_results(ctx: _RunContext, detail_results_by_game: dict, processed_game_ids_set: set[str]) -> None:
+def _process_detail_results(
+    ctx: _RunContext, detail_results_by_game: dict[str, Any], processed_game_ids_set: set[str]
+) -> None:
     for game_id, item in detail_results_by_game.items():
         reason = item.failure_reason if item else None
         if item.detail_saved:
@@ -532,10 +542,7 @@ def _process_detail_results(ctx: _RunContext, detail_results_by_game: dict, proc
             ctx.detail_recovery_queue.mark_detail_recovery_success(ctx.target_date, game_id)
 
 
-async def _step_2_detail_crawl(ctx: _RunContext) -> None:
-    logger.info("\n\U0001f3ae Step 2: Crawling full postgame details...")
-    resolver_session = SessionLocal()
-    processed_game_ids_set: set[str] = set()
+def _prepare_detail_targets(ctx: _RunContext) -> None:
     for game in ctx.detail_games:
         game_id = normalize_kbo_game_id(game.get("game_id"))
         if not game_id:
@@ -560,8 +567,170 @@ async def _step_2_detail_crawl(ctx: _RunContext) -> None:
         queued_recovery_game_count += 1
     if queued_recovery_game_count > 0:
         logger.info(
-            f"   \u267b\ufe0f Re-prioritizing {queued_recovery_game_count} queued detail-recovery game(s)",  # noqa: G004
+            f"   ♻️ Re-prioritizing {queued_recovery_game_count} queued detail-recovery game(s)",
         )
+
+
+async def _collect_detail_results(ctx: _RunContext, g_crawler: GameDetailCrawler) -> dict[str, Any]:
+    collection_result = await crawl_and_save_game_details(
+        list(ctx.detail_games_by_id.values()),
+        detail_crawler=g_crawler,
+        force=True,
+        concurrency=1,
+        log=logger.info,
+        write_contract=ctx.write_contract,
+        source_reason=f"postgame_finalize:{ctx.target_date}",
+    )
+    detail_results_by_game = dict(collection_result.items)
+    for game_id in ctx.detail_games_by_id:
+        ctx.detail_recovery_attempts[game_id] = ctx.detail_recovery_attempts.get(game_id, 0) + 1
+
+    unrecovered_game_ids = {
+        normalize_kbo_game_id(game_id)
+        for game_id, item in detail_results_by_game.items()
+        if item and not item.detail_saved
+    }
+    recoverable_failure_ids = {
+        game_id
+        for game_id in unrecovered_game_ids
+        if _is_recoverable_detail_reason(detail_results_by_game[game_id].failure_reason)
+    }
+    await _run_detail_recovery_passes(
+        ctx,
+        g_crawler,
+        detail_results_by_game,
+        unrecovered_game_ids,
+        recoverable_failure_ids,
+        max(1, int(DETAIL_RECOVERY_MAX_ROUNDS)),
+    )
+    return detail_results_by_game
+
+
+def _apply_detail_failure_fallback(ctx: _RunContext, game_id: str, reason: str | None) -> None:
+    fallback = _failure_status(ctx.target_date, reason, ctx.today_kst)
+    if not fallback:
+        return
+    with SessionLocal() as status_check_session:
+        current_game = (
+            status_check_session.query(Game).filter(Game.game_id == normalize_kbo_game_id(game_id)).one_or_none()
+        )
+        if (
+            current_game
+            and current_game.game_status in {GAME_STATUS_CANCELLED, GAME_STATUS_POSTPONED}
+            and fallback != GAME_STATUS_CANCELLED
+        ):
+            logger.info(
+                f"   ℹ️ Preservation: Keeping terminal status '{current_game.game_status}' for {game_id}",
+            )
+        else:
+            update_game_status(game_id, fallback)
+
+
+def _record_detail_result_status(ctx: _RunContext, game_id: str, item: Any) -> None:
+    if item and item.detail_saved:
+        logger.info("   ✅ Successfully saved %s", game_id)
+        return
+
+    reason = item.failure_reason if item else "exception"
+    if item and item.detail_status == "save_failed":
+        logger.error("   ❌ Failed to save details for %s to local DB", game_id)
+    else:
+        logger.warning(f"   ⚠️ Could not fetch details for {game_id} (reason={reason or 'unknown'})")
+
+    ctx.detail_still_missing.add(game_id)
+    if ctx.detail_recovery_attempts.get(game_id, 0) >= DETAIL_RECOVERY_RETRY_ALERT_THRESHOLD + 1:
+        ctx.detail_retry_escalation_game_ids.append(game_id)
+    _apply_detail_failure_fallback(ctx, game_id, reason)
+
+
+def _send_detail_recovery_escalation_alert(ctx: _RunContext) -> None:
+    if not ctx.detail_retry_escalation_game_ids:
+        return
+    try:
+        SlackWebhookClient.send_alert(
+            "⚠️ Detail recovery repeated failures: "
+            f"target_date={ctx.target_date} threshold={DETAIL_RECOVERY_RETRY_ALERT_THRESHOLD} "
+            f"game_ids={','.join(sorted(set(ctx.detail_retry_escalation_game_ids)))}",
+        )
+    except Exception:
+        logger.exception("   ❌ Failed to send detail recovery escalation alert")
+
+
+def _finalize_detail_results(
+    ctx: _RunContext,
+    detail_results_by_game: dict[str, Any],
+    processed_game_ids_set: set[str],
+) -> None:
+    _process_detail_results(ctx, detail_results_by_game, processed_game_ids_set)
+    ctx.processed_game_ids = sorted(processed_game_ids_set)
+    ctx.detail_failure_counts, ctx.detail_failure_game_ids = _failure_reason_summary(detail_results_by_game)
+
+    for game_id in sorted(ctx.detail_games_by_id):
+        _record_detail_result_status(ctx, game_id, detail_results_by_game.get(game_id))
+
+    logger.info(
+        f"   ✅ Detail result success={len(ctx.processed_game_ids)} failed={len(ctx.detail_still_missing)} "
+        f"recovery_passes={ctx.detail_recovery_passes}",
+    )
+    if ctx.detail_failure_counts:
+        logger.info("   ℹ️ Detail failure reasons: %s", _format_counts(ctx.detail_failure_counts))
+    if ctx.detail_recovery_passes:
+        logger.info(
+            f"   ℹ️ Detail recovery recovered_after_retry={ctx.detail_recovered_after_retry}, "
+            f"still_missing={len(ctx.detail_still_missing)}, escalated={len(ctx.detail_retry_escalation_game_ids)}",
+        )
+    _send_detail_recovery_escalation_alert(ctx)
+
+
+async def _run_postgame_reconciliation(ctx: _RunContext, g_crawler: GameDetailCrawler) -> None:
+    if not ctx.run_postgame_reconciliation:
+        logger.info("\n🧩 Step 2.5: Postgame reconciliation skipped.")
+        return
+
+    reconcile_start = (
+        datetime.strptime(ctx.target_date, "%Y%m%d") - timedelta(days=max(0, ctx.postgame_reconcile_lookback_days))
+    ).strftime("%Y%m%d")
+    logger.info("\n🧩 Step 2.5: Reconciling recently started games (%s~%s)...", reconcile_start, ctx.target_date)
+    reconciliation_result = await reconcile_postgame_range(
+        reconcile_start,
+        ctx.target_date,
+        detail_crawler=g_crawler,
+        concurrency=1,
+        log=logger.info,
+        write_contract=ctx.write_contract,
+        source_reason=f"postgame_reconciliation:{reconcile_start}-{ctx.target_date}",
+    )
+    ctx.reconciliation_changed_ids = reconciliation_result.changed_game_ids
+    ctx.reconciliation_dates = sorted({change.game_date for change in reconciliation_result.changes})
+    logger.info(
+        f"   ✅ candidates={reconciliation_result.candidates} changed={len(reconciliation_result.changes)}",
+    )
+    if reconciliation_result.changes:
+        for line in format_reconciliation_report(reconciliation_result.changes).splitlines():
+            logger.info("   %s", line)
+
+
+def _handle_detail_step_exception(ctx: _RunContext) -> None:
+    target_game_ids = sorted(ctx.detail_games_by_id)
+    if not target_game_ids:
+        target_game_ids = sorted(
+            {normalized for game in ctx.detail_games if (normalized := normalize_kbo_game_id(game.get("game_id")))},
+        )
+    if not target_game_ids:
+        return
+
+    ctx.detail_failure_counts["exception"] = ctx.detail_failure_counts.get("exception", 0) + len(target_game_ids)
+    ctx.detail_failure_game_ids.setdefault("exception", []).extend(target_game_ids)
+    ctx.detail_still_missing.update(target_game_ids)
+    for game_id in target_game_ids:
+        _apply_detail_failure_fallback(ctx, game_id, "exception")
+
+
+async def _step_2_detail_crawl(ctx: _RunContext) -> None:
+    logger.info("\n\U0001f3ae Step 2: Crawling full postgame details...")
+    resolver_session = SessionLocal()
+    processed_game_ids_set: set[str] = set()
+    _prepare_detail_targets(ctx)
 
     try:
         resolver = PlayerIdResolver(
@@ -572,134 +741,15 @@ async def _step_2_detail_crawl(ctx: _RunContext) -> None:
         resolver.preload_season_index(ctx.year)
         g_crawler = GameDetailCrawler(resolver=resolver)
 
-        collection_result = await crawl_and_save_game_details(
-            list(ctx.detail_games_by_id.values()),
-            detail_crawler=g_crawler,
-            force=True,
-            concurrency=1,
-            log=logger.info,
-            write_contract=ctx.write_contract,
-            source_reason=f"postgame_finalize:{ctx.target_date}",
-        )
-        detail_results_by_game = dict(collection_result.items)
-        for game_id in ctx.detail_games_by_id:
-            ctx.detail_recovery_attempts[game_id] = ctx.detail_recovery_attempts.get(game_id, 0) + 1
-
-        max_recovery_rounds = max(1, int(DETAIL_RECOVERY_MAX_ROUNDS))
-        unrecovered_game_ids = {
-            normalize_kbo_game_id(game_id)
-            for game_id, item in detail_results_by_game.items()
-            if item and not item.detail_saved
-        }
-        recoverable_failure_ids = {
-            game_id
-            for game_id in unrecovered_game_ids
-            if _is_recoverable_detail_reason(detail_results_by_game[game_id].failure_reason)
-        }
-
-        await _run_detail_recovery_passes(ctx, g_crawler, detail_results_by_game, unrecovered_game_ids, recoverable_failure_ids, max_recovery_rounds)
-
-        _process_detail_results(ctx, detail_results_by_game, processed_game_ids_set)
-
-        ctx.processed_game_ids = sorted(processed_game_ids_set)
-        ctx.detail_failure_counts, ctx.detail_failure_game_ids = _failure_reason_summary(detail_results_by_game)
-
-        for game_id in sorted(ctx.detail_games_by_id):
-            item = detail_results_by_game.get(game_id)
-            if item and item.detail_saved:
-                logger.info("   \u2705 Successfully saved %s", game_id)
-                continue
-
-            reason = item.failure_reason if item else "exception"
-            if item and item.detail_status == "save_failed":
-                logger.error("   \u274c Failed to save details for %s to local DB", game_id)
-            else:
-                logger.warning(f"   \u26a0\ufe0f Could not fetch details for {game_id} (reason={reason or 'unknown'})")  # noqa: G004
-
-            ctx.detail_still_missing.add(game_id)
-            if ctx.detail_recovery_attempts.get(game_id, 0) >= DETAIL_RECOVERY_RETRY_ALERT_THRESHOLD + 1:
-                ctx.detail_retry_escalation_game_ids.append(game_id)
-
-            fallback = _failure_status(ctx.target_date, reason, ctx.today_kst)
-            if fallback:
-                with SessionLocal() as status_check_session:
-                    current_game = (
-                        status_check_session.query(Game)
-                        .filter(Game.game_id == normalize_kbo_game_id(game_id))
-                        .one_or_none()
-                    )
-                    if (
-                        current_game
-                        and current_game.game_status in {GAME_STATUS_CANCELLED, "POSTPONED"}
-                        and fallback != GAME_STATUS_CANCELLED
-                    ):
-                        logger.info(
-                            f"   \u2139\ufe0f Preservation: Keeping terminal status '{current_game.game_status}' for {game_id}",  # noqa: G004
-                        )
-                    else:
-                        update_game_status(game_id, fallback)
-
-        logger.info(
-            f"   \u2705 Detail result success={len(ctx.processed_game_ids)} failed={len(ctx.detail_still_missing)} "  # noqa: G004
-            f"recovery_passes={ctx.detail_recovery_passes}",
-        )
-        if ctx.detail_failure_counts:
-            logger.info("   \u2139\ufe0f Detail failure reasons: %s", _format_counts(ctx.detail_failure_counts))
-        if ctx.detail_recovery_passes:
-            logger.info(
-                f"   \u2139\ufe0f Detail recovery recovered_after_retry={ctx.detail_recovered_after_retry}, "  # noqa: G004
-                f"still_missing={len(ctx.detail_still_missing)}, escalated={len(ctx.detail_retry_escalation_game_ids)}",
-            )
-
-        if ctx.detail_retry_escalation_game_ids:
-            try:
-                SlackWebhookClient.send_alert(
-                    "\u26a0\ufe0f Detail recovery repeated failures: "
-                    f"target_date={ctx.target_date} threshold={DETAIL_RECOVERY_RETRY_ALERT_THRESHOLD} "
-                    f"game_ids={','.join(sorted(set(ctx.detail_retry_escalation_game_ids)))}",
-                )
-            except Exception:
-                logger.exception("   \u274c Failed to send detail recovery escalation alert")
-
-        if ctx.run_postgame_reconciliation:
-            reconcile_start = (
-                datetime.strptime(ctx.target_date, "%Y%m%d") - timedelta(days=max(0, ctx.postgame_reconcile_lookback_days))
-            ).strftime("%Y%m%d")
-            logger.info("\n\U0001f9e9 Step 2.5: Reconciling recently started games (%s~%s)...", reconcile_start, ctx.target_date)
-            reconciliation_result = await reconcile_postgame_range(
-                reconcile_start,
-                ctx.target_date,
-                detail_crawler=g_crawler,
-                concurrency=1,
-                log=logger.info,
-                write_contract=ctx.write_contract,
-                source_reason=f"postgame_reconciliation:{reconcile_start}-{ctx.target_date}",
-            )
-            ctx.reconciliation_changed_ids = reconciliation_result.changed_game_ids
-            ctx.reconciliation_dates = sorted({change.game_date for change in reconciliation_result.changes})
-            logger.info(
-                f"   \u2705 candidates={reconciliation_result.candidates} changed={len(reconciliation_result.changes)}",  # noqa: G004
-            )
-            if reconciliation_result.changes:
-                for line in format_reconciliation_report(reconciliation_result.changes).splitlines():
-                    logger.info("   %s", line)
-        else:
-            logger.info("\n\U0001f9e9 Step 2.5: Postgame reconciliation skipped.")
+        detail_results_by_game = await _collect_detail_results(ctx, g_crawler)
+        _finalize_detail_results(ctx, detail_results_by_game, processed_game_ids_set)
+        await _run_postgame_reconciliation(ctx, g_crawler)
     except Exception:
-        logger.exception("   \u274c Error processing daily details")
-        if ctx.detail_games:
-            ctx.detail_failure_counts["exception"] = ctx.detail_failure_counts.get("exception", 0) + len(ctx.detail_games)
-            ctx.detail_failure_game_ids.setdefault("exception", []).extend(
-                str(game["game_id"]) for game in ctx.detail_games if game.get("game_id")
-            )
-            ctx.detail_still_missing.update(str(game["game_id"]) for game in ctx.detail_games if game.get("game_id"))
-        for game in ctx.detail_games:
-            game_id = game["game_id"]
-            fallback = _failure_status(ctx.target_date, "exception", ctx.today_kst)
-            if fallback:
-                update_game_status(game_id, fallback)
+        logger.exception("   ❌ Error processing daily details")
+        _handle_detail_step_exception(ctx)
     finally:
         resolver_session.close()
+
 
 async def _step_3_refresh_status(ctx: _RunContext) -> None:
     logger.info("\n\U0001f9ed Step 3: Refreshing game status for target date...")
@@ -708,7 +758,7 @@ async def _step_3_refresh_status(ctx: _RunContext) -> None:
         normalized for game_id in status_result.get("game_ids", []) if (normalized := normalize_kbo_game_id(game_id))
     ]
     logger.info(
-        "   \u2705 "  # noqa: G004
+        "   \u2705 "
         f"total={status_result.get('total', 0)} "
         f"updated={status_result.get('updated', 0)} "
         f"counts={status_result.get('status_counts', {})}",
@@ -798,7 +848,7 @@ async def _step_4_5_proactive_relay(ctx: _RunContext) -> None:
 
             if missing_relay_game_ids:
                 logger.info(
-                    f"   \u26a0\ufe0f Found {len(missing_relay_game_ids)} games missing PBP/event/WPA data. Attempting recovery...",  # noqa: G004
+                    f"   \u26a0\ufe0f Found {len(missing_relay_game_ids)} games missing PBP/event/WPA data. Attempting recovery...",
                 )
                 to_recover = [gid for gid in missing_relay_game_ids if gid not in ctx.relay_recovery_target_ids]
                 if to_recover:
@@ -944,7 +994,9 @@ async def _step_7_rosters(ctx: _RunContext) -> None:
         rt_crawler = RosterTransactionCrawler()
         roster_transactions = await rt_crawler.run(save=True, target_date=ctx.r_target_date)
         ctx.p0_non_game_counts["roster_transactions"] = len(roster_transactions)
-        logger.info("   \u2705 Roster transactions checked for %s: %s rows", ctx.r_target_date, len(roster_transactions))
+        logger.info(
+            "   \u2705 Roster transactions checked for %s: %s rows", ctx.r_target_date, len(roster_transactions)
+        )
     except Exception:
         logger.exception("   \u274c Error updating player movements/rosters")
         ctx.p0_non_game_errors["roster_transactions"] = "roster_pipeline_failed"
@@ -1023,8 +1075,10 @@ async def _step_10_7_enrichment(ctx: _RunContext) -> None:
 
         if violations:
             inconsistent_ids = sorted({v["game_id"] for v in violations})
-            logger.warning("   \u26a0\ufe0f  Audit found %s inconsistencies in %s games.", len(violations), len(inconsistent_ids))
-            logger.info(f"   \U0001f680 Triggering targeted self-healing for: {', '.join(inconsistent_ids[:5])}...")  # noqa: G004
+            logger.warning(
+                "   \u26a0\ufe0f  Audit found %s inconsistencies in %s games.", len(violations), len(inconsistent_ids)
+            )
+            logger.info(f"   \U0001f680 Triggering targeted self-healing for: {', '.join(inconsistent_ids[:5])}...")
 
             await run_healer_async(target_game_ids=inconsistent_ids)
 
@@ -1035,7 +1089,7 @@ async def _step_10_7_enrichment(ctx: _RunContext) -> None:
             else:
                 remaining_ids = sorted({v["game_id"] for v in violations_after})
                 logger.error(
-                    f"   \u274c {len(violations_after)} inconsistencies still remain in {len(remaining_ids)} games.",  # noqa: G004
+                    f"   \u274c {len(violations_after)} inconsistencies still remain in {len(remaining_ids)} games.",
                 )
         else:
             logger.info("   \u2705 Deep statistical logic audit complete (No issues found)")
@@ -1043,7 +1097,7 @@ async def _step_10_7_enrichment(ctx: _RunContext) -> None:
         logger.exception("   \u26a0\ufe0f  Deep statistical audit/heal process failed")
 
 
-async def _step_11_sync_pipeline(ctx: _RunContext) -> None:
+def _set_candidate_sync_game_ids(ctx: _RunContext) -> None:
     ctx.candidate_sync_game_ids = sorted(
         {game["game_id"] for game in ctx.daily_games}
         | set(ctx.status_refresh_game_ids)
@@ -1053,9 +1107,8 @@ async def _step_11_sync_pipeline(ctx: _RunContext) -> None:
         | ctx.relay_recovery_target_ids,
     )
 
-    if not ctx.sync:
-        return
 
+def _run_pre_oci_freshness_gate(ctx: _RunContext) -> None:
     logger.info("\n\U0001f9ea Step 11: Freshness gate before OCI publish...")
     freshness_ok = True
     for freshness_date in ctx.freshness_dates:
@@ -1067,6 +1120,8 @@ async def _step_11_sync_pipeline(ctx: _RunContext) -> None:
     if freshness_ok:
         logger.info("   \u2705 Freshness gate passed")
 
+
+def _run_local_integrity_gate() -> None:
     logger.info("\n\U0001f575\ufe0f  Step 11.5: Local game status integrity audit...")
     try:
         _run_game_status_integrity_audit()
@@ -1075,6 +1130,8 @@ async def _step_11_sync_pipeline(ctx: _RunContext) -> None:
         logger.exception("   \u274c Local integrity audit FAILED: %s", exc)
         raise RuntimeError("Aborting OCI sync due to local data integrity violations.") from exc
 
+
+def _run_statistical_quality_gate_for_sync(ctx: _RunContext) -> None:
     logger.info("\n\u2696\ufe0f Step 12: Statistical quality gate check...")
     try:
         ctx.runner(["-m", "src.cli.quality_gate_check", "--year", str(ctx.year)])
@@ -1083,8 +1140,57 @@ async def _step_11_sync_pipeline(ctx: _RunContext) -> None:
         reason = "non_p0_statistical_quality_gate_failed"
         ctx.non_p0_quality_gate_counts[reason] = ctx.non_p0_quality_gate_counts.get(reason, 0) + 1
         ctx.non_p0_quality_gate_ids.setdefault(reason, []).append(f"season:{ctx.year}")
-        logger.exception("   \u26a0\ufe0f Non-P0 statistical quality gate failed (continuing OCI game publish): %s", exc)
+        logger.exception(
+            "   \u26a0\ufe0f Non-P0 statistical quality gate failed (continuing OCI game publish): %s", exc
+        )
 
+
+def _recalculate_season_aggregates_for_quality_gate(ctx: _RunContext) -> None:
+    logger.info("\n\U0001f9ee Step 11.75: Refreshing season aggregates before statistical quality gate...")
+    try:
+        ctx.runner(["-m", "src.cli.recalc_player_stats", "--season", str(ctx.year)])
+        ctx.runner(["-m", "src.cli.recalc_team_stats", "--season", str(ctx.year)])
+        logger.info("   \u2705 Season aggregates refreshed")
+    except subprocess.CalledProcessError as exc:
+        reason = "non_p0_season_aggregate_recalc_failed"
+        ctx.non_p0_quality_gate_counts[reason] = ctx.non_p0_quality_gate_counts.get(reason, 0) + 1
+        ctx.non_p0_quality_gate_ids.setdefault(reason, []).append(f"season:{ctx.year}")
+        logger.exception(
+            "   \u26a0\ufe0f Non-P0 season aggregate recalculation failed (continuing OCI game publish): %s", exc
+        )
+
+
+def _sync_oci_supporting_datasets(ctx: _RunContext, syncer: OCISync) -> None:
+    if ctx.skip_oci_supporting_sync:
+        ctx.oci_skip_counts["oci_supporting_sync_skipped"] = (
+            ctx.oci_skip_counts.get("oci_supporting_sync_skipped", 0) + 1
+        )
+        ctx.oci_skip_game_ids.setdefault("oci_supporting_sync_skipped", []).append(f"season:{ctx.year}")
+        logger.info("   \u23ed\ufe0f Non-P0 OCI supporting dataset sync skipped by operator flag")
+        return
+
+    try:
+        syncer.sync_games(filters=[Game.game_id.like(f"{ctx.year}%")])
+        syncer.sync_standings(year=ctx.year)
+        syncer.sync_matchups(year=ctx.year)
+        syncer.sync_stat_rankings(year=ctx.year)
+        syncer.sync_player_season_batting(year=ctx.year)
+        syncer.sync_player_season_pitching(year=ctx.year)
+        syncer.sync_player_movements()
+        syncer.sync_daily_rosters(start_date=ctx.r_target_date, end_date=ctx.r_target_date)
+    except Exception:
+        logger.exception("   \u26a0\ufe0f Non-P0 OCI supporting dataset sync failed")
+        ctx.oci_skip_counts["non_p0_supporting_sync_failed"] = (
+            ctx.oci_skip_counts.get(
+                "non_p0_supporting_sync_failed",
+                0,
+            )
+            + 1
+        )
+        ctx.oci_skip_game_ids.setdefault("non_p0_supporting_sync_failed", []).append(f"season:{ctx.year}")
+
+
+def _publish_to_oci(ctx: _RunContext) -> None:
     logger.info("\n\u2601\ufe0f Step 13: Synchronizing to OCI...")
     oci_url = os.getenv("OCI_DB_URL")
     if not oci_url:
@@ -1101,33 +1207,14 @@ async def _step_11_sync_pipeline(ctx: _RunContext) -> None:
                 sync_result = syncer.sync_specific_game(game_id)
                 _merge_oci_skip_summary(ctx.oci_skip_counts, ctx.oci_skip_game_ids, sync_result, game_id)
 
-            if ctx.skip_oci_supporting_sync:
-                ctx.oci_skip_counts["oci_supporting_sync_skipped"] = (
-                    ctx.oci_skip_counts.get("oci_supporting_sync_skipped", 0) + 1
-                )
-                ctx.oci_skip_game_ids.setdefault("oci_supporting_sync_skipped", []).append(f"season:{ctx.year}")
-                logger.info("   \u23ed\ufe0f Non-P0 OCI supporting dataset sync skipped by operator flag")
-            else:
-                try:
-                    syncer.sync_games(filters=[Game.game_id.like(f"{ctx.year}%")])
-                    syncer.sync_standings(year=ctx.year)
-                    syncer.sync_matchups(year=ctx.year)
-                    syncer.sync_stat_rankings(year=ctx.year)
-                    syncer.sync_player_season_batting(year=ctx.year)
-                    syncer.sync_player_season_pitching(year=ctx.year)
-                    syncer.sync_player_movements()
-                    syncer.sync_daily_rosters(start_date=ctx.r_target_date, end_date=ctx.r_target_date)
-                except Exception:
-                    logger.exception("   \u26a0\ufe0f Non-P0 OCI supporting dataset sync failed")
-                    ctx.oci_skip_counts["non_p0_supporting_sync_failed"] = (
-                        ctx.oci_skip_counts.get("non_p0_supporting_sync_failed", 0) + 1
-                    )
-                    ctx.oci_skip_game_ids.setdefault("non_p0_supporting_sync_failed", []).append(f"season:{ctx.year}")
+            _sync_oci_supporting_datasets(ctx, syncer)
             if ctx.oci_skip_counts:
                 logger.info("   \u2139\ufe0f OCI skip summary: %s", _format_counts(ctx.oci_skip_counts))
         finally:
             syncer.close()
 
+
+def _run_post_oci_freshness_gate(ctx: _RunContext) -> None:
     logger.info("\n\U0001f9ea Step 13.5: Freshness gate after OCI publish...")
     for freshness_date in ctx.freshness_dates:
         try:
@@ -1135,6 +1222,8 @@ async def _step_11_sync_pipeline(ctx: _RunContext) -> None:
         except subprocess.CalledProcessError:
             logger.exception("   \u26a0\ufe0f OCI freshness gate found issues for %s (continuing)", freshness_date)
 
+
+def _run_oci_parity_gate(ctx: _RunContext) -> None:
     logger.info("\n\u2696\ufe0f Step 13.6: OCI parity quality gate check...")
     try:
         _run_oci_parity_quality_gate()
@@ -1144,6 +1233,20 @@ async def _step_11_sync_pipeline(ctx: _RunContext) -> None:
         reason = "non_p0_oci_parity_quality_gate_failed"
         ctx.non_p0_quality_gate_counts[reason] = ctx.non_p0_quality_gate_counts.get(reason, 0) + 1
         ctx.non_p0_quality_gate_ids.setdefault(reason, []).append("oci")
+
+
+async def _step_11_sync_pipeline(ctx: _RunContext) -> None:
+    _set_candidate_sync_game_ids(ctx)
+    if not ctx.sync:
+        return
+
+    _run_pre_oci_freshness_gate(ctx)
+    _run_local_integrity_gate()
+    _recalculate_season_aggregates_for_quality_gate(ctx)
+    _run_statistical_quality_gate_for_sync(ctx)
+    _publish_to_oci(ctx)
+    _run_post_oci_freshness_gate(ctx)
+    _run_oci_parity_gate(ctx)
 
 
 async def _step_14_tomorrow_preview(ctx: _RunContext) -> None:
@@ -1160,7 +1263,256 @@ async def _step_14_tomorrow_preview(ctx: _RunContext) -> None:
             logger.exception("   \u274c Error generating tomorrow preview seed")
 
 
+def _build_stability_summary_for_context(ctx: _RunContext, summary_path: Path) -> dict[str, Any]:
+    return _build_stability_summary(
+        detail_failure_counts=ctx.detail_failure_counts,
+        detail_failure_game_ids=ctx.detail_failure_game_ids,
+        relay_recovery_target_ids=sorted(ctx.relay_recovery_target_ids),
+        oci_skip_counts=ctx.oci_skip_counts,
+        oci_skip_game_ids=ctx.oci_skip_game_ids,
+        non_p0_quality_gate_counts=ctx.non_p0_quality_gate_counts,
+        non_p0_quality_gate_ids=ctx.non_p0_quality_gate_ids,
+        p0_non_game_counts=ctx.p0_non_game_counts,
+        p0_non_game_errors=ctx.p0_non_game_errors,
+        detail_recovery_passes=ctx.detail_recovery_passes,
+        detail_recovered_after_retry=ctx.detail_recovered_after_retry,
+        detail_still_missing=ctx.detail_still_missing,
+        detail_recovery_attempts=ctx.detail_recovery_attempts,
+        detail_recovery_escalation_game_ids=ctx.detail_retry_escalation_game_ids,
+        summary_path=summary_path,
+    )
 
+
+def _build_p0_readiness_for_context(ctx: _RunContext) -> dict[str, Any]:
+    try:
+        with SessionLocal() as p0_session:
+            return build_p0_readiness(
+                p0_session,
+                target_date=ctx.target_date,
+                lookback_days=0,
+                lookahead_days=0,
+                oci_skip_counts=ctx.oci_skip_counts,
+                oci_skip_game_ids=ctx.oci_skip_game_ids,
+            )
+    except Exception:
+        logger.exception("   Error building P0 readiness summary")
+        return {
+            "target_date": ctx.target_date,
+            "schedule": {},
+            "pregame": {},
+            "live": {},
+            "postgame": {},
+            "relay": {},
+            "roster": {},
+            "broadcast": {},
+            "oci": {"skip_counts": dict(ctx.oci_skip_counts), "skip_game_ids": dict(ctx.oci_skip_game_ids)},
+            "failures": [
+                {
+                    "dataset": "p0_readiness",
+                    "game_id": None,
+                    "game_date": ctx.target_date,
+                    "reason": "readiness_build_failed",
+                    "severity": "critical",
+                },
+            ],
+            "summary": {"ok": False, "failure_count": 1, "critical_failure_count": 1, "warning_count": 0},
+        }
+
+
+def _finalize_manifest_game_ids(ctx: _RunContext) -> list[str]:
+    return (
+        sorted(set(ctx.processed_game_ids) | set(ctx.reconciliation_changed_ids))
+        or ctx.status_refresh_game_ids
+        or [game["game_id"] for game in ctx.daily_games]
+    )
+
+
+def _write_finalize_outputs(
+    ctx: _RunContext,
+    stability_summary: dict[str, Any],
+    p0_readiness: dict[str, Any],
+    summary_path: Path,
+) -> Path:
+    manifest_path = write_refresh_manifest(
+        phase="postgame_finalize",
+        target_date=ctx.target_date,
+        game_ids=_finalize_manifest_game_ids(ctx),
+        datasets=[
+            "game",
+            "game_metadata",
+            "game_inning_scores",
+            "game_lineups",
+            "game_events",
+            "game_summary",
+            "game_play_by_play",
+            "team_events",
+            "ticket_prices",
+            "ticket_open_rules",
+            "roster_transactions",
+        ],
+        derived_refresh=ctx.derived_refresh,
+        stability=stability_summary,
+    )
+    _write_daily_update_summary(
+        target_date=ctx.target_date,
+        stability=stability_summary,
+        p0_readiness=p0_readiness,
+        manifest_path=manifest_path,
+        summary_path=summary_path,
+    )
+    return manifest_path
+
+
+def _log_finalize_summaries(ctx: _RunContext, p0_readiness: dict[str, Any]) -> None:
+    logger.info(ctx.write_contract.summary())
+    logger.info(
+        "Stability summary: "
+        f"detail_failures={_format_counts(ctx.detail_failure_counts)} "
+        f"detail_recovery_passes={ctx.detail_recovery_passes} "
+        f"detail_recovered_after_retry={ctx.detail_recovered_after_retry} "
+        f"detail_still_missing={len(ctx.detail_still_missing)} "
+        f"relay_targets={len(ctx.relay_recovery_target_ids)} "
+        f"oci_skips={_format_counts(ctx.oci_skip_counts)} "
+        f"non_p0_quality_gates={_format_counts(ctx.non_p0_quality_gate_counts)} "
+        f"p0_non_game={_format_counts(ctx.p0_non_game_counts)}",
+    )
+    logger.info("P0 readiness: %s", format_p0_readiness_summary(p0_readiness))
+
+
+def _load_pbp_attempts_by_game(target_date: str) -> dict[str, list[dict[str, str]]]:
+    import csv
+
+    attempts_by_game: dict[str, list[dict[str, str]]] = {}
+    for file_path in Path("logs/daily_update_summary").glob(f"pbp_report_*_{target_date}.csv"):
+        try:
+            with open(file_path, encoding="utf-8") as f:
+                reader = csv.DictReader(f)
+                for row in reader:
+                    gid = row.get("game_id")
+                    if gid:
+                        attempts_by_game.setdefault(gid, []).append(row)
+        except Exception:
+            logger.exception("Failed to read PBP report file: %s", file_path)
+    return attempts_by_game
+
+
+def _normalize_pbp_attempt_notes(notes: str) -> str:
+    if "final_score_mismatch" in notes:
+        return "score_mismatch"
+    if "missing_middle_inning" in notes:
+        return "inning_gap"
+    return notes
+
+
+def _summarize_pbp_failed_game(gid: str, attempts: list[dict[str, str]]) -> str:
+    if not attempts:
+        return f"- `{gid}`: No logs found"
+
+    attempt_summaries = []
+    for att in attempts:
+        source = att.get("source_name", "unknown")
+        status = att.get("status", "unknown")
+        notes = _normalize_pbp_attempt_notes(att.get("notes") or "")
+        summary = f"*{source}*:{status}"
+        if notes:
+            summary += f" ({notes})"
+        attempt_summaries.append(summary)
+    return f"- `{gid}`: " + " -> ".join(attempt_summaries)
+
+
+def _build_pbp_failed_details(failed_ids: set[str], attempts_by_game: dict[str, list[dict[str, str]]]) -> list[str]:
+    return [_summarize_pbp_failed_game(gid, attempts_by_game.get(gid) or []) for gid in sorted(failed_ids)]
+
+
+def _build_pbp_recovery_blocks(
+    ctx: _RunContext,
+    success_count: int,
+    failed_count: int,
+    failed_details: list[str],
+) -> list[dict[str, Any]]:
+    blocks: list[dict[str, Any]] = [
+        {"type": "header", "text": {"type": "plain_text", "text": "Daily PBP Recovery Report"}},
+        {
+            "type": "section",
+            "fields": [
+                {"type": "mrkdwn", "text": f"*Target Games:* {len(ctx.relay_recovery_target_ids)}"},
+                {"type": "mrkdwn", "text": f"*Recovered:* {success_count}"},
+                {"type": "mrkdwn", "text": f"*Failed:* {failed_count}"},
+            ],
+        },
+    ]
+    if failed_details:
+        failed_text = "\n".join(failed_details)
+        if len(failed_text) > 2900:
+            failed_text = failed_text[:2800] + "\n... (truncated)"
+        blocks.append(
+            {
+                "type": "section",
+                "text": {
+                    "type": "mrkdwn",
+                    "text": f"*Detailed Failures:*\n{failed_text}",
+                },
+            },
+        )
+    return blocks
+
+
+def _send_pbp_recovery_report(ctx: _RunContext) -> None:
+    logger.info("\nStep 14: PBP Recovery Alerting...")
+    if not ctx.relay_recovery_target_ids:
+        logger.info("   No PBP recovery targets for today.")
+        return
+
+    try:
+        with SessionLocal() as session:
+            recovered_pbp_ids = (
+                session.execute(
+                    select(GamePlayByPlay.game_id)
+                    .where(GamePlayByPlay.game_id.in_(list(ctx.relay_recovery_target_ids)))
+                    .distinct(),
+                )
+                .scalars()
+                .all()
+            )
+
+        failed_ids = set(ctx.relay_recovery_target_ids) - set(recovered_pbp_ids)
+        success_count = len(recovered_pbp_ids)
+        failed_count = len(failed_ids)
+        attempts_by_game = _load_pbp_attempts_by_game(ctx.target_date)
+        failed_details = _build_pbp_failed_details(failed_ids, attempts_by_game)
+        blocks = _build_pbp_recovery_blocks(ctx, success_count, failed_count, failed_details)
+        SlackWebhookClient.send_alert(f"*Daily PBP Recovery Report ({ctx.target_date})*", blocks=blocks)
+        logger.info(
+            "   Sent PBP recovery summary to Slack (Success: %s, Failed: %s)",
+            success_count,
+            failed_count,
+        )
+    except Exception:
+        logger.exception("   Error sending PBP recovery summary")
+
+
+def _finalize_run_update(ctx: _RunContext) -> dict[str, Any]:
+    summary_path = _daily_summary_path(ctx.target_date, ctx.summary_dir)
+    stability_summary = _build_stability_summary_for_context(ctx, summary_path)
+    p0_readiness = _build_p0_readiness_for_context(ctx)
+    manifest_path = _write_finalize_outputs(ctx, stability_summary, p0_readiness, summary_path)
+    _log_finalize_summaries(ctx, p0_readiness)
+    _send_pbp_recovery_report(ctx)
+
+    logger.info(f"\n{'=' * 60}")
+    logger.info("Daily Finalize Finished for %s", ctx.target_date)
+    logger.info("Refresh Manifest: %s", manifest_path)
+    logger.info("Daily Summary: %s", summary_path)
+    logger.info(f"{'=' * 60}\n")
+
+    return {
+        "phase": "postgame_finalize",
+        "target_date": ctx.target_date,
+        "manifest_path": str(manifest_path),
+        "summary_path": str(summary_path),
+        "stability": stability_summary,
+        "p0_readiness": p0_readiness,
+    }
 
 
 async def run_update(
@@ -1211,9 +1563,9 @@ async def run_update(
         ),
     )
 
-    logger.info(f"\n{'=' * 60}")  # noqa: G004
+    logger.info(f"\n{'=' * 60}")
     logger.info("\U0001f680 KBO Daily Finalize Started for Date: %s", target_date)
-    logger.info(f"{'=' * 60}")  # noqa: G004
+    logger.info(f"{'=' * 60}")
 
     await _step_0_auto_healer(ctx)
     await _step_1_schedule(ctx)
@@ -1231,213 +1583,8 @@ async def run_update(
     await _step_11_sync_pipeline(ctx)
     await _step_14_tomorrow_preview(ctx)
 
-    summary_path = _daily_summary_path(target_date, summary_dir)
-    stability_summary = _build_stability_summary(
-        detail_failure_counts=ctx.detail_failure_counts,
-        detail_failure_game_ids=ctx.detail_failure_game_ids,
-        relay_recovery_target_ids=sorted(ctx.relay_recovery_target_ids),
-        oci_skip_counts=ctx.oci_skip_counts,
-        oci_skip_game_ids=ctx.oci_skip_game_ids,
-        non_p0_quality_gate_counts=ctx.non_p0_quality_gate_counts,
-        non_p0_quality_gate_ids=ctx.non_p0_quality_gate_ids,
-        p0_non_game_counts=ctx.p0_non_game_counts,
-        p0_non_game_errors=ctx.p0_non_game_errors,
-        detail_recovery_passes=ctx.detail_recovery_passes,
-        detail_recovered_after_retry=ctx.detail_recovered_after_retry,
-        detail_still_missing=ctx.detail_still_missing,
-        detail_recovery_attempts=ctx.detail_recovery_attempts,
-        detail_recovery_escalation_game_ids=ctx.detail_retry_escalation_game_ids,
-        summary_path=summary_path,
-    )
+    return _finalize_run_update(ctx)
 
-    try:
-        with SessionLocal() as p0_session:
-            p0_readiness = build_p0_readiness(
-                p0_session,
-                target_date=target_date,
-                lookback_days=0,
-                lookahead_days=0,
-                oci_skip_counts=ctx.oci_skip_counts,
-                oci_skip_game_ids=ctx.oci_skip_game_ids,
-            )
-    except Exception:
-        logger.exception("   Error building P0 readiness summary")
-        p0_readiness = {
-            "target_date": target_date,
-            "schedule": {},
-            "pregame": {},
-            "live": {},
-            "postgame": {},
-            "relay": {},
-            "roster": {},
-            "broadcast": {},
-            "oci": {"skip_counts": dict(ctx.oci_skip_counts), "skip_game_ids": dict(ctx.oci_skip_game_ids)},
-            "failures": [
-                {
-                    "dataset": "p0_readiness",
-                    "game_id": None,
-                    "game_date": target_date,
-                    "reason": "readiness_build_failed",
-                    "severity": "critical",
-                },
-            ],
-            "summary": {"ok": False, "failure_count": 1, "critical_failure_count": 1, "warning_count": 0},
-        }
-
-    manifest_path = write_refresh_manifest(
-        phase="postgame_finalize",
-        target_date=target_date,
-        game_ids=sorted(set(ctx.processed_game_ids) | set(ctx.reconciliation_changed_ids))
-        or ctx.status_refresh_game_ids
-        or [game["game_id"] for game in ctx.daily_games],
-        datasets=[
-            "game",
-            "game_metadata",
-            "game_inning_scores",
-            "game_lineups",
-            "game_events",
-            "game_summary",
-            "game_play_by_play",
-            "team_events",
-            "ticket_prices",
-            "ticket_open_rules",
-            "roster_transactions",
-        ],
-        derived_refresh=ctx.derived_refresh,
-        stability=stability_summary,
-    )
-    _write_daily_update_summary(
-        target_date=target_date,
-        stability=stability_summary,
-        p0_readiness=p0_readiness,
-        manifest_path=manifest_path,
-        summary_path=summary_path,
-    )
-
-    logger.info(ctx.write_contract.summary())
-    logger.info(
-        "Stability summary: "  # noqa: G004
-        f"detail_failures={_format_counts(ctx.detail_failure_counts)} "
-        f"detail_recovery_passes={ctx.detail_recovery_passes} "
-        f"detail_recovered_after_retry={ctx.detail_recovered_after_retry} "
-        f"detail_still_missing={len(ctx.detail_still_missing)} "
-        f"relay_targets={len(ctx.relay_recovery_target_ids)} "
-        f"oci_skips={_format_counts(ctx.oci_skip_counts)} "
-        f"non_p0_quality_gates={_format_counts(ctx.non_p0_quality_gate_counts)} "
-        f"p0_non_game={_format_counts(ctx.p0_non_game_counts)}",
-    )
-    logger.info("P0 readiness: %s", format_p0_readiness_summary(p0_readiness))
-
-    logger.info("\nStep 14: PBP Recovery Alerting...")
-    if ctx.relay_recovery_target_ids:
-        try:
-            with SessionLocal() as session:
-                recovered_pbp_ids = (
-                    session.execute(
-                        select(GamePlayByPlay.game_id)
-                        .where(GamePlayByPlay.game_id.in_(list(ctx.relay_recovery_target_ids)))
-                        .distinct(),
-                    )
-                    .scalars()
-                    .all()
-                )
-
-            failed_ids = set(ctx.relay_recovery_target_ids) - set(recovered_pbp_ids)
-            success_count = len(recovered_pbp_ids)
-            failed_count = len(failed_ids)
-
-            import csv
-            import glob
-
-            report_files = glob.glob(f"logs/daily_update_summary/pbp_report_*_{target_date}.csv")
-            attempts_by_game: dict[str, list[dict[str, str]]] = {}
-            for file_path in report_files:
-                try:
-                    with open(file_path, encoding="utf-8") as f:
-                        reader = csv.DictReader(f)
-                        for row in reader:
-                            gid = row.get("game_id")
-                            if gid:
-                                attempts_by_game.setdefault(gid, []).append(row)
-                except Exception:
-                    logger.exception("Failed to read PBP report file: %s", file_path)
-
-            failed_details = []
-            for gid in sorted(failed_ids):
-                game_attempts = attempts_by_game.get(gid) or []
-                if not game_attempts:
-                    failed_details.append(f"- `{gid}`: No logs found")
-                    continue
-
-                attempt_summaries = []
-                for att in game_attempts:
-                    source = att.get("source_name", "unknown")
-                    status = att.get("status", "unknown")
-                    notes = att.get("notes") or ""
-
-                    if "final_score_mismatch" in notes:
-                        notes = "score_mismatch"
-                    elif "missing_middle_inning" in notes:
-                        notes = "inning_gap"
-
-                    summary = f"*{source}*:{status}"
-                    if notes:
-                        summary += f" ({notes})"
-                    attempt_summaries.append(summary)
-
-                failed_details.append(f"- `{gid}`: " + " -> ".join(attempt_summaries))
-
-            msg = f"*Daily PBP Recovery Report ({target_date})*"
-            blocks = [
-                {"type": "header", "text": {"type": "plain_text", "text": "Daily PBP Recovery Report"}},
-                {
-                    "type": "section",
-                    "fields": [
-                        {"type": "mrkdwn", "text": f"*Target Games:* {len(ctx.relay_recovery_target_ids)}"},
-                        {"type": "mrkdwn", "text": f"*Recovered:* {success_count}"},
-                        {"type": "mrkdwn", "text": f"*Failed:* {failed_count}"},
-                    ],
-                },
-            ]
-            if failed_details:
-                failed_text = "\n".join(failed_details)
-
-                if len(failed_text) > 2900:
-                    failed_text = failed_text[:2800] + "\n... (truncated)"
-                blocks.append(
-                    {
-                        "type": "section",
-                        "text": {
-                            "type": "mrkdwn",
-                            "text": f"*Detailed Failures:*\n{failed_text}",
-                        },
-                    },
-                )
-            SlackWebhookClient.send_alert(msg, blocks=blocks)
-            logger.info(
-                "   Sent PBP recovery summary to Slack (Success: %s, Failed: %s)",
-                success_count,
-                failed_count,
-            )
-        except Exception:
-            logger.exception("   Error sending PBP recovery summary")
-    else:
-        logger.info("   No PBP recovery targets for today.")
-
-    logger.info(f"\n{'=' * 60}")  # noqa: G004
-    logger.info("Daily Finalize Finished for %s", target_date)
-    logger.info("Refresh Manifest: %s", manifest_path)
-    logger.info("Daily Summary: %s", summary_path)
-    logger.info(f"{'=' * 60}\n")  # noqa: G004
-
-    return {
-        "phase": "postgame_finalize",
-        "target_date": target_date,
-        "manifest_path": str(manifest_path),
-        "summary_path": str(summary_path),
-        "stability": stability_summary,
-        "p0_readiness": p0_readiness,
-    }
 
 def build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="KBO Daily Data Finalize Orchestrator")

@@ -32,13 +32,13 @@ Run these after local repair and before any OCI sync:
 
 ```bash
 ./venv/bin/python scripts/verification/check_orphan_data.py --strict --json --sample-limit 20
-./venv/bin/python scripts/legacy/quality_gate.py --skip-oci
+./venv/bin/python -m scripts.maintenance.quality_gate --skip-oci
 ./venv/bin/python -m pytest
 ```
 
 Expected local status after this repair:
 - `check_orphan_data.py --strict`: pass.
-- `quality_gate.py --skip-oci`: pass.
+- `scripts.maintenance.quality_gate --skip-oci`: pass.
 - `pytest`: pass with only opt-in/live tests skipped.
 
 ## New And Updated Tools
@@ -46,9 +46,7 @@ Expected local status after this repair:
   - CLI options: `--db-url`, `--db-path`, `--strict`, `--json`, `--sample-limit`.
   - Checks logical relationships that SQLite may not enforce physically.
   - Reports both row counts and distinct reference counts.
-- `scripts/legacy/maintenance/repair_reference_integrity.py`
-  - Default mode is dry-run.
-  - Use `--apply --only team-codes`, `--apply --only metadata`, or `--apply --only all`.
+- Legacy `repair_reference_integrity.py` was removed after the repair window. Use `scripts/verification/check_orphan_data.py` for current reference-integrity validation.
 - `scripts/crawling/backfill_missing_players.py`
   - Default mode is dry-run.
   - Use `--include-pitching --include-unknown-stubs` for the full player repair set.
@@ -67,14 +65,13 @@ If game metadata repairs must be reflected in OCI, also sync the affected game r
 
 ```bash
 ./venv/bin/python scripts/verification/check_orphan_data.py --db-url "$OCI_DB_URL" --strict --json --sample-limit 20
-./venv/bin/python scripts/legacy/quality_gate.py
+./venv/bin/python -m scripts.maintenance.quality_gate
 ```
 
 ## OCI FK Enforcement
 Applied the OCI FK migration after the OCI target passed logical verification:
 
 ```bash
-./venv/bin/python scripts/legacy/maintenance/apply_oci_migration.py migrations/oci/023_reference_integrity_foreign_keys.sql
 ./venv/bin/python scripts/verification/check_orphan_data.py --db-url env:OCI_DB_URL --strict --json --sample-limit 20
 ```
 

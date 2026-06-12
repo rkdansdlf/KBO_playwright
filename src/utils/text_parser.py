@@ -6,6 +6,8 @@ Extracts:
 - Score Changes (from "1점 득점", "홈런")
 """
 
+from __future__ import annotations
+
 import re
 
 

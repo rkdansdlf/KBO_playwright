@@ -3,16 +3,21 @@ Database engine configuration
 Supports both SQLite (dev) and MySQL (production)
 """
 
+from __future__ import annotations
+
 import logging
 import os
 import sqlite3
+from collections.abc import Iterator
+from contextlib import contextmanager
 
 from dotenv import load_dotenv
-
-logger = logging.getLogger(__name__)
-from sqlalchemy import Engine, create_engine, event
+from sqlalchemy import Engine as SQLAlchemyEngine
+from sqlalchemy import create_engine, event
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session, sessionmaker
+
+logger = logging.getLogger(__name__)
 
 load_dotenv()
 
@@ -30,11 +35,13 @@ def get_source_db_url() -> str:
     return os.getenv("SOURCE_DATABASE_URL", "sqlite:///./data/kbo_dev.db")
 
 
-def _is_sqlite(url: str) -> bool:
+def _is_sqlite(url: str | None) -> bool:
+    if not url:
+        return False
     return url.startswith("sqlite:")
 
 
-def create_engine_for_url(url: str, *, disable_sqlite_wal: bool = False) -> Engine:
+def create_engine_for_url(url: str, *, disable_sqlite_wal: bool = False) -> SQLAlchemyEngine:
     if _is_sqlite(url):
         engine = create_engine(
             url,
@@ -62,9 +69,6 @@ def create_engine_for_url(url: str, *, disable_sqlite_wal: bool = False) -> Engi
 
 Engine = create_engine_for_url(DATABASE_URL, disable_sqlite_wal=DISABLE_SQLITE_WAL)
 SessionLocal = sessionmaker(bind=Engine, autoflush=False, autocommit=False, expire_on_commit=False)
-
-from collections.abc import Iterator
-from contextlib import contextmanager
 
 
 @contextmanager

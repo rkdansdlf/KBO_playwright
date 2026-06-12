@@ -20,11 +20,11 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from src.crawlers.game_detail_crawler import GameDetailCrawler  # noqa: E402
-from src.db.engine import SessionLocal  # noqa: E402
-from src.repositories.game_repository import repair_game_parent_from_existing_children, save_game_snapshot  # noqa: E402
-from src.utils.game_status import GAME_STATUS_CANCELLED  # noqa: E402
-from src.utils.team_codes import team_code_from_game_id_segment  # noqa: E402
+from src.crawlers.game_detail_crawler import GameDetailCrawler
+from src.db.engine import SessionLocal
+from src.repositories.game_repository import repair_game_parent_from_existing_children, save_game_snapshot
+from src.utils.game_status import GAME_STATUS_CANCELLED
+from src.utils.team_codes import team_code_from_game_id_segment
 
 # Setup logging
 LOG_DIR = PROJECT_ROOT / "logs"

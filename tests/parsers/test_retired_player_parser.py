@@ -2,17 +2,14 @@
 from src.parsers.retired_player_parser import (
     _apply_stat,
     _clean_header,
-    _clean_value,
     _cleanup_consumed,
-    _innings_to_outs,
     _merge_extra_stats,
     _select_tables,
     _table_to_dicts,
-    _to_float,
-    _to_int,
     parse_retired_hitter_tables,
     parse_retired_pitcher_table,
 )
+from src.utils.type_helpers import safe_int_or_none
 
 
 class TestCleaners:
@@ -21,79 +18,6 @@ class TestCleaners:
         assert _clean_header(" 출루율 ") == "출루율"
         assert _clean_header("") == ""
         assert _clean_header(None) == ""
-
-    def test_clean_value(self):
-        assert _clean_value(" 1,000 ") == "1000"
-        assert _clean_value("0.300") == "0.300"
-        assert _clean_value("") == ""
-        assert _clean_value(None) == ""
-
-
-class TestToInt:
-    def test_normal(self):
-        assert _to_int("100") == 100
-        assert _to_int("0") == 0
-        assert _to_int("-5") == -5
-
-    def test_with_commas(self):
-        assert _to_int("1,000") == 1000
-
-    def test_empty_and_special(self):
-        assert _to_int("") is None
-        assert _to_int("-") is None
-        assert _to_int("null") is None
-        assert _to_int(None) is None
-
-    def test_invalid(self):
-        assert _to_int("abc") is None
-        assert _to_int("12.5") is None
-
-
-class TestToFloat:
-    def test_normal(self):
-        assert _to_float("0.300") == 0.3
-        assert _to_float("1.50") == 1.5
-        assert _to_float("0") == 0.0
-
-    def test_with_commas(self):
-        assert _to_float("1,000.5") == 1000.5
-
-    def test_empty_and_special(self):
-        assert _to_float("") is None
-        assert _to_float("-") is None
-        assert _to_float("null") is None
-        assert _to_float(None) is None
-
-    def test_invalid(self):
-        assert _to_float("abc") is None
-
-
-class TestInningsToOuts:
-    def test_standard_format(self):
-        assert _innings_to_outs("60.2") == 60 * 3 + 2
-        assert _innings_to_outs("9.0") == 27
-        assert _innings_to_outs("1.1") == 4
-
-    def test_colon_format(self):
-        assert _innings_to_outs("60:2") == 60 * 3 + 2
-        assert _innings_to_outs("9:0") == 27
-
-    def test_vulgar_fractions(self):
-        assert _innings_to_outs("60:1") == 60 * 3 + 1
-        assert _innings_to_outs("60:2") == 60 * 3 + 2
-
-    def test_integer_only(self):
-        assert _innings_to_outs("9") == 27
-        assert _innings_to_outs("0") == 0
-
-    def test_empty_and_special(self):
-        assert _innings_to_outs("") is None
-        assert _innings_to_outs("-") is None
-        assert _innings_to_outs("null") is None
-        assert _innings_to_outs(None) is None
-
-    def test_invalid(self):
-        assert _innings_to_outs("abc") is None
 
 
 class TestTableToDicts:
@@ -179,19 +103,19 @@ class TestApplyStat:
     def test_applies_stat(self):
         record = {}
         row = {"안타": "100"}
-        _apply_stat(record, row, ("안타", "H"), "hits", _to_int)
+        _apply_stat(record, row, ("안타", "H"), "hits", safe_int_or_none)
         assert record["hits"] == 100
 
     def test_first_matching_key_wins(self):
         record = {}
         row = {"H": "50", "안타": "100"}
-        _apply_stat(record, row, ("안타", "H"), "hits", _to_int)
+        _apply_stat(record, row, ("안타", "H"), "hits", safe_int_or_none)
         assert record["hits"] == 100  # first key wins
 
     def test_no_match(self):
         record = {}
         row = {"타율": "0.300"}
-        _apply_stat(record, row, ("H", "안타"), "hits", _to_int)
+        _apply_stat(record, row, ("H", "안타"), "hits", safe_int_or_none)
         assert "hits" not in record
 
 

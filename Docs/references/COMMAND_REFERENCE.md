@@ -68,7 +68,7 @@ cp .env.example .env
 python3 -c "from src.db.engine import init_db; init_db()"
 
 # 기본 데이터 시드 (팀, 시즌, 데이터소스)
-python3 scripts/legacy/maintenance/seed_data.py
+python3 -m scripts.maintenance.seed_data
 ```
 
 ---
@@ -457,57 +457,20 @@ python3 -m src.cli.collect_games --year 2024 --month 10 --force
 과거 날짜임에도 여전히 `SCHEDULED` 상태로 남아있는 경기들을 찾아 `UNRESOLVED_MISSING`으로 업데이트하여 자동 갱신을 유도합니다.
 
 ```bash
-./venv/bin/python3 scripts/legacy/maintenance/fix_past_scheduled_games.py
+./venv/bin/python3 -m src.cli.run_daily_update --date YYYYMMDD --sync
 ```
 
 ### 4. Player ID 무결성 보수 (Player ID Repair)
 `player_id` NULL 또는 generated placeholder 보수는 보수 범위를 좁혀 순차 실행합니다. curated row-level override는 `data/player_id_row_overrides.csv`에 보관하며, report/backup CSV는 로컬 산출물로 둡니다. row override는 `source_table + game_id + appearance_seq + team_code + player_name` exact key만 수정하고, report `status`가 `needs_update` 또는 `already_correct`일 때만 안전합니다. `missing`, `ambiguous`, `conflict`는 `--apply`를 중단하며 DB를 변경하지 않습니다.
 
 ```bash
-# 1) 로컬 NULL player_id를 OCI의 non-null 값으로 보수 (dry-run)
-./venv/bin/python3 scripts/legacy/maintenance/fill_null_player_ids_from_oci.py \
-    --years 2009,2010,2019,2025,2026 \
-    --output-dir data/null_player_id_oci
-
-# 1) 적용
-./venv/bin/python3 scripts/legacy/maintenance/fill_null_player_ids_from_oci.py \
-    --years 2009,2010,2019,2025,2026 \
-    --output-dir data/null_player_id_oci \
-    --apply
-
-# 2) 로컬 보수 후보를 보수적으로 해석 (dry-run 후 --apply)
-./venv/bin/python3 scripts/legacy/maintenance/resolve_null_player_ids_conservative.py \
+# 1) 로컬 보수 후보를 보수적으로 해석 (dry-run 후 --apply)
+./venv/bin/python3 -m scripts.maintenance.resolve_null_player_ids_conservative \
     --years 2009,2010,2019,2025,2026 \
     --output-dir data/null_player_id_conservative
 
-# 3) curated row override dry-run
-./venv/bin/python3 scripts/legacy/maintenance/apply_player_id_overrides.py \
-    --years 2009,2010,2019,2025,2026 \
-    --include-generated \
-    --output-dir data/player_id_override_reports
-
-# 3) local SQLite 적용
-./venv/bin/python3 scripts/legacy/maintenance/apply_player_id_overrides.py \
-    --years 2009,2010,2019,2025,2026 \
-    --include-generated \
-    --output-dir data/player_id_override_reports \
-    --apply
-
-# 3) OCI 적용은 명시적으로만 실행
-./venv/bin/python3 scripts/legacy/maintenance/apply_player_id_overrides.py \
-    --oci \
-    --years 2009,2010,2019,2025,2026 \
-    --include-generated \
-    --output-dir data/player_id_override_reports \
-    --apply
-
-# 4) 로컬에서 확정된 non-null 값을 OCI NULL row에 역보수 (dry-run 후 --apply)
-./venv/bin/python3 scripts/legacy/maintenance/fill_oci_null_player_ids_from_local.py \
-    --years 2009,2010,2019,2025,2026 \
-    --output-dir data/oci_null_player_id_from_local
-
-# 5) 최종 품질 게이트
-./venv/bin/python3 scripts/legacy/quality_gate.py
+# 2) 최종 품질 게이트
+./venv/bin/python3 -m scripts.maintenance.quality_gate
 ```
 
 ### 5. PlayerGame 스탯 재계산 (Recalc)
@@ -553,10 +516,10 @@ python3 -m src.cli.collect_games --year 2024 --month 10 --force
 
 ```bash
 # 로컬 DB만 점검
-./venv/bin/python3 scripts/legacy/quality_gate.py --skip-oci
+./venv/bin/python3 -m scripts.maintenance.quality_gate --skip-oci
 
 # 로컬 및 OCI 전체 점검 (권한 필요)
-./venv/bin/python3 scripts/legacy/quality_gate.py
+./venv/bin/python3 -m scripts.maintenance.quality_gate
 ```
 
 ---
@@ -707,10 +670,10 @@ tail -f crawl_errors.log
 # SQLite 손상 시 재구축
 rm data/kbo_dev.db*
 python3 -c "from src.db.engine import init_db; init_db()"
-python3 scripts/legacy/maintenance/seed_data.py
+python3 -m scripts.maintenance.seed_data
 
 # 팀/시즌 데이터만 빠졌을 경우
-python3 scripts/legacy/maintenance/seed_data.py
+python3 -m scripts.maintenance.seed_data
 
 # 외래키 제약조건 확인
 python3 -c "

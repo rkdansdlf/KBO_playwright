@@ -289,7 +289,7 @@ class TextTransformer:
                 merged.append(chunk)
 
         _logger.debug(
-            f"chunk_by_headings: {len(sections)} raw sections → "  # noqa: G004
+            f"chunk_by_headings: {len(sections)} raw sections → "
             f"{len(chunks)} chunks → {len(merged)} after merge "
             f"(keywords extracted: {len(keywords)})",
         )

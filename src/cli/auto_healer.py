@@ -388,7 +388,7 @@ async def run_pbp_healer_async(
     found = len(results)
     logger.warning("⚠️  [PBP Healer] 검증 실패 게임 %s건 발견", found)
     for item in results:
-        logger.info(f"   • {item['game_id']} ({item['away_team']} vs {item['home_team']}) - {item['error_reason']}")  # noqa: G004
+        logger.info(f"   • {item['game_id']} ({item['away_team']} vs {item['home_team']}) - {item['error_reason']}")
 
     # --- Telegram: 발견 알림 ---
     if not dry_run:

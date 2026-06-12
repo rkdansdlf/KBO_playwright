@@ -11,8 +11,8 @@ logger = logging.getLogger(__name__)
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from src.db.engine import SessionLocal  # noqa: E402
-from src.repositories.stadium_info_repository import StadiumInfoRepository  # noqa: E402
+from src.db.engine import SessionLocal
+from src.repositories.stadium_info_repository import StadiumInfoRepository
 
 STADIUM_DATA = [
     {

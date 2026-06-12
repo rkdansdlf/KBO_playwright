@@ -100,7 +100,7 @@ class TransitTimeCrawler:
         measured_at = datetime.now(UTC).replace(tzinfo=None)
 
         logger.info(
-            f"[Transit] Measuring {len(self.origins)} origins for {game_date} at {measured_at.strftime('%H:%M')} UTC",  # noqa: G004
+            f"[Transit] Measuring {len(self.origins)} origins for {game_date} at {measured_at.strftime('%H:%M')} UTC",
         )
 
         # Fetch transit times for each mode

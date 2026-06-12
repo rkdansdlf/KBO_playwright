@@ -17,11 +17,11 @@ from playwright.sync_api import sync_playwright
 logger = logging.getLogger(__name__)
 
 sys.path.insert(0, os.getcwd())
-from src.crawlers.legacy_game_detail_crawler import LegacyGameDetailCrawler  # noqa: E402
+from src.crawlers.legacy_game_detail_crawler import LegacyGameDetailCrawler
 
-from src.db.engine import SessionLocal  # noqa: E402
-from src.repositories.game_repository import save_game_detail  # noqa: E402
-from src.services.player_id_resolver import PlayerIdResolver  # noqa: E402
+from src.db.engine import SessionLocal
+from src.repositories.game_repository import save_game_detail
+from src.services.player_id_resolver import PlayerIdResolver
 
 
 def crawl_2009_details():

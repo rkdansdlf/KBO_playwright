@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import logging
 from typing import Any
 
@@ -14,8 +16,9 @@ from playwright.async_api import Error as PlaywrightError
 
 from src.utils.compliance import compliance
 from src.utils.playwright_pool import AsyncPlaywrightPool
-from src.utils.playwright_retry import LONG_TIMEOUT
+from src.utils.playwright_retry import LONG_TIMEOUT, SHORT_TIMEOUT
 from src.utils.throttle import throttle
+from src.utils.type_helpers import safe_float_or_none, safe_int_or_none
 
 logger = logging.getLogger(__name__)
 FUTURES_KEYS = ["season", "AVG", "G", "AB", "R", "H", "2B", "3B", "HR", "RBI", "SB", "BB", "HBP", "SO", "SLG", "OBP"]
@@ -65,33 +68,6 @@ def _norm_header(txt: str) -> str:
     t = re.sub(r"\s+", "", txt).lower()
     return HEADER_MAP.get(t, txt.strip())
 
-
-def _to_int(x: str | None) -> int | None:
-    """Convert string to integer, handling commas and dashes."""
-    if x is None:
-        return None
-    t = x.strip().replace(",", "")
-    if t in ("", "-", "—"):
-        return None
-    try:
-        return int(re.sub(r"[^\d-]", "", t))
-    except (ValueError, AttributeError):
-        return None
-
-
-def _to_float(x: str | None) -> float | None:
-    """Convert string to float, handling commas and dashes."""
-    if x is None:
-        return None
-    t = x.strip().replace(",", "")
-    if t in ("", "-", "—"):
-        return None
-    # Remove non-numeric characters except decimal point
-    t = re.sub(r"[^\d\.]", "", t)
-    try:
-        return float(t) if t else None
-    except (ValueError, AttributeError):
-        return None
 
 
 def _compute_missing(row: dict) -> dict[str, Any]:
@@ -153,9 +129,9 @@ def _parse_table(table) -> list[dict]:
                 else:
                     row["season"] = int(m.group())
             elif key in ("AVG", "SLG", "OBP"):
-                row[key] = _to_float(v)
+                row[key] = safe_float_or_none(v)
             elif key in ("G", "AB", "R", "H", "2B", "3B", "HR", "RBI", "SB", "BB", "HBP", "SO", "SF"):
-                row[key] = _to_int(v)
+                row[key] = safe_int_or_none(v)
 
         # Skip rows without valid season
         if not row.get("season"):
@@ -223,7 +199,7 @@ async def fetch_and_parse_futures_batting(
 
             # Try to click Futures tab if it exists
             try:
-                futures_tab = await page.wait_for_selector('text="퓨처스"', timeout=10000)
+                futures_tab = await page.wait_for_selector('text="퓨처스"', timeout=SHORT_TIMEOUT)
                 if futures_tab:
                     await futures_tab.click()
                     await throttle.wait()
@@ -265,7 +241,7 @@ async def main() -> None:
     logger.info("\nParsed %s Futures season records for player %s", len(rows), player_id)
 
     for row in rows:
-        logger.info(f"  Season {row.get('season')}: AVG={row.get('AVG')}, G={row.get('G')}, H={row.get('H')}")  # noqa: G004
+        logger.info(f"  Season {row.get('season')}: AVG={row.get('AVG')}, G={row.get('G')}, H={row.get('H')}")
 
 
 if __name__ == "__main__":

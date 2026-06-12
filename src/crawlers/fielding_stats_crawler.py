@@ -3,6 +3,8 @@
 (2025년 10월 업데이트: KBO 웹사이트에서 개별 선수 수비 페이지가 제거되어 포지션별 랭킹 페이지 사용)
 """
 
+from __future__ import annotations
+
 import logging
 import sqlite3
 from datetime import datetime
@@ -11,48 +13,15 @@ from typing import Any
 from playwright.sync_api import sync_playwright
 
 from src.utils.playwright_blocking import install_sync_resource_blocking
+from src.utils.type_helpers import parse_innings, safe_float, safe_int
 
 logger = logging.getLogger(__name__)
 import contextlib
 
 from src.utils.player_season_stat_validation import filter_valid_season_stat_payloads
-from src.utils.playwright_retry import LONG_TIMEOUT, SEL_TIMEOUT, retry_navigation, retry_wait_for_selector
+from src.utils.playwright_retry import LONG_TIMEOUT, RESP_TIMEOUT, SEL_TIMEOUT
 from src.utils.request_policy import RequestPolicy
 from src.utils.team_codes import resolve_team_code
-
-
-def parse_inns(txt: str) -> float:
-    """이닝 문자열을 float으로 변환 (예: '112 1/3' -> 112.333...)."""
-    txt = txt.strip().replace(",", "")
-    if not txt or txt == "-":
-        return 0.0
-    if " " in txt:
-        parts = txt.split(" ")
-        val = float(parts[0])
-        if len(parts) > 1 and "/" in parts[1]:
-            frac = parts[1].split("/")
-            val += float(frac[0]) / float(frac[1])
-        return val
-    if "/" in txt:
-        frac = txt.split("/")
-        return float(frac[0]) / float(frac[1])
-    return float(txt)
-
-
-def _s_int(cell_el: Any) -> int:
-    """셀 요소에서 정수 값 추출."""
-    try:
-        return int(cell_el.inner_text().strip().replace(",", ""))
-    except (ValueError, TypeError):
-        return 0
-
-
-def _s_float(cell_el: Any) -> float:
-    """셀 요소에서 실수 값 추출."""
-    try:
-        return float(cell_el.inner_text().strip().replace(",", ""))
-    except (ValueError, TypeError):
-        return 0.0
 
 
 def build_fielding_crawl_summary(records) -> tuple[dict[str, Any], list[dict[str, Any]]]:
@@ -153,7 +122,7 @@ def crawl_all_fielding_stats(year=None) -> list[dict[str, Any]]:
                     page.select_option("select#cphContents_cphContents_cphContents_ddlPos_ddlPos", value="")
                     policy.delay()
 
-                    with page.expect_response("**/Record/Player/Defense/Basic.aspx", timeout=20000):
+                    with page.expect_response("**/Record/Player/Defense/Basic.aspx", timeout=RESP_TIMEOUT):
                         page.select_option("select#cphContents_cphContents_cphContents_ddlTeam_ddlTeam", value=team_val)
                     page.wait_for_load_state("networkidle", timeout=SEL_TIMEOUT)
                     policy.delay()
@@ -181,7 +150,9 @@ def crawl_all_fielding_stats(year=None) -> list[dict[str, Any]]:
                                     None,
                                 )
                                 if page_link:
-                                    with page.expect_response("**/Record/Player/Defense/Basic.aspx", timeout=20000):
+                                    with page.expect_response(
+                                        "**/Record/Player/Defense/Basic.aspx", timeout=RESP_TIMEOUT
+                                    ):
                                         page_link.click()
                                     page.wait_for_load_state("networkidle", timeout=SEL_TIMEOUT)
                                     policy.delay()
@@ -218,15 +189,15 @@ def crawl_all_fielding_stats(year=None) -> list[dict[str, Any]]:
                                         "team_id": team_id,
                                         "year": year,
                                         "position_id": pos_id,
-                                        "games": _s_int(cells[4]),
-                                        "games_started": _s_int(cells[5]),
-                                        "innings": parse_inns(cells[6].inner_text()),
-                                        "errors": _s_int(cells[7]),
-                                        "pickoffs": _s_int(cells[8]),
-                                        "putouts": _s_int(cells[9]),
-                                        "assists": _s_int(cells[10]),
-                                        "double_plays": _s_int(cells[11]),
-                                        "fielding_pct": _s_float(cells[12]),
+                                        "games": safe_int(cells[4].inner_text()),
+                                        "games_started": safe_int(cells[5].inner_text()),
+                                        "innings": parse_innings(cells[6].inner_text()),
+                                        "errors": safe_int(cells[7].inner_text()),
+                                        "pickoffs": safe_int(cells[8].inner_text()),
+                                        "putouts": safe_int(cells[9].inner_text()),
+                                        "assists": safe_int(cells[10].inner_text()),
+                                        "double_plays": safe_int(cells[11].inner_text()),
+                                        "fielding_pct": safe_float(cells[12].inner_text()),
                                         "source": "CRAWLER",
                                     }
                                     fielding_data_map[(player_id, team_id, pos_id)] = record
@@ -246,7 +217,7 @@ def crawl_all_fielding_stats(year=None) -> list[dict[str, Any]]:
                 policy.delay()
 
                 # 1단계: 포지션 "포수(2)" 선택
-                with page.expect_response("**/Record/Player/Defense/Basic.aspx", timeout=20000):
+                with page.expect_response("**/Record/Player/Defense/Basic.aspx", timeout=RESP_TIMEOUT):
                     page.select_option("select#cphContents_cphContents_cphContents_ddlPos_ddlPos", value="2")
                 page.wait_for_load_state("networkidle", timeout=SEL_TIMEOUT)
                 policy.delay()
@@ -256,7 +227,7 @@ def crawl_all_fielding_stats(year=None) -> list[dict[str, Any]]:
                     "document.querySelector('select#cphContents_cphContents_cphContents_ddlTeam_ddlTeam').value",
                 )
                 if team_val != "":
-                    with page.expect_response("**/Record/Player/Defense/Basic.aspx", timeout=20000):
+                    with page.expect_response("**/Record/Player/Defense/Basic.aspx", timeout=RESP_TIMEOUT):
                         page.select_option("select#cphContents_cphContents_cphContents_ddlTeam_ddlTeam", value="")
                     page.wait_for_load_state("networkidle", timeout=SEL_TIMEOUT)
                     policy.delay()
@@ -285,7 +256,7 @@ def crawl_all_fielding_stats(year=None) -> list[dict[str, Any]]:
                             None,
                         )
                         if p_link:
-                            with page.expect_response("**/Record/Player/Defense/Basic.aspx", timeout=20000):
+                            with page.expect_response("**/Record/Player/Defense/Basic.aspx", timeout=RESP_TIMEOUT):
                                 p_link.click()
                             page.wait_for_load_state("networkidle", timeout=SEL_TIMEOUT)
                             policy.delay()
@@ -313,10 +284,10 @@ def crawl_all_fielding_stats(year=None) -> list[dict[str, Any]]:
                             if key in fielding_data_map:
                                 fielding_data_map[key].update(
                                     {
-                                        "passed_balls": _s_int(cells[13]),
-                                        "stolen_bases_allowed": _s_int(cells[14]),
-                                        "caught_stealing": _s_int(cells[15]),
-                                        "cs_pct": _s_float(cells[16]),
+                                        "passed_balls": safe_int(cells[13].inner_text()),
+                                        "stolen_bases_allowed": safe_int(cells[14].inner_text()),
+                                        "caught_stealing": safe_int(cells[15].inner_text()),
+                                        "cs_pct": safe_float(cells[16].inner_text()),
                                     },
                                 )
                             else:
@@ -410,7 +381,7 @@ def save_fielding_stats(year=None, db_path=None) -> None:
             saved_count += 1
 
         except Exception:
-            logger.exception(f"⚠️ DB 저장 오류: {record['player_name']}")  # noqa: G004
+            logger.exception(f"⚠️ DB 저장 오류: {record['player_name']}")
             skipped_count += 1
             continue
 

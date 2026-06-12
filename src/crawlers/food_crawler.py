@@ -136,6 +136,6 @@ class FoodCrawler:
                 logger.info("[FOOD] Saved %s vendors, %s menus, %s snapshots.", vendor_count, menu_count, saved_snaps)
             except SQLAlchemyError as e:
                 session.rollback()
-                logger.exception(f"[FOOD] Database error: {e}")  # noqa: G004
+                logger.exception(f"[FOOD] Database error: {e}")
             finally:
                 self._raw_pages.clear()

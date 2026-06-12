@@ -3,9 +3,12 @@ import pytest
 from src.crawlers.player_pitching_all_series_crawler import (
     extract_player_id,
     normalize_header,
+)
+from src.utils.type_helpers import (
     parse_innings,
-    safe_float,
-    safe_int,
+    parse_innings_to_outs,
+    safe_float_or_none,
+    safe_int_or_none,
 )
 
 
@@ -25,54 +28,54 @@ class TestNormalizeHeader:
 
 class TestSafeInt:
     def test_normal_int(self):
-        assert safe_int("42") == 42
+        assert safe_int_or_none("42") == 42
 
     def test_dash_returns_none(self):
-        assert safe_int("-") is None
+        assert safe_int_or_none("-") is None
 
     def test_en_dash_returns_none(self):
-        assert safe_int("–") is None
+        assert safe_int_or_none("–") is None
 
     def test_none_returns_none(self):
-        assert safe_int(None) is None
+        assert safe_int_or_none(None) is None
 
-    def test_float_string(self):
-        assert safe_int("3.14") == 3
+    def test_float_string_returns_none(self):
+        assert safe_int_or_none("3.14") is None
 
 
 class TestSafeFloat:
     def test_normal_float(self):
-        assert safe_float("3.14") == 3.14
+        assert safe_float_or_none("3.14") == 3.14
 
     def test_dash_returns_none(self):
-        assert safe_float("-") is None
+        assert safe_float_or_none("-") is None
 
     def test_none_returns_none(self):
-        assert safe_float(None) is None
+        assert safe_float_or_none(None) is None
 
 
 class TestParseInnings:
     def test_whole_innings(self):
-        result, outs = parse_innings("9")
-        assert result == 9.0
-        assert outs == 27
+        assert parse_innings("9") == 9.0
+        assert parse_innings_to_outs("9") == 27
 
     def test_innings_with_fraction(self):
-        result, outs = parse_innings("6 2/3")
-        assert result == pytest.approx(6.67, rel=0.01)
-        assert outs == 20
+        assert parse_innings("6 2/3") == pytest.approx(6.67, rel=0.01)
+        assert parse_innings_to_outs("6 2/3") == 20
 
     def test_innings_with_decimal(self):
-        result, outs = parse_innings("7.1")
-        assert result == 7.1
-        assert outs == 22
+        assert parse_innings("7.1") == 7.1
+        assert parse_innings_to_outs("7.1") == 22
 
-    def test_empty_returns_none(self):
-        assert parse_innings("") == (None, None)
-        assert parse_innings(None) == (None, None)
+    def test_empty_returns_default(self):
+        assert parse_innings("") == 0.0
+        assert parse_innings(None) == 0.0
+        assert parse_innings_to_outs("") is None
+        assert parse_innings_to_outs(None) is None
 
-    def test_dash_returns_none(self):
-        assert parse_innings("-") == (None, None)
+    def test_dash_returns_default(self):
+        assert parse_innings("-") == 0.0
+        assert parse_innings_to_outs("-") is None
 
 
 class TestExtractPlayerId:

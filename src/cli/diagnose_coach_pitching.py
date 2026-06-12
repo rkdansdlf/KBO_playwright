@@ -46,23 +46,23 @@ def _print_text_report(rows: list[dict]) -> None:
         raw = row["raw_tables"]
         repo = row["repository"]
         final = row["final_payload"]
-        logger.info(f"{row['game_id']}: {row['drop_stage']}")  # noqa: G004
+        logger.info(f"{row['game_id']}: {row['drop_stage']}")
         logger.info(
-            "  raw: "  # noqa: G004
+            "  raw: "
             f"pitching={raw['game_pitching_rows']} "
             f"starters={raw['starter_rows']} "
             f"bullpen={raw['bullpen_rows']} "
             f"missing_player_ids={raw['player_id_missing_rows']}",
         )
         logger.info(
-            "  repository: "  # noqa: G004
+            "  repository: "
             f"starters={repo['starter_rows']} "
             f"bullpen={repo['bullpen_rows']} "
             f"season_matches={repo['season_pitching_matches']} "
             f"unmatched={len(repo['unmatched_season_stats'])}",
         )
         logger.info(
-            "  final_payload: "  # noqa: G004
+            "  final_payload: "
             f"review={final['review_summary_found']} "
             f"summary_rows={final['review_summary_rows']} "
             f"pitching_breakdown={final['pitching_breakdown_found']} "
@@ -70,7 +70,7 @@ def _print_text_report(rows: list[dict]) -> None:
             f"bullpen={final['bullpen_rows']}",
         )
         if row.get("warnings"):
-            logger.info(f"  warnings: {', '.join(row['warnings'])}")  # noqa: G004
+            logger.info(f"  warnings: {', '.join(row['warnings'])}")
         if repo["unmatched_season_stats"]:
             examples = ", ".join(
                 f"{item.get('player_name')}({item.get('player_id')})" for item in repo["unmatched_season_stats"][:5]

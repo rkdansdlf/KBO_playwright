@@ -110,7 +110,7 @@ async def run_review_batch(target_date: str, *, sync_to_oci: bool | None = None)
     status_result = refresh_game_status_for_date(target_date)
     if status_result.get("updated", 0):
         logger.info(
-            "🔄 Refreshed game statuses before review: "  # noqa: G004
+            "🔄 Refreshed game statuses before review: "
             f"updated={status_result.get('updated', 0)} "
             f"counts={status_result.get('status_counts', {})}",
         )
@@ -156,7 +156,7 @@ async def run_review_batch(target_date: str, *, sync_to_oci: bool | None = None)
 
             if not review_data["crucial_moments"]:
                 logger.info(
-                    f"  ⚠️ No WPA-backed game_events found for {game_id}. Raw event crawl may be missing or incomplete.",  # noqa: G004
+                    f"  ⚠️ No WPA-backed game_events found for {game_id}. Raw event crawl may be missing or incomplete.",
                 )
 
             review_json = json.dumps(review_data, ensure_ascii=False)

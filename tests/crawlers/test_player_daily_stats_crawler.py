@@ -1,5 +1,6 @@
 
 from src.crawlers.player_daily_stats_crawler import PlayerDailyStatsCrawler
+from src.utils.type_helpers import parse_innings_to_outs
 
 
 class TestParseHitterRow:
@@ -43,18 +44,15 @@ class TestParsePitcherRow:
 
 
 class TestParseInningsToOuts:
-    def setup_method(self):
-        self.crawler = PlayerDailyStatsCrawler()
-
     def test_whole_innings(self):
-        assert self.crawler._parse_innings_to_outs("7") == 21
+        assert parse_innings_to_outs("7") == 21
 
     def test_fractional_innings(self):
-        assert self.crawler._parse_innings_to_outs("5 2/3") == 17
+        assert parse_innings_to_outs("5 2/3") == 17
 
     def test_only_fraction(self):
-        assert self.crawler._parse_innings_to_outs("1/3") == 1
+        assert parse_innings_to_outs("1/3") == 1
 
     def test_empty_or_dash(self):
-        assert self.crawler._parse_innings_to_outs("") == 0
-        assert self.crawler._parse_innings_to_outs("-") == 0
+        assert parse_innings_to_outs("") is None
+        assert parse_innings_to_outs("-") is None

@@ -33,7 +33,7 @@ include = ["src*"]
 [tool.ruff]
 line-length = 120
 target-version = "py312"
-exclude = ["scripts/legacy/", "scripts/investigations/"]
+exclude = ["scripts/investigations/"]
 
 [tool.ruff.lint]
 select = [
@@ -82,15 +82,3 @@ quote-style = "double"
 indent-style = "space"
 line-ending = "lf"
 
-[tool.pytest.ini_options]
-minversion = "7.4"
-testpaths = ["tests"]
-python_files = ["test_*.py"]
-markers = [
-    "slow: slow tests (deselect with '-m \"not slow\"')",
-    "oci: tests requiring OCI database",
-]
-filterwarnings = [
-    "ignore::DeprecationWarning",
-    "ignore::sqlalchemy.exc.SADeprecationWarning",
-]

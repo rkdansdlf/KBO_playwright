@@ -7,6 +7,7 @@ from __future__ import annotations
 import logging
 import re
 from collections.abc import Iterable
+from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 
@@ -306,6 +307,93 @@ def mark_relay_source_unavailable(
     return True
 
 
+def _has_repairable_game_children(session, game_id: str) -> bool:
+    return any(
+        _has_game_child_rows(session, model, game_id)
+        for model in (GameInningScore, GameLineup, GameBattingStat, GamePitchingStat)
+    )
+
+
+def _game_date_from_game_id(game_id: str):
+    try:
+        return datetime.strptime(game_id[:8], "%Y%m%d").date()
+    except ValueError:
+        return datetime.now().date()
+
+
+def _get_or_create_game_parent(session, game_id: str, game_date) -> Game:
+    game = session.query(Game).filter(Game.game_id == game_id).one_or_none()
+    if game:
+        return game
+    game = Game(game_id=game_id, game_date=game_date)
+    session.add(game)
+    session.flush()
+    return game
+
+
+def _apply_repaired_game_season(session, game: Game, game_date, season_year: int) -> None:
+    game.game_date = game_date
+    season_id = _resolve_game_season_id(
+        session,
+        {"season_year": season_year, "season_type": "regular"},
+        game_date,
+        game.season_id,
+    )
+    if season_id:
+        game.season_id = season_id
+
+
+def _apply_repaired_game_teams(session, game: Game, game_id: str, season_year: int) -> None:
+    away_team = _infer_team_code_from_children(session, game_id, "away", season_year)
+    home_team = _infer_team_code_from_children(session, game_id, "home", season_year)
+    if away_team:
+        game.away_team = away_team
+    if home_team:
+        game.home_team = home_team
+
+
+def _apply_repaired_game_scores(session, game: Game, game_id: str) -> None:
+    away_score = _infer_score_from_children(session, game_id, "away")
+    home_score = _infer_score_from_children(session, game_id, "home")
+    if away_score is not None:
+        game.away_score = away_score
+    if home_score is not None:
+        game.home_score = home_score
+
+
+def _apply_repaired_game_pitchers(session, game: Game, game_id: str) -> None:
+    away_pitcher = _infer_pitcher_from_children(session, game_id, "away")
+    home_pitcher = _infer_pitcher_from_children(session, game_id, "home")
+    if away_pitcher:
+        game.away_pitcher = away_pitcher
+    if home_pitcher:
+        game.home_pitcher = home_pitcher
+
+
+def _apply_repaired_game_status(game: Game) -> None:
+    if game.home_score is not None and game.away_score is not None:
+        game.winning_team, game.winning_score = _resolve_winner(
+            {"code": game.home_team, "score": game.home_score},
+            {"code": game.away_team, "score": game.away_score},
+        )
+        game.game_status = _resolve_terminal_status(game.home_score, game.away_score)
+    elif not game.game_status:
+        game.game_status = GAME_STATUS_UNRESOLVED
+
+
+def _apply_repaired_game_fields(session, game_id: str) -> None:
+    game_date = _game_date_from_game_id(game_id)
+    season_year = game_date.year
+    game = _get_or_create_game_parent(session, game_id, game_date)
+    _apply_repaired_game_season(session, game, game_date, season_year)
+    _apply_repaired_game_teams(session, game, game_id, season_year)
+    _apply_repaired_game_scores(session, game, game_id)
+    _apply_repaired_game_pitchers(session, game, game_id)
+    _apply_repaired_game_status(game)
+    _apply_game_team_identity(game, season_year)
+    _enrich_existing_child_team_identity(session, game_id, season_year)
+
+
 def repair_game_parent_from_existing_children(
     game_id: str,
     *,
@@ -331,68 +419,10 @@ def repair_game_parent_from_existing_children(
                 source="parent_repair",
                 reason="normalized_to_kbo_legacy_game_id",
             )
-            has_children = any(
-                _has_game_child_rows(session, model, game_id)
-                for model in (GameInningScore, GameLineup, GameBattingStat, GamePitchingStat)
-            )
-            if not has_children:
+            if not _has_repairable_game_children(session, game_id):
                 return False
 
-            try:
-                game_date = datetime.strptime(game_id[:8], "%Y%m%d").date()
-            except ValueError:
-                game_date = datetime.now().date()
-            season_year = game_date.year
-
-            game = session.query(Game).filter(Game.game_id == game_id).one_or_none()
-            if not game:
-                game = Game(game_id=game_id, game_date=game_date)
-                session.add(game)
-                session.flush()
-
-            game.game_date = game_date
-            season_id = _resolve_game_season_id(
-                session,
-                {"season_year": season_year, "season_type": "regular"},
-                game_date,
-                game.season_id,
-            )
-            if season_id:
-                game.season_id = season_id
-
-            away_team = _infer_team_code_from_children(session, game_id, "away", season_year)
-            home_team = _infer_team_code_from_children(session, game_id, "home", season_year)
-            if away_team:
-                game.away_team = away_team
-            if home_team:
-                game.home_team = home_team
-
-            away_score = _infer_score_from_children(session, game_id, "away")
-            home_score = _infer_score_from_children(session, game_id, "home")
-            if away_score is not None:
-                game.away_score = away_score
-            if home_score is not None:
-                game.home_score = home_score
-
-            # Infer starting pitchers
-            away_pitcher = _infer_pitcher_from_children(session, game_id, "away")
-            home_pitcher = _infer_pitcher_from_children(session, game_id, "home")
-            if away_pitcher:
-                game.away_pitcher = away_pitcher
-            if home_pitcher:
-                game.home_pitcher = home_pitcher
-
-            if game.home_score is not None and game.away_score is not None:
-                game.winning_team, game.winning_score = _resolve_winner(
-                    {"code": game.home_team, "score": game.home_score},
-                    {"code": game.away_team, "score": game.away_score},
-                )
-                game.game_status = _resolve_terminal_status(game.home_score, game.away_score)
-            elif not game.game_status:
-                game.game_status = GAME_STATUS_UNRESOLVED
-
-            _apply_game_team_identity(game, season_year)
-            _enrich_existing_child_team_identity(session, game_id, season_year)
+            _apply_repaired_game_fields(session, game_id)
             session.commit()
         except SQLAlchemyError:
             session.rollback()
@@ -402,6 +432,440 @@ def repair_game_parent_from_existing_children(
     if sync_to_oci:
         _auto_sync_to_oci(game_id)
     return True
+
+
+@dataclass
+class _RelayValidationResult:
+    status: str
+    error_reason: str | None
+    live_warnings: list[Any]
+
+
+@dataclass
+class _RelayResolutionContext:
+    resolver: Any
+    season_year: int | None
+    away_team_code: str | None
+    home_team_code: str | None
+
+    def offense_team(self, half: str | None) -> str | None:
+        if half == "top":
+            return self.away_team_code
+        if half == "bottom":
+            return self.home_team_code
+        return None
+
+    def defense_team(self, half: str | None) -> str | None:
+        if half == "top":
+            return self.home_team_code
+        if half == "bottom":
+            return self.away_team_code
+        return None
+
+    def resolve_participant(
+        self,
+        name: str | None,
+        team_code: str | None,
+        *,
+        is_pitcher: bool | None = None,
+    ) -> tuple[int | None, str | None, str | None]:
+        if self.resolver is None or not name or not team_code or not self.season_year:
+            return None, None, None
+        try:
+            pid = self.resolver.resolve_id(name, team_code, self.season_year, is_pitcher=is_pitcher)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Player ID resolution encountered exception: %s", exc)
+            return None, "error", "resolve_exception"
+        if pid is None:
+            return None, "unresolved", f"no_match_{team_code}_{self.season_year}"
+        return _coerce_player_id(pid), "resolved", f"name_match_{team_code}_{self.season_year}"
+
+
+def _prepare_relay_payloads(
+    events: list[dict[str, Any]] | None,
+    raw_pbp_rows: list[dict[str, Any]] | None,
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]]]:
+    normalized_events = list(events or [])
+    normalized_pbp_rows = [normalize_pbp_row(row) for row in (raw_pbp_rows or [])]
+    if normalized_events and not normalized_pbp_rows:
+        normalized_pbp_rows = derive_play_by_play_rows_from_events(normalized_events)
+    valid_event_rows = (
+        normalized_events
+        if normalized_events and all(event_has_minimum_state(event) for event in normalized_events)
+        else []
+    )
+    return normalized_events, normalized_pbp_rows, valid_event_rows
+
+
+def _resolve_relay_validation(
+    session,
+    game_id: str,
+    events: list[dict[str, Any]],
+    raw_pbp_rows: list[dict[str, Any]],
+    valid_event_rows: list[dict[str, Any]],
+    game_row: Game | None,
+    game_lifecycle_state: str | None,
+) -> _RelayValidationResult:
+    from src.utils.game_status import COMPLETED_LIKE_GAME_STATUSES
+    from src.utils.relay_validation import (
+        VALIDATION_PENDING_LIVE,
+        VALIDATION_PROVISIONALLY_VALID,
+        VALIDATION_SOURCE_INCOMPLETE,
+        VALIDATION_UNVERIFIED,
+        VALIDATION_VERIFIED,
+        cross_validate_with_box_score,
+        validate_live_events,
+        validate_pbp_payload,
+    )
+
+    live_warnings = validate_live_events(events)
+    game_status = str(getattr(game_row, "game_status", "") or "").upper()
+    is_terminal_game = bool(
+        game_lifecycle_state in ("final", "result_pending_stabilization", "cancelled")
+        or game_status in COMPLETED_LIKE_GAME_STATUSES,
+    )
+    if raw_pbp_rows and not valid_event_rows and is_terminal_game:
+        return _RelayValidationResult(VALIDATION_SOURCE_INCOMPLETE, "raw_pbp_without_valid_event_state", live_warnings)
+    if is_terminal_game:
+        is_valid, error_reason = validate_pbp_payload(session, game_id, events, raw_pbp_rows)
+        if is_valid:
+            score_match, score_err = cross_validate_with_box_score(session, game_id, events)
+            is_valid = score_match
+            if not score_match:
+                error_reason = score_err
+        status = VALIDATION_VERIFIED if is_valid else VALIDATION_UNVERIFIED
+        return _RelayValidationResult(status, error_reason, live_warnings)
+
+    if live_warnings:
+        status = VALIDATION_PENDING_LIVE
+    elif events:
+        status = VALIDATION_PROVISIONALLY_VALID
+    else:
+        status = VALIDATION_PENDING_LIVE
+    return _RelayValidationResult(status, None, live_warnings)
+
+
+def _upsert_relay_validation_metadata(
+    session,
+    game_id: str,
+    validation: _RelayValidationResult,
+    *,
+    source_name: str | None,
+    notes: str | None,
+    events: list[dict[str, Any]],
+    raw_pbp_rows: list[dict[str, Any]],
+    valid_event_rows: list[dict[str, Any]],
+    parser_version: str | None,
+    source_schema_version: str | None,
+    payload_hash: str | None,
+) -> None:
+    from src.repositories.game_helpers import _upsert_metadata
+    from src.utils.relay_validation import VALIDATION_PENDING_LIVE, VALIDATION_UNVERIFIED
+
+    metadata_payload: dict[str, Any] = {
+        "pbp_validation_status": validation.status,
+        "pbp_validation_error": validation.error_reason or "none",
+    }
+    if parser_version:
+        metadata_payload["parser_version"] = parser_version
+    if source_schema_version:
+        metadata_payload["source_schema_version"] = source_schema_version
+    if payload_hash:
+        metadata_payload["payload_hash"] = payload_hash
+    if validation.status in (VALIDATION_UNVERIFIED, VALIDATION_PENDING_LIVE) and validation.error_reason:
+        logger.info("[PBP VALIDATION] Game %s status=%s reason=%s", game_id, validation.status, validation.error_reason)
+
+    _upsert_metadata(session, game_id, metadata_payload)
+    _upsert_validation_metrics(
+        session,
+        game_id,
+        validation_status=validation.status,
+        source_name=source_name,
+        error_reason=validation.error_reason,
+        events=events,
+        raw_pbp_rows=raw_pbp_rows,
+        parser_version=parser_version,
+        source_schema_version=source_schema_version,
+        payload_hash=payload_hash,
+        evidence={
+            "notes": notes,
+            "live_warnings": validation.live_warnings,
+            "valid_event_rows": len(valid_event_rows),
+            "raw_pbp_rows": len(raw_pbp_rows),
+        },
+    )
+
+
+def _apply_relay_lifecycle_state(game_row: Game | None, game_id: str, game_lifecycle_state: str | None) -> None:
+    if not game_lifecycle_state or not game_row:
+        return
+    from src.utils.game_state import validate_transition
+
+    is_valid_state, _ = validate_transition(game_row.game_lifecycle_state, game_lifecycle_state)
+    if is_valid_state:
+        game_row.game_lifecycle_state = game_lifecycle_state
+    else:
+        logger.warning(
+            "Invalid lifecycle transition: %s -> %s for %s",
+            game_row.game_lifecycle_state,
+            game_lifecycle_state,
+            game_id,
+        )
+
+
+def _relay_resolution_context(session, game_id: str) -> _RelayResolutionContext:
+    season_year = None
+    away_team_code = None
+    home_team_code = None
+    try:
+        season_year = int(game_id[:4]) if len(game_id) >= 4 else None
+        away_team_code = team_code_from_game_id_segment(game_id[8:10], season_year) if len(game_id) >= 10 else None
+        home_team_code = team_code_from_game_id_segment(game_id[10:12], season_year) if len(game_id) >= 12 else None
+    except (ValueError, IndexError):
+        logger.debug("Failed to parse team codes from game_id: %s", game_id)
+
+    try:
+        from src.services.player_id_resolver import PlayerIdResolver
+
+        resolver = PlayerIdResolver(session, allow_unknown_registration=False)
+    except Exception:  # noqa: BLE001
+        logger.warning("Failed to initialize PlayerIdResolver — player_id resolution will be skipped")
+        resolver = None
+    return _RelayResolutionContext(resolver, season_year, away_team_code, home_team_code)
+
+
+def _resolve_pbp_player(
+    row: dict[str, Any],
+    resolution: _RelayResolutionContext,
+) -> tuple[int | None, str | None, str | None, str | None]:
+    batter_name = row.get("batter_name")
+    pitcher_name = row.get("pitcher_name")
+    inning_half = row.get("inning_half")
+    if (
+        resolution.resolver is not None
+        and batter_name
+        and resolution.season_year
+        and resolution.away_team_code
+        and resolution.home_team_code
+    ):
+        batter_context = _relay_player_resolution_context(batter_name)
+        if batter_context is not None:
+            resolved_name, side, is_pitcher = batter_context
+            batter_team = (
+                resolution.offense_team(inning_half) if side == "offense" else resolution.defense_team(inning_half)
+            )
+            player_id, confidence, reason = resolution.resolve_participant(
+                resolved_name,
+                batter_team,
+                is_pitcher=is_pitcher,
+            )
+            return player_id, confidence, reason, resolved_name if player_id is None else None
+    elif resolution.resolver is not None and pitcher_name and resolution.season_year:
+        pitcher_team = resolution.defense_team(inning_half)
+        player_id, confidence, reason = resolution.resolve_participant(pitcher_name, pitcher_team, is_pitcher=True)
+        return player_id, confidence, reason, pitcher_name if player_id is None else None
+    return None, None, None, None
+
+
+def _build_relay_pbp_rows(
+    game_id: str,
+    raw_pbp_rows: list[dict[str, Any]],
+    source_name: str | None,
+    resolution: _RelayResolutionContext,
+) -> list[GamePlayByPlay]:
+    pbp_rows = []
+    for row in raw_pbp_rows:
+        player_id, resolver_confidence, resolver_reason, unresolved_player_name = _resolve_pbp_player(row, resolution)
+        pbp_rows.append(
+            GamePlayByPlay(
+                game_id=game_id,
+                inning=row.get("inning"),
+                inning_half=row.get("inning_half"),
+                batter_name=row.get("batter_name"),
+                pitcher_name=row.get("pitcher_name"),
+                play_description=row.get("play_description"),
+                event_type=row.get("event_type"),
+                result=row.get("result"),
+                player_id=player_id,
+                resolver_confidence=resolver_confidence,
+                resolver_reason=resolver_reason,
+                unresolved_player_name=unresolved_player_name,
+                provider_log_id=row.get("provider_log_id"),
+                source_row_index=row.get("source_row_index"),
+                source_name=row.get("source_name") or source_name,
+            ),
+        )
+    return pbp_rows
+
+
+def _resolve_event_batter(
+    batter_name: str | None,
+    half: str | None,
+    resolution: _RelayResolutionContext,
+) -> tuple[str | None, str | None, int | None, str | None, str | None]:
+    batter_context = _relay_player_resolution_context(batter_name)
+    if batter_context is None:
+        return batter_name, None, None, None, None
+    resolved_name, side, is_pitcher = batter_context
+    batter_team = resolution.offense_team(half) if side == "offense" else resolution.defense_team(half)
+    batter_id, confidence, reason = resolution.resolve_participant(resolved_name, batter_team, is_pitcher=is_pitcher)
+    return resolved_name, batter_team, batter_id, confidence, reason
+
+
+def _build_player_resolution_payload(
+    *,
+    batter_name: str | None,
+    resolved_batter_name: str | None,
+    batter_team: str | None,
+    batter_confidence: str | None,
+    batter_reason: str | None,
+    pitcher_name: str | None,
+    pitcher_team: str | None,
+    pitcher_confidence: str | None,
+    pitcher_reason: str | None,
+) -> dict[str, Any]:
+    resolver_payload: dict[str, Any] = {}
+    if batter_name:
+        resolver_payload["batter"] = {
+            "name": resolved_batter_name,
+            "team_code": batter_team,
+            "confidence": batter_confidence,
+            "reason": batter_reason,
+        }
+    if pitcher_name:
+        resolver_payload["pitcher"] = {
+            "name": pitcher_name,
+            "team_code": pitcher_team,
+            "confidence": pitcher_confidence,
+            "reason": pitcher_reason,
+        }
+    return resolver_payload
+
+
+def _build_relay_event_rows(
+    game_id: str,
+    valid_event_rows: list[dict[str, Any]],
+    source_name: str | None,
+    notes: str | None,
+    resolution: _RelayResolutionContext,
+) -> list[GameEvent]:
+    event_rows = []
+    for idx, event in enumerate(valid_event_rows, start=1):
+        inning = event.get("inning")
+        half = event.get("inning_half")
+        batter_name = event.get("batter_name") or event.get("batter")
+        pitcher_name = event.get("pitcher_name") or event.get("pitcher")
+        extra_json = dict(event.get("extra_json") or {})
+        if source_name:
+            extra_json.setdefault("relay_source", source_name)
+        if notes:
+            extra_json.setdefault("relay_notes", notes)
+        resolved_batter_name, batter_team, batter_id, batter_confidence, batter_reason = _resolve_event_batter(
+            batter_name,
+            half,
+            resolution,
+        )
+        pitcher_team = resolution.defense_team(half)
+        pitcher_id, pitcher_confidence, pitcher_reason = resolution.resolve_participant(
+            pitcher_name,
+            pitcher_team,
+            is_pitcher=True,
+        )
+        resolver_payload = _build_player_resolution_payload(
+            batter_name=batter_name,
+            resolved_batter_name=resolved_batter_name,
+            batter_team=batter_team,
+            batter_confidence=batter_confidence,
+            batter_reason=batter_reason,
+            pitcher_name=pitcher_name,
+            pitcher_team=pitcher_team,
+            pitcher_confidence=pitcher_confidence,
+            pitcher_reason=pitcher_reason,
+        )
+        if resolver_payload:
+            extra_json.setdefault("player_resolution", resolver_payload)
+        event_rows.append(
+            GameEvent(
+                game_id=game_id,
+                event_seq=event.get("event_seq") or idx,
+                inning=inning,
+                inning_half=half,
+                outs=event.get("outs"),
+                batter_id=batter_id or _coerce_player_id(event.get("batter_id")),
+                batter_name=batter_name,
+                pitcher_id=pitcher_id or _coerce_player_id(event.get("pitcher_id")),
+                pitcher_name=pitcher_name,
+                description=event.get("description"),
+                event_type=event.get("event_type"),
+                result_code=event.get("result_code") or event.get("result"),
+                rbi=event.get("rbi"),
+                bases_before=event.get("bases_before"),
+                bases_after=event.get("bases_after"),
+                extra_json=extra_json or None,
+                wpa=event.get("wpa"),
+                win_expectancy_before=event.get("win_expectancy_before"),
+                win_expectancy_after=event.get("win_expectancy_after"),
+                score_diff=event.get("score_diff"),
+                base_state=event.get("base_state"),
+                home_score=event.get("home_score"),
+                away_score=event.get("away_score"),
+                provider_log_id=event.get("provider_log_id"),
+                source_row_index=event.get("source_row_index"),
+                at_bat_seq=event.get("at_bat_seq"),
+                at_bat_event_role=event.get("at_bat_event_role"),
+                at_bat_confidence=event.get("at_bat_confidence"),
+                balls=event.get("balls"),
+                strikes=event.get("strikes"),
+            ),
+        )
+    return event_rows
+
+
+def _replace_relay_rows(
+    session,
+    game_id: str,
+    pbp_rows: list[GamePlayByPlay],
+    event_rows: list[GameEvent],
+    source: GameWriteSource,
+    write_contract: GameWriteContract | None,
+) -> bool:
+    changed = False
+    if pbp_rows:
+        changed |= _replace_orm_records(
+            session,
+            GamePlayByPlay,
+            game_id,
+            pbp_rows,
+            source=source,
+            write_contract=write_contract,
+        )
+    if event_rows:
+        changed |= _replace_orm_records(
+            session,
+            GameEvent,
+            game_id,
+            event_rows,
+            source=source,
+            write_contract=write_contract,
+        )
+    return changed
+
+
+def _log_relay_save_result(
+    game_id: str,
+    events: list[dict[str, Any]],
+    valid_event_rows: list[dict[str, Any]],
+    event_count: int,
+    pbp_count: int,
+) -> None:
+    if events and not valid_event_rows:
+        logger.warning(
+            "Relay save for %s: saved_event_rows=0 saved_pbp_rows=%d skipped_event_rows_reason=insufficient_relay_state",
+            game_id,
+            pbp_count,
+        )
+    else:
+        logger.info("Relay save for %s: saved_event_rows=%d saved_pbp_rows=%d", game_id, event_count, pbp_count)
 
 
 def save_relay_data(
@@ -436,12 +900,7 @@ def save_relay_data(
     if write_contract:
         write_contract.claim_game(game_id, source)
 
-    events = list(events or [])
-    raw_pbp_rows = [normalize_pbp_row(row) for row in (raw_pbp_rows or [])]
-    if events and not raw_pbp_rows:
-        raw_pbp_rows = derive_play_by_play_rows_from_events(events)
-
-    valid_event_rows = events if events and all(event_has_minimum_state(event) for event in events) else []
+    events, raw_pbp_rows, valid_event_rows = _prepare_relay_payloads(events, raw_pbp_rows)
     if not valid_event_rows and not raw_pbp_rows:
         return 0
 
@@ -456,331 +915,39 @@ def save_relay_data(
                 reason="normalized_to_kbo_legacy_game_id",
             )
 
-            from src.repositories.game_helpers import _upsert_metadata
-            from src.utils.game_status import COMPLETED_LIKE_GAME_STATUSES
-            from src.utils.relay_validation import (
-                VALIDATION_PENDING_LIVE,
-                VALIDATION_PROVISIONALLY_VALID,
-                VALIDATION_SOURCE_INCOMPLETE,
-                VALIDATION_UNVERIFIED,
-                VALIDATION_VERIFIED,
-                cross_validate_with_box_score,
-                validate_live_events,
-                validate_pbp_payload,
-            )
-
             game_row = session.query(Game).filter(Game.game_id == game_id).first()
-            # Two-phase validation:
-            # Phase 1 — structural check (always runs)
-            live_warnings = validate_live_events(events)
-            has_structural_issues = bool(live_warnings)
-
-            # Phase 2 — final score validation (only for completed games)
-            game_status = str(getattr(game_row, "game_status", "") or "").upper()
-            is_terminal_game = bool(
-                game_lifecycle_state in ("final", "result_pending_stabilization", "cancelled")
-                or game_status in COMPLETED_LIKE_GAME_STATUSES,
-            )
-            if raw_pbp_rows and not valid_event_rows and is_terminal_game:
-                validation_status = VALIDATION_SOURCE_INCOMPLETE
-                error_reason = "raw_pbp_without_valid_event_state"
-            elif is_terminal_game:
-                is_valid, error_reason = validate_pbp_payload(session, game_id, events, raw_pbp_rows)
-                if is_valid:
-                    # Cross-check with inning scores
-                    score_match, score_err = cross_validate_with_box_score(session, game_id, events)
-                    is_valid = score_match
-                    if not score_match:
-                        error_reason = score_err
-
-                if is_valid:
-                    validation_status = VALIDATION_VERIFIED
-                else:
-                    validation_status = VALIDATION_UNVERIFIED
-            else:
-                if has_structural_issues:
-                    validation_status = VALIDATION_PENDING_LIVE
-                elif events:
-                    validation_status = VALIDATION_PROVISIONALLY_VALID
-                else:
-                    validation_status = VALIDATION_PENDING_LIVE
-                error_reason = None
-
-            metadata_payload: dict[str, Any] = {
-                "pbp_validation_status": validation_status,
-                "pbp_validation_error": error_reason or "none",
-            }
-            if parser_version:
-                metadata_payload["parser_version"] = parser_version
-            if source_schema_version:
-                metadata_payload["source_schema_version"] = source_schema_version
-            if payload_hash:
-                metadata_payload["payload_hash"] = payload_hash
-
-            if validation_status in (VALIDATION_UNVERIFIED, VALIDATION_PENDING_LIVE) and error_reason:
-                logger.info("[PBP VALIDATION] Game %s status=%s reason=%s", game_id, validation_status, error_reason)
-
-            _upsert_metadata(session, game_id, metadata_payload)
-            _upsert_validation_metrics(
+            validation = _resolve_relay_validation(
                 session,
                 game_id,
-                validation_status=validation_status,
-                source_name=source_name,
-                error_reason=error_reason,
                 events=events,
                 raw_pbp_rows=raw_pbp_rows,
+                valid_event_rows=valid_event_rows,
+                game_row=game_row,
+                game_lifecycle_state=game_lifecycle_state,
+            )
+            _upsert_relay_validation_metadata(
+                session,
+                game_id,
+                validation,
+                source_name=source_name,
+                notes=notes,
+                events=events,
+                raw_pbp_rows=raw_pbp_rows,
+                valid_event_rows=valid_event_rows,
                 parser_version=parser_version,
                 source_schema_version=source_schema_version,
                 payload_hash=payload_hash,
-                evidence={
-                    "notes": notes,
-                    "live_warnings": live_warnings,
-                    "valid_event_rows": len(valid_event_rows),
-                    "raw_pbp_rows": len(raw_pbp_rows),
-                },
             )
+            _apply_relay_lifecycle_state(game_row, game_id, game_lifecycle_state)
 
-            if game_lifecycle_state:
-                if game_row:
-                    from src.utils.game_state import validate_transition
-
-                    is_valid_state, _ = validate_transition(game_row.game_lifecycle_state, game_lifecycle_state)
-                    if is_valid_state:
-                        game_row.game_lifecycle_state = game_lifecycle_state
-                    else:
-                        logger.warning(
-                            "Invalid lifecycle transition: %s -> %s for %s",
-                            game_row.game_lifecycle_state,
-                            game_lifecycle_state,
-                            game_id,
-                        )
-
-            pbp_rows = []
-            event_rows = []
-
-            # Resolve season and team codes from game_id for player ID resolution
-            season_year = None
-            away_team_code = None
-            home_team_code = None
-            try:
-                season_year = int(game_id[:4]) if len(game_id) >= 4 else None
-                away_team_code = (
-                    team_code_from_game_id_segment(game_id[8:10], season_year) if len(game_id) >= 10 else None
-                )
-                home_team_code = (
-                    team_code_from_game_id_segment(game_id[10:12], season_year) if len(game_id) >= 12 else None
-                )
-            except (ValueError, IndexError):
-                logger.debug("Failed to parse team codes from game_id: %s", game_id)
-
-            try:
-                from src.services.player_id_resolver import PlayerIdResolver
-
-                resolver = PlayerIdResolver(session, allow_unknown_registration=False)
-            except Exception:  # noqa: BLE001
-                logger.warning("Failed to initialize PlayerIdResolver — player_id resolution will be skipped")
-                resolver = None
-
-            def resolve_participant(
-                name: str | None,
-                team_code: str | None,
-                *,
-                is_pitcher: bool | None = None,
-            ) -> tuple[int | None, str | None, str | None]:
-                if resolver is None or not name or not team_code or not season_year:
-                    return None, None, None
-                try:
-                    pid = resolver.resolve_id(name, team_code, season_year, is_pitcher=is_pitcher)
-                except Exception as exc:  # noqa: BLE001
-                    logger.warning("Player ID resolution encountered exception: %s", exc)
-                    return None, "error", "resolve_exception"
-                if pid is None:
-                    return None, "unresolved", f"no_match_{team_code}_{season_year}"
-                return _coerce_player_id(pid), "resolved", f"name_match_{team_code}_{season_year}"
-
-            def offense_team(half: str | None) -> str | None:
-                if half == "top":
-                    return away_team_code
-                if half == "bottom":
-                    return home_team_code
-                return None
-
-            def defense_team(half: str | None) -> str | None:
-                if half == "top":
-                    return home_team_code
-                if half == "bottom":
-                    return away_team_code
-                return None
-
-            for row in raw_pbp_rows:
-                player_id = None
-                resolver_confidence = None
-                resolver_reason = None
-                unresolved_player_name = None
-
-                batter_name = row.get("batter_name")
-                pitcher_name = row.get("pitcher_name")
-                inning_half = row.get("inning_half")
-
-                if resolver is not None and batter_name and season_year and away_team_code and home_team_code:
-                    batter_context = _relay_player_resolution_context(batter_name)
-                    if batter_context is not None:
-                        resolved_name, side, is_pitcher = batter_context
-                        batter_team = offense_team(inning_half) if side == "offense" else defense_team(inning_half)
-                        player_id, resolver_confidence, resolver_reason = resolve_participant(
-                            resolved_name,
-                            batter_team,
-                            is_pitcher=is_pitcher,
-                        )
-                        if player_id is None:
-                            unresolved_player_name = resolved_name
-                elif resolver is not None and pitcher_name and season_year:
-                    pitcher_team = defense_team(inning_half)
-                    player_id, resolver_confidence, resolver_reason = resolve_participant(
-                        pitcher_name,
-                        pitcher_team,
-                        is_pitcher=True,
-                    )
-                    if player_id is None:
-                        unresolved_player_name = pitcher_name
-
-                pbp_rows.append(
-                    GamePlayByPlay(
-                        game_id=game_id,
-                        inning=row.get("inning"),
-                        inning_half=row.get("inning_half"),
-                        batter_name=row.get("batter_name"),
-                        pitcher_name=row.get("pitcher_name"),
-                        play_description=row.get("play_description"),
-                        event_type=row.get("event_type"),
-                        result=row.get("result"),
-                        player_id=player_id,
-                        resolver_confidence=resolver_confidence,
-                        resolver_reason=resolver_reason,
-                        unresolved_player_name=unresolved_player_name,
-                        provider_log_id=row.get("provider_log_id"),
-                        source_row_index=row.get("source_row_index"),
-                        source_name=row.get("source_name") or source_name,
-                    ),
-                )
-            for idx, event in enumerate(valid_event_rows, start=1):
-                inning = event.get("inning")
-                half = event.get("inning_half")
-                batter_name = event.get("batter_name") or event.get("batter")
-                pitcher_name = event.get("pitcher_name") or event.get("pitcher")
-                extra_json = dict(event.get("extra_json") or {})
-                if source_name:
-                    extra_json.setdefault("relay_source", source_name)
-                if notes:
-                    extra_json.setdefault("relay_notes", notes)
-                batter_context = _relay_player_resolution_context(batter_name)
-                if batter_context is not None:
-                    resolved_batter_name, batter_side, batter_is_pitcher = batter_context
-                    batter_team = offense_team(half) if batter_side == "offense" else defense_team(half)
-                    batter_id, batter_confidence, batter_reason = resolve_participant(
-                        resolved_batter_name,
-                        batter_team,
-                        is_pitcher=batter_is_pitcher,
-                    )
-                else:
-                    resolved_batter_name = batter_name
-                    batter_team = None
-                    batter_confidence = None
-                    batter_reason = None
-                    batter_id = None
-                pitcher_team = defense_team(half)
-                pitcher_id, pitcher_confidence, pitcher_reason = resolve_participant(
-                    pitcher_name,
-                    pitcher_team,
-                    is_pitcher=True,
-                )
-                resolver_payload: dict[str, Any] = {}
-                if batter_name:
-                    resolver_payload["batter"] = {
-                        "name": resolved_batter_name,
-                        "team_code": batter_team,
-                        "confidence": batter_confidence,
-                        "reason": batter_reason,
-                    }
-                if pitcher_name:
-                    resolver_payload["pitcher"] = {
-                        "name": pitcher_name,
-                        "team_code": pitcher_team,
-                        "confidence": pitcher_confidence,
-                        "reason": pitcher_reason,
-                    }
-                if resolver_payload:
-                    extra_json.setdefault("player_resolution", resolver_payload)
-                event_rows.append(
-                    GameEvent(
-                        game_id=game_id,
-                        event_seq=event.get("event_seq") or idx,
-                        inning=inning,
-                        inning_half=half,
-                        outs=event.get("outs"),
-                        batter_id=batter_id or _coerce_player_id(event.get("batter_id")),
-                        batter_name=batter_name,
-                        pitcher_id=pitcher_id or _coerce_player_id(event.get("pitcher_id")),
-                        pitcher_name=pitcher_name,
-                        description=event.get("description"),
-                        event_type=event.get("event_type"),
-                        result_code=event.get("result_code") or event.get("result"),
-                        rbi=event.get("rbi"),
-                        bases_before=event.get("bases_before"),
-                        bases_after=event.get("bases_after"),
-                        extra_json=extra_json or None,
-                        wpa=event.get("wpa"),
-                        win_expectancy_before=event.get("win_expectancy_before"),
-                        win_expectancy_after=event.get("win_expectancy_after"),
-                        score_diff=event.get("score_diff"),
-                        base_state=event.get("base_state"),
-                        home_score=event.get("home_score"),
-                        away_score=event.get("away_score"),
-                        provider_log_id=event.get("provider_log_id"),
-                        source_row_index=event.get("source_row_index"),
-                        at_bat_seq=event.get("at_bat_seq"),
-                        at_bat_event_role=event.get("at_bat_event_role"),
-                        at_bat_confidence=event.get("at_bat_confidence"),
-                        balls=event.get("balls"),
-                        strikes=event.get("strikes"),
-                    ),
-                )
-
-            changed = False
-            if pbp_rows:
-                changed |= _replace_orm_records(
-                    session,
-                    GamePlayByPlay,
-                    game_id,
-                    pbp_rows,
-                    source=source,
-                    write_contract=write_contract,
-                )
-            if event_rows:
-                changed |= _replace_orm_records(
-                    session,
-                    GameEvent,
-                    game_id,
-                    event_rows,
-                    source=source,
-                    write_contract=write_contract,
-                )
+            resolution = _relay_resolution_context(session, game_id)
+            pbp_rows = _build_relay_pbp_rows(game_id, raw_pbp_rows, source_name, resolution)
+            event_rows = _build_relay_event_rows(game_id, valid_event_rows, source_name, notes, resolution)
+            changed = _replace_relay_rows(session, game_id, pbp_rows, event_rows, source, write_contract)
             session.commit()
             if changed:
                 _auto_sync_to_oci(game_id)
-            if events and not valid_event_rows:
-                logger.warning(
-                    "Relay save for %s: saved_event_rows=0 saved_pbp_rows=%d skipped_event_rows_reason=insufficient_relay_state",
-                    game_id,
-                    len(pbp_rows),
-                )
-            else:
-                logger.info(
-                    "Relay save for %s: saved_event_rows=%d saved_pbp_rows=%d",
-                    game_id,
-                    len(event_rows) if event_rows else 0,
-                    len(pbp_rows),
-                )
+            _log_relay_save_result(game_id, events, valid_event_rows, len(event_rows), len(pbp_rows))
             return len(event_rows) if event_rows else len(pbp_rows)
         except Exception:
             session.rollback()

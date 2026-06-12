@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 KBO_BASE = "https://www.koreabaseball.com"
 
 SCHEDULE = f"{KBO_BASE}/Schedule/Schedule.aspx"

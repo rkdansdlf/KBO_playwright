@@ -25,53 +25,69 @@ on:
 
 concurrency:
   group: kbo-db-write-operations
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 env:
   PYTHONPATH: ${{ github.workspace }}
+  BACKFILL_DEFINITIONS: >-
+    [
+      {"id":"missed_crawls","name":"Missed Crawls","cron":"30 19 * * 0","playwright":"true","hydrate":"true","secrets_group":"kbo_auth"},
+      {"id":"player_game_stats","name":"Player Game Stats","cron":"0 19 * * 0","playwright":"false","hydrate":"false","secrets_group":"none"},
+      {"id":"sh_sf","name":"SH/SF","cron":"45 20 * * 0","playwright":"false","hydrate":"false","secrets_group":"none"},
+      {"id":"advanced_stats","name":"Advanced Stats","cron":"0 21 * * 0","playwright":"false","hydrate":"true","secrets_group":"none"},
+      {"id":"player_ids","name":"Player IDs","cron":"30 20 * * 3","playwright":"false","hydrate":"false","secrets_group":"none"},
+      {"id":"roster","name":"Roster","cron":"0 19 1 * *","playwright":"true","hydrate":"true","secrets_group":"kbo_auth"}
+    ]
 
 jobs:
+  select-backfills:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.select.outputs.matrix }}
+      count: ${{ steps.select.outputs.count }}
+    steps:
+      - name: Select backfill matrix entries
+        id: select
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          EVENT_SCHEDULE: ${{ github.event.schedule || '' }}
+          BACKFILL_ID: ${{ github.event.inputs.backfill_id || 'all' }}
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+
+          definitions = json.loads(os.environ["BACKFILL_DEFINITIONS"])
+          event_name = os.environ["EVENT_NAME"]
+          event_schedule = os.environ["EVENT_SCHEDULE"]
+          backfill_id = os.environ["BACKFILL_ID"] or "all"
+
+          if event_name == "workflow_dispatch":
+              if backfill_id == "all":
+                  selected = definitions
+              else:
+                  selected = [entry for entry in definitions if entry["id"] == backfill_id]
+          elif event_name == "schedule":
+              selected = [entry for entry in definitions if entry["cron"] == event_schedule]
+          else:
+              selected = []
+
+          matrix = json.dumps({"include": selected}, separators=(",", ":"))
+          count = str(len(selected))
+          selected_ids = ", ".join(entry["id"] for entry in selected) or "none"
+
+          print(f"Selected backfill entries: {selected_ids}")
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
+              output.write(f"matrix={matrix}\n")
+              output.write(f"count={count}\n")
+          PY
+
   backfill:
+    needs: select-backfills
+    if: ${{ needs.select-backfills.outputs.count != '0' }}
     strategy:
       fail-fast: false
-      matrix:
-        include:
-          - id: missed_crawls
-            name: Missed Crawls
-            cron: '30 19 * * 0'
-            playwright: 'true'
-            hydrate: 'true'
-            secrets_group: kbo_auth
-          - id: player_game_stats
-            name: Player Game Stats
-            cron: '0 19 * * 0'
-            playwright: 'false'
-            hydrate: 'false'
-            secrets_group: none
-          - id: sh_sf
-            name: SH/SF
-            cron: '45 20 * * 0'
-            playwright: 'false'
-            hydrate: 'false'
-            secrets_group: none
-          - id: advanced_stats
-            name: Advanced Stats
-            cron: '0 21 * * 0'
-            playwright: 'false'
-            hydrate: 'true'
-            secrets_group: none
-          - id: player_ids
-            name: Player IDs
-            cron: '30 20 * * 3'
-            playwright: 'false'
-            hydrate: 'false'
-            secrets_group: none
-          - id: roster
-            name: Roster
-            cron: '0 19 1 * *'
-            playwright: 'true'
-            hydrate: 'true'
-            secrets_group: kbo_auth
+      matrix: ${{ fromJson(needs.select-backfills.outputs.matrix) }}
 
     name: ${{ matrix.name }}
 
@@ -80,31 +96,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Check Matrix Dispatch
-        id: should_run
-        run: |
-          RUN=false
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            if [ "${{ github.event.inputs.backfill_id }}" = "${{ matrix.id }}" ] || [ "${{ github.event.inputs.backfill_id }}" = "all" ]; then
-              RUN=true
-            fi
-          elif [ "${{ github.event_name }}" = "schedule" ]; then
-            if [ "${{ github.event.schedule }}" = "${{ matrix.cron }}" ]; then
-              RUN=true
-            fi
-          fi
-          echo "run=$RUN" >> "$GITHUB_OUTPUT"
-          echo "should_run=$RUN for matrix=${{ matrix.id }} event=${{ github.event_name }}"
-
-      - uses: ./.github/actions/python-env
-        if: ${{ steps.should_run.outputs.run == 'true' }}
+      - uses: ./.github/actions/kbo-job-setup
         with:
           playwright: ${{ matrix.playwright }}
           init-db: 'true'
 
       - name: Resolve Year
         id: params
-        if: ${{ steps.should_run.outputs.run == 'true' }}
         run: |
           YEAR="${{ github.event.inputs.year || '' }}"
           if [ -z "$YEAR" ]; then
@@ -114,7 +112,7 @@ jobs:
           echo "date=$(TZ='Asia/Seoul' date +'%Y%m%d')" >> "$GITHUB_OUTPUT"
 
       - name: Hydrate Runtime Cache From OCI
-        if: ${{ steps.should_run.outputs.run == 'true' && matrix.hydrate == 'true' }}
+        if: ${{ matrix.hydrate == 'true' }}
         env:
           OCI_DB_URL: ${{ secrets.OCI_DB_URL }}
         run: |
@@ -123,7 +121,7 @@ jobs:
 
       # ── missed_crawls ────────────────────────────────────────────────
       - name: Run Missed Crawls Backfill
-        if: ${{ steps.should_run.outputs.run == 'true' && matrix.id == 'missed_crawls' }}
+        if: ${{ matrix.id == 'missed_crawls' }}
         env:
           OCI_DB_URL: ${{ secrets.OCI_DB_URL }}
           KBO_USER_ID: ${{ secrets.KBO_USER_ID }}
@@ -137,7 +135,7 @@ jobs:
 
       # ── player_game_stats ────────────────────────────────────────────
       - name: Recalc & Sync Player Game Stats
-        if: ${{ steps.should_run.outputs.run == 'true' && matrix.id == 'player_game_stats' }}
+        if: ${{ matrix.id == 'player_game_stats' }}
         env:
           OCI_DB_URL: ${{ secrets.OCI_DB_URL }}
         run: |
@@ -150,19 +148,19 @@ jobs:
           python3 -m src.cli.sync_oci --player-game-stats
 
       - name: Verify PlayerGame Data Quality
-        if: ${{ steps.should_run.outputs.run == 'true' && matrix.id == 'player_game_stats' }}
+        if: ${{ matrix.id == 'player_game_stats' }}
         run: |
           python3 -m scripts.verification.verify_player_game_stats --exit-code
 
       # ── sh_sf ────────────────────────────────────────────────────────
       - name: Run SH/SF Backfill
-        if: ${{ steps.should_run.outputs.run == 'true' && matrix.id == 'sh_sf' }}
+        if: ${{ matrix.id == 'sh_sf' }}
         env:
           OCI_DB_URL: ${{ secrets.OCI_DB_URL }}
         run: |
           YEAR="${{ steps.params.outputs.year }}"
           python3 -c "
-          from scripts.legacy.maintenance.backfill_sh_sf_from_pbp import find_candidate_games, backfill_game
+          from scripts.maintenance.backfill_sh_sf_from_pbp import find_candidate_games, backfill_game
           from src.db.engine import SessionLocal
           year = ${YEAR}
           with SessionLocal() as session:
@@ -181,7 +179,7 @@ jobs:
 
       # ── advanced_stats ───────────────────────────────────────────────
       - name: Run Advanced Stats Backfill
-        if: ${{ steps.should_run.outputs.run == 'true' && matrix.id == 'advanced_stats' }}
+        if: ${{ matrix.id == 'advanced_stats' }}
         env:
           OCI_DB_URL: ${{ secrets.OCI_DB_URL }}
         run: |
@@ -195,24 +193,21 @@ jobs:
 
       # ── player_ids ──────────────────────────────────────────────────
       - name: Run Player ID Backfill
-        if: ${{ steps.should_run.outputs.run == 'true' && matrix.id == 'player_ids' }}
+        if: ${{ matrix.id == 'player_ids' }}
         env:
           OCI_DB_URL: ${{ secrets.OCI_DB_URL }}
         run: |
-          python3 -c "
-          from scripts.legacy.maintenance.backfill_player_ids import backfill_year
-          from src.db.engine import SessionLocal
-          from src.services.player_id_resolver import PlayerIdResolver
-          year = $(TZ='Asia/Seoul' date +'%Y')
-          with SessionLocal() as session:
-              resolver = PlayerIdResolver(session)
-              result = backfill_year(session, resolver, year)
-              print(f'Player ID backfill: resolved={result.get(\"resolved\", 0)} failed={result.get(\"failed\", 0)}')
-          "
+          YEAR="${{ steps.params.outputs.year }}"
+          python3 -m scripts.maintenance.resolve_null_player_ids_conservative \
+            --oci \
+            --years "$YEAR" \
+            --apply \
+            --no-backup \
+            --delete-duplicates
 
       # ── roster ──────────────────────────────────────────────────────
       - name: Run Roster Backfill
-        if: ${{ steps.should_run.outputs.run == 'true' && matrix.id == 'roster' }}
+        if: ${{ matrix.id == 'roster' }}
         env:
           OCI_DB_URL: ${{ secrets.OCI_DB_URL }}
           KBO_USER_ID: ${{ secrets.KBO_USER_ID }}
@@ -221,7 +216,7 @@ jobs:
           YEAR="${{ steps.params.outputs.year }}"
           python3 -c "
           import asyncio
-          from scripts.legacy.maintenance.backfill_roster_movements import (
+          from scripts.maintenance.backfill_roster_movements import (
               backfill_daily_rosters,
               backfill_player_movements,
           )
@@ -237,7 +232,7 @@ jobs:
           "
 
       - uses: ./.github/actions/notify
-        if: ${{ always() && steps.should_run.outputs.run == 'true' }}
+        if: always()
         with:
           status: ${{ job.status }}
           workflow: ${{ format('Backfill ({0})', matrix.name) }}

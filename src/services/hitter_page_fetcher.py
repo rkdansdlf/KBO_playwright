@@ -26,6 +26,7 @@ from bs4 import BeautifulSoup
 
 from src.urls import GAME_CENTER
 from src.utils.request_policy import RequestPolicy
+from src.utils.type_helpers import to_int
 
 logger = logging.getLogger(__name__)
 
@@ -51,13 +52,6 @@ def build_hitter_url(game_id: str, game_date: str) -> str:
     """
     date_compact = game_date.replace("-", "")
     return f"{KBO_GAME_CENTER_URL}?gameDate={date_compact}&gameId={game_id}&section=HITTER"
-
-
-def _safe_int(value: Any) -> int:
-    try:
-        return int(value)
-    except (ValueError, TypeError):
-        return 0
 
 
 def _get_column_index_map(table_tag: BeautifulSoup) -> dict[str, int]:
@@ -123,12 +117,12 @@ def parse_hitter_sh_sf(html: str, game_id: str) -> dict[int | str, dict[str, int
 
             stat_cells = stats_rows[i].find_all("td")
             sh = (
-                _safe_int(stat_cells[sh_idx].get_text(strip=True))
+                to_int(stat_cells[sh_idx].get_text(strip=True))
                 if sh_idx is not None and sh_idx < len(stat_cells)
                 else 0
             )
             sf = (
-                _safe_int(stat_cells[sf_idx].get_text(strip=True))
+                to_int(stat_cells[sf_idx].get_text(strip=True))
                 if sf_idx is not None and sf_idx < len(stat_cells)
                 else 0
             )

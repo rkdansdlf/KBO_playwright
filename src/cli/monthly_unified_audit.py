@@ -10,6 +10,8 @@ Imported by scripts/scheduler.py as the crawl_monthly_unified_audit_job target.
 Runs on the 1st of every month at 03:00 KST via APScheduler.
 """
 
+from __future__ import annotations
+
 import json
 import logging
 import sys
@@ -18,7 +20,7 @@ from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo
 
-from scripts.legacy.maintenance.audit_pa_formula import audit_year, fix_year_formula
+from scripts.maintenance.audit_pa_formula import audit_year, fix_year_formula
 from src.cli.monthly_team_audit import run_monthly_team_audit
 
 logger = logging.getLogger(__name__)
@@ -153,8 +155,8 @@ def main() -> int:
         pit_ok = team_result["pitching"]["ok"]
         bat_miss = len(team_result["batting"]["mismatches"])
         pit_miss = len(team_result["pitching"]["mismatches"])
-        logger.info(f"Team Batting: {'PASS' if bat_ok else 'FAIL'} ({bat_miss} mismatches)")  # noqa: G004
-        logger.info(f"Team Pitching: {'PASS' if pit_ok else 'FAIL'} ({pit_miss} mismatches)")  # noqa: G004
+        logger.info(f"Team Batting: {'PASS' if bat_ok else 'FAIL'} ({bat_miss} mismatches)")
+        logger.info(f"Team Pitching: {'PASS' if pit_ok else 'FAIL'} ({pit_miss} mismatches)")
         if not bat_ok or not pit_ok:
             sys.exit(1)
         return
@@ -178,7 +180,7 @@ def main() -> int:
     # Human-readable output
     pa_ok = pa_result.get("ok", False)
     pa_violations = pa_result.get("violation_count", 0)
-    logger.info(f"\nPA Formula Audit: {'PASS' if pa_ok else 'FAIL (' + str(pa_violations) + ' violations)'}")  # noqa: G004
+    logger.info(f"\nPA Formula Audit: {'PASS' if pa_ok else 'FAIL (' + str(pa_violations) + ' violations)'}")
 
     if args.pa_only:
         if not pa_ok:
@@ -190,15 +192,15 @@ def main() -> int:
     bat_miss = len(team_result["batting"]["mismatches"])
     pit_miss = len(team_result["pitching"]["mismatches"])
 
-    logger.info(f"Team Batting: {'PASS' if team_bat_ok else 'FAIL'} ({bat_miss} mismatches)")  # noqa: G004
+    logger.info(f"Team Batting: {'PASS' if team_bat_ok else 'FAIL'} ({bat_miss} mismatches)")
     for m in team_result["batting"]["mismatches"][:3]:
-        logger.info(f"  - [{m['team_id']}] {m['issue']}")  # noqa: G004
+        logger.info(f"  - [{m['team_id']}] {m['issue']}")
         for d in (m.get("diffs") or [])[:2]:
             logger.info("    %s", d)
 
-    logger.info(f"Team Pitching: {'PASS' if team_pit_ok else 'FAIL'} ({pit_miss} mismatches)")  # noqa: G004
+    logger.info(f"Team Pitching: {'PASS' if team_pit_ok else 'FAIL'} ({pit_miss} mismatches)")
     for m in team_result["pitching"]["mismatches"][:3]:
-        logger.info(f"  - [{m['team_id']}] {m['issue']}")  # noqa: G004
+        logger.info(f"  - [{m['team_id']}] {m['issue']}")
         for d in (m.get("diffs") or [])[:2]:
             logger.info("    %s", d)
 

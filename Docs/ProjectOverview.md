@@ -1,32 +1,33 @@
+# KBO Playwright 프로젝트 개요
 
-초기 데이터 수집 크롤링 로직
+KBO (한국야구위원회) 공식 웹사이트 및 Naver Sports 데이터를 수집, 정제, 저장하는 데이터 파이프라인입니다.
 
-- **선수 목록 크롤러** - 팀별 타자/투수 목록 수집
-- **프로필 크롤러** - playerID, player_basic 즉 선수 신체정보, 포지션 등
-선수데이터 저장
+## 주요 기능
 
-현역 외 선수 기록페이지 (투수)
-현역 외 선수 기록페이지 (타자)
-크롤링후 저장
+- **경기 데이터 수집**: KBO 웹사이트에서 경기 일정, 박스스코어, PBP, 수비 기록 크롤링
+- **선수 통계**: 타/투/수비 시즌 통계 및 고급 스탯(WPA, sabermetrics) 계산
+- **데이터 동기화**: 로컬 SQLite → OCI (Oracle Cloud Infrastructure) DB 동기화
+- **품질 관리**: Quality Gate, Freshness Gate, Gap Report, PA Formula Audit
+- **자동화 파이프라인**: GitHub Actions 기반 일일/주간/월간 스케줄링
 
-선수 프로필 페이지에서 퓨처스리그 (프로필 기반 수집)
+## Two-Track Pipeline
 
-- 2025 시즌 경기 일정 크롤러 예)game_id=20251013SKSS0
-경기 기록 크롤링
- 1. 전체 시즌 경기 ID 수집
- 2. https://www.koreabaseball.com/Schedule/GameCenter/Main.aspx?gameDate={date}&gameId={game_id}&section=REVIEW
- **크롤링 요소:**
- box-score-area
- 예시)
- 구장 : 문학 관중 : 22,500 개시 : 14:00 종료 : 16:58 경기시간 : 2:58
- 승리팀 이닝 스코어
- 패배팀 이닝 스코어
+- **Track A (KBO 공식)**: koreabaseball.com 크롤링 → Parser → Repository → DB
+- **Track B (Relay/Naver)**: Naver Sports 문자중계 → Relay Crawler → Normalized Events → DB
 
-- 원정 타자: `.tblAwayHitter1, .tblAwayHitter2, .tblAwayHitter3`
-- 홈 타자: `.tblHomeHitter1, .tblHomeHitter2, .tblHomeHitter3`
-- 투수: `.pitcher-record-area`
+## 주요 패키지
 
+| 패키지 | 역할 |
+|--------|------|
+| `src/crawlers/` | Playwright 기반 웹 크롤러 |
+| `src/parsers/` | HTML/JSON 파싱 |
+| `src/repositories/` | DB 저장/조회 |
+| `src/models/` | SQLAlchemy ORM 모델 |
+| `src/services/` | 비즈니스 로직 (WPA, PlayerID, 등) |
+| `src/cli/` | CLI 진입점 |
+| `src/sync/` | OCI DB 동기화 |
+| `src/aggregators/` | 팀/시즌 통계 집계 |
+| `src/utils/` | 공통 유틸리티 (retry, throttle, 등) |
+| `scripts/` | 유지보수/검증 스크립트 |
 
-경기 기록 저장
-
-위 순서대로 초기데이터 크롤링 및 저장순서 수행
+자세한 내용은 `Docs/architecture.md` 참조.

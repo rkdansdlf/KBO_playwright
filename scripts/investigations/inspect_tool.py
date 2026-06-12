@@ -5,7 +5,6 @@ Provides subcommands to query local SQLite database, inspect KBO GameCenter page
 via Playwright, or inspect hitter/pitcher detail pages.
 """
 
-
 from __future__ import annotations
 
 import argparse
@@ -14,6 +13,7 @@ import logging
 import os
 import sqlite3
 import sys
+from datetime import datetime
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
@@ -21,12 +21,14 @@ logger = logging.getLogger(__name__)
 # Try importing pandas, default to simple print if not available
 try:
     import pandas as pd
+
     HAS_PANDAS = True
 except ImportError:
     HAS_PANDAS = False
 
 try:
     from playwright.async_api import async_playwright
+
     HAS_PLAYWRIGHT = True
 except ImportError:
     HAS_PLAYWRIGHT = False
@@ -55,7 +57,7 @@ def run_db_query(db_path: Path, query: str) -> None:
             logger.info("-" * (len(" | ".join(cols))))
             for row in cursor.fetchall():
                 logger.info(" | ".join(str(val) for val in row))
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         logger.error(f"Query Execution Error: {e}")
     finally:
         conn.close()
@@ -101,6 +103,8 @@ def db_inspect_player(db_path: Path, player_id: int, season: str) -> None:
         ORDER BY g.game_date
     """
     run_db_query(db_path, pitching_query)
+
+
 def run_db_summary(db_path: Path) -> None:
     """Print the count of rows for each table in SQLite."""
     logger.info("📊 Local DB Summary:")
@@ -115,7 +119,7 @@ def run_db_summary(db_path: Path) -> None:
         try:
             cur.execute(f"SELECT COUNT(*) FROM {table_name}")
             return cur.fetchone()[0]
-        except Exception:
+        except Exception:  # noqa: BLE001
             return "MISSING"
 
     logger.info("\n=== Player Data ===")
@@ -161,21 +165,25 @@ def run_oci_summary() -> None:
         engine = create_engine(db_url)
         with engine.connect() as conn:
             logger.info("📊 OCI Database Summary:")
-            
+
             def get_count(table_name):
                 try:
                     return conn.execute(text(f"SELECT COUNT(*) FROM {table_name}")).fetchone()[0]
-                except Exception as e:
+                except Exception as e:  # noqa: BLE001
                     return f"ERROR ({e})"
 
             logger.info("\n=== Player Data ===")
             logger.info(f"  player_basic: {get_count('player_basic')}")
             logger.info(f"  player_season_batting: {get_count('player_season_batting')}")
             logger.info(f"  player_season_pitching: {get_count('player_season_pitching')}")
-            
+
             # Additional 2001 check from check_oci_summary.py
-            logger.info(f"  2001 Batting: {conn.execute(text('SELECT COUNT(*) FROM player_season_batting WHERE season=2001')).fetchone()[0]}")
-            logger.info(f"  2001 Pitching: {conn.execute(text('SELECT COUNT(*) FROM player_season_pitching WHERE season=2001')).fetchone()[0]}")
+            logger.info(
+                f"  2001 Batting: {conn.execute(text('SELECT COUNT(*) FROM player_season_batting WHERE season=2001')).fetchone()[0]}"
+            )
+            logger.info(
+                f"  2001 Pitching: {conn.execute(text('SELECT COUNT(*) FROM player_season_pitching WHERE season=2001')).fetchone()[0]}"
+            )
 
             logger.info("\n=== Game Data ===")
             logger.info(f"  games: {get_count('game')}")
@@ -200,15 +208,17 @@ def run_oci_summary() -> None:
                 ).fetchall()
                 for year, cnt in years:
                     logger.info(f"  {year}: {cnt} games")
-            except Exception as e:
+            except Exception as e:  # noqa: BLE001
                 logger.error(f"  Error loading distribution: {e}")
 
             logger.info("\n✅ OCI summary complete")
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         logger.info(f"ERROR connecting to OCI Database: {e}")
 
 
-async def inspect_gamecenter(date: str, game_id: str, section: str, headless: bool, screenshot_path: str | None) -> None:
+async def inspect_gamecenter(
+    date: str, game_id: str, section: str, headless: bool, screenshot_path: str | None
+) -> None:
     """Scrape KBO GameCenter page and check for tables and text content."""
     if not HAS_PLAYWRIGHT:
         logger.info("ERROR: playwright package is not installed.")
@@ -219,7 +229,7 @@ async def inspect_gamecenter(date: str, game_id: str, section: str, headless: bo
 
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=headless)
-        context = await browser.new_context(viewport={'width': 1920, 'height': 1080})
+        context = await browser.new_context(viewport={"width": 1920, "height": 1080})
         page = await context.new_page()
 
         try:
@@ -247,10 +257,12 @@ async def inspect_gamecenter(date: str, game_id: str, section: str, headless: bo
 
             logger.info(f"Found {len(tables_data)} tables.")
             for table in tables_data:
-                logger.info(f"\nTable [{table['index']}] ID: {table['id']}, Class: {table['className']}, Caption: {table['caption']}")
-                snippet = table['allTextSnippet'].replace('\n', ' ')
+                logger.info(
+                    f"\nTable [{table['index']}] ID: {table['id']}, Class: {table['className']}, Caption: {table['caption']}"
+                )
+                snippet = table["allTextSnippet"].replace("\n", " ")
                 logger.info(f"  Snippet: {snippet[:200]}...")
-                if any(k in table['allTextSnippet'] for k in ['홈런', '볼넷', '4사구', '안타', '삼진']):
+                if any(k in table["allTextSnippet"] for k in ["홈런", "볼넷", "4사구", "안타", "삼진"]):
                     logger.info("  *** MATCH FOUND (HR/BB/H/SO keywords exist in table) ***")
 
             # Check for detail links
@@ -267,7 +279,7 @@ async def inspect_gamecenter(date: str, game_id: str, section: str, headless: bo
                 await page.screenshot(path=screenshot_path)
                 logger.info(f"Screenshot saved to {screenshot_path}")
 
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             logger.error(f"Error during GameCenter inspection: {e}")
         finally:
             await browser.close()
@@ -280,7 +292,7 @@ async def inspect_player_profile(
     year: str | None,
     click_tab: str | None,
     headless: bool,
-    screenshot_path: str | None
+    screenshot_path: str | None,
 ) -> None:
     """Scrape a player's hitter or pitcher page."""
 
@@ -301,7 +313,7 @@ async def inspect_player_profile(
 
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=headless)
-        context = await browser.new_context(viewport={'width': 1280, 'height': 1024})
+        context = await browser.new_context(viewport={"width": 1280, "height": 1024})
         page = await context.new_page()
 
         try:
@@ -326,7 +338,7 @@ async def inspect_player_profile(
                             await page.wait_for_load_state("networkidle")
                         else:
                             logger.info(f"Tab '{click_tab}' not found.")
-                except Exception as e:
+                except Exception as e:  # noqa: BLE001
                     logger.error(f"Error clicking tab: {e}")
 
             # Handle select year
@@ -341,7 +353,7 @@ async def inspect_player_profile(
                         await asyncio.sleep(2)  # Buffer for JS
                     else:
                         logger.info("Year select element not found.")
-                except Exception as e:
+                except Exception as e:  # noqa: BLE001
                     logger.error(f"Error selecting year: {e}")
 
             # Extract tables
@@ -359,14 +371,14 @@ async def inspect_player_profile(
                 if rows:
                     first_row_data = [await td.inner_text() for td in await rows[0].query_selector_all("td")]
                     # Clean newlines in outputs
-                    first_row_data = [td.strip().replace('\n', ' ') for td in first_row_data]
+                    first_row_data = [td.strip().replace("\n", " ") for td in first_row_data]
                     logger.info(f"  First row data: {first_row_data}")
 
             if screenshot_path:
                 await page.screenshot(path=screenshot_path, full_page=True)
                 logger.info(f"Screenshot saved to {screenshot_path}")
 
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             logger.error(f"Error during player profile inspection: {e}")
         finally:
             await browser.close()
@@ -383,14 +395,21 @@ def main() -> None:
     db_group.add_argument("--query", type=str, help="Raw SQL query to execute")
     db_group.add_argument("--game-id", type=str, help="Game ID to inspect pitching/batting stats")
     db_group.add_argument("--player-id", type=int, help="Player ID to inspect daily stats")
-    db_parser.add_argument("--season", type=str, default=str(datetime.now().year), help="Season to filter player daily stats (default: current year)")
+    db_parser.add_argument(
+        "--season",
+        type=str,
+        default=str(datetime.now().year),
+        help="Season to filter player daily stats (default: current year)",
+    )
 
     # Subcommand: gamecenter
     gc_parser = subparsers.add_parser("gamecenter", help="Inspect KBO GameCenter page via Playwright")
     gc_parser.add_argument("--date", type=str, default="20240323", help="Game Date (YYYYMMDD)")
     gc_parser.add_argument("--game-id", type=str, default="20240323HHLG0", help="KBO Game ID")
     gc_parser.add_argument("--section", type=str, default="REVIEW", help="Section (e.g. REVIEW, RECORD)")
-    gc_parser.add_argument("--no-headless", action="store_false", dest="headless", help="Run browser in non-headless mode")
+    gc_parser.add_argument(
+        "--no-headless", action="store_false", dest="headless", help="Run browser in non-headless mode"
+    )
     gc_parser.add_argument("--screenshot", type=str, help="Save screenshot to specified path")
 
     # Subcommand: player
@@ -400,13 +419,17 @@ def main() -> None:
     p_parser.add_argument("--page", choices=["game", "basic", "daily"], default="game", help="Detail page type")
     p_parser.add_argument("--year", type=str, help="Select year option (e.g. 2020)")
     p_parser.add_argument("--click-tab", type=str, help="Link/tab text to click (e.g. '일자별기록')")
-    p_parser.add_argument("--no-headless", action="store_false", dest="headless", help="Run browser in non-headless mode")
+    p_parser.add_argument(
+        "--no-headless", action="store_false", dest="headless", help="Run browser in non-headless mode"
+    )
     p_parser.add_argument("--screenshot", type=str, help="Save full-page screenshot to specified path")
 
     # Subcommand: summary
     summary_parser = subparsers.add_parser("summary", help="Summarize KBO Database row counts")
     summary_parser.add_argument("--db-path", type=Path, default=DEFAULT_DB_PATH, help="Path to SQLite db file (local)")
-    summary_parser.add_argument("--oci", action="store_true", help="Summarize OCI remote PostgreSQL database instead of local SQLite")
+    summary_parser.add_argument(
+        "--oci", action="store_true", help="Summarize OCI remote PostgreSQL database instead of local SQLite"
+    )
 
     args = parser.parse_args()
 
@@ -425,7 +448,7 @@ def main() -> None:
                 game_id=args.game_id,
                 section=args.section,
                 headless=args.headless,
-                screenshot_path=args.screenshot
+                screenshot_path=args.screenshot,
             )
         )
 
@@ -438,7 +461,7 @@ def main() -> None:
                 year=args.year,
                 click_tab=args.click_tab,
                 headless=args.headless,
-                screenshot_path=args.screenshot
+                screenshot_path=args.screenshot,
             )
         )
 
