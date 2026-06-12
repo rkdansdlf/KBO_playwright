@@ -35,7 +35,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: ./.github/actions/python-env
+      - uses: ./.github/actions/kbo-job-setup
         with:
           playwright: 'true'
           init-db: 'true'

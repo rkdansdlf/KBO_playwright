@@ -61,7 +61,7 @@ runs:
       shell: bash
       run: |
         python3 -c "from src.db.engine import init_db; init_db()"
-        python3 scripts/legacy/maintenance/seed_data.py
+        python3 -m scripts.maintenance.seed_data
 
     - name: Hydrate Runtime Cache From OCI
       if: ${{ inputs.hydrate == 'true' }}
