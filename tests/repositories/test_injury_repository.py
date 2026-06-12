@@ -25,14 +25,16 @@ class TestInjuryRepository:
         session = self._session(engine)
         repo = InjuryRepository(session)
 
-        injury = repo.save_injury({
-            "player_id": 1,
-            "player_name": "Kim",
-            "team_id": "LG",
-            "injury_type": "elbow strain",
-            "il_placement_date": date(2025, 4, 1),
-            "status": "15_IL",
-        })
+        injury = repo.save_injury(
+            {
+                "player_id": 1,
+                "player_name": "Kim",
+                "team_id": "LG",
+                "injury_type": "elbow strain",
+                "il_placement_date": date(2025, 4, 1),
+                "status": "15_IL",
+            }
+        )
         session.commit()
 
         assert injury.id is not None
@@ -45,24 +47,28 @@ class TestInjuryRepository:
         session = self._session(engine)
         repo = InjuryRepository(session)
 
-        i1 = repo.save_injury({
-            "player_id": 1,
-            "player_name": "Kim",
-            "team_id": "LG",
-            "il_placement_date": date(2025, 4, 1),
-            "status": "15_IL",
-            "note": "initial",
-        })
+        i1 = repo.save_injury(
+            {
+                "player_id": 1,
+                "player_name": "Kim",
+                "team_id": "LG",
+                "il_placement_date": date(2025, 4, 1),
+                "status": "15_IL",
+                "note": "initial",
+            }
+        )
         session.commit()
 
-        i2 = repo.save_injury({
-            "player_id": 1,
-            "player_name": "Kim",
-            "team_id": "LG",
-            "il_placement_date": date(2025, 4, 1),
-            "status": "60_IL",
-            "note": "updated",
-        })
+        i2 = repo.save_injury(
+            {
+                "player_id": 1,
+                "player_name": "Kim",
+                "team_id": "LG",
+                "il_placement_date": date(2025, 4, 1),
+                "status": "60_IL",
+                "note": "updated",
+            }
+        )
         session.commit()
 
         assert i1.id == i2.id
@@ -74,20 +80,24 @@ class TestInjuryRepository:
         session = self._session(engine)
         repo = InjuryRepository(session)
 
-        i1 = repo.save_injury({
-            "player_name": "Kim",
-            "team_id": "LG",
-            "il_placement_date": date(2025, 4, 1),
-            "status": "ACTIVE",
-        })
+        i1 = repo.save_injury(
+            {
+                "player_name": "Kim",
+                "team_id": "LG",
+                "il_placement_date": date(2025, 4, 1),
+                "status": "ACTIVE",
+            }
+        )
         session.commit()
 
-        i2 = repo.save_injury({
-            "player_name": "Kim",
-            "team_id": "LG",
-            "il_placement_date": date(2025, 4, 1),
-            "status": "ACTIVE",
-        })
+        i2 = repo.save_injury(
+            {
+                "player_name": "Kim",
+                "team_id": "LG",
+                "il_placement_date": date(2025, 4, 1),
+                "status": "ACTIVE",
+            }
+        )
         session.commit()
 
         assert i1.id != i2.id  # no player_id → different records
@@ -98,12 +108,33 @@ class TestInjuryRepository:
         session = self._session(engine)
         repo = InjuryRepository(session)
 
-        repo.save_injury({"player_id": 1, "player_name": "Kim", "team_id": "LG", "il_placement_date": date(2025, 4, 1),
-                           "status": "ACTIVE"})
-        repo.save_injury({"player_id": 2, "player_name": "Park", "team_id": "LG", "il_placement_date": date(2025, 4, 5),
-                           "status": "15_IL"})
-        repo.save_injury({"player_id": 3, "player_name": "Lee", "team_id": "LG", "il_placement_date": date(2025, 4, 10),
-                           "status": "RETURNED"})
+        repo.save_injury(
+            {
+                "player_id": 1,
+                "player_name": "Kim",
+                "team_id": "LG",
+                "il_placement_date": date(2025, 4, 1),
+                "status": "ACTIVE",
+            }
+        )
+        repo.save_injury(
+            {
+                "player_id": 2,
+                "player_name": "Park",
+                "team_id": "LG",
+                "il_placement_date": date(2025, 4, 5),
+                "status": "15_IL",
+            }
+        )
+        repo.save_injury(
+            {
+                "player_id": 3,
+                "player_name": "Lee",
+                "team_id": "LG",
+                "il_placement_date": date(2025, 4, 10),
+                "status": "RETURNED",
+            }
+        )
         session.commit()
 
         results = repo.get_active_by_team("LG")
@@ -124,10 +155,24 @@ class TestInjuryRepository:
         session = self._session(engine)
         repo = InjuryRepository(session)
 
-        repo.save_injury({"player_id": 1, "player_name": "Kim", "team_id": "LG", "il_placement_date": date(2025, 4, 1),
-                           "status": "ACTIVE"})
-        repo.save_injury({"player_id": 2, "player_name": "Park", "team_id": "SSG", "il_placement_date": date(2025, 4, 5),
-                           "status": "RETURNED"})
+        repo.save_injury(
+            {
+                "player_id": 1,
+                "player_name": "Kim",
+                "team_id": "LG",
+                "il_placement_date": date(2025, 4, 1),
+                "status": "ACTIVE",
+            }
+        )
+        repo.save_injury(
+            {
+                "player_id": 2,
+                "player_name": "Park",
+                "team_id": "SSG",
+                "il_placement_date": date(2025, 4, 5),
+                "status": "RETURNED",
+            }
+        )
         session.commit()
 
         results = repo.get_all_active()
@@ -148,13 +193,15 @@ class TestInjuryRepository:
         session = self._session(engine)
         repo = InjuryRepository(session)
 
-        injury = repo.save_injury({
-            "player_id": 1,
-            "player_name": "Kim",
-            "team_id": "LG",
-            "il_placement_date": date(2025, 4, 1),
-            "status": "15_IL",
-        })
+        injury = repo.save_injury(
+            {
+                "player_id": 1,
+                "player_name": "Kim",
+                "team_id": "LG",
+                "il_placement_date": date(2025, 4, 1),
+                "status": "15_IL",
+            }
+        )
         session.commit()
 
         repo.mark_returned(injury.id, return_date=date(2025, 5, 1))

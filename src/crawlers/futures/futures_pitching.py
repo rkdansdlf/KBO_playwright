@@ -100,7 +100,6 @@ def _norm_header(txt: str) -> str:
     return HEADER_MAP.get(t, txt.strip())
 
 
-
 def _parse_table(table) -> list[dict]:
     """Parse a table element into list of season pitching records."""
     headers = [_norm_header(th.get_text(strip=True)) for th in table.select("thead th, thead td")]

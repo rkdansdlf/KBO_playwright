@@ -9,19 +9,43 @@ from src.utils.player_season_stat_validation import (
 
 
 def _batting_row(**overrides):
-    row = {"player_id": 1001, "player_name": "홍길동", "season": 2025, "league": "REGULAR", "team_code": "LG", "games": 10, "hits": 5}
+    row = {
+        "player_id": 1001,
+        "player_name": "홍길동",
+        "season": 2025,
+        "league": "REGULAR",
+        "team_code": "LG",
+        "games": 10,
+        "hits": 5,
+    }
     row.update(overrides)
     return row
 
 
 def _pitching_row(**overrides):
-    row = {"player_id": 2001, "player_name": "원태인", "season": 2025, "league": "REGULAR", "team_code": "SS", "games": 10, "innings_outs": 90}
+    row = {
+        "player_id": 2001,
+        "player_name": "원태인",
+        "season": 2025,
+        "league": "REGULAR",
+        "team_code": "SS",
+        "games": 10,
+        "innings_outs": 90,
+    }
     row.update(overrides)
     return row
 
 
 def _fielding_row(**overrides):
-    row = {"player_id": 3001, "player_name": "오지환", "year": 2025, "team_id": "LG", "position_id": "SS", "games": 10, "errors": 1}
+    row = {
+        "player_id": 3001,
+        "player_name": "오지환",
+        "year": 2025,
+        "team_id": "LG",
+        "position_id": "SS",
+        "games": 10,
+        "errors": 1,
+    }
     row.update(overrides)
     return row
 
@@ -79,25 +103,43 @@ class TestHasCoreStats:
 
 class TestValidateSeasonStatPayload:
     def test_rejects_missing_player_id(self):
-        assert validate_season_stat_payload(_batting_row(player_id=None), stat_type="batting") == (False, "invalid_player_id")
+        assert validate_season_stat_payload(_batting_row(player_id=None), stat_type="batting") == (
+            False,
+            "invalid_player_id",
+        )
 
     def test_rejects_invalid_season(self):
         assert validate_season_stat_payload(_batting_row(season=None), stat_type="batting") == (False, "missing_season")
 
     def test_rejects_missing_team_code(self):
-        assert validate_season_stat_payload(_batting_row(team_code=""), stat_type="batting") == (False, "missing_team_code")
+        assert validate_season_stat_payload(_batting_row(team_code=""), stat_type="batting") == (
+            False,
+            "missing_team_code",
+        )
 
     def test_rejects_empty_core_stats(self):
-        assert validate_season_stat_payload(_batting_row(games=None, hits=None), stat_type="batting") == (False, "empty_core_stats")
+        assert validate_season_stat_payload(_batting_row(games=None, hits=None), stat_type="batting") == (
+            False,
+            "empty_core_stats",
+        )
 
     def test_rejects_hits_gt_at_bats(self):
-        assert validate_season_stat_payload(_batting_row(hits=10, at_bats=5), stat_type="batting") == (False, "hits_gt_at_bats")
+        assert validate_season_stat_payload(_batting_row(hits=10, at_bats=5), stat_type="batting") == (
+            False,
+            "hits_gt_at_bats",
+        )
 
     def test_rejects_at_bats_gt_plate_appearances(self):
-        assert validate_season_stat_payload(_batting_row(at_bats=10, plate_appearances=5), stat_type="batting") == (False, "at_bats_gt_plate_appearances")
+        assert validate_season_stat_payload(_batting_row(at_bats=10, plate_appearances=5), stat_type="batting") == (
+            False,
+            "at_bats_gt_plate_appearances",
+        )
 
     def test_rejects_earned_runs_gt_runs_allowed(self):
-        assert validate_season_stat_payload(_pitching_row(earned_runs=5, runs_allowed=3), stat_type="pitching") == (False, "earned_runs_gt_runs_allowed")
+        assert validate_season_stat_payload(_pitching_row(earned_runs=5, runs_allowed=3), stat_type="pitching") == (
+            False,
+            "earned_runs_gt_runs_allowed",
+        )
 
     def test_valid_batting_passes(self):
         assert validate_season_stat_payload(_batting_row(), stat_type="batting") == (True, None)

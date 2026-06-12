@@ -14,11 +14,7 @@ class TestLoadMatrix:
 
     def test_loads_matrix_from_csv(self, tmp_path):
         csv_path = tmp_path / "win_expectancy.csv"
-        csv_path.write_text(
-            "inning,half,outs,runners,score_diff,win_prob\n"
-            "1,top,0,0,0,0.5000\n"
-            "1,bottom,0,0,0,0.5200\n"
-        )
+        csv_path.write_text("inning,half,outs,runners,score_diff,win_prob\n1,top,0,0,0,0.5000\n1,bottom,0,0,0,0.5200\n")
         calc = WPACalculator(matrix_path=str(csv_path))
         assert len(calc._matrix) == 2
         assert calc._matrix[(1, "top", 0, 0, 0)] == 0.5000

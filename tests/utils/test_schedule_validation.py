@@ -56,29 +56,66 @@ class TestSplitScheduleGameId:
 
 class TestValidateScheduleGamePayload:
     def test_valid_game(self):
-        game = {"game_id": "20250415LGSS0", "game_date": "20250415", "away_team_code": "LG", "home_team_code": "SS", "game_status": "SCHEDULED", "stadium": "Jamsil"}
+        game = {
+            "game_id": "20250415LGSS0",
+            "game_date": "20250415",
+            "away_team_code": "LG",
+            "home_team_code": "SS",
+            "game_status": "SCHEDULED",
+            "stadium": "Jamsil",
+        }
         assert validate_schedule_game_payload(game) == (True, None)
 
     def test_missing_game_id(self):
         assert validate_schedule_game_payload({"game_date": "20250415"}) == (False, "missing_game_id")
 
     def test_invalid_game_date(self):
-        assert validate_schedule_game_payload({"game_id": "20250415LGSS0", "game_date": "bad"}) == (False, "invalid_game_date")
+        assert validate_schedule_game_payload({"game_id": "20250415LGSS0", "game_date": "bad"}) == (
+            False,
+            "invalid_game_date",
+        )
 
     def test_expected_year_mismatch(self):
-        game = {"game_id": "20250415LGSS0", "game_date": "20250415", "away_team_code": "LG", "home_team_code": "SS", "game_status": "SCHEDULED", "stadium": "Jamsil"}
+        game = {
+            "game_id": "20250415LGSS0",
+            "game_date": "20250415",
+            "away_team_code": "LG",
+            "home_team_code": "SS",
+            "game_status": "SCHEDULED",
+            "stadium": "Jamsil",
+        }
         assert validate_schedule_game_payload(game, expected_year=2026) == (False, "schedule_date_mismatch")
 
     def test_missing_team_code(self):
-        game = {"game_id": "20250415LGSS0", "game_date": "20250415", "away_team_code": "", "home_team_code": "SS", "game_status": "SCHEDULED", "stadium": "Jamsil"}
+        game = {
+            "game_id": "20250415LGSS0",
+            "game_date": "20250415",
+            "away_team_code": "",
+            "home_team_code": "SS",
+            "game_status": "SCHEDULED",
+            "stadium": "Jamsil",
+        }
         assert validate_schedule_game_payload(game) == (False, "missing_away_team_code")
 
     def test_invalid_game_status(self):
-        game = {"game_id": "20250415LGSS0", "game_date": "20250415", "away_team_code": "LG", "home_team_code": "SS", "game_status": "INVALID", "stadium": "Jamsil"}
+        game = {
+            "game_id": "20250415LGSS0",
+            "game_date": "20250415",
+            "away_team_code": "LG",
+            "home_team_code": "SS",
+            "game_status": "INVALID",
+            "stadium": "Jamsil",
+        }
         assert validate_schedule_game_payload(game) == (False, "invalid_game_status")
 
     def test_missing_stadium(self):
-        game = {"game_id": "20250415LGSS0", "game_date": "20250415", "away_team_code": "LG", "home_team_code": "SS", "game_status": "SCHEDULED"}
+        game = {
+            "game_id": "20250415LGSS0",
+            "game_date": "20250415",
+            "away_team_code": "LG",
+            "home_team_code": "SS",
+            "game_status": "SCHEDULED",
+        }
         assert validate_schedule_game_payload(game) == (False, "missing_stadium")
 
 

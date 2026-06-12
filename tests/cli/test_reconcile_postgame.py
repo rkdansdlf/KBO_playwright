@@ -7,11 +7,13 @@ from src.cli.reconcile_postgame import main
 
 class TestReconcilePostgameCLI:
     def test_main_single_date(self):
-        with patch("src.cli.reconcile_postgame.SessionLocal"), \
-             patch("src.cli.reconcile_postgame.PlayerIdResolver"), \
-             patch("src.cli.reconcile_postgame.GameDetailCrawler"), \
-             patch("src.cli.reconcile_postgame.reconcile_postgame_range", new_callable=AsyncMock) as mock_reconcile, \
-             patch("src.cli.reconcile_postgame.format_reconciliation_report") as mock_format:
+        with (
+            patch("src.cli.reconcile_postgame.SessionLocal"),
+            patch("src.cli.reconcile_postgame.PlayerIdResolver"),
+            patch("src.cli.reconcile_postgame.GameDetailCrawler"),
+            patch("src.cli.reconcile_postgame.reconcile_postgame_range", new_callable=AsyncMock) as mock_reconcile,
+            patch("src.cli.reconcile_postgame.format_reconciliation_report") as mock_format,
+        ):
             mock_result = MagicMock()
             mock_result.start_date = "20251015"
             mock_result.end_date = "20251015"
@@ -25,11 +27,13 @@ class TestReconcilePostgameCLI:
             mock_reconcile.assert_called_once()
 
     def test_main_with_lookback(self):
-        with patch("src.cli.reconcile_postgame.SessionLocal"), \
-             patch("src.cli.reconcile_postgame.PlayerIdResolver"), \
-             patch("src.cli.reconcile_postgame.GameDetailCrawler"), \
-             patch("src.cli.reconcile_postgame.reconcile_postgame_range", new_callable=AsyncMock) as mock_reconcile, \
-             patch("src.cli.reconcile_postgame.format_reconciliation_report"):
+        with (
+            patch("src.cli.reconcile_postgame.SessionLocal"),
+            patch("src.cli.reconcile_postgame.PlayerIdResolver"),
+            patch("src.cli.reconcile_postgame.GameDetailCrawler"),
+            patch("src.cli.reconcile_postgame.reconcile_postgame_range", new_callable=AsyncMock) as mock_reconcile,
+            patch("src.cli.reconcile_postgame.format_reconciliation_report"),
+        ):
             mock_result = MagicMock()
             mock_result.start_date = "20251013"
             mock_result.end_date = "20251015"
@@ -41,11 +45,13 @@ class TestReconcilePostgameCLI:
             assert result == 0
 
     def test_main_with_date_range(self):
-        with patch("src.cli.reconcile_postgame.SessionLocal"), \
-             patch("src.cli.reconcile_postgame.PlayerIdResolver"), \
-             patch("src.cli.reconcile_postgame.GameDetailCrawler"), \
-             patch("src.cli.reconcile_postgame.reconcile_postgame_range", new_callable=AsyncMock) as mock_reconcile, \
-             patch("src.cli.reconcile_postgame.format_reconciliation_report"):
+        with (
+            patch("src.cli.reconcile_postgame.SessionLocal"),
+            patch("src.cli.reconcile_postgame.PlayerIdResolver"),
+            patch("src.cli.reconcile_postgame.GameDetailCrawler"),
+            patch("src.cli.reconcile_postgame.reconcile_postgame_range", new_callable=AsyncMock) as mock_reconcile,
+            patch("src.cli.reconcile_postgame.format_reconciliation_report"),
+        ):
             mock_result = MagicMock()
             mock_result.start_date = "20251001"
             mock_result.end_date = "20251015"

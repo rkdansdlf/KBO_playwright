@@ -1,5 +1,3 @@
-import pytest
-
 from src.crawlers.team_pitching_stats_crawler import _build_column_map
 from src.utils.type_helpers import parse_innings
 

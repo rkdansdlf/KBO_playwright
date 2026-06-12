@@ -25,13 +25,17 @@ class TestRosterTransactionRepository:
         session = self._session(engine)
         repo = RosterTransactionRepository(session)
 
-        trx = repo.save({
-            "dedupe_key": "20241015-LG-Kim-registered",
-            "transaction_date": date(2024, 10, 15),
-            "team_id": "LG", "player_name": "Kim",
-            "action": "registered", "roster_level": "first_team",
-            "source_type": "kbo_today_page",
-        })
+        trx = repo.save(
+            {
+                "dedupe_key": "20241015-LG-Kim-registered",
+                "transaction_date": date(2024, 10, 15),
+                "team_id": "LG",
+                "player_name": "Kim",
+                "action": "registered",
+                "roster_level": "first_team",
+                "source_type": "kbo_today_page",
+            }
+        )
         session.commit()
         assert trx.id is not None
         assert trx.player_name == "Kim"
@@ -42,22 +46,30 @@ class TestRosterTransactionRepository:
         session = self._session(engine)
         repo = RosterTransactionRepository(session)
 
-        r1 = repo.save({
-            "dedupe_key": "20241015-LG-Kim-registered",
-            "transaction_date": date(2024, 10, 15),
-            "team_id": "LG", "player_name": "Kim",
-            "action": "registered", "roster_level": "first_team",
-            "source_type": "kbo_today_page",
-        })
+        r1 = repo.save(
+            {
+                "dedupe_key": "20241015-LG-Kim-registered",
+                "transaction_date": date(2024, 10, 15),
+                "team_id": "LG",
+                "player_name": "Kim",
+                "action": "registered",
+                "roster_level": "first_team",
+                "source_type": "kbo_today_page",
+            }
+        )
         session.commit()
 
-        r2 = repo.save({
-            "dedupe_key": "20241015-LG-Kim-registered",
-            "transaction_date": date(2024, 10, 15),
-            "team_id": "LG", "player_name": "Kim",
-            "action": "registered", "roster_level": "second_team",
-            "source_type": "snapshot_diff",
-        })
+        r2 = repo.save(
+            {
+                "dedupe_key": "20241015-LG-Kim-registered",
+                "transaction_date": date(2024, 10, 15),
+                "team_id": "LG",
+                "player_name": "Kim",
+                "action": "registered",
+                "roster_level": "second_team",
+                "source_type": "snapshot_diff",
+            }
+        )
         session.commit()
 
         assert r1.id == r2.id
@@ -69,15 +81,39 @@ class TestRosterTransactionRepository:
         session = self._session(engine)
         repo = RosterTransactionRepository(session)
 
-        repo.save({"dedupe_key": "k1", "transaction_date": date(2024, 10, 15), "team_id": "LG",
-                    "player_name": "Kim", "action": "registered", "roster_level": "first_team",
-                    "source_type": "kbo_today_page"})
-        repo.save({"dedupe_key": "k2", "transaction_date": date(2024, 10, 15), "team_id": "LG",
-                    "player_name": "Park", "action": "deregistered", "roster_level": "first_team",
-                    "source_type": "kbo_today_page"})
-        repo.save({"dedupe_key": "k3", "transaction_date": date(2024, 10, 15), "team_id": "SSG",
-                    "player_name": "Choi", "action": "registered", "roster_level": "first_team",
-                    "source_type": "kbo_today_page"})
+        repo.save(
+            {
+                "dedupe_key": "k1",
+                "transaction_date": date(2024, 10, 15),
+                "team_id": "LG",
+                "player_name": "Kim",
+                "action": "registered",
+                "roster_level": "first_team",
+                "source_type": "kbo_today_page",
+            }
+        )
+        repo.save(
+            {
+                "dedupe_key": "k2",
+                "transaction_date": date(2024, 10, 15),
+                "team_id": "LG",
+                "player_name": "Park",
+                "action": "deregistered",
+                "roster_level": "first_team",
+                "source_type": "kbo_today_page",
+            }
+        )
+        repo.save(
+            {
+                "dedupe_key": "k3",
+                "transaction_date": date(2024, 10, 15),
+                "team_id": "SSG",
+                "player_name": "Choi",
+                "action": "registered",
+                "roster_level": "first_team",
+                "source_type": "kbo_today_page",
+            }
+        )
         session.commit()
 
         results = repo.get_by_team_date("LG", date(2024, 10, 15))
@@ -89,12 +125,28 @@ class TestRosterTransactionRepository:
         session = self._session(engine)
         repo = RosterTransactionRepository(session)
 
-        repo.save({"dedupe_key": "k1", "transaction_date": date(2024, 10, 15), "team_id": "LG",
-                    "player_name": "Kim", "action": "registered", "roster_level": "first_team",
-                    "source_type": "kbo_today_page"})
-        repo.save({"dedupe_key": "k2", "transaction_date": date(2024, 10, 16), "team_id": "LG",
-                    "player_name": "Park", "action": "registered", "roster_level": "first_team",
-                    "source_type": "kbo_today_page"})
+        repo.save(
+            {
+                "dedupe_key": "k1",
+                "transaction_date": date(2024, 10, 15),
+                "team_id": "LG",
+                "player_name": "Kim",
+                "action": "registered",
+                "roster_level": "first_team",
+                "source_type": "kbo_today_page",
+            }
+        )
+        repo.save(
+            {
+                "dedupe_key": "k2",
+                "transaction_date": date(2024, 10, 16),
+                "team_id": "LG",
+                "player_name": "Park",
+                "action": "registered",
+                "roster_level": "first_team",
+                "source_type": "kbo_today_page",
+            }
+        )
         session.commit()
 
         results = repo.get_by_date(date(2024, 10, 15))
@@ -106,17 +158,44 @@ class TestRosterTransactionRepository:
         session = self._session(engine)
         repo = RosterTransactionRepository(session)
 
-        repo.save({"dedupe_key": "k1", "transaction_date": date(2024, 10, 15), "team_id": "LG",
-                    "player_name": "Kim", "action": "registered", "roster_level": "first_team",
-                    "source_type": "kbo_today_page", "player_id": 1})
+        repo.save(
+            {
+                "dedupe_key": "k1",
+                "transaction_date": date(2024, 10, 15),
+                "team_id": "LG",
+                "player_name": "Kim",
+                "action": "registered",
+                "roster_level": "first_team",
+                "source_type": "kbo_today_page",
+                "player_id": 1,
+            }
+        )
         session.commit()
-        repo.save({"dedupe_key": "k2", "transaction_date": date(2024, 10, 16), "team_id": "LG",
-                    "player_name": "Kim", "action": "deregistered", "roster_level": "first_team",
-                    "source_type": "kbo_today_page", "player_id": 1})
+        repo.save(
+            {
+                "dedupe_key": "k2",
+                "transaction_date": date(2024, 10, 16),
+                "team_id": "LG",
+                "player_name": "Kim",
+                "action": "deregistered",
+                "roster_level": "first_team",
+                "source_type": "kbo_today_page",
+                "player_id": 1,
+            }
+        )
         session.commit()
-        repo.save({"dedupe_key": "k3", "transaction_date": date(2024, 10, 15), "team_id": "SSG",
-                    "player_name": "Choi", "action": "registered", "roster_level": "first_team",
-                    "source_type": "kbo_today_page", "player_id": 2})
+        repo.save(
+            {
+                "dedupe_key": "k3",
+                "transaction_date": date(2024, 10, 15),
+                "team_id": "SSG",
+                "player_name": "Choi",
+                "action": "registered",
+                "roster_level": "first_team",
+                "source_type": "kbo_today_page",
+                "player_id": 2,
+            }
+        )
         session.commit()
 
         results = repo.get_by_player(1)
@@ -128,9 +207,17 @@ class TestRosterTransactionRepository:
         session = self._session(engine)
         repo = RosterTransactionRepository(session)
 
-        repo.save({"dedupe_key": "k1", "transaction_date": date(2024, 10, 15), "team_id": "LG",
-                    "player_name": "Kim", "action": "registered", "roster_level": "first_team",
-                    "source_type": "kbo_today_page"})
+        repo.save(
+            {
+                "dedupe_key": "k1",
+                "transaction_date": date(2024, 10, 15),
+                "team_id": "LG",
+                "player_name": "Kim",
+                "action": "registered",
+                "roster_level": "first_team",
+                "source_type": "kbo_today_page",
+            }
+        )
         session.commit()
 
         assert repo.exists("k1") is True
@@ -142,14 +229,28 @@ class TestRosterTransactionRepository:
         session = self._session(engine)
         repo = RosterTransactionRepository(session)
 
-        count = repo.bulk_save([
-            {"dedupe_key": "k1", "transaction_date": date(2024, 10, 15), "team_id": "LG",
-             "player_name": "Kim", "action": "registered", "roster_level": "first_team",
-             "source_type": "kbo_today_page"},
-            {"dedupe_key": "k2", "transaction_date": date(2024, 10, 15), "team_id": "LG",
-             "player_name": "Park", "action": "deregistered", "roster_level": "first_team",
-             "source_type": "kbo_today_page"},
-        ])
+        count = repo.bulk_save(
+            [
+                {
+                    "dedupe_key": "k1",
+                    "transaction_date": date(2024, 10, 15),
+                    "team_id": "LG",
+                    "player_name": "Kim",
+                    "action": "registered",
+                    "roster_level": "first_team",
+                    "source_type": "kbo_today_page",
+                },
+                {
+                    "dedupe_key": "k2",
+                    "transaction_date": date(2024, 10, 15),
+                    "team_id": "LG",
+                    "player_name": "Park",
+                    "action": "deregistered",
+                    "roster_level": "first_team",
+                    "source_type": "kbo_today_page",
+                },
+            ]
+        )
         session.commit()
         assert count == 2
 
@@ -159,11 +260,18 @@ class TestRosterTransactionRepository:
         session = self._session(engine)
         repo = RosterTransactionRepository(session)
 
-        trx = repo.save({
-            "dedupe_key": "k1", "transaction_date": date(2024, 10, 15), "team_id": "LG",
-            "player_name": "Kim", "action": "registered", "roster_level": "first_team",
-            "source_type": "kbo_today_page", "player_id": 999,
-        })
+        trx = repo.save(
+            {
+                "dedupe_key": "k1",
+                "transaction_date": date(2024, 10, 15),
+                "team_id": "LG",
+                "player_name": "Kim",
+                "action": "registered",
+                "roster_level": "first_team",
+                "source_type": "kbo_today_page",
+                "player_id": 999,
+            }
+        )
         session.commit()
 
         assert trx.player_id == 999  # player_basic table missing -> assume valid

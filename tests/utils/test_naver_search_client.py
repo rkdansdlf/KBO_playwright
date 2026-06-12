@@ -1,4 +1,3 @@
-
 import pytest
 
 from src.utils.naver_search_client import (

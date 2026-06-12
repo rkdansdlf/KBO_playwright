@@ -23,11 +23,17 @@ class TestTicketPriceRepository:
         session = self._session(engine)
         repo = TicketPriceRepository(session)
 
-        tp = repo.save({
-            "team_id": "LG", "stadium_id": "JAMSIL", "season": 2024,
-            "seat_grade": "블루석", "day_type": "weekday", "audience_type": None,
-            "price": 12000,
-        })
+        tp = repo.save(
+            {
+                "team_id": "LG",
+                "stadium_id": "JAMSIL",
+                "season": 2024,
+                "seat_grade": "블루석",
+                "day_type": "weekday",
+                "audience_type": None,
+                "price": 12000,
+            }
+        )
         session.commit()
 
         assert tp.id is not None
@@ -39,18 +45,31 @@ class TestTicketPriceRepository:
         session = self._session(engine)
         repo = TicketPriceRepository(session)
 
-        r1 = repo.save({
-            "team_id": "LG", "stadium_id": "JAMSIL", "season": 2024,
-            "seat_grade": "블루석", "day_type": "weekday", "audience_type": None,
-            "price": 12000,
-        })
+        r1 = repo.save(
+            {
+                "team_id": "LG",
+                "stadium_id": "JAMSIL",
+                "season": 2024,
+                "seat_grade": "블루석",
+                "day_type": "weekday",
+                "audience_type": None,
+                "price": 12000,
+            }
+        )
         session.commit()
 
-        r2 = repo.save({
-            "team_id": "LG", "stadium_id": "JAMSIL", "season": 2024,
-            "seat_grade": "블루석", "day_type": "weekday", "audience_type": None,
-            "price": 13000, "currency": "KRW",
-        })
+        r2 = repo.save(
+            {
+                "team_id": "LG",
+                "stadium_id": "JAMSIL",
+                "season": 2024,
+                "seat_grade": "블루석",
+                "day_type": "weekday",
+                "audience_type": None,
+                "price": 13000,
+                "currency": "KRW",
+            }
+        )
         session.commit()
 
         assert r1.id == r2.id
@@ -62,12 +81,39 @@ class TestTicketPriceRepository:
         session = self._session(engine)
         repo = TicketPriceRepository(session)
 
-        repo.save({"team_id": "LG", "stadium_id": "JAMSIL", "season": 2024,
-                    "seat_grade": "블루석", "day_type": "weekday", "audience_type": None, "price": 12000})
-        repo.save({"team_id": "LG", "stadium_id": "JAMSIL", "season": 2024,
-                    "seat_grade": "레드석", "day_type": "weekend", "audience_type": None, "price": 18000})
-        repo.save({"team_id": "SSG", "stadium_id": "MUNH", "season": 2024,
-                    "seat_grade": "블루석", "day_type": "weekday", "audience_type": None, "price": 11000})
+        repo.save(
+            {
+                "team_id": "LG",
+                "stadium_id": "JAMSIL",
+                "season": 2024,
+                "seat_grade": "블루석",
+                "day_type": "weekday",
+                "audience_type": None,
+                "price": 12000,
+            }
+        )
+        repo.save(
+            {
+                "team_id": "LG",
+                "stadium_id": "JAMSIL",
+                "season": 2024,
+                "seat_grade": "레드석",
+                "day_type": "weekend",
+                "audience_type": None,
+                "price": 18000,
+            }
+        )
+        repo.save(
+            {
+                "team_id": "SSG",
+                "stadium_id": "MUNH",
+                "season": 2024,
+                "seat_grade": "블루석",
+                "day_type": "weekday",
+                "audience_type": None,
+                "price": 11000,
+            }
+        )
         session.commit()
 
         results = repo.get_by_team_season("LG", 2024)
@@ -79,10 +125,28 @@ class TestTicketPriceRepository:
         session = self._session(engine)
         repo = TicketPriceRepository(session)
 
-        repo.save({"team_id": "LG", "stadium_id": "JAMSIL", "season": 2024,
-                    "seat_grade": "블루석", "day_type": "weekday", "audience_type": None, "price": 12000})
-        repo.save({"team_id": "SSG", "stadium_id": "JAMSIL", "season": 2024,
-                    "seat_grade": "블루석", "day_type": "weekday", "audience_type": None, "price": 11000})
+        repo.save(
+            {
+                "team_id": "LG",
+                "stadium_id": "JAMSIL",
+                "season": 2024,
+                "seat_grade": "블루석",
+                "day_type": "weekday",
+                "audience_type": None,
+                "price": 12000,
+            }
+        )
+        repo.save(
+            {
+                "team_id": "SSG",
+                "stadium_id": "JAMSIL",
+                "season": 2024,
+                "seat_grade": "블루석",
+                "day_type": "weekday",
+                "audience_type": None,
+                "price": 11000,
+            }
+        )
         session.commit()
 
         results = repo.get_by_stadium_season("JAMSIL", 2024)
@@ -94,11 +158,27 @@ class TestTicketPriceRepository:
         session = self._session(engine)
         repo = TicketPriceRepository(session)
 
-        count = repo.bulk_save([
-            {"team_id": "LG", "stadium_id": "JAMSIL", "season": 2024,
-             "seat_grade": "블루석", "day_type": "weekday", "audience_type": None, "price": 12000},
-            {"team_id": "LG", "stadium_id": "JAMSIL", "season": 2024,
-             "seat_grade": "레드석", "day_type": "weekend", "audience_type": None, "price": 18000},
-        ])
+        count = repo.bulk_save(
+            [
+                {
+                    "team_id": "LG",
+                    "stadium_id": "JAMSIL",
+                    "season": 2024,
+                    "seat_grade": "블루석",
+                    "day_type": "weekday",
+                    "audience_type": None,
+                    "price": 12000,
+                },
+                {
+                    "team_id": "LG",
+                    "stadium_id": "JAMSIL",
+                    "season": 2024,
+                    "seat_grade": "레드석",
+                    "day_type": "weekend",
+                    "audience_type": None,
+                    "price": 18000,
+                },
+            ]
+        )
         session.commit()
         assert count == 2

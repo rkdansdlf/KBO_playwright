@@ -35,7 +35,6 @@ class TestSeasonYearFromGame:
         assert _season_year_from_game("123") is None
 
 
-
 class TestParseDecision:
     def test_win(self):
         assert _parse_decision("승") == "W"
@@ -135,24 +134,28 @@ class TestBuildTeamInfo:
 
 class TestBuildHitterPayload:
     def test_basic_hitters(self):
-        df = pd.DataFrame({
-            "선수": ["홍길동", "김철수"],
-            "타석": [4, 3],
-            "타수": [3, 2],
-            "안타": [2, 1],
-            "득점": [1, 0],
-            "타율": [0.667, 0.500],
-        })
+        df = pd.DataFrame(
+            {
+                "선수": ["홍길동", "김철수"],
+                "타석": [4, 3],
+                "타수": [3, 2],
+                "안타": [2, 1],
+                "득점": [1, 0],
+                "타율": [0.667, 0.500],
+            }
+        )
         teams = {"away": {"code": "LG"}, "home": {"code": "SS"}}
         result = _build_hitter_payload([df], teams)
         assert len(result["away"]) == 2
 
     def test_team_summary_skipped(self):
-        df = pd.DataFrame({
-            "선수": ["팀합계", "홍길동"],
-            "타수": [10, 3],
-            "안타": [5, 2],
-        })
+        df = pd.DataFrame(
+            {
+                "선수": ["팀합계", "홍길동"],
+                "타수": [10, 3],
+                "안타": [5, 2],
+            }
+        )
         teams = {"away": {"code": "LG"}, "home": {"code": "SS"}}
         result = _build_hitter_payload([df], teams)
         assert len(result["away"]) == 1
@@ -164,45 +167,53 @@ class TestBuildHitterPayload:
 
 class TestBuildPitcherPayload:
     def test_basic_pitchers(self):
-        df = pd.DataFrame({
-            "선수": ["투수1"],
-            "이닝": ["5.0"],
-            "삼진": [5],
-            "실점": [2],
-            "자책": [2],
-            "ERA": [3.60],
-        })
+        df = pd.DataFrame(
+            {
+                "선수": ["투수1"],
+                "이닝": ["5.0"],
+                "삼진": [5],
+                "실점": [2],
+                "자책": [2],
+                "ERA": [3.60],
+            }
+        )
         teams = {"away": {"code": "LG"}, "home": {"code": "SS"}}
         result = _build_pitcher_payload([df], teams)
         assert len(result["away"]) == 1
         assert result["away"][0]["stats"]["innings_outs"] == 15
 
     def test_first_pitcher_is_starter(self):
-        df = pd.DataFrame({
-            "선수": ["선발투수", "계투투수"],
-            "이닝": ["5.0", "3.0"],
-        })
+        df = pd.DataFrame(
+            {
+                "선수": ["선발투수", "계투투수"],
+                "이닝": ["5.0", "3.0"],
+            }
+        )
         teams = {"away": {"code": "LG"}, "home": {"code": "SS"}}
         result = _build_pitcher_payload([df], teams)
         assert result["away"][0]["is_starting"] is True
         assert result["away"][1]["is_starting"] is False
 
     def test_decision_parsing(self):
-        df = pd.DataFrame({
-            "선수": ["투수1"],
-            "이닝": ["3.0"],
-            "결과": ["승"],
-        })
+        df = pd.DataFrame(
+            {
+                "선수": ["투수1"],
+                "이닝": ["3.0"],
+                "결과": ["승"],
+            }
+        )
         teams = {"away": {"code": "LG"}, "home": {"code": "SS"}}
         result = _build_pitcher_payload([df], teams)
         assert result["away"][0]["stats"]["decision"] == "W"
 
     def test_alternate_columns(self):
-        df = pd.DataFrame({
-            "선수명": ["P1"],
-            "IP": ["5.0"],
-            "삼진": [5],
-        })
+        df = pd.DataFrame(
+            {
+                "선수명": ["P1"],
+                "IP": ["5.0"],
+                "삼진": [5],
+            }
+        )
         teams = {"away": {"code": "LG"}, "home": {"code": "SS"}}
         result = _build_pitcher_payload([df], teams)
         assert len(result["away"]) == 1

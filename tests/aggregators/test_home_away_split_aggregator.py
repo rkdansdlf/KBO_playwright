@@ -30,29 +30,65 @@ def _add_season(session, season_id=1, year=2025):
 
 
 def _add_game(session, game_id="20250101", home="LG", away="SS", status="COMPLETED", season_id=1):
-    session.add(Game(
-        game_id=game_id, stadium="잠실",
-        home_team=home, away_team=away,
-        game_status=status, season_id=season_id,
-        game_date=date(2025, 1, 1),
-    ))
+    session.add(
+        Game(
+            game_id=game_id,
+            stadium="잠실",
+            home_team=home,
+            away_team=away,
+            game_status=status,
+            season_id=season_id,
+            game_date=date(2025, 1, 1),
+        )
+    )
     session.commit()
 
 
-def _add_batting_stat(session, game_id="20250101", player_id=10001, team_code="LG",
-                      pa=5, ab=4, hits=2, doubles=1, triples=0, home_runs=1,
-                      rbi=3, walks=1, strikeouts=1, stolen_bases=0,
-                      caught_stealing=0, hbp=0, sacrifice_flies=0,
-                      team_side="home", appearance_seq=1, player_name="홍길동"):
-    session.add(GameBattingStat(
-        game_id=game_id, player_id=player_id, team_code=team_code,
-        team_side=team_side, appearance_seq=appearance_seq, player_name=player_name,
-        plate_appearances=pa, at_bats=ab, hits=hits,
-        doubles=doubles, triples=triples, home_runs=home_runs,
-        rbi=rbi, walks=walks, strikeouts=strikeouts,
-        stolen_bases=stolen_bases, caught_stealing=caught_stealing,
-        hbp=hbp, sacrifice_flies=sacrifice_flies,
-    ))
+def _add_batting_stat(
+    session,
+    game_id="20250101",
+    player_id=10001,
+    team_code="LG",
+    pa=5,
+    ab=4,
+    hits=2,
+    doubles=1,
+    triples=0,
+    home_runs=1,
+    rbi=3,
+    walks=1,
+    strikeouts=1,
+    stolen_bases=0,
+    caught_stealing=0,
+    hbp=0,
+    sacrifice_flies=0,
+    team_side="home",
+    appearance_seq=1,
+    player_name="홍길동",
+):
+    session.add(
+        GameBattingStat(
+            game_id=game_id,
+            player_id=player_id,
+            team_code=team_code,
+            team_side=team_side,
+            appearance_seq=appearance_seq,
+            player_name=player_name,
+            plate_appearances=pa,
+            at_bats=ab,
+            hits=hits,
+            doubles=doubles,
+            triples=triples,
+            home_runs=home_runs,
+            rbi=rbi,
+            walks=walks,
+            strikeouts=strikeouts,
+            stolen_bases=stolen_bases,
+            caught_stealing=caught_stealing,
+            hbp=hbp,
+            sacrifice_flies=sacrifice_flies,
+        )
+    )
     session.commit()
 
 
@@ -97,9 +133,9 @@ class TestHomeAwaySplitAggregator:
     def test_derived_stats_calculated(self, session):
         _add_season(session)
         _add_game(session, home="LG", away="SS")
-        _add_batting_stat(session, team_code="LG",
-                          ab=4, hits=2, doubles=1, home_runs=1,
-                          walks=1, hbp=0, sacrifice_flies=0)
+        _add_batting_stat(
+            session, team_code="LG", ab=4, hits=2, doubles=1, home_runs=1, walks=1, hbp=0, sacrifice_flies=0
+        )
         agg = HomeAwaySplitAggregator(session)
         results = agg.aggregate_batting(2025)
         r = results[0]

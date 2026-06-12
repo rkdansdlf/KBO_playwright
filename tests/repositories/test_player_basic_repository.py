@@ -135,11 +135,13 @@ class TestPlayerBasicRepository:
 
     def test_get_by_team(self, session):
         repo = PlayerBasicRepository()
-        repo.upsert_players([
-            {"player_id": 1, "name": "A", "team": "LG"},
-            {"player_id": 2, "name": "B", "team": "LG"},
-            {"player_id": 3, "name": "C", "team": "KT"},
-        ])
+        repo.upsert_players(
+            [
+                {"player_id": 1, "name": "A", "team": "LG"},
+                {"player_id": 2, "name": "B", "team": "LG"},
+                {"player_id": 3, "name": "C", "team": "KT"},
+            ]
+        )
 
         lg_players = repo.get_by_team("LG")
         assert len(lg_players) == 2
@@ -148,9 +150,11 @@ class TestPlayerBasicRepository:
         repo = PlayerBasicRepository()
         repo.upsert_players([{"player_id": 1001, "name": "Kim"}])
 
-        repo.update_statuses([
-            {"player_id": 1001, "status": "active", "staff_role": None, "status_source": "profile"},
-        ])
+        repo.update_statuses(
+            [
+                {"player_id": 1001, "status": "active", "staff_role": None, "status_source": "profile"},
+            ]
+        )
 
         updated = session.query(PlayerBasic).filter_by(player_id=1001).first()
         assert updated.status == "active"

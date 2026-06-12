@@ -158,6 +158,7 @@ class PlayerDailyStatsCrawler:
             logger.exception("Failed to parse pitcher row")
             return None
 
+
 if __name__ == "__main__":
 
     async def test() -> None:

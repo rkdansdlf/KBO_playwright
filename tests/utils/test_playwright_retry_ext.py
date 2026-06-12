@@ -1,4 +1,3 @@
-
 from playwright.sync_api import TimeoutError as PlaywrightTimeout
 
 from src.utils import playwright_retry

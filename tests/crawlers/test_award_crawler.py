@@ -25,7 +25,13 @@ class TestCrawlPlayerPrize:
     async def test_returns_parsed_mvp_and_rookie(self, crawler, mock_page):
         mock_page.evaluate.return_value = [
             {"year": 2024, "award_type": "MVP", "category": None, "player_name": "Kim", "team_name": "LG"},
-            {"year": 2024, "award_type": "Rookie of the Year", "category": None, "player_name": "Park", "team_name": "SS"},
+            {
+                "year": 2024,
+                "award_type": "Rookie of the Year",
+                "category": None,
+                "player_name": "Park",
+                "team_name": "SS",
+            },
         ]
         result = await crawler.crawl_player_prize(mock_page)
         assert len(result) == 2

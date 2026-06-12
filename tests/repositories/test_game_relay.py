@@ -138,13 +138,25 @@ class TestRelayHelpers:
 class TestDerivePlayByPlay:
     def test_derive_play_by_play_rows_from_events(self):
         events = [
-            {"inning": 1, "inning_half": "top", "batter_name": "Kim", "pitcher_name": "Park",
-             "description": "Strikeout", "event_type": "strikeout", "result_code": "K"},
+            {
+                "inning": 1,
+                "inning_half": "top",
+                "batter_name": "Kim",
+                "pitcher_name": "Park",
+                "description": "Strikeout",
+                "event_type": "strikeout",
+                "result_code": "K",
+            },
         ]
         with patch("src.repositories.game_relay.event_to_pbp_row") as mock_event_to_pbp_row:
             mock_event_to_pbp_row.return_value = {
-                "inning": 1, "inning_half": "top", "batter_name": "Kim", "pitcher_name": "Park",
-                "play_description": "Strikeout", "event_type": "strikeout", "result": "K",
+                "inning": 1,
+                "inning_half": "top",
+                "batter_name": "Kim",
+                "pitcher_name": "Park",
+                "play_description": "Strikeout",
+                "event_type": "strikeout",
+                "result": "K",
             }
             result = derive_play_by_play_rows_from_events(events)
             assert len(result) == 1
@@ -164,16 +176,14 @@ class TestMarkRelaySourceUnavailable:
         result = mark_relay_source_unavailable("20241015LGSS0", reason="source_not_found", source_name="kbo")
         assert result is True
 
-        metrics = session.query(GameValidationMetrics).filter(
-            GameValidationMetrics.game_id == "20241015LGSS0"
-        ).one_or_none()
+        metrics = (
+            session.query(GameValidationMetrics).filter(GameValidationMetrics.game_id == "20241015LGSS0").one_or_none()
+        )
         assert metrics is not None
         assert metrics.validation_status == "source_unavailable"
         assert metrics.source_used == "kbo"
 
-        alias = session.query(GameIdAlias).filter(
-            GameIdAlias.alias_game_id == "20241015LGSS0"
-        ).one_or_none()
+        alias = session.query(GameIdAlias).filter(GameIdAlias.alias_game_id == "20241015LGSS0").one_or_none()
         # Alias may or may not be created depending on normalization
         if alias is not None:
             assert alias.canonical_game_id is not None

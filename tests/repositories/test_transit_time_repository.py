@@ -123,14 +123,24 @@ class TestTransitTimeRepository:
 
     def test_get_avg_duration(self, session):
         repo = TransitTimeRepository(session)
-        repo.upsert(_make_data({
-            "game_date": date(2024, 10, 15), "duration_minutes": 20,
-            "measured_at": datetime(2024, 10, 15, 10, 0),
-        }))
-        repo.upsert(_make_data({
-            "game_date": date(2024, 10, 15), "duration_minutes": 30,
-            "measured_at": datetime(2024, 10, 15, 18, 0),
-        }))
+        repo.upsert(
+            _make_data(
+                {
+                    "game_date": date(2024, 10, 15),
+                    "duration_minutes": 20,
+                    "measured_at": datetime(2024, 10, 15, 10, 0),
+                }
+            )
+        )
+        repo.upsert(
+            _make_data(
+                {
+                    "game_date": date(2024, 10, 15),
+                    "duration_minutes": 30,
+                    "measured_at": datetime(2024, 10, 15, 18, 0),
+                }
+            )
+        )
         session.commit()
 
         avg = repo.get_avg_duration("JAMSIL", "잠실역_2호선", date(2024, 10, 15))

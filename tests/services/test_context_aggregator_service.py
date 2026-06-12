@@ -42,10 +42,23 @@ class TestPitchingHelpers:
 
     def test_pitching_game_line(self):
         row = StubRow(
-            innings_pitched=5.0, innings_outs=15, batters_faced=20, pitches=80,
-            hits_allowed=4, runs_allowed=2, earned_runs=2, home_runs_allowed=1,
-            walks_allowed=2, strikeouts=5, decision="W", wins=1, losses=0,
-            saves=0, holds=0, era=3.60, whip=1.20,
+            innings_pitched=5.0,
+            innings_outs=15,
+            batters_faced=20,
+            pitches=80,
+            hits_allowed=4,
+            runs_allowed=2,
+            earned_runs=2,
+            home_runs_allowed=1,
+            walks_allowed=2,
+            strikeouts=5,
+            decision="W",
+            wins=1,
+            losses=0,
+            saves=0,
+            holds=0,
+            era=3.60,
+            whip=1.20,
         )
         line = ContextAggregator._pitching_game_line(row)
         assert line["innings_outs"] == 15
@@ -57,10 +70,24 @@ class TestPitchingHelpers:
         assert ContextAggregator._pitching_season_line(None) is None
 
     def test_pitching_season_line_with_data(self):
-        row = StubRow(season=2024, league="REGULAR", team_code="LG",
-                      games=10, games_started=10, wins=5, losses=2,
-                      saves=0, holds=0, innings_pitched="60.0", innings_outs=180,
-                      quality_starts=5, era=3.00, whip=1.10, fip=3.20, kbb=3.5)
+        row = StubRow(
+            season=2024,
+            league="REGULAR",
+            team_code="LG",
+            games=10,
+            games_started=10,
+            wins=5,
+            losses=2,
+            saves=0,
+            holds=0,
+            innings_pitched="60.0",
+            innings_outs=180,
+            quality_starts=5,
+            era=3.00,
+            whip=1.10,
+            fip=3.20,
+            kbb=3.5,
+        )
         line = ContextAggregator._pitching_season_line(row)
         assert line["season"] == 2024
         assert line["era"] == 3.00
@@ -87,15 +114,35 @@ class TestGetTeamL10Summary:
 
     def test_mixed_results(self):
         mock_games = [
-            StubRow(home_team="LG", away_team="SS", home_score=5, away_score=3,
-                    game_status="completed", game_date=date(2024, 5, 30)),
-            StubRow(home_team="SS", away_team="LG", home_score=2, away_score=1,
-                    game_status="completed", game_date=date(2024, 5, 29)),
-            StubRow(home_team="LG", away_team="KT", home_score=4, away_score=4,
-                    game_status="draw", game_date=date(2024, 5, 28)),
+            StubRow(
+                home_team="LG",
+                away_team="SS",
+                home_score=5,
+                away_score=3,
+                game_status="completed",
+                game_date=date(2024, 5, 30),
+            ),
+            StubRow(
+                home_team="SS",
+                away_team="LG",
+                home_score=2,
+                away_score=1,
+                game_status="completed",
+                game_date=date(2024, 5, 29),
+            ),
+            StubRow(
+                home_team="LG",
+                away_team="KT",
+                home_score=4,
+                away_score=4,
+                game_status="draw",
+                game_date=date(2024, 5, 28),
+            ),
         ]
         session = MagicMock()
-        session.query.return_value.filter.return_value.order_by.return_value.limit.return_value.all.return_value = mock_games
+        session.query.return_value.filter.return_value.order_by.return_value.limit.return_value.all.return_value = (
+            mock_games
+        )
         agg = ContextAggregator(session)
         result = agg.get_team_l10_summary("LG", date(2024, 6, 1))
         assert result["wins"] == 1
@@ -105,13 +152,27 @@ class TestGetTeamL10Summary:
 
     def test_streak_calculation(self):
         mock_games = [
-            StubRow(home_team="LG", away_team="SS", home_score=5, away_score=3,
-                    game_status="completed", game_date=date(2024, 5, 30)),
-            StubRow(home_team="KT", away_team="LG", home_score=2, away_score=1,
-                    game_status="completed", game_date=date(2024, 5, 29)),
+            StubRow(
+                home_team="LG",
+                away_team="SS",
+                home_score=5,
+                away_score=3,
+                game_status="completed",
+                game_date=date(2024, 5, 30),
+            ),
+            StubRow(
+                home_team="KT",
+                away_team="LG",
+                home_score=2,
+                away_score=1,
+                game_status="completed",
+                game_date=date(2024, 5, 29),
+            ),
         ]
         session = MagicMock()
-        session.query.return_value.filter.return_value.order_by.return_value.limit.return_value.all.return_value = mock_games
+        session.query.return_value.filter.return_value.order_by.return_value.limit.return_value.all.return_value = (
+            mock_games
+        )
         agg = ContextAggregator(session)
         # Most recent game is a win, so streak should be 1 win
         result = agg.get_team_l10_summary("LG", date(2024, 6, 1))
@@ -129,8 +190,14 @@ class TestGetHeadToHeadSummary:
 
     def test_a_wins_more(self):
         mock_games = [
-            StubRow(home_team="LG", away_team="KT", home_score=5, away_score=3,
-                    game_status="completed", game_date=date(2024, 5, 1)),
+            StubRow(
+                home_team="LG",
+                away_team="KT",
+                home_score=5,
+                away_score=3,
+                game_status="completed",
+                game_date=date(2024, 5, 1),
+            ),
         ]
         session = MagicMock()
         session.query.return_value.filter.return_value.all.return_value = mock_games
@@ -141,8 +208,14 @@ class TestGetHeadToHeadSummary:
 
     def test_b_wins_more(self):
         mock_games = [
-            StubRow(home_team="KT", away_team="LG", home_score=4, away_score=1,
-                    game_status="completed", game_date=date(2024, 5, 1)),
+            StubRow(
+                home_team="KT",
+                away_team="LG",
+                home_score=4,
+                away_score=1,
+                game_status="completed",
+                game_date=date(2024, 5, 1),
+            ),
         ]
         session = MagicMock()
         session.query.return_value.filter.return_value.all.return_value = mock_games
@@ -162,12 +235,20 @@ class TestGetCrucialMoments:
 
     def test_filters_noise_events(self):
         event = StubRow(
-            description="파울", wpa=0.5, event_type="hit", inning=9,
-            inning_half="bottom", away_score=1, home_score=2,
-            batter_name="Kim", pitcher_name="Park",
+            description="파울",
+            wpa=0.5,
+            event_type="hit",
+            inning=9,
+            inning_half="bottom",
+            away_score=1,
+            home_score=2,
+            batter_name="Kim",
+            pitcher_name="Park",
         )
         session = MagicMock()
-        session.query.return_value.filter.return_value.order_by.return_value.limit.return_value.all.return_value = [event]
+        session.query.return_value.filter.return_value.order_by.return_value.limit.return_value.all.return_value = [
+            event
+        ]
         with pytest.MonkeyPatch().context() as mp:
             mp.setattr("src.services.context_aggregator.is_relay_noise_text", lambda x: True)
             agg = ContextAggregator(session)
@@ -176,15 +257,33 @@ class TestGetCrucialMoments:
 
     def test_returns_limited_moments(self):
         events = [
-            StubRow(description="홈런", wpa=0.5, event_type="home_run", inning=9,
-                    inning_half="bottom", away_score=2, home_score=3,
-                    batter_name="A", pitcher_name="B"),
-            StubRow(description="안타", wpa=0.3, event_type="hit", inning=7,
-                    inning_half="top", away_score=1, home_score=2,
-                    batter_name="C", pitcher_name="D"),
+            StubRow(
+                description="홈런",
+                wpa=0.5,
+                event_type="home_run",
+                inning=9,
+                inning_half="bottom",
+                away_score=2,
+                home_score=3,
+                batter_name="A",
+                pitcher_name="B",
+            ),
+            StubRow(
+                description="안타",
+                wpa=0.3,
+                event_type="hit",
+                inning=7,
+                inning_half="top",
+                away_score=1,
+                home_score=2,
+                batter_name="C",
+                pitcher_name="D",
+            ),
         ]
         session = MagicMock()
-        session.query.return_value.filter.return_value.order_by.return_value.limit.return_value.all.return_value = events
+        session.query.return_value.filter.return_value.order_by.return_value.limit.return_value.all.return_value = (
+            events
+        )
         agg = ContextAggregator(session)
         result = agg.get_crucial_moments("20240501LGSS0", limit=1)
         assert len(result) == 1

@@ -25,6 +25,7 @@ class TestCrawlTransitTimeCLI:
             call_kwargs = mock_instance.run.call_args.kwargs
             assert call_kwargs["save"] is True
             import datetime
+
             assert call_kwargs["game_date"] == datetime.date(2026, 6, 3)
 
     def test_main_with_origin_filter(self):

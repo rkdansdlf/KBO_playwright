@@ -73,10 +73,14 @@ class TestRuntimeHydratorHydrateYear:
 
         hydrator, engine1, engine2, s1, s2 = _hydrator_engine_pair
 
-        s1.add(Game(
-            game_id="20250601_01", game_date=date(2025, 6, 1),
-            home_team="SSG", away_team="LG",
-        ))
+        s1.add(
+            Game(
+                game_id="20250601_01",
+                game_date=date(2025, 6, 1),
+                home_team="SSG",
+                away_team="LG",
+            )
+        )
         s1.commit()
 
         result = hydrator.hydrate_year(2025)
@@ -90,14 +94,21 @@ class TestRuntimeHydratorHydrateYear:
 
         hydrator, engine1, engine2, s1, s2 = _hydrator_engine_pair
 
-        s1.add(Game(
-            game_id="20250601_01", game_date=date(2025, 6, 1),
-            home_team="SSG", away_team="LG",
-        ))
+        s1.add(
+            Game(
+                game_id="20250601_01",
+                game_date=date(2025, 6, 1),
+                home_team="SSG",
+                away_team="LG",
+            )
+        )
         s1.commit()
-        s2.add(GameIdAlias(
-            alias_game_id="old_20250601_01", canonical_game_id="20250601_01",
-        ))
+        s2.add(
+            GameIdAlias(
+                alias_game_id="old_20250601_01",
+                canonical_game_id="20250601_01",
+            )
+        )
         s2.commit()
 
         result = hydrator.hydrate_year(2025, preserve_aliases=True)
@@ -108,10 +119,14 @@ class TestRuntimeHydratorHydrateYear:
 
         hydrator, engine1, engine2, s1, s2 = _hydrator_engine_pair
 
-        s1.add(Game(
-            game_id="20250601_01", game_date=date(2025, 6, 1),
-            home_team="SSG", away_team="LG",
-        ))
+        s1.add(
+            Game(
+                game_id="20250601_01",
+                game_date=date(2025, 6, 1),
+                home_team="SSG",
+                away_team="LG",
+            )
+        )
         s1.commit()
 
         result = hydrator.hydrate_year(2025, target_date=date(2025, 6, 15))

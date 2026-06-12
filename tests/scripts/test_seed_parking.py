@@ -7,6 +7,7 @@ class TestSeedParking:
             mock_session = MagicMock()
             mock_sf.return_value.__enter__.return_value = mock_session
             from scripts.seed_parking import run
+
             run(dry_run=False)
             mock_session.commit.assert_called_once()
 
@@ -15,5 +16,6 @@ class TestSeedParking:
             mock_session = MagicMock()
             mock_sf.return_value.__enter__.return_value = mock_session
             from scripts.seed_parking import run
+
             run(dry_run=True)
             mock_session.commit.assert_not_called()

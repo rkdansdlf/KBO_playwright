@@ -18,12 +18,16 @@ class TestInit:
             assert p.user_agents == DEFAULT_USER_AGENTS
 
     def test_env_overrides(self):
-        with patch.dict("os.environ", {
-            "KBO_REQUEST_DELAY_MIN": "3.0",
-            "KBO_REQUEST_DELAY_MAX": "5.0",
-            "KBO_REQUEST_MAX_RETRIES": "5",
-            "KBO_REQUEST_BACKOFF": "2.0",
-        }, clear=True):
+        with patch.dict(
+            "os.environ",
+            {
+                "KBO_REQUEST_DELAY_MIN": "3.0",
+                "KBO_REQUEST_DELAY_MAX": "5.0",
+                "KBO_REQUEST_MAX_RETRIES": "5",
+                "KBO_REQUEST_BACKOFF": "2.0",
+            },
+            clear=True,
+        ):
             p = RequestPolicy()
             assert p.min_delay == 3.0
             assert p.max_delay == 5.0
@@ -31,10 +35,14 @@ class TestInit:
             assert p.backoff_factor == 2.0
 
     def test_swapped_min_max(self):
-        with patch.dict("os.environ", {
-            "KBO_REQUEST_DELAY_MIN": "5.0",
-            "KBO_REQUEST_DELAY_MAX": "3.0",
-        }, clear=True):
+        with patch.dict(
+            "os.environ",
+            {
+                "KBO_REQUEST_DELAY_MIN": "5.0",
+                "KBO_REQUEST_DELAY_MAX": "3.0",
+            },
+            clear=True,
+        ):
             p = RequestPolicy()
             assert p.min_delay == 3.0
             assert p.max_delay == 5.0

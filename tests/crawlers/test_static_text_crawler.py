@@ -63,7 +63,8 @@ class TestCrawlNamuwiki:
         mock_pool.acquire = AsyncMock(return_value=mock_page)
         mock_page.goto = AsyncMock()
         mock_page.wait_for_timeout = AsyncMock()
-        mock_page.content = AsyncMock(return_value="""
+        mock_page.content = AsyncMock(
+            return_value="""
             <html>
             <body>
                 <div class="wiki-title">KBO Rules [편집]</div>
@@ -75,7 +76,8 @@ class TestCrawlNamuwiki:
                 <script>bad</script>
             </body>
             </html>
-        """)
+        """
+        )
 
         result = await crawler.crawl_namuwiki("https://namu.wiki/w/KBO")
 
@@ -93,9 +95,11 @@ class TestCrawlNamuwiki:
         mock_pool.acquire = AsyncMock(return_value=mock_page)
         mock_page.goto = AsyncMock()
         mock_page.wait_for_timeout = AsyncMock()
-        mock_page.content = AsyncMock(return_value="""
+        mock_page.content = AsyncMock(
+            return_value="""
             <html><body>Plain body text</body></html>
-        """)
+        """
+        )
 
         result = await crawler.crawl_namuwiki("https://namu.wiki/w/Test")
 

@@ -24,10 +24,14 @@ class TestParkingLotRepository:
         session = self._session(engine)
         repo = ParkingLotRepository(session)
 
-        lot = repo.save({
-            "stadium_id": "JAMSIL", "name": "잠실주차장",
-            "lot_type": "official", "capacity": 500,
-        })
+        lot = repo.save(
+            {
+                "stadium_id": "JAMSIL",
+                "name": "잠실주차장",
+                "lot_type": "official",
+                "capacity": 500,
+            }
+        )
         session.commit()
         assert lot.id is not None
         assert lot.name == "잠실주차장"
@@ -38,17 +42,25 @@ class TestParkingLotRepository:
         session = self._session(engine)
         repo = ParkingLotRepository(session)
 
-        r1 = repo.save({
-            "stadium_id": "JAMSIL", "name": "잠실주차장",
-            "lot_type": "official", "capacity": 500,
-        })
+        r1 = repo.save(
+            {
+                "stadium_id": "JAMSIL",
+                "name": "잠실주차장",
+                "lot_type": "official",
+                "capacity": 500,
+            }
+        )
         session.commit()
 
-        r2 = repo.save({
-            "stadium_id": "JAMSIL", "name": "잠실주차장",
-            "lot_type": "official", "capacity": 600,
-            "operating_hours": "09:00-22:00",
-        })
+        r2 = repo.save(
+            {
+                "stadium_id": "JAMSIL",
+                "name": "잠실주차장",
+                "lot_type": "official",
+                "capacity": 600,
+                "operating_hours": "09:00-22:00",
+            }
+        )
         session.commit()
 
         assert r1.id == r2.id
@@ -74,10 +86,12 @@ class TestParkingLotRepository:
         session = self._session(engine)
         repo = ParkingLotRepository(session)
 
-        count = repo.bulk_save([
-            {"stadium_id": "JAMSIL", "name": "A", "lot_type": "official"},
-            {"stadium_id": "JAMSIL", "name": "B", "lot_type": "public"},
-        ])
+        count = repo.bulk_save(
+            [
+                {"stadium_id": "JAMSIL", "name": "A", "lot_type": "official"},
+                {"stadium_id": "JAMSIL", "name": "B", "lot_type": "public"},
+            ]
+        )
         session.commit()
         assert count == 2
 
@@ -106,10 +120,14 @@ class TestParkingFeeRuleRepository:
         repo = ParkingFeeRuleRepository(session)
 
         lot_id = self._create_lot(session)
-        rule = repo.save({
-            "parking_lot_id": lot_id, "vehicle_type": "sedan",
-            "base_fee": 2000, "base_minutes": 30,
-        })
+        rule = repo.save(
+            {
+                "parking_lot_id": lot_id,
+                "vehicle_type": "sedan",
+                "base_fee": 2000,
+                "base_minutes": 30,
+            }
+        )
         session.commit()
         assert rule.id is not None
         assert rule.base_fee == 2000
@@ -121,17 +139,25 @@ class TestParkingFeeRuleRepository:
         repo = ParkingFeeRuleRepository(session)
 
         lot_id = self._create_lot(session)
-        r1 = repo.save({
-            "parking_lot_id": lot_id, "vehicle_type": "sedan",
-            "base_fee": 2000, "base_minutes": 30,
-        })
+        r1 = repo.save(
+            {
+                "parking_lot_id": lot_id,
+                "vehicle_type": "sedan",
+                "base_fee": 2000,
+                "base_minutes": 30,
+            }
+        )
         session.commit()
 
-        r2 = repo.save({
-            "parking_lot_id": lot_id, "vehicle_type": "sedan",
-            "base_fee": 2500, "base_minutes": 30,
-            "daily_max_fee": 10000,
-        })
+        r2 = repo.save(
+            {
+                "parking_lot_id": lot_id,
+                "vehicle_type": "sedan",
+                "base_fee": 2500,
+                "base_minutes": 30,
+                "daily_max_fee": 10000,
+            }
+        )
         session.commit()
 
         assert r1.id == r2.id

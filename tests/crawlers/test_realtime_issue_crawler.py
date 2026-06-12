@@ -25,7 +25,14 @@ class TestFetchNaverNewsHeadlines:
         mock_response.json.return_value = {
             "result": {
                 "newsList": [
-                    {"title": "KBO News", "subContent": "Content", "oid": "123", "aid": "456", "officeName": "Sports", "datetime": "2024-01-01"},
+                    {
+                        "title": "KBO News",
+                        "subContent": "Content",
+                        "oid": "123",
+                        "aid": "456",
+                        "officeName": "Sports",
+                        "datetime": "2024-01-01",
+                    },
                 ],
             },
         }
@@ -99,10 +106,10 @@ class TestFetchMlbparkBullpenPosts:
         mock_response = MagicMock()
         mock_response.status_code = 200
         mock_response.text = (
-            '<html><body>'
+            "<html><body>"
             '<a href="/mp/b.php?b=bullpen&m=view&id=12345">Same</a>'
             '<a href="/mp/b.php?b=bullpen&m=view&id=12345">Same</a>'
-            '</body></html>'
+            "</body></html>"
         )
         mock_client.get.return_value = mock_response
 

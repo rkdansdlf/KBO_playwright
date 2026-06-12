@@ -44,6 +44,7 @@ class TestGetValue:
     def test_object_attr(self):
         class Obj:
             x = 42
+
         assert _get_value(Obj(), "x") == 42
 
     def test_none_value(self):
@@ -141,7 +142,8 @@ class TestHasRequiredDetailRows:
         payload = {
             "teams": {"away": {"code": "LG", "line_score": [1]}, "home": {"code": "SS"}},
             "metadata": {},
-            "hitters": {}, "pitchers": {},
+            "hitters": {},
+            "pitchers": {},
         }
         assert _has_required_detail_rows(payload) is True
 
@@ -149,7 +151,8 @@ class TestHasRequiredDetailRows:
         payload = {
             "teams": {"away": {"code": "LG"}, "home": {"code": "SS"}},
             "metadata": {"stadium": "Jamsil"},
-            "hitters": {}, "pitchers": {},
+            "hitters": {},
+            "pitchers": {},
         }
         assert _has_required_detail_rows(payload) is True
 

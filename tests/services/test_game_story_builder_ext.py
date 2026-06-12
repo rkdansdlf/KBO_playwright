@@ -14,8 +14,12 @@ from src.services.game_story_builder import (
 
 def _make_game(**kwargs):
     defaults = dict(
-        game_id="20240501LGSS0", game_date=date(2024, 5, 1),
-        away_team="LG", home_team="SS", away_score=3, home_score=5,
+        game_id="20240501LGSS0",
+        game_date=date(2024, 5, 1),
+        away_team="LG",
+        home_team="SS",
+        away_score=3,
+        home_score=5,
         game_status="completed",
     )
     defaults.update(kwargs)
@@ -24,13 +28,25 @@ def _make_game(**kwargs):
 
 def _make_event(**kwargs):
     defaults = dict(
-        id=1, event_seq=1, inning=1, inning_half="top",
-        away_score=0, home_score=0, description="안타",
-        event_type="hit", result_code="H", rbi=0, wpa=0.05,
-        batter_name="Kim", pitcher_name="Park",
-        batter_id=1, pitcher_id=2,
-        outs_before=0, outs_after=1,
-        bases_before="000", bases_after="100",
+        id=1,
+        event_seq=1,
+        inning=1,
+        inning_half="top",
+        away_score=0,
+        home_score=0,
+        description="안타",
+        event_type="hit",
+        result_code="H",
+        rbi=0,
+        wpa=0.05,
+        batter_name="Kim",
+        pitcher_name="Park",
+        batter_id=1,
+        pitcher_id=2,
+        outs_before=0,
+        outs_after=1,
+        bases_before="000",
+        bases_after="100",
     )
     defaults.update(kwargs)
     return MagicMock(spec=GameEvent, **defaults)
@@ -47,8 +63,7 @@ class TestBuild:
     def test_single_event_creates_timeline(self):
         builder = GameStoryBuilder()
         game = _make_game()
-        event = _make_event(description="홈런", result_code="HR", rbi=2, wpa=0.8,
-                            inning=5, inning_half="bottom")
+        event = _make_event(description="홈런", result_code="HR", rbi=2, wpa=0.8, inning=5, inning_half="bottom")
         result = builder.build(game, [event])
         assert len(result["timeline"]) >= 1
         assert result["story_flags"]["home_runs"] >= 0
@@ -93,34 +108,46 @@ class TestBaseTags:
 
     def test_game_tying_tag(self):
         builder = GameStoryBuilder()
-        tags = builder._base_tags(MagicMock(wpa=0.1, rbi=0, result_code="H",
-                                            description="안타", inning=5,
-                                            inning_half="top"),
-                                  "top", -1, 0, 1)
+        tags = builder._base_tags(
+            MagicMock(wpa=0.1, rbi=0, result_code="H", description="안타", inning=5, inning_half="top"), "top", -1, 0, 1
+        )
         assert "game_tying" in tags
 
     def test_go_ahead_tag(self):
         builder = GameStoryBuilder()
-        tags = builder._base_tags(MagicMock(wpa=0.1, rbi=0, result_code="H",
-                                            description="안타", inning=5,
-                                            inning_half="top"),
-                                  "top", 0, 1, 1)
+        tags = builder._base_tags(
+            MagicMock(wpa=0.1, rbi=0, result_code="H", description="안타", inning=5, inning_half="top"), "top", 0, 1, 1
+        )
         assert "go_ahead" in tags
 
     def test_walk_off_tag(self):
         builder = GameStoryBuilder()
-        tags = builder._base_tags(MagicMock(wpa=0.5, rbi=1, result_code="H",
-                                            description="끝내기 안타", inning=9,
-                                            inning_half="bottom"),
-                                  "bottom", -1, 1, 1)
+        tags = builder._base_tags(
+            MagicMock(wpa=0.5, rbi=1, result_code="H", description="끝내기 안타", inning=9, inning_half="bottom"),
+            "bottom",
+            -1,
+            1,
+            1,
+        )
         assert "walk_off" in tags
 
     def test_high_wpa_tag(self):
         builder = GameStoryBuilder()
-        tags = builder._base_tags(MagicMock(spec=["wpa", "rbi", "result_code", "description", "inning", "event_type"],
-                                            wpa=0.3, rbi=0, result_code="H",
-                                            description="안타", inning=5, event_type="hit"),
-                                  "top", 0, 1, 1)
+        tags = builder._base_tags(
+            MagicMock(
+                spec=["wpa", "rbi", "result_code", "description", "inning", "event_type"],
+                wpa=0.3,
+                rbi=0,
+                result_code="H",
+                description="안타",
+                inning=5,
+                event_type="hit",
+            ),
+            "top",
+            0,
+            1,
+            1,
+        )
         assert "high_wpa" in tags
 
 

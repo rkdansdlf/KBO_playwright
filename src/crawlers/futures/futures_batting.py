@@ -69,7 +69,6 @@ def _norm_header(txt: str) -> str:
     return HEADER_MAP.get(t, txt.strip())
 
 
-
 def _compute_missing(row: dict) -> dict[str, Any]:
     """Compute missing derived stats (SLG, OBP) if possible."""
     H = row.get("H")

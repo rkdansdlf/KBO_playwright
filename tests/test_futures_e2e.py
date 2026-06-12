@@ -29,7 +29,14 @@ async def main():
 
     # Show sample
     for row in rows[:3]:
-        logger.info("  %s: AVG=%s, G=%s, H=%s, HR=%s", row.get('season'), row.get('AVG'), row.get('G'), row.get('H'), row.get('HR'))
+        logger.info(
+            "  %s: AVG=%s, G=%s, H=%s, HR=%s",
+            row.get("season"),
+            row.get("AVG"),
+            row.get("G"),
+            row.get("H"),
+            row.get("HR"),
+        )
     logger.info("")
 
     # Step 2: Get or create player in database
@@ -70,7 +77,14 @@ async def main():
 
         logger.info("Found %d Futures records in database:", len(results))
         for record in results:
-            logger.info("  %s: AVG=%s, G=%s, H=%s, HR=%s", record.season, record.avg, record.games, record.hits, record.home_runs)
+            logger.info(
+                "  %s: AVG=%s, G=%s, H=%s, HR=%s",
+                record.season,
+                record.avg,
+                record.games,
+                record.hits,
+                record.home_runs,
+            )
 
     logger.info("\n=== Test Complete ===")
 

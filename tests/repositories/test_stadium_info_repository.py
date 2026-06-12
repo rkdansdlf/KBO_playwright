@@ -26,13 +26,15 @@ class TestStadiumInfoRepository:
         session = self._session(engine)
         repo = StadiumInfoRepository(session)
 
-        info = repo.save_stadium_info({
-            "stadium_code": "JAMSIL",
-            "name_kr": "잠실종합운동장",
-            "name_en": "Jamsil Baseball Stadium",
-            "home_team_id": "LG",
-            "capacity": 25000,
-        })
+        info = repo.save_stadium_info(
+            {
+                "stadium_code": "JAMSIL",
+                "name_kr": "잠실종합운동장",
+                "name_en": "Jamsil Baseball Stadium",
+                "home_team_id": "LG",
+                "capacity": 25000,
+            }
+        )
         session.commit()
 
         assert info.stadium_code == "JAMSIL"
@@ -44,20 +46,24 @@ class TestStadiumInfoRepository:
         session = self._session(engine)
         repo = StadiumInfoRepository(session)
 
-        i1 = repo.save_stadium_info({
-            "stadium_code": "JAMSIL",
-            "name_kr": "Jamsil",
-            "home_team_id": "LG",
-            "capacity": 20000,
-        })
+        i1 = repo.save_stadium_info(
+            {
+                "stadium_code": "JAMSIL",
+                "name_kr": "Jamsil",
+                "home_team_id": "LG",
+                "capacity": 20000,
+            }
+        )
         session.commit()
 
-        i2 = repo.save_stadium_info({
-            "stadium_code": "JAMSIL",
-            "name_kr": "Jamsil Updated",
-            "home_team_id": "LG",
-            "capacity": 25000,
-        })
+        i2 = repo.save_stadium_info(
+            {
+                "stadium_code": "JAMSIL",
+                "name_kr": "Jamsil Updated",
+                "home_team_id": "LG",
+                "capacity": 25000,
+            }
+        )
         session.commit()
 
         assert i1.stadium_code == i2.stadium_code
@@ -115,12 +121,14 @@ class TestStadiumInfoRepository:
         session = self._session(engine)
         repo = StadiumInfoRepository(session)
 
-        reg = repo.save_regulation({
-            "stadium_code": "JAMSIL",
-            "regulation_type": "GROUND_RULE",
-            "title": "Foul Pole",
-            "description": "Ball hitting foul pole is a home run.",
-        })
+        reg = repo.save_regulation(
+            {
+                "stadium_code": "JAMSIL",
+                "regulation_type": "GROUND_RULE",
+                "title": "Foul Pole",
+                "description": "Ball hitting foul pole is a home run.",
+            }
+        )
         session.commit()
 
         assert reg.id is not None
@@ -133,20 +141,24 @@ class TestStadiumInfoRepository:
         session = self._session(engine)
         repo = StadiumInfoRepository(session)
 
-        r1 = repo.save_regulation({
-            "stadium_code": "JAMSIL",
-            "regulation_type": "GROUND_RULE",
-            "title": "Foul Pole",
-            "description": "v1",
-        })
+        r1 = repo.save_regulation(
+            {
+                "stadium_code": "JAMSIL",
+                "regulation_type": "GROUND_RULE",
+                "title": "Foul Pole",
+                "description": "v1",
+            }
+        )
         session.commit()
 
-        r2 = repo.save_regulation({
-            "stadium_code": "JAMSIL",
-            "regulation_type": "GROUND_RULE",
-            "title": "Foul Pole",
-            "description": "v2",
-        })
+        r2 = repo.save_regulation(
+            {
+                "stadium_code": "JAMSIL",
+                "regulation_type": "GROUND_RULE",
+                "title": "Foul Pole",
+                "description": "v2",
+            }
+        )
         session.commit()
 
         assert r1.id != r2.id  # always inserts

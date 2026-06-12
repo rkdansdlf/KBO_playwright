@@ -52,14 +52,17 @@ def _mock_missing_modules():
 class TestCrawl20022009Stats:
     def test_main_imports(self):
         from scripts.crawl_2002_2009_stats import crawl_stats_for_year, main
+
         assert callable(main)
         assert callable(crawl_stats_for_year)
 
     def test_main_executes(self):
-        with patch("scripts.crawl_2002_2009_stats.sync_playwright") as mock_pw, \
-             patch("scripts.crawl_2002_2009_stats.save_batting_stats_safe"), \
-             patch("scripts.crawl_2002_2009_stats.save_pitching_stats_safe"), \
-             patch("scripts.crawl_2002_2009_stats.time.sleep"):
+        with (
+            patch("scripts.crawl_2002_2009_stats.sync_playwright") as mock_pw,
+            patch("scripts.crawl_2002_2009_stats.save_batting_stats_safe"),
+            patch("scripts.crawl_2002_2009_stats.save_pitching_stats_safe"),
+            patch("scripts.crawl_2002_2009_stats.time.sleep"),
+        ):
             mock_browser = MagicMock()
             mock_context = MagicMock()
             mock_page = MagicMock()
@@ -68,4 +71,5 @@ class TestCrawl20022009Stats:
             mock_browser.new_context.return_value = mock_context
             mock_context.new_page.return_value = mock_page
             from scripts.crawl_2002_2009_stats import main
+
             main()

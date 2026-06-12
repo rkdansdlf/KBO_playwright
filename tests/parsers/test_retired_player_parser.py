@@ -1,4 +1,3 @@
-
 from src.parsers.retired_player_parser import (
     _apply_stat,
     _clean_header,

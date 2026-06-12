@@ -39,10 +39,10 @@ async def main():
     if innings:
         logger.info("Sample inning data:")
         sample = innings[0]
-        logger.info("  Inning %s %s", sample['inning'], sample['half'])
-        logger.info("  Plays: %d", len(sample['plays']))
+        logger.info("  Inning %s %s", sample["inning"], sample["half"])
+        logger.info("  Plays: %d", len(sample["plays"]))
         if sample["plays"]:
-            logger.info("  First play: %s...", sample['plays'][0].get('description', '')[:50])
+            logger.info("  First play: %s...", sample["plays"][0].get("description", "")[:50])
     logger.info("")
 
     # Step 2: Save to database
@@ -54,9 +54,9 @@ async def main():
     logger.info("Step 3: Verifying saved data...")
     summary = get_game_relay_summary(game_id)
 
-    logger.info("Game: %s", summary['game_id'])
-    logger.info("Total plays: %s", summary['total_plays'])
-    logger.info("Innings recorded: %s", summary['innings'])
+    logger.info("Game: %s", summary["game_id"])
+    logger.info("Total plays: %s", summary["total_plays"])
+    logger.info("Innings recorded: %s", summary["innings"])
     logger.info("\nEvent types:")
     for event_type, count in summary["event_types"].items():
         if count > 0:

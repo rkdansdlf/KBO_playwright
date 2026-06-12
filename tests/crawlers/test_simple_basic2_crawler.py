@@ -1,4 +1,3 @@
-
 from src.crawlers.simple_basic2_crawler import parse_player_id_from_link, safe_parse_number
 
 
@@ -26,5 +25,3 @@ class TestParsePlayerIdFromLink:
 
     def test_no_player_id_returns_none(self):
         assert parse_player_id_from_link("/page.aspx") is None
-
-

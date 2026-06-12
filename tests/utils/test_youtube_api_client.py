@@ -1,4 +1,3 @@
-
 import pytest
 
 from src.utils.youtube_api_client import (
@@ -50,7 +49,13 @@ class TestExtractPlayerName:
 
 class TestYouTubeVideoItem:
     def test_video_item_fields(self):
-        item = YouTubeVideoItem(video_id="abc123", title="Test", description="Desc", published_at="2025-01-01", thumbnail_url="http://img.com/1.jpg")
+        item = YouTubeVideoItem(
+            video_id="abc123",
+            title="Test",
+            description="Desc",
+            published_at="2025-01-01",
+            thumbnail_url="http://img.com/1.jpg",
+        )
         assert item.video_id == "abc123"
         assert item.title == "Test"
         assert item.playlist_id is None

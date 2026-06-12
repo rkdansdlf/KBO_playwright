@@ -1,4 +1,3 @@
-
 import pytest
 
 from src.utils.throttle import AsyncThrottle

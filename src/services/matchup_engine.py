@@ -51,12 +51,8 @@ class MatchupEngine:
             if not self.session:
                 sess.close()
 
-    def _calc_precise_bvp(self, session, season_year: int) -> None:
-        """Aggregates precise batter vs pitcher stats from GameEvents."""
-        logger.info("   🎯 Calculating precise BvP for %s...", season_year)
-
-        # We fetch all plate appearance events
-        events = (
+    def _fetch_bvp_events(self, session, season_year: int) -> list[GameEvent]:
+        return (
             session.query(GameEvent)
             .join(Game, Game.game_id == GameEvent.game_id)
             .filter(func.substr(Game.game_id, 1, 4) == str(season_year))
@@ -65,121 +61,142 @@ class MatchupEngine:
             .all()
         )
 
-        # Aggregation Map: (batter_id, pitcher_id) -> stats
-        bvp_map = {}
+    @staticmethod
+    def _empty_bvp_stats(event: GameEvent) -> dict[str, Any]:
+        return {
+            "batter_name": event.batter_name,
+            "pitcher_name": event.pitcher_name,
+            "pa": 0,
+            "ab": 0,
+            "h": 0,
+            "d2": 0,
+            "d3": 0,
+            "hr": 0,
+            "bb": 0,
+            "hbp": 0,
+            "so": 0,
+            "sf": 0,
+            "rbi": 0,
+        }
 
-        for ev in events:
-            key = (ev.batter_id, ev.pitcher_id)
-            if key not in bvp_map:
-                bvp_map[key] = {
-                    "batter_name": ev.batter_name,
-                    "pitcher_name": ev.pitcher_name,
-                    "pa": 0,
-                    "ab": 0,
-                    "h": 0,
-                    "d2": 0,
-                    "d3": 0,
-                    "hr": 0,
-                    "bb": 0,
-                    "hbp": 0,
-                    "so": 0,
-                    "sf": 0,
-                    "rbi": 0,
-                }
+    @staticmethod
+    def _apply_bvp_event(stats: dict[str, Any], event: GameEvent) -> None:
+        stats["pa"] += 1
+        desc = event.description or ""
+        is_hit = any(k in desc for k in ["안타", "2루타", "3루타", "홈런"])
+        is_bb = "볼넷" in desc or "사구" in desc
+        is_sf = "희생플라이" in desc
 
-            stats = bvp_map[key]
-            stats["pa"] += 1
+        if is_hit:
+            MatchupEngine._apply_bvp_hit(stats, desc)
+        elif is_bb:
+            MatchupEngine._apply_bvp_walk(stats, desc)
+        elif is_sf:
+            stats["sf"] += 1
+        elif "희생번트" not in desc:
+            stats["ab"] += 1
+            if "삼진" in desc:
+                stats["so"] += 1
+        stats["rbi"] += event.rbi or 0
 
-            desc = ev.description or ""
-            is_hit = any(k in desc for k in ["안타", "2루타", "3루타", "홈런"])
-            is_bb = "볼넷" in desc or "사구" in desc
-            is_sf = "희생플라이" in desc
+    @staticmethod
+    def _apply_bvp_hit(stats: dict[str, Any], description: str) -> None:
+        stats["ab"] += 1
+        stats["h"] += 1
+        if "2루타" in description:
+            stats["d2"] += 1
+        elif "3루타" in description:
+            stats["d3"] += 1
+        elif "홈런" in description:
+            stats["hr"] += 1
 
-            if is_hit:
-                stats["ab"] += 1
-                stats["h"] += 1
-                if "2루타" in desc:
-                    stats["d2"] += 1
-                elif "3루타" in desc:
-                    stats["d3"] += 1
-                elif "홈런" in desc:
-                    stats["hr"] += 1
-            elif is_bb:
-                if "볼넷" in desc:
-                    stats["bb"] += 1
-                else:
-                    stats["hbp"] += 1
-            elif is_sf:
-                stats["sf"] += 1
-            else:
-                if "희생번트" not in desc:
-                    stats["ab"] += 1
-                    if "삼진" in desc:
-                        stats["so"] += 1
+    @staticmethod
+    def _apply_bvp_walk(stats: dict[str, Any], description: str) -> None:
+        if "볼넷" in description:
+            stats["bb"] += 1
+        else:
+            stats["hbp"] += 1
 
-            stats["rbi"] += ev.rbi or 0
+    def _build_bvp_map(self, events: list[GameEvent]) -> dict[tuple[int, int], dict[str, Any]]:
+        bvp_map: dict[tuple[int, int], dict[str, Any]] = {}
+        for event in events:
+            key = (event.batter_id, event.pitcher_id)
+            stats = bvp_map.setdefault(key, self._empty_bvp_stats(event))
+            self._apply_bvp_event(stats, event)
+        return bvp_map
 
-        # Upsert Logic: Check for existing career record
-        for (bid, pid), s in bvp_map.items():
-            existing = session.query(MatchupBvP).filter_by(batter_id=bid, pitcher_id=pid).first()
+    def _update_existing_bvp(self, existing: MatchupBvP, stats: dict[str, Any]) -> None:
+        existing.plate_appearances += stats["pa"]
+        existing.at_bats += stats["ab"]
+        existing.hits += stats["h"]
+        existing.doubles += stats["d2"]
+        existing.triples += stats["d3"]
+        existing.home_runs += stats["hr"]
+        existing.rbi += stats["rbi"]
+        existing.walks += stats["bb"]
+        existing.hbp += stats["hbp"]
+        existing.strikeouts += stats["so"]
+        existing.sacrifice_flies += stats["sf"]
+        avg, obp, slg, ops = self._calc_rate_stats(
+            existing.hits,
+            existing.at_bats,
+            existing.plate_appearances,
+            existing.walks,
+            existing.hbp,
+            existing.doubles,
+            existing.triples,
+            existing.home_runs,
+        )
+        existing.avg, existing.obp, existing.slg, existing.ops = avg, obp, slg, ops
+
+    def _add_new_bvp(self, session, batter_id: int, pitcher_id: int, stats: dict[str, Any]) -> None:
+        avg, obp, slg, ops = self._calc_rate_stats(
+            stats["h"],
+            stats["ab"],
+            stats["pa"],
+            stats["bb"],
+            stats["hbp"],
+            stats["d2"],
+            stats["d3"],
+            stats["hr"],
+        )
+        session.add(
+            MatchupBvP(
+                batter_id=batter_id,
+                batter_name=stats["batter_name"],
+                pitcher_id=pitcher_id,
+                pitcher_name=stats["pitcher_name"],
+                plate_appearances=stats["pa"],
+                at_bats=stats["ab"],
+                hits=stats["h"],
+                doubles=stats["d2"],
+                triples=stats["d3"],
+                home_runs=stats["hr"],
+                rbi=stats["rbi"],
+                walks=stats["bb"],
+                hbp=stats["hbp"],
+                strikeouts=stats["so"],
+                sacrifice_flies=stats["sf"],
+                avg=avg,
+                obp=obp,
+                slg=slg,
+                ops=ops,
+            ),
+        )
+
+    def _upsert_bvp_map(self, session, bvp_map: dict[tuple[int, int], dict[str, Any]]) -> None:
+        for (batter_id, pitcher_id), stats in bvp_map.items():
+            existing = session.query(MatchupBvP).filter_by(batter_id=batter_id, pitcher_id=pitcher_id).first()
             if existing:
-                existing.plate_appearances += s["pa"]
-                existing.at_bats += s["ab"]
-                existing.hits += s["h"]
-                existing.doubles += s["d2"]
-                existing.triples += s["d3"]
-                existing.home_runs += s["hr"]
-                existing.rbi += s["rbi"]
-                existing.walks += s["bb"]
-                existing.hbp += s["hbp"]
-                existing.strikeouts += s["so"]
-                existing.sacrifice_flies += s["sf"]
-                # Recalculate
-                avg, obp, slg, ops = self._calc_rate_stats(
-                    existing.hits,
-                    existing.at_bats,
-                    existing.plate_appearances,
-                    existing.walks,
-                    existing.hbp,
-                    existing.doubles,
-                    existing.triples,
-                    existing.home_runs,
-                )
-                existing.avg, existing.obp, existing.slg, existing.ops = avg, obp, slg, ops
+                self._update_existing_bvp(existing, stats)
             else:
-                avg, obp, slg, ops = self._calc_rate_stats(
-                    s["h"],
-                    s["ab"],
-                    s["pa"],
-                    s["bb"],
-                    s["hbp"],
-                    s["d2"],
-                    s["d3"],
-                    s["hr"],
-                )
-                session.add(
-                    MatchupBvP(
-                        batter_id=bid,
-                        batter_name=s["batter_name"],
-                        pitcher_id=pid,
-                        pitcher_name=s["pitcher_name"],
-                        plate_appearances=s["pa"],
-                        at_bats=s["ab"],
-                        hits=s["h"],
-                        doubles=s["d2"],
-                        triples=s["d3"],
-                        home_runs=s["hr"],
-                        rbi=s["rbi"],
-                        walks=s["bb"],
-                        hbp=s["hbp"],
-                        strikeouts=s["so"],
-                        sacrifice_flies=s["sf"],
-                        avg=avg,
-                        obp=obp,
-                        slg=slg,
-                        ops=ops,
-                    ),
-                )
+                self._add_new_bvp(session, batter_id, pitcher_id, stats)
+
+    def _calc_precise_bvp(self, session, season_year: int) -> None:
+        """Aggregates precise batter vs pitcher stats from GameEvents."""
+        logger.info("   🎯 Calculating precise BvP for %s...", season_year)
+        events = self._fetch_bvp_events(session, season_year)
+        self._upsert_bvp_map(session, self._build_bvp_map(events))
 
     def _clear_situational_splits(self, session, season_year: int) -> None:
         session.query(BatterSplit).filter(BatterSplit.season_year == season_year).delete()

@@ -133,10 +133,19 @@ class TestSaveBaserunningStats:
         mock_connect.return_value = mock_conn
         mock_conn.cursor.return_value = mock_cursor
         mock_crawl.return_value = [
-            {"player_id": "12345", "player_name": "Kim", "team_id": "LG", "year": 2024,
-             "games": 100, "stolen_base_attempts": 20, "stolen_bases": 15,
-             "caught_stealing": 5, "stolen_base_percentage": 0.75,
-             "out_on_base": 1, "picked_off": 2},
+            {
+                "player_id": "12345",
+                "player_name": "Kim",
+                "team_id": "LG",
+                "year": 2024,
+                "games": 100,
+                "stolen_base_attempts": 20,
+                "stolen_bases": 15,
+                "caught_stealing": 5,
+                "stolen_base_percentage": 0.75,
+                "out_on_base": 1,
+                "picked_off": 2,
+            },
         ]
 
         save_baserunning_stats([], year=2024, db_path=":memory:")

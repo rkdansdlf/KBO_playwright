@@ -120,8 +120,6 @@ def normalize_header(text: str) -> str:
     return cleaned
 
 
-
-
 def extract_player_id(href: str | None) -> int | None:
     if not href:
         return None

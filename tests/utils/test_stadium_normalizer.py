@@ -1,6 +1,5 @@
 """Tests for stadium_normalizer — stadium name normalization."""
 
-
 from src.utils.stadium_normalizer import get_stadium_code, normalize_stadium_name
 
 

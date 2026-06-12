@@ -1,4 +1,3 @@
-
 from src.parsers.food_parser import parse_food
 from src.parsers.parking_parser import parse_parking
 from src.parsers.registry import (
@@ -28,9 +27,15 @@ class TestParserRegistry:
 
     def test_registry_contains_all_ticket_entries(self):
         ticket_keys = [
-            "lg_twins_ticket", "hanwha_eagles_ticket", "samsung_lions_ticket",
-            "kt_wiz_ticket", "doosan_bears_ticket", "lotte_giants_ticket",
-            "kia_tigers_ticket", "nc_dinos_ticket", "ssg_landers_ticket",
+            "lg_twins_ticket",
+            "hanwha_eagles_ticket",
+            "samsung_lions_ticket",
+            "kt_wiz_ticket",
+            "doosan_bears_ticket",
+            "lotte_giants_ticket",
+            "kia_tigers_ticket",
+            "nc_dinos_ticket",
+            "ssg_landers_ticket",
             "kiwoom_heroes_ticket",
         ]
         for key in ticket_keys:

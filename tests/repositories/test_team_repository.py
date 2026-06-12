@@ -95,7 +95,10 @@ class TestTeamRepository:
         roster["back_number"] = "99"
         repo.save_daily_rosters([roster])
         from src.models.team import TeamDailyRoster
-        record = session.query(TeamDailyRoster).filter_by(
-            roster_date=date(2025, 4, 1), team_code="LG", player_id=100
-        ).first()
+
+        record = (
+            session.query(TeamDailyRoster)
+            .filter_by(roster_date=date(2025, 4, 1), team_code="LG", player_id=100)
+            .first()
+        )
         assert record.back_number == "99"

@@ -25,14 +25,18 @@ class TestCongestionRepository:
         session = self._session(engine)
         repo = CongestionRepository(session)
 
-        record, created = repo.upsert({
-            "stadium_code": "JAMSIL", "location_type": "gate",
-            "location_label": "1번게이트",
-            "measured_at": datetime(2024, 10, 15, 18, 30),
-            "game_date": date(2024, 10, 15),
-            "congestion_level": "high", "congestion_index": 75.0,
-            "source": "seoul_open_api",
-        })
+        record, created = repo.upsert(
+            {
+                "stadium_code": "JAMSIL",
+                "location_type": "gate",
+                "location_label": "1번게이트",
+                "measured_at": datetime(2024, 10, 15, 18, 30),
+                "game_date": date(2024, 10, 15),
+                "congestion_level": "high",
+                "congestion_index": 75.0,
+                "source": "seoul_open_api",
+            }
+        )
         session.commit()
 
         assert created is True
@@ -45,24 +49,33 @@ class TestCongestionRepository:
         session = self._session(engine)
         repo = CongestionRepository(session)
 
-        r1, created1 = repo.upsert({
-            "stadium_code": "JAMSIL", "location_type": "gate",
-            "location_label": "1번게이트",
-            "measured_at": datetime(2024, 10, 15, 18, 30),
-            "game_date": date(2024, 10, 15),
-            "congestion_level": "high", "congestion_index": 75.0,
-            "source": "seoul_open_api",
-        })
+        r1, created1 = repo.upsert(
+            {
+                "stadium_code": "JAMSIL",
+                "location_type": "gate",
+                "location_label": "1번게이트",
+                "measured_at": datetime(2024, 10, 15, 18, 30),
+                "game_date": date(2024, 10, 15),
+                "congestion_level": "high",
+                "congestion_index": 75.0,
+                "source": "seoul_open_api",
+            }
+        )
         session.commit()
 
-        r2, created2 = repo.upsert({
-            "stadium_code": "JAMSIL", "location_type": "gate",
-            "location_label": "1번게이트",
-            "measured_at": datetime(2024, 10, 15, 18, 30),
-            "game_date": date(2024, 10, 15),
-            "congestion_level": "very_high", "congestion_index": 90.0,
-            "source": "seoul_open_api", "people_count": 500,
-        })
+        r2, created2 = repo.upsert(
+            {
+                "stadium_code": "JAMSIL",
+                "location_type": "gate",
+                "location_label": "1번게이트",
+                "measured_at": datetime(2024, 10, 15, 18, 30),
+                "game_date": date(2024, 10, 15),
+                "congestion_level": "very_high",
+                "congestion_index": 90.0,
+                "source": "seoul_open_api",
+                "people_count": 500,
+            }
+        )
         session.commit()
 
         assert created2 is False
@@ -77,20 +90,30 @@ class TestCongestionRepository:
         session = self._session(engine)
         repo = CongestionRepository(session)
 
-        created, updated = repo.bulk_upsert([
-            {"stadium_code": "JAMSIL", "location_type": "gate",
-             "location_label": "1번게이트",
-             "measured_at": datetime(2024, 10, 15, 18, 30),
-             "game_date": date(2024, 10, 15),
-             "congestion_level": "high", "congestion_index": 75.0,
-             "source": "seoul_open_api"},
-            {"stadium_code": "JAMSIL", "location_type": "gate",
-             "location_label": "2번게이트",
-             "measured_at": datetime(2024, 10, 15, 18, 30),
-             "game_date": date(2024, 10, 15),
-             "congestion_level": "normal", "congestion_index": 30.0,
-             "source": "seoul_open_api"},
-        ])
+        created, updated = repo.bulk_upsert(
+            [
+                {
+                    "stadium_code": "JAMSIL",
+                    "location_type": "gate",
+                    "location_label": "1번게이트",
+                    "measured_at": datetime(2024, 10, 15, 18, 30),
+                    "game_date": date(2024, 10, 15),
+                    "congestion_level": "high",
+                    "congestion_index": 75.0,
+                    "source": "seoul_open_api",
+                },
+                {
+                    "stadium_code": "JAMSIL",
+                    "location_type": "gate",
+                    "location_label": "2번게이트",
+                    "measured_at": datetime(2024, 10, 15, 18, 30),
+                    "game_date": date(2024, 10, 15),
+                    "congestion_level": "normal",
+                    "congestion_index": 30.0,
+                    "source": "seoul_open_api",
+                },
+            ]
+        )
         session.commit()
         assert created == 2
         assert updated == 0
@@ -101,28 +124,44 @@ class TestCongestionRepository:
         session = self._session(engine)
         repo = CongestionRepository(session)
 
-        repo.upsert({"stadium_code": "JAMSIL", "location_type": "gate",
-                      "location_label": "1번게이트",
-                      "measured_at": datetime(2024, 10, 15, 18, 30),
-                      "game_date": date(2024, 10, 15),
-                      "congestion_level": "high", "congestion_index": 75.0,
-                      "source": "seoul_open_api"})
+        repo.upsert(
+            {
+                "stadium_code": "JAMSIL",
+                "location_type": "gate",
+                "location_label": "1번게이트",
+                "measured_at": datetime(2024, 10, 15, 18, 30),
+                "game_date": date(2024, 10, 15),
+                "congestion_level": "high",
+                "congestion_index": 75.0,
+                "source": "seoul_open_api",
+            }
+        )
         session.commit()
 
-        created, updated = repo.bulk_upsert([
-            {"stadium_code": "JAMSIL", "location_type": "gate",
-             "location_label": "1번게이트",
-             "measured_at": datetime(2024, 10, 15, 18, 30),
-             "game_date": date(2024, 10, 15),
-             "congestion_level": "very_high", "congestion_index": 90.0,
-             "source": "seoul_open_api"},
-            {"stadium_code": "JAMSIL", "location_type": "gate",
-             "location_label": "3번게이트",
-             "measured_at": datetime(2024, 10, 15, 19, 0),
-             "game_date": date(2024, 10, 15),
-             "congestion_level": "low", "congestion_index": 10.0,
-             "source": "seoul_open_api"},
-        ])
+        created, updated = repo.bulk_upsert(
+            [
+                {
+                    "stadium_code": "JAMSIL",
+                    "location_type": "gate",
+                    "location_label": "1번게이트",
+                    "measured_at": datetime(2024, 10, 15, 18, 30),
+                    "game_date": date(2024, 10, 15),
+                    "congestion_level": "very_high",
+                    "congestion_index": 90.0,
+                    "source": "seoul_open_api",
+                },
+                {
+                    "stadium_code": "JAMSIL",
+                    "location_type": "gate",
+                    "location_label": "3번게이트",
+                    "measured_at": datetime(2024, 10, 15, 19, 0),
+                    "game_date": date(2024, 10, 15),
+                    "congestion_level": "low",
+                    "congestion_index": 10.0,
+                    "source": "seoul_open_api",
+                },
+            ]
+        )
         session.commit()
         assert created == 1
         assert updated == 1
@@ -133,24 +172,42 @@ class TestCongestionRepository:
         session = self._session(engine)
         repo = CongestionRepository(session)
 
-        repo.upsert({"stadium_code": "JAMSIL", "location_type": "gate",
-                      "location_label": "1번게이트",
-                      "measured_at": datetime(2024, 10, 15, 18, 0),
-                      "game_date": date(2024, 10, 15),
-                      "congestion_level": "high", "congestion_index": 75.0,
-                      "source": "seoul_open_api"})
-        repo.upsert({"stadium_code": "JAMSIL", "location_type": "gate",
-                      "location_label": "1번게이트",
-                      "measured_at": datetime(2024, 10, 15, 19, 0),
-                      "game_date": date(2024, 10, 15),
-                      "congestion_level": "very_high", "congestion_index": 90.0,
-                      "source": "seoul_open_api"})
-        repo.upsert({"stadium_code": "MUNH", "location_type": "gate",
-                      "location_label": "1번게이트",
-                      "measured_at": datetime(2024, 10, 15, 18, 0),
-                      "game_date": date(2024, 10, 15),
-                      "congestion_level": "normal", "congestion_index": 40.0,
-                      "source": "seoul_open_api"})
+        repo.upsert(
+            {
+                "stadium_code": "JAMSIL",
+                "location_type": "gate",
+                "location_label": "1번게이트",
+                "measured_at": datetime(2024, 10, 15, 18, 0),
+                "game_date": date(2024, 10, 15),
+                "congestion_level": "high",
+                "congestion_index": 75.0,
+                "source": "seoul_open_api",
+            }
+        )
+        repo.upsert(
+            {
+                "stadium_code": "JAMSIL",
+                "location_type": "gate",
+                "location_label": "1번게이트",
+                "measured_at": datetime(2024, 10, 15, 19, 0),
+                "game_date": date(2024, 10, 15),
+                "congestion_level": "very_high",
+                "congestion_index": 90.0,
+                "source": "seoul_open_api",
+            }
+        )
+        repo.upsert(
+            {
+                "stadium_code": "MUNH",
+                "location_type": "gate",
+                "location_label": "1번게이트",
+                "measured_at": datetime(2024, 10, 15, 18, 0),
+                "game_date": date(2024, 10, 15),
+                "congestion_level": "normal",
+                "congestion_index": 40.0,
+                "source": "seoul_open_api",
+            }
+        )
         session.commit()
 
         results = repo.get_by_game_date("JAMSIL", date(2024, 10, 15))
@@ -162,18 +219,30 @@ class TestCongestionRepository:
         session = self._session(engine)
         repo = CongestionRepository(session)
 
-        repo.upsert({"stadium_code": "JAMSIL", "location_type": "gate",
-                      "location_label": "1번게이트",
-                      "measured_at": datetime(2024, 10, 15, 18, 0),
-                      "game_date": date(2024, 10, 15),
-                      "congestion_level": "high", "congestion_index": 75.0,
-                      "source": "seoul_open_api"})
-        repo.upsert({"stadium_code": "JAMSIL", "location_type": "subway_station",
-                      "location_label": "잠실역",
-                      "measured_at": datetime(2024, 10, 15, 18, 0),
-                      "game_date": date(2024, 10, 15),
-                      "congestion_level": "normal", "congestion_index": 40.0,
-                      "source": "seoul_open_api"})
+        repo.upsert(
+            {
+                "stadium_code": "JAMSIL",
+                "location_type": "gate",
+                "location_label": "1번게이트",
+                "measured_at": datetime(2024, 10, 15, 18, 0),
+                "game_date": date(2024, 10, 15),
+                "congestion_level": "high",
+                "congestion_index": 75.0,
+                "source": "seoul_open_api",
+            }
+        )
+        repo.upsert(
+            {
+                "stadium_code": "JAMSIL",
+                "location_type": "subway_station",
+                "location_label": "잠실역",
+                "measured_at": datetime(2024, 10, 15, 18, 0),
+                "game_date": date(2024, 10, 15),
+                "congestion_level": "normal",
+                "congestion_index": 40.0,
+                "source": "seoul_open_api",
+            }
+        )
         session.commit()
 
         results = repo.get_by_game_date("JAMSIL", date(2024, 10, 15), location_type="gate")
@@ -185,18 +254,30 @@ class TestCongestionRepository:
         session = self._session(engine)
         repo = CongestionRepository(session)
 
-        repo.upsert({"stadium_code": "JAMSIL", "location_type": "gate",
-                      "location_label": "1번게이트",
-                      "measured_at": datetime(2024, 10, 15, 18, 0),
-                      "game_date": date(2024, 10, 15),
-                      "congestion_level": "high", "congestion_index": 75.0,
-                      "source": "seoul_open_api"})
-        repo.upsert({"stadium_code": "JAMSIL", "location_type": "gate",
-                      "location_label": "1번게이트",
-                      "measured_at": datetime(2024, 10, 15, 19, 0),
-                      "game_date": date(2024, 10, 15),
-                      "congestion_level": "very_high", "congestion_index": 90.0,
-                      "source": "seoul_open_api"})
+        repo.upsert(
+            {
+                "stadium_code": "JAMSIL",
+                "location_type": "gate",
+                "location_label": "1번게이트",
+                "measured_at": datetime(2024, 10, 15, 18, 0),
+                "game_date": date(2024, 10, 15),
+                "congestion_level": "high",
+                "congestion_index": 75.0,
+                "source": "seoul_open_api",
+            }
+        )
+        repo.upsert(
+            {
+                "stadium_code": "JAMSIL",
+                "location_type": "gate",
+                "location_label": "1번게이트",
+                "measured_at": datetime(2024, 10, 15, 19, 0),
+                "game_date": date(2024, 10, 15),
+                "congestion_level": "very_high",
+                "congestion_index": 90.0,
+                "source": "seoul_open_api",
+            }
+        )
         session.commit()
 
         latest = repo.get_latest("JAMSIL", "1번게이트")
@@ -209,18 +290,30 @@ class TestCongestionRepository:
         session = self._session(engine)
         repo = CongestionRepository(session)
 
-        repo.upsert({"stadium_code": "JAMSIL", "location_type": "gate",
-                      "location_label": "1번게이트",
-                      "measured_at": datetime(2024, 10, 15, 18, 0),
-                      "game_date": date(2024, 10, 15),
-                      "congestion_level": "high", "congestion_index": 75.0,
-                      "source": "seoul_open_api"})
-        repo.upsert({"stadium_code": "JAMSIL", "location_type": "gate",
-                      "location_label": "2번게이트",
-                      "measured_at": datetime(2024, 10, 15, 18, 30),
-                      "game_date": date(2024, 10, 15),
-                      "congestion_level": "very_high", "congestion_index": 90.0,
-                      "source": "seoul_open_api"})
+        repo.upsert(
+            {
+                "stadium_code": "JAMSIL",
+                "location_type": "gate",
+                "location_label": "1번게이트",
+                "measured_at": datetime(2024, 10, 15, 18, 0),
+                "game_date": date(2024, 10, 15),
+                "congestion_level": "high",
+                "congestion_index": 75.0,
+                "source": "seoul_open_api",
+            }
+        )
+        repo.upsert(
+            {
+                "stadium_code": "JAMSIL",
+                "location_type": "gate",
+                "location_label": "2번게이트",
+                "measured_at": datetime(2024, 10, 15, 18, 30),
+                "game_date": date(2024, 10, 15),
+                "congestion_level": "very_high",
+                "congestion_index": 90.0,
+                "source": "seoul_open_api",
+            }
+        )
         session.commit()
 
         peak = repo.get_peak_congestion("JAMSIL", date(2024, 10, 15))

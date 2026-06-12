@@ -56,7 +56,18 @@ def _add_game(
     session.commit()
 
 
-def _add_standings(session: Session, standings_date=date(2025, 10, 1), team_code="LG", games_played=1, wins=1, losses=0, draws=0, runs_scored=5, runs_allowed=3, win_pct=1.0):
+def _add_standings(
+    session: Session,
+    standings_date=date(2025, 10, 1),
+    team_code="LG",
+    games_played=1,
+    wins=1,
+    losses=0,
+    draws=0,
+    runs_scored=5,
+    runs_allowed=3,
+    win_pct=1.0,
+):
     session.add(
         TeamStandingsDaily(
             standings_date=standings_date,
@@ -103,7 +114,9 @@ class TestAggregation:
         _add_season(session)
         _add_game(session)
         _add_standings(session, team_code="LG", wins=1, runs_scored=5, runs_allowed=3)
-        _add_standings(session, team_code="SSG", games_played=1, wins=0, losses=1, runs_scored=3, runs_allowed=5, win_pct=0.0)
+        _add_standings(
+            session, team_code="SSG", games_played=1, wins=0, losses=1, runs_scored=3, runs_allowed=5, win_pct=0.0
+        )
         result = validate_standings_integrity(session, date(2025, 10, 1))
         assert result["ok"] is True
 
@@ -120,7 +133,9 @@ class TestMismatchDetection:
         _add_season(session)
         _add_game(session)
         _add_standings(session, team_code="LG")
-        _add_standings(session, team_code="SSG", games_played=1, wins=0, losses=1, runs_scored=3, runs_allowed=5, win_pct=0.0)
+        _add_standings(
+            session, team_code="SSG", games_played=1, wins=0, losses=1, runs_scored=3, runs_allowed=5, win_pct=0.0
+        )
         result = validate_standings_integrity(session, date(2025, 10, 1))
         assert result["ok"] is True
         assert result["mismatches"] == []
@@ -129,7 +144,9 @@ class TestMismatchDetection:
         _add_season(session)
         _add_game(session)
         _add_standings(session, team_code="LG", wins=0)
-        _add_standings(session, team_code="SSG", games_played=1, wins=0, losses=1, runs_scored=3, runs_allowed=5, win_pct=0.0)
+        _add_standings(
+            session, team_code="SSG", games_played=1, wins=0, losses=1, runs_scored=3, runs_allowed=5, win_pct=0.0
+        )
         result = validate_standings_integrity(session, date(2025, 10, 1))
         assert result["ok"] is False
         lg_mismatch = [m for m in result["mismatches"] if m["team_code"] == "LG"]
@@ -140,7 +157,9 @@ class TestMismatchDetection:
         _add_season(session)
         _add_game(session)
         _add_standings(session, team_code="LG", runs_scored=99)
-        _add_standings(session, team_code="SSG", games_played=1, wins=0, losses=1, runs_scored=3, runs_allowed=5, win_pct=0.0)
+        _add_standings(
+            session, team_code="SSG", games_played=1, wins=0, losses=1, runs_scored=3, runs_allowed=5, win_pct=0.0
+        )
         result = validate_standings_integrity(session, date(2025, 10, 1))
         assert result["ok"] is False
         lg_mismatch = [m for m in result["mismatches"] if m["team_code"] == "LG"]
@@ -152,7 +171,9 @@ class TestMismatchDetection:
     def test_missing_standings_row_reported(self, session):
         _add_season(session)
         _add_game(session)
-        _add_standings(session, team_code="SSG", games_played=1, wins=0, losses=1, runs_scored=3, runs_allowed=5, win_pct=0.0)
+        _add_standings(
+            session, team_code="SSG", games_played=1, wins=0, losses=1, runs_scored=3, runs_allowed=5, win_pct=0.0
+        )
         # LG standings row is missing
         result = validate_standings_integrity(session, date(2025, 10, 1))
         mismatches = [m for m in result["mismatches"] if m["issue"] == "missing_standings_row"]
@@ -172,7 +193,9 @@ class TestMismatchDetection:
         _add_game(session, game_id="G1", home_team="LG", away_team="SSG", home_score=5, away_score=3)
         _add_game(session, game_id="G2", home_team="SSG", away_team="LG", home_score=2, away_score=4)
         _add_standings(session, team_code="LG", games_played=2, wins=2, runs_scored=9, runs_allowed=5)
-        _add_standings(session, team_code="SSG", games_played=2, wins=0, losses=2, runs_scored=5, runs_allowed=9, win_pct=0.0)
+        _add_standings(
+            session, team_code="SSG", games_played=2, wins=0, losses=2, runs_scored=5, runs_allowed=9, win_pct=0.0
+        )
         result = validate_standings_integrity(session, date(2025, 10, 1))
         assert result["ok"] is True
 
@@ -191,7 +214,9 @@ class TestFiltering:
         _add_game(session, game_id="G2", season_id=2, home_team="LG", away_team="KT", home_score=2, away_score=1)
         session.add(KboSeason(season_id=2, season_year=2025, league_type_code=2, league_type_name="Postseason"))
         session.commit()
-        _add_standings(session, team_code="SSG", games_played=1, wins=0, losses=1, runs_scored=3, runs_allowed=5, win_pct=0.0)
+        _add_standings(
+            session, team_code="SSG", games_played=1, wins=0, losses=1, runs_scored=3, runs_allowed=5, win_pct=0.0
+        )
         result = validate_standings_integrity(session, date(2025, 10, 1))
         mismatches = [m for m in result["mismatches"] if m["issue"] == "missing_standings_row"]
         lg_mismatches = [m for m in mismatches if m["team_code"] == "LG"]

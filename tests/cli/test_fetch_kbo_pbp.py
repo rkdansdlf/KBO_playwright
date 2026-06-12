@@ -11,8 +11,10 @@ class TestFetchKboPbpCLI:
         assert result == 1
 
     def test_main_with_season(self):
-        with patch("src.cli.fetch_kbo_pbp.load_relay_recovery_targets") as mock_load, \
-             patch("src.cli.fetch_kbo_pbp.recover_relay_data", new_callable=AsyncMock):
+        with (
+            patch("src.cli.fetch_kbo_pbp.load_relay_recovery_targets") as mock_load,
+            patch("src.cli.fetch_kbo_pbp.recover_relay_data", new_callable=AsyncMock),
+        ):
             mock_load.return_value = []
             result = main(["--season", "2025"])
             assert result == 0
@@ -23,8 +25,10 @@ class TestFetchKboPbpCLI:
             assert kwargs["missing_only"] is True
 
     def test_main_with_game_id(self):
-        with patch("src.cli.fetch_kbo_pbp.load_relay_recovery_targets") as mock_load, \
-             patch("src.cli.fetch_kbo_pbp.recover_relay_data", new_callable=AsyncMock) as mock_recover:
+        with (
+            patch("src.cli.fetch_kbo_pbp.load_relay_recovery_targets") as mock_load,
+            patch("src.cli.fetch_kbo_pbp.recover_relay_data", new_callable=AsyncMock) as mock_recover,
+        ):
             mock_load.return_value = [{"game_id": "20250323SSHH0"}]
             result = main(["--game-id", "20250323SSHH0"])
             assert result == 0

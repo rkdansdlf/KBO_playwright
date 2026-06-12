@@ -1,4 +1,3 @@
-
 from src.crawlers.manager_change_crawler import ManagerChangeCrawler
 
 

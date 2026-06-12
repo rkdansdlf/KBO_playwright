@@ -7,9 +7,11 @@ from src.cli.daily_story_batch import main
 
 class TestDailyStoryBatchCLI:
     def test_main_no_games(self):
-        with patch("src.cli.daily_story_batch.refresh_game_status_for_date") as mock_status, \
-             patch("src.cli.daily_story_batch.SessionLocal") as mock_sesh, \
-             patch("src.cli.daily_story_batch.write_refresh_manifest") as mock_manifest:
+        with (
+            patch("src.cli.daily_story_batch.refresh_game_status_for_date") as mock_status,
+            patch("src.cli.daily_story_batch.SessionLocal") as mock_sesh,
+            patch("src.cli.daily_story_batch.write_refresh_manifest") as mock_manifest,
+        ):
             mock_status.return_value = {"updated": 0}
             mock_session = MagicMock()
             mock_session.query.return_value.filter.return_value.order_by.return_value.all.return_value = []
@@ -20,10 +22,12 @@ class TestDailyStoryBatchCLI:
             mock_manifest.assert_called_once()
 
     def test_main_with_games(self):
-        with patch("src.cli.daily_story_batch.refresh_game_status_for_date") as mock_status, \
-             patch("src.cli.daily_story_batch.SessionLocal") as mock_sesh, \
-             patch("src.cli.daily_story_batch.GameStoryBuilder") as MockBuilder, \
-             patch("src.cli.daily_story_batch.write_refresh_manifest"):
+        with (
+            patch("src.cli.daily_story_batch.refresh_game_status_for_date") as mock_status,
+            patch("src.cli.daily_story_batch.SessionLocal") as mock_sesh,
+            patch("src.cli.daily_story_batch.GameStoryBuilder") as MockBuilder,
+            patch("src.cli.daily_story_batch.write_refresh_manifest"),
+        ):
             mock_status.return_value = {"updated": 0}
             mock_game = MagicMock()
             mock_game.game_id = "20251015LGHH0"

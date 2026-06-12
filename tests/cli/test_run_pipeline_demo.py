@@ -14,9 +14,11 @@ class TestRunPipelineDemoCLI:
             main([])
 
     def test_main_schedule_fixtures(self):
-        with patch("src.cli.run_pipeline_demo.Path") as MockPath, \
-             patch("src.cli.run_pipeline_demo.parse_schedule_html") as mock_parse, \
-             patch("src.cli.run_pipeline_demo.save_schedule_games") as mock_save:
+        with (
+            patch("src.cli.run_pipeline_demo.Path") as MockPath,
+            patch("src.cli.run_pipeline_demo.parse_schedule_html") as mock_parse,
+            patch("src.cli.run_pipeline_demo.save_schedule_games") as mock_save,
+        ):
             mock_path = MagicMock()
             mock_path.exists.return_value = True
             mock_path.glob.return_value = []
@@ -27,9 +29,11 @@ class TestRunPipelineDemoCLI:
             main(["--schedule-fixtures", "/tmp/fixtures"])
 
     def test_main_game_fixtures(self):
-        with patch("src.cli.run_pipeline_demo.Path") as MockPath, \
-             patch("src.cli.run_pipeline_demo.parse_game_detail_html") as mock_parse, \
-             patch("src.cli.run_pipeline_demo.save_game_detail") as mock_save:
+        with (
+            patch("src.cli.run_pipeline_demo.Path") as MockPath,
+            patch("src.cli.run_pipeline_demo.parse_game_detail_html") as mock_parse,
+            patch("src.cli.run_pipeline_demo.save_game_detail") as mock_save,
+        ):
             mock_path = MagicMock()
             mock_path.exists.return_value = True
             mock_file = MagicMock()

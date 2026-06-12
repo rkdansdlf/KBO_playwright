@@ -18,8 +18,10 @@ class TestFallbackMonitor:
         mock_path.side_effect = lambda *a, **kw: mock_path.return_value
 
         file_path = FallbackMonitor.save_audit_backup(
-            player_id="1001", type_name="batting",
-            original_data={"hits": 10}, player_name="홍길동",
+            player_id="1001",
+            type_name="batting",
+            original_data={"hits": 10},
+            player_name="홍길동",
         )
 
         saved = Path(file_path)
@@ -70,7 +72,8 @@ class TestFallbackMonitor:
         mock_path.side_effect = lambda *a, **kw: mock_path.return_value
 
         FallbackMonitor.save_audit_backup(
-            "2001", "pitching",
+            "2001",
+            "pitching",
             original_data={"era": 3.50},
             calculated_data={"era": 3.00},
         )

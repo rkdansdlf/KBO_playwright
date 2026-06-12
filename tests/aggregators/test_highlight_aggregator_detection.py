@@ -22,34 +22,48 @@ def session():
 
 
 def _add_game(session, game_id="20250101", status="COMPLETED"):
-    session.add(Game(
-        game_id=game_id,
-        stadium="잠실",
-        game_status=status,
-        game_date=date(2025, 1, 1),
-        home_team="LG",
-        away_team="SS",
-    ))
+    session.add(
+        Game(
+            game_id=game_id,
+            stadium="잠실",
+            game_status=status,
+            game_date=date(2025, 1, 1),
+            home_team="LG",
+            away_team="SS",
+        )
+    )
     session.commit()
 
 
-def _add_event(session, game_id="20250101", event_seq=1, inning=1,
-               inning_half="top", description=None, event_type="hit",
-               wpa=0.05, home_score=0, away_score=0,
-               bases_before="000", batter_id=10001):
-    session.add(GameEvent(
-        game_id=game_id,
-        event_seq=event_seq,
-        inning=inning,
-        inning_half=inning_half,
-        description=description,
-        event_type=event_type,
-        wpa=wpa,
-        home_score=home_score,
-        away_score=away_score,
-        bases_before=bases_before,
-        batter_id=batter_id,
-    ))
+def _add_event(
+    session,
+    game_id="20250101",
+    event_seq=1,
+    inning=1,
+    inning_half="top",
+    description=None,
+    event_type="hit",
+    wpa=0.05,
+    home_score=0,
+    away_score=0,
+    bases_before="000",
+    batter_id=10001,
+):
+    session.add(
+        GameEvent(
+            game_id=game_id,
+            event_seq=event_seq,
+            inning=inning,
+            inning_half=inning_half,
+            description=description,
+            event_type=event_type,
+            wpa=wpa,
+            home_score=home_score,
+            away_score=away_score,
+            bases_before=bases_before,
+            batter_id=batter_id,
+        )
+    )
     session.commit()
 
 
@@ -79,8 +93,16 @@ class TestHighlightAggregator:
 
     def test_walkoff_detection_bottom_ninth(self, session):
         _add_game(session)
-        _add_event(session, event_seq=1, inning=9, inning_half="bottom",
-                   home_score=1, away_score=0, description="끝내기 안타", wpa=0.30)
+        _add_event(
+            session,
+            event_seq=1,
+            inning=9,
+            inning_half="bottom",
+            home_score=1,
+            away_score=0,
+            description="끝내기 안타",
+            wpa=0.30,
+        )
         agg = HighlightAggregator(session)
         highlights = agg.aggregate_game_highlights("20250101")
         assert len(highlights) >= 1
@@ -136,8 +158,7 @@ class TestHighlightAggregator:
 
     def test_grand_slam_tagged(self, session):
         _add_game(session)
-        _add_event(session, description="만루 홈런", event_type="HR",
-                   bases_before="123", wpa=0.40)
+        _add_event(session, description="만루 홈런", event_type="HR", bases_before="123", wpa=0.40)
         agg = HighlightAggregator(session)
         highlights = agg.aggregate_game_highlights("20250101")
         assert len(highlights) == 1
@@ -163,9 +184,9 @@ class TestHighlightAggregator:
 
     def test_importance_score_calculation(self, session):
         _add_game(session)
-        _add_event(session, inning=9, inning_half="bottom",
-                   home_score=2, away_score=1, description="끝내기 홈런",
-                   wpa=0.35)
+        _add_event(
+            session, inning=9, inning_half="bottom", home_score=2, away_score=1, description="끝내기 홈런", wpa=0.35
+        )
         agg = HighlightAggregator(session)
         highlights = agg.aggregate_game_highlights("20250101")
         h = highlights[0]

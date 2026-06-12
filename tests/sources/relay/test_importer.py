@@ -124,7 +124,9 @@ class TestImportRelayAdapter:
             locator=json.dumps(payload),
             priority=1,
         )
-        with patch.object(adapter._relay_parser, "_parse_naver_payload", return_value={"events": [{"id": 1}], "raw_pbp_rows": []}):
+        with patch.object(
+            adapter._relay_parser, "_parse_naver_payload", return_value={"events": [{"id": 1}], "raw_pbp_rows": []}
+        ):
             result = adapter._parse_naver_json(entry)
             assert not result.is_empty
             assert len(result.events) == 1
@@ -138,7 +140,9 @@ class TestImportRelayAdapter:
             locator=json.dumps(payload),
             priority=1,
         )
-        with patch.object(adapter._relay_parser, "_parse_naver_payload", return_value={"events": [{"id": 1}], "raw_pbp_rows": []}):
+        with patch.object(
+            adapter._relay_parser, "_parse_naver_payload", return_value={"events": [{"id": 1}], "raw_pbp_rows": []}
+        ):
             result = adapter._parse_naver_json(entry)
             assert not result.is_empty
             assert len(result.events) == 1

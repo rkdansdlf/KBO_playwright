@@ -14,6 +14,7 @@ class TestFetchNaverSchedule:
     @patch("scripts.diagnostic.collect_relay_fixtures.RelayCrawler")
     def test_no_games(self, mock_crawler_cls):
         import asyncio
+
         mock_crawler = AsyncMock(spec=["_schedule_query_dates", "_schedule_query_context", "_request_json"])
         mock_crawler_cls.return_value = mock_crawler
         mock_crawler._schedule_query_dates = MagicMock(return_value=[])
@@ -28,6 +29,7 @@ class TestFetchNaverRelay:
     @patch("scripts.diagnostic.collect_relay_fixtures.RelayCrawler")
     def test_no_data(self, mock_crawler_cls):
         import asyncio
+
         mock_crawler = AsyncMock()
         mock_crawler_cls.return_value = mock_crawler
         mock_crawler.api_base_url = "http://example.com/{game_id}"

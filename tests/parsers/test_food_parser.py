@@ -1,4 +1,3 @@
-
 from src.parsers.food_parser import (
     MENU_PATTERN,
     STADIUM_FROM_SOURCE_KEY,

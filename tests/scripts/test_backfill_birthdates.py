@@ -22,8 +22,10 @@ class TestBackfillBirthdates:
             assert result == 0
 
     def test_backfill_dry_run(self):
-        with patch("scripts.backfill_birthdates.SessionLocal") as mock_sf, \
-             patch("scripts.backfill_birthdates._parse_birth_date", return_value="1990-07-03"):
+        with (
+            patch("scripts.backfill_birthdates.SessionLocal") as mock_sf,
+            patch("scripts.backfill_birthdates._parse_birth_date", return_value="1990-07-03"),
+        ):
             mock_session = MagicMock()
             mock_sf.return_value.__enter__.return_value = mock_session
             mock_player = MagicMock()

@@ -7,9 +7,11 @@ from src.cli.crawl_p0_data import main
 
 class TestCrawlP0DataCLI:
     def test_main_all_default(self):
-        with patch("src.crawlers.team_event_crawler.TeamEventCrawler") as MockEvents, \
-             patch("src.crawlers.roster_transaction_crawler.RosterTransactionCrawler") as MockRoster, \
-             patch("src.crawlers.ticket_crawler.TicketCrawler") as MockTicket:
+        with (
+            patch("src.crawlers.team_event_crawler.TeamEventCrawler") as MockEvents,
+            patch("src.crawlers.roster_transaction_crawler.RosterTransactionCrawler") as MockRoster,
+            patch("src.crawlers.ticket_crawler.TicketCrawler") as MockTicket,
+        ):
             mock_events = MagicMock()
             mock_events.run = AsyncMock(return_value=[])
             MockEvents.return_value = mock_events
