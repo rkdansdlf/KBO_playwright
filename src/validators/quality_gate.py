@@ -12,6 +12,8 @@ from src.models.player import PlayerSeasonBatting, PlayerSeasonPitching
 from src.models.team_stats import TeamSeasonBatting, TeamSeasonPitching
 from src.utils.game_status import COMPLETED_LIKE_GAME_STATUSES
 
+INVALID_TEAM_CODES = ("", "합계", "TOTAL", "ALL", "-")
+
 
 class QualityGate:
     """Validate consistency between cumulative and game-by-game records."""
@@ -43,6 +45,14 @@ class QualityGate:
             "ok": not error and len(mismatches) == 0,
             "error": error,
         }
+
+    @staticmethod
+    def _valid_team_code_filters(model: Any) -> tuple[Any, ...]:
+        team_expr = func.coalesce(model.canonical_team_code, model.team_code)
+        return (
+            team_expr.isnot(None),
+            team_expr.not_in(INVALID_TEAM_CODES),
+        )
 
     def validate_season_batting(self, season: int, league: str = "REGULAR") -> dict[str, Any]:
         """
@@ -368,6 +378,7 @@ class QualityGate:
             .where(
                 PlayerSeasonBatting.season == season,
                 PlayerSeasonBatting.league == league,
+                *self._valid_team_code_filters(PlayerSeasonBatting),
             )
             .group_by(func.coalesce(PlayerSeasonBatting.canonical_team_code, PlayerSeasonBatting.team_code))
         )
@@ -508,6 +519,7 @@ class QualityGate:
             .where(
                 PlayerSeasonPitching.season == season,
                 PlayerSeasonPitching.league == league,
+                *self._valid_team_code_filters(PlayerSeasonPitching),
             )
             .group_by(func.coalesce(PlayerSeasonPitching.canonical_team_code, PlayerSeasonPitching.team_code))
         )
