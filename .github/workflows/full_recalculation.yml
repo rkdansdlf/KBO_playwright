@@ -35,6 +35,8 @@ jobs:
   recalc:
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
+
       - uses: ./.github/actions/kbo-job-setup
         with:
           init-db: 'true'

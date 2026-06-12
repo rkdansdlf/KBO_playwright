@@ -197,16 +197,13 @@ jobs:
         env:
           OCI_DB_URL: ${{ secrets.OCI_DB_URL }}
         run: |
-          python3 -c "
-          from scripts.maintenance.backfill_player_ids import backfill_year
-          from src.db.engine import SessionLocal
-          from src.services.player_id_resolver import PlayerIdResolver
-          year = $(TZ='Asia/Seoul' date +'%Y')
-          with SessionLocal() as session:
-              resolver = PlayerIdResolver(session)
-              result = backfill_year(session, resolver, year)
-              print(f'Player ID backfill: resolved={result.get(\"resolved\", 0)} failed={result.get(\"failed\", 0)}')
-          "
+          YEAR="${{ steps.params.outputs.year }}"
+          python3 -m scripts.maintenance.resolve_null_player_ids_conservative \
+            --oci \
+            --years "$YEAR" \
+            --apply \
+            --no-backup \
+            --delete-duplicates
 
       # ── roster ──────────────────────────────────────────────────────
       - name: Run Roster Backfill
