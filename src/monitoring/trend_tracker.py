@@ -120,9 +120,9 @@ class TrendTracker:
             logger.info("[TrendTracker] No quality reports found in last %s days.", days)
             return
 
-        logger.info(f"\n{'=' * 60}")  # noqa: G004
+        logger.info(f"\n{'=' * 60}")
         logger.info("  Quality Metric Trends (last %s days)", days)
-        logger.info(f"{'=' * 60}")  # noqa: G004
+        logger.info(f"{'=' * 60}")
 
         keys_to_track = [
             "metrics.completed_count",
@@ -142,7 +142,7 @@ class TrendTracker:
                 direction = (
                     "↑" if trend["direction"] == "increasing" else "↓" if trend["direction"] == "decreasing" else "→"
                 )
-                logger.info(f"  {key:<50} {first['value']} → {last['value']} {direction}")  # noqa: G004
+                logger.info(f"  {key:<50} {first['value']} → {last['value']} {direction}")
 
         deg = self.detect_degradations(
             {
@@ -153,7 +153,7 @@ class TrendTracker:
         if deg:
             logger.warning("\n  ⚠️  Degradations detected:")
             for d in deg:
-                logger.info(f"    {d['metric']}: {d['pct_change']:+.1f}% ({d['severity']})")  # noqa: G004
+                logger.info(f"    {d['metric']}: {d['pct_change']:+.1f}% ({d['severity']})")
         logger.info("")
 
     def send_degradation_alert(self, days: int = 14) -> None:

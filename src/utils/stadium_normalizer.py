@@ -3,6 +3,8 @@ Stadium names normalization utility.
 Maps common shorthand or regional names to official KBO stadium names.
 """
 
+from __future__ import annotations
+
 STADIUM_MAP: dict[str, str] = {
     # Current Major Stadiums
     "잠실": "잠실야구장",

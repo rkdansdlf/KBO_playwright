@@ -188,9 +188,13 @@ async def reconcile_postgame_range(
 
     for target in targets:
         item = result.detail_result.items.get(target.game_id)
-        if item and not item.detail_saved and item.failure_reason == "cancelled":
-            update_game_status(target.game_id, GAME_STATUS_CANCELLED)
-        if _has_final_detail_rows(target.game_id):
+        before_snapshot = before.get(target.game_id)
+        if item and not item.detail_saved:
+            if item.failure_reason == "cancelled":
+                update_game_status(target.game_id, GAME_STATUS_CANCELLED)
+            if before_snapshot and before_snapshot.game_status == GAME_STATUS_CANCELLED:
+                continue
+        if item and item.detail_saved and _has_final_detail_rows(target.game_id):
             repair_game_parent_from_existing_children(target.game_id)
 
     after = _load_score_status_snapshots(game_ids)

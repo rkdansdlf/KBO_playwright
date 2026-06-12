@@ -502,7 +502,7 @@ def main(argv: Iterable[str] | None = None) -> None:
                     synced_s = syncer.sync_cheer_songs()
                     synced_c = syncer.sync_cheer_chants()
                     logger.info(
-                        f"✅ Fan Culture Sync Finished (Rivalries={synced_r}, Songs={synced_s}, Chants={synced_c})",  # noqa: G004
+                        f"✅ Fan Culture Sync Finished (Rivalries={synced_r}, Songs={synced_s}, Chants={synced_c})",
                     )
                 elif flag == "teams":
                     logger.info(header_str)
@@ -575,7 +575,7 @@ def main(argv: Iterable[str] | None = None) -> None:
     if getattr(args, "reset_sequences", False):
         logger.info("\n🚀 Resetting Sequence Identifiers on Target DB...")
         try:
-            from scripts.legacy.maintenance.reset_oci_sequences import reset_sequences
+            from scripts.maintenance.reset_oci_sequences import reset_sequences
 
             reset_sequences(args.target_url)
         except Exception:

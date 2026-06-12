@@ -2,6 +2,8 @@
 Repository for Team related data (Roster, Info, etc.)
 """
 
+from __future__ import annotations
+
 from typing import Any
 
 from sqlalchemy import text

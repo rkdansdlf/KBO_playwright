@@ -3,6 +3,8 @@ Batting Stat Calculator Service.
 Calculates ratios (AVG, OBP, SLG, etc.) from raw count data.
 """
 
+from __future__ import annotations
+
 from typing import Any
 
 

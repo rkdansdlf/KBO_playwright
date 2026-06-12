@@ -28,10 +28,11 @@ class TestBackfillPlayerProfiles:
             mock_query.all.return_value = []
 
             import asyncio
+
             from scripts.backfill_player_profiles import backfill
 
             async def run_backfill():
                 result = await backfill(limit=5, delay=1.0, ids=None)
                 return result
 
-            result = asyncio.run(run_backfill())
+            asyncio.run(run_backfill())

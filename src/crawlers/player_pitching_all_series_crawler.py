@@ -41,6 +41,12 @@ from src.utils.playwright_retry import LONG_TIMEOUT, NAV_TIMEOUT, SEL_TIMEOUT, r
 from src.utils.request_policy import RequestPolicy
 from src.utils.team_codes import resolve_team_code
 from src.utils.team_mapping import get_team_mapping_for_year
+from src.utils.type_helpers import (
+    parse_innings,
+    parse_innings_to_outs,
+    safe_float_or_none,
+    safe_int_or_none,
+)
 
 logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
@@ -114,82 +120,6 @@ def normalize_header(text: str) -> str:
     return cleaned
 
 
-def safe_int(value: str | None) -> int | None:
-    if value is None:
-        return None
-    cleaned = value.replace(",", "").strip()
-    if cleaned in {"", "-", "–"}:
-        return None
-    try:
-        return int(float(cleaned))
-    except ValueError:
-        return None
-
-
-def safe_float(value: str | None) -> float | None:
-    if value is None:
-        return None
-    cleaned = value.replace(",", "").strip()
-    if cleaned in {"", "-", "–"}:
-        return None
-    try:
-        return float(cleaned)
-    except ValueError:
-        return None
-
-
-def parse_innings(value: str | None) -> tuple[float | None, int | None]:
-    """
-    Convert inning string (e.g. '180 2/3') into (innings_float, outs_int).
-    """
-    if value is None:
-        return None, None
-    cleaned = value.replace(",", "").strip()
-    if cleaned in {"", "-", "–"}:
-        return None, None
-
-    innings_float: float | None = None
-    outs: int | None = None
-
-    try:
-        main_part = cleaned
-        fraction_part = ""
-        if " " in cleaned:
-            main_part, fraction_part = cleaned.split()
-        elif "/" in cleaned:
-            main_part, fraction_part = "0", cleaned
-
-        # main innings
-        main_int = int(float(main_part))
-        outs = main_int * 3
-
-        frac_value = 0.0
-        if fraction_part:
-            if "/" in fraction_part:
-                num, den = fraction_part.split("/")
-                num_i, den_i = int(num), int(den)
-                outs += int(round(num_i * 3 / den_i))
-                frac_value = num_i / den_i
-            else:
-                # decimal form (rare)
-                frac_value = float(fraction_part)
-                outs += int(round(frac_value * 3))
-        innings_float = main_int + frac_value
-
-        # handle decimals without space (e.g., '12.1')
-        if not fraction_part and "." in cleaned:
-            innings_float = float(cleaned)
-            fractional = innings_float - int(innings_float)
-            if abs(fractional - 0.1) < 0.05:
-                outs = int(innings_float) * 3 + 1
-            elif abs(fractional - 0.2) < 0.05:
-                outs = int(innings_float) * 3 + 2
-            else:
-                outs = int(round(innings_float * 3))
-
-        return round(innings_float, 2) if innings_float is not None else None, outs
-    except (ValueError, ZeroDivisionError):
-        return None, None
 
 
 def extract_player_id(href: str | None) -> int | None:
@@ -300,7 +230,7 @@ def apply_sort(
                 page.wait_for_timeout(800)
                 return True
 
-        logger.warning(f"⚠️  '{header_label}' 정렬 링크를 찾지 못했습니다.")  # noqa: G004
+        logger.warning(f"⚠️  '{header_label}' 정렬 링크를 찾지 못했습니다.")
         return False
     except Exception:
         logger.exception("⚠️ 정렬 적용 실패")
@@ -432,7 +362,7 @@ def parse_basic1_page(
     core_headers = ["선수명", "팀명", "IP", "G", "ERA"]
     missing_core = [h for h in core_headers if h not in header_index]
     if missing_core:
-        logger.warning(f"   ⚠️  Basic1 테이블 헤더에 필수 컬럼이 없습니다: {', '.join(missing_core)}")  # noqa: G004
+        logger.warning(f"   ⚠️  Basic1 테이블 헤더에 필수 컬럼이 없습니다: {', '.join(missing_core)}")
         logger.info("   현재 헤더: %s", headers)
         # If headers are still empty, try a more lenient selector
         if not headers:
@@ -530,30 +460,29 @@ def parse_basic1_page(
             def get_val(key: str) -> str | None:
                 return raw.get(key)
 
-            stats.games = safe_int(get_val("G")) if "G" in raw else stats.games
+            stats.games = safe_int_or_none(get_val("G")) if "G" in raw else stats.games
             if "GS" in raw:
-                stats.games_started = safe_int(get_val("GS"))
+                stats.games_started = safe_int_or_none(get_val("GS"))
             elif "선발" in raw:
-                stats.games_started = safe_int(get_val("선발"))
-            stats.wins = safe_int(get_val("W")) if "W" in raw else stats.wins
-            stats.losses = safe_int(get_val("L")) if "L" in raw else stats.losses
-            stats.saves = safe_int(get_val("SV")) if "SV" in raw else stats.saves
-            stats.holds = safe_int(get_val("HLD")) if "HLD" in raw else stats.holds
+                stats.games_started = safe_int_or_none(get_val("선발"))
+            stats.wins = safe_int_or_none(get_val("W")) if "W" in raw else stats.wins
+            stats.losses = safe_int_or_none(get_val("L")) if "L" in raw else stats.losses
+            stats.saves = safe_int_or_none(get_val("SV")) if "SV" in raw else stats.saves
+            stats.holds = safe_int_or_none(get_val("HLD")) if "HLD" in raw else stats.holds
 
             if "IP" in raw:
-                ip_value, outs_value = parse_innings(get_val("IP"))
-                stats.innings_pitched = ip_value
-                stats.innings_outs = outs_value
+                stats.innings_pitched = parse_innings(get_val("IP"))
+                stats.innings_outs = parse_innings_to_outs(get_val("IP"))
 
-            stats.hits_allowed = safe_int(get_val("H")) if "H" in raw else stats.hits_allowed
-            stats.home_runs_allowed = safe_int(get_val("HR")) if "HR" in raw else stats.home_runs_allowed
-            stats.walks_allowed = safe_int(get_val("BB")) if "BB" in raw else stats.walks_allowed
-            stats.hit_batters = safe_int(get_val("HBP")) if "HBP" in raw else stats.hit_batters
-            stats.strikeouts = safe_int(get_val("SO")) if "SO" in raw else stats.strikeouts
-            stats.runs_allowed = safe_int(get_val("R")) if "R" in raw else stats.runs_allowed
-            stats.earned_runs = safe_int(get_val("ER")) if "ER" in raw else stats.earned_runs
-            stats.era = safe_float(get_val("ERA")) if "ERA" in raw else stats.era
-            stats.whip = safe_float(get_val("WHIP")) if "WHIP" in raw else stats.whip
+            stats.hits_allowed = safe_int_or_none(get_val("H")) if "H" in raw else stats.hits_allowed
+            stats.home_runs_allowed = safe_int_or_none(get_val("HR")) if "HR" in raw else stats.home_runs_allowed
+            stats.walks_allowed = safe_int_or_none(get_val("BB")) if "BB" in raw else stats.walks_allowed
+            stats.hit_batters = safe_int_or_none(get_val("HBP")) if "HBP" in raw else stats.hit_batters
+            stats.strikeouts = safe_int_or_none(get_val("SO")) if "SO" in raw else stats.strikeouts
+            stats.runs_allowed = safe_int_or_none(get_val("R")) if "R" in raw else stats.runs_allowed
+            stats.earned_runs = safe_int_or_none(get_val("ER")) if "ER" in raw else stats.earned_runs
+            stats.era = safe_float_or_none(get_val("ERA")) if "ERA" in raw else stats.era
+            stats.whip = safe_float_or_none(get_val("WHIP")) if "WHIP" in raw else stats.whip
 
             # Extra metrics
             metrics = stats.extra_stats.setdefault("metrics", {})
@@ -564,12 +493,12 @@ def parse_basic1_page(
                 ("TBF", "tbf"),
             ]:
                 if header in raw:
-                    val = safe_int(get_val(header))
+                    val = safe_int_or_none(get_val(header))
                     if val is not None:
                         metrics[key] = val
 
-            rank_value = safe_int(get_val("순위")) if "순위" in raw else None
-            win_pct = safe_float(get_val("WPCT")) if "WPCT" in raw else None
+            rank_value = safe_int_or_none(get_val("순위")) if "순위" in raw else None
+            win_pct = safe_float_or_none(get_val("WPCT")) if "WPCT" in raw else None
 
             rankings = stats.extra_stats.setdefault("rankings", {})
             rankings["basic1"] = rank_value
@@ -658,33 +587,33 @@ def parse_basic2_page(
                 if value is not None:
                     metrics[key] = value
 
-        set_metric("CG", "complete_games", safe_int)
-        set_metric("SHO", "shutouts", safe_int)
-        set_metric("QS", "quality_starts", safe_int)
-        set_metric("BSV", "blown_saves", safe_int)
-        set_metric("TBF", "tbf", safe_int)
-        set_metric("NP", "np", safe_int)
-        set_metric("AVG", "avg_against", safe_float)
-        set_metric("2B", "doubles_allowed", safe_int)
-        set_metric("3B", "triples_allowed", safe_int)
-        set_metric("SAC", "sacrifices_allowed", safe_int)
-        set_metric("SF", "sacrifice_flies_allowed", safe_int)
+        set_metric("CG", "complete_games", safe_int_or_none)
+        set_metric("SHO", "shutouts", safe_int_or_none)
+        set_metric("QS", "quality_starts", safe_int_or_none)
+        set_metric("BSV", "blown_saves", safe_int_or_none)
+        set_metric("TBF", "tbf", safe_int_or_none)
+        set_metric("NP", "np", safe_int_or_none)
+        set_metric("AVG", "avg_against", safe_float_or_none)
+        set_metric("2B", "doubles_allowed", safe_int_or_none)
+        set_metric("3B", "triples_allowed", safe_int_or_none)
+        set_metric("SAC", "sacrifices_allowed", safe_int_or_none)
+        set_metric("SF", "sacrifice_flies_allowed", safe_int_or_none)
 
         if "IBB" in header_index:
-            val = safe_int(cell_text(header_index["IBB"]))
+            val = safe_int_or_none(cell_text(header_index["IBB"]))
             if val is not None:
                 stats.intentional_walks = val
         if "WP" in header_index:
-            val = safe_int(cell_text(header_index["WP"]))
+            val = safe_int_or_none(cell_text(header_index["WP"]))
             if val is not None:
                 stats.wild_pitches = val
         if "BK" in header_index:
-            val = safe_int(cell_text(header_index["BK"]))
+            val = safe_int_or_none(cell_text(header_index["BK"]))
             if val is not None:
                 stats.balks = val
 
         # 랭킹 기록
-        rank_val = safe_int(cell_text(header_index.get("순위", 0))) if "순위" in header_index else None
+        rank_val = safe_int_or_none(cell_text(header_index.get("순위", 0))) if "순위" in header_index else None
         if rank_val is not None:
             rankings = stats.extra_stats.setdefault("rankings", {})
             rankings[sort_key] = rank_val
@@ -842,7 +771,7 @@ def crawl_pitcher_series(
 
     series_info = SERIES_MAPPING[series_key]
     league_name = series_info.get("league", "REGULAR")
-    logger.info(f"\n📊 {year}년 {series_info['name']} 수집 시작 (by_team={by_team})")  # noqa: G004
+    logger.info(f"\n📊 {year}년 {series_info['name']} 수집 시작 (by_team={by_team})")
 
     pitchers: dict[int, PitcherStats] = {}
     policy = RequestPolicy()
@@ -901,7 +830,7 @@ def crawl_pitcher_series(
         for tm in iteration_targets:
             policy.delay()
             if team_options:
-                logger.info(f"🔍 팀 선택: {tm['text']} ({tm['value']})")  # noqa: G004
+                logger.info(f"🔍 팀 선택: {tm['text']} ({tm['value']})")
                 try:
                     page.select_option(
                         'select[name="ctl00$ctl00$ctl00$cphContents$cphContents$cphContents$ddlTeam$ddlTeam"]',
@@ -910,7 +839,7 @@ def crawl_pitcher_series(
                     page.wait_for_load_state("networkidle", timeout=LONG_TIMEOUT)
                     policy.delay()
                 except Exception:
-                    logger.exception(f"⚠️ 팀 선택 실패 ({tm['text']})")  # noqa: G004
+                    logger.exception(f"⚠️ 팀 선택 실패 ({tm['text']})")
                     continue
 
             # 정렬 적용 (팀 선택 후 리셋될 수 있으므로 다시 적용)
@@ -989,10 +918,10 @@ def crawl_pitcher_series(
     if limit:
         stats_list = stats_list[:limit]
 
-    logger.info(f"✅ {series_info['name']} 크롤링 완료: {len(stats_list)}명")  # noqa: G004
+    logger.info(f"✅ {series_info['name']} 크롤링 완료: {len(stats_list)}명")
     summary, valid_stats_list = build_pitching_crawl_summary(stats_list)
     if summary["filtered_rows"]:
-        logger.warning(f"⚠️ 투수 시즌 row 필터링: {summary['filtered_rows']}건 ({summary['failure_counts']})")  # noqa: G004
+        logger.warning(f"⚠️ 투수 시즌 row 필터링: {summary['filtered_rows']}건 ({summary['failure_counts']})")
     stats_list = valid_stats_list
 
     # 투수 전용 테이블에 저장
@@ -1056,7 +985,7 @@ def main() -> None:
         all_data = {}
         for series_key in SERIES_MAPPING:
             series_info = SERIES_MAPPING[series_key]
-            logger.info(f"\n🚀 {series_info['name']} 시작...")  # noqa: G004
+            logger.info(f"\n🚀 {series_info['name']} 시작...")
             series_data = crawl_pitcher_series(
                 year=args.year,
                 series_key=series_key,

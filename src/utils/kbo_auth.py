@@ -3,6 +3,8 @@ KBO Authentication Utility
 Handles automated login and session persistence.
 """
 
+from __future__ import annotations
+
 import asyncio
 import logging
 import os

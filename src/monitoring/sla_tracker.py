@@ -95,11 +95,11 @@ class SlaTracker:
             logger.info("[SLA] No data for week ending %s", end_date)
             return
 
-        logger.info(f"\n{'=' * 60}")  # noqa: G004
+        logger.info(f"\n{'=' * 60}")
         logger.info("  SLA Report (Week ending %s)", end_date)
-        logger.info(f"{'=' * 60}")  # noqa: G004
-        logger.info(f"{'Date':<12} {'Games':>6} {'Completed':>10} {'Comp%':>7} {'PBP%':>7} {'Detail%':>8}")  # noqa: G004
-        logger.info(f"{'-' * 12} {'-' * 6} {'-' * 10} {'-' * 7} {'-' * 7} {'-' * 8}")  # noqa: G004
+        logger.info(f"{'=' * 60}")
+        logger.info(f"{'Date':<12} {'Games':>6} {'Completed':>10} {'Comp%':>7} {'PBP%':>7} {'Detail%':>8}")
+        logger.info(f"{'-' * 12} {'-' * 6} {'-' * 10} {'-' * 7} {'-' * 7} {'-' * 8}")
 
         totals = {"games": 0, "completed": 0}
         for s in sla_data:
@@ -121,8 +121,8 @@ class SlaTracker:
             overall_rate = totals["completed"] / totals["games"]
         else:
             overall_rate = 0
-        logger.info(f"{'-' * 12} {'-' * 6} {'-' * 10} {'-' * 7} {'-' * 7} {'-' * 8}")  # noqa: G004
-        logger.info(f"  {'TOTAL':<10} {totals['games']:>6} {totals['completed']:>10} {overall_rate:>6.0%}")  # noqa: G004
+        logger.info(f"{'-' * 12} {'-' * 6} {'-' * 10} {'-' * 7} {'-' * 7} {'-' * 8}")
+        logger.info(f"  {'TOTAL':<10} {totals['games']:>6} {totals['completed']:>10} {overall_rate:>6.0%}")
         logger.info("")
 
     def send_weekly_sla_report(self, end_date: str | None = None) -> None:

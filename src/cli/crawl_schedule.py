@@ -30,11 +30,11 @@ async def crawl_schedule(args: argparse.Namespace) -> None:
 
     # 지정된 연도와 월의 경기 정보를 크롤링합니다.
     games = await crawler.crawl_season(args.year, months)
-    logger.info(f"[SCHEDULE] Total games discovered: {len(games)}")  # noqa: G004
+    logger.info(f"[SCHEDULE] Total games discovered: {len(games)}")
 
     # 수집된 경기 정보를 데이터베이스에 저장합니다.
     result = save_schedule_games(games)
-    logger.info(f"[SCHEDULE] Saved: {result.saved}, Failed: {result.failed}")  # noqa: G004
+    logger.info(f"[SCHEDULE] Saved: {result.saved}, Failed: {result.failed}")
 
 
 async def _crawl_upcoming_months(args: argparse.Namespace) -> None:
@@ -48,14 +48,14 @@ async def _crawl_upcoming_months(args: argparse.Namespace) -> None:
         ms = [int(m.strip()) for m in str(args.months).split(",") if m.strip()]
         targets = [(y, m) for m in ms]
 
-    logger.info(f"[UPCOMING] Crawling schedule for: {targets}")  # noqa: G004
+    logger.info(f"[UPCOMING] Crawling schedule for: {targets}")
     total_saved = 0
     for year, month in targets:
         games = await crawler.crawl_schedule(year, month)
         result = save_schedule_games(games)
         total_saved += result.saved
-        logger.info(f"[UPCOMING] {year}-{month:02d}: {len(games)} games, {result.saved} upserted")  # noqa: G004
-    logger.info(f"[UPCOMING] Done. Total upserts: {total_saved}")  # noqa: G004
+        logger.info(f"[UPCOMING] {year}-{month:02d}: {len(games)} games, {result.saved} upserted")
+    logger.info(f"[UPCOMING] Done. Total upserts: {total_saved}")
 
 
 def parse_months(months_arg: str | None) -> list[int]:

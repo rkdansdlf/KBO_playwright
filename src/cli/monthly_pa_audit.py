@@ -5,13 +5,15 @@ Imported by scripts/scheduler.py as the crawl_monthly_pa_audit_job target.
 Runs on the 1st of every month at 03:00 KST via APScheduler.
 """
 
+from __future__ import annotations
+
 import logging
 import sys
 from collections.abc import Sequence
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
-from scripts.legacy.maintenance.audit_pa_formula import fix_year_formula
+from scripts.maintenance.audit_pa_formula import fix_year_formula
 
 logger = logging.getLogger(__name__)
 

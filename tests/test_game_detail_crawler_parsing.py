@@ -5,6 +5,7 @@ from __future__ import annotations
 import pytest
 
 from src.crawlers.game_detail_crawler import GameDetailCrawler
+from src.utils.type_helpers import parse_innings_to_outs, safe_int_or_none
 
 
 @pytest.fixture
@@ -17,7 +18,7 @@ class TestParseInningsToOuts:
         ("inp", "expected"),
         [
             (None, None),
-            ("-", 0),
+            ("-", None),
             ("0", 0),
             ("5", 15),
             ("5 1/3", 16),
@@ -32,8 +33,8 @@ class TestParseInningsToOuts:
             ("9 0/3", 27),
         ],
     )
-    def test_standard_formats(self, crawler, inp, expected):
-        assert crawler._parse_innings_to_outs(inp) == expected
+    def test_standard_formats(self, inp, expected):
+        assert parse_innings_to_outs(inp) == expected
 
     @pytest.mark.parametrize(
         ("inp", "expected"),
@@ -47,18 +48,18 @@ class TestParseInningsToOuts:
             (" 5⅓ ", 16),
         ],
     )
-    def test_unicode_fractions(self, crawler, inp, expected):
-        assert crawler._parse_innings_to_outs(inp) == expected
+    def test_unicode_fractions(self, inp, expected):
+        assert parse_innings_to_outs(inp) == expected
 
-    def test_invalid_returns_none(self, crawler):
-        assert crawler._parse_innings_to_outs("abc") is None
-        assert crawler._parse_innings_to_outs("삼진") is None
-        assert crawler._parse_innings_to_outs("X") is None
+    def test_invalid_returns_none(self):
+        assert parse_innings_to_outs("abc") is None
+        assert parse_innings_to_outs("삼진") is None
+        assert parse_innings_to_outs("X") is None
 
-    def test_white_space_handling(self, crawler):
-        assert crawler._parse_innings_to_outs("  5  ") == 15
-        assert crawler._parse_innings_to_outs("  5 1/3  ") == 16
-        assert crawler._parse_innings_to_outs("  5⅓  ") == 16
+    def test_white_space_handling(self):
+        assert parse_innings_to_outs("  5  ") == 15
+        assert parse_innings_to_outs("  5 1/3  ") == 16
+        assert parse_innings_to_outs("  5⅓  ") == 16
 
 
 class TestParseDecision:
@@ -153,5 +154,5 @@ class TestSafeInt:
             ("abc", None),
         ],
     )
-    def test_safe_int(self, crawler, inp, expected):
-        assert crawler._safe_int(inp) == expected
+    def test_safe_int(self, inp, expected):
+        assert safe_int_or_none(inp) == expected

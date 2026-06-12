@@ -66,7 +66,7 @@ This repository is a Playwright-based KBO data crawler with a two-track pipeline
 ## Code Quality & Linting
 - `ruff check src/ tests/` = **0 errors** (enforced by pre-commit).
 - `ruff format --check` must pass.
-- `pyproject.toml` excludes `scripts/legacy/` and `scripts/investigations/` from ruff scope (debug/legacy files).
+- `pyproject.toml` excludes `scripts/investigations/` from ruff scope (debug/investigation files).
 - `G004` (logging-f-string) is globally ignored — f-strings in logging are intentional after print→logger conversion.
 - All `src/` modules have return-type annotations; use `X | None` (not `Optional[X]`) and `list[X]` (not `List[X]`).
 - `from __future__ import annotations` required before modern type syntax in Python 3.12.

@@ -108,13 +108,13 @@ class ParkFactorCalculator:
         if not results:
             return
 
-        logger.info(f"\n{'=' * 80}")  # noqa: G004
+        logger.info(f"\n{'=' * 80}")
         logger.info("  KBO %s년 구장별 파크팩터 (Park Factor)", year)
-        logger.info(f"{'=' * 70}")  # noqa: G004
+        logger.info(f"{'=' * 70}")
         logger.info("  KBO %s년 구장별 파크팩터 (Park Factor)", year)
-        logger.info(f"{'=' * 70}")  # noqa: G004
-        logger.info(f"{'구장':<18} {'경기':>4} {'RPG':>5} {'PF':>6}  평가")  # noqa: G004
-        logger.info(f"{'-' * 70}")  # noqa: G004
+        logger.info(f"{'=' * 70}")
+        logger.info(f"{'구장':<18} {'경기':>4} {'RPG':>5} {'PF':>6}  평가")
+        logger.info(f"{'-' * 70}")
 
         for r in sorted(results, key=lambda x: x["park_factor"], reverse=True):
             pf_label = r["park_factor_label"]
@@ -127,8 +127,8 @@ class ParkFactorCalculator:
                 pf_label,
             )
 
-        logger.info(f"{'=' * 70}")  # noqa: G004
-        logger.info(f"  리그 평균: {results[0]['league_avg_rpg']:.2f} 점/경기")  # noqa: G004
+        logger.info(f"{'=' * 70}")
+        logger.info(f"  리그 평균: {results[0]['league_avg_rpg']:.2f} 점/경기")
 
 
 if __name__ == "__main__":

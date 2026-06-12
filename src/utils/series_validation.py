@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import logging
 
 logger = logging.getLogger(__name__)
@@ -86,7 +88,7 @@ def filter_series_for_year(year: int, requested_series: list[str]) -> list[str]:
     # 제거된 시리즈가 있으면 알림
     removed = [series for series in requested_series if series not in available_series]
     if removed:
-        logger.warning(f"⚠️ {year}년에는 다음 시리즈가 존재하지 않아 제외됩니다: {', '.join(removed)}")  # noqa: G004
+        logger.warning(f"⚠️ {year}년에는 다음 시리즈가 존재하지 않아 제외됩니다: {', '.join(removed)}")
 
     return filtered
 
@@ -170,7 +172,7 @@ if __name__ == "__main__":
 
     for year in test_years:
         available = get_available_series_by_year(year)
-        logger.info(f"{year}년: {', '.join(available)}")  # noqa: G004
+        logger.info(f"{year}년: {', '.join(available)}")
 
     logger.info("\n=== 특정 조합 검증 ===")
     test_cases = [(2001, "playoff"), (2000, "korean_series"), (1990, "wildcard"), (2015, "wildcard")]
@@ -185,4 +187,4 @@ if __name__ == "__main__":
 
     for start, end in periods:
         recommended = get_recommended_series_for_period(start, end)
-        logger.info(f"{start}-{end}년: {', '.join(recommended)}")  # noqa: G004
+        logger.info(f"{start}-{end}년: {', '.join(recommended)}")

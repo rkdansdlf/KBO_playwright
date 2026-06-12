@@ -4,7 +4,7 @@ import argparse
 import csv
 import logging
 import os
-from collections.abc import Iterable, Sequence
+from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -12,6 +12,7 @@ from typing import Any
 
 from sqlalchemy import or_
 from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.orm import Session
 
 from src.db.engine import SessionLocal
 from src.models.game import Game, GameEvent
@@ -55,7 +56,7 @@ def rebuild_relay_events(
     report_out: str | Path | None = None,
     backup_out: str | Path | None = None,
     oci_url: str | None = None,
-    log=logger.info,
+    log: Callable[..., Any] = logger.info,
 ) -> list[RebuildReportRow]:
     season_values = tuple(int(season) for season in seasons)
     timestamp = datetime.now(UTC).replace(tzinfo=None).strftime("%Y%m%dT%H%M%SZ")
@@ -124,7 +125,7 @@ def rebuild_relay_events(
 
 
 def _load_candidate_game_ids(
-    session,
+    session: Session,
     seasons: Sequence[int],
     *,
     game_ids: Sequence[str] | None = None,
@@ -143,7 +144,7 @@ def _load_candidate_game_ids(
     return [game_id for game_id in requested if game_id in found]
 
 
-def _backup_existing_events(session, game_ids: Sequence[str], backup_path: Path) -> None:
+def _backup_existing_events(session: Session, game_ids: Sequence[str], backup_path: Path) -> None:
     backup_path.parent.mkdir(parents=True, exist_ok=True)
     columns = [column.name for column in GameEvent.__table__.columns]
     with backup_path.open("w", encoding="utf-8", newline="") as handle:
@@ -284,7 +285,7 @@ def _sync_changed_games(
     report_rows: Sequence[RebuildReportRow],
     *,
     oci_url: str | None,
-    log,
+    log: Callable[..., Any],
 ) -> None:
     target_url = oci_url or os.getenv("OCI_DB_URL")
     report_by_game_id = {row.game_id: row for row in report_rows}
@@ -313,7 +314,7 @@ def _sync_changed_events(
     report_rows: Sequence[RebuildReportRow],
     *,
     oci_url: str | None,
-    log,
+    log: Callable[..., Any],
 ) -> None:
     target_url = oci_url or os.getenv("OCI_DB_URL")
     report_by_game_id = {row.game_id: row for row in report_rows}

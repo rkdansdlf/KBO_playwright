@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import asyncio
 import contextlib
 import logging
@@ -141,7 +143,7 @@ class TeamHistoryCrawler:
                             },
                         )
 
-            logger.info(f"Processed {year}: {len([h for h in history_data if h['season'] == year])} teams.")  # noqa: G004
+            logger.info(f"Processed {year}: {len([h for h in history_data if h['season'] == year])} teams.")
 
         return history_data
 
@@ -161,12 +163,12 @@ class TeamHistoryCrawler:
 
                     code = resolve_team_code(team_name)
                     if not code:
-                        logger.warning(f"   ⚠️ Could not resolve code for '{team_name}' ({season})")  # noqa: G004
+                        logger.warning(f"   ⚠️ Could not resolve code for '{team_name}' ({season})")
                         continue
 
                     franchise_id = team_map.get(code)
                     if not franchise_id:
-                        logger.warning(f"   ⚠️ No franchise_id for code '{code}'")  # noqa: G004
+                        logger.warning(f"   ⚠️ No franchise_id for code '{code}'")
                         continue
 
                     stmt = select(TeamHistory).where(TeamHistory.season == season, TeamHistory.team_code == code)
