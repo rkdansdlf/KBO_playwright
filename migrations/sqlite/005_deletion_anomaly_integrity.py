@@ -15,7 +15,7 @@ ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from scripts.legacy.maintenance.repair_deletion_anomalies import DEFAULT_DB_PATH, repair
+from scripts.maintenance.repair_deletion_anomalies import DEFAULT_DB_PATH, repair
 
 
 def main() -> None:
