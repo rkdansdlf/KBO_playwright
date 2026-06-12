@@ -51,4 +51,3 @@ python3 -m src.cli.fix_player_names --crawl --save --max-pages 1
 - `src/crawlers/player_search_crawler.py` - Main crawler logic
 - `src/repositories/player_basic_repository.py` - Database save logic with validation
 - `src/utils/player_validation.py` - Name validation and filtering
-- `scripts/legacy/maintenance/fix_player_names.py` - Legacy version (deprecated, use CLI instead)
