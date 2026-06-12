@@ -48,10 +48,12 @@ class QualityGate:
 
     @staticmethod
     def _valid_team_code_filters(model: Any) -> tuple[Any, ...]:
+        from sqlalchemy import or_
+
         team_expr = func.coalesce(model.canonical_team_code, model.team_code)
         return (
             team_expr.isnot(None),
-            team_expr.not_in(INVALID_TEAM_CODES),
+            or_(model.team_code.is_(None), model.team_code.not_in(INVALID_TEAM_CODES)),
         )
 
     def validate_season_batting(self, season: int, league: str = "REGULAR") -> dict[str, Any]:

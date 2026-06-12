@@ -1,5 +1,7 @@
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 from scripts.investigations.inspect_tool import (
     db_inspect_game,
     db_inspect_player,
@@ -17,12 +19,13 @@ class TestRunDbQuery:
         mock_exists.return_value = False
         import sys
 
-        with patch.object(sys, "exit") as mock_exit:
+        with patch.object(sys, "exit", side_effect=SystemExit) as mock_exit, pytest.raises(SystemExit):
             run_db_query(Path("/nonexistent/db.sqlite"), "SELECT 1")
             mock_exit.assert_called_once_with(1)
 
     @patch("scripts.investigations.inspect_tool.Path.exists")
     @patch("scripts.investigations.inspect_tool.sqlite3.connect")
+    @patch("scripts.investigations.inspect_tool.HAS_PANDAS", False)
     def test_db_exists(self, mock_connect, mock_exists):
         mock_exists.return_value = True
         mock_conn = MagicMock()

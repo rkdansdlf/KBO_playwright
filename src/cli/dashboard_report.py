@@ -168,185 +168,199 @@ def _build_sync() -> dict[str, Any]:
 # ─── Formatters ──────────────────────────────────────────────────────────
 
 
+def _row_value(row: Any, key: str, default: Any = None) -> Any:
+    if hasattr(row, key):
+        return getattr(row, key)
+    return row.get(key, default)
+
+
+def _format_standings_terminal(standings: dict[str, Any], year: int) -> None:
+    date_label = standings.get("date", "") or ""
+    logger.info(f"\n{'=' * 70}")
+    logger.info(f"  KBO {year}년 순위표 (기준: {date_label})")
+    logger.info(f"{'=' * 70}")
+    logger.info(
+        f"{'순위':>4} {'팀':<6} {'승':>4} {'패':>4} {'무':>3} {'승률':>7} {'승차':>5} {'최근10':>8} {'연속':>4} {'홈':>8} {'원정':>8}",
+    )
+    logger.info(f"{'-' * 70}")
+    for row in standings.get("rows", []):
+        top5 = "★" if _row_value(row, "top_5") else " "
+        current_streak = _row_value(row, "current_streak", 0)
+        streak_str = f"{abs(current_streak)}연{'승' if current_streak >= 0 else '패'}" if current_streak else "-"
+        recent = f"{_row_value(row, 'recent_10_wins', 0)}승{_row_value(row, 'recent_10_losses', 0)}패"
+        home = f"{_row_value(row, 'home_wins', 0)}승{_row_value(row, 'home_losses', 0)}패"
+        away = f"{_row_value(row, 'away_wins', 0)}승{_row_value(row, 'away_losses', 0)}패"
+        logger.info(
+            f"  {top5}{_row_value(row, 'rank', '-'):>2} {_row_value(row, 'team_code', '?'):<6} "
+            f"{_row_value(row, 'wins', 0):>4} {_row_value(row, 'losses', 0):>4} "
+            f"{_row_value(row, 'draws', 0):>3} {_row_value(row, 'win_pct', 0):>7.3f} "
+            f"{_row_value(row, 'games_behind', '-'):>5} "
+            f"{recent:>8} {streak_str:>4} {home:>8} {away:>8}",
+        )
+    logger.info(f"{'=' * 70}")
+    logger.info("  ★ 상위 5팀 (5강)")
+
+
+def _format_park_factor_terminal(park_factor: dict[str, Any]) -> None:
+    results = park_factor.get("results", [])
+    if not results:
+        return
+    logger.info(f"\n{'=' * 65}")
+    logger.info(f"  KBO {park_factor['year']}년 구장별 파크팩터")
+    logger.info(f"{'=' * 65}")
+    logger.info(f"{'구장':<20} {'경기':>4} {'RPG':>6} {'PF':>6}  평가")
+    logger.info(f"{'-' * 65}")
+    for row in sorted(results, key=lambda x: x["park_factor"], reverse=True):
+        logger.info(
+            f"  {row['stadium']:<18} {row['games']:>4} {row['runs_per_game']:>5.1f} "
+            f"{row['park_factor']:>5.3f}  {row['park_factor_label']}",
+        )
+
+
+def _format_rankings_terminal(rankings: dict[str, Any]) -> None:
+    logger.info(f"\n{'=' * 60}")
+    logger.info(f"  KBO {rankings['year']}년 세이버메트릭 TOP5")
+    logger.info(f"{'=' * 60}")
+    for category, ranked in rankings.get("top5", {}).items():
+        if ranked:
+            names = ", ".join(f"{row.get('player_name', '?')} ({row.get('value', 0)})" for row in ranked[:3])
+            logger.info(f"  {category:<10}: {names}")
+
+
+def _format_team_defense_terminal(team_defense: dict[str, Any]) -> None:
+    logger.info(f"\n{'=' * 60}")
+    logger.info(f"  KBO {team_defense['year']}년 팀 수비/주루")
+    logger.info(f"{'=' * 60}")
+    logger.info(f"{'팀':<6} {'수비율':>8} {'실책':>5} {'도루':>5} {'도실':>5} {'성공률':>7}")
+    logger.info(f"{'-' * 60}")
+    fielding_map = {row.get("team_code", row.get("team")): row for row in team_defense.get("fielding", [])}
+    baserunning_map = {row.get("team_code", row.get("team")): row for row in team_defense.get("baserunning", [])}
+    all_teams = sorted(set(list(fielding_map.keys()) + list(baserunning_map.keys())))
+    kbo_teams = {"SS", "LG", "KT", "KIA", "HH", "DB", "SSG", "NC", "LT", "KH"}
+    for team in all_teams:
+        if team not in kbo_teams:
+            continue
+        fielding = fielding_map.get(team, {})
+        baserunning = baserunning_map.get(team, {})
+        success_rate = baserunning.get("sb_success_rate", "-")
+        if isinstance(success_rate, float):
+            success_rate = f"{success_rate:.3f}"
+        logger.info(
+            f"  {team:<6} {str(fielding.get('fielding_pct', '-') or '-'):>8} "
+            f"{str(fielding.get('errors', '-')):>5} {str(baserunning.get('stolen_bases', '-')):>5} "
+            f"{str(baserunning.get('caught_stealing', '-')):>5} {str(success_rate):>7}",
+        )
+
+
+def _format_team_gate_terminal(label: str, result: dict[str, Any]) -> None:
+    if result.get("checked_players", 0) <= 0:
+        return
+    status = "✅" if result.get("ok") else "❌"
+    logger.info(f"  {label}: {status} ({result.get('checked_players', 0)}개 팀)")
+    for mismatch in result.get("mismatches", []):
+        logger.info(f"    - {mismatch.get('team_id')}: {mismatch.get('issue')}")
+        for diff in mismatch.get("diffs", [])[:2]:
+            logger.info(f"      {diff}")
+
+
+def _format_quality_gate_terminal(quality: dict[str, Any]) -> None:
+    gate = quality.get("quality_gate", {})
+    if not gate:
+        return
+    _format_team_gate_terminal("팀 타격 정합성", gate.get("team_batting", {}))
+    _format_team_gate_terminal("팀 투수 정합성", gate.get("team_pitching", {}))
+
+
+def _format_pa_trend_terminal(quality: dict[str, Any]) -> None:
+    trend = quality.get("pa_formula_trend", {})
+    if not trend or not trend.get("months"):
+        return
+    direction_icon = (
+        "📈" if trend.get("direction") == "worsening" else "📉" if trend.get("direction") == "improving" else "➡️"
+    )
+    logger.info(f"  PA 추세 ({len(trend['months'])}개월): {direction_icon} {trend['direction']}")
+    for month in trend["months"][-3:]:
+        icon = "❌" if month["violation_count"] > 0 else "✅"
+        logger.info(f"    {icon} {month['month']}: {month['violation_count']}/{month['total_checked']}")
+
+
+def _format_unified_audit_terminal(quality: dict[str, Any]) -> None:
+    gate = quality.get("quality_gate", {})
+    if not gate:
+        return
+    pa_ok = (quality.get("pa_formula_integrity") or {}).get("ok", True)
+    team_bat_ok = gate.get("team_batting", {}).get("ok", True)
+    team_pit_ok = gate.get("team_pitching", {}).get("ok", True)
+    if pa_ok and team_bat_ok and team_pit_ok:
+        logger.info("  통합 감사: ✅ 전체 통과")
+        return
+    issues = []
+    if not pa_ok:
+        issues.append("PA 공식")
+    if not team_bat_ok:
+        issues.append("팀 타격")
+    if not team_pit_ok:
+        issues.append("팀 투수")
+    logger.error(f"  통합 감사: ❌ ({', '.join(issues)})")
+
+
+def _format_quality_terminal(quality: dict[str, Any]) -> None:
+    logger.info(f"\n{'=' * 60}")
+    logger.info(f"  KBO Quality Report ({quality.get('date', '?')})")
+    logger.info(f"{'=' * 60}")
+    logger.info(f"  경기: {quality.get('completed_count', 0)}/{quality.get('total_games', 0)} 완료")
+    relay = quality.get("relay_integrity", {})
+    if relay:
+        logger.info(f"  PBP 누락: 최근 {relay.get('recent_missing_count', 0)}건")
+    standings = quality.get("standings_integrity", {})
+    if standings:
+        logger.error(f"  순위 정합성: {'✅' if standings.get('ok') else '❌'}")
+    pa_formula = quality.get("pa_formula_integrity", {})
+    if pa_formula and pa_formula.get("ok"):
+        logger.info("  PA 공식: ✅ 일치")
+    elif pa_formula:
+        logger.error(f"  PA 공식: ❌ ({pa_formula.get('violation_count', 0)}건 위반)")
+    _format_quality_gate_terminal(quality)
+    _format_pa_trend_terminal(quality)
+    _format_unified_audit_terminal(quality)
+
+
+def _format_freshness_terminal(freshness: dict[str, Any]) -> None:
+    logger.info(f"\n{'=' * 60}")
+    logger.info(f"  Freshness Gate ({freshness.get('date', '?')})")
+    logger.info(f"{'=' * 60}")
+    logger.info(f"  총 {freshness.get('total_issues', 0)}개 이슈")
+    for game_id, issues in freshness.get("issues", {}).items():
+        for issue in issues:
+            logger.warning(f"  ⚠️  [{game_id}] {issue}")
+
+
+def _format_sync_terminal(sync: dict[str, Any]) -> None:
+    logger.info(f"\n{'=' * 60}")
+    logger.info("  OCI Sync Status")
+    logger.info(f"{'=' * 60}")
+    if sync.get("status") == "ok":
+        logger.info(f"  ✅ {sync.get('ok_count', 0)}/{sync.get('table_count', 0)} tables in sync")
+    else:
+        logger.warning(f"  ⚠️  {sync.get('status')}: {sync.get('reason', '')}")
+
+
 def _format_terminal(data: dict[str, Any], sections: list[str]) -> None:
     year = datetime.now(KST).year
-
     if "standings" in sections and data.get("standings"):
-        s = data["standings"]
-        date_label = s.get("date", "") or ""
-        logger.info(f"\n{'=' * 70}")
-        logger.info(f"  KBO {year}년 순위표 (기준: {date_label})")
-        logger.info(f"{'=' * 70}")
-        logger.info(
-            f"{'순위':>4} {'팀':<6} {'승':>4} {'패':>4} {'무':>3} {'승률':>7} {'승차':>5} {'최근10':>8} {'연속':>4} {'홈':>8} {'원정':>8}",
-        )
-        logger.info(f"{'-' * 70}")
-        for r in s.get("rows", []):
-            top5 = "★" if (r.top_5 if hasattr(r, "top_5") else r.get("top_5")) else " "
-            cs = r.current_streak if hasattr(r, "current_streak") else r.get("current_streak", 0)
-            streak_str = f"{abs(cs)}연{'승' if cs >= 0 else '패'}" if cs else "-"
-            rc10_w = r.recent_10_wins if hasattr(r, "recent_10_wins") else r.get("recent_10_wins", 0)
-            rc10_l = r.recent_10_losses if hasattr(r, "recent_10_losses") else r.get("recent_10_losses", 0)
-            hw = r.home_wins if hasattr(r, "home_wins") else r.get("home_wins", 0)
-            hl = r.home_losses if hasattr(r, "home_losses") else r.get("home_losses", 0)
-            aw = r.away_wins if hasattr(r, "away_wins") else r.get("away_wins", 0)
-            al = r.away_losses if hasattr(r, "away_losses") else r.get("away_losses", 0)
-            recent = f"{rc10_w}승{rc10_l}패"
-            home = f"{hw}승{hl}패"
-            away = f"{aw}승{al}패"
-            rank = r.rank if hasattr(r, "rank") else r.get("rank", "-")
-            tc = r.team_code if hasattr(r, "team_code") else r.get("team_code", "?")
-            w = r.wins if hasattr(r, "wins") else r.get("wins", 0)
-            losses = r.losses if hasattr(r, "losses") else r.get("losses", 0)
-            d = r.draws if hasattr(r, "draws") else r.get("draws", 0)
-            wp = r.win_pct if hasattr(r, "win_pct") else r.get("win_pct", 0)
-            gb = r.games_behind if hasattr(r, "games_behind") else r.get("games_behind", "-")
-            logger.info(
-                f"  {top5}{rank:>2} {tc:<6} {w:>4} {losses:>4} "
-                f"{d:>3} {wp:>7.3f} {gb:>5} "
-                f"{recent:>8} {streak_str:>4} {home:>8} {away:>8}",
-            )
-        sum(1 for r in s.get("rows", []) if (r.top_5 if hasattr(r, "top_5") else r.get("top_5")))
-        logger.info(f"{'=' * 70}")
-        logger.info("  ★ 상위 5팀 (5강)")
-
+        _format_standings_terminal(data["standings"], year)
     if "park_factor" in sections and data.get("park_factor"):
-        pf = data["park_factor"]
-        results = pf.get("results", [])
-        if results:
-            logger.info(f"\n{'=' * 65}")
-            logger.info(f"  KBO {pf['year']}년 구장별 파크팩터")
-            logger.info(f"{'=' * 65}")
-            logger.info(f"{'구장':<20} {'경기':>4} {'RPG':>6} {'PF':>6}  평가")
-            logger.info(f"{'-' * 65}")
-            for r in sorted(results, key=lambda x: x["park_factor"], reverse=True):
-                logger.info(
-                    f"  {r['stadium']:<18} {r['games']:>4} {r['runs_per_game']:>5.1f} {r['park_factor']:>5.3f}  {r['park_factor_label']}",
-                )
-
+        _format_park_factor_terminal(data["park_factor"])
     if "rankings" in sections and data.get("rankings"):
-        rk = data["rankings"]
-        logger.info(f"\n{'=' * 60}")
-        logger.info(f"  KBO {rk['year']}년 세이버메트릭 TOP5")
-        logger.info(f"{'=' * 60}")
-        for cat, ranked in rk.get("top5", {}).items():
-            if ranked:
-                names = ", ".join(f"{r.get('player_name', '?')} ({r.get('value', 0)})" for r in ranked[:3])
-                logger.info(f"  {cat:<10}: {names}")
-
+        _format_rankings_terminal(data["rankings"])
     if "team_defense" in sections and data.get("team_defense"):
-        td = data["team_defense"]
-        logger.info(f"\n{'=' * 60}")
-        logger.info(f"  KBO {td['year']}년 팀 수비/주루")
-        logger.info(f"{'=' * 60}")
-        logger.info(f"{'팀':<6} {'수비율':>8} {'실책':>5} {'도루':>5} {'도실':>5} {'성공률':>7}")
-        logger.info(f"{'-' * 60}")
-        fielding_map = {f.get("team_code", f.get("team")): f for f in td.get("fielding", [])}
-        baserunning_map = {b.get("team_code", b.get("team")): b for b in td.get("baserunning", [])}
-        all_teams = sorted(set(list(fielding_map.keys()) + list(baserunning_map.keys())))
-        kbo_teams = {"SS", "LG", "KT", "KIA", "HH", "DB", "SSG", "NC", "LT", "KH"}
-        for team in all_teams:
-            if team not in kbo_teams:
-                continue
-            f = fielding_map.get(team, {})
-            b = baserunning_map.get(team, {})
-            fpct = f.get("fielding_pct", "-")
-            err = f.get("errors", "-")
-            sb = b.get("stolen_bases", "-")
-            cs = b.get("caught_stealing", "-")
-            sbr = b.get("sb_success_rate", "-")
-            if isinstance(sbr, float):
-                sbr = f"{sbr:.3f}"
-            logger.info(f"  {team:<6} {str(fpct or '-'):>8} {str(err):>5} {str(sb):>5} {str(cs):>5} {str(sbr):>7}")
-
+        _format_team_defense_terminal(data["team_defense"])
     if "quality" in sections and data.get("quality"):
-        q = data["quality"]
-        logger.info(f"\n{'=' * 60}")
-        logger.info(f"  KBO Quality Report ({q.get('date', '?')})")
-        logger.info(f"{'=' * 60}")
-        logger.info(f"  경기: {q.get('completed_count', 0)}/{q.get('total_games', 0)} 완료")
-        relay = q.get("relay_integrity", {})
-        if relay:
-            recent_miss = relay.get("recent_missing_count", 0)
-            logger.info(f"  PBP 누락: 최근 {recent_miss}건")
-        st = q.get("standings_integrity", {})
-        if st:
-            logger.error(f"  순위 정합성: {'✅' if st.get('ok') else '❌'}")
-        pa = q.get("pa_formula_integrity", {})
-        if pa:
-            if pa.get("ok"):
-                logger.info("  PA 공식: ✅ 일치")
-            else:
-                logger.error(f"  PA 공식: ❌ ({pa.get('violation_count', 0)}건 위반)")
-        gate = q.get("quality_gate", {})
-        if gate:
-            team_bat = gate.get("team_batting", {})
-            team_pit = gate.get("team_pitching", {})
-            if team_bat.get("checked_players", 0) > 0:
-                status = "✅" if team_bat.get("ok") else "❌"
-                logger.info(f"  팀 타격 정합성: {status} ({team_bat.get('checked_players', 0)}개 팀)")
-                for m in team_bat.get("mismatches", []):
-                    logger.info(f"    - {m.get('team_id')}: {m.get('issue')}")
-                    for d in m.get("diffs", [])[:2]:
-                        logger.info(f"      {d}")
-            if team_pit.get("checked_players", 0) > 0:
-                status = "✅" if team_pit.get("ok") else "❌"
-                logger.info(f"  팀 투수 정합성: {status} ({team_pit.get('checked_players', 0)}개 팀)")
-                for m in team_pit.get("mismatches", []):
-                    logger.info(f"    - {m.get('team_id')}: {m.get('issue')}")
-                    for d in m.get("diffs", [])[:2]:
-                        logger.info(f"      {d}")
-        trend = q.get("pa_formula_trend", {})
-        if trend and trend.get("months"):
-            direction_icon = (
-                "📈"
-                if trend.get("direction") == "worsening"
-                else "📉"
-                if trend.get("direction") == "improving"
-                else "➡️"
-            )
-            logger.info(f"  PA 추세 ({len(trend['months'])}개월): {direction_icon} {trend['direction']}")
-            for m in trend["months"][-3:]:
-                icon = "❌" if m["violation_count"] > 0 else "✅"
-                logger.info(f"    {icon} {m['month']}: {m['violation_count']}/{m['total_checked']}")
-        gate = q.get("quality_gate", {})
-        if gate:
-            pa_ok = (q.get("pa_formula_integrity") or {}).get("ok", True)
-            team_bat_ok = gate.get("team_batting", {}).get("ok", True)
-            team_pit_ok = gate.get("team_pitching", {}).get("ok", True)
-            all_ok = pa_ok and team_bat_ok and team_pit_ok
-            if all_ok:
-                logger.info("  통합 감사: ✅ 전체 통과")
-            else:
-                issues = []
-                if not pa_ok:
-                    issues.append("PA 공식")
-                if not team_bat_ok:
-                    issues.append("팀 타격")
-                if not team_pit_ok:
-                    issues.append("팀 투수")
-                logger.error(f"  통합 감사: ❌ ({', '.join(issues)})")
-
+        _format_quality_terminal(data["quality"])
     if "freshness" in sections and data.get("freshness"):
-        f = data["freshness"]
-        logger.info(f"\n{'=' * 60}")
-        logger.info(f"  Freshness Gate ({f.get('date', '?')})")
-        logger.info(f"{'=' * 60}")
-        logger.info(f"  총 {f.get('total_issues', 0)}개 이슈")
-        for game_id, issues in f.get("issues", {}).items():
-            for issue in issues:
-                logger.warning(f"  ⚠️  [{game_id}] {issue}")
-
+        _format_freshness_terminal(data["freshness"])
     if "sync" in sections and data.get("sync"):
-        sync = data["sync"]
-        logger.info(f"\n{'=' * 60}")
-        logger.info("  OCI Sync Status")
-        logger.info(f"{'=' * 60}")
-        if sync.get("status") == "ok":
-            logger.info(f"  ✅ {sync.get('ok_count', 0)}/{sync.get('table_count', 0)} tables in sync")
-        else:
-            logger.warning(f"  ⚠️  {sync.get('status')}: {sync.get('reason', '')}")
-
+        _format_sync_terminal(data["sync"])
     logger.info("")
 
 
@@ -357,7 +371,7 @@ def _format_json(data: dict[str, Any]) -> str:
 # ─── Main ────────────────────────────────────────────────────────────────
 
 
-def main() -> int:
+def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="KBO 통합 데이터 대시보드")
     parser.add_argument("--date", help="날짜 (YYYYMMDD, 기본: 오늘)")
     parser.add_argument("--year", type=int, default=datetime.now(KST).year, help="시즌 연도")
@@ -371,79 +385,113 @@ def main() -> int:
     parser.add_argument("--format", choices=["terminal", "json"], default="terminal", help="출력 포맷")
     parser.add_argument("--report", action="store_true", help="대시보드 리포트 실행 (기본과 동일)")
     parser.add_argument("--notify", action="store_true", help="대시보드를 Telegram/Slack으로 전송")
-    args = parser.parse_args()
+    return parser.parse_args()
+
+
+def _normalize_sections(sections: list[str]) -> list[str]:
+    return AVAILABLE_SECTIONS[:-1] if "all" in sections else sections
+
+
+def _build_dashboard_data(sections: list[str], year: int, date_str: str) -> dict[str, Any]:
+    data: dict[str, Any] = {}
+    with SessionLocal() as session:
+        builders = {
+            "standings": lambda: _build_standings(session, year, date_str),
+            "park_factor": lambda: _build_park_factor(session, year),
+            "rankings": lambda: _build_rankings(session, year),
+            "team_defense": lambda: _build_team_defense(session, year),
+            "quality": lambda: _build_quality(session, date_str, year),
+            "freshness": lambda: _build_freshness(session, date_str),
+            "sync": _build_sync,
+        }
+        for section in sections:
+            builder = builders.get(section)
+            if builder:
+                data[section] = builder()
+    return data
+
+
+def _emit_dashboard(data: dict[str, Any], sections: list[str], output_format: str) -> None:
+    if output_format == "json":
+        logger.info(_format_json(data))
+        return
+    _format_terminal(data, sections)
+
+
+def _append_quality_notify_lines(msg_lines: list[str], quality: dict[str, Any]) -> None:
+    msg_lines.append(f"완료: {quality.get('completed_count', 0)}/{quality.get('total_games', 0)}")
+    gate = quality.get("quality_gate", {})
+    if not gate:
+        return
+    pa_ok = (quality.get("pa_formula_integrity") or {}).get("ok", True)
+    team_bat_ok = gate.get("team_batting", {}).get("ok", True)
+    team_pit_ok = gate.get("team_pitching", {}).get("ok", True)
+    if pa_ok and team_bat_ok and team_pit_ok:
+        msg_lines.append("통합 감사: ✅ 전체 통과")
+        return
+    _append_quality_violation_lines(msg_lines, quality, gate, pa_ok, team_bat_ok, team_pit_ok)
+
+
+def _append_quality_violation_lines(
+    msg_lines: list[str],
+    quality: dict[str, Any],
+    gate: dict[str, Any],
+    pa_ok: bool,
+    team_bat_ok: bool,
+    team_pit_ok: bool,
+) -> None:
+    violations = []
+    if not pa_ok:
+        pa_formula = quality.get("pa_formula_integrity", {})
+        violations.append(f"PA {pa_formula.get('violation_count', 0)}건")
+    if not team_bat_ok:
+        bat_mismatches = gate.get("team_batting", {}).get("mismatches", [])
+        violations.append(f"팀타격 {len(bat_mismatches)}건")
+    if not team_pit_ok:
+        pit_mismatches = gate.get("team_pitching", {}).get("mismatches", [])
+        violations.append(f"팀투수 {len(pit_mismatches)}건")
+    msg_lines.append(f"통합 감사: ❌ ({', '.join(violations)})")
+    _append_first_mismatch_line(msg_lines, gate, "team_batting", "팀타격", team_bat_ok)
+    _append_first_mismatch_line(msg_lines, gate, "team_pitching", "팀투수", team_pit_ok)
+
+
+def _append_first_mismatch_line(
+    msg_lines: list[str],
+    gate: dict[str, Any],
+    gate_key: str,
+    label: str,
+    is_ok: bool,
+) -> None:
+    if is_ok:
+        return
+    for mismatch in gate.get(gate_key, {}).get("mismatches", [])[:1]:
+        team_id = mismatch.get("team_id", "?")
+        issue = mismatch.get("issue", "mismatch")
+        msg_lines.append(f"  - {label} [{team_id}]: {issue}")
+
+
+def _send_dashboard_notification(data: dict[str, Any], date_str: str) -> None:
+    from src.utils.alerting import SlackWebhookClient
+
+    msg_lines = [f"<b>KBO Dashboard Report ({date_str})</b>"]
+    if "standings" in data:
+        rows = data["standings"].get("rows", [])
+        msg_lines.append(f"순위: {len(rows)}팀")
+    if "quality" in data:
+        _append_quality_notify_lines(msg_lines, data["quality"])
+    SlackWebhookClient.send_alert("\n".join(msg_lines))
+
+
+def main() -> int:
+    args = _parse_args()
 
     date_str = _date_or_today(args.date)
-    sections = AVAILABLE_SECTIONS[:-1] if "all" in args.sections else args.sections
-
-    data: dict[str, Any] = {}
-
-    with SessionLocal() as session:
-        if "standings" in sections:
-            data["standings"] = _build_standings(session, args.year, date_str)
-        if "park_factor" in sections:
-            data["park_factor"] = _build_park_factor(session, args.year)
-        if "rankings" in sections:
-            data["rankings"] = _build_rankings(session, args.year)
-        if "team_defense" in sections:
-            data["team_defense"] = _build_team_defense(session, args.year)
-        if "quality" in sections:
-            data["quality"] = _build_quality(session, date_str, args.year)
-        if "freshness" in sections:
-            data["freshness"] = _build_freshness(session, date_str)
-        if "sync" in sections:
-            data["sync"] = _build_sync()
-
-    if args.format == "json":
-        logger.info(_format_json(data))
-    else:
-        _format_terminal(data, sections)
+    sections = _normalize_sections(args.sections)
+    data = _build_dashboard_data(sections, args.year, date_str)
+    _emit_dashboard(data, sections, args.format)
 
     if args.notify:
-        from src.utils.alerting import SlackWebhookClient
-
-        msg_lines = [f"<b>KBO Dashboard Report ({date_str})</b>"]
-        if "standings" in data:
-            rows = data["standings"].get("rows", [])
-            msg_lines.append(f"순위: {len(rows)}팀")
-        if "quality" in data:
-            q = data["quality"]
-            msg_lines.append(f"완료: {q.get('completed_count', 0)}/{q.get('total_games', 0)}")
-            gate = q.get("quality_gate", {})
-            if gate:
-                pa_ok = (q.get("pa_formula_integrity") or {}).get("ok", True)
-                team_bat_ok = gate.get("team_batting", {}).get("ok", True)
-                team_pit_ok = gate.get("team_pitching", {}).get("ok", True)
-                all_ok = pa_ok and team_bat_ok and team_pit_ok
-                if all_ok:
-                    msg_lines.append("통합 감사: ✅ 전체 통과")
-                else:
-                    violations = []
-                    if not pa_ok:
-                        pa = q.get("pa_formula_integrity", {})
-                        violations.append(f"PA {pa.get('violation_count', 0)}건")
-                    if not team_bat_ok:
-                        tb = gate.get("team_batting", {})
-                        bat_mismatches = tb.get("mismatches", [])
-                        violations.append(f"팀타격 {len(bat_mismatches)}건")
-                    if not team_pit_ok:
-                        tp = gate.get("team_pitching", {})
-                        pit_mismatches = tp.get("mismatches", [])
-                        violations.append(f"팀투수 {len(pit_mismatches)}건")
-                    msg_lines.append(f"통합 감사: ❌ ({', '.join(violations)})")
-                    if not team_bat_ok:
-                        bat_mismatches = gate.get("team_batting", {}).get("mismatches", [])
-                        for m in bat_mismatches[:1]:
-                            team_id = m.get("team_id", "?")
-                            issue = m.get("issue", "mismatch")
-                            msg_lines.append(f"  - 팀타격 [{team_id}]: {issue}")
-                    if not team_pit_ok:
-                        pit_mismatches = gate.get("team_pitching", {}).get("mismatches", [])
-                        for m in pit_mismatches[:1]:
-                            team_id = m.get("team_id", "?")
-                            issue = m.get("issue", "mismatch")
-                            msg_lines.append(f"  - 팀투수 [{team_id}]: {issue}")
-        SlackWebhookClient.send_alert("\n".join(msg_lines))
+        _send_dashboard_notification(data, date_str)
 
 
 if __name__ == "__main__":

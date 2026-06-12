@@ -10,7 +10,7 @@ from collections.abc import Iterable
 from datetime import date as date_type
 from typing import Any
 
-from sqlalchemy import func, text
+from sqlalchemy import func, or_, text
 from sqlalchemy.orm import Session
 
 from src.db.engine import get_database_type
@@ -196,11 +196,10 @@ class TeamStatAggregator:
             .filter(PlayerSeasonBatting.league == "REGULAR")
             .filter(
                 team_code_expr.isnot(None),
-                team_code_expr != "",
-                team_code_expr != "합계",
-                team_code_expr != "TOTAL",
-                team_code_expr != "ALL",
-                team_code_expr != "-",
+                or_(
+                    PlayerSeasonBatting.team_code.is_(None),
+                    PlayerSeasonBatting.team_code.not_in(["", "합계", "TOTAL", "ALL", "-"]),
+                ),
             )
         )
         if team_id:
@@ -298,11 +297,10 @@ class TeamStatAggregator:
             .filter(PlayerSeasonPitching.league == "REGULAR")
             .filter(
                 team_code_expr.isnot(None),
-                team_code_expr != "",
-                team_code_expr != "합계",
-                team_code_expr != "TOTAL",
-                team_code_expr != "ALL",
-                team_code_expr != "-",
+                or_(
+                    PlayerSeasonPitching.team_code.is_(None),
+                    PlayerSeasonPitching.team_code.not_in(["", "합계", "TOTAL", "ALL", "-"]),
+                ),
             )
         )
         if team_id:
