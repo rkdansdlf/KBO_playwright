@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import argparse
 import contextlib
 import logging
@@ -113,7 +115,7 @@ class ForeignPlayerCrawler(NaverNewsCrawlerBase):
             logger.info("Saved %s foreign player change records.", count)
         except SQLAlchemyError as e:
             session.rollback()
-            logger.exception(f"Database error saving foreign players: {e}")  # noqa: G004
+            logger.exception(f"Database error saving foreign players: {e}")
         finally:
             session.close()
 

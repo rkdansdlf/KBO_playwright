@@ -12,7 +12,7 @@ from playwright.async_api import Page
 
 from src.utils.compliance import compliance
 from src.utils.playwright_pool import AsyncPlaywrightPool
-from src.utils.playwright_retry import NAV_TIMEOUT
+from src.utils.playwright_retry import NAV_TIMEOUT, SHORT_TIMEOUT
 from src.utils.throttle import throttle
 
 logger = logging.getLogger(__name__)
@@ -119,7 +119,7 @@ class FuturesProfileCrawler:
         futures_clicked = False
         for selector in tab_selectors:
             try:
-                tab = await page.wait_for_selector(selector, timeout=10000)
+                tab = await page.wait_for_selector(selector, timeout=SHORT_TIMEOUT)
             except PlaywrightError:
                 continue
             if tab:
@@ -214,7 +214,7 @@ async def main() -> None:
     crawler = FuturesProfileCrawler()
     sample_id = "78137"
     payload = await crawler.fetch_player_futures(sample_id)
-    logger.info(f"Fetched Futures tables for {sample_id}: {len(payload['tables'])}")  # noqa: G004
+    logger.info(f"Fetched Futures tables for {sample_id}: {len(payload['tables'])}")
 
 
 if __name__ == "__main__":

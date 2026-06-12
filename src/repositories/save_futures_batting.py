@@ -3,6 +3,8 @@ Save Futures batting stats to database with UPSERT logic.
 Compatible with SQLite and MySQL.
 """
 
+from __future__ import annotations
+
 from sqlalchemy.dialects.mysql import insert as mysql_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 

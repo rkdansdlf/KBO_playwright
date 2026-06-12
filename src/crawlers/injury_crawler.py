@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import argparse
 import contextlib
 import logging
@@ -106,7 +108,7 @@ class InjuryCrawler(NaverNewsCrawlerBase):
             logger.info("Saved %s injury records.", count)
         except SQLAlchemyError as e:
             session.rollback()
-            logger.exception(f"Database error saving injury records: {e}")  # noqa: G004
+            logger.exception(f"Database error saving injury records: {e}")
         finally:
             session.close()
 

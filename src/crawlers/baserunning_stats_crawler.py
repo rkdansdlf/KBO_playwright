@@ -2,6 +2,8 @@
 선수의 시즌별 주루 기록을 크롤링하고 DB에 저장합니다.
 """
 
+from __future__ import annotations
+
 import logging
 import sqlite3
 from datetime import datetime
@@ -15,6 +17,7 @@ logger = logging.getLogger(__name__)
 from src.utils.playwright_retry import LONG_TIMEOUT
 from src.utils.request_policy import RequestPolicy
 from src.utils.team_codes import resolve_team_code
+from src.utils.type_helpers import safe_float, safe_int
 
 
 def crawl_baserunning_stats(year=None, max_retries=3, timeout=LONG_TIMEOUT) -> list[dict[str, Any]]:
@@ -92,22 +95,6 @@ def crawl_baserunning_stats(year=None, max_retries=3, timeout=LONG_TIMEOUT) -> l
                             team_name = cells[2].inner_text().strip()
                             team_id = resolve_team_code(team_name, year) or team_name
 
-                            def safe_int(text) -> int:
-                                if not text or text.strip() in ("-", ""):
-                                    return 0
-                                try:
-                                    return int(text.strip().replace(",", ""))
-                                except (ValueError, TypeError):
-                                    return 0
-
-                            def safe_float(text) -> float:
-                                if not text or text.strip() in ("-", ""):
-                                    return 0.0
-                                try:
-                                    return float(text.strip().replace(",", ""))
-                                except (ValueError, TypeError):
-                                    return 0.0
-
                             stats = {
                                 "player_id": player_id,  # 링크가 있으면 player_id 포함
                                 "player_name": player_name,
@@ -153,9 +140,9 @@ def save_baserunning_stats(player_list, year=None, db_path=None) -> None:
         year = datetime.now().year
     if db_path is None:
         db_path = f"data/kbo_{year}.db"
-    logger.info(f"\n{'=' * 60}")  # noqa: G004
+    logger.info(f"\n{'=' * 60}")
     logger.info("🏃 %s년 주루 기록 수집 시작", year)
-    logger.info(f"{'=' * 60}\n")  # noqa: G004
+    logger.info(f"{'=' * 60}\n")
 
     conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
@@ -250,12 +237,12 @@ def save_baserunning_stats(player_list, year=None, db_path=None) -> None:
 
     conn.close()
 
-    logger.info(f"\n{'=' * 60}")  # noqa: G004
+    logger.info(f"\n{'=' * 60}")
     logger.info("✅ 주루 기록 저장 완료!")
-    logger.info(f"{'=' * 60}")  # noqa: G004
+    logger.info(f"{'=' * 60}")
     logger.info("  - 성공: %s명", success_count)
     logger.info("  - 실패: %s명", fail_count)
-    logger.info(f"{'=' * 60}\n")  # noqa: G004
+    logger.info(f"{'=' * 60}\n")
 
 
 if __name__ == "__main__":

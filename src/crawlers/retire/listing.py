@@ -14,7 +14,7 @@ from playwright.async_api import Page
 from src.urls import HITTER_BASIC1, PITCHER_BASIC1
 from src.utils.compliance import compliance
 from src.utils.playwright_pool import AsyncPlaywrightPool
-from src.utils.playwright_retry import NAV_TIMEOUT, SEL_TIMEOUT
+from src.utils.playwright_retry import NAV_TIMEOUT, SEL_TIMEOUT, SHORT_TIMEOUT
 from src.utils.throttle import throttle
 
 logger = logging.getLogger(__name__)
@@ -73,16 +73,15 @@ class RetiredPlayerListingCrawler:
         await page.wait_for_selector(season_selector, timeout=SEL_TIMEOUT)
         await self._select_option_and_dispatch(page, season_selector, str(year))
         with contextlib.suppress(Exception):
-            await page.wait_for_load_state("load", timeout=10000)
+            await page.wait_for_load_state("load", timeout=SHORT_TIMEOUT)
         await page.wait_for_timeout(1000)
 
         try:
             await self._select_option_and_dispatch(page, series_selector, "0")
-            await page.wait_for_load_state("load", timeout=10000)
+            await page.wait_for_load_state("load", timeout=SHORT_TIMEOUT)
             await page.wait_for_timeout(500)
         except Exception:  # noqa: BLE001
             logger.warning("Failed to select all series option, continuing")
-            pass
 
         return await self._collect_ids_from_pages(page, year)
 
@@ -122,7 +121,7 @@ class RetiredPlayerListingCrawler:
             await page.query_selector(season_selector),
         )
         with contextlib.suppress(Exception):
-            await page.wait_for_load_state("load", timeout=10000)
+            await page.wait_for_load_state("load", timeout=SHORT_TIMEOUT)
         await page.wait_for_timeout(1000)
 
         # Get all team codes
@@ -147,7 +146,7 @@ class RetiredPlayerListingCrawler:
                 await page.query_selector(team_selector),
             )
             with contextlib.suppress(Exception):
-                await page.wait_for_load_state("load", timeout=10000)
+                await page.wait_for_load_state("load", timeout=SHORT_TIMEOUT)
             await page.wait_for_timeout(500)
 
             team_players = await self._collect_ids_from_pages(page, year)
@@ -198,7 +197,7 @@ class RetiredPlayerListingCrawler:
                 if next_page_btn:
                     await self._wait()
                     await next_page_btn.click()
-                    await page.wait_for_load_state("load", timeout=10000)
+                    await page.wait_for_load_state("load", timeout=SHORT_TIMEOUT)
                     await page.wait_for_timeout(1000)
                     page_num += 1
                 else:

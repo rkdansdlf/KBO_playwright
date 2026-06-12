@@ -3,6 +3,8 @@ KBO 투수 기록 저장 (타자 크롤러 방식과 동일한 단순 구조)
 외래키 제약조건 없이 직접 저장
 """
 
+from __future__ import annotations
+
 import logging
 from typing import Any
 

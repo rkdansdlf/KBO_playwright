@@ -102,7 +102,7 @@ async def run_static_pipeline(pdf_path: str | None = None) -> None:
     # Check if there are local rules markdown files under Docs/baseball to load as fallback/addition
     rules_dir = "Docs/baseball"
     if os.path.exists(rules_dir):
-        logger.info(f"📁 Scanning directory '{rules_dir}' for static markdown files...")  # noqa: G004
+        logger.info(f"📁 Scanning directory '{rules_dir}' for static markdown files...")
         md_count = 0
         for root, _, files in os.walk(rules_dir):
             for file in files:

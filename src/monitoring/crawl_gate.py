@@ -70,9 +70,9 @@ class CrawlGate:
         return True
 
     def run_all_checks(self, target_date: str) -> bool:
-        logger.info(f"\n{'=' * 50}")  # noqa: G004
+        logger.info(f"\n{'=' * 50}")
         logger.info("  CrawlGate: Checking %s", target_date)
-        logger.info(f"{'=' * 50}")  # noqa: G004
+        logger.info(f"{'=' * 50}")
 
         results = [
             ("Freshness", self.check_freshness(target_date)),

@@ -300,7 +300,7 @@ class StaffRegisterCrawler:
         if dry_run:
             logger.info("  [DRY-RUN] Would upsert %s staff record(s) into player_basic.", len(valid))
             for r in valid:
-                logger.info(f"    → {r['name']} ({r['staff_role']}) pid={r['player_id']} team={r['team']}")  # noqa: G004
+                logger.info(f"    → {r['name']} ({r['staff_role']}) pid={r['player_id']} team={r['team']}")
             return len(valid)
 
         if not valid:

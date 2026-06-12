@@ -2,6 +2,8 @@
 KBO Season metadata model.
 """
 
+from __future__ import annotations
+
 from sqlalchemy import Date, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column
 

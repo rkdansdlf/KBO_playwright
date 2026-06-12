@@ -2,6 +2,8 @@
 Repository for DataSource and RawSourceSnapshot operations.
 """
 
+from __future__ import annotations
+
 from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import select, update

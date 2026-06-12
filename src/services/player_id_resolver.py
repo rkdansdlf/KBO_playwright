@@ -1,7 +1,8 @@
+from __future__ import annotations
+
 import csv
 import logging
 import os
-from datetime import datetime
 
 from sqlalchemy import inspect, or_, select
 from sqlalchemy.orm import Session
@@ -11,6 +12,16 @@ logger = logging.getLogger(__name__)
 from src.models.player import Player, PlayerBasic, PlayerSeasonBatting, PlayerSeasonPitching
 
 ALIAS_CSV_PATH = os.path.join(os.path.dirname(__file__), "..", "..", "data", "player_name_aliases.csv")
+
+CANONICAL_TEAM_CODES = {
+    "OB": "DB",
+    "SK": "SSG",
+    "WO": "KH",
+    "NX": "KH",
+    "HT": "KIA",
+}
+
+SAMSUNG_LEE_SEUNGHYUN_SEASON = 2026
 
 
 class PlayerIdResolver:
@@ -137,7 +148,7 @@ class PlayerIdResolver:
         self._cache[cache_key] = None
         return None
 
-    def _filter_surrogate_ids(self, candidate_ids: set[int]) -> set[int]:
+    def _filter_surrogate_ids(self, candidate_ids: set[int], player_name: str | None = None) -> set[int]:
         if len(candidate_ids) <= 1:
             return candidate_ids
 
@@ -158,12 +169,32 @@ class PlayerIdResolver:
         if not surrogates:
             return candidate_ids
 
+        target_ids = sorted({pid for pid in surrogates.values() if pid is not None})
+        existing_targets = {
+            int(row[0]): str(row[1])
+            for row in self.session.execute(
+                select(PlayerBasic.player_id, PlayerBasic.name).where(PlayerBasic.player_id.in_(target_ids))
+            ).fetchall()
+            if row[0] is not None
+        }
+
         filtered = set()
         for pid in candidate_ids:
-            if pid in surrogates:
-                filtered.add(surrogates[pid])
-            else:
-                filtered.add(pid)
+            mapped_id = surrogates.get(pid)
+            if mapped_id is not None and mapped_id in existing_targets:
+                if player_name is None or existing_targets[mapped_id] == player_name:
+                    filtered.add(mapped_id)
+                    continue
+                logger.debug(
+                    "Skipping surrogate player_id mapping %s -> %s because target name %s does not match %s",
+                    pid,
+                    mapped_id,
+                    existing_targets[mapped_id],
+                    player_name,
+                )
+            if pid in surrogates and mapped_id not in existing_targets:
+                logger.debug("Skipping surrogate player_id mapping %s -> %s because target profile is missing", pid, mapped_id)
+            filtered.add(pid)
         return filtered
 
     def _return_existing_unknown_or_ambiguous(
@@ -187,7 +218,14 @@ class PlayerIdResolver:
 
     def preload_season_index(self, season: int) -> None:
         logger.info("🔄 Preloading player index for season %s...", season)
-        season_index: dict[str, set[int]] = {}
+        season_index: dict[str, dict[str, object]] = {}
+
+        def add_index_entry(name: str, team: str, pid: int, is_pitcher: bool | None) -> None:
+            cache_key = self._cache_key(name, team, season, None, is_pitcher)
+            entry = season_index.setdefault(cache_key, {"name": name, "ids": set()})
+            entry_ids = entry["ids"]
+            if isinstance(entry_ids, set):
+                entry_ids.add(int(pid))
 
         # Batters
         stmt = (
@@ -197,8 +235,8 @@ class PlayerIdResolver:
         )
         for name, team, pid in self.session.execute(stmt).fetchall():
             if pid is not None:
-                # Match the format used in resolve_id: {name}_{team}_{season}_{uniform_no or ''}
-                season_index.setdefault(f"{name}_{team}_{season}_", set()).add(int(pid))
+                add_index_entry(name, team, int(pid), False)
+                add_index_entry(name, team, int(pid), None)
 
         # Pitchers
         stmt = (
@@ -208,38 +246,49 @@ class PlayerIdResolver:
         )
         for name, team, pid in self.session.execute(stmt).fetchall():
             if pid is not None:
-                season_index.setdefault(f"{name}_{team}_{season}_", set()).add(int(pid))
+                add_index_entry(name, team, int(pid), True)
+                add_index_entry(name, team, int(pid), None)
 
-        for cache_key, candidate_ids in season_index.items():
-            filtered_ids = self._filter_surrogate_ids(candidate_ids)
+        for cache_key, entry in season_index.items():
+            candidate_ids = entry["ids"]
+            if not isinstance(candidate_ids, set):
+                continue
+            player_name = entry.get("name")
+            filtered_ids = self._filter_surrogate_ids(
+                candidate_ids,
+                str(player_name) if player_name is not None else None,
+            )
             if len(filtered_ids) == 1:
                 self._cache[cache_key] = next(iter(filtered_ids))
             else:
                 self._cache[cache_key] = None
 
-    def resolve_id(
+    def _cache_key(
+        self,
+        player_name: str,
+        team_code: str | None,
+        season: int,
+        uniform_no: str | None,
+        is_pitcher: bool | None,
+    ) -> str:
+        if is_pitcher is True:
+            role = "P"
+        elif is_pitcher is False:
+            role = "B"
+        else:
+            role = "A"
+        return f"{player_name}_{team_code}_{season}_{uniform_no or ''}_{role}"
+
+    def _canonical_team_code(self, team_code: str | None) -> str | None:
+        return CANONICAL_TEAM_CODES.get(team_code, team_code)
+
+    def _resolve_static_override(
         self,
         player_name: str,
         team_code: str,
         season: int,
-        uniform_no: str | None = None,
-        is_pitcher: bool | None = None,
+        is_pitcher: bool | None,
     ) -> int | None:
-        if not player_name:
-            return None
-
-        # Standardize team_code to database canonical code (e.g. SK -> SSG, WO/NX -> KH)
-        canonical_team_map = {
-            "OB": "DB",
-            "SK": "SSG",
-            "WO": "KH",
-            "NX": "KH",
-            "HT": "KIA",
-        }
-        if team_code in canonical_team_map:
-            team_code = canonical_team_map[team_code]
-
-        # Static overrides to resolve ambiguity/discrepancies in historical data
         overrides = {
             ("전준호", "HU", 2001, False): 91511,
             ("전준호", "HU", 2001, True): 94364,
@@ -263,7 +312,6 @@ class PlayerIdResolver:
             ("김수경", "HU", 2001, True): 98330,
             ("위재영", "HU", 2001, True): 95318,
             ("테일러", "HU", 2001, True): 2943,
-            # 2026 Season unresolved active players
             ("김민수", "KT", 2026, True): 65048,
             ("김민수", "KT", 2026, False): 52303,
             ("최재영", "KH", 2026, False): 56338,
@@ -289,7 +337,6 @@ class PlayerIdResolver:
             ("안우진", "KH", 2026, True): 68341,
             ("안우진", "KH", 2026, False): 68341,
             ("보쉴리", "KT", 2026, True): 56036,
-            ("박준영", "HH", 2026, True): 52731,
             ("이형범", "KIA", 2026, True): 62951,
             ("박세진", "LT", 2026, True): 66047,
             ("김민", "SSG", 2026, True): 68043,
@@ -304,7 +351,6 @@ class PlayerIdResolver:
             ("히우라", "KH", 2026, None): 56305,
             ("유민", "HH", 2026, False): 52765,
             ("유민", "HH", 2026, None): 52765,
-            # 2022 Season KIA unresolved players
             ("류지혁", "KIA", 2022, False): 62234,
             ("류지혁", "KIA", 2022, True): 62234,
             ("김선빈", "KIA", 2022, False): 78603,
@@ -317,10 +363,8 @@ class PlayerIdResolver:
             ("한승혁", "KIA", 2022, False): 61666,
             ("정해영", "KIA", 2022, True): 50662,
             ("정해영", "KIA", 2022, False): 50662,
-            # 2018 Season Nexen unresolved player
             ("김태혁", "NX", 2018, True): 76430,
             ("김태혁", "NX", 2018, False): 76430,
-            # 2026 Season Kiwoom/SSG unresolved active players
             ("이주형", "KH", 2026, False): 50167,
             ("이주형", "KH", 2026, True): 50167,
             ("이주형", "KH", 2026, None): 50167,
@@ -351,7 +395,6 @@ class PlayerIdResolver:
             )
             return resolved_id
 
-        # Fallback key check without is_pitcher just in case
         override_key_no_pitcher = (player_name, team_code, season, None)
         if override_key_no_pitcher in overrides:
             resolved_id = overrides[override_key_no_pitcher]
@@ -363,139 +406,69 @@ class PlayerIdResolver:
                 resolved_id,
             )
             return resolved_id
+        return None
 
-        # Samsung Lee Seung-hyun disambiguation (two pitchers with same name)
-        if player_name == "이승현" and team_code == "SS" and season == datetime.now().year and is_pitcher is True:
-            if uniform_no == "57":
-                return 51454  # Left-handed pitcher
-            elif uniform_no in ("20", "26"):
-                return 60146  # Right-handed pitcher
-            elif not uniform_no:
-                # Default to 51454 (left-handed) as he pitched in 24 games while 60146 pitched only 3 games.
-                return 51454
-
-        if player_name in self.NAME_ALIASES:
-            player_name = self.NAME_ALIASES[player_name]
-
-        cache_key = f"{player_name}_{team_code}_{season}_{uniform_no or ''}"
-        if cache_key in self._cache:
-            return self._cache[cache_key]
-
-        # 1. Try Seasonal Data (Most accurate)
-        is_allstar = team_code in self.ALL_STAR_TEAMS
-        season_candidate_ids = set()
-
-        models = []
-        if is_pitcher is True:
-            models = [PlayerSeasonPitching]
-        elif is_pitcher is False:
-            models = [PlayerSeasonBatting]
-        else:
-            models = [PlayerSeasonBatting, PlayerSeasonPitching]
-
-        for model in models:
-            stmt = (
-                select(PlayerBasic.player_id)
-                .select_from(model)
-                .join(PlayerBasic, model.player_id == PlayerBasic.player_id)
-                .where(PlayerBasic.name == player_name, model.season == season)
-            )
-            if not is_allstar and team_code:
-                stmt = stmt.where(model.team_code == team_code)
-            if uniform_no:
-                stmt = stmt.where(PlayerBasic.uniform_no == str(uniform_no))
-
-            results = self.session.execute(stmt).fetchall()
-            season_candidate_ids.update(row[0] for row in results)
-        season_candidate_ids = self._filter_surrogate_ids(season_candidate_ids)
-        if len(season_candidate_ids) == 1:
-            pid = next(iter(season_candidate_ids))
-            self._cache[cache_key] = pid
-            return pid
-        if len(season_candidate_ids) > 1:
-            return self._return_existing_unknown_or_ambiguous(
-                cache_key,
-                player_name,
-                team_code,
-                season,
-                uniform_no,
-                season_candidate_ids,
-            )
-
-        # 2. Try PlayerBasic with Team/Career context
-        kor_team_name = self.TEAM_NAME_MAP.get(team_code, "")
-        if kor_team_name:
-            stmt = select(PlayerBasic.player_id).where(
-                PlayerBasic.name == player_name,
-                or_(PlayerBasic.team.contains(kor_team_name), PlayerBasic.career.contains(kor_team_name)),
-            )
-            if uniform_no:
-                stmt = stmt.where(PlayerBasic.uniform_no == str(uniform_no))
-
-            results = self.session.execute(stmt).fetchall()
-            candidate_ids = self._filter_surrogate_ids({row[0] for row in results})
-            if len(candidate_ids) == 1:
-                pid = next(iter(candidate_ids))
-                self._cache[cache_key] = pid
-                return pid
-            if len(candidate_ids) > 1:
-                return self._return_existing_unknown_or_ambiguous(
-                    cache_key,
-                    player_name,
-                    team_code,
-                    season,
-                    uniform_no,
-                    candidate_ids,
-                )
-
-        # 3. Fallback: Relaxed Uniqueness Check
-        # If we have uniform_no, try unique by (name, uniform_no) global
-        if uniform_no:
-            stmt = select(PlayerBasic.player_id).where(
-                PlayerBasic.name == player_name,
-                PlayerBasic.uniform_no == str(uniform_no),
-            )
-            results = self.session.execute(stmt).fetchall()
-            candidate_ids = self._filter_surrogate_ids({row[0] for row in results})
-            if len(candidate_ids) == 1:
-                pid = next(iter(candidate_ids))
-                self._cache[cache_key] = pid
-                return pid
-            if len(candidate_ids) > 1:
-                return self._return_existing_unknown_or_ambiguous(
-                    cache_key,
-                    player_name,
-                    team_code,
-                    season,
-                    uniform_no,
-                    candidate_ids,
-                )
-
-        if self.strict_game_resolution:
-            fact_id = self._resolve_from_same_season_game_facts(
-                player_name,
-                team_code,
-                season,
-                uniform_no=uniform_no,
-                is_pitcher=is_pitcher,
-            )
-            if fact_id:
-                self._cache[cache_key] = fact_id
-                return fact_id
-
-            logger.warning(
-                "   [UNRESOLVED PLAYER] %s (%s, %s) lacked strict team/season/uniform evidence. Leaving player_id NULL.",
-                player_name,
-                team_code,
-                season,
-            )
-            self._cache[cache_key] = None
+    def _resolve_samsung_lee_seunghyun(
+        self,
+        player_name: str,
+        team_code: str,
+        season: int,
+        uniform_no: str | None,
+        is_pitcher: bool | None,
+    ) -> int | None:
+        if not (
+            player_name == "이승현"
+            and team_code == "SS"
+            and season == SAMSUNG_LEE_SEUNGHYUN_SEASON
+            and is_pitcher is True
+        ):
             return None
+        if uniform_no == "57":
+            return 51454
+        if uniform_no in ("20", "26"):
+            return 60146
+        if not uniform_no:
+            return 51454
+        return None
 
-        # 4. Ultimate Fallback: Is the name unique in the entire KBO history?
-        stmt = select(PlayerBasic.player_id).where(PlayerBasic.name == player_name)
-        results = self.session.execute(stmt).fetchall()
-        candidate_ids = self._filter_surrogate_ids({row[0] for row in results})
+    def _resolve_hanwha_park_junyoung(
+        self,
+        player_name: str,
+        team_code: str,
+        season: int,
+        uniform_no: str | None,
+        is_pitcher: bool | None,
+    ) -> int | None:
+        if not (
+            player_name == "박준영"
+            and team_code == "HH"
+            and season == 2026
+            and is_pitcher is True
+        ):
+            return None
+        if uniform_no == "68":
+            return 56709  # 68번 박준영 (2002년생)
+        if uniform_no == "96":
+            return 52731  # 96번 박준영 (2003년생)
+        return None
+
+    def _candidate_models(self, is_pitcher: bool | None):
+        if is_pitcher is True:
+            return [PlayerSeasonPitching]
+        if is_pitcher is False:
+            return [PlayerSeasonBatting]
+        return [PlayerSeasonBatting, PlayerSeasonPitching]
+
+    def _cache_single_or_ambiguous(
+        self,
+        cache_key: str,
+        player_name: str,
+        team_code: str,
+        season: int,
+        uniform_no: str | None,
+        candidate_ids: set[int],
+    ) -> int | None:
+        candidate_ids = self._filter_surrogate_ids(candidate_ids, player_name)
         if len(candidate_ids) == 1:
             pid = next(iter(candidate_ids))
             self._cache[cache_key] = pid
@@ -509,14 +482,131 @@ class PlayerIdResolver:
                 uniform_no,
                 candidate_ids,
             )
+        return None
 
-        # 5. Last resort: Try relaxed season resolution without uniform_no or strict team
+    def _resolve_from_season_stats(
+        self,
+        player_name: str,
+        team_code: str,
+        season: int,
+        uniform_no: str | None,
+        is_pitcher: bool | None,
+        cache_key: str,
+    ) -> int | None:
+        is_allstar = team_code in self.ALL_STAR_TEAMS
+        candidate_ids = set()
+        for model in self._candidate_models(is_pitcher):
+            stmt = (
+                select(PlayerBasic.player_id)
+                .select_from(model)
+                .join(PlayerBasic, model.player_id == PlayerBasic.player_id)
+                .where(PlayerBasic.name == player_name, model.season == season)
+            )
+            if not is_allstar and team_code:
+                stmt = stmt.where(model.team_code == team_code)
+            if uniform_no:
+                stmt = stmt.where(PlayerBasic.uniform_no == str(uniform_no))
+            candidate_ids.update(row[0] for row in self.session.execute(stmt).fetchall())
+        return self._cache_single_or_ambiguous(cache_key, player_name, team_code, season, uniform_no, candidate_ids)
+
+    def _resolve_from_player_basic_context(
+        self,
+        player_name: str,
+        team_code: str,
+        season: int,
+        uniform_no: str | None,
+        cache_key: str,
+    ) -> int | None:
+        kor_team_name = self.TEAM_NAME_MAP.get(team_code, "")
+        if not kor_team_name:
+            return None
+        stmt = select(PlayerBasic.player_id).where(
+            PlayerBasic.name == player_name,
+            or_(PlayerBasic.team.contains(kor_team_name), PlayerBasic.career.contains(kor_team_name)),
+        )
+        if uniform_no:
+            stmt = stmt.where(PlayerBasic.uniform_no == str(uniform_no))
+        candidate_ids = {row[0] for row in self.session.execute(stmt).fetchall()}
+        return self._cache_single_or_ambiguous(cache_key, player_name, team_code, season, uniform_no, candidate_ids)
+
+    def _resolve_by_uniform_no(
+        self,
+        player_name: str,
+        team_code: str,
+        season: int,
+        uniform_no: str | None,
+        cache_key: str,
+    ) -> int | None:
+        if not uniform_no:
+            return None
+        stmt = select(PlayerBasic.player_id).where(
+            PlayerBasic.name == player_name,
+            PlayerBasic.uniform_no == str(uniform_no),
+        )
+        candidate_ids = {row[0] for row in self.session.execute(stmt).fetchall()}
+        return self._cache_single_or_ambiguous(cache_key, player_name, team_code, season, uniform_no, candidate_ids)
+
+    def _resolve_strict_game_facts_or_none(
+        self,
+        player_name: str,
+        team_code: str,
+        season: int,
+        uniform_no: str | None,
+        is_pitcher: bool | None,
+        cache_key: str,
+    ) -> int | None:
+        fact_id = self._resolve_from_same_season_game_facts(
+            player_name,
+            team_code,
+            season,
+            uniform_no=uniform_no,
+            is_pitcher=is_pitcher,
+        )
+        if fact_id:
+            self._cache[cache_key] = fact_id
+            return fact_id
+        logger.warning(
+            "   [UNRESOLVED PLAYER] %s (%s, %s) lacked strict team/season/uniform evidence. Leaving player_id NULL.",
+            player_name,
+            team_code,
+            season,
+        )
+        self._cache[cache_key] = None
+        return None
+
+    def _resolve_unique_historical_name(
+        self,
+        player_name: str,
+        team_code: str,
+        season: int,
+        uniform_no: str | None,
+        cache_key: str,
+    ) -> int | None:
+        stmt = select(PlayerBasic.player_id).where(PlayerBasic.name == player_name)
+        candidate_ids = {row[0] for row in self.session.execute(stmt).fetchall()}
+        return self._cache_single_or_ambiguous(cache_key, player_name, team_code, season, uniform_no, candidate_ids)
+
+    def _resolve_relaxed_and_cache(
+        self,
+        player_name: str,
+        team_code: str,
+        season: int,
+        cache_key: str,
+    ) -> int | None:
         relaxed_id = self._resolve_relaxed(player_name, team_code, season)
         if relaxed_id:
             self._cache[cache_key] = relaxed_id
             return relaxed_id
+        return None
 
-        # 6. Optional legacy fallback: auto-register unknown player as a local profile.
+    def _resolve_unknown_registration(
+        self,
+        player_name: str,
+        team_code: str,
+        season: int,
+        uniform_no: str | None,
+        cache_key: str,
+    ) -> int | None:
         if not self.allow_unknown_registration:
             logger.warning(
                 "   [UNKNOWN PLAYER] %s (%s, %s) was not resolved. Leaving player_id NULL; automatic local profile registration is disabled.",
@@ -540,8 +630,74 @@ class PlayerIdResolver:
         if new_id:
             self._cache[cache_key] = new_id
             return new_id
-
         return None
+
+    def _resolve_non_strict_fallbacks(
+        self,
+        player_name: str,
+        team_code: str,
+        season: int,
+        uniform_no: str | None,
+        cache_key: str,
+    ) -> int | None:
+        historical_id = self._resolve_unique_historical_name(player_name, team_code, season, uniform_no, cache_key)
+        if historical_id is not None:
+            return historical_id
+
+        relaxed_id = self._resolve_relaxed_and_cache(player_name, team_code, season, cache_key)
+        if relaxed_id is not None:
+            return relaxed_id
+
+        return self._resolve_unknown_registration(player_name, team_code, season, uniform_no, cache_key)
+
+    def resolve_id(
+        self,
+        player_name: str,
+        team_code: str,
+        season: int,
+        uniform_no: str | None = None,
+        is_pitcher: bool | None = None,
+    ) -> int | None:
+        if not player_name:
+            return None
+
+        team_code = self._canonical_team_code(team_code)
+
+        override_id = self._resolve_static_override(player_name, team_code, season, is_pitcher)
+        if override_id:
+            return override_id
+
+        samsung_id = self._resolve_samsung_lee_seunghyun(player_name, team_code, season, uniform_no, is_pitcher)
+        if samsung_id:
+            return samsung_id
+
+        hanwha_id = self._resolve_hanwha_park_junyoung(player_name, team_code, season, uniform_no, is_pitcher)
+        if hanwha_id:
+            return hanwha_id
+
+        if player_name in self.NAME_ALIASES:
+            player_name = self.NAME_ALIASES[player_name]
+
+        cache_key = self._cache_key(player_name, team_code, season, uniform_no, is_pitcher)
+        if cache_key in self._cache:
+            return self._cache[cache_key]
+
+        resolver_steps = (
+            lambda: self._resolve_from_season_stats(player_name, team_code, season, uniform_no, is_pitcher, cache_key),
+            lambda: self._resolve_from_player_basic_context(player_name, team_code, season, uniform_no, cache_key),
+            lambda: self._resolve_by_uniform_no(player_name, team_code, season, uniform_no, cache_key),
+        )
+        for resolve_step in resolver_steps:
+            resolved_id = resolve_step()
+            if resolved_id is not None:
+                return resolved_id
+
+        if self.strict_game_resolution:
+            return self._resolve_strict_game_facts_or_none(
+                player_name, team_code, season, uniform_no, is_pitcher, cache_key
+            )
+
+        return self._resolve_non_strict_fallbacks(player_name, team_code, season, uniform_no, cache_key)
 
     def _unknown_profile_team(self, team_code: str) -> str:
         return self.TEAM_NAME_MAP.get(team_code, team_code)
@@ -608,7 +764,7 @@ class PlayerIdResolver:
                     continue
                 candidate_ids.add(int(player_id))
 
-        official_ids = {pid for pid in self._filter_surrogate_ids(candidate_ids) if pid < 900000}
+        official_ids = {pid for pid in self._filter_surrogate_ids(candidate_ids, player_name) if pid < 900000}
         if len(official_ids) == 1:
             return next(iter(official_ids))
         return None

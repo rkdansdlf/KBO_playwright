@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import logging
 
 logger = logging.getLogger(__name__)
@@ -401,4 +403,4 @@ if __name__ == "__main__":
     logger.info("🔍 팀 매핑 테스트:")
     for team_name, year in test_cases:
         code = mapper.get_team_code(team_name, year)
-        logger.info(f"  {year}년 '{team_name}' → '{code}'")  # noqa: G004
+        logger.info(f"  {year}년 '{team_name}' → '{code}'")
