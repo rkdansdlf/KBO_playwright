@@ -105,6 +105,7 @@ class TestEmbeddingCache:
         e2 = EmbeddingCache(text_hash="abc", model_name="m1", embedding=[0.2])
         db_session.add(e1)
         db_session.commit()
+        db_session.expunge(e1)
         db_session.add(e2)
         with pytest.raises(IntegrityError):
             db_session.commit()

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+from typing import Any
 
 from sqlalchemy import case, func, select
 
@@ -180,18 +181,12 @@ class MatchupEngine:
                     ),
                 )
 
-    def _calc_situational_splits(self, session, season_year: int) -> None:
-        """Calculates RISP and vs Handedness splits using GameEvents."""
-        logger.info("   📉 Calculating situational splits for %s...", season_year)
-
-        # Cleanup for the specific year first
+    def _clear_situational_splits(self, session, season_year: int) -> None:
         session.query(BatterSplit).filter(BatterSplit.season_year == season_year).delete()
         session.query(PitcherSplit).filter(PitcherSplit.season_year == season_year).delete()
 
-        # 1. Fetch needed player metadata (handedness)
-        players = {p.player_id: p for p in session.query(PlayerBasic).all()}
-
-        events = (
+    def _fetch_situational_events(self, session, season_year: int) -> list[GameEvent]:
+        return (
             session.query(GameEvent)
             .join(Game, Game.game_id == GameEvent.game_id)
             .filter(func.substr(Game.game_id, 1, 4) == str(season_year))
@@ -200,94 +195,123 @@ class MatchupEngine:
             .all()
         )
 
-        bat_splits = {}
-        pit_splits = {}
+    def _load_player_map(self, session) -> dict[int, PlayerBasic]:
+        return {player.player_id: player for player in session.query(PlayerBasic).all()}
 
-        for ev in events:
-            b = players.get(ev.batter_id)
-            p = players.get(ev.pitcher_id)
+    @staticmethod
+    def _empty_batter_split() -> dict[str, int]:
+        return {"pa": 0, "ab": 0, "h": 0, "bb": 0, "hbp": 0, "hr": 0, "sf": 0}
 
-            is_risp = "2" in (ev.bases_before or "") or "3" in (ev.bases_before or "")
+    @staticmethod
+    def _empty_pitcher_split() -> dict[str, int]:
+        return {"bf": 0, "h": 0, "hr": 0, "bb": 0, "so": 0, "outs": 0}
 
-            def update_bat(pid, stype, is_hit, is_ab, is_pa, is_bb, is_sf, is_hr) -> None:
-                if pid not in bat_splits:
-                    bat_splits[pid] = {}
-                if stype not in bat_splits[pid]:
-                    bat_splits[pid][stype] = {"pa": 0, "ab": 0, "h": 0, "bb": 0, "hbp": 0, "hr": 0, "sf": 0}
-                s = bat_splits[pid][stype]
-                if is_pa:
-                    s["pa"] += 1
-                if is_ab:
-                    s["ab"] += 1
-                if is_hit:
-                    s["h"] += 1
-                if is_hr:
-                    s["hr"] += 1
-                if is_bb:
-                    s["bb"] += 1
-                if is_sf:
-                    s["sf"] += 1
+    @staticmethod
+    def _classify_event(description: str) -> dict[str, Any]:
+        return {
+            "desc": description,
+            "is_hit": any(keyword in description for keyword in ["안타", "2루타", "3루타", "홈런"]),
+            "is_hr": "홈런" in description,
+            "is_bb": "볼넷" in description or "사구" in description,
+            "is_sf": "희생플라이" in description,
+            "is_pa": True,
+            "is_ab": not ("볼넷" in description or "사구" in description)
+            and "희생플라이" not in description
+            and "희생번트" not in description,
+        }
 
-            desc = ev.description or ""
-            is_hit = any(k in desc for k in ["안타", "2루타", "3루타", "홈런"])
-            is_hr = "홈런" in desc
-            is_bb = "볼넷" in desc or "사구" in desc
-            is_sf = "희생플라이" in desc
-            is_pa = True
-            is_ab = not is_bb and not is_sf and "희생번트" not in desc
+    def _update_batter_split(
+        self,
+        bat_splits: dict[int, dict[str, dict[str, int]]],
+        player_id: int,
+        split_type: str,
+        event_flags: dict[str, Any],
+    ) -> None:
+        player_splits = bat_splits.setdefault(player_id, {})
+        split = player_splits.setdefault(split_type, self._empty_batter_split())
+        if event_flags["is_pa"]:
+            split["pa"] += 1
+        if event_flags["is_ab"]:
+            split["ab"] += 1
+        if event_flags["is_hit"]:
+            split["h"] += 1
+        if event_flags["is_hr"]:
+            split["hr"] += 1
+        if event_flags["is_bb"]:
+            split["bb"] += 1
+        if event_flags["is_sf"]:
+            split["sf"] += 1
 
-            if is_risp:
-                update_bat(ev.batter_id, "RISP", is_hit, is_ab, is_pa, is_bb, is_sf, is_hr)
-            if p:
-                update_bat(ev.batter_id, f"vs{p.throws or 'R'}", is_hit, is_ab, is_pa, is_bb, is_sf, is_hr)
+    def _update_pitcher_split(
+        self,
+        pit_splits: dict[int, dict[str, dict[str, int]]],
+        player_id: int,
+        split_type: str,
+        event_flags: dict[str, Any],
+    ) -> None:
+        player_splits = pit_splits.setdefault(player_id, {})
+        split = player_splits.setdefault(split_type, self._empty_pitcher_split())
+        split["bf"] += 1
+        if event_flags["is_hit"]:
+            split["h"] += 1
+        if event_flags["is_hr"]:
+            split["hr"] += 1
+        if event_flags["is_bb"]:
+            split["bb"] += 1
+        if "삼진" in event_flags["desc"]:
+            split["so"] += 1
+        if not event_flags["is_hit"] and not event_flags["is_bb"] and "실책" not in event_flags["desc"]:
+            split["outs"] += 1
 
-            if ev.pitcher_id not in pit_splits:
-                pit_splits[ev.pitcher_id] = {}
-            stypes = []
-            if is_risp:
-                stypes.append("RISP")
-            if b:
-                stypes.append(f"vs{b.bats or 'R'}")
+    def _update_situational_maps(
+        self,
+        event: GameEvent,
+        players: dict[int, PlayerBasic],
+        bat_splits: dict[int, dict[str, dict[str, int]]],
+        pit_splits: dict[int, dict[str, dict[str, int]]],
+    ) -> None:
+        batter = players.get(event.batter_id)
+        pitcher = players.get(event.pitcher_id)
+        event_flags = self._classify_event(event.description or "")
+        is_risp = "2" in (event.bases_before or "") or "3" in (event.bases_before or "")
 
-            for st in stypes:
-                if st not in pit_splits[ev.pitcher_id]:
-                    pit_splits[ev.pitcher_id][st] = {"bf": 0, "h": 0, "hr": 0, "bb": 0, "so": 0, "outs": 0}
-                ps = pit_splits[ev.pitcher_id][st]
-                ps["bf"] += 1
-                if is_hit:
-                    ps["h"] += 1
-                if is_hr:
-                    ps["hr"] += 1
-                if is_bb:
-                    ps["bb"] += 1
-                if "삼진" in desc:
-                    ps["so"] += 1
-                if not is_hit and not is_bb and "실책" not in desc:
-                    ps["outs"] += 1
+        if is_risp:
+            self._update_batter_split(bat_splits, event.batter_id, "RISP", event_flags)
+            self._update_pitcher_split(pit_splits, event.pitcher_id, "RISP", event_flags)
+        if pitcher:
+            self._update_batter_split(bat_splits, event.batter_id, f"vs{pitcher.throws or 'R'}", event_flags)
+        if batter:
+            self._update_pitcher_split(pit_splits, event.pitcher_id, f"vs{batter.bats or 'R'}", event_flags)
 
-        for pid, splits in bat_splits.items():
-            for stype, s in splits.items():
+    def _insert_batter_situational_splits(
+        self,
+        session,
+        season_year: int,
+        bat_splits: dict[int, dict[str, dict[str, int]]],
+    ) -> None:
+        for player_id, splits in bat_splits.items():
+            for split_type, stats in splits.items():
                 avg, obp, slg, ops = self._calc_rate_stats(
-                    s["h"],
-                    s["ab"],
-                    s["pa"],
-                    s["bb"],
-                    s["hbp"],
+                    stats["h"],
+                    stats["ab"],
+                    stats["pa"],
+                    stats["bb"],
+                    stats["hbp"],
                     0,
                     0,
-                    s["hr"],
+                    stats["hr"],
                     is_full=False,
                 )
                 session.add(
                     BatterSplit(
-                        player_id=pid,
+                        player_id=player_id,
                         season_year=season_year,
-                        split_type=stype,
-                        plate_appearances=s["pa"],
-                        at_bats=s["ab"],
-                        hits=s["h"],
-                        home_runs=s["hr"],
-                        walks=s["bb"],
+                        split_type=split_type,
+                        plate_appearances=stats["pa"],
+                        at_bats=stats["ab"],
+                        hits=stats["h"],
+                        home_runs=stats["hr"],
+                        walks=stats["bb"],
                         avg=avg,
                         obp=obp,
                         slg=slg,
@@ -295,26 +319,50 @@ class MatchupEngine:
                     ),
                 )
 
-        for pid, splits in pit_splits.items():
-            for stype, s in splits.items():
-                avg_against = round(s["h"] / (s["bf"] - s["bb"]), 3) if (s["bf"] - s["bb"]) > 0 else 0.0
-                ip = s["outs"] / 3.0
-                whip = round((s["h"] + s["bb"]) / ip, 2) if ip > 0 else 0.0
+    def _insert_pitcher_situational_splits(
+        self,
+        session,
+        season_year: int,
+        pit_splits: dict[int, dict[str, dict[str, int]]],
+    ) -> None:
+        for player_id, splits in pit_splits.items():
+            for split_type, stats in splits.items():
+                avg_against = (
+                    round(stats["h"] / (stats["bf"] - stats["bb"]), 3) if (stats["bf"] - stats["bb"]) > 0 else 0.0
+                )
+                ip = stats["outs"] / 3.0
+                whip = round((stats["h"] + stats["bb"]) / ip, 2) if ip > 0 else 0.0
                 session.add(
                     PitcherSplit(
-                        player_id=pid,
+                        player_id=player_id,
                         season_year=season_year,
-                        split_type=stype,
-                        batters_faced=s["bf"],
-                        innings_outs=s["outs"],
-                        hits_allowed=s["h"],
-                        home_runs_allowed=s["hr"],
-                        walks_allowed=s["bb"],
-                        strikeouts=s["so"],
+                        split_type=split_type,
+                        batters_faced=stats["bf"],
+                        innings_outs=stats["outs"],
+                        hits_allowed=stats["h"],
+                        home_runs_allowed=stats["hr"],
+                        walks_allowed=stats["bb"],
+                        strikeouts=stats["so"],
                         avg_against=avg_against,
                         whip=whip,
                     ),
                 )
+
+    def _calc_situational_splits(self, session, season_year: int) -> None:
+        """Calculates RISP and vs Handedness splits using GameEvents."""
+        logger.info("   📉 Calculating situational splits for %s...", season_year)
+
+        self._clear_situational_splits(session, season_year)
+        players = self._load_player_map(session)
+        events = self._fetch_situational_events(session, season_year)
+        bat_splits: dict[int, dict[str, dict[str, int]]] = {}
+        pit_splits: dict[int, dict[str, dict[str, int]]] = {}
+
+        for event in events:
+            self._update_situational_maps(event, players, bat_splits, pit_splits)
+
+        self._insert_batter_situational_splits(session, season_year, bat_splits)
+        self._insert_pitcher_situational_splits(session, season_year, pit_splits)
 
     def _calc_batter_team_splits(self, session, season_year: int) -> None:
         """Aggregates batter stats partitioned by the opposing team."""

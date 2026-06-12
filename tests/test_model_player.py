@@ -73,6 +73,7 @@ class TestPlayerBasic:
         pb2 = make_player_basic()
         session.add(pb1)
         session.commit()
+        session.expunge(pb1)
         session.add(pb2)
         import pytest
         from sqlalchemy.exc import IntegrityError

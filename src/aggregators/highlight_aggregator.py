@@ -162,7 +162,11 @@ class HighlightAggregator:
 
     def save_highlights(self, game_id: str, highlights: list[GameHighlight]) -> int:
         """Deletes existing highlights for a game and saves the new ones."""
-        self.session.query(GameHighlight).filter(GameHighlight.game_id == game_id).delete()
+        existing = self.session.query(GameHighlight).filter(GameHighlight.game_id == game_id).all()
+        for highlight in existing:
+            self.session.delete(highlight)
+        if existing:
+            self.session.flush()
         if highlights:
             self.session.add_all(highlights)
         self.session.commit()

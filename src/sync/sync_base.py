@@ -465,7 +465,7 @@ class OCISyncBase:
                 "keepalives_idle": 60,
                 "keepalives_interval": 10,
                 "keepalives_count": 5,
-                "options": "-c statement_timeout=120000",
+                "options": "-c statement_timeout=180000",
                 "tcp_user_timeout": 60000,
             },
         )

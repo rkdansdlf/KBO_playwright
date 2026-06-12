@@ -308,7 +308,7 @@ class StatsSyncMixin:
             batch_size=batch_size,
         )
 
-    def sync_stat_rankings(self, year: int | None = None, batch_size: int = 10000) -> int:
+    def sync_stat_rankings(self, year: int | None = None, batch_size: int = 5000) -> int:
         """Sync derived stat_rankings rows to OCI."""
         filters = [StatRanking.season == year] if year else None
         return self.sync_simple_table(
