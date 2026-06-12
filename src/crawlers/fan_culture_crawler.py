@@ -132,7 +132,7 @@ class FanCultureCrawler:
 
         for team_id, ch_info in teams.items():
             channel_id = ch_info["channel_id"]
-            logger.info(f"[FanCulture] {team_id} ({ch_info['name']}) — searching YouTube...")  # noqa: G004
+            logger.info(f"[FanCulture] {team_id} ({ch_info['name']}) — searching YouTube...")
 
             team_songs = await self._crawl_team(team_id, channel_id, ch_info["search_queries"])
             all_songs.extend(team_songs)
@@ -146,7 +146,7 @@ class FanCultureCrawler:
         if dry_run or not save:
             for s in all_songs[:5]:
                 logger.info(
-                    f"  [{s['team_id']}] {s['song_name']} | type={s['song_type']} | player={s.get('player_name')}",  # noqa: G004
+                    f"  [{s['team_id']}] {s['song_name']} | type={s['song_type']} | player={s.get('player_name')}",
                 )
             if len(all_songs) > 5:
                 logger.info("  ... and %s more", len(all_songs) - 5)

@@ -3,6 +3,8 @@ Player Basic Repository
 UPSERT operations for player_basic table
 """
 
+from __future__ import annotations
+
 import logging
 from collections import Counter
 from typing import Any

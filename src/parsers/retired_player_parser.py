@@ -7,60 +7,11 @@ from __future__ import annotations
 from typing import Any
 
 from src.utils.team_codes import resolve_kbo_legacy_team_code
+from src.utils.type_helpers import parse_innings_to_outs, safe_float_or_none, safe_int_or_none
 
 
 def _clean_header(text: str) -> str:
     return (text or "").replace("\n", " ").replace("\r", " ").strip()
-
-
-def _clean_value(text: str | None) -> str:
-    return (text or "").replace(",", "").strip()
-
-
-def _to_int(value: str | None) -> int | None:
-    raw = _clean_value(value)
-    if raw in ("", "-", "null"):
-        return None
-    try:
-        return int(raw)
-    except ValueError:
-        return None
-
-
-def _to_float(value: str | None) -> float | None:
-    raw = _clean_value(value)
-    if raw in ("", "-", "null"):
-        return None
-    try:
-        return float(raw)
-    except ValueError:
-        return None
-
-
-def _innings_to_outs(value: str | None) -> int | None:
-    raw = _clean_value(value)
-    if raw in ("", "-", "null"):
-        return None
-    if ":" in raw:
-        parts = raw.split(":")
-        try:
-            innings = int(parts[0])
-            remainder = int(parts[1]) if len(parts) > 1 else 0
-            return innings * 3 + remainder
-        except ValueError:
-            return None
-    if "." in raw:
-        try:
-            whole, fraction = raw.split(".")
-            outs = int(whole) * 3
-            frac_val = int(fraction[0]) if fraction else 0
-            return outs + frac_val
-        except ValueError:
-            return None
-    try:
-        return int(float(raw) * 3)
-    except ValueError:
-        return None
 
 
 def _table_to_dicts(table: dict[str, Any]) -> tuple[list[str], list[dict[str, str]]]:
@@ -126,7 +77,7 @@ def parse_retired_hitter_tables(
         if any(marker in season_label for marker in ("통산", "합계", "Career", "Total", "연도")):
             continue
 
-        season = _to_int(season_label)
+        season = safe_int_or_none(season_label)
         if season is None or season < 1982 or season > 2030:
             continue
 
@@ -140,43 +91,43 @@ def parse_retired_hitter_tables(
             "source": "PROFILE",
         }
 
-        _apply_stat(record, row, ("경기", "G", "출장", "출장수"), "games", _to_int)
+        _apply_stat(record, row, ("경기", "G", "출장", "출장수"), "games", safe_int_or_none)
 
         # Safety Guard: If a single season has > 165 games, it's likely a summary row we missed
         if record.get("games", 0) > 165:
             continue
 
-        _apply_stat(record, row, ("타석", "PA"), "plate_appearances", _to_int)
-        _apply_stat(record, row, ("타수", "AB"), "at_bats", _to_int)
-        _apply_stat(record, row, ("득점", "R"), "runs", _to_int)
-        _apply_stat(record, row, ("안타", "H"), "hits", _to_int)
-        _apply_stat(record, row, ("2루타", "2B"), "doubles", _to_int)
-        _apply_stat(record, row, ("3루타", "3B"), "triples", _to_int)
-        _apply_stat(record, row, ("홈런", "HR"), "home_runs", _to_int)
+        _apply_stat(record, row, ("타석", "PA"), "plate_appearances", safe_int_or_none)
+        _apply_stat(record, row, ("타수", "AB"), "at_bats", safe_int_or_none)
+        _apply_stat(record, row, ("득점", "R"), "runs", safe_int_or_none)
+        _apply_stat(record, row, ("안타", "H"), "hits", safe_int_or_none)
+        _apply_stat(record, row, ("2루타", "2B"), "doubles", safe_int_or_none)
+        _apply_stat(record, row, ("3루타", "3B"), "triples", safe_int_or_none)
+        _apply_stat(record, row, ("홈런", "HR"), "home_runs", safe_int_or_none)
 
         # Another Guard: KBO single season HR record is 56 (Lee Seung-yeop)
         if record.get("home_runs", 0) > 65:
             continue
 
-        _apply_stat(record, row, ("타점", "RBI"), "rbi", _to_int)
-        _apply_stat(record, row, ("볼넷", "BB"), "walks", _to_int)
-        _apply_stat(record, row, ("고의4구", "IBB"), "intentional_walks", _to_int)
-        _apply_stat(record, row, ("사구", "HBP"), "hbp", _to_int)
-        _apply_stat(record, row, ("삼진", "SO"), "strikeouts", _to_int)
-        _apply_stat(record, row, ("도루", "SB"), "stolen_bases", _to_int)
-        _apply_stat(record, row, ("도실", "CS"), "caught_stealing", _to_int)
-        _apply_stat(record, row, ("희타", "SH"), "sacrifice_hits", _to_int)
-        _apply_stat(record, row, ("희비", "SF"), "sacrifice_flies", _to_int)
-        _apply_stat(record, row, ("병살", "GDP"), "gdp", _to_int)
-        _apply_stat(record, row, ("타율", "AVG"), "avg", _to_float)
+        _apply_stat(record, row, ("타점", "RBI"), "rbi", safe_int_or_none)
+        _apply_stat(record, row, ("볼넷", "BB"), "walks", safe_int_or_none)
+        _apply_stat(record, row, ("고의4구", "IBB"), "intentional_walks", safe_int_or_none)
+        _apply_stat(record, row, ("사구", "HBP"), "hbp", safe_int_or_none)
+        _apply_stat(record, row, ("삼진", "SO"), "strikeouts", safe_int_or_none)
+        _apply_stat(record, row, ("도루", "SB"), "stolen_bases", safe_int_or_none)
+        _apply_stat(record, row, ("도실", "CS"), "caught_stealing", safe_int_or_none)
+        _apply_stat(record, row, ("희타", "SH"), "sacrifice_hits", safe_int_or_none)
+        _apply_stat(record, row, ("희비", "SF"), "sacrifice_flies", safe_int_or_none)
+        _apply_stat(record, row, ("병살", "GDP"), "gdp", safe_int_or_none)
+        _apply_stat(record, row, ("타율", "AVG"), "avg", safe_float_or_none)
 
         adv = advanced_map.get(season_label)
         if adv:
-            _apply_stat(record, adv, ("출루율", "OBP"), "obp", _to_float)
-            _apply_stat(record, adv, ("장타율", "SLG"), "slg", _to_float)
-            _apply_stat(record, adv, ("OPS",), "ops", _to_float)
-            _apply_stat(record, adv, ("ISO",), "iso", _to_float)
-            _apply_stat(record, adv, ("BABIP",), "babip", _to_float)
+            _apply_stat(record, adv, ("출루율", "OBP"), "obp", safe_float_or_none)
+            _apply_stat(record, adv, ("장타율", "SLG"), "slg", safe_float_or_none)
+            _apply_stat(record, adv, ("OPS",), "ops", safe_float_or_none)
+            _apply_stat(record, adv, ("ISO",), "iso", safe_float_or_none)
+            _apply_stat(record, adv, ("BABIP",), "babip", safe_float_or_none)
             _merge_extra_stats(record, adv, consumed=record.get("_consumed_keys", set()))
 
         _merge_extra_stats(record, row, consumed=record.get("_consumed_keys", set()))
@@ -204,7 +155,7 @@ def parse_retired_pitcher_table(
         if any(marker in season_label for marker in ("통산", "합계", "Career", "Total", "연도")):
             continue
 
-        season = _to_int(season_label)
+        season = safe_int_or_none(season_label)
         if season is None or season < 1982 or season > 2030:
             continue
 
@@ -218,39 +169,39 @@ def parse_retired_pitcher_table(
             "source": "PROFILE",
         }
 
-        _apply_stat(record, row, ("경기", "G"), "games", _to_int)
+        _apply_stat(record, row, ("경기", "G"), "games", safe_int_or_none)
 
         # Guard
         if record.get("games", 0) > 165:
             continue
 
-        _apply_stat(record, row, ("선발", "GS"), "games_started", _to_int)
-        _apply_stat(record, row, ("승", "W"), "wins", _to_int)
+        _apply_stat(record, row, ("선발", "GS"), "games_started", safe_int_or_none)
+        _apply_stat(record, row, ("승", "W"), "wins", safe_int_or_none)
 
         # Guard: KBO single season win record is 30 (Jang Myeong-bu)
         if record.get("wins", 0) > 35:
             continue
 
-        _apply_stat(record, row, ("패", "L"), "losses", _to_int)
-        _apply_stat(record, row, ("세", "세이브", "SV"), "saves", _to_int)
-        _apply_stat(record, row, ("홀드", "HLD"), "holds", _to_int)
-        _apply_stat(record, row, ("이닝", "IP"), "innings_outs", _innings_to_outs)
-        _apply_stat(record, row, ("피안타", "H"), "hits_allowed", _to_int)
-        _apply_stat(record, row, ("실점", "R"), "runs_allowed", _to_int)
-        _apply_stat(record, row, ("자책", "ER"), "earned_runs", _to_int)
-        _apply_stat(record, row, ("피홈런", "HR"), "home_runs_allowed", _to_int)
-        _apply_stat(record, row, ("볼넷", "BB"), "walks_allowed", _to_int)
-        _apply_stat(record, row, ("고의4구", "IBB"), "intentional_walks", _to_int)
-        _apply_stat(record, row, ("사구", "HBP"), "hit_batters", _to_int)
-        _apply_stat(record, row, ("삼진", "SO"), "strikeouts", _to_int)
-        _apply_stat(record, row, ("폭투", "WP"), "wild_pitches", _to_int)
-        _apply_stat(record, row, ("보크", "BK"), "balks", _to_int)
-        _apply_stat(record, row, ("평균자책", "ERA"), "era", _to_float)
-        _apply_stat(record, row, ("WHIP",), "whip", _to_float)
-        _apply_stat(record, row, ("FIP",), "fip", _to_float)
-        _apply_stat(record, row, ("K/9",), "k_per_nine", _to_float)
-        _apply_stat(record, row, ("BB/9",), "bb_per_nine", _to_float)
-        _apply_stat(record, row, ("K/BB",), "kbb", _to_float)
+        _apply_stat(record, row, ("패", "L"), "losses", safe_int_or_none)
+        _apply_stat(record, row, ("세", "세이브", "SV"), "saves", safe_int_or_none)
+        _apply_stat(record, row, ("홀드", "HLD"), "holds", safe_int_or_none)
+        _apply_stat(record, row, ("이닝", "IP"), "innings_outs", parse_innings_to_outs)
+        _apply_stat(record, row, ("피안타", "H"), "hits_allowed", safe_int_or_none)
+        _apply_stat(record, row, ("실점", "R"), "runs_allowed", safe_int_or_none)
+        _apply_stat(record, row, ("자책", "ER"), "earned_runs", safe_int_or_none)
+        _apply_stat(record, row, ("피홈런", "HR"), "home_runs_allowed", safe_int_or_none)
+        _apply_stat(record, row, ("볼넷", "BB"), "walks_allowed", safe_int_or_none)
+        _apply_stat(record, row, ("고의4구", "IBB"), "intentional_walks", safe_int_or_none)
+        _apply_stat(record, row, ("사구", "HBP"), "hit_batters", safe_int_or_none)
+        _apply_stat(record, row, ("삼진", "SO"), "strikeouts", safe_int_or_none)
+        _apply_stat(record, row, ("폭투", "WP"), "wild_pitches", safe_int_or_none)
+        _apply_stat(record, row, ("보크", "BK"), "balks", safe_int_or_none)
+        _apply_stat(record, row, ("평균자책", "ERA"), "era", safe_float_or_none)
+        _apply_stat(record, row, ("WHIP",), "whip", safe_float_or_none)
+        _apply_stat(record, row, ("FIP",), "fip", safe_float_or_none)
+        _apply_stat(record, row, ("K/9",), "k_per_nine", safe_float_or_none)
+        _apply_stat(record, row, ("BB/9",), "bb_per_nine", safe_float_or_none)
+        _apply_stat(record, row, ("K/BB",), "kbb", safe_float_or_none)
 
         _merge_extra_stats(record, row, consumed=record.get("_consumed_keys", set()))
         _cleanup_consumed(record)

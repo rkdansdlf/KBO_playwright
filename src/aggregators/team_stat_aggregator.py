@@ -3,6 +3,8 @@ Service to aggregate player season stats into team-level season stats.
 Acts as a fallback when KBO's team cumulative record pages are unavailable.
 """
 
+from __future__ import annotations
+
 import logging
 from collections.abc import Iterable
 from datetime import date as date_type
@@ -441,7 +443,7 @@ class TeamStatAggregator:
         for r in rows:
             tc = r.team_code
             if not tc or tc in ("합계", "TOTAL", "ALL", "-"):
-                logger.warning(f"[WARN] Skipping PlayerSeasonBatting row ID {r.id}: Invalid team_code '{tc}'")  # noqa: G004
+                logger.warning(f"[WARN] Skipping PlayerSeasonBatting row ID {r.id}: Invalid team_code '{tc}'")
                 continue
             if not r.season:
                 logger.warning("[WARN] Skipping PlayerSeasonBatting row ID %s: Missing season", r.id)
@@ -536,7 +538,7 @@ class TeamStatAggregator:
         for r in rows:
             tc = r.team_code
             if not tc or tc in ("합계", "TOTAL", "ALL", "-"):
-                logger.warning(f"[WARN] Skipping PlayerSeasonPitching row ID {r.id}: Invalid team_code '{tc}'")  # noqa: G004
+                logger.warning(f"[WARN] Skipping PlayerSeasonPitching row ID {r.id}: Invalid team_code '{tc}'")
                 continue
             if not r.season:
                 logger.warning("[WARN] Skipping PlayerSeasonPitching row ID %s: Missing season", r.id)

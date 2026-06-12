@@ -2,6 +2,8 @@
 Base models and common types for SQLAlchemy ORM
 """
 
+from __future__ import annotations
+
 from sqlalchemy import DateTime, func
 from sqlalchemy.orm import DeclarativeBase, mapped_column
 

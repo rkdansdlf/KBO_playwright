@@ -34,7 +34,7 @@ class StatsSyncMixin:
         missing_count = self.sqlite_session.query(model).filter(*filters, ~existing_player_filter).count()
         if missing_count:
             logger.warning(
-                f"⚠️ Skipping {missing_count} {model.__tablename__} rows with missing local player_basic references",  # noqa: G004
+                f"⚠️ Skipping {missing_count} {model.__tablename__} rows with missing local player_basic references",
             )
         return [*filters, existing_player_filter]
 

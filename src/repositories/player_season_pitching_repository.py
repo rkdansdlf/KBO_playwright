@@ -3,6 +3,8 @@ PlayerSeasonPitching 전용 리포지토리
 투수 시즌 데이터를 player_season_pitching 테이블에 올바르게 저장
 """
 
+from __future__ import annotations
+
 import logging
 from collections import Counter
 from typing import Any
@@ -173,7 +175,7 @@ def save_pitching_stats_to_db(payloads: list[dict[str, Any]]) -> int:
                 session.execute(stmt)
                 saved_count += 1
             except SQLAlchemyError:
-                logger.exception(f"⚠️ UPSERT 실패 (player_id={data.get('player_id')})")  # noqa: G004
+                logger.exception(f"⚠️ UPSERT 실패 (player_id={data.get('player_id')})")
                 session.rollback()
                 continue
 

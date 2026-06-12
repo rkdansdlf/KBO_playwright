@@ -3,6 +3,8 @@ CLI tool to recalculate team-level season stats from player season statistics.
 Useful for self-healing / rollup recalculations when team stats pages fail.
 """
 
+from __future__ import annotations
+
 import argparse
 import logging
 import sys

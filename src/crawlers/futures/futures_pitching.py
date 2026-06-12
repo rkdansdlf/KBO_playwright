@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import logging
 from typing import Any
 
@@ -13,9 +15,14 @@ from playwright.async_api import Error as PlaywrightError
 
 from src.utils.compliance import compliance
 from src.utils.playwright_pool import AsyncPlaywrightPool
-from src.utils.playwright_retry import LONG_TIMEOUT
+from src.utils.playwright_retry import LONG_TIMEOUT, SHORT_TIMEOUT
 from src.utils.team_codes import resolve_kbo_legacy_team_code
 from src.utils.throttle import throttle
+from src.utils.type_helpers import (
+    parse_innings_to_outs,
+    safe_float_or_none,
+    safe_int_or_none,
+)
 
 logger = logging.getLogger(__name__)
 FUTURES_PITCHER_KEYS = [
@@ -93,77 +100,6 @@ def _norm_header(txt: str) -> str:
     return HEADER_MAP.get(t, txt.strip())
 
 
-def _to_int(x: str | None) -> int | None:
-    """Convert string to integer, handling commas and dashes."""
-    if x is None:
-        return None
-    t = x.strip().replace(",", "")
-    if t in ("", "-", "—", "null"):
-        return None
-    try:
-        return int(re.sub(r"[^\d-]", "", t))
-    except (ValueError, AttributeError):
-        return None
-
-
-def _to_float(x: str | None) -> float | None:
-    """Convert string to float, handling commas and dashes."""
-    if x is None:
-        return None
-    t = x.strip().replace(",", "")
-    if t in ("", "-", "—", "null"):
-        return None
-    t = re.sub(r"[^\d\.]", "", t)
-    try:
-        return float(t) if t else None
-    except (ValueError, AttributeError):
-        return None
-
-
-def parse_innings_to_outs(text: str | None) -> int | None:
-    """
-    Parse pitching innings string to total outs.
-    Supports fractions (e.g. "4 2/3", "2/3"), unicode ("4 ⅓"), decimals ("4.1", "4.2") or integers ("4").
-    """
-    if not text:
-        return None
-    cleaned = str(text).strip()
-    if cleaned in ("", "-", "—"):
-        return None
-
-    # Replace unicode fractions with spaces
-    cleaned = cleaned.replace("⅓", " 1/3").replace("⅔", " 2/3")
-
-    # 1. Match whole number + fraction: e.g. "4 2/3"
-    m_frac = re.match(r"^(\d+)\s+(\d+)/(\d+)$", cleaned)
-    if m_frac:
-        whole = int(m_frac.group(1))
-        num = int(m_frac.group(2))
-        den = int(m_frac.group(3))
-        frac_outs = int(round(num * 3 / den))
-        return whole * 3 + frac_outs
-
-    # 2. Match fraction only: e.g. "2/3"
-    m_frac_only = re.match(r"^(\d+)/(\d+)$", cleaned)
-    if m_frac_only:
-        num = int(m_frac_only.group(1))
-        den = int(m_frac_only.group(2))
-        return int(round(num * 3 / den))
-
-    # 3. Match KBO style decimal: "4.1" or "4.2" or integer "4"
-    match = re.match(r"^(\d+)(?:\.(\d))?$", cleaned)
-    if match:
-        whole = int(match.group(1))
-        frac = int(match.group(2)) if match.group(2) else 0
-        return whole * 3 + frac
-
-    # 4. Fallback to normal float conversion
-    try:
-        value = float(cleaned)
-        return int(round(value * 3))
-    except ValueError:
-        return None
-
 
 def _parse_table(table) -> list[dict]:
     """Parse a table element into list of season pitching records."""
@@ -197,7 +133,7 @@ def _parse_table(table) -> list[dict]:
             elif key == "team_name":
                 row["team_name"] = v
             elif key == "era":
-                row["era"] = _to_float(v)
+                row["era"] = safe_float_or_none(v)
             elif key == "IP":
                 row["IP"] = v
             elif key in (
@@ -217,7 +153,7 @@ def _parse_table(table) -> list[dict]:
                 "runs_allowed",
                 "earned_runs",
             ):
-                row[key] = _to_int(v)
+                row[key] = safe_int_or_none(v)
 
         # Skip rows without valid season
         season = row.get("season")
@@ -280,7 +216,7 @@ async def fetch_and_parse_futures_pitching(
             await throttle.wait()
 
             try:
-                futures_tab = await page.wait_for_selector('text="퓨처스"', timeout=10000)
+                futures_tab = await page.wait_for_selector('text="퓨처스"', timeout=SHORT_TIMEOUT)
                 if futures_tab:
                     await futures_tab.click()
                     await throttle.wait()

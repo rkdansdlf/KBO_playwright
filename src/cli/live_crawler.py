@@ -178,7 +178,7 @@ async def _run_kbo_fallback_healing(game_id: str) -> None:
         from src.utils.alerting import SlackWebhookClient
 
         logger.info(
-            f"[FALLBACK TRIGGER] PBP for {game_id} is unverified. Triggering KBO website re-crawl in background...",  # noqa: G004
+            f"[FALLBACK TRIGGER] PBP for {game_id} is unverified. Triggering KBO website re-crawl in background...",
         )
         kbo_crawler = PBPCrawler()
         kbo_data = None
@@ -192,7 +192,7 @@ async def _run_kbo_fallback_healing(game_id: str) -> None:
                 else:
                     raise ValueError("KBO PBP crawl returned no events")
             except Exception as fallback_err:  # noqa: BLE001
-                logger.warning(f"KBO fallback attempt {attempt} failed for {game_id}: {fallback_err}", exc_info=True)  # noqa: G004
+                logger.warning(f"KBO fallback attempt {attempt} failed for {game_id}: {fallback_err}", exc_info=True)
                 if attempt == max_attempts:
                     logger.error("[FALLBACK ERROR] KBO fallback failed all %s attempts for %s", max_attempts, game_id)
                     break
@@ -213,9 +213,9 @@ async def _run_kbo_fallback_healing(game_id: str) -> None:
                     logger.info("[FALLBACK SUCCESS] %s", msg)
                     SlackWebhookClient.send_alert(msg)
             except Exception as db_err:
-                logger.exception(f"Failed to save KBO fallback data for {game_id}: {db_err}")  # noqa: G004
+                logger.exception(f"Failed to save KBO fallback data for {game_id}: {db_err}")
     except Exception as exc:
-        logger.exception(f"Unexpected exception in background KBO healing for {game_id}: {exc}")  # noqa: G004
+        logger.exception(f"Unexpected exception in background KBO healing for {game_id}: {exc}")
     finally:
         _ACTIVE_HEALING_GAMES.discard(game_id)
 
@@ -235,7 +235,7 @@ async def _process_single_live_game(
     game_id = game["game_id"]
 
     logger.info(
-        f"[LIVE] 🔍 Crawling active game: {game_id} (lifecycle={lifecycle_state}, nav_status={nav_status_raw or 'UNKNOWN'})",  # noqa: G004
+        f"[LIVE] 🔍 Crawling active game: {game_id} (lifecycle={lifecycle_state}, nav_status={nav_status_raw or 'UNKNOWN'})",
     )
 
     relay_data = await relay_crawler.crawl_game_events(game_id)
@@ -319,7 +319,7 @@ async def run_live_crawler_cycle(
     now = datetime.now(seoul_tz)
     today_str = now.strftime("%Y%m%d")
 
-    logger.info(f"\n[{now.strftime('%Y-%m-%d %H:%M:%S')}] 🚨 Live Crawl Cycle Started")  # noqa: G004
+    logger.info(f"\n[{now.strftime('%Y-%m-%d %H:%M:%S')}] 🚨 Live Crawl Cycle Started")
 
     sched_crawler = ScheduleCrawler()
     games = await sched_crawler.crawl_schedule(now.year, now.month)
@@ -409,7 +409,7 @@ async def run_live_crawler_cycle(
     if len(selected_candidates) < len(active_candidates):
         selected_ids = [item[0]["game_id"] for item in selected_candidates]
         logger.info(
-            "[LIVE] Sharding active games: "  # noqa: G004
+            "[LIVE] Sharding active games: "
             f"processing {len(selected_candidates)}/{len(active_candidates)} this cycle "
             f"(max_active_games={max_active_games}, selected={','.join(selected_ids)})",
         )
@@ -426,7 +426,7 @@ async def run_live_crawler_cycle(
         else:
             min_delay = 0.0
         logger.info(
-            f"[LIVE] Dynamic request delay scaling: factor {scale_factor:.2f}x for {num_active_games} active games "  # noqa: G004
+            f"[LIVE] Dynamic request delay scaling: factor {scale_factor:.2f}x for {num_active_games} active games "
             f"(min_delay={min_delay:.2f}s)",
         )
 
@@ -505,7 +505,7 @@ async def run_live_crawler_cycle(
             ",".join(failed_ids),
         )
         logger.info(
-            "[SYNC] ⚠️ Live crawl succeeded with OCI partial failures: "  # noqa: G004
+            "[SYNC] ⚠️ Live crawl succeeded with OCI partial failures: "
             f"failed={len(oci_sync_failures)} game_ids={','.join(failed_ids)}",
         )
 

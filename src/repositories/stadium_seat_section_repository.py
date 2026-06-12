@@ -2,6 +2,8 @@
 Repository for StadiumSeatSection operations.
 """
 
+from __future__ import annotations
+
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 

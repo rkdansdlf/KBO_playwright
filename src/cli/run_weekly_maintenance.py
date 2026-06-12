@@ -12,7 +12,7 @@ import os
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
-from scripts.legacy.maintenance.cleanup_oci import cleanup_oci_duplicates
+from scripts.maintenance.cleanup_oci import cleanup_oci_duplicates
 from src.cli.collect_profiles import collect_profiles
 from src.cli.db_healthcheck import main as healthcheck_main
 from src.db.engine import SessionLocal
@@ -27,9 +27,9 @@ async def run_weekly_maintenance(
     profile_limit: int = 100,
     sync: bool = False,
 ) -> None:
-    logger.info(f"\n{'=' * 60}")  # noqa: G004
-    logger.info(f"🚀 KBO Weekly Maintenance Started: {datetime.now(KST).strftime('%Y-%m-%d %H:%M:%S')}")  # noqa: G004
-    logger.info(f"{'=' * 60}")  # noqa: G004
+    logger.info(f"\n{'=' * 60}")
+    logger.info(f"🚀 KBO Weekly Maintenance Started: {datetime.now(KST).strftime('%Y-%m-%d %H:%M:%S')}")
+    logger.info(f"{'=' * 60}")
 
     # 1. Player Profile Enrichment
     logger.info("\n👤 Step 1: Enriching Player Profiles...")
@@ -106,9 +106,9 @@ async def run_weekly_maintenance(
                 finally:
                     syncer.close()
 
-    logger.info(f"\n{'=' * 60}")  # noqa: G004
+    logger.info(f"\n{'=' * 60}")
     logger.info("🏁 Weekly Maintenance Finished")
-    logger.info(f"{'=' * 60}\n")  # noqa: G004
+    logger.info(f"{'=' * 60}\n")
 
 
 def main() -> int:

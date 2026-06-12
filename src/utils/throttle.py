@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import asyncio
 import logging
 import os
@@ -62,7 +64,7 @@ class AsyncThrottle:
 
             if sleep_time > 0:
                 if sleep_time > self._default_delay * 5:
-                    logger.warning(f"Heavy throttling for {host}: sleeping for {sleep_time:.2f}s")  # noqa: G004
+                    logger.warning(f"Heavy throttling for {host}: sleeping for {sleep_time:.2f}s")
                 await asyncio.sleep(sleep_time)
 
             self._last_request_times[host] = time.monotonic()

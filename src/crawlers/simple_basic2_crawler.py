@@ -3,6 +3,8 @@
 OCI 동기화 전 SQLite 저장 테스트용
 """
 
+from __future__ import annotations
+
 import logging
 import os
 import sys
@@ -279,7 +281,7 @@ def main() -> None:
                 logger.info("\n🎉 완료!")
                 logger.info("   📊 수집: %s명", len(bb_data))
                 logger.info("   💾 저장: %s명", saved_count)
-                logger.info(f"   📅 시간: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")  # noqa: G004
+                logger.info(f"   📅 시간: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
 
             else:
                 logger.error("❌ 데이터를 수집하지 못했습니다.")
