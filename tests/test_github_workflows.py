@@ -44,6 +44,28 @@ def _job_blocks(workflow: str):
         yield current_job, "\n".join(current_lines)
 
 
+def _kbo_job_setup_blocks(job_block: str) -> list[str]:
+    marker = "uses: ./.github/actions/kbo-job-setup"
+    blocks = []
+    search_from = 0
+
+    while True:
+        marker_idx = job_block.find(marker, search_from)
+        if marker_idx == -1:
+            return blocks
+
+        step_start = job_block.rfind("\n      - ", 0, marker_idx)
+        if step_start == -1:
+            step_start = 0
+        else:
+            step_start += 1
+
+        next_step = job_block.find("\n      - ", marker_idx + len(marker))
+        step_end = len(job_block) if next_step == -1 else next_step
+        blocks.append(job_block[step_start:step_end])
+        search_from = step_end
+
+
 def test_daily_kbo_sync_includes_core_steps():
     workflow = _read(WORKFLOW_DIR / "daily_kbo_sync.yml")
 
@@ -92,6 +114,40 @@ def test_backfill_advanced_stats_uses_supported_cli_flags():
     assert 'python3 -m src.cli.backfill_advanced_stats "$YEAR" regular' not in workflow
 
 
+def test_backfill_prunes_matrix_before_expensive_setup():
+    workflow = _read(WORKFLOW_DIR / "backfill.yml")
+    jobs = dict(_job_blocks(workflow))
+
+    assert "select-backfills" in jobs
+    assert "backfill" in jobs
+
+    selector = jobs["select-backfills"]
+    backfill = jobs["backfill"]
+
+    assert "uses: actions/checkout" not in selector
+    assert "uses: ./.github/actions/kbo-job-setup" not in selector
+    assert "matrix: ${{ steps.select.outputs.matrix }}" in selector
+    assert "count: ${{ steps.select.outputs.count }}" in selector
+
+    assert "BACKFILL_DEFINITIONS" in workflow
+    for backfill_id in (
+        "missed_crawls",
+        "player_game_stats",
+        "sh_sf",
+        "advanced_stats",
+        "player_ids",
+        "roster",
+    ):
+        assert f'"id":"{backfill_id}"' in workflow
+
+    assert "needs: select-backfills" in backfill
+    assert "if: ${{ needs.select-backfills.outputs.count != '0' }}" in backfill
+    assert "matrix: ${{ fromJson(needs.select-backfills.outputs.matrix) }}" in backfill
+    assert "Check Matrix Dispatch" not in workflow
+    assert "steps.should_run.outputs.run" not in workflow
+    assert backfill.index("uses: actions/checkout@v4") < backfill.index("uses: ./.github/actions/kbo-job-setup")
+
+
 def test_kbo_automation_recalc_stats_uses_supported_cli_flags_and_syncs():
     workflow = _read(WORKFLOW_DIR / "kbo_automation.yml")
     recalc_start = workflow.index("recalc-stats)")
@@ -106,12 +162,16 @@ def test_kbo_automation_recalc_stats_uses_supported_cli_flags_and_syncs():
 
 
 def test_local_github_actions_are_used_after_checkout():
-    local_actions = ("uses: ./.github/actions/python-env", "uses: ./.github/actions/notify")
-    job_setup_actions = ("uses: ./.github/actions/kbo-job-setup",)
+    local_actions = (
+        "uses: ./.github/actions/kbo-job-setup",
+        "uses: ./.github/actions/python-env",
+        "uses: ./.github/actions/notify",
+    )
 
     for path in _workflow_files():
         for job_name, job_block in _job_blocks(_read(path)):
-            if not any(action in job_block for action in (*local_actions, *job_setup_actions)):
+            local_positions = [job_block.find(action) for action in local_actions if action in job_block]
+            if not local_positions:
                 continue
 
             step_lines = [
@@ -121,23 +181,35 @@ def test_local_github_actions_are_used_after_checkout():
             ]
             assert step_lines, f"{path.name}:{job_name} has no steps"
 
-            first_step = step_lines[0]
-            uses_kbo_setup = "uses: ./.github/actions/kbo-job-setup" in first_step
-            uses_checkout = first_step == "- uses: actions/checkout@v4"
-            assert uses_kbo_setup or uses_checkout, (
-                f"{path.name}:{job_name} must start with actions/checkout@v4 or kbo-job-setup"
+            assert step_lines[0] == "- uses: actions/checkout@v4", (
+                f"{path.name}:{job_name} must start with actions/checkout@v4"
             )
-
-            if uses_checkout:
-                first_checkout = job_block.find("uses: actions/checkout@v4")
-                first_local_action = min(job_block.find(action) for action in local_actions if action in job_block)
-                assert first_checkout < first_local_action, f"{path.name}:{job_name} local action before checkout"
+            first_checkout = job_block.find("uses: actions/checkout@v4")
+            first_local_action = min(local_positions)
+            assert first_checkout < first_local_action, f"{path.name}:{job_name} local action before checkout"
 
     python_env = _read(ROOT / ".github/actions/python-env/action.yml")
     assert "actions/checkout" not in python_env
 
     kbo_setup = _read(ROOT / ".github/actions/kbo-job-setup/action.yml")
-    assert "actions/checkout" in kbo_setup
+    assert "actions/checkout" not in kbo_setup
+
+
+def test_kbo_job_setup_hydration_with_resolve_date_requires_explicit_inputs():
+    for path in _workflow_files():
+        for job_name, job_block in _job_blocks(_read(path)):
+            for setup_block in _kbo_job_setup_blocks(job_block):
+                if "resolve-date: 'true'" not in setup_block or "hydrate: 'true'" not in setup_block:
+                    continue
+
+                assert "hydrate-year:" in setup_block, (
+                    f"{path.name}:{job_name} kbo-job-setup hydration runs before date resolution; "
+                    "pass explicit hydrate-year or move hydration after setup"
+                )
+                assert "hydrate-date:" in setup_block, (
+                    f"{path.name}:{job_name} kbo-job-setup hydration runs before date resolution; "
+                    "pass explicit hydrate-date or move hydration after setup"
+                )
 
 
 def test_daily_kbo_sync_hydrates_fresh_runner_jobs():
@@ -163,26 +235,35 @@ def test_daily_kbo_sync_hydrates_fresh_runner_jobs():
 def test_daily_preview_uses_correct_cli_and_hydration():
     workflow = _read(WORKFLOW_DIR / "daily_preview.yml")
 
+    assert "python3 -m src.cli.daily_preview_batch" in workflow
     assert "python3 -m src.cli.hydrate_runtime_from_oci" in workflow
-    assert "--year \"${{ env.KST_YEAR }}\" --date \"${{ env.KST_DATE }}\"" in workflow
-    assert "python3 -m src.cli.daily_preview_batch --date \"${{ env.KST_DATE }}\"" in workflow
-    assert "KST_DATE" in workflow
-    assert "KST_YEAR" in workflow
-    assert workflow.index("Hydrate Runtime Cache From OCI") < workflow.index("Run Daily Preview Batch")
+    assert "steps.job-setup.outputs.KST_DATE" in workflow
+    assert "steps.job-setup.outputs.KST_YEAR" in workflow
+    assert ".github/actions/kbo-job-setup" in workflow
+    assert "resolve-date: 'true'" in workflow
     assert "if: always()" in workflow
 
 
 def test_pitcher_backfill_uses_correct_cli_and_hydration():
     workflow = _read(WORKFLOW_DIR / "pitcher_backfill.yml")
+    jobs = dict(_job_blocks(workflow))
+    job_block = jobs["backfill-pitchers"]
+    setup_idx = job_block.index("uses: ./.github/actions/kbo-job-setup")
+    hydrate_idx = job_block.index("- name: Hydrate Runtime Cache From OCI")
+    run_idx = job_block.index("- name: Run Pregame Backfill")
+    setup_block = job_block[setup_idx:hydrate_idx]
+    hydrate_block = job_block[hydrate_idx:run_idx]
 
-    assert "python3 -m src.cli.hydrate_runtime_from_oci" in workflow
-    assert '--year "${KST_YEAR}" --date "${KST_DATE}"' in workflow
     assert "python3 -m src.cli.backfill_pregame_previews" in workflow
     assert '--days-ahead "${DAYS_AHEAD}"' in workflow
     assert "DAYS_AHEAD" in workflow
-    assert "KST_DATE" in workflow
-    assert "KST_YEAR" in workflow
-    assert workflow.index("Hydrate Runtime Cache From OCI") < workflow.index("Run Pregame Backfill")
+    assert ".github/actions/kbo-job-setup" in job_block
+    assert "resolve-date: 'true'" in setup_block
+    assert "hydrate: 'true'" not in setup_block
+    assert "python3 -m src.cli.hydrate_runtime_from_oci" in hydrate_block
+    assert "steps.job-setup.outputs.KST_YEAR" in hydrate_block
+    assert "steps.job-setup.outputs.KST_DATE" in hydrate_block
+    assert setup_idx < hydrate_idx < run_idx
 
 
 def test_security_audit_uses_pip_audit():
@@ -262,8 +343,8 @@ def test_periodic_extras_runs_unified_audit_twice():
     assert "python3 -m src.cli.run_periodic_extras" in workflow
     assert "--year" in workflow
     assert "--sync" in workflow
-    assert "python3 -m src.cli.monthly_unified_audit --year \"$PREV_YEAR\"" in workflow
-    assert "python3 -m src.cli.monthly_unified_audit --year \"$YEAR\"" in workflow
+    assert 'python3 -m src.cli.monthly_unified_audit --year "$PREV_YEAR"' in workflow
+    assert 'python3 -m src.cli.monthly_unified_audit --year "$YEAR"' in workflow
     assert workflow.index("Run Periodic Extras & Sync") < workflow.index("Monthly Unified Audit")
 
 
