@@ -23,6 +23,7 @@ from src.utils.compliance import compliance
 from src.utils.player_classification import PlayerCategory, classify_player
 from src.utils.player_validation import normalize_player_name, validate_player_payload
 from src.utils.playwright_pool import AsyncPlaywrightPool
+from src.utils.playwright_retry import SHORT_TIMEOUT
 from src.utils.request_policy import RequestPolicy
 
 logger = logging.getLogger(__name__)
@@ -352,7 +353,7 @@ class PlayerSearchCrawler:
         # because Playwright click() returns success but does not actually trigger
         # the ASP.NET postback mechanism.
         try:
-            href = await anchor.get_attribute("href", timeout=5000)
+            href = await anchor.get_attribute("href", timeout=SHORT_TIMEOUT)
         except Exception:  # noqa: BLE001
             logger.warning("Timeout getting href from anchor", exc_info=True)
             href = None
@@ -362,7 +363,7 @@ class PlayerSearchCrawler:
             if m:
                 try:
                     await page.evaluate(POSTBACK_EVAL, [m.group(1), m.group(2)])
-                    await page.wait_for_load_state("load", timeout=10000)
+                    await page.wait_for_load_state("load", timeout=SHORT_TIMEOUT)
                     return True
                 except Exception:
                     logger.exception("Manual postback evaluate failed")
@@ -370,8 +371,8 @@ class PlayerSearchCrawler:
 
         # Normal (non-JS) links: use click()
         try:
-            await anchor.click(timeout=10000)
-            await page.wait_for_load_state("load", timeout=10000)
+            await anchor.click(timeout=SHORT_TIMEOUT)
+            await page.wait_for_load_state("load", timeout=SHORT_TIMEOUT)
             return True
         except Exception:
             logger.exception("Postback click failed: %s", href)
@@ -382,7 +383,7 @@ class PlayerSearchCrawler:
             await page.wait_for_function(
                 "([s, v]) => document.querySelector(s)?.value !== v",
                 [HFPAGE, prev_v],
-                timeout=5000,
+                timeout=SHORT_TIMEOUT,
             )
         except TimeoutError:
             pass
@@ -502,7 +503,7 @@ async def main() -> None:
     logger.info("KBO Player Search Crawler")
     logger.info("=" * 60)
 
-    logger.info(f"\nCrawling players (max_pages={args.max_pages or 'all'})...")  # noqa: G004
+    logger.info(f"\nCrawling players (max_pages={args.max_pages or 'all'})...")
     players = await crawl_all_players(max_pages=args.max_pages)
     logger.info("\nTotal players collected: %s", len(players))
 
@@ -513,7 +514,7 @@ async def main() -> None:
     logger.info("\nSample (first 5 players):")
     for player in players[:5]:
         logger.info(
-            f"  - {player.name} (ID: {player.player_id}, #{player.uniform_no}, {player.team}/{player.position})",  # noqa: G004
+            f"  - {player.name} (ID: {player.player_id}, #{player.uniform_no}, {player.team}/{player.position})",
         )
 
     oci_url = os.getenv("OCI_DB_URL")

@@ -6,7 +6,6 @@ from bs4 import BeautifulSoup
 
 from src.services.hitter_page_fetcher import (
     _get_column_index_map,
-    _safe_int,
     build_hitter_url,
     derive_sh_sf_from_hitter_page,
     derive_sh_sf_hybrid,
@@ -14,6 +13,7 @@ from src.services.hitter_page_fetcher import (
     fetch_hitter_page_sync,
     parse_hitter_sh_sf,
 )
+from src.utils.type_helpers import to_int
 
 HITTER_HTML_TEMPLATE = """<html>
 <body>
@@ -51,19 +51,19 @@ class TestBuildHitterUrl:
 
 class TestSafeInt:
     def test_int(self):
-        assert _safe_int(42) == 42
+        assert to_int(42) == 42
 
     def test_str(self):
-        assert _safe_int("42") == 42
+        assert to_int("42") == 42
 
     def test_none(self):
-        assert _safe_int(None) == 0
+        assert to_int(None) == 0
 
     def test_invalid(self):
-        assert _safe_int("abc") == 0
+        assert to_int("abc") == 0
 
     def test_float_str(self):
-        assert _safe_int("3.14") == 0
+        assert to_int("3.14") == 0
 
 
 class TestGetColumnIndexMap:

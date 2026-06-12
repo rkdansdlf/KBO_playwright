@@ -3,8 +3,10 @@ from pathlib import Path
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker
 
-from scripts.legacy.maintenance.resolve_null_player_ids_conservative import (
+from scripts.maintenance.resolve_null_player_ids_conservative import (
     OverrideEntry,
+    RowOverrideEntry,
+    apply_row_override,
     choose_candidate_ids,
     delete_duplicate_null_player_id_rows_for_group,
     fetch_group_uniform_nos,
@@ -398,5 +400,188 @@ def test_lineup_order_values_are_not_used_as_uniform_filter():
         )
 
         assert uniforms == []
+    finally:
+        session.close()
+
+
+def test_group_override_is_rejected_when_existing_group_has_multiple_player_ids():
+    session = _make_session()
+    try:
+        session.execute(
+            text(
+                """
+                INSERT INTO player_basic(player_id, name, uniform_no)
+                VALUES
+                    (52731, '박준영', NULL),
+                    (56709, '박준영', NULL)
+                """
+            )
+        )
+        session.execute(
+            text(
+                """
+                INSERT INTO game_pitching_stats
+                    (game_id, team_code, player_name, uniform_no, appearance_seq, player_id)
+                VALUES
+                    ('20260607HHLT0', 'HH', '박준영', NULL, 2, 52731),
+                    ('20260607HHLT0', 'HH', '박준영', NULL, 8, 56709),
+                    ('20260609HTHH0', 'HH', '박준영', NULL, 3, NULL)
+                """
+            )
+        )
+        session.commit()
+
+        overrides = {
+            ("game_pitching_stats", 2026, "HH", "박준영"): OverrideEntry(
+                source_table="game_pitching_stats",
+                year=2026,
+                team_code="HH",
+                player_name="박준영",
+                resolved_player_id=52731,
+                reason="manual",
+                evidence_source="unit-test",
+            )
+        }
+        result = choose_candidate_ids(
+            session,
+            table_name="game_pitching_stats",
+            season=2026,
+            team_code="HH",
+            player_name="박준영",
+            uniform_nos=[],
+            alias_map={},
+            overrides=overrides,
+        )
+
+        assert result["candidate_ids"] == []
+        assert result["resolution_reason"] == "override_conflicts_existing_group_ids"
+    finally:
+        session.close()
+
+
+def test_row_override_updates_exact_homonym_row():
+    session = _make_session()
+    try:
+        session.execute(text("INSERT INTO player_basic(player_id, name, uniform_no) VALUES (56709, '박준영', NULL)"))
+        session.execute(
+            text(
+                """
+                INSERT INTO game_pitching_stats
+                    (game_id, team_code, player_name, uniform_no, appearance_seq, player_id)
+                VALUES ('20260607HHLT0', 'HH', '박준영', NULL, 8, NULL)
+                """
+            )
+        )
+        session.commit()
+
+        result = apply_row_override(
+            session,
+            entry=RowOverrideEntry(
+                source_table="game_pitching_stats",
+                game_id="20260607HHLT0",
+                appearance_seq=8,
+                team_code="HH",
+                player_name="박준영",
+                resolved_player_id=56709,
+                reason="manual",
+                evidence_source="unit-test",
+            ),
+            dry_run=False,
+            delete_duplicates=True,
+        )
+
+        assert result["updated_rows"] == 1
+        assert (
+            session.execute(
+                text(
+                    """
+                    SELECT player_id
+                    FROM game_pitching_stats
+                    WHERE game_id = '20260607HHLT0'
+                      AND appearance_seq = 8
+                    """
+                )
+            ).scalar()
+            == 56709
+        )
+    finally:
+        session.close()
+
+
+def test_duplicate_guard_uses_game_player_for_lineups_with_different_appearance_seq():
+    session = _make_session()
+    try:
+        session.execute(
+            text(
+                """
+                INSERT INTO game_lineups
+                    (game_id, team_code, player_name, batting_order, uniform_no, player_id)
+                VALUES ('20260607HHLT0', 'HH', '박준영', 9, NULL, 56709)
+                """
+            )
+        )
+        session.execute(
+            text(
+                """
+                INSERT INTO game_lineups
+                    (game_id, team_code, player_name, batting_order, uniform_no, player_id)
+                VALUES ('20260607HHLT0', 'HH', '박준영', 8, NULL, NULL)
+                """
+            )
+        )
+        session.commit()
+
+        dry_count = delete_duplicate_null_player_id_rows_for_group(
+            session,
+            table_name="game_lineups",
+            year=2026,
+            team_code="HH",
+            player_name="박준영",
+            player_id=56709,
+            dry_run=True,
+        )
+        deleted = delete_duplicate_null_player_id_rows_for_group(
+            session,
+            table_name="game_lineups",
+            year=2026,
+            team_code="HH",
+            player_name="박준영",
+            player_id=56709,
+            dry_run=False,
+        )
+
+        assert dry_count == 1
+        assert deleted == 1
+    finally:
+        session.close()
+
+
+def test_legacy_team_code_is_canonicalized_for_candidate_lookup():
+    session = _make_session()
+    try:
+        session.execute(text("INSERT INTO player_basic(player_id, name, uniform_no) VALUES (53554, '김민석', '63')"))
+        session.execute(
+            text(
+                """
+                INSERT INTO player_season_batting(player_id, season, team_code)
+                VALUES (53554, 2026, 'DB')
+                """
+            )
+        )
+        session.commit()
+
+        result = choose_candidate_ids(
+            session,
+            table_name="game_batting_stats",
+            season=2026,
+            team_code="OB",
+            player_name="김민석",
+            uniform_nos=[],
+            alias_map={},
+            overrides={},
+        )
+
+        assert result["candidate_ids"] == [53554]
+        assert result["resolution_method"] == "season_team_name"
     finally:
         session.close()

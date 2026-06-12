@@ -3,6 +3,8 @@ Repository for saving game details, box scores, and normalized relay data.
 Thin facade re-exporting from domain-split modules.
 """
 
+from __future__ import annotations
+
 from src.repositories.game_relay import (
     backfill_game_play_by_play_from_existing_events,
     backfill_missing_game_stubs_for_relays,

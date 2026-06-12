@@ -4,6 +4,8 @@ Collects extended player profile: photo_url, bats, throws, salary, draft info, d
 Source: KBO HitterDetail/PitcherDetail Basic.aspx
 """
 
+from __future__ import annotations
+
 import asyncio
 import logging
 import re
@@ -18,7 +20,7 @@ from src.urls import HITTER_DETAIL, PITCHER_DETAIL
 from src.utils.compliance import compliance
 from src.utils.player_validation import validate_player_payload
 from src.utils.playwright_pool import AsyncPlaywrightPool
-from src.utils.playwright_retry import SEL_TIMEOUT
+from src.utils.playwright_retry import NAV_TIMEOUT, SEL_TIMEOUT
 from src.utils.request_policy import RequestPolicy
 
 # KBO profile page selectors (common across Hitter/Pitcher detail pages)
@@ -335,7 +337,7 @@ class PlayerProfileCrawler:
     async def _load_profile_page(self, page: Page, url: str) -> dict[str, Any]:
         await self.policy.delay_async(host="www.koreabaseball.com")
         # domcontentloaded avoids networkidle timeout on KBO pages
-        await page.goto(url, wait_until="domcontentloaded", timeout=20000)
+        await page.goto(url, wait_until="domcontentloaded", timeout=NAV_TIMEOUT)
 
         # Wait for any name element to be attached
         with contextlib.suppress(Exception):
@@ -353,7 +355,6 @@ class PlayerProfileCrawler:
             )
         except Exception:  # noqa: BLE001
             logger.info("No real image found for player (expected for some players)")
-            pass
 
         return await page.evaluate(_EXTRACT_JS)
 

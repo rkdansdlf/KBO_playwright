@@ -3,6 +3,8 @@ Database Query Service
 Provides specialized query functions for player and game data.
 """
 
+from __future__ import annotations
+
 import logging
 from typing import Any
 

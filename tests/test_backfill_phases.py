@@ -6,7 +6,6 @@ from datetime import date
 from unittest.mock import MagicMock
 
 from scripts.scheduler import (
-    backfill_missed_daily_crawls,
     _compact_date,
     _find_detail_gaps,
     _find_pbp_gaps,
@@ -14,6 +13,7 @@ from scripts.scheduler import (
     _find_preview_gaps,
     _from_compact_date,
     _to_compact_date,
+    backfill_missed_daily_crawls,
 )
 
 # ── _compact_date ────────────────────────────────────────────────────────────────────

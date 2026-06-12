@@ -168,7 +168,7 @@ async def run_backfill(args: argparse.Namespace) -> int:
     logger.info("Pregame backfill targets (%s..%s): %s date(s)", start_date, end_date, len(targets))
     for target in targets:
         logger.info(
-            f"  {target.target_date}: "  # noqa: G004
+            f"  {target.target_date}: "
             f"starters={target.starters_complete}/{target.scheduled_total}, "
             f"preview={target.preview_rows}/{target.scheduled_total}, "
             f"preview_missing_starters={target.preview_missing_starters}",
@@ -201,7 +201,7 @@ async def run_backfill(args: argparse.Namespace) -> int:
                 )
 
     logger.info(
-        "\nPregame backfill finished. "  # noqa: G004
+        "\nPregame backfill finished. "
         f"saved_total={saved_total}, failed_empty={len(failed)}, incomplete={len(incomplete)}",
     )
     if failed:

@@ -25,7 +25,7 @@ from src.repositories.source_registry_repository import save_raw_snapshots
 from src.urls import REGISTER
 from src.utils.http_client import DEFAULT_HEADERS as HEADERS
 from src.utils.playwright_pool import AsyncPlaywrightPool
-from src.utils.playwright_retry import NAV_TIMEOUT
+from src.utils.playwright_retry import NAV_TIMEOUT, SHORT_TIMEOUT
 from src.utils.throttle import throttle
 
 logger = logging.getLogger(__name__)
@@ -223,7 +223,7 @@ class RosterTransactionCrawler:
                     f"document.getElementById('cphContents_cphContents_cphContents_hfSearchDate').value = '{date_str}';",
                 )
                 try:
-                    async with page.expect_response(lambda r: "Register.aspx" in r.url, timeout=5000):
+                    async with page.expect_response(lambda r: "Register.aspx" in r.url, timeout=SHORT_TIMEOUT):
                         await page.evaluate(
                             "__doPostBack('ctl00$ctl00$ctl00$cphContents$cphContents$cphContents$btnCalendarSelect', '')",
                         )

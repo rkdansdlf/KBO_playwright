@@ -8,6 +8,8 @@ Imported by scripts/scheduler.py as the crawl_monthly_team_audit_job target.
 Runs on the 1st of every month at 04:00 KST via APScheduler.
 """
 
+from __future__ import annotations
+
 import json
 import logging
 import sys
@@ -116,15 +118,15 @@ def main() -> int:
     bat_miss = len(result["batting"]["mismatches"])
     pit_miss = len(result["pitching"]["mismatches"])
 
-    logger.info(f"\nTeam Batting: {'PASS' if bat_ok else 'FAIL'} ({bat_miss} mismatches)")  # noqa: G004
+    logger.info(f"\nTeam Batting: {'PASS' if bat_ok else 'FAIL'} ({bat_miss} mismatches)")
     for m in result["batting"]["mismatches"]:
-        logger.info(f"  - [{m['team_id']}] {m['issue']}")  # noqa: G004
+        logger.info(f"  - [{m['team_id']}] {m['issue']}")
         for d in (m.get("diffs") or [])[:3]:
             logger.info("    %s", d)
 
-    logger.info(f"\nTeam Pitching: {'PASS' if pit_ok else 'FAIL'} ({pit_miss} mismatches)")  # noqa: G004
+    logger.info(f"\nTeam Pitching: {'PASS' if pit_ok else 'FAIL'} ({pit_miss} mismatches)")
     for m in result["pitching"]["mismatches"]:
-        logger.info(f"  - [{m['team_id']}] {m['issue']}")  # noqa: G004
+        logger.info(f"  - [{m['team_id']}] {m['issue']}")
         for d in (m.get("diffs") or [])[:3]:
             logger.info("    %s", d)
 

@@ -12,6 +12,8 @@ from typing import Any
 
 from playwright.async_api import async_playwright
 
+from src.utils.type_helpers import parse_innings_to_outs
+
 logger = logging.getLogger(__name__)
 
 
@@ -131,7 +133,7 @@ class PlayerDailyStatsCrawler:
 
             # Parse Innings (e.g. "5 2/3" -> outs)
             ip_str = row[6]
-            innings_outs = self._parse_innings_to_outs(ip_str)
+            innings_outs = parse_innings_to_outs(ip_str) or 0
 
             return {
                 "game_date": date_str,
@@ -155,31 +157,6 @@ class PlayerDailyStatsCrawler:
         except Exception:
             logger.exception("Failed to parse pitcher row")
             return None
-
-    def _parse_innings_to_outs(self, ip_str: str) -> int:
-        if not ip_str or ip_str == "-":
-            return 0
-        try:
-            if " " in ip_str:
-                whole, frac = ip_str.split(" ")
-                outs = int(whole) * 3
-                if "1/3" in frac:
-                    outs += 1
-                elif "2/3" in frac:
-                    outs += 2
-                return outs
-            else:
-                if "/" in ip_str:  # Only fraction
-                    if "1/3" in ip_str:
-                        return 1
-                    if "2/3" in ip_str:
-                        return 2
-                    return 0
-                return int(ip_str) * 3
-        except Exception:
-            logger.exception("Failed to parse innings string: %s", ip_str)
-            return 0
-
 
 if __name__ == "__main__":
 

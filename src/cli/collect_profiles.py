@@ -3,6 +3,8 @@ Player Profile Enrichment CLI
 Identifies players with missing basic info (e.g. birth_date, debut_year) and crawls them.
 """
 
+from __future__ import annotations
+
 import argparse
 import asyncio
 import logging
@@ -46,7 +48,7 @@ async def collect_profiles(limit: int = 100, target_ids: list[str] | None = None
                     continue
 
                 logger.info(
-                    f"[{idx}/{len(target_players)}] Crawling profile for {pid} ({getattr(player, 'name_kor', 'Unknown')})",  # noqa: G004
+                    f"[{idx}/{len(target_players)}] Crawling profile for {pid} ({getattr(player, 'name_kor', 'Unknown')})",
                 )
 
                 data = await crawler.crawl_player_profile(str(pid))

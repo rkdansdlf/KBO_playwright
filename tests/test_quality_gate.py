@@ -3,7 +3,7 @@ from pathlib import Path
 
 from sqlalchemy import create_engine, text
 
-from scripts.legacy.quality_gate import (
+from scripts.maintenance.quality_gate import (
     collect_metrics,
     evaluate_quality_gate,
     fetch_past_missing_game_ids,

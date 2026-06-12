@@ -3,6 +3,8 @@ Player Season Batting Repository
 UPSERT operations for player_season_batting table
 """
 
+from __future__ import annotations
+
 import logging
 from typing import Any
 

@@ -3,6 +3,8 @@ KBO Player Profile Parser
 Parses raw KBO profile texts and original string fields into structured attributes.
 """
 
+from __future__ import annotations
+
 import re
 from typing import Any
 

@@ -3,6 +3,8 @@ Safe batting data repository with foreign key constraint bypass
 타자 데이터를 외래키 제약조건 우회하여 안전하게 저장
 """
 
+from __future__ import annotations
+
 import logging
 from collections import Counter
 from typing import Any
@@ -140,7 +142,7 @@ def save_batting_stats_safe(payloads: list[dict[str, Any]]) -> int:
                             session.execute(row_stmt)
                             saved_count += 1
                         except SQLAlchemyError:
-                            logger.exception(f"⚠️ UPSERT 실패 (player_id={data.get('player_id')})")  # noqa: G004
+                            logger.exception(f"⚠️ UPSERT 실패 (player_id={data.get('player_id')})")
                             session.rollback()
             elif db_type == "mysql":
                 stmt = mysql_insert(PlayerSeasonBatting).values(rows)
@@ -168,7 +170,7 @@ def save_batting_stats_safe(payloads: list[dict[str, Any]]) -> int:
                             session.execute(row_stmt)
                             saved_count += 1
                         except SQLAlchemyError:
-                            logger.exception(f"⚠️ UPSERT 실패 (player_id={data.get('player_id')})")  # noqa: G004
+                            logger.exception(f"⚠️ UPSERT 실패 (player_id={data.get('player_id')})")
                             session.rollback()
             elif db_type == "postgresql":
                 stmt = postgresql_insert(PlayerSeasonBatting).values(rows)
@@ -196,7 +198,7 @@ def save_batting_stats_safe(payloads: list[dict[str, Any]]) -> int:
                             session.execute(row_stmt)
                             saved_count += 1
                         except SQLAlchemyError:
-                            logger.exception(f"⚠️ UPSERT 실패 (player_id={data.get('player_id')})")  # noqa: G004
+                            logger.exception(f"⚠️ UPSERT 실패 (player_id={data.get('player_id')})")
                             session.rollback()
             else:
                 for data in rows:

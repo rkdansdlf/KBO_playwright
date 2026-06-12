@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import argparse
 import asyncio
 import logging
@@ -125,7 +127,7 @@ class BroadcastCrawler:
             logger.info("Saved %s broadcast records.", count)
         except SQLAlchemyError as e:
             session.rollback()
-            logger.exception(f"Database error saving broadcasts: {e}")  # noqa: G004
+            logger.exception(f"Database error saving broadcasts: {e}")
         finally:
             session.close()
 

@@ -7,9 +7,9 @@ logger = logging.getLogger(__name__)
 # Add the project root to the python path
 sys.path.append(os.getcwd())
 
-from sqlalchemy import text  # noqa: E402
+from sqlalchemy import text
 
-from src.db.engine import SessionLocal  # noqa: E402
+from src.db.engine import SessionLocal
 
 
 def fix_lotte_code():
