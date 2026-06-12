@@ -6,8 +6,10 @@ from src.cli.monthly_team_audit import main
 
 class TestMonthlyTeamAudit:
     def _run_main(self, parse_return):
-        with patch("argparse.ArgumentParser.parse_args") as mock_parse, \
-             patch("src.cli.monthly_team_audit.run_monthly_team_audit") as mock_audit:
+        with (
+            patch("argparse.ArgumentParser.parse_args") as mock_parse,
+            patch("src.cli.monthly_team_audit.run_monthly_team_audit") as mock_audit,
+        ):
             mock_parse.return_value = parse_return
             mock_audit.return_value = {
                 "year": 2025,

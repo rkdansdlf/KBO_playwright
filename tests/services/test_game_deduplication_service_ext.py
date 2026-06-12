@@ -111,8 +111,14 @@ class TestLoadCandidates:
         conn.close()
         cursor = sqlite3.connect(db_path).cursor()
         candidates = _load_candidates(
-            cursor, game_date="2024-03-15", home_fid=1, away_fid=2,
-            suffix="0", start_date=None, end_date=None, suffixes=("0",),
+            cursor,
+            game_date="2024-03-15",
+            home_fid=1,
+            away_fid=2,
+            suffix="0",
+            start_date=None,
+            end_date=None,
+            suffixes=("0",),
         )
         assert len(candidates) == 1
         assert candidates[0][1] == 9
@@ -124,8 +130,14 @@ class TestLoadCandidates:
         conn.close()
         cursor = sqlite3.connect(db_path).cursor()
         candidates = _load_candidates(
-            cursor, game_date="2024-03-16", home_fid=1, away_fid=2,
-            suffix="0", start_date=None, end_date=None, suffixes=("0",),
+            cursor,
+            game_date="2024-03-16",
+            home_fid=1,
+            away_fid=2,
+            suffix="0",
+            start_date=None,
+            end_date=None,
+            suffixes=("0",),
         )
         assert candidates == []
 
@@ -141,8 +153,13 @@ class TestMarkWindow:
         conn.close()
         cursor = sqlite3.connect(db_path).cursor()
         window = DeduplicationWindow(label="test", start_date="2024-03-15", end_date="2024-03-15")
-        result = _mark_window(cursor, start_date=window.start_date, end_date=window.end_date,
-                              suffixes=("0", "1"), preferred_codes=DEFAULT_PRIMARY_CODE_PREFERENCES)
+        result = _mark_window(
+            cursor,
+            start_date=window.start_date,
+            end_date=window.end_date,
+            suffixes=("0", "1"),
+            preferred_codes=DEFAULT_PRIMARY_CODE_PREFERENCES,
+        )
         assert result.scanned_slots == 2
         assert result.marked_primary == 2
 

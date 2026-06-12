@@ -13,6 +13,7 @@ class TestCalculateRankings:
 
     def test_no_year_errors(self):
         import argparse
+
         try:
             main([])
             raise AssertionError("Should have raised SystemExit")

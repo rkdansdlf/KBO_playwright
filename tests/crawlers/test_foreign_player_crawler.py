@@ -1,4 +1,3 @@
-
 from src.crawlers.foreign_player_crawler import ForeignPlayerCrawler
 
 

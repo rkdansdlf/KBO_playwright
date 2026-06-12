@@ -24,10 +24,14 @@ class TestStadiumFoodVendorRepository:
         session = self._session(engine)
         repo = StadiumFoodVendorRepository(session)
 
-        vendor = repo.save({
-            "stadium_id": "JAMSIL", "vendor_name": "잠실푸드",
-            "location_text": "1층", "confidence": "high",
-        })
+        vendor = repo.save(
+            {
+                "stadium_id": "JAMSIL",
+                "vendor_name": "잠실푸드",
+                "location_text": "1층",
+                "confidence": "high",
+            }
+        )
         session.commit()
         assert vendor.id is not None
         assert vendor.vendor_name == "잠실푸드"
@@ -38,16 +42,24 @@ class TestStadiumFoodVendorRepository:
         session = self._session(engine)
         repo = StadiumFoodVendorRepository(session)
 
-        r1 = repo.save({
-            "stadium_id": "JAMSIL", "vendor_name": "잠실푸드",
-            "location_text": "1층", "confidence": "medium",
-        })
+        r1 = repo.save(
+            {
+                "stadium_id": "JAMSIL",
+                "vendor_name": "잠실푸드",
+                "location_text": "1층",
+                "confidence": "medium",
+            }
+        )
         session.commit()
 
-        r2 = repo.save({
-            "stadium_id": "JAMSIL", "vendor_name": "잠실푸드",
-            "location_text": "2층", "confidence": "high",
-        })
+        r2 = repo.save(
+            {
+                "stadium_id": "JAMSIL",
+                "vendor_name": "잠실푸드",
+                "location_text": "2층",
+                "confidence": "high",
+            }
+        )
         session.commit()
 
         assert r1.id == r2.id
@@ -73,10 +85,12 @@ class TestStadiumFoodVendorRepository:
         session = self._session(engine)
         repo = StadiumFoodVendorRepository(session)
 
-        count = repo.bulk_save([
-            {"stadium_id": "JAMSIL", "vendor_name": "A", "confidence": "high"},
-            {"stadium_id": "JAMSIL", "vendor_name": "B", "confidence": "medium"},
-        ])
+        count = repo.bulk_save(
+            [
+                {"stadium_id": "JAMSIL", "vendor_name": "A", "confidence": "high"},
+                {"stadium_id": "JAMSIL", "vendor_name": "B", "confidence": "medium"},
+            ]
+        )
         session.commit()
         assert count == 2
 
@@ -105,10 +119,14 @@ class TestStadiumFoodMenuItemRepository:
         repo = StadiumFoodMenuItemRepository(session)
 
         vendor_id = self._create_vendor(session)
-        item = repo.save({
-            "vendor_id": vendor_id, "menu_name": "떡볶이",
-            "price": 5000, "category": "snack",
-        })
+        item = repo.save(
+            {
+                "vendor_id": vendor_id,
+                "menu_name": "떡볶이",
+                "price": 5000,
+                "category": "snack",
+            }
+        )
         session.commit()
         assert item.id is not None
         assert item.menu_name == "떡볶이"
@@ -120,17 +138,25 @@ class TestStadiumFoodMenuItemRepository:
         repo = StadiumFoodMenuItemRepository(session)
 
         vendor_id = self._create_vendor(session)
-        r1 = repo.save({
-            "vendor_id": vendor_id, "menu_name": "떡볶이",
-            "price": 5000, "category": "snack",
-        })
+        r1 = repo.save(
+            {
+                "vendor_id": vendor_id,
+                "menu_name": "떡볶이",
+                "price": 5000,
+                "category": "snack",
+            }
+        )
         session.commit()
 
-        r2 = repo.save({
-            "vendor_id": vendor_id, "menu_name": "떡볶이",
-            "price": 5500, "category": "snack",
-            "is_signature": True,
-        })
+        r2 = repo.save(
+            {
+                "vendor_id": vendor_id,
+                "menu_name": "떡볶이",
+                "price": 5500,
+                "category": "snack",
+                "is_signature": True,
+            }
+        )
         session.commit()
 
         assert r1.id == r2.id
@@ -173,9 +199,11 @@ class TestStadiumFoodMenuItemRepository:
         repo = StadiumFoodMenuItemRepository(session)
 
         vendor_id = self._create_vendor(session)
-        count = repo.bulk_save([
-            {"vendor_id": vendor_id, "menu_name": "떡볶이", "price": 5000, "category": "snack"},
-            {"vendor_id": vendor_id, "menu_name": "김밥", "price": 3000, "category": "snack"},
-        ])
+        count = repo.bulk_save(
+            [
+                {"vendor_id": vendor_id, "menu_name": "떡볶이", "price": 5000, "category": "snack"},
+                {"vendor_id": vendor_id, "menu_name": "김밥", "price": 3000, "category": "snack"},
+            ]
+        )
         session.commit()
         assert count == 2

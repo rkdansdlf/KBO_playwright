@@ -81,15 +81,21 @@ class TestFormatGameDate:
 class TestGameScoreStatusSnapshot:
     def test_score_tuple_property(self):
         snap = GameScoreStatusSnapshot(
-            game_id="G1", game_date="20240315",
-            game_status="completed", away_score=3, home_score=5,
+            game_id="G1",
+            game_date="20240315",
+            game_status="completed",
+            away_score=3,
+            home_score=5,
         )
         assert snap.score_tuple == (3, 5)
 
     def test_score_tuple_none(self):
         snap = GameScoreStatusSnapshot(
-            game_id="G1", game_date="20240315",
-            game_status="scheduled", away_score=None, home_score=None,
+            game_id="G1",
+            game_date="20240315",
+            game_status="scheduled",
+            away_score=None,
+            home_score=None,
         )
         assert snap.score_tuple == (None, None)
 
@@ -97,30 +103,42 @@ class TestGameScoreStatusSnapshot:
 class TestPostgameReconciliationChange:
     def test_status_changed_true(self):
         change = PostgameReconciliationChange(
-            game_id="G1", game_date="20240315",
-            before_status="started", after_status="completed",
-            before_away_score=None, before_home_score=None,
-            after_away_score=3, after_home_score=5,
+            game_id="G1",
+            game_date="20240315",
+            before_status="started",
+            after_status="completed",
+            before_away_score=None,
+            before_home_score=None,
+            after_away_score=3,
+            after_home_score=5,
             detail_status="saved",
         )
         assert change.status_changed is True
 
     def test_status_changed_false(self):
         change = PostgameReconciliationChange(
-            game_id="G1", game_date="20240315",
-            before_status="completed", after_status="completed",
-            before_away_score=3, before_home_score=5,
-            after_away_score=3, after_home_score=5,
+            game_id="G1",
+            game_date="20240315",
+            before_status="completed",
+            after_status="completed",
+            before_away_score=3,
+            before_home_score=5,
+            after_away_score=3,
+            after_home_score=5,
             detail_status="saved",
         )
         assert change.status_changed is False
 
     def test_score_changed_true(self):
         change = PostgameReconciliationChange(
-            game_id="G1", game_date="20240315",
-            before_status="started", after_status="completed",
-            before_away_score=None, before_home_score=None,
-            after_away_score=3, after_home_score=5,
+            game_id="G1",
+            game_date="20240315",
+            before_status="started",
+            after_status="completed",
+            before_away_score=None,
+            before_home_score=None,
+            after_away_score=3,
+            after_home_score=5,
             detail_status="saved",
         )
         assert change.score_changed is True
@@ -134,10 +152,14 @@ class TestFormatReconciliationReport:
     def test_with_changes(self):
         changes = [
             PostgameReconciliationChange(
-                game_id="G1", game_date="20240315",
-                before_status="started", after_status="completed",
-                before_away_score=None, before_home_score=None,
-                after_away_score=3, after_home_score=5,
+                game_id="G1",
+                game_date="20240315",
+                before_status="started",
+                after_status="completed",
+                before_away_score=None,
+                before_home_score=None,
+                after_away_score=3,
+                after_home_score=5,
                 detail_status="saved",
             )
         ]
@@ -151,10 +173,14 @@ class TestWriteReconciliationCsv:
     def test_writes_file(self, tmp_path):
         changes = [
             PostgameReconciliationChange(
-                game_id="G1", game_date="20240315",
-                before_status="started", after_status="completed",
-                before_away_score=None, before_home_score=None,
-                after_away_score=3, after_home_score=5,
+                game_id="G1",
+                game_date="20240315",
+                before_status="started",
+                after_status="completed",
+                before_away_score=None,
+                before_home_score=None,
+                after_away_score=3,
+                after_home_score=5,
                 detail_status="saved",
             )
         ]

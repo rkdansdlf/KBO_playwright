@@ -11,7 +11,14 @@ class TestCalcRateStats:
     def test_full_stats(self):
         engine = MatchupEngine()
         avg, obp, slg, ops = engine._calc_rate_stats(
-            hits=10, ab=30, pa=35, walks=4, hbp=1, double=2, triple=1, hr=1,
+            hits=10,
+            ab=30,
+            pa=35,
+            walks=4,
+            hbp=1,
+            double=2,
+            triple=1,
+            hr=1,
         )
         assert avg == 0.333  # 10/30
         assert obp > 0
@@ -32,7 +39,15 @@ class TestCalcRateStats:
     def test_is_full_false_skips_slg(self):
         engine = MatchupEngine()
         avg, obp, slg, ops = engine._calc_rate_stats(
-            hits=5, ab=20, pa=22, walks=2, hbp=0, double=0, triple=0, hr=0, is_full=False,
+            hits=5,
+            ab=20,
+            pa=22,
+            walks=2,
+            hbp=0,
+            double=0,
+            triple=0,
+            hr=0,
+            is_full=False,
         )
         assert avg == 0.25
         assert slg == 0.0

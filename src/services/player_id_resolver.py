@@ -193,7 +193,9 @@ class PlayerIdResolver:
                     player_name,
                 )
             if pid in surrogates and mapped_id not in existing_targets:
-                logger.debug("Skipping surrogate player_id mapping %s -> %s because target profile is missing", pid, mapped_id)
+                logger.debug(
+                    "Skipping surrogate player_id mapping %s -> %s because target profile is missing", pid, mapped_id
+                )
             filtered.add(pid)
         return filtered
 
@@ -439,12 +441,7 @@ class PlayerIdResolver:
         uniform_no: str | None,
         is_pitcher: bool | None,
     ) -> int | None:
-        if not (
-            player_name == "박준영"
-            and team_code == "HH"
-            and season == 2026
-            and is_pitcher is True
-        ):
+        if not (player_name == "박준영" and team_code == "HH" and season == 2026 and is_pitcher is True):
             return None
         if uniform_no == "68":
             return 56709  # 68번 박준영 (2002년생)

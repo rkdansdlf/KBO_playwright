@@ -71,7 +71,10 @@ class TestValidatePbpPayload:
 
     def test_no_innings_found(self):
         session = MagicMock()
-        assert validate_pbp_payload(session, "g1", [{"desc": "no inning"}], [{"desc": "no inning"}]) == (False, "no_innings_found")
+        assert validate_pbp_payload(session, "g1", [{"desc": "no inning"}], [{"desc": "no inning"}]) == (
+            False,
+            "no_innings_found",
+        )
 
     def test_starts_at_inning_2(self):
         session = MagicMock()

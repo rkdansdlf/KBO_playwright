@@ -24,9 +24,24 @@ class TestSaveFuturesBatting:
         MockEngine.dialect.name = "sqlite"
 
         rows = [
-            {"season": 2024, "G": 120, "AB": 400, "R": 60, "H": 120, "2B": 20, "3B": 5,
-             "HR": 15, "RBI": 70, "BB": 40, "HBP": 5, "SO": 80, "SB": 10,
-             "AVG": 0.300, "OBP": 0.370, "SLG": 0.475},
+            {
+                "season": 2024,
+                "G": 120,
+                "AB": 400,
+                "R": 60,
+                "H": 120,
+                "2B": 20,
+                "3B": 5,
+                "HR": 15,
+                "RBI": 70,
+                "BB": 40,
+                "HBP": 5,
+                "SO": 80,
+                "SB": 10,
+                "AVG": 0.300,
+                "OBP": 0.370,
+                "SLG": 0.475,
+            },
         ]
         saved = save_futures_batting(1, rows, league="FUTURES", level="KBO2")
         assert saved == 1

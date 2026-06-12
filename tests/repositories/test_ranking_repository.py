@@ -75,6 +75,7 @@ class TestRankingRepository:
         r["rank"] = 1
         repo.save_rankings([r])
         from src.models.rankings import StatRanking
+
         record = session.query(StatRanking).filter_by(season=2025, metric="avg", entity_id="1").first()
         assert record.value == 0.400
         assert record.rank == 1

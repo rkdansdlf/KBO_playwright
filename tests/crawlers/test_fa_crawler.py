@@ -1,4 +1,3 @@
-
 from src.crawlers.fa_crawler import parse_amount_krw
 
 

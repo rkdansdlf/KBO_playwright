@@ -7,9 +7,11 @@ from src.cli.daily_highlight_batch import main
 
 class TestDailyHighlightBatchCLI:
     def test_main_no_games(self):
-        with patch("src.cli.daily_highlight_batch.SessionLocal") as mock_sesh, \
-             patch("src.cli.daily_highlight_batch.HighlightAggregator"), \
-             patch("src.cli.daily_highlight_batch.datetime") as mock_dt:
+        with (
+            patch("src.cli.daily_highlight_batch.SessionLocal") as mock_sesh,
+            patch("src.cli.daily_highlight_batch.HighlightAggregator"),
+            patch("src.cli.daily_highlight_batch.datetime") as mock_dt,
+        ):
             mock_dt.strptime.return_value.date.return_value = MagicMock()
             mock_session = MagicMock()
             mock_session.query.return_value.filter.return_value.all.return_value = []
@@ -19,9 +21,11 @@ class TestDailyHighlightBatchCLI:
             assert result == 0
 
     def test_main_dry_run(self):
-        with patch("src.cli.daily_highlight_batch.SessionLocal") as mock_sesh, \
-             patch("src.cli.daily_highlight_batch.HighlightAggregator"), \
-             patch("src.cli.daily_highlight_batch.datetime") as mock_dt:
+        with (
+            patch("src.cli.daily_highlight_batch.SessionLocal") as mock_sesh,
+            patch("src.cli.daily_highlight_batch.HighlightAggregator"),
+            patch("src.cli.daily_highlight_batch.datetime") as mock_dt,
+        ):
             mock_dt.strptime.return_value.date.return_value = MagicMock()
             mock_game = MagicMock()
             mock_game.game_id = "20251015LGHH0"
@@ -33,9 +37,11 @@ class TestDailyHighlightBatchCLI:
             assert result == 0
 
     def test_main_force(self):
-        with patch("src.cli.daily_highlight_batch.SessionLocal") as mock_sesh, \
-             patch("src.cli.daily_highlight_batch.HighlightAggregator") as MockAgg, \
-             patch("src.cli.daily_highlight_batch.datetime") as mock_dt:
+        with (
+            patch("src.cli.daily_highlight_batch.SessionLocal") as mock_sesh,
+            patch("src.cli.daily_highlight_batch.HighlightAggregator") as MockAgg,
+            patch("src.cli.daily_highlight_batch.datetime") as mock_dt,
+        ):
             mock_dt.strptime.return_value.date.return_value = MagicMock()
             mock_game = MagicMock()
             mock_game.game_id = "20251015LGHH0"

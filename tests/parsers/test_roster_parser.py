@@ -91,13 +91,15 @@ class TestParseMobileRoster:
         assert item["dedupe_key"] == "2025-06-01_LG_홍길동_registered"
 
     def test_alternate_parse_basic(self):
-        html = "\n".join([
-            '<div class="team">LG</div>',
-            '<div>오늘자 선수 등록현황</div>',
-            '<a href="?playerId=12345">홍길동</a>',
-            '<div>오늘자 선수 말소현황</div>',
-            '<a href="?playerId=67890">김철수</a>',
-        ])
+        html = "\n".join(
+            [
+                '<div class="team">LG</div>',
+                "<div>오늘자 선수 등록현황</div>",
+                '<a href="?playerId=12345">홍길동</a>',
+                "<div>오늘자 선수 말소현황</div>",
+                '<a href="?playerId=67890">김철수</a>',
+            ]
+        )
         result = _parse_alternate_mobile(html, date(2025, 6, 1))
         assert len(result) >= 1
 

@@ -7,8 +7,10 @@ from src.cli.crawl_schedule import main
 
 class TestCrawlScheduleCLI:
     def test_main_default_args(self):
-        with patch("src.cli.crawl_schedule.ScheduleCrawler") as MockCrawler, \
-             patch("src.cli.crawl_schedule.save_schedule_games") as mock_save:
+        with (
+            patch("src.cli.crawl_schedule.ScheduleCrawler") as MockCrawler,
+            patch("src.cli.crawl_schedule.save_schedule_games") as mock_save,
+        ):
             mock_instance = MagicMock()
             mock_instance.crawl_season = AsyncMock(return_value=[])
             MockCrawler.return_value = mock_instance
@@ -21,8 +23,10 @@ class TestCrawlScheduleCLI:
             mock_save.assert_called_once_with([])
 
     def test_main_custom_delay(self):
-        with patch("src.cli.crawl_schedule.ScheduleCrawler") as MockCrawler, \
-             patch("src.cli.crawl_schedule.save_schedule_games") as mock_save:
+        with (
+            patch("src.cli.crawl_schedule.ScheduleCrawler") as MockCrawler,
+            patch("src.cli.crawl_schedule.save_schedule_games") as mock_save,
+        ):
             mock_instance = MagicMock()
             mock_instance.crawl_season = AsyncMock(return_value=[])
             MockCrawler.return_value = mock_instance
@@ -33,8 +37,10 @@ class TestCrawlScheduleCLI:
             MockCrawler.assert_called_once_with(request_delay=0.5)
 
     def test_main_upcoming(self):
-        with patch("src.cli.crawl_schedule.ScheduleCrawler") as MockCrawler, \
-             patch("src.cli.crawl_schedule.save_schedule_games") as mock_save:
+        with (
+            patch("src.cli.crawl_schedule.ScheduleCrawler") as MockCrawler,
+            patch("src.cli.crawl_schedule.save_schedule_games") as mock_save,
+        ):
             mock_instance = MagicMock()
             mock_instance.crawl_schedule = AsyncMock(return_value=[])
             MockCrawler.return_value = mock_instance

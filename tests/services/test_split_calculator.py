@@ -128,11 +128,11 @@ class TestSituationalSplitCalculator:
         mock_two_out_data.hits = 12
         mock_two_out_data.rbi = 8
         mock_session.execute.return_value.fetchone.side_effect = [
-            mock_name_row,     # get_risp_stats → _resolve_name
-            mock_risp_data,    # get_risp_stats → query
-            mock_name_row,     # get_lr_splits → _resolve_name
-            mock_name_row,     # get_two_out_stats → _resolve_name
-            mock_two_out_data, # get_two_out_stats → query
+            mock_name_row,  # get_risp_stats → _resolve_name
+            mock_risp_data,  # get_risp_stats → query
+            mock_name_row,  # get_lr_splits → _resolve_name
+            mock_name_row,  # get_two_out_stats → _resolve_name
+            mock_two_out_data,  # get_two_out_stats → query
         ]
         mock_session.execute.return_value.fetchall.return_value = []
         calc = SituationalSplitCalculator(session=mock_session)

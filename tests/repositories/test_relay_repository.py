@@ -15,7 +15,13 @@ class TestRelayRepository:
                 "inning": 1,
                 "half": "top",
                 "plays": [
-                    {"pitcher": "Kim", "batter": "Lee", "description": "Strikeout", "event_type": "strikeout", "result": "O"},
+                    {
+                        "pitcher": "Kim",
+                        "batter": "Lee",
+                        "description": "Strikeout",
+                        "event_type": "strikeout",
+                        "result": "O",
+                    },
                     {"pitcher": "Kim", "batter": "Park", "description": "Walk", "event_type": "walk", "result": "BB"},
                 ],
             },
@@ -83,11 +89,13 @@ class TestRelayRepository:
         MockSessionLocal.return_value.__enter__.return_value = session
         MockSessionLocal.return_value.__exit__.return_value = None
 
-        session.add_all([
-            GamePlayByPlay(game_id="G1", inning=1, inning_half="top", event_type="batting"),
-            GamePlayByPlay(game_id="G1", inning=1, inning_half="bottom", event_type="strikeout"),
-            GamePlayByPlay(game_id="G1", inning=2, inning_half="top", event_type="home_run"),
-        ])
+        session.add_all(
+            [
+                GamePlayByPlay(game_id="G1", inning=1, inning_half="top", event_type="batting"),
+                GamePlayByPlay(game_id="G1", inning=1, inning_half="bottom", event_type="strikeout"),
+                GamePlayByPlay(game_id="G1", inning=2, inning_half="top", event_type="home_run"),
+            ]
+        )
         session.commit()
 
         summary = get_game_relay_summary("G1")

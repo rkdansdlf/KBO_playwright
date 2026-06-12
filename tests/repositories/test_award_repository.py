@@ -23,13 +23,15 @@ class TestAwardRepository:
         session = self._session(engine)
         repo = AwardRepository(session)
 
-        award = repo.save_award({
-            "year": 2024,
-            "award_type": "MVP",
-            "category": "Pitcher",
-            "player_name": "Kim",
-            "team_name": "LG",
-        })
+        award = repo.save_award(
+            {
+                "year": 2024,
+                "award_type": "MVP",
+                "category": "Pitcher",
+                "player_name": "Kim",
+                "team_name": "LG",
+            }
+        )
         session.commit()
 
         assert award.id is not None
@@ -42,22 +44,26 @@ class TestAwardRepository:
         session = self._session(engine)
         repo = AwardRepository(session)
 
-        a1 = repo.save_award({
-            "year": 2024,
-            "award_type": "MVP",
-            "category": None,
-            "player_name": "Kim",
-            "team_name": "LG",
-        })
+        a1 = repo.save_award(
+            {
+                "year": 2024,
+                "award_type": "MVP",
+                "category": None,
+                "player_name": "Kim",
+                "team_name": "LG",
+            }
+        )
         session.commit()
 
-        a2 = repo.save_award({
-            "year": 2024,
-            "award_type": "MVP",
-            "category": None,
-            "player_name": "Kim",
-            "team_name": "LG",
-        })
+        a2 = repo.save_award(
+            {
+                "year": 2024,
+                "award_type": "MVP",
+                "category": None,
+                "player_name": "Kim",
+                "team_name": "LG",
+            }
+        )
         session.commit()
 
         assert a1.id == a2.id

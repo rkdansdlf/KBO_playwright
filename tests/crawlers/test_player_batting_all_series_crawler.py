@@ -1,4 +1,3 @@
-
 from src.crawlers.player_batting_all_series_crawler import (
     _extract_player_id_from_href,
     _is_basic2_headers,

@@ -25,14 +25,16 @@ class TestManagerChangeRepository:
         session = self._session(engine)
         repo = ManagerChangeRepository(session)
 
-        c = repo.save_change({
-            "team_id": "LG",
-            "season": 2025,
-            "previous_manager": "Kim",
-            "new_manager": "Park",
-            "change_date": date(2025, 5, 1),
-            "change_reason": "FIRED",
-        })
+        c = repo.save_change(
+            {
+                "team_id": "LG",
+                "season": 2025,
+                "previous_manager": "Kim",
+                "new_manager": "Park",
+                "change_date": date(2025, 5, 1),
+                "change_reason": "FIRED",
+            }
+        )
         session.commit()
 
         assert c.id is not None
@@ -45,14 +47,24 @@ class TestManagerChangeRepository:
         session = self._session(engine)
         repo = ManagerChangeRepository(session)
 
-        c1 = repo.save_change({
-            "team_id": "LG", "season": 2025, "new_manager": "Park", "note": "v1",
-        })
+        c1 = repo.save_change(
+            {
+                "team_id": "LG",
+                "season": 2025,
+                "new_manager": "Park",
+                "note": "v1",
+            }
+        )
         session.commit()
 
-        c2 = repo.save_change({
-            "team_id": "LG", "season": 2025, "new_manager": "Park", "note": "v2",
-        })
+        c2 = repo.save_change(
+            {
+                "team_id": "LG",
+                "season": 2025,
+                "new_manager": "Park",
+                "note": "v2",
+            }
+        )
         session.commit()
 
         assert c1.id == c2.id

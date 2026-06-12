@@ -117,7 +117,9 @@ class TestAnalyzeFood:
         mock_session = MagicMock()
         mock_session_local.return_value.__enter__.return_value = mock_session
         calls = iter([10, 25])
-        mock_session.execute.return_value.scalar.side_effect = lambda: next(calls) if hasattr(calls, "__next__") else next(calls)
+        mock_session.execute.return_value.scalar.side_effect = lambda: (
+            next(calls) if hasattr(calls, "__next__") else next(calls)
+        )
         mock_session.execute.return_value.fetchall.return_value = []
 
         mock_session.execute.side_effect = None
@@ -140,7 +142,9 @@ class TestGenerateReport:
     @patch("src.analyzers.data_summary.analyze_seats")
     @patch("src.analyzers.data_summary.analyze_parking")
     @patch("src.analyzers.data_summary.analyze_food")
-    def test_generate_report_contains_sections(self, mock_food, mock_parking, mock_seats, mock_tickets, mock_roster, mock_events):
+    def test_generate_report_contains_sections(
+        self, mock_food, mock_parking, mock_seats, mock_tickets, mock_roster, mock_events
+    ):
         mock_events.return_value = [{"section": "Events", "total": 5}]
         mock_roster.return_value = [{"section": "Roster", "total": 3}]
         mock_tickets.return_value = [{"section": "Ticket", "total": 2}]

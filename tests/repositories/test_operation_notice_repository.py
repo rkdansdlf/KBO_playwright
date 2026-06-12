@@ -130,14 +130,22 @@ class TestOperationNoticeRepository:
 
     def test_get_latest_external_id(self, session):
         repo = OperationNoticeRepository(session)
-        repo.upsert(_make_data({
-            "external_id": "old-id",
-            "published_at": datetime(2024, 10, 14, 10, 0),
-        }))
-        repo.upsert(_make_data({
-            "external_id": "new-id",
-            "published_at": datetime(2024, 10, 15, 10, 0),
-        }))
+        repo.upsert(
+            _make_data(
+                {
+                    "external_id": "old-id",
+                    "published_at": datetime(2024, 10, 14, 10, 0),
+                }
+            )
+        )
+        repo.upsert(
+            _make_data(
+                {
+                    "external_id": "new-id",
+                    "published_at": datetime(2024, 10, 15, 10, 0),
+                }
+            )
+        )
         session.commit()
 
         latest = repo.get_latest_external_id("JAMSIL", "LG트윈스공식")

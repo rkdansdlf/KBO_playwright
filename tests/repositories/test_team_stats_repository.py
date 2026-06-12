@@ -25,10 +25,18 @@ class TestTeamSeasonBattingRepository:
         MockEngine.dialect.name = "sqlite"
 
         repo = TeamSeasonBattingRepository()
-        result = repo.upsert_many([
-            {"team_id": "LG", "team_name": "LG Twins", "season": 2024, "league": "REGULAR",
-             "games": 144, "avg": 0.285},
-        ])
+        result = repo.upsert_many(
+            [
+                {
+                    "team_id": "LG",
+                    "team_name": "LG Twins",
+                    "season": 2024,
+                    "league": "REGULAR",
+                    "games": 144,
+                    "avg": 0.285,
+                },
+            ]
+        )
         assert result == 1
         row = session.query(TeamSeasonBatting).one()
         assert row.team_id == "LG"
@@ -49,12 +57,23 @@ class TestTeamSeasonBattingRepository:
         MockEngine.dialect.name = "sqlite"
 
         repo = TeamSeasonBattingRepository()
-        repo.upsert_many([
-            {"team_id": "LG", "team_name": "LG Twins", "season": 2024, "league": "REGULAR", "games": 144},
-        ])
-        repo.upsert_many([
-            {"team_id": "LG", "team_name": "LG Twins", "season": 2024, "league": "REGULAR", "games": 145, "avg": 0.290},
-        ])
+        repo.upsert_many(
+            [
+                {"team_id": "LG", "team_name": "LG Twins", "season": 2024, "league": "REGULAR", "games": 144},
+            ]
+        )
+        repo.upsert_many(
+            [
+                {
+                    "team_id": "LG",
+                    "team_name": "LG Twins",
+                    "season": 2024,
+                    "league": "REGULAR",
+                    "games": 145,
+                    "avg": 0.290,
+                },
+            ]
+        )
         rows = session.query(TeamSeasonBatting).all()
         assert len(rows) == 1
         assert rows[0].games == 145
@@ -69,10 +88,12 @@ class TestTeamSeasonBattingRepository:
         MockEngine.dialect.name = "sqlite"
 
         repo = TeamSeasonBattingRepository()
-        repo.upsert_many([
-            {"team_id": "LG", "team_name": "LG", "season": 2024, "league": "REGULAR", "games": 144},
-            {"team_id": "SSG", "team_name": "SSG", "season": 2024, "league": "REGULAR", "games": 144},
-        ])
+        repo.upsert_many(
+            [
+                {"team_id": "LG", "team_name": "LG", "season": 2024, "league": "REGULAR", "games": 144},
+                {"team_id": "SSG", "team_name": "SSG", "season": 2024, "league": "REGULAR", "games": 144},
+            ]
+        )
         assert session.query(TeamSeasonBatting).count() == 2
 
 
@@ -95,10 +116,18 @@ class TestTeamSeasonPitchingRepository:
         MockEngine.dialect.name = "sqlite"
 
         repo = TeamSeasonPitchingRepository()
-        result = repo.upsert_many([
-            {"team_id": "LG", "team_name": "LG Twins", "season": 2024, "league": "REGULAR",
-             "era": 3.75, "wins": 80},
-        ])
+        result = repo.upsert_many(
+            [
+                {
+                    "team_id": "LG",
+                    "team_name": "LG Twins",
+                    "season": 2024,
+                    "league": "REGULAR",
+                    "era": 3.75,
+                    "wins": 80,
+                },
+            ]
+        )
         assert result == 1
         row = session.query(TeamSeasonPitching).one()
         assert row.era == 3.75
@@ -118,12 +147,16 @@ class TestTeamSeasonPitchingRepository:
         MockEngine.dialect.name = "sqlite"
 
         repo = TeamSeasonPitchingRepository()
-        repo.upsert_many([
-            {"team_id": "LG", "team_name": "LG", "season": 2024, "league": "REGULAR", "era": 3.75},
-        ])
-        repo.upsert_many([
-            {"team_id": "LG", "team_name": "LG", "season": 2024, "league": "REGULAR", "era": 3.50, "wins": 82},
-        ])
+        repo.upsert_many(
+            [
+                {"team_id": "LG", "team_name": "LG", "season": 2024, "league": "REGULAR", "era": 3.75},
+            ]
+        )
+        repo.upsert_many(
+            [
+                {"team_id": "LG", "team_name": "LG", "season": 2024, "league": "REGULAR", "era": 3.50, "wins": 82},
+            ]
+        )
         rows = session.query(TeamSeasonPitching).all()
         assert len(rows) == 1
         assert rows[0].era == 3.50

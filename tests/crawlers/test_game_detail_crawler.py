@@ -1,4 +1,3 @@
-
 from src.crawlers.game_detail_crawler import (
     HITTER_FLOAT_KEYS,
     HITTER_HEADER_MAP,

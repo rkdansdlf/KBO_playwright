@@ -114,7 +114,9 @@ class TestMetadataEnrichmentService:
                 mock_response = MagicMock()
                 mock_response.status_code = 200
                 mock_response.json.return_value = {
-                    "candidates": [{"content": {"parts": [{"text": '{"summary": "s", "keywords": ["k"], "questions": ["q"]}'}]}}]
+                    "candidates": [
+                        {"content": {"parts": [{"text": '{"summary": "s", "keywords": ["k"], "questions": ["q"]}'}]}}
+                    ]
                 }
                 mock_instance.post.return_value = mock_response
                 MockClient.return_value.__enter__.return_value = mock_instance

@@ -1,6 +1,5 @@
 """Tests for relay_text — relay text parsing utilities."""
 
-
 from src.utils.relay_text import (
     advance_pitch_count,
     compact_relay_text,

@@ -150,6 +150,7 @@ class TestFetchHitterPageSync:
 
     def test_http_error(self):
         import httpx
+
         mock_client = MagicMock()
         mock_response = MagicMock()
         mock_response.status_code = 404
@@ -159,6 +160,7 @@ class TestFetchHitterPageSync:
 
     def test_timeout(self):
         import httpx
+
         mock_client = MagicMock()
         mock_client.get.side_effect = httpx.TimeoutException("timeout")
         result = fetch_hitter_page_sync("g1", "20241015", client=mock_client)
@@ -166,6 +168,7 @@ class TestFetchHitterPageSync:
 
     def test_generic_http_error(self):
         import httpx
+
         mock_client = MagicMock()
         mock_client.get.side_effect = httpx.HTTPError("generic")
         result = fetch_hitter_page_sync("g1", "20241015", client=mock_client)
@@ -197,6 +200,7 @@ class TestFetchAndParseHitterShSf:
 
     def test_fetch_failure_returns_empty(self):
         import httpx
+
         mock_client = MagicMock()
         mock_client.get.side_effect = httpx.HTTPStatusError("error", request=MagicMock(), response=MagicMock())
         result = fetch_and_parse_hitter_sh_sf("g1", "20241015", client=mock_client)

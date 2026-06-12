@@ -1,4 +1,3 @@
-
 from src.parsers.schedule_parser import LINK_PATTERN, parse_schedule_html
 
 

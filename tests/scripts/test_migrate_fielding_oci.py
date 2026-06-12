@@ -9,10 +9,12 @@ class TestMigrateFieldingOCI:
             mock_connect.return_value = mock_conn
             mock_conn.cursor.return_value = mock_cur
             from scripts.migrate_fielding_oci import migrate_fielding
+
             migrate_fielding()
             assert mock_cur.execute.call_count == 4
 
     def test_migrate_fielding_connection_error(self):
         with patch("scripts.migrate_fielding_oci.psycopg2.connect", side_effect=Exception("conn fail")):
             from scripts.migrate_fielding_oci import migrate_fielding
+
             migrate_fielding()

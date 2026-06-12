@@ -10,6 +10,7 @@ class TestFixLotteCode:
             mock_result.current_code = "LT"
             mock_session.execute.return_value.fetchone.return_value = mock_result
             from scripts.fix_lotte_code import fix_lotte_code
+
             fix_lotte_code()
             mock_session.commit.assert_not_called()
 
@@ -19,6 +20,7 @@ class TestFixLotteCode:
             mock_sf.return_value.__enter__.return_value = mock_session
             mock_session.execute.return_value.fetchone.return_value = None
             from scripts.fix_lotte_code import fix_lotte_code
+
             fix_lotte_code()
             mock_session.commit.assert_not_called()
 
@@ -35,5 +37,6 @@ class TestFixLotteCode:
                 mock_result_after,
             ]
             from scripts.fix_lotte_code import fix_lotte_code
+
             fix_lotte_code()
             mock_session.commit.assert_called_once()

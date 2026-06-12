@@ -1,11 +1,9 @@
 """Tests for RankingAggregator — fielding, baserunning, batting, pitching rankings."""
 
-
 from src.aggregators.ranking_aggregator import RankingAggregator
 
 
-def _make_fielder(player_id=10001, name="홍길동", team="LG",
-                  fielding_pct=0.980, putouts=50, assists=10, errors=2):
+def _make_fielder(player_id=10001, name="홍길동", team="LG", fielding_pct=0.980, putouts=50, assists=10, errors=2):
     return {
         "player_id": player_id,
         "player_name": name,
@@ -18,13 +16,37 @@ def _make_fielder(player_id=10001, name="홍길동", team="LG",
     }
 
 
-def _make_batter(player_id=10001, name="홍길동", team="LG",
-                 pa=300, ab=260, hits=80, doubles=15, triples=2, home_runs=10,
-                 walks=30, hbp=5, sacrifice_flies=3, rbi=45, runs=50,
-                 stolen_bases=5, caught_stealing=2, avg=0.308, obp=0.380,
-                 slg=0.496, ops=0.876, iso=0.188, babip=0.320,
-                 xr=45.0, woba=0.360, wrc_plus=120, war=3.5, ops_plus=115,
-                 clutch=0.5, wpa_sum=1.2):
+def _make_batter(
+    player_id=10001,
+    name="홍길동",
+    team="LG",
+    pa=300,
+    ab=260,
+    hits=80,
+    doubles=15,
+    triples=2,
+    home_runs=10,
+    walks=30,
+    hbp=5,
+    sacrifice_flies=3,
+    rbi=45,
+    runs=50,
+    stolen_bases=5,
+    caught_stealing=2,
+    avg=0.308,
+    obp=0.380,
+    slg=0.496,
+    ops=0.876,
+    iso=0.188,
+    babip=0.320,
+    xr=45.0,
+    woba=0.360,
+    wrc_plus=120,
+    war=3.5,
+    ops_plus=115,
+    clutch=0.5,
+    wpa_sum=1.2,
+):
     return {
         "player_id": player_id,
         "player_name": name,
@@ -59,11 +81,24 @@ def _make_batter(player_id=10001, name="홍길동", team="LG",
     }
 
 
-def _make_pitcher(player_id=20001, name="김투수", team="SS",
-                  ip=180, ip_outs=540, era=3.50, whip=1.20,
-                  fip=3.40, k_per_nine=8.0, bb_per_nine=2.5, kbb=3.2,
-                  war_pitch=4.0, wins=12, saves=0, holds=0,
-                  innings_outs=540):
+def _make_pitcher(
+    player_id=20001,
+    name="김투수",
+    team="SS",
+    ip=180,
+    ip_outs=540,
+    era=3.50,
+    whip=1.20,
+    fip=3.40,
+    k_per_nine=8.0,
+    bb_per_nine=2.5,
+    kbb=3.2,
+    war_pitch=4.0,
+    wins=12,
+    saves=0,
+    holds=0,
+    innings_outs=540,
+):
     return {
         "player_id": player_id,
         "player_name": name,
@@ -87,8 +122,7 @@ def _make_pitcher(player_id=20001, name="김투수", team="SS",
 class TestRankingAggregatorFielding:
     def test_fielding_rankings_basic(self):
         agg = RankingAggregator()
-        rows = [_make_fielder(player_id=10001, fielding_pct=0.990),
-                _make_fielder(player_id=10002, fielding_pct=0.970)]
+        rows = [_make_fielder(player_id=10001, fielding_pct=0.990), _make_fielder(player_id=10002, fielding_pct=0.970)]
         results = agg.generate_rankings(2025, fielding_stats=rows, persist=False)
         fld = [r for r in results if r["metric"] == "fielding_pct"]
         assert len(fld) == 2
@@ -99,8 +133,7 @@ class TestRankingAggregatorFielding:
 
     def test_fielding_errors_ascending(self):
         agg = RankingAggregator()
-        rows = [_make_fielder(player_id=10001, errors=1),
-                _make_fielder(player_id=10002, errors=3)]
+        rows = [_make_fielder(player_id=10001, errors=1), _make_fielder(player_id=10002, errors=3)]
         results = agg.generate_rankings(2025, fielding_stats=rows, persist=False)
         err = [r for r in results if r["metric"] == "errors"]
         assert len(err) == 2
@@ -118,10 +151,20 @@ class TestRankingAggregatorBaserunning:
     def test_baserunning_rankings(self):
         agg = RankingAggregator()
         rows = [
-            {"player_id": 10001, "player_name": "A", "stolen_bases": 30,
-             "stolen_base_percentage": 0.85, "caught_stealing": 5},
-            {"player_id": 10002, "player_name": "B", "stolen_bases": 20,
-             "stolen_base_percentage": 0.75, "caught_stealing": 8},
+            {
+                "player_id": 10001,
+                "player_name": "A",
+                "stolen_bases": 30,
+                "stolen_base_percentage": 0.85,
+                "caught_stealing": 5,
+            },
+            {
+                "player_id": 10002,
+                "player_name": "B",
+                "stolen_bases": 20,
+                "stolen_base_percentage": 0.75,
+                "caught_stealing": 8,
+            },
         ]
         results = agg.generate_rankings(2025, baserunning_stats=rows, persist=False)
         sb = [r for r in results if r["metric"] == "stolen_bases"]
@@ -132,8 +175,7 @@ class TestRankingAggregatorBaserunning:
 class TestRankingAggregatorBatting:
     def test_batting_rankings_basic(self):
         agg = RankingAggregator()
-        rows = [_make_batter(player_id=10001, avg=0.320),
-                _make_batter(player_id=10002, avg=0.280)]
+        rows = [_make_batter(player_id=10001, avg=0.320), _make_batter(player_id=10002, avg=0.280)]
         results = agg.generate_rankings(2025, batting_stats=rows, persist=False, min_pa=1)
         avg = [r for r in results if r["metric"] == "avg"]
         assert len(avg) == 2
@@ -142,8 +184,7 @@ class TestRankingAggregatorBatting:
 
     def test_batting_ascending_metrics(self):
         agg = RankingAggregator()
-        rows = [_make_batter(player_id=10001, avg=0.280),
-                _make_batter(player_id=10002, avg=0.320)]
+        rows = [_make_batter(player_id=10001, avg=0.280), _make_batter(player_id=10002, avg=0.320)]
         results = agg.generate_rankings(2025, batting_stats=rows, persist=False, min_pa=1)
         avg = [r for r in results if r["metric"] == "avg"]
         assert avg[0]["entity_id"] == "10002"
@@ -152,8 +193,7 @@ class TestRankingAggregatorBatting:
 
     def test_batting_min_pa_filter(self):
         agg = RankingAggregator()
-        rows = [_make_batter(player_id=10001, pa=500, avg=0.300),
-                _make_batter(player_id=10002, pa=10, avg=0.350)]
+        rows = [_make_batter(player_id=10001, pa=500, avg=0.300), _make_batter(player_id=10002, pa=10, avg=0.350)]
         results = agg.generate_rankings(2025, batting_stats=rows, persist=False, min_pa=100)
         avg = [r for r in results if r["metric"] == "avg"]
         assert len(avg) == 1
@@ -185,8 +225,10 @@ class TestRankingAggregatorBatting:
 
     def test_batting_sorts_by_hr(self):
         agg = RankingAggregator()
-        rows = [_make_batter(player_id=10001, home_runs=30, pa=500),
-                _make_batter(player_id=10002, home_runs=20, pa=500)]
+        rows = [
+            _make_batter(player_id=10001, home_runs=30, pa=500),
+            _make_batter(player_id=10002, home_runs=20, pa=500),
+        ]
         results = agg.generate_rankings(2025, batting_stats=rows, persist=False, min_pa=100)
         hr = [r for r in results if r["metric"] == "home_runs"]
         assert hr[0]["entity_id"] == "10001"
@@ -194,10 +236,20 @@ class TestRankingAggregatorBatting:
     def test_batting_saber_metric_from_extra_stats(self):
         agg = RankingAggregator()
         rows = [
-            {"player_id": 10001, "player_name": "A", "team_id": "LG",
-             "plate_appearances": 500, "extra_stats": {"wrc_plus": 130}},
-            {"player_id": 10002, "player_name": "B", "team_id": "SS",
-             "plate_appearances": 500, "extra_stats": {"wrc_plus": 110}},
+            {
+                "player_id": 10001,
+                "player_name": "A",
+                "team_id": "LG",
+                "plate_appearances": 500,
+                "extra_stats": {"wrc_plus": 130},
+            },
+            {
+                "player_id": 10002,
+                "player_name": "B",
+                "team_id": "SS",
+                "plate_appearances": 500,
+                "extra_stats": {"wrc_plus": 110},
+            },
         ]
         results = agg.generate_rankings(2025, batting_stats=rows, persist=False, min_pa=100)
         wrc = [r for r in results if r["metric"] == "wrc_plus"]
@@ -209,8 +261,7 @@ class TestRankingAggregatorBatting:
 class TestRankingAggregatorPitching:
     def test_pitching_rankings_basic(self):
         agg = RankingAggregator()
-        rows = [_make_pitcher(player_id=20001, era=2.80),
-                _make_pitcher(player_id=20002, era=4.50)]
+        rows = [_make_pitcher(player_id=20001, era=2.80), _make_pitcher(player_id=20002, era=4.50)]
         results = agg.generate_rankings(2025, pitching_stats=rows, persist=False, min_ip_outs=1)
         era = [r for r in results if r["metric"] == "era"]
         assert len(era) == 2
@@ -219,8 +270,7 @@ class TestRankingAggregatorPitching:
 
     def test_pitching_ascending_era(self):
         agg = RankingAggregator()
-        rows = [_make_pitcher(player_id=20001, era=3.00),
-                _make_pitcher(player_id=20002, era=2.50)]
+        rows = [_make_pitcher(player_id=20001, era=3.00), _make_pitcher(player_id=20002, era=2.50)]
         results = agg.generate_rankings(2025, pitching_stats=rows, persist=False, min_ip_outs=1)
         era = [r for r in results if r["metric"] == "era"]
         assert era[0]["entity_id"] == "20002"
@@ -230,8 +280,7 @@ class TestRankingAggregatorPitching:
 
     def test_pitching_wins_descending(self):
         agg = RankingAggregator()
-        rows = [_make_pitcher(player_id=20001, wins=15),
-                _make_pitcher(player_id=20002, wins=10)]
+        rows = [_make_pitcher(player_id=20001, wins=15), _make_pitcher(player_id=20002, wins=10)]
         results = agg.generate_rankings(2025, pitching_stats=rows, persist=False, min_ip_outs=1)
         wins = [r for r in results if r["metric"] == "wins"]
         assert wins[0]["entity_id"] == "20001"
@@ -246,8 +295,10 @@ class TestRankingAggregatorPitching:
 
     def test_pitching_min_ip_outs_filter(self):
         agg = RankingAggregator()
-        rows = [_make_pitcher(player_id=20001, ip_outs=500, era=3.00),
-                _make_pitcher(player_id=20002, ip_outs=10, era=2.00)]
+        rows = [
+            _make_pitcher(player_id=20001, ip_outs=500, era=3.00),
+            _make_pitcher(player_id=20002, ip_outs=10, era=2.00),
+        ]
         results = agg.generate_rankings(2025, pitching_stats=rows, persist=False, min_ip_outs=100)
         era = [r for r in results if r["metric"] == "era"]
         assert len(era) == 1
@@ -265,8 +316,7 @@ class TestRankingAggregatorPitching:
 class TestRankingAggregatorTies:
     def test_ties_same_rank(self):
         agg = RankingAggregator()
-        rows = [_make_fielder(player_id=10001, fielding_pct=0.990),
-                _make_fielder(player_id=10002, fielding_pct=0.990)]
+        rows = [_make_fielder(player_id=10001, fielding_pct=0.990), _make_fielder(player_id=10002, fielding_pct=0.990)]
         results = agg.generate_rankings(2025, fielding_stats=rows, persist=False)
         fld = [r for r in results if r["metric"] == "fielding_pct"]
         assert fld[0]["rank"] == 1
@@ -276,9 +326,11 @@ class TestRankingAggregatorTies:
 
     def test_ties_after_tie(self):
         agg = RankingAggregator()
-        rows = [_make_fielder(player_id=10001, fielding_pct=0.990),
-                _make_fielder(player_id=10002, fielding_pct=0.990),
-                _make_fielder(player_id=10003, fielding_pct=0.980)]
+        rows = [
+            _make_fielder(player_id=10001, fielding_pct=0.990),
+            _make_fielder(player_id=10002, fielding_pct=0.990),
+            _make_fielder(player_id=10003, fielding_pct=0.980),
+        ]
         results = agg.generate_rankings(2025, fielding_stats=rows, persist=False)
         fld = [r for r in results if r["metric"] == "fielding_pct"]
         assert fld[0]["rank"] == 1

@@ -73,9 +73,11 @@ class TestLogin:
             mock_playwright.chromium = MagicMock()
             mock_playwright.chromium.launch = AsyncMock(return_value=mock_browser)
 
-            with patch("src.utils.kbo_auth.async_playwright") as mock_async_pw, \
-                 patch("asyncio.sleep", AsyncMock()), \
-                 patch("os.makedirs"):
+            with (
+                patch("src.utils.kbo_auth.async_playwright") as mock_async_pw,
+                patch("asyncio.sleep", AsyncMock()),
+                patch("os.makedirs"),
+            ):
                 mock_async_pw.return_value.__aenter__ = AsyncMock(return_value=mock_playwright)
                 mock_async_pw.return_value.__aexit__ = AsyncMock(return_value=None)
 

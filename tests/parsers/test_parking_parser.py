@@ -1,4 +1,3 @@
-
 from src.parsers.parking_parser import (
     PARKING_FEE_PATTERN,
     STADIUM_FROM_SOURCE_KEY,

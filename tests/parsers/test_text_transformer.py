@@ -1,4 +1,3 @@
-
 from src.parsers.text_transformer import TextTransformer
 
 
@@ -118,7 +117,9 @@ class TestChunkWithOverlap:
 
     def test_chunk_character_limit_respected(self):
         long_text = "A" * 500 + "\n\n" + "B" * 500
-        chunks = self.t.chunk_with_overlap("Doc", long_text, {"source": "test"}, chunk_char_limit=400, overlap_char_limit=50)
+        chunks = self.t.chunk_with_overlap(
+            "Doc", long_text, {"source": "test"}, chunk_char_limit=400, overlap_char_limit=50
+        )
         assert len(chunks) >= 2
 
     def test_single_paragraph(self):
@@ -129,7 +130,9 @@ class TestChunkWithOverlap:
 
     def test_overlap_present(self):
         text = "A" * 500 + "\n\n" + "B" * 500 + "\n\n" + "C" * 500
-        chunks = self.t.chunk_with_overlap("Doc", text, {"source": "test"}, chunk_char_limit=400, overlap_char_limit=100)
+        chunks = self.t.chunk_with_overlap(
+            "Doc", text, {"source": "test"}, chunk_char_limit=400, overlap_char_limit=100
+        )
         if len(chunks) > 1:
             assert len(chunks[0]["content"]) > 0
 
@@ -166,7 +169,9 @@ class TestChunkParentChild:
 
     def test_basic_parent_child(self):
         text = "A" * 300 + "\n\n" + "B" * 300
-        chunks = self.t.chunk_parent_child("Doc", text, {"source": "test"}, parent_size=500, child_size=250, child_overlap=50)
+        chunks = self.t.chunk_parent_child(
+            "Doc", text, {"source": "test"}, parent_size=500, child_size=250, child_overlap=50
+        )
         assert len(chunks) >= 1
         assert "parent_content" in chunks[0]["meta"]
         assert "chunk_index" in chunks[0]["meta"]

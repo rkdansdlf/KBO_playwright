@@ -1,6 +1,5 @@
 """Tests for series_validation — KBO season series by year."""
 
-
 from src.utils.series_validation import (
     filter_series_for_year,
     get_available_series_by_year,

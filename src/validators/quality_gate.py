@@ -142,6 +142,44 @@ class QualityGate:
             mismatches=mismatches,
         )
 
+    @staticmethod
+    def _resolve_pitching_cumulative_outs(cumulative_row: Any) -> int | None:
+        cum_outs = cumulative_row.innings_outs
+        if cum_outs is not None:
+            return cum_outs
+        if cumulative_row.extra_stats and "innings_outs" in cumulative_row.extra_stats:
+            return int(cumulative_row.extra_stats["innings_outs"])
+        if cumulative_row.innings_pitched is None:
+            return None
+        ip = float(cumulative_row.innings_pitched)
+        whole = int(ip)
+        frac = round((ip - whole) * 100)
+        if frac == 33:
+            return whole * 3 + 1
+        if frac == 66:
+            return whole * 3 + 2
+        return whole * 3
+
+    @staticmethod
+    def _pitching_outs_mismatch(row: Any, cumulative_outs: int | None) -> dict[str, Any] | None:
+        diff = (row.outs or 0) - (cumulative_outs or 0)
+        if diff <= 3 or (cumulative_outs is not None and diff / (cumulative_outs or 1) <= 0.01):
+            return None
+        return {
+            "player_id": row.player_id,
+            "issue": "Transactional Outs > Cumulative Outs",
+            "cumulative": cumulative_outs,
+            "transactional": row.outs,
+        }
+
+    @staticmethod
+    def _missing_pitching_cumulative_record(row: Any) -> dict[str, Any]:
+        return {
+            "player_id": row.player_id,
+            "issue": "Missing cumulative record",
+            "transactional": {"outs": row.outs, "wins": row.wins},
+        }
+
     def validate_season_pitching(self, season: int, league: str = "REGULAR") -> dict[str, Any]:
         """
         Compare PlayerSeasonPitching (cumulative) with GamePitchingStat sum (transactional).
@@ -196,44 +234,14 @@ class QualityGate:
             if pid is None:
                 continue
             if pid not in cumulative_map:
-                mismatches.append(
-                    {
-                        "player_id": pid,
-                        "issue": "Missing cumulative record",
-                        "transactional": {"outs": row.outs, "wins": row.wins},
-                    },
-                )
+                mismatches.append(self._missing_pitching_cumulative_record(row))
                 continue
 
             cum = cumulative_map[pid]
-
-            # Resolve innings_outs with fallbacks
-            cum_outs = cum.innings_outs
-            if cum_outs is None:
-                if cum.extra_stats and "innings_outs" in cum.extra_stats:
-                    cum_outs = int(cum.extra_stats["innings_outs"])
-                elif cum.innings_pitched is not None:
-                    # 8.33 -> 8*3 + 1 = 25
-                    ip = float(cum.innings_pitched)
-                    whole = int(ip)
-                    frac = round((ip - whole) * 100)
-                    if frac == 33:
-                        cum_outs = whole * 3 + 1
-                    elif frac == 66:
-                        cum_outs = whole * 3 + 2
-                    else:
-                        cum_outs = whole * 3
-
-            diff = (row.outs or 0) - (cum_outs or 0)
-            if diff > 3 and (cum_outs is None or diff / (cum_outs or 1) > 0.01):
-                mismatches.append(
-                    {
-                        "player_id": pid,
-                        "issue": "Transactional Outs > Cumulative Outs",
-                        "cumulative": cum_outs,
-                        "transactional": row.outs,
-                    },
-                )
+            cum_outs = self._resolve_pitching_cumulative_outs(cum)
+            mismatch = self._pitching_outs_mismatch(row, cum_outs)
+            if mismatch:
+                mismatches.append(mismatch)
 
         return self._result(
             season=season,

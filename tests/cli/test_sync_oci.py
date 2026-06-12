@@ -13,9 +13,11 @@ class TestSyncOCI:
                 pass
 
     def test_game_details(self):
-        with patch("src.cli.sync_oci.get_oci_url", return_value=None), \
-             patch("src.cli.sync_oci.SessionLocal") as mock_sf, \
-             patch("src.cli.sync_oci.OCISync") as mock_sync:
+        with (
+            patch("src.cli.sync_oci.get_oci_url", return_value=None),
+            patch("src.cli.sync_oci.SessionLocal") as mock_sf,
+            patch("src.cli.sync_oci.OCISync") as mock_sync,
+        ):
             mock_session = MagicMock()
             mock_sf.return_value.__enter__.return_value = mock_session
             mock_sync.return_value.close = MagicMock()
@@ -23,9 +25,11 @@ class TestSyncOCI:
             assert result is None
 
     def test_season_stats(self):
-        with patch("src.cli.sync_oci.get_oci_url", return_value=None), \
-             patch("src.cli.sync_oci.SessionLocal") as mock_sf, \
-             patch("src.cli.sync_oci.OCISync") as mock_sync:
+        with (
+            patch("src.cli.sync_oci.get_oci_url", return_value=None),
+            patch("src.cli.sync_oci.SessionLocal") as mock_sf,
+            patch("src.cli.sync_oci.OCISync") as mock_sync,
+        ):
             mock_session = MagicMock()
             mock_sf.return_value.__enter__.return_value = mock_session
             mock_sync.return_value.close = MagicMock()
@@ -33,9 +37,11 @@ class TestSyncOCI:
             assert result is None
 
     def test_teams(self):
-        with patch("src.cli.sync_oci.get_oci_url", return_value=None), \
-             patch("src.cli.sync_oci.SessionLocal") as mock_sf, \
-             patch("src.cli.sync_oci.OCISync") as mock_sync:
+        with (
+            patch("src.cli.sync_oci.get_oci_url", return_value=None),
+            patch("src.cli.sync_oci.SessionLocal") as mock_sf,
+            patch("src.cli.sync_oci.OCISync") as mock_sync,
+        ):
             mock_session = MagicMock()
             mock_sf.return_value.__enter__.return_value = mock_session
             mock_sync.return_value.close = MagicMock()

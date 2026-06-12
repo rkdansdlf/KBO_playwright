@@ -27,12 +27,14 @@ class TestFanCultureRepository:
         session = self._session(engine)
         repo = FanCultureRepository(session)
 
-        r = repo.save_rivalry({
-            "team_id_a": "LG",
-            "team_id_b": "KIW",
-            "rivalry_name": "Korean Series",
-            "intensity": "HIGH",
-        })
+        r = repo.save_rivalry(
+            {
+                "team_id_a": "LG",
+                "team_id_b": "KIW",
+                "rivalry_name": "Korean Series",
+                "intensity": "HIGH",
+            }
+        )
         session.commit()
 
         assert r.id is not None
@@ -44,12 +46,14 @@ class TestFanCultureRepository:
         session = self._session(engine)
         repo = FanCultureRepository(session)
 
-        r = repo.save_rivalry({
-            "team_id_a": "SSG",
-            "team_id_b": "LG",
-            "rivalry_name": "Cannons Derby",
-            "intensity": "MEDIUM",
-        })
+        r = repo.save_rivalry(
+            {
+                "team_id_a": "SSG",
+                "team_id_b": "LG",
+                "rivalry_name": "Cannons Derby",
+                "intensity": "MEDIUM",
+            }
+        )
         session.commit()
 
         assert r.team_id_a == "LG"
@@ -61,20 +65,24 @@ class TestFanCultureRepository:
         session = self._session(engine)
         repo = FanCultureRepository(session)
 
-        r1 = repo.save_rivalry({
-            "team_id_a": "LG",
-            "team_id_b": "KIW",
-            "rivalry_name": "Korean Series",
-            "intensity": "HIGH",
-        })
+        r1 = repo.save_rivalry(
+            {
+                "team_id_a": "LG",
+                "team_id_b": "KIW",
+                "rivalry_name": "Korean Series",
+                "intensity": "HIGH",
+            }
+        )
         session.commit()
 
-        r2 = repo.save_rivalry({
-            "team_id_a": "LG",
-            "team_id_b": "KIW",
-            "rivalry_name": "Korean Series",
-            "intensity": "LOW",  # updated
-        })
+        r2 = repo.save_rivalry(
+            {
+                "team_id_a": "LG",
+                "team_id_b": "KIW",
+                "rivalry_name": "Korean Series",
+                "intensity": "LOW",  # updated
+            }
+        )
         session.commit()
 
         assert r1.id == r2.id
@@ -109,12 +117,14 @@ class TestFanCultureRepository:
         session = self._session(engine)
         repo = FanCultureRepository(session)
 
-        s = repo.save_cheer_song({
-            "team_id": "LG",
-            "song_name": "Viva LG",
-            "song_type": "TEAM",
-            "lyrics": "We are LG...",
-        })
+        s = repo.save_cheer_song(
+            {
+                "team_id": "LG",
+                "song_name": "Viva LG",
+                "song_type": "TEAM",
+                "lyrics": "We are LG...",
+            }
+        )
         session.commit()
 
         assert s.id is not None
@@ -126,14 +136,24 @@ class TestFanCultureRepository:
         session = self._session(engine)
         repo = FanCultureRepository(session)
 
-        s1 = repo.save_cheer_song({
-            "team_id": "LG", "song_name": "Viva LG", "song_type": "TEAM", "lyrics": "v1",
-        })
+        s1 = repo.save_cheer_song(
+            {
+                "team_id": "LG",
+                "song_name": "Viva LG",
+                "song_type": "TEAM",
+                "lyrics": "v1",
+            }
+        )
         session.commit()
 
-        s2 = repo.save_cheer_song({
-            "team_id": "LG", "song_name": "Viva LG", "song_type": "TEAM", "lyrics": "v2",
-        })
+        s2 = repo.save_cheer_song(
+            {
+                "team_id": "LG",
+                "song_name": "Viva LG",
+                "song_type": "TEAM",
+                "lyrics": "v2",
+            }
+        )
         session.commit()
 
         assert s1.id == s2.id
@@ -169,11 +189,13 @@ class TestFanCultureRepository:
         session = self._session(engine)
         repo = FanCultureRepository(session)
 
-        c = repo.save_cheer_chant({
-            "team_id": "LG",
-            "chant_text": "Let's go LG!",
-            "situation": "TOP_1ST",
-        })
+        c = repo.save_cheer_chant(
+            {
+                "team_id": "LG",
+                "chant_text": "Let's go LG!",
+                "situation": "TOP_1ST",
+            }
+        )
         session.commit()
 
         assert c.id is not None
@@ -185,14 +207,22 @@ class TestFanCultureRepository:
         session = self._session(engine)
         repo = FanCultureRepository(session)
 
-        c1 = repo.save_cheer_chant({
-            "team_id": "LG", "chant_text": "Let's go LG!", "situation": None,
-        })
+        c1 = repo.save_cheer_chant(
+            {
+                "team_id": "LG",
+                "chant_text": "Let's go LG!",
+                "situation": None,
+            }
+        )
         session.commit()
 
-        c2 = repo.save_cheer_chant({
-            "team_id": "LG", "chant_text": "Let's go LG!", "situation": "TOP_1ST",
-        })
+        c2 = repo.save_cheer_chant(
+            {
+                "team_id": "LG",
+                "chant_text": "Let's go LG!",
+                "situation": "TOP_1ST",
+            }
+        )
         session.commit()
 
         assert c1.id == c2.id
