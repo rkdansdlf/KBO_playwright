@@ -78,6 +78,7 @@ class TestHelpers:
         class Game:
             home_score = 3
             away_score = 2
+
         assert _score_present(Game()) is True
         g2 = Game()
         g2.home_score = None
@@ -86,6 +87,7 @@ class TestHelpers:
     def test_is_cancelled_or_postponed(self):
         class Game:
             game_status = "CANCELLED"
+
         assert _is_cancelled_or_postponed(Game()) is True
         g2 = Game()
         g2.game_status = "COMPLETED"
@@ -102,6 +104,7 @@ class TestHelpers:
     def test_meta_has_stadium(self):
         class Game:
             stadium = "Jamsil"
+
         meta = MagicMock()
         meta.stadium_name = None
         meta.stadium_code = None
@@ -114,12 +117,14 @@ class TestHelpers:
         class Game:
             game_status = "SCHEDULED"
             game_date = date(2024, 6, 1)
+
         assert _broadcast_missing_reason(Game(), date(2024, 5, 30)) == "broadcast_not_announced"
 
     def test_broadcast_missing_reason_past(self):
         class Game:
             game_status = "COMPLETED"
             game_date = date(2024, 5, 1)
+
         assert _broadcast_missing_reason(Game(), date(2024, 6, 1)) == "broadcast_source_unavailable"
 
 

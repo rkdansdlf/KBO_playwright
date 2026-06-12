@@ -30,9 +30,11 @@ _BASE_GATE = {
 
 class TestGenerateQualityReport:
     def test_default_run(self):
-        with patch("src.cli.generate_quality_report.SessionLocal") as mock_sf, \
-             patch("src.cli.generate_quality_report.get_daily_metrics") as mock_metrics, \
-             patch("src.cli.generate_quality_report.run_quality_gate") as mock_gate:
+        with (
+            patch("src.cli.generate_quality_report.SessionLocal") as mock_sf,
+            patch("src.cli.generate_quality_report.get_daily_metrics") as mock_metrics,
+            patch("src.cli.generate_quality_report.run_quality_gate") as mock_gate,
+        ):
             mock_session = MagicMock()
             mock_sf.return_value.__enter__.return_value = mock_session
             mock_metrics.return_value = dict(_BASE_METRICS)
@@ -41,9 +43,11 @@ class TestGenerateQualityReport:
             assert result == 0
 
     def test_with_date(self):
-        with patch("src.cli.generate_quality_report.SessionLocal") as mock_sf, \
-             patch("src.cli.generate_quality_report.get_daily_metrics") as mock_metrics, \
-             patch("src.cli.generate_quality_report.run_quality_gate") as mock_gate:
+        with (
+            patch("src.cli.generate_quality_report.SessionLocal") as mock_sf,
+            patch("src.cli.generate_quality_report.get_daily_metrics") as mock_metrics,
+            patch("src.cli.generate_quality_report.run_quality_gate") as mock_gate,
+        ):
             mock_session = MagicMock()
             mock_sf.return_value.__enter__.return_value = mock_session
             mock_metrics.return_value = dict(_BASE_METRICS)
@@ -52,9 +56,11 @@ class TestGenerateQualityReport:
             assert result == 0
 
     def test_notify(self):
-        with patch("src.cli.generate_quality_report.SessionLocal") as mock_sf, \
-             patch("src.cli.generate_quality_report.get_daily_metrics") as mock_metrics, \
-             patch("src.cli.generate_quality_report.run_quality_gate") as mock_gate:
+        with (
+            patch("src.cli.generate_quality_report.SessionLocal") as mock_sf,
+            patch("src.cli.generate_quality_report.get_daily_metrics") as mock_metrics,
+            patch("src.cli.generate_quality_report.run_quality_gate") as mock_gate,
+        ):
             mock_session = MagicMock()
             mock_sf.return_value.__enter__.return_value = mock_session
             mock_metrics.return_value = dict(_BASE_METRICS)

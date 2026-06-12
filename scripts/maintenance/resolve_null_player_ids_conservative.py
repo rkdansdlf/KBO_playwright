@@ -920,10 +920,10 @@ def main() -> None:
     logger.info(
         "[%s] resolved_groups=%s unresolved_groups=%s updated_rows=%s duplicate_null_rows=%s",
         mode,
-        result['resolved_groups'],
-        result['unresolved_groups'],
-        result['updated_rows'],
-        result['duplicate_null_rows'],
+        result["resolved_groups"],
+        result["unresolved_groups"],
+        result["updated_rows"],
+        result["duplicate_null_rows"],
     )
     if result["backup_path"]:
         logger.info(f"[BACKUP] {result['backup_path']}")

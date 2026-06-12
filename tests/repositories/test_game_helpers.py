@@ -414,29 +414,31 @@ class TestAssignFieldIfChanged:
     def test_assign_new_value(self):
         target = MagicMock()
         target.existing = "old"
-        changed = _assign_field_if_changed(target, "existing", "new", game_id="g1", source=MagicMock(),
-                                            write_contract=None)
+        changed = _assign_field_if_changed(
+            target, "existing", "new", game_id="g1", source=MagicMock(), write_contract=None
+        )
         assert changed is True
         assert target.existing == "new"
 
     def test_assign_same_value(self):
         target = MagicMock()
         target.existing = "same"
-        changed = _assign_field_if_changed(target, "existing", "same", game_id="g1", source=MagicMock(),
-                                            write_contract=None)
+        changed = _assign_field_if_changed(
+            target, "existing", "same", game_id="g1", source=MagicMock(), write_contract=None
+        )
         assert changed is False
 
     def test_assign_empty_not_allowed(self):
         target = MagicMock()
-        changed = _assign_field_if_changed(target, "attr", None, game_id="g1", source=MagicMock(),
-                                            write_contract=None)
+        changed = _assign_field_if_changed(target, "attr", None, game_id="g1", source=MagicMock(), write_contract=None)
         assert changed is False
 
     def test_assign_empty_allowed(self):
         target = MagicMock()
         target.attr = "old"
-        changed = _assign_field_if_changed(target, "attr", None, game_id="g1", source=MagicMock(),
-                                            write_contract=None, allow_empty=True)
+        changed = _assign_field_if_changed(
+            target, "attr", None, game_id="g1", source=MagicMock(), write_contract=None, allow_empty=True
+        )
         assert changed is True
 
 
@@ -493,10 +495,26 @@ class TestBuildInningScores:
 class TestBuildLineups:
     def test_build_lineups(self):
         hitters = {
-            "home": [{"player_name": "Kim", "player_id": 1001, "team_code": "LG",
-                       "batting_order": 1, "position": "CF", "is_starter": True}],
-            "away": [{"player_name": "Park", "player_id": 1002, "team_code": "SS",
-                       "batting_order": 2, "position": "SS", "is_starter": True}],
+            "home": [
+                {
+                    "player_name": "Kim",
+                    "player_id": 1001,
+                    "team_code": "LG",
+                    "batting_order": 1,
+                    "position": "CF",
+                    "is_starter": True,
+                }
+            ],
+            "away": [
+                {
+                    "player_name": "Park",
+                    "player_id": 1002,
+                    "team_code": "SS",
+                    "batting_order": 2,
+                    "position": "SS",
+                    "is_starter": True,
+                }
+            ],
         }
         result = _build_lineups("g1", hitters)
         assert len(result) == 2
@@ -506,11 +524,17 @@ class TestBuildLineups:
 class TestBuildBattingStats:
     def test_build_batting_stats(self):
         hitters = {
-            "home": [{
-                "player_name": "Kim", "player_id": 1001, "team_code": "LG",
-                "batting_order": 1, "is_starter": True, "position": "CF",
-                "stats": {"plate_appearances": 4, "at_bats": 4, "hits": 2, "avg": 0.500},
-            }],
+            "home": [
+                {
+                    "player_name": "Kim",
+                    "player_id": 1001,
+                    "team_code": "LG",
+                    "batting_order": 1,
+                    "is_starter": True,
+                    "position": "CF",
+                    "stats": {"plate_appearances": 4, "at_bats": 4, "hits": 2, "avg": 0.500},
+                }
+            ],
         }
         result = _build_batting_stats("g1", hitters)
         assert len(result) == 1
@@ -521,11 +545,15 @@ class TestBuildBattingStats:
 class TestBuildPitchingStats:
     def test_build_pitching_stats(self):
         pitchers = {
-            "away": [{
-                "player_name": "Park", "player_id": 2001, "team_code": "SS",
-                "is_starting": True,
-                "stats": {"innings_outs": 9, "strikeouts": 5, "era": 1.0},
-            }],
+            "away": [
+                {
+                    "player_name": "Park",
+                    "player_id": 2001,
+                    "team_code": "SS",
+                    "is_starting": True,
+                    "stats": {"innings_outs": 9, "strikeouts": 5, "era": 1.0},
+                }
+            ],
         }
         result = _build_pitching_stats("g1", pitchers)
         assert len(result) == 1
@@ -677,13 +705,22 @@ class TestReplaceRecords:
 
 class TestReplaceRecordsForSide:
     def test_replace_records_for_side(self, session):
-        session.add(GameLineup(game_id="g1", team_side="home", team_code="LG",
-                                player_name="Kim", appearance_seq=1, is_starter=True))
+        session.add(
+            GameLineup(
+                game_id="g1", team_side="home", team_code="LG", player_name="Kim", appearance_seq=1, is_starter=True
+            )
+        )
         session.flush()
 
         new_rows = [
-            {"game_id": "g1", "team_side": "home", "team_code": "LG",
-             "player_name": "Park", "appearance_seq": 1, "is_starter": True},
+            {
+                "game_id": "g1",
+                "team_side": "home",
+                "team_code": "LG",
+                "player_name": "Park",
+                "appearance_seq": 1,
+                "is_starter": True,
+            },
         ]
         changed = _replace_records_for_side(session, GameLineup, "g1", "home", new_rows)
         assert changed is True
@@ -698,7 +735,10 @@ class TestBuildPregameLineupRows:
         resolver.resolve_id.return_value = 1001
 
         result = _build_pregame_lineup_rows(
-            "g1", team_side="home", team_code="LG", season_year=2024,
+            "g1",
+            team_side="home",
+            team_code="LG",
+            season_year=2024,
             lineup=[{"player_name": "Kim", "batting_order": 1, "position": "CF"}],
             resolver=resolver,
         )
@@ -709,7 +749,10 @@ class TestBuildPregameLineupRows:
     def test_build_pregame_lineup_rows_empty_name(self):
         resolver = MagicMock()
         result = _build_pregame_lineup_rows(
-            "g1", team_side="home", team_code="LG", season_year=2024,
+            "g1",
+            team_side="home",
+            team_code="LG",
+            season_year=2024,
             lineup=[{"player_name": "", "batting_order": 1}],
             resolver=resolver,
         )

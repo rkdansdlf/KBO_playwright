@@ -1,4 +1,3 @@
-
 from src.crawlers.injury_crawler import InjuryCrawler
 
 

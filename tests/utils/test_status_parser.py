@@ -1,6 +1,5 @@
 """Tests for status_parser — profile status from text."""
 
-
 from src.utils.status_parser import parse_status_from_text
 
 

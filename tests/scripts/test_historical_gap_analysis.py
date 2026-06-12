@@ -22,4 +22,5 @@ class TestHistoricalGapAnalysis:
                 [mock_game],
             ]
             from scripts.historical_gap_analysis import analyze_gaps
+
             analyze_gaps()

@@ -62,7 +62,11 @@ class TestQualityGateCheck:
                     "batting": {"ok": True, "checked_players": 0, "mismatches": []},
                     "pitching": {"ok": True, "checked_players": 0, "mismatches": []},
                     "pa_formula": {"ok": True, "checked_players": 0, "mismatches": []},
-                    "team_batting": {"ok": False, "checked_players": 0, "mismatches": [{"team_id": "LG", "issue": "test"}]},
+                    "team_batting": {
+                        "ok": False,
+                        "checked_players": 0,
+                        "mismatches": [{"team_id": "LG", "issue": "test"}],
+                    },
                     "team_pitching": {"ok": True, "checked_players": 0, "mismatches": []},
                 }
                 result = main([])

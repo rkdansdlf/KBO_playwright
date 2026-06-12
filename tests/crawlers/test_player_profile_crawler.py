@@ -1,4 +1,3 @@
-
 from src.crawlers.player_profile_crawler import _clean_photo_url, _parse_debut_year, _parse_hands, _parse_height_weight
 
 

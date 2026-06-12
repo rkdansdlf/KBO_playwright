@@ -25,13 +25,15 @@ class TestTicketOpenRuleRepository:
         session = self._session(engine)
         repo = TicketOpenRuleRepository(session)
 
-        rule = repo.save({
-            "team_id": "LG",
-            "platform": "Ticketlink",
-            "open_offset_days": 7,
-            "open_time": time(11, 0),
-            "max_tickets_per_user": 4,
-        })
+        rule = repo.save(
+            {
+                "team_id": "LG",
+                "platform": "Ticketlink",
+                "open_offset_days": 7,
+                "open_time": time(11, 0),
+                "max_tickets_per_user": 4,
+            }
+        )
         session.commit()
 
         assert rule.id is not None
@@ -44,18 +46,27 @@ class TestTicketOpenRuleRepository:
         session = self._session(engine)
         repo = TicketOpenRuleRepository(session)
 
-        r1 = repo.save({
-            "team_id": "LG", "platform": "Ticketlink",
-            "open_offset_days": 7, "open_time": time(11, 0),
-            "max_tickets_per_user": 4,
-        })
+        r1 = repo.save(
+            {
+                "team_id": "LG",
+                "platform": "Ticketlink",
+                "open_offset_days": 7,
+                "open_time": time(11, 0),
+                "max_tickets_per_user": 4,
+            }
+        )
         session.commit()
 
-        r2 = repo.save({
-            "team_id": "LG", "platform": "Ticketlink",
-            "open_offset_days": 7, "open_time": time(11, 0),
-            "max_tickets_per_user": 6, "note": "updated",
-        })
+        r2 = repo.save(
+            {
+                "team_id": "LG",
+                "platform": "Ticketlink",
+                "open_offset_days": 7,
+                "open_time": time(11, 0),
+                "max_tickets_per_user": 6,
+                "note": "updated",
+            }
+        )
         session.commit()
 
         assert r1.id == r2.id
@@ -102,10 +113,12 @@ class TestTicketOpenRuleRepository:
         session = self._session(engine)
         repo = TicketOpenRuleRepository(session)
 
-        count = repo.bulk_save([
-            {"team_id": "LG", "platform": "A", "open_offset_days": 7, "open_time": time(11, 0)},
-            {"team_id": "SSG", "platform": "B", "open_offset_days": 3, "open_time": time(10, 0)},
-        ])
+        count = repo.bulk_save(
+            [
+                {"team_id": "LG", "platform": "A", "open_offset_days": 7, "open_time": time(11, 0)},
+                {"team_id": "SSG", "platform": "B", "open_offset_days": 3, "open_time": time(10, 0)},
+            ]
+        )
         session.commit()
 
         assert count == 2

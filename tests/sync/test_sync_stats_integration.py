@@ -46,11 +46,13 @@ class TestStatsSyncMixin:
         assert result == 20
 
     def test_sync_player_season_batting_skip_unchanged(self, mixin):
-        mixin._get_table_signature = MagicMock(return_value={
-            "local": {"count": 5, "max_updated_at": "2025-01-01"},
-            "remote": {"count": 5, "max_updated_at": "2025-01-01"},
-            "match": True,
-        })
+        mixin._get_table_signature = MagicMock(
+            return_value={
+                "local": {"count": 5, "max_updated_at": "2025-01-01"},
+                "remote": {"count": 5, "max_updated_at": "2025-01-01"},
+                "match": True,
+            }
+        )
         result = mixin.sync_player_season_batting(year=2025)
         assert result == 0
 
@@ -73,9 +75,12 @@ class TestStatsSyncMixin:
         mixin.sync_team_season_pitching = MagicMock(return_value=7)
         result = mixin.sync_all_player_data()
         assert result == {
-            "players": 5, "player_identities": 6,
-            "player_season_batting": 20, "player_season_pitching": 15,
-            "team_season_batting": 8, "team_season_pitching": 7,
+            "players": 5,
+            "player_identities": 6,
+            "player_season_batting": 20,
+            "player_season_pitching": 15,
+            "team_season_batting": 8,
+            "team_season_pitching": 7,
         }
 
     def test_sync_team_season_batting(self, mixin):

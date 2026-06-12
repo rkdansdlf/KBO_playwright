@@ -151,9 +151,11 @@ class TestLoadGameSyncSignatures:
         g = Game(
             game_id="20250601_01",
             game_date=datetime(2025, 6, 1),
-            home_team="SSG", away_team="LG",
+            home_team="SSG",
+            away_team="LG",
             game_status="COMPLETED",
-            home_score=5, away_score=3,
+            home_score=5,
+            away_score=3,
         )
         session.add(g)
         session.commit()
@@ -220,8 +222,10 @@ class TestBuildGameSyncEligibility:
         Base.metadata.create_all(bind=_db_engine)
         session = sessionmaker(bind=_db_engine)()
         g = Game(
-            game_id="20250601_01", game_date=datetime(2025, 6, 1),
-            home_team="SSG", away_team="LG",
+            game_id="20250601_01",
+            game_date=datetime(2025, 6, 1),
+            home_team="SSG",
+            away_team="LG",
             game_status="CANCELLED",
         )
         session.add(g)
@@ -238,8 +242,10 @@ class TestBuildGameSyncEligibility:
         Base.metadata.create_all(bind=_db_engine)
         session = sessionmaker(bind=_db_engine)()
         g = Game(
-            game_id="20250601_01", game_date=datetime(2025, 6, 1),
-            home_team="SSG", away_team="LG",
+            game_id="20250601_01",
+            game_date=datetime(2025, 6, 1),
+            home_team="SSG",
+            away_team="LG",
             game_status="SCHEDULED",
         )
         session.add(g)

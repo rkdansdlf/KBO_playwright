@@ -156,21 +156,21 @@ class TestSaveScheduleGame:
         session.add(KboSeason(season_id=1, season_year=2024, league_type_code=0, league_type_name="regular"))
         session.commit()
 
-        result = save_schedule_game({
-            "game_id": "20241015LGSS0",
-            "game_date": "2024-10-15",
-            "away_team_code": "SS",
-            "home_team_code": "LG",
-            "season_year": 2024,
-            "game_status": "scheduled",
-            "game_time": "18:30",
-            "stadium": "Jamsil",
-        })
+        result = save_schedule_game(
+            {
+                "game_id": "20241015LGSS0",
+                "game_date": "2024-10-15",
+                "away_team_code": "SS",
+                "home_team_code": "LG",
+                "season_year": 2024,
+                "game_status": "scheduled",
+                "game_time": "18:30",
+                "stadium": "Jamsil",
+            }
+        )
         assert result is True
 
-        game = session.query(Game).filter(
-            Game.game_id.like("20241015%")
-        ).first()
+        game = session.query(Game).filter(Game.game_id.like("20241015%")).first()
         assert game is not None
         assert "LG" in (game.home_team or "")
         assert "SS" in (game.away_team or "")
@@ -197,18 +197,18 @@ class TestSavePregameLineups:
         session.add(KboSeason(season_id=1, season_year=2024, league_type_code=0, league_type_name="regular"))
         session.commit()
 
-        result = save_pregame_lineups({
-            "game_id": "20241015LGSS0",
-            "game_date": "2024-10-15",
-            "away_team_name": "SSG",
-            "home_team_name": "LG",
-            "away_lineup": [{"player_name": "Kim", "batting_order": 1, "position": "CF"}],
-            "home_lineup": [{"player_name": "Park", "batting_order": 1, "position": "SS"}],
-        })
+        result = save_pregame_lineups(
+            {
+                "game_id": "20241015LGSS0",
+                "game_date": "2024-10-15",
+                "away_team_name": "SSG",
+                "home_team_name": "LG",
+                "away_lineup": [{"player_name": "Kim", "batting_order": 1, "position": "CF"}],
+                "home_lineup": [{"player_name": "Park", "batting_order": 1, "position": "SS"}],
+            }
+        )
         assert result is True
 
-        game = session.query(Game).filter(
-            Game.game_id.like("20241015%")
-        ).first()
+        game = session.query(Game).filter(Game.game_id.like("20241015%")).first()
         assert game is not None
         assert game.away_team is not None

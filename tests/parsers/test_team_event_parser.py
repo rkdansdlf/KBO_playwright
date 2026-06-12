@@ -153,6 +153,7 @@ class TestIterJsonRows:
 class TestExtractSourceUrl:
     def test_direct_href(self, monkeypatch):
         from bs4 import BeautifulSoup
+
         soup = BeautifulSoup('<a href="/event/1">Title</a>', "html.parser")
         tag = soup.a
         config = {"link_prefix": "https://example.com"}
@@ -161,12 +162,14 @@ class TestExtractSourceUrl:
 
     def test_full_url(self, monkeypatch):
         from bs4 import BeautifulSoup
+
         soup = BeautifulSoup('<a href="https://other.com/event">Title</a>', "html.parser")
         url = _extract_source_url(soup.a, {"link_prefix": ""}, "https://example.com/page")
         assert url == "https://other.com/event"
 
     def test_parent_href(self, monkeypatch):
         from bs4 import BeautifulSoup
+
         soup = BeautifulSoup('<a href="/parent-link"><span>Title</span></a>', "html.parser")
         span = soup.span
         config = {"link_prefix": "https://example.com"}
@@ -175,7 +178,8 @@ class TestExtractSourceUrl:
 
     def test_onclick_href(self, monkeypatch):
         from bs4 import BeautifulSoup
-        soup = BeautifulSoup('<tr onclick="location.href=\'/onclick-link\'"><td>Title</td></tr>', "html.parser")
+
+        soup = BeautifulSoup("<tr onclick=\"location.href='/onclick-link'\"><td>Title</td></tr>", "html.parser")
         td = soup.td
         config = {"link_prefix": "https://example.com"}
         url = _extract_source_url(td, config, "")
@@ -183,12 +187,14 @@ class TestExtractSourceUrl:
 
     def test_javascript_href_returns_page_url(self):
         from bs4 import BeautifulSoup
+
         soup = BeautifulSoup('<a href="javascript:void(0)">Title</a>', "html.parser")
         url = _extract_source_url(soup.a, {"link_prefix": ""}, "https://example.com/page")
         assert url == "https://example.com/page"
 
     def test_empty_href_returns_page_url(self):
         from bs4 import BeautifulSoup
+
         soup = BeautifulSoup("<span>Title</span>", "html.parser")
         url = _extract_source_url(soup.span, {"link_prefix": ""}, "https://example.com/page")
         assert url == "https://example.com/page"
@@ -197,6 +203,7 @@ class TestExtractSourceUrl:
 class TestExtractPublishedAt:
     def test_date_from_date_sel(self):
         from bs4 import BeautifulSoup
+
         html = "<tr><td class='date'>2025-03-15</td><td class='title'>Event</td></tr>"
         soup = BeautifulSoup(html, "html.parser")
         title_tag = soup.select_one(".title")
@@ -207,6 +214,7 @@ class TestExtractPublishedAt:
 
     def test_date_before_cutoff(self):
         from bs4 import BeautifulSoup
+
         html = "<tr><td class='date'>2024-01-01</td><td class='title'>Event</td></tr>"
         soup = BeautifulSoup(html, "html.parser")
         cutoff = datetime(2025, 1, 1)
@@ -215,6 +223,7 @@ class TestExtractPublishedAt:
 
     def test_fallback_to_row_text(self):
         from bs4 import BeautifulSoup
+
         html = "<tr>2025-06-15<td class='title'>Event</td></tr>"
         soup = BeautifulSoup(html, "html.parser")
         cutoff = datetime(2025, 1, 1)
@@ -223,6 +232,7 @@ class TestExtractPublishedAt:
 
     def test_no_date_found(self):
         from bs4 import BeautifulSoup
+
         html = "<tr><td>No date here</td></tr>"
         soup = BeautifulSoup(html, "html.parser")
         cutoff = datetime(2025, 1, 1)
@@ -232,41 +242,42 @@ class TestExtractPublishedAt:
 
 class TestParseJsonTeamEvents:
     def test_basic_json_events(self):
-        payload = json.dumps([
-            {"TITLE": "2025 시즌 이벤트", "PUB_DATE": "2025-03-15"},
-            {"TITLE": "팬 사인회", "PUB_DATE": "2025-04-01"},
-        ])
+        payload = json.dumps(
+            [
+                {"TITLE": "2025 시즌 이벤트", "PUB_DATE": "2025-03-15"},
+                {"TITLE": "팬 사인회", "PUB_DATE": "2025-04-01"},
+            ]
+        )
         metadata = {"url": "https://example.com/feed/events", "fetched_at": "2025-06-01T00:00:00"}
-        events = _parse_json_team_events(payload, "lg_twins_events", metadata,
-                                         datetime(2025, 1, 1), datetime(2025, 6, 1))
+        events = _parse_json_team_events(
+            payload, "lg_twins_events", metadata, datetime(2025, 1, 1), datetime(2025, 6, 1)
+        )
         assert len(events) == 2
         assert events[0]["title"] == "2025 시즌 이벤트"
         assert events[0]["team_id"] == "LG"
 
     def test_title_too_short(self):
         payload = json.dumps([{"TITLE": "AB", "PUB_DATE": "2025-03-15"}])
-        events = _parse_json_team_events(payload, "lg_twins_events", {},
-                                         datetime(2025, 1, 1), datetime(2025, 6, 1))
+        events = _parse_json_team_events(payload, "lg_twins_events", {}, datetime(2025, 1, 1), datetime(2025, 6, 1))
         assert len(events) == 0
 
     def test_deduplicates_titles(self):
-        payload = json.dumps([
-            {"TITLE": "이벤트 안내", "PUB_DATE": "2025-03-15"},
-            {"TITLE": "이벤트 안내", "PUB_DATE": "2025-03-16"},
-        ])
-        events = _parse_json_team_events(payload, "lg_twins_events", {},
-                                         datetime(2025, 1, 1), datetime(2025, 6, 1))
+        payload = json.dumps(
+            [
+                {"TITLE": "이벤트 안내", "PUB_DATE": "2025-03-15"},
+                {"TITLE": "이벤트 안내", "PUB_DATE": "2025-03-16"},
+            ]
+        )
+        events = _parse_json_team_events(payload, "lg_twins_events", {}, datetime(2025, 1, 1), datetime(2025, 6, 1))
         assert len(events) == 1
 
     def test_unparsable_json(self):
-        events = _parse_json_team_events("not json", "lg_twins_events", {},
-                                         datetime(2025, 1, 1), datetime(2025, 6, 1))
+        events = _parse_json_team_events("not json", "lg_twins_events", {}, datetime(2025, 1, 1), datetime(2025, 6, 1))
         assert events == []
 
     def test_unknown_team_returns_empty(self):
         payload = json.dumps([{"TITLE": "Event", "PUB_DATE": "2025-03-15"}])
-        events = _parse_json_team_events(payload, "unknown_key", {},
-                                         datetime(2025, 1, 1), datetime(2025, 6, 1))
+        events = _parse_json_team_events(payload, "unknown_key", {}, datetime(2025, 1, 1), datetime(2025, 6, 1))
         assert events == []
 
 
@@ -286,8 +297,11 @@ class TestParseTeamEvents:
         </table>
         </body></html>
         """
-        events = parse_team_events(html, "lg_twins_events",
-                                   {"cutoff_days": 90, "fetched_at": "2025-06-01T00:00:00", "url": "https://www.lgtwins.com"})
+        events = parse_team_events(
+            html,
+            "lg_twins_events",
+            {"cutoff_days": 90, "fetched_at": "2025-06-01T00:00:00", "url": "https://www.lgtwins.com"},
+        )
         assert len(events) >= 2
         assert events[0]["team_id"] == "LG"
         assert events[0]["event_scope"] == "team"
@@ -302,17 +316,19 @@ class TestParseTeamEvents:
         assert result == []
 
     def test_json_events_preferred_over_html(self):
-        payload = json.dumps([
-            {"TITLE": "2025 시즌 이벤트", "PUB_DATE": "2025-03-15"},
-        ])
-        events = parse_team_events(payload, "lg_twins_events",
-                                   {"url": "/feed/events", "cutoff_days": 90, "fetched_at": "2025-06-01T00:00:00"})
+        payload = json.dumps(
+            [
+                {"TITLE": "2025 시즌 이벤트", "PUB_DATE": "2025-03-15"},
+            ]
+        )
+        events = parse_team_events(
+            payload, "lg_twins_events", {"url": "/feed/events", "cutoff_days": 90, "fetched_at": "2025-06-01T00:00:00"}
+        )
         assert len(events) == 1
 
     def test_no_event_titles_returns_empty(self):
         html = "<html><body><a href='/news'>일반 뉴스</a></body></html>"
-        events = parse_team_events(html, "lg_twins_events",
-                                   {"cutoff_days": 90, "fetched_at": "2025-06-01T00:00:00"})
+        events = parse_team_events(html, "lg_twins_events", {"cutoff_days": 90, "fetched_at": "2025-06-01T00:00:00"})
         assert events == []
 
     def test_fallback_to_all_links_when_no_selector_match(self):
@@ -322,8 +338,11 @@ class TestParseTeamEvents:
             "<td class='date'>2025-03-15</td>"
             "</tr></table></body></html>"
         )
-        events = parse_team_events(html, "lg_twins_events",
-                                   {"cutoff_days": 90, "fetched_at": "2025-06-01T00:00:00", "url": "https://www.lgtwins.com"})
+        events = parse_team_events(
+            html,
+            "lg_twins_events",
+            {"cutoff_days": 90, "fetched_at": "2025-06-01T00:00:00", "url": "https://www.lgtwins.com"},
+        )
         assert len(events) >= 1
 
 

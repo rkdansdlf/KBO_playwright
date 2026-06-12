@@ -38,7 +38,6 @@ def session():
         BatterVsStarter.__table__,
         PlayerBasic.__table__,
         KboSeason.__table__,
-
     ):
         table.create(bind=engine)
     sess = sessionmaker(bind=engine)()
@@ -46,15 +45,22 @@ def session():
     sess.close()
 
 
-def _add_game(session, game_id="20250101", stadium="잠실", home="LG", away="SS",
-              home_pitcher="Kim", away_pitcher="Park"):
-    session.add(Game(
-        game_id=game_id, stadium=stadium,
-        home_team=home, away_team=away,
-        home_pitcher=home_pitcher, away_pitcher=away_pitcher,
-        game_status="END", season_id=1,
-        game_date=date(2025, 1, 1),
-    ))
+def _add_game(
+    session, game_id="20250101", stadium="잠실", home="LG", away="SS", home_pitcher="Kim", away_pitcher="Park"
+):
+    session.add(
+        Game(
+            game_id=game_id,
+            stadium=stadium,
+            home_team=home,
+            away_team=away,
+            home_pitcher=home_pitcher,
+            away_pitcher=away_pitcher,
+            game_status="END",
+            season_id=1,
+            game_date=date(2025, 1, 1),
+        )
+    )
     session.commit()
 
 
@@ -64,52 +70,125 @@ def _ensure_player(session, player_id, name="홍길동", bats="L", throws="R"):
         session.commit()
 
 
-def _add_event(session, game_id="20250101", batter_id=10001, pitcher_id=20001,
-               batter_name="홍길동", pitcher_name="김투수",
-               description="안타", rbi=1, bases_before="000", inning=1,
-               event_seq=1):
+def _add_event(
+    session,
+    game_id="20250101",
+    batter_id=10001,
+    pitcher_id=20001,
+    batter_name="홍길동",
+    pitcher_name="김투수",
+    description="안타",
+    rbi=1,
+    bases_before="000",
+    inning=1,
+    event_seq=1,
+):
     if batter_id is not None:
         _ensure_player(session, batter_id, name=batter_name)
     if pitcher_id is not None:
         _ensure_player(session, pitcher_id, name=pitcher_name)
-    session.add(GameEvent(
-        game_id=game_id, batter_id=batter_id, pitcher_id=pitcher_id,
-        batter_name=batter_name, pitcher_name=pitcher_name,
-        description=description, rbi=rbi, bases_before=bases_before,
-        inning=inning, event_seq=event_seq,
-    ))
+    session.add(
+        GameEvent(
+            game_id=game_id,
+            batter_id=batter_id,
+            pitcher_id=pitcher_id,
+            batter_name=batter_name,
+            pitcher_name=pitcher_name,
+            description=description,
+            rbi=rbi,
+            bases_before=bases_before,
+            inning=inning,
+            event_seq=event_seq,
+        )
+    )
     session.commit()
 
 
-def _add_batting(session, game_id="20250101", player_id=10001, team_code="LG",
-                 pa=5, ab=4, hits=2, doubles=1, triples=0, home_runs=0,
-                 walks=1, hbp=0, strikeouts=1, stolen_bases=0,
-                 caught_stealing=0, gdp=0, runs=1, rbi=1, player_name="홍길동",
-                 team_side="home", appearance_seq=1):
-    session.add(GameBattingStat(
-        game_id=game_id, player_id=player_id, player_name=player_name,
-        team_code=team_code, team_side=team_side, appearance_seq=appearance_seq,
-        plate_appearances=pa, at_bats=ab, hits=hits,
-        doubles=doubles, triples=triples, home_runs=home_runs,
-        runs=runs, rbi=rbi, walks=walks, hbp=hbp,
-        strikeouts=strikeouts, stolen_bases=stolen_bases,
-        caught_stealing=caught_stealing, gdp=gdp,
-    ))
+def _add_batting(
+    session,
+    game_id="20250101",
+    player_id=10001,
+    team_code="LG",
+    pa=5,
+    ab=4,
+    hits=2,
+    doubles=1,
+    triples=0,
+    home_runs=0,
+    walks=1,
+    hbp=0,
+    strikeouts=1,
+    stolen_bases=0,
+    caught_stealing=0,
+    gdp=0,
+    runs=1,
+    rbi=1,
+    player_name="홍길동",
+    team_side="home",
+    appearance_seq=1,
+):
+    session.add(
+        GameBattingStat(
+            game_id=game_id,
+            player_id=player_id,
+            player_name=player_name,
+            team_code=team_code,
+            team_side=team_side,
+            appearance_seq=appearance_seq,
+            plate_appearances=pa,
+            at_bats=ab,
+            hits=hits,
+            doubles=doubles,
+            triples=triples,
+            home_runs=home_runs,
+            runs=runs,
+            rbi=rbi,
+            walks=walks,
+            hbp=hbp,
+            strikeouts=strikeouts,
+            stolen_bases=stolen_bases,
+            caught_stealing=caught_stealing,
+            gdp=gdp,
+        )
+    )
     session.commit()
 
 
-def _add_pitching(session, game_id="20250101", player_id=20001, team_code="SS",
-                  ip_outs=15, hits_allowed=3, runs_allowed=1, earned_runs=1,
-                  walks_allowed=1, strikeouts=5, batters_faced=18, pitches=60,
-                  player_name="김투수", team_side="away", appearance_seq=1):
-    session.add(GamePitchingStat(
-        game_id=game_id, player_id=player_id, player_name=player_name,
-        team_code=team_code, team_side=team_side, appearance_seq=appearance_seq,
-        innings_outs=ip_outs, hits_allowed=hits_allowed,
-        runs_allowed=runs_allowed, earned_runs=earned_runs,
-        walks_allowed=walks_allowed, strikeouts=strikeouts,
-        batters_faced=batters_faced, pitches=pitches,
-    ))
+def _add_pitching(
+    session,
+    game_id="20250101",
+    player_id=20001,
+    team_code="SS",
+    ip_outs=15,
+    hits_allowed=3,
+    runs_allowed=1,
+    earned_runs=1,
+    walks_allowed=1,
+    strikeouts=5,
+    batters_faced=18,
+    pitches=60,
+    player_name="김투수",
+    team_side="away",
+    appearance_seq=1,
+):
+    session.add(
+        GamePitchingStat(
+            game_id=game_id,
+            player_id=player_id,
+            player_name=player_name,
+            team_code=team_code,
+            team_side=team_side,
+            appearance_seq=appearance_seq,
+            innings_outs=ip_outs,
+            hits_allowed=hits_allowed,
+            runs_allowed=runs_allowed,
+            earned_runs=earned_runs,
+            walks_allowed=walks_allowed,
+            strikeouts=strikeouts,
+            batters_faced=batters_faced,
+            pitches=pitches,
+        )
+    )
     session.commit()
 
 
@@ -291,6 +370,7 @@ class TestCalcPreciseBvP:
 class TestCalcSituationalSplits:
     def _setup_basic(self, session):
         _add_game(session)
+
     # players created via _add_event -> _ensure_player
 
     def test_batter_risp_split(self, session):

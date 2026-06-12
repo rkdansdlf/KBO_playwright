@@ -23,11 +23,13 @@ class TestGameMvpRepository:
         session = self._session(engine)
         repo = GameMvpRepository(session)
 
-        mvp = repo.save_mvp({
-            "game_id": "20241015_LGvSSG",
-            "player_name": "Kim Hyun-soo",
-            "team_id": "LG",
-        })
+        mvp = repo.save_mvp(
+            {
+                "game_id": "20241015_LGvSSG",
+                "player_name": "Kim Hyun-soo",
+                "team_id": "LG",
+            }
+        )
         session.commit()
 
         assert mvp.id is not None
@@ -40,14 +42,24 @@ class TestGameMvpRepository:
         session = self._session(engine)
         repo = GameMvpRepository(session)
 
-        m1 = repo.save_mvp({
-            "game_id": "G1", "mvp_type": "GAME", "player_name": "Kim", "team_id": None,
-        })
+        m1 = repo.save_mvp(
+            {
+                "game_id": "G1",
+                "mvp_type": "GAME",
+                "player_name": "Kim",
+                "team_id": None,
+            }
+        )
         session.commit()
 
-        m2 = repo.save_mvp({
-            "game_id": "G1", "mvp_type": "GAME", "player_name": "Kim", "team_id": "LG",
-        })
+        m2 = repo.save_mvp(
+            {
+                "game_id": "G1",
+                "mvp_type": "GAME",
+                "player_name": "Kim",
+                "team_id": "LG",
+            }
+        )
         session.commit()
 
         assert m1.id == m2.id

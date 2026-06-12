@@ -28,10 +28,20 @@ class TestPlayerSeasonFieldingRepository:
         MockEngine.dialect.name = "sqlite"
 
         repo = PlayerSeasonFieldingRepository()
-        result = repo.upsert_many([
-            {"player_id": 1, "team_id": "LG", "year": 2024, "position_id": "C",
-             "games": 100, "games_started": 90, "innings": 800.0, "fielding_pct": 0.991},
-        ])
+        result = repo.upsert_many(
+            [
+                {
+                    "player_id": 1,
+                    "team_id": "LG",
+                    "year": 2024,
+                    "position_id": "C",
+                    "games": 100,
+                    "games_started": 90,
+                    "innings": 800.0,
+                    "fielding_pct": 0.991,
+                },
+            ]
+        )
         assert result == 1
         row = session.query(PlayerSeasonFielding).one()
         assert row.player_id == 1
@@ -52,14 +62,30 @@ class TestPlayerSeasonFieldingRepository:
         MockEngine.dialect.name = "sqlite"
 
         repo = PlayerSeasonFieldingRepository()
-        repo.upsert_many([
-            {"player_id": 1, "team_id": "LG", "year": 2024, "position_id": "C",
-             "games": 100, "fielding_pct": 0.991},
-        ])
-        result = repo.upsert_many([
-            {"player_id": 1, "team_id": "LG", "year": 2024, "position_id": "C",
-             "games": 101, "fielding_pct": 0.992},
-        ])
+        repo.upsert_many(
+            [
+                {
+                    "player_id": 1,
+                    "team_id": "LG",
+                    "year": 2024,
+                    "position_id": "C",
+                    "games": 100,
+                    "fielding_pct": 0.991,
+                },
+            ]
+        )
+        result = repo.upsert_many(
+            [
+                {
+                    "player_id": 1,
+                    "team_id": "LG",
+                    "year": 2024,
+                    "position_id": "C",
+                    "games": 101,
+                    "fielding_pct": 0.992,
+                },
+            ]
+        )
         assert result == 1
         rows = session.query(PlayerSeasonFielding).all()
         assert len(rows) == 1
@@ -85,9 +111,11 @@ class TestPlayerSeasonBaserunningRepository:
         MockEngine.dialect.name = "sqlite"
 
         repo = PlayerSeasonBaserunningRepository()
-        result = repo.upsert_many([
-            {"player_id": 1, "team_id": "LG", "year": 2024, "stolen_bases": 30, "caught_stealing": 5},
-        ])
+        result = repo.upsert_many(
+            [
+                {"player_id": 1, "team_id": "LG", "year": 2024, "stolen_bases": 30, "caught_stealing": 5},
+            ]
+        )
         assert result == 1
         row = session.query(PlayerSeasonBaserunning).one()
         assert row.player_id == 1
@@ -108,12 +136,16 @@ class TestPlayerSeasonBaserunningRepository:
         MockEngine.dialect.name = "sqlite"
 
         repo = PlayerSeasonBaserunningRepository()
-        repo.upsert_many([
-            {"player_id": 1, "team_id": "LG", "year": 2024, "stolen_bases": 30},
-        ])
-        repo.upsert_many([
-            {"player_id": 1, "team_id": "LG", "year": 2024, "stolen_bases": 35},
-        ])
+        repo.upsert_many(
+            [
+                {"player_id": 1, "team_id": "LG", "year": 2024, "stolen_bases": 30},
+            ]
+        )
+        repo.upsert_many(
+            [
+                {"player_id": 1, "team_id": "LG", "year": 2024, "stolen_bases": 35},
+            ]
+        )
         rows = session.query(PlayerSeasonBaserunning).all()
         assert len(rows) == 1
         assert rows[0].stolen_bases == 35

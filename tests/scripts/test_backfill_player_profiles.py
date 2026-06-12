@@ -1,19 +1,31 @@
 from unittest.mock import MagicMock, patch
 
 
+def _close_coro(coro):
+    coro.close()
+
+
 class TestBackfillPlayerProfiles:
     def test_main(self):
-        with patch("scripts.backfill_player_profiles.asyncio.run") as mock_run, \
-             patch("sys.argv", ["script", "--limit", "3", "--delay", "0.5"]):
+        with (
+            patch("scripts.backfill_player_profiles.asyncio.run") as mock_run,
+            patch("sys.argv", ["script", "--limit", "3", "--delay", "0.5"]),
+        ):
+            mock_run.side_effect = _close_coro
             from scripts.backfill_player_profiles import main
+
             main()
             args, _ = mock_run.call_args
             assert args[0].cr_code.co_argcount == 3
 
     def test_main_with_ids(self):
-        with patch("scripts.backfill_player_profiles.asyncio.run") as mock_run, \
-             patch("sys.argv", ["script", "--ids", "10001,10002"]):
+        with (
+            patch("scripts.backfill_player_profiles.asyncio.run") as mock_run,
+            patch("sys.argv", ["script", "--ids", "10001,10002"]),
+        ):
+            mock_run.side_effect = _close_coro
             from scripts.backfill_player_profiles import main
+
             main()
             mock_run.assert_called_once()
 

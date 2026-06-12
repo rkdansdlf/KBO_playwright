@@ -42,7 +42,17 @@ def patch_dialect():
 class TestPlayerSeasonBattingRepository:
     def test_upsert_batting_stats(self, session):
         repo = PlayerSeasonBattingRepository()
-        stats = [{"player_id": 1, "season": 2025, "league": "REGULAR", "level": "KBO1", "team_code": "LG", "games": 100, "hits": 50}]
+        stats = [
+            {
+                "player_id": 1,
+                "season": 2025,
+                "league": "REGULAR",
+                "level": "KBO1",
+                "team_code": "LG",
+                "games": 100,
+                "hits": 50,
+            }
+        ]
         count = repo.upsert_batting_stats(stats)
         assert count == 1
 
@@ -64,39 +74,47 @@ class TestPlayerSeasonBattingRepository:
 
     def test_get_by_player(self, session):
         repo = PlayerSeasonBattingRepository()
-        repo.upsert_batting_stats([
-            {"player_id": 1, "season": 2025, "team_code": "LG"},
-            {"player_id": 1, "season": 2024, "team_code": "LG"},
-        ])
+        repo.upsert_batting_stats(
+            [
+                {"player_id": 1, "season": 2025, "team_code": "LG"},
+                {"player_id": 1, "season": 2024, "team_code": "LG"},
+            ]
+        )
         results = repo.get_by_player(1)
         assert len(results) == 2
 
     def test_get_by_season(self, session):
         repo = PlayerSeasonBattingRepository()
-        repo.upsert_batting_stats([
-            {"player_id": 1, "season": 2025, "team_code": "LG"},
-            {"player_id": 2, "season": 2025, "team_code": "SSG"},
-            {"player_id": 3, "season": 2024, "team_code": "LG"},
-        ])
+        repo.upsert_batting_stats(
+            [
+                {"player_id": 1, "season": 2025, "team_code": "LG"},
+                {"player_id": 2, "season": 2025, "team_code": "SSG"},
+                {"player_id": 3, "season": 2024, "team_code": "LG"},
+            ]
+        )
         results = repo.get_by_season(2025)
         assert len(results) == 2
 
     def test_get_by_team_season(self, session):
         repo = PlayerSeasonBattingRepository()
-        repo.upsert_batting_stats([
-            {"player_id": 1, "season": 2025, "team_code": "LG"},
-            {"player_id": 2, "season": 2025, "team_code": "SSG"},
-        ])
+        repo.upsert_batting_stats(
+            [
+                {"player_id": 1, "season": 2025, "team_code": "LG"},
+                {"player_id": 2, "season": 2025, "team_code": "SSG"},
+            ]
+        )
         results = repo.get_by_team_season("LG", 2025)
         assert len(results) == 1
         assert results[0].player_id == 1
 
     def test_count(self, session):
         repo = PlayerSeasonBattingRepository()
-        repo.upsert_batting_stats([
-            {"player_id": 1, "season": 2025, "team_code": "LG"},
-            {"player_id": 2, "season": 2025, "team_code": "SSG"},
-        ])
+        repo.upsert_batting_stats(
+            [
+                {"player_id": 1, "season": 2025, "team_code": "LG"},
+                {"player_id": 2, "season": 2025, "team_code": "SSG"},
+            ]
+        )
         assert repo.count() == 2
         assert repo.count(season=2025) == 2
         assert repo.count(season=2024) == 0

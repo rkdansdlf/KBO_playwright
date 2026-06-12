@@ -11,5 +11,6 @@ class TestDumpDefenseHTML:
             mock_browser.new_page.return_value = mock_page
             mock_page.query_selector_all.return_value = []
             from scripts.dump_defense_html import dump_defense_html
+
             dump_defense_html()
             mock_page.goto.assert_called_once()

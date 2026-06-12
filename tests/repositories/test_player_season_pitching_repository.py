@@ -112,10 +112,15 @@ class TestSavePitchingStats:
         session.commit()
 
         mock_filter.return_value = (
-            [{
-                "player_id": 2001, "season": 2024, "league": "REGULAR",
-                "games": 5, "extra_stats": {"metrics": {"complete_games": 2, "shutouts": 1}},
-            }],
+            [
+                {
+                    "player_id": 2001,
+                    "season": 2024,
+                    "league": "REGULAR",
+                    "games": 5,
+                    "extra_stats": {"metrics": {"complete_games": 2, "shutouts": 1}},
+                }
+            ],
             Counter(),
         )
         save_pitching_stats_to_db([{}])

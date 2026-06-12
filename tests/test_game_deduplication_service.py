@@ -147,8 +147,14 @@ class TestLoadCandidates:
 
         # suffix="0" + suffixes=("0",) — only game_ids ending with 0 qualify
         candidates = _load_candidates(
-            cursor, game_date="2024-10-15", home_fid=1, away_fid=2, suffix="0",
-            start_date=None, end_date=None, suffixes=("0",),
+            cursor,
+            game_date="2024-10-15",
+            home_fid=1,
+            away_fid=2,
+            suffix="0",
+            start_date=None,
+            end_date=None,
+            suffixes=("0",),
         )
         assert len(candidates) == 2
         # G_A_0 and G_B_0 both end with 0, OTHER_1 ends with 1
@@ -164,8 +170,14 @@ class TestLoadCandidates:
         cursor = conn.cursor()
 
         candidates = _load_candidates(
-            cursor, game_date="2024-10-15", home_fid=1, away_fid=2, suffix="0",
-            start_date=None, end_date=None, suffixes=("0",),
+            cursor,
+            game_date="2024-10-15",
+            home_fid=1,
+            away_fid=2,
+            suffix="0",
+            start_date=None,
+            end_date=None,
+            suffixes=("0",),
         )
         lookup = dict(candidates)
         assert "G1_0" in lookup

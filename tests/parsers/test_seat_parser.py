@@ -1,4 +1,3 @@
-
 from src.parsers.seat_parser import (
     SECTION_PATTERNS,
     STADIUM_FROM_SOURCE_KEY,

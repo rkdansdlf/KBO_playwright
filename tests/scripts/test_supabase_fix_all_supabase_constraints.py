@@ -53,7 +53,9 @@ class TestVerifyAllConstraints:
     @patch("scripts.supabase.fix_all_supabase_constraints.check_table_exists")
     def test_all_good(self, mock_check_exists, mock_check_constraints):
         mock_check_exists.return_value = True
-        mock_check_constraints.return_value = [("uq_player_season_batting", "UNIQUE", "cols"),
-                                                ("uq_player_season_pitching", "UNIQUE", "cols2")]
+        mock_check_constraints.return_value = [
+            ("uq_player_season_batting", "UNIQUE", "cols"),
+            ("uq_player_season_pitching", "UNIQUE", "cols2"),
+        ]
         result = verify_all_constraints()
         assert result is True

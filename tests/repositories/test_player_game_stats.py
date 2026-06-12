@@ -187,15 +187,36 @@ class TestAggregateFunctions:
 
     def test_aggregate_game_batting_with_rows(self, session):
         self._setup_completed_game(session)
-        session.add(GameBattingStat(
-            game_id="20241015LGSS", player_id=1001, player_name="Kim",
-            team_side="home", team_code="LG", batting_order=3, appearance_seq=1,
-            is_starter=True, position="CF",
-            plate_appearances=4, at_bats=4, hits=2, runs=1, doubles=0, triples=0,
-            home_runs=0, rbi=1, walks=0, intentional_walks=0, hbp=0,
-            strikeouts=0, stolen_bases=0, caught_stealing=0,
-            sacrifice_hits=0, sacrifice_flies=0, gdp=0,
-        ))
+        session.add(
+            GameBattingStat(
+                game_id="20241015LGSS",
+                player_id=1001,
+                player_name="Kim",
+                team_side="home",
+                team_code="LG",
+                batting_order=3,
+                appearance_seq=1,
+                is_starter=True,
+                position="CF",
+                plate_appearances=4,
+                at_bats=4,
+                hits=2,
+                runs=1,
+                doubles=0,
+                triples=0,
+                home_runs=0,
+                rbi=1,
+                walks=0,
+                intentional_walks=0,
+                hbp=0,
+                strikeouts=0,
+                stolen_bases=0,
+                caught_stealing=0,
+                sacrifice_hits=0,
+                sacrifice_flies=0,
+                gdp=0,
+            )
+        )
         session.commit()
 
         results = aggregate_game_batting(session, "20241015LGSS")
@@ -205,14 +226,32 @@ class TestAggregateFunctions:
 
     def test_aggregate_game_pitching_with_rows(self, session):
         self._setup_completed_game(session)
-        session.add(GamePitchingStat(
-            game_id="20241015LGSS", player_id=2001, player_name="Park",
-            team_side="away", team_code="SS", is_starting=True, appearance_seq=1,
-            innings_outs=9, hits_allowed=3, runs_allowed=1, earned_runs=1,
-            home_runs_allowed=0, walks_allowed=1, strikeouts=5, hit_batters=0,
-            wild_pitches=0, balks=0, wins=1, losses=0, saves=0, holds=0,
-            batters_faced=22,
-        ))
+        session.add(
+            GamePitchingStat(
+                game_id="20241015LGSS",
+                player_id=2001,
+                player_name="Park",
+                team_side="away",
+                team_code="SS",
+                is_starting=True,
+                appearance_seq=1,
+                innings_outs=9,
+                hits_allowed=3,
+                runs_allowed=1,
+                earned_runs=1,
+                home_runs_allowed=0,
+                walks_allowed=1,
+                strikeouts=5,
+                hit_batters=0,
+                wild_pitches=0,
+                balks=0,
+                wins=1,
+                losses=0,
+                saves=0,
+                holds=0,
+                batters_faced=22,
+            )
+        )
         session.commit()
 
         results = aggregate_game_pitching(session, "20241015LGSS")
@@ -222,15 +261,36 @@ class TestAggregateFunctions:
 
     def test_aggregate_game_batting_batch(self, session):
         self._setup_completed_game(session)
-        session.add(GameBattingStat(
-            game_id="20241015LGSS", player_id=1001, player_name="Kim",
-            team_side="home", team_code="LG", batting_order=3, appearance_seq=1,
-            is_starter=True, position="CF",
-            plate_appearances=4, at_bats=4, hits=2, runs=1, doubles=0, triples=0,
-            home_runs=0, rbi=1, walks=0, intentional_walks=0, hbp=0,
-            strikeouts=0, stolen_bases=0, caught_stealing=0,
-            sacrifice_hits=0, sacrifice_flies=0, gdp=0,
-        ))
+        session.add(
+            GameBattingStat(
+                game_id="20241015LGSS",
+                player_id=1001,
+                player_name="Kim",
+                team_side="home",
+                team_code="LG",
+                batting_order=3,
+                appearance_seq=1,
+                is_starter=True,
+                position="CF",
+                plate_appearances=4,
+                at_bats=4,
+                hits=2,
+                runs=1,
+                doubles=0,
+                triples=0,
+                home_runs=0,
+                rbi=1,
+                walks=0,
+                intentional_walks=0,
+                hbp=0,
+                strikeouts=0,
+                stolen_bases=0,
+                caught_stealing=0,
+                sacrifice_hits=0,
+                sacrifice_flies=0,
+                gdp=0,
+            )
+        )
         session.commit()
 
         results = aggregate_game_batting_batch(session, ["20241015LGSS"])
@@ -242,14 +302,32 @@ class TestAggregateFunctions:
 
     def test_aggregate_game_pitching_batch(self, session):
         self._setup_completed_game(session)
-        session.add(GamePitchingStat(
-            game_id="20241015LGSS", player_id=2001, player_name="Park",
-            team_side="away", team_code="SS", is_starting=True, appearance_seq=1,
-            innings_outs=9, hits_allowed=3, runs_allowed=1, earned_runs=1,
-            home_runs_allowed=0, walks_allowed=1, strikeouts=5, hit_batters=0,
-            wild_pitches=0, balks=0, wins=1, losses=0, saves=0, holds=0,
-            batters_faced=22,
-        ))
+        session.add(
+            GamePitchingStat(
+                game_id="20241015LGSS",
+                player_id=2001,
+                player_name="Park",
+                team_side="away",
+                team_code="SS",
+                is_starting=True,
+                appearance_seq=1,
+                innings_outs=9,
+                hits_allowed=3,
+                runs_allowed=1,
+                earned_runs=1,
+                home_runs_allowed=0,
+                walks_allowed=1,
+                strikeouts=5,
+                hit_batters=0,
+                wild_pitches=0,
+                balks=0,
+                wins=1,
+                losses=0,
+                saves=0,
+                holds=0,
+                batters_faced=22,
+            )
+        )
         session.commit()
 
         results = aggregate_game_pitching_batch(session, ["20241015LGSS"])
@@ -261,11 +339,18 @@ class TestUpsertBulk:
         assert _upsert_bulk(session, PlayerGameBatting, []) == 0
 
     def test_upsert_bulk_player_game_batting(self, session):
-        records = [{
-            "game_id": "20241015LGSS", "player_id": 1001, "player_name": "Kim",
-            "team_side": "home", "team_code": "LG",
-            "plate_appearances": 4, "at_bats": 4, "hits": 2,
-        }]
+        records = [
+            {
+                "game_id": "20241015LGSS",
+                "player_id": 1001,
+                "player_name": "Kim",
+                "team_side": "home",
+                "team_code": "LG",
+                "plate_appearances": 4,
+                "at_bats": 4,
+                "hits": 2,
+            }
+        ]
         count = upsert_player_game_batting(session, records)
         assert count == 1
 
@@ -274,36 +359,63 @@ class TestUpsertBulk:
         assert rows[0].hits == 2
 
     def test_upsert_bulk_player_game_pitching(self, session):
-        records = [{
-            "game_id": "20241015LGSS", "player_id": 2001, "player_name": "Park",
-            "team_side": "away", "team_code": "SS",
-            "innings_outs": 9, "strikeouts": 5,
-        }]
+        records = [
+            {
+                "game_id": "20241015LGSS",
+                "player_id": 2001,
+                "player_name": "Park",
+                "team_side": "away",
+                "team_code": "SS",
+                "innings_outs": 9,
+                "strikeouts": 5,
+            }
+        ]
         count = upsert_player_game_pitching(session, records)
         assert count == 1
 
     def test_bulk_upsert_player_game_batting(self, session):
-        records = [{
-            "game_id": "20241015LGSS", "player_id": 1001, "player_name": "Kim",
-            "team_side": "home", "team_code": "LG",
-            "plate_appearances": 4, "at_bats": 4, "hits": 2,
-        }]
+        records = [
+            {
+                "game_id": "20241015LGSS",
+                "player_id": 1001,
+                "player_name": "Kim",
+                "team_side": "home",
+                "team_code": "LG",
+                "plate_appearances": 4,
+                "at_bats": 4,
+                "hits": 2,
+            }
+        ]
         count = bulk_upsert_player_game_batting(session, records)
         assert count == 1
 
     def test_bulk_upsert_player_game_pitching(self, session):
-        records = [{
-            "game_id": "20241015LGSS", "player_id": 2001, "player_name": "Park",
-            "team_side": "away", "team_code": "SS",
-            "innings_outs": 9, "strikeouts": 5,
-        }]
+        records = [
+            {
+                "game_id": "20241015LGSS",
+                "player_id": 2001,
+                "player_name": "Park",
+                "team_side": "away",
+                "team_code": "SS",
+                "innings_outs": 9,
+                "strikeouts": 5,
+            }
+        ]
         count = bulk_upsert_player_game_pitching(session, records)
         assert count == 1
 
     def test_upsert_bulk_dedup(self, session):
         records = [
-            {"game_id": "G1", "player_id": 1, "player_name": "A", "team_side": "home", "team_code": "LG",
-             "plate_appearances": 4, "at_bats": 4, "hits": 1},
+            {
+                "game_id": "G1",
+                "player_id": 1,
+                "player_name": "A",
+                "team_side": "home",
+                "team_code": "LG",
+                "plate_appearances": 4,
+                "at_bats": 4,
+                "hits": 1,
+            },
         ]
         upsert_player_game_batting(session, records)
         records[0]["hits"] = 2

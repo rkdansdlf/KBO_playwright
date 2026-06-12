@@ -66,5 +66,6 @@ class TestSaveKboBatting:
         data["hits"] = 99
         save_kbo_player_season_batting(data)
         from src.models.player import PlayerSeasonBatting
+
         record = session.query(PlayerSeasonBatting).filter_by(player_id=1, season=2025).first()
         assert record.hits == 99

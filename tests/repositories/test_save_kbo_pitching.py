@@ -76,6 +76,7 @@ class TestSaveKboPitching:
         data[0]["games"] = 99
         save_pitching_stats(data)
         from src.models.player import PlayerSeasonBatting
+
         record = session.query(PlayerSeasonBatting).filter_by(player_id=200, season=2025).first()
         assert record.games == 99
 
@@ -101,6 +102,7 @@ class TestSaveKboPitching:
         ]
         save_pitching_stats(data)
         from src.models.player import PlayerSeasonBatting
+
         record = session.query(PlayerSeasonBatting).filter_by(player_id=300, season=2025).first()
         assert record.games == 25
         assert record.plate_appearances == 180

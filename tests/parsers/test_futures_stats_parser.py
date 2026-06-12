@@ -1,4 +1,3 @@
-
 from src.parsers.futures_stats_parser import (
     _classify_tables,
     parse_futures_tables,

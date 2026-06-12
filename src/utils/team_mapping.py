@@ -15,6 +15,110 @@ from sqlalchemy.orm import sessionmaker
 
 from src.utils.team_codes import resolve_team_code
 
+TEAM_HISTORY_QUERIES = (
+    # 컬럼명 패턴 0 (KBO_playwright 표준)
+    """
+    SELECT
+        team_name,
+        team_code,
+        season,
+        season as end_year,
+        team_name as franchise_name
+    FROM team_history
+    WHERE team_name IS NOT NULL
+    AND team_code IS NOT NULL
+    ORDER BY season
+    """,
+    # 컬럼명 패턴 1
+    """
+    SELECT
+        team_name_kor,
+        team_code,
+        start_year,
+        end_year,
+        franchise_name
+    FROM team_history
+    WHERE team_name_kor IS NOT NULL
+    AND team_code IS NOT NULL
+    ORDER BY start_year
+    """,
+    # 컬럼명 패턴 2
+    """
+    SELECT
+        name_kor,
+        code,
+        start_year,
+        end_year,
+        franchise
+    FROM team_history
+    WHERE name_kor IS NOT NULL
+    AND code IS NOT NULL
+    ORDER BY start_year
+    """,
+    # 컬럼명 패턴 3 (레거시 PostgreSQL 일부 구조)
+    """
+    SELECT
+        team_name,
+        team_code,
+        start_season,
+        end_season,
+        team_name as franchise_name
+    FROM team_history
+    WHERE team_name IS NOT NULL
+    AND team_code IS NOT NULL
+    ORDER BY start_season
+    """,
+    # 기본 모든 컬럼 조회
+    """
+    SELECT * FROM team_history LIMIT 5
+    """,
+)
+
+HISTORICAL_PATTERNS = {
+    "OB": "OB",
+    "OB베어스": "OB",
+    "두산": "DB",
+    "두산베어스": "DB",
+    "삼성": "SS",
+    "삼성라이온즈": "SS",
+    "LG": "LG",
+    "LG트윈스": "LG",
+    "MBC": "MBC",
+    "MBC청룡": "MBC",
+    "롯데": "LT",
+    "롯데자이언츠": "LT",
+    "한화": "HH",
+    "한화이글스": "HH",
+    "빙그레": "BE",
+    "빙그레이글스": "BE",
+    "해태": "HT",
+    "해태타이거즈": "HT",
+    "KIA": "KIA",
+    "KIA타이거즈": "KIA",
+    "현대": "HU",
+    "현대유니콘스": "HU",
+    "키움": "KH",
+    "키움히어로즈": "KH",
+    "넥센": "NX",
+    "넥센히어로즈": "NX",
+    "SK": "SK",
+    "SK와이번스": "SK",
+    "SSG": "SSG",
+    "SSG랜더스": "SSG",
+    "청보": "CB",
+    "청보핀토스": "CB",
+    "삼미": "SM",
+    "삼미슈퍼스타즈": "SM",
+    "태평양": "TP",
+    "태평양돌핀스": "TP",
+    "쌍방울": "SL",
+    "쌍방울레이더스": "SL",
+    "NC": "NC",
+    "NC다이노스": "NC",
+    "KT": "KT",
+    "KT위즈": "KT",
+}
+
 
 class TeamMapper:
     """팀명 매핑 관리 클래스"""
@@ -61,139 +165,10 @@ class TeamMapper:
             return False
 
         try:
-            engine = create_engine(oci_url)
-            Session = sessionmaker(bind=engine)
-            session = Session()
-
-            # team_history 테이블에서 역대 팀 정보 조회
-            # 먼저 테이블 구조 확인
-            try:
-                structure_query = text("""
-                    SELECT column_name
-                    FROM information_schema.columns
-                    WHERE table_name = 'team_history'
-                    ORDER BY ordinal_position
-                """)
-                columns = session.execute(structure_query).fetchall()
-                logger.info("📋 team_history 테이블 컬럼: %s", [col[0] for col in columns])
-            except SQLAlchemyError as e:
-                logger.exception("⚠️ 테이블 구조 확인 실패: %s", e)
-
-            # 가능한 컬럼명으로 쿼리 시도
-            possible_queries = [
-                # 컬럼명 패턴 0 (KBO_playwright 표준)
-                """
-                SELECT
-                    team_name,
-                    team_code,
-                    season,
-                    season as end_year,
-                    team_name as franchise_name
-                FROM team_history
-                WHERE team_name IS NOT NULL
-                AND team_code IS NOT NULL
-                ORDER BY season
-                """,
-                # 컬럼명 패턴 1
-                """
-                SELECT
-                    team_name_kor,
-                    team_code,
-                    start_year,
-                    end_year,
-                    franchise_name
-                FROM team_history
-                WHERE team_name_kor IS NOT NULL
-                AND team_code IS NOT NULL
-                ORDER BY start_year
-                """,
-                # 컬럼명 패턴 2
-                """
-                SELECT
-                    name_kor,
-                    code,
-                    start_year,
-                    end_year,
-                    franchise
-                FROM team_history
-                WHERE name_kor IS NOT NULL
-                AND code IS NOT NULL
-                ORDER BY start_year
-                """,
-                # 컬럼명 패턴 3 (레거시 PostgreSQL 일부 구조)
-                """
-                SELECT
-                    team_name,
-                    team_code,
-                    start_season,
-                    end_season,
-                    team_name as franchise_name
-                FROM team_history
-                WHERE team_name IS NOT NULL
-                AND team_code IS NOT NULL
-                ORDER BY start_season
-                """,
-                # 기본 모든 컬럼 조회
-                """
-                SELECT * FROM team_history LIMIT 5
-                """,
-            ]
-
-            query_result = None
-            for i, query_sql in enumerate(possible_queries):
-                try:
-                    # 트랜잭션 롤백 후 새로 시작
-                    session.rollback()
-                    query = text(query_sql)
-                    query_result = session.execute(query).fetchall()
-                    logger.info("✅ 쿼리 패턴 %s 성공: %s개 행 조회", i + 1, len(query_result))
-                    break
-                except SQLAlchemyError as e:
-                    logger.exception("⚠️ 쿼리 패턴 %s 실패: %s", i + 1, e)
-                    session.rollback()  # 실패시 트랜잭션 롤백
-                    continue
-
-            if not query_result:
-                logger.error("❌ 모든 쿼리 패턴 실패")
-                return False
-
-            results = query_result
-
+            results = self._load_team_history_rows(oci_url)
             if not results:
-                logger.warning("⚠️ team_history 테이블에서 데이터를 찾을 수 없음")
                 return False
-
-            # 매핑 데이터 구성
-            for row in results:
-                team_name = row[0]
-                team_code = row[1]
-                try:
-                    start_year = int(row[2])
-                    end_year = int(row[3]) if row[3] is not None else 9999
-                except (ValueError, TypeError):
-                    continue
-                franchise = row[4]
-
-                # 기본 매핑
-                self.oci_mapping[team_name] = team_code
-
-                # 년도별 매핑
-                for year in range(start_year, end_year + 1):
-                    if year not in self.year_specific_mapping:
-                        self.year_specific_mapping[year] = {}
-                    self.year_specific_mapping[year][team_name] = team_code
-
-                # 프랜차이즈명도 매핑에 추가
-                if franchise and franchise != team_name:
-                    self.oci_mapping[franchise] = team_code
-                    for year in range(start_year, end_year + 1):
-                        if year not in self.year_specific_mapping:
-                            self.year_specific_mapping[year] = {}
-                        self.year_specific_mapping[year][franchise] = team_code
-
-            session.close()
-            engine.dispose()
-
+            self._apply_oci_mapping_rows(results)
             self._oci_loaded = True
             logger.info("✅ OCI에서 %s개 팀 매핑 로드 완료", len(results))
             return True
@@ -201,6 +176,73 @@ class TeamMapper:
         except (SQLAlchemyError, ValueError) as e:
             logger.exception("⚠️ OCI 팀 매핑 로드 실패: %s", e)
             return False
+
+    def _load_team_history_rows(self, oci_url: str):
+        engine = create_engine(oci_url)
+        Session = sessionmaker(bind=engine)
+        session = Session()
+        try:
+            self._log_team_history_columns(session)
+            results = self._query_team_history(session)
+            if results is None:
+                logger.error("❌ 모든 쿼리 패턴 실패")
+                return None
+            if not results:
+                logger.warning("⚠️ team_history 테이블에서 데이터를 찾을 수 없음")
+                return None
+            return results
+        finally:
+            session.close()
+            engine.dispose()
+
+    @staticmethod
+    def _log_team_history_columns(session) -> None:
+        try:
+            structure_query = text("""
+                SELECT column_name
+                FROM information_schema.columns
+                WHERE table_name = 'team_history'
+                ORDER BY ordinal_position
+            """)
+            columns = session.execute(structure_query).fetchall()
+            logger.info("📋 team_history 테이블 컬럼: %s", [col[0] for col in columns])
+        except SQLAlchemyError as e:
+            logger.exception("⚠️ 테이블 구조 확인 실패: %s", e)
+
+    @staticmethod
+    def _query_team_history(session):
+        for index, query_sql in enumerate(TEAM_HISTORY_QUERIES, start=1):
+            try:
+                session.rollback()
+                query_result = session.execute(text(query_sql)).fetchall()
+                logger.info("✅ 쿼리 패턴 %s 성공: %s개 행 조회", index, len(query_result))
+                return query_result
+            except SQLAlchemyError as e:
+                logger.exception("⚠️ 쿼리 패턴 %s 실패: %s", index, e)
+                session.rollback()
+        return None
+
+    def _apply_oci_mapping_rows(self, rows) -> None:
+        for row in rows:
+            self._apply_oci_mapping_row(row)
+
+    def _apply_oci_mapping_row(self, row) -> None:
+        team_name = row[0]
+        team_code = row[1]
+        try:
+            start_year = int(row[2])
+            end_year = int(row[3]) if row[3] is not None else 9999
+        except (ValueError, TypeError):
+            return
+        self._add_mapping_for_years(team_name, team_code, start_year, end_year)
+        franchise = row[4]
+        if franchise and franchise != team_name:
+            self._add_mapping_for_years(franchise, team_code, start_year, end_year)
+
+    def _add_mapping_for_years(self, team_name: str, team_code: str, start_year: int, end_year: int) -> None:
+        self.oci_mapping[team_name] = team_code
+        for year in range(start_year, end_year + 1):
+            self.year_specific_mapping.setdefault(year, {})[team_name] = team_code
 
     def get_team_code(self, team_name: str, year: int | None = None) -> str | None:
         """팀명으로 팀 코드 조회 (년도 고려)"""
@@ -238,92 +280,60 @@ class TeamMapper:
 
     def _fuzzy_match(self, team_name: str, year: int | None = None) -> str | None:
         """퍼지 매칭으로 팀 코드 찾기"""
-        # 역대 팀명 변화 패턴
-        historical_patterns = {
-            # OB 계열
-            "OB": "OB",
-            "OB베어스": "OB",
-            "두산": "DB",
-            "두산베어스": "DB",
-            # 삼성 계열
-            "삼성": "SS",
-            "삼성라이온즈": "SS",
-            # LG 계열
-            "LG": "LG",
-            "LG트윈스": "LG",
-            "MBC": "MBC",
-            "MBC청룡": "MBC",
-            # 롯데 계열
-            "롯데": "LT",
-            "롯데자이언츠": "LT",
-            # 한화 계열
-            "한화": "HH",
-            "한화이글스": "HH",
-            "빙그레": "BE",
-            "빙그레이글스": "BE",
-            # 해태/KIA 계열
-            "해태": "HT",
-            "해태타이거즈": "HT",
-            "KIA": "KIA",
-            "KIA타이거즈": "KIA",
-            # 현대/키움 계열
-            "현대": "HU",
-            "현대유니콘스": "HU",
-            "키움": "KH",
-            "키움히어로즈": "KH",
-            "넥센": "NX",
-            "넥센히어로즈": "NX",
-            # SK/SSG 계열
-            "SK": "SK",
-            "SK와이번스": "SK",
-            "SSG": "SSG",
-            "SSG랜더스": "SSG",
-            # 기타 초창기 팀들
-            "청보": "CB",
-            "청보핀토스": "CB",
-            "삼미": "SM",
-            "삼미슈퍼스타즈": "SM",
-            "태평양": "TP",
-            "태평양돌핀스": "TP",
-            "쌍방울": "SL",
-            "쌍방울레이더스": "SL",
-            "NC": "NC",
-            "NC다이노스": "NC",
-            "KT": "KT",
-            "KT위즈": "KT",
-        }
+        if team_name in HISTORICAL_PATTERNS:
+            return HISTORICAL_PATTERNS[team_name]
 
-        # 직접 매칭
-        if team_name in historical_patterns:
-            return historical_patterns[team_name]
+        partial_match = self._partial_fuzzy_match(team_name)
+        if partial_match:
+            return partial_match
 
-        # 부분 문자열 매칭
-        for pattern, code in historical_patterns.items():
+        return self._year_specific_fuzzy_match(team_name, year)
+
+    @staticmethod
+    def _partial_fuzzy_match(team_name: str) -> str | None:
+        for pattern, code in HISTORICAL_PATTERNS.items():
             if pattern in team_name or team_name in pattern:
                 return code
+        return None
 
-        # 년도별 특수 케이스
-        if year:
-            if year <= 1985:  # 초창기
-                if "MBC" in team_name or "청룡" in team_name:
-                    return "LG"
-                elif "해태" in team_name or "타이거즈" in team_name:
-                    return "HT"
-                elif "삼미" in team_name:
-                    return "SM"
-                elif "청보" in team_name:
-                    return "CB"
-            elif year <= 1995:  # 90년대
-                if "빙그레" in team_name:
-                    return "BE"
-                elif "태평양" in team_name:
-                    return "TP"
-            elif year <= 2000:  # 90년대 후반
-                if "현대" in team_name:
-                    return "HU"
-                elif "쌍방울" in team_name:
-                    return "SL"
+    @staticmethod
+    def _year_specific_fuzzy_match(team_name: str, year: int | None = None) -> str | None:
+        if not year:
+            return None
+        if year <= 1985:
+            return TeamMapper._early_kbo_fuzzy_match(team_name)
+        if year <= 1995:
+            return TeamMapper._nineties_fuzzy_match(team_name)
+        if year <= 2000:
+            return TeamMapper._late_nineties_fuzzy_match(team_name)
+        return None
 
+    @staticmethod
+    def _early_kbo_fuzzy_match(team_name: str) -> str | None:
+        if "MBC" in team_name or "청룡" in team_name:
+            return "LG"
+        if "해태" in team_name or "타이거즈" in team_name:
+            return "HT"
+        if "삼미" in team_name:
+            return "SM"
+        if "청보" in team_name:
+            return "CB"
+        return None
+
+    @staticmethod
+    def _nineties_fuzzy_match(team_name: str) -> str | None:
+        if "빙그레" in team_name:
+            return "BE"
+        if "태평양" in team_name:
+            return "TP"
+        return None
+
+    @staticmethod
+    def _late_nineties_fuzzy_match(team_name: str) -> str | None:
+        if "현대" in team_name:
+            return "HU"
+        if "쌍방울" in team_name:
+            return "SL"
         return None
 
     def get_all_teams_for_year(self, year: int) -> dict[str, str]:

@@ -66,7 +66,10 @@ class TestDeriveStableGameStatus:
 
     def test_today_no_evidence_scheduled(self):
         today = date(2026, 5, 14)
-        assert derive_stable_game_status(game_date=today, has_progress_evidence=False, today=today) == GAME_STATUS_SCHEDULED
+        assert (
+            derive_stable_game_status(game_date=today, has_progress_evidence=False, today=today)
+            == GAME_STATUS_SCHEDULED
+        )
 
     def test_today_with_evidence_live(self):
         today = date(2026, 5, 14)
@@ -78,13 +81,19 @@ class TestDeriveStableGameStatus:
 
     def test_scores_induce_completed(self):
         today = date(2026, 5, 14)
-        assert derive_stable_game_status(game_date=today, home_score=5, away_score=3, today=today) == GAME_STATUS_COMPLETED
+        assert (
+            derive_stable_game_status(game_date=today, home_score=5, away_score=3, today=today) == GAME_STATUS_COMPLETED
+        )
 
     def test_terminal_current_not_overridden(self):
         today = date(2026, 5, 14)
         status = derive_stable_game_status(
-            game_date=today, current_status="COMPLETED", new_status="LIVE",
-            home_score=5, away_score=3, today=today,
+            game_date=today,
+            current_status="COMPLETED",
+            new_status="LIVE",
+            home_score=5,
+            away_score=3,
+            today=today,
         )
         assert status == GAME_STATUS_COMPLETED
 
@@ -96,9 +105,14 @@ class TestDeriveStableGameStatus:
     def test_past_with_terminal_status_preserved(self):
         today = date(2026, 5, 14)
         game_date = date(2026, 5, 13)
-        assert derive_stable_game_status(game_date=game_date, current_status="COMPLETED", today=today) == GAME_STATUS_COMPLETED
+        assert (
+            derive_stable_game_status(game_date=game_date, current_status="COMPLETED", today=today)
+            == GAME_STATUS_COMPLETED
+        )
 
     def test_past_with_new_terminal_status(self):
         today = date(2026, 5, 14)
         game_date = date(2026, 5, 13)
-        assert derive_stable_game_status(game_date=game_date, new_status="CANCELLED", today=today) == GAME_STATUS_CANCELLED
+        assert (
+            derive_stable_game_status(game_date=game_date, new_status="CANCELLED", today=today) == GAME_STATUS_CANCELLED
+        )

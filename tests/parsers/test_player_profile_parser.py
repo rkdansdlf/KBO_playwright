@@ -1,4 +1,3 @@
-
 from src.parsers.player_profile_parser import (
     LABEL_REGEX,
     POS_MAP,
@@ -234,13 +233,25 @@ class TestParseDraft:
         assert result["draft_type"] == "1차"
 
     def test_empty_or_none(self):
-        default = {"draft_year": None, "draft_team_code": None, "draft_round": None, "draft_pick_overall": None, "draft_type": None}
+        default = {
+            "draft_year": None,
+            "draft_team_code": None,
+            "draft_round": None,
+            "draft_pick_overall": None,
+            "draft_type": None,
+        }
         assert parse_draft("") == default
         assert parse_draft(None) == default
         assert parse_draft("-") == default
 
     def test_no_match(self):
-        default = {"draft_year": None, "draft_team_code": None, "draft_round": None, "draft_pick_overall": None, "draft_type": None}
+        default = {
+            "draft_year": None,
+            "draft_team_code": None,
+            "draft_round": None,
+            "draft_pick_overall": None,
+            "draft_type": None,
+        }
         assert parse_draft("abc") == default
 
     def test_historical_team_code(self):

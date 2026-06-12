@@ -24,7 +24,9 @@ class TestSaveScheduleGames:
 
     def test_saves_valid_game(self):
         game = {"game_id": "20240315LGSS0", "home_team": "LG", "away_team": "SS"}
-        with patch("src.services.schedule_collection_service.validate_schedule_game_payload", return_value=(True, None)):
+        with patch(
+            "src.services.schedule_collection_service.validate_schedule_game_payload", return_value=(True, None)
+        ):
             with patch("src.services.schedule_collection_service.save_schedule_game", return_value=True):
                 result = save_schedule_games([game])
                 assert result.saved == 1
@@ -33,7 +35,10 @@ class TestSaveScheduleGames:
 
     def test_filters_invalid_game(self):
         game = {"game_id": "20240315LGSS0"}
-        with patch("src.services.schedule_collection_service.validate_schedule_game_payload", return_value=(False, "missing_team")):
+        with patch(
+            "src.services.schedule_collection_service.validate_schedule_game_payload",
+            return_value=(False, "missing_team"),
+        ):
             result = save_schedule_games([game])
             assert result.saved == 0
             assert result.filtered == 1
@@ -42,7 +47,9 @@ class TestSaveScheduleGames:
 
     def test_failed_save(self):
         game = {"game_id": "20240315LGSS0", "home_team": "LG", "away_team": "SS"}
-        with patch("src.services.schedule_collection_service.validate_schedule_game_payload", return_value=(True, None)):
+        with patch(
+            "src.services.schedule_collection_service.validate_schedule_game_payload", return_value=(True, None)
+        ):
             with patch("src.services.schedule_collection_service.save_schedule_game", return_value=False):
                 result = save_schedule_games([game])
                 assert result.saved == 0

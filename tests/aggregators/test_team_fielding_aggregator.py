@@ -1,6 +1,5 @@
 """Tests for TeamFieldingAggregator — fielding and baserunning team rollup."""
 
-
 import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
@@ -23,24 +22,45 @@ def session():
     sess.close()
 
 
-def _add_fielding(session, year=2025, team_id="LG", errors=5, double_plays=50,
-                  putouts=300, assists=200, innings=1000, position_id="PO",
-                  player_id=10001):
-    session.add(PlayerSeasonFielding(
-        player_id=player_id, year=year, team_id=team_id, position_id=position_id,
-        errors=errors, double_plays=double_plays,
-        putouts=putouts, assists=assists, innings=innings,
-    ))
+def _add_fielding(
+    session,
+    year=2025,
+    team_id="LG",
+    errors=5,
+    double_plays=50,
+    putouts=300,
+    assists=200,
+    innings=1000,
+    position_id="PO",
+    player_id=10001,
+):
+    session.add(
+        PlayerSeasonFielding(
+            player_id=player_id,
+            year=year,
+            team_id=team_id,
+            position_id=position_id,
+            errors=errors,
+            double_plays=double_plays,
+            putouts=putouts,
+            assists=assists,
+            innings=innings,
+        )
+    )
     session.commit()
 
 
-def _add_baserunning(session, year=2025, team_id="LG",
-                     stolen_bases=50, caught_stealing=10, out_on_base=5):
-    session.add(PlayerSeasonBaserunning(
-        player_id=10001, year=year, team_id=team_id,
-        stolen_bases=stolen_bases, caught_stealing=caught_stealing,
-        out_on_base=out_on_base,
-    ))
+def _add_baserunning(session, year=2025, team_id="LG", stolen_bases=50, caught_stealing=10, out_on_base=5):
+    session.add(
+        PlayerSeasonBaserunning(
+            player_id=10001,
+            year=year,
+            team_id=team_id,
+            stolen_bases=stolen_bases,
+            caught_stealing=caught_stealing,
+            out_on_base=out_on_base,
+        )
+    )
     session.commit()
 
 
@@ -63,10 +83,19 @@ class TestAggregateFielding:
         assert result["fielding_pct"] == 1.0
 
     def test_fielding_pct_none_when_zero_chances(self, session):
-        session.add(PlayerSeasonFielding(
-            player_id=10001, year=2025, team_id="LG", position_id="PO",
-            errors=0, double_plays=0, putouts=0, assists=0, innings=0,
-        ))
+        session.add(
+            PlayerSeasonFielding(
+                player_id=10001,
+                year=2025,
+                team_id="LG",
+                position_id="PO",
+                errors=0,
+                double_plays=0,
+                putouts=0,
+                assists=0,
+                innings=0,
+            )
+        )
         session.commit()
         agg = TeamFieldingAggregator(session)
         result = agg.aggregate_fielding(2025, "LG")
@@ -146,8 +175,19 @@ class TestRunAll:
     def test_upserts_existing_record(self, session):
         session.add(Team(team_id="LG", franchise_id=1, team_name="LG", team_short_name="LG", city="서울"))
         session.commit()
-        session.add(TeamSeasonFielding(season=2025, team_code="LG", putouts=0, assists=0, errors=0,
-                                       total_chances=0, double_plays=0, triple_plays=0, def_innings=0))
+        session.add(
+            TeamSeasonFielding(
+                season=2025,
+                team_code="LG",
+                putouts=0,
+                assists=0,
+                errors=0,
+                total_chances=0,
+                double_plays=0,
+                triple_plays=0,
+                def_innings=0,
+            )
+        )
         session.commit()
         _add_fielding(session, team_id="LG")
 

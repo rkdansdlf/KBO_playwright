@@ -17,6 +17,7 @@ import logging
 
 class _CurrentStdoutHandler(logging.StreamHandler):
     """StreamHandler that always writes to sys.stdout (even when capsys patches it)."""
+
     def __init__(self) -> None:
         super().__init__(None)
 

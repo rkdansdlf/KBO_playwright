@@ -114,9 +114,15 @@ class TestCrawl:
         modal.wait_for = AsyncMock()
         modal.is_visible = AsyncMock(return_value=False)
         modal.locator.return_value.count = AsyncMock(return_value=1)
-        modal.locator.return_value.inner_text = AsyncMock(side_effect=[
-            "Owner Kim", "CEO Lee", "Seoul Address", "02-1234", "https://ssg.com",
-        ])
+        modal.locator.return_value.inner_text = AsyncMock(
+            side_effect=[
+                "Owner Kim",
+                "CEO Lee",
+                "Seoul Address",
+                "02-1234",
+                "https://ssg.com",
+            ]
+        )
         close_btn = MagicMock()
         close_btn.count = AsyncMock(return_value=0)
 
@@ -166,8 +172,17 @@ class TestSave:
         mock_result.scalars.return_value.first.return_value = mock_franchise
         mock_session.execute.return_value = mock_result
 
-        data = [{"name": "LG Twins", "found_year": "1990", "owner": "Kim", "ceo": "Lee",
-                 "address": "Seoul", "phone": "02-1234", "homepage": "https://lg.com"}]
+        data = [
+            {
+                "name": "LG Twins",
+                "found_year": "1990",
+                "owner": "Kim",
+                "ceo": "Lee",
+                "address": "Seoul",
+                "phone": "02-1234",
+                "homepage": "https://lg.com",
+            }
+        ]
 
         await crawler.save(data)
 

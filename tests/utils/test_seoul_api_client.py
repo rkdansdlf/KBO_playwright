@@ -1,4 +1,3 @@
-
 import pytest
 
 from src.utils.seoul_api_client import (
@@ -12,7 +11,14 @@ from src.utils.seoul_api_client import (
 
 class TestCongestionSnapshot:
     def test_snapshot_fields(self):
-        snap = CongestionSnapshot(location_label="Jamsil", congestion_level="high", congestion_index=75.0, people_count=500, source="seoul_open_api", raw_data={})
+        snap = CongestionSnapshot(
+            location_label="Jamsil",
+            congestion_level="high",
+            congestion_index=75.0,
+            people_count=500,
+            source="seoul_open_api",
+            raw_data={},
+        )
         assert snap.location_label == "Jamsil"
         assert snap.congestion_level == "high"
         assert snap.congestion_index == 75.0

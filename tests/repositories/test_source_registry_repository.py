@@ -30,19 +30,28 @@ def session(engine):
 class TestDataSourceRepository:
     def test_save_new(self, session):
         repo = DataSourceRepository(session)
-        ds = repo.save({
-            "source_key": "kbo_schedule",
-            "source_type": "official_kbo",
-            "target_domain": "schedule",
-            "reliability": "high",
-        })
+        ds = repo.save(
+            {
+                "source_key": "kbo_schedule",
+                "source_type": "official_kbo",
+                "target_domain": "schedule",
+                "reliability": "high",
+            }
+        )
         assert ds.source_key == "kbo_schedule"
         assert ds.source_type == "official_kbo"
 
     def test_save_existing(self, session):
         repo = DataSourceRepository(session)
-        repo.save({"source_key": "kbo_schedule", "source_type": "official_kbo", "target_domain": "schedule",
-                    "reliability": "high", "base_url": "http://old"})
+        repo.save(
+            {
+                "source_key": "kbo_schedule",
+                "source_type": "official_kbo",
+                "target_domain": "schedule",
+                "reliability": "high",
+                "base_url": "http://old",
+            }
+        )
         session.flush()
 
         updated = repo.save({"source_key": "kbo_schedule", "base_url": "http://new"})
@@ -70,8 +79,18 @@ class TestDataSourceRepository:
 
     def test_get_active_by_domain(self, session):
         repo = DataSourceRepository(session)
-        repo.save({"source_key": "a", "source_type": "t", "target_domain": "ticket", "reliability": "high", "is_active": True})
-        repo.save({"source_key": "b", "source_type": "t", "target_domain": "ticket", "reliability": "high", "is_active": False})
+        repo.save(
+            {"source_key": "a", "source_type": "t", "target_domain": "ticket", "reliability": "high", "is_active": True}
+        )
+        repo.save(
+            {
+                "source_key": "b",
+                "source_type": "t",
+                "target_domain": "ticket",
+                "reliability": "high",
+                "is_active": False,
+            }
+        )
         session.flush()
 
         results = repo.get_active_by_domain("ticket")
@@ -99,7 +118,9 @@ class TestDataSourceRepository:
 
     def test_get_stale_sources(self, session):
         repo = DataSourceRepository(session)
-        repo.save({"source_key": "stale", "source_type": "t", "target_domain": "d", "reliability": "h", "is_active": True})
+        repo.save(
+            {"source_key": "stale", "source_type": "t", "target_domain": "d", "reliability": "h", "is_active": True}
+        )
         session.flush()
         ds = repo.get_by_key("stale")
         ds.last_success_at = datetime(2020, 1, 1)
@@ -120,18 +141,26 @@ class TestDataSourceRepository:
 class TestRawSourceSnapshotRepository:
     def test_save_and_get_by_source_id(self, session):
         ds_repo = DataSourceRepository(session)
-        ds = ds_repo.save({"source_key": "kbo_schedule", "source_type": "official_kbo", "target_domain": "schedule",
-                           "reliability": "high"})
+        ds = ds_repo.save(
+            {
+                "source_key": "kbo_schedule",
+                "source_type": "official_kbo",
+                "target_domain": "schedule",
+                "reliability": "high",
+            }
+        )
         session.flush()
 
         snap_repo = RawSourceSnapshotRepository(session)
-        snap = snap_repo.save({
-            "data_source_id": ds.id,
-            "raw_html_or_json_path": "http://example.com",
-            "content_hash": "abc123",
-            "fetched_at": datetime.now(UTC).replace(tzinfo=None),
-            "status_code": 200,
-        })
+        snap = snap_repo.save(
+            {
+                "data_source_id": ds.id,
+                "raw_html_or_json_path": "http://example.com",
+                "content_hash": "abc123",
+                "fetched_at": datetime.now(UTC).replace(tzinfo=None),
+                "status_code": 200,
+            }
+        )
         assert snap.id is not None
 
         results = snap_repo.get_by_source_id(ds.id)
@@ -143,8 +172,14 @@ class TestRawSourceSnapshotRepository:
         session.flush()
 
         snap_repo = RawSourceSnapshotRepository(session)
-        snap_repo.save({"data_source_id": ds.id, "raw_html_or_json_path": "u", "content_hash": "abc",
-                        "fetched_at": datetime.now(UTC).replace(tzinfo=None)})
+        snap_repo.save(
+            {
+                "data_source_id": ds.id,
+                "raw_html_or_json_path": "u",
+                "content_hash": "abc",
+                "fetched_at": datetime.now(UTC).replace(tzinfo=None),
+            }
+        )
         session.flush()
 
         found = snap_repo.get_by_hash(ds.id, "abc")
@@ -157,10 +192,24 @@ class TestRawSourceSnapshotRepository:
         session.flush()
 
         snap_repo = RawSourceSnapshotRepository(session)
-        snap_repo.save({"data_source_id": ds.id, "raw_html_or_json_path": "u", "content_hash": "a",
-                        "fetched_at": datetime.now(UTC).replace(tzinfo=None), "parse_status": "pending"})
-        snap_repo.save({"data_source_id": ds.id, "raw_html_or_json_path": "u", "content_hash": "b",
-                        "fetched_at": datetime.now(UTC).replace(tzinfo=None), "parse_status": "done"})
+        snap_repo.save(
+            {
+                "data_source_id": ds.id,
+                "raw_html_or_json_path": "u",
+                "content_hash": "a",
+                "fetched_at": datetime.now(UTC).replace(tzinfo=None),
+                "parse_status": "pending",
+            }
+        )
+        snap_repo.save(
+            {
+                "data_source_id": ds.id,
+                "raw_html_or_json_path": "u",
+                "content_hash": "b",
+                "fetched_at": datetime.now(UTC).replace(tzinfo=None),
+                "parse_status": "done",
+            }
+        )
         session.flush()
 
         results = snap_repo.get_unparsed()
@@ -172,8 +221,15 @@ class TestRawSourceSnapshotRepository:
         session.flush()
 
         snap_repo = RawSourceSnapshotRepository(session)
-        snap_repo.save({"data_source_id": ds.id, "raw_html_or_json_path": "u", "content_hash": "a",
-                        "fetched_at": datetime(2020, 1, 1), "parse_status": "failed"})
+        snap_repo.save(
+            {
+                "data_source_id": ds.id,
+                "raw_html_or_json_path": "u",
+                "content_hash": "a",
+                "fetched_at": datetime(2020, 1, 1),
+                "parse_status": "failed",
+            }
+        )
         session.flush()
 
         results = snap_repo.get_failed_for_retry(retry_after_hours=0)
@@ -185,8 +241,15 @@ class TestRawSourceSnapshotRepository:
         session.flush()
 
         snap_repo = RawSourceSnapshotRepository(session)
-        snap_repo.save({"data_source_id": ds.id, "raw_html_or_json_path": "u", "content_hash": "a",
-                        "fetched_at": datetime.now(UTC).replace(tzinfo=None), "reprocess_status": "pending"})
+        snap_repo.save(
+            {
+                "data_source_id": ds.id,
+                "raw_html_or_json_path": "u",
+                "content_hash": "a",
+                "fetched_at": datetime.now(UTC).replace(tzinfo=None),
+                "reprocess_status": "pending",
+            }
+        )
         session.flush()
 
         results = snap_repo.get_reprocess_pending()
@@ -198,8 +261,14 @@ class TestRawSourceSnapshotRepository:
         session.flush()
 
         snap_repo = RawSourceSnapshotRepository(session)
-        snap = snap_repo.save({"data_source_id": ds.id, "raw_html_or_json_path": "u", "content_hash": "a",
-                               "fetched_at": datetime.now(UTC).replace(tzinfo=None)})
+        snap = snap_repo.save(
+            {
+                "data_source_id": ds.id,
+                "raw_html_or_json_path": "u",
+                "content_hash": "a",
+                "fetched_at": datetime.now(UTC).replace(tzinfo=None),
+            }
+        )
         session.flush()
 
         snap_repo.update_parse_status(snap.id, "done", parser_version="v1", error_message=None)
@@ -215,13 +284,23 @@ class TestSaveRawSnapshots:
         DataSource.__table__.create(create_engine("sqlite:///:memory:"), checkfirst=True)
 
         ds_repo = DataSourceRepository(session)
-        ds_repo.save({"source_key": "kbo_schedule", "source_type": "official_kbo", "target_domain": "schedule",
-                           "reliability": "high"})
+        ds_repo.save(
+            {
+                "source_key": "kbo_schedule",
+                "source_type": "official_kbo",
+                "target_domain": "schedule",
+                "reliability": "high",
+            }
+        )
         session.commit()
 
         raw_pages = [
-            {"source_key": "kbo_schedule", "url": "http://example.com", "html": "<html>test</html>",
-             "status_code": 200},
+            {
+                "source_key": "kbo_schedule",
+                "url": "http://example.com",
+                "html": "<html>test</html>",
+                "status_code": 200,
+            },
         ]
         saved = save_raw_snapshots(session, raw_pages)
         assert saved == 1

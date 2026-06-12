@@ -25,13 +25,15 @@ class TestForeignPlayerRepository:
         session = self._session(engine)
         repo = ForeignPlayerRepository(session)
 
-        c = repo.save_change({
-            "player_name": "Smith",
-            "team_id": "LG",
-            "season": 2025,
-            "change_type": "SIGNED",
-            "note": "New signing",
-        })
+        c = repo.save_change(
+            {
+                "player_name": "Smith",
+                "team_id": "LG",
+                "season": 2025,
+                "change_type": "SIGNED",
+                "note": "New signing",
+            }
+        )
         session.commit()
 
         assert c.id is not None
@@ -44,14 +46,26 @@ class TestForeignPlayerRepository:
         session = self._session(engine)
         repo = ForeignPlayerRepository(session)
 
-        c1 = repo.save_change({
-            "player_name": "Smith", "team_id": "LG", "season": 2025, "change_type": "SIGNED", "note": "v1",
-        })
+        c1 = repo.save_change(
+            {
+                "player_name": "Smith",
+                "team_id": "LG",
+                "season": 2025,
+                "change_type": "SIGNED",
+                "note": "v1",
+            }
+        )
         session.commit()
 
-        c2 = repo.save_change({
-            "player_name": "Smith", "team_id": "LG", "season": 2025, "change_type": "SIGNED", "note": "v2",
-        })
+        c2 = repo.save_change(
+            {
+                "player_name": "Smith",
+                "team_id": "LG",
+                "season": 2025,
+                "change_type": "SIGNED",
+                "note": "v2",
+            }
+        )
         session.commit()
 
         assert c1.id == c2.id
@@ -63,10 +77,24 @@ class TestForeignPlayerRepository:
         session = self._session(engine)
         repo = ForeignPlayerRepository(session)
 
-        repo.save_change({"player_name": "A", "team_id": "LG", "season": 2025, "change_type": "SIGNED",
-                           "announcement_date": date(2025, 1, 15)})
-        repo.save_change({"player_name": "B", "team_id": "LG", "season": 2025, "change_type": "RELEASED",
-                           "announcement_date": date(2025, 6, 1)})
+        repo.save_change(
+            {
+                "player_name": "A",
+                "team_id": "LG",
+                "season": 2025,
+                "change_type": "SIGNED",
+                "announcement_date": date(2025, 1, 15),
+            }
+        )
+        repo.save_change(
+            {
+                "player_name": "B",
+                "team_id": "LG",
+                "season": 2025,
+                "change_type": "RELEASED",
+                "announcement_date": date(2025, 6, 1),
+            }
+        )
         repo.save_change({"player_name": "C", "team_id": "SSG", "season": 2025, "change_type": "SIGNED"})
         session.commit()
 
@@ -101,10 +129,24 @@ class TestForeignPlayerRepository:
         session = self._session(engine)
         repo = ForeignPlayerRepository(session)
 
-        repo.save_change({"player_name": "A", "team_id": "LG", "season": 2025, "change_type": "SIGNED",
-                           "announcement_date": date(2025, 1, 10)})
-        repo.save_change({"player_name": "B", "team_id": "SSG", "season": 2025, "change_type": "SIGNED",
-                           "announcement_date": date(2025, 2, 20)})
+        repo.save_change(
+            {
+                "player_name": "A",
+                "team_id": "LG",
+                "season": 2025,
+                "change_type": "SIGNED",
+                "announcement_date": date(2025, 1, 10),
+            }
+        )
+        repo.save_change(
+            {
+                "player_name": "B",
+                "team_id": "SSG",
+                "season": 2025,
+                "change_type": "SIGNED",
+                "announcement_date": date(2025, 2, 20),
+            }
+        )
         repo.save_change({"player_name": "C", "team_id": "KT", "season": 2024, "change_type": "SIGNED"})
         session.commit()
 

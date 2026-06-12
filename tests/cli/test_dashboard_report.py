@@ -11,8 +11,12 @@ class TestDashboardReport:
         mock_parse = patch("argparse.ArgumentParser.parse_args")
         ns = mock_parse.start()
         ns.return_value = Namespace(
-            date=date, year=2025, sections=sections,
-            format=fmt, report=False, notify=False,
+            date=date,
+            year=2025,
+            sections=sections,
+            format=fmt,
+            report=False,
+            notify=False,
         )
         mock_session = MagicMock()
         mock_sf.return_value.__enter__.return_value = mock_session
