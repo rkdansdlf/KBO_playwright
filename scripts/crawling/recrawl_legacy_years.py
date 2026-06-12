@@ -125,7 +125,7 @@ def recrawl_legacy_years(start_year: int = 1982, end_year: int = 2001, reset_fir
         (results["success_count"] / results["total_tasks"]) * 100 if results["total_tasks"] > 0 else 0
     )
 
-    logger.info("\n" + "=" * 50)
+    logger.info("\n%s", "=" * 50)
     logger.info("🎉 레거시 재크롤링 완료!")
     logger.info("📊 최종 결과:")
     logger.info(f"  ✅ 성공: {results['success_count']}/{results['total_tasks']} ({overall_success_rate:.1f}%)")

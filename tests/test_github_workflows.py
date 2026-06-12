@@ -5,6 +5,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 WORKFLOW_DIR = ROOT / ".github/workflows"
 ACTION_DIR = ROOT / ".github/actions"
+NODE24_CHECKOUT_REF = "actions/checkout@v5"
 
 
 def _workflow_files() -> list[Path]:
@@ -123,6 +124,37 @@ def test_github_ci_does_not_reference_removed_maintenance_paths():
             assert removed_ref not in config, f"{path} references removed path: {removed_ref}"
 
 
+def test_github_ci_uses_node24_compatible_action_versions():
+    node20_action_refs = (
+        _joined_ref("actions/checkout", "@v4"),
+        _joined_ref("actions/setup-python", "@v5"),
+        _joined_ref("actions/cache", "@v4"),
+        _joined_ref("docker/setup-qemu-action", "@v3"),
+        _joined_ref("docker/setup-buildx-action", "@v3"),
+        _joined_ref("docker/login-action", "@v3"),
+        _joined_ref("docker/metadata-action", "@v5"),
+        _joined_ref("docker/build-push-action", "@v6"),
+    )
+
+    for path in _github_ci_files():
+        config = _read(path)
+        for action_ref in node20_action_refs:
+            assert action_ref not in config, f"{path} still uses Node 20 action ref: {action_ref}"
+        assert "ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION" not in config, (
+            f"{path} must not opt out of Node 24 with the temporary Node 20 fallback"
+        )
+
+    python_env = _read(ACTION_DIR / "python-env/action.yml")
+    assert "actions/setup-python@v6" in python_env
+    assert "actions/cache@v5" in python_env
+
+    security_audit = _read(WORKFLOW_DIR / "security_audit.yml")
+    assert "actions/setup-python@v6" in security_audit
+
+    test_suite = _read(WORKFLOW_DIR / "test_suite.yml")
+    assert 'FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"' in test_suite
+
+
 def test_github_ci_uses_supported_maintenance_modules():
     python_env = _read(ACTION_DIR / "python-env/action.yml")
     daily = _read(WORKFLOW_DIR / "daily_kbo_sync.yml")
@@ -178,7 +210,7 @@ def test_backfill_prunes_matrix_before_expensive_setup():
     assert "matrix: ${{ fromJson(needs.select-backfills.outputs.matrix) }}" in backfill
     assert "Check Matrix Dispatch" not in workflow
     assert "steps.should_run.outputs.run" not in workflow
-    assert backfill.index("uses: actions/checkout@v4") < backfill.index("uses: ./.github/actions/kbo-job-setup")
+    assert backfill.index(f"uses: {NODE24_CHECKOUT_REF}") < backfill.index("uses: ./.github/actions/kbo-job-setup")
 
 
 def test_kbo_automation_recalc_stats_uses_supported_cli_flags_and_syncs():
@@ -214,10 +246,10 @@ def test_local_github_actions_are_used_after_checkout():
             ]
             assert step_lines, f"{path.name}:{job_name} has no steps"
 
-            assert step_lines[0] == "- uses: actions/checkout@v4", (
-                f"{path.name}:{job_name} must start with actions/checkout@v4"
+            assert step_lines[0] == f"- uses: {NODE24_CHECKOUT_REF}", (
+                f"{path.name}:{job_name} must start with {NODE24_CHECKOUT_REF}"
             )
-            first_checkout = job_block.find("uses: actions/checkout@v4")
+            first_checkout = job_block.find(f"uses: {NODE24_CHECKOUT_REF}")
             first_local_action = min(local_positions)
             assert first_checkout < first_local_action, f"{path.name}:{job_name} local action before checkout"
 
@@ -308,14 +340,14 @@ def test_security_audit_uses_pip_audit():
     assert "continue-on-error: true" in workflow
     assert "timeout-minutes: 10" in workflow
     assert "Dependency Security Audit" in workflow
-    assert "actions/setup-python@v5" in workflow
+    assert "actions/setup-python@v6" in workflow
 
 
 def test_test_suite_runs_lint_and_test_matrix():
     workflow = _read(WORKFLOW_DIR / "test_suite.yml")
 
-    assert "ruff check" in workflow
-    assert "ruff format --check" in workflow
+    assert "ruff check --output-format=github src/ tests/ 2>&1" in workflow
+    assert "ruff format --check src/ tests/ 2>&1" in workflow
     assert "scripts/lint_bare_except.py" in workflow
     assert "pytest --tb=short -v --durations=10" in workflow
     assert "matrix:" in workflow
@@ -323,6 +355,12 @@ def test_test_suite_runs_lint_and_test_matrix():
     assert "cancel-in-progress: true" in workflow
     assert "concurrency:" in workflow
     assert "timeout-minutes: 30" in workflow
+    assert "--exit-zero" not in workflow
+    assert "continue-on-error" not in workflow
+    assert "|| true" not in workflow
+
+    pytest_config = _read(ROOT / "pytest.ini")
+    assert "error::pytest.PytestUnraisableExceptionWarning" in pytest_config
 
     jobs = dict(_job_blocks(workflow))
     assert "lint" in jobs
@@ -333,11 +371,11 @@ def test_test_suite_runs_lint_and_test_matrix():
 def test_docker_build_has_full_build_chain():
     workflow = _read(WORKFLOW_DIR / "docker_build.yml")
 
-    assert "docker/setup-qemu-action@v3" in workflow
-    assert "docker/setup-buildx-action@v3" in workflow
-    assert "docker/login-action@v3" in workflow
-    assert "docker/metadata-action@v5" in workflow
-    assert "docker/build-push-action@v6" in workflow
+    assert "docker/setup-qemu-action@v4" in workflow
+    assert "docker/setup-buildx-action@v4" in workflow
+    assert "docker/login-action@v4" in workflow
+    assert "docker/metadata-action@v6" in workflow
+    assert "docker/build-push-action@v7" in workflow
     assert "ghcr.io" in workflow
     assert "secrets.GITHUB_TOKEN" in workflow
     assert "packages: write" in workflow

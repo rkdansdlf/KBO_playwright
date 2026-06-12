@@ -113,8 +113,7 @@ def format_report_md(
     if logic_violations:
         md.append("| Game ID | Date | Failure Reason |")
         md.append("| --- | --- | --- |")
-        for v in logic_violations:
-            md.append(f"| `{v['game_id']}` | {v['game_date']} | {v['reason']} |")
+        md.extend(f"| `{v['game_id']}` | {v['game_date']} | {v['reason']} |" for v in logic_violations)
     else:
         md.append("✅ No game logic violations (Score totals vs innings, PA formula bounds, or ER bounds) detected.")
     md.append("")
@@ -125,8 +124,7 @@ def format_report_md(
     md.append("## 3. Quality Gate Thresholds")
     if qgate_results.get("failures"):
         md.append("### ❌ Quality Gate Failures")
-        for f in qgate_results["failures"]:
-            md.append(f"- {f}")
+        md.extend(f"- {f}" for f in qgate_results["failures"])
     else:
         md.append("✅ All database size & profile metrics are within historical quality gate thresholds.")
     md.append("")

@@ -140,9 +140,9 @@ def save_baserunning_stats(player_list, year=None, db_path=None) -> None:
         year = datetime.now().year
     if db_path is None:
         db_path = f"data/kbo_{year}.db"
-    logger.info(f"\n{'=' * 60}")
+    logger.info("\n%s", "=" * 60)
     logger.info("🏃 %s년 주루 기록 수집 시작", year)
-    logger.info(f"{'=' * 60}\n")
+    logger.info("%s\n", "=" * 60)
 
     conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
@@ -237,12 +237,12 @@ def save_baserunning_stats(player_list, year=None, db_path=None) -> None:
 
     conn.close()
 
-    logger.info(f"\n{'=' * 60}")
+    logger.info("\n%s", "=" * 60)
     logger.info("✅ 주루 기록 저장 완료!")
-    logger.info(f"{'=' * 60}")
+    logger.info("%s", "=" * 60)
     logger.info("  - 성공: %s명", success_count)
     logger.info("  - 실패: %s명", fail_count)
-    logger.info(f"{'=' * 60}\n")
+    logger.info("%s\n", "=" * 60)
 
 
 if __name__ == "__main__":

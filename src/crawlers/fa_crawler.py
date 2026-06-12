@@ -129,7 +129,7 @@ class FACrawler:
                 ]
 
                 for section in sections:
-                    logger.info(f"🔍 Processing Section {section['id']} ({section['type']} - {section['pos']})...")
+                    logger.info("🔍 Processing Section %s (%s - %s)...", section["id"], section["type"], section["pos"])
                     section_data = await self._extract_section_table(page, section["type"], section["pos"])
 
                     # Filter by year
@@ -405,7 +405,7 @@ class FACrawler:
                     )
                     continue
 
-                logger.warning(f"   ⚠️ Could not resolve team code for '{team_raw}' ({name}, {year}). Skipping.")
+                logger.warning("   ⚠️ Could not resolve team code for '%s' (%s, %s). Skipping.", team_raw, name, year)
                 continue
 
             # Construct Remarks string
@@ -530,7 +530,9 @@ class FACrawler:
                 session.commit()
                 logger.info("✅ player_movements Update Complete: %s Inserted, %s Updated.", new_records, updates)
                 logger.info(
-                    f"✅ fa_contracts Update Complete: {new_fa_contracts} Inserted, {updated_fa_contracts} Updated.",
+                    "✅ fa_contracts Update Complete: %s Inserted, %s Updated.",
+                    new_fa_contracts,
+                    updated_fa_contracts,
                 )
             except Exception:
                 session.rollback()

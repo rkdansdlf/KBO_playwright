@@ -222,11 +222,11 @@ def evaluate_quality_gate(
         "pitching_earned_runs_gt_runs_allowed",
         "pseudo_player_profiles",
     )
-    for key in parity_keys:
-        if int(local_metrics.get(key, 0)) != int(oci_metrics.get(key, 0)):
-            failures.append(
-                f"metric mismatch for {key}: local={local_metrics.get(key, 0)} oci={oci_metrics.get(key, 0)}"
-            )
+    failures.extend(
+        f"metric mismatch for {key}: local={local_metrics.get(key, 0)} oci={oci_metrics.get(key, 0)}"
+        for key in parity_keys
+        if int(local_metrics.get(key, 0)) != int(oci_metrics.get(key, 0))
+    )
 
     if int(local_metrics.get("game_status_column_present", 1)) == 0:
         failures.append("local game_status column is missing")

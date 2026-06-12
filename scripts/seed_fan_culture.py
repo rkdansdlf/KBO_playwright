@@ -29,16 +29,16 @@ def seed_rivalries(dry_run: bool = False) -> int:
     rows = []
     with open(RIVALRIES_CSV, encoding="utf-8") as f:
         reader = csv.DictReader(f)
-        for row in reader:
-            rows.append(
-                {
-                    "team_id_a": row["team_id_a"].strip(),
-                    "team_id_b": row["team_id_b"].strip(),
-                    "rivalry_name": row["rivalry_name"].strip(),
-                    "description": row.get("description", "").strip() or None,
-                    "intensity": row.get("intensity", "MEDIUM").strip(),
-                }
-            )
+        rows.extend(
+            {
+                "team_id_a": row["team_id_a"].strip(),
+                "team_id_b": row["team_id_b"].strip(),
+                "rivalry_name": row["rivalry_name"].strip(),
+                "description": row.get("description", "").strip() or None,
+                "intensity": row.get("intensity", "MEDIUM").strip(),
+            }
+            for row in reader
+        )
 
     logger.info("Loaded %s rivalries from %s", len(rows), RIVALRIES_CSV)
 

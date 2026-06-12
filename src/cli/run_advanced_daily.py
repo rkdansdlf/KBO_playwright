@@ -33,9 +33,9 @@ async def run_advanced_update(
     sync: bool = False,
     headless: bool = True,
 ) -> None:
-    logger.info(f"\n{'=' * 60}")
+    logger.info("\n%s", "=" * 60)
     logger.info("🚀 KBO Advanced Daily Sync Started for Year: %s", year)
-    logger.info(f"{'=' * 60}")
+    logger.info("%s", "=" * 60)
 
     any_error = False
 
@@ -171,9 +171,9 @@ async def run_advanced_update(
                 finally:
                     syncer.close()
 
-    logger.info(f"\n{'=' * 60}")
+    logger.info("\n%s", "=" * 60)
     logger.info("🏁 Advanced Daily Sync Finished for %s", year)
-    logger.info(f"{'=' * 60}\n")
+    logger.info("%s\n", "=" * 60)
 
     if any_error:
         raise RuntimeError(f"Advanced Daily Sync finished with errors for {year}")

@@ -210,7 +210,7 @@ def sync_to_oci(game_ids: list[str]) -> tuple[int, int]:
                     failed += 1
             except Exception as exc:
                 failed += 1
-                logger.exception(f"OCI sync failed for {game_id}: {exc}")
+                logger.exception("OCI sync failed for %s: %s", game_id, exc)
     return success, failed
 
 

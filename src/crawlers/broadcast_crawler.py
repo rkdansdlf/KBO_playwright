@@ -127,7 +127,7 @@ class BroadcastCrawler:
             logger.info("Saved %s broadcast records.", count)
         except SQLAlchemyError as e:
             session.rollback()
-            logger.exception(f"Database error saving broadcasts: {e}")
+            logger.exception("Database error saving broadcasts: %s", e)
         finally:
             session.close()
 

@@ -503,7 +503,7 @@ async def main() -> None:
     logger.info("KBO Player Search Crawler")
     logger.info("=" * 60)
 
-    logger.info(f"\nCrawling players (max_pages={args.max_pages or 'all'})...")
+    logger.info("\nCrawling players (max_pages=%s)...", args.max_pages or "all")
     players = await crawl_all_players(max_pages=args.max_pages)
     logger.info("\nTotal players collected: %s", len(players))
 
@@ -514,7 +514,12 @@ async def main() -> None:
     logger.info("\nSample (first 5 players):")
     for player in players[:5]:
         logger.info(
-            f"  - {player.name} (ID: {player.player_id}, #{player.uniform_no}, {player.team}/{player.position})",
+            "  - %s (ID: %s, #%s, %s/%s)",
+            player.name,
+            player.player_id,
+            player.uniform_no,
+            player.team,
+            player.position,
         )
 
     oci_url = os.getenv("OCI_DB_URL")

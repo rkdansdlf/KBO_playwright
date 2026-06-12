@@ -502,7 +502,10 @@ def main(argv: Iterable[str] | None = None) -> None:
                     synced_s = syncer.sync_cheer_songs()
                     synced_c = syncer.sync_cheer_chants()
                     logger.info(
-                        f"✅ Fan Culture Sync Finished (Rivalries={synced_r}, Songs={synced_s}, Chants={synced_c})",
+                        "✅ Fan Culture Sync Finished (Rivalries=%s, Songs=%s, Chants=%s)",
+                        synced_r,
+                        synced_s,
+                        synced_c,
                     )
                 elif flag == "teams":
                     logger.info(header_str)

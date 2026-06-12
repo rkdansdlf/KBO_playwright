@@ -70,15 +70,7 @@ ignore = [
     "G101",    # logging-extra-attr (extra kwargs pattern is intentional)
 ]
 
-[tool.ruff.lint.per-file-ignores]
-"scripts/**/*.py" = [
-    "G003",    # operational scripts often build concise status messages
-    "G004",    # operational scripts often use f-strings for CLI/log output
-    "PERF401", # readability is preferred in script/report builders
-]
-
 [tool.ruff.format]
 quote-style = "double"
 indent-style = "space"
 line-ending = "lf"
-

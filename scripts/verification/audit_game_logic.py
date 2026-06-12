@@ -75,14 +75,14 @@ def audit_game_logic(year: int | None = None, game_id: str | None = None) -> lis
             .all()
         )
 
-        for row in score_inconsistencies:
-            violations.append(
-                {
-                    "game_id": row["game_id"],
-                    "game_date": row["game_date"],
-                    "reason": f"Score Mismatch: Final(H:{row['home_score']} A:{row['away_score']}) != Innings(H:{row['home_inning_total']} A:{row['away_inning_total']})",
-                }
-            )
+        violations.extend(
+            {
+                "game_id": row["game_id"],
+                "game_date": row["game_date"],
+                "reason": f"Score Mismatch: Final(H:{row['home_score']} A:{row['away_score']}) != Innings(H:{row['home_inning_total']} A:{row['away_inning_total']})",
+            }
+            for row in score_inconsistencies
+        )
 
         # 2. Batting Formula (PA = AB + BB + HBP + SH + SF)
         logger.info("   - Checking Batting Formula (PA = AB + BB + HBP + SH + SF)...")
@@ -107,14 +107,14 @@ def audit_game_logic(year: int | None = None, game_id: str | None = None) -> lis
             .all()
         )
 
-        for row in batting_formula_violations:
-            violations.append(
-                {
-                    "game_id": row["game_id"],
-                    "game_date": row["game_date"],
-                    "reason": f"Batting Formula: {row['player_name']}({row['player_id']}) PA({row['pa']}) != AB({row['ab']})+BB({row['bb']})+HBP({row['hbp']})+SH({row['sh']})+SF({row['sf']})",
-                }
-            )
+        violations.extend(
+            {
+                "game_id": row["game_id"],
+                "game_date": row["game_date"],
+                "reason": f"Batting Formula: {row['player_name']}({row['player_id']}) PA({row['pa']}) != AB({row['ab']})+BB({row['bb']})+HBP({row['hbp']})+SH({row['sh']})+SF({row['sf']})",
+            }
+            for row in batting_formula_violations
+        )
 
         # 3. Hit Consistency (H <= AB)
         logger.info("   - Checking Hit Consistency (H <= AB)...")
@@ -139,14 +139,14 @@ def audit_game_logic(year: int | None = None, game_id: str | None = None) -> lis
             .all()
         )
 
-        for row in hit_violations:
-            violations.append(
-                {
-                    "game_id": row["game_id"],
-                    "game_date": row["game_date"],
-                    "reason": f"Impossible Stats: {row['player_name']}({row['player_id']}) H({row['h']}) > AB({row['ab']})",
-                }
-            )
+        violations.extend(
+            {
+                "game_id": row["game_id"],
+                "game_date": row["game_date"],
+                "reason": f"Impossible Stats: {row['player_name']}({row['player_id']}) H({row['h']}) > AB({row['ab']})",
+            }
+            for row in hit_violations
+        )
 
         # 4. Cross-domain consistency (Batting H vs Pitching H Allowed)
         # Checking team totals: Away Batting H sum vs Home Pitching H_allowed sum
@@ -194,14 +194,14 @@ def audit_game_logic(year: int | None = None, game_id: str | None = None) -> lis
             .all()
         )
 
-        for row in cross_domain_violations:
-            violations.append(
-                {
-                    "game_id": row["game_id"],
-                    "game_date": row["game_date"],
-                    "reason": f"Batting/Pitching Mismatch (Away Bat vs Home Pitch): H({row['away_bat_h']} vs {row['home_pitch_h']}), HR({row['away_bat_hr']} vs {row['home_pitch_hr']}), SO({row['away_bat_so']} vs {row['home_pitch_so']})",
-                }
-            )
+        violations.extend(
+            {
+                "game_id": row["game_id"],
+                "game_date": row["game_date"],
+                "reason": f"Batting/Pitching Mismatch (Away Bat vs Home Pitch): H({row['away_bat_h']} vs {row['home_pitch_h']}), HR({row['away_bat_hr']} vs {row['home_pitch_hr']}), SO({row['away_bat_so']} vs {row['home_pitch_so']})",
+            }
+            for row in cross_domain_violations
+        )
 
         # 5. Earned Run Constraint (Team ER <= Opponent Runs)
         logger.info("   - Checking Earned Run Constraint (Team ER <= Opponent Runs)...")
@@ -226,14 +226,14 @@ def audit_game_logic(year: int | None = None, game_id: str | None = None) -> lis
             .all()
         )
 
-        for row in er_violations:
-            violations.append(
-                {
-                    "game_id": row["game_id"],
-                    "game_date": row["game_date"],
-                    "reason": f"ER Constraint Violation ({row['team_side']} team): Total ER({row['team_er']}) > Opponent Runs({row['opp_runs']})",
-                }
-            )
+        violations.extend(
+            {
+                "game_id": row["game_id"],
+                "game_date": row["game_date"],
+                "reason": f"ER Constraint Violation ({row['team_side']} team): Total ER({row['team_er']}) > Opponent Runs({row['opp_runs']})",
+            }
+            for row in er_violations
+        )
 
     return violations
 

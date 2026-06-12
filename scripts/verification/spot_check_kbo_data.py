@@ -292,7 +292,7 @@ async def main():
         if args.games > 0:
             games_checked = await checker.check_games(args.games, args.year)
 
-        logger.info("\n" + "=" * 50)
+        logger.info("\n%s", "=" * 50)
         logger.info("📊 Spot-Check Summary")
         logger.info("=" * 50)
         logger.info(f"👥 Checked Players: {players_checked}")

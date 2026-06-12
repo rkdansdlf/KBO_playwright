@@ -86,7 +86,11 @@ async def gather_active_player_ids(season_year: int, delay: float) -> dict[str, 
     pitchers_cnt = sum(1 for m in player_positions.values() if m["position"] == "pitcher")
     both_cnt = sum(1 for m in player_positions.values() if m["position"] == "both")
     logger.info(
-        f"Found {len(player_positions)} active players (hitters: {hitters_cnt}, pitchers: {pitchers_cnt}, both: {both_cnt})",
+        "Found %s active players (hitters: %s, pitchers: %s, both: %s)",
+        len(player_positions),
+        hitters_cnt,
+        pitchers_cnt,
+        both_cnt,
     )
     return player_positions
 
@@ -154,7 +158,7 @@ async def process_player_result(
         try:
             batting_rows = await fetch_and_parse_futures_batting(player_id, hitter_url, pool=pool)
         except Exception as exc:
-            logger.exception(f"Exception crawling batting stats for player {player_id}: {exc}")
+            logger.exception("Exception crawling batting stats for player %s: %s", player_id, exc)
 
     # 2. Pitcher stats
     if position in ("pitcher", "both"):
@@ -162,7 +166,7 @@ async def process_player_result(
         try:
             pitching_rows = await fetch_and_parse_futures_pitching(player_id, pitcher_url, pool=pool)
         except Exception as exc:
-            logger.exception(f"Exception crawling pitching stats for player {player_id}: {exc}")
+            logger.exception("Exception crawling pitching stats for player %s: %s", player_id, exc)
 
     if not batting_rows and not pitching_rows:
         return {
@@ -199,7 +203,7 @@ async def process_player_result(
             if saved_batting == 0:
                 save_failures.append("batting_save_zero")
         except Exception as exc:
-            logger.exception(f"Exception saving batting stats for player {player_id}: {exc}")
+            logger.exception("Exception saving batting stats for player %s: %s", player_id, exc)
             save_failures.append("batting_save_exception")
 
     # Save Pitcher stats if any
@@ -245,7 +249,7 @@ async def process_player_result(
                 else:
                     save_failures.append("pitching_save_zero")
         except Exception as exc:
-            logger.exception(f"Exception saving pitching stats for player {player_id}: {exc}")
+            logger.exception("Exception saving pitching stats for player %s: %s", player_id, exc)
             save_failures.append("pitching_save_exception")
 
     if saved > 0:
@@ -365,7 +369,7 @@ async def crawl_futures(args: argparse.Namespace) -> dict[str, Any]:
             try:
                 result = await process_player_result(pid, pos, name, repository, args.delay, pool)
             except Exception as exc:
-                logger.exception(f"Unhandled exception for player {pid} ({pos}): {exc}")
+                logger.exception("Unhandled exception for player %s (%s): %s", pid, pos, exc)
                 result = {
                     "player_id": pid,
                     "status": "failed",

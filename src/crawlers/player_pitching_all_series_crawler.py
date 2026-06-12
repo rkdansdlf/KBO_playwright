@@ -228,7 +228,7 @@ def apply_sort(
                 page.wait_for_timeout(800)
                 return True
 
-        logger.warning(f"⚠️  '{header_label}' 정렬 링크를 찾지 못했습니다.")
+        logger.warning("⚠️  '%s' 정렬 링크를 찾지 못했습니다.", header_label)
         return False
     except Exception:
         logger.exception("⚠️ 정렬 적용 실패")
@@ -360,7 +360,7 @@ def parse_basic1_page(
     core_headers = ["선수명", "팀명", "IP", "G", "ERA"]
     missing_core = [h for h in core_headers if h not in header_index]
     if missing_core:
-        logger.warning(f"   ⚠️  Basic1 테이블 헤더에 필수 컬럼이 없습니다: {', '.join(missing_core)}")
+        logger.warning("   ⚠️  Basic1 테이블 헤더에 필수 컬럼이 없습니다: %s", ", ".join(missing_core))
         logger.info("   현재 헤더: %s", headers)
         # If headers are still empty, try a more lenient selector
         if not headers:
@@ -769,7 +769,7 @@ def crawl_pitcher_series(
 
     series_info = SERIES_MAPPING[series_key]
     league_name = series_info.get("league", "REGULAR")
-    logger.info(f"\n📊 {year}년 {series_info['name']} 수집 시작 (by_team={by_team})")
+    logger.info("\n📊 %s년 %s 수집 시작 (by_team=%s)", year, series_info["name"], by_team)
 
     pitchers: dict[int, PitcherStats] = {}
     policy = RequestPolicy()
@@ -828,7 +828,7 @@ def crawl_pitcher_series(
         for tm in iteration_targets:
             policy.delay()
             if team_options:
-                logger.info(f"🔍 팀 선택: {tm['text']} ({tm['value']})")
+                logger.info("🔍 팀 선택: %s (%s)", tm["text"], tm["value"])
                 try:
                     page.select_option(
                         'select[name="ctl00$ctl00$ctl00$cphContents$cphContents$cphContents$ddlTeam$ddlTeam"]',
@@ -837,7 +837,7 @@ def crawl_pitcher_series(
                     page.wait_for_load_state("networkidle", timeout=LONG_TIMEOUT)
                     policy.delay()
                 except Exception:
-                    logger.exception(f"⚠️ 팀 선택 실패 ({tm['text']})")
+                    logger.exception("⚠️ 팀 선택 실패 (%s)", tm["text"])
                     continue
 
             # 정렬 적용 (팀 선택 후 리셋될 수 있으므로 다시 적용)
@@ -916,10 +916,10 @@ def crawl_pitcher_series(
     if limit:
         stats_list = stats_list[:limit]
 
-    logger.info(f"✅ {series_info['name']} 크롤링 완료: {len(stats_list)}명")
+    logger.info("✅ %s 크롤링 완료: %s명", series_info["name"], len(stats_list))
     summary, valid_stats_list = build_pitching_crawl_summary(stats_list)
     if summary["filtered_rows"]:
-        logger.warning(f"⚠️ 투수 시즌 row 필터링: {summary['filtered_rows']}건 ({summary['failure_counts']})")
+        logger.warning("⚠️ 투수 시즌 row 필터링: %s건 (%s)", summary["filtered_rows"], summary["failure_counts"])
     stats_list = valid_stats_list
 
     # 투수 전용 테이블에 저장
@@ -983,7 +983,7 @@ def main() -> None:
         all_data = {}
         for series_key in SERIES_MAPPING:
             series_info = SERIES_MAPPING[series_key]
-            logger.info(f"\n🚀 {series_info['name']} 시작...")
+            logger.info("\n🚀 %s 시작...", series_info["name"])
             series_data = crawl_pitcher_series(
                 year=args.year,
                 series_key=series_key,

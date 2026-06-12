@@ -188,13 +188,16 @@ async def run_smoke(
 def _print_human_summary(result: Mapping[str, Any]) -> None:
     status = "passed" if result.get("ok") else "failed"
     logger.info(
-        f"[SMOKE] {status}: date={result.get('target_date')} "
-        f"scope={result.get('scope')} candidates={len(result.get('candidates') or [])}",
+        "[SMOKE] %s: date=%s scope=%s candidates=%s",
+        status,
+        result.get("target_date"),
+        result.get("scope"),
+        len(result.get("candidates") or []),
     )
     for game_result in result.get("results") or []:
-        logger.info(f"  - {game_result.get('game_id')}: {game_result}")
+        logger.info("  - %s: %s", game_result.get("game_id"), game_result)
     if result.get("failure_reasons"):
-        logger.info(f"[SMOKE] failure_reasons={result['failure_reasons']}")
+        logger.info("[SMOKE] failure_reasons=%s", result["failure_reasons"])
 
 
 def build_arg_parser() -> argparse.ArgumentParser:

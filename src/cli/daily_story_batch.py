@@ -107,9 +107,9 @@ async def run_story_batch(target_date: str, *, sync_to_oci: bool | None = None) 
     status_result = refresh_game_status_for_date(target_date)
     if status_result.get("updated", 0):
         logger.info(
-            "🔄 Refreshed game statuses before story generation: "
-            f"updated={status_result.get('updated', 0)} "
-            f"counts={status_result.get('status_counts', {})}",
+            "🔄 Refreshed game statuses before story generation: updated=%s counts=%s",
+            status_result.get("updated", 0),
+            status_result.get("status_counts", {}),
         )
 
     saved_ids: list[str] = []
@@ -145,8 +145,9 @@ async def run_story_batch(target_date: str, *, sync_to_oci: bool | None = None) 
             story_data = _build_story_data(builder, session, game)
             if not story_data["timeline"]:
                 logger.info(
-                    f"  ⚠️ No story timeline events selected for {game.game_id}. "
-                    f"warnings={story_data['source'].get('warnings', [])}",
+                    "  ⚠️ No story timeline events selected for %s. warnings=%s",
+                    game.game_id,
+                    story_data["source"].get("warnings", []),
                 )
             _upsert_story_summary(session, game.game_id, dump_story_json(story_data))
             saved_ids.append(game.game_id)

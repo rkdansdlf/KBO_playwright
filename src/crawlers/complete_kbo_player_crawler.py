@@ -88,7 +88,7 @@ def crawl_basic1_data(page: Page, year: int, series_info: dict, policy: RequestP
     컬럼: AVG,G,PA,AB,R,H,2B,3B,HR,TB,RBI,SAC,SF (정규시즌)
     컬럼: AVG,G,PA,AB,H,2B,3B,HR,RBI,SB,CS,BB,HBP,SO,GDP,E (기타시리즈)
     """
-    logger.info(f"   🔍 Basic1 데이터 수집: {series_info['name']}")
+    logger.info("   🔍 Basic1 데이터 수집: %s", series_info["name"])
 
     try:
         # Basic1 페이지로 이동
@@ -268,7 +268,7 @@ def crawl_basic2_with_headers(
     Basic2 헤더 클릭으로 추가 데이터 수집
     컬럼: BB,IBB,HBP,SO,GDP,SLG,OBP,OPS,MH,RISP,PH-BA
     """
-    logger.info(f"   🔍 Basic2 헤더 클릭 데이터 수집: {series_info['name']}")
+    logger.info("   🔍 Basic2 헤더 클릭 데이터 수집: %s", series_info["name"])
 
     headers_to_click = [
         ("BB", "BB_CN", "볼넷"),
@@ -485,14 +485,14 @@ def crawl_other_series_data(
     all_series_data = {}
 
     for series_info in series_list:
-        logger.info(f"📊 {year}년 {series_info['name']} 데이터 크롤링...")
+        logger.info("📊 %s년 %s 데이터 크롤링...", year, series_info["name"])
 
         series_data = crawl_basic1_data(page, year, series_info, policy=policy)
         if series_data:
             all_series_data[series_info["name"]] = series_data
-            logger.info(f"   ✅ {series_info['name']}: {len(series_data)}명")
+            logger.info("   ✅ %s: %s명", series_info["name"], len(series_data))
         else:
-            logger.warning(f"   ⚠️ {series_info['name']}: 데이터 없음")
+            logger.warning("   ⚠️ %s: 데이터 없음", series_info["name"])
 
     return all_series_data
 
@@ -548,7 +548,7 @@ def save_to_database(player_data: dict[int, dict], series_name: str) -> int:
                 saved_count += 1
 
             except Exception:
-                logger.exception(f"   ⚠️ {data['player_name']} 저장 실패")
+                logger.exception("   ⚠️ %s 저장 실패", data["player_name"])
                 continue
 
         logger.info("   ✅ %s/%s명 저장 완료", saved_count, len(player_data))
@@ -587,9 +587,9 @@ def main() -> None:
             total_saved = 0
 
             # 1. 정규시즌 데이터 수집 (Basic1 + Basic2)
-            logger.info(f"\n{'=' * 50}")
+            logger.info("\n%s", "=" * 50)
             logger.info("📊 1단계: 정규시즌 데이터 수집 (Enhanced)")
-            logger.info(f"{'=' * 50}")
+            logger.info("%s", "=" * 50)
 
             regular_season_data = crawl_regular_season_data(page, YEAR, policy=policy)
             if regular_season_data:
@@ -597,9 +597,9 @@ def main() -> None:
                 total_saved += saved
 
             # 2. 기타 시리즈 데이터 수집 (Basic1만)
-            logger.info(f"\n{'=' * 50}")
+            logger.info("\n%s", "=" * 50)
             logger.info("📊 2단계: 기타 시리즈 데이터 수집 (Basic)")
-            logger.info(f"{'=' * 50}")
+            logger.info("%s", "=" * 50)
 
             other_series_data = crawl_other_series_data(page, YEAR, SERIES_LIST, policy=policy)
             for series_name, series_data in other_series_data.items():
@@ -608,11 +608,11 @@ def main() -> None:
                     total_saved += saved
 
             # 3. 최종 결과
-            logger.info(f"\n{'=' * 50}")
+            logger.info("\n%s", "=" * 50)
             logger.info("🎉 크롤링 완료")
-            logger.info(f"{'=' * 50}")
+            logger.info("%s", "=" * 50)
             logger.info("📊 총 저장된 레코드: %s개", total_saved)
-            logger.info(f"📅 크롤링 시간: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+            logger.info("📅 크롤링 시간: %s", datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
 
         except Exception:
             logger.exception("❌ 크롤링 중 오류 발생")

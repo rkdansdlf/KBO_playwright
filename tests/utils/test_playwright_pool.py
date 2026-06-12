@@ -108,6 +108,7 @@ class TestClose:
         ctx = AsyncMock()
         browser = AsyncMock()
         pw = MagicMock()
+        pw.stop = AsyncMock()
         pool._context = ctx
         pool._browser = browser
         pool._playwright = pw
@@ -116,9 +117,36 @@ class TestClose:
         page_mock.close.assert_awaited_once()
         ctx.close.assert_awaited_once()
         browser.close.assert_awaited_once()
-        pw.stop.assert_called_once()
+        pw.stop.assert_awaited_once()
         assert pool._pages == []
         assert pool._context is None
+
+    @pytest.mark.asyncio
+    async def test_close_cleans_partial_resources_when_not_started(self):
+        pool = AsyncPlaywrightPool()
+        page_mock = AsyncMock()
+        ctx = AsyncMock()
+        browser = AsyncMock()
+        pw = MagicMock()
+        pw.stop = AsyncMock()
+        pool._pages = [page_mock]
+        pool._context = ctx
+        pool._browser = browser
+        pool._playwright = pw
+        pool._queue = asyncio.Queue()
+
+        await pool.close()
+
+        page_mock.close.assert_awaited_once()
+        ctx.close.assert_awaited_once()
+        browser.close.assert_awaited_once()
+        pw.stop.assert_awaited_once()
+        assert pool._pages == []
+        assert pool._context is None
+        assert pool._browser is None
+        assert pool._playwright is None
+        assert pool._queue is None
+        assert not pool._started
 
 
 class TestStart:
@@ -126,6 +154,7 @@ class TestStart:
     async def test_start_without_auth(self):
         pool = AsyncPlaywrightPool(max_pages=1, block_resources=False)
         mock_playwright = MagicMock()
+        mock_playwright.stop = AsyncMock()
         mock_browser = AsyncMock()
         mock_context = AsyncMock()
         mock_page = AsyncMock()
@@ -137,8 +166,52 @@ class TestStart:
         async_pw = AsyncMock()
         async_pw.start = AsyncMock(return_value=mock_playwright)
 
-        with patch("playwright.async_api.async_playwright", return_value=async_pw):
+        with patch("src.utils.playwright_pool.async_playwright", return_value=async_pw) as mock_async_playwright:
             await pool.start()
             assert pool._started
             assert pool._browser is not None
             assert pool._queue.qsize() == 1
+            mock_async_playwright.assert_called_once()
+            async_pw.start.assert_awaited_once()
+            mock_playwright.chromium.launch.assert_awaited_once_with(
+                headless=True,
+                args=["--disable-blink-features=AutomationControlled"],
+            )
+            mock_browser.new_context.assert_awaited_once()
+            mock_context.add_init_script.assert_awaited_once()
+            mock_context.new_page.assert_awaited_once()
+
+        await pool.close()
+        mock_page.close.assert_awaited_once()
+        mock_context.close.assert_awaited_once()
+        mock_browser.close.assert_awaited_once()
+        mock_playwright.stop.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_start_cleans_up_partial_resources_on_failure(self):
+        pool = AsyncPlaywrightPool(max_pages=1, block_resources=False)
+        mock_playwright = MagicMock()
+        mock_playwright.stop = AsyncMock()
+        mock_browser = AsyncMock()
+        mock_context = AsyncMock()
+
+        mock_browser.new_context = AsyncMock(return_value=mock_context)
+        mock_context.new_page = AsyncMock(side_effect=RuntimeError("page failed"))
+        mock_playwright.chromium.launch = AsyncMock(return_value=mock_browser)
+
+        async_pw = AsyncMock()
+        async_pw.start = AsyncMock(return_value=mock_playwright)
+
+        with patch("src.utils.playwright_pool.async_playwright", return_value=async_pw):
+            with pytest.raises(RuntimeError, match="page failed"):
+                await pool.start()
+
+        mock_context.close.assert_awaited_once()
+        mock_browser.close.assert_awaited_once()
+        mock_playwright.stop.assert_awaited_once()
+        assert pool._pages == []
+        assert pool._context is None
+        assert pool._browser is None
+        assert pool._playwright is None
+        assert pool._queue is None
+        assert not pool._started

@@ -167,8 +167,8 @@ async def main() -> None:
     try:
         payload = await crawler.fetch_player(sample_id)
         logger.info("Fetched player %s", sample_id)
-        logger.info(f"Hitter tables: {len(payload.get('hitter', {}).get('tables', []))}")
-        logger.info(f"Pitcher tables: {len(payload.get('pitcher', {}).get('tables', []))}")
+        logger.info("Hitter tables: %s", len(payload.get("hitter", {}).get("tables", [])))
+        logger.info("Pitcher tables: %s", len(payload.get("pitcher", {}).get("tables", [])))
     finally:
         await crawler.close()
 

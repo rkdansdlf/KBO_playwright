@@ -155,8 +155,8 @@ def main() -> int:
         pit_ok = team_result["pitching"]["ok"]
         bat_miss = len(team_result["batting"]["mismatches"])
         pit_miss = len(team_result["pitching"]["mismatches"])
-        logger.info(f"Team Batting: {'PASS' if bat_ok else 'FAIL'} ({bat_miss} mismatches)")
-        logger.info(f"Team Pitching: {'PASS' if pit_ok else 'FAIL'} ({pit_miss} mismatches)")
+        logger.info("Team Batting: %s (%s mismatches)", "PASS" if bat_ok else "FAIL", bat_miss)
+        logger.info("Team Pitching: %s (%s mismatches)", "PASS" if pit_ok else "FAIL", pit_miss)
         if not bat_ok or not pit_ok:
             sys.exit(1)
         return
@@ -180,7 +180,7 @@ def main() -> int:
     # Human-readable output
     pa_ok = pa_result.get("ok", False)
     pa_violations = pa_result.get("violation_count", 0)
-    logger.info(f"\nPA Formula Audit: {'PASS' if pa_ok else 'FAIL (' + str(pa_violations) + ' violations)'}")
+    logger.info("\nPA Formula Audit: %s", "PASS" if pa_ok else "FAIL (" + str(pa_violations) + " violations)")
 
     if args.pa_only:
         if not pa_ok:
@@ -192,15 +192,15 @@ def main() -> int:
     bat_miss = len(team_result["batting"]["mismatches"])
     pit_miss = len(team_result["pitching"]["mismatches"])
 
-    logger.info(f"Team Batting: {'PASS' if team_bat_ok else 'FAIL'} ({bat_miss} mismatches)")
+    logger.info("Team Batting: %s (%s mismatches)", "PASS" if team_bat_ok else "FAIL", bat_miss)
     for m in team_result["batting"]["mismatches"][:3]:
-        logger.info(f"  - [{m['team_id']}] {m['issue']}")
+        logger.info("  - [%s] %s", m["team_id"], m["issue"])
         for d in (m.get("diffs") or [])[:2]:
             logger.info("    %s", d)
 
-    logger.info(f"Team Pitching: {'PASS' if team_pit_ok else 'FAIL'} ({pit_miss} mismatches)")
+    logger.info("Team Pitching: %s (%s mismatches)", "PASS" if team_pit_ok else "FAIL", pit_miss)
     for m in team_result["pitching"]["mismatches"][:3]:
-        logger.info(f"  - [{m['team_id']}] {m['issue']}")
+        logger.info("  - [%s] %s", m["team_id"], m["issue"])
         for d in (m.get("diffs") or [])[:2]:
             logger.info("    %s", d)
 

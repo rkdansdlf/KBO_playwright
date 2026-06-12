@@ -443,7 +443,7 @@ class TeamStatAggregator:
         for r in rows:
             tc = r.canonical_team_code or r.team_code
             if not tc or tc in ("합계", "TOTAL", "ALL", "-"):
-                logger.warning(f"[WARN] Skipping PlayerSeasonBatting row ID {r.id}: Invalid team_code '{tc}'")
+                logger.warning("[WARN] Skipping PlayerSeasonBatting row ID %s: Invalid team_code '%s'", r.id, tc)
                 continue
             if not r.season:
                 logger.warning("[WARN] Skipping PlayerSeasonBatting row ID %s: Missing season", r.id)
@@ -538,7 +538,7 @@ class TeamStatAggregator:
         for r in rows:
             tc = r.canonical_team_code or r.team_code
             if not tc or tc in ("합계", "TOTAL", "ALL", "-"):
-                logger.warning(f"[WARN] Skipping PlayerSeasonPitching row ID {r.id}: Invalid team_code '{tc}'")
+                logger.warning("[WARN] Skipping PlayerSeasonPitching row ID %s: Invalid team_code '%s'", r.id, tc)
                 continue
             if not r.season:
                 logger.warning("[WARN] Skipping PlayerSeasonPitching row ID %s: Missing season", r.id)

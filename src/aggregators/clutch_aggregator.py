@@ -158,11 +158,11 @@ class ClutchAggregator:
         if not results:
             return
 
-        logger.info(f"\n{'=' * 60}")
+        logger.info("\n%s", "=" * 60)
         logger.info("  KBO %s년 Clutch/WPA Top %s", year, top_n)
-        logger.info(f"{'=' * 60}")
-        logger.info(f"{'순위':>4} {'BatterID':>9} {'WPA합계':>8} {'평균WPA':>8} {'Clutch':>8} {'고레버리지':>9}")
-        logger.info(f"{'-' * 60}")
+        logger.info("%s", "=" * 60)
+        logger.info("%4s %9s %8s %8s %8s %9s", "순위", "BatterID", "WPA합계", "평균WPA", "Clutch", "고레버리지")
+        logger.info("%s", "-" * 60)
         for i, r in enumerate(results[:top_n]):
             logger.info(
                 "  %2d  %9s %8.4f %8.4f %8.4f %9d",
@@ -174,7 +174,7 @@ class ClutchAggregator:
                 r["high_leverage_count"],
             )
 
-        logger.info(f"{'=' * 60}")
+        logger.info("%s", "=" * 60)
 
 
 if __name__ == "__main__":
