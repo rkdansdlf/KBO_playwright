@@ -10,11 +10,11 @@
 사전 검증:
 ```bash
 ./venv/bin/python scripts/verification/check_orphan_data.py --strict --json --sample-limit 20
-./venv/bin/python scripts/legacy/quality_gate.py --skip-oci
+./venv/bin/python -m scripts.maintenance.quality_gate --skip-oci
 ```
 CI 또는 agent 세션처럼 CSV 아티팩트 디렉터리에 쓰지 않는 실행에서는 품질 게이트에 `--no-write`를 추가합니다:
 ```bash
-./venv/bin/python scripts/legacy/quality_gate.py --skip-oci --no-write
+./venv/bin/python -m scripts.maintenance.quality_gate --skip-oci --no-write
 ```
 
 0. fresh runner 운영 캐시 hydrate
@@ -23,33 +23,23 @@ python3 -m src.cli.hydrate_runtime_from_oci --year YYYY --date YYYYMMDD
 ```
 
 1. 2019 일정 근거 수집
-```bash
-python3 /Users/mac/project/KBO_playwright/scripts/legacy/maintenance/collect_2019_schedule_status_evidence.py \
-  --year 2019 --months 3-10
-```
+- 삭제된 legacy 조사 스크립트 대신 현재 데이터 상태는 `scripts/verification/check_orphan_data.py`와 `src.cli.gap_report`로 확인합니다.
 
 2. `game_status_overrides.csv` 수동 확정
 - 파일: `/Users/mac/project/KBO_playwright/data/game_status_overrides.csv`
 - 허용 상태: `CANCELLED`, `POSTPONED`
 
 3. override용 누락 선수 보강
-```bash
-python3 /Users/mac/project/KBO_playwright/scripts/legacy/maintenance/enrich_missing_players_for_overrides.py \
-  --overrides-csv /Users/mac/project/KBO_playwright/data/player_id_overrides.csv
-```
+- 누락 선수 보강은 `python3 -m src.cli.collect_profiles` 또는 필요한 수집 CLI로 수행합니다.
 
 4. 보수적 NULL player_id 해소
 ```bash
-python3 /Users/mac/project/KBO_playwright/scripts/legacy/maintenance/resolve_null_player_ids_conservative.py \
+python3 -m scripts.maintenance.resolve_null_player_ids_conservative \
   --overrides-csv /Users/mac/project/KBO_playwright/data/player_id_overrides.csv
 ```
 
 5. game_status 재계산 (override + evidence 반영)
-```bash
-python3 /Users/mac/project/KBO_playwright/scripts/legacy/maintenance/refresh_game_status.py \
-  --overrides-csv /Users/mac/project/KBO_playwright/data/game_status_overrides.csv \
-  --evidence-csv /Users/mac/project/KBO_playwright/data/game_status_schedule_evidence.csv
-```
+- 현재 운영 경로는 `python3 -m src.cli.run_daily_update --date YYYYMMDD --sync`이며, 내부에서 대상 날짜 상태 갱신을 수행합니다.
 
 6. OCI 반영 (`game` 경량)
 ```bash
@@ -63,19 +53,18 @@ python3 -m src.cli.sync_oci --game-details --year YYYY
 
 8. OCI 시퀀스 보정
 ```bash
-./venv/bin/python scripts/legacy/maintenance/reset_oci_sequences.py
+./venv/bin/python -m scripts.maintenance.reset_oci_sequences
 ```
 
 9. 참조 무결성 및 품질 게이트 실행
 ```bash
 ./venv/bin/python scripts/verification/check_orphan_data.py --db-url env:OCI_DB_URL --strict --json --sample-limit 20
-python3 /Users/mac/project/KBO_playwright/scripts/legacy/quality_gate.py
+python3 -m scripts.maintenance.quality_gate
 ```
 
 10. FK migration 적용
-데이터 검증이 먼저 통과한 뒤에만 실행합니다.
+데이터 검증이 먼저 통과한 뒤 repository migration process로 `migrations/oci/023_reference_integrity_foreign_keys.sql`을 적용합니다. 적용 후 다시 검증합니다:
 ```bash
-./venv/bin/python scripts/legacy/maintenance/apply_oci_migration.py migrations/oci/023_reference_integrity_foreign_keys.sql
 ./venv/bin/python scripts/verification/check_orphan_data.py --db-url env:OCI_DB_URL --strict --json --sample-limit 20
 ```
 
