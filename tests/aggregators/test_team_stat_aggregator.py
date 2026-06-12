@@ -208,6 +208,35 @@ class TestTeamStatAggregatorPure(unittest.TestCase):
         self.assertEqual(len(results), 1)
         self.assertEqual(results[0]["team_id"], "OB")
 
+    def test_canonical_team_code_is_used_for_rollup_grouping(self):
+        raw_legacy = PlayerSeasonBatting(
+            id=1,
+            season=2026,
+            team_code="OB",
+            canonical_team_code="DB",
+            plate_appearances=10,
+            at_bats=9,
+            hits=3,
+            league="REGULAR",
+        )
+        canonical = PlayerSeasonBatting(
+            id=2,
+            season=2026,
+            team_code="DB",
+            canonical_team_code="DB",
+            plate_appearances=12,
+            at_bats=11,
+            hits=4,
+            league="REGULAR",
+        )
+
+        results = self.aggregator.aggregate_batting([raw_legacy, canonical], team_names={"DB": "두산"})
+
+        self.assertEqual(len(results), 1)
+        self.assertEqual(results[0]["team_id"], "DB")
+        self.assertEqual(results[0]["team_name"], "두산")
+        self.assertEqual(results[0]["plate_appearances"], 22)
+
 
 # Database integration tests mapped from the original test file
 @pytest.fixture
