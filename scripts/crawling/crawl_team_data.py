@@ -8,12 +8,12 @@ logger = logging.getLogger(__name__)
 # Ensure project root is in path
 sys.path.append(os.getcwd())
 
-from sqlalchemy import select  # noqa: E402
+from sqlalchemy import select
 
-from src.crawlers.team_history_crawler import TeamHistoryCrawler  # noqa: E402
-from src.crawlers.team_info_crawler import TeamInfoCrawler  # noqa: E402
-from src.db.engine import SessionLocal  # noqa: E402
-from src.models.franchise import Franchise  # noqa: E402
+from src.crawlers.team_history_crawler import TeamHistoryCrawler
+from src.crawlers.team_info_crawler import TeamInfoCrawler
+from src.db.engine import SessionLocal
+from src.models.franchise import Franchise
 
 
 async def main():
