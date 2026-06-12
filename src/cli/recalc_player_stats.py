@@ -296,7 +296,7 @@ def _upsert_batting(session: Session, records: list[dict[str, Any]], dialect: st
             session.execute(stmt)
             saved += 1
         except SQLAlchemyError as e:
-            logger.warning(f"Batting upsert failed for player {data.get('player_id')}: {e}")
+            logger.warning("Batting upsert failed for player %s: %s", data.get("player_id"), e)
             session.rollback()
 
     session.commit()
@@ -334,7 +334,7 @@ def _upsert_pitching(session: Session, records: list[dict[str, Any]], dialect: s
             session.execute(stmt)
             saved += 1
         except SQLAlchemyError as e:
-            logger.warning(f"Pitching upsert failed for player {data.get('player_id')}: {e}")
+            logger.warning("Pitching upsert failed for player %s: %s", data.get("player_id"), e)
             session.rollback()
 
     session.commit()

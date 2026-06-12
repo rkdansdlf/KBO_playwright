@@ -240,7 +240,7 @@ async def main() -> None:
     logger.info("\nParsed %s Futures season records for player %s", len(rows), player_id)
 
     for row in rows:
-        logger.info(f"  Season {row.get('season')}: AVG={row.get('AVG')}, G={row.get('G')}, H={row.get('H')}")
+        logger.info("  Season %s: AVG=%s, G=%s, H=%s", row.get("season"), row.get("AVG"), row.get("G"), row.get("H"))
 
 
 if __name__ == "__main__":

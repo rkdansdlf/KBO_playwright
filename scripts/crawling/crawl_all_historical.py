@@ -192,7 +192,7 @@ def crawl_historical_data(
     results["total_tasks"] = actual_total_tasks
 
     logger.info(f"\n🎯 총 작업 수: {actual_total_tasks}개 (연도별 가능한 시리즈 × 타자/투수)")
-    logger.info("\n" + "=" * 50)
+    logger.info("\n%s", "=" * 50)
 
     # 년도별 크롤링
     for year in range(start_year, end_year + 1):
@@ -259,7 +259,7 @@ def crawl_historical_data(
         )
 
     # 최종 결과
-    logger.info("\n" + "=" * 50)
+    logger.info("\n%s", "=" * 50)
     logger.info("🎉 전체 크롤링 완료!")
 
     overall_success_rate = (results["success_count"] / results["total_tasks"]) * 100

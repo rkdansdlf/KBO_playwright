@@ -281,7 +281,7 @@ def main() -> None:
                 logger.info("\n🎉 완료!")
                 logger.info("   📊 수집: %s명", len(bb_data))
                 logger.info("   💾 저장: %s명", saved_count)
-                logger.info(f"   📅 시간: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+                logger.info("   📅 시간: %s", datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
 
             else:
                 logger.error("❌ 데이터를 수집하지 못했습니다.")

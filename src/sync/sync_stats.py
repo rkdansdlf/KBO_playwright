@@ -34,7 +34,9 @@ class StatsSyncMixin:
         missing_count = self.sqlite_session.query(model).filter(*filters, ~existing_player_filter).count()
         if missing_count:
             logger.warning(
-                f"⚠️ Skipping {missing_count} {model.__tablename__} rows with missing local player_basic references",
+                "⚠️ Skipping %s %s rows with missing local player_basic references",
+                missing_count,
+                model.__tablename__,
             )
         return [*filters, existing_player_filter]
 
@@ -327,7 +329,8 @@ class StatsSyncMixin:
                 logger.info("   ⏩ Skipping fielding stats for %s (No changes detected)", year)
                 return 0
 
-        filters = [PlayerSeasonFielding.year == year] if year else None
+        filters = [PlayerSeasonFielding.year == year] if year else []
+        filters = self._add_existing_player_basic_filter(PlayerSeasonFielding, filters)
         return self.sync_simple_table(
             PlayerSeasonFielding,
             ["player_id", "team_id", "year", "position_id"],
@@ -344,7 +347,8 @@ class StatsSyncMixin:
                 logger.info("   ⏩ Skipping baserunning stats for %s (No changes detected)", year)
                 return 0
 
-        filters = [PlayerSeasonBaserunning.year == year] if year else None
+        filters = [PlayerSeasonBaserunning.year == year] if year else []
+        filters = self._add_existing_player_basic_filter(PlayerSeasonBaserunning, filters)
         return self.sync_simple_table(
             PlayerSeasonBaserunning,
             ["player_id", "team_id", "year"],

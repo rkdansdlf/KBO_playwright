@@ -351,7 +351,7 @@ def main():
     logger.info(f"\n{'#' * 60}")
     logger.info("  OCI Sync Benchmark")
     logger.info(f"  Mode: {'quick' if args.quick else 'full'}")
-    logger.info("  Target: SQLite \u2192 SQLite" + (f" \u2192 {args.oci_url[:50]}..." if args.oci_url else ""))
+    logger.info("  Target: SQLite \u2192 SQLite%s", f" \u2192 {args.oci_url[:50]}..." if args.oci_url else "")
     logger.info(f"  Timestamp: {datetime.now().isoformat()}")
     logger.info(f"{'#' * 60}")
 

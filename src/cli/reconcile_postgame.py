@@ -47,9 +47,11 @@ async def run_reconciliation(args: argparse.Namespace) -> int:
         session.close()
 
     logger.info(
-        "[POSTGAME-RECONCILE] "
-        f"range={result.start_date}-{result.end_date} "
-        f"candidates={result.candidates} changed={len(result.changes)}",
+        "[POSTGAME-RECONCILE] range=%s-%s candidates=%s changed=%s",
+        result.start_date,
+        result.end_date,
+        result.candidates,
+        len(result.changes),
     )
     logger.info(format_reconciliation_report(result.changes))
 

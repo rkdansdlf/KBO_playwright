@@ -192,7 +192,7 @@ class OperationNoticeLGCrawler:
                 logger.info("[LG Notice] Saved: %s new, %s updated.", created, updated)
             except SQLAlchemyError as e:
                 session.rollback()
-                logger.exception(f"[LG Notice] Database error: {e}")
+                logger.exception("[LG Notice] Database error: %s", e)
             finally:
                 self._raw_pages.clear()
 

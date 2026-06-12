@@ -72,7 +72,7 @@ class GameMvpCrawler:
                         "award_source": "NAVER",
                     }
         except Exception as e:  # noqa: BLE001
-            logger.warning(f"Error searching MVP for game {game_id}: {e}", exc_info=True)
+            logger.warning("Error searching MVP for game %s: %s", game_id, e, exc_info=True)
         finally:
             client.close()
         return None
@@ -161,7 +161,7 @@ class GameMvpCrawler:
             logger.info("Saved %s MVP records.", count)
         except SQLAlchemyError as e:
             session.rollback()
-            logger.exception(f"Database error saving MVP records: {e}")
+            logger.exception("Database error saving MVP records: %s", e)
         finally:
             session.close()
 

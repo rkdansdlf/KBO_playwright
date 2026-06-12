@@ -677,16 +677,16 @@ def _collect_null_groups(session, *, tables: tuple[str, ...], years: tuple[int, 
                 ORDER BY year, team_code, player_name
                 """
         ).bindparams(bindparam("years", expanding=True))
-        for row in session.execute(stmt, {"years": years_as_text}).mappings():
-            groups.append(
-                {
-                    "table_name": table_name,
-                    "year": int(row["year"]),
-                    "team_code": str(row["team_code"] or ""),
-                    "player_name": str(row["player_name"] or ""),
-                    "row_count": int(row["row_count"] or 0),
-                }
-            )
+        groups.extend(
+            {
+                "table_name": table_name,
+                "year": int(row["year"]),
+                "team_code": str(row["team_code"] or ""),
+                "player_name": str(row["player_name"] or ""),
+                "row_count": int(row["row_count"] or 0),
+            }
+            for row in session.execute(stmt, {"years": years_as_text}).mappings()
+        )
     return groups
 
 

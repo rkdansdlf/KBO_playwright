@@ -168,11 +168,17 @@ def run_recalc(
 
         if dry_run:
             logger.info(
-                f"[DRY-RUN] Total: {len(game_ids)} games, batting={totals['batting']}, pitching={totals['pitching']}",
+                "[DRY-RUN] Total: %s games, batting=%s, pitching=%s",
+                len(game_ids),
+                totals["batting"],
+                totals["pitching"],
             )
         else:
             logger.info(
-                f"Done: {len(game_ids)} games, upserted batting={totals['batting']}, pitching={totals['pitching']}",
+                "Done: %s games, upserted batting=%s, pitching=%s",
+                len(game_ids),
+                totals["batting"],
+                totals["pitching"],
             )
 
     return 0

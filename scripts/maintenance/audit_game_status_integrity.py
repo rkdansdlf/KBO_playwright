@@ -64,15 +64,15 @@ def audit_game_status() -> list[dict[str, Any]]:
             .all()
         )
 
-        for row in future_violations:
-            violations.append(
-                {
-                    "game_id": row["game_id"],
-                    "game_date": row["game_date"],
-                    "status": row["game_status"],
-                    "reason": "Future game with non-scheduled status",
-                }
-            )
+        violations.extend(
+            {
+                "game_id": row["game_id"],
+                "game_date": row["game_date"],
+                "status": row["game_status"],
+                "reason": "Future game with non-scheduled status",
+            }
+            for row in future_violations
+        )
 
         # 2. LIVE games without evidence
         live_no_evidence = (
@@ -92,15 +92,15 @@ def audit_game_status() -> list[dict[str, Any]]:
             .all()
         )
 
-        for row in live_no_evidence:
-            violations.append(
-                {
-                    "game_id": row["game_id"],
-                    "game_date": row["game_date"],
-                    "status": row["game_status"],
-                    "reason": "LIVE game without progress evidence (inning scores, events, pbp)",
-                }
-            )
+        violations.extend(
+            {
+                "game_id": row["game_id"],
+                "game_date": row["game_date"],
+                "status": row["game_status"],
+                "reason": "LIVE game without progress evidence (inning scores, events, pbp)",
+            }
+            for row in live_no_evidence
+        )
 
         # 3. COMPLETED games without scores
         completed_no_scores = (
@@ -118,15 +118,15 @@ def audit_game_status() -> list[dict[str, Any]]:
             .all()
         )
 
-        for row in completed_no_scores:
-            violations.append(
-                {
-                    "game_id": row["game_id"],
-                    "game_date": row["game_date"],
-                    "status": row["game_status"],
-                    "reason": "COMPLETED/DRAW game missing scores",
-                }
-            )
+        violations.extend(
+            {
+                "game_id": row["game_id"],
+                "game_date": row["game_date"],
+                "status": row["game_status"],
+                "reason": "COMPLETED/DRAW game missing scores",
+            }
+            for row in completed_no_scores
+        )
 
         # 4. Past games still marked as LIVE
         past_live = (
@@ -144,15 +144,15 @@ def audit_game_status() -> list[dict[str, Any]]:
             .all()
         )
 
-        for row in past_live:
-            violations.append(
-                {
-                    "game_id": row["game_id"],
-                    "game_date": row["game_date"],
-                    "status": row["game_status"],
-                    "reason": "Past game still marked as LIVE",
-                }
-            )
+        violations.extend(
+            {
+                "game_id": row["game_id"],
+                "game_date": row["game_date"],
+                "status": row["game_status"],
+                "reason": "Past game still marked as LIVE",
+            }
+            for row in past_live
+        )
 
     return violations
 

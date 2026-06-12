@@ -116,7 +116,9 @@ class OperationNoticeNaverCrawler:
             self._save_to_db(notices)
         else:
             for n in notices[:5]:
-                logger.info(f"  [{n['notice_type']}] {n['title'][:60]} | urgent={n['is_urgent']} | {n['published_at']}")
+                logger.info(
+                    "  [%s] %s | urgent=%s | %s", n["notice_type"], n["title"][:60], n["is_urgent"], n["published_at"]
+                )
             if len(notices) > 5:
                 logger.info("  ... and %s more", len(notices) - 5)
 
