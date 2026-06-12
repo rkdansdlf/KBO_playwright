@@ -192,3 +192,33 @@ class TestTeamStandingsDaily:
     def test_repr(self):
         sd = make_standings_daily()
         assert "TeamStandingsDaily" in repr(sd)
+
+
+class TestTeamAdvanced:
+    def test_fk_violation_invalid_team_season_pitching(self):
+        import pytest
+        from sqlalchemy.exc import IntegrityError
+
+        _, session = build_session()
+        _create_tables(session)
+        tsp = make_team_season_pitching(team_id="ZZ")
+        session.add(tsp)
+        with pytest.raises(IntegrityError):
+            session.commit()
+
+    def test_team_season_batting_composite_pk(self):
+        import pytest
+        from sqlalchemy.exc import IntegrityError
+
+        _, session = build_session()
+        _create_tables(session)
+        t = make_team()
+        session.add(t)
+        session.commit()
+        t1 = make_team_season_batting()
+        t2 = make_team_season_batting()
+        session.add(t1)
+        session.commit()
+        session.add(t2)
+        with pytest.raises(IntegrityError):
+            session.commit()

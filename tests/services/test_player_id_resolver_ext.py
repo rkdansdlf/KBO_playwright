@@ -31,8 +31,9 @@ class TestFilterSurrogateIds:
         assert resolver._filter_surrogate_ids(set()) == set()
 
     def test_replaces_with_kbo_person_id(self, resolver):
-        resolver.session.execute.return_value.fetchall.return_value = [
-            (1, "100"),
+        resolver.session.execute.return_value.fetchall.side_effect = [
+            [(1, "100")],
+            [(100, "대상선수")],
         ]
         result = resolver._filter_surrogate_ids({1, 2})
         assert 100 in result
@@ -48,7 +49,7 @@ class TestResolveId:
             assert result == 91511
 
     def test_returns_cached_result(self, resolver):
-        resolver._cache["Kim_LG_2024_"] = 12345
+        resolver._cache["Kim_LG_2024__A"] = 12345
         assert resolver.resolve_id("Kim", "LG", 2024) == 12345
 
     def test_standardizes_team_code(self, resolver):

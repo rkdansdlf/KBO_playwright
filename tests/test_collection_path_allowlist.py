@@ -8,7 +8,6 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 DIRECT_SAVE_NAMES = {"save_game_detail", "save_relay_data"}
 ALLOWED_DIRECT_SAVE_FILES = {
     "scripts/crawl_2009_game_details.py",
-    "scripts/legacy/maintenance/recrawl_bad_2026_games.py",
     "src/cli/ingest_mock_game_html.py",
     "src/cli/live_crawler.py",
     "src/cli/run_pipeline_demo.py",
