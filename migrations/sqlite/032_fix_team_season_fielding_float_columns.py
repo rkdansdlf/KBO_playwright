@@ -8,6 +8,10 @@ via rename+copy to preserve all data.
 """
 
 import re
+import sqlite3
+from pathlib import Path
+
+DEFAULT_DB_PATH = Path(__file__).resolve().parents[2] / "data" / "kbo_dev.db"
 
 
 def table_sql(conn, table_name):
@@ -73,16 +77,23 @@ def fix_column(conn, table_name, col_name):
     return True
 
 
-def upgrade():
-    conn = run_migrations_conn
+def upgrade(conn=None):
+    should_close = conn is None
+    if conn is None:
+        conn = sqlite3.connect(DEFAULT_DB_PATH)
+
     print("  032: Fix INTEGER columns → REAL")
 
-    for table, cols in [
-        ("team_season_fielding", ["def_innings", "fielding_pct", "range_factor_per_game"]),
-        ("team_season_baserunning", ["sb_success_rate"]),
-    ]:
-        for col in cols:
-            fix_column(conn, table, col)
+    try:
+        for table, cols in [
+            ("team_season_fielding", ["def_innings", "fielding_pct", "range_factor_per_game"]),
+            ("team_season_baserunning", ["sb_success_rate"]),
+        ]:
+            for col in cols:
+                fix_column(conn, table, col)
+    finally:
+        if should_close:
+            conn.close()
 
     print("  032 done")
 
