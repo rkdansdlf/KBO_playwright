@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -41,9 +42,9 @@ class TestOCISync:
 
 
 class TestOCISyncMain:
-    @patch("src.sync.oci_sync.os.getenv", return_value=None)
+    @patch.dict(os.environ, {}, clear=True)
     @patch("src.sync.oci_sync.logger")
-    def test_main_no_oci_url(self, mock_logger, mock_getenv):
+    def test_main_no_oci_url(self, mock_logger):
         main()
         mock_logger.error.assert_called_once()
 

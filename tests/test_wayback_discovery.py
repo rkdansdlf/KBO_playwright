@@ -1,28 +1,10 @@
 from __future__ import annotations
 
-import importlib.util
-from pathlib import Path
-
-
-def _load_module():
-    module_path = (
-        Path(__file__).resolve().parents[1]
-        / "scripts"
-        / "legacy"
-        / "maintenance"
-        / "discover_wayback_relay_captures.py"
-    )
-    spec = importlib.util.spec_from_file_location("discover_wayback_relay_captures", module_path)
-    assert spec is not None and spec.loader is not None
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
+from scripts.maintenance import discover_wayback_relay_captures as wayback
 
 
 def test_candidate_targets_include_gamecenter_and_livetext():
-    module = _load_module()
-
-    targets = module._candidate_targets("20241002KTOB0")
+    targets = wayback._candidate_targets("20241002KTOB0")
 
     assert [target["url_kind"] for target in targets] == [
         "gamecenter_relay",
@@ -34,9 +16,7 @@ def test_candidate_targets_include_gamecenter_and_livetext():
 
 
 def test_pick_capture_prefers_relay_section_for_gamecenter_prefix():
-    module = _load_module()
-
-    selected = module._pick_capture(
+    selected = wayback._pick_capture(
         "gamecenter_main_prefix",
         [
             {"timestamp": "1", "original": "https://www.koreabaseball.com/...&section=REVIEW", "mimetype": "text/html"},

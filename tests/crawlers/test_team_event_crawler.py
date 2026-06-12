@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from pytest import mark
 
-from src.crawlers.team_event_crawler import TeamEventCrawler, TEAM_NEWS_SOURCES
+from src.crawlers.team_event_crawler import TEAM_NEWS_SOURCES, TeamEventCrawler
 
 
 @pytest.fixture

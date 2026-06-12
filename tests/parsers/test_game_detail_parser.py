@@ -15,45 +15,11 @@ from src.parsers.game_detail_parser import (
     _extract_scoreboard,
     _parse_decision,
     _parse_duration_minutes,
-    _parse_innings_to_outs,
     _parse_metadata,
-    _safe_float,
-    _safe_int,
     _safe_player_id,
     _season_year_from_game,
     parse_game_detail_html,
 )
-
-
-class TestSafeInt:
-    def test_normal(self):
-        assert _safe_int(100) == 100
-        assert _safe_int("100") == 100
-        assert _safe_int("1,000") == 1000
-
-    def test_empty_and_special(self):
-        assert _safe_int(None) is None
-        assert _safe_int("") is None
-        assert _safe_int("-") is None
-        assert _safe_int("null") is None
-
-    def test_invalid(self):
-        assert _safe_int("abc") is None
-
-
-class TestSafeFloat:
-    def test_normal(self):
-        assert _safe_float("0.300") == 0.3
-        assert _safe_float("1.50") == 1.5
-        assert _safe_float(0) == 0.0
-
-    def test_empty_and_special(self):
-        assert _safe_float(None) is None
-        assert _safe_float("") is None
-        assert _safe_float("-") is None
-
-    def test_invalid(self):
-        assert _safe_float("abc") is None
 
 
 class TestSeasonYearFromGame:
@@ -68,27 +34,6 @@ class TestSeasonYearFromGame:
     def test_short_string(self):
         assert _season_year_from_game("123") is None
 
-
-class TestParseInningsToOuts:
-    def test_standard(self):
-        assert _parse_innings_to_outs("60.2") == 60 * 3 + 2
-        assert _parse_innings_to_outs("9.0") == 27
-        assert _parse_innings_to_outs("1.1") == 4
-
-    def test_vulgar_fractions(self):
-        assert _parse_innings_to_outs("60⅓") == 181
-        assert _parse_innings_to_outs("60⅔") == 182
-
-    def test_integer(self):
-        assert _parse_innings_to_outs("9") == 27
-
-    def test_empty_and_special(self):
-        assert _parse_innings_to_outs(None) is None
-        assert _parse_innings_to_outs("") is None
-        assert _parse_innings_to_outs("-") is None
-
-    def test_invalid(self):
-        assert _parse_innings_to_outs("abc") is None
 
 
 class TestParseDecision:

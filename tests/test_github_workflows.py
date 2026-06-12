@@ -4,10 +4,23 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 WORKFLOW_DIR = ROOT / ".github/workflows"
+ACTION_DIR = ROOT / ".github/actions"
 
 
 def _workflow_files() -> list[Path]:
     return sorted(WORKFLOW_DIR.glob("*.yml"))
+
+
+def _github_action_files() -> list[Path]:
+    return sorted(ACTION_DIR.glob("*/action.y*ml"))
+
+
+def _github_ci_files() -> list[Path]:
+    return _workflow_files() + _github_action_files()
+
+
+def _joined_ref(*parts: str) -> str:
+    return "".join(parts)
 
 
 def _read(path: Path) -> str:
@@ -96,11 +109,31 @@ def test_daily_kbo_sync_includes_advanced_sync_and_quality_checks():
     assert "--days 14 --source-url-env OCI_DB_URL" in workflow
 
 
-def test_workflows_do_not_reference_removed_maintenance_paths():
-    for path in _workflow_files():
-        workflow = _read(path)
-        assert "backfill_advanced_stats.sh" not in workflow, path
-        assert "scripts/maintenance/" not in workflow, path
+def test_github_ci_does_not_reference_removed_maintenance_paths():
+    removed_refs = (
+        _joined_ref("scripts", "/legacy"),
+        _joined_ref("scripts", ".legacy"),
+        _joined_ref("python3 ", "scripts/maintenance/"),
+        _joined_ref("backfill_advanced_stats", ".sh"),
+    )
+
+    for path in _github_ci_files():
+        config = _read(path)
+        for removed_ref in removed_refs:
+            assert removed_ref not in config, f"{path} references removed path: {removed_ref}"
+
+
+def test_github_ci_uses_supported_maintenance_modules():
+    python_env = _read(ACTION_DIR / "python-env/action.yml")
+    daily = _read(WORKFLOW_DIR / "daily_kbo_sync.yml")
+    backfill = _read(WORKFLOW_DIR / "backfill.yml")
+
+    assert "python3 -m scripts.maintenance.seed_data" in python_env
+    assert "python3 -m scripts.maintenance.resolve_null_player_ids_conservative" in daily
+    assert "python3 -m scripts.maintenance.quality_gate" in daily
+    assert "from scripts.maintenance.backfill_sh_sf_from_pbp import" in backfill
+    assert "python3 -m scripts.maintenance.resolve_null_player_ids_conservative" in backfill
+    assert "from scripts.maintenance.backfill_roster_movements import" in backfill
 
 
 def test_backfill_advanced_stats_uses_supported_cli_flags():

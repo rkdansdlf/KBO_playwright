@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 
-import scripts.legacy.maintenance.reset_oci_sequences as reset_oci_sequences
+import scripts.maintenance.reset_oci_sequences as reset_oci_sequences
 import src.cli.sync_oci as sync_oci_cli
 from src.sync.sync_games import _compact_metadata_source_payload_for_limit
 

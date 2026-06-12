@@ -12,7 +12,7 @@ import src.repositories.game_save as game_save_module
 import src.services.postgame_reconciliation_service as service
 from src.models.game import Game, GameBattingStat, GamePitchingStat
 from src.models.player import PlayerBasic
-from src.utils.game_status import GAME_STATUS_COMPLETED, GAME_STATUS_LIVE, GAME_STATUS_SCHEDULED
+from src.utils.game_status import GAME_STATUS_CANCELLED, GAME_STATUS_COMPLETED, GAME_STATUS_LIVE, GAME_STATUS_SCHEDULED
 
 
 class _FakeDetailCrawler:
@@ -205,3 +205,71 @@ def test_reconcile_postgame_range_marks_cancelled_miss(monkeypatch):
     assert result.changed_game_ids == ["20260424LGOB0"]
     assert result.changes[0].after_status == "CANCELLED"
     assert result.changes[0].failure_reason == "cancelled"
+
+
+def test_reconcile_postgame_range_preserves_existing_cancelled_detail_miss(monkeypatch):
+    SessionLocal = _build_session_factory()
+    monkeypatch.setattr(service, "SessionLocal", SessionLocal)
+    repair_calls = []
+    status_updates = []
+
+    with SessionLocal() as session:
+        session.add(
+            Game(
+                game_id="20260527SSLG0",
+                game_date=date(2026, 5, 27),
+                game_status=GAME_STATUS_CANCELLED,
+                away_score=3,
+                home_score=5,
+            )
+        )
+        session.add(
+            GameBattingStat(
+                game_id="20260527SSLG0",
+                team_side="away",
+                team_code="SS",
+                player_id=1001,
+                player_name="Stale Batter",
+                appearance_seq=1,
+            )
+        )
+        session.commit()
+
+    async def _fake_collect(games, **_kwargs):
+        assert [target.game_id for target in games] == ["20260527SSLG0"]
+        return SimpleNamespace(
+            items={
+                "20260527SSLG0": SimpleNamespace(
+                    detail_saved=False,
+                    detail_status="crawl_failed",
+                    failure_reason="no_detail_payload",
+                )
+            }
+        )
+
+    monkeypatch.setattr(service, "crawl_and_save_game_details", _fake_collect)
+    monkeypatch.setattr(
+        service,
+        "repair_game_parent_from_existing_children",
+        lambda game_id: repair_calls.append(game_id) or True,
+    )
+    monkeypatch.setattr(service, "update_game_status", lambda game_id, status: status_updates.append((game_id, status)))
+
+    result = asyncio.run(
+        service.reconcile_postgame_range(
+            "20260527",
+            "20260527",
+            detail_crawler=_FakeDetailCrawler(),
+            extra_game_ids=["20260527SSLG0"],
+            log=lambda _message: None,
+        )
+    )
+
+    assert result.candidates == 1
+    assert result.changed_game_ids == []
+    assert repair_calls == []
+    assert status_updates == []
+    with SessionLocal() as session:
+        game = session.query(Game).filter(Game.game_id == "20260527SSLG0").one()
+        assert game.game_status == GAME_STATUS_CANCELLED
+        assert (game.away_score, game.home_score) == (3, 5)
