@@ -292,6 +292,61 @@ def test_statistical_quality_gate_passes_when_transactional_totals_are_within_cu
         session.close()
 
 
+def test_team_gate_ignores_placeholder_player_team_rows_with_canonical_codes():
+    session = _make_session()
+    try:
+        _insert_regular_season(session)
+        session.execute(
+            text(
+                """
+                INSERT INTO player_season_batting
+                    (player_id, season, league, team_code, canonical_team_code, plate_appearances, at_bats, runs, hits, home_runs)
+                VALUES
+                    (10, 2025, 'REGULAR', 'SK', 'SSG', 5, 2, 1, 2, 0),
+                    (11, 2025, 'REGULAR', 'TOTAL', 'SSG', 99, 99, 99, 99, 99)
+                """
+            )
+        )
+        session.execute(
+            text(
+                """
+                INSERT INTO team_season_batting
+                    (team_id, season, league, games, plate_appearances, at_bats, runs, hits, home_runs)
+                VALUES ('SSG', 2025, 'REGULAR', 1, 5, 2, 1, 2, 0)
+                """
+            )
+        )
+        session.execute(
+            text(
+                """
+                INSERT INTO player_season_pitching
+                    (player_id, season, league, team_code, canonical_team_code, innings_outs, innings_pitched, wins, strikeouts, tbf)
+                VALUES
+                    (20, 2025, 'REGULAR', 'SK', 'SSG', 7, NULL, 1, 4, 30),
+                    (21, 2025, 'REGULAR', 'TOTAL', 'SSG', 99, NULL, 9, 99, 99)
+                """
+            )
+        )
+        session.execute(
+            text(
+                """
+                INSERT INTO team_season_pitching
+                    (team_id, season, league, games, wins, strikeouts, innings_pitched, innings_outs, tbf)
+                VALUES ('SSG', 2025, 'REGULAR', 1, 1, 4, 2.333, 7, 30)
+                """
+            )
+        )
+        session.commit()
+
+        result = run_quality_gate(session, 2025)
+
+        assert result["ok"] is True
+        assert result["team_batting"]["ok"] is True
+        assert result["team_pitching"]["ok"] is True
+    finally:
+        session.close()
+
+
 def test_statistical_quality_gate_reports_missing_cumulative_records():
     session = _make_session()
     try:

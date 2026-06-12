@@ -168,10 +168,11 @@ class TeamStatAggregator:
             raise ValueError("Database session is required for database aggregation")
 
         logger.info("Aggregating player batting stats via database query for season=%s, team_id=%s", season, team_id)
+        team_code_expr = func.coalesce(PlayerSeasonBatting.canonical_team_code, PlayerSeasonBatting.team_code)
 
         query = (
             self.session.query(
-                PlayerSeasonBatting.team_code.label("team_id"),
+                team_code_expr.label("team_id"),
                 func.sum(PlayerSeasonBatting.plate_appearances).label("plate_appearances"),
                 func.sum(PlayerSeasonBatting.at_bats).label("at_bats"),
                 func.sum(PlayerSeasonBatting.runs).label("runs"),
@@ -194,18 +195,18 @@ class TeamStatAggregator:
             .filter(PlayerSeasonBatting.season == season)
             .filter(PlayerSeasonBatting.league == "REGULAR")
             .filter(
-                PlayerSeasonBatting.team_code.isnot(None),
-                PlayerSeasonBatting.team_code != "",
-                PlayerSeasonBatting.team_code != "합계",
-                PlayerSeasonBatting.team_code != "TOTAL",
-                PlayerSeasonBatting.team_code != "ALL",
-                PlayerSeasonBatting.team_code != "-",
+                team_code_expr.isnot(None),
+                team_code_expr != "",
+                team_code_expr != "합계",
+                team_code_expr != "TOTAL",
+                team_code_expr != "ALL",
+                team_code_expr != "-",
             )
         )
         if team_id:
-            query = query.filter(PlayerSeasonBatting.team_code == team_id)
+            query = query.filter(team_code_expr == team_id)
 
-        query = query.group_by(PlayerSeasonBatting.team_code)
+        query = query.group_by(team_code_expr)
         rows = query.all()
 
         if not rows:
@@ -266,10 +267,11 @@ class TeamStatAggregator:
             raise ValueError("Database session is required for database aggregation")
 
         logger.info("Aggregating player pitching stats via database query for season=%s, team_id=%s", season, team_id)
+        team_code_expr = func.coalesce(PlayerSeasonPitching.canonical_team_code, PlayerSeasonPitching.team_code)
 
         query = (
             self.session.query(
-                PlayerSeasonPitching.team_code.label("team_id"),
+                team_code_expr.label("team_id"),
                 func.sum(PlayerSeasonPitching.wins).label("wins"),
                 func.sum(PlayerSeasonPitching.losses).label("losses"),
                 func.sum(PlayerSeasonPitching.saves).label("saves"),
@@ -295,18 +297,18 @@ class TeamStatAggregator:
             .filter(PlayerSeasonPitching.season == season)
             .filter(PlayerSeasonPitching.league == "REGULAR")
             .filter(
-                PlayerSeasonPitching.team_code.isnot(None),
-                PlayerSeasonPitching.team_code != "",
-                PlayerSeasonPitching.team_code != "합계",
-                PlayerSeasonPitching.team_code != "TOTAL",
-                PlayerSeasonPitching.team_code != "ALL",
-                PlayerSeasonPitching.team_code != "-",
+                team_code_expr.isnot(None),
+                team_code_expr != "",
+                team_code_expr != "합계",
+                team_code_expr != "TOTAL",
+                team_code_expr != "ALL",
+                team_code_expr != "-",
             )
         )
         if team_id:
-            query = query.filter(PlayerSeasonPitching.team_code == team_id)
+            query = query.filter(team_code_expr == team_id)
 
-        query = query.group_by(PlayerSeasonPitching.team_code)
+        query = query.group_by(team_code_expr)
         rows = query.all()
 
         if not rows:
@@ -441,7 +443,7 @@ class TeamStatAggregator:
         # Group rows by (season, team_code)
         groups: dict[tuple[int, str], list[PlayerSeasonBatting]] = {}
         for r in rows:
-            tc = r.team_code
+            tc = r.canonical_team_code or r.team_code
             if not tc or tc in ("합계", "TOTAL", "ALL", "-"):
                 logger.warning(f"[WARN] Skipping PlayerSeasonBatting row ID {r.id}: Invalid team_code '{tc}'")
                 continue
@@ -536,7 +538,7 @@ class TeamStatAggregator:
         # Group rows by (season, team_code)
         groups: dict[tuple[int, str], list[PlayerSeasonPitching]] = {}
         for r in rows:
-            tc = r.team_code
+            tc = r.canonical_team_code or r.team_code
             if not tc or tc in ("합계", "TOTAL", "ALL", "-"):
                 logger.warning(f"[WARN] Skipping PlayerSeasonPitching row ID {r.id}: Invalid team_code '{tc}'")
                 continue
@@ -632,7 +634,7 @@ class TeamStatAggregator:
 
         # Build Team Games lookup map from Standings
         team_games_map = {}
-        unique_teams = {r.team_code for r in rows if r.team_code}
+        unique_teams = {r.canonical_team_code or r.team_code for r in rows if r.canonical_team_code or r.team_code}
         for tc in unique_teams:
             if tc:
                 games = TeamStatAggregator._get_team_games(session, tc, year)
@@ -667,7 +669,7 @@ class TeamStatAggregator:
 
         # Build Team Games lookup map from Standings
         team_games_map = {}
-        unique_teams = {r.team_code for r in rows if r.team_code}
+        unique_teams = {r.canonical_team_code or r.team_code for r in rows if r.canonical_team_code or r.team_code}
         for tc in unique_teams:
             if tc:
                 games = TeamStatAggregator._get_team_games(session, tc, year)
