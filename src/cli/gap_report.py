@@ -222,6 +222,96 @@ def _gap_severity(gap: dict[str, Any]) -> str:
     return "ok"
 
 
+def _freshness_summary_parts(gap_data: dict[str, Any]) -> list[str]:
+    details = gap_data.get("details", {})
+    summary_parts = [f"{gap_data.get('total_issues', 0)} total issues"]
+    for key, value in details.items():
+        if value:
+            summary_parts.append(f"{key}: {len(value)} games")
+    return summary_parts
+
+
+def _team_stats_summary_parts(gap_data: dict[str, Any]) -> list[str]:
+    summary_parts = [f"{gap_data.get('total', 0)} team stat mismatches"]
+    bat = gap_data.get("batting_mismatches", 0)
+    pit = gap_data.get("pitching_mismatches", 0)
+    if bat:
+        summary_parts.append(f"batting={bat}")
+    if pit:
+        summary_parts.append(f"pitching={pit}")
+    return summary_parts
+
+
+def _gap_summary_parts(gap_type: str, gap_data: dict[str, Any]) -> list[str]:
+    if gap_type == "FRESHNESS":
+        return _freshness_summary_parts(gap_data)
+    if gap_type == "RELAY":
+        return [f"{gap_data.get('missing_count', 0)} games missing PBP"]
+    if gap_type == "STALENESS":
+        return [f"{gap_data.get('stale_count', 0)} stale sources"]
+    if gap_type == "STANDINGS":
+        return [f"{gap_data.get('mismatches', 0)} mismatches, {gap_data.get('missing_scores', 0)} missing scores"]
+    if gap_type == "PROFILE":
+        return [f"{gap_data.get('missing_count', 0)} players missing profiles"]
+    if gap_type == "ID_RESOLUTION":
+        counts = gap_data.get("counts", {})
+        return [
+            f"{gap_data.get('total', 0)} NULL player_ids (batting={counts.get('batting')}, pitching={counts.get('pitching')}, lineups={counts.get('lineups')})",
+        ]
+    if gap_type == "PA_FORMULA":
+        return [f"{gap_data.get('violation_count', 0)} PA formula violations"]
+    if gap_type == "TEAM_STATS":
+        return _team_stats_summary_parts(gap_data)
+    if gap_data.get("error"):
+        return [f"Error: {gap_data['error']}"]
+    return []
+
+
+def _freshness_detail_items(gap_data: dict[str, Any]) -> list[str]:
+    detail_items = []
+    details = gap_data.get("details", {})
+    for key, value in details.items():
+        detail_items.extend(f"{key}: {game_id}" for game_id in value[:3])
+    return detail_items
+
+
+def _pa_formula_detail_items(gap_data: dict[str, Any]) -> list[str]:
+    return [
+        f"{violation['game_date']} {violation['player_name']} PA={violation['pa']} ≠ AB+BB+HBP+SH+SF"
+        for violation in (gap_data.get("violations") or [])[:5]
+    ]
+
+
+def _team_stats_detail_items(gap_data: dict[str, Any]) -> list[str]:
+    detail_items = []
+    details = gap_data.get("details", {})
+    for mismatch in (details.get("batting") or [])[:3]:
+        team_id = mismatch.get("team_id", "?")
+        detail_items.append(f"타격 [{team_id}]: {mismatch.get('issue', '')}")
+        detail_items.extend(f"  {diff}" for diff in (mismatch.get("diffs") or [])[:2])
+    for mismatch in (details.get("pitching") or [])[:3]:
+        team_id = mismatch.get("team_id", "?")
+        detail_items.append(f"투수 [{team_id}]: {mismatch.get('issue', '')}")
+        detail_items.extend(f"  {diff}" for diff in (mismatch.get("diffs") or [])[:2])
+    return detail_items
+
+
+def _gap_detail_items(gap_type: str, gap_data: dict[str, Any]) -> list[str]:
+    if gap_type == "RELAY":
+        return [f"{gid}" for gid in (gap_data.get("missing_game_ids") or [])[:5]]
+    if gap_type == "PROFILE":
+        return [f"player_id={pid}" for pid in (gap_data.get("missing_player_ids") or [])[:5]]
+    if gap_type == "STALENESS":
+        return gap_data.get("details", [])[:5]
+    if gap_type == "FRESHNESS":
+        return _freshness_detail_items(gap_data)
+    if gap_type == "PA_FORMULA":
+        return _pa_formula_detail_items(gap_data)
+    if gap_type == "TEAM_STATS":
+        return _team_stats_detail_items(gap_data)
+    return []
+
+
 def send_gap_alerts(report: dict[str, Any]) -> None:
     """Send gap-type-aware alerts for each non-ok gap in the report."""
     for gap_type, gap_data in report.get("gaps", {}).items():
@@ -229,71 +319,9 @@ def send_gap_alerts(report: dict[str, Any]) -> None:
         if severity == "ok":
             continue
 
-        summary_parts = []
-        if gap_type == "FRESHNESS":
-            details = gap_data.get("details", {})
-            summary_parts.append(f"{gap_data.get('total_issues', 0)} total issues")
-            for k, v in details.items():
-                if v:
-                    summary_parts.append(f"{k}: {len(v)} games")
-        elif gap_type == "RELAY":
-            summary_parts.append(f"{gap_data.get('missing_count', 0)} games missing PBP")
-        elif gap_type == "STALENESS":
-            summary_parts.append(f"{gap_data.get('stale_count', 0)} stale sources")
-        elif gap_type == "STANDINGS":
-            summary_parts.append(
-                f"{gap_data.get('mismatches', 0)} mismatches, {gap_data.get('missing_scores', 0)} missing scores",
-            )
-        elif gap_type == "PROFILE":
-            summary_parts.append(f"{gap_data.get('missing_count', 0)} players missing profiles")
-        elif gap_type == "ID_RESOLUTION":
-            counts = gap_data.get("counts", {})
-            summary_parts.append(
-                f"{gap_data.get('total', 0)} NULL player_ids (batting={counts.get('batting')}, pitching={counts.get('pitching')}, lineups={counts.get('lineups')})",
-            )
-        elif gap_type == "PA_FORMULA":
-            summary_parts.append(f"{gap_data.get('violation_count', 0)} PA formula violations")
-        elif gap_type == "TEAM_STATS":
-            summary_parts.append(f"{gap_data.get('total', 0)} team stat mismatches")
-            bat = gap_data.get("batting_mismatches", 0)
-            pit = gap_data.get("pitching_mismatches", 0)
-            if bat:
-                summary_parts.append(f"batting={bat}")
-            if pit:
-                summary_parts.append(f"pitching={pit}")
-        elif gap_data.get("error"):
-            summary_parts.append(f"Error: {gap_data['error']}")
-
+        summary_parts = _gap_summary_parts(gap_type, gap_data)
         summary = ", ".join(summary_parts) if summary_parts else "Unknown gap"
-
-        detail_items: list[str] = []
-        if gap_type == "RELAY":
-            detail_items = [f"{gid}" for gid in (gap_data.get("missing_game_ids") or [])[:5]]
-        elif gap_type == "PROFILE":
-            detail_items = [f"player_id={pid}" for pid in (gap_data.get("missing_player_ids") or [])[:5]]
-        elif gap_type == "STALENESS":
-            detail_items = gap_data.get("details", [])[:5]
-        elif gap_type == "FRESHNESS":
-            details = gap_data.get("details", {})
-            for k, v in details.items():
-                for gid in v[:3]:
-                    detail_items.append(f"{k}: {gid}")
-        elif gap_type == "PA_FORMULA":
-            for v in (gap_data.get("violations") or [])[:5]:
-                detail_items.append(f"{v['game_date']} {v['player_name']} PA={v['pa']} ≠ AB+BB+HBP+SH+SF")
-        elif gap_type == "TEAM_STATS":
-            details = gap_data.get("details", {})
-            for m in (details.get("batting") or [])[:3]:
-                team_id = m.get("team_id", "?")
-                detail_items.append(f"타격 [{team_id}]: {m.get('issue', '')}")
-                for d in (m.get("diffs") or [])[:2]:
-                    detail_items.append(f"  {d}")
-            for m in (details.get("pitching") or [])[:3]:
-                team_id = m.get("team_id", "?")
-                detail_items.append(f"투수 [{team_id}]: {m.get('issue', '')}")
-                for d in (m.get("diffs") or [])[:2]:
-                    detail_items.append(f"  {d}")
-
+        detail_items = _gap_detail_items(gap_type, gap_data)
         SlackWebhookClient.send_gap_alert(gap_type, summary, detail_items)
 
 

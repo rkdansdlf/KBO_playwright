@@ -87,7 +87,7 @@ def run_health_check() -> None:
     logger.info("=" * 60)
     logger.info(" KBO Pipeline Health Check")
     logger.info("=" * 60)
-    logger.info(f" Timestamp: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")  # noqa: G004
+    logger.info(f" Timestamp: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     logger.info("")
 
     stale_count = sum(1 for r in ds_rows if r["stale"].startswith("STALE"))
@@ -99,17 +99,17 @@ def run_health_check() -> None:
     logger.info("")
 
     logger.info("--- DataSources ---")
-    logger.info(f"  {'Key':<30} {'Domain':<12} {'Freq':<10} {'Status':<20} {'Hash'}")  # noqa: G004
-    logger.info(f"  {'-' * 30} {'-' * 12} {'-' * 10} {'-' * 20} {'-' * 12}")  # noqa: G004
+    logger.info(f"  {'Key':<30} {'Domain':<12} {'Freq':<10} {'Status':<20} {'Hash'}")
+    logger.info(f"  {'-' * 30} {'-' * 12} {'-' * 10} {'-' * 20} {'-' * 12}")
     for r in ds_rows:
-        logger.info(f"  {r['key']:<30} {r['domain']:<12} {r['freq']:<10} {r['stale']:<20} {r['hash']}")  # noqa: G004
+        logger.info(f"  {r['key']:<30} {r['domain']:<12} {r['freq']:<10} {r['stale']:<20} {r['hash']}")
 
     logger.info("")
     logger.info("--- Tables ---")
-    logger.info(f"  {'Table':<30} {'Rows':<10} {'Latest'}")  # noqa: G004
-    logger.info(f"  {'-' * 30} {'-' * 10} {'-' * 30}")  # noqa: G004
+    logger.info(f"  {'Table':<30} {'Rows':<10} {'Latest'}")
+    logger.info(f"  {'-' * 30} {'-' * 10} {'-' * 30}")
     for r in table_rows:
-        logger.info(f"  {r['table']:<30} {str(r['rows']):<10} {r['latest']}")  # noqa: G004
+        logger.info(f"  {r['table']:<30} {str(r['rows']):<10} {r['latest']}")
 
     logger.info("")
     if stale_count or never_count or empty_count:

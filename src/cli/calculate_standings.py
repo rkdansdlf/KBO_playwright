@@ -234,9 +234,9 @@ class StandingsCalculator:
             .all()
         )
 
-        logger.info(f"\n{'=' * 70}")  # noqa: G004
+        logger.info(f"\n{'=' * 70}")
         logger.info("  KBO %s년 순위표 (기준: %s)", year, d)
-        logger.info(f"{'=' * 70}")  # noqa: G004
+        logger.info(f"{'=' * 70}")
         logger.info(
             "%-4s %-6s %4s %4s %3s %7s %5s %8s %4s %8s %8s",
             "순위",
@@ -298,7 +298,7 @@ class StandingsCalculator:
                     away_s,
                 )
 
-        logger.info(f"{'=' * 70}")  # noqa: G004
+        logger.info(f"{'=' * 70}")
         logger.info("  ★ 상위 5팀 (5강)" if top_5_rows else "")
 
     def print_trend(self, year: int, team_code: str | None = None) -> None:
@@ -320,13 +320,13 @@ class StandingsCalculator:
                 continue
             data = team_rows[tc]
             logger.info("\n[%s] 승률 추이 (%s)", tc, year)
-            logger.info(f"{'날짜':<12} {'승':>3} {'패':>3} {'승률':>7} {'순위':>4} {'최근10':>8}")  # noqa: G004
-            logger.info(f"{'-' * 45}")  # noqa: G004
+            logger.info(f"{'날짜':<12} {'승':>3} {'패':>3} {'승률':>7} {'순위':>4} {'최근10':>8}")
+            logger.info(f"{'-' * 45}")
             step = max(1, len(data) // 15)
             for r in data[::step]:
                 recent = f"{r.recent_10_wins}승{r.recent_10_losses}패"
                 logger.info(
-                    f"  {r.standings_date}  {r.wins:>3} {r.losses:>3}  {r.win_pct:.3f}  {r.rank:>3}위  {recent:>8}",  # noqa: G004
+                    f"  {r.standings_date}  {r.wins:>3} {r.losses:>3}  {r.win_pct:.3f}  {r.rank:>3}위  {recent:>8}",
                 )
             if data:
                 last = data[-1]

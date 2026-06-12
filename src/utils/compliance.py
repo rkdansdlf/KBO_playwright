@@ -1,17 +1,18 @@
-import logging
-
-logger = logging.getLogger(__name__)
 """
 Robots.txt compliance checker for KBO Data Crawler.
 Ensures that we follow Disallow rules from koreabaseball.com.
 """
 
+from __future__ import annotations
+
 import asyncio
+import logging
 import time
 import urllib.robotparser
-from typing import Optional
 
 import httpx
+
+logger = logging.getLogger(__name__)
 
 
 class ComplianceChecker:
@@ -19,7 +20,7 @@ class ComplianceChecker:
     Fetches and parses robots.txt to check crawling permissions.
     """
 
-    _instance: Optional["ComplianceChecker"] = None
+    _instance: ComplianceChecker | None = None
 
     def __init__(self, robots_url: str = "https://www.koreabaseball.com/robots.txt") -> None:
         self.robots_url = robots_url
@@ -29,7 +30,7 @@ class ComplianceChecker:
         self._lock = asyncio.Lock()
 
     @classmethod
-    def get_instance(cls) -> "ComplianceChecker":
+    def get_instance(cls) -> ComplianceChecker:
         if cls._instance is None:
             cls._instance = cls()
         return cls._instance

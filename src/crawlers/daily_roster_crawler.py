@@ -18,7 +18,7 @@ from tenacity import AsyncRetrying, retry_if_exception_type, stop_after_attempt,
 
 from src.urls import REGISTER
 from src.utils.playwright_pool import AsyncPlaywrightPool
-from src.utils.playwright_retry import NAV_TIMEOUT
+from src.utils.playwright_retry import NAV_TIMEOUT, SHORT_TIMEOUT
 from src.utils.team_codes import resolve_team_code
 
 
@@ -95,7 +95,7 @@ class DailyRosterCrawler:
         triggers = ["ctl00$ctl00$ctl00$cphContents$cphContents$cphContents$btnCalendarSelect"]
 
         try:
-            async with page.expect_response(lambda response: "Register.aspx" in response.url, timeout=5000):
+            async with page.expect_response(lambda response: "Register.aspx" in response.url, timeout=SHORT_TIMEOUT):
                 await page.evaluate(f"__doPostBack('{triggers[0]}', '')")
         except (TimeoutError, PlaywrightTimeoutError):
             logger.debug("__doPostBack timed out (expected for fast/no-op)")

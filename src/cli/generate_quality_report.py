@@ -151,19 +151,31 @@ def get_relay_integrity_metrics(
     }
 
 
-def get_auto_remediation_summary(target_date_str: str, audit_dir: Path | None = None) -> dict[str, Any]:
-    """
-    Scans logs/audit_fixes/ for files starting with target_date_str.
-    Parses warning, abort, and fixed player details to return a status summary.
-    """
-    import json
-    from pathlib import Path
+_AUTO_REMEDIATION_DIFF_KEYS = [
+    "games",
+    "at_bats",
+    "hits",
+    "home_runs",
+    "rbi",
+    "walks",
+    "wins",
+    "losses",
+    "saves",
+    "earned_runs",
+    "innings_outs",
+    "errors",
+    "stolen_bases",
+    "caught_stealing",
+]
 
-    if audit_dir is None:
-        project_root = Path(__file__).resolve().parent.parent.parent
-        audit_dir = project_root / "logs" / "audit_fixes"
 
-    summary = {
+def _default_audit_fix_dir() -> Path:
+    project_root = Path(__file__).resolve().parent.parent.parent
+    return project_root / "logs" / "audit_fixes"
+
+
+def _empty_auto_remediation_summary() -> dict[str, Any]:
+    return {
         "status": "no_issues",
         "categories_fixed": [],
         "total_fixed": 0,
@@ -174,6 +186,93 @@ def get_auto_remediation_summary(target_date_str: str, audit_dir: Path | None = 
         "categories_aborted": [],
         "abort_reasons": [],
     }
+
+
+def _add_unique_category(summary: dict[str, Any], key: str, category: str) -> None:
+    if category not in summary[key]:
+        summary[key].append(category)
+
+
+def _audit_category_from_filename(filename: str) -> str:
+    return filename.split("_")[-1].replace(".json", "").upper()
+
+
+def _record_auto_remediation_abort(summary: dict[str, Any], filename: str, content: dict[str, Any]) -> None:
+    category = _audit_category_from_filename(filename)
+    _add_unique_category(summary, "categories_aborted", category)
+    reason = content.get("reason", "unknown reason")
+    summary["abort_reasons"].append(f"{category}: {reason}")
+
+
+def _record_auto_remediation_warning(summary: dict[str, Any], filename: str, content: dict[str, Any]) -> None:
+    category = _audit_category_from_filename(filename)
+    _add_unique_category(summary, "categories_warning", category)
+    mismatches = content.get("mismatches", [])
+    summary["total_warning"] += len(mismatches)
+    for mismatch in mismatches:
+        summary["players_warning"].append(
+            {
+                "name": mismatch.get("name"),
+                "player_id": mismatch.get("player_id"),
+                "category": category,
+                "diffs": mismatch.get("diffs", []),
+            },
+        )
+
+
+def _fixed_snapshot_diffs(snapshot: dict[str, Any]) -> list[str]:
+    diffs = []
+    orig = snapshot.get("original", {})
+    calc = snapshot.get("calculated", {})
+    for key in _AUTO_REMEDIATION_DIFF_KEYS:
+        if key in orig or key in calc:
+            o_val = orig.get(key)
+            c_val = calc.get(key)
+            if o_val != c_val:
+                diffs.append(f"{key}: {o_val}→{c_val}")
+    return diffs
+
+
+def _record_auto_remediation_fixed(summary: dict[str, Any], filename: str, content: Any) -> None:
+    parts = filename.replace(".json", "").split("_")
+    category = parts[-1].upper() if len(parts) >= 3 else "UNKNOWN"
+    _add_unique_category(summary, "categories_fixed", category)
+
+    snapshots = content if isinstance(content, list) else [content]
+    summary["total_fixed"] += len(snapshots)
+    for snapshot in snapshots:
+        orig = snapshot.get("original", {})
+        calc = snapshot.get("calculated", {})
+        player_name = snapshot.get("player_name") or calc.get("player_name") or orig.get("player_name")
+        summary["players_fixed"].append(
+            {
+                "name": player_name,
+                "player_id": snapshot.get("player_id"),
+                "category": category,
+                "diffs": _fixed_snapshot_diffs(snapshot),
+            },
+        )
+
+
+def _auto_remediation_status(has_abort: bool, has_warning: bool, has_fixed: bool) -> str:
+    if has_abort:
+        return "aborted"
+    if has_warning:
+        return "warning"
+    if has_fixed:
+        return "fixed"
+    return "no_issues"
+
+
+def get_auto_remediation_summary(target_date_str: str, audit_dir: Path | None = None) -> dict[str, Any]:
+    """
+    Scans logs/audit_fixes/ for files starting with target_date_str.
+    Parses warning, abort, and fixed player details to return a status summary.
+    """
+    import json
+
+    audit_dir = audit_dir or _default_audit_fix_dir()
+    summary = _empty_auto_remediation_summary()
 
     if not audit_dir.exists():
         return summary
@@ -191,86 +290,20 @@ def get_auto_remediation_summary(target_date_str: str, audit_dir: Path | None = 
             with open(f, encoding="utf-8") as file_handle:
                 content = json.load(file_handle)
         except SQLAlchemyError as e:
-            _LOGGER.error(f"Failed to read/parse audit fix file {filename}: {e}")  # noqa: G004
+            _LOGGER.error(f"Failed to read/parse audit fix file {filename}: {e}")
             continue
 
-        # Check file type based on naming pattern
         if "_abort_" in filename:
             has_abort = True
-            category = filename.split("_")[-1].replace(".json", "").upper()
-            if category not in summary["categories_aborted"]:
-                summary["categories_aborted"].append(category)
-            reason = content.get("reason", "unknown reason")
-            summary["abort_reasons"].append(f"{category}: {reason}")
-
+            _record_auto_remediation_abort(summary, filename, content)
         elif "_warning_" in filename:
             has_warning = True
-            category = filename.split("_")[-1].replace(".json", "").upper()
-            if category not in summary["categories_warning"]:
-                summary["categories_warning"].append(category)
-            mismatches = content.get("mismatches", [])
-            summary["total_warning"] += len(mismatches)
-            for m in mismatches:
-                summary["players_warning"].append(
-                    {
-                        "name": m.get("name"),
-                        "player_id": m.get("player_id"),
-                        "category": category,
-                        "diffs": m.get("diffs", []),
-                    },
-                )
-
+            _record_auto_remediation_warning(summary, filename, content)
         else:
-            # Fixed player snapshot {date}_{player_id}_{type}.json
-            # Note: content is a list of snapshots
             has_fixed = True
-            parts = filename.replace(".json", "").split("_")
-            category = parts[-1].upper() if len(parts) >= 3 else "UNKNOWN"
-            if category not in summary["categories_fixed"]:
-                summary["categories_fixed"].append(category)
+            _record_auto_remediation_fixed(summary, filename, content)
 
-            snapshots = content if isinstance(content, list) else [content]
-            summary["total_fixed"] += len(snapshots)
-            for snap in snapshots:
-                diffs = []
-                orig = snap.get("original", {})
-                calc = snap.get("calculated", {})
-                player_id = snap.get("player_id")
-                player_name = snap.get("player_name") or calc.get("player_name") or orig.get("player_name")
-
-                for k in [
-                    "games",
-                    "at_bats",
-                    "hits",
-                    "home_runs",
-                    "rbi",
-                    "walks",
-                    "wins",
-                    "losses",
-                    "saves",
-                    "earned_runs",
-                    "innings_outs",
-                    "errors",
-                    "stolen_bases",
-                    "caught_stealing",
-                ]:
-                    if k in orig or k in calc:
-                        o_val = orig.get(k)
-                        c_val = calc.get(k)
-                        if o_val != c_val:
-                            diffs.append(f"{k}: {o_val}→{c_val}")
-
-                summary["players_fixed"].append(
-                    {"name": player_name, "player_id": player_id, "category": category, "diffs": diffs},
-                )
-
-    if has_abort:
-        summary["status"] = "aborted"
-    elif has_warning:
-        summary["status"] = "warning"
-    elif has_fixed:
-        summary["status"] = "fixed"
-
+    summary["status"] = _auto_remediation_status(has_abort, has_warning, has_fixed)
     return summary
 
 
@@ -541,7 +574,7 @@ def get_daily_metrics(session, target_date_str: str, gate_result: dict[str, Any]
                 parity_info["diff"] = oci_count - local_count
                 parity_info["ok"] = parity_info["diff"] == 0
     except SQLAlchemyError as e:
-        _LOGGER.error(f"Parity check failed: {e}")  # noqa: G004
+        _LOGGER.error(f"Parity check failed: {e}")
         parity_info["ok"] = False
         parity_info["error"] = str(e)
 
@@ -575,27 +608,22 @@ def get_daily_metrics(session, target_date_str: str, gate_result: dict[str, Any]
     }
 
 
-def format_telegram_report(metrics: dict[str, Any], gate_result: dict[str, Any]) -> str:
-    """Format the metrics and gate results into a readable Telegram message."""
-    parity = metrics.get("parity") or {}
-    parity_icon = "✅" if parity.get("ok", True) else "🚨"
-
-    lines = [f"{parity_icon} <b>KBO Quality Report ({metrics['date']})</b>\n"]
-
-    # Collection Status
+def _append_collection_section(lines: list[str], metrics: dict[str, Any]) -> None:
     total = metrics["total_games"]
     comp = metrics["completed_count"]
     status_summary = ", ".join([f"{s}: {c}" for s, c in metrics["status_counts"].items()])
     lines.append(f"📡 <b>Collection</b>: {comp}/{total} games finished")
     lines.append(f"   ({status_summary})")
 
-    # Parity Check
+
+def _append_parity_section(lines: list[str], parity: dict[str, Any]) -> None:
     if not parity.get("ok", True):
         lines.append(
             f"❓ <b>Parity</b>: Local {parity.get('local_count')} / OCI {parity.get('oci_count')} (Diff: {parity.get('diff')})",
         )
 
-    # Detail Integrity
+
+def _append_detail_integrity_section(lines: list[str], metrics: dict[str, Any]) -> None:
     incomplete = [d["game_id"] for d in metrics["detail_integrity"] if not d["is_complete"]]
     if not incomplete:
         lines.append("✅ <b>Integrity</b>: 100% (All details captured)")
@@ -604,7 +632,8 @@ def format_telegram_report(metrics: dict[str, Any], gate_result: dict[str, Any])
         for gid in incomplete[:3]:
             lines.append(f"   - {gid}")  # noqa: PERF401
 
-    # Player Statistical Consistency
+
+def _append_player_stats_section(lines: list[str], gate_result: dict[str, Any]) -> None:
     player_bat_ok = gate_result.get("batting", {}).get("ok", True)
     player_pit_ok = gate_result.get("pitching", {}).get("ok", True)
     if player_bat_ok and player_pit_ok:
@@ -619,11 +648,14 @@ def format_telegram_report(metrics: dict[str, Any], gate_result: dict[str, Any])
         if pit_miss:
             lines.append(f"   - Pitching: {pit_miss} issues")
 
-    # Sabermetrics highlight
+
+def _append_top_performer_section(lines: list[str], metrics: dict[str, Any]) -> None:
     top = metrics.get("top_performer")
     if top:
         lines.append(f"🔥 <b>Top Performer</b>: {top['name']} (WAR: {top['war']})")
 
+
+def _append_relay_integrity_section(lines: list[str], metrics: dict[str, Any]) -> None:
     relay_integrity = metrics.get("relay_integrity") or {}
     if relay_integrity.get("ok", True):
         lines.append("✅ <b>PBP</b>: Recent/current-season relay complete")
@@ -634,6 +666,8 @@ def format_telegram_report(metrics: dict[str, Any], gate_result: dict[str, Any])
         for gid in list(relay_integrity.get("missing_game_ids") or [])[:5]:
             lines.append(f"   - {gid}")  # noqa: PERF401
 
+
+def _append_standings_integrity_section(lines: list[str], metrics: dict[str, Any]) -> None:
     standings_integrity = metrics.get("standings_integrity") or {}
     if standings_integrity.get("ok", True):
         lines.append("✅ <b>Standings</b>: Matches completed-game rollup")
@@ -646,14 +680,20 @@ def format_telegram_report(metrics: dict[str, Any], gate_result: dict[str, Any])
             issue = item.get("issue", "mismatch")
             lines.append(f"   - {team_code}: {issue}")
 
-    # Auto-Remediation Status
+
+def _category_counts(items: list[dict[str, Any]]) -> dict[str, int]:
+    cat_counts = {}
+    for item in items:
+        cat = item.get("category", "UNKNOWN").lower()
+        cat_counts[cat] = cat_counts.get(cat, 0) + 1
+    return cat_counts
+
+
+def _append_auto_remediation_section(lines: list[str], metrics: dict[str, Any]) -> None:
     auto_rem = metrics.get("auto_remediation") or {}
     status = auto_rem.get("status", "no_issues")
     if status == "fixed":
-        cat_counts = {}
-        for p in auto_rem.get("players_fixed", []):
-            cat = p.get("category", "UNKNOWN").lower()
-            cat_counts[cat] = cat_counts.get(cat, 0) + 1
+        cat_counts = _category_counts(auto_rem.get("players_fixed", []))
         cat_str = ", ".join([f"{k} {v}" for k, v in cat_counts.items()])
         lines.append(f"🔧 <b>Auto-Remediation</b>: {auto_rem.get('total_fixed')}건 수정 완료 ({cat_str})")
         for p in auto_rem.get("players_fixed", [])[:3]:
@@ -662,10 +702,7 @@ def format_telegram_report(metrics: dict[str, Any], gate_result: dict[str, Any])
         if len(auto_rem.get("players_fixed", [])) > 3:
             lines.append(f"   - ... 외 {len(auto_rem['players_fixed']) - 3}명")
     elif status == "warning":
-        cat_counts = {}
-        for p in auto_rem.get("players_warning", []):
-            cat = p.get("category", "UNKNOWN").lower()
-            cat_counts[cat] = cat_counts.get(cat, 0) + 1
+        cat_counts = _category_counts(auto_rem.get("players_warning", []))
         cat_str = ", ".join([f"{k} {v}" for k, v in cat_counts.items()])
         lines.append(
             f"⚠️ <b>Auto-Remediation</b>: mismatch {auto_rem.get('total_warning')}건 발견 (수정 비활성화) ({cat_str})",
@@ -683,7 +720,8 @@ def format_telegram_report(metrics: dict[str, Any], gate_result: dict[str, Any])
     else:
         lines.append("✅ <b>Auto-Remediation</b>: No issues detected")
 
-    # PA Formula Integrity
+
+def _append_pa_formula_section(lines: list[str], metrics: dict[str, Any]) -> None:
     pa_formula = metrics.get("pa_formula_integrity") or {}
     if pa_formula.get("ok", True):
         lines.append("✅ <b>PA Formula</b>: All consistent (PA=AB+BB+HBP+SH+SF)")
@@ -693,7 +731,8 @@ def format_telegram_report(metrics: dict[str, Any], gate_result: dict[str, Any])
         for v in (pa_formula.get("violations") or [])[:3]:
             lines.append(f"   - {v['game_date']} {v['player_name']} PA={v['pa']} ≠ AB+BB+HBP+SH+SF")  # noqa: PERF401
 
-    # PA Formula Trend
+
+def _append_pa_formula_trend_section(lines: list[str], metrics: dict[str, Any]) -> None:
     trend = metrics.get("pa_formula_trend") or {}
     if trend.get("months"):
         direction_icon = (
@@ -704,7 +743,8 @@ def format_telegram_report(metrics: dict[str, Any], gate_result: dict[str, Any])
             icon = "❌" if m["violation_count"] > 0 else "✅"
             lines.append(f"   {icon} {m['month']}: {m['violation_count']}/{m['total_checked']} ({m['violation_pct']}%)")
 
-    # Team Stats Consistency
+
+def _append_team_stats_section(lines: list[str], gate_result: dict[str, Any]) -> None:
     team_stats = get_team_stats_integrity(gate_result)
     if team_stats["ok"]:
         checked = team_stats["batting_checked"] or team_stats["pitching_checked"]
@@ -720,7 +760,8 @@ def format_telegram_report(metrics: dict[str, Any], gate_result: dict[str, Any])
             for d in m.get("diffs", [])[:2]:
                 lines.append(f"      {d}")  # noqa: PERF401
 
-    # Team Stats Trend
+
+def _append_team_stats_trend_section(lines: list[str], metrics: dict[str, Any]) -> None:
     ts_trend = metrics.get("team_stats_trend") or {}
     if ts_trend.get("months"):
         direction_icon = "📊"
@@ -729,11 +770,33 @@ def format_telegram_report(metrics: dict[str, Any], gate_result: dict[str, Any])
             icon = "❌" if m["total_violations"] > 0 else "✅"
             lines.append(f"   {icon} {m['month']}: {m['total_violations']} violations ({m['teams_checked']} teams)")
 
-    # New Players
+
+def _append_new_players_section(lines: list[str], metrics: dict[str, Any]) -> None:
     if metrics["new_players"]:
         p_names = ", ".join([p["name"] for p in metrics["new_players"][:5]])
         count = len(metrics["new_players"])
         lines.append(f"🆕 <b>New Players</b>: {count} found ({p_names})")
+
+
+def format_telegram_report(metrics: dict[str, Any], gate_result: dict[str, Any]) -> str:
+    """Format the metrics and gate results into a readable Telegram message."""
+    parity = metrics.get("parity") or {}
+    parity_icon = "✅" if parity.get("ok", True) else "🚨"
+    lines = [f"{parity_icon} <b>KBO Quality Report ({metrics['date']})</b>\n"]
+
+    _append_collection_section(lines, metrics)
+    _append_parity_section(lines, parity)
+    _append_detail_integrity_section(lines, metrics)
+    _append_player_stats_section(lines, gate_result)
+    _append_top_performer_section(lines, metrics)
+    _append_relay_integrity_section(lines, metrics)
+    _append_standings_integrity_section(lines, metrics)
+    _append_auto_remediation_section(lines, metrics)
+    _append_pa_formula_section(lines, metrics)
+    _append_pa_formula_trend_section(lines, metrics)
+    _append_team_stats_section(lines, gate_result)
+    _append_team_stats_trend_section(lines, metrics)
+    _append_new_players_section(lines, metrics)
 
     return "\n".join(lines)
 

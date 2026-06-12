@@ -12,6 +12,7 @@ from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 
 from src.utils.team_codes import resolve_team_code, team_code_from_game_id_segment
+from src.utils.type_helpers import parse_innings_to_outs, safe_float_or_none, safe_int_or_none
 
 
 def parse_game_detail_html(html: str, game_id: str, game_date: str, db_session=None) -> dict[str, Any]:
@@ -101,11 +102,11 @@ def _build_team_info(
                 resolved = resolve_team_code(name)
                 if resolved:
                     info["code"] = resolved
-            info["score"] = _safe_int(row.get("R"))
-            info["hits"] = _safe_int(row.get("H"))
-            info["errors"] = _safe_int(row.get("E"))
+            info["score"] = safe_int_or_none(row.get("R"))
+            info["hits"] = safe_int_or_none(row.get("H"))
+            info["errors"] = safe_int_or_none(row.get("E"))
             inning_cols = [col for col in row.index if re.fullmatch(r"\d+", str(col))]
-            info["line_score"] = [_safe_int(row[col]) for col in inning_cols]
+            info["line_score"] = [safe_int_or_none(row[col]) for col in inning_cols]
 
         parse_row(away_row, away_info)
         if home_row is not None:
@@ -143,33 +144,33 @@ def _build_hitter_payload(
                 "player_name": name,
                 "team_code": team_code,
                 "team_side": team_side,
-                "batting_order": _safe_int(row.get("타순")),
+                "batting_order": safe_int_or_none(row.get("타순")),
                 "position": str(row.get("POS", "") or row.get("포지션", "")).strip() or None,
-                "is_starter": _safe_int(row.get("타순")) is not None and _safe_int(row.get("타순")) <= 9,
+                "is_starter": safe_int_or_none(row.get("타순")) is not None and safe_int_or_none(row.get("타순")) <= 9,
                 "stats": {
-                    "plate_appearances": _safe_int(row.get("타석")),
-                    "at_bats": _safe_int(row.get("타수")),
-                    "runs": _safe_int(row.get("득점")),
-                    "hits": _safe_int(row.get("안타")),
-                    "doubles": _safe_int(row.get("2루타")),
-                    "triples": _safe_int(row.get("3루타")),
-                    "home_runs": _safe_int(row.get("홈런")),
-                    "rbi": _safe_int(row.get("타점")),
-                    "walks": _safe_int(row.get("볼넷")),
-                    "intentional_walks": _safe_int(row.get("고의4구")),
-                    "hbp": _safe_int(row.get("사구")),
-                    "strikeouts": _safe_int(row.get("삼진")),
-                    "stolen_bases": _safe_int(row.get("도루")),
-                    "caught_stealing": _safe_int(row.get("도실")),
-                    "sacrifice_hits": _safe_int(row.get("희타")),
-                    "sacrifice_flies": _safe_int(row.get("희비")),
-                    "gdp": _safe_int(row.get("병살")),
-                    "avg": _safe_float(row.get("타율")),
-                    "obp": _safe_float(row.get("출루율")),
-                    "slg": _safe_float(row.get("장타율")),
-                    "ops": _safe_float(row.get("OPS")),
-                    "iso": _safe_float(row.get("ISO")),
-                    "babip": _safe_float(row.get("BABIP")),
+                    "plate_appearances": safe_int_or_none(row.get("타석")),
+                    "at_bats": safe_int_or_none(row.get("타수")),
+                    "runs": safe_int_or_none(row.get("득점")),
+                    "hits": safe_int_or_none(row.get("안타")),
+                    "doubles": safe_int_or_none(row.get("2루타")),
+                    "triples": safe_int_or_none(row.get("3루타")),
+                    "home_runs": safe_int_or_none(row.get("홈런")),
+                    "rbi": safe_int_or_none(row.get("타점")),
+                    "walks": safe_int_or_none(row.get("볼넷")),
+                    "intentional_walks": safe_int_or_none(row.get("고의4구")),
+                    "hbp": safe_int_or_none(row.get("사구")),
+                    "strikeouts": safe_int_or_none(row.get("삼진")),
+                    "stolen_bases": safe_int_or_none(row.get("도루")),
+                    "caught_stealing": safe_int_or_none(row.get("도실")),
+                    "sacrifice_hits": safe_int_or_none(row.get("희타")),
+                    "sacrifice_flies": safe_int_or_none(row.get("희비")),
+                    "gdp": safe_int_or_none(row.get("병살")),
+                    "avg": safe_float_or_none(row.get("타율")),
+                    "obp": safe_float_or_none(row.get("출루율")),
+                    "slg": safe_float_or_none(row.get("장타율")),
+                    "ops": safe_float_or_none(row.get("OPS")),
+                    "iso": safe_float_or_none(row.get("ISO")),
+                    "babip": safe_float_or_none(row.get("BABIP")),
                 },
             }
             results[team_side].append(entry)
@@ -209,27 +210,27 @@ def _build_pitcher_payload(
                 "team_side": team_side,
                 "is_starting": len(results[team_side]) == 0,
                 "stats": {
-                    "innings_outs": _parse_innings_to_outs(innings_text),
-                    "batters_faced": _safe_int(row.get("타자")),
-                    "pitches": _safe_int(row.get("투구수")),
-                    "hits_allowed": _safe_int(row.get("피안타")),
-                    "runs_allowed": _safe_int(row.get("실점")),
-                    "earned_runs": _safe_int(row.get("자책")),
-                    "home_runs_allowed": _safe_int(row.get("피홈런")),
-                    "walks_allowed": _safe_int(row.get("볼넷")),
-                    "strikeouts": _safe_int(row.get("삼진")),
-                    "hit_batters": _safe_int(row.get("사구")),
-                    "wild_pitches": _safe_int(row.get("폭투")),
-                    "balks": _safe_int(row.get("보크")),
-                    "wins": _safe_int(row.get("승")),
-                    "losses": _safe_int(row.get("패")),
-                    "saves": _safe_int(row.get("세")),
-                    "holds": _safe_int(row.get("홀드")),
-                    "era": _safe_float(row.get("ERA")),
-                    "whip": _safe_float(row.get("WHIP")),
-                    "k_per_nine": _safe_float(row.get("K/9")),
-                    "bb_per_nine": _safe_float(row.get("BB/9")),
-                    "kbb": _safe_float(row.get("K/BB")),
+                    "innings_outs": parse_innings_to_outs(innings_text),
+                    "batters_faced": safe_int_or_none(row.get("타자")),
+                    "pitches": safe_int_or_none(row.get("투구수")),
+                    "hits_allowed": safe_int_or_none(row.get("피안타")),
+                    "runs_allowed": safe_int_or_none(row.get("실점")),
+                    "earned_runs": safe_int_or_none(row.get("자책")),
+                    "home_runs_allowed": safe_int_or_none(row.get("피홈런")),
+                    "walks_allowed": safe_int_or_none(row.get("볼넷")),
+                    "strikeouts": safe_int_or_none(row.get("삼진")),
+                    "hit_batters": safe_int_or_none(row.get("사구")),
+                    "wild_pitches": safe_int_or_none(row.get("폭투")),
+                    "balks": safe_int_or_none(row.get("보크")),
+                    "wins": safe_int_or_none(row.get("승")),
+                    "losses": safe_int_or_none(row.get("패")),
+                    "saves": safe_int_or_none(row.get("세")),
+                    "holds": safe_int_or_none(row.get("홀드")),
+                    "era": safe_float_or_none(row.get("ERA")),
+                    "whip": safe_float_or_none(row.get("WHIP")),
+                    "k_per_nine": safe_float_or_none(row.get("K/9")),
+                    "bb_per_nine": safe_float_or_none(row.get("BB/9")),
+                    "kbb": safe_float_or_none(row.get("K/BB")),
                 },
             }
             decision = _parse_decision(row.get("결과"))
@@ -263,7 +264,7 @@ def _parse_metadata(soup: BeautifulSoup) -> dict[str, Any]:
 
         attendance_match = re.search(r"관중\s*[:：]\s*([\d,]+)", info_text)
         if attendance_match:
-            metadata["attendance"] = _safe_int(attendance_match.group(1))
+            metadata["attendance"] = safe_int_or_none(attendance_match.group(1))
 
         time_match = re.search(r"개시\s*[:：]\s*([\d:]+)", info_text)
         if time_match:
@@ -281,24 +282,6 @@ def _parse_metadata(soup: BeautifulSoup) -> dict[str, Any]:
     return metadata
 
 
-def _safe_int(value: Any) -> int | None:
-    if value in (None, "", "-", "null"):
-        return None
-    try:
-        return int(str(value).replace(",", "").strip())
-    except ValueError:
-        return None
-
-
-def _safe_float(value: Any) -> float | None:
-    if value in (None, "", "-", "null"):
-        return None
-    try:
-        return float(str(value).replace(",", "").strip())
-    except ValueError:
-        return None
-
-
 def _season_year_from_game(game_date: str) -> int | None:
     digits = "".join(ch for ch in str(game_date) if ch.isdigit())
     if len(digits) >= 4:
@@ -307,25 +290,6 @@ def _season_year_from_game(game_date: str) -> int | None:
         except ValueError:
             return None
     return None
-
-
-def _parse_innings_to_outs(text: str | None) -> int | None:
-    if not text:
-        return None
-    cleaned = str(text).strip()
-    if cleaned in ("", "-"):
-        return None
-    cleaned = cleaned.replace("⅓", ".1").replace("⅔", ".2")
-    match = re.match(r"^(\d+)(?:\.(\d))?$", cleaned)
-    if match:
-        whole = int(match.group(1))
-        frac = int(match.group(2)) if match.group(2) else 0
-        return whole * 3 + frac
-    try:
-        value = float(cleaned)
-        return int(round(value * 3))
-    except ValueError:
-        return None
 
 
 def _parse_decision(text: Any) -> str | None:

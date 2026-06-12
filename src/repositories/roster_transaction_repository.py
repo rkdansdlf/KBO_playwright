@@ -2,6 +2,8 @@
 Repository for RosterTransaction operations.
 """
 
+from __future__ import annotations
+
 from datetime import date
 
 from sqlalchemy import inspect, select

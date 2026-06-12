@@ -15,7 +15,7 @@ from playwright.async_api import Page
 from src.services.wpa_calculator import WPACalculator
 from src.utils.compliance import compliance
 from src.utils.playwright_pool import AsyncPlaywrightPool
-from src.utils.playwright_retry import LONG_TIMEOUT
+from src.utils.playwright_retry import LONG_TIMEOUT, NAV_TIMEOUT, SEL_TIMEOUT
 from src.utils.request_policy import RequestPolicy
 from src.utils.text_parser import KBOTextParser
 
@@ -68,7 +68,7 @@ class PBPCrawler:
                         # Step 1: Warm up the session by visiting the Scoreboard page
                         parent_url = f"https://www.koreabaseball.com/Schedule/ScoreBoard.aspx?gameDate={game_date}"
                         logger.info("[AUTH] Warming up session on Scoreboard: %s", parent_url)
-                        await page.goto(parent_url, wait_until="networkidle", timeout=20000)
+                        await page.goto(parent_url, wait_until="networkidle", timeout=NAV_TIMEOUT)
                         await asyncio.sleep(2)
 
                         # Step 2: Navigate to the actual relay page with explicit Referer
@@ -89,7 +89,7 @@ class PBPCrawler:
                         # Wait for any PBP container on LiveText.aspx
                         try:
                             # Try to wait for any of the containers (1-12)
-                            await page.wait_for_selector('div[id^="numCont"]', timeout=20000)
+                            await page.wait_for_selector('div[id^="numCont"]', timeout=SEL_TIMEOUT)
                         except Exception:  # noqa: BLE001
                             logger.warning("No PBP containers found for %s", game_id)
                             body = await page.content()

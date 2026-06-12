@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import argparse
 import contextlib
 import logging
@@ -118,7 +120,7 @@ class ManagerChangeCrawler(NaverNewsCrawlerBase):
             logger.info("Saved %s manager change records.", count)
         except SQLAlchemyError as e:
             session.rollback()
-            logger.exception(f"Database error saving manager changes: {e}")  # noqa: G004
+            logger.exception(f"Database error saving manager changes: {e}")
         finally:
             session.close()
 

@@ -25,6 +25,7 @@ from src.utils.relay_text import (
 )
 from src.utils.request_policy import RequestPolicy
 from src.utils.team_codes import normalize_kbo_game_id
+from src.utils.type_helpers import to_int
 
 logger = logging.getLogger(__name__)
 
@@ -545,7 +546,6 @@ class RelayCrawler:
                                     game_time = game_time.strftime("%H:%M")
             except Exception:  # noqa: BLE001
                 logger.warning("Failed to extract game metadata for relay relay")
-                pass
 
         if game_time and not isinstance(game_time, str):
             try:
@@ -714,14 +714,6 @@ class RelayCrawler:
             for log_index, log in enumerate(logs):
                 state = log.get("currentGameState") or {}
                 batter_record = log.get("batterRecord") or {}
-
-                # Naver fields are often strings
-                def to_int(val: Any, default: int = 0) -> int:
-                    try:
-                        return int(val) if val is not None else default
-                    except (TypeError, ValueError):
-                        logger.warning("Failed to convert to int: %s", val)
-                        return default
 
                 home_score = to_int(state.get("homeScore"))
                 away_score = to_int(state.get("awayScore"))

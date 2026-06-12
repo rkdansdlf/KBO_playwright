@@ -108,12 +108,12 @@ def run_sync(args: argparse.Namespace) -> int:
     complete_starters = sum(1 for target in targets if target.away_pitcher and target.home_pitcher)
     preview_rows = sum(1 for target in targets if target.has_preview)
     logger.info(
-        f"Pregame sync targets ({start_date}..{end_date}): "  # noqa: G004
+        f"Pregame sync targets ({start_date}..{end_date}): "
         f"games={len(targets)}, starters_complete={complete_starters}, previews={preview_rows}",
     )
     for target in targets:
         logger.info(
-            f"  {target.game_date} {target.game_id}: "  # noqa: G004
+            f"  {target.game_date} {target.game_id}: "
             f"starter='{target.away_pitcher}' vs '{target.home_pitcher}', "
             f"preview={int(target.has_preview)}",
         )

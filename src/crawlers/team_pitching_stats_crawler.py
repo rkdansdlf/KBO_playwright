@@ -21,6 +21,7 @@ from src.utils.playwright_retry import LONG_TIMEOUT
 from src.utils.request_policy import RequestPolicy
 from src.utils.team_mapping import get_team_mapping_for_year
 from src.utils.team_stats_helpers import get_cell_value, parse_numeric, resolve_team_id
+from src.utils.type_helpers import parse_innings
 
 TEAM_PITCHING_URLS = [
     "https://www.koreabaseball.com/Record/Team/Pitcher/Basic.aspx",
@@ -220,7 +221,7 @@ def parse_team_pitching_html(
             if value_str is None:
                 continue
             parsed_value = (
-                _parse_innings(value_str)
+                parse_innings(value_str)
                 if header_key == "innings_pitched"
                 else parse_numeric(value_str, header_key in FLOAT_FIELDS)
             )
@@ -246,27 +247,6 @@ def _build_column_map(headers: list[str]) -> dict[str, int]:
     if "team_name" not in indexes:
         indexes["team_name"] = 1 if len(headers) > 1 else 0
     return indexes
-
-
-def _parse_innings(value: str) -> float | None:
-    cleaned = value.replace(",", "")
-    if cleaned in ("", "-", "N/A"):
-        return None
-    if "." in cleaned:
-        whole, frac = cleaned.split(".", 1)
-        try:
-            base = int(whole)
-        except ValueError:
-            return None
-        if frac == "1":
-            return base + (1.0 / 3.0)
-        if frac == "2":
-            return base + (2.0 / 3.0)
-        return float(cleaned)
-    try:
-        return float(cleaned)
-    except ValueError:
-        return None
 
 
 def main() -> None:

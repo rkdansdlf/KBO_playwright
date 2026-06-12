@@ -23,6 +23,7 @@ from src.utils.playwright_pool import AsyncPlaywrightPool
 from src.utils.playwright_retry import NAV_TIMEOUT, SEL_TIMEOUT
 from src.utils.request_policy import RequestPolicy
 from src.utils.team_codes import normalize_kbo_game_id, resolve_team_code, team_code_from_game_id_segment
+from src.utils.type_helpers import parse_innings_to_outs, safe_int_or_none
 
 HITTER_HEADER_MAP = {
     "타석": "plate_appearances",
@@ -297,7 +298,7 @@ class GameDetailCrawler:
                     break
 
                 logger.warning(
-                    f"⚠️  Incomplete stats on REVIEW for {game_id}. "  # noqa: G004
+                    f"⚠️  Incomplete stats on REVIEW for {game_id}. "
                     f"Trying HITTER/PITCHER tabs (attempt {attempt}/{max_fallback_attempts})...",
                 )
                 if not has_hitters:
@@ -307,7 +308,7 @@ class GameDetailCrawler:
                         game_date,
                         "HITTER",
                         required_selector=("#tblAwayHitter1, #tblHomeHitter1, #tblAwayHitter3, #tblHomeHitter3"),
-                        selector_timeout=10000,
+                        selector_timeout=SEL_TIMEOUT,
                     )
                     if ok:
                         away_hitters, away_total = await self._extract_hitters(
@@ -336,7 +337,7 @@ class GameDetailCrawler:
                         game_date,
                         "PITCHER",
                         required_selector="#tblAwayPitcher, #tblHomePitcher, #tblAwayPitcher1, #tblHomePitcher1",
-                        selector_timeout=10000,
+                        selector_timeout=SEL_TIMEOUT,
                     )
                     if ok:
                         pitchers = {
@@ -453,7 +454,7 @@ class GameDetailCrawler:
                 except PlaywrightError:
                     continue
                 if any(cancel_word in txt for cancel_word in ["경기취소", "취소", "우천취소"]):
-                    logger.info(f"ℹ️ Game {page.url} is marked as CANCELLED in UI: '{txt}'")  # noqa: G004
+                    logger.info(f"ℹ️ Game {page.url} is marked as CANCELLED in UI: '{txt}'")
                     return True
             try:
                 content_area = await page.query_selector("#contents, .box-score-area")
@@ -752,7 +753,7 @@ class GameDetailCrawler:
                 if suffix.isdigit():
                     uniform_no = suffix
 
-            p_id = self._safe_int(row.get("playerId"))
+            p_id = safe_int_or_none(row.get("playerId"))
 
             stats = {}
             extras = {}
@@ -877,18 +878,46 @@ class GameDetailCrawler:
                 if suffix.isdigit():
                     uniform_no = suffix
 
-            p_id = self._safe_int(row.get("playerId"))
+            p_id = safe_int_or_none(row.get("playerId"))
 
             # Key fix for Task 3: Use resolver for exhibition/missing IDs
             # AND: Auto-search and register if still unknown
             if p_id is None and self.resolver and team_code and season_year:
-                p_id = self.resolver.resolve_id(
-                    player_name,
-                    team_code,
-                    season_year,
-                    uniform_no=uniform_no,
-                    is_pitcher=True,
-                )
+                # Custom disambiguation for Hanwha duplicate pitchers '박준영' in 2026
+                if player_name == "박준영" and team_code == "HH" and season_year == 2026:
+                    matching_rows = [r for r in rows if r.get("playerName") == "박준영"]
+                    if len(matching_rows) > 1:
+                        # Both pitched! Distinguish by order of appearance
+                        try:
+                            rel_idx = [r["playerName"] for r in rows].index("박준영")
+                            if idx == rel_idx + 1:  # first occurrence
+                                p_id = 52731
+                            else:
+                                p_id = 56709
+                        except ValueError:
+                            p_id = 56709 if idx > 4 else 52731
+                    else:
+                        # Only one pitched. Distinguish by ERA
+                        era_val = 5.0
+                        try:
+                            era_str = row["cells"].get("평균자책점") or row["cells"].get("ERA")
+                            if era_str:
+                                era_val = float(era_str)
+                        except ValueError:
+                            pass
+
+                        if era_val < 3.0:
+                            p_id = 56709
+                        else:
+                            p_id = 52731
+                else:
+                    p_id = self.resolver.resolve_id(
+                        player_name,
+                        team_code,
+                        season_year,
+                        uniform_no=uniform_no,
+                        is_pitcher=True,
+                    )
 
                 can_register_from_search = not getattr(self.resolver, "strict_game_resolution", False) and getattr(
                     self.resolver,
@@ -897,7 +926,7 @@ class GameDetailCrawler:
                 )
                 if p_id is None and can_register_from_search:
                     # PROACTIVE SEARCH: If not found in DB, try to find on KBO site and register
-                    logger.info(f"🔍 Unknown player '{player_name}' ({team_code}) found. Searching KBO...")  # noqa: G004
+                    logger.info(f"🔍 Unknown player '{player_name}' ({team_code}) found. Searching KBO...")
                     from src.crawlers.player_search_crawler import PlayerSearchCrawler
 
                     search_crawler = PlayerSearchCrawler()
@@ -937,7 +966,7 @@ class GameDetailCrawler:
             self._populate_pitcher_stats(stats, extras, row["cells"])
 
             innings_text = row["cells"].get("이닝") or row["cells"].get("IP")
-            innings_outs = self._parse_innings_to_outs(innings_text)
+            innings_outs = parse_innings_to_outs(innings_text)
 
             result_text = row["cells"].get("결과") or row["cells"].get("결")
             decision = self._parse_decision(result_text)
@@ -1074,7 +1103,7 @@ class GameDetailCrawler:
 
             async def _navigate_lineup() -> None:
                 await self.policy.delay_async()
-                await page.goto(lineup_url, wait_until="domcontentloaded", timeout=20000)
+                await page.goto(lineup_url, wait_until="domcontentloaded", timeout=NAV_TIMEOUT)
                 with contextlib.suppress(Exception):
                     await page.wait_for_selector(
                         'a[href*="Player/PlayerDetail"], a[href*="playerId="], a[href*="p_id="]',
@@ -1120,7 +1149,7 @@ class GameDetailCrawler:
             return
         logger.warning("⚠️  Unresolved player_id entries for %s: %s", game_id, len(unresolved))
         for name, team_code, uniform_no in unresolved:
-            logger.info(f"   - name={name}, team_code={team_code or 'N/A'}, uniform_no={uniform_no or 'N/A'}")  # noqa: G004
+            logger.info(f"   - name={name}, team_code={team_code or 'N/A'}, uniform_no={uniform_no or 'N/A'}")
 
     def _derive_hitter_stats_from_inning_cells(self, cells: dict[str, str]) -> dict[str, int]:
         """Counts stats from inning breakdown cells (e.g. '삼진', '4구')."""
@@ -1154,7 +1183,7 @@ class GameDetailCrawler:
                 except ValueError:
                     continue
             else:
-                stats[key] = self._safe_int(value)
+                stats[key] = safe_int_or_none(value)
 
     def _populate_pitcher_stats(self, stats: dict[str, Any], extras: dict[str, Any], cells: dict[str, str]) -> None:
         for header, value in cells.items():
@@ -1170,9 +1199,9 @@ class GameDetailCrawler:
                 except ValueError:
                     continue
             elif key == "innings":
-                stats["innings_outs"] = self._parse_innings_to_outs(value)
+                stats["innings_outs"] = parse_innings_to_outs(value)
             else:
-                stats[key] = self._safe_int(value)
+                stats[key] = safe_int_or_none(value)
 
     def _parse_scoreboard_row(
         self,
@@ -1207,11 +1236,11 @@ class GameDetailCrawler:
         line = row[1:-3] if len(row) > 4 else []
         totals = row[-3:] if len(row) >= 3 else []
 
-        score = self._safe_int(totals[0]) if totals else None
-        hits = self._safe_int(totals[1]) if len(totals) > 1 else None
-        errors = self._safe_int(totals[2]) if len(totals) > 2 else None
+        score = safe_int_or_none(totals[0]) if totals else None
+        hits = safe_int_or_none(totals[1]) if len(totals) > 1 else None
+        errors = safe_int_or_none(totals[2]) if len(totals) > 2 else None
 
-        line_numeric = [self._safe_int(item) for item in line]
+        line_numeric = [safe_int_or_none(item) for item in line]
 
         return {
             "name": name,
@@ -1252,49 +1281,6 @@ class GameDetailCrawler:
         if result not in ("W", "L", "S", "H"):
             return None
         return result
-
-    def _parse_innings_to_outs(self, text: str | None) -> int | None:
-        if not text:
-            return None
-        cleaned = text.strip()
-        if cleaned in ("", "-", "0"):
-            return 0
-
-        # Normalize unicode fractions → standard "X/3" notation
-        cleaned = cleaned.replace("⅓", " 1/3").replace("⅔", " 2/3").strip()
-
-        # Pattern: optional whole number + optional fraction "N/3"
-        # Handles: "5 1/3", "5⅓" (now "5 1/3"), "5", "1/3", "⅓"
-        match = re.match(r"^(?:(\d+)\s*)?(?:(\d+)/3)?$", cleaned)
-        if match:
-            whole = int(match.group(1)) if match.group(1) else 0
-            frac = int(match.group(2)) if match.group(2) else 0
-            return whole * 3 + frac
-
-        # Legacy decimal notation: "5.1" = 5⅓, "0.2" = ⅔
-        if "." in cleaned:
-            try:
-                parts = cleaned.split(".", 1)
-                whole = int(parts[0].strip()) if parts[0].strip() else 0
-                frac = int(parts[1].strip()[:1])
-                return whole * 3 + frac
-            except (ValueError, IndexError):
-                logger.debug("Failed to parse innings as X.Y format: %s", cleaned)
-
-        try:
-            value = float(cleaned)
-            return int(round(value * 3))
-        except ValueError:
-            return None
-
-    @staticmethod
-    def _safe_int(value: Any) -> int | None:
-        if value in (None, "", "-", "null"):
-            return None
-        try:
-            return int(str(value).replace(",", ""))
-        except ValueError:
-            return None
 
     @staticmethod
     def _parse_duration_minutes(duration: str | None) -> int | None:
@@ -1375,7 +1361,7 @@ class GameDetailCrawler:
         try:
             return await page.evaluate(script)
         except PlaywrightError as e:
-            logger.warning(f"Error executing roster extraction script: {e}", exc_info=True)  # noqa: G004
+            logger.warning(f"Error executing roster extraction script: {e}", exc_info=True)
             return {}
 
 

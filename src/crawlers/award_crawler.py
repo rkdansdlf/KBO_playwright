@@ -3,6 +3,8 @@ Crawler for KBO Awards (MVP, Golden Glove, Defense, Series).
 Source: https://www.koreabaseball.com/Player/Awards/PlayerPrize.aspx
 """
 
+from __future__ import annotations
+
 import argparse
 import asyncio
 import logging
@@ -57,7 +59,7 @@ class AwardCrawler:
                     else:
                         data = []
                 except Exception as e:
-                    logger.exception(f"Error crawling {atype}: {e}")  # noqa: G004
+                    logger.exception(f"Error crawling {atype}: {e}")
                     import traceback
 
                     traceback.print_exc()
@@ -316,12 +318,12 @@ class AwardCrawler:
                     repo.save_award(item)
                     count += 1
                 except Exception as ex:  # noqa: BLE001
-                    logger.warning(f"Skipping duplicate or error: {item} - {ex}", exc_info=True)  # noqa: G004
+                    logger.warning(f"Skipping duplicate or error: {item} - {ex}", exc_info=True)
             session.commit()
             logger.info("✅ Saved %s awards to database.", count)
         except Exception as e:
             session.rollback()
-            logger.exception(f"Error saving to DB: {e}")  # noqa: G004
+            logger.exception(f"Error saving to DB: {e}")
         finally:
             session.close()
 

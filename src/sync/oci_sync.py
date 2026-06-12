@@ -2,6 +2,8 @@
 OCI sync — thin composite of domain-specific mixins.
 """
 
+from __future__ import annotations
+
 import logging
 import os
 
@@ -20,8 +22,6 @@ class OCISync(OCISyncBase, GameSyncMixin, PlayerSyncMixin, StatsSyncMixin, MiscS
 
 def main() -> None:
     """타자 및 투수 데이터 OCI 동기화"""
-    from src.db.engine import SessionLocal
-
     # Get OCI URL from environment
     oci_url = os.getenv("OCI_DB_URL")
     if not oci_url:
@@ -29,6 +29,8 @@ def main() -> None:
         logger.info("   Set it in .env file or export it:")
         logger.info("   export OCI_DB_URL='postgresql://user:pass@host:5432/dbname'")
         return
+
+    from src.db.engine import SessionLocal
 
     logger.info("\n" + "🔄" * 30)  # noqa: G003
     logger.info("KBO 데이터 OCI 동기화")

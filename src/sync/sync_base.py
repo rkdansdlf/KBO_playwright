@@ -3,6 +3,8 @@ Sync validated data from SQLite to OCI (Oracle Cloud Infrastructure) PostgreSQL
 Dual-repository pattern: SQLite (dev/validation) → OCI (production)
 """
 
+from __future__ import annotations
+
 import csv
 import io
 import json
