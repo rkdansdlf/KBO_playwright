@@ -15,6 +15,7 @@ import httpx
 
 from src.utils.playwright_pool import AsyncPlaywrightPool
 from src.utils.playwright_retry import NAV_TIMEOUT
+from src.utils.request_policy import RequestPolicy
 from src.utils.team_codes import normalize_kbo_game_id
 
 logger = logging.getLogger(__name__)
@@ -36,6 +37,7 @@ class PreviewCrawler:
     def __init__(self, request_delay: float = 1.0, pool: AsyncPlaywrightPool | None = None) -> None:
         self.request_delay = request_delay
         self.pool = pool
+        self.policy = RequestPolicy()
 
     def _coerce_api_payload(self, payload: Any) -> Any | None:
         """Normalize API payloads from ASP.NET/JSON wrappers to a Python object."""
@@ -162,6 +164,29 @@ class PreviewCrawler:
             return self._to_flag(first.get("LINEUP_CK"))
         return fallback
 
+    def _extract_embedded_game_ids(self, payload: Any) -> set[str]:
+        """Collect normalized G_ID values embedded in lineup analysis payloads."""
+        game_ids: set[str] = set()
+        if isinstance(payload, dict):
+            raw_game_id = payload.get("G_ID")
+            game_id = normalize_kbo_game_id(raw_game_id) if raw_game_id else None
+            if game_id:
+                game_ids.add(game_id)
+            for value in payload.values():
+                game_ids.update(self._extract_embedded_game_ids(value))
+        elif isinstance(payload, list):
+            for item in payload:
+                game_ids.update(self._extract_embedded_game_ids(item))
+        return game_ids
+
+    def _lineup_rows_match_game(self, lineup_rows: list[Any], game_id: str) -> bool:
+        """Return False when KBO returns stale lineup rows for a different game."""
+        expected_game_id = normalize_kbo_game_id(game_id)
+        if not expected_game_id:
+            return False
+        embedded_game_ids = self._extract_embedded_game_ids(lineup_rows)
+        return not embedded_game_ids or embedded_game_ids == {expected_game_id}
+
     async def _fetch_api_json(
         self,
         url: str,
@@ -179,7 +204,8 @@ class PreviewCrawler:
         # 1) Direct API call.
         try:
             async with httpx.AsyncClient(timeout=30.0) as client:
-                response = await client.post(
+                response = await self.policy.run_with_retry_async(
+                    client.post,
                     url,
                     data=form,
                     headers=headers,
@@ -199,7 +225,7 @@ class PreviewCrawler:
             return None
 
         try:
-            response = await page.request.post(url, form=form, headers=headers)
+            response = await self.policy.run_with_retry_async(page.request.post, url, form=form, headers=headers)
             if response.ok:
                 payload = self._coerce_api_payload(await response.json())
                 if isinstance(payload, (dict, list)):
@@ -315,12 +341,16 @@ class PreviewCrawler:
                             lineup_rows,
                             bool(preview_data["lineup_announced"]),
                         )
-                        # Parse Home Lineup (Index 3 is Home)
-                        if len(lineup_rows) > 3:
-                            preview_data["home_lineup"] = self._parse_lineup_grid(lineup_rows[3])
-                        # Parse Away Lineup (Index 4 is Away)
-                        if len(lineup_rows) > 4:
-                            preview_data["away_lineup"] = self._parse_lineup_grid(lineup_rows[4])
+                        lineup_rows_match = self._lineup_rows_match_game(lineup_rows, game_id)
+                        if preview_data["lineup_announced"] and lineup_rows_match:
+                            # Parse Home Lineup (Index 3 is Home)
+                            if len(lineup_rows) > 3:
+                                preview_data["home_lineup"] = self._parse_lineup_grid(lineup_rows[3])
+                            # Parse Away Lineup (Index 4 is Away)
+                            if len(lineup_rows) > 4:
+                                preview_data["away_lineup"] = self._parse_lineup_grid(lineup_rows[4])
+                        elif not lineup_rows_match:
+                            logger.warning("⚠️ Ignoring stale lineup payload for %s", game_id)
                     except Exception:
                         logger.exception("⚠️ Error parsing lineup for %s", game_id)
 

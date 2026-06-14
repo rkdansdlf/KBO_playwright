@@ -11,16 +11,21 @@ import argparse
 import asyncio
 import logging
 import os
+import time
 from collections.abc import Sequence
 from datetime import datetime
+from threading import Lock, Thread
 from typing import Any
 from zoneinfo import ZoneInfo
 
 import httpx
+from playwright.async_api import Error as PlaywrightError
 
 logger = logging.getLogger(__name__)
 
 _LIVE_SHARD_CURSOR_BY_DATE: dict[str, int] = {}
+_ACTIVE_DETAIL_SNAPSHOT_GAMES: set[str] = set()
+_ACTIVE_DETAIL_SNAPSHOT_LOCK = Lock()
 
 from src.crawlers.game_detail_crawler import GameDetailCrawler
 from src.crawlers.naver_relay_crawler import NaverRelayCrawler
@@ -171,6 +176,67 @@ def _compute_enriched_interval(
 _ACTIVE_HEALING_GAMES: set[str] = set()
 
 
+def _submit_live_detail_snapshot_background(game_id: str, today_str: str) -> bool:
+    """Queue a non-cadence-critical live detail snapshot crawl for one game."""
+    with _ACTIVE_DETAIL_SNAPSHOT_LOCK:
+        if game_id in _ACTIVE_DETAIL_SNAPSHOT_GAMES:
+            logger.info("[LIVE] Skipping background live detail snapshot for %s because it is already running", game_id)
+            return False
+        _ACTIVE_DETAIL_SNAPSHOT_GAMES.add(game_id)
+
+    def _worker() -> None:
+        started_at = time.monotonic()
+
+        async def _crawl_and_save() -> None:
+            detail_crawler = GameDetailCrawler(request_delay=0.1)
+            detail = await detail_crawler.crawl_game(game_id, today_str, lightweight=True)
+            elapsed = time.monotonic() - started_at
+            if detail and save_game_snapshot(detail, status=GAME_STATUS_LIVE):
+                manifest_path = write_refresh_manifest(
+                    phase="live_detail",
+                    target_date=today_str,
+                    game_ids=[game_id],
+                    datasets=["game", "game_metadata", "game_inning_scores"],
+                )
+                logger.info(
+                    "[LIVE] Background live detail snapshot saved for %s elapsed=%.1fs manifest=%s",
+                    game_id,
+                    elapsed,
+                    manifest_path,
+                )
+            else:
+                logger.warning(
+                    "[LIVE] Background live detail snapshot saved no rows for %s elapsed=%.1fs",
+                    game_id,
+                    elapsed,
+                )
+
+        try:
+            logger.info("[LIVE] Starting background live detail snapshot for %s", game_id)
+            asyncio.run(_crawl_and_save())
+        except Exception:
+            logger.exception(
+                "[LIVE] Background live detail snapshot failed for %s elapsed=%.1fs",
+                game_id,
+                time.monotonic() - started_at,
+            )
+        finally:
+            with _ACTIVE_DETAIL_SNAPSHOT_LOCK:
+                _ACTIVE_DETAIL_SNAPSHOT_GAMES.discard(game_id)
+
+    thread = Thread(target=_worker, name=f"live-detail-snapshot-{game_id}", daemon=True)
+    try:
+        logger.info("[LIVE] Queued background live detail snapshot for %s", game_id)
+        thread.start()
+    except Exception:
+        with _ACTIVE_DETAIL_SNAPSHOT_LOCK:
+            _ACTIVE_DETAIL_SNAPSHOT_GAMES.discard(game_id)
+        logger.exception("[LIVE] Failed to start background live detail snapshot for %s", game_id)
+        return False
+
+    return True
+
+
 async def _run_kbo_fallback_healing(game_id: str) -> None:
     """Run KBO official website re-crawl as a background fallback task when validation fails."""
     try:
@@ -192,7 +258,7 @@ async def _run_kbo_fallback_healing(game_id: str) -> None:
                     break
                 else:
                     raise ValueError("KBO PBP crawl returned no events")
-            except Exception as fallback_err:  # noqa: BLE001
+            except (PlaywrightError, TimeoutError, RuntimeError, ValueError) as fallback_err:
                 logger.warning(
                     "KBO fallback attempt %s failed for %s: %s", attempt, game_id, fallback_err, exc_info=True
                 )
@@ -230,6 +296,8 @@ async def _process_single_live_game(
     relay_crawler: Any,
     detail_crawler: Any,
     today_str: str,
+    *,
+    detail_snapshot_background: bool = False,
 ) -> tuple[str | None, str]:
     """Process a single live game by crawling its relay, updating DB, and triggering healing if needed.
 
@@ -292,10 +360,13 @@ async def _process_single_live_game(
             touched = True
             logger.info("[LIVE] 📝 Synced %s relay rows for %s", saved_rows, game_id)
 
-        detail = await detail_crawler.crawl_game(game_id, today_str, lightweight=True)
-        if detail and save_game_snapshot(detail, status=GAME_STATUS_LIVE):
-            touched = True
-            logger.info("[LIVE] 📊 Updated scoreboard snapshot for %s", game_id)
+        if detail_snapshot_background:
+            _submit_live_detail_snapshot_background(game_id, today_str)
+        else:
+            detail = await detail_crawler.crawl_game(game_id, today_str, lightweight=True)
+            if detail and save_game_snapshot(detail, status=GAME_STATUS_LIVE):
+                touched = True
+                logger.info("[LIVE] 📊 Updated scoreboard snapshot for %s", game_id)
 
         # Fallback auto-healing trigger: if the game is finished but validation failed
         if resolved_lifecycle == "result_pending_stabilization":
@@ -319,6 +390,7 @@ async def run_live_crawler_cycle(
     *,
     sync_to_oci: bool | None = None,
     max_active_games: int | None = None,
+    detail_snapshot_background: bool = False,
 ) -> dict[str, Any]:
     """Run one live polling cycle. Returns status dictionary."""
     seoul_tz = ZoneInfo("Asia/Seoul")
@@ -367,7 +439,7 @@ async def run_live_crawler_cycle(
         logger.exception("[WARN] Failed to fetch Naver live statuses")
         naver_status_map = {}
 
-    detail_crawler = GameDetailCrawler(request_delay=0.1)
+    detail_crawler = None if detail_snapshot_background else GameDetailCrawler(request_delay=0.1)
     touched_game_ids: set[str] = set()
     active_playing_flag = False
     active_suspended_flag = False
@@ -450,6 +522,7 @@ async def run_live_crawler_cycle(
                 relay_crawler,
                 detail_crawler,
                 today_str,
+                detail_snapshot_background=detail_snapshot_background,
             )
             for game, lifecycle_state, nav_status_raw in selected_candidates
         ]
@@ -467,7 +540,11 @@ async def run_live_crawler_cycle(
         phase="live",
         target_date=today_str,
         game_ids=touched_game_ids,
-        datasets=["game", "game_metadata", "game_inning_scores", "game_events", "game_play_by_play"],
+        datasets=(
+            ["game_events", "game_play_by_play"]
+            if detail_snapshot_background
+            else ["game", "game_metadata", "game_inning_scores", "game_events", "game_play_by_play"]
+        ),
     )
 
     if not touched_game_ids:

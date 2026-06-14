@@ -533,6 +533,94 @@ class TestRelayAtBatEnrichmentPipeline:
             assert pbp.player_id == 56754
             assert pbp.resolver_reason == "name_match_HH_2026"
 
+    def test_save_relay_resolves_live_defensive_substitution_roles(self, monkeypatch):
+        SessionLocal = _build_session_factory()
+        monkeypatch.setattr(game_relay_module, "SessionLocal", SessionLocal)
+        monkeypatch.setattr(game_relay_module, "_auto_sync_to_oci", lambda game_id: None)
+        monkeypatch.setattr(game_save_module, "SessionLocal", SessionLocal)
+        monkeypatch.setattr(game_save_module, "_auto_sync_to_oci", lambda game_id: None)
+        _seed_game(
+            SessionLocal,
+            "20260613NCKT0",
+            target_date=date(2026, 6, 13),
+            home_team="KT",
+            away_team="NC",
+        )
+        _seed_game(
+            SessionLocal,
+            "20260613LTLG0",
+            target_date=date(2026, 6, 13),
+            home_team="LG",
+            away_team="LT",
+        )
+
+        for player_id, name, team_code in [
+            (50996, "박시원", "NC"),
+            (150996, "박시원", "KT"),
+            (66606, "최원준", "KT"),
+            (166606, "최원준", "NC"),
+            (53123, "오스틴", "LG"),
+            (153123, "오스틴", "LT"),
+        ]:
+            _seed_player_basic(SessionLocal, player_id, name, team_code)
+            _seed_player_season_batting(SessionLocal, player_id, 2026, team_code)
+
+        saved_nckt = game_relay_module.save_relay_data(
+            "20260613NCKT0",
+            events=[],
+            raw_pbp_rows=[
+                {
+                    "inning": 8,
+                    "inning_half": "bottom",
+                    "batter_name": "대주자 박시원",
+                    "play_description": "대주자 박시원 : 우익수(으)로 수비위치 변경",
+                    "event_type": "unknown",
+                },
+                {
+                    "inning": 9,
+                    "inning_half": "top",
+                    "batter_name": "지명타자 최원준",
+                    "play_description": "지명타자 최원준 : 우익수(으)로 수비위치 변경",
+                    "event_type": "unknown",
+                },
+            ],
+        )
+        saved_ltlg = game_relay_module.save_relay_data(
+            "20260613LTLG0",
+            events=[],
+            raw_pbp_rows=[
+                {
+                    "inning": 8,
+                    "inning_half": "top",
+                    "batter_name": "지명타자 오스틴",
+                    "play_description": "지명타자 오스틴 : 1루수(으)로 수비위치 변경",
+                    "event_type": "unknown",
+                },
+            ],
+        )
+
+        assert saved_nckt == 2
+        assert saved_ltlg == 1
+        with SessionLocal() as session:
+            rows = {
+                (row.game_id, row.batter_name): row
+                for row in session.query(GamePlayByPlay)
+                .filter(GamePlayByPlay.game_id.in_(["20260613NCKT0", "20260613LTLG0"]))
+                .all()
+            }
+
+            assert rows[("20260613NCKT0", "대주자 박시원")].player_id == 50996
+            assert rows[("20260613NCKT0", "대주자 박시원")].resolver_reason == "name_match_NC_2026"
+            assert rows[("20260613NCKT0", "대주자 박시원")].unresolved_player_name is None
+
+            assert rows[("20260613NCKT0", "지명타자 최원준")].player_id == 66606
+            assert rows[("20260613NCKT0", "지명타자 최원준")].resolver_reason == "name_match_KT_2026"
+            assert rows[("20260613NCKT0", "지명타자 최원준")].unresolved_player_name is None
+
+            assert rows[("20260613LTLG0", "지명타자 오스틴")].player_id == 53123
+            assert rows[("20260613LTLG0", "지명타자 오스틴")].resolver_reason == "name_match_LG_2026"
+            assert rows[("20260613LTLG0", "지명타자 오스틴")].unresolved_player_name is None
+
     def test_pipeline_resolver_fallback_graceful(self, monkeypatch):
         """Verify pipeline still succeeds when resolver cannot find player data."""
         SessionLocal = _build_session_factory()

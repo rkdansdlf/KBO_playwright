@@ -115,6 +115,69 @@ def test_crawl_preview_recovers_starters_and_lineup_flag_from_current_payloads()
     assert len(preview["home_lineup"]) == 2
 
 
+def test_crawl_preview_ignores_stale_lineup_payload_but_keeps_game_list_starters():
+    stale_grid = [
+        (
+            '{"rows":['
+            '{"row":[{"Text":"1"},{"Text":"유격수"},{"Text":"김주원"}]},'
+            '{"row":[{"Text":"2"},{"Text":"좌익수"},{"Text":"이우성"}]},'
+            '{"row":[{"Text":"3"},{"Text":"1루수"},{"Text":"박민우"}]},'
+            '{"row":[{"Text":"4"},{"Text":"지명타자"},{"Text":"박건우"}]},'
+            '{"row":[{"Text":"5"},{"Text":"우익수"},{"Text":"권희동"}]},'
+            '{"row":[{"Text":"6"},{"Text":"3루수"},{"Text":"서호철"}]},'
+            '{"row":[{"Text":"7"},{"Text":"중견수"},{"Text":"천재환"}]},'
+            '{"row":[{"Text":"8"},{"Text":"포수"},{"Text":"김형준"}]},'
+            '{"row":[{"Text":"9"},{"Text":"2루수"},{"Text":"김한별"}]}'
+            "]}"
+        )
+    ]
+
+    class FakePreviewCrawler(PreviewCrawler):
+        async def _fetch_api_json(self, url, form, referer, page=None):
+            if url == self.GAME_LIST_URL:
+                return {
+                    "game": [
+                        {
+                            "G_ID": "20260614NCKT0",
+                            "SEASON_ID": 2026,
+                            "LE_ID": 1,
+                            "SR_ID": 0,
+                            "AWAY_NM": "NC",
+                            "HOME_NM": "KT",
+                            "T_PIT_P_NM": "김준원 ",
+                            "B_PIT_P_NM": "고영표 ",
+                            "T_PIT_P_ID": 54910,
+                            "B_PIT_P_ID": 64001,
+                            "START_PIT_CK": 1,
+                            "LINEUP_CK": 0,
+                        }
+                    ]
+                }
+            if url == self.LINEUP_URL:
+                return [
+                    [{"LINEUP_CK": False}],
+                    [{"T_ID": "KT", "G_ID": "20260613NCKT0"}],
+                    [{"T_ID": "NC", "G_ID": "20260613NCKT0"}],
+                    stale_grid,
+                    stale_grid,
+                ]
+            return None
+
+    previews = asyncio.run(FakePreviewCrawler(request_delay=0).crawl_preview_for_date("20260614"))
+
+    assert len(previews) == 1
+    preview = previews[0]
+    assert preview["game_id"] == "20260614NCKT0"
+    assert preview["away_starter"] == "김준원"
+    assert preview["away_starter_id"] == 54910
+    assert preview["home_starter"] == "고영표"
+    assert preview["home_starter_id"] == 64001
+    assert preview["start_pitcher_announced"] is True
+    assert preview["lineup_announced"] is False
+    assert preview["away_lineup"] == []
+    assert preview["home_lineup"] == []
+
+
 def test_parse_lineup_grid_empty_and_ordered_rows():
     crawler = PreviewCrawler()
 
