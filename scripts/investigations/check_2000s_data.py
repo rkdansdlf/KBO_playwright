@@ -40,7 +40,7 @@ async def check_historical_data(game_id, game_date):
             os.makedirs("debug_shots/historical", exist_ok=True)
             await page.screenshot(path=f"debug_shots/historical/{game_id}.png")
 
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             logger.error(f"   [X] Error: {e}")
         finally:
             await browser.close()

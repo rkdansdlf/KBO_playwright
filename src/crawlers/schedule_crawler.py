@@ -10,6 +10,7 @@ import logging
 from datetime import datetime
 from typing import Any
 
+from playwright.async_api import Error as PlaywrightError
 from playwright.async_api import Page
 
 from src.urls import SCHEDULE
@@ -577,7 +578,7 @@ class ScheduleCrawler:
                 try:
                     rows_text = await page.evaluate(debug_script)
                     logger.info("Table rows sample: %s", rows_text)
-                except Exception:  # noqa: BLE001
+                except (PlaywrightError, TimeoutError):
                     logger.info("Debug evaluate failed")
 
         return games

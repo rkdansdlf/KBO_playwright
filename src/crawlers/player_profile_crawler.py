@@ -11,6 +11,7 @@ import logging
 import re
 from typing import Any
 
+from playwright.async_api import Error as PlaywrightError
 from playwright.async_api import Page
 
 logger = logging.getLogger(__name__)
@@ -353,7 +354,7 @@ class PlayerProfileCrawler:
                 }""",
                 timeout=2000,
             )
-        except Exception:  # noqa: BLE001
+        except (PlaywrightError, TimeoutError):
             logger.info("No real image found for player (expected for some players)")
 
         return await page.evaluate(_EXTRACT_JS)

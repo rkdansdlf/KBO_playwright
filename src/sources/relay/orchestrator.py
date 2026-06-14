@@ -84,7 +84,7 @@ class RelayRecoveryOrchestrator:
                 ),
                 "timeout",
             )
-        except Exception as exc:  # noqa: BLE001
+        except (RuntimeError, ValueError, OSError) as exc:
             logger.warning("Fetch failed for %s from %s: %s", game_id, adapter.source_name, exc)
             return (
                 NormalizedRelayResult(
