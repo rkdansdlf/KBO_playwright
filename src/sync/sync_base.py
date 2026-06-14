@@ -16,6 +16,7 @@ from datetime import datetime
 from itertools import count
 from typing import Any
 
+from psycopg2 import Error as PsycopgError
 from sqlalchemy import bindparam, create_engine, inspect, text
 from sqlalchemy.exc import DBAPIError, OperationalError, SQLAlchemyError
 from sqlalchemy.orm import Session, sessionmaker
@@ -544,8 +545,14 @@ class OCISyncBase:
             self.target_session.execute(text("SELECT 1"))
             logger.info("✅ OCI connection successful")
             return True
-        except Exception as e:
+        except (PsycopgError, SQLAlchemyError, OSError, RuntimeError) as e:
             logger.exception("❌ OCI connection failed: %s", e)
+            self._rollback_target_session(label="test_connection")
+            if self._is_transient_oci_error(e):
+                try:
+                    self._reconnect_oci()
+                except (PsycopgError, SQLAlchemyError, OSError, RuntimeError) as reconnect_exc:
+                    logger.warning("OCI reconnect after connection test failed: %s", reconnect_exc)
             return False
 
     def _get_season_map(self) -> dict[tuple, int]:
@@ -632,7 +639,7 @@ class OCISyncBase:
                     update_timestamp,
                     connection=connection,
                 )
-            except Exception as e:  # noqa: BLE001
+            except (PsycopgError, SQLAlchemyError, OSError, RuntimeError) as e:
                 last_exception = e
                 if attempt < max_attempts:
                     wait = 1 * (3 ** (attempt - 1))
@@ -656,7 +663,7 @@ class OCISyncBase:
         try:
             self.target_session.close()
             self.oci_engine.dispose()
-        except Exception as e:  # noqa: BLE001
+        except (PsycopgError, SQLAlchemyError, OSError, RuntimeError) as e:
             logger.warning("Ignore exception during OCI reconnection cleanup: %s", e)
         target_session_factory = sessionmaker(bind=self.oci_engine)
         self.target_session = target_session_factory()
@@ -725,7 +732,7 @@ class OCISyncBase:
     def _rollback_target_session(self, *, label: str) -> None:
         try:
             self.target_session.rollback()
-        except Exception as rollback_exc:  # noqa: BLE001
+        except (PsycopgError, SQLAlchemyError, OSError, RuntimeError) as rollback_exc:
             logger.warning("OCI rollback failed label=%s error=%s", label, rollback_exc)
 
     def _run_target_session_with_retries(
@@ -777,7 +784,7 @@ class OCISyncBase:
                 cols = inspect(self.oci_engine).get_columns(model.__tablename__)
                 target_column_defs = {c["name"]: c for c in cols}
                 target_columns = set(target_column_defs)
-            except Exception as exc:  # noqa: BLE001
+            except SQLAlchemyError as exc:
                 logger.warning("Failed to inspect OCI columns for %s: %s", model.__tablename__, exc)
 
         sqlite_bind = None
@@ -895,7 +902,7 @@ class OCISyncBase:
                     )
                     synced += len(records)
                     logger.info("   Synced %s/%s rows via COPY...", synced, total_count)
-                except Exception as batch_err:  # noqa: BLE001
+                except (PsycopgError, SQLAlchemyError, OSError, RuntimeError, ValueError) as batch_err:
                     logger.warning(
                         "Batch COPY failed for %s, falling back to row-by-row: %s", model.__tablename__, batch_err
                     )
@@ -909,14 +916,14 @@ class OCISyncBase:
                                 connection=connection,
                             )
                             synced += 1
-                        except Exception as row_err:  # noqa: BLE001
+                        except (PsycopgError, SQLAlchemyError, OSError, RuntimeError, ValueError) as row_err:
                             logger.warning("Skipping bad row in %s: %s", model.__tablename__, row_err)
                     logger.info("   Synced %s/%s rows via row-by-row...", synced, total_count)
         finally:
             if connection is not None:
                 try:
                     connection.close()
-                except Exception:  # noqa: BLE001
+                except (PsycopgError, SQLAlchemyError, OSError, RuntimeError):
                     logger.warning("Failed to close connection, already closed or aborted", exc_info=True)
         return synced
 

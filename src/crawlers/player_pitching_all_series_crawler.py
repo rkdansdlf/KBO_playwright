@@ -25,6 +25,7 @@ import re
 from dataclasses import dataclass, field
 from datetime import datetime
 
+from playwright.sync_api import Error as PlaywrightError
 from playwright.sync_api import Page, sync_playwright
 from playwright.sync_api import TimeoutError as PlaywrightTimeout
 
@@ -201,7 +202,7 @@ def apply_sort(
                     if policy:
                         policy.delay()
                     return True
-            except Exception:  # noqa: BLE001
+            except (PlaywrightError, PlaywrightTimeout):
                 logger.warning("Sort toggle click failed, falling back to JS execution")
 
             # Fallback to direct JS execution if DOM is un-clickable
@@ -336,7 +337,7 @@ def parse_basic1_page(
     # Wait for the table to be visible (more resilient than specific header th)
     try:
         page.wait_for_selector("table.tData01", timeout=SEL_TIMEOUT)
-    except Exception:  # noqa: BLE001
+    except (PlaywrightError, PlaywrightTimeout):
         logger.warning("기록 테이블을 찾을 수 없습니다. (타임아웃)")
         content = page.content()
         logger.debug("Page content length: %d | tData01 found: %s", len(content), "tData01" in content)

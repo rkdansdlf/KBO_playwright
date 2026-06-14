@@ -13,6 +13,7 @@ from datetime import datetime, timedelta
 from typing import Any
 
 import httpx
+from sqlalchemy.exc import SQLAlchemyError
 
 from src.services.wpa_calculator import WPACalculator
 from src.services.wpa_transitions import apply_wpa_transitions, format_base_string
@@ -193,7 +194,7 @@ class RelayCrawler:
         except _PermanentStatusError as exc:
             logger.exception("[INFO] Relay API permanent error: %s status=%s", full_url, exc.status_code)
             return None, f"http_{exc.status_code}"
-        except Exception as exc:  # noqa: BLE001
+        except (httpx.HTTPError, RuntimeError, ValueError) as exc:
             logger.warning("Relay API request failed: %s reason=%s", full_url, exc)
             return None, "relay_api_error"
 
@@ -544,7 +545,7 @@ class RelayCrawler:
                                 game_time = getattr(meta_row, "start_time", None)
                                 if hasattr(game_time, "strftime"):
                                     game_time = game_time.strftime("%H:%M")
-            except Exception:  # noqa: BLE001
+            except SQLAlchemyError:
                 logger.warning("Failed to extract game metadata for relay relay")
 
         if game_time and not isinstance(game_time, str):

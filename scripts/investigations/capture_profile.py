@@ -29,7 +29,7 @@ async def main():
             logger.info(f"Draft: {draft.strip() if draft else 'None'}")
             logger.info(f"Payment: {payment.strip() if payment else 'None'}")
 
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             logger.error(f"Error extracting DOM elements: {e}")
 
         await browser.close()

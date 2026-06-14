@@ -10,6 +10,7 @@ import asyncio
 import logging
 from typing import Any
 
+from playwright.async_api import Error as PlaywrightError
 from playwright.async_api import Page
 
 from src.services.wpa_calculator import WPACalculator
@@ -90,7 +91,7 @@ class PBPCrawler:
                         try:
                             # Try to wait for any of the containers (1-12)
                             await page.wait_for_selector('div[id^="numCont"]', timeout=SEL_TIMEOUT)
-                        except Exception:  # noqa: BLE001
+                        except (PlaywrightError, TimeoutError):
                             logger.warning("No PBP containers found for %s", game_id)
                             body = await page.content()
                             if "데이터가 없습니다" in body or "취소" in body:

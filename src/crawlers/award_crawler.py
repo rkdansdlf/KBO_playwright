@@ -10,6 +10,7 @@ import asyncio
 import logging
 
 from playwright.async_api import Page, async_playwright
+from sqlalchemy.exc import SQLAlchemyError
 
 from src.db.engine import SessionLocal
 from src.repositories.award_repository import AwardRepository
@@ -317,7 +318,7 @@ class AwardCrawler:
                 try:
                     repo.save_award(item)
                     count += 1
-                except Exception as ex:  # noqa: BLE001
+                except (SQLAlchemyError, RuntimeError, ValueError) as ex:
                     logger.warning("Skipping duplicate or error: %s - %s", item, ex, exc_info=True)
             session.commit()
             logger.info("✅ Saved %s awards to database.", count)

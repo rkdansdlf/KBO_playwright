@@ -7,6 +7,7 @@ from datetime import UTC, datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from sqlalchemy import text
+from sqlalchemy.exc import SQLAlchemyError
 
 from src.db.engine import SessionLocal
 from src.repositories.source_registry_repository import DataSourceRepository
@@ -86,7 +87,7 @@ def check_table_completeness(dry_run: bool = False) -> list[str]:
                     recent = session.execute(text(f"SELECT MAX({date_col}) FROM {table}")).scalar()
                     msg = f"[OK] {table}: {row} rows, latest {date_col}={recent}"
                     logger.info(msg)
-            except Exception as e:  # noqa: BLE001
+            except SQLAlchemyError as e:
                 msg = f"[ERROR] Table check failed for {table}: {e}"
                 logger.error(msg)
                 if not dry_run:

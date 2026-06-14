@@ -7,6 +7,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 from sqlalchemy import text
+from sqlalchemy.exc import SQLAlchemyError
 
 from src.db.engine import SessionLocal
 from src.repositories.source_registry_repository import DataSourceRepository
@@ -73,7 +74,7 @@ def _check_table_health(session) -> list[dict[str, Any]]:
                     "latest": str(latest or "-")[:20],
                 },
             )
-        except Exception as e:  # noqa: BLE001
+        except SQLAlchemyError as e:
             logger.warning("Health check table %s query failed: %s", table, e)
             rows.append({"table": table, "rows": "ERR", "latest": str(e)[:40]})
     return rows

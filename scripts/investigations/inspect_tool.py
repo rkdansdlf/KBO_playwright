@@ -57,7 +57,7 @@ def run_db_query(db_path: Path, query: str) -> None:
             logger.info("-" * (len(" | ".join(cols))))
             for row in cursor.fetchall():
                 logger.info(" | ".join(str(val) for val in row))
-    except Exception as e:  # noqa: BLE001
+    except Exception as e:
         logger.error(f"Query Execution Error: {e}")
     finally:
         conn.close()
@@ -119,7 +119,7 @@ def run_db_summary(db_path: Path) -> None:
         try:
             cur.execute(f"SELECT COUNT(*) FROM {table_name}")
             return cur.fetchone()[0]
-        except Exception:  # noqa: BLE001
+        except sqlite3.DatabaseError:
             return "MISSING"
 
     logger.info("\n=== Player Data ===")
@@ -150,6 +150,7 @@ def run_oci_summary() -> None:
     try:
         from dotenv import load_dotenv
         from sqlalchemy import create_engine, text
+        from sqlalchemy.exc import SQLAlchemyError
     except ImportError:
         logger.info("ERROR: sqlalchemy and python-dotenv are required for OCI summary.")
         sys.exit(1)
@@ -169,7 +170,7 @@ def run_oci_summary() -> None:
             def get_count(table_name):
                 try:
                     return conn.execute(text(f"SELECT COUNT(*) FROM {table_name}")).fetchone()[0]
-                except Exception as e:  # noqa: BLE001
+                except SQLAlchemyError as e:
                     return f"ERROR ({e})"
 
             logger.info("\n=== Player Data ===")
@@ -208,11 +209,11 @@ def run_oci_summary() -> None:
                 ).fetchall()
                 for year, cnt in years:
                     logger.info(f"  {year}: {cnt} games")
-            except Exception as e:  # noqa: BLE001
+            except Exception as e:
                 logger.error(f"  Error loading distribution: {e}")
 
             logger.info("\n✅ OCI summary complete")
-    except Exception as e:  # noqa: BLE001
+    except Exception as e:
         logger.info(f"ERROR connecting to OCI Database: {e}")
 
 
@@ -279,7 +280,7 @@ async def inspect_gamecenter(
                 await page.screenshot(path=screenshot_path)
                 logger.info(f"Screenshot saved to {screenshot_path}")
 
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             logger.error(f"Error during GameCenter inspection: {e}")
         finally:
             await browser.close()
@@ -338,7 +339,7 @@ async def inspect_player_profile(
                             await page.wait_for_load_state("networkidle")
                         else:
                             logger.info(f"Tab '{click_tab}' not found.")
-                except Exception as e:  # noqa: BLE001
+                except Exception as e:
                     logger.error(f"Error clicking tab: {e}")
 
             # Handle select year
@@ -353,7 +354,7 @@ async def inspect_player_profile(
                         await asyncio.sleep(2)  # Buffer for JS
                     else:
                         logger.info("Year select element not found.")
-                except Exception as e:  # noqa: BLE001
+                except Exception as e:
                     logger.error(f"Error selecting year: {e}")
 
             # Extract tables
@@ -378,7 +379,7 @@ async def inspect_player_profile(
                 await page.screenshot(path=screenshot_path, full_page=True)
                 logger.info(f"Screenshot saved to {screenshot_path}")
 
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             logger.error(f"Error during player profile inspection: {e}")
         finally:
             await browser.close()

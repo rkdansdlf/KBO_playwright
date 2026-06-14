@@ -15,6 +15,7 @@ from typing import Any
 
 from apscheduler.schedulers.blocking import BlockingScheduler
 from dotenv import load_dotenv
+from sqlalchemy.exc import SQLAlchemyError
 
 from src.cli.verify_sync_consistency import run_consistency_audit
 from src.crawlers.dynamic_data_crawler import DynamicDataCrawler
@@ -333,7 +334,7 @@ def run_consistency_check(deep: bool = False) -> None:
             logger.info("✅ Consistency audit passed — databases are in sync.")
         else:
             logger.info("🚨 Consistency audit found mismatches — alert sent.")
-    except Exception:  # noqa: BLE001
+    except (SQLAlchemyError, RuntimeError, OSError):
         err_msg = traceback.format_exc()
         logger.error("Consistency audit raised an unexpected error:\n%s", err_msg)
         SlackWebhookClient.send_error_alert(f"Consistency audit error:\n{err_msg}")
