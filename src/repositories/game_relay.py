@@ -47,8 +47,11 @@ from src.utils.team_codes import team_code_from_game_id_segment
 
 logger = logging.getLogger(__name__)
 
-_OFFENSIVE_RELAY_ROLE_RE = re.compile(r"^(?:\d+번타자|[123]루주자|대타|대주자)\s+(.+)$")
-_DEFENSIVE_RELAY_ROLE_RE = re.compile(r"^(투수|포수|1루수|2루수|3루수|유격수|좌익수|중견수|우익수)\s+(.+)$")
+_OFFENSIVE_RELAY_ROLE_RE = re.compile(r"^(?P<role>\d+번타자|[123]루주자|대타|대주자|지명타자)\s+(?P<name>.+)$")
+_DEFENSIVE_RELAY_ROLE_RE = re.compile(
+    r"^(?P<role>투수|포수|1루수|2루수|3루수|유격수|좌익수|중견수|우익수)\s+(?P<name>.+)$"
+)
+_DEFENSIVE_RELAY_TARGET_RE = re.compile(r"^(?:투수|포수|1루수|2루수|3루수|유격수|좌익수|중견수|우익수)\b")
 _RELAY_TURN_NOISE_RE = re.compile(r"^\d+회(?:초|말)\s+\d+번타순\b")
 _RELAY_DECISION_LABELS = ("승리투수", "패전투수", "세이브", "홀드")
 
@@ -62,7 +65,24 @@ def _coerce_player_id(value: Any) -> int | None:
         return None
 
 
-def _relay_player_resolution_context(name: Any) -> tuple[str, str, bool | None] | None:
+def _relay_text_indicates_defense_side(text_value: str, play_description: Any = None) -> bool:
+    description = " ".join(str(play_description or "").strip().split())
+    if not description:
+        return False
+    if "수비위치 변경" in description:
+        return True
+    if "(으)로 교체" not in description:
+        return False
+
+    source_is_defensive = _DEFENSIVE_RELAY_ROLE_RE.match(text_value) is not None
+    if source_is_defensive:
+        return True
+
+    _, _, target = description.partition(":")
+    return bool(_DEFENSIVE_RELAY_TARGET_RE.match(target.strip()))
+
+
+def _relay_player_resolution_context(name: Any, play_description: Any = None) -> tuple[str, str, bool | None] | None:
     text_value = " ".join(str(name or "").strip().split())
     if not text_value:
         return None
@@ -73,12 +93,13 @@ def _relay_player_resolution_context(name: Any) -> tuple[str, str, bool | None] 
 
     offensive_match = _OFFENSIVE_RELAY_ROLE_RE.match(text_value)
     if offensive_match:
-        return offensive_match.group(1).strip(), "offense", False
+        side = "defense" if _relay_text_indicates_defense_side(text_value, play_description) else "offense"
+        return offensive_match.group("name").strip(), side, False
 
     defensive_match = _DEFENSIVE_RELAY_ROLE_RE.match(text_value)
     if defensive_match:
-        role = defensive_match.group(1)
-        return defensive_match.group(2).strip(), "defense", role == "투수"
+        role = defensive_match.group("role")
+        return defensive_match.group("name").strip(), "defense", role == "투수"
 
     return text_value, "offense", False
 
@@ -473,7 +494,7 @@ class _RelayResolutionContext:
             return None, None, None
         try:
             pid = self.resolver.resolve_id(name, team_code, self.season_year, is_pitcher=is_pitcher)
-        except Exception as exc:  # noqa: BLE001
+        except (SQLAlchemyError, RuntimeError, ValueError, TypeError) as exc:
             logger.warning("Player ID resolution encountered exception: %s", exc)
             return None, "error", "resolve_exception"
         if pid is None:
@@ -624,11 +645,16 @@ def _relay_resolution_context(session, game_id: str) -> _RelayResolutionContext:
     except (ValueError, IndexError):
         logger.debug("Failed to parse team codes from game_id: %s", game_id)
 
+    game_row = session.query(Game).filter(Game.game_id == game_id).one_or_none()
+    if game_row is not None:
+        away_team_code = game_row.away_team or away_team_code
+        home_team_code = game_row.home_team or home_team_code
+
     try:
         from src.services.player_id_resolver import PlayerIdResolver
 
         resolver = PlayerIdResolver(session, allow_unknown_registration=False)
-    except Exception:  # noqa: BLE001
+    except (SQLAlchemyError, RuntimeError, ValueError, TypeError):
         logger.warning("Failed to initialize PlayerIdResolver — player_id resolution will be skipped")
         resolver = None
     return _RelayResolutionContext(resolver, season_year, away_team_code, home_team_code)
@@ -641,6 +667,7 @@ def _resolve_pbp_player(
     batter_name = row.get("batter_name")
     pitcher_name = row.get("pitcher_name")
     inning_half = row.get("inning_half")
+    play_description = row.get("play_description")
     if (
         resolution.resolver is not None
         and batter_name
@@ -648,7 +675,7 @@ def _resolve_pbp_player(
         and resolution.away_team_code
         and resolution.home_team_code
     ):
-        batter_context = _relay_player_resolution_context(batter_name)
+        batter_context = _relay_player_resolution_context(batter_name, play_description)
         if batter_context is not None:
             resolved_name, side, is_pitcher = batter_context
             batter_team = (
@@ -660,7 +687,7 @@ def _resolve_pbp_player(
                 is_pitcher=is_pitcher,
             )
             return player_id, confidence, reason, resolved_name if player_id is None else None
-    elif resolution.resolver is not None and pitcher_name and resolution.season_year:
+    if resolution.resolver is not None and pitcher_name and resolution.season_year:
         pitcher_team = resolution.defense_team(inning_half)
         player_id, confidence, reason = resolution.resolve_participant(pitcher_name, pitcher_team, is_pitcher=True)
         return player_id, confidence, reason, pitcher_name if player_id is None else None
@@ -701,11 +728,12 @@ def _build_relay_pbp_rows(
 def _resolve_event_batter(
     batter_name: str | None,
     half: str | None,
+    description: str | None,
     resolution: _RelayResolutionContext,
 ) -> tuple[str | None, str | None, int | None, str | None, str | None]:
-    batter_context = _relay_player_resolution_context(batter_name)
+    batter_context = _relay_player_resolution_context(batter_name, description)
     if batter_context is None:
-        return batter_name, None, None, None, None
+        return None, None, None, None, None
     resolved_name, side, is_pitcher = batter_context
     batter_team = resolution.offense_team(half) if side == "offense" else resolution.defense_team(half)
     batter_id, confidence, reason = resolution.resolve_participant(resolved_name, batter_team, is_pitcher=is_pitcher)
@@ -725,14 +753,14 @@ def _build_player_resolution_payload(
     pitcher_reason: str | None,
 ) -> dict[str, Any]:
     resolver_payload: dict[str, Any] = {}
-    if batter_name:
+    if batter_name and (resolved_batter_name or batter_team or batter_confidence or batter_reason):
         resolver_payload["batter"] = {
             "name": resolved_batter_name,
             "team_code": batter_team,
             "confidence": batter_confidence,
             "reason": batter_reason,
         }
-    if pitcher_name:
+    if pitcher_name and (pitcher_team or pitcher_confidence or pitcher_reason):
         resolver_payload["pitcher"] = {
             "name": pitcher_name,
             "team_code": pitcher_team,
@@ -763,6 +791,7 @@ def _build_relay_event_rows(
         resolved_batter_name, batter_team, batter_id, batter_confidence, batter_reason = _resolve_event_batter(
             batter_name,
             half,
+            event.get("description"),
             resolution,
         )
         pitcher_team = resolution.defense_team(half)
