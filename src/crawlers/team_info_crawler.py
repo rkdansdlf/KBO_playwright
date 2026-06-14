@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import logging
 
+from playwright.async_api import Error as PlaywrightError
 from playwright.async_api import async_playwright
 from sqlalchemy import select
 
@@ -107,7 +108,7 @@ class TeamInfoCrawler:
                             close_btn = self.page.locator("a.btn_close, img[alt='닫기']").first
                             if await close_btn.count() > 0:
                                 await close_btn.click()
-                    except Exception:  # noqa: BLE001
+                    except (PlaywrightError, TimeoutError):
                         logger.info("Popup close button not found, continuing")
 
                     await self.page.locator("div[id^='layerPop']").wait_for(state="hidden", timeout=3000)

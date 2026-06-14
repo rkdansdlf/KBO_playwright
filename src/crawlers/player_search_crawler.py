@@ -16,8 +16,10 @@ from datetime import date as date_type
 from datetime import datetime
 from typing import Any
 
+from playwright.async_api import Error as PlaywrightError
 from playwright.async_api import Page
 
+from src.crawlers.selectors import PLAYER_SEARCH
 from src.services.player_status_confirmer import PlayerStatusConfirmer
 from src.utils.compliance import compliance
 from src.utils.player_classification import PlayerCategory, classify_player
@@ -30,13 +32,13 @@ logger = logging.getLogger(__name__)
 
 # URL and selectors
 SEARCH_URL = "https://www.koreabaseball.com/Player/Search.aspx"
-SEARCH_INPUT = "input[id$='txtSearchPlayerName']"
-SEARCH_BTN = "input[id$='btnSearch']"
-TABLE_ROWS = "table.tEx tbody tr"
-HFPAGE = "input[id$='hfPage']"
-PAGE_NUMBER_BTNS = "a[id*='btnNo'], span[id*='btnNo']"
-PAGER_CONTAINER = "div.paging"
-PAGER_NEXT_BTNS = "a[id$='btnNext'], a:has(img[alt='다음']), a:has-text('다음'), a[id$='btnNext10']"
+SEARCH_INPUT = PLAYER_SEARCH.input
+SEARCH_BTN = PLAYER_SEARCH.search_button
+TABLE_ROWS = PLAYER_SEARCH.table_rows
+HFPAGE = PLAYER_SEARCH.hidden_page
+PAGE_NUMBER_BTNS = PLAYER_SEARCH.page_number_buttons
+PAGER_CONTAINER = PLAYER_SEARCH.pager_container
+PAGER_NEXT_BTNS = PLAYER_SEARCH.pager_next_buttons
 
 REQUEST_DELAY_SEC = 1.0
 TIMEOUT_MS = 15000
@@ -125,7 +127,7 @@ class PlayerSearchCrawler:
         try:
             await self.policy.run_with_retry_async(_navigate)
             return True, "ok"
-        except Exception:  # noqa: BLE001
+        except (PlaywrightError, TimeoutError):
             reason = "selector_timeout" if required_selector else "navigation_failed"
             logger.warning("Player search page navigation failed: %s", reason)
             self._record_failure(reason)
@@ -354,7 +356,7 @@ class PlayerSearchCrawler:
         # the ASP.NET postback mechanism.
         try:
             href = await anchor.get_attribute("href", timeout=SHORT_TIMEOUT)
-        except Exception:  # noqa: BLE001
+        except (PlaywrightError, TimeoutError, AssertionError):
             logger.warning("Timeout getting href from anchor", exc_info=True)
             href = None
 

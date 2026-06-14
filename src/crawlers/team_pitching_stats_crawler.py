@@ -11,7 +11,9 @@ from typing import Any
 logger = logging.getLogger(__name__)
 
 from bs4 import BeautifulSoup
+from playwright.sync_api import Error as PlaywrightError
 from playwright.sync_api import Page, sync_playwright
+from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 
 from src.aggregators.team_stat_aggregator import TeamStatAggregator
 from src.db.engine import SessionLocal
@@ -97,7 +99,7 @@ class TeamPitchingStatsCrawler:
         stats = []
         try:
             stats = self._collect_from_site(season, mapping, headless=headless)
-        except Exception as crawl_err:  # noqa: BLE001
+        except (PlaywrightError, PlaywrightTimeoutError, RuntimeError, ValueError) as crawl_err:
             logger.warning("KBO team pitching crawl failed: %s. Falling back...", crawl_err)
 
         if not stats:
@@ -169,7 +171,7 @@ class TeamPitchingStatsCrawler:
                 page.select_option(selector, str(season))
                 page.wait_for_load_state("networkidle")
                 return True
-            except Exception:  # noqa: BLE001
+            except (PlaywrightError, PlaywrightTimeoutError):
                 logger.warning("Failed to select option, trying next")
                 continue
 

@@ -6,6 +6,7 @@ import contextlib
 import logging
 import os
 
+from playwright.sync_api import Error as PlaywrightError
 from playwright.sync_api import Page
 from playwright.sync_api import TimeoutError as PlaywrightTimeout
 
@@ -48,7 +49,7 @@ def retry_navigation(
             if attempt == max_retries:
                 return False
             _policy.delay()
-        except Exception as e:  # noqa: BLE001
+        except PlaywrightError as e:
             logger.error("Error navigating to %s on attempt %s: %s", url, attempt, e)
             if attempt == max_retries:
                 return False

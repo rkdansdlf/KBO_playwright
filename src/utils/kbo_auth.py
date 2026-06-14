@@ -10,6 +10,7 @@ import logging
 import os
 
 from dotenv import load_dotenv
+from playwright.async_api import Error as PlaywrightError
 from playwright.async_api import async_playwright
 
 from src.urls import GAME_CENTER
@@ -85,7 +86,7 @@ class KboAuthenticator:
                         await asyncio.sleep(1)
                         await page.evaluate("window.scrollTo(0, 0)")
                         await asyncio.sleep(2)  # Wait for Akamai to finalize _abck cookie
-                    except Exception as e:  # noqa: BLE001
+                    except (PlaywrightError, TimeoutError, OSError) as e:
                         logger.warning("[AUTH] Session warm-up warning (ignoring): %s", e)
 
                     # Save state
@@ -96,7 +97,7 @@ class KboAuthenticator:
                     logger.info("[AUTH] Login failed: Logout button not found after redirection.")
                     return False
 
-            except Exception as e:  # noqa: BLE001
+            except (PlaywrightError, TimeoutError, OSError) as e:
                 logger.error("[AUTH] Exception during login: %s", e)
                 return False
             finally:

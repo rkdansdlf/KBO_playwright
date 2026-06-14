@@ -9,6 +9,7 @@ import contextlib
 import logging
 from collections.abc import Iterable
 
+from playwright.async_api import Error as PlaywrightError
 from playwright.async_api import Page
 
 from src.urls import HITTER_BASIC1, PITCHER_BASIC1
@@ -80,7 +81,7 @@ class RetiredPlayerListingCrawler:
             await self._select_option_and_dispatch(page, series_selector, "0")
             await page.wait_for_load_state("load", timeout=SHORT_TIMEOUT)
             await page.wait_for_timeout(500)
-        except Exception:  # noqa: BLE001
+        except (PlaywrightError, TimeoutError):
             logger.warning("Failed to select all series option, continuing")
 
         return await self._collect_ids_from_pages(page, year)
@@ -202,7 +203,7 @@ class RetiredPlayerListingCrawler:
                     page_num += 1
                 else:
                     break
-            except Exception:  # noqa: BLE001
+            except (PlaywrightError, TimeoutError):
                 logger.warning("Error during pagination, stopping")
                 break
         return players
