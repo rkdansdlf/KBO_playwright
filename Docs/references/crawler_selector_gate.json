@@ -1,0 +1,52 @@
+{
+  "targets": [
+    {
+      "name": "team_batting_fixture",
+      "source": "../../tests/fixtures/html/team_batting_2023.html",
+      "source_type": "file",
+      "checks": [
+        {
+          "name": "team_batting_table",
+          "selector": "table.tData01",
+          "min_count": 1
+        },
+        {
+          "name": "team_batting_rows",
+          "selector": "table.tData01 tbody tr",
+          "min_count": 2,
+          "required_text": "LG"
+        },
+        {
+          "name": "team_batting_headers",
+          "selector": "table.tData01 thead th",
+          "min_count": 10,
+          "required_text": "타석"
+        }
+      ]
+    },
+    {
+      "name": "team_pitching_fixture",
+      "source": "../../tests/fixtures/html/team_pitching_2023.html",
+      "source_type": "file",
+      "checks": [
+        {
+          "name": "team_pitching_table",
+          "selector": "table.tData01",
+          "min_count": 1
+        },
+        {
+          "name": "team_pitching_rows",
+          "selector": "table.tData01 tbody tr",
+          "min_count": 2,
+          "required_text": "LG"
+        },
+        {
+          "name": "team_pitching_headers",
+          "selector": "table.tData01 thead th",
+          "min_count": 10,
+          "required_text": "방어율"
+        }
+      ]
+    }
+  ]
+}
