@@ -6,12 +6,13 @@ on:
     - cron: '0 19 * * 0'   # Mon 04:00 KST — player_game_stats
     - cron: '45 20 * * 0'  # Mon 05:45 KST — sh_sf
     - cron: '0 21 * * 0'   # Mon 06:00 KST — advanced_stats
+    - cron: '0 20 * * 0'   # Mon 05:00 KST — player_profiles
     - cron: '30 20 * * 3'  # Thu 05:30 KST — player_ids
     - cron: '0 19 1 * *'   # 2nd 04:00 KST — roster
   workflow_dispatch:
     inputs:
       backfill_id:
-        description: 'Which backfill to run (missed_crawls|player_game_stats|sh_sf|advanced_stats|player_ids|roster|all)'
+        description: 'Which backfill to run (missed_crawls|player_game_stats|sh_sf|advanced_stats|player_profiles|player_ids|roster|all)'
         required: false
         default: 'all'
       year:
@@ -35,6 +36,7 @@ env:
       {"id":"player_game_stats","name":"Player Game Stats","cron":"0 19 * * 0","playwright":"false","hydrate":"false","secrets_group":"none"},
       {"id":"sh_sf","name":"SH/SF","cron":"45 20 * * 0","playwright":"false","hydrate":"false","secrets_group":"none"},
       {"id":"advanced_stats","name":"Advanced Stats","cron":"0 21 * * 0","playwright":"false","hydrate":"true","secrets_group":"none"},
+      {"id":"player_profiles","name":"Player Profiles","cron":"0 20 * * 0","playwright":"true","hydrate":"true","secrets_group":"none"},
       {"id":"player_ids","name":"Player IDs","cron":"30 20 * * 3","playwright":"false","hydrate":"false","secrets_group":"none"},
       {"id":"roster","name":"Roster","cron":"0 19 1 * *","playwright":"true","hydrate":"true","secrets_group":"kbo_auth"}
     ]
@@ -190,6 +192,15 @@ jobs:
           python3 -m src.cli.sync_oci \
             --season-stats \
             --year "$YEAR"
+
+      # ── player_profiles ─────────────────────────────────────────────
+      - name: Run Player Profile Backfill
+        if: ${{ matrix.id == 'player_profiles' }}
+        env:
+          OCI_DB_URL: ${{ secrets.OCI_DB_URL }}
+        run: |
+          python3 scripts/backfill_player_profiles.py --limit 0 --delay 1.5
+          python3 -m src.cli.sync_oci --player-basic
 
       # ── player_ids ──────────────────────────────────────────────────
       - name: Run Player ID Backfill

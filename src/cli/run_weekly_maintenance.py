@@ -34,6 +34,17 @@ async def run_weekly_maintenance(
     # 1. Player Profile Enrichment
     logger.info("\n👤 Step 1: Enriching Player Profiles...")
     try:
+        try:
+            profile_delay = float(os.getenv("PROFILE_BACKFILL_DELAY", "1.5"))
+        except ValueError:
+            logger.warning("Invalid PROFILE_BACKFILL_DELAY=%r; using default=1.5", os.getenv("PROFILE_BACKFILL_DELAY"))
+            profile_delay = 1.5
+        from scripts.backfill_player_profiles import backfill as backfill_player_basic_profiles
+
+        logger.info("   - Backfilling player_basic profile photos/details...")
+        await backfill_player_basic_profiles(limit=profile_limit, delay=profile_delay)
+
+        logger.info("   - Enriching master player profile records...")
         await collect_profiles(limit=profile_limit)
         logger.info("   ✅ Profile enrichment complete")
     except Exception:
