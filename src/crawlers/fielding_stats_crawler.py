@@ -12,6 +12,7 @@ from typing import Any
 
 from playwright.sync_api import sync_playwright
 
+from src.crawlers.selectors import FIELDING_STATS
 from src.utils.playwright_blocking import install_sync_resource_blocking
 from src.utils.type_helpers import parse_innings, safe_float, safe_int
 
@@ -74,9 +75,9 @@ def crawl_all_fielding_stats(year=None) -> list[dict[str, Any]]:
 
         try:
             # 연도 선택
-            year_select = page.query_selector("select#cphContents_cphContents_cphContents_ddlSeason_ddlSeason")
+            year_select = page.query_selector(FIELDING_STATS.season_dropdown)
             if year_select:
-                page.select_option("select#cphContents_cphContents_cphContents_ddlSeason_ddlSeason", str(year))
+                page.select_option(FIELDING_STATS.season_dropdown, str(year))
                 with contextlib.suppress(Exception):
                     page.wait_for_load_state("networkidle", timeout=SEL_TIMEOUT)
                 policy.delay()
@@ -99,7 +100,7 @@ def crawl_all_fielding_stats(year=None) -> list[dict[str, Any]]:
             }
 
             # 1. 기본 수집: 팀별 전체 선수 (13개 기본 컬럼)
-            team_select = page.query_selector("select#cphContents_cphContents_cphContents_ddlTeam_ddlTeam")
+            team_select = page.query_selector(FIELDING_STATS.team_dropdown)
             if not team_select:
                 logger.warning("⚠️ 팀 선택 드롭다운을 찾을 수 없습니다.")
                 browser.close()
@@ -119,15 +120,15 @@ def crawl_all_fielding_stats(year=None) -> list[dict[str, Any]]:
                 try:
                     logger.info("\n🏢 [%s] 수비 기록 크롤링 중...", team_name)
                     # 포지션 선택을 "전체"로 초기화 (중요)
-                    page.select_option("select#cphContents_cphContents_cphContents_ddlPos_ddlPos", value="")
+                    page.select_option(FIELDING_STATS.position_dropdown, value="")
                     policy.delay()
 
                     with page.expect_response("**/Record/Player/Defense/Basic.aspx", timeout=RESP_TIMEOUT):
-                        page.select_option("select#cphContents_cphContents_cphContents_ddlTeam_ddlTeam", value=team_val)
+                        page.select_option(FIELDING_STATS.team_dropdown, value=team_val)
                     page.wait_for_load_state("networkidle", timeout=SEL_TIMEOUT)
                     policy.delay()
 
-                    pagination = page.query_selector(".paging")
+                    pagination = page.query_selector(FIELDING_STATS.paging)
                     total_pages = 1
                     if pagination:
                         page_numbers = [
@@ -144,7 +145,7 @@ def crawl_all_fielding_stats(year=None) -> list[dict[str, Any]]:
                                 page_link = next(
                                     (
                                         link
-                                        for link in page.query_selector(".paging").query_selector_all("a")
+                                        for link in page.query_selector(FIELDING_STATS.paging).query_selector_all("a")
                                         if link.inner_text().strip() == str(current_page)
                                     ),
                                     None,
@@ -160,7 +161,7 @@ def crawl_all_fielding_stats(year=None) -> list[dict[str, Any]]:
                                 logger.exception("   ⚠️ 페이지 %s 이동 중 오류", current_page)
                                 break
 
-                        table = page.query_selector("table.tData01.tt")
+                        table = page.query_selector(FIELDING_STATS.data_table)
                         if not table or not table.query_selector("tbody"):
                             continue
 
@@ -218,22 +219,22 @@ def crawl_all_fielding_stats(year=None) -> list[dict[str, Any]]:
 
                 # 1단계: 포지션 "포수(2)" 선택
                 with page.expect_response("**/Record/Player/Defense/Basic.aspx", timeout=RESP_TIMEOUT):
-                    page.select_option("select#cphContents_cphContents_cphContents_ddlPos_ddlPos", value="2")
+                    page.select_option(FIELDING_STATS.position_dropdown, value="2")
                 page.wait_for_load_state("networkidle", timeout=SEL_TIMEOUT)
                 policy.delay()
 
                 # 2단계: 팀 "전체" 선택 (이미 전체일 수도 있으므로 확인 후 선택)
                 team_val = page.evaluate(
-                    "document.querySelector('select#cphContents_cphContents_cphContents_ddlTeam_ddlTeam').value",
+                    f"document.querySelector('{FIELDING_STATS.team_dropdown}').value",
                 )
                 if team_val != "":
                     with page.expect_response("**/Record/Player/Defense/Basic.aspx", timeout=RESP_TIMEOUT):
-                        page.select_option("select#cphContents_cphContents_cphContents_ddlTeam_ddlTeam", value="")
+                        page.select_option(FIELDING_STATS.team_dropdown, value="")
                     page.wait_for_load_state("networkidle", timeout=SEL_TIMEOUT)
                     policy.delay()
 
                 # 페이지네이션 (포수가 많을 경우 대비)
-                pagination = page.query_selector(".paging")
+                pagination = page.query_selector(FIELDING_STATS.paging)
                 total_pages = 1
                 if pagination:
                     p_nums = [
@@ -250,7 +251,7 @@ def crawl_all_fielding_stats(year=None) -> list[dict[str, Any]]:
                         p_link = next(
                             (
                                 link
-                                for link in page.query_selector(".paging").query_selector_all("a")
+                                for link in page.query_selector(FIELDING_STATS.paging).query_selector_all("a")
                                 if link.inner_text().strip() == str(current_page)
                             ),
                             None,
@@ -261,7 +262,7 @@ def crawl_all_fielding_stats(year=None) -> list[dict[str, Any]]:
                             page.wait_for_load_state("networkidle", timeout=SEL_TIMEOUT)
                             policy.delay()
 
-                    table = page.query_selector("table.tData01.tt")
+                    table = page.query_selector(FIELDING_STATS.data_table)
                     if not table or not table.query_selector("tbody"):
                         continue
 

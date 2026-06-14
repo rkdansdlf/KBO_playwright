@@ -85,6 +85,39 @@ class TestRelayHelpers:
         assert side == "defense"
         assert is_pitcher is False
 
+    def test_relay_player_resolution_context_designated_hitter_defensive_change(self):
+        result = _relay_player_resolution_context(
+            "지명타자 오스틴",
+            "지명타자 오스틴 : 1루수(으)로 수비위치 변경",
+        )
+        assert result is not None
+        name, side, is_pitcher = result
+        assert name == "오스틴"
+        assert side == "defense"
+        assert is_pitcher is False
+
+    def test_relay_player_resolution_context_pinch_runner_defensive_change(self):
+        result = _relay_player_resolution_context(
+            "대주자 박시원",
+            "대주자 박시원 : 우익수(으)로 수비위치 변경",
+        )
+        assert result is not None
+        name, side, is_pitcher = result
+        assert name == "박시원"
+        assert side == "defense"
+        assert is_pitcher is False
+
+    def test_relay_player_resolution_context_pinch_hitter_batting_play_stays_offense(self):
+        result = _relay_player_resolution_context(
+            "대타 장성우",
+            "대타 장성우 : 좌전 안타",
+        )
+        assert result is not None
+        name, side, is_pitcher = result
+        assert name == "장성우"
+        assert side == "offense"
+        assert is_pitcher is False
+
     def test_relay_player_resolution_context_plain(self):
         result = _relay_player_resolution_context("이선수")
         assert result is not None
@@ -106,6 +139,7 @@ class TestRelayHelpers:
 
     def test_relay_player_resolution_context_turn_noise(self):
         assert _relay_player_resolution_context("1회초 1번타순 김선수") is None
+        assert _relay_player_resolution_context("5회초 4번타순 5구 후 18") is None
 
     def test_duplicate_provider_count(self):
         events = [
