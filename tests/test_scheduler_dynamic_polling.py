@@ -180,3 +180,26 @@ def test_crawl_live_refresh_fast_exit(monkeypatch):
     scheduler.crawl_live_refresh()
     assert calls == ["executed"]
     assert last_run < scheduler.LAST_LIVE_RUN_TIME
+
+
+def test_crawl_live_refresh_skips_when_live_lock_busy(monkeypatch):
+    calls = []
+
+    async def fake_run_live_crawler_cycle(**kw):
+        calls.append(kw)
+        return {"active": True}
+
+    monkeypatch.setattr(scheduler, "_get_live_poll_interval_seconds", lambda: 0)
+    monkeypatch.setattr(scheduler, "_should_skip_live_for_pregame", lambda: False)
+    monkeypatch.setattr(scheduler, "run_live_crawler_cycle", fake_run_live_crawler_cycle)
+    monkeypatch.setattr(scheduler, "_live_refresh_max_games_per_cycle", lambda: 1)
+    scheduler.LAST_LIVE_RUN_TIME = None
+    scheduler.LAST_LIVE_POLL_INTERVAL = None
+
+    assert scheduler.LIVE_LOCK.acquire(blocking=False)
+    try:
+        scheduler.crawl_live_refresh()
+    finally:
+        scheduler.LIVE_LOCK.release()
+
+    assert calls == []

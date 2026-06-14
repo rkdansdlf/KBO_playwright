@@ -48,6 +48,8 @@ Options:
 
 Environment:
   CRAWLER_STABILITY_PYTHON  Python executable to use. Defaults to ./venv/bin/python.
+  CRAWLER_SELECTOR_GATE_CONFIG  Selector gate JSON config. Defaults to Docs/references/crawler_selector_gate.json.
+  CRAWLER_SELECTOR_GATE_OUTPUT_DIR  Selector artifacts directory. Defaults to output/playwright/selector-gate.
 USAGE
 }
 
@@ -65,3 +67,15 @@ cd "${ROOT_DIR}"
 echo "🚦 Running crawler stability gate..."
 echo "Python: ${PYTHON_BIN}"
 "${PYTHON_BIN}" -m pytest "${TEST_TARGETS[@]}" -q "$@"
+
+SELECTOR_CONFIG="${CRAWLER_SELECTOR_GATE_CONFIG:-Docs/references/crawler_selector_gate.json}"
+SELECTOR_OUTPUT_DIR="${CRAWLER_SELECTOR_GATE_OUTPUT_DIR:-output/playwright/selector-gate}"
+if [[ -f "${SELECTOR_CONFIG}" ]]; then
+  echo "🔎 Running crawler selector gate..."
+  "${PYTHON_BIN}" -m src.cli.crawler_selector_gate \
+    --config "${SELECTOR_CONFIG}" \
+    --output-dir "${SELECTOR_OUTPUT_DIR}" \
+    --json
+else
+  echo "Skipping crawler selector gate: config not found (${SELECTOR_CONFIG})"
+fi

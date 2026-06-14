@@ -142,11 +142,13 @@ def test_live_refresh_uses_bounded_default_shard(monkeypatch):
 
     monkeypatch.delenv("LIVE_REFRESH_MAX_GAMES_PER_CYCLE", raising=False)
     monkeypatch.setattr(scheduler, "_should_skip_live_for_pregame", lambda: False)
+    monkeypatch.setattr(scheduler, "LAST_LIVE_RUN_TIME", None)
+    monkeypatch.setattr(scheduler, "LAST_LIVE_POLL_INTERVAL", None)
     monkeypatch.setattr(scheduler, "run_live_crawler_cycle", _fake_live_cycle)
 
     scheduler.crawl_live_refresh()
 
-    assert calls == [{"sync_to_oci": False, "max_active_games": 1}]
+    assert calls == [{"sync_to_oci": False, "max_active_games": 1, "detail_snapshot_background": True}]
 
 
 def test_pregame_refresh_queues_realtime_oci_sync_without_inline_sync(monkeypatch):
@@ -209,7 +211,7 @@ def test_live_refresh_queues_realtime_oci_sync_without_inline_sync(monkeypatch):
 
     scheduler.crawl_live_refresh()
 
-    assert run_calls == [{"sync_to_oci": False, "max_active_games": 1}]
+    assert run_calls == [{"sync_to_oci": False, "max_active_games": 1, "detail_snapshot_background": True}]
     assert submit_calls == [("live", ["20260605WOOB0", "20260605HHLT0"])]
 
 
@@ -232,7 +234,7 @@ def test_realtime_oci_sync_submitter_skips_when_worker_is_still_running(monkeypa
     assert thread_calls == []
 
 
-def test_realtime_oci_sync_worker_catches_sync_exceptions_and_releases_lock(monkeypatch):
+def test_realtime_oci_sync_worker_isolates_game_failures_and_releases_lock(monkeypatch):
     calls = []
 
     class _ImmediateThread:
@@ -244,34 +246,52 @@ def test_realtime_oci_sync_worker_catches_sync_exceptions_and_releases_lock(monk
             self.target()
 
     class _FakeSession:
+        def __init__(self, name):
+            self.name = name
+
         def __enter__(self):
-            calls.append(("session_enter",))
-            return "session"
+            calls.append(("session_enter", self.name))
+            return self.name
 
         def __exit__(self, exc_type, exc, tb):
-            calls.append(("session_exit", exc_type))
+            calls.append(("session_exit", self.name, exc_type))
             return False
 
-    class _FailingSyncer:
+    class _PerGameSyncer:
         def __init__(self, oci_url, session):
+            self.session = session
             calls.append(("syncer", oci_url, session))
 
         def sync_specific_game(self, game_id):
-            calls.append(("sync_specific_game", game_id))
-            raise RuntimeError("operation timed out")
+            calls.append(("sync_specific_game", game_id, self.session))
+            if game_id == "20260605AAA0":
+                raise RuntimeError("operation timed out")
 
         def close(self):
-            calls.append(("close",))
+            calls.append(("close", self.session))
+
+    session_names = []
+
+    def _session_factory():
+        name = f"session-{len(session_names) + 1}"
+        session_names.append(name)
+        return _FakeSession(name)
 
     monkeypatch.setenv("OCI_DB_URL", "postgresql://oci-host/kbo")
     monkeypatch.setattr(scheduler, "Thread", _ImmediateThread)
-    monkeypatch.setattr(scheduler, "SessionLocal", lambda: _FakeSession())
-    monkeypatch.setattr(scheduler, "OCISync", _FailingSyncer)
+    monkeypatch.setattr(scheduler, "SessionLocal", _session_factory)
+    monkeypatch.setattr(scheduler, "OCISync", _PerGameSyncer)
 
-    assert scheduler._submit_realtime_oci_sync("live", ["20260605WOOB0"]) is True
+    assert scheduler._submit_realtime_oci_sync("live", ["20260605BBB0", "20260605AAA0"]) is True
 
-    assert ("sync_specific_game", "20260605WOOB0") in calls
-    assert ("close",) in calls
+    assert [call for call in calls if call[0] == "sync_specific_game"] == [
+        ("sync_specific_game", "20260605AAA0", "session-1"),
+        ("sync_specific_game", "20260605BBB0", "session-2"),
+    ]
+    assert [call for call in calls if call[0] == "close"] == [
+        ("close", "session-1"),
+        ("close", "session-2"),
+    ]
     assert scheduler.REALTIME_OCI_SYNC_LOCK.acquire(blocking=False)
     scheduler.REALTIME_OCI_SYNC_LOCK.release()
 

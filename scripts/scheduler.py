@@ -278,6 +278,28 @@ def _env_enabled(name: str, default: str = "1") -> bool:
     return os.getenv(name, default).strip().lower() not in FALSE_ENV_VALUES
 
 
+def _env_int(name: str, default: int) -> int:
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    try:
+        return int(raw)
+    except ValueError:
+        logger.warning("Invalid integer for %s=%r; using default=%d", name, raw, default)
+        return default
+
+
+def _env_float(name: str, default: float) -> float:
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    try:
+        return float(raw)
+    except ValueError:
+        logger.warning("Invalid float for %s=%r; using default=%s", name, raw, default)
+        return default
+
+
 def _pregame_sync_to_oci_enabled() -> bool:
     return _env_enabled("PREGAME_SYNC_TO_OCI") and bool(os.getenv("OCI_DB_URL"))
 
@@ -310,44 +332,59 @@ def _submit_realtime_oci_sync(sync_kind: str, game_ids: Sequence[str]) -> bool:
         return False
 
     def _worker() -> None:
-        syncer = None
+        started_at = datetime.now(KST)
         succeeded = 0
-        failed = 0
+        failed_game_ids: list[str] = []
         try:
             logger.info(
                 "Starting background realtime OCI %s sync games=%s",
                 sync_kind,
                 ",".join(target_game_ids),
             )
-            with SessionLocal() as sync_session:
-                syncer = OCISync(oci_url, sync_session)
-                sync_method = getattr(syncer, method_name)
-                for game_id in target_game_ids:
-                    try:
+            for game_id in target_game_ids:
+                syncer = None
+                game_started_at = datetime.now(KST)
+                try:
+                    with SessionLocal() as sync_session:
+                        syncer = OCISync(oci_url, sync_session)
+                        sync_method = getattr(syncer, method_name)
                         sync_method(game_id)
-                        succeeded += 1
-                    except Exception:
-                        failed += 1
-                        logger.exception(
-                            "Background realtime OCI %s sync failed game_id=%s",
-                            sync_kind,
-                            game_id,
-                        )
+                    succeeded += 1
+                    logger.info(
+                        "Background realtime OCI %s sync succeeded game_id=%s elapsed=%.1fs",
+                        sync_kind,
+                        game_id,
+                        (datetime.now(KST) - game_started_at).total_seconds(),
+                    )
+                except Exception:
+                    failed_game_ids.append(game_id)
+                    logger.exception(
+                        "Background realtime OCI %s sync failed game_id=%s elapsed=%.1fs",
+                        sync_kind,
+                        game_id,
+                        (datetime.now(KST) - game_started_at).total_seconds(),
+                    )
+                finally:
+                    if syncer is not None:
+                        try:
+                            syncer.close()
+                        except Exception:
+                            logger.exception(
+                                "Failed to close background realtime OCI %s syncer game_id=%s",
+                                sync_kind,
+                                game_id,
+                            )
         except Exception:
-            failed += len(target_game_ids) - succeeded - failed
             logger.exception("Background realtime OCI %s sync setup failed", sync_kind)
         finally:
-            if syncer is not None:
-                try:
-                    syncer.close()
-                except Exception:
-                    logger.exception("Failed to close background realtime OCI %s syncer", sync_kind)
             REALTIME_OCI_SYNC_LOCK.release()
             logger.info(
-                "Background realtime OCI %s sync finished succeeded=%d failed=%d",
+                "Background realtime OCI %s sync finished succeeded=%d failed=%d failed_game_ids=%s elapsed=%.1fs",
                 sync_kind,
                 succeeded,
-                failed,
+                len(failed_game_ids),
+                ",".join(failed_game_ids) or "-",
+                (datetime.now(KST) - started_at).total_seconds(),
             )
 
     thread = Thread(
@@ -618,26 +655,47 @@ def backfill_missed_daily_crawls(lookback_days: int = 14) -> list[str]:
         except Exception:
             logger.exception("Phase 3 — Preview backfill failed for %s", date_compact)
 
-    # ── Phase 4: Player profile gaps (rate-limited, max 5 per cycle) ───────
+    # ── Phase 4: Player profile gaps (rate-limited) ────────────────────────
     with SessionLocal() as session:
         profile_gap_ids = _find_player_profile_gaps(session)
 
     if profile_gap_ids:
-        batch = profile_gap_ids[:5]
+        profile_batch_size = max(0, _env_int("PROFILE_BACKFILL_BATCH_SIZE", 50))
+        batch = profile_gap_ids[:profile_batch_size]
         logger.warning(
             "Phase 4 — Profile backfill: %d players need profiles (processing %d)",
             len(profile_gap_ids),
             len(batch),
         )
-        try:
-            from scripts.backfill_player_profiles import backfill as backfill_player_profiles_fn
+        if batch:
+            try:
+                from scripts.backfill_player_profiles import backfill as backfill_player_profiles_fn
 
-            awaitable = backfill_player_profiles_fn(limit=len(batch), delay=2.0, ids=batch)
-            asyncio.run(awaitable)
-            backfilled.append(f"profiles:{len(batch)}")
-            logger.info("Phase 4 — Profile backfill completed for %d players", len(batch))
-        except Exception:
-            logger.exception("Phase 4 — Profile backfill failed")
+                awaitable = backfill_player_profiles_fn(
+                    limit=len(batch),
+                    delay=_env_float("PROFILE_BACKFILL_DELAY", 2.0),
+                    ids=batch,
+                )
+                asyncio.run(awaitable)
+                backfilled.append(f"profiles:{len(batch)}")
+                logger.info("Phase 4 — Profile backfill completed for %d players", len(batch))
+
+                oci_url = os.getenv("OCI_DB_URL")
+                if oci_url:
+                    with SessionLocal() as sync_session:
+                        syncer = OCISync(oci_url, sync_session)
+                        try:
+                            synced_basic = syncer.sync_player_basic_by_ids(batch)
+                            synced_players = syncer.sync_players()
+                            logger.info(
+                                "Phase 4 — Profile OCI sync completed (player_basic=%d, players=%d)",
+                                synced_basic,
+                                synced_players,
+                            )
+                        finally:
+                            syncer.close()
+            except Exception:
+                logger.exception("Phase 4 — Profile backfill failed")
 
     # ── Summary ────────────────────────────────────────────────────────────
     if not backfilled:
@@ -869,17 +927,20 @@ def crawl_live_refresh():
             return
 
     live_sync_game_ids: list[str] = []
-    with LIVE_LOCK:
+    if not LIVE_LOCK.acquire(blocking=False):
+        logger.info("Skipping live refresh because LIVE_LOCK is already held")
+        return
+
+    LAST_LIVE_RUN_TIME = now
+    try:
         logger.info("Running live refresh cycle")
         result = asyncio.run(
             run_live_crawler_cycle(
                 sync_to_oci=False,
                 max_active_games=_live_refresh_max_games_per_cycle(),
+                detail_snapshot_background=True,
             )
         )
-
-        # Only update run time when the cycle actually executes
-        LAST_LIVE_RUN_TIME = datetime.now(KST)
 
         if isinstance(result, dict):
             live_sync_game_ids.extend(str(game_id) for game_id in result.get("game_ids_playing") or [] if game_id)
@@ -891,6 +952,11 @@ def crawl_live_refresh():
                     failure_count,
                     ",".join(str(game_id) for game_id in failed_ids),
                 )
+    except Exception:
+        LAST_LIVE_RUN_TIME = None
+        raise
+    finally:
+        LIVE_LOCK.release()
 
     if os.getenv("OCI_DB_URL") and live_sync_game_ids:
         _submit_realtime_oci_sync("live", live_sync_game_ids)

@@ -149,6 +149,52 @@ class TestIsTransientOciError:
         assert OCISyncBase._is_transient_oci_error(exc) is False
 
 
+# ── test_connection ───────────────────────────────────────────────────
+
+
+class TestConnection:
+    def test_transient_failure_rolls_back_and_reconnects(self, monkeypatch):
+        syncer = _build_syncer()
+        calls = []
+
+        class _FailingSession:
+            def execute(self, _stmt):
+                calls.append(("execute",))
+                raise OperationalError("SELECT 1", {}, RuntimeError("could not receive data from server"))
+
+        syncer.target_session = _FailingSession()
+        monkeypatch.setattr(syncer, "_rollback_target_session", lambda *, label: calls.append(("rollback", label)))
+        monkeypatch.setattr(syncer, "_reconnect_oci", lambda: calls.append(("reconnect",)))
+
+        assert syncer.test_connection() is False
+        assert calls == [
+            ("execute",),
+            ("rollback", "test_connection"),
+            ("reconnect",),
+        ]
+
+    def test_non_transient_failure_rolls_back_without_reconnect(self, monkeypatch):
+        syncer = _build_syncer()
+        calls = []
+        exc = DBAPIError("SELECT 1", {}, RuntimeError("syntax issue"))
+        exc.connection_invalidated = False
+
+        class _FailingSession:
+            def execute(self, _stmt):
+                calls.append(("execute",))
+                raise exc
+
+        syncer.target_session = _FailingSession()
+        monkeypatch.setattr(syncer, "_rollback_target_session", lambda *, label: calls.append(("rollback", label)))
+        monkeypatch.setattr(syncer, "_reconnect_oci", lambda: calls.append(("reconnect",)))
+
+        assert syncer.test_connection() is False
+        assert calls == [
+            ("execute",),
+            ("rollback", "test_connection"),
+        ]
+
+
 # ── _run_target_session_with_retries ──────────────────────────────────
 
 
