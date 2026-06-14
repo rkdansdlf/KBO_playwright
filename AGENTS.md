@@ -9,6 +9,17 @@ This repository is a Playwright-based KBO data crawler with a two-track pipeline
 - `migrations/`: Schema migrations (including OCI).
 - `data/`, `logs/`: Local SQLite DB and runtime logs.
 
+## Agent Skill Defaults
+Agents should apply the repository's crawler-oriented skill set automatically; the user should not need to invoke these skills one by one.
+- Default crawler change workflow: use `$playwright` for browser-backed selector, DOM, screenshot, and extraction checks; use `$systematic-debugging` for crawler failures, selector drift, parser errors, timing issues, DB writes, and unexpected data quality changes; use `$test-driven-development` for feature work, bug fixes, refactors, parser changes, repository changes, and behavior changes; use `$verification-before-completion` before claiming a fix is complete.
+- Do not force every skill onto every task. For documentation-only or configuration-only changes, use only the relevant subset and still verify the edited files.
+- For GitHub Actions failures, CI regressions, or workflow log investigation, use `$gh-fix-ci`.
+- For PR, issue, branch, or repository triage, use `$github`; route to the more specific GitHub skill once the task is clear.
+- For security review of a PR, commit, branch diff, or working-tree patch, use `$security-diff-scan`; for repository-wide or scoped-path security audits, use `$security-scan`.
+- For large crawler, scheduler, backfill, OCI sync, or GitHub Actions changes spanning multiple modules, use `$writing-plans` before editing.
+- For quality gate, freshness, gap report, or data quality summaries that need analytical presentation, use the Data Analytics reporting or visualization skills when useful.
+- Verification should normally include the narrowest relevant `pytest` target plus `ruff check src/ tests/`; for CLI behavior, prefer a dry-run or read-only command before any save/sync operation.
+
 ## Build, Test, and Development Commands
 - `python3 -m venv venv && source venv/bin/activate`: Create and activate virtual environment.
 - `pip3 install -r requirements.txt`: Install Python dependencies.
@@ -51,6 +62,9 @@ This repository is a Playwright-based KBO data crawler with a two-track pipeline
 - `python3 -m src.cli.freshness_gate [--max-hours N]`: Check data freshness against expected thresholds.
 - `python3 -m src.cli.gap_report [--category ...]`: Run gap analysis for missing/aged data.
 - `python3 -m src.cli.generate_quality_report --year YYYY`: Generate data quality statistics report.
+- `python3 -m src.cli.crawler_selector_gate --config Docs/references/crawler_selector_gate.json --json`: Validate crawler selector contracts against fixture/live targets.
+- `python3 -m src.cli.diagnose_crawler_failure --json logs/<logfile>.log`: Classify crawler failure logs and suggest targeted recovery commands.
+- `python3 -m src.cli.data_quality_regression_pack --json`: Run compact DB invariants for PA formula, impossible stats, and NULL player IDs.
 - `python3 -m src.cli.hydrate_runtime_from_oci [--year YYYY] [--date YYYYMMDD]`: Hydrate local runtime cache from OCI.
 - `python3 -m src.cli.live_crawler [--mode ...]`: Run live data crawler during game hours.
 - `python3 -m src.cli.recalc_player_game_stats --year YYYY`: Recalculate player game-level batting/pitching stats.
