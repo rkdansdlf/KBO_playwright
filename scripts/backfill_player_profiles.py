@@ -35,9 +35,9 @@ async def backfill(limit: int, delay: float, ids: list[str] | None = None):
             logger.info("🎯 Targeted processing for %s IDs", len(ids))
         else:
             query = session.query(PlayerBasic).filter(
-                PlayerBasic.photo_url is None,
+                PlayerBasic.photo_url.is_(None),
                 PlayerBasic.player_id >= 10000,
-                or_(PlayerBasic.status is None, PlayerBasic.status.not_in(["NOT_FOUND", "PSEUDO"])),
+                or_(PlayerBasic.status.is_(None), ~PlayerBasic.status.in_(["NOT_FOUND", "PSEUDO"])),
             )
         if limit > 0:
             query = query.limit(limit)
@@ -127,6 +127,8 @@ async def backfill(limit: int, delay: float, ids: list[str] | None = None):
 
 
 def main():
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(name)s - %(message)s")
+
     parser = argparse.ArgumentParser(description="Backfill missing player profile details")
     parser.add_argument("--limit", type=int, default=0, help="Number of players to process (0 = all)")
     parser.add_argument("--delay", type=float, default=1.5, help="Delay between requests in seconds")
