@@ -9,8 +9,12 @@ import argparse
 import asyncio
 import logging
 import os
+import subprocess
+import sys
 from datetime import datetime
 from zoneinfo import ZoneInfo
+
+from sqlalchemy.exc import SQLAlchemyError
 
 from src.db.engine import SessionLocal
 from src.sync.oci_sync import OCISync
@@ -18,6 +22,8 @@ from src.sync.oci_sync import OCISync
 logger = logging.getLogger(__name__)
 
 KST = ZoneInfo("Asia/Seoul")
+PERIODIC_SUBPROCESS_EXCEPTIONS = (subprocess.SubprocessError, OSError, RuntimeError, ValueError)
+PERIODIC_SYNC_EXCEPTIONS = (SQLAlchemyError, RuntimeError, ValueError, TypeError, OSError)
 
 
 async def run_periodic_extras(
@@ -32,16 +38,13 @@ async def run_periodic_extras(
     # Note: We assume these crawlers have a main() or similar entrypoint
     logger.info("\n🔮 Step 1: Crawling Futures League Batting Stats...")
     try:
-        import subprocess
-        import sys
-
         cmd = [sys.executable, "-m", "src.crawlers.futures.futures_batting", "--year", str(year), "--save"]
         result = subprocess.run(cmd, capture_output=True, text=True)
         if result.returncode == 0:
             logger.info("   ✅ Futures Hitter output:\n%s", result.stdout)
         else:
             logger.error("   ❌ Futures Hitter failed:\n%s", result.stderr)
-    except Exception:
+    except PERIODIC_SUBPROCESS_EXCEPTIONS:
         logger.exception("   ❌ Error crawling futures stats")
 
     # 2. Retired Player Listing
@@ -54,7 +57,7 @@ async def run_periodic_extras(
             logger.info("   ✅ Retired Listing output:\n%s", result.stdout)
         else:
             logger.error("   ❌ Retired Listing failed:\n%s", result.stderr)
-    except Exception:
+    except PERIODIC_SUBPROCESS_EXCEPTIONS:
         logger.exception("   ❌ Error crawling retired players")
 
     if sync:
@@ -72,7 +75,7 @@ async def run_periodic_extras(
                     syncer.sync_player_season_batting(year=year)
                     syncer.sync_player_season_pitching(year=year)
                     logger.info("   ✅ OCI synchronization completed")
-                except Exception:
+                except PERIODIC_SYNC_EXCEPTIONS:
                     logger.exception("   ❌ OCI sync error")
                 finally:
                     syncer.close()

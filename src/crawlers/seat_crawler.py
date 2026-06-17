@@ -11,6 +11,7 @@ from urllib.parse import urlparse
 
 import httpx
 from bs4 import BeautifulSoup
+from sqlalchemy.exc import SQLAlchemyError
 
 from src.db.engine import SessionLocal
 from src.repositories.source_registry_repository import save_raw_snapshots
@@ -19,6 +20,9 @@ from src.utils.http_client import DEFAULT_HEADERS as HEADERS
 from src.utils.throttle import throttle
 
 logger = logging.getLogger(__name__)
+
+SEAT_CRAWL_EXCEPTIONS = (httpx.HTTPError, RuntimeError, ValueError, TypeError, OSError)
+SEAT_SAVE_EXCEPTIONS = (SQLAlchemyError, RuntimeError, ValueError, TypeError, OSError)
 
 TEAM_SEAT_SOURCES: dict[str, dict[str, Any]] = {
     "LG": {
@@ -52,7 +56,7 @@ class SeatCrawler:
                 sections = await self._crawl_team_seats(team_code, info)
                 all_sections.extend(sections)
                 logger.info("[SEAT] %s: %s sections found", team_code, len(sections))
-            except Exception:
+            except SEAT_CRAWL_EXCEPTIONS:
                 logger.exception("Failed to crawl seats for %s", team_code)
 
         logger.info("[SEAT] Total: %s sections", len(all_sections))
@@ -122,11 +126,11 @@ class SeatCrawler:
                     try:
                         repo.save(item)
                         count += 1
-                    except Exception:
+                    except SEAT_SAVE_EXCEPTIONS:
                         logger.exception("Seat section save failed: %s", item.get("section_name", ""))
                 session.commit()
                 logger.info("[SEAT] Saved %s section records, %s snapshots.", count, saved_snaps)
-            except Exception:
+            except SEAT_SAVE_EXCEPTIONS:
                 session.rollback()
                 logger.exception("Seat batch save error")
             finally:

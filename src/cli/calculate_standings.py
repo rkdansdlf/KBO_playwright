@@ -11,6 +11,7 @@ from collections import defaultdict, deque
 from datetime import date, datetime
 
 from sqlalchemy import extract
+from sqlalchemy.exc import SQLAlchemyError
 
 from src.db.engine import SessionLocal
 from src.models.game import Game
@@ -19,6 +20,8 @@ from src.models.standings import TeamStandingsDaily
 from src.utils.game_status import COMPLETED_LIKE_GAME_STATUSES
 
 logger = logging.getLogger(__name__)
+
+STANDINGS_CALC_EXCEPTIONS = (SQLAlchemyError, RuntimeError, ValueError, TypeError, KeyError, ZeroDivisionError)
 
 
 def calculate_games_behind(wins: int, losses: int, leader_wins: int, leader_losses: int) -> float:
@@ -30,12 +33,196 @@ def iso_week_number(d: date) -> str:
     return f"{iso[0]}-W{iso[1]:02d}"
 
 
+class TeamState:
+    def __init__(self, team_code: str) -> None:
+        self.team_code = team_code
+        self.wins = 0
+        self.losses = 0
+        self.draws = 0
+        self.runs_scored = 0
+        self.runs_allowed = 0
+        self.current_streak = 0
+        self.home_wins = 0
+        self.home_losses = 0
+        self.away_wins = 0
+        self.away_losses = 0
+        self.recent_games: deque[str] = deque(maxlen=10)
+        self.weekly_wins: dict[str, int] = defaultdict(int)
+        self.weekly_losses: dict[str, int] = defaultdict(int)
+
+    @property
+    def games_played(self) -> int:
+        return self.wins + self.losses + self.draws
+
+    @property
+    def win_pct(self) -> float:
+        total = self.wins + self.losses
+        return self.wins / total if total > 0 else 0.0
+
+    @property
+    def recent_10_wins(self) -> int:
+        return sum(1 for r in self.recent_games if r == "W")
+
+    @property
+    def recent_10_losses(self) -> int:
+        return sum(1 for r in self.recent_games if r == "L")
+
+    @property
+    def recent_10_draws(self) -> int:
+        return sum(1 for r in self.recent_games if r == "D")
+
+    def add_game(
+        self,
+        is_win: bool,
+        is_loss: bool,
+        is_draw: bool,
+        runs_for: int,
+        runs_against: int,
+        is_home: bool,
+        game_date: date,
+    ) -> None:
+        self.runs_scored += runs_for
+        self.runs_allowed += runs_against
+
+        if is_win:
+            self._add_win(is_home)
+        elif is_loss:
+            self._add_loss(is_home)
+        elif is_draw:
+            self.draws += 1
+            self.recent_games.append("D")
+
+        week_key = iso_week_number(game_date)
+        if is_win:
+            self.weekly_wins[week_key] += 1
+        elif is_loss:
+            self.weekly_losses[week_key] += 1
+
+    def _add_win(self, is_home: bool) -> None:
+        self.wins += 1
+        self.current_streak = self.current_streak + 1 if self.current_streak > 0 else 1
+        self.recent_games.append("W")
+        if is_home:
+            self.home_wins += 1
+        else:
+            self.away_wins += 1
+
+    def _add_loss(self, is_home: bool) -> None:
+        self.losses += 1
+        self.current_streak = self.current_streak - 1 if self.current_streak < 0 else -1
+        self.recent_games.append("L")
+        if is_home:
+            self.home_losses += 1
+        else:
+            self.away_losses += 1
+
+
+def _group_games_by_date(games: list[Game]) -> dict[date, list[Game]]:
+    games_by_date = defaultdict(list)
+    for game in games:
+        games_by_date[game.game_date].append(game)
+    return games_by_date
+
+
+def _team_state_for(teams: dict[str, TeamState], team_code: str) -> TeamState:
+    if team_code not in teams:
+        teams[team_code] = TeamState(team_code)
+    return teams[team_code]
+
+
+def _apply_game_to_standings(game: Game, teams: dict[str, TeamState], game_date: date) -> None:
+    home = game.home_team
+    away = game.away_team
+    home_score = game.home_score if game.home_score is not None else 0
+    away_score = game.away_score if game.away_score is not None else 0
+
+    home_state = _team_state_for(teams, home)
+    away_state = _team_state_for(teams, away)
+
+    if home_score > away_score:
+        home_state.add_game(True, False, False, home_score, away_score, True, game_date)
+        away_state.add_game(False, True, False, away_score, home_score, False, game_date)
+    elif away_score > home_score:
+        home_state.add_game(False, True, False, home_score, away_score, True, game_date)
+        away_state.add_game(True, False, False, away_score, home_score, False, game_date)
+    else:
+        home_state.add_game(False, False, True, home_score, away_score, True, game_date)
+        away_state.add_game(False, False, True, away_score, home_score, False, game_date)
+
+
+def _weekly_win_pcts(team: TeamState) -> dict[str, float | None] | None:
+    weekly_pcts = {}
+    all_weeks = sorted(set(team.weekly_wins.keys()) | set(team.weekly_losses.keys()))
+    for week in all_weeks:
+        wins = team.weekly_wins.get(week, 0)
+        losses = team.weekly_losses.get(week, 0)
+        total = wins + losses
+        weekly_pcts[week] = round(wins / total, 3) if total > 0 else None
+    return weekly_pcts if weekly_pcts else None
+
+
+def _build_snapshot(
+    standings_date: date,
+    team: TeamState,
+    rank_idx: int,
+    leader_wins: int,
+    leader_losses: int,
+) -> TeamStandingsDaily:
+    games_behind = calculate_games_behind(team.wins, team.losses, leader_wins, leader_losses)
+    if games_behind < 0:
+        games_behind = 0.0
+
+    return TeamStandingsDaily(
+        standings_date=standings_date,
+        team_code=team.team_code,
+        games_played=team.games_played,
+        wins=team.wins,
+        losses=team.losses,
+        draws=team.draws,
+        win_pct=team.win_pct,
+        games_behind=games_behind,
+        current_streak=team.current_streak,
+        runs_scored=team.runs_scored,
+        runs_allowed=team.runs_allowed,
+        run_differential=team.runs_scored - team.runs_allowed,
+        rank=rank_idx,
+        top_5=1 if rank_idx <= 5 else 0,
+        recent_10_wins=team.recent_10_wins,
+        recent_10_losses=team.recent_10_losses,
+        recent_10_draws=team.recent_10_draws,
+        weekly_win_pcts=_weekly_win_pcts(team),
+        home_wins=team.home_wins,
+        home_losses=team.home_losses,
+        away_wins=team.away_wins,
+        away_losses=team.away_losses,
+    )
+
+
+def _build_daily_snapshots(games: list[Game]) -> list[TeamStandingsDaily]:
+    teams: dict[str, TeamState] = {}
+    daily_snapshots = []
+
+    for standings_date, day_games in sorted(_group_games_by_date(games).items()):
+        for game in day_games:
+            _apply_game_to_standings(game, teams, standings_date)
+
+        sorted_teams = sorted(teams.values(), key=lambda t: (t.win_pct, t.wins), reverse=True)
+        leader = sorted_teams[0] if sorted_teams else None
+        leader_wins = leader.wins if leader else 0
+        leader_losses = leader.losses if leader else 0
+
+        for rank_idx, team in enumerate(sorted_teams, start=1):
+            daily_snapshots.append(_build_snapshot(standings_date, team, rank_idx, leader_wins, leader_losses))
+
+    return daily_snapshots
+
+
 class StandingsCalculator:
     def __init__(self, session) -> None:
         self.session = session
 
-    def calculate_year(self, year: int) -> None:
-        games = (
+    def _load_completed_games(self, year: int) -> list[Game]:
+        return (
             self.session.query(Game)
             .join(KboSeason, Game.season_id == KboSeason.season_id)
             .filter(
@@ -47,171 +234,23 @@ class StandingsCalculator:
             .all()
         )
 
-        if not games:
-            logger.info("[Standings] %s 시즌 완료 경기 없음.", year)
-            return
-
-        logger.info("[Standings] %s년 %s경기 로드. 순위 연산 시작...", year, len(games))
-
-        class TeamState:
-            def __init__(self, team_code: str) -> None:
-                self.team_code = team_code
-                self.wins = 0
-                self.losses = 0
-                self.draws = 0
-                self.runs_scored = 0
-                self.runs_allowed = 0
-                self.current_streak = 0
-                self.home_wins = 0
-                self.home_losses = 0
-                self.away_wins = 0
-                self.away_losses = 0
-                self.recent_games: deque = deque(maxlen=10)
-                self.weekly_wins: dict[str, int] = defaultdict(int)
-                self.weekly_losses: dict[str, int] = defaultdict(int)
-
-            @property
-            def games_played(self) -> int:
-                return self.wins + self.losses + self.draws
-
-            @property
-            def win_pct(self) -> float:
-                total = self.wins + self.losses
-                return self.wins / total if total > 0 else 0.0
-
-            @property
-            def recent_10_wins(self) -> int:
-                return sum(1 for r in self.recent_games if r == "W")
-
-            @property
-            def recent_10_losses(self) -> int:
-                return sum(1 for r in self.recent_games if r == "L")
-
-            @property
-            def recent_10_draws(self) -> int:
-                return sum(1 for r in self.recent_games if r == "D")
-
-            def add_game(
-                self,
-                is_win: bool,
-                is_loss: bool,
-                is_draw: bool,
-                runs_for: int,
-                runs_against: int,
-                is_home: bool,
-                game_date: date,
-            ) -> None:
-                self.runs_scored += runs_for
-                self.runs_allowed += runs_against
-
-                if is_win:
-                    self.wins += 1
-                    self.current_streak = self.current_streak + 1 if self.current_streak > 0 else 1
-                    self.recent_games.append("W")
-                    if is_home:
-                        self.home_wins += 1
-                    else:
-                        self.away_wins += 1
-                elif is_loss:
-                    self.losses += 1
-                    self.current_streak = self.current_streak - 1 if self.current_streak < 0 else -1
-                    self.recent_games.append("L")
-                    if is_home:
-                        self.home_losses += 1
-                    else:
-                        self.away_losses += 1
-                elif is_draw:
-                    self.draws += 1
-                    self.recent_games.append("D")
-
-                week_key = iso_week_number(game_date)
-                if is_win:
-                    self.weekly_wins[week_key] += 1
-                elif is_loss:
-                    self.weekly_losses[week_key] += 1
-
-        games_by_date = defaultdict(list)
-        for g in games:
-            games_by_date[g.game_date].append(g)
-
-        dates = sorted(games_by_date.keys())
-        teams: dict[str, TeamState] = {}
-        daily_snapshots = []
-
-        for d in dates:
-            day_games = games_by_date[d]
-
-            for g in day_games:
-                home = g.home_team
-                away = g.away_team
-                h_score = g.home_score if g.home_score is not None else 0
-                a_score = g.away_score if g.away_score is not None else 0
-
-                if home not in teams:
-                    teams[home] = TeamState(home)
-                if away not in teams:
-                    teams[away] = TeamState(away)
-
-                if h_score > a_score:
-                    teams[home].add_game(True, False, False, h_score, a_score, True, d)
-                    teams[away].add_game(False, True, False, a_score, h_score, False, d)
-                elif a_score > h_score:
-                    teams[home].add_game(False, True, False, h_score, a_score, True, d)
-                    teams[away].add_game(True, False, False, a_score, h_score, False, d)
-                else:
-                    teams[home].add_game(False, False, True, h_score, a_score, True, d)
-                    teams[away].add_game(False, False, True, a_score, h_score, False, d)
-
-            sorted_teams = sorted(teams.values(), key=lambda t: (t.win_pct, t.wins), reverse=True)
-            leader = sorted_teams[0] if sorted_teams else None
-            leader_wins = leader.wins if leader else 0
-            leader_losses = leader.losses if leader else 0
-
-            for rank_idx, t in enumerate(sorted_teams, start=1):
-                gb = calculate_games_behind(t.wins, t.losses, leader_wins, leader_losses)
-                if gb < 0:
-                    gb = 0.0
-
-                weekly_pcts = {}
-                all_weeks = sorted(set(t.weekly_wins.keys()) | set(t.weekly_losses.keys()))
-                for wk in all_weeks:
-                    wk_w = t.weekly_wins.get(wk, 0)
-                    wk_l = t.weekly_losses.get(wk, 0)
-                    total = wk_w + wk_l
-                    weekly_pcts[wk] = round(wk_w / total, 3) if total > 0 else None
-
-                snapshot = TeamStandingsDaily(
-                    standings_date=d,
-                    team_code=t.team_code,
-                    games_played=t.games_played,
-                    wins=t.wins,
-                    losses=t.losses,
-                    draws=t.draws,
-                    win_pct=t.win_pct,
-                    games_behind=gb,
-                    current_streak=t.current_streak,
-                    runs_scored=t.runs_scored,
-                    runs_allowed=t.runs_allowed,
-                    run_differential=t.runs_scored - t.runs_allowed,
-                    rank=rank_idx,
-                    top_5=1 if rank_idx <= 5 else 0,
-                    recent_10_wins=t.recent_10_wins,
-                    recent_10_losses=t.recent_10_losses,
-                    recent_10_draws=t.recent_10_draws,
-                    weekly_win_pcts=weekly_pcts if weekly_pcts else None,
-                    home_wins=t.home_wins,
-                    home_losses=t.home_losses,
-                    away_wins=t.away_wins,
-                    away_losses=t.away_losses,
-                )
-                daily_snapshots.append(snapshot)
-
+    def _save_snapshots(self, year: int, daily_snapshots: list[TeamStandingsDaily]) -> None:
         logger.info("[Standings] %s건 스냅샷 DB 저장 중...", len(daily_snapshots))
         self.session.query(TeamStandingsDaily).filter(
             extract("year", TeamStandingsDaily.standings_date) == year,
         ).delete(synchronize_session=False)
         self.session.bulk_save_objects(daily_snapshots)
         self.session.commit()
+
+    def calculate_year(self, year: int) -> None:
+        games = self._load_completed_games(year)
+
+        if not games:
+            logger.info("[Standings] %s 시즌 완료 경기 없음.", year)
+            return
+
+        logger.info("[Standings] %s년 %s경기 로드. 순위 연산 시작...", year, len(games))
+        self._save_snapshots(year, _build_daily_snapshots(games))
         logger.info("[Standings] %s 시즌 순위표 계산 완료!", year)
 
     def print_report(self, year: int, target_date: date | None = None) -> None:
@@ -375,7 +414,7 @@ def main() -> int:
         else:
             calc.calculate_year(args.year)
 
-    except Exception:
+    except STANDINGS_CALC_EXCEPTIONS:
         logger.exception("오류 발생")
         session.rollback()
     finally:

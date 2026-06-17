@@ -15,8 +15,10 @@ from typing import Any
 from urllib.parse import urlparse
 
 import httpx
+from playwright.async_api import Error as PlaywrightError
 from playwright.async_api import Page
 from playwright.async_api import TimeoutError as PlaywrightTimeoutError
+from sqlalchemy.exc import SQLAlchemyError
 from tenacity import AsyncRetrying, retry_if_exception_type, stop_after_attempt, wait_exponential
 
 from src.db.engine import SessionLocal
@@ -29,6 +31,17 @@ from src.utils.playwright_retry import NAV_TIMEOUT, SHORT_TIMEOUT
 from src.utils.throttle import throttle
 
 logger = logging.getLogger(__name__)
+
+ROSTER_CRAWL_EXCEPTIONS = (
+    PlaywrightError,
+    PlaywrightTimeoutError,
+    TimeoutError,
+    RuntimeError,
+    ValueError,
+    TypeError,
+    OSError,
+)
+ROSTER_SAVE_EXCEPTIONS = (SQLAlchemyError, RuntimeError, ValueError, TypeError, OSError)
 
 TEAM_CODES = [
     ("LG", "LG"),
@@ -247,7 +260,7 @@ class RosterTransactionCrawler:
                         await page.wait_for_timeout(500)
                         daily = await self._extract_desktop_roster(page, db_code, target_date)
                         transactions.extend(daily)
-                    except Exception:
+                    except ROSTER_CRAWL_EXCEPTIONS:
                         logger.exception("Desktop roster team %s failed", site_code)
 
             finally:
@@ -337,11 +350,11 @@ class RosterTransactionCrawler:
                     try:
                         repo.save(item)
                         count += 1
-                    except Exception:
+                    except ROSTER_SAVE_EXCEPTIONS:
                         logger.exception("Roster transaction save failed: %s", item.get("dedupe_key", ""))
                 session.commit()
                 logger.info("[ROSTER] Saved %s transaction records, %s snapshots.", count, saved_snaps)
-            except Exception:
+            except ROSTER_SAVE_EXCEPTIONS:
                 session.rollback()
                 logger.exception("Roster batch save error")
             finally:

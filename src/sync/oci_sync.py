@@ -7,6 +7,8 @@ from __future__ import annotations
 import logging
 import os
 
+from sqlalchemy.exc import SQLAlchemyError
+
 from src.sync.sync_base import OCISyncBase
 from src.sync.sync_games import GameSyncMixin
 from src.sync.sync_misc import MiscSyncMixin
@@ -96,7 +98,7 @@ def main() -> None:
 
             sync.close()
 
-        except Exception:
+        except (SQLAlchemyError, RuntimeError, ValueError, TypeError, OSError):
             logger.exception("Sync error occurred")
             import traceback
 

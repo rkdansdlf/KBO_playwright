@@ -27,10 +27,12 @@ from pathlib import Path
 from typing import Any
 
 from sqlalchemy import text
+from sqlalchemy.exc import SQLAlchemyError
 
 from src.db.engine import SessionLocal
 
 logger = logging.getLogger(__name__)
+AUDIT_EXCEPTIONS = (SQLAlchemyError, RuntimeError, ValueError, TypeError, OSError)
 
 
 def audit_year(year: int) -> dict[str, Any]:
@@ -263,7 +265,7 @@ def auto_fix_year(year: int) -> int:
                         session.commit()
                         pbp_fixed_games.append(game_id)
                         logger.info(f"  Applied PBP SH/SF correction for game {game_id}: {updated} rows updated")
-                except Exception as exc:  # noqa: BLE001
+                except AUDIT_EXCEPTIONS as exc:
                     session.rollback()
                     logger.warning("Error applying PBP fix for game %s: %s", game_id, exc)
                     logger.error(f"  Error applying PBP fix for game {game_id}: {exc}")
@@ -280,7 +282,7 @@ def auto_fix_year(year: int) -> int:
     for game_id in game_ids:
         try:
             recalc_game_stats(game_id=game_id, dry_run=False)
-        except Exception as exc:  # noqa: BLE001
+        except AUDIT_EXCEPTIONS as exc:
             logger.warning("Error recalculating game stats for %s: %s", game_id, exc)
             logger.error(f"  Error recalculating game stats for {game_id}: {exc}")
 
@@ -288,7 +290,7 @@ def auto_fix_year(year: int) -> int:
     logger.info(f"Recalculating player season stats for {year}...")
     try:
         recalc_season_stats(season=year, dry_run=False)
-    except Exception as exc:  # noqa: BLE001
+    except AUDIT_EXCEPTIONS as exc:
         logger.warning("Error recalculating season stats for %s: %s", year, exc)
         logger.error(f"  Error recalculating season stats for {year}: {exc}")
 
@@ -315,7 +317,7 @@ def auto_fix_year(year: int) -> int:
 
                 syncer.close()
                 logger.info("  OCI synchronization completed successfully.")
-        except Exception as exc:  # noqa: BLE001
+        except AUDIT_EXCEPTIONS as exc:
             logger.warning("Error syncing to OCI: %s", exc)
             logger.error(f"  Error syncing to OCI: {exc}")
     else:

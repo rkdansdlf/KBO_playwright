@@ -126,7 +126,7 @@ class TestCrawlYears:
         mock_page.wait_for_load_state = AsyncMock()
         mock_page.wait_for_timeout = AsyncMock()
 
-        crawler._extract_table = AsyncMock(side_effect=Exception("boom"))
+        crawler._extract_table = AsyncMock(side_effect=RuntimeError("boom"))
 
         result = await crawler.crawl_years(2023, 2023)
 

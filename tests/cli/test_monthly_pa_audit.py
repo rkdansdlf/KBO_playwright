@@ -25,7 +25,7 @@ class TestMonthlyPaAuditCLI:
 
     def test_main_failure_exits(self):
         with patch("src.cli.monthly_pa_audit.run_monthly_pa_audit") as mock_audit:
-            mock_audit.side_effect = Exception("audit failed")
+            mock_audit.side_effect = RuntimeError("audit failed")
             try:
                 main(["--year", "2024"])
             except SystemExit:

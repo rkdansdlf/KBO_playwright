@@ -101,6 +101,139 @@ def _apply_heal_outcome(game_id: str, item) -> str:
     return "unresolved"
 
 
+def _find_recovery_targets(target_game_ids: list[str] | None) -> tuple[list[Game], list[Game], list[Game]]:
+    if target_game_ids:
+        with SessionLocal() as session:
+            stmt = select(Game).where(Game.game_id.in_(target_game_ids))
+            all_found = list(session.execute(stmt).scalars().all())
+            logger.info("🎯 Target recovery requested for %s specific game(s).", len(all_found))
+            return all_found, [], []
+
+    stuck_games = _find_stuck_games()
+    inconsistent_games = _find_inconsistent_games()
+    all_found = sorted(
+        list({game.game_id: game for game in (stuck_games + inconsistent_games)}.values()),
+        key=lambda game: game.game_id,
+    )
+    return all_found, stuck_games, inconsistent_games
+
+
+def _pending_recovery_candidates(recovery_mgr: RecoveryManager, all_found: list[Game]) -> tuple[set[str], list[Game]]:
+    recovery_mgr.initialize_run("default_healer_run", [game.game_id for game in all_found])
+    pending_ids = set(recovery_mgr.get_pending_targets())
+    return pending_ids, [game for game in all_found if game.game_id in pending_ids]
+
+
+def _log_anomaly_summary(
+    all_found: list[Game],
+    inconsistent_games: list[Game],
+    pending_ids: set[str],
+    anomaly_dates: list[Any],
+) -> None:
+    stuck_games_filtered = [game for game in all_found if game.game_status == GAME_STATUS_SCHEDULED]
+    if stuck_games_filtered:
+        stuck_count = len([game for game in stuck_games_filtered if game.game_id in pending_ids])
+        if stuck_count:
+            logger.warning("⚠️  Anomaly Detected: %s past game(s) stuck in SCHEDULED state!", stuck_count)
+    if inconsistent_games:
+        incon_count = len([game for game in inconsistent_games if game.game_id in pending_ids])
+        if incon_count:
+            logger.warning("⚠️  Anomaly Detected: %s game(s) with score inconsistencies!", incon_count)
+    for anomaly_date in anomaly_dates:
+        logger.info("  - %s", anomaly_date)
+
+
+def _send_healer_start_alert(
+    total: int,
+    stuck_games: list[Game],
+    inconsistent_games: list[Game],
+    anomaly_dates: list[Any],
+) -> None:
+    summary_parts = []
+    if stuck_games:
+        summary_parts.append(f"*{len(stuck_games)}* stuck games")
+    if inconsistent_games:
+        summary_parts.append(f"*{len(inconsistent_games)}* inconsistent games")
+
+    date_range = f"`{anomaly_dates[0]}`" if len(anomaly_dates) == 1 else f"`{anomaly_dates[0]}` ~ `{anomaly_dates[-1]}`"
+    SlackWebhookClient.send_alert(
+        f"Pipeline Anomaly: {total} games detected for auto-healing.",
+        blocks=[
+            {"type": "header", "text": {"type": "plain_text", "text": "⚠️ KBO Pipeline Anomaly"}},
+            {
+                "type": "section",
+                "text": {
+                    "type": "mrkdwn",
+                    "text": (
+                        f"Found {' and '.join(summary_parts)} for auto-healing.\n"
+                        f"Affected dates: {date_range}\n\n"
+                        "*Auto-Healing initiated.*"
+                    ),
+                },
+            },
+        ],
+    )
+
+
+async def _run_recovery(
+    recovery_candidates: list[Game],
+    anomaly_dates: list[Any],
+    recovery_mgr: RecoveryManager,
+    dry_run: bool,
+) -> dict[str, int]:
+    with SessionLocal() as db_session:
+        resolver = PlayerIdResolver(db_session, strict_game_resolution=True, allow_auto_register=False)
+        for year in {anomaly_date.year for anomaly_date in anomaly_dates}:
+            resolver.preload_season_index(year)
+
+        crawler = GameDetailCrawler(request_delay=1.0, resolver=resolver)
+        write_contract = GameWriteContract(run_label=f"auto_healer:{datetime.now():%Y%m%dT%H%M%S}", log=logger.info)
+        results = {"completed": 0, "cancelled": 0, "unresolved": 0, "dry_run": 0}
+        if dry_run:
+            for game in recovery_candidates:
+                logger.info("  [DRY-RUN] Would re-crawl %s", game.game_id)
+                results["dry_run"] += 1
+            return results
+
+        collection_result = await crawl_and_save_game_details(
+            [{"game_id": game.game_id, "game_date": game.game_date.strftime("%Y%m%d")} for game in recovery_candidates],
+            detail_crawler=crawler,
+            force=True,
+            concurrency=1,
+            log=logger.info,
+            write_contract=write_contract,
+            source_reason="auto_healing_recovery",
+        )
+        for game in recovery_candidates:
+            item = collection_result.items.get(game.game_id)
+            outcome = _apply_heal_outcome(game.game_id, item)
+            results[outcome] = results.get(outcome, 0) + 1
+            if outcome == "completed":
+                recovery_mgr.mark_completed(game.game_id)
+            elif outcome == "unresolved":
+                recovery_mgr.mark_failed(game.game_id, item.failure_reason if item else "unknown")
+
+        logger.info(write_contract.summary())
+        return results
+
+
+def _log_healer_summary(results: dict[str, int], dry_run: bool) -> None:
+    logger.info("\n📊 Auto-Healer Summary:")
+    for outcome, count in results.items():
+        if count > 0:
+            logger.info("  %s: %s", outcome, count)
+
+    if dry_run:
+        return
+    unresolved_count = results.get("unresolved", 0)
+    if unresolved_count == 0:
+        SlackWebhookClient.send_alert(f"✅ Auto-healing complete. {results['completed']} games recovered.")
+    else:
+        SlackWebhookClient.send_alert(
+            f"⚠️ Auto-healing complete. {results['completed']} recovered, {unresolved_count} failed.",
+        )
+
+
 async def run_healer_async(
     dry_run: bool = False,
     reset_checkpoint: bool = False,
@@ -112,161 +245,30 @@ async def run_healer_async(
     if reset_checkpoint:
         recovery_mgr.clear()
 
-    all_found = []
-    stuck_games = []
-    inconsistent_games = []
-    if target_game_ids:
-        # Targeted recovery mode
-        with SessionLocal() as session:
-            stmt = select(Game).where(Game.game_id.in_(target_game_ids))
-            all_found = list(session.execute(stmt).scalars().all())
-            logger.info("🎯 Target recovery requested for %s specific game(s).", len(all_found))
-    else:
-        # Standard anomaly detection mode
-        stuck_games = _find_stuck_games()
-        inconsistent_games = _find_inconsistent_games()
-
-        if not stuck_games and not inconsistent_games:
-            logger.info("✅ No anomalies detected. Pipeline is healthy.")
-            recovery_mgr.clear()
-            return 0
-
-        all_found = sorted(
-            list({g.game_id: g for g in (stuck_games + inconsistent_games)}.values()),
-            key=lambda x: x.game_id,
-        )
+    all_found, stuck_games, inconsistent_games = _find_recovery_targets(target_game_ids)
+    if not target_game_ids and not stuck_games and not inconsistent_games:
+        logger.info("✅ No anomalies detected. Pipeline is healthy.")
+        recovery_mgr.clear()
+        return 0
 
     if not all_found:
         logger.info("✅ No games found for recovery.")
         return 0
 
-    # Initialize or resume checkpoint
-    recovery_mgr.initialize_run("default_healer_run", [g.game_id for g in all_found])
-
-    pending_ids = set(recovery_mgr.get_pending_targets())
-    recovery_candidates = [g for g in all_found if g.game_id in pending_ids]
-
+    pending_ids, recovery_candidates = _pending_recovery_candidates(recovery_mgr, all_found)
     if not recovery_candidates:
         logger.info("✅ All detected anomalies were already processed in current checkpoint.")
         return 0
 
     total = len(recovery_candidates)
     anomaly_dates = sorted({g.game_date for g in recovery_candidates})
-
-    # Initialize variables for summary check
-    stuck_games_filtered = [g for g in all_found if g.game_status == GAME_STATUS_SCHEDULED]
-
-    if stuck_games_filtered:
-        stuck_count = len([g for g in stuck_games_filtered if g.game_id in pending_ids])
-        if stuck_count:
-            logger.warning("⚠️  Anomaly Detected: %s past game(s) stuck in SCHEDULED state!", stuck_count)
-    if inconsistent_games:
-        incon_count = len([g for g in inconsistent_games if g.game_id in pending_ids])
-        if incon_count:
-            logger.warning("⚠️  Anomaly Detected: %s game(s) with score inconsistencies!", incon_count)
-
-    for d in anomaly_dates:
-        logger.info("  - %s", d)
-
-    # Slack alert
+    _log_anomaly_summary(all_found, inconsistent_games, pending_ids, anomaly_dates)
     if not dry_run:
-        summary_parts = []
-        if stuck_games:
-            summary_parts.append(f"*{len(stuck_games)}* stuck games")
-        if inconsistent_games:
-            summary_parts.append(f"*{len(inconsistent_games)}* inconsistent games")
-
-        date_range = (
-            f"`{anomaly_dates[0]}`" if len(anomaly_dates) == 1 else f"`{anomaly_dates[0]}` ~ `{anomaly_dates[-1]}`"
-        )
-        SlackWebhookClient.send_alert(
-            f"Pipeline Anomaly: {total} games detected for auto-healing.",
-            blocks=[
-                {
-                    "type": "header",
-                    "text": {"type": "plain_text", "text": "⚠️ KBO Pipeline Anomaly"},
-                },
-                {
-                    "type": "section",
-                    "text": {
-                        "type": "mrkdwn",
-                        "text": (
-                            f"Found {' and '.join(summary_parts)} for auto-healing.\n"
-                            f"Affected dates: {date_range}\n\n"
-                            "*Auto-Healing initiated.*"
-                        ),
-                    },
-                },
-            ],
-        )
+        _send_healer_start_alert(total, stuck_games, inconsistent_games, anomaly_dates)
 
     logger.info("\n🚀 Initiating self-recovery for %s game(s)...", total)
-
-    with SessionLocal() as db_session:
-        resolver = PlayerIdResolver(
-            db_session,
-            strict_game_resolution=True,
-            allow_auto_register=False,
-        )
-        # Preload for potentially multiple years found in anomalies
-        years = {d.year for d in anomaly_dates}
-        for y in years:
-            resolver.preload_season_index(y)
-
-        crawler = GameDetailCrawler(request_delay=1.0, resolver=resolver)
-        write_contract = GameWriteContract(
-            run_label=f"auto_healer:{datetime.now():%Y%m%dT%H%M%S}",
-            log=logger.info,
-        )
-
-        results = {"completed": 0, "cancelled": 0, "unresolved": 0, "dry_run": 0}
-        if dry_run:
-            for game in recovery_candidates:
-                logger.info("  [DRY-RUN] Would re-crawl %s", game.game_id)
-                results["dry_run"] += 1
-        else:
-            collection_result = await crawl_and_save_game_details(
-                [
-                    {
-                        "game_id": game.game_id,
-                        "game_date": game.game_date.strftime("%Y%m%d"),
-                    }
-                    for game in recovery_candidates
-                ],
-                detail_crawler=crawler,
-                force=True,
-                concurrency=1,
-                log=logger.info,
-                write_contract=write_contract,
-                source_reason="auto_healing_recovery",
-            )
-            for game in recovery_candidates:
-                item = collection_result.items.get(game.game_id)
-                outcome = _apply_heal_outcome(game.game_id, item)
-                results[outcome] = results.get(outcome, 0) + 1
-
-                if outcome == "completed":
-                    recovery_mgr.mark_completed(game.game_id)
-                elif outcome == "unresolved":
-                    recovery_mgr.mark_failed(game.game_id, item.failure_reason if item else "unknown")
-
-            logger.info(write_contract.summary())
-
-    # Final Summary
-    logger.info("\n📊 Auto-Healer Summary:")
-    for outcome, count in results.items():
-        if count > 0:
-            logger.info("  %s: %s", outcome, count)
-
-    if not dry_run:
-        unresolved_count = results.get("unresolved", 0)
-        if unresolved_count == 0:
-            SlackWebhookClient.send_alert(f"✅ Auto-healing complete. {results['completed']} games recovered.")
-        else:
-            SlackWebhookClient.send_alert(
-                f"⚠️ Auto-healing complete. {results['completed']} recovered, {unresolved_count} failed.",
-            )
-
+    results = await _run_recovery(recovery_candidates, anomaly_dates, recovery_mgr, dry_run)
+    _log_healer_summary(results, dry_run)
     return results["unresolved"]
 
 

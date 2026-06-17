@@ -10,11 +10,23 @@ import asyncio
 import logging
 from typing import Any
 
+from playwright.async_api import Error as PlaywrightError
 from playwright.async_api import async_playwright
 
 from src.utils.type_helpers import parse_innings_to_outs
 
 logger = logging.getLogger(__name__)
+
+PLAYER_DAILY_CRAWL_EXCEPTIONS = (
+    PlaywrightError,
+    TimeoutError,
+    asyncio.TimeoutError,
+    RuntimeError,
+    ValueError,
+    TypeError,
+    OSError,
+)
+PLAYER_DAILY_PARSE_EXCEPTIONS = (ValueError, TypeError, IndexError)
 
 
 class PlayerDailyStatsCrawler:
@@ -40,7 +52,7 @@ class PlayerDailyStatsCrawler:
                     await page.select_option(year_selector, value=str(season))
                     await page.wait_for_load_state("networkidle")
                     await asyncio.sleep(1.5)  # Wait for AJAX/Postback
-                except Exception:
+                except PLAYER_DAILY_CRAWL_EXCEPTIONS:
                     logger.exception("   ❌ Failed to select year %s", season)
                     return []
 
@@ -75,7 +87,7 @@ class PlayerDailyStatsCrawler:
 
                 return all_games
 
-            except Exception:
+            except PLAYER_DAILY_CRAWL_EXCEPTIONS:
                 logger.exception("   ❌ Error crawling player %s", player_id)
                 return []
             finally:
@@ -108,7 +120,7 @@ class PlayerDailyStatsCrawler:
                     "gdp": int(row[16]),
                 },
             }
-        except Exception:
+        except PLAYER_DAILY_PARSE_EXCEPTIONS:
             logger.exception("Failed to parse batter row")
             return None
 
@@ -154,7 +166,7 @@ class PlayerDailyStatsCrawler:
                     "earned_runs": int(row[13]),
                 },
             }
-        except Exception:
+        except PLAYER_DAILY_PARSE_EXCEPTIONS:
             logger.exception("Failed to parse pitcher row")
             return None
 

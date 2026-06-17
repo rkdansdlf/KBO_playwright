@@ -32,6 +32,7 @@ from src.utils.schedule_validation import validate_schedule_game_payload
 from src.utils.team_codes import normalize_kbo_game_id, resolve_team_code, team_code_from_game_id_segment
 
 logger = logging.getLogger(__name__)
+SCHEDULE_CRAWLER_EXCEPTIONS = (PlaywrightError, TimeoutError, RuntimeError, ValueError, TypeError, KeyError, OSError)
 
 
 class ScheduleCrawler:
@@ -86,7 +87,7 @@ class ScheduleCrawler:
                 games = await self._crawl_month(page, year, month, series_id=series_id)
                 logger.info("✅ Found %s games", len(games))
                 return games
-            except Exception:
+            except SCHEDULE_CRAWLER_EXCEPTIONS:
                 logger.exception("❌ Error crawling schedule")
                 return []
             finally:
@@ -144,7 +145,7 @@ class ScheduleCrawler:
 
         try:
             await self.policy.run_with_retry_async(_navigate)
-        except Exception:
+        except SCHEDULE_CRAWLER_EXCEPTIONS:
             logger.exception("[WARN] Schedule page navigation failed")
             return False, "schedule_navigation_failed"
 
@@ -154,7 +155,7 @@ class ScheduleCrawler:
         try:
             await page.wait_for_selector(".tbl tbody tr", timeout=timeout)
             return True, "ok"
-        except Exception:
+        except SCHEDULE_CRAWLER_EXCEPTIONS:
             logger.exception("[WARN] Schedule table wait failed")
             return False, "schedule_empty"
 
@@ -175,7 +176,7 @@ class ScheduleCrawler:
 
         try:
             await self.policy.run_with_retry_async(_select)
-        except Exception:
+        except SCHEDULE_CRAWLER_EXCEPTIONS:
             logger.exception("[WARN] Schedule %s select failed (%s)", label, value)
             return False, "schedule_navigation_failed"
 
@@ -246,7 +247,7 @@ class ScheduleCrawler:
                     if gid and gid not in seen_game_ids:
                         all_games.append(g)
                         seen_game_ids.add(gid)
-            except Exception:
+            except SCHEDULE_CRAWLER_EXCEPTIONS:
                 logger.exception("[WARN] Error crawling series %s", sid)
 
         if not all_games and not self._last_failure_reason.get(crawl_key):
@@ -552,7 +553,7 @@ class ScheduleCrawler:
 
                 games.append(schedule_game)
 
-        except Exception:
+        except SCHEDULE_CRAWLER_EXCEPTIONS:
             logger.exception("[WARN] Error extracting game (JS)")
             return []
 

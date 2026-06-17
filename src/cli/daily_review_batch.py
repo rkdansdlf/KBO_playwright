@@ -14,6 +14,8 @@ from collections.abc import Sequence
 from datetime import datetime
 from typing import Any
 
+from sqlalchemy.exc import SQLAlchemyError
+
 from src.db.engine import SessionLocal
 from src.models.game import Game, GameEvent, GameSummary, GameValidationMetrics
 from src.repositories.game_repository import refresh_game_status_for_date
@@ -24,6 +26,8 @@ from src.utils.refresh_manifest import write_refresh_manifest
 from src.utils.team_codes import team_code_from_game_id_segment
 
 logger = logging.getLogger(__name__)
+
+REVIEW_DB_EXCEPTIONS = (SQLAlchemyError, RuntimeError, ValueError, TypeError, KeyError, OSError)
 
 
 REVIEW_SUMMARY_TYPE = "리뷰_WPA"
@@ -166,7 +170,7 @@ async def run_review_batch(target_date: str, *, sync_to_oci: bool | None = None)
 
         try:
             session.commit()
-        except Exception:
+        except REVIEW_DB_EXCEPTIONS:
             session.rollback()
             logger.exception("❌ Failed to save reviews to DB")
             raise

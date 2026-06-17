@@ -14,6 +14,7 @@ from bs4 import BeautifulSoup
 from playwright.sync_api import Error as PlaywrightError
 from playwright.sync_api import Page, sync_playwright
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
+from sqlalchemy.exc import SQLAlchemyError
 
 from src.aggregators.team_stat_aggregator import TeamStatAggregator
 from src.db.engine import SessionLocal
@@ -84,6 +85,15 @@ PITCHING_FIELDS = {
     "whip",
     "avg_against",
 }
+TEAM_PITCHING_EXCEPTIONS = (
+    PlaywrightError,
+    PlaywrightTimeoutError,
+    SQLAlchemyError,
+    RuntimeError,
+    ValueError,
+    TypeError,
+    OSError,
+)
 
 
 class TeamPitchingStatsCrawler:
@@ -121,9 +131,9 @@ class TeamPitchingStatsCrawler:
 
                         calc = StandingsCalculator(session)
                         calc.calculate_year(season)
-                    except Exception:
+                    except TEAM_PITCHING_EXCEPTIONS:
                         logger.exception("[ERROR] 순위 연산 폴백 중 오류 발생")
-            except Exception as fallback_error:
+            except TEAM_PITCHING_EXCEPTIONS as fallback_error:
                 logger.exception("[ERROR] 팀 투구 집계 폴백 실패: %s", fallback_error)
                 raise
 
@@ -150,7 +160,7 @@ class TeamPitchingStatsCrawler:
                         context.close()
                         browser.close()
                         return stats
-                except Exception:
+                except TEAM_PITCHING_EXCEPTIONS:
                     logger.exception("[WARN] Failed to parse %s", url)
             context.close()
             browser.close()

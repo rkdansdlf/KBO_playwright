@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import logging
 
+from playwright.sync_api import Error as PlaywrightError
 from playwright.sync_api import Page
+from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 
 from src.utils.playwright_retry import NAV_TIMEOUT
 from src.utils.request_policy import RequestPolicy
@@ -30,6 +32,6 @@ def goto_next_page(page: Page, policy: RequestPolicy | None = None) -> bool:
 
         return False
 
-    except Exception:
+    except (PlaywrightError, PlaywrightTimeoutError, RuntimeError):
         logger.exception("      ⚠️ 페이지 이동 중 오류")
         return False

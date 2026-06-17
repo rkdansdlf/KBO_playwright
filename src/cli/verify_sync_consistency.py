@@ -15,6 +15,7 @@ from typing import Any
 
 from dotenv import load_dotenv
 from sqlalchemy import inspect, text
+from sqlalchemy.exc import SQLAlchemyError
 
 # Add project root to sys.path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
@@ -25,6 +26,8 @@ from src.utils.alerting import SlackWebhookClient
 load_dotenv()
 
 logger = logging.getLogger(__name__)
+
+SYNC_VERIFY_DB_EXCEPTIONS = (SQLAlchemyError, RuntimeError, ValueError, TypeError, OSError)
 
 TABLES_TO_VERIFY = [
     ("rag_chunks", ["source_table", "source_row_id"]),
@@ -92,7 +95,7 @@ def get_row_count(conn, table_name: str) -> int:
     try:
         res = conn.execute(text(f"SELECT COUNT(*) FROM {table_name}"))
         return res.scalar() or 0
-    except Exception:
+    except SYNC_VERIFY_DB_EXCEPTIONS:
         logger.exception("Error getting count for %s", table_name)
         return 0
 
@@ -128,9 +131,69 @@ def check_deep_ids(sqlite_conn, oci_conn, table_name: str, pk_cols: list[str]) -
                 sample_keys.append(row)
 
         return int(match_rate), sample_keys
-    except Exception:
+    except SYNC_VERIFY_DB_EXCEPTIONS:
         logger.exception("Error performing deep check for %s", table_name)
         return 0, []
+
+
+def _log_count_results(count_results: list[dict[str, Any]]) -> None:
+    logger.info("\n┌──────────────────────────────┬──────────────┬──────────────┬──────────────┬────────────┐")
+    logger.info("│ Table Name                   │ SQLite Count │ OCI Count    │ Delta        │ Status     │")
+    logger.info("├──────────────────────────────┼──────────────┼──────────────┼──────────────┼────────────┤")
+    for res in count_results:
+        logger.info(
+            "│ %s │ %s │ %s │ %s │ %s │",
+            res["table_name"].ljust(28),
+            str(res["sqlite_count"]).rjust(12),
+            str(res["oci_count"] if res["oci_count"] != -1 else "N/A").rjust(12),
+            str(res["delta"]).rjust(12),
+            res["status"].ljust(10),
+        )
+    logger.info("└──────────────────────────────┴──────────────┴──────────────┴──────────────┴────────────┘")
+
+
+def _collect_count_mismatches(count_results: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], list[str]]:
+    mismatches = []
+    alert_lines = []
+    for res in count_results:
+        if res["status"] in ("MISMATCH", "MISSING_ON_OCI"):
+            mismatches.append(res)
+            alert_lines.append(
+                f"• <b>{res['table_name']}</b>: SQLite={res['sqlite_count']} vs OCI={res['oci_count']} (Delta={res['delta']})",
+            )
+    return mismatches, alert_lines
+
+
+def _collect_deep_mismatches(
+    sqlite_conn, oci_conn, count_results: list[dict[str, Any]]
+) -> tuple[list[dict[str, Any]], list[str]]:
+    mismatches = []
+    alert_lines = []
+    logger.info("\n🧬 Running Deep ID Verification...")
+    for res in count_results:
+        if res["status"] == "MISSING_ON_OCI":
+            mismatches.append(res)
+            alert_lines.append(f"• <b>{res['table_name']}</b>: Missing on OCI database.")
+            continue
+        table_name = res["table_name"]
+        match_rate, missing_sample = check_deep_ids(sqlite_conn, oci_conn, table_name, res["pk_cols"])
+        logger.info("  - %s: Match Rate = %s%%", table_name, match_rate)
+        if match_rate < 100.0:
+            sample_str = ", ".join(str(key) for key in missing_sample)
+            logger.warning("    ⚠️  Missing sample IDs in OCI: %s", sample_str)
+            mismatches.append(res)
+            alert_lines.append(
+                f"• <b>{table_name}</b>: Key ID match rate is {match_rate}% (Sample missing keys: {sample_str})"
+            )
+    return mismatches, alert_lines
+
+
+def _send_consistency_mismatch_alert(alert_lines: list[str], trigger_alert: bool) -> None:
+    if not trigger_alert:
+        return
+    alert_msg = "<b>⚠️ KBO DB Consistency Mismatch Alert</b>\n\n" + "\n".join(alert_lines)
+    logger.info("📬 Sending alert webhook...")
+    SlackWebhookClient.send_alert(alert_msg)
 
 
 def run_consistency_audit(deep: bool = False, trigger_alert: bool = True) -> bool:
@@ -145,61 +208,18 @@ def run_consistency_audit(deep: bool = False, trigger_alert: bool = True) -> boo
     sqlite_engine = create_engine_for_url(source_url, disable_sqlite_wal=True)
     oci_engine = create_engine_for_url(target_url, disable_sqlite_wal=True)
 
-    mismatches = []
-    alert_lines = []
-
     try:
         with sqlite_engine.connect() as sqlite_conn, oci_engine.connect() as oci_conn:
             logger.info("📊 Comparing row counts...")
             count_results = check_table_counts(sqlite_conn, oci_conn)
+            _log_count_results(count_results)
+            mismatches, alert_lines = (
+                _collect_deep_mismatches(sqlite_conn, oci_conn, count_results)
+                if deep
+                else _collect_count_mismatches(count_results)
+            )
 
-            logger.info("\n┌──────────────────────────────┬──────────────┬──────────────┬──────────────┬────────────┐")
-            logger.info("│ Table Name                   │ SQLite Count │ OCI Count    │ Delta        │ Status     │")
-            logger.info("├──────────────────────────────┼──────────────┼──────────────┼──────────────┼────────────┤")
-
-            for res in count_results:
-                t_name = res["table_name"].ljust(28)
-                sq_c = str(res["sqlite_count"]).rjust(12)
-                oci_c = str(res["oci_count"] if res["oci_count"] != -1 else "N/A").rjust(12)
-                delta = str(res["delta"]).rjust(12)
-                status = res["status"].ljust(10)
-
-                logger.info("│ %s │ %s │ %s │ %s │ %s │", t_name, sq_c, oci_c, delta, status)
-
-                if not deep:
-                    if res["status"] in ("MISMATCH", "MISSING_ON_OCI"):
-                        mismatches.append(res)
-                        alert_lines.append(
-                            f"• <b>{res['table_name']}</b>: SQLite={res['sqlite_count']} vs OCI={res['oci_count']} (Delta={res['delta']})",
-                        )
-                else:
-                    if res["status"] == "MISSING_ON_OCI":
-                        mismatches.append(res)
-                        alert_lines.append(f"• <b>{res['table_name']}</b>: Missing on OCI database.")
-
-            logger.info("└──────────────────────────────┴──────────────┴──────────────┴──────────────┴────────────┘")
-
-            if deep:
-                logger.info("\n🧬 Running Deep ID Verification...")
-                for res in count_results:
-                    if res["status"] == "MISSING_ON_OCI":
-                        continue
-
-                    table_name = res["table_name"]
-                    pk_cols = res["pk_cols"]
-
-                    match_rate, missing_sample = check_deep_ids(sqlite_conn, oci_conn, table_name, pk_cols)
-                    logger.info("  - %s: Match Rate = %s%%", table_name, match_rate)
-
-                    if match_rate < 100.0:
-                        sample_str = ", ".join(str(k) for k in missing_sample)
-                        logger.warning("    ⚠️  Missing sample IDs in OCI: %s", sample_str)
-                        mismatches.append(res)
-                        alert_lines.append(
-                            f"• <b>{table_name}</b>: Key ID match rate is {match_rate}% (Sample missing keys: {sample_str})",
-                        )
-
-    except Exception as e:
+    except SYNC_VERIFY_DB_EXCEPTIONS as e:
         logger.exception("❌ Error during consistency check")
         if trigger_alert:
             SlackWebhookClient.send_error_alert(f"Database Consistency Checker failed with error:\n{e}")
@@ -207,14 +227,10 @@ def run_consistency_audit(deep: bool = False, trigger_alert: bool = True) -> boo
 
     if mismatches:
         logger.info("\n🚨 Discovered %s database mismatch alerts!", len(mismatches))
-        if trigger_alert:
-            alert_msg = "<b>⚠️ KBO DB Consistency Mismatch Alert</b>\n\n" + "\n".join(alert_lines)
-            logger.info("📬 Sending alert webhook...")
-            SlackWebhookClient.send_alert(alert_msg)
+        _send_consistency_mismatch_alert(alert_lines, trigger_alert)
         return False
-    else:
-        logger.info("\n✅ All databases are fully synchronized and consistent!")
-        return True
+    logger.info("\n✅ All databases are fully synchronized and consistent!")
+    return True
 
 
 def main() -> int:

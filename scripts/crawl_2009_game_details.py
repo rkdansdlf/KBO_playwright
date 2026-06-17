@@ -12,6 +12,7 @@ import sys
 import time
 import urllib.parse
 
+from playwright.sync_api import Error as PlaywrightError
 from playwright.sync_api import sync_playwright
 
 logger = logging.getLogger(__name__)
@@ -22,6 +23,8 @@ from src.crawlers.legacy_game_detail_crawler import LegacyGameDetailCrawler
 from src.db.engine import SessionLocal
 from src.repositories.game_repository import save_game_detail
 from src.services.player_id_resolver import PlayerIdResolver
+
+LEGACY_DETAIL_EXCEPTIONS = (PlaywrightError, TimeoutError, RuntimeError, ValueError, TypeError, OSError)
 
 
 def crawl_2009_details():
@@ -103,7 +106,7 @@ def crawl_2009_details():
                 try:
                     data = crawler.extract_game_details(page, game_id, game_date)
                     logger.info("   [Driver] Extraction done.")
-                except Exception as e:
+                except LEGACY_DETAIL_EXCEPTIONS as e:
                     logger.error("🔥 [Driver] Extraction CRASHED: %s", e)
                     import traceback
 

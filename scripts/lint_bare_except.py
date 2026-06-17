@@ -5,16 +5,25 @@ Usage: python scripts/lint_bare_except.py [--fix FILE]
 
 from __future__ import annotations
 
-import logging
-
-logger = logging.getLogger(__name__)
-
-
 import ast
+import subprocess
 import sys
 from pathlib import Path
 
-SRC_DIR = Path("src")
+DEFAULT_SCAN_DIRS = (Path("src"), Path("scripts"))
+
+
+def _default_files() -> list[Path]:
+    try:
+        result = subprocess.run(
+            ["git", "ls-files", "src", "scripts"],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+    except (subprocess.SubprocessError, OSError):
+        return sorted(path for scan_dir in DEFAULT_SCAN_DIRS for path in scan_dir.rglob("*.py"))
+    return [Path(line) for line in result.stdout.splitlines() if line.endswith(".py")]
 
 
 class BareExceptVisitor(ast.NodeVisitor):
@@ -68,14 +77,14 @@ def main():
     if args:
         files = [Path(a) for a in args if a.endswith(".py")]
     else:
-        files = sorted(SRC_DIR.rglob("*.py"))
+        files = _default_files()
     total = 0
     for f in files:
         issues = scan_file(f)
         for path, lineno, name in issues:
-            logger.info(f"{path}:{lineno}: bare except Exception (name={name})")
+            print(f"{path}:{lineno}: bare except Exception (name={name})")
             total += 1
-    logger.info(f"\nTotal: {total} bare except Exception in {len(files)} files")
+    print(f"\nTotal: {total} bare except Exception in {len(files)} files")
     return total
 
 

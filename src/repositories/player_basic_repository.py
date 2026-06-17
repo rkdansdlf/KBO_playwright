@@ -10,6 +10,7 @@ from collections import Counter
 from typing import Any
 
 logger = logging.getLogger(__name__)
+from sqlalchemy import case
 from sqlalchemy.dialects.mysql import insert as mysql_insert
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
@@ -53,97 +54,11 @@ class PlayerBasicRepository:
             try:
                 valid_players, filter_counts = filter_valid_player_payloads(players)
                 self.last_filter_counts = filter_counts
-                payload = [self._build_payload(player_data) for player_data in valid_players]
-                unique_payload = {}
-                for row in payload:
-                    player_id = row.get("player_id")
-                    if player_id is None:
-                        continue
-                    unique_payload[player_id] = row
-                rows = list(unique_payload.values())
+                rows = self._unique_payload_rows(valid_players)
                 if not rows:
                     return 0
 
-                from sqlalchemy import case
-
-                if self.dialect == "sqlite":
-                    stmt = sqlite_insert(PlayerBasic).values(rows)
-                    excluded = stmt.excluded
-                    status_case = case(
-                        (excluded.status_source.in_(["profile", "register"]), excluded.status),
-                        (PlayerBasic.status_source.in_(["profile", "register"]), PlayerBasic.status),
-                        else_=excluded.status,
-                    )
-                    staff_role_case = case(
-                        (excluded.status_source.in_(["profile", "register"]), excluded.staff_role),
-                        (PlayerBasic.status_source.in_(["profile", "register"]), PlayerBasic.staff_role),
-                        else_=excluded.staff_role,
-                    )
-                    status_source_case = case(
-                        (excluded.status_source.in_(["profile", "register"]), excluded.status_source),
-                        (PlayerBasic.status_source.in_(["profile", "register"]), PlayerBasic.status_source),
-                        else_=excluded.status_source,
-                    )
-
-                    update_dict = {}
-                    for k in rows[0]:
-                        if k == "player_id":
-                            continue
-                        if k == "status":
-                            update_dict[k] = status_case
-                        elif k == "staff_role":
-                            update_dict[k] = staff_role_case
-                        elif k == "status_source":
-                            update_dict[k] = status_source_case
-                        else:
-                            update_dict[k] = excluded[k]
-
-                    stmt = stmt.on_conflict_do_update(
-                        index_elements=["player_id"],
-                        set_=update_dict,
-                    )
-                elif self.dialect == "mysql":
-                    stmt = mysql_insert(PlayerBasic).values(rows)
-                    update_dict = {k: stmt.inserted[k] for k in rows[0] if k != "player_id"}
-                    stmt = stmt.on_duplicate_key_update(update_dict)
-                else:  # PostgreSQL
-                    stmt = pg_insert(PlayerBasic).values(rows)
-                    excluded = stmt.excluded
-                    status_case = case(
-                        (excluded.status_source.in_(["profile", "register"]), excluded.status),
-                        (PlayerBasic.status_source.in_(["profile", "register"]), PlayerBasic.status),
-                        else_=excluded.status,
-                    )
-                    staff_role_case = case(
-                        (excluded.status_source.in_(["profile", "register"]), excluded.staff_role),
-                        (PlayerBasic.status_source.in_(["profile", "register"]), PlayerBasic.staff_role),
-                        else_=excluded.staff_role,
-                    )
-                    status_source_case = case(
-                        (excluded.status_source.in_(["profile", "register"]), excluded.status_source),
-                        (PlayerBasic.status_source.in_(["profile", "register"]), PlayerBasic.status_source),
-                        else_=excluded.status_source,
-                    )
-
-                    update_dict = {}
-                    for k in rows[0]:
-                        if k == "player_id":
-                            continue
-                        if k == "status":
-                            update_dict[k] = status_case
-                        elif k == "staff_role":
-                            update_dict[k] = staff_role_case
-                        elif k == "status_source":
-                            update_dict[k] = status_source_case
-                        else:
-                            update_dict[k] = excluded[k]
-
-                    stmt = stmt.on_conflict_do_update(
-                        index_elements=["player_id"],
-                        set_=update_dict,
-                    )
-
-                session.execute(stmt)
+                session.execute(self._build_upsert_stmt(rows))
                 session.commit()
                 return len(rows)
             except SQLAlchemyError:
@@ -159,80 +74,54 @@ class PlayerBasicRepository:
             return
 
         data = self._build_payload(player_data)
-        from sqlalchemy import case
+        session.execute(self._build_upsert_stmt(data))
 
+    def _unique_payload_rows(self, players: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        unique_payload = {}
+        for player_data in players:
+            row = self._build_payload(player_data)
+            player_id = row.get("player_id")
+            if player_id is not None:
+                unique_payload[player_id] = row
+        return list(unique_payload.values())
+
+    def _build_upsert_stmt(self, values: dict[str, Any] | list[dict[str, Any]]):
+        keys = values[0] if isinstance(values, list) else values
         if self.dialect == "sqlite":
-            stmt = sqlite_insert(PlayerBasic).values(**data)
-            excluded = stmt.excluded
-            status_case = case(
-                (excluded.status_source.in_(["profile", "register"]), excluded.status),
-                (PlayerBasic.status_source.in_(["profile", "register"]), PlayerBasic.status),
-                else_=excluded.status,
+            stmt = sqlite_insert(PlayerBasic).values(values)
+            return stmt.on_conflict_do_update(
+                index_elements=["player_id"],
+                set_=self._build_status_preserving_update_dict(keys, stmt.excluded),
             )
-            staff_role_case = case(
-                (excluded.status_source.in_(["profile", "register"]), excluded.staff_role),
-                (PlayerBasic.status_source.in_(["profile", "register"]), PlayerBasic.staff_role),
-                else_=excluded.staff_role,
-            )
-            status_source_case = case(
-                (excluded.status_source.in_(["profile", "register"]), excluded.status_source),
-                (PlayerBasic.status_source.in_(["profile", "register"]), PlayerBasic.status_source),
-                else_=excluded.status_source,
-            )
+        if self.dialect == "mysql":
+            stmt = mysql_insert(PlayerBasic).values(values)
+            update_dict = {key: stmt.inserted[key] for key in keys if key != "player_id"}
+            return stmt.on_duplicate_key_update(update_dict)
 
-            update_dict = {}
-            for k in data:
-                if k == "player_id":
-                    continue
-                if k == "status":
-                    update_dict[k] = status_case
-                elif k == "staff_role":
-                    update_dict[k] = staff_role_case
-                elif k == "status_source":
-                    update_dict[k] = status_source_case
-                else:
-                    update_dict[k] = excluded[k]
+        stmt = pg_insert(PlayerBasic).values(values)
+        return stmt.on_conflict_do_update(
+            index_elements=["player_id"],
+            set_=self._build_status_preserving_update_dict(keys, stmt.excluded),
+        )
 
-            stmt = stmt.on_conflict_do_update(index_elements=["player_id"], set_=update_dict)
-        elif self.dialect == "mysql":
-            stmt = mysql_insert(PlayerBasic).values(**data)
-            update_dict = {k: stmt.inserted[k] for k in data if k != "player_id"}
-            stmt = stmt.on_duplicate_key_update(update_dict)
-        else:  # PostgreSQL
-            stmt = pg_insert(PlayerBasic).values(**data)
-            excluded = stmt.excluded
-            status_case = case(
-                (excluded.status_source.in_(["profile", "register"]), excluded.status),
-                (PlayerBasic.status_source.in_(["profile", "register"]), PlayerBasic.status),
-                else_=excluded.status,
-            )
-            staff_role_case = case(
-                (excluded.status_source.in_(["profile", "register"]), excluded.staff_role),
-                (PlayerBasic.status_source.in_(["profile", "register"]), PlayerBasic.staff_role),
-                else_=excluded.staff_role,
-            )
-            status_source_case = case(
-                (excluded.status_source.in_(["profile", "register"]), excluded.status_source),
-                (PlayerBasic.status_source.in_(["profile", "register"]), PlayerBasic.status_source),
-                else_=excluded.status_source,
-            )
-
-            update_dict = {}
-            for k in data:
-                if k == "player_id":
-                    continue
-                if k == "status":
-                    update_dict[k] = status_case
-                elif k == "staff_role":
-                    update_dict[k] = staff_role_case
-                elif k == "status_source":
-                    update_dict[k] = status_source_case
-                else:
-                    update_dict[k] = excluded[k]
-
-            stmt = stmt.on_conflict_do_update(index_elements=["player_id"], set_=update_dict)
-
-        session.execute(stmt)
+    def _build_status_preserving_update_dict(self, keys: dict[str, Any], excluded: Any) -> dict[str, Any]:
+        status_case = case(
+            (excluded.status_source.in_(["profile", "register"]), excluded.status),
+            (PlayerBasic.status_source.in_(["profile", "register"]), PlayerBasic.status),
+            else_=excluded.status,
+        )
+        staff_role_case = case(
+            (excluded.status_source.in_(["profile", "register"]), excluded.staff_role),
+            (PlayerBasic.status_source.in_(["profile", "register"]), PlayerBasic.staff_role),
+            else_=excluded.staff_role,
+        )
+        status_source_case = case(
+            (excluded.status_source.in_(["profile", "register"]), excluded.status_source),
+            (PlayerBasic.status_source.in_(["profile", "register"]), PlayerBasic.status_source),
+            else_=excluded.status_source,
+        )
+        special_cases = {"status": status_case, "staff_role": staff_role_case, "status_source": status_source_case}
+        return {key: special_cases.get(key, excluded[key]) for key in keys if key != "player_id"}
 
     def _build_payload(self, player_data: dict[str, Any]) -> dict[str, Any]:
         return {

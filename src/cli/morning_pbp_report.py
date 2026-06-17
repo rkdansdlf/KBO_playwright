@@ -14,6 +14,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import csv
 import json
 import logging
 import sys
@@ -22,6 +23,8 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo
+
+from sqlalchemy.exc import SQLAlchemyError
 
 logger = logging.getLogger(__name__)
 
@@ -84,9 +87,62 @@ def _query_pbp_validation_summary() -> dict[str, int]:
             for status, cnt in rows:
                 key = status if status in counts else "other"
                 counts[key] = counts.get(key, 0) + cnt
-    except Exception:
+    except (SQLAlchemyError, RuntimeError, ValueError, TypeError):
         logger.exception("[WARN] Failed to query PBP validation summary")
     return counts
+
+
+def _append_relay_section(lines: list[str], relay_data: dict[str, Any], relay_failures: list[str]) -> None:
+    lines.append(f"📡 <b>Relay Targets</b>: {relay_data.get('target_count', 0)} games")
+    if relay_failures:
+        lines.append(f"❌ <b>Failed Relay</b>: {len(relay_failures)} games")
+        lines.extend(f"   - {game_id}" for game_id in relay_failures[:10])
+        if len(relay_failures) > 10:
+            lines.append(f"   ... and {len(relay_failures) - 10} more")
+    else:
+        lines.append("✅ <b>Relay</b>: All targets recovered")
+
+
+def _append_detail_failures(lines: list[str], detail_failures: list[str]) -> None:
+    if detail_failures:
+        lines.append(f"⚠️ <b>Failed Detail</b>: {len(detail_failures)} games")
+        lines.extend(f"   - {game_id}" for game_id in detail_failures[:5])
+
+
+def _append_oci_skips(lines: list[str], oci_data: dict[str, Any]) -> None:
+    skip_counts = oci_data.get("skip_counts", {})
+    if skip_counts:
+        lines.append(f"⏭️ <b>OCI Skips</b>: {sum(skip_counts.values())} games")
+        lines.extend(f"   - {reason}: {count}" for reason, count in skip_counts.items())
+
+
+def _append_validation_section(lines: list[str], validation_counts: dict[str, int]) -> None:
+    lines.append("")
+    verified = validation_counts.get("verified", 0)
+    recovered = validation_counts.get("recovered", 0)
+    unverified = validation_counts.get("unverified", 0)
+    incomplete = validation_counts.get("source_incomplete", 0)
+    unavailable = validation_counts.get("source_unavailable", 0)
+    pending = validation_counts.get("pending_live", 0) + validation_counts.get("provisionally_valid", 0)
+    other = validation_counts.get("other", 0)
+    total = verified + recovered + unverified + incomplete + unavailable + pending + other
+    if total > 0:
+        icon = "✅" if unverified == 0 and incomplete == 0 else "⚠️"
+        lines.append(
+            f"{icon} <b>Validation</b>: {verified} verified / {recovered} recovered / "
+            f"{unverified} unverified / {incomplete} incomplete / {unavailable} unavailable / "
+            f"{pending} pending / {other} other",
+        )
+    else:
+        lines.append("ℹ️ <b>Validation</b>: No data (pipeline may not have run yet)")
+
+
+def _append_affected_games(lines: list[str], affected: list[str]) -> None:
+    if affected:
+        lines.append(f"\n📋 <b>Affected Games</b>: {len(affected)} total")
+        lines.extend(f"   - {game_id}" for game_id in affected[:10])
+        if len(affected) > 10:
+            lines.append(f"   ... and {len(affected) - 10} more")
 
 
 def _build_telegram_message(
@@ -103,64 +159,12 @@ def _build_telegram_message(
     oci_data = stability.get("oci", {})
     relay_data = stability.get("relay", {})
 
-    lines: list[str] = []
-    lines.append(f"📊 <b>PBP Morning Report ({target_date})</b>\n")
-
-    # Relay recovery targets
-    relay_target_count = relay_data.get("target_count", 0)
-    lines.append(f"📡 <b>Relay Targets</b>: {relay_target_count} games")
-
-    if relay_failures:
-        lines.append(f"❌ <b>Failed Relay</b>: {len(relay_failures)} games")
-        for gid in relay_failures[:10]:
-            lines.append(f"   - {gid}")  # noqa: PERF401
-        if len(relay_failures) > 10:
-            lines.append(f"   ... and {len(relay_failures) - 10} more")
-    else:
-        lines.append("✅ <b>Relay</b>: All targets recovered")
-
-    # Detail failures
-    if detail_failures:
-        lines.append(f"⚠️ <b>Failed Detail</b>: {len(detail_failures)} games")
-        for gid in detail_failures[:5]:
-            lines.append(f"   - {gid}")  # noqa: PERF401
-
-    # OCI skip info
-    skip_counts = oci_data.get("skip_counts", {})
-    if skip_counts:
-        total_skipped = sum(skip_counts.values())
-        lines.append(f"⏭️ <b>OCI Skips</b>: {total_skipped} games")
-        for reason, cnt in skip_counts.items():
-            lines.append(f"   - {reason}: {cnt}")
-
-    # PBP Validation status
-    lines.append("")
-    verified = validation_counts.get("verified", 0)
-    recovered = validation_counts.get("recovered", 0)
-    unver = validation_counts.get("unverified", 0)
-    incomplete = validation_counts.get("source_incomplete", 0)
-    unavailable = validation_counts.get("source_unavailable", 0)
-    pending = validation_counts.get("pending_live", 0) + validation_counts.get("provisionally_valid", 0)
-    oth = validation_counts.get("other", 0)
-    total_val = verified + recovered + unver + incomplete + unavailable + pending + oth
-    if total_val > 0:
-        icon = "✅" if unver == 0 and incomplete == 0 else "⚠️"
-        lines.append(
-            f"{icon} <b>Validation</b>: {verified} verified / {recovered} recovered / "
-            f"{unver} unverified / {incomplete} incomplete / {unavailable} unavailable / "
-            f"{pending} pending / {oth} other",
-        )
-    else:
-        lines.append("ℹ️ <b>Validation</b>: No data (pipeline may not have run yet)")
-
-    # Affected games summary
-    affected = stability.get("affected_game_ids", [])
-    if affected:
-        lines.append(f"\n📋 <b>Affected Games</b>: {len(affected)} total")
-        for gid in affected[:10]:
-            lines.append(f"   - {gid}")  # noqa: PERF401
-        if len(affected) > 10:
-            lines.append(f"   ... and {len(affected) - 10} more")
+    lines: list[str] = [f"📊 <b>PBP Morning Report ({target_date})</b>\n"]
+    _append_relay_section(lines, relay_data, relay_failures)
+    _append_detail_failures(lines, detail_failures)
+    _append_oci_skips(lines, oci_data)
+    _append_validation_section(lines, validation_counts)
+    _append_affected_games(lines, stability.get("affected_game_ids", []))
 
     if dry_run:
         lines.append("\n🔹 <i>Dry-run mode — notification not sent</i>")
@@ -173,15 +177,13 @@ def _read_pbp_report_csv(target_date: str) -> list[dict[str, str]]:
     csv_path = DAILY_SUMMARY_DIR / f"pbp_report_daily_{target_date}.csv"
     if not csv_path.exists():
         return []
-    import csv
-
     rows: list[dict[str, str]] = []
     try:
         with open(csv_path, encoding="utf-8") as f:
             reader = csv.DictReader(f)
             for row in reader:
                 rows.append(row)
-    except Exception:
+    except (csv.Error, OSError):
         logger.exception("Failed to read PBP CSV: %s", csv_path)
     return rows
 

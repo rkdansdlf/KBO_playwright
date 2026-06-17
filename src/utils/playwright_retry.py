@@ -74,7 +74,7 @@ def retry_click(
             if attempt == max_retries:
                 return False
             logger.warning("Click on %s timed out on attempt %s, retrying...", selector, attempt)
-            with contextlib.suppress(Exception):
+            with contextlib.suppress(PlaywrightError, PlaywrightTimeout, RuntimeError):
                 page.reload(wait_until="networkidle", timeout=timeout)
             _policy.delay()
     return False
@@ -97,7 +97,7 @@ def retry_wait_for_selector(
                 return False
             logger.warning("Selector %s not found on attempt %s, retrying...", selector, attempt)
             # Try reloading if it's a transient issue
-            with contextlib.suppress(Exception):
+            with contextlib.suppress(PlaywrightError, PlaywrightTimeout, RuntimeError):
                 page.reload(wait_until="networkidle", timeout=timeout)
             _policy.delay()
     return False

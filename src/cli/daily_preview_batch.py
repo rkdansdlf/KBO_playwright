@@ -12,6 +12,8 @@ import os
 from collections.abc import Sequence
 from datetime import datetime
 
+from sqlalchemy.exc import SQLAlchemyError
+
 from src.crawlers.preview_crawler import PreviewCrawler
 from src.db.engine import SessionLocal
 from src.repositories.game_repository import save_pregame_lineups
@@ -21,6 +23,8 @@ from src.utils.refresh_manifest import write_refresh_manifest
 from src.utils.team_codes import resolve_team_code
 
 logger = logging.getLogger(__name__)
+
+PREVIEW_CONTEXT_EXCEPTIONS = (SQLAlchemyError, RuntimeError, ValueError, TypeError, KeyError)
 
 
 async def run_preview_batch(target_date: str, *, sync_to_oci: bool | None = None) -> list[str]:
@@ -73,7 +77,7 @@ async def run_preview_batch(target_date: str, *, sync_to_oci: bool | None = None
                     series_context = agg.get_postseason_series_summary(away_code, home_code, season_year, target_dt_obj)
                     if series_context:
                         preview["series_context"] = series_context
-                except Exception:
+                except PREVIEW_CONTEXT_EXCEPTIONS:
                     logger.exception("⚠️ Context aggregation failed for %s", game_id)
 
             away_starter_id = preview.get("away_starter_id")
@@ -83,7 +87,7 @@ async def run_preview_batch(target_date: str, *, sync_to_oci: bool | None = None
                     preview["away_starter_stats"] = agg.get_pitcher_season_stats(away_starter_id, season_year)
                 if home_starter_id:
                     preview["home_starter_stats"] = agg.get_pitcher_season_stats(home_starter_id, season_year)
-            except Exception:
+            except PREVIEW_CONTEXT_EXCEPTIONS:
                 logger.exception("⚠️ Pitcher stats aggregation failed for %s", game_id)
 
             if save_pregame_lineups(preview):

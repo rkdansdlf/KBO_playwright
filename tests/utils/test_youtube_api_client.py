@@ -75,7 +75,7 @@ class TestTeamYoutubeChannels:
     def test_lg_channel(self):
         lg = TEAM_YOUTUBE_CHANNELS["LG"]
         assert lg["handle"] == "@LGTwinsTV"
-        assert lg["channel_id"] == "UCiXGdRARMxrZ5kJLe7t4Xpg"
+        assert lg["channel_id"] == "UCL6QZZxb-HR4hCh_eFAnQWA"
 
     def test_search_queries_contain_cheersong(self):
         for _code, info in TEAM_YOUTUBE_CHANNELS.items():

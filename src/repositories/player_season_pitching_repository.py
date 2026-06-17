@@ -65,109 +65,10 @@ def save_pitching_stats_to_db(payloads: list[dict[str, Any]]) -> int:
         saved_count = 0
 
         for payload in payloads:
-            # extra_stats에서 확장 통계 추출하여 정규 컬럼으로 승격
-            extra_stats = payload.get("extra_stats", {})
-            metrics = extra_stats.get("metrics", {}) if isinstance(extra_stats, dict) else {}
-            if not isinstance(metrics, dict):
-                metrics = {}
-
-            # 기본 필드들 매핑 (크롤러 PitcherStats.to_repository_payload()와 일치)
-            data = {
-                "player_id": payload.get("player_id"),
-                "season": payload.get("season"),
-                "league": payload.get("league"),
-                "level": payload.get("level", "KBO1"),
-                "source": payload.get("source", "CRAWLER"),
-                "team_code": payload.get("team_code"),
-                # 기본 투수 통계
-                "games": payload.get("games"),
-                "games_started": payload.get("games_started"),
-                "wins": payload.get("wins"),
-                "losses": payload.get("losses"),
-                "saves": payload.get("saves"),
-                "holds": payload.get("holds"),
-                # 이닝 관련
-                "innings_pitched": payload.get("innings_pitched"),
-                "innings_outs": _prefer_payload_value(
-                    payload,
-                    extra_stats if isinstance(extra_stats, dict) else {},
-                    "innings_outs",
-                ),
-                # 피칭 결과
-                "hits_allowed": payload.get("hits_allowed"),
-                "runs_allowed": payload.get("runs_allowed"),
-                "earned_runs": payload.get("earned_runs"),
-                "home_runs_allowed": payload.get("home_runs_allowed"),
-                "walks_allowed": payload.get("walks_allowed"),
-                "intentional_walks": payload.get("intentional_walks"),
-                "hit_batters": payload.get("hit_batters"),
-                "strikeouts": payload.get("strikeouts"),
-                "wild_pitches": payload.get("wild_pitches"),
-                "balks": payload.get("balks"),
-                # 고급 통계
-                "era": payload.get("era"),
-                "whip": payload.get("whip"),
-                "fip": payload.get("fip"),
-                "k_per_nine": payload.get("k_per_nine"),
-                "bb_per_nine": payload.get("bb_per_nine"),
-                "kbb": payload.get("kbb"),
-                # Basic2에서 수집한 확장 통계를 정규 컬럼으로 승격
-                "complete_games": _prefer_payload_value(payload, metrics, "complete_games"),
-                "shutouts": _prefer_payload_value(payload, metrics, "shutouts"),
-                "quality_starts": _prefer_payload_value(payload, metrics, "quality_starts"),
-                "blown_saves": _prefer_payload_value(payload, metrics, "blown_saves"),
-                "tbf": _prefer_payload_value(payload, metrics, "tbf"),
-                "np": _prefer_payload_value(payload, metrics, "np"),
-                "avg_against": _prefer_payload_value(payload, metrics, "avg_against"),
-                "doubles_allowed": _prefer_payload_value(payload, metrics, "doubles_allowed"),
-                "triples_allowed": _prefer_payload_value(payload, metrics, "triples_allowed"),
-                "sacrifices_allowed": _prefer_payload_value(payload, metrics, "sacrifices_allowed"),
-                "sacrifice_flies_allowed": _prefer_payload_value(payload, metrics, "sacrifice_flies_allowed"),
-                # 나머지는 extra_stats에 보관
-                "extra_stats": extra_stats,
-            }
-
-            # None 값 제거
-            data = {k: v for k, v in data.items() if v is not None}
-
-            # UPSERT 수행 (DB 종류별로 다른 문법)
-            if db_type == "sqlite":
-                stmt = sqlite_insert(PlayerSeasonPitching).values(**data)
-                stmt = stmt.on_conflict_do_update(
-                    index_elements=["player_id", "season", "league", "level"],
-                    set_={k: stmt.excluded[k] for k in data if k not in ["player_id", "season", "league", "level"]},
-                )
-            elif db_type == "mysql":
-                stmt = mysql_insert(PlayerSeasonPitching).values(**data)
-                stmt = stmt.on_duplicate_key_update(
-                    {k: stmt.inserted[k] for k in data if k not in ["player_id", "season", "league", "level"]},
-                )
-            elif db_type == "postgresql":
-                stmt = postgresql_insert(PlayerSeasonPitching).values(**data)
-                stmt = stmt.on_conflict_do_update(
-                    index_elements=["player_id", "season", "league", "level"],
-                    set_={k: stmt.excluded[k] for k in data if k not in ["player_id", "season", "league", "level"]},
-                )
-            else:
-                # Fallback: 단순 merge
-                existing = (
-                    session.query(PlayerSeasonPitching)
-                    .filter_by(
-                        player_id=data["player_id"],
-                        season=data["season"],
-                        league=data["league"],
-                        level=data["level"],
-                    )
-                    .first()
-                )
-
-                if existing:
-                    for k, v in data.items():
-                        setattr(existing, k, v)
-                else:
-                    new_record = PlayerSeasonPitching(**data)
-                    session.add(new_record)
-
+            data = _build_pitching_row(payload)
+            stmt = _build_pitching_upsert_stmt(data, db_type)
+            if stmt is None:
+                _merge_pitching_row(session, data)
                 saved_count += 1
                 continue
 
@@ -188,6 +89,100 @@ def save_pitching_stats_to_db(payloads: list[dict[str, Any]]) -> int:
             return 0
 
         return saved_count
+
+
+def _build_pitching_row(payload: dict[str, Any]) -> dict[str, Any]:
+    extra_stats = payload.get("extra_stats", {})
+    metrics = extra_stats.get("metrics", {}) if isinstance(extra_stats, dict) else {}
+    if not isinstance(metrics, dict):
+        metrics = {}
+
+    data = {
+        "player_id": payload.get("player_id"),
+        "season": payload.get("season"),
+        "league": payload.get("league"),
+        "level": payload.get("level", "KBO1"),
+        "source": payload.get("source", "CRAWLER"),
+        "team_code": payload.get("team_code"),
+        "games": payload.get("games"),
+        "games_started": payload.get("games_started"),
+        "wins": payload.get("wins"),
+        "losses": payload.get("losses"),
+        "saves": payload.get("saves"),
+        "holds": payload.get("holds"),
+        "innings_pitched": payload.get("innings_pitched"),
+        "innings_outs": _prefer_payload_value(
+            payload, extra_stats if isinstance(extra_stats, dict) else {}, "innings_outs"
+        ),
+        "hits_allowed": payload.get("hits_allowed"),
+        "runs_allowed": payload.get("runs_allowed"),
+        "earned_runs": payload.get("earned_runs"),
+        "home_runs_allowed": payload.get("home_runs_allowed"),
+        "walks_allowed": payload.get("walks_allowed"),
+        "intentional_walks": payload.get("intentional_walks"),
+        "hit_batters": payload.get("hit_batters"),
+        "strikeouts": payload.get("strikeouts"),
+        "wild_pitches": payload.get("wild_pitches"),
+        "balks": payload.get("balks"),
+        "era": payload.get("era"),
+        "whip": payload.get("whip"),
+        "fip": payload.get("fip"),
+        "k_per_nine": payload.get("k_per_nine"),
+        "bb_per_nine": payload.get("bb_per_nine"),
+        "kbb": payload.get("kbb"),
+        "complete_games": _prefer_payload_value(payload, metrics, "complete_games"),
+        "shutouts": _prefer_payload_value(payload, metrics, "shutouts"),
+        "quality_starts": _prefer_payload_value(payload, metrics, "quality_starts"),
+        "blown_saves": _prefer_payload_value(payload, metrics, "blown_saves"),
+        "tbf": _prefer_payload_value(payload, metrics, "tbf"),
+        "np": _prefer_payload_value(payload, metrics, "np"),
+        "avg_against": _prefer_payload_value(payload, metrics, "avg_against"),
+        "doubles_allowed": _prefer_payload_value(payload, metrics, "doubles_allowed"),
+        "triples_allowed": _prefer_payload_value(payload, metrics, "triples_allowed"),
+        "sacrifices_allowed": _prefer_payload_value(payload, metrics, "sacrifices_allowed"),
+        "sacrifice_flies_allowed": _prefer_payload_value(payload, metrics, "sacrifice_flies_allowed"),
+        "extra_stats": extra_stats,
+    }
+    return {key: value for key, value in data.items() if value is not None}
+
+
+def _build_pitching_upsert_stmt(data: dict[str, Any], db_type: str):
+    key_fields = ["player_id", "season", "league", "level"]
+    if db_type == "sqlite":
+        stmt = sqlite_insert(PlayerSeasonPitching).values(**data)
+        return stmt.on_conflict_do_update(
+            index_elements=key_fields,
+            set_={key: stmt.excluded[key] for key in data if key not in key_fields},
+        )
+    if db_type == "mysql":
+        stmt = mysql_insert(PlayerSeasonPitching).values(**data)
+        return stmt.on_duplicate_key_update({key: stmt.inserted[key] for key in data if key not in key_fields})
+    if db_type == "postgresql":
+        stmt = postgresql_insert(PlayerSeasonPitching).values(**data)
+        return stmt.on_conflict_do_update(
+            index_elements=key_fields,
+            set_={key: stmt.excluded[key] for key in data if key not in key_fields},
+        )
+    return None
+
+
+def _merge_pitching_row(session: Session, data: dict[str, Any]) -> None:
+    existing = (
+        session.query(PlayerSeasonPitching)
+        .filter_by(
+            player_id=data["player_id"],
+            season=data["season"],
+            league=data["league"],
+            level=data["level"],
+        )
+        .first()
+    )
+
+    if existing:
+        for key, value in data.items():
+            setattr(existing, key, value)
+    else:
+        session.add(PlayerSeasonPitching(**data))
 
 
 def get_pitching_stats_count(session: Session | None = None) -> int:

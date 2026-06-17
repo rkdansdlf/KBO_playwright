@@ -20,8 +20,23 @@ from zoneinfo import ZoneInfo
 
 import httpx
 from playwright.async_api import Error as PlaywrightError
+from sqlalchemy.exc import SQLAlchemyError
 
 logger = logging.getLogger(__name__)
+
+DB_EXCEPTIONS = (SQLAlchemyError, RuntimeError, ValueError, TypeError, OSError)
+LIVE_CRAWLER_EXCEPTIONS = (
+    PlaywrightError,
+    TimeoutError,
+    asyncio.TimeoutError,
+    httpx.HTTPError,
+    SQLAlchemyError,
+    RuntimeError,
+    ValueError,
+    TypeError,
+    OSError,
+)
+THREAD_EXCEPTIONS = (RuntimeError, OSError)
 
 _LIVE_SHARD_CURSOR_BY_DATE: dict[str, int] = {}
 _ACTIVE_DETAIL_SNAPSHOT_GAMES: set[str] = set()
@@ -115,7 +130,7 @@ def _query_enriched_game_state(
                     "max_inning": mi_map.get(gid, 0),
                 }
         return state
-    except Exception:
+    except DB_EXCEPTIONS:
         logger.exception("[WARN] Failed to query enriched game state")
         return {}
 
@@ -214,7 +229,7 @@ def _submit_live_detail_snapshot_background(game_id: str, today_str: str) -> boo
         try:
             logger.info("[LIVE] Starting background live detail snapshot for %s", game_id)
             asyncio.run(_crawl_and_save())
-        except Exception:
+        except LIVE_CRAWLER_EXCEPTIONS:
             logger.exception(
                 "[LIVE] Background live detail snapshot failed for %s elapsed=%.1fs",
                 game_id,
@@ -228,7 +243,7 @@ def _submit_live_detail_snapshot_background(game_id: str, today_str: str) -> boo
     try:
         logger.info("[LIVE] Queued background live detail snapshot for %s", game_id)
         thread.start()
-    except Exception:
+    except THREAD_EXCEPTIONS:
         with _ACTIVE_DETAIL_SNAPSHOT_LOCK:
             _ACTIVE_DETAIL_SNAPSHOT_GAMES.discard(game_id)
         logger.exception("[LIVE] Failed to start background live detail snapshot for %s", game_id)
@@ -281,9 +296,9 @@ async def _run_kbo_fallback_healing(game_id: str) -> None:
                     msg = f"✅ KBO Fallback Success: Recovered {saved} unverified Naver PBP events from KBO for game {game_id}"
                     logger.info("[FALLBACK SUCCESS] %s", msg)
                     SlackWebhookClient.send_alert(msg)
-            except Exception as db_err:
+            except LIVE_CRAWLER_EXCEPTIONS as db_err:
                 logger.exception("Failed to save KBO fallback data for %s: %s", game_id, db_err)
-    except Exception as exc:
+    except LIVE_CRAWLER_EXCEPTIONS as exc:
         logger.exception("Unexpected exception in background KBO healing for %s: %s", game_id, exc)
     finally:
         _ACTIVE_HEALING_GAMES.discard(game_id)
@@ -435,7 +450,7 @@ async def run_live_crawler_cycle(
                 }
             else:
                 naver_status_map = {}
-    except Exception:
+    except (httpx.HTTPError, ValueError, TypeError):
         logger.exception("[WARN] Failed to fetch Naver live statuses")
         naver_status_map = {}
 
@@ -569,7 +584,7 @@ async def run_live_crawler_cycle(
                         try:
                             sync_engine.sync_specific_game(game_id)
                             logger.info("[SYNC] ✅ Synced %s to OCI.", game_id)
-                        except Exception as exc:
+                        except DB_EXCEPTIONS as exc:
                             oci_sync_failures.append(
                                 {
                                     "game_id": game_id,
@@ -663,7 +678,7 @@ async def main_loop(base_interval_minutes: int, *, sync_to_oci: bool | None = No
             logger.info(" ".join(log_parts))
             await asyncio.sleep(sleep_seconds)
 
-        except Exception:
+        except LIVE_CRAWLER_EXCEPTIONS:
             logger.exception("[CRITICAL ERROR] Live loop crashed")
             await asyncio.sleep(60)
 
@@ -715,12 +730,22 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--no-sync", action="store_true", help="Skip explicit OCI sync after local writes")
     args = parser.parse_args(argv)
 
-    if args.run_once:
-        asyncio.run(run_live_crawler_cycle(sync_to_oci=not args.no_sync))
-    else:
-        mode = "DYNAMIC" if args.dynamic else f"FIXED ({args.interval}m)"
-        logger.info("🚀 Starting Real-time Daemon... Mode: %s", mode)
-        asyncio.run(main_loop(args.interval, sync_to_oci=not args.no_sync, dynamic=args.dynamic))
+    from src.utils.lock import ProcessLock
+
+    lock = ProcessLock("live_refresh", blocking=False)
+    if not lock.acquire():
+        logger.warning("⚠️ Another instance of live_crawler is already running. Exiting.")
+        return 1
+
+    try:
+        if args.run_once:
+            asyncio.run(run_live_crawler_cycle(sync_to_oci=not args.no_sync))
+        else:
+            mode = "DYNAMIC" if args.dynamic else f"FIXED ({args.interval}m)"
+            logger.info("🚀 Starting Real-time Daemon... Mode: %s", mode)
+            asyncio.run(main_loop(args.interval, sync_to_oci=not args.no_sync, dynamic=args.dynamic))
+    finally:
+        lock.release()
     return 0
 
 

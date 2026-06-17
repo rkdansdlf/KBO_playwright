@@ -30,6 +30,16 @@ from src.utils.request_policy import RequestPolicy
 
 logger = logging.getLogger(__name__)
 
+PLAYER_SEARCH_EXCEPTIONS = (
+    PlaywrightError,
+    TimeoutError,
+    asyncio.TimeoutError,
+    RuntimeError,
+    ValueError,
+    TypeError,
+    OSError,
+)
+
 # URL and selectors
 SEARCH_URL = "https://www.koreabaseball.com/Player/Search.aspx"
 SEARCH_INPUT = PLAYER_SEARCH.input
@@ -295,7 +305,7 @@ class PlayerSearchCrawler:
                     TABLE_ROWS,
                 )
                 break
-            except Exception as e:
+            except PLAYER_SEARCH_EXCEPTIONS as e:
                 err_msg = str(e)
                 if "Execution context was destroyed" in err_msg or "Target closed" in err_msg:
                     if attempt < max_attempts - 1:
@@ -367,7 +377,7 @@ class PlayerSearchCrawler:
                     await page.evaluate(POSTBACK_EVAL, [m.group(1), m.group(2)])
                     await page.wait_for_load_state("load", timeout=SHORT_TIMEOUT)
                     return True
-                except Exception:
+                except PLAYER_SEARCH_EXCEPTIONS:
                     logger.exception("Manual postback evaluate failed")
                     return False
 
@@ -376,7 +386,7 @@ class PlayerSearchCrawler:
             await anchor.click(timeout=SHORT_TIMEOUT)
             await page.wait_for_load_state("load", timeout=SHORT_TIMEOUT)
             return True
-        except Exception:
+        except PLAYER_SEARCH_EXCEPTIONS:
             logger.exception("Postback click failed: %s", href)
             return False
 

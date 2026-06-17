@@ -31,6 +31,8 @@ from src.utils.alerting import SlackWebhookClient
 load_dotenv()
 
 logger = logging.getLogger(__name__)
+PIPELINE_EXCEPTIONS = (SQLAlchemyError, RuntimeError, ValueError, TypeError, OSError)
+FILE_READ_EXCEPTIONS = (OSError, UnicodeError)
 
 # Directory-to-category mapping for Docs/baseball subdirectories
 _CATEGORY_MAP: dict[str, str] = {
@@ -79,6 +81,119 @@ def enrich_and_prepare_contents(all_chunks: list[dict[str, Any]]) -> list[str]:
     return contents_to_embed
 
 
+def _markdown_category(path_parts: list[str]) -> tuple[str, str | None]:
+    category = "rulebook"
+    subcategory = None
+    for part in path_parts[:-1]:
+        mapped = _CATEGORY_MAP.get(part)
+        if mapped:
+            if category == "rulebook":
+                category = mapped
+            else:
+                subcategory = mapped
+    return category, subcategory
+
+
+def _markdown_title(content: str, file: str) -> str:
+    first_line = content.lstrip().split("\n")[0]
+    if first_line.startswith("#"):
+        return first_line.lstrip("#").strip()
+    return os.path.splitext(file)[0].replace("_", " ").title()
+
+
+def _load_local_markdown_docs(rules_dir: str = "Docs/baseball") -> list[dict[str, Any]]:
+    if not os.path.exists(rules_dir):
+        return []
+    logger.info("📁 Scanning directory '%s' for static markdown files...", rules_dir)
+    raw_docs = []
+    for root, _, files in os.walk(rules_dir):
+        for file in files:
+            if not file.endswith(".md"):
+                continue
+            full_path = os.path.join(root, file)
+            try:
+                with open(full_path, encoding="utf-8") as f:
+                    content = f.read()
+                rel_path = os.path.relpath(full_path, rules_dir)
+                category, subcategory = _markdown_category(rel_path.replace("\\", "/").split("/"))
+                raw_docs.append(
+                    {
+                        "title": _markdown_title(content, file),
+                        "content": content,
+                        "meta": {
+                            "source": full_path,
+                            "source_file": file,
+                            "crawled_at": datetime.now().isoformat(),
+                            "category": category,
+                            **({"subcategory": subcategory} if subcategory else {}),
+                        },
+                    },
+                )
+            except FILE_READ_EXCEPTIONS:
+                logger.exception("⚠️ Error reading local markdown %s", file)
+    return raw_docs
+
+
+async def _crawl_static_docs(crawler: StaticTextCrawler, pdf_path: str | None) -> list[dict[str, Any]]:
+    raw_docs = []
+    if pdf_path:
+        if os.path.exists(pdf_path):
+            raw_docs.extend(crawler.parse_local_pdf(pdf_path))
+        else:
+            logger.warning("⚠️ Specified PDF path does not exist: %s", pdf_path)
+    raw_docs.extend(_load_local_markdown_docs())
+
+    for url in ["https://namu.wiki/w/KBO%20%EB%A6%AC%EA%B7%B8"]:
+        try:
+            raw_docs.append(await crawler.crawl_namuwiki(url))
+        except PIPELINE_EXCEPTIONS:
+            logger.exception("⚠️ Namuwiki crawl skipped/failed for %s", url)
+    return raw_docs
+
+
+def _chunk_static_docs(transformer: TextTransformer, raw_docs: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    logger.info("🔄 Cleansing and chunking %s documents...", len(raw_docs))
+    all_chunks = []
+    for doc in raw_docs:
+        all_chunks.extend(transformer.chunk_document(doc))
+    logger.info("   Generated %s semantic chunks.", len(all_chunks))
+    return all_chunks
+
+
+def _embed_and_save_static_chunks(
+    embedding_svc: EmbeddingService,
+    repo: RagChunkRepository,
+    all_chunks: list[dict[str, Any]],
+) -> None:
+    if not all_chunks:
+        return
+    logger.info("⚡ Fetching vector embeddings for %s chunks...", len(all_chunks))
+    embeddings = embedding_svc.get_embeddings_batch(enrich_and_prepare_contents(all_chunks))
+    for idx, emb in enumerate(embeddings):
+        all_chunks[idx]["embedding"] = emb
+
+    logger.info("💾 Saving chunks to local database...")
+    with get_db_session() as session:
+        upserted = repo.upsert_chunks(session, all_chunks)
+        logger.info("✅ Upserted %s RAG chunks to local DB.", upserted)
+        if os.getenv("RUN_SYNC_SUPABASE") == "1" or os.getenv("RUN_SYNC_OCI") == "1":
+            _sync_static_chunks_to_oci(session)
+
+
+def _sync_static_chunks_to_oci(session) -> None:
+    logger.info("🚚 Syncing new static RAG chunks to OCI...")
+    from src.sync.oci_sync import OCISync
+
+    oci_url = get_oci_url()
+    if not oci_url:
+        return
+    syncer = OCISync(oci_url, session)
+    try:
+        logger.info("✅ Synced %s static RAG chunks to OCI.", syncer.sync_rag_chunks())
+    finally:
+        syncer.close()
+
+
 async def run_static_pipeline(pdf_path: str | None = None) -> None:
     """
     Runs extraction, chunking, and embedding for static rulebooks and wikis.
@@ -90,121 +205,11 @@ async def run_static_pipeline(pdf_path: str | None = None) -> None:
     embedding_svc = EmbeddingService()
     repo = RagChunkRepository()
 
-    raw_docs = []
-
-    # 1. Parse PDF if provided/exists
-    if pdf_path:
-        if os.path.exists(pdf_path):
-            pdf_docs = crawler.parse_local_pdf(pdf_path)
-            raw_docs.extend(pdf_docs)
-        else:
-            logger.warning("⚠️ Specified PDF path does not exist: %s", pdf_path)
-
-    # Check if there are local rules markdown files under Docs/baseball to load as fallback/addition
-    rules_dir = "Docs/baseball"
-    if os.path.exists(rules_dir):
-        logger.info("📁 Scanning directory '%s' for static markdown files...", rules_dir)
-        md_count = 0
-        for root, _, files in os.walk(rules_dir):
-            for file in files:
-                if not file.endswith(".md"):
-                    continue
-                full_path = os.path.join(root, file)
-                try:
-                    with open(full_path, encoding="utf-8") as f:
-                        content = f.read()
-
-                    # Derive category from directory path using CATEGORY_MAP
-                    rel_path = os.path.relpath(full_path, rules_dir)
-                    path_parts = rel_path.replace("\\", "/").split("/")
-                    category = "rulebook"
-                    subcategory = None
-                    for part in path_parts[:-1]:  # skip filename
-                        mapped = _CATEGORY_MAP.get(part)
-                        if mapped:
-                            if category == "rulebook":
-                                category = mapped
-                            else:
-                                subcategory = mapped
-
-                    # Extract H1 title from first line of markdown
-                    first_line = content.lstrip().split("\n")[0]
-                    if first_line.startswith("#"):
-                        doc_title = first_line.lstrip("#").strip()
-                    else:
-                        doc_title = os.path.splitext(file)[0].replace("_", " ").title()
-
-                    raw_docs.append(
-                        {
-                            "title": doc_title,
-                            "content": content,
-                            "meta": {
-                                "source": full_path,
-                                "source_file": file,
-                                "crawled_at": datetime.now().isoformat(),
-                                "category": category,
-                                **({"subcategory": subcategory} if subcategory else {}),
-                            },
-                        },
-                    )
-                    md_count += 1
-                except Exception:
-                    logger.exception("⚠️ Error reading local markdown %s", file)
-
-    # 2. Crawl Namuwiki pages (e.g. KBO rule list or history)
-    # We use a default page for Namuwiki, or mock if offline/anti-scrape triggers
-    wiki_urls = [
-        "https://namu.wiki/w/KBO%20%EB%A6%AC%EA%B7%B8",
-        # "https://namu.wiki/w/%EC%95%BC%EA%B5%AC%20%EA%B2%BD%EA%B8%B0%20%EA%B7%9C%EC%B9%99"
-    ]
-    for url in wiki_urls:
-        try:
-            wiki_doc = await crawler.crawl_namuwiki(url)
-            raw_docs.append(wiki_doc)
-        except Exception:
-            logger.exception("⚠️ Namuwiki crawl skipped/failed for %s", url)
-
+    raw_docs = await _crawl_static_docs(crawler, pdf_path)
     if not raw_docs:
         logger.info("ℹ️ No static documents found to process.")
         return
-
-    # 3. Transform & Chunk
-    logger.info("🔄 Cleansing and chunking %s documents...", len(raw_docs))
-    all_chunks = []
-    for doc in raw_docs:
-        chunks = transformer.chunk_document(doc)
-        all_chunks.extend(chunks)
-    logger.info("   Generated %s semantic chunks.", len(all_chunks))
-
-    # 4. Generate Embeddings & Load to Database
-    if all_chunks:
-        logger.info("⚡ Fetching vector embeddings for %s chunks...", len(all_chunks))
-        # Extract and enrich contents to batch embed
-        contents_to_embed = enrich_and_prepare_contents(all_chunks)
-        embeddings = embedding_svc.get_embeddings_batch(contents_to_embed)
-
-        # Map embeddings back to chunks
-        for idx, emb in enumerate(embeddings):
-            all_chunks[idx]["embedding"] = emb
-
-        logger.info("💾 Saving chunks to local database...")
-        with get_db_session() as session:
-            upserted = repo.upsert_chunks(session, all_chunks)
-            logger.info("✅ Upserted %s RAG chunks to local DB.", upserted)
-
-            # Automatically sync to OCI if config allows
-            if os.getenv("RUN_SYNC_SUPABASE") == "1" or os.getenv("RUN_SYNC_OCI") == "1":
-                logger.info("🚚 Syncing new static RAG chunks to OCI...")
-                from src.sync.oci_sync import OCISync
-
-                oci_url = get_oci_url()
-                if oci_url:
-                    syncer = OCISync(oci_url, session)
-                    try:
-                        synced = syncer.sync_rag_chunks()
-                        logger.info("✅ Synced %s static RAG chunks to OCI.", synced)
-                    finally:
-                        syncer.close()
+    _embed_and_save_static_chunks(embedding_svc, repo, _chunk_static_docs(transformer, raw_docs))
 
 
 async def run_dynamic_pipeline() -> None:
@@ -230,7 +235,7 @@ async def run_dynamic_pipeline() -> None:
             r_repo = TeamRepository(session)
             inserted_count = r_repo.save_daily_rosters(roster_records)
             logger.info("✅ Dynamic rosters updated successfully (%s records processed).", inserted_count)
-        except Exception:
+        except PIPELINE_EXCEPTIONS:
             logger.exception("⚠️ Roster crawler execution failure")
 
         # 3. Automatically sync to OCI if config allows
@@ -266,14 +271,14 @@ async def run_realtime_pipeline() -> None:
     try:
         news_docs = crawler.fetch_naver_news_headlines()
         raw_docs.extend(news_docs)
-    except Exception:
+    except PIPELINE_EXCEPTIONS:
         logger.exception("⚠️ Naver news crawler error")
 
     # 2. Fetch MLBPark bullpen threads
     try:
         forum_docs = crawler.fetch_mlbpark_bullpen_posts()
         raw_docs.extend(forum_docs)
-    except Exception:
+    except PIPELINE_EXCEPTIONS:
         logger.exception("⚠️ MLBPark crawler error")
 
     if not raw_docs:
@@ -356,7 +361,7 @@ def run_pipeline_sync(pipeline_type: str, pdf_path: str | None = None) -> None:
         else:
             logger.error("❌ Unknown pipeline type: %s", pipeline_type)
             return
-    except Exception:
+    except PIPELINE_EXCEPTIONS:
         logger.exception("Critical Pipeline Failure")
         err_msg = traceback.format_exc()
         # Send Telegram Bot Warning Webhook alert

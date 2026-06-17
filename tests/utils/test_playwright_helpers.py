@@ -70,5 +70,5 @@ class TestGotoNextPage:
 
     def test_exception_returns_false(self):
         page = MagicMock()
-        page.query_selector.side_effect = Exception("fail")
+        page.query_selector.side_effect = RuntimeError("fail")
         assert not goto_next_page(page)

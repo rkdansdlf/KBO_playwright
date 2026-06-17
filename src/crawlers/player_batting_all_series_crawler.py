@@ -20,7 +20,10 @@ import re
 from datetime import datetime
 from typing import Any
 
+from playwright.sync_api import Error as PlaywrightError
 from playwright.sync_api import Page, sync_playwright
+from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
+from sqlalchemy.exc import SQLAlchemyError
 
 from src.aggregators.season_stat_aggregator import SeasonStatAggregator
 from src.db.engine import SessionLocal
@@ -40,6 +43,16 @@ from src.utils.team_codes import resolve_team_code
 from src.utils.team_mapping import get_team_code, get_team_mapping_for_year
 
 logger = logging.getLogger(__name__)
+CRAWLER_EXCEPTIONS = (
+    PlaywrightError,
+    PlaywrightTimeoutError,
+    RuntimeError,
+    ValueError,
+    TypeError,
+    AttributeError,
+    OSError,
+)
+DB_SAVE_EXCEPTIONS = (*CRAWLER_EXCEPTIONS, SQLAlchemyError)
 
 
 def get_series_mapping() -> dict[str, dict[str, str]]:
@@ -254,7 +267,7 @@ def _parse_batting_stats_table_fast(page: Page, series_key: str, year: int | Non
             players_data.append(batting_data)
 
         return players_data
-    except Exception:
+    except CRAWLER_EXCEPTIONS:
         logger.exception("❌ 테이블 파싱 오류 (JS)")
         return []
 
@@ -308,7 +321,7 @@ def _parse_batting_stats_table_legacy(page: Page, series_key: str, year: int | N
             players_data.append(batting_data)
 
         return players_data
-    except Exception:
+    except CRAWLER_EXCEPTIONS:
         logger.exception("❌ 테이블 파싱 오류 (Legacy)")
         return []
 
@@ -368,7 +381,7 @@ def go_to_next_page(page: Page, current_page_num: int, policy: RequestPolicy | N
         logger.info("➡️ %s", desc)
         return True
 
-    except Exception:
+    except CRAWLER_EXCEPTIONS:
         logger.exception("❌ 페이지 이동 실패 (%sp -> next)", current_page_num)
         return False
 
@@ -405,7 +418,7 @@ def crawl_basic2_with_headers(
                     policy.delay()
                 page.select_option(season_selector, str(year))
                 page.wait_for_load_state("networkidle", timeout=NAV_TIMEOUT)
-        except Exception:
+        except CRAWLER_EXCEPTIONS:
             logger.exception("   ⚠️ 연도 선택 중 오류 (무시)")
 
         # 3. 정규시즌 선택
@@ -416,7 +429,7 @@ def crawl_basic2_with_headers(
                     policy.delay()
                 page.select_option(series_selector, value=series_info["value"])
                 page.wait_for_load_state("networkidle", timeout=NAV_TIMEOUT)
-        except Exception:
+        except CRAWLER_EXCEPTIONS:
             logger.exception("   ⚠️ 시리즈 선택 중 오류 (무시)")
 
         # 4. "다음" 링크 클릭하여 Basic2로 이동
@@ -430,7 +443,7 @@ def crawl_basic2_with_headers(
             else:
                 logger.error("   ❌ Basic2 이동 링크를 찾을 수 없습니다.")
                 return {}
-        except Exception:
+        except CRAWLER_EXCEPTIONS:
             logger.exception("   ❌ Basic2 이동 중 오류")
             return {}
 
@@ -456,7 +469,7 @@ def crawl_basic2_with_headers(
 
         logger.info("   ✅ Basic2 전체 수집 완료: %s명", len(all_player_data))
 
-    except Exception:
+    except CRAWLER_EXCEPTIONS:
         logger.exception("   ❌ Basic2 크롤링 중 오류")
 
     return all_player_data
@@ -595,7 +608,7 @@ def _parse_basic2_header_data_legacy(
                 logger.exception("      ⚠️ %s 행 파싱 오류: %s", description, e)
                 continue
 
-    except Exception:
+    except CRAWLER_EXCEPTIONS:
         logger.exception("      ❌ %s 테이블 파싱 오류", description)
 
     return players_data
@@ -846,7 +859,7 @@ def crawl_series_batting_stats(
                 logger.info("✅ %s 선택", series_info["name"])
                 page.wait_for_load_state("networkidle", timeout=NAV_TIMEOUT)
 
-            except Exception as e:
+            except CRAWLER_EXCEPTIONS as e:
                 reason = f"Season/Series selection error: {e}"
                 logger.exception("Season/Series selection error, falling back to DB aggregation")
                 browser.close()
@@ -880,7 +893,7 @@ def crawl_series_batting_stats(
                     )
                     team_options = [opt for opt in options if opt["value"]]  # Empty value is "Team Selection"
                     logger.info("ℹ️ 팀별 순회 모드: %s개 팀 발견", len(team_options))
-                except Exception:
+                except CRAWLER_EXCEPTIONS:
                     logger.exception("⚠️ 팀 목록 추출 실패, 전체 모드로 진행")
                     team_options = []
 
@@ -898,7 +911,7 @@ def crawl_series_batting_stats(
                         )
                         page.wait_for_load_state("networkidle", timeout=NAV_TIMEOUT)
                         policy.delay()
-                    except Exception:
+                    except CRAWLER_EXCEPTIONS:
                         logger.exception("⚠️ 팀 선택 실패 (%s)", tm["text"])
                         continue
 
@@ -979,7 +992,7 @@ def crawl_series_batting_stats(
 
             logger.info("✅ %s 데이터 수집 완료", series_info["name"])
 
-        except Exception:
+        except DB_SAVE_EXCEPTIONS:
             logger.exception("❌ 크롤링 중 오류")
 
         finally:
@@ -998,7 +1011,7 @@ def crawl_series_batting_stats(
         try:
             saved_count = save_batting_stats_safe(all_players_data)
             logger.info("✅ 타자 데이터 저장 완료: %s명", saved_count)
-        except Exception:
+        except DB_SAVE_EXCEPTIONS:
             logger.exception("❌ 타자 데이터 저장 실패")
 
     return all_players_data

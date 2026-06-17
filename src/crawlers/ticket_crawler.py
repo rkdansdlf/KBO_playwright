@@ -14,6 +14,7 @@ from urllib.parse import urlparse
 
 import httpx
 from bs4 import BeautifulSoup
+from sqlalchemy.exc import SQLAlchemyError
 
 from src.db.engine import SessionLocal
 from src.parsers.ticket_parser import parse_ticket_page
@@ -24,6 +25,8 @@ from src.utils.http_client import DEFAULT_HEADERS as HEADERS
 from src.utils.throttle import throttle
 
 logger = logging.getLogger(__name__)
+
+TICKET_SAVE_EXCEPTIONS = (SQLAlchemyError, RuntimeError, ValueError, TypeError, OSError)
 
 # Mapping of teams to their ticket platforms and stadiums
 TEAM_TICKET_INFO: dict[str, dict[str, Any]] = {
@@ -301,7 +304,7 @@ class TicketCrawler:
                     try:
                         price_repo.save(item)
                         price_count += 1
-                    except Exception:
+                    except TICKET_SAVE_EXCEPTIONS:
                         logger.exception("Ticket price save failed: %s", item)
 
                 rule_repo = TicketOpenRuleRepository(session)
@@ -310,12 +313,12 @@ class TicketCrawler:
                     try:
                         rule_repo.save(item)
                         rule_count += 1
-                    except Exception:
+                    except TICKET_SAVE_EXCEPTIONS:
                         logger.exception("Open rule save failed: %s", item)
 
                 session.commit()
                 logger.info("[TICKET] Saved %s prices, %s rules, %s snapshots.", price_count, rule_count, saved_snaps)
-            except Exception:
+            except TICKET_SAVE_EXCEPTIONS:
                 session.rollback()
                 logger.exception("Ticket price batch save error")
             finally:

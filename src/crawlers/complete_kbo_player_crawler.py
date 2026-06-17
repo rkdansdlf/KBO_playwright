@@ -16,7 +16,10 @@ from typing import Any
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
+from playwright.sync_api import Error as PlaywrightError
 from playwright.sync_api import Page, sync_playwright
+from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
+from sqlalchemy.exc import SQLAlchemyError
 
 from src.repositories.save_futures_batting import save_futures_batting
 from src.urls import HITTER_BASIC1
@@ -26,6 +29,16 @@ from src.utils.playwright_retry import NAV_TIMEOUT
 from src.utils.request_policy import RequestPolicy
 
 logger = logging.getLogger(__name__)
+CRAWLER_EXCEPTIONS = (
+    PlaywrightError,
+    PlaywrightTimeoutError,
+    RuntimeError,
+    ValueError,
+    TypeError,
+    AttributeError,
+    OSError,
+)
+DB_SAVE_EXCEPTIONS = (*CRAWLER_EXCEPTIONS, SQLAlchemyError)
 
 
 def safe_parse_number(value_str: str, data_type: type, allow_zero: bool = True) -> int | float | None:
@@ -194,7 +207,7 @@ def crawl_basic1_data(page: Page, year: int, series_info: dict, policy: RequestP
 
         return all_player_data
 
-    except Exception:
+    except CRAWLER_EXCEPTIONS:
         logger.exception("   ❌ Basic1 데이터 수집 중 오류")
         return {}
 
@@ -221,7 +234,7 @@ def parse_regular_season_basic1_stats(cells: list) -> dict[str, Any]:
                     "sacrifice_flies": safe_parse_number(cells[15].inner_text().strip(), int),
                 },
             )
-    except Exception:
+    except CRAWLER_EXCEPTIONS:
         logger.exception("      ⚠️ 정규시즌 Basic1 통계 파싱 오류")
 
     return stats
@@ -252,7 +265,7 @@ def parse_other_series_stats(cells: list) -> dict[str, Any]:
                     "errors": safe_parse_number(cells[18].inner_text().strip(), int) if len(cells) > 18 else None,
                 },
             )
-    except Exception:
+    except CRAWLER_EXCEPTIONS:
         logger.exception("      ⚠️ 기타시리즈 통계 파싱 오류")
 
     return stats
@@ -344,14 +357,14 @@ def crawl_basic2_with_headers(
 
                 logger.info("         ✅ %s명 데이터 수집", len(page_data))
 
-            except Exception:
+            except CRAWLER_EXCEPTIONS:
                 logger.exception("         ❌ %s 헤더 처리 중 오류", header_name)
                 continue
 
         logger.info("   ✅ Basic2 헤더별 데이터 수집 완료: %s명", len(all_player_data))
         return all_player_data
 
-    except Exception:
+    except CRAWLER_EXCEPTIONS:
         logger.exception("   ❌ Basic2 데이터 수집 중 오류")
         return {}
 
@@ -413,7 +426,7 @@ def collect_current_page_data(page: Page, sort_field: str, policy: RequestPolicy
             if policy:
                 policy.delay()
 
-    except Exception:
+    except CRAWLER_EXCEPTIONS:
         logger.exception("         ⚠️ 페이지 데이터 수집 중 오류")
 
     return page_data
@@ -469,7 +482,7 @@ def extract_basic2_stats(cells: list, sort_field: str) -> dict[str, Any]:
                 if parsed_value is not None:
                     stats[field_name] = parsed_value
 
-    except Exception:
+    except CRAWLER_EXCEPTIONS:
         logger.exception("         ⚠️ Basic2 통계 추출 오류")
 
     return stats
@@ -547,14 +560,14 @@ def save_to_database(player_data: dict[int, dict], series_name: str) -> int:
                 save_futures_batting(save_data)
                 saved_count += 1
 
-            except Exception:
+            except DB_SAVE_EXCEPTIONS:
                 logger.exception("   ⚠️ %s 저장 실패", data["player_name"])
                 continue
 
         logger.info("   ✅ %s/%s명 저장 완료", saved_count, len(player_data))
         return saved_count
 
-    except Exception:
+    except DB_SAVE_EXCEPTIONS:
         logger.exception("   ❌ 데이터베이스 저장 중 오류")
         return 0
 
@@ -614,7 +627,7 @@ def main() -> None:
             logger.info("📊 총 저장된 레코드: %s개", total_saved)
             logger.info("📅 크롤링 시간: %s", datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
 
-        except Exception:
+        except DB_SAVE_EXCEPTIONS:
             logger.exception("❌ 크롤링 중 오류 발생")
 
         finally:

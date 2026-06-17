@@ -35,5 +35,74 @@ class FieldingStatsSelectors:
     data_table: str = "table.tData01.tt"
 
 
+@dataclass(frozen=True)
+class GameDetailSelectors:
+    """Selectors for GameCenter box score detail pages."""
+
+    status_on: str = "li.game-cont.on p.status"
+    status_typo: str = "li.game-cont.on p.staus"
+    cancel_on: str = "li.game-cont.on .game-status.cancel"
+    cancel_generic: str = ".game-status.cancel"
+
+    content_boxscore_area: str = "#contents, .box-score-area"
+    info_area: str = ".box-score-area, .game-info, .score-board, .record-etc"
+
+    away_hitter_primary: str = "#tblAwayHitter1"
+    away_hitter_inning: str = "#tblAwayHitter2"
+    away_hitter_extra: str = "#tblAwayHitter3"
+    home_hitter_primary: str = "#tblHomeHitter1"
+    home_hitter_inning: str = "#tblHomeHitter2"
+    home_hitter_extra: str = "#tblHomeHitter3"
+
+    away_pitcher_primary: str = "#tblAwayPitcher"
+    away_pitcher_alt: str = "#tblAwayPitcher1"
+    away_pitcher_alt2: str = "#tblAwayPitcher2"
+    home_pitcher_primary: str = "#tblHomePitcher"
+    home_pitcher_alt: str = "#tblHomePitcher1"
+    home_pitcher_alt2: str = "#tblHomePitcher2"
+
+    sms_score: str = ".sms-score"
+    score_board: str = ".score-board"
+
+    stadium: str = "#txtStadium"
+    crowd: str = "#txtCrowd"
+
+    review_tab: str = "li[section='REVIEW']"
+    hitter_fallback: str = "#tblAwayHitter1, #tblHomeHitter1, #tblAwayHitter3, #tblHomeHitter3"
+    pitcher_fallback: str = "#tblAwayPitcher, #tblHomePitcher, #tblAwayPitcher1, #tblHomePitcher1"
+    lineup_link: str = 'a[href*="Player/PlayerDetail"], a[href*="playerId="], a[href*="p_id="]'
+
+    etc_table: str = "#tblEtc"
+
+    @property
+    def status_selectors(self) -> tuple[str, ...]:
+        return (
+            self.status_on,
+            self.status_typo,
+            self.cancel_on,
+            self.cancel_generic,
+        )
+
+    @property
+    def boxscore_presence_selectors(self) -> tuple[str, ...]:
+        return (
+            self.away_hitter_primary,
+            self.away_hitter_inning,
+            self.away_hitter_extra,
+            self.home_hitter_primary,
+            self.home_hitter_inning,
+            self.home_hitter_extra,
+            self.away_pitcher_primary,
+            self.away_pitcher_alt,
+            self.away_pitcher_alt2,
+            self.home_pitcher_primary,
+            self.home_pitcher_alt,
+            self.home_pitcher_alt2,
+            self.sms_score,
+            self.score_board,
+        )
+
+
 PLAYER_SEARCH = PlayerSearchSelectors()
 FIELDING_STATS = FieldingStatsSelectors()
+GAME_DETAIL = GameDetailSelectors()

@@ -11,11 +11,14 @@ from typing import Any
 from sqlalchemy.dialects.mysql import insert as mysql_insert
 from sqlalchemy.dialects.postgresql import insert as postgresql_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
+from sqlalchemy.exc import SQLAlchemyError
 
 from src.db.engine import Engine, SessionLocal
 from src.models.player import PlayerSeasonBatting
 
 logger = logging.getLogger(__name__)
+
+KBO_BATTING_SAVE_EXCEPTIONS = (SQLAlchemyError, RuntimeError, ValueError, TypeError, KeyError)
 
 
 def save_kbo_player_season_batting(player_data: dict[str, Any]) -> bool:
@@ -101,7 +104,7 @@ def save_kbo_player_season_batting(player_data: dict[str, Any]) -> bool:
 
             return True
 
-    except Exception:
+    except KBO_BATTING_SAVE_EXCEPTIONS:
         logger.exception("   ❌ 데이터 저장 중 오류")
         return False
 
@@ -128,7 +131,7 @@ def save_kbo_batting_batch(players_data: dict[int, dict[str, Any]], series_name:
                 saved_count += 1
                 if saved_count % 50 == 0:  # 50명마다 진행상황 출력
                     logger.info("   📊 진행상황: %s/%s명 저장 완료", saved_count, total_count)
-        except Exception:
+        except KBO_BATTING_SAVE_EXCEPTIONS:
             logger.exception("   ⚠️ %s 저장 실패", player_data.get("player_name", "Unknown"))
             continue
 

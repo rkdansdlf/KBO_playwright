@@ -19,6 +19,8 @@ import re
 from datetime import date
 from typing import Any
 
+from sqlalchemy.exc import SQLAlchemyError
+
 from src.db.engine import SessionLocal
 from src.repositories.operation_notice_repository import OperationNoticeRepository
 from src.utils.naver_search_client import NaverSearchClient, NaverSearchResult
@@ -27,6 +29,7 @@ logger = logging.getLogger(__name__)
 
 STADIUM_CODE = "JAMSIL"
 SOURCE_NAME = "naver_search"
+NAVER_NOTICE_DB_EXCEPTIONS = (SQLAlchemyError, RuntimeError, ValueError, TypeError, KeyError, OSError)
 
 # Keyword → notice_type classification
 NOTICE_TYPE_RULES: list[tuple[re.Pattern, str]] = [
@@ -131,7 +134,7 @@ class OperationNoticeNaverCrawler:
                 created, updated = repo.bulk_upsert(notices)
                 session.commit()
                 logger.info("[NaverNotice] Saved: %s new, %s updated.", created, updated)
-            except Exception:
+            except NAVER_NOTICE_DB_EXCEPTIONS:
                 session.rollback()
                 logger.exception("Error saving notices")
 

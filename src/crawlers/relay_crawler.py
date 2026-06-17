@@ -42,6 +42,20 @@ class _PermanentStatusError(Exception):
         super().__init__(f"permanent_http_{status_code}")
 
 
+RELAY_CRAWL_EXCEPTIONS = (
+    httpx.HTTPError,
+    _PermanentStatusError,
+    json.JSONDecodeError,
+    SQLAlchemyError,
+    RuntimeError,
+    ValueError,
+    TypeError,
+    KeyError,
+    IndexError,
+    OSError,
+)
+
+
 KBO_TO_NAVER_TEAM_CODE = {
     "PA": "PN",  # Panama -> PN (Naver)
     "DB": "DO",  # Doosan (OB) -> DO (Naver)
@@ -596,7 +610,7 @@ class RelayCrawler:
                 "source_schema_version": parsed_payload.get("source_schema_version", SOURCE_SCHEMA_VERSION),
                 "payload_hash": parsed_payload.get("payload_hash"),
             }
-        except Exception:
+        except RELAY_CRAWL_EXCEPTIONS:
             logger.exception("Relay API crawl failed for %s", kbo_game_id)
             self._set_failure_reason(kbo_game_id, "relay_api_error")
             return None

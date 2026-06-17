@@ -3,10 +3,13 @@ from __future__ import annotations
 import json
 import logging
 import os
+import urllib.error
 import urllib.request
 from typing import Any
 
 logger = logging.getLogger(__name__)
+
+ALERTING_EXCEPTIONS = (urllib.error.URLError, OSError, TimeoutError, ValueError, TypeError)
 
 GAP_EMOJI_MAP: dict[str, str] = {
     "FRESHNESS": "\u2757",
@@ -58,7 +61,7 @@ class TelegramBotClient:
         try:
             with urllib.request.urlopen(req, timeout=10) as response:
                 return response.status == 200
-        except Exception:
+        except ALERTING_EXCEPTIONS:
             logger.exception("Failed to send Telegram message")
             return False
 
@@ -93,7 +96,7 @@ class SlackWebhookClient:
         try:
             with urllib.request.urlopen(req, timeout=5) as response:
                 return response.status in (200, 204)
-        except Exception:
+        except ALERTING_EXCEPTIONS:
             logger.exception("Failed to send Slack webhook")
             return False
 
@@ -125,7 +128,7 @@ class SlackWebhookClient:
         try:
             with urllib.request.urlopen(req, timeout=5) as response:
                 return response.status in (200, 204)
-        except Exception:
+        except ALERTING_EXCEPTIONS:
             logger.exception("Failed to send Slack gap alert")
             return False
 
