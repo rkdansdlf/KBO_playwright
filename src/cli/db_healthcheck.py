@@ -21,7 +21,7 @@ from src.db.engine import DATABASE_URL, Engine
 logger = logging.getLogger(__name__)
 
 
-def main(argv: list[str] | None = None) -> None:
+def main(_argv: list[str] | None = None) -> None:
     """데이터베이스 상태 점검을 수행하는 메인 함수."""
     url = DATABASE_URL
     dialect = Engine.url.get_backend_name()

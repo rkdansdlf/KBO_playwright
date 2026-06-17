@@ -227,7 +227,7 @@ def load_game_sync_signatures(session_or_conn, *, game_ids: list[str] | None = N
     return signatures
 
 
-def _is_game_dirty_by_game_section(game_id: str, local_sig: dict, remote_sig: dict) -> bool:
+def _is_game_dirty_by_game_section(_game_id: str, local_sig: dict, remote_sig: dict) -> bool:
     local_game = local_sig.get("game", {})
     remote_game = remote_sig.get("game", {})
     for key in (
@@ -246,7 +246,7 @@ def _is_game_dirty_by_game_section(game_id: str, local_sig: dict, remote_sig: di
     )
 
 
-def _is_game_dirty_by_metadata_section(game_id: str, local_sig: dict, remote_sig: dict) -> bool:
+def _is_game_dirty_by_metadata_section(_game_id: str, local_sig: dict, remote_sig: dict) -> bool:
     metadata_local = local_sig.get("game_metadata", {})
     metadata_remote = remote_sig.get("game_metadata", {})
     if metadata_local.get("row_count") != metadata_remote.get("row_count"):
@@ -259,7 +259,7 @@ def _is_game_dirty_by_metadata_section(game_id: str, local_sig: dict, remote_sig
     )
 
 
-def _is_game_dirty_by_child_tables(game_id: str, local_sig: dict, remote_sig: dict) -> bool:
+def _is_game_dirty_by_child_tables(_game_id: str, local_sig: dict, remote_sig: dict) -> bool:
     for table_name in GAME_SIGNATURE_CHILD_TABLES:
         if table_name == "game_metadata":
             continue

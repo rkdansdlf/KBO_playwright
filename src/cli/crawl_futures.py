@@ -133,7 +133,7 @@ async def process_player_result(
     position: str,
     player_name: str,
     repository: PlayerRepository,
-    delay: float,
+    delay: float,  # noqa: ARG001
     pool,
 ) -> dict[str, Any]:
     normalized_id = normalize_player_id(player_id)

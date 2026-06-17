@@ -58,4 +58,4 @@ if __name__ == "__main__":
     html = sys.stdin.read() if not sys.stdin.isatty() else "<html><body><p>기본요금: 5,000원</p></body></html>"
     result = parse_parking(html, "ssg_landers_parking")
     for item in result:
-        print(item)
+        print(item)  # noqa: T201

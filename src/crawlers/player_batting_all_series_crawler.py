@@ -67,7 +67,7 @@ def get_series_mapping() -> dict[str, dict[str, str]]:
     }
 
 
-def safe_parse_number(value_str: str, data_type: type, allow_zero: bool = True) -> int | float | None:
+def safe_parse_number(value_str: str, data_type: type, _allow_zero: bool = True) -> int | float | None:
     """
     안전하게 숫자를 파싱하는 함수
 

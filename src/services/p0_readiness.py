@@ -243,7 +243,7 @@ def _pitching_decision_games(session, game_ids: Iterable[str]) -> set[str]:
     return {str(row[0]) for row in rows}
 
 
-def _rows_by_date(session, model, date_column, dates: Iterable[date]) -> dict[str, int]:
+def _rows_by_date(session, _model, date_column, dates: Iterable[date]) -> dict[str, int]:
     date_list = list(dates)
     if not date_list:
         return {}

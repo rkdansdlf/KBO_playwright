@@ -92,7 +92,7 @@ class SeatCrawler:
                 logger.exception("Failed to fetch seat page for %s", team_code)
         return sections
 
-    def _parse_seat_page(self, html: str, team_code: str, info: dict) -> list[dict[str, Any]]:
+    def _parse_seat_page(self, html: str, _team_code: str, info: dict) -> list[dict[str, Any]]:
         soup = BeautifulSoup(html, "html.parser")
         text = soup.get_text(separator=" ", strip=True)
         sections = []

@@ -530,7 +530,7 @@ def parse_basic1_page(
 def parse_basic2_page(
     page: Page,
     season: int,
-    league: str,
+    league: str,  # noqa: ARG001
     pitchers: dict[int, PitcherStats],
     sort_key: str,
     max_players: int | None = None,

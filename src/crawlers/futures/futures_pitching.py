@@ -193,7 +193,7 @@ def _pick_futures_pitching_table(soup: BeautifulSoup) -> Any | None:
 
 
 async def fetch_and_parse_futures_pitching(
-    player_id: str,
+    _player_id: str,
     profile_url: str,
     pool: AsyncPlaywrightPool | None = None,
 ) -> list[dict]:

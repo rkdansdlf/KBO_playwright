@@ -41,7 +41,7 @@ CRAWLER_EXCEPTIONS = (
 DB_SAVE_EXCEPTIONS = (*CRAWLER_EXCEPTIONS, SQLAlchemyError)
 
 
-def safe_parse_number(value_str: str, data_type: type, allow_zero: bool = True) -> int | float | None:
+def safe_parse_number(value_str: str, data_type: type, _allow_zero: bool = True) -> int | float | None:
     """안전한 숫자 파싱 (0값 보존)"""
     if not value_str:
         return None

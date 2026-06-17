@@ -194,7 +194,7 @@ class StaffRegisterCrawler:
         self,
         page: Page,
         kbo_team_code: str,
-        team_display_name: str | None = None,
+        _team_display_name: str | None = None,
     ) -> list[dict]:
         """Crawl a single team's staff registration page."""
         await self.policy.delay_async(host="www.koreabaseball.com")

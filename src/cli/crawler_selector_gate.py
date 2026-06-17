@@ -25,9 +25,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     summary = run_selector_gate(targets, output_dir=Path(args.output_dir) if args.output_dir else None)
 
     if args.json:
-        print(json.dumps(summary.to_dict(), ensure_ascii=False))
+        print(json.dumps(summary.to_dict(), ensure_ascii=False))  # noqa: T201
     else:
-        print(render_selector_summary(summary))
+        print(render_selector_summary(summary))  # noqa: T201
     return 0 if summary.ok else 1
 
 
