@@ -998,10 +998,10 @@ class OCISyncBase:
             cursor.execute(f"DROP TABLE {temp_table}")
             connection.commit()
 
-        except (PsycopgError, SQLAlchemyError, OSError, RuntimeError) as e:
+        except (PsycopgError, SQLAlchemyError, OSError, RuntimeError):
             logger.exception("Bulk COPY-INSERT failed for %s", table_name)
             connection.rollback()
-            raise e
+            raise
         finally:
             cursor.close()
             if close_connection:
@@ -1038,9 +1038,9 @@ class OCISyncBase:
             sql = f"INSERT INTO {table_name} ({cols_str}) VALUES ({placeholders}) {conflict_action}"
             cursor.execute(sql, record)
             connection.commit()
-        except (PsycopgError, SQLAlchemyError, OSError, RuntimeError) as e:
+        except (PsycopgError, SQLAlchemyError, OSError, RuntimeError):
             connection.rollback()
-            raise e
+            raise
         finally:
             cursor.close()
 
