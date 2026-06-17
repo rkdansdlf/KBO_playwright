@@ -146,7 +146,7 @@ def _build_pitching_row(payload: dict[str, Any]) -> dict[str, Any]:
     return {key: value for key, value in data.items() if value is not None}
 
 
-def _build_pitching_upsert_stmt(data: dict[str, Any], db_type: str):
+def _build_pitching_upsert_stmt(data: dict[str, Any], db_type: str) -> Any:
     key_fields = ["player_id", "season", "league", "level"]
     if db_type == "sqlite":
         stmt = sqlite_insert(PlayerSeasonPitching).values(**data)

@@ -11,7 +11,7 @@ def _mock_playwright():
         m = types.ModuleType(mod_name)
         if mod_name == "playwright.sync_api":
             m.sync_playwright = MagicMock()
-            m.Error = type("Error", (Exception,), {})
+            m.Error = Exception
         sys.modules[mod_name] = m
     yield
 

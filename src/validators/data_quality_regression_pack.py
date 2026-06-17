@@ -109,18 +109,22 @@ _CHECKS: tuple[_SqlCheck, ...] = (
             "hbp",
             "sacrifice_hits",
             "sacrifice_flies",
+            "league",
+            "source",
         ),
         count_sql="""
             SELECT COUNT(*)
             FROM player_season_batting
-            WHERE COALESCE(plate_appearances, 0) !=
+            WHERE league = 'REGULAR' AND source = 'AGGREGATED'
+              AND COALESCE(plate_appearances, 0) !=
                 COALESCE(at_bats, 0) + COALESCE(walks, 0) + COALESCE(hbp, 0)
                 + COALESCE(sacrifice_hits, 0) + COALESCE(sacrifice_flies, 0)
         """,
         sample_sql="""
             SELECT COALESCE(CAST(player_id AS TEXT), 'NULL')
             FROM player_season_batting
-            WHERE COALESCE(plate_appearances, 0) !=
+            WHERE league = 'REGULAR' AND source = 'AGGREGATED'
+              AND COALESCE(plate_appearances, 0) !=
                 COALESCE(at_bats, 0) + COALESCE(walks, 0) + COALESCE(hbp, 0)
                 + COALESCE(sacrifice_hits, 0) + COALESCE(sacrifice_flies, 0)
             LIMIT 5

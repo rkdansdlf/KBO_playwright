@@ -43,6 +43,10 @@ select = [
     "I",       # isort
     "UP",      # pyupgrade (Python 3.10+)
     "RET",     # flake8-return
+    "ANN002",  # missing-type-args
+    "ANN003",  # missing-type-kwargs
+    "ANN202",  # missing-return-type-private-function
+    "ANN205",  # missing-return-type-static-method
     "TRY004",  # type-check-without-type-error
     "TRY201",  # verbose-raise
     "TRY301",  # raise-within-try
@@ -76,6 +80,10 @@ ignore = [
     "G004",    # logging-f-string (f-strings in logging intentional post print→logger conversion)
     "G101",    # logging-extra-attr (extra kwargs pattern is intentional)
 ]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["ANN002", "ANN003", "ANN202", "ANN205"]
+"scripts/**" = ["ANN002", "ANN003", "ANN202", "ANN205"]
 
 [tool.ruff.format]
 quote-style = "double"

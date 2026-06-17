@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from .award import Award as Award
 from .broadcast import GameBroadcast as GameBroadcast
 from .embedding_cache import EmbeddingCache as EmbeddingCache

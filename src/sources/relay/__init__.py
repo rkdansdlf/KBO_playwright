@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """Relay source adapters and orchestration utilities."""
 
 from .base import (

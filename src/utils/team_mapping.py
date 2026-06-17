@@ -177,7 +177,7 @@ class TeamMapper:
             logger.exception("⚠️ OCI 팀 매핑 로드 실패")
             return False
 
-    def _load_team_history_rows(self, oci_url: str):
+    def _load_team_history_rows(self, oci_url: str) -> list | None:
         engine = create_engine(oci_url)
         Session = sessionmaker(bind=engine)
         session = Session()
@@ -210,7 +210,7 @@ class TeamMapper:
             logger.exception("⚠️ 테이블 구조 확인 실패")
 
     @staticmethod
-    def _query_team_history(session):
+    def _query_team_history(session) -> list | None:
         for index, query_sql in enumerate(TEAM_HISTORY_QUERIES, start=1):
             try:
                 session.rollback()
