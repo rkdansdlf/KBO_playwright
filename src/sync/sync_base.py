@@ -9,6 +9,7 @@ import csv
 import io
 import json
 import logging
+import sqlite3
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -702,8 +703,15 @@ class OCISyncBase:
 
         for attempt in range(1, max_attempts + 1):
             try:
-                return self.oci_engine.raw_connection()
-            except Exception as exc:
+                conn = self.oci_engine.raw_connection()
+                try:
+                    cursor = conn.cursor()
+                    cursor.execute("SET statement_timeout = 600000;")
+                    cursor.close()
+                except (PsycopgError, SQLAlchemyError, sqlite3.Error, OSError, RuntimeError) as set_timeout_exc:
+                    logger.warning("Failed to set statement_timeout on OCI connection: %s", set_timeout_exc)
+                return conn
+            except (PsycopgError, SQLAlchemyError, OSError, RuntimeError) as exc:
                 transient = self._is_transient_oci_error(exc)
 
                 if not transient or attempt >= max_attempts:
@@ -749,7 +757,7 @@ class OCISyncBase:
         for attempt in range(1, max_attempts + 1):
             try:
                 return operation()
-            except Exception as exc:
+            except (PsycopgError, SQLAlchemyError, OSError, RuntimeError) as exc:
                 transient = self._is_transient_oci_error(exc)
                 self._rollback_target_session(label=label)
 
@@ -906,11 +914,18 @@ class OCISyncBase:
                     logger.warning(
                         "Batch COPY failed for %s, falling back to row-by-row: %s", model.__tablename__, batch_err
                     )
+                    try:
+                        if connection is not None:
+                            connection.close()
+                    except (PsycopgError, SQLAlchemyError, OSError, RuntimeError):
+                        logger.warning("Failed to close COPY connection before fallback", exc_info=True)
+                    connection = self._raw_oci_connection_with_retries(label=f"{model.__tablename__}.sync.fallback")
+
                     for record in records:
                         try:
-                            self._bulk_copy_upsert(
+                            self._direct_insert_upsert(
                                 model.__tablename__,
-                                [record],
+                                record,
                                 conflict_keys,
                                 update_timestamp=update_timestamp,
                                 connection=connection,
@@ -981,7 +996,7 @@ class OCISyncBase:
             cursor.execute(f"DROP TABLE {temp_table}")
             connection.commit()
 
-        except Exception as e:
+        except (PsycopgError, SQLAlchemyError, OSError, RuntimeError) as e:
             logger.exception("Bulk COPY-INSERT failed for %s", table_name)
             connection.rollback()
             raise e
@@ -989,6 +1004,43 @@ class OCISyncBase:
             cursor.close()
             if close_connection:
                 connection.close()
+
+    def _direct_insert_upsert(
+        self,
+        table_name: str,
+        record: dict[str, Any],
+        conflict_keys: list[str],
+        update_timestamp: bool,
+        connection,
+    ) -> None:
+        """Perform a single direct SQL INSERT with ON CONFLICT UPDATE/DO NOTHING."""
+        cursor = connection.cursor()
+        try:
+            keys = list(record.keys())
+            placeholders = ", ".join([f"%({k})s" for k in keys])
+            cols_str = ", ".join([f'"{k}"' for k in keys])
+
+            update_cols = [k for k in keys if k not in conflict_keys and k not in ("created_at", "id")]
+
+            if not conflict_keys:
+                conflict_action = ""
+            elif not update_cols:
+                conflict_action = "ON CONFLICT (" + ", ".join([f'"{k}"' for k in conflict_keys]) + ") DO NOTHING"
+            else:
+                set_clause = ", ".join([f'"{k}" = EXCLUDED."{k}"' for k in update_cols])
+                if update_timestamp and "updated_at" not in keys:
+                    set_clause += ', "updated_at" = CURRENT_TIMESTAMP'
+                conflict_target = ", ".join([f'"{k}"' for k in conflict_keys])
+                conflict_action = f"ON CONFLICT ({conflict_target}) DO UPDATE SET {set_clause}"
+
+            sql = f"INSERT INTO {table_name} ({cols_str}) VALUES ({placeholders}) {conflict_action}"
+            cursor.execute(sql, record)
+            connection.commit()
+        except (PsycopgError, SQLAlchemyError, OSError, RuntimeError) as e:
+            connection.rollback()
+            raise e
+        finally:
+            cursor.close()
 
     def _ensure_table(self, model: type) -> None:
         """Create table on OCI if it doesn't exist."""
