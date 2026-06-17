@@ -32,12 +32,12 @@ class TestCrawlRetireCLI:
             MockCrawler.return_value = self._make_crawler_mock()
             main(["--end-year", "2024", "--limit", "2"])
 
-    def test_main_with_seed_file(self):
+    def test_main_with_seed_file(self, tmp_path):
+        seed_file = tmp_path / "seeds.txt"
+        seed_file.write_text("100\n200\n")
         with (
-            patch("builtins.open") as mock_open,
             patch("src.cli.crawl_retire.RetiredPlayerDetailCrawler") as MockCrawler,
             patch("src.cli.crawl_retire.PlayerRepository"),
         ):
-            mock_open.return_value.__enter__.return_value = ["100\n", "200\n"]
             MockCrawler.return_value = self._make_crawler_mock()
-            main(["--seed-file", "/fake/path.txt"])
+            main(["--seed-file", str(seed_file)])

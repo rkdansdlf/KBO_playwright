@@ -279,7 +279,7 @@ class TestSeedFanCultureCSV:
         from pathlib import Path
 
         csv_path = Path("data/seed/team_rivalries.csv")
-        with open(csv_path, encoding="utf-8") as f:
+        with csv_path.open(encoding="utf-8") as f:
             reader = csv.DictReader(f)
             headers = reader.fieldnames or []
         for col in ["team_id_a", "team_id_b", "rivalry_name", "intensity"]:
@@ -290,7 +290,7 @@ class TestSeedFanCultureCSV:
         from pathlib import Path
 
         csv_path = Path("data/seed/team_rivalries.csv")
-        with open(csv_path, encoding="utf-8") as f:
+        with csv_path.open(encoding="utf-8") as f:
             rows = list(csv.DictReader(f))
         assert len(rows) == 10
 
@@ -300,6 +300,6 @@ class TestSeedFanCultureCSV:
 
         valid = {"HIGH", "MEDIUM", "LOW"}
         csv_path = Path("data/seed/team_rivalries.csv")
-        with open(csv_path, encoding="utf-8") as f:
+        with csv_path.open(encoding="utf-8") as f:
             for row in csv.DictReader(f):
                 assert row["intensity"] in valid, f"Invalid intensity: {row['intensity']}"

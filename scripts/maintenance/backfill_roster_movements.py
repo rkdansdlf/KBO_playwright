@@ -1,14 +1,14 @@
 import asyncio
-import os
 import sys
 from datetime import datetime, timedelta
+from pathlib import Path
 
 from playwright.async_api import Error as PlaywrightError
 from playwright.async_api import TimeoutError as PlaywrightTimeoutError
 from sqlalchemy.exc import SQLAlchemyError
 
 # Add project root to path
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../")))
+sys.path.append(str(Path(__file__).resolve().parent.parent.parent))
 
 from src.crawlers.daily_roster_crawler import DailyRosterCrawler
 from src.crawlers.player_movement_crawler import PlayerMovementCrawler

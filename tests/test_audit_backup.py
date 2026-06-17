@@ -62,7 +62,7 @@ def test_save_audit_backup_creates_file_and_serializes_dates(clean_audit_dir):
     assert file_path.name == expected_filename
 
     # 2. Read and parse the written file
-    with open(file_path, encoding="utf-8") as f:
+    with file_path.open(encoding="utf-8") as f:
         data = json.load(f)
 
     assert isinstance(data, list)
@@ -104,7 +104,7 @@ def test_save_audit_backup_appends_to_existing_file(clean_audit_dir):
     file_path = Path(file_path_str_1)
 
     # Read file and verify both snapshots are saved in list
-    with open(file_path, encoding="utf-8") as f:
+    with file_path.open(encoding="utf-8") as f:
         data = json.load(f)
 
     assert isinstance(data, list)

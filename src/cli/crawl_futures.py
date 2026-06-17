@@ -172,16 +172,16 @@ async def process_player_result(
         hitter_url = f"https://www.koreabaseball.com/Futures/Player/HitterTotal.aspx?playerId={player_id}"
         try:
             batting_rows = await fetch_and_parse_futures_batting(player_id, hitter_url, pool=pool)
-        except FUTURES_CRAWL_EXCEPTIONS as exc:
-            logger.exception("Exception crawling batting stats for player %s: %s", player_id, exc)
+        except FUTURES_CRAWL_EXCEPTIONS:
+            logger.exception("Exception crawling batting stats for player %s", player_id)
 
     # 2. Pitcher stats
     if position in ("pitcher", "both"):
         pitcher_url = f"https://www.koreabaseball.com/Futures/Player/PitcherTotal.aspx?playerId={player_id}"
         try:
             pitching_rows = await fetch_and_parse_futures_pitching(player_id, pitcher_url, pool=pool)
-        except FUTURES_CRAWL_EXCEPTIONS as exc:
-            logger.exception("Exception crawling pitching stats for player %s: %s", player_id, exc)
+        except FUTURES_CRAWL_EXCEPTIONS:
+            logger.exception("Exception crawling pitching stats for player %s", player_id)
 
     if not batting_rows and not pitching_rows:
         return {
@@ -217,8 +217,8 @@ async def process_player_result(
             saved += saved_batting
             if saved_batting == 0:
                 save_failures.append("batting_save_zero")
-        except FUTURES_SAVE_EXCEPTIONS as exc:
-            logger.exception("Exception saving batting stats for player %s: %s", player_id, exc)
+        except FUTURES_SAVE_EXCEPTIONS:
+            logger.exception("Exception saving batting stats for player %s", player_id)
             save_failures.append("batting_save_exception")
 
     # Save Pitcher stats if any
@@ -263,8 +263,8 @@ async def process_player_result(
                     save_failures.append(_format_filter_counts("pitching_filtered", filter_counts))
                 else:
                     save_failures.append("pitching_save_zero")
-        except FUTURES_SAVE_EXCEPTIONS as exc:
-            logger.exception("Exception saving pitching stats for player %s: %s", player_id, exc)
+        except FUTURES_SAVE_EXCEPTIONS:
+            logger.exception("Exception saving pitching stats for player %s", player_id)
             save_failures.append("pitching_save_exception")
 
     if saved > 0:
@@ -383,8 +383,8 @@ async def crawl_futures(args: argparse.Namespace) -> dict[str, Any]:
             name = meta["name"]
             try:
                 result = await process_player_result(pid, pos, name, repository, args.delay, pool)
-            except FUTURES_PROCESS_EXCEPTIONS as exc:
-                logger.exception("Unhandled exception for player %s (%s): %s", pid, pos, exc)
+            except FUTURES_PROCESS_EXCEPTIONS:
+                logger.exception("Unhandled exception for player %s (%s)", pid, pos)
                 result = {
                     "player_id": pid,
                     "status": "failed",

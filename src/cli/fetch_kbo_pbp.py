@@ -59,8 +59,8 @@ async def run_fetcher(argv: Sequence[str] | None = None) -> int:
             missing_only=not args.force,
             log=logger.info,
         )
-    except (FileNotFoundError, ValueError) as exc:
-        logger.exception("[ERROR] %s", exc)
+    except (FileNotFoundError, ValueError):
+        logger.exception("[ERROR] Failed to fetch KBO PBP")
         return 1
 
     if not targets:

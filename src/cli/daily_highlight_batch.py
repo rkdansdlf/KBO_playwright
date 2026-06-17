@@ -86,8 +86,8 @@ def _sync_highlights_to_oci(processed_game_ids: list[str], *, dry_run: bool, syn
         try:
             for game_id in sorted(set(processed_game_ids)):
                 syncer.sync_specific_game(game_id)
-        except HIGHLIGHT_SYNC_EXCEPTIONS as e:
-            logger.exception("OCI Sync failed: %s", e)
+        except HIGHLIGHT_SYNC_EXCEPTIONS:
+            logger.exception("OCI Sync failed")
         finally:
             syncer.close()
 

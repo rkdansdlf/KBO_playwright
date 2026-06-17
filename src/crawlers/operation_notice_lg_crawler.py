@@ -190,9 +190,9 @@ class OperationNoticeLGCrawler:
                 created, updated = repo.bulk_upsert(notices)
                 session.commit()
                 logger.info("[LG Notice] Saved: %s new, %s updated.", created, updated)
-            except SQLAlchemyError as e:
+            except SQLAlchemyError:
                 session.rollback()
-                logger.exception("[LG Notice] Database error: %s", e)
+                logger.exception("[LG Notice] Database error")
             finally:
                 self._raw_pages.clear()
 

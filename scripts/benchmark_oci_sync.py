@@ -21,7 +21,6 @@ from __future__ import annotations
 
 import itertools
 import logging
-import os
 import shutil
 import sys
 import tempfile
@@ -124,8 +123,8 @@ def _install_target_exists_spy(syncer, exists: bool = True):
 @contextmanager
 def _temp_sqlite_pair() -> Generator[tuple[Any, Any], None, None]:
     tmp = tempfile.mkdtemp()
-    src_path = os.path.join(tmp, "source.db")
-    tgt_path = os.path.join(tmp, "target.db")
+    src_path = Path(tmp, "source.db")
+    tgt_path = Path(tmp, "target.db")
     src_engine = create_engine(f"sqlite:///{src_path}")
     tgt_engine = create_engine(f"sqlite:///{tgt_path}")
     _BenchBase.metadata.create_all(bind=src_engine)

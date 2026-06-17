@@ -6,11 +6,11 @@ OCI 동기화 전 SQLite 저장 테스트용
 from __future__ import annotations
 
 import logging
-import os
 import sys
 from datetime import datetime
+from pathlib import Path
 
-sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+sys.path.append(str(Path(__file__).resolve().parent.parent.parent))
 
 from playwright.sync_api import Error as PlaywrightError
 from playwright.sync_api import Page, sync_playwright

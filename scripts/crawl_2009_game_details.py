@@ -7,17 +7,17 @@ entry point; use the standard CLIs for modern schedule/detail collection.
 """
 
 import logging
-import os
 import sys
 import time
 import urllib.parse
+from pathlib import Path
 
 from playwright.sync_api import Error as PlaywrightError
 from playwright.sync_api import sync_playwright
 
 logger = logging.getLogger(__name__)
 
-sys.path.insert(0, os.getcwd())
+sys.path.insert(0, str(Path.cwd()))
 from src.crawlers.legacy_game_detail_crawler import LegacyGameDetailCrawler
 
 from src.db.engine import SessionLocal
@@ -106,8 +106,8 @@ def crawl_2009_details():
                 try:
                     data = crawler.extract_game_details(page, game_id, game_date)
                     logger.info("   [Driver] Extraction done.")
-                except LEGACY_DETAIL_EXCEPTIONS as e:
-                    logger.error("🔥 [Driver] Extraction CRASHED: %s", e)
+                except LEGACY_DETAIL_EXCEPTIONS:
+                    logger.exception("🔥 [Driver] Extraction CRASHED")
                     import traceback
 
                     traceback.print_exc()
@@ -130,8 +130,8 @@ def crawl_2009_details():
                 page.go_back()
                 time.sleep(2)
 
-            except Exception as e:  # noqa: BLE001
-                logger.error("🔥 [CRITICAL] Loop iteration failed: %s", e)
+            except Exception:
+                logger.exception("🔥 [CRITICAL] Loop iteration failed")
                 import traceback
 
                 traceback.print_exc()

@@ -15,6 +15,7 @@ import asyncio
 import logging
 from collections.abc import Sequence
 from datetime import datetime
+from pathlib import Path
 
 from playwright.async_api import Error as PlaywrightError
 from sqlalchemy.exc import SQLAlchemyError
@@ -116,7 +117,7 @@ async def crawl_retired_players(args: argparse.Namespace) -> None:
     # 1단계: 은퇴/비활동 선수 ID 목록을 결정합니다.
     if args.seed_file:
         logger.info("📂 Loading seed IDs from %s...", args.seed_file)
-        with open(args.seed_file) as f:
+        with Path(args.seed_file).open() as f:
             inactive_ids = {line.strip() for line in f if line.strip()}
     else:
         inactive_ids = await determine_inactive_ids(

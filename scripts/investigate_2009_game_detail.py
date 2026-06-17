@@ -48,8 +48,8 @@ def investigate_2009_game_detail():
                 if "투수" in text and "타자" in text:
                     logger.info("    -> Potential Lineup/Boxscore Table")
 
-        except (PlaywrightError, TimeoutError, AttributeError, TypeError) as e:
-            logger.error("❌ Error: %s", e)
+        except (PlaywrightError, TimeoutError, AttributeError, TypeError):
+            logger.exception("❌ Error")
         finally:
             browser.close()
 

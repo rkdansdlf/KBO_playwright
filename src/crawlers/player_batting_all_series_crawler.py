@@ -602,8 +602,8 @@ def _parse_basic2_header_data_legacy(
 
                     logger.info("      ✅ %s (%s) - %s: %s", player_name, team_name, current_header, sort_value)
 
-            except (ValueError, AttributeError) as e:
-                logger.exception("      ⚠️ %s 행 파싱 오류: %s", description, e)
+            except (ValueError, AttributeError):
+                logger.exception("      ⚠️ %s 행 파싱 오류", description)
                 continue
 
     except CRAWLER_EXCEPTIONS:

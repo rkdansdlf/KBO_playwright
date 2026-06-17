@@ -7,13 +7,13 @@ Usage: python3 scripts/backfill_player_profiles.py --limit 10 --delay 2.0
 import argparse
 import asyncio
 import logging
-import os
 import sys
+from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
 # Add project root to sys.path
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.append(str(Path(__file__).resolve().parent.parent))
 
 
 from sqlalchemy import or_
@@ -111,8 +111,8 @@ async def backfill(limit: int, delay: float, ids: list[str] | None = None):
                         [{"player_id": p.player_id, "name": p.name, "photo_url": "NOT_FOUND", "status": "NOT_FOUND"}]
                     )
                     fail_count += 1
-            except Exception as e:  # noqa: BLE001
-                logger.error("  ❌ Error processing %s: %s", p.player_id, e)
+            except Exception:
+                logger.exception("  ❌ Error processing %s", p.player_id)
                 fail_count += 1
 
             # Additional safety delay (on top of crawler's internal delay if needed)

@@ -8,6 +8,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+from pathlib import Path
 
 from dotenv import load_dotenv
 from playwright.async_api import Error as PlaywrightError
@@ -90,14 +91,14 @@ class KboAuthenticator:
                         logger.warning("[AUTH] Session warm-up warning (ignoring): %s", e)
 
                     # Save state
-                    os.makedirs(os.path.dirname(self.AUTH_STATE_PATH), exist_ok=True)
+                    Path(self.AUTH_STATE_PATH).parent.mkdir(parents=True, exist_ok=True)
                     await context.storage_state(path=self.AUTH_STATE_PATH)
                     return True
                 logger.info("[AUTH] Login failed: Logout button not found after redirection.")
                 return False
 
-            except (PlaywrightError, TimeoutError, OSError) as e:
-                logger.error("[AUTH] Exception during login: %s", e)
+            except (PlaywrightError, TimeoutError, OSError):
+                logger.exception("[AUTH] Exception during login")
                 return False
             finally:
                 await browser.close()
@@ -105,7 +106,7 @@ class KboAuthenticator:
     @classmethod
     def is_authenticated(cls) -> bool:
         """Check if auth state file exists."""
-        return os.path.exists(cls.AUTH_STATE_PATH)
+        return Path(cls.AUTH_STATE_PATH).exists()
 
     @classmethod
     def get_auth_state_path(cls) -> str:

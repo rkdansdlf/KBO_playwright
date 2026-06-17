@@ -4,12 +4,12 @@ This data is static and should be updated manually when stadiums change.
 """
 
 import logging
-import os
 import sys
+from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from sqlalchemy.exc import SQLAlchemyError
 
@@ -233,9 +233,9 @@ def seed_stadium_info():
             repo.save_regulation(reg)
         session.commit()
         logger.info("Seeded %s stadiums and %s regulations.", count, len(REGULATION_DATA))
-    except (SQLAlchemyError, RuntimeError, ValueError, TypeError) as e:
+    except (SQLAlchemyError, RuntimeError, ValueError, TypeError):
         session.rollback()
-        logger.error("Error: %s", e)
+        logger.exception("Error")
         raise
     finally:
         session.close()

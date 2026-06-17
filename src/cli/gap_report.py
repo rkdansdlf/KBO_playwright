@@ -149,14 +149,14 @@ def build_gap_report() -> dict[str, Any]:
             "details": {k: v for k, v in freshness.items() if v},
         }
     except (SQLAlchemyError, OSError, RuntimeError, ValueError) as e:
-        logger.error("FRESHNESS gap check failed: %s", e)
+        logger.exception("FRESHNESS gap check failed")
         report["gaps"]["FRESHNESS"] = {"ok": False, "error": str(e)}
 
     # 2. Relay/PBP gaps
     try:
         report["gaps"]["RELAY"] = check_relay_gaps()
     except (SQLAlchemyError, OSError, RuntimeError, ValueError) as e:
-        logger.error("RELAY gap check failed: %s", e)
+        logger.exception("RELAY gap check failed")
         report["gaps"]["RELAY"] = {"ok": False, "error": str(e)}
 
     # 3. Source staleness
@@ -168,7 +168,7 @@ def build_gap_report() -> dict[str, Any]:
             "details": stale,
         }
     except (SQLAlchemyError, OSError, RuntimeError, ValueError) as e:
-        logger.error("STALENESS gap check failed: %s", e)
+        logger.exception("STALENESS gap check failed")
         report["gaps"]["STALENESS"] = {"ok": False, "error": str(e)}
 
     # 4. Standings integrity
@@ -182,35 +182,35 @@ def build_gap_report() -> dict[str, Any]:
             "missing_scores": len(standings.get("missing_score_games", [])),
         }
     except (SQLAlchemyError, OSError, RuntimeError, ValueError) as e:
-        logger.error("STANDINGS gap check failed: %s", e)
+        logger.exception("STANDINGS gap check failed")
         report["gaps"]["STANDINGS"] = {"ok": False, "error": str(e)}
 
     # 5. Player profile gaps
     try:
         report["gaps"]["PROFILE"] = check_profile_gaps()
     except (SQLAlchemyError, OSError, RuntimeError, ValueError) as e:
-        logger.error("PROFILE gap check failed: %s", e)
+        logger.exception("PROFILE gap check failed")
         report["gaps"]["PROFILE"] = {"ok": False, "error": str(e)}
 
     # 6. Player ID resolution gaps
     try:
         report["gaps"]["ID_RESOLUTION"] = check_id_resolution_gaps()
     except (SQLAlchemyError, OSError, RuntimeError, ValueError) as e:
-        logger.error("ID_RESOLUTION gap check failed: %s", e)
+        logger.exception("ID_RESOLUTION gap check failed")
         report["gaps"]["ID_RESOLUTION"] = {"ok": False, "error": str(e)}
 
     # 7. PA formula gaps
     try:
         report["gaps"]["PA_FORMULA"] = check_pa_formula_gaps()
     except (SQLAlchemyError, OSError, RuntimeError, ValueError) as e:
-        logger.error("PA_FORMULA gap check failed: %s", e)
+        logger.exception("PA_FORMULA gap check failed")
         report["gaps"]["PA_FORMULA"] = {"ok": False, "error": str(e)}
 
     # 8. Team stats consistency
     try:
         report["gaps"]["TEAM_STATS"] = check_team_stats_gaps()
     except (SQLAlchemyError, OSError, RuntimeError, ValueError) as e:
-        logger.error("TEAM_STATS gap check failed: %s", e)
+        logger.exception("TEAM_STATS gap check failed")
         report["gaps"]["TEAM_STATS"] = {"ok": False, "error": str(e)}
 
     return report

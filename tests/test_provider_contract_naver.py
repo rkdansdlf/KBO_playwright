@@ -41,7 +41,7 @@ VALID_SCHEDULE_STATUSES = {"BEFORE", "RUNNING", "RESULT", "CANCEL"}
 
 
 def _load_json(path: Path) -> dict:
-    with open(path, encoding="utf-8") as f:
+    with path.open(encoding="utf-8") as f:
         return json.load(f)
 
 

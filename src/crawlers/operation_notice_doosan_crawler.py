@@ -114,8 +114,8 @@ class OperationNoticeDoosanCrawler:
                         if hit_stop or not notices:
                             break
 
-                    except DOOSAN_NOTICE_CRAWL_EXCEPTIONS as e:
-                        logger.exception("[Doosan Notice] Failed to fetch page %d: %s", page_no, e)
+                    except DOOSAN_NOTICE_CRAWL_EXCEPTIONS:
+                        logger.exception("[Doosan Notice] Failed to fetch page %d", page_no)
                         break
 
         logger.info("[Doosan Notice] Total: %s notices", len(all_notices))
@@ -193,9 +193,9 @@ class OperationNoticeDoosanCrawler:
                 created, updated = repo.bulk_upsert(notices)
                 session.commit()
                 logger.info("[Doosan Notice] Saved: %s new, %s updated.", created, updated)
-            except SQLAlchemyError as e:
+            except SQLAlchemyError:
                 session.rollback()
-                logger.exception("[Doosan Notice] Database error: %s", e)
+                logger.exception("[Doosan Notice] Database error")
             finally:
                 self._raw_pages.clear()
 

@@ -46,6 +46,8 @@ select = [
     "TRY004",  # type-check-without-type-error
     "TRY201",  # verbose-raise
     "TRY301",  # raise-within-try
+    "TRY400",  # error-instead-of-exception
+    "TRY401",  # verbose-log-message
     "B",       # flake8-bugbear (limited)
     "SIM",     # flake8-simplify (limited)
     "G",       # logging (f-strings, format, exc_info)
@@ -53,6 +55,7 @@ select = [
     "RUF100",  # unused noqa
     "RUF005",  # collection literal concatenation
     "PERF401",  # manual list comprehension
+    "PTH",     # pathlib (os.path 대체)
 ]
 ignore = [
     "E402",    # module-import-not-at-top (lazy imports intentional)

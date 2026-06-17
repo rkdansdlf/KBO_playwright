@@ -133,8 +133,8 @@ class TeamPitchingStatsCrawler:
                         calc.calculate_year(season)
                     except TEAM_PITCHING_EXCEPTIONS:
                         logger.exception("[ERROR] 순위 연산 폴백 중 오류 발생")
-            except TEAM_PITCHING_EXCEPTIONS as fallback_error:
-                logger.exception("[ERROR] 팀 투구 집계 폴백 실패: %s", fallback_error)
+            except TEAM_PITCHING_EXCEPTIONS:
+                logger.exception("[ERROR] 팀 투구 집계 폴백 실패")
                 raise
 
         elif persist:

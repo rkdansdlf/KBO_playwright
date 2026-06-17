@@ -135,16 +135,16 @@ async def run_backfill(chunk_size: int = 100, max_total: int = 10000):
                                 success_count += 1
                                 break
                         logger.warning(f"⚠️  No payload for {game_id} (Reason: {reason})")
-                except Exception as e:  # noqa: BLE001
+                except Exception as e:
                     if "locked" in str(e).lower() and attempt < retry_attempts:
                         logger.warning(f"🔒 DB Locked. Retrying {game_id} (Attempt {attempt + 1})...")
                         await asyncio.sleep(2)
                         continue
-                    logger.error(f"💥 Error crawling {game_id}: {e}")
+                    logger.exception(f"💥 Error crawling {game_id}")
 
                 if attempt == retry_attempts:
                     logger.error(f"🛑 Permanent failure for {game_id}")
-                    with open(FAILED_LOG, "a") as f:
+                    with FAILED_LOG.open("a") as f:
                         f.write(f"{game_id}\n")
                     fail_count += 1
 

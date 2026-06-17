@@ -119,9 +119,9 @@ class CongestionCrawler:
                 created, updated = repo.bulk_upsert(records)
                 session.commit()
                 logger.info("[Congestion] Saved: %s new, %s updated.", created, updated)
-            except SQLAlchemyError as e:
+            except SQLAlchemyError:
                 session.rollback()
-                logger.exception("[Congestion] Database error: %s", e)
+                logger.exception("[Congestion] Database error")
 
 
 if __name__ == "__main__":

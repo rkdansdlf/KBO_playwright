@@ -1,10 +1,10 @@
 import argparse
-import os
 import sys
 from datetime import date, datetime, timedelta
+from pathlib import Path
 
 # Add project root to path
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../")))
+sys.path.append(str(Path(__file__).resolve().parent.parent.parent))
 
 
 import logging

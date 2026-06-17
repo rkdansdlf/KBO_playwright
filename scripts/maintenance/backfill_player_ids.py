@@ -13,11 +13,11 @@ Usage:
 """
 
 import argparse
-import os
 import sys
 from collections import defaultdict
+from pathlib import Path
 
-sys.path.insert(0, os.getcwd())
+sys.path.insert(0, str(Path.cwd()))
 
 from sqlalchemy import text
 

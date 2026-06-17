@@ -173,8 +173,8 @@ class TeamMapper:
             logger.info("✅ OCI에서 %s개 팀 매핑 로드 완료", len(results))
             return True
 
-        except (SQLAlchemyError, ValueError) as e:
-            logger.exception("⚠️ OCI 팀 매핑 로드 실패: %s", e)
+        except (SQLAlchemyError, ValueError):
+            logger.exception("⚠️ OCI 팀 매핑 로드 실패")
             return False
 
     def _load_team_history_rows(self, oci_url: str):
@@ -206,8 +206,8 @@ class TeamMapper:
             """)
             columns = session.execute(structure_query).fetchall()
             logger.info("📋 team_history 테이블 컬럼: %s", [col[0] for col in columns])
-        except SQLAlchemyError as e:
-            logger.exception("⚠️ 테이블 구조 확인 실패: %s", e)
+        except SQLAlchemyError:
+            logger.exception("⚠️ 테이블 구조 확인 실패")
 
     @staticmethod
     def _query_team_history(session):
@@ -217,8 +217,8 @@ class TeamMapper:
                 query_result = session.execute(text(query_sql)).fetchall()
                 logger.info("✅ 쿼리 패턴 %s 성공: %s개 행 조회", index, len(query_result))
                 return query_result
-            except SQLAlchemyError as e:
-                logger.exception("⚠️ 쿼리 패턴 %s 실패: %s", index, e)
+            except SQLAlchemyError:
+                logger.exception("⚠️ 쿼리 패턴 %s 실패", index)
                 session.rollback()
         return None
 

@@ -11,12 +11,15 @@ def _mock_playwright():
         m = types.ModuleType(mod_name)
         if mod_name == "playwright.sync_api":
             m.sync_playwright = MagicMock()
+            m.Error = type("Error", (Exception,), {})
         sys.modules[mod_name] = m
     yield
 
 
 class TestInvestigate2009GameDetail:
     def test_investigate_2009_game_detail(self):
+        import scripts.investigate_2009_game_detail
+
         with (
             patch("scripts.investigate_2009_game_detail.sync_playwright") as mock_pw,
             patch("scripts.investigate_2009_game_detail.time.sleep"),
@@ -28,7 +31,6 @@ class TestInvestigate2009GameDetail:
             mock_browser.new_page.return_value = mock_page
             mock_page.query_selector.return_value = None
             mock_page.query_selector_all.return_value = []
-            from scripts.investigate_2009_game_detail import investigate_2009_game_detail
 
-            investigate_2009_game_detail()
+            scripts.investigate_2009_game_detail.investigate_2009_game_detail()
             mock_page.goto.assert_called_once()

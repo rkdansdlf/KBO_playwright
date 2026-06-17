@@ -250,8 +250,8 @@ def main(argv: Sequence[str] | None = None) -> int:
                 ),
             )
             _print_human_summary(result)
-    except ValueError as exc:
-        logger.exception("[ERROR] %s", exc)
+    except ValueError:
+        logger.exception("[ERROR] Smoke test configuration is invalid")
         return 2
 
     return 0 if result.get("ok") else 1

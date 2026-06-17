@@ -43,7 +43,7 @@ def _find_latest_summary(target_date: str | None = None) -> tuple[str, dict[str,
         return None
 
     try:
-        with open(path, encoding="utf-8") as f:
+        with path.open(encoding="utf-8") as f:
             return target_date, json.load(f)
     except (json.JSONDecodeError, OSError) as e:
         logger.warning("Failed to parse summary %s: %s", path, e)
@@ -179,7 +179,7 @@ def _read_pbp_report_csv(target_date: str) -> list[dict[str, str]]:
         return []
     rows: list[dict[str, str]] = []
     try:
-        with open(csv_path, encoding="utf-8") as f:
+        with csv_path.open(encoding="utf-8") as f:
             reader = csv.DictReader(f)
             for row in reader:
                 rows.append(row)
