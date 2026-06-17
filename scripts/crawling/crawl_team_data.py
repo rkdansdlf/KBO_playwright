@@ -9,6 +9,7 @@ logger = logging.getLogger(__name__)
 sys.path.append(str(Path.cwd()))
 
 from sqlalchemy import select
+from sqlalchemy.exc import SQLAlchemyError
 
 from src.crawlers.team_history_crawler import TeamHistoryCrawler
 from src.crawlers.team_info_crawler import TeamInfoCrawler
@@ -65,7 +66,7 @@ async def main():
     try:
         history_data = await hist_crawler.crawl()
         await hist_crawler.save(history_data)
-    except Exception as e:  # noqa: BLE001
+    except (TimeoutError, ConnectionError, OSError, ValueError, KeyError, SQLAlchemyError) as e:
         logger.info(f"❌ TeamHistoryCrawler Failed: {e}")
         import traceback
 
