@@ -46,7 +46,7 @@ def classify_player(entry: dict[str, object]) -> PlayerCategory:
         role = entry.get("staff_role")
         if role == "manager":
             return PlayerCategory.MANAGER
-        elif role == "coach":
+        if role == "coach":
             return PlayerCategory.COACH
         return PlayerCategory.STAFF
 

@@ -93,6 +93,7 @@ class RequestPolicy:
                 time.sleep(self._backoff_delay(attempt))
         if last_exc:
             raise last_exc
+        raise RuntimeError("Unreachable")
 
     async def run_with_retry_async(self, func: Callable, *args, **kwargs) -> Any:
         last_exc = None
@@ -107,6 +108,7 @@ class RequestPolicy:
                 await asyncio.sleep(self._backoff_delay(attempt))
         if last_exc:
             raise last_exc
+        raise RuntimeError("Unreachable")
 
     def _backoff_delay(self, attempt: int) -> float:
         return self.backoff_factor * attempt

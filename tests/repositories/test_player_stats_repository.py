@@ -16,8 +16,7 @@ class TestPlayerSeasonFieldingRepository:
 
         engine = create_engine("sqlite:///:memory:")
         PlayerSeasonFielding.__table__.create(engine)
-        session = sessionmaker(bind=engine)()
-        return session
+        return sessionmaker(bind=engine)()
 
     @patch("src.repositories.team_stats_repository.SessionLocal")
     @patch("src.repositories.team_stats_repository.Engine")
@@ -99,8 +98,7 @@ class TestPlayerSeasonBaserunningRepository:
 
         engine = create_engine("sqlite:///:memory:")
         PlayerSeasonBaserunning.__table__.create(engine)
-        session = sessionmaker(bind=engine)()
-        return session
+        return sessionmaker(bind=engine)()
 
     @patch("src.repositories.team_stats_repository.SessionLocal")
     @patch("src.repositories.team_stats_repository.Engine")

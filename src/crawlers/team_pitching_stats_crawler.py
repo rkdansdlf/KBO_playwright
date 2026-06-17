@@ -184,6 +184,7 @@ class TeamPitchingStatsCrawler:
             except (PlaywrightError, PlaywrightTimeoutError):
                 logger.warning("Failed to select option, trying next")
                 continue
+        return False
 
 
 def parse_team_pitching_html(

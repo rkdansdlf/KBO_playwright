@@ -54,9 +54,8 @@ def check_migrations():
         if all_passed:
             print("✅ All migrations are in sync.")
             return 0
-        else:
-            print("❌ Some migrations are out of sync.")
-            return 1
+        print("❌ Some migrations are out of sync.")
+        return 1
 
 
 def apply_migrations():

@@ -189,18 +189,16 @@ def get_pitching_stats_count(session: Session | None = None) -> int:
     """투수 테이블의 레코드 수 조회"""
     if session:
         return session.query(PlayerSeasonPitching).count()
-    else:
-        with SessionLocal() as new_session:
-            return new_session.query(PlayerSeasonPitching).count()
+    with SessionLocal() as new_session:
+        return new_session.query(PlayerSeasonPitching).count()
 
 
 def get_pitching_stats_by_season(season: int, session: Session | None = None) -> list[PlayerSeasonPitching]:
     """시즌별 투수 데이터 조회"""
     if session:
         return session.query(PlayerSeasonPitching).filter_by(season=season).all()
-    else:
-        with SessionLocal() as new_session:
-            return new_session.query(PlayerSeasonPitching).filter_by(season=season).all()
+    with SessionLocal() as new_session:
+        return new_session.query(PlayerSeasonPitching).filter_by(season=season).all()
 
 
 def cleanup_invalid_pitching_data(session: Session | None = None) -> int:

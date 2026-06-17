@@ -187,6 +187,7 @@ class TeamBattingStatsCrawler:
             except (PlaywrightError, PlaywrightTimeoutError):
                 logger.warning("Failed to select season dropdown, trying next selector")
                 continue
+        return False
 
 
 def parse_team_batting_html(

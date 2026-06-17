@@ -54,15 +54,13 @@ class TextTransformer:
         if category in ("rulebook", "rules", "namuwiki"):
             # Rules/Glossary structure chunking by headers
             return self.chunk_by_headings(title, content, meta)
-        else:
-            # Route by strategy environment variable
-            strategy = os.getenv("CHUNK_STRATEGY", "overlap").lower()
-            if strategy == "semantic":
-                return self.chunk_semantically(title, content, meta)
-            elif strategy == "parent_child":
-                return self.chunk_parent_child(title, content, meta)
-            else:
-                return self.chunk_with_overlap(title, content, meta, chunk_char_limit=800, overlap_char_limit=150)
+        # Route by strategy environment variable
+        strategy = os.getenv("CHUNK_STRATEGY", "overlap").lower()
+        if strategy == "semantic":
+            return self.chunk_semantically(title, content, meta)
+        if strategy == "parent_child":
+            return self.chunk_parent_child(title, content, meta)
+        return self.chunk_with_overlap(title, content, meta, chunk_char_limit=800, overlap_char_limit=150)
 
     def chunk_semantically(
         self,

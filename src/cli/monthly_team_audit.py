@@ -31,7 +31,7 @@ def run_monthly_team_audit(year: int) -> dict[str, Any]:
         team_batting = gate.get("team_batting", {})
         team_pitching = gate.get("team_pitching", {})
 
-        result = {
+        return {
             "year": year,
             "generated_at": datetime.now().isoformat(),
             "batting": {
@@ -45,7 +45,6 @@ def run_monthly_team_audit(year: int) -> dict[str, Any]:
                 "mismatches": team_pitching.get("mismatches", []),
             },
         }
-        return result
 
 
 def crawl_monthly_team_audit_job() -> None:

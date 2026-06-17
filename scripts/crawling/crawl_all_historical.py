@@ -38,8 +38,7 @@ def determine_crawling_strategy(year: int) -> str:
     """년도에 따른 크롤링 전략 결정"""
     if year <= 2001:
         return "legacy"
-    else:
-        return "modern"
+    return "modern"
 
 
 def run_legacy_crawling(year: int, series: str, data_type: str, headless: bool = True) -> tuple:

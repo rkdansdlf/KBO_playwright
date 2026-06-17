@@ -93,9 +93,8 @@ class KboAuthenticator:
                     os.makedirs(os.path.dirname(self.AUTH_STATE_PATH), exist_ok=True)
                     await context.storage_state(path=self.AUTH_STATE_PATH)
                     return True
-                else:
-                    logger.info("[AUTH] Login failed: Logout button not found after redirection.")
-                    return False
+                logger.info("[AUTH] Login failed: Logout button not found after redirection.")
+                return False
 
             except (PlaywrightError, TimeoutError, OSError) as e:
                 logger.error("[AUTH] Exception during login: %s", e)

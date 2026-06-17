@@ -44,7 +44,6 @@ class TestBackfillPlayerProfiles:
             from scripts.backfill_player_profiles import backfill
 
             async def run_backfill():
-                result = await backfill(limit=5, delay=1.0, ids=None)
-                return result
+                return await backfill(limit=5, delay=1.0, ids=None)
 
             asyncio.run(run_backfill())

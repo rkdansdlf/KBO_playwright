@@ -89,9 +89,7 @@ def safe_parse_number(value_str: str, data_type: type, allow_zero: bool = True) 
         return None
 
     try:
-        parsed_value = data_type(value_str)
-        # 0은 실제 값이므로 0으로 저장
-        return parsed_value
+        return data_type(value_str)
     except (ValueError, TypeError):
         return None
 

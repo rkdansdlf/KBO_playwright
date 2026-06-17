@@ -271,8 +271,7 @@ async def _run_kbo_fallback_healing(game_id: str) -> None:
                 kbo_data = await kbo_crawler.crawl_game_events(game_id)
                 if kbo_data and kbo_data.get("events"):
                     break
-                else:
-                    raise ValueError("KBO PBP crawl returned no events")
+                raise ValueError("KBO PBP crawl returned no events")
             except (PlaywrightError, TimeoutError, RuntimeError, ValueError) as fallback_err:
                 logger.warning(
                     "KBO fallback attempt %s failed for %s: %s", attempt, game_id, fallback_err, exc_info=True
@@ -280,9 +279,8 @@ async def _run_kbo_fallback_healing(game_id: str) -> None:
                 if attempt == max_attempts:
                     logger.error("[FALLBACK ERROR] KBO fallback failed all %s attempts for %s", max_attempts, game_id)
                     break
-                else:
-                    backoff = 2.0**attempt
-                    await asyncio.sleep(backoff)
+                backoff = 2.0**attempt
+                await asyncio.sleep(backoff)
 
         if kbo_data and kbo_data.get("events"):
             try:
@@ -488,8 +486,7 @@ async def run_live_crawler_cycle(
             if terminal_state:
                 logger.info("[SKIP] %s is already final in DB (game_lifecycle_state=%s).", game_id, terminal_state)
                 continue
-            else:
-                logger.info("[LIVE] Game %s transitioned to RESULT. Crawling final state to finalize...", game_id)
+            logger.info("[LIVE] Game %s transitioned to RESULT. Crawling final state to finalize...", game_id)
 
         all_finished = False
         active_candidates.append((game, lifecycle_state, nav_status_raw))
@@ -695,22 +692,19 @@ def _compute_base_dynamic_interval(
     if active:
         if active_playing:
             return 10, "ACTIVE (Inning playing)"
-        elif active_suspended:
+        if active_suspended:
             return 60, "DELAYED (Rain delay/Stoppage)"
-        else:
-            return 30, "CHANGE (Inning change)"
-    else:
-        recently_active = False
-        if last_active_time is not None:
-            elapsed = (now - last_active_time).total_seconds()
-            if elapsed < 600:
-                recently_active = True
-        if recently_active:
-            return 60, "COOLDOWN (Recently finished)"
-        elif 12 <= now.hour < 23:
-            return 120, "GAME HOURS (No active games)"
-        else:
-            return 1800, "OFF HOURS"
+        return 30, "CHANGE (Inning change)"
+    recently_active = False
+    if last_active_time is not None:
+        elapsed = (now - last_active_time).total_seconds()
+        if elapsed < 600:
+            recently_active = True
+    if recently_active:
+        return 60, "COOLDOWN (Recently finished)"
+    if 12 <= now.hour < 23:
+        return 120, "GAME HOURS (No active games)"
+    return 1800, "OFF HOURS"
 
 
 def main(argv: Sequence[str] | None = None) -> int:

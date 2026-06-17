@@ -179,13 +179,12 @@ class GameSyncMixin:
 
     def sync_all_game_data(self, limit: int = None) -> dict[str, int]:
         """Sync all game-related data"""
-        results = {
+        return {
             "game_schedules": self.sync_game_schedules(limit=limit),
             "games": self.sync_games(limit=limit),
             "player_game_batting": self.sync_player_game_batting(limit=limit),
             "player_game_pitching": self.sync_player_game_pitching(limit=limit),
         }
-        return results
 
     def _purge_game_detail_children_for_year(self, year: int) -> None:
         """

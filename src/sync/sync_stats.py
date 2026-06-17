@@ -196,14 +196,13 @@ class StatsSyncMixin:
             filters.append(PlayerSeasonBatting.season == year)
         filters = self._add_existing_player_basic_filter(PlayerSeasonBatting, filters)
 
-        synced = self.sync_simple_table(
+        return self.sync_simple_table(
             PlayerSeasonBatting,
             conflict_keys=["player_id", "season", "league", "level"],
             exclude_cols=["id", "created_at"],  # Include updated_at
             filters=filters,
             batch_size=batch_size,
         )
-        return synced
 
     def sync_player_season_pitching(self, year: int | None = None, batch_size: int = 5000, force: bool = False) -> int:
         """Sync player_season_pitching data from SQLite to OCI using fast bulk COPY"""
@@ -220,18 +219,17 @@ class StatsSyncMixin:
             filters.append(PlayerSeasonPitching.season == year)
         filters = self._add_existing_player_basic_filter(PlayerSeasonPitching, filters)
 
-        synced = self.sync_simple_table(
+        return self.sync_simple_table(
             PlayerSeasonPitching,
             conflict_keys=["player_id", "season", "league", "level"],
             exclude_cols=["id", "created_at"],  # Include updated_at
             filters=filters,
             batch_size=batch_size,
         )
-        return synced
 
     def sync_all_player_data(self) -> dict[str, int]:
         """Sync all player-related data"""
-        results = {
+        return {
             "players": self.sync_players(),
             "player_identities": self.sync_player_identities(),
             "player_season_batting": self.sync_player_season_batting(),
@@ -239,7 +237,6 @@ class StatsSyncMixin:
             "team_season_batting": self.sync_team_season_batting(),
             "team_season_pitching": self.sync_team_season_pitching(),
         }
-        return results
 
     def sync_team_season_batting(self, year: int | None = None, batch_size: int = 5000, force: bool = False) -> int:
         """Sync team_season_batting data from SQLite to OCI"""
