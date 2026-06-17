@@ -232,10 +232,11 @@ class RuntimeHydrator:
             if preserve_aliases:
                 summary["game_id_aliases_preserved"] = self._restore_aliases(preserved_aliases)
             self.target_session.commit()
-            return summary
         except (SQLAlchemyError, RuntimeError, ValueError, TypeError):
             self.target_session.rollback()
             raise
+        else:
+            return summary
 
     def _snapshot_aliases(self, year: int) -> list[dict[str, Any]]:
         columns = [

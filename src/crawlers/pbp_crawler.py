@@ -110,17 +110,15 @@ class PBPCrawler:
 
                         logger.info("[INFO] Extracting Relay Data...")
                         events = await self._extract_flat_events_legacy(page)
-
-                        if not events:
-                            self.last_failure_reason = "empty"
-                            return None
-
-                        return {"game_id": game_id, "game_date": game_date, "events": events}
-
                     except PBP_CRAWLER_EXCEPTIONS:
                         logger.exception("PBP crawl failed for %s", game_id)
                         self.last_failure_reason = "error"
                         return None
+                    else:
+                        if not events:
+                            self.last_failure_reason = "empty"
+                            return None
+                        return {"game_id": game_id, "game_date": game_date, "events": events}
                     finally:
                         await pool.release(page)
                 except PBP_CRAWLER_EXCEPTIONS:
@@ -279,11 +277,11 @@ class PBPCrawler:
                     }
                     events.append(event)
                     sequence += 1
-
-            return events
         except PBP_CRAWLER_EXCEPTIONS:
             logger.exception("Error extracting PBP legacy (JS)")
             return []
+        else:
+            return events
 
     def _format_base_string(self, runners: int) -> str:
         s = ""

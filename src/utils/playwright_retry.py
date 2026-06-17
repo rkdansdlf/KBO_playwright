@@ -43,7 +43,6 @@ def retry_navigation(
             logger.info("Navigating to %s (Attempt %s/%s)", url, attempt, max_retries)
             page.goto(url, wait_until=wait_until, timeout=timeout)
             page.wait_for_load_state("networkidle", timeout=timeout)
-            return True
         except PlaywrightTimeout:
             logger.warning("Timeout navigating to %s on attempt %s", url, attempt)
             if attempt == max_retries:
@@ -54,6 +53,8 @@ def retry_navigation(
             if attempt == max_retries:
                 return False
             _policy.delay()
+        else:
+            return True
     return False
 
 
@@ -69,7 +70,6 @@ def retry_click(
         try:
             page.wait_for_selector(selector, timeout=pre_wait_timeout, state="visible")
             page.click(selector, timeout=timeout)
-            return True
         except PlaywrightTimeout:
             if attempt == max_retries:
                 return False
@@ -77,6 +77,8 @@ def retry_click(
             with contextlib.suppress(PlaywrightError, PlaywrightTimeout, RuntimeError):
                 page.reload(wait_until="networkidle", timeout=timeout)
             _policy.delay()
+        else:
+            return True
     return False
 
 
@@ -91,13 +93,13 @@ def retry_wait_for_selector(
     for attempt in range(1, max_retries + 1):
         try:
             page.wait_for_selector(selector, timeout=timeout, state=state)
-            return True
         except PlaywrightTimeout:
             if attempt == max_retries:
                 return False
             logger.warning("Selector %s not found on attempt %s, retrying...", selector, attempt)
-            # Try reloading if it's a transient issue
             with contextlib.suppress(PlaywrightError, PlaywrightTimeout, RuntimeError):
                 page.reload(wait_until="networkidle", timeout=timeout)
             _policy.delay()
+        else:
+            return True
     return False

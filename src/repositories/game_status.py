@@ -42,11 +42,12 @@ def update_game_status(game_id: str, status: str) -> bool:
                 return False
             game.game_status = status
             session.commit()
-            return True
         except SQLAlchemyError:
             session.rollback()
             logger.exception("[ERROR] DB Error (Status)")
             return False
+        else:
+            return True
 
 
 def refresh_game_status_for_date(target_date: str, today: date | None = None) -> dict[str, Any]:

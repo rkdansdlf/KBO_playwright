@@ -94,11 +94,11 @@ class KboAuthenticator:
                     Path(self.AUTH_STATE_PATH).parent.mkdir(parents=True, exist_ok=True)
                     await context.storage_state(path=self.AUTH_STATE_PATH)
                     return True
-                logger.info("[AUTH] Login failed: Logout button not found after redirection.")
-                return False
-
             except (PlaywrightError, TimeoutError, OSError):
                 logger.exception("[AUTH] Exception during login")
+                return False
+            else:
+                logger.info("[AUTH] Login failed: Logout button not found after redirection.")
                 return False
             finally:
                 await browser.close()

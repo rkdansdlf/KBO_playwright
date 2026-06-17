@@ -58,12 +58,12 @@ def save_pitching_stats(pitching_stats: list[dict[str, Any]]) -> int:
                 saved_count += 1
 
             session.commit()
-            return saved_count
-
         except SQLAlchemyError:
             session.rollback()
             logger.exception("[ERROR] 투수 기록 저장 실패")
             raise
+        else:
+            return saved_count
 
 
 def _upsert_pitching_data(session: Session, data: dict[str, Any]) -> None:

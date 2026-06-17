@@ -129,8 +129,11 @@ def _query_enriched_game_state(
                     "event_count": ec_map.get(gid, 0),
                     "max_inning": mi_map.get(gid, 0),
                 }
-        return state
     except DB_EXCEPTIONS:
+        logger.exception("[WARN] Failed to query enriched game state")
+        return {}
+    else:
+        return state
         logger.exception("[WARN] Failed to query enriched game state")
         return {}
 

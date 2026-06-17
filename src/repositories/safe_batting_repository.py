@@ -160,11 +160,12 @@ def _save_postgresql_rows(session: Session, rows: list[dict[str, Any]]) -> int:
 def _execute_single_upsert(session: Session, stmt: Any, data: dict[str, Any]) -> int:
     try:
         session.execute(stmt)
-        return 1
     except SQLAlchemyError:
         logger.exception("⚠️ UPSERT 실패 (player_id=%s)", data.get("player_id"))
         session.rollback()
         return 0
+    else:
+        return 1
 
 
 def _save_generic_rows(session: Session, rows: list[dict[str, Any]]) -> int:
@@ -283,13 +284,13 @@ def cleanup_invalid_batting_data(session: Session | None = None) -> int:
         if not session:  # 외부 세션이 아닌 경우만 커밋
             cleanup_session.commit()
 
-        return deleted
-
     except SQLAlchemyError:
         if not session:
             cleanup_session.rollback()
         logger.exception("⚠️ 타자 데이터 정리 실패")
         return 0
+    else:
+        return deleted
     finally:
         if not session:
             cleanup_session.close()

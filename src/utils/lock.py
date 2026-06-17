@@ -98,8 +98,6 @@ class ProcessLock:
                 flags |= fcntl.LOCK_NB
 
             fcntl.flock(self.file_fd, flags)
-            logger.debug("Successfully acquired ProcessLock: %s", self.name)
-            return True
         except OSError as e:
             logger.debug("Failed to acquire ProcessLock: %s. Error: %s", self.name, e)
             if self.file_fd:
@@ -109,6 +107,9 @@ class ProcessLock:
             self.thread_lock_acquired = False
             self.acquire_count = 0
             return False
+        else:
+            logger.debug("Successfully acquired ProcessLock: %s", self.name)
+            return True
 
     def release(self) -> None:
         """Release the lock."""

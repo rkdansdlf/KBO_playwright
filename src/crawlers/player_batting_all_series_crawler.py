@@ -264,10 +264,11 @@ def _parse_batting_stats_table_fast(page: Page, series_key: str, year: int | Non
             )
             players_data.append(batting_data)
 
-        return players_data
     except CRAWLER_EXCEPTIONS:
         logger.exception("❌ 테이블 파싱 오류 (JS)")
         return []
+    else:
+        return players_data
 
 
 def _parse_batting_stats_table_legacy(page: Page, series_key: str, year: int | None = None) -> list[dict]:
@@ -318,10 +319,11 @@ def _parse_batting_stats_table_legacy(page: Page, series_key: str, year: int | N
             )
             players_data.append(batting_data)
 
-        return players_data
     except CRAWLER_EXCEPTIONS:
         logger.exception("❌ 테이블 파싱 오류 (Legacy)")
         return []
+    else:
+        return players_data
 
 
 def parse_batting_stats_table(
@@ -376,10 +378,12 @@ def go_to_next_page(page: Page, current_page_num: int, policy: RequestPolicy | N
         # 직접 클릭 시도 (Attached 여부 확인하며)
         page.click(selector, timeout=SEL_TIMEOUT)
         page.wait_for_load_state("networkidle", timeout=NAV_TIMEOUT)
+    except CRAWLER_EXCEPTIONS:
+        logger.exception("❌ 페이지 이동 실패 (%sp -> next)", current_page_num)
+        return False
+    else:
         logger.info("➡️ %s", desc)
         return True
-
-    except CRAWLER_EXCEPTIONS:
         logger.exception("❌ 페이지 이동 실패 (%sp -> next)", current_page_num)
         return False
 

@@ -152,14 +152,17 @@ def fetch_hitter_page_sync(
             with httpx.Client(headers=DEFAULT_HEADERS, follow_redirects=True, timeout=15.0) as cl:
                 response = cl.get(url)
         response.raise_for_status()
-        return response.text
     except httpx.HTTPStatusError as e:
         logger.warning("HITTER page %s returned %s", game_id, e.response.status_code)
+        return None
     except httpx.TimeoutException:
         logger.warning("HITTER page %s timed out", game_id)
+        return None
     except httpx.HTTPError as e:
         logger.warning("HITTER page %s fetch failed: %s", game_id, e)
-    return None
+        return None
+    else:
+        return response.text
 
 
 def fetch_and_parse_hitter_sh_sf(

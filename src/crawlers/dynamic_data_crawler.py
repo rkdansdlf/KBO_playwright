@@ -62,9 +62,12 @@ class DynamicDataCrawler:
         logger.info("📋 Crawling roster changes from %s to %s...", start_date, end_date)
         try:
             records = await self.roster_crawler.crawl_date_range(start_date, end_date)
+        except DYNAMIC_ROSTER_EXCEPTIONS:
+            logger.exception("⚠️ Error crawling roster")
+            raise
+        else:
             logger.info("   Collected %s roster movements.", len(records))
             return records
-        except DYNAMIC_ROSTER_EXCEPTIONS:
             logger.exception("⚠️ Error crawling roster")
             raise
 

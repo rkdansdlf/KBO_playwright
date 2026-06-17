@@ -73,8 +73,6 @@ class RelayRecoveryOrchestrator:
     ) -> tuple[NormalizedRelayResult, str]:
         try:
             result = await asyncio.wait_for(adapter.fetch_game(game_id), timeout=self.timeout_seconds)
-            status = "success" if not result.is_empty else "miss"
-            return result, status
         except TimeoutError:
             return (
                 NormalizedRelayResult(
@@ -94,6 +92,9 @@ class RelayRecoveryOrchestrator:
                 ),
                 "exception",
             )
+        else:
+            status = "success" if not result.is_empty else "miss"
+            return result, status
 
     def source_order_for_bucket(self, bucket_id: str, override: Iterable[str] | None = None) -> list[str]:
         if override:

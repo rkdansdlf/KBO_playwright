@@ -181,15 +181,15 @@ def go_to_next_page(page: Page, current_page: int, policy: RequestPolicy | None 
         # 직접 클릭 시도
         page.click(selector, timeout=SEL_TIMEOUT)
         page.wait_for_load_state("networkidle", timeout=NAV_TIMEOUT)
-        logger.info("➡️ %s", desc)
 
         # 페이지 이동 후 테이블 대기
         wait_for_table(page)
-        return True
-
     except CRAWLER_EXCEPTIONS:
         logger.exception("❌ 페이지 이동 실패 (%sp -> next)", current_page)
         return False
+    else:
+        logger.info("➡️ %s", desc)
+        return True
 
 
 def apply_sort(
@@ -240,10 +240,11 @@ def apply_sort(
                 page.wait_for_timeout(800)
                 return True
 
-        logger.warning("⚠️  '%s' 정렬 링크를 찾지 못했습니다.", header_label)
-        return False
     except CRAWLER_EXCEPTIONS:
         logger.exception("⚠️ 정렬 적용 실패")
+        return False
+    else:
+        logger.warning("⚠️  '%s' 정렬 링크를 찾지 못했습니다.", header_label)
         return False
 
 
@@ -519,11 +520,11 @@ def parse_basic1_page(
 
             processed += 1
 
-        return processed
-
     except CRAWLER_EXCEPTIONS:
         logger.exception("❌ Basic1 파싱 오류 (JS)")
         return 0
+    else:
+        return processed
 
 
 def parse_basic2_page(
@@ -674,10 +675,11 @@ def setup_pitcher_page(page: Page, url: str, year: int, series_value: str, polic
             logger.error("   ❌ KBO 페이지 에러 감지: %s", title)
             return False
 
-        return True
     except CRAWLER_EXCEPTIONS:
         logger.exception("   ⚠️ 페이지 설정 중 오류")
         return False
+    else:
+        return True
 
 
 def build_pitching_crawl_summary(stats_list: list[PitcherStats]) -> tuple[dict[str, object], list[PitcherStats]]:

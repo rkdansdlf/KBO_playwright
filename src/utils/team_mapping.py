@@ -170,12 +170,12 @@ class TeamMapper:
                 return False
             self._apply_oci_mapping_rows(results)
             self._oci_loaded = True
-            logger.info("✅ OCI에서 %s개 팀 매핑 로드 완료", len(results))
-            return True
-
         except (SQLAlchemyError, ValueError):
             logger.exception("⚠️ OCI 팀 매핑 로드 실패")
             return False
+        else:
+            logger.info("✅ OCI에서 %s개 팀 매핑 로드 완료", len(results))
+            return True
 
     def _load_team_history_rows(self, oci_url: str) -> list | None:
         engine = create_engine(oci_url)
@@ -215,11 +215,12 @@ class TeamMapper:
             try:
                 session.rollback()
                 query_result = session.execute(text(query_sql)).fetchall()
-                logger.info("✅ 쿼리 패턴 %s 성공: %s개 행 조회", index, len(query_result))
-                return query_result
             except SQLAlchemyError:
                 logger.exception("⚠️ 쿼리 패턴 %s 실패", index)
                 session.rollback()
+            else:
+                logger.info("✅ 쿼리 패턴 %s 성공: %s개 행 조회", index, len(query_result))
+                return query_result
         return None
 
     def _apply_oci_mapping_rows(self, rows) -> None:

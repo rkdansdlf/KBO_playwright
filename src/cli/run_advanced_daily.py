@@ -52,10 +52,11 @@ async def _run_step(step_label: str, error_message: str, action) -> bool:
     logger.info("\n%s", step_label)
     try:
         await action()
-        return False
     except ADVANCED_STEP_EXCEPTIONS:
         logger.exception("   ❌ %s", error_message)
         return True
+    else:
+        return False
 
 
 async def _crawl_fielding_step(year: int) -> None:
@@ -125,11 +126,12 @@ def _sync_advanced_to_oci(year: int) -> bool:
             syncer.sync_team_season_fielding(year)
             syncer.sync_team_season_baserunning(year)
             syncer.sync_stat_rankings(year)
-            logger.info("   ✅ OCI synchronization completed")
-            return False
         except ADVANCED_STEP_EXCEPTIONS:
             logger.exception("   ❌ OCI sync error")
             return True
+        else:
+            logger.info("   ✅ OCI synchronization completed")
+            return False
         finally:
             syncer.close()
 

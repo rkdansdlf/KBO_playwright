@@ -136,12 +136,13 @@ class PlayerSearchCrawler:
 
         try:
             await self.policy.run_with_retry_async(_navigate)
-            return True, "ok"
         except (PlaywrightError, TimeoutError):
             reason = "selector_timeout" if required_selector else "navigation_failed"
             logger.warning("Player search page navigation failed: %s", reason)
             self._record_failure(reason)
             return False, reason
+        else:
+            return True, "ok"
 
     async def search_player(self, player_name: str) -> list[dict]:
         """Searches for a player and returns matching profiles as dicts."""
@@ -376,8 +377,11 @@ class PlayerSearchCrawler:
                 try:
                     await page.evaluate(POSTBACK_EVAL, [m.group(1), m.group(2)])
                     await page.wait_for_load_state("load", timeout=SHORT_TIMEOUT)
-                    return True
                 except PLAYER_SEARCH_EXCEPTIONS:
+                    logger.exception("Manual postback evaluate failed")
+                    return False
+                else:
+                    return True
                     logger.exception("Manual postback evaluate failed")
                     return False
 
@@ -385,10 +389,11 @@ class PlayerSearchCrawler:
         try:
             await anchor.click(timeout=SHORT_TIMEOUT)
             await page.wait_for_load_state("load", timeout=SHORT_TIMEOUT)
-            return True
         except PLAYER_SEARCH_EXCEPTIONS:
             logger.exception("Postback click failed: %s", href)
             return False
+        else:
+            return True
 
     async def _wait_after_nav(self, page: Page, prev_v, first_b) -> None:
         try:

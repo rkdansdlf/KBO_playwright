@@ -50,6 +50,7 @@ select = [
     "TRY004",  # type-check-without-type-error
     "TRY201",  # verbose-raise
     "TRY301",  # raise-within-try
+    "TRY300",  # try-consider-else
     "TRY400",  # error-instead-of-exception
     "TRY401",  # verbose-log-message
     "B",       # flake8-bugbear (limited)
@@ -82,8 +83,8 @@ ignore = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
-"tests/**" = ["ANN002", "ANN003", "ANN202", "ANN205"]
-"scripts/**" = ["ANN002", "ANN003", "ANN202", "ANN205"]
+"tests/**" = ["ANN002", "ANN003", "ANN202", "ANN205", "TRY300"]
+"scripts/**" = ["ANN002", "ANN003", "ANN202", "ANN205", "TRY300"]
 
 [tool.ruff.format]
 quote-style = "double"

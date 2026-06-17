@@ -314,13 +314,17 @@ class RelayCrawler:
         g_start_time = str(game.get("gameStartTime") or game.get("startTime") or "").strip()
         if not g_start_time:
             return 0
-        k_time_clean = re.sub(r"[^\d:]", "", game_time)
-        g_time_clean = re.sub(r"[^\d:]", "", g_start_time)
-        if ":" not in k_time_clean or ":" not in g_time_clean:
-            return 0
         try:
+            k_time_clean = re.sub(r"[^\d:]", "", game_time)
+            g_time_clean = re.sub(r"[^\d:]", "", g_start_time)
+            if ":" not in k_time_clean or ":" not in g_time_clean:
+                return 0
             k_hours, k_mins = map(int, k_time_clean.split(":"))
             g_hours, g_mins = map(int, g_time_clean.split(":"))
+        except (ValueError, TypeError):
+            logger.warning("Failed to compute time diff score")
+            return 0
+        else:
             diff_mins = abs((k_hours * 60 + k_mins) - (g_hours * 60 + g_mins))
             if diff_mins == 0:
                 return 25
@@ -329,9 +333,6 @@ class RelayCrawler:
             if diff_mins > 120:
                 return -30
             return -10
-        except (ValueError, TypeError):
-            logger.warning("Failed to compute time diff score")
-            return 0
 
     def _score_stadium_match(self, game: dict, stadium: str | None) -> int:
         if not stadium:
