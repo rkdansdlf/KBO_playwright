@@ -111,7 +111,7 @@ def crawl_2009_details():
                     import traceback
 
                     traceback.print_exc()
-                    raise e
+                    raise
 
                 # Save to DB
                 logger.info("   [Driver] Saving to DB...")

@@ -38,9 +38,9 @@ def load_daily_summary(path: str | Path) -> dict[str, Any]:
         raise ValueError(f"Malformed daily summary JSON: {summary_path}") from exc
 
     if not isinstance(payload, dict):
-        raise ValueError(f"Daily summary must be a JSON object: {summary_path}")
+        raise TypeError(f"Daily summary must be a JSON object: {summary_path}")
     if not isinstance(payload.get("stability"), dict):
-        raise ValueError(f"Daily summary missing stability payload: {summary_path}")
+        raise TypeError(f"Daily summary missing stability payload: {summary_path}")
     return payload
 
 

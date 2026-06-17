@@ -201,7 +201,7 @@ def load_selector_config(path: str | Path) -> list[SelectorTarget]:
     payload = json.loads(config_path.read_text(encoding="utf-8"))
     targets = payload.get("targets", [])
     if not isinstance(targets, list):
-        raise ValueError("selector gate config must contain a list at 'targets'")
+        raise TypeError("selector gate config must contain a list at 'targets'")
 
     return [_target_from_dict(target, config_path.parent) for target in targets]
 
