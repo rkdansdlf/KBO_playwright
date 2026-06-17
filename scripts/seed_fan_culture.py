@@ -19,6 +19,8 @@ logger = logging.getLogger(__name__)
 ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(ROOT))
 
+from sqlalchemy.exc import SQLAlchemyError
+
 from src.db.engine import SessionLocal
 from src.repositories.fan_culture_repository import FanCultureRepository
 
@@ -56,7 +58,7 @@ def seed_rivalries(dry_run: bool = False) -> int:
                 repo.save_rivalry(r)
                 session.flush()
                 saved += 1
-            except Exception as exc:  # noqa: BLE001
+            except SQLAlchemyError as exc:
                 session.rollback()
                 skipped += 1
                 logger.warning("Skipped rivalry %s-%s: %s", r["team_id_a"], r["team_id_b"], exc)

@@ -13,6 +13,7 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from dotenv import load_dotenv
 from sqlalchemy import text
+from sqlalchemy.exc import SQLAlchemyError
 
 from src.db.engine import create_engine_for_url
 
@@ -51,7 +52,7 @@ def reset_sequences(target_url=None):
 
             conn.commit()
             logger.info("✅ All sequences reset successfully")
-    except Exception as e:  # noqa: BLE001
+    except SQLAlchemyError as e:
         logger.error(f"❌ Failed to reset sequences: {e}")
 
 

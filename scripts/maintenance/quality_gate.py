@@ -30,6 +30,7 @@ from typing import Any, Sequence
 
 from dotenv import load_dotenv
 from sqlalchemy import create_engine, text
+from sqlalchemy.exc import SQLAlchemyError
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(PROJECT_ROOT) not in sys.path:
@@ -107,7 +108,7 @@ def collect_metrics(session_or_conn) -> dict[str, int]:
     has_game_status = True
     try:
         session_or_conn.execute(text("SELECT game_status FROM game LIMIT 1")).fetchall()
-    except BaseException:  # noqa: BLE001
+    except SQLAlchemyError:
         has_game_status = False
 
     metrics["game_status_column_present"] = int(has_game_status)
