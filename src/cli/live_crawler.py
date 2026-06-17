@@ -271,7 +271,7 @@ async def _run_kbo_fallback_healing(game_id: str) -> None:
                 kbo_data = await kbo_crawler.crawl_game_events(game_id)
                 if kbo_data and kbo_data.get("events"):
                     break
-                raise ValueError("KBO PBP crawl returned no events")
+                raise ValueError("KBO PBP crawl returned no events")  # noqa: TRY301
             except (PlaywrightError, TimeoutError, RuntimeError, ValueError) as fallback_err:
                 logger.warning(
                     "KBO fallback attempt %s failed for %s: %s", attempt, game_id, fallback_err, exc_info=True
