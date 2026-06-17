@@ -4,8 +4,8 @@ team_history 테이블 기반 외래키 제약조건 문제 해결
 같은 team_code를 여러 시대가 공유하는 문제 해결
 """
 
-
 import logging
+
 logger = logging.getLogger(__name__)
 
 import os
@@ -168,8 +168,8 @@ def implement_option1():
             logger.info("\n✅ 모든 외래키 제약조건 제거 완료!")
             logger.info("💡 이제 ./venv/bin/python3 -m src.sync.supabase_sync 를 실행해보세요.")
 
-        except Exception as e:
-            logger.error(f"❌ 외래키 제거 실패: {e}")
+        except Exception:
+            logger.exception("❌ 외래키 제거 실패")
             raise
 
 
@@ -226,8 +226,8 @@ def create_teams_from_history():
             logger.info("\n✅ teams 테이블 업데이트 완료!")
             logger.info("💡 이제 ./venv/bin/python3 -m src.sync.supabase_sync 를 실행해보세요.")
 
-        except Exception as e:
-            logger.error(f"❌ teams 테이블 업데이트 실패: {e}")
+        except Exception:
+            logger.exception("❌ teams 테이블 업데이트 실패")
             raise
 
 
@@ -263,8 +263,8 @@ def main():
         else:
             logger.error("❌ 잘못된 선택입니다.")
 
-    except Exception as e:
-        logger.error(f"\n❌ 오류 발생: {e}")
+    except Exception:
+        logger.exception("\n❌ 오류 발생")
 
 
 if __name__ == "__main__":

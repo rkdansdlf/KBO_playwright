@@ -4,8 +4,8 @@
 시즌 기록 동기화 전에 player_basic 테이블을 먼저 채움
 """
 
-
 import logging
+
 logger = logging.getLogger(__name__)
 
 import os
@@ -56,7 +56,7 @@ def sync_player_basic():
             )
 
             # Supabase에 UPSERT (created_at, updated_at 컬럼 없음)
-            result = conn.execute(
+            conn.execute(
                 text("""
                 INSERT INTO player_basic (
                     player_id, name, uniform_no, team, position,
@@ -129,8 +129,8 @@ def main():
         logger.info("\n💡 다음 단계:")
         logger.info("   ./venv/bin/python3 -m src.sync.supabase_sync")
 
-    except Exception as e:
-        logger.error(f"\n❌ 오류 발생: {e}")
+    except Exception:
+        logger.exception("\n❌ 오류 발생")
         import traceback
 
         traceback.print_exc()

@@ -4,8 +4,8 @@ Supabase 모든 테이블 제약조건 문제 해결 스크립트
 타자/투수 테이블 모두 확인 및 수정
 """
 
-
 import logging
+
 logger = logging.getLogger(__name__)
 
 import os
@@ -137,8 +137,8 @@ def fix_batting_table_constraints():
             else:
                 logger.info("   ℹ️ 타자 테이블 조회용 인덱스 이미 존재")
 
-        except Exception as e:
-            logger.error(f"   ❌ 타자 테이블 제약조건 수정 실패: {e}")
+        except Exception:
+            logger.exception("   ❌ 타자 테이블 제약조건 수정 실패")
             raise
 
 
@@ -196,8 +196,8 @@ def fix_pitching_table_constraints():
             else:
                 logger.info("   ℹ️ 투수 테이블 조회용 인덱스 이미 존재")
 
-        except Exception as e:
-            logger.error(f"   ❌ 투수 테이블 제약조건 수정 실패: {e}")
+        except Exception:
+            logger.exception("   ❌ 투수 테이블 제약조건 수정 실패")
             raise
 
 
@@ -261,8 +261,8 @@ def main():
         else:
             logger.warning("\n⚠️ 일부 테이블에 문제가 있을 수 있습니다.")
 
-    except Exception as e:
-        logger.error(f"\n❌ 오류 발생: {e}")
+    except Exception:
+        logger.exception("\n❌ 오류 발생")
         logger.info("\n💡 수동 해결 방법:")
         logger.info("   1. Supabase 대시보드에서 SQL 편집기 열기")
         logger.info("   2. 다음 SQL 실행:")

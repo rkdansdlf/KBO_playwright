@@ -4,8 +4,8 @@ Supabase 데이터 현황 확인 스크립트
 기존 데이터 상태를 파악하여 안전한 작업 방향 제시
 """
 
-
 import logging
+
 logger = logging.getLogger(__name__)
 
 import os
@@ -20,7 +20,9 @@ def check_supabase_data():
     if not supabase_url:
         logger.error("❌ SUPABASE_DB_URL 환경변수가 설정되지 않았습니다.")
         logger.info("📌 먼저 환경변수를 설정하세요:")
-        logger.info("   export SUPABASE_DB_URL='postgresql://postgres.xxx:[PASSWORD]@xxx.pooler.supabase.com:5432/postgres'")
+        logger.info(
+            "   export SUPABASE_DB_URL='postgresql://postgres.xxx:[PASSWORD]@xxx.pooler.supabase.com:5432/postgres'"
+        )
         return False
 
     try:
@@ -28,7 +30,7 @@ def check_supabase_data():
 
         with engine.connect() as conn:
             logger.info("✅ Supabase 연결 성공!")
-            logger.info("\n" + "=" * 60)
+            logger.info("\n%s", "=" * 60)
             logger.info("📊 Supabase 데이터베이스 현황")
             logger.info("=" * 60)
 
@@ -117,7 +119,7 @@ def check_supabase_data():
                         )
 
             # 3. 권장 작업 방향 제시
-            logger.info("\n" + "=" * 60)
+            logger.info("\n%s", "=" * 60)
             logger.info("💡 권장 작업 방향")
             logger.info("=" * 60)
 
@@ -144,8 +146,8 @@ def check_supabase_data():
 
             return True
 
-    except Exception as e:
-        logger.error(f"❌ Supabase 연결 실패: {e}")
+    except Exception:
+        logger.exception("❌ Supabase 연결 실패")
         return False
 
 
