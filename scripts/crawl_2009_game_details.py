@@ -58,7 +58,7 @@ def crawl_2009_details():
         sys.stdout.flush()
         try:
             page.select_option("#ddlSeries", "0,9,6")
-        except Exception as e:  # noqa: BLE001
+        except LEGACY_DETAIL_EXCEPTIONS as e:
             logger.warning("⚠️ Error selecting series: %s", e)
         time.sleep(2)
         logger.info("   Series selected.")
@@ -88,7 +88,7 @@ def crawl_2009_details():
                     full_url = f"https://www.koreabaseball.com{href}"
                     page.goto(full_url, wait_until="networkidle", timeout=30000)
                     logger.info("   [Driver] Navigation done.")
-                except Exception as e:  # noqa: BLE001
+                except LEGACY_DETAIL_EXCEPTIONS as e:
                     logger.warning("⚠️ [Driver] Navigation failed: %s", e)
 
                 # Extract Data

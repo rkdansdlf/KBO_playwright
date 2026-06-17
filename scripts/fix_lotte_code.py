@@ -8,6 +8,7 @@ logger = logging.getLogger(__name__)
 sys.path.append(os.getcwd())
 
 from sqlalchemy import text
+from sqlalchemy.exc import SQLAlchemyError
 
 from src.db.engine import SessionLocal
 
@@ -62,7 +63,7 @@ def fix_lotte_code():
             else:
                 logger.info("FAILURE: Lotte team code was not updated.")
 
-        except Exception as e:  # noqa: BLE001
+        except SQLAlchemyError as e:
             session.rollback()
             logger.error("An error occurred: %s", e)
 

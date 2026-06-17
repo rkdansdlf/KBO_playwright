@@ -23,7 +23,7 @@ def test_resolution(name, year, expected, type="name"):
         else:
             logger.info(f"❌ [FAIL] {year} {name} -> Expected {expected}, got {result}")
             return False
-    except Exception as e:  # noqa: BLE001
+    except (ValueError, KeyError, TypeError) as e:
         logger.info(f"❌ [ERROR] {year} {name} -> {e}")
         return False
     return True

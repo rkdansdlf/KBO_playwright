@@ -17,6 +17,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 
 from sqlalchemy import or_
+from sqlalchemy.exc import SQLAlchemyError
 
 from src.crawlers.player_profile_crawler import PlayerProfileCrawler
 from src.db.engine import SessionLocal
@@ -98,7 +99,7 @@ async def backfill(limit: int, delay: float, ids: list[str] | None = None):
                             education_or_career_path=profile.get("education_path") or [],
                         )
                         detailed_repo.upsert_player_profile(str(p.player_id), parsed)
-                    except Exception as repo_err:  # noqa: BLE001
+                    except SQLAlchemyError as repo_err:
                         logger.warning("  ⚠️ Detailed player sync warning: %s", repo_err)
 
                     logger.info("  ✅ Updated: photo=%s, salary=%s", profile["photo_url"], profile["salary_original"])

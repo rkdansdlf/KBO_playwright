@@ -72,7 +72,7 @@ def main():
     for f in files:
         try:
             fixed += fix_file(f)
-        except Exception as e:  # noqa: BLE001
+        except (OSError, ValueError) as e:
             logger.error(f"Error fixing {f}: {e}")
     logger.info(f"Fixed {fixed} files.")
 
