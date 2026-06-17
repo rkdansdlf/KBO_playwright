@@ -89,12 +89,11 @@ def get_database_type() -> str:
     """Return the database type based on DATABASE_URL."""
     if DATABASE_URL.startswith("sqlite:"):
         return "sqlite"
-    elif DATABASE_URL.startswith("mysql"):
+    if DATABASE_URL.startswith("mysql"):
         return "mysql"
-    elif DATABASE_URL.startswith("postgresql"):
+    if DATABASE_URL.startswith("postgresql"):
         return "postgresql"
-    else:
-        return "unknown"
+    return "unknown"
 
 
 def _ensure_player_batting_team_code_column() -> None:

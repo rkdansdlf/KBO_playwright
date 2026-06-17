@@ -122,8 +122,7 @@ def run_health_check() -> None:
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="KBO pipeline health check")
-    return parser
+    return argparse.ArgumentParser(description="KBO pipeline health check")
 
 
 def main(argv: Sequence[str] | None = None) -> None:

@@ -111,10 +111,9 @@ class TeamStatAggregator:
             season = season_or_rows
             team_id = team_id_or_names if isinstance(team_id_or_names, str) else None
             return self._aggregate_batting_db(season, team_id, dry_run=dry_run)
-        elif actual_rows is not None:
+        if actual_rows is not None:
             return self._aggregate_batting_mem(actual_rows, actual_names, team_games_map)
-        else:
-            raise ValueError("Either an integer season or rows iterable must be provided")
+        raise ValueError("Either an integer season or rows iterable must be provided")
 
     def aggregate_pitching(
         self,
@@ -138,10 +137,9 @@ class TeamStatAggregator:
             season = season_or_rows
             team_id = team_id_or_names if isinstance(team_id_or_names, str) else None
             return self._aggregate_pitching_db(season, team_id, dry_run=dry_run)
-        elif actual_rows is not None:
+        if actual_rows is not None:
             return self._aggregate_pitching_mem(actual_rows, actual_names, team_games_map)
-        else:
-            raise ValueError("Either an integer season or rows iterable must be provided")
+        raise ValueError("Either an integer season or rows iterable must be provided")
 
     def aggregate_all(
         self,

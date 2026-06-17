@@ -10,8 +10,7 @@ logger = logging.getLogger(__name__)
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Generate KBO data summary report")
-    return parser
+    return argparse.ArgumentParser(description="Generate KBO data summary report")
 
 
 def main(argv: Sequence[str] | None = None) -> None:

@@ -88,8 +88,7 @@ class RealtimeIssueCrawler:
                         )
                     logger.info("   Fetched %d headlines from JSON API.", len(articles))
                     return articles
-                else:
-                    logger.info("Naver news API returned status code %d", res.status_code)
+                logger.info("Naver news API returned status code %d", res.status_code)
         except httpx.HTTPError:
             logger.exception("Naver news API failed. Falling back to HTML scraping...")
 

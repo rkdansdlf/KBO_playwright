@@ -51,8 +51,7 @@ class MetadataEnrichmentService:
 
         if self.api_key.startswith("sk-or-v1-"):
             return self._call_openrouter(prompt)
-        else:
-            return self._call_google(prompt)
+        return self._call_google(prompt)
 
     def _call_openrouter(self, prompt: str) -> dict[str, Any]:
         url = "https://openrouter.ai/api/v1/chat/completions"
@@ -73,8 +72,7 @@ class MetadataEnrichmentService:
                     data = res.json()
                     content_str = data.get("choices", [{}])[0].get("message", {}).get("content", "")
                     return self._parse_json_response(content_str)
-                else:
-                    logger.warning("⚠️ OpenRouter Enrichment API status %s: %s", res.status_code, res.text)
+                logger.warning("⚠️ OpenRouter Enrichment API status %s: %s", res.status_code, res.text)
         except METADATA_ENRICHMENT_EXCEPTIONS:
             logger.exception("⚠️ Exception in OpenRouter enrichment")
         return {"summary": "", "keywords": [], "questions": []}
@@ -97,8 +95,7 @@ class MetadataEnrichmentService:
                         data.get("candidates", [{}])[0].get("content", {}).get("parts", [{}])[0].get("text", "")
                     )
                     return self._parse_json_response(content_str)
-                else:
-                    logger.warning("⚠️ Google Gemini Enrichment API status %s: %s", res.status_code, res.text)
+                logger.warning("⚠️ Google Gemini Enrichment API status %s: %s", res.status_code, res.text)
         except METADATA_ENRICHMENT_EXCEPTIONS:
             logger.exception("⚠️ Exception in Gemini enrichment")
         return {"summary": "", "keywords": [], "questions": []}

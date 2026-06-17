@@ -25,7 +25,7 @@ def _classify_tables(tables: list[dict[str, Any]]) -> tuple[list[dict[str, Any]]
         if table_type == "HITTER":
             hitter_tables.append(table)
             continue
-        elif table_type == "PITCHER":
+        if table_type == "PITCHER":
             pitcher_tables.append(table)
             continue
 
@@ -36,7 +36,7 @@ def _classify_tables(tables: list[dict[str, Any]]) -> tuple[list[dict[str, Any]]
         if _HITTER_KEYWORDS & normalized:
             hitter_tables.append(table)
             continue
-        elif _PITCHER_KEYWORDS & normalized:
+        if _PITCHER_KEYWORDS & normalized:
             pitcher_tables.append(table)
             continue
 

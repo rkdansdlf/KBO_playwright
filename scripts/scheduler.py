@@ -140,7 +140,7 @@ def alert_failure(retry_state):
     # Do NOT re-raise — let retry_error_callback suppress so the scheduler survives.
     if exc:
         logger.warning(f"Job {func_name} permanently failed but scheduler continues: {error_text}")
-    return None
+    return
 
 
 def alert_warning(func_name: str, details: str | None = None):

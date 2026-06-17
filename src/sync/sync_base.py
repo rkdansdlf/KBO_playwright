@@ -613,7 +613,7 @@ class OCISyncBase:
         connection=None,
     ) -> None:
         if not records:
-            return
+            return None
 
         serialized_records = []
         for r in records:
@@ -736,6 +736,7 @@ class OCISyncBase:
                 )
                 self._reconnect_oci()
                 time.sleep(wait_seconds)
+        raise RuntimeError("Unreachable")
 
     def _rollback_target_session(self, *, label: str) -> None:
         try:
@@ -783,6 +784,7 @@ class OCISyncBase:
                 )
                 self._reconnect_oci()
                 time.sleep(wait_seconds)
+        raise RuntimeError("Unreachable")
 
     def _resolve_sync_columns(self, model: type, exclude_cols: list[str]) -> list[str]:
         target_column_defs = {}

@@ -115,8 +115,7 @@ async def run_backfill(chunk_size: int = 100, max_total: int = 10000):
                             logger.info(f"✅ [{success_count + fail_count + 1}/{len(missing_ids)}] Saved {game_id}")
                             success_count += 1
                             break
-                        else:
-                            logger.error(f"❌ Failed to save {game_id} (DB Error)")
+                        logger.error(f"❌ Failed to save {game_id} (DB Error)")
                     else:
                         # KEY FIX: If no payload, it might be CANCELLED. Check crawler's last reason.
                         reason = crawler.get_last_failure_reason(game_id)

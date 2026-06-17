@@ -82,11 +82,10 @@ class PlayerSyncMixin:
 
     def sync_all_batting_data(self) -> dict[str, int]:
         """모든 타격 관련 데이터 동기화 (타자 + 투수)"""
-        results = {
+        return {
             "pitcher_data": self.sync_pitcher_data(),
             "batting_data": self.sync_batting_data(),
         }
-        return results
 
     def sync_player_basic(self, limit: int = None) -> int:
         """Sync player_basic data from SQLite to OCI using fast bulk COPY"""
