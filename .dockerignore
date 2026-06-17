@@ -1,38 +1,11 @@
-# Git and CI/CD
-.git
-.github
-.gitignore
-
-# Claude and Gemini app data
-.claude
-.gemini
-
-# Python environments
 venv/
-.venv/
+.git/
 __pycache__/
 *.pyc
-*.pyo
-*.pyd
-
-# Local Database and backups
-# (Mounted at runtime via volume: ./data:/app/data)
-data/
-*.db
-*.db-journal
-*.db-shm
-*.db-wal
-
-# Logs
 logs/
-*.log
-
-# Screen captures and debug snapshots
-debug_shots/
-snapshots/
-*.png
-*.html
-
-# Environment configuration
+data/
 .env
-.env.example
+.DS_Store
+.ruff_cache/
+.pytest_cache/
+*.egg-info/
