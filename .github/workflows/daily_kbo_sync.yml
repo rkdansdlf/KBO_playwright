@@ -235,6 +235,14 @@ jobs:
             --date ${{ needs.finalize.outputs.date }} \
             --exit-code
 
+      - name: Comprehensive Data Integrity Audit (full_audit)
+        continue-on-error: true
+        env:
+          OCI_DB_URL: ${{ secrets.OCI_DB_URL }}
+        run: |
+          python3 scripts/maintenance/full_audit.py \
+            --json --no-write --db-url "$OCI_DB_URL"
+
       - uses: ./.github/actions/notify
         if: always()
         with:
