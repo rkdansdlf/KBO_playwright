@@ -23,6 +23,7 @@ load_dotenv()
 
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./data/kbo_dev.db")
 DISABLE_SQLITE_WAL = os.getenv("DISABLE_SQLITE_WAL", "0") == "1"
+DB_SESSION_EXCEPTIONS = (SQLAlchemyError, RuntimeError, ValueError, TypeError)
 
 
 def get_oci_url() -> str | None:
@@ -77,7 +78,7 @@ def get_db_session() -> Iterator[Session]:
     try:
         yield session
         session.commit()
-    except Exception:
+    except DB_SESSION_EXCEPTIONS:
         session.rollback()
         raise
     finally:
@@ -339,7 +340,7 @@ def init_db() -> None:
 
     try:
         Base.metadata.create_all(bind=Engine)
-    except Exception as exc:
+    except SQLAlchemyError as exc:
         logger.error("[DB] Failed to create tables: %s", exc)
         raise
 

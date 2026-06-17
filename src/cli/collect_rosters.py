@@ -9,11 +9,15 @@ import asyncio
 import logging
 from datetime import date, timedelta
 
+from sqlalchemy.exc import SQLAlchemyError
+
 from src.crawlers.daily_roster_crawler import DailyRosterCrawler
 from src.db.engine import SessionLocal
 from src.repositories.team_repository import TeamRepository
 
 logger = logging.getLogger(__name__)
+
+ROSTER_SAVE_EXCEPTIONS = (SQLAlchemyError, RuntimeError, ValueError, TypeError, KeyError, OSError)
 
 
 def save_chunk(chunk) -> None:
@@ -22,7 +26,7 @@ def save_chunk(chunk) -> None:
         repo = TeamRepository(session)
         count = repo.save_daily_rosters(chunk)
         logger.info("   💾 Saved chunk of %s records (New/Updated: %s)", len(chunk), count)
-    except Exception:
+    except ROSTER_SAVE_EXCEPTIONS:
         logger.exception("   ⚠️ Error saving chunk")
     finally:
         session.close()

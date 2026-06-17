@@ -8,6 +8,7 @@ from datetime import date
 from typing import Any
 
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from src.models.game import (
@@ -232,7 +233,7 @@ class RuntimeHydrator:
                 summary["game_id_aliases_preserved"] = self._restore_aliases(preserved_aliases)
             self.target_session.commit()
             return summary
-        except Exception:
+        except (SQLAlchemyError, RuntimeError, ValueError, TypeError):
             self.target_session.rollback()
             raise
 

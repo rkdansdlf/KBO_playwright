@@ -1,5 +1,7 @@
 from unittest.mock import MagicMock, patch
 
+from sqlalchemy.exc import SQLAlchemyError
+
 
 class TestSeedStadiumInfo:
     def test_seed_stadium_info(self):
@@ -15,11 +17,11 @@ class TestSeedStadiumInfo:
         with patch("scripts.seed_stadium_info.SessionLocal") as mock_sf:
             mock_session = MagicMock()
             mock_sf.return_value = mock_session
-            mock_session.commit.side_effect = Exception("db error")
+            mock_session.commit.side_effect = SQLAlchemyError("db error")
             from scripts.seed_stadium_info import seed_stadium_info
 
             try:
                 seed_stadium_info()
-            except Exception:  # noqa: BLE001
+            except SQLAlchemyError:
                 pass
             mock_session.rollback.assert_called_once()

@@ -9,6 +9,8 @@ import httpx
 
 logger = logging.getLogger(__name__)
 
+NAVER_CRAWL_EXCEPTIONS = (httpx.HTTPError, RuntimeError, ValueError, TypeError, KeyError, OSError)
+
 NAVER_API_URL = (
     "https://api-gw.sports.naver.com/news/articles/kbaseball?sort=latest&date={date}&page=1&pageSize=30&isPhoto=N"
 )
@@ -53,7 +55,7 @@ class NaverNewsCrawlerBase(ABC):
                         parsed = self._parse_article(article)
                         if parsed:
                             results.append(parsed)
-                except Exception:
+                except NAVER_CRAWL_EXCEPTIONS:
                     logger.exception("%s news fetch failed for date %s", self.LABEL, date_str)
         finally:
             client.close()

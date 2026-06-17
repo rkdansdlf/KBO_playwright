@@ -223,21 +223,7 @@ def _extract_source_url(tag: Any, config: dict[str, Any], page_url: str) -> str:
         if link_parent:
             href = str(link_parent.get("href", "") or "").strip()
     if not href:
-        ancestors = [tag, *tag.find_parents(["tr", "li", "div", "dl", "section", "article"])]
-        for parent in ancestors[:6]:
-            onclick = str(parent.get("onclick", "") or "")
-            match = ONCLICK_HREF_PATTERN.search(onclick)
-            if match:
-                href = match.group(1).strip()
-                break
-            for clickable in parent.select("[onclick]"):
-                onclick = str(clickable.get("onclick", "") or "")
-                match = ONCLICK_HREF_PATTERN.search(onclick)
-                if match:
-                    href = match.group(1).strip()
-                    break
-            if href:
-                break
+        href = _extract_onclick_href(tag)
 
     if not href or href.startswith("#") or href.startswith("javascript:"):
         return page_url
@@ -245,6 +231,24 @@ def _extract_source_url(tag: Any, config: dict[str, Any], page_url: str) -> str:
         return href
 
     return urljoin(config.get("link_prefix") or page_url, href)
+
+
+def _extract_onclick_href(tag: Any) -> str:
+    ancestors = [tag, *tag.find_parents(["tr", "li", "div", "dl", "section", "article"])]
+    for parent in ancestors[:6]:
+        href = _match_onclick_href(str(parent.get("onclick", "") or ""))
+        if href:
+            return href
+        for clickable in parent.select("[onclick]"):
+            href = _match_onclick_href(str(clickable.get("onclick", "") or ""))
+            if href:
+                return href
+    return ""
+
+
+def _match_onclick_href(onclick: str) -> str:
+    match = ONCLICK_HREF_PATTERN.search(onclick)
+    return match.group(1).strip() if match else ""
 
 
 def _extract_published_at(tag: Any, date_sel: str, cutoff_date: datetime) -> datetime | None:

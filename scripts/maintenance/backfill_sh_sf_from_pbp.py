@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Any
 
 from sqlalchemy import text
+from sqlalchemy.exc import SQLAlchemyError
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(PROJECT_ROOT) not in sys.path:
@@ -22,6 +23,8 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from src.db.engine import SessionLocal
 from src.services.pbp_sh_sf_derivation import apply_sh_sf_to_batting_stats, derive_sh_sf_for_game
+
+BACKFILL_EXCEPTIONS = (SQLAlchemyError, RuntimeError, ValueError, TypeError, OSError)
 
 
 def find_candidate_games(session: Any, year: int | None = None) -> list[str]:
@@ -123,7 +126,7 @@ def main():
                     session.commit()
                     total_updated += updated
                     total_games += 1
-            except Exception as e:  # noqa: BLE001
+            except BACKFILL_EXCEPTIONS as e:
                 session.rollback()
                 print(f"Error processing {gid}: {e}")
 

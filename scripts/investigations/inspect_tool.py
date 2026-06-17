@@ -27,14 +27,20 @@ except ImportError:
     HAS_PANDAS = False
 
 try:
+    from playwright.async_api import Error as PlaywrightError
+    from playwright.async_api import TimeoutError as PlaywrightTimeoutError
     from playwright.async_api import async_playwright
 
     HAS_PLAYWRIGHT = True
 except ImportError:
+    PlaywrightError = RuntimeError
+    PlaywrightTimeoutError = TimeoutError
     HAS_PLAYWRIGHT = False
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_DB_PATH = PROJECT_ROOT / "data" / "kbo_dev.db"
+DB_QUERY_EXCEPTIONS = (sqlite3.DatabaseError, RuntimeError, ValueError, TypeError)
+PLAYWRIGHT_EXCEPTIONS = (PlaywrightError, PlaywrightTimeoutError, RuntimeError, ValueError, TypeError, OSError)
 
 
 def run_db_query(db_path: Path, query: str) -> None:
@@ -57,7 +63,7 @@ def run_db_query(db_path: Path, query: str) -> None:
             logger.info("-" * (len(" | ".join(cols))))
             for row in cursor.fetchall():
                 logger.info(" | ".join(str(val) for val in row))
-    except Exception as e:
+    except DB_QUERY_EXCEPTIONS as e:
         logger.error(f"Query Execution Error: {e}")
     finally:
         conn.close()
@@ -209,11 +215,11 @@ def run_oci_summary() -> None:
                 ).fetchall()
                 for year, cnt in years:
                     logger.info(f"  {year}: {cnt} games")
-            except Exception as e:
+            except SQLAlchemyError as e:
                 logger.error(f"  Error loading distribution: {e}")
 
             logger.info("\n✅ OCI summary complete")
-    except Exception as e:
+    except SQLAlchemyError as e:
         logger.info(f"ERROR connecting to OCI Database: {e}")
 
 
@@ -280,7 +286,7 @@ async def inspect_gamecenter(
                 await page.screenshot(path=screenshot_path)
                 logger.info(f"Screenshot saved to {screenshot_path}")
 
-        except Exception as e:
+        except PLAYWRIGHT_EXCEPTIONS as e:
             logger.error(f"Error during GameCenter inspection: {e}")
         finally:
             await browser.close()
@@ -339,7 +345,7 @@ async def inspect_player_profile(
                             await page.wait_for_load_state("networkidle")
                         else:
                             logger.info(f"Tab '{click_tab}' not found.")
-                except Exception as e:
+                except PLAYWRIGHT_EXCEPTIONS as e:
                     logger.error(f"Error clicking tab: {e}")
 
             # Handle select year
@@ -354,7 +360,7 @@ async def inspect_player_profile(
                         await asyncio.sleep(2)  # Buffer for JS
                     else:
                         logger.info("Year select element not found.")
-                except Exception as e:
+                except PLAYWRIGHT_EXCEPTIONS as e:
                     logger.error(f"Error selecting year: {e}")
 
             # Extract tables
@@ -379,7 +385,7 @@ async def inspect_player_profile(
                 await page.screenshot(path=screenshot_path, full_page=True)
                 logger.info(f"Screenshot saved to {screenshot_path}")
 
-        except Exception as e:
+        except PLAYWRIGHT_EXCEPTIONS as e:
             logger.error(f"Error during player profile inspection: {e}")
         finally:
             await browser.close()

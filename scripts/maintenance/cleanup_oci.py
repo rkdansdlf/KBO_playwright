@@ -79,7 +79,7 @@ def cleanup_oci_duplicates(*, database_url: str, apply: bool = False) -> dict[st
 
             cursor.execute("SELECT COUNT(*) FROM game WHERE is_primary = false")
             counts["non_primary_games_after"] = cursor.fetchone()[0]
-    except Exception:
+    except (psycopg2.Error, OSError, RuntimeError):
         conn.rollback()
         raise
     finally:

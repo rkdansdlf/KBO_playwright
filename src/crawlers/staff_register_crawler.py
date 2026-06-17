@@ -22,6 +22,7 @@ from datetime import date as date_type
 logger = logging.getLogger(__name__)
 
 from playwright.async_api import BrowserContext, Page, async_playwright
+from playwright.async_api import Error as PlaywrightError
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -32,6 +33,15 @@ from src.utils.request_policy import RequestPolicy
 from src.utils.team_codes import resolve_team_code
 
 REGISTER_URL = REGISTER
+STAFF_REGISTER_CRAWL_EXCEPTIONS = (
+    PlaywrightError,
+    TimeoutError,
+    RuntimeError,
+    ValueError,
+    TypeError,
+    KeyError,
+    OSError,
+)
 
 # Team codes used by KBO site -> canonical team code mapping seed
 KBO_TEAM_MAP: dict[str, str] = {
@@ -266,7 +276,7 @@ class StaffRegisterCrawler:
                     try:
                         records = await self.crawl_team(page, code)
                         all_records.extend(records)
-                    except Exception:
+                    except STAFF_REGISTER_CRAWL_EXCEPTIONS:
                         logger.exception("  ⚠️  Error crawling team %s", code)
 
             finally:

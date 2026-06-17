@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import csv
 import json
 import logging
 import os
@@ -21,7 +22,9 @@ from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo
 
+from playwright.async_api import Error as PlaywrightError
 from sqlalchemy import or_, select
+from sqlalchemy.exc import SQLAlchemyError
 
 from scripts.maintenance.audit_game_status_integrity import audit_game_status
 from scripts.maintenance.quality_gate import run_quality_gate as run_legacy_quality_gate
@@ -140,6 +143,20 @@ DETAIL_RECOVERY_ALLOWED_REASONS = {
     "exception",
     "missing",
 }
+RUNNER_EXCEPTIONS = (subprocess.CalledProcessError, OSError, RuntimeError)
+DB_STEP_EXCEPTIONS = (SQLAlchemyError, RuntimeError, ValueError, TypeError)
+CRAWLER_STEP_EXCEPTIONS = (
+    PlaywrightError,
+    TimeoutError,
+    RuntimeError,
+    ValueError,
+    TypeError,
+    OSError,
+    SQLAlchemyError,
+)
+DAILY_STEP_EXCEPTIONS = (*CRAWLER_STEP_EXCEPTIONS, subprocess.CalledProcessError)
+ALERT_EXCEPTIONS = (RuntimeError, ValueError, TypeError, OSError)
+FILE_READ_EXCEPTIONS = (OSError, UnicodeError, csv.Error)
 
 
 def _is_recoverable_detail_reason(reason: str | None) -> bool:
@@ -407,7 +424,7 @@ def _collect_past_scheduled_recovery_targets(today: date) -> list[dict[str, str]
                 .order_by(Game.game_date.asc(), Game.game_id.asc())
                 .all()
             )
-    except Exception:
+    except SQLAlchemyError:
         logger.exception("   ⚠️ Could not inspect auto-healer recovery candidates")
         return []
 
@@ -436,7 +453,7 @@ async def _step_0_auto_healer(ctx: _RunContext) -> None:
         ctx.healer_recovery_targets = _collect_past_scheduled_recovery_targets(ctx.today_kst)
         try:
             await run_healer_async(dry_run=False)
-        except Exception:
+        except DAILY_STEP_EXCEPTIONS:
             logger.exception("   \u26a0\ufe0f Auto-Healer encountered an error (continuing anyway)")
             ctx.healer_recovery_targets = []
         if ctx.healer_recovery_targets:
@@ -657,7 +674,7 @@ def _send_detail_recovery_escalation_alert(ctx: _RunContext) -> None:
             f"target_date={ctx.target_date} threshold={DETAIL_RECOVERY_RETRY_ALERT_THRESHOLD} "
             f"game_ids={','.join(sorted(set(ctx.detail_retry_escalation_game_ids)))}",
         )
-    except Exception:
+    except ALERT_EXCEPTIONS:
         logger.exception("   ❌ Failed to send detail recovery escalation alert")
 
 
@@ -755,7 +772,7 @@ async def _step_2_detail_crawl(ctx: _RunContext) -> None:
         detail_results_by_game = await _collect_detail_results(ctx, g_crawler)
         _finalize_detail_results(ctx, detail_results_by_game, processed_game_ids_set)
         await _run_postgame_reconciliation(ctx, g_crawler)
-    except Exception:
+    except DAILY_STEP_EXCEPTIONS:
         logger.exception("   ❌ Error processing daily details")
         _handle_detail_step_exception(ctx)
     finally:
@@ -816,7 +833,7 @@ async def _step_4_relay_recovery(ctx: _RunContext) -> None:
                 ],
             )
         logger.info("   \u2705 Relay recovery complete")
-    except Exception:
+    except DAILY_STEP_EXCEPTIONS:
         logger.exception("   \u274c Error generating relay events")
 
 
@@ -880,7 +897,7 @@ async def _step_4_5_proactive_relay(ctx: _RunContext) -> None:
                     logger.info("   \u2139\ufe0f Missing games already covered in Step 4")
             else:
                 logger.info("   \u2705 No missing PBP/event/WPA data detected in recent games")
-    except Exception:
+    except RUNNER_EXCEPTIONS:
         logger.exception("   \u274c Error in proactive relay recovery")
 
 
@@ -895,7 +912,7 @@ async def _step_5_content_generation(ctx: _RunContext) -> None:
             review_args = ["-m", "src.cli.daily_review_batch", "--date", f_date, "--no-sync"]
             ctx.runner(review_args)
         logger.info("   \u2705 Review context generation complete")
-    except Exception:
+    except RUNNER_EXCEPTIONS:
         logger.exception("   \u274c Error generating review context")
 
     logger.info("\n\U0001f3ac Step 5.2: Daily highlight generation...")
@@ -904,7 +921,7 @@ async def _step_5_content_generation(ctx: _RunContext) -> None:
             highlight_args = ["-m", "src.cli.daily_highlight_batch", "--date", f_date, "--no-sync"]
             ctx.runner(highlight_args)
         logger.info("   \u2705 Daily highlight generation complete")
-    except Exception:
+    except RUNNER_EXCEPTIONS:
         logger.exception("   \u274c Error generating daily highlights")
 
     logger.info("\n\U0001f4da Step 5.5: LLM-ready game story generation...")
@@ -913,7 +930,7 @@ async def _step_5_content_generation(ctx: _RunContext) -> None:
             story_args = ["-m", "src.cli.daily_story_batch", "--date", f_date, "--no-sync"]
             ctx.runner(story_args)
         logger.info("   \u2705 Game story generation complete")
-    except Exception:
+    except CRAWLER_STEP_EXCEPTIONS:
         logger.exception("   \u274c Error generating game stories")
 
 
@@ -950,7 +967,7 @@ async def _step_6_player_stats(ctx: _RunContext) -> None:
                 limit=ctx.limit,
             )
         logger.info("   \u2705 Local cumulative stats for %s %s series updated", ctx.year, active_series)
-    except Exception:
+    except RUNNER_EXCEPTIONS:
         logger.exception("   \u274c Error during stats update")
 
 
@@ -969,7 +986,7 @@ async def _step_6_5_maintenance(ctx: _RunContext) -> None:
             backfill_args.append("--sync")
         ctx.runner(backfill_args)
         logger.info("   \u2705 Starting pitcher backfill complete")
-    except Exception:
+    except RUNNER_EXCEPTIONS:
         logger.exception("   \u274c Error during pitcher backfill")
 
     logger.info("\n\U0001f575\ufe0f  Step 6.6: Auditing season stats vs transactional details (Auto-remediation)...")
@@ -979,7 +996,7 @@ async def _step_6_5_maintenance(ctx: _RunContext) -> None:
             audit_cmd.append("--fix")
         ctx.runner(audit_cmd)
         logger.info("   \u2705 Statistical audit and auto-remediation complete")
-    except Exception:
+    except CRAWLER_STEP_EXCEPTIONS:
         logger.exception("   \u26a0\ufe0f Statistical audit/fix found issues (see logs)")
 
 
@@ -1009,7 +1026,7 @@ async def _step_7_rosters(ctx: _RunContext) -> None:
         logger.info(
             "   \u2705 Roster transactions checked for %s: %s rows", ctx.r_target_date, len(roster_transactions)
         )
-    except Exception:
+    except CRAWLER_STEP_EXCEPTIONS:
         logger.exception("   \u274c Error updating player movements/rosters")
         ctx.p0_non_game_errors["roster_transactions"] = "roster_pipeline_failed"
 
@@ -1022,7 +1039,7 @@ async def _step_7_5_p0_non_game(ctx: _RunContext) -> None:
             team_events = await event_crawler.run(save=True)
             ctx.p0_non_game_counts["team_events"] = len(team_events)
             logger.info("   \u2705 Team events checked: %s rows", len(team_events))
-        except Exception as exc:
+        except CRAWLER_STEP_EXCEPTIONS as exc:
             logger.exception("   \u26a0\ufe0f Team event crawler failed")
             ctx.p0_non_game_errors["team_events"] = str(exc) or exc.__class__.__name__
 
@@ -1031,7 +1048,7 @@ async def _step_7_5_p0_non_game(ctx: _RunContext) -> None:
             ticket_prices = await ticket_crawler.run(save=True, season=ctx.year)
             ctx.p0_non_game_counts["ticket_prices"] = len(ticket_prices)
             logger.info("   \u2705 Ticket prices checked for %s: %s rows", ctx.year, len(ticket_prices))
-        except Exception as exc:
+        except CRAWLER_STEP_EXCEPTIONS as exc:
             logger.exception("   \u26a0\ufe0f Ticket crawler failed")
             ctx.p0_non_game_errors["ticket_prices"] = str(exc) or exc.__class__.__name__
     else:
@@ -1044,7 +1061,7 @@ async def _step_8_derived_stats(ctx: _RunContext) -> None:
     try:
         ctx.runner(["-m", "src.cli.calculate_standings", "--year", str(ctx.year)])
         ctx.derived_refresh.append("standings")
-    except Exception:
+    except RUNNER_EXCEPTIONS:
         logger.exception("   \u274c Error calculating standings")
 
     logger.info("\n\U0001f9ee Step 9: Recalculating matchup splits...")
@@ -1052,7 +1069,7 @@ async def _step_8_derived_stats(ctx: _RunContext) -> None:
         ctx.runner(["-m", "src.cli.calculate_matchups", "--year", str(ctx.year)])
         ctx.derived_refresh.append("matchups")
         logger.info("   \u2705 Matchup splits recalculated successfully")
-    except Exception:
+    except RUNNER_EXCEPTIONS:
         logger.exception("   \u274c Error recalculating matchups")
 
     logger.info("\n\U0001f3f7\ufe0f Step 10: Recalculating stat rankings...")
@@ -1060,14 +1077,14 @@ async def _step_8_derived_stats(ctx: _RunContext) -> None:
         ctx.runner(["-m", "src.cli.calculate_rankings", "--year", str(ctx.year)])
         ctx.derived_refresh.append("stat_rankings")
         logger.info("   \u2705 Stat rankings recalculated successfully")
-    except Exception:
+    except RUNNER_EXCEPTIONS:
         logger.exception("   \u274c Error recalculating stat rankings")
 
     logger.info("\n\U0001f4c8 Step 10.6: Calculating advanced Sabermetrics (wOBA, wRC+, WAR)...")
     try:
         ctx.runner(["-m", "src.cli.calculate_sabermetrics", "--years", str(ctx.year)])
         logger.info("   \u2705 Sabermetrics engine completed successfully")
-    except Exception:
+    except RUNNER_EXCEPTIONS:
         logger.exception("   \u274c Error calculating Sabermetrics")
 
 
@@ -1076,7 +1093,7 @@ async def _step_10_7_enrichment(ctx: _RunContext) -> None:
     try:
         ctx.runner(["scripts/backfill_player_profiles.py", "--limit", "0", "--delay", "1.0"])
         logger.info("   \u2705 Player profile enrichment complete")
-    except Exception:
+    except DAILY_STEP_EXCEPTIONS:
         logger.exception("   \u26a0\ufe0f Profile enrichment found issues (continning)")
 
     logger.info("\n\U0001f575\ufe0f  Step 10.8: Deep statistical logic audit (cross-table invariants)...")
@@ -1107,7 +1124,7 @@ async def _step_10_7_enrichment(ctx: _RunContext) -> None:
                 )
         else:
             logger.info("   \u2705 Deep statistical logic audit complete (No issues found)")
-    except Exception:
+    except DAILY_STEP_EXCEPTIONS:
         logger.exception("   \u26a0\ufe0f  Deep statistical audit/heal process failed")
 
 
@@ -1140,7 +1157,7 @@ def _run_local_integrity_gate() -> None:
     try:
         _run_game_status_integrity_audit()
         logger.info("   \u2705 Local integrity audit passed")
-    except Exception as exc:
+    except RuntimeError as exc:
         logger.exception("   \u274c Local integrity audit FAILED: %s", exc)
         raise RuntimeError("Aborting OCI sync due to local data integrity violations.") from exc
 
@@ -1174,6 +1191,28 @@ def _recalculate_season_aggregates_for_quality_gate(ctx: _RunContext) -> None:
         )
 
 
+def _resolve_null_player_ids_before_quality_gate(ctx: _RunContext) -> None:
+    logger.info("\n🧩 Step 11.9: Resolving NULL player_ids before OCI publish...")
+    try:
+        ctx.runner(
+            [
+                "-m",
+                "scripts.maintenance.resolve_null_player_ids_conservative",
+                "--years",
+                str(ctx.year),
+                "--apply",
+                "--no-backup",
+                "--delete-duplicates",
+            ]
+        )
+        logger.info("   ✅ NULL player_id resolver complete")
+    except subprocess.CalledProcessError as exc:
+        reason = "non_p0_null_player_id_resolution_failed"
+        ctx.non_p0_quality_gate_counts[reason] = ctx.non_p0_quality_gate_counts.get(reason, 0) + 1
+        ctx.non_p0_quality_gate_ids.setdefault(reason, []).append(f"season:{ctx.year}")
+        logger.exception("   ⚠️ NULL player_id resolver failed (continuing OCI game publish): %s", exc)
+
+
 def _sync_oci_supporting_datasets(ctx: _RunContext, syncer: OCISync) -> None:
     if ctx.skip_oci_supporting_sync:
         ctx.oci_skip_counts["oci_supporting_sync_skipped"] = (
@@ -1192,7 +1231,7 @@ def _sync_oci_supporting_datasets(ctx: _RunContext, syncer: OCISync) -> None:
         syncer.sync_player_season_pitching(year=ctx.year)
         syncer.sync_player_movements()
         syncer.sync_daily_rosters(start_date=ctx.r_target_date, end_date=ctx.r_target_date)
-    except Exception:
+    except DB_STEP_EXCEPTIONS:
         logger.exception("   \u26a0\ufe0f Non-P0 OCI supporting dataset sync failed")
         ctx.oci_skip_counts["non_p0_supporting_sync_failed"] = (
             ctx.oci_skip_counts.get(
@@ -1242,7 +1281,7 @@ def _run_oci_parity_gate(ctx: _RunContext) -> None:
     try:
         _run_oci_parity_quality_gate()
         logger.info("   \u2705 OCI parity check complete")
-    except Exception:
+    except RuntimeError:
         logger.exception("OCI parity quality gate failed")
         reason = "non_p0_oci_parity_quality_gate_failed"
         ctx.non_p0_quality_gate_counts[reason] = ctx.non_p0_quality_gate_counts.get(reason, 0) + 1
@@ -1257,6 +1296,7 @@ async def _step_11_sync_pipeline(ctx: _RunContext) -> None:
     _run_pre_oci_freshness_gate(ctx)
     _run_local_integrity_gate()
     _recalculate_season_aggregates_for_quality_gate(ctx)
+    _resolve_null_player_ids_before_quality_gate(ctx)
     _run_statistical_quality_gate_for_sync(ctx)
     _publish_to_oci(ctx)
     _run_post_oci_freshness_gate(ctx)
@@ -1273,7 +1313,7 @@ async def _step_14_tomorrow_preview(ctx: _RunContext) -> None:
                 preview_args.append("--no-sync")
             ctx.runner(preview_args)
             logger.info("   \u2705 Tomorrow preview seed complete")
-        except Exception:
+        except RUNNER_EXCEPTIONS:
             logger.exception("   \u274c Error generating tomorrow preview seed")
 
 
@@ -1308,7 +1348,7 @@ def _build_p0_readiness_for_context(ctx: _RunContext) -> dict[str, Any]:
                 oci_skip_counts=ctx.oci_skip_counts,
                 oci_skip_game_ids=ctx.oci_skip_game_ids,
             )
-    except Exception:
+    except DB_STEP_EXCEPTIONS:
         logger.exception("   Error building P0 readiness summary")
         return {
             "target_date": ctx.target_date,
@@ -1394,8 +1434,6 @@ def _log_finalize_summaries(ctx: _RunContext, p0_readiness: dict[str, Any]) -> N
 
 
 def _load_pbp_attempts_by_game(target_date: str) -> dict[str, list[dict[str, str]]]:
-    import csv
-
     attempts_by_game: dict[str, list[dict[str, str]]] = {}
     for file_path in Path("logs/daily_update_summary").glob(f"pbp_report_*_{target_date}.csv"):
         try:
@@ -1405,7 +1443,7 @@ def _load_pbp_attempts_by_game(target_date: str) -> dict[str, list[dict[str, str
                     gid = row.get("game_id")
                     if gid:
                         attempts_by_game.setdefault(gid, []).append(row)
-        except Exception:
+        except FILE_READ_EXCEPTIONS:
             logger.exception("Failed to read PBP report file: %s", file_path)
     return attempts_by_game
 
@@ -1501,7 +1539,7 @@ def _send_pbp_recovery_report(ctx: _RunContext) -> None:
             success_count,
             failed_count,
         )
-    except Exception:
+    except (*DB_STEP_EXCEPTIONS, *ALERT_EXCEPTIONS):
         logger.exception("   Error sending PBP recovery summary")
 
 
@@ -1689,23 +1727,34 @@ def main(argv: Sequence[str] | None = None) -> int:
         logger.error("❌ Invalid date format: %s. Please use YYYYMMDD.", target_date)
         sys.exit(1)
 
-    return asyncio.run(
-        run_update(
-            target_date,
-            sync=args.sync,
-            headless=args.headless,
-            limit=args.limit,
-            summary_dir=args.summary_dir,
-            seed_tomorrow_preview=args.seed_tomorrow_preview,
-            run_auto_healer=not args.skip_auto_healer,
-            run_postgame_reconciliation=not args.skip_postgame_reconciliation,
-            postgame_reconcile_lookback_days=args.postgame_reconcile_lookback_days,
-            fix=args.fix or os.getenv("DAILY_AUTO_REMEDIATION", "0") == "1",
-            skip_season_stats=args.skip_season_stats,
-            skip_oci_supporting_sync=args.skip_oci_supporting_sync,
-            run_p0_non_game=not args.skip_p0_non_game,
-        ),
-    )
+    from src.utils.lock import ProcessLock
+
+    lock = ProcessLock("daily_update", blocking=False)
+    if not lock.acquire():
+        logger.warning("⚠️ Another instance of run_daily_update is already running. Exiting.")
+        return 1
+
+    try:
+        res = asyncio.run(
+            run_update(
+                target_date,
+                sync=args.sync,
+                headless=args.headless,
+                limit=args.limit,
+                summary_dir=args.summary_dir,
+                seed_tomorrow_preview=args.seed_tomorrow_preview,
+                run_auto_healer=not args.skip_auto_healer,
+                run_postgame_reconciliation=not args.skip_postgame_reconciliation,
+                postgame_reconcile_lookback_days=args.postgame_reconcile_lookback_days,
+                fix=args.fix or os.getenv("DAILY_AUTO_REMEDIATION", "0") == "1",
+                skip_season_stats=args.skip_season_stats,
+                skip_oci_supporting_sync=args.skip_oci_supporting_sync,
+                run_p0_non_game=not args.skip_p0_non_game,
+            ),
+        )
+    finally:
+        lock.release()
+    return res
 
 
 if __name__ == "__main__":

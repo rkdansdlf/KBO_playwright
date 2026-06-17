@@ -3,6 +3,10 @@ import os
 import sys
 from datetime import datetime, timedelta
 
+from playwright.async_api import Error as PlaywrightError
+from playwright.async_api import TimeoutError as PlaywrightTimeoutError
+from sqlalchemy.exc import SQLAlchemyError
+
 # Add project root to path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../")))
 
@@ -12,6 +16,16 @@ from src.db.engine import SessionLocal
 from src.repositories.player_repository import PlayerRepository
 from src.repositories.team_repository import TeamRepository
 from src.utils.playwright_pool import AsyncPlaywrightPool
+
+BACKFILL_EXCEPTIONS = (
+    PlaywrightError,
+    PlaywrightTimeoutError,
+    SQLAlchemyError,
+    RuntimeError,
+    ValueError,
+    TypeError,
+    OSError,
+)
 
 
 async def backfill_player_movements(years: list[int]):
@@ -25,7 +39,7 @@ async def backfill_player_movements(years: list[int]):
             if movements:
                 count = repo.save_player_movements(movements)
                 print(f"  ✅ Saved {count} movements for {year}")
-        except Exception as e:  # noqa: BLE001
+        except BACKFILL_EXCEPTIONS as e:
             print(f"  ❌ Error for {year}: {e}")
 
 
@@ -51,7 +65,7 @@ async def backfill_daily_rosters(start_date_str: str, end_date_str: str):
                     repo = TeamRepository(session)
                     count = repo.save_daily_rosters(roster)
                     print(f"  ✅ Saved {count} roster records for {d_str}")
-        except Exception as e:  # noqa: BLE001
+        except BACKFILL_EXCEPTIONS as e:
             print(f"  ❌ Error for {d_str}: {e}")
 
         current_date += timedelta(days=1)

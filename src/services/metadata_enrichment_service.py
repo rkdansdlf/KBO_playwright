@@ -14,6 +14,8 @@ import httpx
 
 logger = logging.getLogger(__name__)
 
+METADATA_ENRICHMENT_EXCEPTIONS = (httpx.HTTPError, json.JSONDecodeError, RuntimeError, ValueError, TypeError, OSError)
+
 
 class MetadataEnrichmentService:
     """
@@ -73,7 +75,7 @@ class MetadataEnrichmentService:
                     return self._parse_json_response(content_str)
                 else:
                     logger.warning("⚠️ OpenRouter Enrichment API status %s: %s", res.status_code, res.text)
-        except Exception:
+        except METADATA_ENRICHMENT_EXCEPTIONS:
             logger.exception("⚠️ Exception in OpenRouter enrichment")
         return {"summary": "", "keywords": [], "questions": []}
 
@@ -97,7 +99,7 @@ class MetadataEnrichmentService:
                     return self._parse_json_response(content_str)
                 else:
                     logger.warning("⚠️ Google Gemini Enrichment API status %s: %s", res.status_code, res.text)
-        except Exception:
+        except METADATA_ENRICHMENT_EXCEPTIONS:
             logger.exception("⚠️ Exception in Gemini enrichment")
         return {"summary": "", "keywords": [], "questions": []}
 
@@ -122,7 +124,7 @@ class MetadataEnrichmentService:
                 "keywords": data.get("keywords", []) if isinstance(data.get("keywords"), list) else [],
                 "questions": data.get("questions", []) if isinstance(data.get("questions"), list) else [],
             }
-        except Exception:
+        except METADATA_ENRICHMENT_EXCEPTIONS:
             logger.exception("⚠️ Error parsing enrichment JSON. Raw content: %s", text[:100])
 
         return {"summary": "", "keywords": [], "questions": []}

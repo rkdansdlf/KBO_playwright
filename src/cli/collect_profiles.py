@@ -9,7 +9,9 @@ import argparse
 import asyncio
 import logging
 
+from playwright.async_api import Error as PlaywrightError
 from sqlalchemy import or_, select
+from sqlalchemy.exc import SQLAlchemyError
 
 from src.crawlers.player_profile_crawler import PlayerProfileCrawler
 from src.db.engine import SessionLocal
@@ -18,6 +20,16 @@ from src.repositories.player_repository import PlayerRepository
 from src.utils.playwright_pool import AsyncPlaywrightPool
 
 logger = logging.getLogger(__name__)
+
+PROFILE_COLLECTION_EXCEPTIONS = (
+    PlaywrightError,
+    SQLAlchemyError,
+    RuntimeError,
+    ValueError,
+    TypeError,
+    KeyError,
+    OSError,
+)
 
 
 async def collect_profiles(limit: int = 100, target_ids: list[str] | None = None) -> None:
@@ -92,7 +104,7 @@ async def collect_profiles(limit: int = 100, target_ids: list[str] | None = None
                 if idx % 5 == 0:
                     await asyncio.sleep(1)
 
-    except Exception:
+    except PROFILE_COLLECTION_EXCEPTIONS:
         logger.exception("❌ Critical Error")
     finally:
         session.close()

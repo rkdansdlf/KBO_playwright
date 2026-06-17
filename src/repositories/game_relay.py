@@ -978,7 +978,7 @@ def save_relay_data(
                 _auto_sync_to_oci(game_id)
             _log_relay_save_result(game_id, events, valid_event_rows, len(event_rows), len(pbp_rows))
             return len(event_rows) if event_rows else len(pbp_rows)
-        except Exception:
+        except (SQLAlchemyError, RuntimeError, ValueError, TypeError, KeyError):
             session.rollback()
             logger.exception("[ERROR] DB Error (Relay)")
             return 0

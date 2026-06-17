@@ -25,6 +25,8 @@ import re
 from datetime import datetime
 from typing import Any
 
+from sqlalchemy.exc import SQLAlchemyError
+
 from src.db.engine import SessionLocal
 from src.repositories.fan_culture_repository import FanCultureRepository
 from src.utils.youtube_api_client import (
@@ -38,6 +40,7 @@ from src.utils.youtube_api_client import (
 logger = logging.getLogger(__name__)
 
 YOUTUBE_VIDEO_BASE = "https://www.youtube.com/watch?v="
+FAN_CULTURE_DB_EXCEPTIONS = (SQLAlchemyError, RuntimeError, ValueError, TypeError, KeyError, OSError)
 
 # 응원가로 판단하기 위한 제목 필터 (이 단어가 포함되어야 함)
 CHEERSONG_TITLE_KEYWORDS = re.compile(
@@ -139,7 +142,7 @@ class FanCultureCrawler:
             logger.info("[FanCulture]   → %s cheer songs found", len(team_songs))
 
             # API 호출 간격 (rate limit 준수)
-            await asyncio.sleep(0.5)
+            await asyncio.sleep(2.0)
 
         logger.info("[FanCulture] Total: %s songs across %s teams", len(all_songs), len(teams))
 
@@ -184,7 +187,7 @@ class FanCultureCrawler:
                 if song:
                     songs.append(song)
 
-            await asyncio.sleep(0.3)
+            await asyncio.sleep(1.5)
 
         return songs
 
@@ -197,11 +200,11 @@ class FanCultureCrawler:
                     try:
                         repo.save_cheer_song(item)
                         saved += 1
-                    except Exception:
+                    except FAN_CULTURE_DB_EXCEPTIONS:
                         logger.exception("Failed to save song: %s", item.get("song_name", ""))
                 session.commit()
                 logger.info("[FanCulture] Saved %s cheer songs to DB.", saved)
-            except Exception:
+            except FAN_CULTURE_DB_EXCEPTIONS:
                 session.rollback()
                 logger.exception("[FanCulture] DB save failed")
 

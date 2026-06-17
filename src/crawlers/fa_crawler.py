@@ -12,8 +12,10 @@ logger = logging.getLogger(__name__)
 
 import contextlib
 
+from playwright.async_api import Error as PlaywrightError
 from playwright.async_api import Page, TimeoutError, async_playwright
 from playwright_stealth import Stealth
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from src.db.engine import SessionLocal
@@ -23,6 +25,18 @@ from src.models.team import Team
 from src.utils.playwright_blocking import install_async_resource_blocking
 from src.utils.playwright_retry import LONG_TIMEOUT, NAV_TIMEOUT
 from src.utils.team_codes import resolve_team_code
+
+FA_CRAWL_EXCEPTIONS = (
+    PlaywrightError,
+    TimeoutError,
+    asyncio.TimeoutError,
+    RuntimeError,
+    ValueError,
+    TypeError,
+    OSError,
+)
+FA_IO_EXCEPTIONS = (OSError, json.JSONDecodeError, ValueError, TypeError)
+FA_DB_EXCEPTIONS = (SQLAlchemyError, RuntimeError, ValueError, TypeError, OSError)
 
 
 def parse_amount_krw(amount_str: str | None) -> int | None:
@@ -141,7 +155,7 @@ class FACrawler:
                         logger.info("   => Found %s records total.", len(section_data))
                         results.extend(section_data)
 
-            except Exception:
+            except FA_CRAWL_EXCEPTIONS:
                 logger.exception("❌ Error during crawling")
                 import traceback
 
@@ -370,7 +384,7 @@ class FACrawler:
                 data = json.load(f)
             logger.info("   => Loaded %s records.", len(data))
             return data
-        except Exception:
+        except FA_IO_EXCEPTIONS:
             logger.exception("❌ Error loading JSON")
             return []
 
@@ -534,7 +548,7 @@ class FACrawler:
                     new_fa_contracts,
                     updated_fa_contracts,
                 )
-            except Exception:
+            except FA_DB_EXCEPTIONS:
                 session.rollback()
                 logger.exception("❌ DB Error")
 

@@ -11,6 +11,7 @@ from datetime import date as date_type
 from typing import Any
 
 from sqlalchemy import func, or_, text
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from src.db.engine import get_database_type
@@ -393,7 +394,7 @@ class TeamStatAggregator:
                 stmt = repo._build_insert_stmt(payload)
                 self.session.execute(stmt)
             self.session.commit()
-        except Exception:
+        except SQLAlchemyError:
             self.session.rollback()
             raise
         finally:
@@ -416,7 +417,7 @@ class TeamStatAggregator:
                 stmt = repo._build_insert_stmt(payload)
                 self.session.execute(stmt)
             self.session.commit()
-        except Exception:
+        except SQLAlchemyError:
             self.session.rollback()
             raise
         finally:

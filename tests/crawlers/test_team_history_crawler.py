@@ -4,6 +4,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from pytest import mark
+from sqlalchemy.exc import SQLAlchemyError
 
 from src.crawlers.team_history_crawler import TeamHistoryCrawler
 
@@ -129,7 +130,7 @@ class TestSave:
     async def test_catches_unsaved_data_safely(self, mock_sl, crawler):
         mock_session = MagicMock()
         mock_sl.return_value.__enter__.return_value = mock_session
-        mock_session.execute.side_effect = Exception("db error")
+        mock_session.execute.side_effect = SQLAlchemyError("db error")
 
         await crawler.save([{"season": 2024, "team_name": "Unknown", "ranking": 99}])
         mock_session.rollback.assert_called_once()

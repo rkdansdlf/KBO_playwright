@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 
+from playwright.sync_api import Error as PlaywrightError
 from playwright.sync_api import Page
 
 logger = logging.getLogger(__name__)
@@ -34,6 +35,6 @@ def extract_rows_fast(
             {"selector": selector, "linkQuery": link_query},
         )
         return payload or []
-    except Exception:
+    except (PlaywrightError, RuntimeError, TypeError, ValueError):
         logger.exception("Failed to execute JS payload")
         return None

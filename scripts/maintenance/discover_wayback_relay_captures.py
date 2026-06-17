@@ -9,6 +9,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Any
+from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
@@ -23,6 +24,16 @@ logger = logging.getLogger(__name__)
 WAYBACK_CDX_URL = "https://web.archive.org/cdx/search/cdx"
 WAYBACK_CAPTURE_URL = "https://web.archive.org/web/{timestamp}id_/{original}"
 USER_AGENT = "Mozilla/5.0 (compatible; KBORelayRecovery/1.0; +https://www.koreabaseball.com)"
+WAYBACK_EXCEPTIONS = (
+    HTTPError,
+    URLError,
+    TimeoutError,
+    OSError,
+    RuntimeError,
+    ValueError,
+    KeyError,
+    json.JSONDecodeError,
+)
 
 
 def _load_rows(path: Path) -> list[dict[str, str]]:
@@ -177,7 +188,7 @@ def discover_captures(
                 if capture and download_dir is not None:
                     saved = _download_capture(game_id, target["url_kind"], capture, download_dir, timeout)
                     download_path = str(saved)
-            except Exception as exc:  # noqa: BLE001
+            except WAYBACK_EXCEPTIONS as exc:
                 notes = f"{type(exc).__name__}: {exc}"
             if capture:
                 found = True

@@ -15,6 +15,7 @@ from typing import Any
 
 from dotenv import load_dotenv
 from sqlalchemy import text
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from src.db.engine import SessionLocal, get_oci_url
@@ -26,6 +27,8 @@ from src.models.standings import TeamStandingsDaily
 from src.sync.oci_sync import OCISync
 
 logger = logging.getLogger(__name__)
+
+OCI_CLI_EXCEPTIONS = (SQLAlchemyError, RuntimeError, ValueError, TypeError, OSError)
 
 
 def run_parallel_sync(
@@ -45,7 +48,7 @@ def run_parallel_sync(
                 syncer = OCISync(target_url, session)
                 sync_fn(syncer, year, **kwargs)
                 logger.info("✅ Worker finished for year %s", year)
-            except Exception:
+            except OCI_CLI_EXCEPTIONS:
                 logger.exception("❌ Worker failed for year %s", year)
 
     with ThreadPoolExecutor(max_workers=workers) as executor:
@@ -382,12 +385,7 @@ def _run_sync(args, sync_fn, *, parallel_support=False, header=None, years_gette
         logger.info(completion_msg)
 
 
-def main(argv: Iterable[str] | None = None) -> None:
-    """스크립트의 메인 실행 함수."""
-    load_dotenv()
-    parser = build_arg_parser()
-    args = parser.parse_args(argv)
-
+def _validate_args(parser: argparse.ArgumentParser, args: argparse.Namespace) -> None:
     if args.game_ids and not args.game_details:
         parser.error("--game-ids can only be used with --game-details")
     if args.game_ids and args.parallel:
@@ -396,12 +394,13 @@ def main(argv: Iterable[str] | None = None) -> None:
         parser.error("--roster-date cannot be combined with --roster-start-date or --roster-end-date")
     if (args.roster_date or args.roster_start_date or args.roster_end_date) and not args.daily_roster:
         parser.error("--roster-date/--roster-start-date/--roster-end-date can only be used with --daily-roster")
-
     if not args.target_url:
         raise SystemExit("TARGET_DATABASE_URL must be provided via flag or environment variable")
 
+
+def _build_sync_dispatch() -> dict[str, tuple]:
     # fmt: off
-    SYNC_DISPATCH: dict[str, tuple] = {
+    return {
         "game_details":   (lambda s, y, **kw: s.sync_game_details(year=y, days=kw.get("days"), unsynced_only=kw.get("unsynced_only"), batch_size=kw.get("copy_batch_size")) if not kw.get("requested_game_ids")
                            else [logger.info("   [%s] %s", gid, s.sync_specific_game(gid)) for gid in kw["requested_game_ids"]],
                            "🚀 Syncing Game Details using specialized OCISync...", True,
@@ -442,7 +441,9 @@ def main(argv: Iterable[str] | None = None) -> None:
     }
     # fmt: on
 
-    SIMPLE_FLAGS = {
+
+def _build_simple_flags() -> dict[str, tuple[str, str]]:
+    return {
         "kbo_season": ("sync_kbo_seasons", "🚀 Syncing KBO Seasons reference table using OCISync..."),
         "daily_roster": ("sync_daily_rosters", "🚀 Syncing Daily Rosters using specialized OCISync..."),
         "player_basic": ("sync_player_basic", "🚀 Syncing Player Basic using specialized OCISync..."),
@@ -464,20 +465,126 @@ def main(argv: Iterable[str] | None = None) -> None:
         "team_events": ("sync_team_events", "🚀 Syncing Team Events/News..."),
         "fan_culture": ("sync_fan_culture", "🚀 Syncing Fan Culture Data (Phase 1)..."),
         "phase1_all": ("sync_phase1_all", "🚀 Syncing ALL Phase 1 Tables..."),
-        # Stadium Real-Time Data
         "transit_times": ("sync_transit_times", "🚀 Syncing Stadium Transit Times (JAMSIL)..."),
         "congestion": ("sync_congestion", "🚀 Syncing Stadium Congestion (JAMSIL)..."),
         "operation_notices": ("sync_operation_notices", "🚀 Syncing Stadium Operation Notices..."),
         "stadium_realtime_all": ("sync_stadium_realtime_all", "🚀 Syncing ALL Stadium Real-Time Tables..."),
     }
 
+
+def _log_simple_result(header_str: str, result: Any) -> None:
+    header_label = header_str.replace("🚀 ", "")
+    if isinstance(result, int):
+        logger.info("✅ %s Finished (%d rows)", header_label, result)
+    else:
+        logger.info("✅ %s Finished", header_label)
+
+
+def _run_special_simple_flag(syncer: OCISync, args: argparse.Namespace, flag: str, header_str: str) -> bool:
+    if flag == "stadiums":
+        logger.info(header_str)
+        synced_info = syncer.sync_stadium_info()
+        synced_reg = syncer.sync_stadium_regulations()
+        logger.info("✅ Stadium Info (%s) + Regulations (%s) Sync Finished", synced_info, synced_reg)
+        return True
+    if flag == "fan_culture":
+        logger.info(header_str)
+        synced_r = syncer.sync_team_rivalries()
+        synced_s = syncer.sync_cheer_songs()
+        synced_c = syncer.sync_cheer_chants()
+        logger.info("✅ Fan Culture Sync Finished (Rivalries=%s, Songs=%s, Chants=%s)", synced_r, synced_s, synced_c)
+        return True
+    if flag == "teams":
+        logger.info(header_str)
+        syncer.sync_franchises()
+        syncer.sync_teams()
+        syncer.sync_team_history()
+        syncer.sync_team_code_map()
+        logger.info("✅ Franchises & Teams Sync Finished")
+        return True
+    if flag == "players":
+        logger.info(header_str)
+        syncer.sync_player_basic()
+        syncer.sync_players()
+        logger.info("✅ Master Players Sync Finished")
+        return True
+    if flag == "player_basic":
+        logger.info("🚀 Syncing Player Basic using specialized OCISync (limit=%s)...", args.limit)
+        result = syncer.sync_player_basic(limit=args.limit)
+        _log_simple_result("🚀 Player Basic Sync", result)
+        return True
+    return False
+
+
+def _run_bulk_simple_flag(syncer: OCISync, args: argparse.Namespace, flag: str, header_str: str) -> bool:
+    if flag == "phase1_all":
+        logger.info(header_str)
+        results = syncer.sync_phase1_all()
+    elif flag == "stadium_realtime_all":
+        logger.info(header_str)
+        results = syncer.sync_stadium_realtime_all(game_date=getattr(args, "realtime_game_date", None))
+    else:
+        return False
+
+    for table, count in results.items():
+        logger.info("  %s: %s rows", table, count)
+    logger.info("✅ %s Finished", header_str.replace("🚀 Syncing ", ""))
+    return True
+
+
+def _run_simple_flag(args: argparse.Namespace, flag: str, method_name: str, header_str: str) -> None:
+    with SessionLocal() as session:
+        syncer = OCISync(args.target_url, session)
+        try:
+            if _run_special_simple_flag(syncer, args, flag, header_str):
+                return
+            if _run_bulk_simple_flag(syncer, args, flag, header_str):
+                return
+            logger.info(header_str)
+            method = getattr(syncer, method_name)
+            if flag in ("transit_times", "congestion", "operation_notices"):
+                result = method(game_date=getattr(args, "realtime_game_date", None))
+            elif flag == "daily_roster":
+                result = method(
+                    start_date=args.roster_date or args.roster_start_date,
+                    end_date=args.roster_date or args.roster_end_date,
+                )
+            else:
+                result = method()
+            _log_simple_result(header_str, result)
+        finally:
+            syncer.close()
+
+
+def _reset_sequences_if_requested(args: argparse.Namespace) -> None:
+    if not getattr(args, "reset_sequences", False):
+        return
+    logger.info("\n🚀 Resetting Sequence Identifiers on Target DB...")
+    try:
+        from scripts.maintenance.reset_oci_sequences import reset_sequences
+
+        reset_sequences(args.target_url)
+    except (ImportError, OCI_CLI_EXCEPTIONS):
+        logger.exception("⚠️ Failed to call reset_sequences")
+
+
+def main(argv: Iterable[str] | None = None) -> None:
+    """스크립트의 메인 실행 함수."""
+    load_dotenv()
+    parser = build_arg_parser()
+    args = parser.parse_args(argv)
+    _validate_args(parser, args)
+
+    sync_dispatch = _build_sync_dispatch()
+    simple_flags = _build_simple_flags()
+
     flag = _detect_active_flag(
         args,
-        list(SYNC_DISPATCH.keys()) + list(SIMPLE_FLAGS.keys()) + ["phase1_all", "stadium_realtime_all"],
+        list(sync_dispatch.keys()) + list(simple_flags.keys()) + ["phase1_all", "stadium_realtime_all"],
     )
 
-    if flag in SYNC_DISPATCH:
-        sync_fn, header_str, parallel_ok, year_getter, completion_msg = SYNC_DISPATCH[flag]
+    if flag in sync_dispatch:
+        sync_fn, header_str, parallel_ok, year_getter, completion_msg = sync_dispatch[flag]
         _run_sync(
             args,
             sync_fn,
@@ -486,103 +593,15 @@ def main(argv: Iterable[str] | None = None) -> None:
             years_getter=year_getter,
             completion_msg=completion_msg,
         )
-    elif flag in SIMPLE_FLAGS:
-        method_name, header_str = SIMPLE_FLAGS[flag]
-        with SessionLocal() as session:
-            syncer = OCISync(args.target_url, session)
-            try:
-                if flag == "stadiums":
-                    logger.info(header_str)
-                    synced_info = syncer.sync_stadium_info()
-                    synced_reg = syncer.sync_stadium_regulations()
-                    logger.info("✅ Stadium Info (%s) + Regulations (%s) Sync Finished", synced_info, synced_reg)
-                elif flag == "fan_culture":
-                    logger.info(header_str)
-                    synced_r = syncer.sync_team_rivalries()
-                    synced_s = syncer.sync_cheer_songs()
-                    synced_c = syncer.sync_cheer_chants()
-                    logger.info(
-                        "✅ Fan Culture Sync Finished (Rivalries=%s, Songs=%s, Chants=%s)",
-                        synced_r,
-                        synced_s,
-                        synced_c,
-                    )
-                elif flag == "teams":
-                    logger.info(header_str)
-                    syncer.sync_franchises()
-                    syncer.sync_teams()
-                    syncer.sync_team_history()
-                    syncer.sync_team_code_map()
-                    logger.info("✅ Franchises & Teams Sync Finished")
-                elif flag == "players":
-                    logger.info(header_str)
-                    syncer.sync_player_basic()
-                    syncer.sync_players()
-                    logger.info("✅ Master Players Sync Finished")
-                elif flag == "player_basic":
-                    logger.info("🚀 Syncing Player Basic using specialized OCISync (limit=%s)...", args.limit)
-                    synced = syncer.sync_player_basic(limit=args.limit)
-                    if isinstance(synced, int):
-                        logger.info("✅ Player Basic Sync Finished (%d rows)", synced)
-                    else:
-                        logger.info("✅ Player Basic Sync Finished")
-                elif flag == "phase1_all":
-                    logger.info(header_str)
-                    results = syncer.sync_phase1_all()
-                    for table, count in results.items():
-                        logger.info("  %s: %s rows", table, count)
-                    logger.info("✅ All Phase 1 Tables Sync Finished")
-                elif flag == "stadium_realtime_all":
-                    logger.info(header_str)
-                    game_date = getattr(args, "realtime_game_date", None)
-                    results = syncer.sync_stadium_realtime_all(game_date=game_date)
-                    for table, count in results.items():
-                        logger.info("  %s: %s rows", table, count)
-                    logger.info("✅ Stadium Real-Time All Sync Finished")
-                elif flag in ("transit_times", "congestion", "operation_notices"):
-                    logger.info(header_str)
-                    game_date = getattr(args, "realtime_game_date", None)
-                    method = getattr(syncer, method_name)
-                    result = method(game_date=game_date)
-                    header_label = header_str.replace("🚀 ", "")
-                    if isinstance(result, int):
-                        logger.info("✅ %s Finished (%d rows)", header_label, result)
-                    else:
-                        logger.info("✅ %s Finished", header_label)
-                elif flag == "daily_roster":
-                    logger.info(header_str)
-                    roster_start_date = args.roster_date or args.roster_start_date
-                    roster_end_date = args.roster_date or args.roster_end_date
-                    result = syncer.sync_daily_rosters(start_date=roster_start_date, end_date=roster_end_date)
-                    header_label = header_str.replace("🚀 ", "")
-                    if isinstance(result, int):
-                        logger.info("✅ %s Finished (%d rows)", header_label, result)
-                    else:
-                        logger.info("✅ %s Finished", header_label)
-                else:
-                    logger.info(header_str)
-                    method = getattr(syncer, method_name)
-                    result = method()
-                    header_label = header_str.replace("🚀 ", "")
-                    if isinstance(result, int):
-                        logger.info("✅ %s Finished (%d rows)", header_label, result)
-                    else:
-                        logger.info("✅ %s Finished", header_label)
-            finally:
-                syncer.close()
+    elif flag in simple_flags:
+        method_name, header_str = simple_flags[flag]
+        _run_simple_flag(args, flag, method_name, header_str)
     else:
         logger.warning("⚠️  No recognized sync flag provided. Use --help to see available flags.")
         logger.info("   Tip: --game-details, --season-stats, --teams, --player-basic, --kbo-season")
         return
 
-    if getattr(args, "reset_sequences", False):
-        logger.info("\n🚀 Resetting Sequence Identifiers on Target DB...")
-        try:
-            from scripts.maintenance.reset_oci_sequences import reset_sequences
-
-            reset_sequences(args.target_url)
-        except Exception:
-            logger.exception("⚠️ Failed to call reset_sequences")
+    _reset_sequences_if_requested(args)
 
 
 def _detect_active_flag(args, all_flags: list[str]) -> str | None:

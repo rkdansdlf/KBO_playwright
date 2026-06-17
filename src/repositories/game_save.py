@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import json
 import logging
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any
 
 from sqlalchemy.exc import SQLAlchemyError
@@ -60,6 +60,8 @@ from src.utils.game_status import (
 from src.utils.team_codes import resolve_team_code, team_code_from_game_id_segment
 
 logger = logging.getLogger(__name__)
+
+GAME_SAVE_EXCEPTIONS = (SQLAlchemyError, ValueError, TypeError, OSError)
 
 
 def get_games_by_date(target_date: str) -> list[Game]:
@@ -249,6 +251,229 @@ def save_schedule_game(
             return False
 
 
+def _parse_detail_game_date(game_data: dict[str, Any], provisional_game_id: str | None) -> tuple[str, date]:
+    game_date_str = str(game_data.get("game_date", "")).replace("-", "") or str(provisional_game_id or "")[:8]
+    try:
+        return game_date_str, datetime.strptime(game_date_str, "%Y%m%d").date()
+    except ValueError:
+        return game_date_str, datetime.now().date()
+
+
+def _get_or_create_game(
+    session, game_id: str, game_date: date, source: GameWriteSource, write_contract
+) -> tuple[Game, bool]:
+    game = session.query(Game).filter(Game.game_id == game_id).one_or_none()
+    if game:
+        return game, False
+    game = Game(game_id=game_id, game_date=game_date)
+    session.add(game)
+    session.flush()
+    if write_contract:
+        write_contract.field_updated(game_id, source, "game.created", None, True)
+    return game, True
+
+
+def _update_detail_core_fields(
+    game: Game,
+    game_id: str,
+    game_date: date,
+    metadata: dict[str, Any],
+    home_info: dict[str, Any],
+    away_info: dict[str, Any],
+    source: GameWriteSource,
+    write_contract,
+) -> bool:
+    changed = False
+    for field_name, value, allow_empty in (
+        ("game_date", game_date, False),
+        ("stadium", metadata.get("stadium"), False),
+        ("home_team", home_info.get("code"), False),
+        ("away_team", away_info.get("code"), False),
+        ("home_score", home_info.get("score"), True),
+        ("away_score", away_info.get("score"), True),
+    ):
+        changed |= _assign_field_if_changed(
+            game,
+            field_name,
+            value,
+            game_id=game_id,
+            source=source,
+            write_contract=write_contract,
+            allow_empty=allow_empty,
+        )
+    return changed
+
+
+def _update_detail_status(
+    game: Game,
+    game_id: str,
+    game_date: date,
+    teams: dict[str, Any],
+    explicit_status: str | None,
+    source: GameWriteSource,
+    write_contract,
+) -> tuple[bool, list[dict[str, Any]], str | None]:
+    inning_rows = _build_inning_scores(game_id, teams, season_year=game_date.year)
+    has_progress = bool(inning_rows) or game.home_score is not None or game.away_score is not None
+    new_status = derive_stable_game_status(
+        game_date=game_date,
+        current_status=game.game_status,
+        new_status=explicit_status,
+        home_score=game.home_score,
+        away_score=game.away_score,
+        has_progress_evidence=has_progress,
+    )
+    changed = _assign_field_if_changed(
+        game, "game_status", new_status, game_id=game_id, source=source, write_contract=write_contract
+    )
+    return changed, inning_rows, new_status
+
+
+def _update_detail_winner(
+    game: Game,
+    game_id: str,
+    home_info: dict[str, Any],
+    away_info: dict[str, Any],
+    new_status: str | None,
+    source: GameWriteSource,
+    write_contract,
+) -> bool:
+    if game.home_score is None or game.away_score is None or not is_terminal_status(new_status):
+        return False
+    winning_team, winning_score = _resolve_winner(home_info, away_info)
+    changed = _assign_field_if_changed(
+        game,
+        "winning_team",
+        winning_team,
+        game_id=game_id,
+        source=source,
+        write_contract=write_contract,
+        allow_empty=True,
+    )
+    changed |= _assign_field_if_changed(
+        game,
+        "winning_score",
+        winning_score,
+        game_id=game_id,
+        source=source,
+        write_contract=write_contract,
+        allow_empty=True,
+    )
+    return changed
+
+
+def _update_starting_pitchers(
+    game: Game,
+    game_id: str,
+    pitchers: dict[str, list[dict[str, Any]]],
+    source: GameWriteSource,
+    write_contract,
+) -> bool:
+    changed = False
+    for side, field_name in (("home", "home_pitcher"), ("away", "away_pitcher")):
+        pitcher_data = next((pitcher for pitcher in pitchers.get(side, []) if pitcher.get("is_starting")), None)
+        if pitcher_data:
+            changed |= _assign_field_if_changed(
+                game,
+                field_name,
+                pitcher_data.get("player_name"),
+                game_id=game_id,
+                source=source,
+                write_contract=write_contract,
+            )
+    return changed
+
+
+def _update_detail_children(
+    session,
+    game_id: str,
+    game_date: date,
+    hitters: dict[str, list[dict[str, Any]]],
+    pitchers: dict[str, list[dict[str, Any]]],
+    inning_rows: list[dict[str, Any]],
+    source: GameWriteSource,
+    write_contract,
+) -> bool:
+    changed = False
+    if inning_rows:
+        changed |= _replace_records(
+            session, GameInningScore, game_id, inning_rows, source=source, write_contract=write_contract
+        )
+    lineup_rows = _prepare_player_rows(
+        game_id, "game_lineups", _build_lineups(game_id, hitters, season_year=game_date.year)
+    )
+    batting_rows = _prepare_player_rows(
+        game_id, "game_batting_stats", _build_batting_stats(game_id, hitters, season_year=game_date.year)
+    )
+    pitching_rows = _prepare_player_rows(
+        game_id, "game_pitching_stats", _build_pitching_stats(game_id, pitchers, season_year=game_date.year)
+    )
+    changed |= _ensure_player_basic_stubs(session, [*lineup_rows, *batting_rows, *pitching_rows])
+    for model, rows in ((GameLineup, lineup_rows), (GameBattingStat, batting_rows), (GamePitchingStat, pitching_rows)):
+        if rows:
+            changed |= _replace_records(session, model, game_id, rows, source=source, write_contract=write_contract)
+    return changed
+
+
+def _summary_item_rows(
+    item: dict[str, Any],
+    game_id: str,
+    game_date: date,
+    participant_map: dict[str, str],
+    resolver,
+) -> list[dict[str, Any]]:
+    summary_type = item.get("summary_type")
+    detail_text = item.get("detail_text")
+    entries = _extract_players_from_text(summary_type, detail_text)
+    if not entries:
+        return [
+            {
+                "game_id": game_id,
+                "summary_type": summary_type,
+                "player_name": None,
+                "player_id": None,
+                "detail_text": detail_text,
+            }
+        ]
+
+    rows = []
+    for player_name, player_detail in entries:
+        player_id = participant_map.get(player_name)
+        if not player_id and summary_type != "심판":
+            player_id = resolver.resolve_id(player_name, None, game_date.year)
+        rows.append(
+            {
+                "game_id": game_id,
+                "summary_type": summary_type,
+                "player_name": player_name,
+                "player_id": player_id,
+                "detail_text": player_detail or detail_text,
+            },
+        )
+    return rows
+
+
+def _build_summary_rows(
+    session,
+    game_id: str,
+    game_date: date,
+    hitters: dict[str, list[dict[str, Any]]],
+    pitchers: dict[str, list[dict[str, Any]]],
+    summary_items: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    resolver = _new_strict_player_resolver(session)
+    participant_map = {
+        player["player_name"]: _normalize_player_id(player["player_id"])
+        for side in ("away", "home")
+        for player in hitters.get(side, []) + pitchers.get(side, [])
+        if player.get("player_name") and player.get("player_id")
+    }
+    summary_rows = []
+    for item in summary_items:
+        summary_rows.extend(_summary_item_rows(item, game_id, game_date, participant_map, resolver))
+    return summary_rows
+
+
 def save_game_detail(
     game_data: dict[str, Any],
     *,
@@ -265,11 +490,7 @@ def save_game_detail(
     away_info = teams.get("away", {}) or {}
     home_info = teams.get("home", {}) or {}
     provisional_game_id, _ = _canonicalize_game_id(game_data["game_id"])
-    game_date_str = str(game_data.get("game_date", "")).replace("-", "") or str(provisional_game_id or "")[:8]
-    try:
-        game_date = datetime.strptime(game_date_str, "%Y%m%d").date()
-    except ValueError:
-        game_date = datetime.now().date()
+    game_date_str, game_date = _parse_detail_game_date(game_data, provisional_game_id)
 
     game_id, original_game_id = _canonicalize_game_id_for_payload(
         game_data["game_id"],
@@ -292,15 +513,7 @@ def save_game_detail(
 
     with SessionLocal() as session:
         try:
-            game = session.query(Game).filter(Game.game_id == game_id).one_or_none()
-            changed = False
-            if not game:
-                game = Game(game_id=game_id, game_date=game_date)
-                session.add(game)
-                session.flush()  # Ensure game_id exists before child inserts
-                changed = True
-                if write_contract:
-                    write_contract.field_updated(game_id, source, "game.created", None, True)
+            game, changed = _get_or_create_game(session, game_id, game_date, source, write_contract)
             _record_game_id_alias(
                 session,
                 original_game_id,
@@ -309,121 +522,36 @@ def save_game_detail(
                 reason="normalized_to_kbo_legacy_game_id",
             )
 
-            changed |= _assign_field_if_changed(
+            changed |= _update_detail_core_fields(
                 game,
-                "game_date",
-                game_date,
                 game_id=game_id,
-                source=source,
-                write_contract=write_contract,
-            )
-            changed |= _assign_field_if_changed(
-                game,
-                "stadium",
-                metadata.get("stadium"),
-                game_id=game_id,
-                source=source,
-                write_contract=write_contract,
-            )
-            changed |= _assign_field_if_changed(
-                game,
-                "home_team",
-                home_info.get("code"),
-                game_id=game_id,
-                source=source,
-                write_contract=write_contract,
-            )
-            changed |= _assign_field_if_changed(
-                game,
-                "away_team",
-                away_info.get("code"),
-                game_id=game_id,
-                source=source,
-                write_contract=write_contract,
-            )
-            changed |= _assign_field_if_changed(
-                game,
-                "home_score",
-                home_info.get("score"),
-                game_id=game_id,
-                source=source,
-                write_contract=write_contract,
-                allow_empty=True,
-            )
-            changed |= _assign_field_if_changed(
-                game,
-                "away_score",
-                away_info.get("score"),
-                game_id=game_id,
-                source=source,
-                write_contract=write_contract,
-                allow_empty=True,
-            )
-            # Resolve stable status using evidence from detail payload
-            inning_rows = _build_inning_scores(game_id, teams, season_year=game_date.year)
-            has_progress = bool(inning_rows) or game.home_score is not None or game.away_score is not None
-
-            new_status = derive_stable_game_status(
                 game_date=game_date,
-                current_status=game.game_status,
-                new_status=explicit_status,
-                home_score=game.home_score,
-                away_score=game.away_score,
-                has_progress_evidence=has_progress,
-            )
-            changed |= _assign_field_if_changed(
-                game,
-                "game_status",
-                new_status,
-                game_id=game_id,
+                metadata=metadata,
+                home_info=home_info,
+                away_info=away_info,
                 source=source,
                 write_contract=write_contract,
             )
-
-            # Winner resolution logic
-            score_complete = game.home_score is not None and game.away_score is not None
-            if score_complete and is_terminal_status(new_status):
-                winning_team, winning_score = _resolve_winner(home_info, away_info)
-                changed |= _assign_field_if_changed(
-                    game,
-                    "winning_team",
-                    winning_team,
-                    game_id=game_id,
-                    source=source,
-                    write_contract=write_contract,
-                    allow_empty=True,
-                )
-                changed |= _assign_field_if_changed(
-                    game,
-                    "winning_score",
-                    winning_score,
-                    game_id=game_id,
-                    source=source,
-                    write_contract=write_contract,
-                    allow_empty=True,
-                )
-
-            # Update Starting Pitchers
-            home_pitcher_data = next((p for p in pitchers.get("home", []) if p.get("is_starting")), None)
-            away_pitcher_data = next((p for p in pitchers.get("away", []) if p.get("is_starting")), None)
-            if home_pitcher_data:
-                changed |= _assign_field_if_changed(
-                    game,
-                    "home_pitcher",
-                    home_pitcher_data.get("player_name"),
-                    game_id=game_id,
-                    source=source,
-                    write_contract=write_contract,
-                )
-            if away_pitcher_data:
-                changed |= _assign_field_if_changed(
-                    game,
-                    "away_pitcher",
-                    away_pitcher_data.get("player_name"),
-                    game_id=game_id,
-                    source=source,
-                    write_contract=write_contract,
-                )
+            status_changed, inning_rows, new_status = _update_detail_status(
+                game,
+                game_id,
+                game_date,
+                teams,
+                explicit_status,
+                source,
+                write_contract,
+            )
+            changed |= status_changed
+            changed |= _update_detail_winner(
+                game,
+                game_id=game_id,
+                home_info=home_info,
+                away_info=away_info,
+                new_status=new_status,
+                source=source,
+                write_contract=write_contract,
+            )
+            changed |= _update_starting_pitchers(game, game_id, pitchers, source, write_contract)
 
             season_id = _resolve_game_season_id(session, game_data, game_date, game.season_id)
             if season_id:
@@ -449,113 +577,20 @@ def save_game_detail(
                 source=source,
                 write_contract=write_contract,
             )
-            inning_rows = _build_inning_scores(game_id, teams, season_year=game_date.year)
-            if inning_rows:
-                changed |= _replace_records(
-                    session,
-                    GameInningScore,
-                    game_id,
-                    inning_rows,
-                    source=source,
-                    write_contract=write_contract,
-                )
-
-            lineup_rows = _prepare_player_rows(
-                game_id,
-                "game_lineups",
-                _build_lineups(game_id, hitters, season_year=game_date.year),
-            )
-            batting_rows = _prepare_player_rows(
-                game_id,
-                "game_batting_stats",
-                _build_batting_stats(game_id, hitters, season_year=game_date.year),
-            )
-            pitching_rows = _prepare_player_rows(
-                game_id,
-                "game_pitching_stats",
-                _build_pitching_stats(game_id, pitchers, season_year=game_date.year),
-            )
-
-            changed |= _ensure_player_basic_stubs(
+            changed |= _update_detail_children(
                 session,
-                [*lineup_rows, *batting_rows, *pitching_rows],
+                game_id,
+                game_date,
+                hitters,
+                pitchers,
+                inning_rows,
+                source,
+                write_contract,
             )
-            if lineup_rows:
-                changed |= _replace_records(
-                    session,
-                    GameLineup,
-                    game_id,
-                    lineup_rows,
-                    source=source,
-                    write_contract=write_contract,
-                )
-            if batting_rows:
-                changed |= _replace_records(
-                    session,
-                    GameBattingStat,
-                    game_id,
-                    batting_rows,
-                    source=source,
-                    write_contract=write_contract,
-                )
-            if pitching_rows:
-                changed |= _replace_records(
-                    session,
-                    GamePitchingStat,
-                    game_id,
-                    pitching_rows,
-                    source=source,
-                    write_contract=write_contract,
-                )
 
-            # Game Summary Handling
-            resolver = _new_strict_player_resolver(session)
-            summary_rows = []
-
-            # Map for quick name lookup for this game
-            participant_map = {}  # name -> id
-            for side in ("away", "home"):
-                for p in hitters.get(side, []) + pitchers.get(side, []):
-                    if p.get("player_name") and p.get("player_id"):
-                        participant_map[p["player_name"]] = _normalize_player_id(p["player_id"])
-
-            for item in game_data.get("summary") or []:
-                summary_type = item.get("summary_type")
-                detail_text = item.get("detail_text")
-
-                # Extract individual player entries if possible
-                entries = _extract_players_from_text(summary_type, detail_text)
-
-                if not entries:
-                    # Fallback or category without specific players (like weather potentially)
-                    summary_rows.append(
-                        {
-                            "game_id": game_id,
-                            "summary_type": summary_type,
-                            "player_name": None,
-                            "player_id": None,
-                            "detail_text": detail_text,
-                        },
-                    )
-                else:
-                    for p_name, p_detail in entries:
-                        p_id = participant_map.get(p_name)
-                        if not p_id and summary_type != "심판":
-                            p_id = resolver.resolve_id(
-                                p_name,
-                                None,
-                                game_date.year,
-                            )  # Try global resolve if not in participant list
-
-                        summary_rows.append(
-                            {
-                                "game_id": game_id,
-                                "summary_type": summary_type,
-                                "player_name": p_name,
-                                "player_id": p_id,
-                                "detail_text": p_detail or detail_text,
-                            },
-                        )
+            summary_rows = _build_summary_rows(
+                session, game_id, game_date, hitters, pitchers, game_data.get("summary") or []
+            )
             if summary_rows:
                 changed |= _replace_records(
                     session,
@@ -570,7 +605,7 @@ def save_game_detail(
             if changed:
                 _auto_sync_to_oci(game_id)
             return True
-        except Exception:
+        except GAME_SAVE_EXCEPTIONS:
             session.rollback()
             logger.exception("[ERROR] DB Error (Detail)")
             return False
@@ -677,7 +712,7 @@ def save_game_snapshot(game_data: dict[str, Any], *, status: str | None = None) 
             session.commit()
             _auto_sync_to_oci(game_id)
             return True
-        except Exception:
+        except GAME_SAVE_EXCEPTIONS:
             session.rollback()
             logger.exception("[ERROR] DB Error (Snapshot)")
             return False
@@ -833,7 +868,7 @@ def save_pregame_lineups(preview_data: dict[str, Any]) -> bool:
             session.commit()
             _auto_sync_to_oci(game_id)
             return True
-        except Exception:
+        except GAME_SAVE_EXCEPTIONS:
             session.rollback()
             logger.exception("[ERROR] DB Error (Pregame)")
             return False

@@ -106,6 +106,16 @@ PITCHER_POSITIONS = {"P", "투수"}
 NO_IMAGE_SENTINEL = "no-Image.png"
 
 HAND_MAP = {"우": "R", "좌": "L", "양": "S"}
+PROFILE_CRAWL_EXCEPTIONS = (
+    PlaywrightError,
+    TimeoutError,
+    RuntimeError,
+    ValueError,
+    TypeError,
+    KeyError,
+    IndexError,
+    OSError,
+)
 
 
 def _parse_hands(text: str) -> dict[str, str | None]:
@@ -226,7 +236,7 @@ class PlayerProfileCrawler:
             page = await pool.acquire()
             try:
                 return await self._fetch_profile(page, player_id, position)
-            except Exception:
+            except PROFILE_CRAWL_EXCEPTIONS:
                 logger.exception("❌ Profile crawl failed for %s", player_id)
                 return None
             finally:
@@ -327,7 +337,7 @@ class PlayerProfileCrawler:
                 }
                 self._last_failure_reason.pop(str(player_id), None)
                 return result
-            except Exception:
+            except PROFILE_CRAWL_EXCEPTIONS:
                 logger.exception("   (Failed attempt at %s)", url)
                 last_reason = "selector_timeout"
                 continue
@@ -341,7 +351,7 @@ class PlayerProfileCrawler:
         await page.goto(url, wait_until="domcontentloaded", timeout=NAV_TIMEOUT)
 
         # Wait for any name element to be attached
-        with contextlib.suppress(Exception):
+        with contextlib.suppress(PlaywrightError, TimeoutError):
             await page.wait_for_selector('[id$="lblName"], .player_basic, .player_info', timeout=SEL_TIMEOUT)
 
         # Wait for potential AJAX content or image source update

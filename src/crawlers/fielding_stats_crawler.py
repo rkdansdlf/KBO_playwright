@@ -10,6 +10,8 @@ import sqlite3
 from datetime import datetime
 from typing import Any
 
+from playwright.sync_api import Error as PlaywrightError
+from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 from playwright.sync_api import sync_playwright
 
 from src.crawlers.selectors import FIELDING_STATS
@@ -17,6 +19,17 @@ from src.utils.playwright_blocking import install_sync_resource_blocking
 from src.utils.type_helpers import parse_innings, safe_float, safe_int
 
 logger = logging.getLogger(__name__)
+CRAWLER_EXCEPTIONS = (
+    PlaywrightError,
+    PlaywrightTimeoutError,
+    RuntimeError,
+    ValueError,
+    TypeError,
+    AttributeError,
+    IndexError,
+    OSError,
+)
+DB_EXCEPTIONS = (sqlite3.DatabaseError, RuntimeError, ValueError, TypeError)
 import contextlib
 
 from src.utils.player_season_stat_validation import filter_valid_season_stat_payloads
@@ -69,7 +82,7 @@ def crawl_all_fielding_stats(year=None) -> list[dict[str, Any]]:
         try:
             page.goto(url, wait_until="load", timeout=LONG_TIMEOUT)
             page.wait_for_load_state("networkidle", timeout=SEL_TIMEOUT)
-        except Exception:
+        except CRAWLER_EXCEPTIONS:
             logger.exception("⚠️ 페이지 초기 대기 중 경고 (무시 가능)")
         policy.delay()
 
@@ -78,7 +91,7 @@ def crawl_all_fielding_stats(year=None) -> list[dict[str, Any]]:
             year_select = page.query_selector(FIELDING_STATS.season_dropdown)
             if year_select:
                 page.select_option(FIELDING_STATS.season_dropdown, str(year))
-                with contextlib.suppress(Exception):
+                with contextlib.suppress(PlaywrightError, PlaywrightTimeoutError):
                     page.wait_for_load_state("networkidle", timeout=SEL_TIMEOUT)
                 policy.delay()
                 logger.info("✅ %s년 데이터 선택 완료", year)
@@ -157,7 +170,7 @@ def crawl_all_fielding_stats(year=None) -> list[dict[str, Any]]:
                                         page_link.click()
                                     page.wait_for_load_state("networkidle", timeout=SEL_TIMEOUT)
                                     policy.delay()
-                            except Exception:
+                            except CRAWLER_EXCEPTIONS:
                                 logger.exception("   ⚠️ 페이지 %s 이동 중 오류", current_page)
                                 break
 
@@ -202,10 +215,10 @@ def crawl_all_fielding_stats(year=None) -> list[dict[str, Any]]:
                                         "source": "CRAWLER",
                                     }
                                     fielding_data_map[(player_id, team_id, pos_id)] = record
-                                except Exception:
+                                except CRAWLER_EXCEPTIONS:
                                     logger.exception("   ⚠️ 데이터 행 파싱 오류")
                                     continue
-                except Exception:
+                except CRAWLER_EXCEPTIONS:
                     logger.exception("   ⚠️ [%s] 처리 중 오류", team_name)
                     continue
 
@@ -297,14 +310,14 @@ def crawl_all_fielding_stats(year=None) -> list[dict[str, Any]]:
                                     player_id,
                                     row_team,
                                 )
-            except Exception:
+            except CRAWLER_EXCEPTIONS:
                 logger.exception("   ⚠️ 포수 상세 수집 실패")
 
             fielding_data = list(fielding_data_map.values())
             summary, fielding_data = build_fielding_crawl_summary(fielding_data)
             logger.info("\n✅ 총 %s개의 수비 기록 수집 완료!", len(fielding_data))
 
-        except Exception:
+        except CRAWLER_EXCEPTIONS:
             logger.exception("⚠️ 수비 기록 크롤링 중 오류")
             import traceback
 
@@ -381,7 +394,7 @@ def save_fielding_stats(year=None, db_path=None) -> None:
 
             saved_count += 1
 
-        except Exception:
+        except DB_EXCEPTIONS:
             logger.exception("⚠️ DB 저장 오류: %s", record["player_name"])
             skipped_count += 1
             continue

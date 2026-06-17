@@ -35,6 +35,7 @@ class RequestPolicy:
         user_agents: Iterable[str] | None = None,
         max_retries: int | None = None,
         backoff_factor: float | None = None,
+        retry_exceptions: tuple[type[BaseException], ...] = (Exception,),
     ) -> None:
         env_min = float(os.getenv("KBO_REQUEST_DELAY_MIN", min_delay or 1.5))
         env_max = float(os.getenv("KBO_REQUEST_DELAY_MAX", max_delay or 2.5))
@@ -46,6 +47,7 @@ class RequestPolicy:
         self.max_retries = int(os.getenv("KBO_REQUEST_MAX_RETRIES", max_retries or 3))
         self.backoff_factor = float(os.getenv("KBO_REQUEST_BACKOFF", backoff_factor or 1.5))
         self.user_agents = self._load_user_agents(user_agents)
+        self.retry_exceptions = retry_exceptions
 
     def _load_user_agents(self, override: Iterable[str] | None) -> list[str]:
         if override:
@@ -83,7 +85,7 @@ class RequestPolicy:
         for attempt in range(1, self.max_retries + 1):
             try:
                 return func(*args, **kwargs)
-            except Exception as exc:
+            except self.retry_exceptions as exc:
                 last_exc = exc
                 if attempt >= self.max_retries:
                     raise
@@ -97,7 +99,7 @@ class RequestPolicy:
         for attempt in range(1, self.max_retries + 1):
             try:
                 return await func(*args, **kwargs)
-            except Exception as exc:
+            except self.retry_exceptions as exc:
                 last_exc = exc
                 if attempt >= self.max_retries:
                     raise

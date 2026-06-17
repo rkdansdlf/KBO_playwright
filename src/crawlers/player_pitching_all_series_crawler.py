@@ -28,6 +28,7 @@ from datetime import datetime
 from playwright.sync_api import Error as PlaywrightError
 from playwright.sync_api import Page, sync_playwright
 from playwright.sync_api import TimeoutError as PlaywrightTimeout
+from sqlalchemy.exc import SQLAlchemyError
 
 from src.aggregators.season_stat_aggregator import SeasonStatAggregator
 from src.db.engine import SessionLocal
@@ -65,6 +66,16 @@ BASIC1_SORT_CODE = "G_CN"  # 'G' (경기) 헤더
 BASIC2_SORT_SEQUENCE = [
     ("NP", "PIT_CN"),  # 투구수
 ]
+CRAWLER_EXCEPTIONS = (
+    PlaywrightError,
+    PlaywrightTimeout,
+    RuntimeError,
+    ValueError,
+    TypeError,
+    AttributeError,
+    OSError,
+)
+DB_SAVE_EXCEPTIONS = (*CRAWLER_EXCEPTIONS, SQLAlchemyError)
 
 SERIES_MAPPING: dict[str, dict[str, str]] = {
     "regular": {
@@ -176,7 +187,7 @@ def go_to_next_page(page: Page, current_page: int, policy: RequestPolicy | None 
         wait_for_table(page)
         return True
 
-    except Exception:
+    except CRAWLER_EXCEPTIONS:
         logger.exception("❌ 페이지 이동 실패 (%sp -> next)", current_page)
         return False
 
@@ -231,7 +242,7 @@ def apply_sort(
 
         logger.warning("⚠️  '%s' 정렬 링크를 찾지 못했습니다.", header_label)
         return False
-    except Exception:
+    except CRAWLER_EXCEPTIONS:
         logger.exception("⚠️ 정렬 적용 실패")
         return False
 
@@ -510,7 +521,7 @@ def parse_basic1_page(
 
         return processed
 
-    except Exception:
+    except CRAWLER_EXCEPTIONS:
         logger.exception("❌ Basic1 파싱 오류 (JS)")
         return 0
 
@@ -634,7 +645,7 @@ def setup_pitcher_page(page: Page, url: str, year: int, series_value: str, polic
     logger.info("   🌐 Navigating to %s...", url)
     try:
         page.goto(url, wait_until="networkidle", timeout=LONG_TIMEOUT)
-    except Exception:
+    except CRAWLER_EXCEPTIONS:
         logger.exception("   ❌ %s 페이지 로딩 실패", url)
         return False
 
@@ -664,7 +675,7 @@ def setup_pitcher_page(page: Page, url: str, year: int, series_value: str, polic
             return False
 
         return True
-    except Exception:
+    except CRAWLER_EXCEPTIONS:
         logger.exception("   ⚠️ 페이지 설정 중 오류")
         return False
 
@@ -820,7 +831,7 @@ def crawl_pitcher_series(
                     logger.info("ℹ️ 팀별 순회 모드: %s개 팀 발견", len(team_options))
                 else:
                     logger.warning("⚠️ 팀 선택 드롭다운을 찾을 수 없습니다. 전체 모드로 진행.")
-            except Exception:
+            except CRAWLER_EXCEPTIONS:
                 logger.exception("⚠️ 팀 목록 추출 실패, 전체 모드로 진행")
                 team_options = []
 
@@ -837,7 +848,7 @@ def crawl_pitcher_series(
                     )
                     page.wait_for_load_state("networkidle", timeout=LONG_TIMEOUT)
                     policy.delay()
-                except Exception:
+                except CRAWLER_EXCEPTIONS:
                     logger.exception("⚠️ 팀 선택 실패 (%s)", tm["text"])
                     continue
 
@@ -934,7 +945,7 @@ def crawl_pitcher_series(
                 "📌 다음 단계: ./venv/bin/python3 -m src.cli.sync_oci --season-stats --year %s 실행하여 OCI 동기화",
                 year,
             )
-        except Exception:
+        except DB_SAVE_EXCEPTIONS:
             logger.exception("❌ 투수 데이터 저장 실패")
 
     return stats_list

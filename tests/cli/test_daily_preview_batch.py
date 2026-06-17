@@ -18,7 +18,7 @@ class TestDailyPreviewBatchCLI:
             MockCrawler.return_value = mock_instance
             mock_manifest.return_value = "/tmp/manifest.json"
 
-            result = main(["--date", "20251015"])
+            result = main(["--date", "20251015", "--no-sync"])
             assert result == 0
             mock_instance.crawl_preview_for_date.assert_called_once_with("20251015")
 
@@ -40,5 +40,5 @@ class TestDailyPreviewBatchCLI:
             MockCrawler.return_value = mock_instance
             mock_save.return_value = True
 
-            result = main(["--date", "20251015"])
+            result = main(["--date", "20251015", "--no-sync"])
             assert result == 0

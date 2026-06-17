@@ -16,6 +16,7 @@ from datetime import datetime
 from playwright.async_api import Error as PlaywrightError
 from playwright.async_api import Page
 
+from src.crawlers.selectors import GAME_DETAIL
 from src.db.engine import SessionLocal
 from src.urls import GAME_CENTER
 from src.utils.compliance import compliance
@@ -79,6 +80,16 @@ PITCHER_HEADER_MAP = {
 
 HITTER_FLOAT_KEYS = {"avg", "obp", "slg", "ops", "iso", "babip"}
 PITCHER_FLOAT_KEYS = {"era", "whip", "fip", "k_per_nine", "bb_per_nine", "kbb"}
+DETAIL_CRAWLER_EXCEPTIONS = (
+    PlaywrightError,
+    TimeoutError,
+    RuntimeError,
+    ValueError,
+    TypeError,
+    KeyError,
+    IndexError,
+    OSError,
+)
 
 
 class GameDetailCrawler:
@@ -135,7 +146,7 @@ class GameDetailCrawler:
 
         try:
             await self.policy.run_with_retry_async(_navigate)
-        except Exception:
+        except DETAIL_CRAWLER_EXCEPTIONS:
             logger.exception("❌ Failed to navigate %s for %s", section, game_id)
             return False, "navigation_error", url
 
@@ -208,7 +219,7 @@ class GameDetailCrawler:
                         try:
                             payload = await self._crawl_single(page, game_id, game_date, lightweight)
                             results[idx] = payload
-                        except Exception:  # pragma: no cover - resilience path
+                        except DETAIL_CRAWLER_EXCEPTIONS:  # pragma: no cover - resilience path
                             self._last_failure_reason[game_id] = "exception"
                             logger.exception("❌ Error crawling %s", game_id)
                         finally:
@@ -260,7 +271,7 @@ class GameDetailCrawler:
             # 1. Try to extract from the current REVIEW page directly first.
             # This is extremely fast, avoids redirection/timeout errors, and minimizes KBO server load.
             try:
-                review_tab = await page.query_selector("li[section='REVIEW']")
+                review_tab = await page.query_selector(GAME_DETAIL.review_tab)
                 if review_tab:
                     await review_tab.click()
                     await asyncio.sleep(0.5)
@@ -309,7 +320,7 @@ class GameDetailCrawler:
                         game_id,
                         game_date,
                         "HITTER",
-                        required_selector=("#tblAwayHitter1, #tblHomeHitter1, #tblAwayHitter3, #tblHomeHitter3"),
+                        required_selector=GAME_DETAIL.hitter_fallback,
                         selector_timeout=SEL_TIMEOUT,
                     )
                     if ok:
@@ -338,7 +349,7 @@ class GameDetailCrawler:
                         game_id,
                         game_date,
                         "PITCHER",
-                        required_selector="#tblAwayPitcher, #tblHomePitcher, #tblAwayPitcher1, #tblHomePitcher1",
+                        required_selector=GAME_DETAIL.pitcher_fallback,
                         selector_timeout=SEL_TIMEOUT,
                     )
                     if ok:
@@ -422,32 +433,8 @@ class GameDetailCrawler:
     async def _wait_for_boxscore(self, page: Page, *, game_id: str, lightweight: bool = False) -> tuple[bool, str]:
         """Wait for box score elements to be visible with fast-fail for cancelled games."""
 
-        status_selectors = (
-            "li.game-cont.on p.status",
-            "li.game-cont.on p.staus",
-            "li.game-cont.on .game-status.cancel",
-            ".game-status.cancel",
-        )
-
-        boxscore_selectors = (
-            "#tblAwayHitter1",
-            "#tblAwayHitter2",
-            "#tblAwayHitter3",
-            "#tblHomeHitter1",
-            "#tblHomeHitter2",
-            "#tblHomeHitter3",
-            "#tblAwayPitcher",
-            "#tblAwayPitcher1",
-            "#tblAwayPitcher2",
-            "#tblHomePitcher",
-            "#tblHomePitcher1",
-            "#tblHomePitcher2",
-            ".sms-score",
-            ".score-board",
-        )
-
         async def _is_cancelled() -> bool:
-            for selector in status_selectors:
+            for selector in GAME_DETAIL.status_selectors:
                 status_el = await page.query_selector(selector)
                 if not status_el:
                     continue
@@ -459,7 +446,7 @@ class GameDetailCrawler:
                     logger.info("ℹ️ Game %s is marked as CANCELLED in UI: '%s'", page.url, txt)
                     return True
             try:
-                content_area = await page.query_selector("#contents, .box-score-area")
+                content_area = await page.query_selector(GAME_DETAIL.content_boxscore_area)
                 if content_area:
                     txt = (await content_area.text_content() or "").strip()
                     if "취소" in txt:
@@ -472,7 +459,7 @@ class GameDetailCrawler:
             return False, "cancelled"
 
         try:
-            await page.wait_for_selector(", ".join(boxscore_selectors), timeout=SEL_TIMEOUT)
+            await page.wait_for_selector(", ".join(GAME_DETAIL.boxscore_presence_selectors), timeout=SEL_TIMEOUT)
             return True, "ok"
         except PlaywrightError:
             logger.warning("⚠️ Timeout waiting for boxscore selectors. Page URL: %s", page.url)
@@ -506,20 +493,20 @@ class GameDetailCrawler:
 
         try:
             # 1. Try explicit ID selectors (common in older years)
-            stadium_el = await page.query_selector("#txtStadium")
+            stadium_el = await page.query_selector(GAME_DETAIL.stadium)
             if stadium_el:
                 metadata["stadium"] = (await stadium_el.text_content()).replace("구장 :", "").strip()
 
-            crowd_el = await page.query_selector("#txtCrowd")
+            crowd_el = await page.query_selector(GAME_DETAIL.crowd)
             if crowd_el:
                 try:
                     val = (await crowd_el.text_content()).replace("관중 :", "").replace(",", "").strip()
                     metadata["attendance"] = int(val)
                 except (ValueError, TypeError):
-                    logger.debug("Failed to parse attendance value from #txtCrowd")
+                    logger.debug("Failed to parse attendance value from %s", GAME_DETAIL.crowd)
 
             # 2. Try generic area search
-            info_area = await page.query_selector(".box-score-area, .game-info, .score-board, .record-etc")
+            info_area = await page.query_selector(GAME_DETAIL.info_area)
             if not info_area:
                 return metadata
 
@@ -547,7 +534,7 @@ class GameDetailCrawler:
                 metadata["game_time"] = duration_match.group(1).strip()
                 metadata["duration_minutes"] = self._parse_duration_minutes(metadata["game_time"])
 
-        except Exception:  # pragma: no cover - resilience path
+        except DETAIL_CRAWLER_EXCEPTIONS:  # pragma: no cover - resilience path
             logger.exception("⚠️  Error extracting metadata")
 
         return metadata
@@ -708,7 +695,9 @@ class GameDetailCrawler:
         use_hitter_section: bool = False,
     ) -> list[dict[str, Any]]:
         selectors = (
-            ["#tblAwayHitter1", "#tblAwayHitter3"] if team_side == "away" else ["#tblHomeHitter1", "#tblHomeHitter3"]
+            [GAME_DETAIL.away_hitter_primary, GAME_DETAIL.away_hitter_extra]
+            if team_side == "away"
+            else [GAME_DETAIL.home_hitter_primary, GAME_DETAIL.home_hitter_extra]
         )
         tables = []
         for selector in selectors:
@@ -719,7 +708,7 @@ class GameDetailCrawler:
         base_rows = tables[0] if tables else []
         inning_rows = await self._extract_table_rows(
             page,
-            "#tblAwayHitter2" if team_side == "away" else "#tblHomeHitter2",
+            GAME_DETAIL.away_hitter_inning if team_side == "away" else GAME_DETAIL.home_hitter_inning,
         )
         extra_rows = tables[1] if len(tables) > 1 else []
 
@@ -851,9 +840,17 @@ class GameDetailCrawler:
         use_pitcher_section: bool = False,
     ) -> list[dict[str, Any]]:
         selectors = (
-            ["#tblAwayPitcher", "#tblAwayPitcher1", "#tblAwayPitcher2"]
+            [
+                GAME_DETAIL.away_pitcher_primary,
+                GAME_DETAIL.away_pitcher_alt,
+                GAME_DETAIL.away_pitcher_alt2,
+            ]
             if team_side == "away"
-            else ["#tblHomePitcher", "#tblHomePitcher1", "#tblHomePitcher2"]
+            else [
+                GAME_DETAIL.home_pitcher_primary,
+                GAME_DETAIL.home_pitcher_alt,
+                GAME_DETAIL.home_pitcher_alt2,
+            ]
         )
         rows = []
         for selector in selectors:
@@ -1061,7 +1058,7 @@ class GameDetailCrawler:
 
     async def _extract_game_summary(self, page: Page) -> list[dict[str, str]]:
         """Extracts game summary details from #tblEtc (Winning hit, HR, Errors, Umpires, etc.)"""
-        selector = "#tblEtc"
+        selector = GAME_DETAIL.etc_table
         if not await page.query_selector(selector):
             return []
 
@@ -1106,9 +1103,9 @@ class GameDetailCrawler:
             async def _navigate_lineup() -> None:
                 await self.policy.delay_async()
                 await page.goto(lineup_url, wait_until="domcontentloaded", timeout=NAV_TIMEOUT)
-                with contextlib.suppress(Exception):
+                with contextlib.suppress(PlaywrightError, TimeoutError):
                     await page.wait_for_selector(
-                        'a[href*="Player/PlayerDetail"], a[href*="playerId="], a[href*="p_id="]',
+                        GAME_DETAIL.lineup_link,
                         timeout=SEL_TIMEOUT,
                     )
 
@@ -1117,7 +1114,7 @@ class GameDetailCrawler:
                 roster_map = await self._extract_roster_from_lineup(page)
                 if roster_map:
                     break
-            except Exception:
+            except DETAIL_CRAWLER_EXCEPTIONS:
                 logger.exception("⚠️  Failed lineup roster crawl for %s (%s)", game_id, section)
 
         # Always return to REVIEW page for box score extraction.
@@ -1129,7 +1126,7 @@ class GameDetailCrawler:
 
             await self.policy.run_with_retry_async(_navigate_back)
             await self._wait_for_boxscore(page, game_id=game_id)
-        except Exception:
+        except DETAIL_CRAWLER_EXCEPTIONS:
             logger.exception("⚠️  Failed to return to review page for %s", game_id)
         return roster_map
 

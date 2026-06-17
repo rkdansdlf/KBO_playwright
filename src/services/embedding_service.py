@@ -9,8 +9,12 @@ import logging
 import os
 
 import httpx
+from sqlalchemy.exc import SQLAlchemyError
 
 logger = logging.getLogger(__name__)
+
+EMBEDDING_DB_EXCEPTIONS = (SQLAlchemyError, RuntimeError, ValueError, TypeError, OSError)
+EMBEDDING_HTTP_EXCEPTIONS = (httpx.HTTPError, ValueError, TypeError, RuntimeError, OSError)
 
 
 class EmbeddingService:
@@ -95,10 +99,10 @@ class EmbeddingService:
 
                     emb = row.embedding
                     if isinstance(emb, str):
-                        with contextlib.suppress(Exception):
+                        with contextlib.suppress(json.JSONDecodeError, TypeError):
                             emb = json.loads(emb)
                     cached_map[row.text_hash] = emb
-        except Exception:
+        except EMBEDDING_DB_EXCEPTIONS:
             logger.exception("⚠️ Warning: Embedding cache lookup error (continuing without cache)")
 
         # 4. Identify which texts need API calls
@@ -136,7 +140,7 @@ class EmbeddingService:
                             cache_entry = EmbeddingCache(text_hash=text_hash, model_name=model_name, embedding=emb)
                             session.add(cache_entry)
                     session.commit()
-            except Exception:
+            except EMBEDDING_DB_EXCEPTIONS:
                 logger.exception("⚠️ Warning: Failed to save to embedding cache")
 
             # Merge new embeddings into cached map
@@ -171,7 +175,7 @@ class EmbeddingService:
                     return embeddings
                 else:
                     logger.error("❌ OpenRouter Embedding API returned status %s: %s", res.status_code, res.text)
-        except Exception:
+        except EMBEDDING_HTTP_EXCEPTIONS:
             logger.exception("❌ Exception fetching OpenRouter embeddings")
 
         # Fallback empty vectors
@@ -207,7 +211,7 @@ class EmbeddingService:
                     return [item.get("values", []) for item in embeddings_data]
                 else:
                     logger.error("❌ Google Embedding API returned status %s: %s", res.status_code, res.text)
-        except Exception:
+        except EMBEDDING_HTTP_EXCEPTIONS:
             logger.exception("❌ Exception fetching Google embeddings")
 
         # Fallback empty vectors (Google text-embedding-004 dimensions = 768, target = 256)

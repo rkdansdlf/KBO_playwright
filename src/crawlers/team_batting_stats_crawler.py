@@ -12,6 +12,7 @@ from bs4 import BeautifulSoup
 from playwright.sync_api import Error as PlaywrightError
 from playwright.sync_api import Page, sync_playwright
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
+from sqlalchemy.exc import SQLAlchemyError
 
 from src.aggregators.team_stat_aggregator import TeamStatAggregator
 from src.db.engine import SessionLocal
@@ -23,6 +24,9 @@ from src.utils.team_mapping import get_team_mapping_for_year
 from src.utils.team_stats_helpers import get_cell_value, parse_numeric, resolve_team_id
 
 logger = logging.getLogger(__name__)
+
+TEAM_BATTING_CRAWL_EXCEPTIONS = (PlaywrightError, PlaywrightTimeoutError, RuntimeError, ValueError, TypeError, OSError)
+TEAM_BATTING_FALLBACK_EXCEPTIONS = (SQLAlchemyError, RuntimeError, ValueError, TypeError, KeyError, OSError)
 
 TEAM_BATTING_URLS = [
     "https://www.koreabaseball.com/Record/Team/Hitter/Basic.aspx",
@@ -102,7 +106,7 @@ class TeamBattingStatsCrawler:
         stats = []
         try:
             stats = self._collect_from_site(season, team_mapping, headless=headless)
-        except (PlaywrightError, PlaywrightTimeoutError, RuntimeError, ValueError) as crawl_err:
+        except TEAM_BATTING_CRAWL_EXCEPTIONS as crawl_err:
             logger.warning("Team batting crawl failed: %s. Falling back...", crawl_err)
 
         if not stats:
@@ -124,9 +128,9 @@ class TeamBattingStatsCrawler:
 
                         calc = StandingsCalculator(session)
                         calc.calculate_year(season)
-                    except Exception:
+                    except TEAM_BATTING_FALLBACK_EXCEPTIONS:
                         logger.exception("Standings calculation fallback error")
-            except Exception as fallback_error:
+            except TEAM_BATTING_FALLBACK_EXCEPTIONS as fallback_error:
                 logger.exception("[ERROR] 팀 타격 집계 폴백 실패: %s", fallback_error)
                 raise
 

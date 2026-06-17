@@ -15,6 +15,7 @@ from typing import Any
 from zoneinfo import ZoneInfo
 
 from sqlalchemy import func, inspect, text
+from sqlalchemy.exc import SQLAlchemyError
 
 from src.models.broadcast import GameBroadcast
 from src.models.game import (
@@ -40,6 +41,7 @@ from src.utils.game_status import (
 logger = logging.getLogger(__name__)
 KST = ZoneInfo("Asia/Seoul")
 FALSE_ENV_VALUES = {"0", "false", "no", "off"}
+P0_READINESS_DB_EXCEPTIONS = (SQLAlchemyError, RuntimeError, ValueError, TypeError, OSError)
 
 
 def _env_enabled(name: str, default: str = "1") -> bool:
@@ -87,7 +89,7 @@ def _has_text(value: Any) -> bool:
 def _safe_rows(query) -> list[Any]:
     try:
         return list(query.all())
-    except Exception:
+    except P0_READINESS_DB_EXCEPTIONS:
         logger.exception("P0 readiness query failed")
         return []
 
@@ -124,7 +126,7 @@ def _query_games(session, start: date, end: date) -> list[Any]:
     )
     try:
         existing_columns = {column["name"] for column in inspect(session.get_bind()).get_columns("game")}
-    except Exception:
+    except P0_READINESS_DB_EXCEPTIONS:
         logger.exception("P0 readiness could not inspect game table columns")
         existing_columns = set(required)
 
@@ -149,7 +151,7 @@ def _query_games(session, start: date, end: date) -> list[Any]:
             .mappings()
             .all()
         )
-    except Exception:
+    except P0_READINESS_DB_EXCEPTIONS:
         logger.exception("P0 readiness game query failed")
         return []
     games: list[Any] = []
@@ -296,26 +298,7 @@ def _broadcast_missing_reason(game: Any, target_day: date) -> str:
     return "broadcast_source_unavailable"
 
 
-def build_p0_readiness(
-    session,
-    *,
-    target_date: str | date | datetime | None = None,
-    lookback_days: int = 7,
-    lookahead_days: int = 1,
-    oci_skip_counts: dict[str, int] | None = None,
-    oci_skip_game_ids: dict[str, list[str]] | None = None,
-) -> dict[str, Any]:
-    """Build a JSON-serializable P0 readiness report for a date window."""
-    target = normalize_yyyymmdd(target_date)
-    target_day = _date_from_yyyymmdd(target)
-    start_day = target_day - timedelta(days=max(0, int(lookback_days or 0)))
-    end_day = target_day + timedelta(days=max(0, int(lookahead_days or 0)))
-
-    games = _query_games(session, start_day, end_day)
-    game_ids = [game.game_id for game in games if game.game_id]
-    metadata = _metadata_by_game(session, game_ids)
-    failures: list[dict[str, Any]] = []
-
+def _partition_games(games: list[Any], target_day: date) -> dict[str, Any]:
     active_games = [game for game in games if not _is_cancelled_or_postponed(game)]
     scheduled_games = [
         game
@@ -329,8 +312,20 @@ def build_p0_readiness(
         or str(game.game_lifecycle_state or "").lower() in {"running", "delayed", "suspended"}
     ]
     completed_games = [game for game in active_games if _status(game.game_status) in COMPLETED_LIKE_GAME_STATUSES]
-    relay_games = sorted({game.game_id for game in completed_games + live_games if game.game_id})
+    return {
+        "active_games": active_games,
+        "scheduled_games": scheduled_games,
+        "live_games": live_games,
+        "completed_games": completed_games,
+        "relay_games": sorted({game.game_id for game in completed_games + live_games if game.game_id}),
+    }
 
+
+def _check_schedule_completeness(
+    active_games: list[Any],
+    metadata: dict[str, GameMetadata],
+    failures: list[dict[str, Any]],
+) -> None:
     for game in active_games:
         game_date = _date_key(game.game_date)
         meta = metadata.get(game.game_id)
@@ -354,99 +349,93 @@ def build_p0_readiness(
             )
         if not _meta_has_start_time(meta):
             _add_failure(
-                failures,
-                dataset="schedule",
-                game_id=game.game_id,
-                game_date=game_date,
-                reason="missing_start_time",
+                failures, dataset="schedule", game_id=game.game_id, game_date=game_date, reason="missing_start_time"
             )
         if not _meta_has_stadium(game, meta):
             _add_failure(
-                failures,
-                dataset="schedule",
-                game_id=game.game_id,
-                game_date=game_date,
-                reason="missing_stadium",
+                failures, dataset="schedule", game_id=game.game_id, game_date=game_date, reason="missing_stadium"
             )
 
+
+def _check_pregame_completeness(
+    session,
+    scheduled_games: list[Any],
+    failures: list[dict[str, Any]],
+) -> dict[str, Any]:
     lineup_sides = _lineup_sides_by_game(session, [game.game_id for game in scheduled_games])
     preview_ids = _preview_games(session, [game.game_id for game in scheduled_games])
     starters_complete = 0
     lineups_complete = 0
+
     for game in scheduled_games:
         game_date = _date_key(game.game_date)
         if _has_text(game.away_pitcher) and _has_text(game.home_pitcher):
             starters_complete += 1
         else:
             _add_failure(
-                failures,
-                dataset="pregame",
-                game_id=game.game_id,
-                game_date=game_date,
-                reason="missing_starter",
+                failures, dataset="pregame", game_id=game.game_id, game_date=game_date, reason="missing_starter"
             )
+
         if {"away", "home"} <= lineup_sides.get(game.game_id, set()):
             lineups_complete += 1
         else:
             _add_failure(
-                failures,
-                dataset="pregame",
-                game_id=game.game_id,
-                game_date=game_date,
-                reason="missing_lineup",
+                failures, dataset="pregame", game_id=game.game_id, game_date=game_date, reason="missing_lineup"
             )
+
         if game.game_id not in preview_ids:
             _add_failure(
-                failures,
-                dataset="pregame",
-                game_id=game.game_id,
-                game_date=game_date,
-                reason="missing_preview",
+                failures, dataset="pregame", game_id=game.game_id, game_date=game_date, reason="missing_preview"
             )
 
-    event_counts = _count_by_game(session, GameEvent, relay_games)
-    pbp_counts = _count_by_game(session, GamePlayByPlay, relay_games)
-    max_innings: dict[str, int] = {}
-    if relay_games:
-        rows = _safe_rows(
-            session.query(GamePlayByPlay.game_id, func.max(GamePlayByPlay.inning))
-            .filter(GamePlayByPlay.game_id.in_(relay_games))
-            .group_by(GamePlayByPlay.game_id),
-        )
-        max_innings = {str(game_id): int(max_inning or 0) for game_id, max_inning in rows}
+    return {"starters_complete": starters_complete, "lineups_complete": lineups_complete, "preview_ids": preview_ids}
 
+
+def _max_innings_by_game(session, relay_games: list[str]) -> dict[str, int]:
+    if not relay_games:
+        return {}
+    rows = _safe_rows(
+        session.query(GamePlayByPlay.game_id, func.max(GamePlayByPlay.inning))
+        .filter(GamePlayByPlay.game_id.in_(relay_games))
+        .group_by(GamePlayByPlay.game_id),
+    )
+    return {str(game_id): int(max_inning or 0) for game_id, max_inning in rows}
+
+
+def _check_live_completeness(
+    live_games: list[Any],
+    event_counts: dict[str, int],
+    pbp_counts: dict[str, int],
+    failures: list[dict[str, Any]],
+) -> None:
     for game in live_games:
         game_date = _date_key(game.game_date)
         has_relay = event_counts.get(game.game_id, 0) > 0 or pbp_counts.get(game.game_id, 0) > 0
         if not has_relay:
             _add_failure(
-                failures,
-                dataset="live",
-                game_id=game.game_id,
-                game_date=game_date,
-                reason="missing_live_relay",
+                failures, dataset="live", game_id=game.game_id, game_date=game_date, reason="missing_live_relay"
             )
         if not _score_present(game):
             _add_failure(
-                failures,
-                dataset="live",
-                game_id=game.game_id,
-                game_date=game_date,
-                reason="missing_live_score",
+                failures, dataset="live", game_id=game.game_id, game_date=game_date, reason="missing_live_score"
             )
 
+
+def _check_postgame_completeness(
+    session,
+    completed_games: list[Any],
+    failures: list[dict[str, Any]],
+) -> dict[str, int]:
     inning_counts = _count_by_game(session, GameInningScore, [game.game_id for game in completed_games])
     batting_sides = _side_counts_by_game(session, GameBattingStat, [game.game_id for game in completed_games])
     pitching_sides = _side_counts_by_game(session, GamePitchingStat, [game.game_id for game in completed_games])
     decision_ids = _pitching_decision_games(session, [game.game_id for game in completed_games])
-    postgame_scores_ok = 0
-    postgame_details_ok = 0
-    inning_scores_ok = 0
-    decisions_ok = 0
+    counts = {"scores_ok": 0, "details_ok": 0, "innings_ok": 0, "decisions_ok": 0}
+
     for game in completed_games:
         game_date = _date_key(game.game_date)
         if _score_present(game):
-            postgame_scores_ok += 1
+            counts["scores_ok"] += 1
         else:
             _add_failure(
                 failures,
@@ -456,10 +445,11 @@ def build_p0_readiness(
                 reason="missing_final_score",
                 severity="critical",
             )
+
         has_batting = {"away", "home"} <= batting_sides.get(game.game_id, set())
         has_pitching = {"away", "home"} <= pitching_sides.get(game.game_id, set())
         if has_batting and has_pitching:
-            postgame_details_ok += 1
+            counts["details_ok"] += 1
         else:
             _add_failure(
                 failures,
@@ -469,18 +459,16 @@ def build_p0_readiness(
                 reason="missing_boxscore_detail",
                 severity="critical",
             )
+
         if inning_counts.get(game.game_id, 0) > 0:
-            inning_scores_ok += 1
+            counts["innings_ok"] += 1
         else:
             _add_failure(
-                failures,
-                dataset="postgame",
-                game_id=game.game_id,
-                game_date=game_date,
-                reason="missing_inning_score",
+                failures, dataset="postgame", game_id=game.game_id, game_date=game_date, reason="missing_inning_score"
             )
+
         if game.game_id in decision_ids:
-            decisions_ok += 1
+            counts["decisions_ok"] += 1
         else:
             _add_failure(
                 failures,
@@ -490,9 +478,20 @@ def build_p0_readiness(
                 reason="missing_pitcher_decision",
             )
 
+    return counts
+
+
+def _check_relay_completeness(
+    relay_games: list[str],
+    active_games: list[Any],
+    event_counts: dict[str, int],
+    pbp_counts: dict[str, int],
+    failures: list[dict[str, Any]],
+) -> int:
     relay_ok = 0
+    active_by_game_id = {game.game_id: game for game in active_games}
     for game_id in relay_games:
-        game = next((candidate for candidate in active_games if candidate.game_id == game_id), None)
+        game = active_by_game_id.get(game_id)
         game_date = _date_key(game.game_date) if game else None
         if event_counts.get(game_id, 0) > 0 or pbp_counts.get(game_id, 0) > 0:
             relay_ok += 1
@@ -506,7 +505,15 @@ def build_p0_readiness(
                 reason="missing_relay",
                 severity=severity,
             )
+    return relay_ok
 
+
+def _check_roster_completeness(
+    session,
+    active_games: list[Any],
+    target_day: date,
+    failures: list[dict[str, Any]],
+) -> dict[str, Any]:
     roster_dates = sorted({game.game_date for game in active_games if game.game_date and game.game_date <= target_day})
     daily_roster_rows = _rows_by_date(session, TeamDailyRoster, TeamDailyRoster.roster_date, roster_dates)
     transaction_rows = _rows_by_date(session, RosterTransaction, RosterTransaction.transaction_date, roster_dates)
@@ -517,31 +524,81 @@ def build_p0_readiness(
             roster_dates_ok += 1
         else:
             _add_failure(failures, dataset="roster", game_date=key, reason="missing_daily_roster")
+    return {
+        "roster_dates": roster_dates,
+        "daily_roster_rows": daily_roster_rows,
+        "transaction_rows": transaction_rows,
+        "roster_dates_ok": roster_dates_ok,
+    }
 
+
+def _check_broadcast_completeness(
+    session,
+    active_games: list[Any],
+    target_day: date,
+    failures: list[dict[str, Any]],
+) -> dict[str, Any]:
     broadcast_counts = _count_by_game(session, GameBroadcast, [game.game_id for game in active_games])
     broadcast_ok = 0
-    broadcast_skip_counts: dict[str, int] = {}
-    broadcast_skip_game_ids: dict[str, list[str]] = {}
+    skip_counts: dict[str, int] = {}
+    skip_game_ids: dict[str, list[str]] = {}
     for game in active_games:
         if broadcast_counts.get(game.game_id, 0) > 0:
             broadcast_ok += 1
         else:
             reason = _broadcast_missing_reason(game, target_day)
-            broadcast_skip_counts[reason] = broadcast_skip_counts.get(reason, 0) + 1
-            broadcast_skip_game_ids.setdefault(reason, []).append(str(game.game_id))
+            skip_counts[reason] = skip_counts.get(reason, 0) + 1
+            skip_game_ids.setdefault(reason, []).append(str(game.game_id))
             _add_failure(
-                failures,
-                dataset="broadcast",
-                game_id=game.game_id,
-                game_date=_date_key(game.game_date),
-                reason=reason,
+                failures, dataset="broadcast", game_id=game.game_id, game_date=_date_key(game.game_date), reason=reason
             )
+    return {"broadcast_ok": broadcast_ok, "skip_counts": skip_counts, "skip_game_ids": skip_game_ids}
+
+
+def build_p0_readiness(
+    session,
+    *,
+    target_date: str | date | datetime | None = None,
+    lookback_days: int = 7,
+    lookahead_days: int = 1,
+    oci_skip_counts: dict[str, int] | None = None,
+    oci_skip_game_ids: dict[str, list[str]] | None = None,
+) -> dict[str, Any]:
+    """Build a JSON-serializable P0 readiness report for a date window."""
+    target = normalize_yyyymmdd(target_date)
+    target_day = _date_from_yyyymmdd(target)
+    start_day = target_day - timedelta(days=max(0, int(lookback_days or 0)))
+    end_day = target_day + timedelta(days=max(0, int(lookahead_days or 0)))
+
+    games = _query_games(session, start_day, end_day)
+    game_ids = [game.game_id for game in games if game.game_id]
+    metadata = _metadata_by_game(session, game_ids)
+    failures: list[dict[str, Any]] = []
+
+    partitions = _partition_games(games, target_day)
+    active_games = partitions["active_games"]
+    scheduled_games = partitions["scheduled_games"]
+    live_games = partitions["live_games"]
+    completed_games = partitions["completed_games"]
+    relay_games = partitions["relay_games"]
+
+    _check_schedule_completeness(active_games, metadata, failures)
+    pregame = _check_pregame_completeness(session, scheduled_games, failures)
+
+    event_counts = _count_by_game(session, GameEvent, relay_games)
+    pbp_counts = _count_by_game(session, GamePlayByPlay, relay_games)
+    max_innings = _max_innings_by_game(session, relay_games)
+    _check_live_completeness(live_games, event_counts, pbp_counts, failures)
+    postgame = _check_postgame_completeness(session, completed_games, failures)
+    relay_ok = _check_relay_completeness(relay_games, active_games, event_counts, pbp_counts, failures)
+    roster = _check_roster_completeness(session, active_games, target_day, failures)
+    broadcast = _check_broadcast_completeness(session, active_games, target_day, failures)
 
     pregame_total = len(scheduled_games)
     postgame_total = len(completed_games)
     live_total = len(live_games)
     relay_total = len(relay_games)
-    roster_total = len(roster_dates)
+    roster_total = len(roster["roster_dates"])
     broadcast_total = len(active_games)
     critical_failure_count = sum(1 for failure in failures if failure.get("severity") == "critical")
 
@@ -568,11 +625,11 @@ def build_p0_readiness(
         },
         "pregame": {
             "games": pregame_total,
-            "starters_complete": starters_complete,
-            "lineups_complete": lineups_complete,
-            "preview_rows": len(preview_ids),
-            "starter_coverage_pct": _coverage(starters_complete, pregame_total),
-            "lineup_coverage_pct": _coverage(lineups_complete, pregame_total),
+            "starters_complete": pregame["starters_complete"],
+            "lineups_complete": pregame["lineups_complete"],
+            "preview_rows": len(pregame["preview_ids"]),
+            "starter_coverage_pct": _coverage(pregame["starters_complete"], pregame_total),
+            "lineup_coverage_pct": _coverage(pregame["lineups_complete"], pregame_total),
         },
         "live": {
             "games": live_total,
@@ -584,12 +641,12 @@ def build_p0_readiness(
         },
         "postgame": {
             "games": postgame_total,
-            "scores_complete": postgame_scores_ok,
-            "boxscore_detail_complete": postgame_details_ok,
-            "inning_scores_present": inning_scores_ok,
-            "pitcher_decisions_present": decisions_ok,
-            "score_coverage_pct": _coverage(postgame_scores_ok, postgame_total),
-            "detail_coverage_pct": _coverage(postgame_details_ok, postgame_total),
+            "scores_complete": postgame["scores_ok"],
+            "boxscore_detail_complete": postgame["details_ok"],
+            "inning_scores_present": postgame["innings_ok"],
+            "pitcher_decisions_present": postgame["decisions_ok"],
+            "score_coverage_pct": _coverage(postgame["scores_ok"], postgame_total),
+            "detail_coverage_pct": _coverage(postgame["details_ok"], postgame_total),
         },
         "relay": {
             "games": relay_total,
@@ -600,18 +657,18 @@ def build_p0_readiness(
         },
         "roster": {
             "dates": roster_total,
-            "daily_roster_dates": roster_dates_ok,
-            "daily_roster_rows": sum(daily_roster_rows.values()),
-            "transaction_rows": sum(transaction_rows.values()),
-            "coverage_pct": _coverage(roster_dates_ok, roster_total),
+            "daily_roster_dates": roster["roster_dates_ok"],
+            "daily_roster_rows": sum(roster["daily_roster_rows"].values()),
+            "transaction_rows": sum(roster["transaction_rows"].values()),
+            "coverage_pct": _coverage(roster["roster_dates_ok"], roster_total),
         },
         "broadcast": {
             "games": broadcast_total,
-            "with_broadcast": broadcast_ok,
-            "missing": broadcast_total - broadcast_ok,
-            "coverage_pct": _coverage(broadcast_ok, broadcast_total),
-            "skip_counts": dict(sorted(broadcast_skip_counts.items())),
-            "skip_game_ids": {key: sorted(set(value)) for key, value in broadcast_skip_game_ids.items()},
+            "with_broadcast": broadcast["broadcast_ok"],
+            "missing": broadcast_total - broadcast["broadcast_ok"],
+            "coverage_pct": _coverage(broadcast["broadcast_ok"], broadcast_total),
+            "skip_counts": dict(sorted(broadcast["skip_counts"].items())),
+            "skip_game_ids": {key: sorted(set(value)) for key, value in broadcast["skip_game_ids"].items()},
         },
         "oci": {
             "sync_enabled": oci_sync_enabled,

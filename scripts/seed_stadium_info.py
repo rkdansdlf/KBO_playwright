@@ -11,6 +11,8 @@ logger = logging.getLogger(__name__)
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+from sqlalchemy.exc import SQLAlchemyError
+
 from src.db.engine import SessionLocal
 from src.repositories.stadium_info_repository import StadiumInfoRepository
 
@@ -231,7 +233,7 @@ def seed_stadium_info():
             repo.save_regulation(reg)
         session.commit()
         logger.info("Seeded %s stadiums and %s regulations.", count, len(REGULATION_DATA))
-    except Exception as e:
+    except (SQLAlchemyError, RuntimeError, ValueError, TypeError) as e:
         session.rollback()
         logger.error("Error: %s", e)
         raise

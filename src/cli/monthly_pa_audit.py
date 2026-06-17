@@ -13,9 +13,13 @@ from collections.abc import Sequence
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
+from sqlalchemy.exc import SQLAlchemyError
+
 from scripts.maintenance.audit_pa_formula import fix_year_formula
 
 logger = logging.getLogger(__name__)
+
+PA_AUDIT_EXCEPTIONS = (SQLAlchemyError, RuntimeError, ValueError, TypeError, OSError)
 
 
 def run_monthly_pa_audit(target_year: int) -> int:
@@ -23,7 +27,7 @@ def run_monthly_pa_audit(target_year: int) -> int:
     logger.info("Starting PA formula audit for year %s", target_year)
     try:
         fixed_rows = fix_year_formula(target_year, dry_run=False)
-    except Exception as exc:
+    except PA_AUDIT_EXCEPTIONS as exc:
         logger.exception("PA formula audit failed for %s", target_year)
         raise RuntimeError(f"PA formula audit failed for {target_year}: {exc}") from exc
 
@@ -65,7 +69,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     try:
         logger.info("Starting PA formula audit for year %s", target_year)
         fixed_rows = run_monthly_pa_audit(target_year)
-    except Exception as exc:
+    except PA_AUDIT_EXCEPTIONS as exc:
         logger.exception("PA formula audit failed")
         logger.error("PA formula audit failed: %s", exc)
         sys.exit(1)

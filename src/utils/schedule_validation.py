@@ -56,24 +56,19 @@ def validate_schedule_game_payload(
     expected_year: int | None = None,
     expected_month: int | None = None,
 ) -> tuple[bool, str | None]:
-    game_id = str(game.get("game_id") or "").strip()
-    if not game_id:
-        return False, "missing_game_id"
+    game_id_status = _validate_schedule_game_id(game)
+    if game_id_status[0] is None:
+        return False, game_id_status[1]
+    game_id = game_id_status[0]
 
-    game_date = parse_schedule_date(game.get("game_date"))
-    if not game_date:
-        return False, "invalid_game_date"
-    if expected_year is not None and game_date.year != expected_year:
-        return False, "schedule_date_mismatch"
-    if expected_month is not None and game_date.month != expected_month:
-        return False, "schedule_date_mismatch"
+    date_status = _validate_schedule_date(game, expected_year=expected_year, expected_month=expected_month)
+    if date_status[0] is None:
+        return False, date_status[1]
+    game_date = date_status[0]
 
-    id_parts = split_schedule_game_id(game_id)
-    if not id_parts:
-        return False, "invalid_game_id"
-    id_date, _, _, _ = id_parts
-    if id_date != game_date.strftime("%Y%m%d"):
-        return False, "game_id_date_mismatch"
+    id_date_status = _validate_schedule_id_date(game_id, game_date)
+    if id_date_status is not None:
+        return False, id_date_status
 
     for field in ("away_team_code", "home_team_code"):
         if not str(game.get(field) or "").strip():
@@ -86,6 +81,39 @@ def validate_schedule_game_payload(
         return False, "missing_stadium"
 
     return True, None
+
+
+def _validate_schedule_game_id(game: Mapping[str, Any]) -> tuple[str | None, str | None]:
+    game_id = str(game.get("game_id") or "").strip()
+    if not game_id:
+        return None, "missing_game_id"
+    return game_id, None
+
+
+def _validate_schedule_date(
+    game: Mapping[str, Any],
+    *,
+    expected_year: int | None,
+    expected_month: int | None,
+) -> tuple[date | None, str | None]:
+    game_date = parse_schedule_date(game.get("game_date"))
+    if not game_date:
+        return None, "invalid_game_date"
+    if expected_year is not None and game_date.year != expected_year:
+        return None, "schedule_date_mismatch"
+    if expected_month is not None and game_date.month != expected_month:
+        return None, "schedule_date_mismatch"
+    return game_date, None
+
+
+def _validate_schedule_id_date(game_id: str, game_date: date) -> str | None:
+    id_parts = split_schedule_game_id(game_id)
+    if not id_parts:
+        return "invalid_game_id"
+    id_date, _, _, _ = id_parts
+    if id_date != game_date.strftime("%Y%m%d"):
+        return "game_id_date_mismatch"
+    return None
 
 
 def is_detail_candidate_game(game: Mapping[str, Any], *, today: date | None = None) -> bool:

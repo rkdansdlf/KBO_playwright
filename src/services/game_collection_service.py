@@ -9,6 +9,8 @@ from dataclasses import dataclass, field
 from datetime import date, datetime
 from typing import Any, Protocol
 
+from sqlalchemy.exc import SQLAlchemyError
+
 from src.db.engine import SessionLocal
 from src.models.game import Game, GameBattingStat, GameEvent, GamePitchingStat, GamePlayByPlay
 from src.repositories.game_repository import save_game_detail, save_relay_data
@@ -556,7 +558,7 @@ def _derive_sh_sf_for_results(result: GameCollectionResult, log: Callable[[str],
                 updated = apply_sh_sf_to_batting_stats(session, game_id)
                 if updated:
                     updated_total += updated
-            except Exception:
+            except (SQLAlchemyError, RuntimeError, ValueError, TypeError):
                 logger.exception("SH/SF derivation failed for %s", game_id)
         if updated_total:
             session.commit()

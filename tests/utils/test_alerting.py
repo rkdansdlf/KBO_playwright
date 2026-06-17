@@ -1,3 +1,4 @@
+import urllib.error
 from unittest.mock import MagicMock, patch
 
 from src.utils.alerting import (
@@ -36,7 +37,7 @@ class TestTelegramBotClient:
             "TELEGRAM_CHAT_ID": "chat456",
         }.get(k, d)
 
-        mock_urlopen.side_effect = Exception("Network error")
+        mock_urlopen.side_effect = urllib.error.URLError("Network error")
         assert TelegramBotClient.send_message("Hello") is False
 
 

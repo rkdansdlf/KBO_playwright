@@ -67,38 +67,10 @@ def validate_live_events(events: list[dict[str, Any]]) -> list[str]:
         home_score = event.get("home_score", 0)
         away_score = event.get("away_score", 0)
 
-        # 1. Score regression detection
-        if home_score < prev_home_score:
-            warnings.append(f"event_{i}: home_score decreased {prev_home_score}->{home_score}")
-        if away_score < prev_away_score:
-            warnings.append(f"event_{i}: away_score decreased {prev_away_score}->{away_score}")
-
-        # 2. Inning regression detection
-        if prev_inning is not None:
-            if inning < prev_inning:
-                warnings.append(f"event_{i}: inning regressed {prev_inning}->{inning}")
-            elif inning == prev_inning and half is not None and prev_half is not None:
-                half_order = {"top": 0, "bottom": 1}
-                if half_order.get(half, 0) < half_order.get(prev_half, 1):
-                    warnings.append(f"event_{i}: half regressed {prev_half}->{half}")
-
-        # 3. Out count anomaly detection
-        if outs is not None and prev_outs is not None:
-            if outs < 0 or outs > 3:
-                warnings.append(f"event_{i}: out count out of range {outs}")
-            elif i > 0 and inning == prev_inning and half == prev_half:
-                out_diff = outs - prev_outs
-                if out_diff < 0:
-                    warnings.append(f"event_{i}: outs decreased {prev_outs}->{outs} without inning change")
-                elif out_diff > 3:
-                    warnings.append(f"event_{i}: outs jumped by {out_diff} in one event")
-
-        # 4. Event order reversal (event_seq continuity)
-        seq = event.get("event_seq")
-        if seq is not None and i > 0:
-            prev_seq = events[i - 1].get("event_seq")
-            if prev_seq is not None and seq <= prev_seq:
-                warnings.append(f"event_{i}: event_seq reversed {prev_seq}->{seq}")
+        warnings.extend(_score_regression_warnings(i, home_score, away_score, prev_home_score, prev_away_score))
+        warnings.extend(_inning_regression_warnings(i, inning, half, prev_inning, prev_half))
+        warnings.extend(_out_count_warnings(i, outs, inning, half, prev_outs, prev_inning, prev_half))
+        warnings.extend(_event_sequence_warnings(i, event, events))
 
         home_scores.append(home_score)
         away_scores.append(away_score)
@@ -109,6 +81,73 @@ def validate_live_events(events: list[dict[str, Any]]) -> list[str]:
         prev_away_score = away_score
 
     return warnings
+
+
+def _score_regression_warnings(
+    index: int,
+    home_score: int,
+    away_score: int,
+    prev_home_score: int,
+    prev_away_score: int,
+) -> list[str]:
+    warnings = []
+    if home_score < prev_home_score:
+        warnings.append(f"event_{index}: home_score decreased {prev_home_score}->{home_score}")
+    if away_score < prev_away_score:
+        warnings.append(f"event_{index}: away_score decreased {prev_away_score}->{away_score}")
+    return warnings
+
+
+def _inning_regression_warnings(
+    index: int,
+    inning: Any,
+    half: Any,
+    prev_inning: Any,
+    prev_half: Any,
+) -> list[str]:
+    if prev_inning is None:
+        return []
+    if inning < prev_inning:
+        return [f"event_{index}: inning regressed {prev_inning}->{inning}"]
+    if inning == prev_inning and half is not None and prev_half is not None:
+        half_order = {"top": 0, "bottom": 1}
+        if half_order.get(half, 0) < half_order.get(prev_half, 1):
+            return [f"event_{index}: half regressed {prev_half}->{half}"]
+    return []
+
+
+def _out_count_warnings(
+    index: int,
+    outs: Any,
+    inning: Any,
+    half: Any,
+    prev_outs: Any,
+    prev_inning: Any,
+    prev_half: Any,
+) -> list[str]:
+    if outs is None or prev_outs is None:
+        return []
+    if outs < 0 or outs > 3:
+        return [f"event_{index}: out count out of range {outs}"]
+    if index <= 0 or inning != prev_inning or half != prev_half:
+        return []
+
+    out_diff = outs - prev_outs
+    if out_diff < 0:
+        return [f"event_{index}: outs decreased {prev_outs}->{outs} without inning change"]
+    if out_diff > 3:
+        return [f"event_{index}: outs jumped by {out_diff} in one event"]
+    return []
+
+
+def _event_sequence_warnings(index: int, event: dict[str, Any], events: list[dict[str, Any]]) -> list[str]:
+    seq = event.get("event_seq")
+    if seq is None or index <= 0:
+        return []
+    prev_seq = events[index - 1].get("event_seq")
+    if prev_seq is not None and seq <= prev_seq:
+        return [f"event_{index}: event_seq reversed {prev_seq}->{seq}"]
+    return []
 
 
 def cross_validate_with_box_score(
@@ -191,50 +230,64 @@ def validate_pbp_payload(
     if not events and not raw_pbp_rows:
         return False, "empty_payload"
 
-    # 1. Structural Validation (Missing Inning Detection)
-    innings_in_pbp = sorted(list(set(row.get("inning") for row in raw_pbp_rows if row.get("inning") is not None)))
-    if not innings_in_pbp:
-        innings_in_pbp = sorted(list(set(event.get("inning") for event in events if event.get("inning") is not None)))
-
-    if not innings_in_pbp:
-        return False, "no_innings_found"
-
-    min_inn = innings_in_pbp[0]
-    max_inn = innings_in_pbp[-1]
-
-    if min_inn != 1:
-        return False, f"starts_at_inning_{min_inn}_instead_of_1"
-
-    expected_innings = set(range(1, max_inn + 1))
-    missing_innings = expected_innings - set(innings_in_pbp)
-    if missing_innings:
-        return False, f"missing_innings_{sorted(list(missing_innings))}"
+    inning_error = _validate_pbp_innings(events, raw_pbp_rows)
+    if inning_error is not None:
+        return False, inning_error
 
     # 2. Score Validation (Final Score Validation)
     game = session.query(Game).filter(Game.game_id == game_id).first()
     if game and game.game_status in (GAME_STATUS_COMPLETED, GAME_STATUS_DRAW, "COMPLETED", "DRAW"):
-        db_home_score = game.home_score
-        db_away_score = game.away_score
-
-        if db_home_score is not None and db_away_score is not None:
-            pbp_home_score = None
-            pbp_away_score = None
-            for event in reversed(events):
-                h_sc = event.get("home_score")
-                a_sc = event.get("away_score")
-                if h_sc is not None and a_sc is not None:
-                    try:
-                        pbp_home_score = int(h_sc)
-                        pbp_away_score = int(a_sc)
-                        break
-                    except (ValueError, TypeError):
-                        continue
-
-            if pbp_home_score is not None and pbp_away_score is not None:
-                if pbp_home_score != db_home_score or pbp_away_score != db_away_score:
-                    return (
-                        False,
-                        f"score_mismatch_pbp_{pbp_home_score}-{pbp_away_score}_vs_db_{db_home_score}-{db_away_score}",
-                    )
+        score_error = _validate_pbp_final_score(game, events)
+        if score_error is not None:
+            return False, score_error
 
     return True, None
+
+
+def _validate_pbp_innings(events: list[dict[str, Any]], raw_pbp_rows: list[dict[str, Any]]) -> str | None:
+    innings_in_pbp = sorted({row.get("inning") for row in raw_pbp_rows if row.get("inning") is not None})
+    if not innings_in_pbp:
+        innings_in_pbp = sorted({event.get("inning") for event in events if event.get("inning") is not None})
+
+    if not innings_in_pbp:
+        return "no_innings_found"
+
+    min_inn = innings_in_pbp[0]
+    max_inn = innings_in_pbp[-1]
+    if min_inn != 1:
+        return f"starts_at_inning_{min_inn}_instead_of_1"
+
+    missing_innings = set(range(1, max_inn + 1)) - set(innings_in_pbp)
+    if missing_innings:
+        return f"missing_innings_{sorted(list(missing_innings))}"
+    return None
+
+
+def _validate_pbp_final_score(game: Game, events: list[dict[str, Any]]) -> str | None:
+    db_home_score = game.home_score
+    db_away_score = game.away_score
+
+    if db_home_score is None or db_away_score is None:
+        return None
+
+    pbp_score = _last_pbp_score(events)
+    if pbp_score is None:
+        return None
+
+    pbp_home_score, pbp_away_score = pbp_score
+    if pbp_home_score != db_home_score or pbp_away_score != db_away_score:
+        return f"score_mismatch_pbp_{pbp_home_score}-{pbp_away_score}_vs_db_{db_home_score}-{db_away_score}"
+    return None
+
+
+def _last_pbp_score(events: list[dict[str, Any]]) -> tuple[int, int] | None:
+    for event in reversed(events):
+        h_sc = event.get("home_score")
+        a_sc = event.get("away_score")
+        if h_sc is None or a_sc is None:
+            continue
+        try:
+            return int(h_sc), int(a_sc)
+        except (ValueError, TypeError):
+            continue
+    return None

@@ -8,6 +8,7 @@ import logging
 from datetime import datetime, timedelta
 from typing import Any
 
+from playwright.async_api import Error as PlaywrightError
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -16,6 +17,8 @@ from src.models.game import Game
 from src.models.ticket_schedule import TicketSchedule
 
 logger = logging.getLogger(__name__)
+
+DYNAMIC_ROSTER_EXCEPTIONS = (PlaywrightError, TimeoutError, RuntimeError, ValueError, TypeError, KeyError, OSError)
 
 # Team ticketing rules mapping
 # (home_team) -> (days_before_game, hour_of_day, platform, default_url)
@@ -61,9 +64,9 @@ class DynamicDataCrawler:
             records = await self.roster_crawler.crawl_date_range(start_date, end_date)
             logger.info("   Collected %s roster movements.", len(records))
             return records
-        except Exception as e:
+        except DYNAMIC_ROSTER_EXCEPTIONS:
             logger.exception("⚠️ Error crawling roster")
-            raise e
+            raise
 
     def crawl_and_update_ticket_times(self, lookahead_days: int = 14) -> list[TicketSchedule]:
         """

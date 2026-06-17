@@ -11,6 +11,7 @@ from urllib.parse import urlparse
 
 import httpx
 from bs4 import BeautifulSoup
+from sqlalchemy.exc import SQLAlchemyError
 
 from src.db.engine import SessionLocal
 from src.repositories.parking_lot_repository import ParkingFeeRuleRepository, ParkingLotRepository
@@ -19,6 +20,9 @@ from src.utils.http_client import DEFAULT_HEADERS as HEADERS
 from src.utils.throttle import throttle
 
 logger = logging.getLogger(__name__)
+
+PARKING_CRAWL_EXCEPTIONS = (httpx.HTTPError, RuntimeError, ValueError, TypeError, OSError)
+PARKING_SAVE_EXCEPTIONS = (SQLAlchemyError, RuntimeError, ValueError, TypeError, OSError)
 
 TEAM_PARKING_SOURCES: dict[str, dict[str, Any]] = {
     "SK": {
@@ -51,7 +55,7 @@ class ParkingCrawler:
                 lots = await self._crawl_team_parking(team_code, info)
                 all_lots.extend(lots)
                 logger.info("[PARKING] %s: %s lots found", team_code, len(lots))
-            except Exception:
+            except PARKING_CRAWL_EXCEPTIONS:
                 logger.exception("Failed to crawl parking for %s", team_code)
 
         logger.info("[PARKING] Total: %s lots", len(all_lots))
@@ -122,11 +126,11 @@ class ParkingCrawler:
                         for fee in entry.get("fee_rules", []):
                             fee_repo.save({"parking_lot_id": lot.id, **fee})
                             fee_count += 1
-                    except Exception:
+                    except PARKING_SAVE_EXCEPTIONS:
                         logger.exception("Parking save failed: %s", entry.get("lot", {}).get("name", ""))
                 session.commit()
                 logger.info("[PARKING] Saved %s lots, %s fee rules, %s snapshots.", lot_count, fee_count, saved_snaps)
-            except Exception:
+            except PARKING_SAVE_EXCEPTIONS:
                 session.rollback()
                 logger.exception("Parking batch save error")
             finally:
