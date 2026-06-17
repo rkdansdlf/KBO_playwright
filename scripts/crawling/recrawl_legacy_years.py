@@ -186,7 +186,7 @@ with SessionLocal() as session:
 
     try:
         subprocess.run(check_cmd)
-    except Exception:  # noqa: BLE001
+    except (subprocess.SubprocessError, OSError):
         logger.info("  ⚠️ 데이터베이스 확인 실패")
 
     return overall_success_rate >= 80

@@ -1,6 +1,7 @@
 import logging
 import time
 
+from playwright.sync_api import Error as PlaywrightError
 from playwright.sync_api import sync_playwright
 
 logger = logging.getLogger(__name__)
@@ -47,7 +48,7 @@ def investigate_2009_game_detail():
                 if "투수" in text and "타자" in text:
                     logger.info("    -> Potential Lineup/Boxscore Table")
 
-        except Exception as e:  # noqa: BLE001
+        except (PlaywrightError, TimeoutError, AttributeError, TypeError) as e:
             logger.error("❌ Error: %s", e)
         finally:
             browser.close()
