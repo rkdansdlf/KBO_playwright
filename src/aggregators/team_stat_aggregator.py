@@ -607,9 +607,7 @@ class TeamStatAggregator:
         return results
 
     @staticmethod
-    def aggregate_team_batting(
-        session: Session, year: int, league: str = "REGULAR", **kwargs: Any
-    ) -> list[dict[str, Any]]:
+    def aggregate_team_batting(session: Session, year: int, league: str = "REGULAR") -> list[dict[str, Any]]:
         """
         Aggregate batting stats for all teams in a given season/league using database queries.
         Maintains legacy database-bound compatibility while reusing pure business logic under the hood.
@@ -644,9 +642,7 @@ class TeamStatAggregator:
         return aggregator.aggregate_batting(rows=rows, team_names=team_names, team_games_map=team_games_map)
 
     @staticmethod
-    def aggregate_team_pitching(
-        session: Session, year: int, league: str = "REGULAR", **kwargs: Any
-    ) -> list[dict[str, Any]]:
+    def aggregate_team_pitching(session: Session, year: int, league: str = "REGULAR") -> list[dict[str, Any]]:
         """
         Aggregate pitching stats for all teams in a given season/league using database queries.
         Maintains legacy database-bound compatibility while reusing pure business logic under the hood.

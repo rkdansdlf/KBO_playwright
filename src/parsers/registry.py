@@ -13,7 +13,7 @@ from .ticket_parser import parse_ticket_page
 ParserFunc = Callable[[str, str, dict | None], list[dict[str, Any]]]
 
 
-def _parse_ticket_map(html: str, source_key: str, metadata: dict | None = None) -> list[dict[str, Any]]:
+def _parse_ticket_map(_html: str, _source_key: str, _metadata: dict | None = None) -> list[dict[str, Any]]:
     # KBO map page is an intermediate discovery page; ticket URLs are extracted
     # at crawl time and individual team pages are parsed separately.
     return []

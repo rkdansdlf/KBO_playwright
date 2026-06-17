@@ -469,7 +469,7 @@ def get_team_stats_integrity(gate_result: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def get_team_stats_trend(session, months: int = 6, gate_result: dict[str, Any] | None = None) -> dict[str, Any]:
+def get_team_stats_trend(session, gate_result: dict[str, Any] | None = None) -> dict[str, Any]:
     """현재 시즌 team stats 정합성 스냅샷.
 
     TeamSeason*은 시즌 단위 aggregate라 월별 추세 산출 불가.

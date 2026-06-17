@@ -434,7 +434,7 @@ def _build_sync_dispatch() -> dict[str, tuple]:
                             "🚀 Syncing Stat Rankings using specialized OCISync...", True,
                             lambda sess: get_available_years(sess, StatRanking, "season"),
                             "✅ Stat Rankings Sync Finished"),
-        "player_game_stats": (lambda s, y, **kw: (logger.info("  - [%s] Syncing Player Game Batting...", y), s.sync_player_game_batting(), logger.info("  - [%s] Syncing Player Game Pitching...", y), s.sync_player_game_pitching())[-1],
+        "player_game_stats": (lambda s, y, **_: (logger.info("  - [%s] Syncing Player Game Batting...", y), s.sync_player_game_batting(), logger.info("  - [%s] Syncing Player Game Pitching...", y), s.sync_player_game_pitching())[-1],
                             "🚀 Syncing Player Game Stats...", True,
                             lambda sess: get_available_years(sess, Game, "strftime('%Y', game_date)"),
                             "✅ Player Game Stats Sync Finished"),

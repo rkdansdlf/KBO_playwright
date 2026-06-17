@@ -117,7 +117,7 @@ def _parse_roster_section(section_text: str, action: str, target_date: date) -> 
     return transactions
 
 
-def parse_mobile_roster(html: str, source_key: str, metadata: dict | None = None) -> list[dict[str, Any]]:
+def parse_mobile_roster(html: str, _source_key: str, metadata: dict | None = None) -> list[dict[str, Any]]:
     target_date = _parse_target_date(metadata)
     registered_section, deregistered_section = _extract_roster_sections(html)
 

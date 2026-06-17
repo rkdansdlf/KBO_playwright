@@ -348,7 +348,7 @@ class TeamMapper:
 
         return mapping
 
-    def validate_team_code(self, team_code: str, year: int | None = None) -> bool:
+    def validate_team_code(self, team_code: str, _year: int | None = None) -> bool:
         """팀 코드 유효성 검증"""
         if not team_code:
             return False

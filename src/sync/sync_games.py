@@ -126,7 +126,7 @@ class GameSyncMixin:
         data["batting_order"] = None
         return data
 
-    def sync_games(self, limit: int = None, filters: list = None, batch_size: int = 10000) -> int:
+    def sync_games(self, limit: int = None, filters: list = None, batch_size: int = 10000) -> int:  # noqa: ARG002
         """Sync game detail data from SQLite to OCI using Batched UPSERT or COPY"""
 
         # Load season map for mapping SQLite season_id (year) to OCI season_id (int)
@@ -163,14 +163,14 @@ class GameSyncMixin:
             batch_size=batch_size,
         )
 
-    def sync_player_game_batting(self, limit: int = None) -> int:
+    def sync_player_game_batting(self, limit: int = None) -> int:  # noqa: ARG002
         """Sync player game batting stats from SQLite to OCI"""
         return self.sync_simple_table(
             PlayerGameBatting,
             ["game_id", "player_id"],
         )
 
-    def sync_player_game_pitching(self, limit: int = None) -> int:
+    def sync_player_game_pitching(self, limit: int = None) -> int:  # noqa: ARG002
         """Sync player game pitching stats from SQLite to OCI"""
         return self.sync_simple_table(
             PlayerGamePitching,
