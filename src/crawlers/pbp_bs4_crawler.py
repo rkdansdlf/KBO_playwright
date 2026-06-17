@@ -67,8 +67,8 @@ class PBPBS4Crawler:
 
             return {"game_id": game_id, "game_date": game_date, "events": events}
 
-        except httpx.HTTPError as e:
-            logger.exception("[ERROR] HTTP fetch failed for %s: %s", game_id, e)
+        except httpx.HTTPError:
+            logger.exception("[ERROR] HTTP fetch failed for %s", game_id)
             return None
         except PBP_BS4_PARSE_EXCEPTIONS:
             logger.exception("BS4 PBP crawl failed for %s", game_id)

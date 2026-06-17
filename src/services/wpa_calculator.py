@@ -9,7 +9,7 @@ Uses a Win Expectancy Matrix (CSV) to calculate the shift in win probability for
 """
 
 import csv
-import os
+from pathlib import Path
 
 
 class WPACalculator:
@@ -19,8 +19,8 @@ class WPACalculator:
         """
         if matrix_path is None:
             # Default path relative to project root
-            base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-            matrix_path = os.path.join(base_dir, "src", "data", "win_expectancy.csv")
+            base_dir = Path(__file__).resolve().parent.parent.parent
+            matrix_path = str(base_dir / "src" / "data" / "win_expectancy.csv")
 
         self._matrix: dict[tuple, float] = {}
         self._load_matrix(matrix_path)
@@ -30,11 +30,11 @@ class WPACalculator:
         Load Win Expectancy Matrix from CSV.
         Expected columns: inning, half, outs, runners, score_diff, win_prob
         """
-        if not os.path.exists(path):
+        if not Path(path).exists():
             logger.warning("⚠️ Win Expectancy Matrix not found at %s. Using fallback formula.", path)
             return
 
-        with open(path) as f:
+        with Path(path).open() as f:
             reader = csv.DictReader(f)
             for row in reader:
                 key = (

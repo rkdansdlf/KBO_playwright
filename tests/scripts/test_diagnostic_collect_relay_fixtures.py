@@ -4,10 +4,10 @@ from scripts.diagnostic.collect_relay_fixtures import _ensure_dirs, fetch_naver_
 
 
 class TestEnsureDirs:
-    @patch("scripts.diagnostic.collect_relay_fixtures.os.makedirs")
-    def test_creates_dirs(self, mock_makedirs):
+    @patch("pathlib.Path.mkdir")
+    def test_creates_dirs(self, mock_mkdir):
         _ensure_dirs()
-        assert mock_makedirs.call_count == 4
+        assert mock_mkdir.call_count == 4
 
 
 class TestFetchNaverSchedule:

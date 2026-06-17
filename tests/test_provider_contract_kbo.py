@@ -29,7 +29,7 @@ class TestKboLiveTextContract:
     @pytest.mark.parametrize("fixture_path", list(_iter_html_fixtures()))
     def test_num_containers_exist(self, fixture_path: Path):
         """Page must have at least one div[id^='numCont'] container, the primary extraction target."""
-        with open(fixture_path, encoding="utf-8") as f:
+        with fixture_path.open(encoding="utf-8") as f:
             soup = BeautifulSoup(f.read(), "html.parser")
 
         containers = soup.select('div[id^="numCont"]')
@@ -38,7 +38,7 @@ class TestKboLiveTextContract:
     @pytest.mark.parametrize("fixture_path", list(_iter_html_fixtures()))
     def test_inning_headers_have_blue_class(self, fixture_path: Path):
         """Inning headers (N회초/말 text) should have class 'blue' as expected by PBPCrawler."""
-        with open(fixture_path, encoding="utf-8") as f:
+        with fixture_path.open(encoding="utf-8") as f:
             soup = BeautifulSoup(f.read(), "html.parser")
 
         containers = soup.select('div[id^="numCont"]')
@@ -57,7 +57,7 @@ class TestKboLiveTextContract:
     @pytest.mark.parametrize("fixture_path", list(_iter_html_fixtures()))
     def test_event_spans_have_expected_classes(self, fixture_path: Path):
         """Non-header event spans should have 'normaiflTxt' or 'red' class."""
-        with open(fixture_path, encoding="utf-8") as f:
+        with fixture_path.open(encoding="utf-8") as f:
             soup = BeautifulSoup(f.read(), "html.parser")
 
         containers = soup.select('div[id^="numCont"]')
@@ -79,7 +79,7 @@ class TestKboLiveTextContract:
     @pytest.mark.parametrize("fixture_path", list(_iter_html_fixtures()))
     def test_minimum_event_count(self, fixture_path: Path):
         """Page must have at least a few non-header, non-separator events."""
-        with open(fixture_path, encoding="utf-8") as f:
+        with fixture_path.open(encoding="utf-8") as f:
             soup = BeautifulSoup(f.read(), "html.parser")
 
         containers = soup.select('div[id^="numCont"]')
@@ -98,7 +98,7 @@ class TestKboLiveTextContract:
     @pytest.mark.parametrize("fixture_path", list(_iter_html_fixtures()))
     def test_event_text_has_colon_format(self, fixture_path: Path):
         """Most event texts should follow '타자명:결과' colon format (parsing assumption)."""
-        with open(fixture_path, encoding="utf-8") as f:
+        with fixture_path.open(encoding="utf-8") as f:
             soup = BeautifulSoup(f.read(), "html.parser")
 
         containers = soup.select('div[id^="numCont"]')
@@ -121,7 +121,7 @@ class TestKboLiveTextContract:
     @pytest.mark.parametrize("fixture_path", list(_iter_html_fixtures()))
     def test_pbp_crawler_selector_compatibility(self, fixture_path: Path):
         """Verify the JS selector used by PBPCrawler._extract_flat_events_legacy extracts spans."""
-        with open(fixture_path, encoding="utf-8") as f:
+        with fixture_path.open(encoding="utf-8") as f:
             soup = BeautifulSoup(f.read(), "html.parser")
 
         containers = soup.select('div[id^="numCont"]')

@@ -339,8 +339,8 @@ def init_db() -> None:
 
     try:
         Base.metadata.create_all(bind=Engine)
-    except SQLAlchemyError as exc:
-        logger.error("[DB] Failed to create tables: %s", exc)
+    except SQLAlchemyError:
+        logger.exception("[DB] Failed to create tables")
         raise
 
     _ensure_player_batting_team_code_column()

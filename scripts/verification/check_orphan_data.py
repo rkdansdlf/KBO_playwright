@@ -1014,8 +1014,8 @@ def main() -> None:
 
     try:
         db_url = _resolve_db_url(args.db_url)
-    except ValueError as exc:
-        logger.error(f"Error: {exc}")
+    except ValueError:
+        logger.exception("Error resolving DB URL")
         raise SystemExit(2)
 
     if db_url:

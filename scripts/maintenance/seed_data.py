@@ -3,13 +3,12 @@ import logging
 logger = logging.getLogger(__name__)
 
 import csv
-import os
 import sys
 from datetime import date, datetime
 from pathlib import Path
 
 # Ensure project root is on sys.path when run as a script
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
@@ -406,7 +405,7 @@ def seed_teams(session: Session, csv_path: str | Path):
     csv_path = Path(csv_path)
 
     if csv_path.exists():
-        with open(csv_path, encoding="utf-8") as f:
+        with csv_path.open(encoding="utf-8") as f:
             reader = csv.DictReader(f)
             for row in reader:
                 if not _is_valid_team_row(row):
@@ -469,7 +468,7 @@ def seed_kbo_seasons(session: Session, csv_path: str | Path):
     seasons_to_add = []
 
     if csv_path.exists():
-        with open(csv_path, encoding="utf-8") as f:
+        with csv_path.open(encoding="utf-8") as f:
             reader = csv.DictReader(f)
             for row in reader:
                 season_id = safe_int_or_none(row.get("season_id") or row.get("필드명"))
@@ -510,7 +509,7 @@ def seed_stadium_foods(session: Session, csv_path: str | Path):
     foods_to_upsert = []
 
     if csv_path.exists():
-        with open(csv_path, encoding="utf-8") as f:
+        with csv_path.open(encoding="utf-8") as f:
             reader = csv.DictReader(f)
             for row in reader:
                 stadium_name = (row.get("stadium_name") or "").strip()
@@ -565,8 +564,8 @@ def drop_raw_table(engine, table_name: str):
         with engine.connect() as connection:
             connection.execute(f"DROP TABLE IF EXISTS {table_name}")
             logger.info(f"✅ Table {table_name} dropped successfully (if it existed).")
-    except SQLAlchemyError as e:
-        logger.error(f"⚠️ Could not drop table {table_name}. It might not exist. Error: {e}")
+    except SQLAlchemyError:
+        logger.exception(f"⚠️ Could not drop table {table_name}. It might not exist.")
 
 
 if __name__ == "__main__":
@@ -593,8 +592,8 @@ if __name__ == "__main__":
         # Also drop batting raw table if it exists
         drop_raw_table(Engine, "kbo_season_batting_raw")
 
-    except (SQLAlchemyError, RuntimeError, ValueError, TypeError, OSError) as e:
-        logger.error(f"\n❌ An error occurred during seeding: {e}")
+    except (SQLAlchemyError, RuntimeError, ValueError, TypeError, OSError):
+        logger.exception("\n❌ An error occurred during seeding")
         db_session.rollback()
         raise
     finally:

@@ -4,13 +4,13 @@ Adapts the robust 2001 crawler logic to loop through years.
 """
 
 import logging
-import os
 import sys
 import time
+from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
-sys.path.insert(0, os.getcwd())
+sys.path.insert(0, str(Path.cwd()))
 
 from playwright.sync_api import Error as PlaywrightError
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
@@ -235,8 +235,8 @@ def crawl_stats_for_year(page, year, mode="batting"):
 
         return list(all_players.values())
 
-    except CRAWLER_EXCEPTIONS as e:
-        logger.error("❌ %s년 %s 크롤링 치명적 오류: %s", year, mode, e)
+    except CRAWLER_EXCEPTIONS:
+        logger.exception("❌ %s년 %s 크롤링 치명적 오류", year, mode)
         return []
 
 

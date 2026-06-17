@@ -286,14 +286,14 @@ def main() -> int:
     load_dotenv()
     try:
         db_url = _resolve_db_url(args.db_url)
-    except ValueError as e:
-        logger.error(str(e))
+    except ValueError:
+        logger.exception("Invalid DB URL")
         return 2
 
     try:
         target_date = _coerce_date(args.date)
-    except ValueError as e:
-        logger.error(str(e))
+    except ValueError:
+        logger.exception("Invalid date")
         return 2
 
     statuses = _parse_statuses(args.statuses, include_incomplete=args.include_incomplete)

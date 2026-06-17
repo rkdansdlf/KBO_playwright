@@ -1,7 +1,7 @@
 import argparse
-import glob
 import os
 import sys
+from pathlib import Path
 
 from dotenv import load_dotenv
 from sqlalchemy import create_engine, text
@@ -21,7 +21,7 @@ def check_migrations():
 
     engine = create_engine(oci_url)
     Session = sessionmaker(bind=engine)
-    local_files = sorted(os.path.basename(f) for f in glob.glob("migrations/oci/*.sql"))
+    local_files = sorted(p.name for p in Path("migrations/oci").glob("*.sql"))
 
     print(f"OCI Migration Check — {len(local_files)} local migration files")
     print()
@@ -67,7 +67,7 @@ def apply_migrations():
 
     engine = create_engine(oci_url)
     Session = sessionmaker(bind=engine)
-    migration_files = sorted(glob.glob("migrations/oci/*.sql"))
+    migration_files = sorted(Path("migrations/oci").glob("*.sql"))
 
     if not migration_files:
         print("ℹ️ No OCI migration files found.")
@@ -85,7 +85,7 @@ def apply_migrations():
         session.commit()
 
         for file_path in migration_files:
-            filename = os.path.basename(file_path)
+            filename = file_path.name
             result = session.execute(
                 text("SELECT 1 FROM _schema_migrations WHERE filename = :filename"), {"filename": filename}
             )
@@ -95,7 +95,7 @@ def apply_migrations():
 
             print(f"🚀 Applying migration: {filename}")
             try:
-                with open(file_path, encoding="utf-8") as f:
+                with file_path.open(encoding="utf-8") as f:
                     sql = f.read()
                 session.execute(text(sql))
                 session.execute(

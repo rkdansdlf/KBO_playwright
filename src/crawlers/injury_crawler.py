@@ -106,9 +106,9 @@ class InjuryCrawler(NaverNewsCrawlerBase):
                     logger.warning("Injury save failed: %s", e)
             session.commit()
             logger.info("Saved %s injury records.", count)
-        except SQLAlchemyError as e:
+        except SQLAlchemyError:
             session.rollback()
-            logger.exception("Database error saving injury records: %s", e)
+            logger.exception("Database error saving injury records")
         finally:
             session.close()
 

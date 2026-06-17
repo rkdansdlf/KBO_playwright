@@ -159,9 +159,9 @@ class GameMvpCrawler:
                     logger.warning("Game MVP save failed: %s", e)
             session.commit()
             logger.info("Saved %s MVP records.", count)
-        except SQLAlchemyError as e:
+        except SQLAlchemyError:
             session.rollback()
-            logger.exception("Database error saving MVP records: %s", e)
+            logger.exception("Database error saving MVP records")
         finally:
             session.close()
 

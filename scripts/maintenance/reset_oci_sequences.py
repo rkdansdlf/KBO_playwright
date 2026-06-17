@@ -52,8 +52,8 @@ def reset_sequences(target_url=None):
 
             conn.commit()
             logger.info("✅ All sequences reset successfully")
-    except SQLAlchemyError as e:
-        logger.error(f"❌ Failed to reset sequences: {e}")
+    except SQLAlchemyError:
+        logger.exception("❌ Failed to reset sequences")
 
 
 if __name__ == "__main__":

@@ -130,8 +130,8 @@ class TeamBattingStatsCrawler:
                         calc.calculate_year(season)
                     except TEAM_BATTING_FALLBACK_EXCEPTIONS:
                         logger.exception("Standings calculation fallback error")
-            except TEAM_BATTING_FALLBACK_EXCEPTIONS as fallback_error:
-                logger.exception("[ERROR] 팀 타격 집계 폴백 실패: %s", fallback_error)
+            except TEAM_BATTING_FALLBACK_EXCEPTIONS:
+                logger.exception("[ERROR] 팀 타격 집계 폴백 실패")
                 raise
 
         elif persist:

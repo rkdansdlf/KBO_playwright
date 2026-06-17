@@ -18,7 +18,7 @@ class TestParseLocalPdf:
         with pytest.raises(FileNotFoundError):
             crawler.parse_local_pdf("/nonexistent/path.pdf")
 
-    @patch("src.crawlers.static_text_crawler.os.path.exists", return_value=True)
+    @patch("pathlib.Path.exists", return_value=True)
     @patch("src.crawlers.static_text_crawler.PdfReader")
     def test_returns_chunks_per_page(self, mock_reader_cls, mock_exists, crawler):
         mock_reader = MagicMock()
@@ -36,7 +36,7 @@ class TestParseLocalPdf:
         assert result[0]["content"] == "Page 1 content"
         assert result[1]["title"] == "KBO 공식 야구 규칙서 - Page 2"
 
-    @patch("src.crawlers.static_text_crawler.os.path.exists", return_value=True)
+    @patch("pathlib.Path.exists", return_value=True)
     @patch("src.crawlers.static_text_crawler.PdfReader")
     def test_skips_empty_pages(self, mock_reader_cls, mock_exists, crawler):
         mock_reader = MagicMock()

@@ -74,8 +74,8 @@ class StatsSyncMixin:
             else:
                 logger.warning("⚠️ 동기화된 투수 데이터 수가 예상보다 적습니다.")
 
-        except SQLAlchemyError as e:
-            logger.exception("⚠️ 투수 데이터 동기화 검증 실패: %s", e)
+        except SQLAlchemyError:
+            logger.exception("⚠️ 투수 데이터 동기화 검증 실패")
 
     def verify_batting_sync(self, expected_count: int) -> None:
         """타자 데이터 동기화 결과 검증"""
@@ -95,8 +95,8 @@ class StatsSyncMixin:
             else:
                 logger.warning("⚠️ 동기화된 타자 데이터 수가 예상보다 적습니다.")
 
-        except SQLAlchemyError as e:
-            logger.exception("⚠️ 타자 데이터 동기화 검증 실패: %s", e)
+        except SQLAlchemyError:
+            logger.exception("⚠️ 타자 데이터 동기화 검증 실패")
 
     def show_oci_data_sample(self) -> None:
         """OCI의 데이터 샘플 표시"""
@@ -140,8 +140,8 @@ class StatsSyncMixin:
                     logger.info("  %s. player_id: %s, season: %s", i + 1, row[0], row[1])
                     logger.info("     게임수: %s, 타율: %s, 안타: %s, 홈런: %s", row[2], row[3], row[4], row[5])
 
-        except SQLAlchemyError as e:
-            logger.exception("⚠️ OCI 데이터 조회 실패: %s", e)
+        except SQLAlchemyError:
+            logger.exception("⚠️ OCI 데이터 조회 실패")
 
     def _get_table_signature(self, model: type, year: int | None = None, year_col: str = "season") -> dict[str, Any]:
         """

@@ -72,8 +72,8 @@ def main():
     for f in files:
         try:
             fixed += fix_file(f)
-        except (OSError, ValueError) as e:
-            logger.error(f"Error fixing {f}: {e}")
+        except (OSError, ValueError):
+            logger.exception(f"Error fixing {f}")
     logger.info(f"Fixed {fixed} files.")
 
 

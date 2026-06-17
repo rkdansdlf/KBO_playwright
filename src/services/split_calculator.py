@@ -11,14 +11,14 @@ Computes RISP (Runners In Scoring Position) and L/R splits
 by querying the game_events PBP data with game_batting_stats.
 """
 
-import os
 import sys
+from pathlib import Path
 from typing import Any
 
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+sys.path.append(str(Path(__file__).resolve().parent.parent.parent))
 
 from src.db.engine import SessionLocal
 

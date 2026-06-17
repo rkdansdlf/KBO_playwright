@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-import os
+from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest
@@ -14,8 +14,8 @@ from src.sync.oci_sync import OCISync
 
 
 def _build_env(tmp_path: str):
-    local_path = os.path.join(tmp_path, "local.db")
-    target_path = os.path.join(tmp_path, "target.db")
+    local_path = Path(tmp_path, "local.db")
+    target_path = Path(tmp_path, "target.db")
     local_engine = create_engine(f"sqlite:///{local_path}")
     target_engine = create_engine(f"sqlite:///{target_path}")
     GameSummary.__table__.create(bind=local_engine, checkfirst=True)

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-import os
 from datetime import UTC, datetime
+from pathlib import Path
 
 import pytest
 from sqlalchemy import Column, Integer, String, create_engine
@@ -62,8 +62,8 @@ def _now_ts() -> str:
 @pytest.fixture
 def dual(tmp_path):
     return _build_dual(
-        os.path.join(tmp_path, "local.db"),
-        os.path.join(tmp_path, "remote.db"),
+        Path(tmp_path, "local.db"),
+        Path(tmp_path, "remote.db"),
     )
 
 

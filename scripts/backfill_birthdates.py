@@ -5,14 +5,14 @@ Parses various representations of birth_date into ISO standard birth_date_date c
 
 import argparse
 import logging
-import os
 import sys
 from datetime import date, datetime
+from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
 # Add project root to sys.path
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.append(str(Path(__file__).resolve().parent.parent))
 
 from sqlalchemy import select, update
 

@@ -153,13 +153,13 @@ class RecoveryManager:
     def load(self) -> None:
         if self.path.exists():
             try:
-                with open(self.path, encoding="utf-8") as f:
+                with self.path.open(encoding="utf-8") as f:
                     self.state.update(json.load(f))
             except (OSError, json.JSONDecodeError):
                 logger.debug("No existing recovery state at %s", self.path)
 
     def save(self) -> None:
-        with open(self.path, "w", encoding="utf-8") as f:
+        with self.path.open("w", encoding="utf-8") as f:
             json.dump(self.state, f, indent=2, ensure_ascii=False)
 
     def initialize_run(self, run_id: str, targets: list[str]) -> None:

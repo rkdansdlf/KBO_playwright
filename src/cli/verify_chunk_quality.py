@@ -24,14 +24,14 @@ import argparse
 import hashlib
 import json
 import logging
-import os
 import sys
 from collections import Counter, defaultdict
+from pathlib import Path
 from typing import Any
 
 from dotenv import load_dotenv
 
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import contextlib
 

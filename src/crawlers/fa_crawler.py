@@ -6,6 +6,7 @@ import json
 import logging
 import re
 from datetime import date
+from pathlib import Path
 from typing import Any
 
 logger = logging.getLogger(__name__)
@@ -380,7 +381,7 @@ class FACrawler:
         """Loads FA data from a JSON file."""
         logger.info("📂 Loading data from %s...", filepath)
         try:
-            with open(filepath, encoding="utf-8") as f:
+            with Path(filepath).open(encoding="utf-8") as f:
                 data = json.load(f)
             logger.info("   => Loaded %s records.", len(data))
             return data
