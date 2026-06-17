@@ -448,7 +448,7 @@ def _seed_default_seasons(session: Session):
     count = 0
     for year in range(1982, 2031):
         for code, name in LEAGUE_TYPES:
-            sid = (year - 1982) * len(LEAGUE_TYPES) + code + 1
+            sid = year * 100 + code
             session.execute(
                 text(
                     "INSERT OR IGNORE INTO kbo_seasons "
@@ -593,7 +593,7 @@ if __name__ == "__main__":
         # Also drop batting raw table if it exists
         drop_raw_table(Engine, "kbo_season_batting_raw")
 
-    except Exception as e:
+    except (SQLAlchemyError, RuntimeError, ValueError, TypeError, OSError) as e:
         logger.error(f"\n❌ An error occurred during seeding: {e}")
         db_session.rollback()
         raise
