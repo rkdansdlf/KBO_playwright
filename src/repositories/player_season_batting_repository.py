@@ -193,8 +193,9 @@ class PlayerSeasonBattingRepository:
                     .delete()
                 )
                 session.commit()
-                return deleted > 0
             except SQLAlchemyError:
                 session.rollback()
                 logger.exception("[ERROR] Error deleting batting stats")
                 raise
+            else:
+                return deleted > 0

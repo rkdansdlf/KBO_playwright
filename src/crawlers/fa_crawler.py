@@ -383,9 +383,12 @@ class FACrawler:
         try:
             with Path(filepath).open(encoding="utf-8") as f:
                 data = json.load(f)
+        except FA_IO_EXCEPTIONS:
+            logger.exception("❌ Error loading JSON")
+            return []
+        else:
             logger.info("   => Loaded %s records.", len(data))
             return data
-        except FA_IO_EXCEPTIONS:
             logger.exception("❌ Error loading JSON")
             return []
 

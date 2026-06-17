@@ -244,11 +244,12 @@ def save_schedule_game(
                 )
 
             session.commit()
-            return True
         except SQLAlchemyError:
             session.rollback()
             logger.exception("[ERROR] DB Error (Schedule)")
             return False
+        else:
+            return True
 
 
 def _parse_detail_game_date(game_data: dict[str, Any], provisional_game_id: str | None) -> tuple[str, date]:
@@ -602,13 +603,14 @@ def save_game_detail(
                 )
 
             session.commit()
-            if changed:
-                _auto_sync_to_oci(game_id)
-            return True
         except GAME_SAVE_EXCEPTIONS:
             session.rollback()
             logger.exception("[ERROR] DB Error (Detail)")
             return False
+        else:
+            if changed:
+                _auto_sync_to_oci(game_id)
+            return True
 
 
 def save_game_snapshot(game_data: dict[str, Any], *, status: str | None = None) -> bool:
@@ -710,12 +712,13 @@ def save_game_snapshot(game_data: dict[str, Any], *, status: str | None = None) 
                 )
 
             session.commit()
-            _auto_sync_to_oci(game_id)
-            return True
         except GAME_SAVE_EXCEPTIONS:
             session.rollback()
             logger.exception("[ERROR] DB Error (Snapshot)")
             return False
+        else:
+            _auto_sync_to_oci(game_id)
+            return True
 
 
 def save_pregame_lineups(preview_data: dict[str, Any]) -> bool:
@@ -866,9 +869,10 @@ def save_pregame_lineups(preview_data: dict[str, Any]) -> bool:
             )
 
             session.commit()
-            _auto_sync_to_oci(game_id)
-            return True
         except GAME_SAVE_EXCEPTIONS:
             session.rollback()
             logger.exception("[ERROR] DB Error (Pregame)")
             return False
+        else:
+            _auto_sync_to_oci(game_id)
+            return True

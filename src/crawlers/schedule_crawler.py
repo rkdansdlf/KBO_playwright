@@ -85,11 +85,12 @@ class ScheduleCrawler:
             page = await pool.acquire()
             try:
                 games = await self._crawl_month(page, year, month, series_id=series_id)
-                logger.info("✅ Found %s games", len(games))
-                return games
             except SCHEDULE_CRAWLER_EXCEPTIONS:
                 logger.exception("❌ Error crawling schedule")
                 return []
+            else:
+                logger.info("✅ Found %s games", len(games))
+                return games
             finally:
                 await pool.release(page)
         finally:
@@ -154,8 +155,11 @@ class ScheduleCrawler:
     async def _wait_for_schedule_table(self, page: Page, *, timeout: int = 10000) -> tuple[bool, str]:
         try:
             await page.wait_for_selector(".tbl tbody tr", timeout=timeout)
-            return True, "ok"
         except SCHEDULE_CRAWLER_EXCEPTIONS:
+            logger.exception("[WARN] Schedule table wait failed")
+            return False, "schedule_empty"
+        else:
+            return True, "ok"
             logger.exception("[WARN] Schedule table wait failed")
             return False, "schedule_empty"
 

@@ -57,7 +57,6 @@ class PlayerDailyStatsCrawler:
                     return []
 
                 # 2. Parse All Tables
-                # Daily.aspx displays multiple monthly tables.
                 rows = await page.evaluate("""() => {
                     const tables = Array.from(document.querySelectorAll('.tbl.tt, .tEx'));
                     const results = [];
@@ -66,16 +65,18 @@ class PlayerDailyStatsCrawler:
                         const trs = Array.from(table.querySelectorAll('tbody tr'));
                         trs.forEach(tr => {
                             const cells = Array.from(tr.querySelectorAll('td')).map(td => td.innerText.trim());
-                            if (cells.length > 5) { // Skip empty/header rows
+                            if (cells.length > 5) {
                                 results.push(cells);
                             }
                         });
                     });
                     return results;
                 }""")
-
+            except PLAYER_DAILY_CRAWL_EXCEPTIONS:
+                logger.exception("   ❌ Error crawling player %s", player_id)
+                return []
+            else:
                 logger.info("   📊 Found %s raw data rows on page.", len(rows))
-
                 all_games = []
                 for row in rows:
                     if is_pitcher:
@@ -84,12 +85,7 @@ class PlayerDailyStatsCrawler:
                         data = self._parse_hitter_row(row, season)
                     if data:
                         all_games.append(data)
-
                 return all_games
-
-            except PLAYER_DAILY_CRAWL_EXCEPTIONS:
-                logger.exception("   ❌ Error crawling player %s", player_id)
-                return []
             finally:
                 await browser.close()
 

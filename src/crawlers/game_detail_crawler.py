@@ -461,7 +461,6 @@ class GameDetailCrawler:
 
         try:
             await page.wait_for_selector(", ".join(GAME_DETAIL.boxscore_presence_selectors), timeout=SEL_TIMEOUT)
-            return True, "ok"
         except PlaywrightError:
             logger.warning("⚠️ Timeout waiting for boxscore selectors. Page URL: %s", page.url)
 
@@ -481,6 +480,8 @@ class GameDetailCrawler:
                 logger.exception("⚠️ Failed to save timeout debug screenshot for %s", page.url)
 
             return False, "timeout"
+        else:
+            return True, "ok"
 
     async def _extract_metadata(self, page: Page) -> dict[str, Any]:
         metadata = {

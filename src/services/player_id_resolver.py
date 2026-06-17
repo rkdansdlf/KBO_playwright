@@ -799,11 +799,12 @@ class PlayerIdResolver:
             )
             self.session.add(new_player)
             self.session.commit()
-            return new_id
         except (SQLAlchemyError, RuntimeError, ValueError, TypeError):
             self.session.rollback()
             logger.exception("   ❌ Error auto-registering player")
             return None
+        else:
+            return new_id
 
     def _resolve_relaxed(self, player_name: str, team_code: str, season: int) -> int | None:
         """Relaxed matching: Name + Season match, ensuring exactly one candidate."""

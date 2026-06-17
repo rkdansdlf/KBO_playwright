@@ -336,7 +336,7 @@ class PlayerProfileCrawler:
                     "education_path": parsed.get("education_path"),
                 }
                 self._last_failure_reason.pop(str(player_id), None)
-                return result
+                return result  # noqa: TRY300
             except PROFILE_CRAWL_EXCEPTIONS:
                 logger.exception("   (Failed attempt at %s)", url)
                 last_reason = "selector_timeout"
