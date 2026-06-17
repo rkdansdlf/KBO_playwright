@@ -240,7 +240,7 @@ jobs:
         env:
           OCI_DB_URL: ${{ secrets.OCI_DB_URL }}
         run: |
-          python3 scripts/maintenance/full_audit.py \
+          python3 -m scripts.maintenance.full_audit \
             --json --no-write --db-url "$OCI_DB_URL"
 
       - uses: ./.github/actions/notify
