@@ -693,8 +693,8 @@ class GameDetailCrawler:
         team_code: str | None,
         season_year: int | None,
         roster_map: dict[str, list[dict[str, Any]]] | None = None,
-        db_session=None,
-        use_hitter_section: bool = False,
+        _db_session=None,
+        _use_hitter_section: bool = False,
     ) -> list[dict[str, Any]]:
         selectors = (
             [GAME_DETAIL.away_hitter_primary, GAME_DETAIL.away_hitter_extra]
@@ -838,8 +838,8 @@ class GameDetailCrawler:
         team_code: str | None,
         season_year: int | None,
         roster_map: dict[str, list[dict[str, Any]]] | None = None,
-        db_session=None,
-        use_pitcher_section: bool = False,
+        _db_session=None,
+        _use_pitcher_section: bool = False,
     ) -> list[dict[str, Any]]:
         selectors = (
             [

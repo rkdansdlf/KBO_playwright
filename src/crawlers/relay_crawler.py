@@ -72,7 +72,7 @@ KBO_TO_NAVER_TEAM_CODE = {
 class RelayCrawler:
     schedule_fallback_window_days = 7
 
-    def __init__(self, request_delay: float = 1.0, policy=None, pool: AsyncPlaywrightPool | None = None) -> None:
+    def __init__(self, request_delay: float = 1.0, policy=None, _pool: AsyncPlaywrightPool | None = None) -> None:
         """
         pool is retained for backward compatibility with GameDetailCrawler but is unused.
         """

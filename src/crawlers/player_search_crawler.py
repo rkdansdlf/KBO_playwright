@@ -395,7 +395,7 @@ class PlayerSearchCrawler:
         else:
             return True
 
-    async def _wait_after_nav(self, page: Page, prev_v, first_b) -> None:
+    async def _wait_after_nav(self, page: Page, prev_v, _first_b) -> None:
         try:
             await page.wait_for_function(
                 "([s, v]) => document.querySelector(s)?.value !== v",
@@ -482,7 +482,7 @@ def player_row_to_dict(row: PlayerRow) -> dict[str, Any]:
 async def crawl_all_players(
     max_pages: int | None = None,
     headless: bool = False,
-    slow_mo=200,
+    slow_mo=200,  # noqa: ARG001
     request_delay: float = REQUEST_DELAY_SEC,
     pool: AsyncPlaywrightPool | None = None,
 ) -> list[PlayerRow]:

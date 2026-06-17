@@ -691,7 +691,7 @@ def _compute_base_dynamic_interval(
     active_suspended: bool,
     last_active_time: datetime | None,
     now: datetime,
-    base_interval_minutes: int,
+    base_interval_minutes: int,  # noqa: ARG001
 ) -> tuple[int, str]:
     """Return (base_sleep_seconds, mode_label) for the existing dynamic logic."""
     if active:

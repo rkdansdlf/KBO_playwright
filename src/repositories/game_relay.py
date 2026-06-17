@@ -904,7 +904,7 @@ def save_relay_data(
     *,
     source_name: str | None = None,
     notes: str | None = None,
-    allow_derived_pbp: bool = True,
+    _allow_derived_pbp: bool = True,
     write_contract: GameWriteContract | None = None,
     source_stage: str = "relay",
     source_crawler: str = "RelayCrawler",

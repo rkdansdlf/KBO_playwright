@@ -165,7 +165,7 @@ def _aggregate_batting(
     return results
 
 
-def _compute_pitching_rates(total_outs: int, hits: int, bb: int, er: int, k: int, hr: int) -> dict[str, Any]:
+def _compute_pitching_rates(total_outs: int, hits: int, bb: int, er: int, k: int) -> dict[str, Any]:
     ip = total_outs / 3.0
     era = round(er * 9 / ip, 2) if ip > 0 else 0.0
     whip = round((bb + hits) / ip, 2) if ip > 0 else 0.0

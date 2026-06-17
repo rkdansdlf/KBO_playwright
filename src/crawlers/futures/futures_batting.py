@@ -168,7 +168,7 @@ def _pick_futures_table(soup: BeautifulSoup) -> Any | None:
 
 
 async def fetch_and_parse_futures_batting(
-    player_id: str,
+    _player_id: str,
     profile_url: str,
     pool: AsyncPlaywrightPool | None = None,
 ) -> list[dict]:

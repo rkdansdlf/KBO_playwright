@@ -165,7 +165,7 @@ class RetiredPlayerListingCrawler:
 
         return all_players
 
-    async def _collect_ids_from_pages(self, page: Page, year: int) -> dict[str, str]:
+    async def _collect_ids_from_pages(self, page: Page, _year: int) -> dict[str, str]:
         players: dict[str, str] = {}
         page_num = 1
         while True:

@@ -97,7 +97,7 @@ def run_recalc(
     dry_run: bool = False,
     batting_only: bool = False,
     pitching_only: bool = False,
-    verbose: bool = False,
+    _verbose: bool = False,
 ) -> int:
     """
     Recalculates team statistics for the given season.
