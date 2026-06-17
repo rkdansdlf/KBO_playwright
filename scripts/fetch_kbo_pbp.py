@@ -1,11 +1,10 @@
 import argparse
 import asyncio
-import os
 import sys
 from pathlib import Path
 
 # Adjust sys.path to run from scripts/ folder easily.
-project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+project_root = str(Path(__file__).resolve().parent.parent)
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
@@ -100,8 +99,8 @@ async def run_fetcher(argv: list[str] | None = None) -> int:
             include_incomplete=args.include_incomplete,
             log=logger.info,
         )
-    except (FileNotFoundError, ValueError) as exc:
-        logger.error("%s", exc)
+    except (FileNotFoundError, ValueError):
+        logger.exception("Failed to fetch KBO PBP targets")
         return 1
 
     if not targets:

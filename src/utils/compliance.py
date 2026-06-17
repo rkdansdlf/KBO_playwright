@@ -9,6 +9,7 @@ import asyncio
 import logging
 import time
 import urllib.robotparser
+from pathlib import Path
 
 import httpx
 
@@ -53,20 +54,19 @@ class ComplianceChecker:
 
                                 # Save snapshot
                                 try:
-                                    import os
                                     from datetime import datetime
 
-                                    snapshot_dir = "Docs/robots"
-                                    os.makedirs(snapshot_dir, exist_ok=True)
+                                    snapshot_dir = Path("Docs/robots")
+                                    snapshot_dir.mkdir(parents=True, exist_ok=True)
                                     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                                    snapshot_path = os.path.join(snapshot_dir, f"robots_{timestamp}.txt")
-                                    with open(snapshot_path, "w", encoding="utf-8") as f:
+                                    snapshot_path = snapshot_dir / f"robots_{timestamp}.txt"
+                                    with snapshot_path.open("w", encoding="utf-8") as f:
                                         f.write(f"# Source: {self.robots_url}\n")
                                         f.write(f"# Fetched at: {datetime.now().isoformat()}\n\n")
                                         f.write(content)
                                     logger.info("[COMPLIANCE] robots.txt snapshot saved to %s", snapshot_path)
-                                except OSError as se:
-                                    logger.exception("[COMPLIANCE] Failed to save snapshot: %s", se)
+                                except OSError:
+                                    logger.exception("[COMPLIANCE] Failed to save snapshot")
 
                                 logger.info("[COMPLIANCE] robots.txt loaded successfully.")
                             else:
@@ -77,8 +77,8 @@ class ComplianceChecker:
                                 # Fallback: assume everything is allowed or use a default
                                 self.parser.parse(["User-agent: *", "Disallow:"])
                                 self.last_fetch_time = now
-                    except httpx.HTTPError as e:
-                        logger.exception("[COMPLIANCE] Error fetching robots.txt: %s", e)
+                    except httpx.HTTPError:
+                        logger.exception("[COMPLIANCE] Error fetching robots.txt")
                         # Fallback on error
                         self.parser.parse(["User-agent: *", "Disallow:"])
                         self.last_fetch_time = now
@@ -107,8 +107,8 @@ class ComplianceChecker:
                 else:
                     self.parser.parse(["User-agent: *", "Disallow:"])
                     self.last_fetch_time = now
-            except httpx.HTTPError as e:
-                logger.exception("[COMPLIANCE] Error sync fetching robots.txt: %s", e)
+            except httpx.HTTPError:
+                logger.exception("[COMPLIANCE] Error sync fetching robots.txt")
                 self.parser.parse(["User-agent: *", "Disallow:"])
                 self.last_fetch_time = now
 

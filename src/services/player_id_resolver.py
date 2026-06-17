@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import csv
 import logging
-import os
+from pathlib import Path
 
 from sqlalchemy import inspect, or_, select
 from sqlalchemy.exc import SQLAlchemyError
@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 
 from src.models.player import Player, PlayerBasic, PlayerSeasonBatting, PlayerSeasonPitching
 
-ALIAS_CSV_PATH = os.path.join(os.path.dirname(__file__), "..", "..", "data", "player_name_aliases.csv")
+ALIAS_CSV_PATH = Path(__file__).resolve().parent.parent.parent / "data" / "player_name_aliases.csv"
 
 CANONICAL_TEAM_CODES = {
     "OB": "DB",
@@ -115,11 +115,11 @@ class PlayerIdResolver:
     @staticmethod
     def _load_aliases_from_csv() -> dict[str, str]:
         aliases: dict[str, str] = {}
-        csv_path = os.path.normpath(ALIAS_CSV_PATH)
-        if not os.path.exists(csv_path):
+        csv_path = ALIAS_CSV_PATH
+        if not csv_path.exists():
             return aliases
         try:
-            with open(csv_path, encoding="utf-8") as f:
+            with csv_path.open(encoding="utf-8") as f:
                 reader = csv.DictReader(f)
                 for row in reader:
                     old = row.get("old_name", "").strip()

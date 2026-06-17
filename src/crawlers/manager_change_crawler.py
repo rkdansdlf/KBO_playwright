@@ -118,9 +118,9 @@ class ManagerChangeCrawler(NaverNewsCrawlerBase):
                     session.rollback()
             session.commit()
             logger.info("Saved %s manager change records.", count)
-        except SQLAlchemyError as e:
+        except SQLAlchemyError:
             session.rollback()
-            logger.exception("Database error saving manager changes: %s", e)
+            logger.exception("Database error saving manager changes")
         finally:
             session.close()
 

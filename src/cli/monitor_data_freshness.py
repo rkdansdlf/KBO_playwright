@@ -89,7 +89,7 @@ def check_table_completeness(dry_run: bool = False) -> list[str]:
                     logger.info(msg)
             except SQLAlchemyError as e:
                 msg = f"[ERROR] Table check failed for {table}: {e}"
-                logger.error(msg)
+                logger.exception("[ERROR] Table check failed for %s", table)
                 if not dry_run:
                     alerts.append(msg)
     return alerts

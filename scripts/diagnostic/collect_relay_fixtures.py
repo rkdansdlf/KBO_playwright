@@ -15,13 +15,13 @@ import argparse
 import asyncio
 import json
 import logging
-import os
 import sys
+from pathlib import Path
 from typing import Any
 
 import httpx
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from src.crawlers.relay_crawler import RelayCrawler
 
@@ -37,7 +37,7 @@ FIXTURE_DIRS = {
 
 def _ensure_dirs():
     for dirpath in FIXTURE_DIRS.values():
-        os.makedirs(dirpath, exist_ok=True)
+        Path(dirpath).mkdir(parents=True, exist_ok=True)
 
 
 async def fetch_naver_schedule(game_id: str, crawler: RelayCrawler) -> dict[str, Any] | None:
@@ -110,8 +110,8 @@ async def main():
                     game_status = str(g.get("status", "unknown"))
                     break
             prefix = "naver_result" if game_status == "RESULT" else "naver_live"
-            schedule_path = os.path.join(FIXTURE_DIRS[prefix], f"schedule_{gid[:8]}.json")
-            with open(schedule_path, "w", encoding="utf-8") as f:
+            schedule_path = Path(FIXTURE_DIRS[prefix], f"schedule_{gid[:8]}.json")
+            with schedule_path.open("w", encoding="utf-8") as f:
                 json.dump(schedule, f, ensure_ascii=False, indent=2)
             logger.info("  Saved schedule to %s (status=%s)", schedule_path, game_status)
 
@@ -121,8 +121,8 @@ async def main():
             prefix = "naver_result" if game_status == "RESULT" else "naver_live"
             for inn_str, payload in innings_data.items():
                 inn_padded = inn_str.zfill(2)
-                relay_path = os.path.join(FIXTURE_DIRS[prefix], f"relay_inning_{inn_padded}.json")
-                with open(relay_path, "w", encoding="utf-8") as f:
+                relay_path = Path(FIXTURE_DIRS[prefix], f"relay_inning_{inn_padded}.json")
+                with relay_path.open("w", encoding="utf-8") as f:
                     json.dump(payload, f, ensure_ascii=False, indent=2)
             logger.info("  Saved %d inning relays to %s/", len(innings_data), prefix)
 

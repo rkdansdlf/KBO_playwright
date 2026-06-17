@@ -492,8 +492,8 @@ def crawl_daily_games():
                 total_failures = sum(detail_counts.values()) if isinstance(detail_counts, dict) else 0
                 if repeated_failures or total_failures > 0:
                     alert_warning("crawl_daily_games", format_stability_alert_summary(update_result))
-        except SCHEDULER_JOB_EXCEPTIONS as e:
-            logger.error(f"Daily games crawl attempt failed: {e}")
+        except SCHEDULER_JOB_EXCEPTIONS:
+            logger.exception("Daily games crawl attempt failed")
             raise
 
 
@@ -1028,8 +1028,8 @@ def crawl_all_futures_profiles():
             logger.info("=== Weekly Futures Profile Crawl Completed Successfully ===")
             alert_success("crawl_all_futures_profiles")
 
-        except SCHEDULER_JOB_EXCEPTIONS as e:
-            logger.error(f"Futures profile crawl attempt failed: {e}")
+        except SCHEDULER_JOB_EXCEPTIONS:
+            logger.exception("Futures profile crawl attempt failed")
             raise
 
 
@@ -1073,8 +1073,8 @@ def crawl_retired_players_job(limit: int | None = None):
             logger.info("=== Monthly Retired Player Crawl Completed Successfully ===")
             alert_success("crawl_retired_players_job")
 
-        except SCHEDULER_JOB_EXCEPTIONS as e:
-            logger.error(f"Retired player crawl attempt failed: {e}")
+        except SCHEDULER_JOB_EXCEPTIONS:
+            logger.exception("Retired player crawl attempt failed")
             raise
 
 

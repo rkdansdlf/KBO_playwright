@@ -9,12 +9,12 @@ Docs/schema/player_season_data.md 스키마를 기반으로 구현
 from __future__ import annotations
 
 import logging
-import os
 import sys
 from datetime import datetime
+from pathlib import Path
 from typing import Any
 
-sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+sys.path.append(str(Path(__file__).resolve().parent.parent.parent))
 
 from playwright.sync_api import Error as PlaywrightError
 from playwright.sync_api import Page, sync_playwright

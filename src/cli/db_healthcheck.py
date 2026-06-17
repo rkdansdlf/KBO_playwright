@@ -35,8 +35,8 @@ def main(argv: list[str] | None = None) -> None:
         with Engine.connect() as conn:
             conn.execute(text("SELECT 1"))
         logger.info("Connectivity: OK")
-    except SQLAlchemyError as e:
-        logger.exception("Connectivity: FAILED -> %s", e)
+    except SQLAlchemyError:
+        logger.exception("Connectivity: FAILED")
         return
 
     # 2. 테이블 목록 조회
@@ -48,8 +48,8 @@ def main(argv: list[str] | None = None) -> None:
             # 최대 10개의 테이블 이름 출력
             for t in tables[:10]:
                 logger.info("  - %s", t)
-    except SQLAlchemyError as e:
-        logger.exception("Introspection failed: %s", e)
+    except SQLAlchemyError:
+        logger.exception("Introspection failed")
 
     # 3. 주요 테이블의 레코드 수 집계
     for table in [

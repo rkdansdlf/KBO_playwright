@@ -70,7 +70,7 @@ class RetiredPlayerDetailCrawler:
                     }
             except (PlaywrightError, TimeoutError, RuntimeError) as exc:
                 if attempt == retries:
-                    logger.error("❌ Failed to fetch player %s after %s retries: %s", player_id, retries, exc)
+                    logger.exception("❌ Failed to fetch player %s after %s retries", player_id, retries)
                     break
                 logger.warning("⚠️ Retry %s for %s due to: %s", attempt + 1, player_id, exc)
                 await asyncio.sleep(1.0 * (attempt + 1))

@@ -6,6 +6,7 @@ import asyncio
 import logging
 import os
 import re
+from pathlib import Path
 from typing import Any
 
 logger = logging.getLogger(__name__)
@@ -472,7 +473,7 @@ class GameDetailCrawler:
             else:
                 debug_path = f"data/timeout_{game_id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.png"
 
-            os.makedirs("data", exist_ok=True)
+            Path("data").mkdir(parents=True, exist_ok=True)
             try:
                 await page.screenshot(path=debug_path)
                 logger.warning("📸 Boxscore timeout debug screenshot saved to: %s", debug_path)

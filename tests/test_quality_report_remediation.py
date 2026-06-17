@@ -27,7 +27,7 @@ def test_get_auto_remediation_summary_fixed(tmp_path):
             "calculated": {"hits": 2, "at_bats": 10},
         }
     ]
-    with open(audit_fixes_dir / "20260531_10001_batting.json", "w", encoding="utf-8") as f:
+    with (audit_fixes_dir / "20260531_10001_batting.json").open("w", encoding="utf-8") as f:
         json.dump(player_data, f)
 
     summary = get_auto_remediation_summary("20260531", audit_dir=audit_fixes_dir)
@@ -51,7 +51,7 @@ def test_get_auto_remediation_summary_warning(tmp_path):
             {"player_id": "10001", "name": "홍길동", "diffs": ["hits: 5 vs 2"]},
         ],
     }
-    with open(audit_fixes_dir / "20260531_warning_batting.json", "w", encoding="utf-8") as f:
+    with (audit_fixes_dir / "20260531_warning_batting.json").open("w", encoding="utf-8") as f:
         json.dump(warning_data, f)
 
     summary = get_auto_remediation_summary("20260531", audit_dir=audit_fixes_dir)
@@ -66,7 +66,7 @@ def test_get_auto_remediation_summary_aborted(tmp_path):
     audit_fixes_dir.mkdir(parents=True, exist_ok=True)
 
     abort_data = {"year": 2026, "series": "regular", "reason": "Too many mismatches"}
-    with open(audit_fixes_dir / "20260531_abort_batting.json", "w", encoding="utf-8") as f:
+    with (audit_fixes_dir / "20260531_abort_batting.json").open("w", encoding="utf-8") as f:
         json.dump(abort_data, f)
 
     summary = get_auto_remediation_summary("20260531", audit_dir=audit_fixes_dir)

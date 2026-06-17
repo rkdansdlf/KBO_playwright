@@ -1158,7 +1158,7 @@ def _run_local_integrity_gate() -> None:
         _run_game_status_integrity_audit()
         logger.info("   \u2705 Local integrity audit passed")
     except RuntimeError as exc:
-        logger.exception("   \u274c Local integrity audit FAILED: %s", exc)
+        logger.exception("   \u274c Local integrity audit FAILED")
         raise RuntimeError("Aborting OCI sync due to local data integrity violations.") from exc
 
 
@@ -1167,13 +1167,11 @@ def _run_statistical_quality_gate_for_sync(ctx: _RunContext) -> None:
     try:
         ctx.runner(["-m", "src.cli.quality_gate_check", "--year", str(ctx.year)])
         logger.info("   \u2705 Statistical quality gate passed")
-    except subprocess.CalledProcessError as exc:
+    except subprocess.CalledProcessError:
         reason = "non_p0_statistical_quality_gate_failed"
         ctx.non_p0_quality_gate_counts[reason] = ctx.non_p0_quality_gate_counts.get(reason, 0) + 1
         ctx.non_p0_quality_gate_ids.setdefault(reason, []).append(f"season:{ctx.year}")
-        logger.exception(
-            "   \u26a0\ufe0f Non-P0 statistical quality gate failed (continuing OCI game publish): %s", exc
-        )
+        logger.exception("   \u26a0\ufe0f Non-P0 statistical quality gate failed (continuing OCI game publish)")
 
 
 def _recalculate_season_aggregates_for_quality_gate(ctx: _RunContext) -> None:
@@ -1182,13 +1180,11 @@ def _recalculate_season_aggregates_for_quality_gate(ctx: _RunContext) -> None:
         ctx.runner(["-m", "src.cli.recalc_player_stats", "--season", str(ctx.year)])
         ctx.runner(["-m", "src.cli.recalc_team_stats", "--season", str(ctx.year)])
         logger.info("   \u2705 Season aggregates refreshed")
-    except subprocess.CalledProcessError as exc:
+    except subprocess.CalledProcessError:
         reason = "non_p0_season_aggregate_recalc_failed"
         ctx.non_p0_quality_gate_counts[reason] = ctx.non_p0_quality_gate_counts.get(reason, 0) + 1
         ctx.non_p0_quality_gate_ids.setdefault(reason, []).append(f"season:{ctx.year}")
-        logger.exception(
-            "   \u26a0\ufe0f Non-P0 season aggregate recalculation failed (continuing OCI game publish): %s", exc
-        )
+        logger.exception("   \u26a0\ufe0f Non-P0 season aggregate recalculation failed (continuing OCI game publish)")
 
 
 def _resolve_null_player_ids_before_quality_gate(ctx: _RunContext) -> None:
@@ -1206,11 +1202,11 @@ def _resolve_null_player_ids_before_quality_gate(ctx: _RunContext) -> None:
             ]
         )
         logger.info("   ✅ NULL player_id resolver complete")
-    except subprocess.CalledProcessError as exc:
+    except subprocess.CalledProcessError:
         reason = "non_p0_null_player_id_resolution_failed"
         ctx.non_p0_quality_gate_counts[reason] = ctx.non_p0_quality_gate_counts.get(reason, 0) + 1
         ctx.non_p0_quality_gate_ids.setdefault(reason, []).append(f"season:{ctx.year}")
-        logger.exception("   ⚠️ NULL player_id resolver failed (continuing OCI game publish): %s", exc)
+        logger.exception("   ⚠️ NULL player_id resolver failed (continuing OCI game publish)")
 
 
 def _sync_oci_supporting_datasets(ctx: _RunContext, syncer: OCISync) -> None:
@@ -1437,7 +1433,7 @@ def _load_pbp_attempts_by_game(target_date: str) -> dict[str, list[dict[str, str
     attempts_by_game: dict[str, list[dict[str, str]]] = {}
     for file_path in Path("logs/daily_update_summary").glob(f"pbp_report_*_{target_date}.csv"):
         try:
-            with open(file_path, encoding="utf-8") as f:
+            with file_path.open(encoding="utf-8") as f:
                 reader = csv.DictReader(f)
                 for row in reader:
                     gid = row.get("game_id")

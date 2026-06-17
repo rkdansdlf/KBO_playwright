@@ -14,13 +14,13 @@ from __future__ import annotations
 
 import argparse
 import logging
-import os
 import sys
+from pathlib import Path
 
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 
-sys.path.insert(0, os.getcwd())
+sys.path.insert(0, str(Path.cwd()))
 
 from src.db.engine import SessionLocal
 from src.repositories.game_relay import _relay_resolution_context, _resolve_pbp_player

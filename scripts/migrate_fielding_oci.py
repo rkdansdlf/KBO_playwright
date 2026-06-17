@@ -31,14 +31,14 @@ def migrate_fielding():
                 logger.info("  Column %s added.", col_name)
             except psycopg2.errors.DuplicateColumn:
                 logger.info("  Column %s already exists.", col_name)
-            except psycopg2.Error as e:
-                logger.error("  Error adding %s: %s", col_name, e)
+            except psycopg2.Error:
+                logger.exception("  Error adding %s", col_name)
 
         cur.close()
         conn.close()
         logger.info("Migration complete.")
-    except psycopg2.Error as e:
-        logger.error("Connection failed: %s", e)
+    except Exception:
+        logger.exception("Connection failed")
 
 
 if __name__ == "__main__":

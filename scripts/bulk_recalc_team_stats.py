@@ -29,8 +29,8 @@ def main():
                 ],
                 check=True,
             )
-        except subprocess.CalledProcessError as e:
-            logger.error("❌ Failed to recalculate stats for %s: %s", year, e)
+        except subprocess.CalledProcessError:
+            logger.exception("❌ Failed to recalculate stats for %s", year)
             continue
 
     logger.info("✅ Bulk team statistics recalculation complete.")

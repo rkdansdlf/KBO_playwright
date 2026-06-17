@@ -5,8 +5,8 @@ Crawler for static text sources: rulebooks (PDF) and baseball encyclopedias/wiki
 from __future__ import annotations
 
 import logging
-import os
 from datetime import datetime
+from pathlib import Path
 from typing import Any
 
 logger = logging.getLogger(__name__)
@@ -34,7 +34,7 @@ class StaticTextCrawler:
         Parses a local PDF rulebook using pypdf and extracts text by page.
         """
         logger.info("📄 Parsing local PDF: %s", pdf_path)
-        if not os.path.exists(pdf_path):
+        if not Path(pdf_path).exists():
             raise FileNotFoundError(f"PDF file not found at: {pdf_path}")
 
         chunks = []

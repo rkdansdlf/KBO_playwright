@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-import os
 from datetime import datetime
+from pathlib import Path
 
 import pytest
 from sqlalchemy import Column, Integer, String, Text, create_engine
@@ -60,7 +60,7 @@ def _seed_sample(session, records: list[dict]):
 
 @pytest.fixture
 def session(tmp_path):
-    return _build_session(os.path.join(tmp_path, "test.db"))
+    return _build_session(Path(tmp_path, "test.db"))
 
 
 @pytest.fixture

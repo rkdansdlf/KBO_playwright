@@ -4,12 +4,12 @@ Sources: official stadium/team parking information pages.
 """
 
 import logging
-import os
 import sys
+from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from src.db.engine import SessionLocal
 from src.repositories.parking_lot_repository import ParkingFeeRuleRepository, ParkingLotRepository

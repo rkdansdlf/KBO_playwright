@@ -91,7 +91,7 @@ class ProcessLock:
 
         try:
             self.lock_dir.mkdir(parents=True, exist_ok=True)
-            self.file_fd = open(self.lock_file_path, "w")  # noqa: SIM115
+            self.file_fd = self.lock_file_path.open("w")
 
             flags = fcntl.LOCK_EX
             if not effective_blocking:

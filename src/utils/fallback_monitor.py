@@ -76,7 +76,7 @@ class FallbackMonitor:
         snapshots = []
         if file_path.exists():
             try:
-                with open(file_path, encoding="utf-8") as f:
+                with file_path.open(encoding="utf-8") as f:
                     content = json.load(f)
                     if isinstance(content, list):
                         snapshots = content
@@ -99,7 +99,7 @@ class FallbackMonitor:
 
         snapshots.append(snapshot)
 
-        with open(file_path, "w", encoding="utf-8") as f:
+        with file_path.open("w", encoding="utf-8") as f:
             json.dump(snapshots, f, cls=DateTimeEncoder, ensure_ascii=False, indent=2)
 
         return str(file_path)
@@ -120,5 +120,5 @@ class FallbackMonitor:
         date_str = datetime.now().strftime("%Y%m%d")
         file_path = backup_dir / f"{date_str}_{event_type}_{category.lower()}.json"
 
-        with open(file_path, "w", encoding="utf-8") as f:
+        with file_path.open("w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False, indent=2)

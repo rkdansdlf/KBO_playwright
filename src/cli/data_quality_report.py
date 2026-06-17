@@ -7,8 +7,8 @@ logger = logging.getLogger(__name__)
 import argparse
 import csv
 import json
-import os
 from datetime import datetime
+from pathlib import Path
 
 from sqlalchemy import func
 from sqlalchemy.orm import sessionmaker
@@ -102,19 +102,19 @@ def _build_report_data(years: list[int], db_url: str | None) -> dict:
 
 
 def _report_path(output_dir: str, db_url: str | None, output_format: str) -> str:
-    os.makedirs(output_dir, exist_ok=True)
+    Path(output_dir).mkdir(parents=True, exist_ok=True)
     suffix = "remote" if db_url else "local"
     filename = f"data_quality_report_{suffix}_{datetime.now():%Y%m%d_%H%M%S}"
-    return os.path.join(output_dir, f"{filename}.{output_format}")
+    return str(Path(output_dir, f"{filename}.{output_format}"))
 
 
 def _write_json_report(report_data: dict, path: str) -> None:
-    with open(path, "w", encoding="utf-8") as f:
+    with Path(path).open("w", encoding="utf-8") as f:
         json.dump(report_data, f, indent=2, ensure_ascii=False)
 
 
 def _write_csv_report(report_data: dict, path: str) -> None:
-    with open(path, "w", encoding="utf-8", newline="") as f:
+    with Path(path).open("w", encoding="utf-8", newline="") as f:
         writer = csv.writer(f)
         writer.writerow(["Year", "Category", "Total Rows", "Consistency Rate", "Source Breakdown"])
         for year, data in report_data["years"].items():

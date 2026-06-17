@@ -11,6 +11,7 @@ import os
 import sys
 import traceback
 from datetime import datetime, timedelta
+from pathlib import Path
 from typing import Any
 
 from apscheduler.schedulers.blocking import BlockingScheduler
@@ -98,11 +99,11 @@ def _markdown_title(content: str, file: str) -> str:
     first_line = content.lstrip().split("\n")[0]
     if first_line.startswith("#"):
         return first_line.lstrip("#").strip()
-    return os.path.splitext(file)[0].replace("_", " ").title()
+    return Path(file).stem.replace("_", " ").title()
 
 
 def _load_local_markdown_docs(rules_dir: str = "Docs/baseball") -> list[dict[str, Any]]:
-    if not os.path.exists(rules_dir):
+    if not Path(rules_dir).exists():
         return []
     logger.info("📁 Scanning directory '%s' for static markdown files...", rules_dir)
     raw_docs = []
@@ -110,9 +111,9 @@ def _load_local_markdown_docs(rules_dir: str = "Docs/baseball") -> list[dict[str
         for file in files:
             if not file.endswith(".md"):
                 continue
-            full_path = os.path.join(root, file)
+            full_path = Path(root, file)
             try:
-                with open(full_path, encoding="utf-8") as f:
+                with full_path.open(encoding="utf-8") as f:
                     content = f.read()
                 rel_path = os.path.relpath(full_path, rules_dir)
                 category, subcategory = _markdown_category(rel_path.replace("\\", "/").split("/"))
@@ -137,7 +138,7 @@ def _load_local_markdown_docs(rules_dir: str = "Docs/baseball") -> list[dict[str
 async def _crawl_static_docs(crawler: StaticTextCrawler, pdf_path: str | None) -> list[dict[str, Any]]:
     raw_docs = []
     if pdf_path:
-        if os.path.exists(pdf_path):
+        if Path(pdf_path).exists():
             raw_docs.extend(crawler.parse_local_pdf(pdf_path))
         else:
             logger.warning("⚠️ Specified PDF path does not exist: %s", pdf_path)
@@ -341,7 +342,7 @@ def run_consistency_check(deep: bool = False) -> None:
             logger.info("🚨 Consistency audit found mismatches — alert sent.")
     except (SQLAlchemyError, RuntimeError, OSError):
         err_msg = traceback.format_exc()
-        logger.error("Consistency audit raised an unexpected error:\n%s", err_msg)
+        logger.exception("Consistency audit raised an unexpected error")
         SlackWebhookClient.send_error_alert(f"Consistency audit error:\n{err_msg}")
 
 

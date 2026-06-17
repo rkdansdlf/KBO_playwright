@@ -265,10 +265,10 @@ def auto_fix_year(year: int) -> int:
                         session.commit()
                         pbp_fixed_games.append(game_id)
                         logger.info(f"  Applied PBP SH/SF correction for game {game_id}: {updated} rows updated")
-                except AUDIT_EXCEPTIONS as exc:
+                except AUDIT_EXCEPTIONS:
                     session.rollback()
-                    logger.warning("Error applying PBP fix for game %s: %s", game_id, exc)
-                    logger.error(f"  Error applying PBP fix for game {game_id}: {exc}")
+                    logger.exception("Error applying PBP fix for game %s", game_id)
+                    logger.exception(f"  Error applying PBP fix for game {game_id}")
 
     # Ratio fallback for 2020-2021
     ratio_fixed_rows = 0
@@ -282,17 +282,17 @@ def auto_fix_year(year: int) -> int:
     for game_id in game_ids:
         try:
             recalc_game_stats(game_id=game_id, dry_run=False)
-        except AUDIT_EXCEPTIONS as exc:
-            logger.warning("Error recalculating game stats for %s: %s", game_id, exc)
-            logger.error(f"  Error recalculating game stats for {game_id}: {exc}")
+        except AUDIT_EXCEPTIONS:
+            logger.exception("Error recalculating game stats for %s", game_id)
+            logger.exception(f"  Error recalculating game stats for {game_id}")
 
     # Recalculate player season stats
     logger.info(f"Recalculating player season stats for {year}...")
     try:
         recalc_season_stats(season=year, dry_run=False)
-    except AUDIT_EXCEPTIONS as exc:
-        logger.warning("Error recalculating season stats for %s: %s", year, exc)
-        logger.error(f"  Error recalculating season stats for {year}: {exc}")
+    except AUDIT_EXCEPTIONS:
+        logger.exception("Error recalculating season stats for %s", year)
+        logger.exception(f"  Error recalculating season stats for {year}")
 
     # Sync to OCI
     oci_url = os.getenv("OCI_DB_URL")
@@ -317,9 +317,9 @@ def auto_fix_year(year: int) -> int:
 
                 syncer.close()
                 logger.info("  OCI synchronization completed successfully.")
-        except AUDIT_EXCEPTIONS as exc:
-            logger.warning("Error syncing to OCI: %s", exc)
-            logger.error(f"  Error syncing to OCI: {exc}")
+        except AUDIT_EXCEPTIONS:
+            logger.exception("Error syncing to OCI")
+            logger.exception("  Error syncing to OCI")
     else:
         logger.info("OCI_DB_URL not set. Skipping OCI synchronization.")
 

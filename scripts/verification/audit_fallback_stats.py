@@ -57,8 +57,8 @@ class StatAudit:
         SlackWebhookClient.send_alert(msg, blocks=blocks)
         try:
             FallbackMonitor.save_audit_event(category, "abort", {"year": year, "series": series, "reason": reason})
-        except AUDIT_EXCEPTIONS as e:
-            logger.error(f"Failed to save audit abort event: {e}")
+        except AUDIT_EXCEPTIONS:
+            logger.exception("Failed to save audit abort event")
 
     @staticmethod
     def send_remediation_success_alert(
@@ -143,8 +143,8 @@ class StatAudit:
             FallbackMonitor.save_audit_event(
                 category, "warning", {"year": year, "series": series, "mismatches": mismatch_data}
             )
-        except AUDIT_EXCEPTIONS as e:
-            logger.error(f"Failed to save audit warning event: {e}")
+        except AUDIT_EXCEPTIONS:
+            logger.exception("Failed to save audit warning event")
 
     @staticmethod
     def audit_batting(year: int, series: str, fix: bool = False, max_mismatches: int = 10, max_game_diff: int = 15):
@@ -260,7 +260,7 @@ class StatAudit:
                         calculated_data=calc,
                         player_name=name,
                     )
-                    backup_name = os.path.basename(backup_path_str)
+                    backup_name = Path(backup_path_str).name
 
                     calc["player_name"] = name
                     if not calc.get("team_code"):
@@ -271,7 +271,7 @@ class StatAudit:
                     fix_count += 1
                 except AUDIT_EXCEPTIONS as e:
                     logger.info(f"      ⚠️ Failed to fix {name}: {e}")
-                    logger.error(f"Failed to fix {name} batting: {e}")
+                    logger.exception(f"Failed to fix {name} batting")
 
             summary_msg = f"Audited {len(official_stats)} records. Mismatches: {mismatches_count}, Fixed: {fix_count}"
             logger.info(f"   📊 {summary_msg}")
@@ -411,7 +411,7 @@ class StatAudit:
                         calculated_data=calc,
                         player_name=name,
                     )
-                    backup_name = os.path.basename(backup_path_str)
+                    backup_name = Path(backup_path_str).name
 
                     calc["player_name"] = name
                     if not calc.get("team_code"):
@@ -422,7 +422,7 @@ class StatAudit:
                     fix_count += 1
                 except AUDIT_EXCEPTIONS as e:
                     logger.info(f"      ⚠️ Failed to fix {name}: {e}")
-                    logger.error(f"Failed to fix {name} pitching: {e}")
+                    logger.exception(f"Failed to fix {name} pitching")
 
             summary_msg = f"Audited {len(official_stats)} records. Mismatches: {mismatches_count}, Fixed: {fix_count}"
             logger.info(f"   📊 {summary_msg}")
@@ -546,7 +546,7 @@ class StatAudit:
                         calculated_data=calc,
                         player_name=name,
                     )
-                    backup_name = os.path.basename(backup_path_str)
+                    backup_name = Path(backup_path_str).name
 
                     calc["team_id"] = off.team_id
                     repo.upsert_many([calc])
@@ -554,7 +554,7 @@ class StatAudit:
                     fix_count += 1
                 except AUDIT_EXCEPTIONS as e:
                     logger.info(f"      ⚠️ Failed to fix {name}: {e}")
-                    logger.error(f"Failed to fix {name} fielding: {e}")
+                    logger.exception(f"Failed to fix {name} fielding")
 
             logger.info(f"   Done. Mismatches: {mismatches_count}, Fixed: {fix_count}")
             if fix_count > 0:
@@ -682,7 +682,7 @@ class StatAudit:
                         calculated_data=calc,
                         player_name=name,
                     )
-                    backup_name = os.path.basename(backup_path_str)
+                    backup_name = Path(backup_path_str).name
 
                     calc["team_id"] = off.team_id
                     repo.upsert_many([calc])
@@ -690,7 +690,7 @@ class StatAudit:
                     fix_count += 1
                 except AUDIT_EXCEPTIONS as e:
                     logger.info(f"      ⚠️ Failed to fix {name}: {e}")
-                    logger.error(f"Failed to fix {name} baserunning: {e}")
+                    logger.exception(f"Failed to fix {name} baserunning")
 
             logger.info(f"   Done. Mismatches: {mismatches_count}, Fixed: {fix_count}")
             if fix_count > 0:

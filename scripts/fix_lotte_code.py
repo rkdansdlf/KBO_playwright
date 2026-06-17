@@ -1,11 +1,11 @@
 import logging
-import os
 import sys
+from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
 # Add the project root to the python path
-sys.path.append(os.getcwd())
+sys.path.append(str(Path.cwd()))
 
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
@@ -63,9 +63,9 @@ def fix_lotte_code():
             else:
                 logger.info("FAILURE: Lotte team code was not updated.")
 
-        except SQLAlchemyError as e:
+        except SQLAlchemyError:
             session.rollback()
-            logger.error("An error occurred: %s", e)
+            logger.exception("An error occurred")
 
 
 if __name__ == "__main__":

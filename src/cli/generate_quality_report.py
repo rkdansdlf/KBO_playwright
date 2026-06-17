@@ -287,10 +287,10 @@ def get_auto_remediation_summary(target_date_str: str, audit_dir: Path | None = 
     for f in files:
         filename = f.name
         try:
-            with open(f, encoding="utf-8") as file_handle:
+            with f.open(encoding="utf-8") as file_handle:
                 content = json.load(file_handle)
-        except SQLAlchemyError as e:
-            _LOGGER.error("Failed to read/parse audit fix file %s: %s", filename, e)
+        except SQLAlchemyError:
+            _LOGGER.exception("Failed to read/parse audit fix file %s", filename)
             continue
 
         if "_abort_" in filename:
@@ -574,7 +574,7 @@ def get_daily_metrics(session, target_date_str: str, gate_result: dict[str, Any]
                 parity_info["diff"] = oci_count - local_count
                 parity_info["ok"] = parity_info["diff"] == 0
     except SQLAlchemyError as e:
-        _LOGGER.error("Parity check failed: %s", e)
+        _LOGGER.exception("Parity check failed")
         parity_info["ok"] = False
         parity_info["error"] = str(e)
 
@@ -837,7 +837,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     # Save to logs
     log_dir = Path("logs/quality_reports")
     log_dir.mkdir(parents=True, exist_ok=True)
-    with open(log_dir / f"{target_date}.json", "w", encoding="utf-8") as f:
+    with (log_dir / f"{target_date}.json").open("w", encoding="utf-8") as f:
         json.dump(report_json, f, indent=2, ensure_ascii=False)
 
     logger.info("✅ Quality report saved to %s/%s.json", log_dir, target_date)

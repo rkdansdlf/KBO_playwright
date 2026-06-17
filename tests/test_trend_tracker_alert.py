@@ -28,9 +28,9 @@ def test_send_degradation_alert_triggered(tmp_path):
         }
     }
 
-    with open(tmp_path / f"{yesterday}.json", "w") as f:
+    with (tmp_path / f"{yesterday}.json").open("w") as f:
         json.dump(report1, f)
-    with open(tmp_path / f"{today}.json", "w") as f:
+    with (tmp_path / f"{today}.json").open("w") as f:
         json.dump(report2, f)
 
     tracker = TrendTracker(report_dir=tmp_path)
@@ -66,9 +66,9 @@ def test_detect_degradations_supports_completed_count_when_explicit(tmp_path):
         }
     }
 
-    with open(tmp_path / f"{yesterday}.json", "w") as f:
+    with (tmp_path / f"{yesterday}.json").open("w") as f:
         json.dump(report1, f)
-    with open(tmp_path / f"{today}.json", "w") as f:
+    with (tmp_path / f"{today}.json").open("w") as f:
         json.dump(report2, f)
 
     tracker = TrendTracker(report_dir=tmp_path)
@@ -101,9 +101,9 @@ def test_send_degradation_alert_ignores_completed_count_by_default(tmp_path):
         }
     }
 
-    with open(tmp_path / f"{yesterday}.json", "w") as f:
+    with (tmp_path / f"{yesterday}.json").open("w") as f:
         json.dump(report1, f)
-    with open(tmp_path / f"{today}.json", "w") as f:
+    with (tmp_path / f"{today}.json").open("w") as f:
         json.dump(report2, f)
 
     tracker = TrendTracker(report_dir=tmp_path)
@@ -130,9 +130,9 @@ def test_load_reports_dedupes_by_metrics_date_with_latest_generated_at(tmp_path)
         "generated_at": "2026-06-10T04:00:00+09:00",
     }
 
-    with open(tmp_path / "20250101.json", "w") as f:
+    with (tmp_path / "20250101.json").open("w") as f:
         json.dump(stale_report, f)
-    with open(tmp_path / f"{today}.json", "w") as f:
+    with (tmp_path / f"{today}.json").open("w") as f:
         json.dump(latest_report, f)
 
     tracker = TrendTracker(report_dir=tmp_path)
@@ -166,9 +166,9 @@ def test_send_degradation_alert_quiet_when_healthy(tmp_path):
         }
     }
 
-    with open(tmp_path / f"{yesterday}.json", "w") as f:
+    with (tmp_path / f"{yesterday}.json").open("w") as f:
         json.dump(report1, f)
-    with open(tmp_path / f"{today}.json", "w") as f:
+    with (tmp_path / f"{today}.json").open("w") as f:
         json.dump(report2, f)
 
     tracker = TrendTracker(report_dir=tmp_path)

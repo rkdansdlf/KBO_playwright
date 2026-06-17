@@ -330,7 +330,7 @@ async def main():
                 "mismatches": checker.mismatches,
                 "timestamp": datetime.now().isoformat(),
             }
-            with open(out_path, "w", encoding="utf-8") as f:
+            with out_path.open("w", encoding="utf-8") as f:
                 json.dump(report_data, f, indent=2, ensure_ascii=False)
             logger.info(f"\n💾 Report saved to {out_path}")
 

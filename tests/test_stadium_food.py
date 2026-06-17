@@ -1,4 +1,4 @@
-import os
+from pathlib import Path
 
 import pytest
 from sqlalchemy import create_engine
@@ -70,7 +70,7 @@ def test_seed_stadium_foods():
 
     Session = sessionmaker(bind=engine)
     with Session() as session:
-        if os.path.exists(test_csv_path):
+        if Path(test_csv_path).exists():
             seed_stadium_foods(session, test_csv_path)
 
             # Assert that foods are inserted

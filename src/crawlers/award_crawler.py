@@ -63,8 +63,8 @@ class AwardCrawler:
                         data = await self.crawl_series_prize(page)
                     else:
                         data = []
-                except AWARD_CRAWL_EXCEPTIONS as e:
-                    logger.exception("Error crawling %s: %s", atype, e)
+                except AWARD_CRAWL_EXCEPTIONS:
+                    logger.exception("Error crawling %s", atype)
                     data = []
 
                 all_data.extend(data)
@@ -323,9 +323,9 @@ class AwardCrawler:
                     logger.warning("Skipping duplicate or error: %s - %s", item, ex, exc_info=True)
             session.commit()
             logger.info("✅ Saved %s awards to database.", count)
-        except AWARD_DB_EXCEPTIONS as e:
+        except AWARD_DB_EXCEPTIONS:
             session.rollback()
-            logger.exception("Error saving to DB: %s", e)
+            logger.exception("Error saving to DB")
         finally:
             session.close()
 

@@ -547,7 +547,7 @@ class OCISyncBase:
             logger.info("✅ OCI connection successful")
             return True
         except (PsycopgError, SQLAlchemyError, OSError, RuntimeError) as e:
-            logger.exception("❌ OCI connection failed: %s", e)
+            logger.exception("❌ OCI connection failed")
             self._rollback_target_session(label="test_connection")
             if self._is_transient_oci_error(e):
                 try:
@@ -715,13 +715,12 @@ class OCISyncBase:
                 transient = self._is_transient_oci_error(exc)
 
                 if not transient or attempt >= max_attempts:
-                    logger.error(
-                        "OCI raw connection failed label=%s attempt=%d/%d transient=%s error=%s",
+                    logger.exception(
+                        "OCI raw connection failed label=%s attempt=%d/%d transient=%s",
                         label,
                         attempt,
                         max_attempts,
                         transient,
-                        exc,
                     )
                     raise
 
@@ -763,13 +762,12 @@ class OCISyncBase:
                 self._rollback_target_session(label=label)
 
                 if not transient or attempt >= max_attempts:
-                    logger.error(
-                        "OCI session operation failed label=%s attempt=%d/%d transient=%s error=%s",
+                    logger.exception(
+                        "OCI session operation failed label=%s attempt=%d/%d transient=%s",
                         label,
                         attempt,
                         max_attempts,
                         transient,
-                        exc,
                     )
                     raise
 

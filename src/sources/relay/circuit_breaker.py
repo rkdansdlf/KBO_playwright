@@ -47,7 +47,7 @@ class SourceCircuitBreaker:
         now = time.time()
         now_mono = time.monotonic()
         try:
-            with open(self._persist_path, newline="") as f:
+            with self._persist_path.open(newline="") as f:
                 reader = csv.DictReader(f)
                 for row in reader:
                     key = (row["source_name"], row["bucket_id"])
@@ -85,7 +85,7 @@ class SourceCircuitBreaker:
         now_mono = time.monotonic()
         self._persist_path.parent.mkdir(parents=True, exist_ok=True)
         try:
-            with open(self._persist_path, "w", newline="") as f:
+            with self._persist_path.open("w", newline="") as f:
                 writer = csv.writer(f)
                 writer.writerow(self.PERSIST_HEADER)
                 for (source_name, bucket_id), failures in self._failures.items():

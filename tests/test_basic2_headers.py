@@ -2,15 +2,19 @@
 Basic2 헤더 클릭 기능 테스트 - 11개 헤더 모두 검증
 """
 
+import logging
 import os
 import sys
+from pathlib import Path
 
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.append(str(Path(__file__).resolve().parent.parent))
 
 import time
 
 import pytest
 from playwright.sync_api import sync_playwright
+
+logger = logging.getLogger(__name__)
 
 from src.crawlers.player_batting_all_series_crawler import crawl_basic2_with_headers
 
@@ -68,7 +72,8 @@ def test_basic2_headers():
             else:
                 print("❌ 테스트 실패! 데이터가 수집되지 않았습니다.")
 
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
+            logger.exception("테스트 중 오류 발생")
             print(f"❌ 테스트 중 오류 발생: {e}")
 
         finally:

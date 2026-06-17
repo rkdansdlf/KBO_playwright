@@ -201,13 +201,12 @@ def main(argv: Sequence[str] | None = None, *, runner: Runner | None = None) -> 
             sync=args.sync,
             runner=runner,
         )
-    except (FileNotFoundError, ValueError) as exc:
-        logger.exception("%s", exc)
-        logger.error("%s", exc)
+    except (FileNotFoundError, ValueError):
+        logger.exception("Retry command configuration error")
         return 2
     except subprocess.CalledProcessError as exc:
-        logger.exception("Retry command failed with exit code %s: %s", exc.returncode, shlex.join(exc.cmd))
-        logger.error("Retry command failed with exit code %s: %s", exc.returncode, shlex.join(exc.cmd))
+        logger.exception("Retry command failed with exit code %s", exc.returncode)
+        logger.exception("Retry command failed with exit code %s", exc.returncode)
         return exc.returncode or 1
 
 

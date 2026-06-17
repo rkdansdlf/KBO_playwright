@@ -67,8 +67,8 @@ def _run_batting_recalc(aggregator: TeamStatAggregator, season: int, team_id: st
                 "  💾 Upserted %s team batting rows to DB.", len(results)
             )
         return 0
-    except TEAM_RECALC_EXCEPTIONS as exc:
-        logger.exception("❌ Failed batting stats rollup for season=%s: %s", season, exc)
+    except TEAM_RECALC_EXCEPTIONS:
+        logger.exception("❌ Failed batting stats rollup for season=%s", season)
         return 1
 
 
@@ -84,8 +84,8 @@ def _run_pitching_recalc(aggregator: TeamStatAggregator, season: int, team_id: s
                 "  💾 Upserted %s team pitching rows to DB.", len(results)
             )
         return 0
-    except TEAM_RECALC_EXCEPTIONS as exc:
-        logger.exception("❌ Failed pitching stats rollup for season=%s: %s", season, exc)
+    except TEAM_RECALC_EXCEPTIONS:
+        logger.exception("❌ Failed pitching stats rollup for season=%s", season)
         return 1
 
 

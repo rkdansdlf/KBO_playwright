@@ -49,8 +49,8 @@ def retry_navigation(
             if attempt == max_retries:
                 return False
             _policy.delay()
-        except PlaywrightError as e:
-            logger.error("Error navigating to %s on attempt %s: %s", url, attempt, e)
+        except PlaywrightError:
+            logger.exception("Error navigating to %s on attempt %s", url, attempt)
             if attempt == max_retries:
                 return False
             _policy.delay()

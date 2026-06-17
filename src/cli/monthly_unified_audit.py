@@ -90,11 +90,11 @@ def crawl_monthly_unified_audit_job() -> None:
     log_dir.mkdir(parents=True, exist_ok=True)
 
     pa_report_path = log_dir / f"pa_audit_{target_year}.json"
-    with open(pa_report_path, "w", encoding="utf-8") as f:
+    with pa_report_path.open("w", encoding="utf-8") as f:
         json.dump(pa_result, f, indent=2, ensure_ascii=False)
 
     team_report_path = log_dir / f"team_audit_{target_year}.json"
-    with open(team_report_path, "w", encoding="utf-8") as f:
+    with team_report_path.open("w", encoding="utf-8") as f:
         json.dump(team_result, f, indent=2, ensure_ascii=False)
 
     # Log summary

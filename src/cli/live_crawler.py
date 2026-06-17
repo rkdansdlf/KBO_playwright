@@ -277,7 +277,9 @@ async def _run_kbo_fallback_healing(game_id: str) -> None:
                     "KBO fallback attempt %s failed for %s: %s", attempt, game_id, fallback_err, exc_info=True
                 )
                 if attempt == max_attempts:
-                    logger.error("[FALLBACK ERROR] KBO fallback failed all %s attempts for %s", max_attempts, game_id)
+                    logger.exception(
+                        "[FALLBACK ERROR] KBO fallback failed all %s attempts for %s", max_attempts, game_id
+                    )
                     break
                 backoff = 2.0**attempt
                 await asyncio.sleep(backoff)
@@ -294,10 +296,10 @@ async def _run_kbo_fallback_healing(game_id: str) -> None:
                     msg = f"✅ KBO Fallback Success: Recovered {saved} unverified Naver PBP events from KBO for game {game_id}"
                     logger.info("[FALLBACK SUCCESS] %s", msg)
                     SlackWebhookClient.send_alert(msg)
-            except LIVE_CRAWLER_EXCEPTIONS as db_err:
-                logger.exception("Failed to save KBO fallback data for %s: %s", game_id, db_err)
-    except LIVE_CRAWLER_EXCEPTIONS as exc:
-        logger.exception("Unexpected exception in background KBO healing for %s: %s", game_id, exc)
+            except LIVE_CRAWLER_EXCEPTIONS:
+                logger.exception("Failed to save KBO fallback data for %s", game_id)
+    except LIVE_CRAWLER_EXCEPTIONS:
+        logger.exception("Unexpected exception in background KBO healing for %s", game_id)
     finally:
         _ACTIVE_HEALING_GAMES.discard(game_id)
 

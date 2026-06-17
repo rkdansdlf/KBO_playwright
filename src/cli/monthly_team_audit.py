@@ -63,7 +63,7 @@ def crawl_monthly_team_audit_job() -> None:
     log_dir = Path("logs/team_audit")
     log_dir.mkdir(parents=True, exist_ok=True)
     report_path = log_dir / f"team_audit_{target_year}.json"
-    with open(report_path, "w", encoding="utf-8") as f:
+    with report_path.open("w", encoding="utf-8") as f:
         json.dump(result, f, indent=2, ensure_ascii=False)
 
     bat_ok = result["batting"]["ok"]

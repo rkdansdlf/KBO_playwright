@@ -1,12 +1,12 @@
 import asyncio
 import logging
-import os
 import sys
+from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
 # Ensure project root is in path
-sys.path.append(os.getcwd())
+sys.path.append(str(Path.cwd()))
 
 from sqlalchemy import select
 

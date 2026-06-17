@@ -113,9 +113,9 @@ class ForeignPlayerCrawler(NaverNewsCrawlerBase):
                     logger.warning("Foreign player save failed: %s", e)
             session.commit()
             logger.info("Saved %s foreign player change records.", count)
-        except SQLAlchemyError as e:
+        except SQLAlchemyError:
             session.rollback()
-            logger.exception("Database error saving foreign players: %s", e)
+            logger.exception("Database error saving foreign players")
         finally:
             session.close()
 
