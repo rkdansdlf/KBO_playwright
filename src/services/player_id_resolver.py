@@ -3,6 +3,7 @@ from __future__ import annotations
 import csv
 import logging
 from pathlib import Path
+from typing import Any
 
 from sqlalchemy import inspect, or_, select
 from sqlalchemy.exc import SQLAlchemyError
@@ -450,7 +451,7 @@ class PlayerIdResolver:
             return 52731  # 96번 박준영 (2003년생)
         return None
 
-    def _candidate_models(self, is_pitcher: bool | None):
+    def _candidate_models(self, is_pitcher: bool | None) -> list[Any]:
         if is_pitcher is True:
             return [PlayerSeasonPitching]
         if is_pitcher is False:

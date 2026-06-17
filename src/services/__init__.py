@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """Service layer: business logic, aggregators, and orchestrators.
 
 Each module is self-contained and imported explicitly:

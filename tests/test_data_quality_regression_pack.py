@@ -53,6 +53,23 @@ def _create_quality_tables(conn) -> None:
             """,
         ),
     )
+    conn.execute(
+        text(
+            """
+            CREATE TABLE player_season_batting (
+                player_id INTEGER,
+                plate_appearances INTEGER,
+                at_bats INTEGER,
+                walks INTEGER,
+                hbp INTEGER,
+                sacrifice_hits INTEGER,
+                sacrifice_flies INTEGER,
+                league TEXT,
+                source TEXT
+            )
+            """,
+        ),
+    )
 
 
 def test_regression_pack_reports_core_data_quality_violations() -> None:
@@ -87,6 +104,23 @@ def test_regression_pack_reports_core_data_quality_violations() -> None:
                 """
             ),
         )
+        conn.execute(
+            text(
+                """
+                INSERT INTO player_season_batting
+                    (player_id, plate_appearances, at_bats, walks, hbp, sacrifice_hits, sacrifice_flies, league, source)
+                VALUES
+                    -- Case 1: REGULAR, AGGREGATED, matches formula (OK)
+                    (3001, 5, 4, 1, 0, 0, 0, 'REGULAR', 'AGGREGATED'),
+                    -- Case 2: REGULAR, AGGREGATED, violates formula (Violated)
+                    (3002, 4, 4, 1, 0, 0, 0, 'REGULAR', 'AGGREGATED'),
+                    -- Case 3: FUTURES (non-REGULAR), violates formula but should be ignored (OK)
+                    (3003, 4, 4, 1, 0, 0, 0, 'FUTURES', 'AGGREGATED'),
+                    -- Case 4: REGULAR, CRAWLER (non-AGGREGATED), violates formula but should be ignored (OK)
+                    (3004, 4, 4, 1, 0, 0, 0, 'REGULAR', 'CRAWLER')
+                """
+            ),
+        )
 
         report = run_regression_pack(conn)
 
@@ -96,6 +130,11 @@ def test_regression_pack_reports_core_data_quality_violations() -> None:
     assert results["game_batting_hits_not_gt_at_bats"].violation_count == 1
     assert results["game_pitching_earned_runs_not_gt_runs_allowed"].status == "fail"
     assert results["game_lineups_null_player_id"].violation_count == 1
+
+    # Assert player_season_batting_pa_formula checks the correct target and reports exactly 1 violation (player_id 3002)
+    assert results["player_season_batting_pa_formula"].status == "fail"
+    assert results["player_season_batting_pa_formula"].violation_count == 1
+    assert results["player_season_batting_pa_formula"].sample_ids == ("3002",)
 
 
 def test_regression_pack_skips_missing_optional_tables() -> None:

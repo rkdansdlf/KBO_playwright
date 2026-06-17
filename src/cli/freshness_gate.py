@@ -8,6 +8,7 @@ import logging
 import os
 from collections.abc import Sequence
 from datetime import datetime, timedelta
+from typing import Any
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
@@ -48,7 +49,7 @@ KBO_FRESHNESS_TEAM_CODES = {
 }
 
 
-def _freshness_base_query(session: Session):
+def _freshness_base_query(session: Session) -> Any:
     return session.query(
         Game.game_id,
         Game.game_date,
@@ -64,7 +65,7 @@ def _freshness_base_query(session: Session):
     )
 
 
-def _apply_freshness_date_filter(query, target_date: str | None, days: int | None):
+def _apply_freshness_date_filter(query, target_date: str | None, days: int | None) -> Any:
     if target_date:
         return query.filter(Game.game_date == datetime.strptime(target_date, "%Y%m%d").date())
     if days:
