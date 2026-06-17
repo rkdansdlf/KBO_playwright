@@ -85,7 +85,7 @@ class PlayerBasicRepository:
                 unique_payload[player_id] = row
         return list(unique_payload.values())
 
-    def _build_upsert_stmt(self, values: dict[str, Any] | list[dict[str, Any]]):
+    def _build_upsert_stmt(self, values: dict[str, Any] | list[dict[str, Any]]) -> Any:
         keys = values[0] if isinstance(values, list) else values
         if self.dialect == "sqlite":
             stmt = sqlite_insert(PlayerBasic).values(values)

@@ -697,7 +697,7 @@ class OCISyncBase:
         label: str,
         max_retries: int = 2,
         base_delay_seconds: float = 1.0,
-    ):
+    ) -> Any:
         """Open a raw OCI connection with bounded retry for transient network loss."""
         max_attempts = max_retries + 1
 

@@ -335,7 +335,7 @@ def _has_repairable_game_children(session, game_id: str) -> bool:
     )
 
 
-def _game_date_from_game_id(game_id: str):
+def _game_date_from_game_id(game_id: str) -> Any:
     try:
         return datetime.strptime(game_id[:8], "%Y%m%d").date()
     except ValueError:

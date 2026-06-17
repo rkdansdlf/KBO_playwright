@@ -36,7 +36,7 @@ def run_parallel_sync(
     target_url: str,
     years: list[int],
     workers: int,
-    **kwargs,
+    **kwargs: Any,
 ) -> None:
     """연도별로 병렬 동기화 작업을 수행합니다."""
     logger.info("🚀 Starting parallel sync with %s workers for years: %s", workers, years)

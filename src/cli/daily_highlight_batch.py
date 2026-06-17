@@ -26,7 +26,7 @@ logger = logging.getLogger(__name__)
 HIGHLIGHT_SYNC_EXCEPTIONS = (SQLAlchemyError, RuntimeError, ValueError, TypeError, KeyError, OSError)
 
 
-def _load_completed_games(session, target_date):
+def _load_completed_games(session, target_date) -> list[Game]:
     return (
         session.query(Game)
         .filter(

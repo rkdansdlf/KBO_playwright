@@ -64,7 +64,7 @@ class RequestPolicy:
     def random_user_agent(self) -> str:
         return random.choice(self.user_agents)
 
-    def build_context_kwargs(self, **overrides) -> dict[str, Any]:
+    def build_context_kwargs(self, **overrides: Any) -> dict[str, Any]:
         kwargs = {"user_agent": self.random_user_agent()}
         kwargs.update(overrides)
         return kwargs
@@ -80,7 +80,7 @@ class RequestPolicy:
         throttle.default_delay = self.min_delay
         await throttle.wait(host)
 
-    def run_with_retry(self, func: Callable, *args, **kwargs) -> Any:
+    def run_with_retry(self, func: Callable, *args: Any, **kwargs: Any) -> Any:
         last_exc = None
         for attempt in range(1, self.max_retries + 1):
             try:
@@ -95,7 +95,7 @@ class RequestPolicy:
             raise last_exc
         raise RuntimeError("Unreachable")
 
-    async def run_with_retry_async(self, func: Callable, *args, **kwargs) -> Any:
+    async def run_with_retry_async(self, func: Callable, *args: Any, **kwargs: Any) -> Any:
         last_exc = None
         for attempt in range(1, self.max_retries + 1):
             try:

@@ -16,7 +16,7 @@ class TestMigrateFieldingOCI:
             assert mock_cur.execute.call_count == 4
 
     def test_migrate_fielding_connection_error(self):
-        with patch("scripts.migrate_fielding_oci.psycopg2.connect", side_effect=psycopg2.OperationalError("conn fail")):
+        with patch("scripts.migrate_fielding_oci.psycopg2.connect", side_effect=psycopg2.Error("conn fail")):
             from scripts.migrate_fielding_oci import migrate_fielding
 
             migrate_fielding()
