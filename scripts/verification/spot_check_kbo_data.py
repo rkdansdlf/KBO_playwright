@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Any
 
 from sqlalchemy import func
+from sqlalchemy.exc import SQLAlchemyError
 
 logger = logging.getLogger(__name__)
 
@@ -107,7 +108,7 @@ class SpotChecker:
                         if db_val and live_val and db_val != live_val:
                             self.log_mismatch("Player", pid_str, db_f, db_val, live_val)
 
-                except Exception as e:  # noqa: BLE001
+                except (TimeoutError, ConnectionError, OSError, ValueError, KeyError, AttributeError, TypeError) as e:
                     logger.info(f"   ❌ Error checking player {p.name} ({pid_str}): {e}")
 
             return checked_count
@@ -256,7 +257,16 @@ class SpotChecker:
                                         "GamePitching", g.game_id, f"{p_name}_{stat_key}", db_val, live_val
                                     )
 
-                except Exception as e:  # noqa: BLE001
+                except (
+                    TimeoutError,
+                    ConnectionError,
+                    OSError,
+                    ValueError,
+                    KeyError,
+                    AttributeError,
+                    TypeError,
+                    SQLAlchemyError,
+                ) as e:
                     logger.info(f"   ❌ Error checking game {g.game_id}: {e}")
                     import traceback
 
