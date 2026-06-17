@@ -49,8 +49,7 @@ def safe_parse_number(value_str: str, data_type: type, allow_zero: bool = True) 
     if not value_str or value_str in ["-", "N/A", ""]:
         return None
     try:
-        parsed_value = data_type(value_str)
-        return parsed_value
+        return data_type(value_str)
     except (ValueError, TypeError):
         return None
 

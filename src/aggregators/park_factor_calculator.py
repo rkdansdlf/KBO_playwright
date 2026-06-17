@@ -94,14 +94,13 @@ class ParkFactorCalculator:
     def _label(self, pf: float) -> str:
         if pf > 1.10:
             return "타자친화"
-        elif pf > 1.04:
+        if pf > 1.04:
             return "약간 타자친화"
-        elif pf > 0.96:
+        if pf > 0.96:
             return "중립"
-        elif pf > 0.90:
+        if pf > 0.90:
             return "약간 투수친화"
-        else:
-            return "투수친화"
+        return "투수친화"
 
     def print_report(self, year: int) -> None:
         results = self.calculate(year)

@@ -104,8 +104,7 @@ class WPACalculator:
             runner_bonus = 0.02 * bin(runners).count("1")  # +2% per runner
             if is_bottom:
                 return min(1.0, base_prob + runner_bonus)
-            else:
-                return max(0.0, base_prob - runner_bonus)
+            return max(0.0, base_prob - runner_bonus)
 
         # Ultimate Fallback: Use logistic formula (legacy)
         return self._fallback_formula(clamped_inning, is_bottom, outs, runners, score_diff)

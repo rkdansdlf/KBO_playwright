@@ -47,8 +47,7 @@ class EmbeddingService:
             if norm > 1e-9:
                 return [x / norm for x in truncated]
             return truncated
-        else:
-            return embedding + [0.0] * (target_dim - current_dim)
+        return embedding + [0.0] * (target_dim - current_dim)
 
     def _compute_hash(self, text: str) -> str:
         import hashlib
@@ -171,10 +170,8 @@ class EmbeddingService:
                     records = data.get("data", [])
                     # Make sure they are returned in order
                     sorted_records = sorted(records, key=lambda x: x.get("index", 0))
-                    embeddings = [item.get("embedding") for item in sorted_records]
-                    return embeddings
-                else:
-                    logger.error("❌ OpenRouter Embedding API returned status %s: %s", res.status_code, res.text)
+                    return [item.get("embedding") for item in sorted_records]
+                logger.error("❌ OpenRouter Embedding API returned status %s: %s", res.status_code, res.text)
         except EMBEDDING_HTTP_EXCEPTIONS:
             logger.exception("❌ Exception fetching OpenRouter embeddings")
 
@@ -209,8 +206,7 @@ class EmbeddingService:
                     # Google format: {"embeddings": [{"values": [...]}, ...]}
                     embeddings_data = data.get("embeddings", [])
                     return [item.get("values", []) for item in embeddings_data]
-                else:
-                    logger.error("❌ Google Embedding API returned status %s: %s", res.status_code, res.text)
+                logger.error("❌ Google Embedding API returned status %s: %s", res.status_code, res.text)
         except EMBEDDING_HTTP_EXCEPTIONS:
             logger.exception("❌ Exception fetching Google embeddings")
 

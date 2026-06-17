@@ -128,8 +128,7 @@ class PBPCrawler:
                     self.last_failure_reason = "error"
                     return None
 
-            result = await do_crawl()
-            return result
+            return await do_crawl()
         finally:
             if owns_pool:
                 await pool.close()

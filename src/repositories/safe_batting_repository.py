@@ -256,18 +256,16 @@ def get_batting_stats_count(session: Session | None = None) -> int:
     """타자 테이블의 레코드 수 조회"""
     if session:
         return session.query(PlayerSeasonBatting).count()
-    else:
-        with SessionLocal() as new_session:
-            return new_session.query(PlayerSeasonBatting).count()
+    with SessionLocal() as new_session:
+        return new_session.query(PlayerSeasonBatting).count()
 
 
 def get_batting_stats_by_season(season: int, session: Session | None = None) -> list[PlayerSeasonBatting]:
     """시즌별 타자 데이터 조회"""
     if session:
         return session.query(PlayerSeasonBatting).filter_by(season=season).all()
-    else:
-        with SessionLocal() as new_session:
-            return new_session.query(PlayerSeasonBatting).filter_by(season=season).all()
+    with SessionLocal() as new_session:
+        return new_session.query(PlayerSeasonBatting).filter_by(season=season).all()
 
 
 def cleanup_invalid_batting_data(session: Session | None = None) -> int:
