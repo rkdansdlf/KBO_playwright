@@ -3,10 +3,13 @@ Test navigation to page 52 to see why pagination stopped
 """
 
 import asyncio
+import logging
 import os
 
 import pytest
 from playwright.async_api import async_playwright
+
+logger = logging.getLogger(__name__)
 
 pytestmark = pytest.mark.skipif(
     os.getenv("RUN_LIVE_DEBUG_TESTS") != "1",
@@ -42,7 +45,8 @@ async def test_page_52():
                     is_visible = await next_btn.first.is_visible()
                     is_enabled = await next_btn.first.is_enabled()
                     print(f"Page {i + 1}: Next button visible={is_visible}, enabled={is_enabled}")
-                except Exception as e:  # noqa: BLE001
+                except Exception as e:
+                    logger.exception("Page %s: Error checking button state", i + 1)
                     print(f"Page {i + 1}: Error checking button state: {e}")
                     break
 
@@ -50,7 +54,8 @@ async def test_page_52():
                 try:
                     await next_btn.first.click(timeout=5000)
                     await asyncio.sleep(2)  # Wait for page load
-                except Exception as e:  # noqa: BLE001
+                except Exception as e:
+                    logger.exception("Click failed at page %s", i + 1)
                     print(f"❌ Click failed at page {i + 1}: {e}")
                     break
 

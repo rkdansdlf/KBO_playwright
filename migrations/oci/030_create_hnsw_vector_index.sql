@@ -14,5 +14,3 @@ DROP INDEX IF EXISTS idx_rag_chunks_embedding_hnsw;
 CREATE INDEX IF NOT EXISTS idx_rag_chunks_embedding_hnsw
 ON rag_chunks USING hnsw (embedding extensions.vector_cosine_ops);
 */
-
-
