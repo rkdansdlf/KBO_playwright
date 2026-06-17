@@ -3,8 +3,8 @@
 Supabase 테이블 제약조건 및 구조 확인 스크립트
 """
 
-
 import logging
+
 logger = logging.getLogger(__name__)
 
 import os
@@ -25,7 +25,7 @@ def check_supabase_structure():
 
         with engine.connect() as conn:
             logger.info("✅ Supabase 연결 성공!")
-            logger.info("\n" + "=" * 60)
+            logger.info("\n%s", "=" * 60)
             logger.info("📊 Supabase 테이블 구조 분석")
             logger.info("=" * 60)
 
@@ -103,7 +103,7 @@ def check_supabase_structure():
                     logger.info(f"   ... 총 {len(columns)}개 컬럼")
 
             # 4. 권장 해결 방법
-            logger.info("\n" + "=" * 60)
+            logger.info("\n%s", "=" * 60)
             logger.info("💡 UPSERT 해결 방안")
             logger.info("=" * 60)
 
@@ -123,8 +123,8 @@ def check_supabase_structure():
 
             return True
 
-    except Exception as e:
-        logger.error(f"❌ Supabase 연결 또는 쿼리 실패: {e}")
+    except Exception:
+        logger.exception("❌ Supabase 연결 또는 쿼리 실패")
         return False
 
 

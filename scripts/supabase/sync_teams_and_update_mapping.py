@@ -4,8 +4,8 @@ Supabase teams 데이터를 SQLite로 가져와서 팀 매핑 업데이트
 team_name이나 team_short_name으로 강제 매핑하여 데이터 정리
 """
 
-
 import logging
+
 logger = logging.getLogger(__name__)
 
 import os
@@ -315,7 +315,7 @@ def main():
         teams_data = fetch_teams_from_supabase()
 
         # 2. SQLite 팀 매핑 현황 분석
-        sqlite_analysis = analyze_sqlite_team_mapping()
+        analyze_sqlite_team_mapping()
 
         # 3. 매핑 규칙 생성
         mapping_rules = create_team_mapping_rules(teams_data)
@@ -350,8 +350,8 @@ def main():
         else:
             logger.error("\n❌ 사용자가 취소했습니다.")
 
-    except Exception as e:
-        logger.error(f"\n❌ 오류 발생: {e}")
+    except Exception:
+        logger.exception("\n❌ 오류 발생")
         import traceback
 
         traceback.print_exc()

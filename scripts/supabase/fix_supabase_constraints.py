@@ -3,8 +3,8 @@
 Supabase 투수 테이블 제약조건 문제 해결 스크립트
 """
 
-
 import logging
+
 logger = logging.getLogger(__name__)
 
 import os
@@ -95,7 +95,7 @@ def check_table_structure():
 
             columns = cursor.fetchall()
             logger.info(f"📊 테이블 컬럼: {len(columns)}개")
-            for col_name, data_type, nullable, default in columns[:10]:  # 처음 10개만
+            for col_name, data_type, nullable, _default in columns[:10]:  # 처음 10개만
                 logger.info(f"  - {col_name}: {data_type} ({'NULL' if nullable == 'YES' else 'NOT NULL'})")
 
             if len(columns) > 10:
@@ -166,8 +166,8 @@ def fix_constraint_issue():
 
             logger.info("\n✅ 모든 제약조건 문제 해결 완료!")
 
-        except Exception as e:
-            logger.error(f"❌ 제약조건 수정 중 오류: {e}")
+        except Exception:
+            logger.exception("❌ 제약조건 수정 중 오류")
             raise
 
 
@@ -207,7 +207,7 @@ def main():
             logger.error("❌ player_season_pitching 테이블이 존재하지 않습니다.")
             return
 
-        constraints = check_existing_constraints()
+        check_existing_constraints()
 
         # 2. 문제 해결
         fix_constraint_issue()
@@ -222,8 +222,8 @@ def main():
         else:
             logger.warning("\n⚠️ 제약조건 설정에 문제가 있을 수 있습니다.")
 
-    except Exception as e:
-        logger.error(f"\n❌ 오류 발생: {e}")
+    except Exception:
+        logger.exception("\n❌ 오류 발생")
         logger.info("\n💡 수동 해결 방법:")
         logger.info("   1. Supabase 대시보드에서 SQL 편집기 열기")
         logger.info("   2. 다음 SQL 실행:")
