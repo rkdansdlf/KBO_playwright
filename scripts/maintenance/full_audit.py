@@ -26,6 +26,12 @@ if str(PROJECT_ROOT) not in sys.path:
 
 DEFAULT_DB_URL = "sqlite:///data/kbo_dev.db"
 
+
+def _configure_logging() -> None:
+    if not logging.getLogger().handlers:
+        logging.basicConfig(level=logging.INFO, format="%(message)s")
+
+
 GATE_METRIC_KEYS = (
     "batting_null_player_id",
     "pitching_null_player_id",
@@ -595,6 +601,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
 
 def main(argv: list[str] | None = None) -> int:
+    _configure_logging()
     load_dotenv()
     args = parse_args(argv)
     db_url = args.db_url or os.getenv("DATABASE_URL") or DEFAULT_DB_URL
