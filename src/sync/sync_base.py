@@ -544,8 +544,6 @@ class OCISyncBase:
         """Test OCI connection"""
         try:
             self.target_session.execute(text("SELECT 1"))
-            logger.info("✅ OCI connection successful")
-            return True
         except (PsycopgError, SQLAlchemyError, OSError, RuntimeError) as e:
             logger.exception("❌ OCI connection failed")
             self._rollback_target_session(label="test_connection")
@@ -555,6 +553,9 @@ class OCISyncBase:
                 except (PsycopgError, SQLAlchemyError, OSError, RuntimeError) as reconnect_exc:
                     logger.warning("OCI reconnect after connection test failed: %s", reconnect_exc)
             return False
+        else:
+            logger.info("✅ OCI connection successful")
+            return True
 
     def _get_season_map(self) -> dict[tuple, int]:
         """Fetch and cache OCI season mapping (year, league_type_code) -> season_id."""
@@ -572,8 +573,11 @@ class OCISyncBase:
             try:
                 rows = self.target_session.execute(text(q)).all()
                 self._season_map_cache = {(row.season_year, row.league_type_code): row.season_id for row in rows}
-                return self._season_map_cache
             except SQLAlchemyError:
+                logger.warning("Season map query failed, trying next fallback")
+                continue
+            else:
+                return self._season_map_cache
                 logger.warning("Season map query failed, trying next fallback")
                 continue
 
@@ -710,7 +714,6 @@ class OCISyncBase:
                     cursor.close()
                 except (PsycopgError, SQLAlchemyError, sqlite3.Error, OSError, RuntimeError) as set_timeout_exc:
                     logger.warning("Failed to set statement_timeout on OCI connection: %s", set_timeout_exc)
-                return conn
             except (PsycopgError, SQLAlchemyError, OSError, RuntimeError) as exc:
                 transient = self._is_transient_oci_error(exc)
 
@@ -735,6 +738,8 @@ class OCISyncBase:
                 )
                 self._reconnect_oci()
                 time.sleep(wait_seconds)
+            else:
+                return conn
         raise RuntimeError("Unreachable")
 
     def _rollback_target_session(self, *, label: str) -> None:

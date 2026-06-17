@@ -216,13 +216,13 @@ def cleanup_invalid_pitching_data(session: Session | None = None) -> int:
         if not session:  # 외부 세션이 아닌 경우만 커밋
             cleanup_session.commit()
 
-        return deleted
-
     except SQLAlchemyError:
         if not session:
             cleanup_session.rollback()
         logger.exception("⚠️ 투수 데이터 정리 실패")
         return 0
+    else:
+        return deleted
     finally:
         if not session:
             cleanup_session.close()

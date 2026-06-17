@@ -370,11 +370,11 @@ class PreviewCrawler:
                     len(preview_data["home_lineup"]),
                 )
 
-            return results
-
         except PREVIEW_CRAWL_EXCEPTIONS:
             logger.exception("❌ PreviewCrawler error")
             return []
+        else:
+            return results
         finally:
             if page is not None and pool is not None:
                 try:

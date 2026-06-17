@@ -161,12 +161,12 @@ def crawl_bb_basic2_data(page: Page, year: int, policy: RequestPolicy | None = N
             if policy:
                 policy.delay()
 
-        logger.info("   ✅ BB 헤더 기준 데이터 수집 완료: %s명", len(all_player_data))
-        return all_player_data
-
     except BASIC2_CRAWLER_EXCEPTIONS:
         logger.exception("   ❌ Basic2 BB 데이터 수집 중 오류")
         return {}
+    else:
+        logger.info("   ✅ BB 헤더 기준 데이터 수집 완료: %s명", len(all_player_data))
+        return all_player_data
 
 
 def collect_current_page_bb_data(page: Page, year: int) -> dict[int, dict]:

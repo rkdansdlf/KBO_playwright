@@ -204,11 +204,11 @@ def crawl_basic1_data(page: Page, year: int, series_info: dict, policy: RequestP
             if policy:
                 policy.delay()
 
-        return all_player_data
-
     except CRAWLER_EXCEPTIONS:
         logger.exception("   ❌ Basic1 데이터 수집 중 오류")
         return {}
+    else:
+        return all_player_data
 
 
 def parse_regular_season_basic1_stats(cells: list) -> dict[str, Any]:
@@ -360,12 +360,12 @@ def crawl_basic2_with_headers(
                 logger.exception("         ❌ %s 헤더 처리 중 오류", header_name)
                 continue
 
-        logger.info("   ✅ Basic2 헤더별 데이터 수집 완료: %s명", len(all_player_data))
-        return all_player_data
-
     except CRAWLER_EXCEPTIONS:
         logger.exception("   ❌ Basic2 데이터 수집 중 오류")
         return {}
+    else:
+        logger.info("   ✅ Basic2 헤더별 데이터 수집 완료: %s명", len(all_player_data))
+        return all_player_data
 
 
 def collect_current_page_data(page: Page, sort_field: str, policy: RequestPolicy | None = None) -> dict[int, dict]:
@@ -563,12 +563,12 @@ def save_to_database(player_data: dict[int, dict], series_name: str) -> int:
                 logger.exception("   ⚠️ %s 저장 실패", data["player_name"])
                 continue
 
-        logger.info("   ✅ %s/%s명 저장 완료", saved_count, len(player_data))
-        return saved_count
-
     except DB_SAVE_EXCEPTIONS:
         logger.exception("   ❌ 데이터베이스 저장 중 오류")
         return 0
+    else:
+        logger.info("   ✅ %s/%s명 저장 완료", saved_count, len(player_data))
+        return saved_count
 
 
 def main() -> None:

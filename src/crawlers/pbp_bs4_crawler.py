@@ -62,17 +62,16 @@ class PBPBS4Crawler:
             logger.info("[INFO] Extracting Relay Data via BeautifulSoup...")
             events = self._parse_html_to_events(html)
 
-            if not events:
-                return None
-
-            return {"game_id": game_id, "game_date": game_date, "events": events}
-
         except httpx.HTTPError:
             logger.exception("[ERROR] HTTP fetch failed for %s", game_id)
             return None
         except PBP_BS4_PARSE_EXCEPTIONS:
             logger.exception("BS4 PBP crawl failed for %s", game_id)
             return None
+        else:
+            if not events:
+                return None
+            return {"game_id": game_id, "game_date": game_date, "events": events}
 
     def _parse_html_to_events(self, html: str) -> list[dict[str, Any]]:
         """Extract all PBP events using BeautifulSoup and compute states."""

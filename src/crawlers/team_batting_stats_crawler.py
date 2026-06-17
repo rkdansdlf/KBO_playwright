@@ -183,10 +183,11 @@ class TeamBattingStatsCrawler:
             try:
                 page.select_option(selector, str(season))
                 page.wait_for_load_state("networkidle")
-                return True
             except (PlaywrightError, PlaywrightTimeoutError):
                 logger.warning("Failed to select season dropdown, trying next selector")
                 continue
+            else:
+                return True
         return False
 
 

@@ -93,9 +93,10 @@ def _is_number_like(value: Any) -> bool:
             return True
         try:
             float(cleaned)
-            return True
         except ValueError:
             return False
+        else:
+            return True
     return False
 
 
