@@ -31,11 +31,19 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY requirements.txt ./
 RUN pip install --no-cache-dir --upgrade pip && \
     pip install --no-cache-dir -r requirements.txt && \
-    python -m playwright install chromium
+    python -m playwright install chromium && \
+    groupadd -r appuser && useradd -r -g appuser appuser
 
 COPY . .
 
+RUN chown -R appuser:appuser /app
+
 VOLUME /app/data
+
+USER appuser
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
+    CMD python -c "from src.db.engine import SessionLocal; s=SessionLocal(); s.execute(text('SELECT 1')); s.close()" || exit 1
 
 ENTRYPOINT ["bash", "docker/entrypoint.sh"]
 CMD ["python", "-m", "scripts.scheduler"]
