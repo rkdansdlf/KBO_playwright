@@ -38,104 +38,105 @@ def _env_enabled(name: str, default: str = "1") -> bool:
     return os.getenv(name, default).strip().lower() not in FALSE_ENV_VALUES
 
 
+def _safe_scalar(session, sql: str, default: int = 0) -> int:
+    try:
+        return session.execute(text(sql)).scalar() or default
+    except SQLAlchemyError:
+        return default
+
+
+def _safe_rows(session, sql: str) -> list:
+    try:
+        return session.execute(text(sql)).all()
+    except SQLAlchemyError:
+        return []
+
+
+def _safe_first(session, sql: str) -> tuple[Any, Any]:
+    try:
+        return session.execute(text(sql)).first()
+    except SQLAlchemyError:
+        return None, None
+
+
+def _operational_game_counts(session) -> tuple[int, int]:
+    operational_total = _safe_scalar(session, "SELECT COUNT(*) FROM game")
+    operational_scheduled = _safe_scalar(
+        session,
+        """
+        SELECT COUNT(*)
+        FROM game
+        WHERE UPPER(COALESCE(game_status, '')) = 'SCHEDULED'
+        """,
+    )
+    return operational_total, operational_scheduled
+
+
+def _log_season_type_counts(session) -> dict[str, int]:
+    type_counts = {}
+    logger.info("\nBy season type:")
+    for season_type, count in _safe_rows(
+        session, "SELECT season_type, COUNT(*) FROM game_schedules GROUP BY season_type"
+    ):
+        type_counts[season_type] = count
+        logger.info("  %s: %s", season_type, count)
+    return type_counts
+
+
+def _log_schedule_year_counts(session) -> None:
+    logger.info("\nBy year:")
+    for year, count in _safe_rows(
+        session,
+        "SELECT season_year, COUNT(*) FROM game_schedules GROUP BY season_year ORDER BY season_year DESC",
+    ):
+        logger.info("  %s: %s", year, count)
+
+
+def _log_schedule_date_ranges(session, *, use_operational_fallback: bool) -> None:
+    min_date, max_date = _safe_first(session, "SELECT MIN(game_date), MAX(game_date) FROM game_schedules")
+    if min_date and max_date:
+        logger.info("\nDate range: %s to %s", min_date, max_date)
+    if use_operational_fallback:
+        game_min_date, game_max_date = _safe_first(session, "SELECT MIN(game_date), MAX(game_date) FROM game")
+        if game_min_date and game_max_date:
+            logger.info("Operational game date range: %s to %s", game_min_date, game_max_date)
+
+
+def _validate_schedule_counts(total: int, operational_total: int, type_counts: dict[str, int]) -> list[str]:
+    warnings = []
+    expected = {"preseason": 42, "regular": 720, "postseason": 7}
+    logger.info("\nValidation:")
+    if total == 0 and operational_total > 0:
+        logger.info("  game_schedules: 0 rows [INFO: using game table fallback]")
+        logger.info("  game table: %s rows [OK]", operational_total)
+        return warnings
+    for season_type, expected_count in expected.items():
+        actual = type_counts.get(season_type, 0)
+        status = "OK" if actual >= expected_count else "WARN"
+        logger.info("  %s: %s/%s [%s]", season_type, actual, expected_count, status)
+        if actual < expected_count:
+            warnings.append(f"{season_type}: {actual} < {expected_count} (missing {expected_count - actual})")
+    return warnings
+
+
 def check_schedules(session) -> dict[str, Any]:
     """`game_schedules` 테이블의 데이터 현황을 점검합니다."""
     logger.info("\n=== Game Schedules ===")
 
-    try:
-        # 전체 일정 수
-        total = session.execute(text("SELECT COUNT(*) FROM game_schedules")).scalar() or 0
-    except SQLAlchemyError:
-        total = 0
+    total = _safe_scalar(session, "SELECT COUNT(*) FROM game_schedules")
     logger.info("Total schedules: %s", total)
 
-    try:
-        operational_total = session.execute(text("SELECT COUNT(*) FROM game")).scalar() or 0
-        operational_scheduled = (
-            session.execute(
-                text(
-                    """
-                SELECT COUNT(*)
-                FROM game
-                WHERE UPPER(COALESCE(game_status, '')) = 'SCHEDULED'
-                """,
-                ),
-            ).scalar()
-            or 0
-        )
-    except SQLAlchemyError:
-        operational_total = 0
-        operational_scheduled = 0
-
-    # 시즌 유형(정규, 프리시즌 등)별 집계
-    type_counts = {}
-    results = []
-    try:
-        stmt = text("SELECT season_type, COUNT(*) FROM game_schedules GROUP BY season_type")
-        results = session.execute(stmt).all()
-    except SQLAlchemyError:
-        results = []
-
-    type_counts = {}
-    logger.info("\nBy season type:")
-    for season_type, count in results:
-        type_counts[season_type] = count
-        logger.info("  %s: %s", season_type, count)
-
-    # 연도별 집계
-    try:
-        stmt = text("SELECT season_year, COUNT(*) FROM game_schedules GROUP BY season_year ORDER BY season_year DESC")
-        results = session.execute(stmt).all()
-    except SQLAlchemyError:
-        results = []
-    logger.info("\nBy year:")
-    for year, count in results:
-        logger.info("  %s: %s", year, count)
+    operational_total, operational_scheduled = _operational_game_counts(session)
+    type_counts = _log_season_type_counts(session)
+    _log_schedule_year_counts(session)
 
     if total == 0 and operational_total > 0:
         logger.info("\nOperational game table fallback:")
         logger.info("  Total game rows: %s", operational_total)
         logger.info("  Scheduled game rows: %s", operational_scheduled)
 
-    # 데이터의 날짜 범위 확인
-    try:
-        stmt = text("SELECT MIN(game_date), MAX(game_date) FROM game_schedules")
-        min_date, max_date = session.execute(stmt).first()
-    except SQLAlchemyError:
-        min_date, max_date = None, None
-
-    if min_date and max_date:
-        logger.info("\nDate range: %s to %s", min_date, max_date)
-
-    if total == 0 and operational_total > 0:
-        try:
-            game_min_date, game_max_date = session.execute(
-                text("SELECT MIN(game_date), MAX(game_date) FROM game"),
-            ).first()
-        except SQLAlchemyError:
-            game_min_date, game_max_date = None, None
-        if game_min_date and game_max_date:
-            logger.info("Operational game date range: %s to %s", game_min_date, game_max_date)
-
-    # 예상 데이터 수와 비교하여 검증 (2025 시즌 기준)
-    warnings = []
-    expected = {
-        "preseason": 42,  # Based on Progress.md
-        "regular": 720,  # 10 teams * 144 games / 2
-        "postseason": 7,  # Initial fixtures
-    }
-
-    logger.info("\nValidation:")
-    if total == 0 and operational_total > 0:
-        logger.info("  game_schedules: 0 rows [INFO: using game table fallback]")
-        logger.info("  game table: %s rows [OK]", operational_total)
-    else:
-        for stype, expected_count in expected.items():
-            actual = type_counts.get(stype, 0)
-            status = "OK" if actual >= expected_count else "WARN"
-            logger.info("  %s: %s/%s [%s]", stype, actual, expected_count, status)
-            if actual < expected_count:
-                warnings.append(f"{stype}: {actual} < {expected_count} (missing {expected_count - actual})")
+    _log_schedule_date_ranges(session, use_operational_fallback=total == 0 and operational_total > 0)
+    warnings = _validate_schedule_counts(total, operational_total, type_counts)
 
     effective_total = total if total > 0 else operational_total
 
@@ -508,69 +509,58 @@ def check_pregame_pitcher_coverage(session, *, verbose: bool = False) -> dict[st
     }
 
 
-def main(argv: Sequence[str] | None = None) -> None:
-    """데이터 점검 스크립트의 메인 실행 함수."""
-    _configure_cli_logging()
-    load_dotenv()
-    parser = argparse.ArgumentParser(description="Check KBO database status and data integrity")
-    parser.add_argument("--verbose", "-v", action="store_true", help="Show detailed information")
-    parser.add_argument("--p0", action="store_true", help="Run P0 game-data readiness check")
-    parser.add_argument("--date", type=str, default=None, help="Target date for --p0 in YYYYMMDD format")
-    parser.add_argument("--lookback-days", type=int, default=7, help="Days before --date to include for --p0")
-    parser.add_argument("--lookahead-days", type=int, default=1, help="Days after --date to include for --p0")
-    parser.add_argument("--json", action="store_true", dest="json_output", help="Print --p0 result as JSON only")
-    args = parser.parse_args(argv)
+def _run_p0_readiness_check(args) -> None:
+    target_date = normalize_yyyymmdd(args.date)
+    with SessionLocal() as session:
+        readiness = build_p0_readiness(
+            session,
+            target_date=target_date,
+            lookback_days=args.lookback_days,
+            lookahead_days=args.lookahead_days,
+        )
+    if args.json_output:
+        logger.info(json.dumps({"p0_readiness": readiness}, ensure_ascii=False, indent=2, default=str))
+        return
+    _log_p0_readiness(target_date, readiness)
 
-    if args.p0:
-        target_date = normalize_yyyymmdd(args.date)
-        with SessionLocal() as session:
-            readiness = build_p0_readiness(
-                session,
-                target_date=target_date,
-                lookback_days=args.lookback_days,
-                lookahead_days=args.lookahead_days,
+
+def _log_p0_readiness(target_date: str, readiness: dict[str, Any]) -> None:
+    logger.info("\n%s", "=" * 60)
+    logger.info(" KBO P0 Readiness Check")
+    logger.info(" Target Date: %s", target_date)
+    logger.info(" Window: %s..%s", readiness["start_date"], readiness["end_date"])
+    logger.info("%s", "=" * 60)
+    logger.info(format_p0_readiness_summary(readiness))
+    logger.info("\nDataset Summary:")
+    for key in ("schedule", "pregame", "live", "postgame", "relay", "roster", "broadcast", "oci"):
+        logger.info("  %s: %s", key, readiness[key])
+    if readiness["failures"]:
+        logger.info("\nFailures:")
+        for failure in readiness["failures"]:
+            logger.info(
+                "  - %s %s %s %s %s",
+                failure["severity"],
+                failure["dataset"],
+                failure.get("game_date") or "-",
+                failure.get("game_id") or "-",
+                failure["reason"],
             )
 
-        if args.json_output:
-            logger.info(json.dumps({"p0_readiness": readiness}, ensure_ascii=False, indent=2, default=str))
-            return
 
-        logger.info("\n%s", "=" * 60)
-        logger.info(" KBO P0 Readiness Check")
-        logger.info(" Target Date: %s", target_date)
-        logger.info(" Window: %s..%s", readiness["start_date"], readiness["end_date"])
-        logger.info("%s", "=" * 60)
-        logger.info(format_p0_readiness_summary(readiness))
-        logger.info("\nDataset Summary:")
-        for key in ("schedule", "pregame", "live", "postgame", "relay", "roster", "broadcast", "oci"):
-            logger.info("  %s: %s", key, readiness[key])
-
-        if readiness["failures"]:
-            logger.info("\nFailures:")
-            for failure in readiness["failures"]:
-                logger.info(
-                    "  - %s %s %s %s %s",
-                    failure["severity"],
-                    failure["dataset"],
-                    failure.get("game_date") or "-",
-                    failure.get("game_id") or "-",
-                    failure["reason"],
-                )
-        return
-
-    logger.info("\n%s", "=" * 60)
-    logger.info(" KBO Data Status Check")
-    logger.info(" Timestamp: %s", datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
-    logger.info("%s", "=" * 60)
-
+def _collect_full_status(
+    verbose: bool,
+) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any], dict[str, Any], dict[str, Any]]:
     with SessionLocal() as session:
-        schedule_stats = check_schedules(session)
-        player_stats = check_players(session)
-        futures_stats = check_futures_data(session)
-        game_stats = check_game_data(session)
-        pregame_pitcher_stats = check_pregame_pitcher_coverage(session, verbose=args.verbose)
+        return (
+            check_schedules(session),
+            check_players(session),
+            check_futures_data(session),
+            check_game_data(session),
+            check_pregame_pitcher_coverage(session, verbose=verbose),
+        )
 
-    # 최종 요약 출력
+
+def _log_full_status_summary(schedule_stats, player_stats, futures_stats, game_stats, pregame_pitcher_stats) -> None:
     logger.info("\n%s", "=" * 60)
     logger.info(" Summary")
     logger.info("%s", "=" * 60)
@@ -598,28 +588,62 @@ def main(argv: Sequence[str] | None = None) -> None:
         pregame_pitcher_stats["oci_sync_ready"],
     )
 
-    # 경고 목록 취합 및 출력
-    all_warnings = []
 
+def _collect_status_warnings(
+    schedule_stats: dict[str, Any], futures_stats: dict[str, Any], pregame_pitcher_stats: dict[str, Any]
+) -> list[str]:
+    warnings = []
     if schedule_stats["total"] == 0:
-        all_warnings.append("No schedules found")
-    all_warnings.extend(schedule_stats.get("warnings", []))
-
+        warnings.append("No schedules found")
+    warnings.extend(schedule_stats.get("warnings", []))
     if futures_stats["batting"] == 0:
-        all_warnings.append("No Futures batting data found")
+        warnings.append("No Futures batting data found")
     if pregame_pitcher_stats.get("preview_missing_starters", 0) > 0:
-        all_warnings.append("Scheduled preview summaries exist but pitcher fields are missing")
+        warnings.append("Scheduled preview summaries exist but pitcher fields are missing")
     if pregame_pitcher_stats.get("sync_candidate_games", 0) > 0 and not pregame_pitcher_stats.get("oci_sync_ready"):
-        all_warnings.append("Pregame sync candidates exist but OCI sync is not ready")
+        warnings.append("Pregame sync candidates exist but OCI sync is not ready")
+    return warnings
 
-    if all_warnings:
-        logger.info("\n%s", "=" * 60)
-        logger.info(" WARNINGS")
-        logger.info("%s", "=" * 60)
-        for warning in all_warnings:
-            logger.info("  - %s", warning)
 
+def _log_warnings(warnings: list[str]) -> None:
+    if not warnings:
+        return
+    logger.info("\n%s", "=" * 60)
+    logger.info(" WARNINGS")
+    logger.info("%s", "=" * 60)
+    for warning in warnings:
+        logger.info("  - %s", warning)
+
+
+def _run_full_status_check(verbose: bool) -> None:
+    logger.info("\n%s", "=" * 60)
+    logger.info(" KBO Data Status Check")
+    logger.info(" Timestamp: %s", datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+    logger.info("%s", "=" * 60)
+    schedule_stats, player_stats, futures_stats, game_stats, pregame_pitcher_stats = _collect_full_status(verbose)
+    _log_full_status_summary(schedule_stats, player_stats, futures_stats, game_stats, pregame_pitcher_stats)
+    _log_warnings(_collect_status_warnings(schedule_stats, futures_stats, pregame_pitcher_stats))
     logger.info("")
+
+
+def main(argv: Sequence[str] | None = None) -> None:
+    """데이터 점검 스크립트의 메인 실행 함수."""
+    _configure_cli_logging()
+    load_dotenv()
+    parser = argparse.ArgumentParser(description="Check KBO database status and data integrity")
+    parser.add_argument("--verbose", "-v", action="store_true", help="Show detailed information")
+    parser.add_argument("--p0", action="store_true", help="Run P0 game-data readiness check")
+    parser.add_argument("--date", type=str, default=None, help="Target date for --p0 in YYYYMMDD format")
+    parser.add_argument("--lookback-days", type=int, default=7, help="Days before --date to include for --p0")
+    parser.add_argument("--lookahead-days", type=int, default=1, help="Days after --date to include for --p0")
+    parser.add_argument("--json", action="store_true", dest="json_output", help="Print --p0 result as JSON only")
+    args = parser.parse_args(argv)
+
+    if args.p0:
+        _run_p0_readiness_check(args)
+        return
+
+    _run_full_status_check(args.verbose)
 
 
 if __name__ == "__main__":

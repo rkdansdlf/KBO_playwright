@@ -3,6 +3,7 @@ from __future__ import annotations
 from unittest.mock import MagicMock, patch
 
 import pytest
+from playwright.sync_api import Error as PlaywrightError
 
 from src.crawlers.baserunning_stats_crawler import crawl_baserunning_stats, save_baserunning_stats
 
@@ -31,7 +32,7 @@ class TestCrawlBaserunningStats:
         mock_pw.chromium.launch.return_value = mock_browser
         mock_browser.new_context.return_value = mock_context
         mock_context.new_page.return_value = mock_page
-        mock_page.goto.side_effect = Exception("timeout")
+        mock_page.goto.side_effect = PlaywrightError("timeout")
         mock_sync_pw.return_value.__enter__.return_value = mock_pw
 
         result = crawl_baserunning_stats(year=2024, max_retries=1)

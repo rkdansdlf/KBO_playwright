@@ -9,6 +9,8 @@ import sqlite3
 from datetime import datetime
 from typing import Any
 
+from playwright.sync_api import Error as PlaywrightError
+from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 from playwright.sync_api import sync_playwright
 
 from src.utils.playwright_blocking import install_sync_resource_blocking
@@ -18,6 +20,16 @@ from src.utils.playwright_retry import LONG_TIMEOUT
 from src.utils.request_policy import RequestPolicy
 from src.utils.team_codes import resolve_team_code
 from src.utils.type_helpers import safe_float, safe_int
+
+BASERUNNING_CRAWL_EXCEPTIONS = (
+    PlaywrightError,
+    PlaywrightTimeoutError,
+    TimeoutError,
+    RuntimeError,
+    ValueError,
+    OSError,
+)
+BASERUNNING_SAVE_EXCEPTIONS = (sqlite3.Error, ValueError, TypeError, OSError)
 
 
 def crawl_baserunning_stats(year=None, max_retries=3, timeout=LONG_TIMEOUT) -> list[dict[str, Any]]:
@@ -53,7 +65,7 @@ def crawl_baserunning_stats(year=None, max_retries=3, timeout=LONG_TIMEOUT) -> l
                 page.wait_for_load_state("networkidle", timeout=timeout)
                 policy.delay()
                 break
-            except Exception:
+            except BASERUNNING_CRAWL_EXCEPTIONS:
                 if attempt < max_retries - 1:
                     wait_time = (attempt + 1) * 2
                     logger.exception("   ⚠️  재시도 %s/%s (%s초 후 재시도)", attempt + 1, max_retries, wait_time)
@@ -119,7 +131,7 @@ def crawl_baserunning_stats(year=None, max_retries=3, timeout=LONG_TIMEOUT) -> l
                             )
                             continue
 
-        except Exception:
+        except BASERUNNING_CRAWL_EXCEPTIONS:
             logger.exception("⚠️ 주루 기록 크롤링 중 오류")
 
         browser.close()
@@ -228,7 +240,7 @@ def save_baserunning_stats(player_list, year=None, db_path=None) -> None:
                 if idx % 10 == 0:
                     logger.info("[%s/%s] %s 저장 완료", idx, len(baserunning_data), player_name)
 
-            except Exception:
+            except BASERUNNING_SAVE_EXCEPTIONS:
                 fail_count += 1
                 logger.exception("   ❌ %s 저장 실패", player_name)
         else:

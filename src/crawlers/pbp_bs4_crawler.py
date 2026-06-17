@@ -18,6 +18,8 @@ from src.utils.text_parser import KBOTextParser
 
 logger = logging.getLogger(__name__)
 
+PBP_BS4_PARSE_EXCEPTIONS = (RuntimeError, ValueError, TypeError, KeyError, IndexError)
+
 
 class PBPBS4Crawler:
     def __init__(self) -> None:
@@ -68,7 +70,7 @@ class PBPBS4Crawler:
         except httpx.HTTPError as e:
             logger.exception("[ERROR] HTTP fetch failed for %s: %s", game_id, e)
             return None
-        except Exception:
+        except PBP_BS4_PARSE_EXCEPTIONS:
             logger.exception("BS4 PBP crawl failed for %s", game_id)
             return None
 

@@ -15,11 +15,14 @@ from typing import Any
 
 from dotenv import load_dotenv
 from sqlalchemy import create_engine, text
+from sqlalchemy.exc import SQLAlchemyError
 
 from src.db.engine import SessionLocal, get_oci_url
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 logger = logging.getLogger(__name__)
+
+STARTING_PITCHER_SYNC_EXCEPTIONS = (SQLAlchemyError, RuntimeError, ValueError, TypeError, KeyError, OSError)
 
 
 def _normalize_date(value: str | None) -> str | None:
@@ -208,7 +211,7 @@ def sync_to_oci(game_ids: list[str]) -> tuple[int, int]:
                     success += 1
                 else:
                     failed += 1
-            except Exception as exc:
+            except STARTING_PITCHER_SYNC_EXCEPTIONS as exc:
                 failed += 1
                 logger.exception("OCI sync failed for %s: %s", game_id, exc)
     return success, failed

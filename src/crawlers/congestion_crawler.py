@@ -22,6 +22,7 @@ import logging
 from datetime import UTC, date, datetime
 from typing import Any
 
+import httpx
 from sqlalchemy.exc import SQLAlchemyError
 
 from src.db.engine import SessionLocal
@@ -31,6 +32,7 @@ from src.utils.seoul_api_client import CongestionSnapshot, get_jamsil_congestion
 logger = logging.getLogger(__name__)
 
 STADIUM_CODE = "JAMSIL"
+CONGESTION_CRAWL_EXCEPTIONS = (httpx.HTTPError, RuntimeError, ValueError, TypeError, KeyError, OSError)
 
 # Additional location metadata for DB records
 AREA_LOCATION_META: dict[str, dict] = {
@@ -106,7 +108,7 @@ class CongestionCrawler:
     async def _collect_seoul_api(self) -> list[CongestionSnapshot]:
         try:
             return await get_jamsil_congestion_batch()
-        except Exception:
+        except CONGESTION_CRAWL_EXCEPTIONS:
             logger.exception("[Congestion] Seoul API batch failed")
             return []
 

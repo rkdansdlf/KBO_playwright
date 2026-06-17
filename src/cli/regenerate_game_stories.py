@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Any
 
 from sqlalchemy import and_, or_
+from sqlalchemy.exc import SQLAlchemyError
 
 from src.cli.daily_story_batch import (
     dump_story_json,
@@ -25,6 +26,8 @@ from src.sync.oci_sync import OCISync
 from src.utils.game_status import COMPLETED_LIKE_GAME_STATUSES
 
 logger = logging.getLogger(__name__)
+
+STORY_REGEN_DB_EXCEPTIONS = (SQLAlchemyError, RuntimeError, ValueError, TypeError, KeyError, OSError)
 
 
 @dataclass
@@ -210,6 +213,142 @@ def _sync_story_summaries(game_ids: Sequence[str], rows: Sequence[StoryRegenRepo
     log(f"OCI story summary sync complete: games={len(synced)} rows={result.get('summary', 0)}")
 
 
+def _append_missing_game_rows(
+    rows: list[StoryRegenReportRow], requested_ids: Sequence[str], games_by_id: dict[str, Game]
+) -> None:
+    rows.extend(
+        StoryRegenReportRow(game_id=requested_id, game_date="", status="SKIPPED_GAME_NOT_FOUND")
+        for requested_id in sorted(set(requested_ids) - set(games_by_id))
+    )
+
+
+def _load_existing_story_summaries(
+    session, games: Sequence[Game]
+) -> tuple[dict[str, list[GameSummary]], dict[str, str | None]]:
+    existing_summary_rows: dict[str, list[GameSummary]] = {}
+    existing_summaries: dict[str, str | None] = {}
+    if not games:
+        return existing_summary_rows, existing_summaries
+    for row in (
+        session.query(GameSummary)
+        .filter(
+            GameSummary.game_id.in_([game.game_id for game in games]),
+            GameSummary.summary_type == STORY_SUMMARY_TYPE,
+        )
+        .order_by(GameSummary.game_id.asc(), GameSummary.id.asc())
+        .all()
+    ):
+        existing_summary_rows.setdefault(row.game_id, []).append(row)
+        existing_summaries.setdefault(row.game_id, row.detail_text)
+    return existing_summary_rows, existing_summaries
+
+
+def _skipped_story_row(game: Game) -> StoryRegenReportRow:
+    return StoryRegenReportRow(
+        game_id=game.game_id,
+        game_date=game.game_date.strftime("%Y%m%d") if game.game_date else "",
+        status="SKIPPED_NOT_COMPLETED",
+        message=f"status={game.game_status}",
+    )
+
+
+def _build_story_report_row(
+    game: Game,
+    old_json: str | None,
+    story_data: dict[str, Any],
+    new_json: str,
+) -> StoryRegenReportRow:
+    warnings = story_data.get("source", {}).get("warnings") or []
+    return StoryRegenReportRow(
+        game_id=game.game_id,
+        game_date=game.game_date.strftime("%Y%m%d") if game.game_date else "",
+        status="",
+        old_hash=_short_hash(old_json),
+        new_hash=_short_hash(new_json),
+        changed=old_json != new_json,
+        timeline_events=len(story_data.get("timeline") or []),
+        warnings=";".join(str(warning) for warning in warnings),
+    )
+
+
+def _upsert_story_summary(session, game_id: str, new_json: str, existing_rows: dict[str, list[GameSummary]]) -> None:
+    summaries = existing_rows.get(game_id) or []
+    if summaries:
+        for summary in summaries:
+            summary.detail_text = new_json
+        return
+    session.add(GameSummary(game_id=game_id, summary_type=STORY_SUMMARY_TYPE, detail_text=new_json))
+
+
+def _process_story_game(
+    session,
+    game: Game,
+    events: list[GameEvent],
+    builder: GameStoryBuilder,
+    existing_summary_rows: dict[str, list[GameSummary]],
+    existing_summaries: dict[str, str | None],
+    apply: bool,
+) -> tuple[StoryRegenReportRow, bool]:
+    if game.game_status not in COMPLETED_LIKE_GAME_STATUSES:
+        return _skipped_story_row(game), False
+
+    old_json = existing_summaries.get(game.game_id)
+    story_data = builder.build(game, events)
+    new_json = dump_story_json(story_data)
+    row = _build_story_report_row(game, old_json, story_data, new_json)
+
+    if not apply:
+        row.status = "DRY_RUN_READY" if row.changed else "DRY_RUN_UNCHANGED"
+        return row, False
+    if row.changed:
+        _upsert_story_summary(session, game.game_id, new_json, existing_summary_rows)
+        row.status = "APPLIED"
+    else:
+        row.status = "UNCHANGED"
+    return row, True
+
+
+def _process_story_batches(
+    session,
+    games: Sequence[Game],
+    builder: GameStoryBuilder,
+    existing_summary_rows: dict[str, list[GameSummary]],
+    existing_summaries: dict[str, str | None],
+    apply: bool,
+) -> tuple[list[StoryRegenReportRow], list[str]]:
+    rows: list[StoryRegenReportRow] = []
+    sync_game_ids: list[str] = []
+    for game_batch in _game_batches(games):
+        batch_event_map = _events_by_game(
+            session,
+            [game.game_id for game in game_batch if game.game_status in COMPLETED_LIKE_GAME_STATUSES],
+        )
+        for game in game_batch:
+            row, should_sync = _process_story_game(
+                session,
+                game,
+                batch_event_map.get(game.game_id, []),
+                builder,
+                existing_summary_rows,
+                existing_summaries,
+                apply,
+            )
+            rows.append(row)
+            if should_sync:
+                sync_game_ids.append(game.game_id)
+    return rows, sync_game_ids
+
+
+def _mark_story_oci_status(rows: Sequence[StoryRegenReportRow], *, apply: bool, oci_url: str | None) -> None:
+    if not apply:
+        for row in rows:
+            row.oci_status = "skipped_dry_run"
+    elif not oci_url:
+        for row in rows:
+            if row.status in {"APPLIED", "UNCHANGED"}:
+                row.oci_status = "skipped_missing_oci_url"
+
+
 def regenerate_game_stories(
     *,
     game_ids: Sequence[str] | None = None,
@@ -227,7 +366,6 @@ def regenerate_game_stories(
     target_seasons = list(seasons or [])
     report_path = report_out or _default_report_path()
     rows: list[StoryRegenReportRow] = []
-    sync_game_ids: list[str] = []
 
     with SessionLocal() as session:
         games = _query_target_games(
@@ -244,104 +382,28 @@ def regenerate_game_stories(
             _write_backup(session, [game.game_id for game in games], backup_path)
             log(f"Backed up existing game story summaries: {backup_path}")
 
-        for requested_id in sorted(set(target_game_ids) - set(games_by_id)):
-            rows.append(  # noqa: PERF401
-                StoryRegenReportRow(
-                    game_id=requested_id,
-                    game_date="",
-                    status="SKIPPED_GAME_NOT_FOUND",
-                ),
-            )
-
-        existing_summary_rows: dict[str, list[GameSummary]] = {}
-        existing_summaries: dict[str, str | None] = {}
-        if games:
-            for row in (
-                session.query(GameSummary)
-                .filter(
-                    GameSummary.game_id.in_([game.game_id for game in games]),
-                    GameSummary.summary_type == STORY_SUMMARY_TYPE,
-                )
-                .order_by(GameSummary.game_id.asc(), GameSummary.id.asc())
-                .all()
-            ):
-                existing_summary_rows.setdefault(row.game_id, []).append(row)
-                existing_summaries.setdefault(row.game_id, row.detail_text)
-
-        for game_batch in _game_batches(games):
-            batch_event_map = _events_by_game(
-                session,
-                [game.game_id for game in game_batch if game.game_status in COMPLETED_LIKE_GAME_STATUSES],
-            )
-            for game in game_batch:
-                game_date = game.game_date.strftime("%Y%m%d") if game.game_date else ""
-                if game.game_status not in COMPLETED_LIKE_GAME_STATUSES:
-                    rows.append(
-                        StoryRegenReportRow(
-                            game_id=game.game_id,
-                            game_date=game_date,
-                            status="SKIPPED_NOT_COMPLETED",
-                            message=f"status={game.game_status}",
-                        ),
-                    )
-                    continue
-
-                old_json = existing_summaries.get(game.game_id)
-                story_data = builder.build(game, batch_event_map.get(game.game_id, []))
-                new_json = dump_story_json(story_data)
-                warnings = story_data.get("source", {}).get("warnings") or []
-                changed = old_json != new_json
-                row = StoryRegenReportRow(
-                    game_id=game.game_id,
-                    game_date=game_date,
-                    status="",
-                    old_hash=_short_hash(old_json),
-                    new_hash=_short_hash(new_json),
-                    changed=changed,
-                    timeline_events=len(story_data.get("timeline") or []),
-                    warnings=";".join(str(warning) for warning in warnings),
-                )
-
-                if not apply:
-                    row.status = "DRY_RUN_READY" if changed else "DRY_RUN_UNCHANGED"
-                    rows.append(row)
-                    continue
-
-                if changed:
-                    summaries = existing_summary_rows.get(game.game_id) or []
-                    if summaries:
-                        for summary in summaries:
-                            summary.detail_text = new_json
-                    else:
-                        session.add(
-                            GameSummary(
-                                game_id=game.game_id,
-                                summary_type=STORY_SUMMARY_TYPE,
-                                detail_text=new_json,
-                            ),
-                        )
-                    row.status = "APPLIED"
-                else:
-                    row.status = "UNCHANGED"
-                rows.append(row)
-                sync_game_ids.append(game.game_id)
+        _append_missing_game_rows(rows, target_game_ids, games_by_id)
+        existing_summary_rows, existing_summaries = _load_existing_story_summaries(session, games)
+        processed_rows, sync_game_ids = _process_story_batches(
+            session,
+            games,
+            builder,
+            existing_summary_rows,
+            existing_summaries,
+            apply,
+        )
+        rows.extend(processed_rows)
 
         if apply:
             try:
                 session.commit()
-            except Exception:
+            except STORY_REGEN_DB_EXCEPTIONS:
                 session.rollback()
                 raise
 
     if sync_oci:
-        if not apply:
-            for row in rows:
-                row.oci_status = "skipped_dry_run"
-        elif not oci_url:
-            for row in rows:
-                if row.status in {"APPLIED", "UNCHANGED"}:
-                    row.oci_status = "skipped_missing_oci_url"
-        else:
+        _mark_story_oci_status(rows, apply=apply, oci_url=oci_url)
+        if apply and oci_url:
             _sync_story_summaries(sync_game_ids, rows, oci_url=oci_url, log=log)
 
     _write_report(rows, report_path)

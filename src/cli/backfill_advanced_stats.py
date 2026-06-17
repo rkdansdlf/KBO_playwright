@@ -19,6 +19,68 @@ from src.repositories.player_stats_repository import (
 from src.repositories.safe_batting_repository import save_batting_stats_safe
 
 
+def _build_player_team_map(session) -> dict:
+    team_map = {}
+    for model in (GameBattingStat, GamePitchingStat):
+        team_query = (
+            session.query(
+                model.player_id,
+                model.team_code,
+                func.count(model.id).label("cnt"),
+            )
+            .group_by(model.player_id, model.team_code)
+            .all()
+        )
+        for player_id, team, count in team_query:
+            if player_id not in team_map or count > team_map[player_id][1]:
+                team_map[player_id] = (team, count)
+    return team_map
+
+
+def _assign_team(stats: list[dict], team_map: dict, *, target_key: str) -> list[dict]:
+    for stat in stats:
+        stat[target_key] = team_map.get(stat["player_id"], (None, 0))[0]
+    return [stat for stat in stats if stat[target_key]]
+
+
+def _backfill_batting(session, year: int, series: str, team_map: dict) -> None:
+    stats = SeasonStatAggregator.aggregate_batting_season_bulk(session, year, series, source="FALLBACK_BACKFILL")
+    if not stats:
+        return
+    valid_stats = _assign_team(stats, team_map, target_key="team_code")
+    save_batting_stats_safe(valid_stats)
+    logger.info("   ✅ Batting: %s records saved.", len(valid_stats))
+
+
+def _backfill_pitching(session, year: int, series: str, team_map: dict) -> None:
+    stats = SeasonStatAggregator.aggregate_pitching_season_bulk(session, year, series, source="FALLBACK_BACKFILL")
+    if not stats:
+        return
+    valid_stats = _assign_team(stats, team_map, target_key="team_code")
+    save_pitching_stats_to_db(valid_stats)
+    logger.info("   ✅ Pitching: %s records saved.", len(valid_stats))
+
+
+def _backfill_baserunning(
+    session, year: int, series: str, team_map: dict, baserun_repo: PlayerSeasonBaserunningRepository
+) -> None:
+    stats = SeasonStatAggregator.aggregate_baserunning_season_bulk(session, year, series, source="FALLBACK_BACKFILL")
+    if not stats:
+        return
+    valid_stats = _assign_team(stats, team_map, target_key="team_id")
+    logger.info("   ✅ Baserunning: %s records saved.", baserun_repo.upsert_many(valid_stats))
+
+
+def _backfill_fielding(
+    session, year: int, series: str, team_map: dict, fielding_repo: PlayerSeasonFieldingRepository
+) -> None:
+    stats = SeasonStatAggregator.aggregate_fielding_season_bulk(session, year, series, source="FALLBACK_BACKFILL")
+    if not stats:
+        return
+    valid_stats = _assign_team(stats, team_map, target_key="team_id")
+    logger.info("   ✅ Fielding: %s records saved.", fielding_repo.upsert_many(valid_stats))
+
+
 def backfill_stats(years: list[int], series: str) -> None:
     fielding_repo = PlayerSeasonFieldingRepository()
     baserun_repo = PlayerSeasonBaserunningRepository()
@@ -26,99 +88,11 @@ def backfill_stats(years: list[int], series: str) -> None:
     with SessionLocal() as session:
         for year in years:
             logger.info("🛠️  Backfilling Advanced Stats for %s %s...", year, series)
-
-            # 1. Resolve team_id for all players in this season (most frequent team)
-            team_map = {}
-            team_query = (
-                session.query(
-                    GameBattingStat.player_id,
-                    GameBattingStat.team_code,
-                    func.count(GameBattingStat.id).label("cnt"),
-                )
-                .group_by(GameBattingStat.player_id, GameBattingStat.team_code)
-                .all()
-            )
-            for pid, team, cnt in team_query:
-                if pid not in team_map or cnt > team_map[pid][1]:
-                    team_map[pid] = (team, cnt)
-
-            # Pitching team map
-            p_team_query = (
-                session.query(
-                    GamePitchingStat.player_id,
-                    GamePitchingStat.team_code,
-                    func.count(GamePitchingStat.id).label("cnt"),
-                )
-                .group_by(GamePitchingStat.player_id, GamePitchingStat.team_code)
-                .all()
-            )
-            for pid, team, cnt in p_team_query:
-                if pid not in team_map or cnt > team_map[pid][1]:
-                    team_map[pid] = (team, cnt)
-
-            # 2. Batting Backfill
-            bat_stats = SeasonStatAggregator.aggregate_batting_season_bulk(
-                session,
-                year,
-                series,
-                source="FALLBACK_BACKFILL",
-            )
-            if bat_stats:
-                for stat in bat_stats:
-                    pid = stat["player_id"]
-                    stat["team_code"] = team_map.get(pid, (None, 0))[0]
-
-                valid_bat = [s for s in bat_stats if s["team_code"]]
-                save_batting_stats_safe(valid_bat)
-                logger.info("   ✅ Batting: %s records saved.", len(valid_bat))
-
-            # 3. Pitching Backfill
-            pit_stats = SeasonStatAggregator.aggregate_pitching_season_bulk(
-                session,
-                year,
-                series,
-                source="FALLBACK_BACKFILL",
-            )
-            if pit_stats:
-                for stat in pit_stats:
-                    pid = stat["player_id"]
-                    stat["team_code"] = team_map.get(pid, (None, 0))[0]
-
-                valid_pit = [s for s in pit_stats if s["team_code"]]
-                save_pitching_stats_to_db(valid_pit)
-                logger.info("   ✅ Pitching: %s records saved.", len(valid_pit))
-
-            # 4. Baserunning Backfill
-            br_stats = SeasonStatAggregator.aggregate_baserunning_season_bulk(
-                session,
-                year,
-                series,
-                source="FALLBACK_BACKFILL",
-            )
-            if br_stats:
-                for stat in br_stats:
-                    pid = stat["player_id"]
-                    stat["team_id"] = team_map.get(pid, (None, 0))[0]
-
-                valid_br = [s for s in br_stats if s["team_id"]]
-                cnt = baserun_repo.upsert_many(valid_br)
-                logger.info("   ✅ Baserunning: %s records saved.", cnt)
-
-            # 5. Fielding Backfill
-            fld_stats = SeasonStatAggregator.aggregate_fielding_season_bulk(
-                session,
-                year,
-                series,
-                source="FALLBACK_BACKFILL",
-            )
-            if fld_stats:
-                for stat in fld_stats:
-                    pid = stat["player_id"]
-                    stat["team_id"] = team_map.get(pid, (None, 0))[0]
-
-                valid_fld = [s for s in fld_stats if s["team_id"]]
-                cnt = fielding_repo.upsert_many(valid_fld)
-                logger.info("   ✅ Fielding: %s records saved.", cnt)
+            team_map = _build_player_team_map(session)
+            _backfill_batting(session, year, series, team_map)
+            _backfill_pitching(session, year, series, team_map)
+            _backfill_baserunning(session, year, series, team_map, baserun_repo)
+            _backfill_fielding(session, year, series, team_map, fielding_repo)
 
 
 def main(argv: Sequence[str] | None = None) -> int:

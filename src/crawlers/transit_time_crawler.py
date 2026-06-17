@@ -21,6 +21,8 @@ import asyncio
 import logging
 from datetime import UTC, date, datetime
 
+from sqlalchemy.exc import SQLAlchemyError
+
 from src.db.engine import SessionLocal
 from src.repositories.transit_time_repository import TransitTimeRepository
 from src.utils.map_api_client import get_transit_times_batch
@@ -28,6 +30,7 @@ from src.utils.map_api_client import get_transit_times_batch
 logger = logging.getLogger(__name__)
 
 STADIUM_CODE = "JAMSIL"
+TRANSIT_DB_EXCEPTIONS = (SQLAlchemyError, RuntimeError, ValueError, TypeError, KeyError, OSError)
 
 # Canonical origin points for Jamsil Stadium
 JAMSIL_ORIGINS: list[dict] = [
@@ -166,7 +169,7 @@ class TransitTimeCrawler:
                 created, updated = repo.bulk_upsert(records)
                 session.commit()
                 logger.info("[Transit] Saved: %s new, %s updated.", created, updated)
-            except Exception:
+            except TRANSIT_DB_EXCEPTIONS:
                 session.rollback()
                 logger.exception("Transit time batch save error")
 

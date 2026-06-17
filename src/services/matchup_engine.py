@@ -4,6 +4,7 @@ import logging
 from typing import Any
 
 from sqlalchemy import case, func, select
+from sqlalchemy.exc import SQLAlchemyError
 
 from src.db.engine import SessionLocal
 from src.models.game import Game, GameBattingStat, GameEvent, GamePitchingStat
@@ -43,7 +44,7 @@ class MatchupEngine:
 
             sess.commit()
             logger.info("✅ Matchup metrics recalculated for season %s", season_year)
-        except Exception:
+        except (SQLAlchemyError, RuntimeError, ValueError, TypeError):
             sess.rollback()
             logger.exception("❌ Matchup engine failed")
             raise

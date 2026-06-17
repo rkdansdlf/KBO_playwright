@@ -12,7 +12,9 @@ from datetime import datetime
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
+from playwright.sync_api import Error as PlaywrightError
 from playwright.sync_api import Page, sync_playwright
+from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 
 from src.repositories.save_kbo_batting import save_kbo_batting_batch
 from src.urls import HITTER_BASIC1
@@ -22,6 +24,16 @@ from src.utils.playwright_retry import NAV_TIMEOUT
 from src.utils.request_policy import RequestPolicy
 
 logger = logging.getLogger(__name__)
+
+BASIC2_CRAWLER_EXCEPTIONS = (
+    PlaywrightError,
+    PlaywrightTimeoutError,
+    TimeoutError,
+    RuntimeError,
+    ValueError,
+    TypeError,
+    OSError,
+)
 
 
 def safe_parse_number(value_str: str, data_type: type) -> int | float | None:
@@ -152,7 +164,7 @@ def crawl_bb_basic2_data(page: Page, year: int, policy: RequestPolicy | None = N
         logger.info("   ✅ BB 헤더 기준 데이터 수집 완료: %s명", len(all_player_data))
         return all_player_data
 
-    except Exception:
+    except BASIC2_CRAWLER_EXCEPTIONS:
         logger.exception("   ❌ Basic2 BB 데이터 수집 중 오류")
         return {}
 
@@ -236,12 +248,12 @@ def collect_current_page_bb_data(page: Page, year: int) -> dict[int, dict]:
 
                     player_data["extra_stats"] = extra_stats
 
-            except Exception:
+            except BASIC2_CRAWLER_EXCEPTIONS:
                 logger.exception("         ⚠️ %s 스탯 파싱 오류", player_name)
 
             page_data[player_id] = player_data
 
-    except Exception:
+    except BASIC2_CRAWLER_EXCEPTIONS:
         logger.exception("         ⚠️ 페이지 데이터 수집 중 오류")
 
     return page_data
@@ -286,7 +298,7 @@ def main() -> None:
             else:
                 logger.error("❌ 데이터를 수집하지 못했습니다.")
 
-        except Exception:
+        except BASIC2_CRAWLER_EXCEPTIONS:
             logger.exception("❌ 크롤링 중 오류 발생")
 
         finally:

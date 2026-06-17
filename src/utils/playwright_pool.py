@@ -10,6 +10,7 @@ from contextlib import asynccontextmanager, suppress
 from typing import Any
 
 from playwright.async_api import Browser, BrowserContext, Page, async_playwright
+from playwright.async_api import Error as PlaywrightError
 
 from src.utils.playwright_blocking import install_async_resource_blocking
 
@@ -125,7 +126,7 @@ class AsyncPlaywrightPool:
                 self._pages.append(page)
                 await self._queue.put(page)
             self._started = True
-        except Exception:
+        except (PlaywrightError, RuntimeError, OSError):
             await self.close()
             raise
 
@@ -156,17 +157,17 @@ class AsyncPlaywrightPool:
 
     async def close(self) -> None:
         for page in self._pages:
-            with suppress(Exception):
+            with suppress(PlaywrightError, RuntimeError, OSError):
                 await page.close()
         self._pages = []
         if self._context:
-            with suppress(Exception):
+            with suppress(PlaywrightError, RuntimeError, OSError):
                 await self._context.close()
         if self._browser:
-            with suppress(Exception):
+            with suppress(PlaywrightError, RuntimeError, OSError):
                 await self._browser.close()
         if self._playwright:
-            with suppress(Exception):
+            with suppress(PlaywrightError, RuntimeError, OSError):
                 await self._playwright.stop()
         self._started = False
         self._context = None

@@ -104,7 +104,7 @@ def apply_migrations():
                 )
                 session.commit()
                 print(f"✅ Successfully applied {filename}")
-            except Exception as exc:
+            except (SQLAlchemyError, OSError, RuntimeError) as exc:
                 session.rollback()
                 print(f"❌ Failed to apply {filename}: {exc}")
                 raise

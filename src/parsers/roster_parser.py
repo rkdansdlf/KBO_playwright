@@ -39,15 +39,38 @@ def _map_team_name(name: str) -> str | None:
     return mapping.get(name)
 
 
-def parse_mobile_roster(html: str, source_key: str, metadata: dict | None = None) -> list[dict[str, Any]]:
+def _parse_target_date(metadata: dict | None) -> date:
     target_date_str = (metadata or {}).get("fetched_at", "")
-    target_date = date.today()
     try:
-        target_date = datetime.fromisoformat(target_date_str).date() if target_date_str else date.today()
+        return datetime.fromisoformat(target_date_str).date() if target_date_str else date.today()
     except (ValueError, TypeError):
         logger.debug("Invalid target_date_str: %s", target_date_str)
-    transactions = []
+        return date.today()
 
+
+def _transaction_row(
+    *,
+    target_date: date,
+    team_code: str,
+    player_id: int | None,
+    player_name: str,
+    action: str,
+) -> dict[str, Any]:
+    return {
+        "transaction_date": target_date,
+        "team_id": team_code,
+        "player_id": player_id,
+        "player_name": player_name,
+        "action": action,
+        "roster_level": "first_team",
+        "inferred_to_level": "second_team" if action == "deregistered" else None,
+        "source_type": "kbo_today_page",
+        "confidence": "high",
+        "dedupe_key": f"{target_date}_{team_code}_{player_name}_{action}",
+    }
+
+
+def _extract_roster_sections(html: str) -> tuple[str, str]:
     registered_section = ""
     deregistered_section = ""
 
@@ -59,45 +82,53 @@ def parse_mobile_roster(html: str, source_key: str, metadata: dict | None = None
     if dereg_match:
         deregistered_section = dereg_match.group(0)
 
+    return registered_section, deregistered_section
+
+
+def _parse_roster_section(section_text: str, action: str, target_date: date) -> list[dict[str, Any]]:
+    transactions = []
+    team_blocks = re.findall(
+        r'<strong[^>]*class="team"[^>]*>([^<]+)</strong>\s*<ul[^>]*>(.*?)</ul>',
+        section_text,
+        re.DOTALL,
+    )
+    for team_name_raw, list_html in team_blocks:
+        team_code = _map_team_name(team_name_raw.strip())
+        if not team_code:
+            continue
+
+        player_items = re.findall(
+            r'<li[^>]*>(?:\s*<a[^>]*href="[^"]*playerId=(\d+)[^"]*"[^>]*>)?\s*([^<]+?)\s*(?:</a>)?\s*</li>',
+            list_html,
+        )
+        for player_id_str, player_name in player_items:
+            player_name = player_name.strip()
+            if not player_name:
+                continue
+            transactions.append(
+                _transaction_row(
+                    target_date=target_date,
+                    team_code=team_code,
+                    player_id=int(player_id_str) if player_id_str and player_id_str.isdigit() else None,
+                    player_name=player_name,
+                    action=action,
+                ),
+            )
+    return transactions
+
+
+def parse_mobile_roster(html: str, source_key: str, metadata: dict | None = None) -> list[dict[str, Any]]:
+    target_date = _parse_target_date(metadata)
+    registered_section, deregistered_section = _extract_roster_sections(html)
+
     if not registered_section and not deregistered_section:
         return _parse_alternate_mobile(html, target_date)
 
+    transactions = []
     for section_text, action in [(registered_section, "registered"), (deregistered_section, "deregistered")]:
         if not section_text:
             continue
-
-        team_blocks = re.findall(
-            r'<strong[^>]*class="team"[^>]*>([^<]+)</strong>\s*<ul[^>]*>(.*?)</ul>',
-            section_text,
-            re.DOTALL,
-        )
-        for team_name_raw, list_html in team_blocks:
-            team_code = _map_team_name(team_name_raw.strip())
-            if not team_code:
-                continue
-
-            player_items = re.findall(
-                r'<li[^>]*>(?:\s*<a[^>]*href="[^"]*playerId=(\d+)[^"]*"[^>]*>)?\s*([^<]+?)\s*(?:</a>)?\s*</li>',
-                list_html,
-            )
-            for player_id_str, player_name in player_items:
-                player_name = player_name.strip()
-                if not player_name:
-                    continue
-                transactions.append(
-                    {
-                        "transaction_date": target_date,
-                        "team_id": team_code,
-                        "player_id": int(player_id_str) if player_id_str and player_id_str.isdigit() else None,
-                        "player_name": player_name,
-                        "action": action,
-                        "roster_level": "first_team",
-                        "inferred_to_level": "second_team" if action == "deregistered" else None,
-                        "source_type": "kbo_today_page",
-                        "confidence": "high",
-                        "dedupe_key": f"{target_date}_{team_code}_{player_name}_{action}",
-                    },
-                )
+        transactions.extend(_parse_roster_section(section_text, action, target_date))
 
     return transactions
 
@@ -126,18 +157,13 @@ def _parse_alternate_mobile(html: str, target_date: date) -> list[dict[str, Any]
             if player_match:
                 pid, pname = int(player_match.group(1)), player_match.group(2).strip()
                 transactions.append(
-                    {
-                        "transaction_date": target_date,
-                        "team_id": current_team,
-                        "player_id": pid,
-                        "player_name": pname,
-                        "action": current_action,
-                        "roster_level": "first_team",
-                        "inferred_to_level": "second_team" if current_action == "deregistered" else None,
-                        "source_type": "kbo_today_page",
-                        "confidence": "high",
-                        "dedupe_key": f"{target_date}_{current_team}_{pname}_{current_action}",
-                    },
+                    _transaction_row(
+                        target_date=target_date,
+                        team_code=current_team,
+                        player_id=pid,
+                        player_name=pname,
+                        action=current_action,
+                    ),
                 )
 
     return transactions

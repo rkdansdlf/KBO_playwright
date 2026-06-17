@@ -1,5 +1,7 @@
 from unittest.mock import MagicMock, patch
 
+import httpx
+
 from src.services.embedding_service import EmbeddingService
 
 
@@ -95,7 +97,7 @@ class TestFetchGoogleEmbeddings:
         svc = EmbeddingService()
         svc.api_key = "fake-key"
         with patch("httpx.Client") as mock_client:
-            mock_client.return_value.__enter__.return_value.post.side_effect = Exception("timeout")
+            mock_client.return_value.__enter__.return_value.post.side_effect = httpx.TimeoutException("timeout")
             result = svc._fetch_google_embeddings(["hello"])
             assert result == [[0.0] * 256]
 

@@ -2,6 +2,8 @@
 
 from unittest.mock import MagicMock
 
+from playwright.sync_api import Error as PlaywrightError
+
 from src.utils.player_stats_helpers import extract_rows_fast
 
 
@@ -29,6 +31,6 @@ class TestExtractRowsFast:
 
     def test_exception_returns_none(self):
         page = MagicMock()
-        page.evaluate.side_effect = Exception("JS error")
+        page.evaluate.side_effect = PlaywrightError("JS error")
         result = extract_rows_fast(page)
         assert result is None

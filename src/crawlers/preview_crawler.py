@@ -12,6 +12,8 @@ import logging
 from typing import Any
 
 import httpx
+from playwright.async_api import Error as PlaywrightError
+from playwright.async_api import TimeoutError as PlaywrightTimeoutError
 
 from src.utils.playwright_pool import AsyncPlaywrightPool
 from src.utils.playwright_retry import NAV_TIMEOUT
@@ -19,6 +21,10 @@ from src.utils.request_policy import RequestPolicy
 from src.utils.team_codes import normalize_kbo_game_id
 
 logger = logging.getLogger(__name__)
+HTTP_API_EXCEPTIONS = (httpx.HTTPError, RuntimeError, ValueError, TypeError)
+PLAYWRIGHT_API_EXCEPTIONS = (PlaywrightError, PlaywrightTimeoutError, RuntimeError, ValueError, TypeError, OSError)
+LINEUP_PARSE_EXCEPTIONS = (json.JSONDecodeError, TypeError, ValueError, KeyError, IndexError)
+PREVIEW_CRAWL_EXCEPTIONS = (*HTTP_API_EXCEPTIONS, *PLAYWRIGHT_API_EXCEPTIONS)
 
 
 class PreviewCrawler:
@@ -216,7 +222,7 @@ class PreviewCrawler:
                 if isinstance(payload, (dict, list)):
                     return payload
                 logger.warning("⚠️ Unexpected response type from %s: %s", url, type(payload).__name__)
-        except Exception:
+        except HTTP_API_EXCEPTIONS:
             # Keep logs concise; caller may still recover via Playwright.
             logger.exception("⚠️ HTTP API call failed for %s", url)
 
@@ -231,7 +237,7 @@ class PreviewCrawler:
                 if isinstance(payload, (dict, list)):
                     return payload
                 logger.warning("⚠️ Unexpected Playwright response type from %s: %s", url, type(payload).__name__)
-        except Exception:
+        except PLAYWRIGHT_API_EXCEPTIONS:
             logger.exception("⚠️ Playwright API call failed for %s", url)
         return None
 
@@ -261,7 +267,7 @@ class PreviewCrawler:
                     owns_pool = True
                 try:
                     await pool.start()
-                except Exception as e:
+                except PLAYWRIGHT_API_EXCEPTIONS as e:
                     logger.exception("⚠️ Playwright fallback failed")
                     raise RuntimeError("Failed to start Playwright fallback pool") from e
                 page = await pool.acquire()
@@ -351,7 +357,7 @@ class PreviewCrawler:
                                 preview_data["away_lineup"] = self._parse_lineup_grid(lineup_rows[4])
                         elif not lineup_rows_match:
                             logger.warning("⚠️ Ignoring stale lineup payload for %s", game_id)
-                    except Exception:
+                    except LINEUP_PARSE_EXCEPTIONS:
                         logger.exception("⚠️ Error parsing lineup for %s", game_id)
 
                 results.append(preview_data)
@@ -366,19 +372,19 @@ class PreviewCrawler:
 
             return results
 
-        except Exception:
+        except PREVIEW_CRAWL_EXCEPTIONS:
             logger.exception("❌ PreviewCrawler error")
             return []
         finally:
             if page is not None and pool is not None:
                 try:
                     await pool.release(page)
-                except Exception:
+                except PLAYWRIGHT_API_EXCEPTIONS:
                     logger.exception("Pool release failed")
             if owns_pool and pool is not None:
                 try:
                     await pool.close()
-                except Exception:
+                except PLAYWRIGHT_API_EXCEPTIONS:
                     logger.exception("Pool close failed")
 
     def _parse_lineup_grid(self, grid_str_list: list[str]) -> list[dict[str, str]]:

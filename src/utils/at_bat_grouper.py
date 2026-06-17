@@ -55,24 +55,15 @@ def group_events_into_at_bats(
         # Build a batter key that includes inning/half context
         new_batter_key = (inning, half, batter_name)
 
-        # Detect at-bat boundary conditions
-        needs_new_at_bat = False
-
-        # 1. Inning or half change → new at-bat
-        if (
-            current_batter_key is not None
-            and current_batter_key[:2] != (inning, half)
-            or batter_name
-            and current_batter is not None
-            and batter_name != current_batter
-            or has_seen_result_this_at_bat
-            and event_type in AT_BAT_TERMINAL_EVENTS
-            or current_batter is None
-            and batter_name
+        if _needs_new_at_bat(
+            current_batter_key=current_batter_key,
+            inning=inning,
+            half=half,
+            batter_name=batter_name,
+            current_batter=current_batter,
+            has_seen_result_this_at_bat=has_seen_result_this_at_bat,
+            event_type=event_type,
         ):
-            needs_new_at_bat = True
-
-        if needs_new_at_bat:
             at_bat_seq += 1
             has_seen_result_this_at_bat = False
 
@@ -83,23 +74,11 @@ def group_events_into_at_bats(
         event["at_bat_seq"] = at_bat_seq
 
         # Determine event role within the at-bat
-        if event_type in AT_BAT_TERMINAL_EVENTS:
-            # Check if this is a pitch-count text embedded before the result
-            desc_clean = description.replace(" ", "")
-            if "구" in desc_clean and not any(kw in desc_clean for kw in ["안타", "아웃", "홈런", "볼넷", "삼진"]):
-                event["at_bat_event_role"] = ROLE_AT_BAT_PITCH
-            else:
-                event["at_bat_event_role"] = ROLE_AT_BAT_RESULT
-                has_seen_result_this_at_bat = True
-                result_seen_count += 1
-        elif event_type == "steal":
-            event["at_bat_event_role"] = ROLE_STOLEN_BASE
-        elif event_type == "runner_advance":
-            event["at_bat_event_role"] = ROLE_RUNNER_ADVANCE
-        elif event_type == "runner_out":
-            event["at_bat_event_role"] = ROLE_RUNNER_OUT
-        else:
-            event["at_bat_event_role"] = ROLE_UNKNOWN
+        role = _event_role(event_type, description)
+        event["at_bat_event_role"] = role
+        if role == ROLE_AT_BAT_RESULT:
+            has_seen_result_this_at_bat = True
+            result_seen_count += 1
 
         # Confidence: high if batter is explicitly named, medium otherwise
         if batter_name:
@@ -108,6 +87,44 @@ def group_events_into_at_bats(
             event["at_bat_confidence"] = "medium"
 
     return events
+
+
+def _needs_new_at_bat(
+    *,
+    current_batter_key: tuple[Any, Any, str] | None,
+    inning: Any,
+    half: Any,
+    batter_name: str,
+    current_batter: str | None,
+    has_seen_result_this_at_bat: bool,
+    event_type: str,
+) -> bool:
+    return (
+        current_batter_key is not None
+        and current_batter_key[:2] != (inning, half)
+        or batter_name
+        and current_batter is not None
+        and batter_name != current_batter
+        or has_seen_result_this_at_bat
+        and event_type in AT_BAT_TERMINAL_EVENTS
+        or current_batter is None
+        and bool(batter_name)
+    )
+
+
+def _event_role(event_type: str, description: str) -> str:
+    if event_type in AT_BAT_TERMINAL_EVENTS:
+        desc_clean = description.replace(" ", "")
+        if "구" in desc_clean and not any(kw in desc_clean for kw in ["안타", "아웃", "홈런", "볼넷", "삼진"]):
+            return ROLE_AT_BAT_PITCH
+        return ROLE_AT_BAT_RESULT
+    if event_type == "steal":
+        return ROLE_STOLEN_BASE
+    if event_type == "runner_advance":
+        return ROLE_RUNNER_ADVANCE
+    if event_type == "runner_out":
+        return ROLE_RUNNER_OUT
+    return ROLE_UNKNOWN
 
 
 def compute_at_bat_pitch_count(events: list[dict[str, Any]]) -> list[dict[str, Any]]:

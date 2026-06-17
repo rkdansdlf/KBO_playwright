@@ -35,6 +35,7 @@ from typing import Any, Generator
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from sqlalchemy import Column, Integer, String, Text, create_engine, inspect
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session, declarative_base
 
 from src.sync.oci_sync import OCISync
@@ -42,6 +43,7 @@ from src.sync.oci_sync import OCISync
 _BenchBase = declarative_base()
 logging.basicConfig(level=logging.WARNING, format="%(levelname)s %(message)s")
 logger = logging.getLogger(__name__)
+BENCHMARK_EXCEPTIONS = (SQLAlchemyError, RuntimeError, ValueError, TypeError, OSError)
 
 
 # ── test models ────────────────────────────────────────────────────────
@@ -263,7 +265,7 @@ def bench_dirty_detection(quick: bool = False) -> BenchSuite:
             start = time.perf_counter()
             try:
                 _detect_dirty(src_session, tgt_session, game_ids=game_ids)
-            except Exception as e:  # noqa: BLE001
+            except BENCHMARK_EXCEPTIONS as e:
                 suite.add(f"n={n}", 0, rows=n, note=f"ERROR: {e}")
                 continue
             elapsed = time.perf_counter() - start
@@ -320,7 +322,7 @@ def bench_copy_engine(oci_url: str, quick: bool = False) -> BenchSuite:
                 start = time.perf_counter()
                 try:
                     syncer._bulk_copy_upsert("bench_table", records, ["name"])
-                except Exception as e:  # noqa: BLE001
+                except BENCHMARK_EXCEPTIONS as e:
                     elapsed = time.perf_counter() - start
                     suite.add(f"n={n}", elapsed, rows=n, note=f"ERROR: {e}")
                     continue

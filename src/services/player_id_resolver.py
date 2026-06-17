@@ -5,6 +5,7 @@ import logging
 import os
 
 from sqlalchemy import inspect, or_, select
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
@@ -125,7 +126,7 @@ class PlayerIdResolver:
                     new = row.get("new_name", "").strip()
                     if old and new and old != new:
                         aliases[old] = new
-        except Exception:
+        except (csv.Error, OSError, TypeError, ValueError):
             logger.exception("Failed to load aliases from CSV")
         return aliases
 
@@ -798,7 +799,7 @@ class PlayerIdResolver:
             self.session.add(new_player)
             self.session.commit()
             return new_id
-        except Exception:
+        except (SQLAlchemyError, RuntimeError, ValueError, TypeError):
             self.session.rollback()
             logger.exception("   ❌ Error auto-registering player")
             return None

@@ -12,6 +12,9 @@ import os
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
+from playwright.async_api import Error as PlaywrightError
+from sqlalchemy.exc import SQLAlchemyError
+
 from scripts.maintenance.cleanup_oci import cleanup_oci_duplicates
 from src.cli.collect_profiles import collect_profiles
 from src.cli.db_healthcheck import main as healthcheck_main
@@ -21,6 +24,100 @@ from src.sync.oci_sync import OCISync
 logger = logging.getLogger(__name__)
 
 KST = ZoneInfo("Asia/Seoul")
+WEEKLY_MAINTENANCE_EXCEPTIONS = (
+    PlaywrightError,
+    TimeoutError,
+    asyncio.TimeoutError,
+    SQLAlchemyError,
+    RuntimeError,
+    ValueError,
+    TypeError,
+    OSError,
+)
+
+
+async def _run_weekly_step(step_label: str, error_message: str, action) -> None:
+    logger.info("\n%s", step_label)
+    try:
+        await action()
+    except WEEKLY_MAINTENANCE_EXCEPTIONS:
+        logger.exception("   ❌ %s", error_message)
+
+
+def _profile_delay() -> float:
+    try:
+        return float(os.getenv("PROFILE_BACKFILL_DELAY", "1.5"))
+    except ValueError:
+        logger.warning("Invalid PROFILE_BACKFILL_DELAY=%r; using default=1.5", os.getenv("PROFILE_BACKFILL_DELAY"))
+        return 1.5
+
+
+async def _profile_enrichment_step(profile_limit: int) -> None:
+    from scripts.backfill_player_profiles import backfill as backfill_player_basic_profiles
+
+    logger.info("   - Backfilling player_basic profile photos/details...")
+    await backfill_player_basic_profiles(limit=profile_limit, delay=_profile_delay())
+    logger.info("   - Enriching master player profile records...")
+    await collect_profiles(limit=profile_limit)
+    logger.info("   ✅ Profile enrichment complete")
+
+
+async def _healthcheck_step() -> None:
+    healthcheck_main([])
+    logger.info("   ✅ Healthcheck complete")
+
+
+async def _team_events_step() -> None:
+    from src.crawlers.team_event_crawler import TeamEventCrawler
+
+    await TeamEventCrawler(days_back=14).run(save=True)
+    logger.info("   ✅ Team events crawl complete")
+
+
+async def _fan_culture_step() -> None:
+    from src.crawlers.fan_culture_crawler import FanCultureCrawler
+
+    await FanCultureCrawler().run(save=True)
+    logger.info("   ✅ Fan culture crawl complete")
+
+
+def _cleanup_oci_duplicates(oci_url: str | None) -> None:
+    logger.info("\n🧹 Step 5: Cleaning up OCI Duplicates...")
+    if not oci_url:
+        logger.warning("   ⚠️ OCI_DB_URL not set, skipping cleanup")
+        return
+    try:
+        counts = cleanup_oci_duplicates(database_url=oci_url, apply=True)
+        logger.info("   ✅ OCI Cleanup committed:")
+        for key, value in counts.items():
+            logger.info("      %s: %s", key, value)
+    except WEEKLY_MAINTENANCE_EXCEPTIONS:
+        logger.exception("   ❌ Error during OCI cleanup")
+
+
+def _sync_weekly_to_oci(oci_url: str | None) -> None:
+    logger.info("\n☁️ Step 6: Synchronizing Updated Data to OCI...")
+    if not oci_url:
+        logger.warning("   ⚠️ OCI_DB_URL not set, skipping sync")
+        return
+    with SessionLocal() as session:
+        syncer = OCISync(oci_url, session)
+        try:
+            logger.info("   - Syncing player basics...")
+            syncer.sync_player_basic()
+            logger.info("   - Syncing players...")
+            syncer.sync_players()
+            logger.info("   - Syncing team events...")
+            syncer.sync_team_events()
+            logger.info("   - Syncing fan culture (rivalries, songs, chants)...")
+            syncer.sync_team_rivalries()
+            syncer.sync_cheer_songs()
+            syncer.sync_cheer_chants()
+            logger.info("   ✅ OCI synchronization completed")
+        except WEEKLY_MAINTENANCE_EXCEPTIONS:
+            logger.exception("   ❌ OCI sync error")
+        finally:
+            syncer.close()
 
 
 async def run_weekly_maintenance(
@@ -31,91 +128,21 @@ async def run_weekly_maintenance(
     logger.info("🚀 KBO Weekly Maintenance Started: %s", datetime.now(KST).strftime("%Y-%m-%d %H:%M:%S"))
     logger.info("%s", "=" * 60)
 
-    # 1. Player Profile Enrichment
-    logger.info("\n👤 Step 1: Enriching Player Profiles...")
-    try:
-        try:
-            profile_delay = float(os.getenv("PROFILE_BACKFILL_DELAY", "1.5"))
-        except ValueError:
-            logger.warning("Invalid PROFILE_BACKFILL_DELAY=%r; using default=1.5", os.getenv("PROFILE_BACKFILL_DELAY"))
-            profile_delay = 1.5
-        from scripts.backfill_player_profiles import backfill as backfill_player_basic_profiles
-
-        logger.info("   - Backfilling player_basic profile photos/details...")
-        await backfill_player_basic_profiles(limit=profile_limit, delay=profile_delay)
-
-        logger.info("   - Enriching master player profile records...")
-        await collect_profiles(limit=profile_limit)
-        logger.info("   ✅ Profile enrichment complete")
-    except Exception:
-        logger.exception("   ❌ Error during profile enrichment")
-
-    # 2. Database Healthcheck
-    logger.info("\n🩺 Step 2: Running Database Healthcheck...")
-    try:
-        healthcheck_main([])
-        logger.info("   ✅ Healthcheck complete")
-    except Exception:
-        logger.exception("   ❌ Error during healthcheck")
-
-    # 3. Crawl Team Events/News
-    logger.info("\n📅 Step 3: Crawling Team Events & News...")
-    try:
-        from src.crawlers.team_event_crawler import TeamEventCrawler
-
-        await TeamEventCrawler(days_back=14).run(save=True)
-        logger.info("   ✅ Team events crawl complete")
-    except Exception:
-        logger.exception("   ❌ Error crawling team events")
-
-    # 4. Crawl Fan Culture (Cheer Songs)
-    logger.info("\n🎵 Step 4: Crawling Fan Culture & Cheer Songs...")
-    try:
-        from src.crawlers.fan_culture_crawler import FanCultureCrawler
-
-        await FanCultureCrawler().run(save=True)
-        logger.info("   ✅ Fan culture crawl complete")
-    except Exception:
-        logger.exception("   ❌ Error crawling fan culture")
-
-    # 5. OCI Cleanup (Duplicates)
-    logger.info("\n🧹 Step 5: Cleaning up OCI Duplicates...")
     oci_url = os.getenv("OCI_DB_URL")
-    if not oci_url:
-        logger.warning("   ⚠️ OCI_DB_URL not set, skipping cleanup")
-    else:
-        try:
-            counts = cleanup_oci_duplicates(database_url=oci_url, apply=True)
-            logger.info("   ✅ OCI Cleanup committed:")
-            for key, value in counts.items():
-                logger.info("      %s: %s", key, value)
-        except Exception:
-            logger.exception("   ❌ Error during OCI cleanup")
+    await _run_weekly_step(
+        "👤 Step 1: Enriching Player Profiles...",
+        "Error during profile enrichment",
+        lambda: _profile_enrichment_step(profile_limit),
+    )
+    await _run_weekly_step("🩺 Step 2: Running Database Healthcheck...", "Error during healthcheck", _healthcheck_step)
+    await _run_weekly_step("📅 Step 3: Crawling Team Events & News...", "Error crawling team events", _team_events_step)
+    await _run_weekly_step(
+        "🎵 Step 4: Crawling Fan Culture & Cheer Songs...", "Error crawling fan culture", _fan_culture_step
+    )
+    _cleanup_oci_duplicates(oci_url)
 
     if sync:
-        logger.info("\n☁️ Step 6: Synchronizing Updated Data to OCI...")
-        if not oci_url:
-            logger.warning("   ⚠️ OCI_DB_URL not set, skipping sync")
-        else:
-            with SessionLocal() as session:
-                syncer = OCISync(oci_url, session)
-                try:
-                    # Sync player_basic before master/profile records to match publish dependency order.
-                    logger.info("   - Syncing player basics...")
-                    syncer.sync_player_basic()
-                    logger.info("   - Syncing players...")
-                    syncer.sync_players()
-                    logger.info("   - Syncing team events...")
-                    syncer.sync_team_events()
-                    logger.info("   - Syncing fan culture (rivalries, songs, chants)...")
-                    syncer.sync_team_rivalries()
-                    syncer.sync_cheer_songs()
-                    syncer.sync_cheer_chants()
-                    logger.info("   ✅ OCI synchronization completed")
-                except Exception:
-                    logger.exception("   ❌ OCI sync error")
-                finally:
-                    syncer.close()
+        _sync_weekly_to_oci(oci_url)
 
     logger.info("\n%s", "=" * 60)
     logger.info("🏁 Weekly Maintenance Finished")

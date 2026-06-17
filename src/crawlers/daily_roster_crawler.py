@@ -12,14 +12,27 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
+from playwright.async_api import Error as PlaywrightError
 from playwright.async_api import Page
 from playwright.async_api import TimeoutError as PlaywrightTimeoutError
+from sqlalchemy.exc import SQLAlchemyError
 from tenacity import AsyncRetrying, retry_if_exception_type, stop_after_attempt, wait_exponential
 
 from src.urls import REGISTER
 from src.utils.playwright_pool import AsyncPlaywrightPool
 from src.utils.playwright_retry import NAV_TIMEOUT, SHORT_TIMEOUT
 from src.utils.team_codes import resolve_team_code
+
+ROSTER_CALLBACK_EXCEPTIONS = (SQLAlchemyError, RuntimeError, ValueError, TypeError, OSError)
+ROSTER_CRAWL_EXCEPTIONS = (
+    PlaywrightError,
+    PlaywrightTimeoutError,
+    RuntimeError,
+    ValueError,
+    TypeError,
+    KeyError,
+    OSError,
+)
 
 
 class DailyRosterCrawler:
@@ -67,7 +80,7 @@ class DailyRosterCrawler:
                                     await save_callback(roster)
                                 else:
                                     save_callback(roster)
-                            except Exception:
+                            except ROSTER_CALLBACK_EXCEPTIONS:
                                 logger.exception("⚠️ Callback error")
 
                         results.extend(roster)
@@ -128,7 +141,7 @@ class DailyRosterCrawler:
                 # Extract data
                 records = await self._extract_table(page, t_code, target_date)
                 daily_records.extend(records)
-            except Exception:
+            except ROSTER_CRAWL_EXCEPTIONS:
                 logger.exception("⚠️ Error crawling team %s", t_code)
 
         return daily_records

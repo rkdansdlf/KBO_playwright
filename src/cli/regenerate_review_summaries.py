@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Any
 
 from sqlalchemy import and_, or_
+from sqlalchemy.exc import SQLAlchemyError
 
 from src.cli.daily_review_batch import (
     REVIEW_SUMMARY_TYPE,
@@ -29,6 +30,8 @@ from src.utils.game_status import COMPLETED_LIKE_GAME_STATUSES
 from src.utils.relay_text import is_relay_noise_text
 
 logger = logging.getLogger(__name__)
+
+REVIEW_REGEN_DB_EXCEPTIONS = (SQLAlchemyError, RuntimeError, ValueError, TypeError, KeyError, OSError)
 
 
 @dataclass
@@ -203,6 +206,97 @@ def _sync_review_summaries(game_ids: Sequence[str], rows: Sequence[ReviewRegenRe
     log(f"OCI summary sync complete: games={len(synced)} rows={result.get('summary', 0)}")
 
 
+def _append_missing_review_rows(
+    rows: list[ReviewRegenReportRow], requested_ids: Sequence[str], games_by_id: dict[str, Game]
+) -> None:
+    rows.extend(
+        ReviewRegenReportRow(game_id=requested_id, game_date="", status="SKIPPED_GAME_NOT_FOUND")
+        for requested_id in sorted(set(requested_ids) - set(games_by_id))
+    )
+
+
+def _skipped_review_row(game: Game) -> ReviewRegenReportRow:
+    return ReviewRegenReportRow(
+        game_id=game.game_id,
+        game_date=game.game_date.strftime("%Y%m%d") if game.game_date else "",
+        status="SKIPPED_NOT_COMPLETED",
+        message=f"status={game.game_status}",
+    )
+
+
+def _existing_review_json(session, game_id: str) -> str | None:
+    existing = (
+        session.query(GameSummary)
+        .filter(GameSummary.game_id == game_id, GameSummary.summary_type == REVIEW_SUMMARY_TYPE)
+        .order_by(GameSummary.id.asc())
+        .first()
+    )
+    return existing.detail_text if existing else None
+
+
+def _build_review_report_row(
+    game: Game, old_json: str | None, new_json: str, review_data: dict[str, Any], noise_moments: int
+) -> ReviewRegenReportRow:
+    return ReviewRegenReportRow(
+        game_id=game.game_id,
+        game_date=game.game_date.strftime("%Y%m%d") if game.game_date else "",
+        status="",
+        old_hash=_short_hash(old_json),
+        new_hash=_short_hash(new_json),
+        changed=old_json != new_json,
+        crucial_moments=_count_crucial_moments(review_data),
+        noise_moments=noise_moments,
+    )
+
+
+def _process_review_game(session, agg: ContextAggregator, game: Game, apply: bool) -> tuple[ReviewRegenReportRow, bool]:
+    if game.game_status not in COMPLETED_LIKE_GAME_STATUSES:
+        return _skipped_review_row(game), False
+
+    old_json = _existing_review_json(session, game.game_id)
+    review_data = _build_review_data(agg, game)
+    new_json = json.dumps(review_data, ensure_ascii=False)
+    noise_moments = _count_noise_moments(review_data)
+    row = _build_review_report_row(game, old_json, new_json, review_data, noise_moments)
+
+    if noise_moments:
+        row.status = "SKIPPED_REVIEW_MOMENT_NOISE"
+        row.message = f"noise_moments={noise_moments}"
+        return row, False
+    if not apply:
+        row.status = "DRY_RUN_READY" if row.changed else "DRY_RUN_UNCHANGED"
+        return row, False
+    if row.changed:
+        _upsert_review_summary(session, game.game_id, new_json)
+        row.status = "APPLIED"
+    else:
+        row.status = "UNCHANGED"
+    return row, True
+
+
+def _process_review_games(
+    session, games: Sequence[Game], agg: ContextAggregator, apply: bool
+) -> tuple[list[ReviewRegenReportRow], list[str]]:
+    rows = []
+    sync_game_ids = []
+    for game in games:
+        row, should_sync = _process_review_game(session, agg, game, apply)
+        rows.append(row)
+        if should_sync:
+            sync_game_ids.append(game.game_id)
+    return rows, sync_game_ids
+
+
+def _mark_review_oci_status(rows: Sequence[ReviewRegenReportRow], *, apply: bool, oci_url: str | None) -> None:
+    if not apply:
+        for row in rows:
+            row.oci_status = "skipped_dry_run"
+    elif not oci_url:
+        for row in rows:
+            if row.status in {"APPLIED", "UNCHANGED"}:
+                row.oci_status = "skipped_missing_oci_url"
+
+
 def regenerate_review_summaries(
     *,
     game_ids: Sequence[str] | None = None,
@@ -220,7 +314,6 @@ def regenerate_review_summaries(
     target_seasons = list(seasons or [])
     report_path = report_out or _default_report_path()
     rows: list[ReviewRegenReportRow] = []
-    sync_game_ids: list[str] = []
 
     with SessionLocal() as session:
         games = _query_target_games(
@@ -237,88 +330,20 @@ def regenerate_review_summaries(
             _write_backup(session, [game.game_id for game in games], backup_path)
             log(f"Backed up existing review summaries: {backup_path}")
 
-        for requested_id in sorted(set(target_game_ids) - set(games_by_id)):
-            rows.append(  # noqa: PERF401
-                ReviewRegenReportRow(
-                    game_id=requested_id,
-                    game_date="",
-                    status="SKIPPED_GAME_NOT_FOUND",
-                ),
-            )
-
-        for game in games:
-            game_date = game.game_date.strftime("%Y%m%d") if game.game_date else ""
-            if game.game_status not in COMPLETED_LIKE_GAME_STATUSES:
-                rows.append(
-                    ReviewRegenReportRow(
-                        game_id=game.game_id,
-                        game_date=game_date,
-                        status="SKIPPED_NOT_COMPLETED",
-                        message=f"status={game.game_status}",
-                    ),
-                )
-                continue
-
-            existing = (
-                session.query(GameSummary)
-                .filter(
-                    GameSummary.game_id == game.game_id,
-                    GameSummary.summary_type == REVIEW_SUMMARY_TYPE,
-                )
-                .order_by(GameSummary.id.asc())
-                .first()
-            )
-            old_json = existing.detail_text if existing else None
-            review_data = _build_review_data(agg, game)
-            new_json = json.dumps(review_data, ensure_ascii=False)
-            noise_moments = _count_noise_moments(review_data)
-            changed = old_json != new_json
-            row = ReviewRegenReportRow(
-                game_id=game.game_id,
-                game_date=game_date,
-                status="",
-                old_hash=_short_hash(old_json),
-                new_hash=_short_hash(new_json),
-                changed=changed,
-                crucial_moments=_count_crucial_moments(review_data),
-                noise_moments=noise_moments,
-            )
-
-            if noise_moments:
-                row.status = "SKIPPED_REVIEW_MOMENT_NOISE"
-                row.message = f"noise_moments={noise_moments}"
-                rows.append(row)
-                continue
-
-            if not apply:
-                row.status = "DRY_RUN_READY" if changed else "DRY_RUN_UNCHANGED"
-                rows.append(row)
-                continue
-
-            if changed:
-                _upsert_review_summary(session, game.game_id, new_json)
-                row.status = "APPLIED"
-            else:
-                row.status = "UNCHANGED"
-            rows.append(row)
-            sync_game_ids.append(game.game_id)
+        _append_missing_review_rows(rows, target_game_ids, games_by_id)
+        processed_rows, sync_game_ids = _process_review_games(session, games, agg, apply)
+        rows.extend(processed_rows)
 
         if apply:
             try:
                 session.commit()
-            except Exception:
+            except REVIEW_REGEN_DB_EXCEPTIONS:
                 session.rollback()
                 raise
 
     if sync_oci:
-        if not apply:
-            for row in rows:
-                row.oci_status = "skipped_dry_run"
-        elif not oci_url:
-            for row in rows:
-                if row.status in {"APPLIED", "UNCHANGED"}:
-                    row.oci_status = "skipped_missing_oci_url"
-        else:
+        _mark_review_oci_status(rows, apply=apply, oci_url=oci_url)
+        if apply and oci_url:
             _sync_review_summaries(sync_game_ids, rows, oci_url=oci_url, log=log)
 
     _write_report(rows, report_path)

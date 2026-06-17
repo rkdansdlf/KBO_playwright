@@ -4,10 +4,14 @@ import argparse
 import logging
 from collections.abc import Sequence
 
+from sqlalchemy.exc import SQLAlchemyError
+
 from src.db.engine import SessionLocal
 from src.services.matchup_engine import MatchupEngine
 
 logger = logging.getLogger(__name__)
+
+MATCHUP_CALC_EXCEPTIONS = (SQLAlchemyError, RuntimeError, ValueError, TypeError, KeyError, OSError)
 
 
 def batch_calculate_matchups(years: list[int], sync_oci: bool = False) -> None:
@@ -19,7 +23,7 @@ def batch_calculate_matchups(years: list[int], sync_oci: bool = False) -> None:
     for year in years:
         try:
             engine.execute_all(year)
-        except Exception:
+        except MATCHUP_CALC_EXCEPTIONS:
             logger.exception("⚠️ Failed to calculate matchups for %s", year)
 
     if sync_oci:

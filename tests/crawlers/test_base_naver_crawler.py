@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
 
+import httpx
 import pytest
 from pytest import mark
 
@@ -44,7 +45,7 @@ class TestFetchNews:
                 ],
             },
         }
-        mock_client.get.side_effect = [mock_response] + [Exception("stop")] * 6
+        mock_client.get.side_effect = [mock_response] + [httpx.HTTPError("stop")] * 6
 
         result = await crawler._fetch_news()
         assert len(result) == 2
@@ -58,7 +59,7 @@ class TestFetchNews:
         mock_client_cls.return_value = mock_client
         mock_response = MagicMock()
         mock_response.status_code = 500
-        mock_client.get.side_effect = [mock_response] + [Exception("stop")] * 6
+        mock_client.get.side_effect = [mock_response] + [httpx.HTTPError("stop")] * 6
 
         result = await crawler._fetch_news()
         assert result == []
@@ -68,7 +69,7 @@ class TestFetchNews:
     async def test_handles_api_exception(self, mock_client_cls, crawler):
         mock_client = MagicMock()
         mock_client_cls.return_value = mock_client
-        mock_client.get.side_effect = Exception("timeout")
+        mock_client.get.side_effect = httpx.TimeoutException("timeout")
 
         result = await crawler._fetch_news()
         assert result == []

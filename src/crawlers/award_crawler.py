@@ -9,6 +9,7 @@ import argparse
 import asyncio
 import logging
 
+from playwright.async_api import Error as PlaywrightError
 from playwright.async_api import Page, async_playwright
 from sqlalchemy.exc import SQLAlchemyError
 
@@ -17,6 +18,9 @@ from src.repositories.award_repository import AwardRepository
 from src.utils.playwright_blocking import install_async_resource_blocking
 
 logger = logging.getLogger(__name__)
+
+AWARD_CRAWL_EXCEPTIONS = (PlaywrightError, RuntimeError, ValueError, TypeError, KeyError, IndexError, OSError)
+AWARD_DB_EXCEPTIONS = (SQLAlchemyError, RuntimeError, ValueError, TypeError, OSError)
 
 
 class AwardCrawler:
@@ -59,11 +63,8 @@ class AwardCrawler:
                         data = await self.crawl_series_prize(page)
                     else:
                         data = []
-                except Exception as e:
+                except AWARD_CRAWL_EXCEPTIONS as e:
                     logger.exception("Error crawling %s: %s", atype, e)
-                    import traceback
-
-                    traceback.print_exc()
                     data = []
 
                 all_data.extend(data)
@@ -322,7 +323,7 @@ class AwardCrawler:
                     logger.warning("Skipping duplicate or error: %s - %s", item, ex, exc_info=True)
             session.commit()
             logger.info("✅ Saved %s awards to database.", count)
-        except Exception as e:
+        except AWARD_DB_EXCEPTIONS as e:
             session.rollback()
             logger.exception("Error saving to DB: %s", e)
         finally:

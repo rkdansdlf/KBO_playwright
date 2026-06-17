@@ -16,6 +16,9 @@ import logging
 from collections.abc import Sequence
 from datetime import datetime
 
+from playwright.async_api import Error as PlaywrightError
+from sqlalchemy.exc import SQLAlchemyError
+
 from src.crawlers.retire import RetiredPlayerDetailCrawler, RetiredPlayerListingCrawler
 
 # Ensure all models are loaded to resolve foreign keys
@@ -27,6 +30,17 @@ from src.parsers.retired_player_parser import (
 from src.repositories.player_repository import PlayerRepository
 
 logger = logging.getLogger(__name__)
+
+RETIRED_PLAYER_PROCESS_EXCEPTIONS = (
+    PlaywrightError,
+    SQLAlchemyError,
+    RuntimeError,
+    ValueError,
+    TypeError,
+    KeyError,
+    IndexError,
+    OSError,
+)
 
 
 async def determine_inactive_ids(
@@ -131,7 +145,7 @@ async def crawl_retired_players(args: argparse.Namespace) -> None:
                 logger.info("📡 Processing player %s...", pid)
                 await process_player(pid, detail_crawler, repository)
                 logger.info("✅ Processed retired player %s", pid)
-            except Exception:
+            except RETIRED_PLAYER_PROCESS_EXCEPTIONS:
                 logger.exception("❌ Failed to process player %s", pid)
 
     try:

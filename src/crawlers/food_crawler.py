@@ -21,6 +21,9 @@ from src.utils.throttle import throttle
 
 logger = logging.getLogger(__name__)
 
+FOOD_CRAWL_EXCEPTIONS = (httpx.HTTPError, RuntimeError, ValueError, TypeError, KeyError, OSError)
+FOOD_DB_EXCEPTIONS = (SQLAlchemyError, RuntimeError, ValueError, TypeError, KeyError, OSError)
+
 TEAM_FOOD_SOURCES: dict[str, dict[str, Any]] = {
     "LT": {
         "source_key": "lotte_giants_fnb",
@@ -50,7 +53,7 @@ class FoodCrawler:
                 vendors = await self._crawl_team_food(team_code, info)
                 all_vendors.extend(vendors)
                 logger.info("[FOOD] %s: %s vendors found", team_code, len(vendors))
-            except Exception:
+            except FOOD_CRAWL_EXCEPTIONS:
                 logger.exception("Failed to crawl food for %s", team_code)
 
         logger.info("[FOOD] Total: %s vendors", len(all_vendors))
@@ -130,7 +133,7 @@ class FoodCrawler:
                         for menu in entry.get("menus", []):
                             menu_repo.save({"vendor_id": vendor.id, **menu})
                             menu_count += 1
-                    except Exception:
+                    except FOOD_DB_EXCEPTIONS:
                         logger.exception("Food save failed: %s", entry.get("vendor", {}).get("vendor_name", ""))
                 session.commit()
                 logger.info("[FOOD] Saved %s vendors, %s menus, %s snapshots.", vendor_count, menu_count, saved_snaps)

@@ -125,23 +125,17 @@ def _has_core_stats(payload: Mapping[str, Any], stat_type: str) -> bool:
     return any(payload.get(field) is not None for field in fields)
 
 
-def validate_season_stat_payload(
-    payload: Mapping[str, Any],
-    *,
-    stat_type: str,
-) -> tuple[bool, str | None]:
+def _validate_player_identity(payload: Mapping[str, Any], stat_type: str) -> tuple[bool, str | None]:
     if stat_type == "fielding":
         if normalize_player_id(payload.get("player_id")) is None:
             return False, "invalid_player_id"
         if payload.get("player_name") is not None or payload.get("name") is not None:
-            ok, reason = validate_player_payload(payload)
-            if not ok:
-                return False, reason
-    else:
-        ok, reason = validate_player_payload(payload)
-        if not ok:
-            return False, reason
+            return validate_player_payload(payload)
+        return True, None
+    return validate_player_payload(payload)
 
+
+def _validate_season_key(payload: Mapping[str, Any], stat_type: str) -> tuple[bool, str | None]:
     try:
         season_key = "year" if stat_type == "fielding" else "season"
         season = int(str(payload.get(season_key)).strip())
@@ -149,7 +143,10 @@ def validate_season_stat_payload(
         return False, "missing_year" if stat_type == "fielding" else "missing_season"
     if season < 1982:
         return False, "missing_year" if stat_type == "fielding" else "missing_season"
+    return True, None
 
+
+def _validate_team_fields(payload: Mapping[str, Any], stat_type: str) -> tuple[bool, str | None]:
     if stat_type == "fielding":
         if not str(payload.get("team_id") or "").strip():
             return False, "missing_team_id"
@@ -157,28 +154,55 @@ def validate_season_stat_payload(
             return False, "missing_position_id"
     elif not str(payload.get("team_code") or "").strip():
         return False, "missing_team_code"
+    return True, None
 
-    if not _has_core_stats(payload, stat_type):
-        return False, "empty_core_stats"
 
+def _validate_numeric_fields(payload: Mapping[str, Any]) -> tuple[bool, str | None]:
     for key in NUMERIC_FIELDS:
         if key in payload and not _is_number_like(payload.get(key)):
             return False, "invalid_numeric_stat"
+    return True, None
+
+
+def _validate_batting_consistency(payload: Mapping[str, Any]) -> tuple[bool, str | None]:
+    hits = _number_or_none(payload.get("hits"))
+    at_bats = _number_or_none(payload.get("at_bats"))
+    plate_appearances = _number_or_none(payload.get("plate_appearances"))
+    if hits is not None and at_bats is not None and hits > at_bats:
+        return False, "hits_gt_at_bats"
+    if at_bats is not None and plate_appearances is not None and at_bats > plate_appearances:
+        return False, "at_bats_gt_plate_appearances"
+    return True, None
+
+
+def _validate_pitching_consistency(payload: Mapping[str, Any]) -> tuple[bool, str | None]:
+    earned_runs = _number_or_none(payload.get("earned_runs"))
+    runs_allowed = _number_or_none(payload.get("runs_allowed"))
+    if earned_runs is not None and runs_allowed is not None and earned_runs > runs_allowed:
+        return False, "earned_runs_gt_runs_allowed"
+    return True, None
+
+
+def validate_season_stat_payload(
+    payload: Mapping[str, Any],
+    *,
+    stat_type: str,
+) -> tuple[bool, str | None]:
+    for validator in (
+        lambda row: _validate_player_identity(row, stat_type),
+        lambda row: _validate_season_key(row, stat_type),
+        lambda row: _validate_team_fields(row, stat_type),
+        lambda row: (True, None) if _has_core_stats(row, stat_type) else (False, "empty_core_stats"),
+        _validate_numeric_fields,
+    ):
+        ok, reason = validator(payload)
+        if not ok:
+            return False, reason
 
     if stat_type == "batting":
-        hits = _number_or_none(payload.get("hits"))
-        at_bats = _number_or_none(payload.get("at_bats"))
-        plate_appearances = _number_or_none(payload.get("plate_appearances"))
-        if hits is not None and at_bats is not None and hits > at_bats:
-            return False, "hits_gt_at_bats"
-        if at_bats is not None and plate_appearances is not None and at_bats > plate_appearances:
-            return False, "at_bats_gt_plate_appearances"
-
+        return _validate_batting_consistency(payload)
     if stat_type == "pitching":
-        earned_runs = _number_or_none(payload.get("earned_runs"))
-        runs_allowed = _number_or_none(payload.get("runs_allowed"))
-        if earned_runs is not None and runs_allowed is not None and earned_runs > runs_allowed:
-            return False, "earned_runs_gt_runs_allowed"
+        return _validate_pitching_consistency(payload)
 
     return True, None
 

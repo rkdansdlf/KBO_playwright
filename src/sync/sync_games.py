@@ -245,6 +245,127 @@ class GameSyncMixin:
         """Detect dirty game_ids by comparing game + child-table signatures across local/OCI."""
         return detect_dirty_game_ids(self.sqlite_session, self.target_session)
 
+    def _game_detail_parent_scope(
+        self, days: int | None, year: int | None, unsynced_only: bool
+    ) -> tuple[list, list[str] | None]:
+        filters = []
+        target_game_ids = None
+        if unsynced_only:
+            logger.info("🔍 식별 중: OCI에 없거나 로컬에서 최근에 갱신된 게임 데이터를 검사합니다...")
+            target_game_ids = filter_game_ids_by_year(self.get_unsynced_or_modified_game_ids(), year)
+            if target_game_ids:
+                logger.info("🎯 총 %s개의 변경/누락된 게임을 발견했습니다.", len(target_game_ids))
+                filters.append(Game.game_id.in_(target_game_ids))
+            return filters, target_game_ids
+
+        if days:
+            from datetime import datetime, timedelta
+
+            filters.append(Game.game_date >= (datetime.now() - timedelta(days=days)).date())
+        if year:
+            filters.append(Game.game_id.like(f"{year}%"))
+        return filters, target_game_ids
+
+    def _scoped_game_ids(self, filters: list, target_game_ids: list[str] | None) -> list[str]:
+        if target_game_ids is not None:
+            return target_game_ids
+        scoped_query = self.sqlite_session.query(Game.game_id)
+        if filters:
+            scoped_query = scoped_query.filter(*filters)
+        return [row[0] for row in scoped_query.all()]
+
+    def _sync_parent_games_for_details(
+        self,
+        results: dict[str, int],
+        filters: list,
+        target_game_ids: list[str] | None,
+        publishable_parent_game_ids: list[str] | None,
+        unsynced_only: bool,
+        batch_size: int,
+    ) -> None:
+        logger.info("⚾ Syncing Parent Game Records...")
+        if unsynced_only and target_game_ids is not None:
+            if publishable_parent_game_ids:
+                results["games"] = self.sync_games(
+                    filters=[Game.game_id.in_(publishable_parent_game_ids)], batch_size=batch_size
+                )
+            else:
+                results["games"] = 0
+                logger.info("ℹ️ No publishable parent game rows beyond schedule-only stubs.")
+        else:
+            results["games"] = self.sync_games(filters=filters if filters else None, batch_size=batch_size)
+
+    def _sync_game_id_aliases(
+        self,
+        results: dict[str, int],
+        target_game_ids: list[str] | None,
+        filters: list,
+        year: int | None,
+        days: int | None,
+        batch_size: int,
+    ) -> None:
+        alias_filters = None
+        if target_game_ids:
+            alias_filters = [GameIdAlias.canonical_game_id.in_(target_game_ids)]
+        elif year:
+            alias_filters = [GameIdAlias.canonical_game_id.like(f"{year}%")]
+        elif days and filters:
+            game_ids = [game.game_id for game in self.sqlite_session.query(Game.game_id).filter(*filters).all()]
+            alias_filters = [GameIdAlias.canonical_game_id.in_(game_ids)] if game_ids else []
+
+        if alias_filters != []:
+            results["game_id_aliases"] = self.sync_simple_table(
+                GameIdAlias,
+                ["alias_game_id"],
+                exclude_cols=["created_at"],
+                filters=alias_filters,
+                batch_size=batch_size,
+            )
+
+    def _game_detail_child_filters(self, filters: list, year: int | None, days: int | None) -> list | None:
+        child_filters = []
+        if year:
+            child_filters.append(text("game_id LIKE :year_pattern").bindparams(year_pattern=f"{year}%"))
+        elif days:
+            game_ids = [game.game_id for game in self.sqlite_session.query(Game.game_id).filter(*filters).all()]
+            if not game_ids:
+                logger.info("ℹ️ No games found for the specified period.")
+                return []
+            child_filters.append(GameMetadata.game_id.in_(game_ids))
+        return child_filters if child_filters else None
+
+    def _prepare_target_game_detail_children(self, year: int | None, unsynced_only: bool, eligibility) -> None:
+        if year and not unsynced_only:
+            self._purge_game_detail_children_for_year(year)
+            return
+        self._replace_target_child_rows_for_games(
+            _DETAIL_REPLACE_CHILD_MODELS, eligibility.detail_game_ids, label="detail"
+        )
+        self._replace_target_child_rows_for_games(
+            _RELAY_REPLACE_CHILD_MODELS, eligibility.relay_game_ids, label="relay"
+        )
+
+    @staticmethod
+    def _child_filter_for_model(model_cls, child_filters, scoped_game_ids, eligibility) -> list | None:
+        if model_cls in {GameEvent, GamePlayByPlay}:
+            return [model_cls.game_id.in_(eligibility.relay_game_ids)]
+        if model_cls is GameValidationMetrics:
+            return [model_cls.game_id.in_(scoped_game_ids)]
+        detail_models = {
+            GameMetadata,
+            GameInningScore,
+            GameLineup,
+            GameBattingStat,
+            GamePitchingStat,
+            GameSummary,
+            GameHighlight,
+            PlayerGameBatting,
+            PlayerGamePitching,
+        }
+        if model_cls in detail_models:
+            return [model_cls.game_id.in_(eligibility.detail_game_ids)]
+        return child_filters
+
     def sync_game_details(
         self,
         days: int = None,
@@ -259,112 +380,32 @@ class GameSyncMixin:
             logger.error("❌ OCI connection failed. Aborting sync_game_details.")
             return results
 
-        filters = []
-        target_game_ids = None
-
-        publishable_parent_game_ids = None
-        eligibility = None
-
+        filters, target_game_ids = self._game_detail_parent_scope(days, year, unsynced_only)
         if unsynced_only:
-            logger.info("🔍 식별 중: OCI에 없거나 로컬에서 최근에 갱신된 게임 데이터를 검사합니다...")
-            target_game_ids = self.get_unsynced_or_modified_game_ids()
-            target_game_ids = filter_game_ids_by_year(target_game_ids, year)
             if not target_game_ids:
                 year_msg = f" ({year})" if year else ""
                 logger.info("🎉 모든 게임 데이터%s가 이미 최신 상태입니다. 동기화를 건너뜁니다.", year_msg)
                 return results
-            logger.info("🎯 총 %s개의 변경/누락된 게임을 발견했습니다.", len(target_game_ids))
-            # target_game_ids가 너무 길면 sqlite in_ 절 한도를 초과할 수 있지만, 부분 업데이트라 대개 수십 건 내외임.
-            filters.append(Game.game_id.in_(target_game_ids))
-        else:
-            if days:
-                from datetime import datetime, timedelta
-
-                since_date = (datetime.now() - timedelta(days=days)).date()
-                filters.append(Game.game_date >= since_date)
-            if year:
-                filters.append(Game.game_id.like(f"{year}%"))
-
-        scoped_game_ids = target_game_ids
-        if scoped_game_ids is None:
-            scoped_query = self.sqlite_session.query(Game.game_id)
-            if filters:
-                scoped_query = scoped_query.filter(*filters)
-            scoped_game_ids = [row[0] for row in scoped_query.all()]
+        scoped_game_ids = self._scoped_game_ids(filters, target_game_ids)
 
         eligibility = build_game_sync_eligibility(self.sqlite_session, scoped_game_ids)
         results.update(eligibility.counts())
         _log_sync_eligibility(eligibility)
-        if unsynced_only:
-            publishable_parent_game_ids = eligibility.parent_game_ids
 
-        # 0. Sync Parent Games first (Required for Foreign Keys)
-        logger.info("⚾ Syncing Parent Game Records...")
-        if unsynced_only and target_game_ids is not None:
-            if publishable_parent_game_ids:
-                results["games"] = self.sync_games(
-                    filters=[Game.game_id.in_(publishable_parent_game_ids)],
-                    batch_size=batch_size,
-                )
-            else:
-                results["games"] = 0
-                logger.info("ℹ️ No publishable parent game rows beyond schedule-only stubs.")
-        else:
-            results["games"] = self.sync_games(filters=filters if filters else None, batch_size=batch_size)
+        publishable_parent_game_ids = eligibility.parent_game_ids if unsynced_only else None
+        self._sync_parent_games_for_details(
+            results, filters, target_game_ids, publishable_parent_game_ids, unsynced_only, batch_size
+        )
+        self._sync_game_id_aliases(results, target_game_ids if unsynced_only else None, filters, year, days, batch_size)
 
-        alias_filters = None
-        if unsynced_only and target_game_ids:
-            alias_filters = [GameIdAlias.canonical_game_id.in_(target_game_ids)]
-        elif year:
-            alias_filters = [GameIdAlias.canonical_game_id.like(f"{year}%")]
-        elif days and filters:
-            game_ids = [g.game_id for g in self.sqlite_session.query(Game.game_id).filter(*filters).all()]
-            alias_filters = [GameIdAlias.canonical_game_id.in_(game_ids)] if game_ids else []
+        child_filters = self._game_detail_child_filters(filters, year, days)
+        if child_filters == []:
+            return results
 
-        if alias_filters != []:
-            results["game_id_aliases"] = self.sync_simple_table(
-                GameIdAlias,
-                ["alias_game_id"],
-                exclude_cols=["created_at"],
-                filters=alias_filters,
-                batch_size=batch_size,
-            )
-
-        # Build filters for child tables (they often use game_id instead of game_date)
-        child_filters = []
-        if year:
-            child_filters.append(text("game_id LIKE :year_pattern").bindparams(year_pattern=f"{year}%"))
-        elif days:
-            game_ids = [g.game_id for g in self.sqlite_session.query(Game.game_id).filter(*filters).all()]
-            if game_ids:
-                child_filters.append(GameMetadata.game_id.in_(game_ids))
-            else:
-                logger.info("ℹ️ No games found for the specified period.")
-                return results
-
-        if year and not unsynced_only:
-            # Remove existing year-scoped child rows first to avoid stale/null duplicates.
-            self._purge_game_detail_children_for_year(year)
-        else:
-            self._replace_target_child_rows_for_games(
-                _DETAIL_REPLACE_CHILD_MODELS,
-                eligibility.detail_game_ids,
-                label="detail",
-            )
-            self._replace_target_child_rows_for_games(
-                _RELAY_REPLACE_CHILD_MODELS,
-                eligibility.relay_game_ids,
-                label="relay",
-            )
+        self._prepare_target_game_detail_children(year, unsynced_only, eligibility)
 
         def get_child_filters(model_cls) -> list | None:
-            if model_cls in {GameEvent, GamePlayByPlay}:
-                return [model_cls.game_id.in_(eligibility.relay_game_ids)]
-            if model_cls is GameValidationMetrics:
-                return [model_cls.game_id.in_(scoped_game_ids)]
-            if model_cls in {GameMetadata, GameInningScore, GameLineup, GameBattingStat, GamePitchingStat, GameSummary, GameHighlight, PlayerGameBatting, PlayerGamePitching}:  # fmt: skip
-                return [model_cls.game_id.in_(eligibility.detail_game_ids)]
-            return child_filters if child_filters else None
+            return self._child_filter_for_model(model_cls, child_filters, scoped_game_ids, eligibility)
 
         # 1. Game Metadata
         results["metadata"] = self.sync_simple_table(

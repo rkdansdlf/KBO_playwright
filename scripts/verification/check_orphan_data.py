@@ -16,9 +16,11 @@ from urllib.parse import urlsplit, urlunsplit
 from dotenv import load_dotenv
 from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.engine import Connection
+from sqlalchemy.exc import SQLAlchemyError
 
 logger = logging.getLogger(__name__)
 DEFAULT_DB_PATH = Path("data/kbo_dev.db")
+CHECK_EXCEPTIONS = (SQLAlchemyError, RuntimeError, ValueError, TypeError, OSError)
 
 
 @dataclass
@@ -333,7 +335,7 @@ def _sa_run_count_check(
             samples=samples,
             severity=severity,
         )
-    except Exception as exc:  # noqa: BLE001
+    except CHECK_EXCEPTIONS as exc:
         return CheckResult(name=name, status="ERROR", severity=severity, error=str(exc))
 
 

@@ -15,6 +15,7 @@ from typing import Any
 from src.utils.series_validation import filter_series_for_year
 
 logger = logging.getLogger(__name__)
+SUBPROCESS_EXCEPTIONS = (subprocess.SubprocessError, OSError, RuntimeError, ValueError)
 
 
 def get_year_range_validation(start_year: int, end_year: int) -> tuple:
@@ -82,7 +83,7 @@ def run_legacy_crawling(year: int, series: str, data_type: str, headless: bool =
         return success, result.stdout + result.stderr
     except subprocess.TimeoutExpired:
         return False, "크롤링 타임아웃"
-    except Exception as e:  # noqa: BLE001
+    except SUBPROCESS_EXCEPTIONS as e:
         return False, f"크롤링 실행 오류: {e}"
 
 
@@ -127,7 +128,7 @@ def run_modern_crawling(year: int, series: str, data_type: str, headless: bool =
         return success, result.stdout + result.stderr
     except subprocess.TimeoutExpired:
         return False, "크롤링 타임아웃"
-    except Exception as e:  # noqa: BLE001
+    except SUBPROCESS_EXCEPTIONS as e:
         return False, f"크롤링 실행 오류: {e}"
 
 

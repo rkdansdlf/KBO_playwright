@@ -20,6 +20,16 @@ from src.utils.throttle import throttle
 
 logger = logging.getLogger(__name__)
 
+RETIRE_LISTING_CRAWL_EXCEPTIONS = (
+    PlaywrightError,
+    TimeoutError,
+    RuntimeError,
+    ValueError,
+    TypeError,
+    KeyError,
+    OSError,
+)
+
 
 class RetiredPlayerListingCrawler:
     """
@@ -73,7 +83,7 @@ class RetiredPlayerListingCrawler:
         series_selector = 'select[id$="ddlSeries_ddlSeries"], select[name*="ddlSeries"]'
         await page.wait_for_selector(season_selector, timeout=SEL_TIMEOUT)
         await self._select_option_and_dispatch(page, season_selector, str(year))
-        with contextlib.suppress(Exception):
+        with contextlib.suppress(PlaywrightError, TimeoutError):
             await page.wait_for_load_state("load", timeout=SHORT_TIMEOUT)
         await page.wait_for_timeout(1000)
 
@@ -121,7 +131,7 @@ class RetiredPlayerListingCrawler:
             "el => { if (el.onchange) el.onchange(); else el.dispatchEvent(new Event('change', { bubbles: true })); }",
             await page.query_selector(season_selector),
         )
-        with contextlib.suppress(Exception):
+        with contextlib.suppress(PlaywrightError, TimeoutError):
             await page.wait_for_load_state("load", timeout=SHORT_TIMEOUT)
         await page.wait_for_timeout(1000)
 
@@ -146,7 +156,7 @@ class RetiredPlayerListingCrawler:
                 "el => { if (el.onchange) el.onchange(); else el.dispatchEvent(new Event('change', { bubbles: true })); }",
                 await page.query_selector(team_selector),
             )
-            with contextlib.suppress(Exception):
+            with contextlib.suppress(PlaywrightError, TimeoutError):
                 await page.wait_for_load_state("load", timeout=SHORT_TIMEOUT)
             await page.wait_for_timeout(500)
 
@@ -220,7 +230,7 @@ class RetiredPlayerListingCrawler:
                 logger.info("  Fetching IDs for %s...", season)
                 try:
                     return await self.collect_player_ids_for_year(season)
-                except Exception:
+                except RETIRE_LISTING_CRAWL_EXCEPTIONS:
                     logger.exception("  ❌ Error fetching IDs for %s", season)
                     return {}
 

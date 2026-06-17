@@ -4,6 +4,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from pytest import mark
+from sqlalchemy.exc import SQLAlchemyError
 
 from src.crawlers.award_crawler import AwardCrawler
 
@@ -105,7 +106,7 @@ class TestSaveToDb:
         mock_session_local.return_value = mock_session
         mock_repo = MagicMock()
         mock_repo_cls.return_value = mock_repo
-        mock_repo.save_award.side_effect = [None, Exception("duplicate")]
+        mock_repo.save_award.side_effect = [None, SQLAlchemyError("duplicate")]
 
         data = [
             {"year": 2024, "award_type": "MVP", "player_name": "Kim", "team_name": "LG"},

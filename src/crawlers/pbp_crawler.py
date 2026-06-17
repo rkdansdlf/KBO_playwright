@@ -22,6 +22,16 @@ from src.utils.text_parser import KBOTextParser
 
 logger = logging.getLogger(__name__)
 
+PBP_CRAWLER_EXCEPTIONS = (
+    PlaywrightError,
+    TimeoutError,
+    asyncio.TimeoutError,
+    RuntimeError,
+    ValueError,
+    TypeError,
+    OSError,
+)
+
 
 class PBPCrawler:
     def __init__(
@@ -107,13 +117,13 @@ class PBPCrawler:
 
                         return {"game_id": game_id, "game_date": game_date, "events": events}
 
-                    except Exception:
+                    except PBP_CRAWLER_EXCEPTIONS:
                         logger.exception("PBP crawl failed for %s", game_id)
                         self.last_failure_reason = "error"
                         return None
                     finally:
                         await pool.release(page)
-                except Exception:
+                except PBP_CRAWLER_EXCEPTIONS:
                     logger.exception("Pool error for %s", game_id)
                     self.last_failure_reason = "error"
                     return None
@@ -272,7 +282,7 @@ class PBPCrawler:
                     sequence += 1
 
             return events
-        except Exception:
+        except PBP_CRAWLER_EXCEPTIONS:
             logger.exception("Error extracting PBP legacy (JS)")
             return []
 

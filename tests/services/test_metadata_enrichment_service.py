@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
 
+import httpx
+
 from src.services.metadata_enrichment_service import MetadataEnrichmentService
 
 
@@ -101,7 +103,7 @@ class TestMetadataEnrichmentService:
             svc = MetadataEnrichmentService()
             with patch("httpx.Client") as MockClient:
                 mock_instance = MagicMock()
-                mock_instance.post.side_effect = Exception("network")
+                mock_instance.post.side_effect = httpx.ConnectError("network")
                 MockClient.return_value.__enter__.return_value = mock_instance
                 result = svc.enrich_chunk("A" * 100)
                 assert result == {"summary": "", "keywords": [], "questions": []}
@@ -142,7 +144,7 @@ class TestMetadataEnrichmentService:
             svc = MetadataEnrichmentService()
             with patch("httpx.Client") as MockClient:
                 mock_instance = MagicMock()
-                mock_instance.post.side_effect = Exception("network")
+                mock_instance.post.side_effect = httpx.ConnectError("network")
                 MockClient.return_value.__enter__.return_value = mock_instance
                 result = svc.enrich_chunk("A" * 100)
                 assert result == {"summary": "", "keywords": [], "questions": []}

@@ -227,43 +227,7 @@ class RankingAggregator:
         kbo_min_pa: int | None = None,
         kbo_min_ip_outs: int | None = None,
     ) -> list[dict[str, Any]]:
-        processed = []
-        for row in rows:
-            value = self._resolve_value(row, config)
-            if value is None:
-                continue
-
-            # 1. Min Games Filter
-            if config.min_games_field and config.min_games:
-                games = row.get(config.min_games_field)
-                if games is None or games < config.min_games:
-                    continue
-
-            # 2. Min PA Filter
-            if config.min_pa is not None:
-                pa = row.get("plate_appearances") or 0
-                if pa < config.min_pa:
-                    continue
-
-            # 3. Min IP Outs Filter
-            if config.min_ip_outs is not None:
-                ip_outs = row.get("innings_outs") or 0
-                if ip_outs < config.min_ip_outs:
-                    continue
-
-            entity_id = row.get("player_id") or row.get("player_name")
-            if not entity_id:
-                continue
-
-            processed.append(
-                {
-                    "entity_id": str(entity_id),
-                    "entity_label": row.get("player_name") or str(entity_id),
-                    "team_id": row.get("team_id") or row.get("team_code"),
-                    "value": float(value),
-                    "raw": row,
-                },
-            )
+        processed = [entry for row in rows if (entry := self._ranking_entry(row, config)) is not None]
 
         processed.sort(key=lambda item: item["value"], reverse=config.descending)
         ranked: list[dict[str, Any]] = []
@@ -278,30 +242,12 @@ class RankingAggregator:
                 current_rank = processed_count
 
             # Build metadata for UI/API consumption
-            entity_extra = {}
-            if config.source == "BATTING":
-                pa = entry["raw"].get("plate_appearances") or 0
-                min_pa_threshold = kbo_min_pa if kbo_min_pa is not None else (config.min_pa or 0)
-                entity_extra.update(
-                    {
-                        "pa": pa,
-                        "min_pa": min_pa_threshold,
-                        "qualified": pa >= min_pa_threshold,
-                    },
-                )
-            elif config.source == "PITCHING":
-                ip_outs = entry["raw"].get("innings_outs") or 0
-                min_ip_outs_threshold = kbo_min_ip_outs if kbo_min_ip_outs is not None else (config.min_ip_outs or 0)
-                entity_extra.update(
-                    {
-                        "innings_outs": ip_outs,
-                        "min_ip_outs": min_ip_outs_threshold,
-                        "qualified": ip_outs >= min_ip_outs_threshold,
-                    },
-                )
-
-            entity_extra["rank_mode"] = "all" if config.name.endswith("_all") else "qualified"
-            entity_extra["raw"] = entry["raw"]
+            entity_extra = self._ranking_extra(
+                entry,
+                config,
+                kbo_min_pa=kbo_min_pa,
+                kbo_min_ip_outs=kbo_min_ip_outs,
+            )
 
             ranked.append(
                 {
@@ -320,3 +266,66 @@ class RankingAggregator:
             )
             previous_value = value
         return ranked
+
+    def _ranking_entry(self, row: dict[str, Any], config: MetricConfig) -> dict[str, Any] | None:
+        value = self._resolve_value(row, config)
+        if value is None or not self._passes_ranking_filters(row, config):
+            return None
+
+        entity_id = row.get("player_id") or row.get("player_name")
+        if not entity_id:
+            return None
+
+        return {
+            "entity_id": str(entity_id),
+            "entity_label": row.get("player_name") or str(entity_id),
+            "team_id": row.get("team_id") or row.get("team_code"),
+            "value": float(value),
+            "raw": row,
+        }
+
+    def _passes_ranking_filters(self, row: dict[str, Any], config: MetricConfig) -> bool:
+        if config.min_games_field and config.min_games:
+            games = row.get(config.min_games_field)
+            if games is None or games < config.min_games:
+                return False
+
+        if config.min_pa is not None:
+            pa = row.get("plate_appearances") or 0
+            if pa < config.min_pa:
+                return False
+
+        if config.min_ip_outs is not None:
+            ip_outs = row.get("innings_outs") or 0
+            if ip_outs < config.min_ip_outs:
+                return False
+
+        return True
+
+    def _ranking_extra(
+        self,
+        entry: dict[str, Any],
+        config: MetricConfig,
+        *,
+        kbo_min_pa: int | None,
+        kbo_min_ip_outs: int | None,
+    ) -> dict[str, Any]:
+        entity_extra = {}
+        if config.source == "BATTING":
+            pa = entry["raw"].get("plate_appearances") or 0
+            min_pa_threshold = kbo_min_pa if kbo_min_pa is not None else (config.min_pa or 0)
+            entity_extra.update({"pa": pa, "min_pa": min_pa_threshold, "qualified": pa >= min_pa_threshold})
+        elif config.source == "PITCHING":
+            ip_outs = entry["raw"].get("innings_outs") or 0
+            min_ip_outs_threshold = kbo_min_ip_outs if kbo_min_ip_outs is not None else (config.min_ip_outs or 0)
+            entity_extra.update(
+                {
+                    "innings_outs": ip_outs,
+                    "min_ip_outs": min_ip_outs_threshold,
+                    "qualified": ip_outs >= min_ip_outs_threshold,
+                },
+            )
+
+        entity_extra["rank_mode"] = "all" if config.name.endswith("_all") else "qualified"
+        entity_extra["raw"] = entry["raw"]
+        return entity_extra

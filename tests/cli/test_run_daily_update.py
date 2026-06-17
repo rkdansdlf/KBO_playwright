@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import subprocess
 from datetime import date
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -197,3 +198,37 @@ def test_recalculate_season_aggregates_runs_player_then_team_recalc(tmp_path):
         ["-m", "src.cli.recalc_player_stats", "--season", "2026"],
         ["-m", "src.cli.recalc_team_stats", "--season", "2026"],
     ]
+
+
+def test_resolve_null_player_ids_before_quality_gate_runs_conservative_resolver(tmp_path):
+    calls = []
+    ctx = _build_run_context(tmp_path, target_date="20260612", today_kst=date(2026, 6, 12))
+    ctx.runner = lambda args: calls.append(args)
+
+    daily._resolve_null_player_ids_before_quality_gate(ctx)
+
+    assert calls == [
+        [
+            "-m",
+            "scripts.maintenance.resolve_null_player_ids_conservative",
+            "--years",
+            "2026",
+            "--apply",
+            "--no-backup",
+            "--delete-duplicates",
+        ]
+    ]
+
+
+def test_resolve_null_player_ids_before_quality_gate_records_failure(tmp_path):
+    ctx = _build_run_context(tmp_path, target_date="20260612", today_kst=date(2026, 6, 12))
+
+    def _fail(args):
+        raise subprocess.CalledProcessError(1, args)
+
+    ctx.runner = _fail
+
+    daily._resolve_null_player_ids_before_quality_gate(ctx)
+
+    assert ctx.non_p0_quality_gate_counts == {"non_p0_null_player_id_resolution_failed": 1}
+    assert ctx.non_p0_quality_gate_ids == {"non_p0_null_player_id_resolution_failed": ["season:2026"]}

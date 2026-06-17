@@ -11,6 +11,8 @@ from collections.abc import Sequence
 from datetime import datetime
 from typing import Any
 
+from sqlalchemy.exc import SQLAlchemyError
+
 from src.db.engine import SessionLocal
 from src.models.game import Game, GameEvent, GameSummary, GameValidationMetrics
 from src.repositories.game_repository import refresh_game_status_for_date
@@ -20,6 +22,7 @@ from src.utils.game_status import COMPLETED_LIKE_GAME_STATUSES
 from src.utils.refresh_manifest import write_refresh_manifest
 
 logger = logging.getLogger(__name__)
+STORY_DB_EXCEPTIONS = (SQLAlchemyError, RuntimeError, ValueError, TypeError, KeyError, OSError)
 TRUSTED_RELAY_STATUSES = {"verified", "recovered"}
 
 
@@ -154,7 +157,7 @@ async def run_story_batch(target_date: str, *, sync_to_oci: bool | None = None) 
 
         try:
             session.commit()
-        except Exception:
+        except STORY_DB_EXCEPTIONS:
             session.rollback()
             logger.exception("❌ Failed to save game stories to DB")
             raise

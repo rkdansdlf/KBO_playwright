@@ -12,9 +12,13 @@ import logging
 import sys
 from collections.abc import Sequence
 
+from sqlalchemy.exc import SQLAlchemyError
+
 from src.crawlers.staff_register_crawler import KBO_TEAM_MAP, StaffRegisterCrawler
 
 logger = logging.getLogger(__name__)
+
+STAFF_REGISTER_SYNC_EXCEPTIONS = (SQLAlchemyError, RuntimeError, ValueError, TypeError, KeyError, OSError)
 
 
 async def run_crawler(args: argparse.Namespace) -> int:
@@ -64,7 +68,7 @@ async def run_crawler(args: argparse.Namespace) -> int:
                     try:
                         synced_count = syncer.sync_player_basic_by_ids(player_ids)
                         logger.info("✅ Successfully synchronized %s player_basic records to OCI.", synced_count)
-                    except Exception:
+                    except STAFF_REGISTER_SYNC_EXCEPTIONS:
                         logger.exception("❌ Failed to sync player basic records to OCI")
                     finally:
                         syncer.close()

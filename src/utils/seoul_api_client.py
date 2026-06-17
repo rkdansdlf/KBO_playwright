@@ -111,7 +111,7 @@ async def get_area_congestion(area_name: str) -> CongestionSnapshot | None:
 
     except httpx.HTTPError as e:
         logger.warning("[SeoulAPI] HTTP error for area=%s: %s", area_name, e)
-    except Exception:
+    except (KeyError, TypeError, ValueError):
         logger.exception("[SeoulAPI] Unexpected error for area=%s", area_name)
 
     return None

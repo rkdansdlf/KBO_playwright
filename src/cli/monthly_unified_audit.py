@@ -20,17 +20,21 @@ from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo
 
+from sqlalchemy.exc import SQLAlchemyError
+
 from scripts.maintenance.audit_pa_formula import audit_year, fix_year_formula
 from src.cli.monthly_team_audit import run_monthly_team_audit
 
 logger = logging.getLogger(__name__)
+
+PA_AUDIT_EXCEPTIONS = (SQLAlchemyError, RuntimeError, ValueError, TypeError, OSError)
 
 
 def run_pa_fix(year: int, dry_run: bool = False) -> dict[str, Any]:
     """Apply PA formula fix for a given year, returning result dict."""
     try:
         fixed_rows = fix_year_formula(year, dry_run=dry_run)
-    except Exception as exc:
+    except PA_AUDIT_EXCEPTIONS as exc:
         logger.exception("PA formula fix failed for %s", year)
         return {"ok": False, "error": str(exc), "fixed_rows": 0}
 
@@ -46,7 +50,7 @@ def run_pa_audit(year: int) -> dict[str, Any]:
     """Run PA formula audit (read-only) and return JSON result."""
     try:
         data = audit_year(year)
-    except Exception as exc:
+    except PA_AUDIT_EXCEPTIONS as exc:
         logger.exception("PA formula audit failed for %s", year)
         return {"year": year, "ok": False, "error": str(exc), "violation_count": 0, "violations": []}
 
@@ -124,6 +128,68 @@ def crawl_monthly_unified_audit_job() -> None:
     logger.info("Unified audit completed for %s", target_year)
 
 
+def _target_year_from_args(year: int | None) -> int:
+    kst = ZoneInfo("Asia/Seoul")
+    return year if year else datetime.now(kst).year - 1
+
+
+def _run_team_only(target_year: int, json_output: bool) -> None:
+    team_result = run_monthly_team_audit(target_year)
+    if json_output:
+        logger.info(json.dumps(team_result, indent=2, ensure_ascii=False))
+        return
+    bat_ok = team_result["batting"]["ok"]
+    pit_ok = team_result["pitching"]["ok"]
+    logger.info(
+        "Team Batting: %s (%s mismatches)", "PASS" if bat_ok else "FAIL", len(team_result["batting"]["mismatches"])
+    )
+    logger.info(
+        "Team Pitching: %s (%s mismatches)", "PASS" if pit_ok else "FAIL", len(team_result["pitching"]["mismatches"])
+    )
+    if not bat_ok or not pit_ok:
+        sys.exit(1)
+
+
+def _run_pa_audit_for_cli(target_year: int, dry_run: bool) -> dict[str, Any]:
+    fix_result = run_pa_fix(target_year, dry_run=dry_run)
+    return run_pa_audit(target_year) if not dry_run else {"ok": fix_result["ok"], "violation_count": 0}
+
+
+def _log_team_mismatches(label: str, result: dict[str, Any]) -> bool:
+    ok = result["ok"]
+    mismatches = result["mismatches"]
+    logger.info("Team %s: %s (%s mismatches)", label, "PASS" if ok else "FAIL", len(mismatches))
+    for mismatch in mismatches[:3]:
+        logger.info("  - [%s] %s", mismatch["team_id"], mismatch["issue"])
+        for diff in (mismatch.get("diffs") or [])[:2]:
+            logger.info("    %s", diff)
+    return ok
+
+
+def _emit_unified_cli_output(
+    pa_result: dict[str, Any], team_result: dict[str, Any] | None, *, pa_only: bool, json_output: bool
+) -> None:
+    if json_output:
+        output = {"pa_formula": pa_result}
+        if not pa_only:
+            output["team_stats"] = team_result
+        logger.info(json.dumps(output, indent=2, ensure_ascii=False))
+        return
+
+    pa_ok = pa_result.get("ok", False)
+    pa_violations = pa_result.get("violation_count", 0)
+    logger.info("\nPA Formula Audit: %s", "PASS" if pa_ok else "FAIL (" + str(pa_violations) + " violations)")
+    if pa_only:
+        if not pa_ok:
+            sys.exit(1)
+        return
+
+    team_bat_ok = _log_team_mismatches("Batting", team_result["batting"])
+    team_pit_ok = _log_team_mismatches("Pitching", team_result["pitching"])
+    if not pa_ok or not team_bat_ok or not team_pit_ok:
+        sys.exit(1)
+
+
 def main() -> int:
     """CLI entry point for direct invocation (e.g., from GitHub Actions)."""
     import argparse
@@ -136,9 +202,7 @@ def main() -> int:
     parser.add_argument("--team-only", action="store_true", help="Run only team stats audit")
     args = parser.parse_args()
 
-    KST = ZoneInfo("Asia/Seoul")
-    current_year = datetime.now(KST).year
-    target_year = args.year if args.year else current_year - 1
+    target_year = _target_year_from_args(args.year)
 
     if target_year < 2020:
         logger.info("Skipping unified audit for year %s (before 2020)", target_year)
@@ -147,65 +211,12 @@ def main() -> int:
     logger.info("Running unified audit for year %s...", target_year)
 
     if args.team_only:
-        team_result = run_monthly_team_audit(target_year)
-        if args.json:
-            logger.info(json.dumps(team_result, indent=2, ensure_ascii=False))
-            return
-        bat_ok = team_result["batting"]["ok"]
-        pit_ok = team_result["pitching"]["ok"]
-        bat_miss = len(team_result["batting"]["mismatches"])
-        pit_miss = len(team_result["pitching"]["mismatches"])
-        logger.info("Team Batting: %s (%s mismatches)", "PASS" if bat_ok else "FAIL", bat_miss)
-        logger.info("Team Pitching: %s (%s mismatches)", "PASS" if pit_ok else "FAIL", pit_miss)
-        if not bat_ok or not pit_ok:
-            sys.exit(1)
+        _run_team_only(target_year, args.json)
         return
 
-    # Phase 1: Apply PA formula fix (skip if --dry-run or --pa-only)
-    if args.pa_only:
-        fix_result = run_pa_fix(target_year, dry_run=args.dry_run)
-        pa_result = run_pa_audit(target_year) if not args.dry_run else {"ok": fix_result["ok"], "violation_count": 0}
-    else:
-        fix_result = run_pa_fix(target_year, dry_run=args.dry_run)
-        pa_result = run_pa_audit(target_year) if not args.dry_run else {"ok": fix_result["ok"], "violation_count": 0}
-        team_result = run_monthly_team_audit(target_year)
-
-    if args.json:
-        output = {"pa_formula": pa_result}
-        if not args.pa_only:
-            output["team_stats"] = team_result
-        logger.info(json.dumps(output, indent=2, ensure_ascii=False))
-        return
-
-    # Human-readable output
-    pa_ok = pa_result.get("ok", False)
-    pa_violations = pa_result.get("violation_count", 0)
-    logger.info("\nPA Formula Audit: %s", "PASS" if pa_ok else "FAIL (" + str(pa_violations) + " violations)")
-
-    if args.pa_only:
-        if not pa_ok:
-            sys.exit(1)
-        return
-
-    team_bat_ok = team_result["batting"]["ok"]
-    team_pit_ok = team_result["pitching"]["ok"]
-    bat_miss = len(team_result["batting"]["mismatches"])
-    pit_miss = len(team_result["pitching"]["mismatches"])
-
-    logger.info("Team Batting: %s (%s mismatches)", "PASS" if team_bat_ok else "FAIL", bat_miss)
-    for m in team_result["batting"]["mismatches"][:3]:
-        logger.info("  - [%s] %s", m["team_id"], m["issue"])
-        for d in (m.get("diffs") or [])[:2]:
-            logger.info("    %s", d)
-
-    logger.info("Team Pitching: %s (%s mismatches)", "PASS" if team_pit_ok else "FAIL", pit_miss)
-    for m in team_result["pitching"]["mismatches"][:3]:
-        logger.info("  - [%s] %s", m["team_id"], m["issue"])
-        for d in (m.get("diffs") or [])[:2]:
-            logger.info("    %s", d)
-
-    if not pa_ok or not team_bat_ok or not team_pit_ok:
-        sys.exit(1)
+    pa_result = _run_pa_audit_for_cli(target_year, args.dry_run)
+    team_result = None if args.pa_only else run_monthly_team_audit(target_year)
+    _emit_unified_cli_output(pa_result, team_result, pa_only=args.pa_only, json_output=args.json)
 
 
 if __name__ == "__main__":

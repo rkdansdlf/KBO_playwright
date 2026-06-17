@@ -14,6 +14,8 @@ from src.utils.throttle import throttle
 
 logger = logging.getLogger(__name__)
 
+TEAM_INFO_MODAL_EXCEPTIONS = (PlaywrightError, TimeoutError, RuntimeError, ValueError, TypeError, KeyError)
+
 
 class TeamInfoCrawler:
     """
@@ -113,7 +115,7 @@ class TeamInfoCrawler:
 
                     await self.page.locator("div[id^='layerPop']").wait_for(state="hidden", timeout=3000)
 
-                except Exception:
+                except TEAM_INFO_MODAL_EXCEPTIONS:
                     logger.exception("Failed to parse modal for %s", team_name)
                     await self.page.keyboard.press("Escape")
                     owner, ceo, address, phone, homepage = None, None, None, None, None

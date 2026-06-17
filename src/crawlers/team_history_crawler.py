@@ -4,8 +4,10 @@ import asyncio
 import contextlib
 import logging
 
+from playwright.async_api import Error as PlaywrightError
 from playwright.async_api import async_playwright
 from sqlalchemy import select
+from sqlalchemy.exc import SQLAlchemyError
 
 from src.db.engine import SessionLocal
 from src.models.team import Team
@@ -15,6 +17,9 @@ from src.utils.playwright_blocking import install_async_resource_blocking
 from src.utils.team_codes import resolve_team_code
 
 logger = logging.getLogger(__name__)
+
+TEAM_HISTORY_PARSE_EXCEPTIONS = (PlaywrightError, ValueError, TypeError)
+TEAM_HISTORY_DB_EXCEPTIONS = (SQLAlchemyError, RuntimeError, ValueError, TypeError, KeyError, OSError)
 
 
 class TeamHistoryCrawler:
@@ -100,7 +105,7 @@ class TeamHistoryCrawler:
                 rank_el = cell.locator("span.nums")
                 rank = None
                 if await rank_el.count() > 0:
-                    with contextlib.suppress(Exception):
+                    with contextlib.suppress(*TEAM_HISTORY_PARSE_EXCEPTIONS):
                         rank = int((await rank_el.inner_text()).strip())
 
                 # Parse Name/Logo (Updates identity if present)
@@ -194,7 +199,7 @@ class TeamHistoryCrawler:
 
                 session.commit()
                 logger.info("✅ Saved/Updated %s records (%s snapshots).", saved_count, saved_snaps)
-            except Exception:
+            except TEAM_HISTORY_DB_EXCEPTIONS:
                 session.rollback()
                 logger.exception("Error saving team history")
             finally:

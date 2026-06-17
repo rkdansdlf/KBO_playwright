@@ -5,12 +5,16 @@ import logging
 import os
 from collections.abc import Sequence
 
+from sqlalchemy.exc import SQLAlchemyError
+
 from src.aggregators.sabermetrics_calculator import SabermetricsCalculator
 from src.cli.sync_oci import OCISync
 from src.db.engine import SessionLocal
 from src.models.player import PlayerSeasonBatting, PlayerSeasonPitching
 
 logger = logging.getLogger(__name__)
+
+SABERMETRICS_CALC_EXCEPTIONS = (SQLAlchemyError, RuntimeError, ValueError, TypeError, KeyError, ZeroDivisionError)
 
 
 def batch_calculate_sabermetrics(years: list[int], sync_oci: bool = False) -> None:
@@ -29,7 +33,7 @@ def batch_calculate_sabermetrics(years: list[int], sync_oci: bool = False) -> No
                     lg["fip_constant"],
                     lg["lg_r_per_pa"],
                 )
-            except Exception:
+            except SABERMETRICS_CALC_EXCEPTIONS:
                 logger.exception("   ⚠️ Could not calculate league constants for %s", year)
                 continue
 

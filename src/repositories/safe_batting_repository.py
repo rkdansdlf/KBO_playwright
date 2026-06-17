@@ -22,10 +22,182 @@ from src.utils.player_season_stat_validation import filter_valid_season_stat_pay
 
 logger = logging.getLogger(__name__)
 LAST_FILTER_COUNTS: Counter = Counter()
+BATTING_CONFLICT_KEYS = ["player_id", "season", "league", "level"]
 
 
 def get_last_filter_counts() -> dict[str, int]:
     return dict(LAST_FILTER_COUNTS)
+
+
+def _unique_batting_payloads(payloads: list[dict[str, Any]]) -> dict[tuple[Any, Any, Any, Any], dict[str, Any]]:
+    unique_payloads = {}
+    for payload in payloads:
+        key = (
+            payload.get("player_id"),
+            payload.get("season"),
+            payload.get("league"),
+            payload.get("level", "KBO1"),
+        )
+        if key[0] is None or key[1] is None:
+            continue
+        unique_payloads[key] = payload
+    return unique_payloads
+
+
+def _batting_row(payload: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "player_id": payload.get("player_id"),
+        "season": payload.get("season"),
+        "league": payload.get("league"),
+        "level": payload.get("level", "KBO1"),
+        "source": payload.get("source", "CRAWLER"),
+        "team_code": payload.get("team_code"),
+        "games": payload.get("games"),
+        "plate_appearances": payload.get("plate_appearances"),
+        "at_bats": payload.get("at_bats"),
+        "runs": payload.get("runs"),
+        "hits": payload.get("hits"),
+        "doubles": payload.get("doubles"),
+        "triples": payload.get("triples"),
+        "home_runs": payload.get("home_runs"),
+        "rbi": payload.get("rbi"),
+        "walks": payload.get("walks"),
+        "intentional_walks": payload.get("intentional_walks"),
+        "hbp": payload.get("hbp"),
+        "strikeouts": payload.get("strikeouts"),
+        "stolen_bases": payload.get("stolen_bases"),
+        "caught_stealing": payload.get("caught_stealing"),
+        "sacrifice_hits": payload.get("sacrifice_hits"),
+        "sacrifice_flies": payload.get("sacrifice_flies"),
+        "gdp": payload.get("gdp"),
+        "avg": payload.get("avg"),
+        "obp": payload.get("obp"),
+        "slg": payload.get("slg"),
+        "ops": payload.get("ops"),
+        "iso": payload.get("iso"),
+        "babip": payload.get("babip"),
+        "extra_stats": payload.get("extra_stats"),
+    }
+
+
+def _batting_rows(payloads: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    return [_batting_row(payload) for payload in _unique_batting_payloads(payloads).values()]
+
+
+def _excluded_update_dict(stmt: Any, rows: list[dict[str, Any]]) -> dict[str, Any]:
+    return {
+        key: func.coalesce(stmt.excluded[key], getattr(PlayerSeasonBatting, key))
+        for key in rows[0]
+        if key not in BATTING_CONFLICT_KEYS
+    }
+
+
+def _inserted_update_dict(stmt: Any, rows: list[dict[str, Any]]) -> dict[str, Any]:
+    return {
+        key: func.coalesce(stmt.inserted[key], getattr(PlayerSeasonBatting, key))
+        for key in rows[0]
+        if key not in BATTING_CONFLICT_KEYS
+    }
+
+
+def _save_sqlite_rows(session: Session, rows: list[dict[str, Any]]) -> int:
+    stmt = sqlite_insert(PlayerSeasonBatting).values(rows)
+    stmt = stmt.on_conflict_do_update(index_elements=BATTING_CONFLICT_KEYS, set_=_excluded_update_dict(stmt, rows))
+    try:
+        session.execute(stmt)
+        return len(rows)
+    except SQLAlchemyError:
+        session.rollback()
+        logger.exception("⚠️ 배치 UPSERT 실패, 개별 처리로 전환합니다")
+        saved_count = 0
+        for data in rows:
+            row_stmt = sqlite_insert(PlayerSeasonBatting).values(**data)
+            row_stmt = row_stmt.on_conflict_do_update(
+                index_elements=BATTING_CONFLICT_KEYS,
+                set_=_excluded_update_dict(row_stmt, rows),
+            )
+            saved_count += _execute_single_upsert(session, row_stmt, data)
+        return saved_count
+
+
+def _save_mysql_rows(session: Session, rows: list[dict[str, Any]]) -> int:
+    stmt = mysql_insert(PlayerSeasonBatting).values(rows)
+    stmt = stmt.on_duplicate_key_update(_inserted_update_dict(stmt, rows))
+    try:
+        session.execute(stmt)
+        return len(rows)
+    except SQLAlchemyError:
+        session.rollback()
+        logger.exception("⚠️ 배치 UPSERT 실패, 개별 처리로 전환합니다")
+        saved_count = 0
+        for data in rows:
+            row_stmt = mysql_insert(PlayerSeasonBatting).values(**data)
+            row_stmt = row_stmt.on_duplicate_key_update(_inserted_update_dict(row_stmt, rows))
+            saved_count += _execute_single_upsert(session, row_stmt, data)
+        return saved_count
+
+
+def _save_postgresql_rows(session: Session, rows: list[dict[str, Any]]) -> int:
+    stmt = postgresql_insert(PlayerSeasonBatting).values(rows)
+    stmt = stmt.on_conflict_do_update(index_elements=BATTING_CONFLICT_KEYS, set_=_excluded_update_dict(stmt, rows))
+    try:
+        session.execute(stmt)
+        return len(rows)
+    except SQLAlchemyError:
+        session.rollback()
+        logger.exception("⚠️ 배치 UPSERT 실패, 개별 처리로 전환합니다")
+        saved_count = 0
+        for data in rows:
+            row_stmt = postgresql_insert(PlayerSeasonBatting).values(**data)
+            row_stmt = row_stmt.on_conflict_do_update(
+                index_elements=BATTING_CONFLICT_KEYS,
+                set_=_excluded_update_dict(row_stmt, rows),
+            )
+            saved_count += _execute_single_upsert(session, row_stmt, data)
+        return saved_count
+
+
+def _execute_single_upsert(session: Session, stmt: Any, data: dict[str, Any]) -> int:
+    try:
+        session.execute(stmt)
+        return 1
+    except SQLAlchemyError:
+        logger.exception("⚠️ UPSERT 실패 (player_id=%s)", data.get("player_id"))
+        session.rollback()
+        return 0
+
+
+def _save_generic_rows(session: Session, rows: list[dict[str, Any]]) -> int:
+    saved_count = 0
+    for data in rows:
+        existing = (
+            session.query(PlayerSeasonBatting)
+            .filter_by(
+                player_id=data["player_id"],
+                season=data["season"],
+                league=data["league"],
+                level=data["level"],
+            )
+            .first()
+        )
+        if existing:
+            for key, value in data.items():
+                if value is not None:
+                    setattr(existing, key, value)
+        else:
+            session.add(PlayerSeasonBatting(**data))
+        saved_count += 1
+    return saved_count
+
+
+def _save_rows_by_database_type(session: Session, rows: list[dict[str, Any]], db_type: str) -> int:
+    if db_type == "sqlite":
+        return _save_sqlite_rows(session, rows)
+    if db_type == "mysql":
+        return _save_mysql_rows(session, rows)
+    if db_type == "postgresql":
+        return _save_postgresql_rows(session, rows)
+    return _save_generic_rows(session, rows)
 
 
 def save_batting_stats_safe(payloads: list[dict[str, Any]]) -> int:
@@ -53,7 +225,6 @@ def save_batting_stats_safe(payloads: list[dict[str, Any]]) -> int:
 
     with SessionLocal() as session:
         db_type = get_database_type()
-        saved_count = 0
 
         try:
             # SQLite의 경우 외래키 제약조건 임시 비활성화
@@ -61,167 +232,11 @@ def save_batting_stats_safe(payloads: list[dict[str, Any]]) -> int:
                 session.execute(text("PRAGMA foreign_keys = OFF"))
                 logger.info("⚙️ SQLite 외래키 제약조건 임시 비활성화")
 
-            unique_payloads = {}
-            for payload in payloads:
-                key = (
-                    payload.get("player_id"),
-                    payload.get("season"),
-                    payload.get("league"),
-                    payload.get("level", "KBO1"),
-                )
-                if key[0] is None or key[1] is None:
-                    continue
-                unique_payloads[key] = payload
-
-            rows = []
-            for payload in unique_payloads.values():
-                rows.append(  # noqa: PERF401
-                    {
-                        "player_id": payload.get("player_id"),
-                        "season": payload.get("season"),
-                        "league": payload.get("league"),
-                        "level": payload.get("level", "KBO1"),
-                        "source": payload.get("source", "CRAWLER"),
-                        "team_code": payload.get("team_code"),
-                        "games": payload.get("games"),
-                        "plate_appearances": payload.get("plate_appearances"),
-                        "at_bats": payload.get("at_bats"),
-                        "runs": payload.get("runs"),
-                        "hits": payload.get("hits"),
-                        "doubles": payload.get("doubles"),
-                        "triples": payload.get("triples"),
-                        "home_runs": payload.get("home_runs"),
-                        "rbi": payload.get("rbi"),
-                        "walks": payload.get("walks"),
-                        "intentional_walks": payload.get("intentional_walks"),
-                        "hbp": payload.get("hbp"),
-                        "strikeouts": payload.get("strikeouts"),
-                        "stolen_bases": payload.get("stolen_bases"),
-                        "caught_stealing": payload.get("caught_stealing"),
-                        "sacrifice_hits": payload.get("sacrifice_hits"),
-                        "sacrifice_flies": payload.get("sacrifice_flies"),
-                        "gdp": payload.get("gdp"),
-                        "avg": payload.get("avg"),
-                        "obp": payload.get("obp"),
-                        "slg": payload.get("slg"),
-                        "ops": payload.get("ops"),
-                        "iso": payload.get("iso"),
-                        "babip": payload.get("babip"),
-                        "extra_stats": payload.get("extra_stats"),
-                    },
-                )
-
+            rows = _batting_rows(payloads)
             if not rows:
                 return 0
 
-            conflict_keys = ["player_id", "season", "league", "level"]
-
-            if db_type == "sqlite":
-                stmt = sqlite_insert(PlayerSeasonBatting).values(rows)
-                update_dict = {
-                    k: func.coalesce(stmt.excluded[k], getattr(PlayerSeasonBatting, k))
-                    for k in rows[0]
-                    if k not in conflict_keys
-                }
-                stmt = stmt.on_conflict_do_update(index_elements=conflict_keys, set_=update_dict)
-                try:
-                    session.execute(stmt)
-                    saved_count = len(rows)
-                except SQLAlchemyError:
-                    session.rollback()
-                    logger.exception("⚠️ 배치 UPSERT 실패, 개별 처리로 전환합니다")
-                    for data in rows:
-                        row_stmt = sqlite_insert(PlayerSeasonBatting).values(**data)
-                        row_update = {
-                            k: func.coalesce(row_stmt.excluded[k], getattr(PlayerSeasonBatting, k))
-                            for k in rows[0]
-                            if k not in conflict_keys
-                        }
-                        row_stmt = row_stmt.on_conflict_do_update(index_elements=conflict_keys, set_=row_update)
-                        try:
-                            session.execute(row_stmt)
-                            saved_count += 1
-                        except SQLAlchemyError:
-                            logger.exception("⚠️ UPSERT 실패 (player_id=%s)", data.get("player_id"))
-                            session.rollback()
-            elif db_type == "mysql":
-                stmt = mysql_insert(PlayerSeasonBatting).values(rows)
-                update_dict = {
-                    k: func.coalesce(stmt.inserted[k], getattr(PlayerSeasonBatting, k))
-                    for k in rows[0]
-                    if k not in conflict_keys
-                }
-                stmt = stmt.on_duplicate_key_update(update_dict)
-                try:
-                    session.execute(stmt)
-                    saved_count = len(rows)
-                except SQLAlchemyError:
-                    session.rollback()
-                    logger.exception("⚠️ 배치 UPSERT 실패, 개별 처리로 전환합니다")
-                    for data in rows:
-                        row_stmt = mysql_insert(PlayerSeasonBatting).values(**data)
-                        row_update = {
-                            k: func.coalesce(row_stmt.inserted[k], getattr(PlayerSeasonBatting, k))
-                            for k in rows[0]
-                            if k not in conflict_keys
-                        }
-                        row_stmt = row_stmt.on_duplicate_key_update(row_update)
-                        try:
-                            session.execute(row_stmt)
-                            saved_count += 1
-                        except SQLAlchemyError:
-                            logger.exception("⚠️ UPSERT 실패 (player_id=%s)", data.get("player_id"))
-                            session.rollback()
-            elif db_type == "postgresql":
-                stmt = postgresql_insert(PlayerSeasonBatting).values(rows)
-                update_dict = {
-                    k: func.coalesce(stmt.excluded[k], getattr(PlayerSeasonBatting, k))
-                    for k in rows[0]
-                    if k not in conflict_keys
-                }
-                stmt = stmt.on_conflict_do_update(index_elements=conflict_keys, set_=update_dict)
-                try:
-                    session.execute(stmt)
-                    saved_count = len(rows)
-                except SQLAlchemyError:
-                    session.rollback()
-                    logger.exception("⚠️ 배치 UPSERT 실패, 개별 처리로 전환합니다")
-                    for data in rows:
-                        row_stmt = postgresql_insert(PlayerSeasonBatting).values(**data)
-                        row_update = {
-                            k: func.coalesce(row_stmt.excluded[k], getattr(PlayerSeasonBatting, k))
-                            for k in rows[0]
-                            if k not in conflict_keys
-                        }
-                        row_stmt = row_stmt.on_conflict_do_update(index_elements=conflict_keys, set_=row_update)
-                        try:
-                            session.execute(row_stmt)
-                            saved_count += 1
-                        except SQLAlchemyError:
-                            logger.exception("⚠️ UPSERT 실패 (player_id=%s)", data.get("player_id"))
-                            session.rollback()
-            else:
-                for data in rows:
-                    existing = (
-                        session.query(PlayerSeasonBatting)
-                        .filter_by(
-                            player_id=data["player_id"],
-                            season=data["season"],
-                            league=data["league"],
-                            level=data["level"],
-                        )
-                        .first()
-                    )
-
-                    if existing:
-                        for k, v in data.items():
-                            if v is not None:
-                                setattr(existing, k, v)
-                    else:
-                        new_record = PlayerSeasonBatting(**data)
-                        session.add(new_record)
-
-                    saved_count += 1
+            saved_count = _save_rows_by_database_type(session, rows, db_type)
 
             session.commit()
             logger.info("✅ 타자 데이터 %s건 저장 완료 (player_season_batting 테이블)", saved_count)

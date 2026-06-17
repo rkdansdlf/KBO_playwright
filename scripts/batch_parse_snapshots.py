@@ -19,6 +19,7 @@ from urllib.parse import urlparse
 
 import httpx
 from sqlalchemy import select
+from sqlalchemy.exc import SQLAlchemyError
 
 from src.db.engine import SessionLocal
 from src.models.source_registry import DataSource as DSModel
@@ -36,6 +37,7 @@ from src.utils.throttle import throttle
 logger = logging.getLogger(__name__)
 
 PARSER_VERSION = "1.0"
+BATCH_PARSE_EXCEPTIONS = (SQLAlchemyError, httpx.HTTPError, RuntimeError, ValueError, TypeError, OSError)
 
 DOMAIN_FLAT_REPOS = {
     "event": TeamEventRepository,
@@ -54,7 +56,7 @@ def _save_parsed(session, target_domain: str, parsed_data: list[dict]) -> int:
             try:
                 repo.save(item)
                 count += 1
-            except Exception:
+            except BATCH_PARSE_EXCEPTIONS:
                 logger.exception(
                     "Save failed in domain=%s: %s", target_domain, item.get("title", item.get("player_name", ""))
                 )
@@ -70,7 +72,7 @@ def _save_parsed(session, target_domain: str, parsed_data: list[dict]) -> int:
                 count += 1
                 for fee in entry.get("fee_rules", []):
                     fee_repo.save({"parking_lot_id": lot.id, **fee})
-            except Exception:
+            except BATCH_PARSE_EXCEPTIONS:
                 logger.exception("Parking save failed: %s", entry.get("lot", {}).get("name", ""))
         return count
 
@@ -84,7 +86,7 @@ def _save_parsed(session, target_domain: str, parsed_data: list[dict]) -> int:
                 count += 1
                 for menu in entry.get("menus", []):
                     menu_repo.save({"vendor_id": vendor.id, **menu})
-            except Exception:
+            except BATCH_PARSE_EXCEPTIONS:
                 logger.exception("Food save failed: %s", entry.get("vendor", {}).get("vendor_name", ""))
         return count
 
@@ -168,7 +170,7 @@ def run_batch_parse(
                     logger.info("[PARSE] %s: %d items saved", ds.source_key, saved)
                     stats["done"] += 1
 
-            except Exception as e:
+            except BATCH_PARSE_EXCEPTIONS as e:
                 session.rollback()
                 snap_repo.update_parse_status(snapshot.id, "failed", error=str(e))
                 session.commit()

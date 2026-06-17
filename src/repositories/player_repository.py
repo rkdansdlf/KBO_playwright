@@ -62,56 +62,58 @@ class PlayerRepository:
 
         basic = session.query(PlayerBasic).filter_by(player_id=pid).first()
         if basic:
-            if profile.is_active is not None:
-                basic.status = "active" if profile.is_active else "retired"
-                basic.status_source = "profile"
+            self._apply_basic_profile_fields(basic, profile)
+            self._sync_basic_draft_and_career(basic, profile)
+            self._sync_basic_structured_fields(basic, profile)
 
-            if profile.photo_url:
-                basic.photo_url = profile.photo_url
-            if profile.height_cm:
-                basic.height_cm = profile.height_cm
-            if profile.weight_kg:
-                basic.weight_kg = profile.weight_kg
-            if profile.birth_date:
-                basic.birth_date = profile.birth_date
-                with contextlib.suppress(ValueError):
-                    basic.birth_date_date = datetime.strptime(profile.birth_date, "%Y-%m-%d").date()
-            if profile.batting_hand:
-                basic.bats = profile.batting_hand
-            if profile.throwing_hand:
-                basic.throws = profile.throwing_hand
-            if profile.entry_year:
-                basic.debut_year = profile.entry_year
-            if profile.salary_original:
-                basic.salary_original = profile.salary_original
-            if profile.signing_bonus_original:
-                basic.signing_bonus_original = profile.signing_bonus_original
+    def _apply_basic_profile_fields(self, basic: PlayerBasic, profile: PlayerProfileParsed) -> None:
+        if profile.is_active is not None:
+            basic.status = "active" if profile.is_active else "retired"
+            basic.status_source = "profile"
 
-            # Synchronize Draft Info
-            if profile.draft_year:
-                draft_parts = [str(profile.draft_year)[2:], profile.draft_team_code or ""]
-                if profile.draft_type:
-                    draft_parts.append(profile.draft_type)
-                if profile.draft_round:
-                    draft_parts.append(f"{profile.draft_round}라운드")
-                if profile.draft_pick_overall:
-                    draft_parts.append(f"{profile.draft_pick_overall}순위")
-                basic.draft_info = " ".join(filter(None, draft_parts))
+        field_map = {
+            "photo_url": profile.photo_url,
+            "height_cm": profile.height_cm,
+            "weight_kg": profile.weight_kg,
+            "bats": profile.batting_hand,
+            "throws": profile.throwing_hand,
+            "debut_year": profile.entry_year,
+            "salary_original": profile.salary_original,
+            "signing_bonus_original": profile.signing_bonus_original,
+        }
+        for field, value in field_map.items():
+            if value:
+                setattr(basic, field, value)
 
-            # Synchronize Career Path (출신교)
-            if profile.education_or_career_path:
-                basic.career = "-".join(profile.education_or_career_path)
+        if profile.birth_date:
+            basic.birth_date = profile.birth_date
+            with contextlib.suppress(ValueError):
+                basic.birth_date_date = datetime.strptime(profile.birth_date, "%Y-%m-%d").date()
 
-            # Synchronize structured parsed fields
-            basic.salary_amount = profile.salary_amount
-            basic.salary_currency = profile.salary_currency
-            basic.signing_bonus_amount = profile.signing_bonus_amount
-            basic.signing_bonus_currency = profile.signing_bonus_currency
-            basic.draft_year = profile.draft_year
-            basic.draft_round = profile.draft_round
-            basic.draft_pick_overall = profile.draft_pick_overall
-            basic.draft_type = profile.draft_type
-            basic.education_path = profile.education_path
+    def _sync_basic_draft_and_career(self, basic: PlayerBasic, profile: PlayerProfileParsed) -> None:
+        if profile.draft_year:
+            draft_parts = [str(profile.draft_year)[2:], profile.draft_team_code or ""]
+            if profile.draft_type:
+                draft_parts.append(profile.draft_type)
+            if profile.draft_round:
+                draft_parts.append(f"{profile.draft_round}라운드")
+            if profile.draft_pick_overall:
+                draft_parts.append(f"{profile.draft_pick_overall}순위")
+            basic.draft_info = " ".join(filter(None, draft_parts))
+
+        if profile.education_or_career_path:
+            basic.career = "-".join(profile.education_or_career_path)
+
+    def _sync_basic_structured_fields(self, basic: PlayerBasic, profile: PlayerProfileParsed) -> None:
+        basic.salary_amount = profile.salary_amount
+        basic.salary_currency = profile.salary_currency
+        basic.signing_bonus_amount = profile.signing_bonus_amount
+        basic.signing_bonus_currency = profile.signing_bonus_currency
+        basic.draft_year = profile.draft_year
+        basic.draft_round = profile.draft_round
+        basic.draft_pick_overall = profile.draft_pick_overall
+        basic.draft_type = profile.draft_type
+        basic.education_path = profile.education_path
 
     def _get_or_create_player(self, session: Session, kbo_player_id: str) -> Player:
         player_basic_id = self._canonical_player_basic_id(session, kbo_player_id)
@@ -374,6 +376,58 @@ class PlayerRepository:
         exists = session.execute(select(Team.team_id).where(Team.team_id == team_id)).scalar_one_or_none()
         return str(exists) if exists else None
 
+    @staticmethod
+    def _narrow_by_position(
+        candidates: list[PlayerBasic], raw_position: str | None
+    ) -> tuple[list[PlayerBasic], int | None]:
+        if not raw_position:
+            return candidates, None
+        pos_matches = [candidate for candidate in candidates if candidate.position == raw_position]
+        if len(pos_matches) == 1:
+            return pos_matches, pos_matches[0].player_id
+        return (pos_matches or candidates), None
+
+    @staticmethod
+    def _narrow_by_debut_timeline(candidates: list[PlayerBasic], season: int) -> tuple[list[PlayerBasic], int | None]:
+        timeline_matches = [
+            candidate for candidate in candidates if candidate.debut_year and abs(candidate.debut_year - season) <= 5
+        ]
+        if len(timeline_matches) == 1:
+            return timeline_matches, timeline_matches[0].player_id
+        return (timeline_matches or candidates), None
+
+    @staticmethod
+    def _narrow_by_profile(session: Session, candidates: list[PlayerBasic]) -> tuple[list[PlayerBasic], int | None]:
+        profile_matches = []
+        for candidate in candidates:
+            has_profile = session.execute(
+                select(Player.id).where(Player.player_basic_id == candidate.player_id)
+            ).scalar_one_or_none()
+            if has_profile:
+                profile_matches.append(candidate)
+        if len(profile_matches) == 1:
+            return profile_matches, profile_matches[0].player_id
+        return (profile_matches or candidates), None
+
+    @staticmethod
+    def _unique_contextual_movement_player_id(
+        session: Session,
+        candidates: list[PlayerBasic],
+        canonical_team_id: str | None,
+    ) -> int | None:
+        if not canonical_team_id:
+            return None
+        team = session.execute(select(Team).where(Team.team_id == canonical_team_id)).scalar_one_or_none()
+        team_terms = [canonical_team_id]
+        if team:
+            team_terms.extend(filter(None, [team.team_short_name, team.team_name]))
+        contextual_matches = [
+            candidate
+            for candidate in candidates
+            if candidate.team and any(term in candidate.team for term in team_terms)
+        ]
+        return contextual_matches[0].player_id if len(contextual_matches) == 1 else None
+
     def _resolve_movement_player_id(
         self,
         session: Session,
@@ -391,41 +445,18 @@ class PlayerRepository:
 
         if not candidates:
             return None
-
         if len(candidates) == 1:
             return candidates[0].player_id
 
-        # Ambiguity resolution strategy:
-        # 1. Filter by position if provided
-        if raw_position:
-            pos_matches = [c for c in candidates if c.position == raw_position]
-            if len(pos_matches) == 1:
-                return pos_matches[0].player_id
-            if pos_matches:
-                candidates = pos_matches
+        for narrower in (
+            lambda rows: self._narrow_by_position(rows, raw_position),
+            lambda rows: self._narrow_by_debut_timeline(rows, season),
+            lambda rows: self._narrow_by_profile(session, rows),
+        ):
+            candidates, player_id = narrower(candidates)
+            if player_id:
+                return player_id
 
-        # 2. Filter by debut_year (allow ±2 years buffer for late debut/registration)
-        timeline_matches = [c for c in candidates if c.debut_year and abs(c.debut_year - season) <= 5]
-        if len(timeline_matches) == 1:
-            return timeline_matches[0].player_id
-        if timeline_matches:
-            candidates = timeline_matches
-
-        # 3. Prefer records with profile mirrors (higher quality)
-        profile_matches = []
-        for c in candidates:
-            has_profile = session.execute(
-                select(Player.id).where(Player.player_basic_id == c.player_id),
-            ).scalar_one_or_none()
-            if has_profile:
-                profile_matches.append(c)
-
-        if len(profile_matches) == 1:
-            return profile_matches[0].player_id
-        if profile_matches:
-            candidates = profile_matches
-
-        # 4. Check roster activity in that season
         roster_player_id = self._unique_roster_movement_player_id(
             session,
             player_name,
@@ -446,22 +477,7 @@ class PlayerRepository:
         if franchise_season_player_id:
             return franchise_season_player_id
 
-        # 6. Fallback to team name string matching in player_basic
-        if canonical_team_id:
-            team = session.execute(select(Team).where(Team.team_id == canonical_team_id)).scalar_one_or_none()
-            team_terms = [canonical_team_id]
-            if team:
-                team_terms.extend(filter(None, [team.team_short_name, team.team_name]))
-
-            contextual_matches = []
-            for c in candidates:
-                if c.team and any(term in c.team for term in team_terms):
-                    contextual_matches.append(c)  # noqa: PERF401
-
-            if len(contextual_matches) == 1:
-                return contextual_matches[0].player_id
-
-        return None
+        return self._unique_contextual_movement_player_id(session, candidates, canonical_team_id)
 
     def _unique_roster_movement_player_id(
         self,

@@ -1340,5 +1340,5 @@ def _auto_sync_to_oci(game_id: str) -> None:
                     syncer.sync_specific_game(game_id)
                     syncer.close()
                 logger.info(" ✨ Auto-synced %s to OCI", game_id)
-        except Exception:
+        except (SQLAlchemyError, RuntimeError, ValueError, TypeError, OSError):
             logger.exception(" ⚠️ Auto-sync OCI failed")

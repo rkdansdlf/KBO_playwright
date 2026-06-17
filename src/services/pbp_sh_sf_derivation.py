@@ -32,24 +32,7 @@ _DERIVE_EVENTS_SQL = text("""
 def derive_sh_sf_for_game(session: Any, game_id: str) -> dict[int | str, dict[str, int]]:
     """Query game_events and return {player_id_or_name: {'sh': N, 'sf': N}}."""
     result: dict[int | str, dict[str, int]] = {}
-
-    # Build name-to-id mapping from game_batting_stats for this game
-    stats_rows = session.execute(
-        text("SELECT player_id, player_name FROM game_batting_stats WHERE game_id = :game_id"),
-        {"game_id": game_id},
-    ).all()
-
-    # Map player_name -> set of player_ids (in case of duplicate names, though rare)
-    name_to_ids: dict[str, set[int]] = {}
-    for r in stats_rows:
-        if r.player_id and r.player_name:
-            name_to_ids.setdefault(r.player_name.strip(), set()).add(r.player_id)
-
-    # Unique name-to-id mapping
-    name_to_id: dict[str, int] = {}
-    for name, ids in name_to_ids.items():
-        if len(ids) == 1:
-            name_to_id[name] = next(iter(ids))
+    name_to_id = _build_unique_batter_name_map(session, game_id)
 
     # Query all events matching SH or SF descriptions
     event_rows = session.execute(_DERIVE_EVENTS_SQL, {"game_id": game_id}).all()
@@ -61,14 +44,8 @@ def derive_sh_sf_for_game(session: Any, game_id: str) -> dict[int | str, dict[st
         if not is_sh and not is_sf:
             continue
 
-        # Resolve the player key (player_id if available, fallback to name)
-        key: int | str | None = None
-        if row.batter_id is not None:
-            key = int(row.batter_id)
-        elif row.batter_name:
-            name = row.batter_name.strip()
-            key = name_to_id.get(name, name)
-        else:
+        key = _resolve_derived_batter_key(row, name_to_id)
+        if key is None:
             continue
 
         result.setdefault(key, {"sh": 0, "sf": 0})
@@ -78,6 +55,29 @@ def derive_sh_sf_for_game(session: Any, game_id: str) -> dict[int | str, dict[st
             result[key]["sf"] += 1
 
     return result
+
+
+def _build_unique_batter_name_map(session: Any, game_id: str) -> dict[str, int]:
+    stats_rows = session.execute(
+        text("SELECT player_id, player_name FROM game_batting_stats WHERE game_id = :game_id"),
+        {"game_id": game_id},
+    ).all()
+
+    name_to_ids: dict[str, set[int]] = {}
+    for row in stats_rows:
+        if row.player_id and row.player_name:
+            name_to_ids.setdefault(row.player_name.strip(), set()).add(row.player_id)
+
+    return {name: next(iter(ids)) for name, ids in name_to_ids.items() if len(ids) == 1}
+
+
+def _resolve_derived_batter_key(row: Any, name_to_id: dict[str, int]) -> int | str | None:
+    if row.batter_id is not None:
+        return int(row.batter_id)
+    if row.batter_name:
+        name = row.batter_name.strip()
+        return name_to_id.get(name, name)
+    return None
 
 
 def apply_sh_sf_to_batting_stats(session: Any, game_id: str) -> int:

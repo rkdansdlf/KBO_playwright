@@ -15,6 +15,7 @@ import re
 from datetime import datetime
 
 from bs4 import BeautifulSoup
+from playwright.async_api import Error as PlaywrightError
 from sqlalchemy.exc import SQLAlchemyError
 
 from src.db.engine import SessionLocal
@@ -28,6 +29,7 @@ SOURCE_NAME = "두산베어스공식"
 BASE_URL = "https://www.doosanbears.com/doorundoorun/notice"
 LINK_PREFIX = "https://www.doosanbears.com/doorundoorun"
 HOST = "www.doosanbears.com"
+DOOSAN_NOTICE_CRAWL_EXCEPTIONS = (PlaywrightError, RuntimeError, ValueError, TypeError, KeyError, OSError)
 
 NOTICE_TYPE_RULES: list[tuple[re.Pattern, str]] = [
     (re.compile(r"취소|우천|노게임", re.I), "CANCEL"),
@@ -112,7 +114,7 @@ class OperationNoticeDoosanCrawler:
                         if hit_stop or not notices:
                             break
 
-                    except Exception as e:
+                    except DOOSAN_NOTICE_CRAWL_EXCEPTIONS as e:
                         logger.exception("[Doosan Notice] Failed to fetch page %d: %s", page_no, e)
                         break
 

@@ -35,7 +35,7 @@ import sys
 from datetime import date, datetime, timedelta
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
-from threading import Lock, Thread
+from threading import Thread
 from typing import Sequence
 from zoneinfo import ZoneInfo
 
@@ -49,7 +49,9 @@ load_dotenv(PROJECT_ROOT / ".env")
 from apscheduler.events import EVENT_JOB_ERROR
 from apscheduler.schedulers.blocking import BlockingScheduler
 from apscheduler.triggers.cron import CronTrigger
+from requests import RequestException
 from sqlalchemy import text
+from sqlalchemy.exc import SQLAlchemyError
 from tenacity import retry, stop_after_attempt, wait_exponential
 
 from src.cli.crawl_futures import main as crawl_futures_main
@@ -62,6 +64,7 @@ from src.cli.run_daily_update import main as run_daily_update_main
 from src.db.engine import SessionLocal
 from src.sync.oci_sync import OCISync
 from src.utils.alerting import SlackWebhookClient
+from src.utils.lock import ProcessLock
 
 # Stadium real-time data job functions (imported lazily inside job bodies to avoid startup overhead)
 
@@ -79,11 +82,24 @@ logger = logging.getLogger(__name__)
 KST = ZoneInfo("Asia/Seoul")
 FALSE_ENV_VALUES = {"0", "false", "no", "off"}
 
+ALERT_EXCEPTIONS = (OSError, RuntimeError, ValueError, RequestException)
+SCHEDULER_JOB_EXCEPTIONS = (
+    RuntimeError,
+    OSError,
+    ValueError,
+    TypeError,
+    LookupError,
+    SQLAlchemyError,
+    RequestException,
+    asyncio.TimeoutError,
+    json.JSONDecodeError,
+)
+
 # Granular locking to prevent long-running batch jobs from blocking real-time updates
-LIVE_LOCK = Lock()  # For live refresh and pregame refresh
-DAILY_LOCK = Lock()  # For daily update/finalize
-MAINTENANCE_LOCK = Lock()  # For weekly futures sync and OCI hydration/reports
-REALTIME_OCI_SYNC_LOCK = Lock()  # Best-effort live/pregame OCI sync, never blocks realtime jobs
+LIVE_LOCK = ProcessLock("live_refresh")
+DAILY_LOCK = ProcessLock("daily_update")
+MAINTENANCE_LOCK = ProcessLock("maintenance")
+REALTIME_OCI_SYNC_LOCK = ProcessLock("realtime_oci_sync")
 
 MISSING_PREGAME_ALERTED_DATES: set[str] = set()
 LAST_LIVE_RUN_TIME: datetime | None = None
@@ -118,7 +134,7 @@ def alert_failure(retry_state):
     logger.error(f"Job {func_name} failed permanently after {retry_state.attempt_number} attempts: {exc}")
     try:
         SlackWebhookClient.send_error_alert(f"Job: {func_name}\nError: {error_text}\n\n{tb}")
-    except Exception:
+    except ALERT_EXCEPTIONS:
         logger.exception("Failed to send failure alert for job %s", func_name)
 
     # Do NOT re-raise — let retry_error_callback suppress so the scheduler survives.
@@ -134,7 +150,7 @@ def alert_warning(func_name: str, details: str | None = None):
         if details:
             message = f"{message}\n{details}"
         SlackWebhookClient.send_alert(message)
-    except Exception:
+    except ALERT_EXCEPTIONS:
         logger.exception("Failed to send warning alert for job %s", func_name)
 
 
@@ -146,7 +162,7 @@ def alert_success(func_name: str, details: str | None = None):
             if details:
                 message = f"{message}\n{details}"
             SlackWebhookClient.send_alert(message)
-        except Exception:
+        except ALERT_EXCEPTIONS:
             logger.exception("Failed to send success alert for job %s", func_name)
 
 
@@ -356,7 +372,7 @@ def _submit_realtime_oci_sync(sync_kind: str, game_ids: Sequence[str]) -> bool:
                         game_id,
                         (datetime.now(KST) - game_started_at).total_seconds(),
                     )
-                except Exception:
+                except SCHEDULER_JOB_EXCEPTIONS:
                     failed_game_ids.append(game_id)
                     logger.exception(
                         "Background realtime OCI %s sync failed game_id=%s elapsed=%.1fs",
@@ -368,13 +384,13 @@ def _submit_realtime_oci_sync(sync_kind: str, game_ids: Sequence[str]) -> bool:
                     if syncer is not None:
                         try:
                             syncer.close()
-                        except Exception:
+                        except SCHEDULER_JOB_EXCEPTIONS:
                             logger.exception(
                                 "Failed to close background realtime OCI %s syncer game_id=%s",
                                 sync_kind,
                                 game_id,
                             )
-        except Exception:
+        except SCHEDULER_JOB_EXCEPTIONS:
             logger.exception("Background realtime OCI %s sync setup failed", sync_kind)
         finally:
             REALTIME_OCI_SYNC_LOCK.release()
@@ -394,7 +410,7 @@ def _submit_realtime_oci_sync(sync_kind: str, game_ids: Sequence[str]) -> bool:
     )
     try:
         thread.start()
-    except Exception:
+    except RuntimeError:
         REALTIME_OCI_SYNC_LOCK.release()
         logger.exception("Failed to start background realtime OCI %s sync", sync_kind)
         return False
@@ -476,7 +492,7 @@ def crawl_daily_games():
                 total_failures = sum(detail_counts.values()) if isinstance(detail_counts, dict) else 0
                 if repeated_failures or total_failures > 0:
                     alert_warning("crawl_daily_games", format_stability_alert_summary(update_result))
-        except Exception as e:
+        except SCHEDULER_JOB_EXCEPTIONS as e:
             logger.error(f"Daily games crawl attempt failed: {e}")
             raise
 
@@ -615,7 +631,7 @@ def backfill_missed_daily_crawls(lookback_days: int = 14) -> list[str]:
                 else:
                     backfilled.append(f"detail:{date_compact}")
                     logger.info("Phase 1 — Detail backfill completed for %s", date_compact)
-        except Exception:
+        except SCHEDULER_JOB_EXCEPTIONS:
             logger.exception("Phase 1 — Detail backfill failed for %s", date_compact)
 
     # ── Phase 2: PBP/relay gaps (skip dates already handled in Phase 1) ────
@@ -639,7 +655,7 @@ def backfill_missed_daily_crawls(lookback_days: int = 14) -> list[str]:
             run_daily_update_main(["--date", date_compact])
             backfilled.append(f"pbp:{date_compact}")
             logger.info("Phase 2 — PBP/relay backfill completed for %s", date_compact)
-        except Exception:
+        except SCHEDULER_JOB_EXCEPTIONS:
             logger.exception("Phase 2 — PBP/relay backfill failed for %s", date_compact)
 
     # ── Phase 3: Pregame preview gaps ──────────────────────────────────────
@@ -652,7 +668,7 @@ def backfill_missed_daily_crawls(lookback_days: int = 14) -> list[str]:
             asyncio.run(run_preview_batch(date_compact))
             backfilled.append(f"preview:{date_compact}")
             logger.info("Phase 3 — Preview backfill completed for %s", date_compact)
-        except Exception:
+        except SCHEDULER_JOB_EXCEPTIONS:
             logger.exception("Phase 3 — Preview backfill failed for %s", date_compact)
 
     # ── Phase 4: Player profile gaps (rate-limited) ────────────────────────
@@ -694,7 +710,7 @@ def backfill_missed_daily_crawls(lookback_days: int = 14) -> list[str]:
                             )
                         finally:
                             syncer.close()
-            except Exception:
+            except SCHEDULER_JOB_EXCEPTIONS:
                 logger.exception("Phase 4 — Profile backfill failed")
 
     # ── Summary ────────────────────────────────────────────────────────────
@@ -714,7 +730,11 @@ def crawl_pregame_refresh():
     sync_to_oci = False
     pregame_sync_game_ids: list[str] = []
 
-    with LIVE_LOCK:
+    if not LIVE_LOCK.acquire(blocking=False):
+        logger.info("Skipping pregame refresh because LIVE_LOCK is already held")
+        return
+
+    try:
         refresh_only_missing = _env_enabled("PREGAME_REFRESH_ONLY_MISSING", "1")
         alert_on_missing = _env_enabled("PREGAME_MISSING_ALERT", "0")
         sync_to_oci = _pregame_sync_to_oci_enabled()
@@ -761,7 +781,7 @@ def crawl_pregame_refresh():
                             f"⚠️ Pregame missing remains for {target_date}: "
                             f"starters_missing={post_refresh[1]}, preview_missing={post_refresh[2]}"
                         )
-                    except Exception:
+                    except ALERT_EXCEPTIONS:
                         logger.exception("Failed to send pregame missing alert for target_date=%s", target_date)
                     MISSING_PREGAME_ALERTED_DATES.add(target_date)
             else:
@@ -775,6 +795,8 @@ def crawl_pregame_refresh():
                 )
 
         alert_success("crawl_pregame_refresh")
+    finally:
+        LIVE_LOCK.release()
 
     if sync_to_oci and pregame_sync_game_ids:
         _submit_realtime_oci_sync("pregame", pregame_sync_game_ids)
@@ -812,7 +834,7 @@ def _get_live_poll_interval_seconds() -> int:
                 WHERE g.game_date = :today
             """)
             rows = session.execute(query, {"today": today_str}).all()
-    except Exception:
+    except SCHEDULER_JOB_EXCEPTIONS:
         logger.exception("[LiveInterval] Failed to query game states; defaulting to 120s")
         return 120
 
@@ -860,7 +882,7 @@ def _get_live_poll_interval_seconds() -> int:
 
                 if earliest_start_time is None or start_time < earliest_start_time:
                     earliest_start_time = start_time
-            except Exception:  # noqa: BLE001
+            except (ValueError, TypeError, IndexError):
                 logger.warning("[LiveInterval] Failed to parse start_time: %s", start_time_raw)
 
         # Track latest update time for terminal/finished games
@@ -878,7 +900,7 @@ def _get_live_poll_interval_seconds() -> int:
 
                 if latest_update_time is None or updated_kst > latest_update_time:
                     latest_update_time = updated_kst
-            except Exception:  # noqa: BLE001
+            except (ValueError, TypeError, OSError):
                 logger.debug("Skipping unparsable live game update timestamp", exc_info=True)
 
     # Apply interval rules
@@ -952,7 +974,7 @@ def crawl_live_refresh():
                     failure_count,
                     ",".join(str(game_id) for game_id in failed_ids),
                 )
-    except Exception:
+    except SCHEDULER_JOB_EXCEPTIONS:
         LAST_LIVE_RUN_TIME = None
         raise
     finally:
@@ -1006,7 +1028,7 @@ def crawl_all_futures_profiles():
             logger.info("=== Weekly Futures Profile Crawl Completed Successfully ===")
             alert_success("crawl_all_futures_profiles")
 
-        except Exception as e:
+        except SCHEDULER_JOB_EXCEPTIONS as e:
             logger.error(f"Futures profile crawl attempt failed: {e}")
             raise
 
@@ -1051,7 +1073,7 @@ def crawl_retired_players_job(limit: int | None = None):
             logger.info("=== Monthly Retired Player Crawl Completed Successfully ===")
             alert_success("crawl_retired_players_job")
 
-        except Exception as e:
+        except SCHEDULER_JOB_EXCEPTIONS as e:
             logger.error(f"Retired player crawl attempt failed: {e}")
             raise
 
@@ -1081,7 +1103,7 @@ def crawl_p1p2_data_job():
             food_main(["--save"])
             logger.info("=== P1/P2 Data Crawlers Completed Successfully ===")
             alert_success("crawl_p1p2_data_job")
-        except Exception:
+        except SCHEDULER_JOB_EXCEPTIONS:
             logger.exception("P1/P2 data crawlers failed")
 
 
@@ -1108,7 +1130,7 @@ def monitor_data_freshness_job():
                 )
             else:
                 logger.info("All data sources and tables healthy")
-        except Exception:
+        except SCHEDULER_JOB_EXCEPTIONS:
             logger.exception("Data freshness monitor failed")
 
 
@@ -1202,7 +1224,7 @@ def crawl_phase1_extra_job():
 
             asyncio.run(run_all_crawlers(save=True))
             logger.info("=== Phase 1 Extra Crawlers Completed Successfully ===")
-        except Exception:
+        except SCHEDULER_JOB_EXCEPTIONS:
             logger.exception("Phase 1 extra crawlers failed")
 
 
@@ -1219,7 +1241,7 @@ def compute_standings_job():
             current_year = datetime.now(KST).year
             standings_main(["--year", str(current_year)])
             logger.info("=== Standings Computation Completed ===")
-        except Exception:
+        except SCHEDULER_JOB_EXCEPTIONS:
             logger.exception("Standings computation failed")
 
 
@@ -1239,7 +1261,7 @@ def compute_park_factor_job():
                 calc = ParkFactorCalculator(session)
                 results = calc.calculate(current_year)
                 logger.info(f"Park Factor computed for {len(results)} stadiums")
-        except Exception:
+        except SCHEDULER_JOB_EXCEPTIONS:
             logger.exception("Park Factor computation failed")
 
 
@@ -1261,7 +1283,7 @@ def aggregate_team_defense_job():
                 agg = TeamFieldingAggregator(session)
                 agg.run_all(current_year, teams)
                 logger.info("=== Team Defense Aggregation Completed ===")
-        except Exception:
+        except SCHEDULER_JOB_EXCEPTIONS:
             logger.exception("Team defense aggregation failed")
 
 
@@ -1281,7 +1303,7 @@ def compute_rankings_job():
                 agg = RankingAggregator(session)
                 agg.run_for_season(current_year)
                 logger.info("=== Rankings Computation Completed ===")
-        except Exception:
+        except SCHEDULER_JOB_EXCEPTIONS:
             logger.exception("Rankings computation failed")
 
 
@@ -1314,7 +1336,7 @@ def batch_parse_snapshots_job():
                 "batch_parse_snapshots_job",
                 f"processed={stats['processed']}, done={stats['done']}, failed={stats['failed']}",
             )
-        except Exception:
+        except SCHEDULER_JOB_EXCEPTIONS:
             logger.exception("Batch parse snapshots job failed")
 
 
@@ -1337,7 +1359,7 @@ def heal_unverified_pbp_job():
                 logger.info("=== PBP Auto-Healer Completed (no failures) ===")
             else:
                 logger.warning("=== PBP Auto-Healer Completed with some failures (exit_code=%d) ===", exit_code)
-        except Exception:
+        except SCHEDULER_JOB_EXCEPTIONS:
             logger.exception("PBP Auto-Healer job failed")
 
 
@@ -1370,7 +1392,7 @@ def backfill_sh_sf_job():
                         session.commit()
                         total += updated
                 logger.info("SH/SF backfill: %d games updated (%d rows)", len(game_ids), total)
-        except Exception:
+        except SCHEDULER_JOB_EXCEPTIONS:
             logger.exception("SH/SF backfill job failed")
 
 
@@ -1405,7 +1427,7 @@ def backfill_player_ids_job():
                 result.get("updated_rows", 0),
                 result.get("duplicate_null_rows", 0),
             )
-        except Exception:
+        except SCHEDULER_JOB_EXCEPTIONS:
             logger.exception("Player ID backfill job failed")
 
 
@@ -1419,7 +1441,7 @@ def backfill_advanced_stats_job():
             year = datetime.now(KST).year
             backfill_stats([year], "regular")
             logger.info("Advanced stats backfill completed for %d", year)
-        except Exception:
+        except SCHEDULER_JOB_EXCEPTIONS:
             logger.exception("Advanced stats backfill job failed")
 
 
@@ -1439,7 +1461,7 @@ def backfill_roster_job():
             start = (datetime.now(KST) - timedelta(days=7)).strftime("%Y-%m-%d")
             asyncio.run(backfill_daily_rosters(start, end))
             logger.info("Roster backfill completed for %d (rosters: %s ~ %s)", year, start, end)
-        except Exception:
+        except SCHEDULER_JOB_EXCEPTIONS:
             logger.exception("Roster backfill job failed")
 
 
@@ -1463,7 +1485,7 @@ def gap_report_job():
                 total_gaps,
                 error_gaps,
             )
-        except Exception:
+        except SCHEDULER_JOB_EXCEPTIONS:
             logger.exception("Gap report job failed")
 
 
@@ -1485,7 +1507,7 @@ def crawl_transit_time_job():
 
             asyncio.run(TransitTimeCrawler().run(save=True))
             logger.info("[Transit] Transit time measurement completed")
-        except Exception:
+        except SCHEDULER_JOB_EXCEPTIONS:
             logger.exception("Transit time job failed")
 
 
@@ -1502,7 +1524,7 @@ def crawl_congestion_job():
 
             asyncio.run(CongestionCrawler().run(save=True))
             logger.info("[Congestion] Congestion data collection completed")
-        except Exception:
+        except SCHEDULER_JOB_EXCEPTIONS:
             logger.exception("Congestion job failed")
 
 
@@ -1520,7 +1542,7 @@ def crawl_operation_notices_job():
 
             notices_main(["--save", "--incremental"])
             logger.info("[Notice] Operation notice crawl completed")
-        except Exception:
+        except SCHEDULER_JOB_EXCEPTIONS:
             logger.exception("Operation notices job failed")
 
 
@@ -1537,7 +1559,7 @@ def crawl_operation_notices_naver_job():
 
             notices_main(["--source", "naver", "--days", "1", "--save"])
             logger.info("[NaverNotice] Naver notice crawl completed")
-        except Exception:
+        except SCHEDULER_JOB_EXCEPTIONS:
             logger.exception("Naver operation notices job failed")
 
 
@@ -1553,7 +1575,7 @@ def crawl_fan_culture_job():
 
             asyncio.run(FanCultureCrawler().run(save=True))
             logger.info("[FanCulture] Fan culture data crawl completed")
-        except Exception:
+        except SCHEDULER_JOB_EXCEPTIONS:
             logger.exception("Fan culture job failed")
 
 
@@ -1571,7 +1593,7 @@ def crawl_p0_non_game_job():
             result = crawl_p0_data_main(["--type", "all", "--save", "--days", "3", "--season", str(current_year)])
             logger.info("[P0NonGame] P0 non-game crawl completed: %s", result)
             alert_success("crawl_p0_non_game_job", str(result))
-        except Exception:
+        except SCHEDULER_JOB_EXCEPTIONS:
             logger.exception("P0 non-game crawl failed")
 
 
@@ -1587,7 +1609,7 @@ def job_error_listener(event):
         logger.error(f"Job {job} failed: {exc}")
         try:
             SlackWebhookClient.send_error_alert(f"🚨 <b>Scheduler Job Failed: {job}</b>\nError: {exc}\n\n{tb}")
-        except Exception:
+        except ALERT_EXCEPTIONS:
             logger.exception("Failed to send Slack alert for failed job %s", job)
 
 
@@ -1796,14 +1818,14 @@ def main(argv: Sequence[str] | None = None):
         try:
             logger.info("Performing one-time startup crawl (run_daily_update)")
             crawl_daily_games()
-        except Exception:
+        except SCHEDULER_JOB_EXCEPTIONS:
             logger.exception("Startup crawl failed; scheduler will continue with cron jobs")
 
         try:
             backfilled = backfill_missed_daily_crawls()
             if backfilled:
                 logger.info("Startup backfill completed for dates: %s", backfilled)
-        except Exception:
+        except SCHEDULER_JOB_EXCEPTIONS:
             logger.exception("Startup backfill failed; scheduler will continue with cron jobs")
 
     logger.info("\n%s", "=" * 60)

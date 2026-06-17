@@ -11,12 +11,25 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
+from playwright.async_api import Error as PlaywrightError
 from playwright.async_api import Page
 from playwright.async_api import TimeoutError as PlaywrightTimeoutError
 from tenacity import AsyncRetrying, retry_if_exception_type, stop_after_attempt, wait_exponential
 
 from src.utils.playwright_pool import AsyncPlaywrightPool
 from src.utils.playwright_retry import NAV_TIMEOUT
+
+PLAYER_MOVEMENT_CRAWL_EXCEPTIONS = (
+    PlaywrightError,
+    PlaywrightTimeoutError,
+    TimeoutError,
+    RuntimeError,
+    ValueError,
+    TypeError,
+    KeyError,
+    IndexError,
+    OSError,
+)
 
 
 class PlayerMovementCrawler:
@@ -134,11 +147,8 @@ class PlayerMovementCrawler:
 
                 page_num += 1
 
-        except Exception:
+        except PLAYER_MOVEMENT_CRAWL_EXCEPTIONS:
             logger.exception("⚠️ Error processing year %s", year)
-            import traceback
-
-            traceback.print_exc()
 
         logger.info("✅ Year %s: Collected %s records.", year, len(results))
         return results

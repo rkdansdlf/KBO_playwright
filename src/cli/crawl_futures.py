@@ -18,7 +18,9 @@ from collections.abc import Sequence
 from datetime import datetime
 from typing import Any
 
+from playwright.async_api import Error as PlaywrightError
 from sqlalchemy import select
+from sqlalchemy.exc import SQLAlchemyError
 
 from src.crawlers.futures.futures_batting import fetch_and_parse_futures_batting
 from src.crawlers.futures.futures_pitching import fetch_and_parse_futures_pitching
@@ -29,10 +31,23 @@ from src.parsers.player_profile_parser import PlayerProfileParsed
 from src.repositories.player_repository import PlayerRepository
 from src.repositories.player_season_pitching_repository import get_last_filter_counts, save_pitching_stats_to_db
 from src.repositories.save_futures_batting import save_futures_batting
+from src.utils.lock import ProcessLock
 from src.utils.player_validation import normalize_player_id
 from src.utils.playwright_pool import AsyncPlaywrightPool
 
 logger = logging.getLogger(__name__)
+
+FUTURES_CRAWL_EXCEPTIONS = (
+    PlaywrightError,
+    TimeoutError,
+    asyncio.TimeoutError,
+    RuntimeError,
+    ValueError,
+    TypeError,
+    OSError,
+)
+FUTURES_SAVE_EXCEPTIONS = (SQLAlchemyError, RuntimeError, ValueError, TypeError, OSError)
+FUTURES_PROCESS_EXCEPTIONS = FUTURES_CRAWL_EXCEPTIONS + FUTURES_SAVE_EXCEPTIONS
 
 
 def _configure_cli_logging() -> None:
@@ -157,7 +172,7 @@ async def process_player_result(
         hitter_url = f"https://www.koreabaseball.com/Futures/Player/HitterTotal.aspx?playerId={player_id}"
         try:
             batting_rows = await fetch_and_parse_futures_batting(player_id, hitter_url, pool=pool)
-        except Exception as exc:
+        except FUTURES_CRAWL_EXCEPTIONS as exc:
             logger.exception("Exception crawling batting stats for player %s: %s", player_id, exc)
 
     # 2. Pitcher stats
@@ -165,7 +180,7 @@ async def process_player_result(
         pitcher_url = f"https://www.koreabaseball.com/Futures/Player/PitcherTotal.aspx?playerId={player_id}"
         try:
             pitching_rows = await fetch_and_parse_futures_pitching(player_id, pitcher_url, pool=pool)
-        except Exception as exc:
+        except FUTURES_CRAWL_EXCEPTIONS as exc:
             logger.exception("Exception crawling pitching stats for player %s: %s", player_id, exc)
 
     if not batting_rows and not pitching_rows:
@@ -202,7 +217,7 @@ async def process_player_result(
             saved += saved_batting
             if saved_batting == 0:
                 save_failures.append("batting_save_zero")
-        except Exception as exc:
+        except FUTURES_SAVE_EXCEPTIONS as exc:
             logger.exception("Exception saving batting stats for player %s: %s", player_id, exc)
             save_failures.append("batting_save_exception")
 
@@ -248,7 +263,7 @@ async def process_player_result(
                     save_failures.append(_format_filter_counts("pitching_filtered", filter_counts))
                 else:
                     save_failures.append("pitching_save_zero")
-        except Exception as exc:
+        except FUTURES_SAVE_EXCEPTIONS as exc:
             logger.exception("Exception saving pitching stats for player %s: %s", player_id, exc)
             save_failures.append("pitching_save_exception")
 
@@ -368,7 +383,7 @@ async def crawl_futures(args: argparse.Namespace) -> dict[str, Any]:
             name = meta["name"]
             try:
                 result = await process_player_result(pid, pos, name, repository, args.delay, pool)
-            except Exception as exc:
+            except FUTURES_PROCESS_EXCEPTIONS as exc:
                 logger.exception("Unhandled exception for player %s (%s): %s", pid, pos, exc)
                 result = {
                     "player_id": pid,
@@ -475,7 +490,17 @@ def main(argv: Sequence[str] | None = None) -> dict[str, Any]:
     _configure_cli_logging()
     parser = build_arg_parser()
     args = parser.parse_args(argv)
-    return asyncio.run(crawl_futures(args))
+
+    lock = ProcessLock("maintenance", blocking=False)
+    if not lock.acquire():
+        logger.warning("⚠️ Another instance of maintenance task (crawl_futures) is already running. Exiting.")
+        return {"status": "skipped", "reason": "Another instance of maintenance task is already running."}
+
+    try:
+        res = asyncio.run(crawl_futures(args))
+    finally:
+        lock.release()
+    return res
 
 
 if __name__ == "__main__":

@@ -819,7 +819,7 @@ def repair(db_path: Path, *, apply: bool, schema: bool) -> list[Action]:
             conn.commit()
             conn.execute("PRAGMA foreign_keys = ON")
         return actions
-    except Exception:
+    except (sqlite3.Error, RuntimeError, ValueError, TypeError, OSError):
         if apply:
             conn.rollback()
         raise

@@ -12,6 +12,8 @@ logger = logging.getLogger(__name__)
 
 sys.path.insert(0, os.getcwd())
 
+from playwright.sync_api import Error as PlaywrightError
+from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 from playwright.sync_api import sync_playwright
 from src.repositories.safe_pitching_repository import save_pitching_stats_safe
 
@@ -25,6 +27,8 @@ from src.crawlers.player_pitching_all_series_crawler import (
 )
 from src.repositories.safe_batting_repository import save_batting_stats_safe
 from src.utils.team_codes import resolve_team_code
+
+CRAWLER_EXCEPTIONS = (PlaywrightError, PlaywrightTimeoutError, RuntimeError, ValueError, TypeError, KeyError, OSError)
 
 # Custom extraction scripts
 EXTRACT_BATTING_JS = r"""
@@ -162,7 +166,7 @@ def crawl_stats_for_year(page, year, mode="batting"):
                     page1_btn.click()
                     page.wait_for_load_state("networkidle")
                     time.sleep(1)
-            except Exception:  # noqa: BLE001
+            except CRAWLER_EXCEPTIONS:
                 logger.debug("Failed to reset pagination to page 1; continuing from current page")
 
             page_num = 1
@@ -200,7 +204,7 @@ def crawl_stats_for_year(page, year, mode="batting"):
 
                     # print(f"      📄 {page_num}페이지: {len(players)}명 (누적: {count_after}명)")
 
-                except Exception as e:  # noqa: BLE001
+                except CRAWLER_EXCEPTIONS as e:
                     logger.warning("      ⚠️ 파싱 에러: %s", e)
 
                 # Pagination
@@ -223,7 +227,7 @@ def crawl_stats_for_year(page, year, mode="batting"):
                             arg=first_player_before,
                             timeout=5000,
                         )
-                    except Exception:  # noqa: BLE001
+                    except CRAWLER_EXCEPTIONS:
                         logger.debug("Timed out waiting for next page table update; continuing")
                     page_num += 1
                 else:
@@ -231,7 +235,7 @@ def crawl_stats_for_year(page, year, mode="batting"):
 
         return list(all_players.values())
 
-    except Exception as e:  # noqa: BLE001
+    except CRAWLER_EXCEPTIONS as e:
         logger.error("❌ %s년 %s 크롤링 치명적 오류: %s", year, mode, e)
         return []
 

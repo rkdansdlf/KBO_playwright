@@ -12,7 +12,10 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from playwright.async_api import Error as PlaywrightError
+from playwright.async_api import TimeoutError as PlaywrightTimeoutError
 from sqlalchemy import bindparam, text
+from sqlalchemy.exc import SQLAlchemyError
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(PROJECT_ROOT) not in sys.path:
@@ -27,6 +30,15 @@ from src.utils.player_validation import validate_player_payload
 
 logger = logging.getLogger(__name__)
 DEFAULT_REPORT_DIR = Path("data/player_profile_backfill")
+PROFILE_CRAWL_EXCEPTIONS = (
+    PlaywrightError,
+    PlaywrightTimeoutError,
+    SQLAlchemyError,
+    RuntimeError,
+    ValueError,
+    TypeError,
+    OSError,
+)
 
 
 @dataclass
@@ -317,7 +329,7 @@ async def backfill_players(
                 crawler = PlayerProfileCrawler()
             try:
                 profile = await crawler.crawl_player_profile(player_id, position=candidate.position)
-            except Exception as exc:  # noqa: BLE001
+            except PROFILE_CRAWL_EXCEPTIONS as exc:
                 profile = None
                 reason = f"crawl_error:{exc}"
             else:

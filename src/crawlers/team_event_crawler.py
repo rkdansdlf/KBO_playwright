@@ -9,6 +9,7 @@ from datetime import UTC, datetime, timedelta
 from urllib.parse import urlparse
 
 import httpx
+from sqlalchemy.exc import SQLAlchemyError
 
 from src.db.engine import SessionLocal
 from src.parsers.team_event_parser import parse_team_events
@@ -18,6 +19,9 @@ from src.utils.http_client import DEFAULT_HEADERS as HEADERS
 from src.utils.throttle import throttle
 
 logger = logging.getLogger(__name__)
+
+TEAM_EVENT_CRAWL_EXCEPTIONS = (httpx.HTTPError, RuntimeError, ValueError, TypeError, OSError)
+TEAM_EVENT_SAVE_EXCEPTIONS = (SQLAlchemyError, RuntimeError, ValueError, TypeError, OSError)
 
 TEAM_NEWS_SOURCES: dict[str, dict] = {
     "LG": {
@@ -93,7 +97,7 @@ class TeamEventCrawler:
                 events = await self._crawl_team(team_code, config)
                 all_events.extend(events)
                 logger.info("[EVENT] %s: %s events found", team_code, len(events))
-            except Exception:
+            except TEAM_EVENT_CRAWL_EXCEPTIONS:
                 logger.exception("Failed to crawl events for %s", team_code)
 
         logger.info("[EVENT] Total: %s events", len(all_events))
@@ -166,11 +170,11 @@ class TeamEventCrawler:
                     try:
                         event_repo.save(item)
                         count += 1
-                    except Exception:
+                    except TEAM_EVENT_SAVE_EXCEPTIONS:
                         logger.exception("Event save failed: %s", item.get("title", "")[:50])
                 session.commit()
                 logger.info("[EVENT] Saved %s event records, %s snapshots.", count, saved_snaps)
-            except Exception:
+            except TEAM_EVENT_SAVE_EXCEPTIONS:
                 session.rollback()
                 logger.exception("Event batch save error")
             finally:

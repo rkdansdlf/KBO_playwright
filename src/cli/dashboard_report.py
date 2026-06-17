@@ -18,10 +18,13 @@ import logging
 from datetime import datetime
 from typing import Any
 
+from sqlalchemy.exc import SQLAlchemyError
+
 from src.db.engine import SessionLocal, get_oci_url
 
 logger = logging.getLogger(__name__)
 KST = __import__("zoneinfo").ZoneInfo("Asia/Seoul")
+SYNC_CHECK_EXCEPTIONS = (ImportError, SQLAlchemyError, RuntimeError, ValueError, TypeError, KeyError, OSError)
 
 AVAILABLE_SECTIONS = [
     "standings",
@@ -160,7 +163,7 @@ def _build_sync() -> dict[str, Any]:
         counts = check_table_counts(SessionLocal().bind, oci_engine)
         ok_count = sum(1 for c in counts if c["status"] == "OK")
         return {"status": "ok", "table_count": len(counts), "ok_count": ok_count, "details": counts}
-    except Exception as exc:
+    except SYNC_CHECK_EXCEPTIONS as exc:
         logger.exception("Dashboard OCI sync check failed")
         return {"status": "error", "reason": str(exc)}
 
