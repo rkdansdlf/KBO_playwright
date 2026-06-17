@@ -42,6 +42,7 @@ select = [
     "F",       # pyflakes
     "I",       # isort
     "UP",      # pyupgrade (Python 3.10+)
+    "RET",     # flake8-return
     "B",       # flake8-bugbear (limited)
     "SIM",     # flake8-simplify (limited)
     "G",       # logging (f-strings, format, exc_info)
