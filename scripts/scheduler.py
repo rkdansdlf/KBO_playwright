@@ -1015,7 +1015,7 @@ def crawl_all_futures_profiles():
                 ]
             )
             if not isinstance(summary, dict):
-                raise RuntimeError("Futures crawl did not return a summary")
+                raise TypeError("Futures crawl did not return a summary")
             if not summary.get("ok", False):
                 raise RuntimeError(
                     "Futures crawl failed: "
