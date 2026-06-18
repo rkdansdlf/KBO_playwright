@@ -6,6 +6,7 @@ Now refactored into a class as expected by GameDetailCrawler.
 
 from __future__ import annotations
 
+import argparse
 import asyncio
 import logging
 import os
@@ -500,9 +501,7 @@ async def crawl_all_players(
     return await crawler.crawl_all_players(max_pages=max_pages)
 
 
-async def main() -> None:
-    import argparse
-
+def _parse_crawl_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="KBO Player Search Crawler")
     parser.set_defaults(save=True, sync_oci=None)
     parser.add_argument("--max-pages", type=int, default=None, help="Maximum pages to crawl (default: all)")
@@ -520,20 +519,16 @@ async def main() -> None:
         action="store_false",
         help="Skip OCI sync even if OCI_DB_URL is set",
     )
-    args = parser.parse_args()
+    return parser.parse_args()
 
-    logger.info("=" * 60)
-    logger.info("KBO Player Search Crawler")
-    logger.info("=" * 60)
 
-    logger.info("\nCrawling players (max_pages=%s)...", args.max_pages or "all")
-    players = await crawl_all_players(max_pages=args.max_pages)
+async def _crawl_players(max_pages: int | None) -> list[PlayerRow]:
+    logger.info("\nCrawling players (max_pages=%s)...", max_pages or "all")
+    players = await crawl_all_players(max_pages=max_pages)
     logger.info("\nTotal players collected: %s", len(players))
-
     if not players:
         logger.info("No players collected")
-        return
-
+        return []
     logger.info("\nSample (first 5 players):")
     for player in players[:5]:
         logger.info(
@@ -544,6 +539,60 @@ async def main() -> None:
             player.team,
             player.position,
         )
+    return players
+
+
+async def _crawl_and_save(
+    player_dicts: list[dict[str, Any]],
+) -> None:
+    from src.repositories.player_basic_repository import PlayerBasicRepository
+
+    suspects = [entry for entry in player_dicts if entry.get("status") in {"retired", "staff"}]
+    if suspects:
+        confirmer = PlayerStatusConfirmer()
+        confirm_stats = await confirmer.confirm_entries(suspects)
+        logger.info(
+            "\nProfile-confirmed statuses: %s (attempted %s)",
+            confirm_stats["confirmed"],
+            confirm_stats["attempted"],
+        )
+
+    parsed_dates = sum(1 for player in player_dicts if player["birth_date_date"] is not None)
+    logger.info("\nParsed birth dates: %s/%s", parsed_dates, len(player_dicts))
+
+    logger.info("\nSaving to SQLite...")
+    repo = PlayerBasicRepository()
+    saved_count = repo.upsert_players(player_dicts)
+    logger.info("Saved %s players to SQLite", saved_count)
+
+
+def _sync_to_oci(oci_url: str) -> None:
+    from src.db.engine import SessionLocal
+    from src.sync.oci_sync import OCISync
+
+    logger.info("\nSyncing to OCI...")
+    with SessionLocal() as sqlite_session:
+        sync = OCISync(oci_url, sqlite_session)
+        try:
+            if not sync.test_connection():
+                logger.info("OCI connection failed")
+                return
+            synced = sync.sync_player_basic()
+            logger.info("Synced %s players to OCI", synced)
+        finally:
+            sync.close()
+
+
+async def main() -> None:
+    args = _parse_crawl_args()
+
+    logger.info("=" * 60)
+    logger.info("KBO Player Search Crawler")
+    logger.info("=" * 60)
+
+    players = await _crawl_players(args.max_pages)
+    if not players:
+        return
 
     oci_url = os.getenv("OCI_DB_URL")
     should_sync = args.sync_oci if args.sync_oci is not None else bool(oci_url)
@@ -557,54 +606,21 @@ async def main() -> None:
     player_dicts = [player_row_to_dict(player) for player in players]
 
     if args.save:
-        from src.repositories.player_basic_repository import PlayerBasicRepository
-
-        suspects = [entry for entry in player_dicts if entry.get("status") in {"retired", "staff"}]
-        if suspects:
-            confirmer = PlayerStatusConfirmer()
-            confirm_stats = await confirmer.confirm_entries(suspects)
-            logger.info(
-                "\nProfile-confirmed statuses: %s (attempted %s)",
-                confirm_stats["confirmed"],
-                confirm_stats["attempted"],
-            )
-
-        parsed_dates = sum(1 for player in player_dicts if player["birth_date_date"] is not None)
-        logger.info("\nParsed birth dates: %s/%s", parsed_dates, len(player_dicts))
-
-        logger.info("\nSaving to SQLite...")
-        repo = PlayerBasicRepository()
-        saved_count = repo.upsert_players(player_dicts)
-        logger.info("Saved %s players to SQLite", saved_count)
+        await _crawl_and_save(player_dicts)
     else:
         logger.info("\nSkipping SQLite save (--no-save specified)")
         if should_sync:
             logger.info("Existing SQLite data will be used for OCI sync")
 
     if should_sync:
-        from src.db.engine import SessionLocal
-        from src.sync.oci_sync import OCISync
-
         if not oci_url:
             logger.info("\nOCI_DB_URL not set; skipping OCI sync")
         else:
-            logger.info("\nSyncing to OCI...")
-            with SessionLocal() as sqlite_session:
-                sync = OCISync(oci_url, sqlite_session)
-                try:
-                    if not sync.test_connection():
-                        logger.info("OCI connection failed")
-                        return
-
-                    synced = sync.sync_player_basic()
-                    logger.info("Synced %s players to OCI", synced)
-                finally:
-                    sync.close()
-    else:
-        if args.sync_oci is False:
-            logger.info("\nSkipping OCI sync (--no-sync-oci specified)")
-        elif not oci_url:
-            logger.info("\nOCI_DB_URL not set; OCI sync skipped")
+            _sync_to_oci(oci_url)
+    elif args.sync_oci is False:
+        logger.info("\nSkipping OCI sync (--no-sync-oci specified)")
+    elif not oci_url:
+        logger.info("\nOCI_DB_URL not set; OCI sync skipped")
 
     logger.info("\n" + "=" * 60)  # noqa: G003
     logger.info("Complete")

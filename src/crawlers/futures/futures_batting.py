@@ -97,49 +97,41 @@ def _compute_missing(row: dict) -> dict[str, Any]:
 
 
 def _parse_table(table: Tag) -> list[dict]:
-    """Parse a table element into list of season records."""
-    # Extract headers from thead
-    headers = [_norm_header(th.get_text(strip=True)) for th in table.select("thead th, thead td")]
-
-    # If no thead, try first row
-    if not headers:
-        first_row = table.find("tr")
-        if first_row:
-            headers = [_norm_header(cell.get_text(strip=True)) for cell in first_row.find_all(["th", "td"])]
-
+    headers = _extract_table_headers(table)
     out = []
     for tr in table.select("tbody tr"):
         cells = [td.get_text(strip=True) for td in tr.find_all(["td", "th"])]
         if not cells:
             continue
-
-        # Skip total/summary rows
-        if any(keyword in " ".join(cells).lower() for keyword in ["통산", "합계", "career", "total"]):
+        if any(k in " ".join(cells).lower() for k in ["통산", "합계", "career", "total"]):
             continue
-
-        row = {}
-        for h, v in zip(headers, cells, strict=False):
-            key = _norm_header(h)
-
-            if key == "season":
-                # Extract 4-digit year from season label
-                m = re.search(r"\d{4}", v)
-                if not m:
-                    row["season"] = None
-                else:
-                    row["season"] = int(m.group())
-            elif key in ("AVG", "SLG", "OBP"):
-                row[key] = safe_float_or_none(v)
-            elif key in ("G", "AB", "R", "H", "2B", "3B", "HR", "RBI", "SB", "BB", "HBP", "SO", "SF"):
-                row[key] = safe_int_or_none(v)
-
-        # Skip rows without valid season
-        if not row.get("season"):
-            continue
-
-        out.append(_compute_missing(row))
-
+        row = _parse_batting_row(headers, cells)
+        if row.get("season"):
+            out.append(_compute_missing(row))
     return out
+
+
+def _extract_table_headers(table: Tag) -> list[str]:
+    headers = [_norm_header(th.get_text(strip=True)) for th in table.select("thead th, thead td")]
+    if not headers:
+        first_row = table.find("tr")
+        if first_row:
+            headers = [_norm_header(cell.get_text(strip=True)) for cell in first_row.find_all(["th", "td"])]
+    return headers
+
+
+def _parse_batting_row(headers: list[str], cells: list[str]) -> dict[str, Any]:
+    row: dict[str, Any] = {}
+    for h, v in zip(headers, cells, strict=False):
+        key = _norm_header(h)
+        if key == "season":
+            m = re.search(r"\d{4}", v)
+            row["season"] = int(m.group()) if m else None
+        elif key in ("AVG", "SLG", "OBP"):
+            row[key] = safe_float_or_none(v)
+        elif key in ("G", "AB", "R", "H", "2B", "3B", "HR", "RBI", "SB", "BB", "HBP", "SO", "SF"):
+            row[key] = safe_int_or_none(v)
+    return row
 
 
 def _pick_futures_table(soup: BeautifulSoup) -> Tag | None:
