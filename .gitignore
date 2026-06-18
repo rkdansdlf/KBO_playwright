@@ -11,6 +11,9 @@ __pycache__/
 .ruff_cache/
 .python-version
 
+# Build artifacts
+*.egg-info/
+
 # Playwright browser binaries
 pw-browsers/
 
