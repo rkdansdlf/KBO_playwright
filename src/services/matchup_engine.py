@@ -5,6 +5,7 @@ from typing import Any
 
 from sqlalchemy import case, func, select
 from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.orm import Session
 
 from src.db.engine import SessionLocal
 from src.models.game import Game, GameBattingStat, GameEvent, GamePitchingStat
@@ -25,7 +26,7 @@ logger = logging.getLogger(__name__)
 class MatchupEngine:
     """Service to aggregate splits matrices natively from Box Scores and Play-by-Play."""
 
-    def __init__(self, session=None) -> None:
+    def __init__(self, session: Session | None = None) -> None:
         self.session = session
 
     def execute_all(self, season_year: int) -> None:
@@ -52,7 +53,7 @@ class MatchupEngine:
             if not self.session:
                 sess.close()
 
-    def _fetch_bvp_events(self, session, season_year: int) -> list[GameEvent]:
+    def _fetch_bvp_events(self, session: Session, season_year: int) -> list[GameEvent]:
         return (
             session.query(GameEvent)
             .join(Game, Game.game_id == GameEvent.game_id)
@@ -150,7 +151,7 @@ class MatchupEngine:
         )
         existing.avg, existing.obp, existing.slg, existing.ops = avg, obp, slg, ops
 
-    def _add_new_bvp(self, session, batter_id: int, pitcher_id: int, stats: dict[str, Any]) -> None:
+    def _add_new_bvp(self, session: Session, batter_id: int, pitcher_id: int, stats: dict[str, Any]) -> None:
         avg, obp, slg, ops = self._calc_rate_stats(
             stats["h"],
             stats["ab"],
@@ -185,7 +186,7 @@ class MatchupEngine:
             ),
         )
 
-    def _upsert_bvp_map(self, session, bvp_map: dict[tuple[int, int], dict[str, Any]]) -> None:
+    def _upsert_bvp_map(self, session: Session, bvp_map: dict[tuple[int, int], dict[str, Any]]) -> None:
         for (batter_id, pitcher_id), stats in bvp_map.items():
             existing = session.query(MatchupBvP).filter_by(batter_id=batter_id, pitcher_id=pitcher_id).first()
             if existing:
@@ -193,17 +194,17 @@ class MatchupEngine:
             else:
                 self._add_new_bvp(session, batter_id, pitcher_id, stats)
 
-    def _calc_precise_bvp(self, session, season_year: int) -> None:
+    def _calc_precise_bvp(self, session: Session, season_year: int) -> None:
         """Aggregates precise batter vs pitcher stats from GameEvents."""
         logger.info("   🎯 Calculating precise BvP for %s...", season_year)
         events = self._fetch_bvp_events(session, season_year)
         self._upsert_bvp_map(session, self._build_bvp_map(events))
 
-    def _clear_situational_splits(self, session, season_year: int) -> None:
+    def _clear_situational_splits(self, session: Session, season_year: int) -> None:
         session.query(BatterSplit).filter(BatterSplit.season_year == season_year).delete()
         session.query(PitcherSplit).filter(PitcherSplit.season_year == season_year).delete()
 
-    def _fetch_situational_events(self, session, season_year: int) -> list[GameEvent]:
+    def _fetch_situational_events(self, session: Session, season_year: int) -> list[GameEvent]:
         return (
             session.query(GameEvent)
             .join(Game, Game.game_id == GameEvent.game_id)
@@ -213,7 +214,7 @@ class MatchupEngine:
             .all()
         )
 
-    def _load_player_map(self, session) -> dict[int, PlayerBasic]:
+    def _load_player_map(self, session: Session) -> dict[int, PlayerBasic]:
         return {player.player_id: player for player in session.query(PlayerBasic).all()}
 
     @staticmethod
@@ -303,7 +304,7 @@ class MatchupEngine:
 
     def _insert_batter_situational_splits(
         self,
-        session,
+        session: Session,
         season_year: int,
         bat_splits: dict[int, dict[str, dict[str, int]]],
     ) -> None:
@@ -339,7 +340,7 @@ class MatchupEngine:
 
     def _insert_pitcher_situational_splits(
         self,
-        session,
+        session: Session,
         season_year: int,
         pit_splits: dict[int, dict[str, dict[str, int]]],
     ) -> None:
@@ -366,7 +367,7 @@ class MatchupEngine:
                     ),
                 )
 
-    def _calc_situational_splits(self, session, season_year: int) -> None:
+    def _calc_situational_splits(self, session: Session, season_year: int) -> None:
         """Calculates RISP and vs Handedness splits using GameEvents."""
         logger.info("   📉 Calculating situational splits for %s...", season_year)
 
@@ -382,7 +383,7 @@ class MatchupEngine:
         self._insert_batter_situational_splits(session, season_year, bat_splits)
         self._insert_pitcher_situational_splits(session, season_year, pit_splits)
 
-    def _calc_batter_team_splits(self, session, season_year: int) -> None:
+    def _calc_batter_team_splits(self, session: Session, season_year: int) -> None:
         """Aggregates batter stats partitioned by the opposing team."""
         # Find which team is the opponent
         opponent_case = case((GameBattingStat.team_code == Game.home_team, Game.away_team), else_=Game.home_team).label(
@@ -465,7 +466,7 @@ class MatchupEngine:
             )
         session.add_all(splits)
 
-    def _calc_pitcher_team_splits(self, session, season_year: int) -> None:
+    def _calc_pitcher_team_splits(self, session: Session, season_year: int) -> None:
         opponent_case = case(
             (GamePitchingStat.team_code == Game.home_team, Game.away_team),
             else_=Game.home_team,
@@ -529,7 +530,7 @@ class MatchupEngine:
             )
         session.add_all(splits)
 
-    def _calc_batter_stadium_splits(self, session, season_year: int) -> None:
+    def _calc_batter_stadium_splits(self, session: Session, season_year: int) -> None:
         """Aggregates batter stats by stadium."""
         stmt = (
             select(
@@ -600,7 +601,7 @@ class MatchupEngine:
             )
         session.add_all(splits)
 
-    def _calc_batter_vs_starter(self, session, season_year: int) -> None:
+    def _calc_batter_vs_starter(self, session: Session, season_year: int) -> None:
         """Determines the opposing starting pitcher heuristically and aggregates batter stats against them."""
         # Find which team is opposing, and get their starting pitcher from `Game`
         opposing_pitcher = case(
@@ -671,15 +672,15 @@ class MatchupEngine:
 
     def _calc_rate_stats(
         self,
-        hits,
-        ab,
-        pa,
-        walks,
-        hbp,
-        double,
-        triple,
-        hr,
-        is_full=True,
+        hits: int | float | None,
+        ab: int | float | None,
+        pa: int | float | None,
+        walks: int | float | None,
+        hbp: int | float | None,
+        double: int | float | None,
+        triple: int | float | None,
+        hr: int | float | None,
+        is_full: bool = True,
     ) -> tuple[float, float, float, float]:
         """Helper to calculate composite rates safely."""
         h = hits or 0

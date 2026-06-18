@@ -31,6 +31,7 @@ from src.models.game import (
 logger = logging.getLogger(__name__)
 
 from src.sync.sync_base import (
+    GameSyncEligibility,
     _log_sync_eligibility,
     build_game_sync_eligibility,
     detect_dirty_game_ids,
@@ -132,7 +133,7 @@ class GameSyncMixin:
         # Load season map for mapping SQLite season_id (year) to OCI season_id (int)
         season_map = self._get_season_map()
 
-        def transform(data) -> dict[str, Any]:
+        def transform(data: dict[str, Any]) -> dict[str, Any]:
             # If season_id looks like a year (e.g. > 1900), map it
             raw_sid = data.get("season_id")
             if raw_sid and raw_sid > 1900:
@@ -345,7 +346,12 @@ class GameSyncMixin:
             child_filters.append(GameMetadata.game_id.in_(game_ids))
         return child_filters if child_filters else None
 
-    def _prepare_target_game_detail_children(self, year: int | None, unsynced_only: bool, eligibility) -> None:
+    def _prepare_target_game_detail_children(
+        self,
+        year: int | None,
+        unsynced_only: bool,
+        eligibility: GameSyncEligibility,
+    ) -> None:
         if year and not unsynced_only:
             self._purge_game_detail_children_for_year(year)
             return
@@ -357,7 +363,12 @@ class GameSyncMixin:
         )
 
     @staticmethod
-    def _child_filter_for_model(model_cls, child_filters, scoped_game_ids, eligibility) -> list | None:
+    def _child_filter_for_model(
+        model_cls: type,
+        child_filters: list | None,
+        scoped_game_ids: list[str],
+        eligibility: GameSyncEligibility,
+    ) -> list | None:
         if model_cls in {GameEvent, GamePlayByPlay}:
             return [model_cls.game_id.in_(eligibility.relay_game_ids)]
         if model_cls is GameValidationMetrics:
@@ -415,7 +426,7 @@ class GameSyncMixin:
 
         self._prepare_target_game_detail_children(year, unsynced_only, eligibility)
 
-        def get_child_filters(model_cls) -> list | None:
+        def get_child_filters(model_cls: type) -> list | None:
             return self._child_filter_for_model(model_cls, child_filters, scoped_game_ids, eligibility)
 
         # 1. Game Metadata

@@ -9,6 +9,8 @@ from __future__ import annotations
 import logging
 from typing import Any
 
+from sqlalchemy.orm import Session
+
 from src.models.game import Game
 from src.repositories.game_helpers import (
     GAME_STATUS_COMPLETED,
@@ -100,10 +102,10 @@ def _score_regression_warnings(
 
 def _inning_regression_warnings(
     index: int,
-    inning: Any,
-    half: Any,
-    prev_inning: Any,
-    prev_half: Any,
+    inning: int | None,
+    half: str | None,
+    prev_inning: int | None,
+    prev_half: str | None,
 ) -> list[str]:
     if prev_inning is None:
         return []
@@ -118,12 +120,12 @@ def _inning_regression_warnings(
 
 def _out_count_warnings(
     index: int,
-    outs: Any,
-    inning: Any,
-    half: Any,
-    prev_outs: Any,
-    prev_inning: Any,
-    prev_half: Any,
+    outs: int | None,
+    inning: int | None,
+    half: str | None,
+    prev_outs: int | None,
+    prev_inning: int | None,
+    prev_half: str | None,
 ) -> list[str]:
     if outs is None or prev_outs is None:
         return []
@@ -151,7 +153,7 @@ def _event_sequence_warnings(index: int, event: dict[str, Any], events: list[dic
 
 
 def cross_validate_with_box_score(
-    session,
+    session: Session,
     game_id: str,
     events: list[dict[str, Any]],
 ) -> tuple[bool, str | None]:
@@ -218,7 +220,7 @@ def cross_validate_with_box_score(
 
 
 def validate_pbp_payload(
-    session,
+    session: Session,
     game_id: str,
     events: list[dict[str, Any]],
     raw_pbp_rows: list[dict[str, Any]],

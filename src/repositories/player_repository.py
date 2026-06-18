@@ -40,7 +40,8 @@ class PlayerRepository:
         Also synchronizes status and key fields to PlayerBasic.
         """
         if not kbo_player_id:
-            raise ValueError("kbo_player_id is required to upsert a player profile")
+            msg = "kbo_player_id is required to upsert a player profile"
+            raise ValueError(msg)
 
         with SessionLocal() as session:
             player = self._get_or_create_player(session, kbo_player_id)
@@ -218,7 +219,7 @@ class PlayerRepository:
 
     def _upsert_season_stats(
         self,
-        model,
+        model: type[PlayerSeasonBatting] | type[PlayerSeasonPitching],
         player_id: int,
         payload: dict[str, Any],
     ) -> None:
@@ -230,7 +231,8 @@ class PlayerRepository:
 
         season = data.get("season")
         if season is None:
-            raise ValueError("season_data must include 'season'")
+            msg = "season_data must include 'season'"
+            raise ValueError(msg)
 
         with SessionLocal() as session:
             existing = session.execute(

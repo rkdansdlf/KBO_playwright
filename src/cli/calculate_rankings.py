@@ -7,6 +7,8 @@ import logging
 from collections.abc import Sequence
 from datetime import date, datetime
 
+from sqlalchemy.orm import Session
+
 from src.aggregators.ranking_aggregator import RankingAggregator
 from src.db.engine import SessionLocal
 from src.models.player import (
@@ -21,7 +23,7 @@ from src.models.rankings import StatRanking
 logger = logging.getLogger(__name__)
 
 
-def _dictify_rows(rows, label_lookup) -> list[dict]:
+def _dictify_rows(rows: Sequence[object], label_lookup: dict[int, str]) -> list[dict]:
     """Convert ORM rows to dicts and inject player names."""
     result = []
     for row in rows:
@@ -37,7 +39,7 @@ def _dictify_rows(rows, label_lookup) -> list[dict]:
     return result
 
 
-def _games_played_in_season(session, season: int) -> int:
+def _games_played_in_season(session: Session, season: int) -> int:
     """Return number of completed game-dates in the given season."""
     from sqlalchemy import text
 
@@ -60,7 +62,7 @@ _MIN_PA_FLOOR = 30  # 시즌 초반 최소 보호 기준
 _MIN_IP_FLOOR = 90  # 시즌 초반 최소 보호 기준 (90 이닝 아웃 = 30 IP)
 
 
-def _compute_min_pa(session, season: int) -> int:
+def _compute_min_pa(session: Session, season: int) -> int:
     """시즌 진행 경기 수 기반으로 타율 자격 min_pa를 동적으로 계산.
 
     완료된 시즌(144경기 이상)은 공식 기준 446 PA 적용.
@@ -72,7 +74,7 @@ def _compute_min_pa(session, season: int) -> int:
     return max(int(games_played * _MIN_PA_PER_GAME), _MIN_PA_FLOOR)
 
 
-def _compute_min_ip_outs(session, season: int) -> int:
+def _compute_min_ip_outs(session: Session, season: int) -> int:
     """시즌 진행 경기 수 기반으로 평균자책점 자격 min_ip_outs를 동적으로 계산.
 
     완료된 시즌(144경기 이상)은 공식 기준 432 이닝아웃 적용.

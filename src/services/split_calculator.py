@@ -28,7 +28,7 @@ class SituationalSplitCalculator:
     Computes situational batting splits from game_events (PBP) data.
     """
 
-    def __init__(self, session=None) -> None:
+    def __init__(self, session: Session | None = None) -> None:
         self._session = session
 
     def _session_ctx(self) -> Session:
@@ -40,7 +40,7 @@ class SituationalSplitCalculator:
     # RISP: Runners In Scoring Position (base_state & 6 > 0)
     # base_state bitmask: 1=1B, 2=2B, 4=3B  → RISP = 2B or 3B set → & 6
     # ------------------------------------------------------------------ #
-    def _resolve_name(self, player_id: int, session) -> str | None:
+    def _resolve_name(self, player_id: int, session: Session) -> str | None:
         """Returns the Korean name for a given player_id."""
         row = session.execute(
             text("SELECT name FROM player_basic WHERE player_id = :pid"),

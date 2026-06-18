@@ -8,10 +8,9 @@ import logging
 import os
 from collections.abc import Sequence
 from datetime import datetime, timedelta
-from typing import Any
 
 from sqlalchemy import create_engine
-from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy.orm import Query, Session, sessionmaker
 
 from src.db.engine import SessionLocal
 from src.models.game import (
@@ -49,7 +48,7 @@ KBO_FRESHNESS_TEAM_CODES = {
 }
 
 
-def _freshness_base_query(session: Session) -> Any:
+def _freshness_base_query(session: Session) -> Query:
     return session.query(
         Game.game_id,
         Game.game_date,
@@ -65,7 +64,7 @@ def _freshness_base_query(session: Session) -> Any:
     )
 
 
-def _apply_freshness_date_filter(query, target_date: str | None, days: int | None) -> Any:
+def _apply_freshness_date_filter(query: Query, target_date: str | None, days: int | None) -> Query:
     if target_date:
         return query.filter(Game.game_date == datetime.strptime(target_date, "%Y%m%d").date())
     if days:
@@ -90,18 +89,18 @@ def _empty_issue_map() -> dict[str, list[str]]:
     }
 
 
-def _check_metadata_start_time(session: Session, game, issues: dict[str, list[str]]) -> None:
+def _check_metadata_start_time(session: Session, game: object, issues: dict[str, list[str]]) -> None:
     metadata = session.query(GameMetadata.start_time).filter(GameMetadata.game_id == game.game_id).one_or_none()
     if metadata is None or metadata.start_time is None:
         issues["missing_start_time"].append(game.game_id)
 
 
-def _check_lineups(session: Session, game, issues: dict[str, list[str]]) -> None:
+def _check_lineups(session: Session, game: object, issues: dict[str, list[str]]) -> None:
     if session.query(GameLineup).filter(GameLineup.game_id == game.game_id).count() == 0:
         issues["missing_lineups"].append(game.game_id)
 
 
-def _check_inning_scores(session: Session, game, issues: dict[str, list[str]]) -> None:
+def _check_inning_scores(session: Session, game: object, issues: dict[str, list[str]]) -> None:
     inning_rows = (
         session.query(GameInningScore.team_side, GameInningScore.runs)
         .filter(GameInningScore.game_id == game.game_id)
@@ -121,7 +120,7 @@ def _check_inning_scores(session: Session, game, issues: dict[str, list[str]]) -
         issues["inning_score_mismatch"].append(game.game_id)
 
 
-def _check_events_wpa(session: Session, game, issues: dict[str, list[str]]) -> None:
+def _check_events_wpa(session: Session, game: object, issues: dict[str, list[str]]) -> None:
     event_count = session.query(GameEvent.id).filter(GameEvent.game_id == game.game_id).count()
     if not event_count:
         issues["missing_events"].append(game.game_id)
@@ -131,14 +130,14 @@ def _check_events_wpa(session: Session, game, issues: dict[str, list[str]]) -> N
         issues["missing_wpa"].append(game.game_id)
 
 
-def _check_starting_pitchers(game, issues: dict[str, list[str]]) -> None:
+def _check_starting_pitchers(game: object, issues: dict[str, list[str]]) -> None:
     if not (game.away_pitcher and str(game.away_pitcher).strip()) or not (
         game.home_pitcher and str(game.home_pitcher).strip()
     ):
         issues["missing_starting_pitchers"].append(game.game_id)
 
 
-def _check_pitching_stats(session: Session, game, issues: dict[str, list[str]]) -> None:
+def _check_pitching_stats(session: Session, game: object, issues: dict[str, list[str]]) -> None:
     pitching_rows = (
         session.query(GamePitchingStat.team_side, GamePitchingStat.is_starting)
         .filter(GamePitchingStat.game_id == game.game_id)
@@ -152,7 +151,7 @@ def _check_pitching_stats(session: Session, game, issues: dict[str, list[str]]) 
         issues["missing_pitching_starters"].append(game.game_id)
 
 
-def _check_review_summary(session: Session, game, issues: dict[str, list[str]]) -> None:
+def _check_review_summary(session: Session, game: object, issues: dict[str, list[str]]) -> None:
     review = (
         session.query(GameSummary.detail_text)
         .filter(GameSummary.game_id == game.game_id, GameSummary.summary_type == "리뷰_WPA")
@@ -166,7 +165,7 @@ def _check_review_summary(session: Session, game, issues: dict[str, list[str]]) 
         issues["review_moment_noise"].append(game.game_id)
 
 
-def _check_freshness_game(session: Session, game, issues: dict[str, list[str]]) -> None:
+def _check_freshness_game(session: Session, game: object, issues: dict[str, list[str]]) -> None:
     _check_metadata_start_time(session, game, issues)
     _check_lineups(session, game, issues)
     _check_inning_scores(session, game, issues)
@@ -253,7 +252,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.source_url_env:
         source_url = os.getenv(args.source_url_env)
         if not source_url:
-            raise SystemExit(f"{args.source_url_env} is not set")
+            msg = f"{args.source_url_env} is not set"
+            raise SystemExit(msg)
     if source_url:
         engine = create_engine(source_url, pool_pre_ping=True)
         session_factory = sessionmaker(bind=engine, autoflush=False, autocommit=False, expire_on_commit=False)

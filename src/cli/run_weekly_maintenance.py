@@ -9,6 +9,7 @@ import argparse
 import asyncio
 import logging
 import os
+from collections.abc import Awaitable, Callable
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
@@ -36,7 +37,7 @@ WEEKLY_MAINTENANCE_EXCEPTIONS = (
 )
 
 
-async def _run_weekly_step(step_label: str, error_message: str, action) -> None:
+async def _run_weekly_step(step_label: str, error_message: str, action: Callable[[], Awaitable[None]]) -> None:
     logger.info("\n%s", step_label)
     try:
         await action()

@@ -31,7 +31,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     if not args.source_url:
-        raise SystemExit("OCI_DB_URL or --source-url is required")
+        msg = "OCI_DB_URL or --source-url is required"
+        raise SystemExit(msg)
 
     target_date = datetime.strptime(args.date, "%Y%m%d").date() if args.date else None
     source_engine = create_engine_for_url(args.source_url, disable_sqlite_wal=True)

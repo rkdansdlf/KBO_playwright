@@ -116,7 +116,7 @@ async def process_player(
     player_name: str,
     repository: PlayerRepository,
     delay: float,
-    pool,
+    pool: AsyncPlaywrightPool,
 ) -> tuple[str, int]:
     """
     단일 선수의 퓨처스리그 기록을 크롤링하고 데이터베이스에 저장합니다.
@@ -134,7 +134,7 @@ async def process_player_result(
     player_name: str,
     repository: PlayerRepository,
     delay: float,  # noqa: ARG001
-    pool,
+    pool: AsyncPlaywrightPool,
 ) -> dict[str, Any]:
     normalized_id = normalize_player_id(player_id)
     if normalized_id is None:

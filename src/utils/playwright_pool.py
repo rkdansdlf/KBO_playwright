@@ -7,6 +7,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from contextlib import asynccontextmanager, suppress
+from types import TracebackType
 from typing import Any
 
 from playwright.async_api import Browser, BrowserContext, Page, async_playwright
@@ -48,49 +49,70 @@ class AsyncPlaywrightPool:
         await self.start()
         return self
 
-    async def __aexit__(self, exc_type, exc, tb) -> None:
+    async def __aexit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc: BaseException | None,
+        tb: TracebackType | None,
+    ) -> None:
         await self.close()
 
     async def start(self) -> None:
         if self._started:
             return
 
+        await self._prepare_auth_state()
+
+        try:
+            await self._start_browser_context()
+            if self.block_resources and self._context:
+                await install_async_resource_blocking(self._context)
+            await self._create_pages()
+            self._started = True
+        except (PlaywrightError, RuntimeError, OSError):
+            await self.close()
+            raise
+
+    async def _prepare_auth_state(self) -> None:
         from src.utils.kbo_auth import KboAuthenticator
 
         # Automated Authentication if required
-        if self.requires_auth:
-            if not KboAuthenticator.is_authenticated():
-                logger.info("[POOL] Session missing. Triggering auto-login...")
-                auth = KboAuthenticator()
-                success = await auth.login(headless=self.headless)
-                if not success:
-                    logger.info("[POOL] Warning: Auto-login failed. Proceeding without auth.")
+        if not self.requires_auth:
+            return
+        if not KboAuthenticator.is_authenticated():
+            logger.info("[POOL] Session missing. Triggering auto-login...")
+            auth = KboAuthenticator()
+            success = await auth.login(headless=self.headless)
+            if not success:
+                logger.info("[POOL] Warning: Auto-login failed. Proceeding without auth.")
 
-            if KboAuthenticator.is_authenticated():
-                logger.info("[POOL] Using saved session state.")
-                self.context_kwargs["storage_state"] = KboAuthenticator.get_auth_state_path()
+        if KboAuthenticator.is_authenticated():
+            logger.info("[POOL] Using saved session state.")
+            self.context_kwargs["storage_state"] = KboAuthenticator.get_auth_state_path()
 
-        try:
-            self._playwright = await async_playwright().start()
-            browser_factory = getattr(self._playwright, self.browser_type)
+    async def _start_browser_context(self) -> None:
+        self._playwright = await async_playwright().start()
+        browser_factory = getattr(self._playwright, self.browser_type)
 
-            # Add evasion arguments
-            launch_args = [
-                "--disable-blink-features=AutomationControlled",
-            ]
-            self._browser = await browser_factory.launch(headless=self.headless, args=launch_args)
+        # Add evasion arguments
+        launch_args = [
+            "--disable-blink-features=AutomationControlled",
+        ]
+        self._browser = await browser_factory.launch(headless=self.headless, args=launch_args)
 
-            # Dynamic User-Agent Rotation
-            if "user_agent" not in self.context_kwargs:
-                from src.utils.request_policy import RequestPolicy
+        # Dynamic User-Agent Rotation
+        if "user_agent" not in self.context_kwargs:
+            from src.utils.request_policy import RequestPolicy
 
-                policy = RequestPolicy()
-                self.context_kwargs["user_agent"] = policy.random_user_agent()
+            policy = RequestPolicy()
+            self.context_kwargs["user_agent"] = policy.random_user_agent()
 
-            self._context = await self._browser.new_context(**self.context_kwargs)
+        self._context = await self._browser.new_context(**self.context_kwargs)
+        await self._context.add_init_script(self._stealth_script())
 
-            # Inject Stealth Script
-            stealth_script = """
+    @staticmethod
+    def _stealth_script() -> str:
+        return """
             () => {
                 // 1. Mask navigator.webdriver
                 Object.defineProperty(navigator, 'webdriver', { get: () => false });
@@ -113,28 +135,25 @@ class AsyncPlaywrightPool:
                 delete navigator.__proto__.webdriver;
             }
             """
-            await self._context.add_init_script(stealth_script)
 
-            if self.block_resources:
-                await install_async_resource_blocking(self._context)
-
-            self._queue = asyncio.Queue(maxsize=self.max_pages)
-            for _ in range(self.max_pages):
-                page = await self._context.new_page()
-                if self.timeout_ms:
-                    page.set_default_timeout(self.timeout_ms)
-                self._pages.append(page)
-                await self._queue.put(page)
-            self._started = True
-        except (PlaywrightError, RuntimeError, OSError):
-            await self.close()
-            raise
+    async def _create_pages(self) -> None:
+        if not self._context:
+            msg = "Playwright context not initialized"
+            raise RuntimeError(msg)
+        self._queue = asyncio.Queue(maxsize=self.max_pages)
+        for _ in range(self.max_pages):
+            page = await self._context.new_page()
+            if self.timeout_ms:
+                page.set_default_timeout(self.timeout_ms)
+            self._pages.append(page)
+            await self._queue.put(page)
 
     async def acquire(self) -> Page:
         if not self._started:
             await self.start()
         if not self._queue:
-            raise RuntimeError("Playwright pool not initialized")
+            msg = "Playwright pool not initialized"
+            raise RuntimeError(msg)
         return await self._queue.get()
 
     async def release(self, page: Page) -> None:

@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 import threading
 from pathlib import Path
-from typing import Any
+from types import TracebackType
 
 logger = logging.getLogger(__name__)
 
@@ -140,8 +140,14 @@ class ProcessLock:
 
     def __enter__(self) -> ProcessLock:
         if not self.acquire():
-            raise LockAcquisitionError(f"Could not acquire ProcessLock: {self.name}")
+            msg = f"Could not acquire ProcessLock: {self.name}"
+            raise LockAcquisitionError(msg)
         return self
 
-    def __exit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_val: BaseException | None,
+        exc_tb: TracebackType | None,
+    ) -> None:
         self.release()

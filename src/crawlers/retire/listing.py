@@ -252,7 +252,8 @@ class RetiredPlayerListingCrawler:
         Returns ONLY the set of IDs for backward compatibility.
         """
         if start_year > end_year:
-            raise ValueError("start_year must be <= end_year")
+            msg = "start_year must be <= end_year"
+            raise ValueError(msg)
 
         seasons = range(start_year, end_year + 1)
         historical_players = await self.collect_historical_player_ids(seasons)

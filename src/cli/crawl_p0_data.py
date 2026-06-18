@@ -66,7 +66,8 @@ def _normalize_target_date(value: str | None) -> str | None:
             return datetime.strptime(raw, date_format).strftime("%Y-%m-%d")
         except ValueError:
             continue
-    raise ValueError(f"Invalid --target-date: {value!r}. Use YYYYMMDD or YYYY-MM-DD.")
+    msg = f"Invalid --target-date: {value!r}. Use YYYYMMDD or YYYY-MM-DD."
+    raise ValueError(msg)
 
 
 async def run_from_args(args: argparse.Namespace) -> dict[str, int]:

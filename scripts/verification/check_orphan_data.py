@@ -1014,9 +1014,9 @@ def main() -> None:
 
     try:
         db_url = _resolve_db_url(args.db_url)
-    except ValueError:
+    except ValueError as exc:
         logger.exception("Error resolving DB URL")
-        raise SystemExit(2)
+        raise SystemExit(2) from exc
 
     if db_url:
         report = collect_database_url_report(db_url, args.sample_limit)

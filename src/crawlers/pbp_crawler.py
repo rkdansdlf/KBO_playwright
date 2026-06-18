@@ -65,7 +65,7 @@ class PBPCrawler:
 
         try:
 
-            async def do_crawl(retry_count=0) -> dict[str, Any] | None:
+            async def do_crawl(retry_count: int = 0) -> dict[str, Any] | None:
                 try:
                     page = await pool.acquire()
                     try:

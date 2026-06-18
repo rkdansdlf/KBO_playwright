@@ -9,6 +9,7 @@ import argparse
 import asyncio
 import logging
 import os
+from collections.abc import Awaitable, Callable
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
@@ -48,7 +49,7 @@ def _filter_player_rows(records: list[dict], valid_cols: set[str]) -> list[dict]
     ]
 
 
-async def _run_step(step_label: str, error_message: str, action) -> bool:
+async def _run_step(step_label: str, error_message: str, action: Callable[[], Awaitable[None]]) -> bool:
     logger.info("\n%s", step_label)
     try:
         await action()
@@ -182,7 +183,8 @@ async def run_advanced_update(
     logger.info("%s\n", "=" * 60)
 
     if any_error:
-        raise RuntimeError(f"Advanced Daily Sync finished with errors for {year}")
+        msg = f"Advanced Daily Sync finished with errors for {year}"
+        raise RuntimeError(msg)
 
 
 def main() -> int:

@@ -7,7 +7,7 @@ import logging
 import os
 import re
 from pathlib import Path
-from typing import Any
+from typing import Any, Protocol
 
 logger = logging.getLogger(__name__)
 
@@ -93,13 +93,25 @@ DETAIL_CRAWLER_EXCEPTIONS = (
 )
 
 
+class PlayerIdResolver(Protocol):
+    def resolve_id(
+        self,
+        player_name: str,
+        team_code: str,
+        season_year: int,
+        *,
+        uniform_no: str | None = None,
+        is_pitcher: bool = False,
+    ) -> int | None: ...
+
+
 class GameDetailCrawler:
     """Crawl KBO GameCenter review pages and return structured box score data."""
 
     def __init__(
         self,
         request_delay: float | None = None,
-        resolver: Any | None = None,
+        resolver: PlayerIdResolver | None = None,
         pool: AsyncPlaywrightPool | None = None,
     ) -> None:
         self.base_url = GAME_CENTER
@@ -693,7 +705,7 @@ class GameDetailCrawler:
         team_code: str | None,
         season_year: int | None,
         roster_map: dict[str, list[dict[str, Any]]] | None = None,
-        _db_session=None,
+        _db_session: object | None = None,
         _use_hitter_section: bool = False,
     ) -> list[dict[str, Any]]:
         selectors = (
@@ -838,7 +850,7 @@ class GameDetailCrawler:
         team_code: str | None,
         season_year: int | None,
         roster_map: dict[str, list[dict[str, Any]]] | None = None,
-        _db_session=None,
+        _db_session: object | None = None,
         _use_pitcher_section: bool = False,
     ) -> list[dict[str, Any]]:
         selectors = (

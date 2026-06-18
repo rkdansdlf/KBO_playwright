@@ -87,7 +87,8 @@ async def _resolve_candidates(
     if game_id:
         normalized = normalize_kbo_game_id(game_id)
         if normalized[:8] != target_date:
-            raise ValueError("--game-id date prefix must match --date")
+            msg = "--game-id date prefix must match --date"
+            raise ValueError(msg)
         return [_candidate(normalized, target_date)]
 
     year = int(target_date[:4])
@@ -107,9 +108,11 @@ async def run_smoke(
     relay_crawler: RelayCrawler | None = None,
 ) -> dict[str, Any]:
     if scope not in SCOPES:
-        raise ValueError(f"Unsupported scope: {scope}")
+        msg = f"Unsupported scope: {scope}"
+        raise ValueError(msg)
     if limit < 1:
-        raise ValueError("--limit must be at least 1")
+        msg = "--limit must be at least 1"
+        raise ValueError(msg)
 
     result = _base_result(target_date, scope)
     schedule = schedule_crawler or ScheduleCrawler()

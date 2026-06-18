@@ -9,6 +9,7 @@ from typing import Any
 
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.orm import Session
 
 from src.models.player import (
     PlayerSeasonBaserunning,
@@ -149,7 +150,7 @@ class StatsSyncMixin:
         Signature includes ROW COUNT and MAX(updated_at).
         """
 
-        def get_sig(session) -> dict[str, Any]:
+        def get_sig(session: Session) -> dict[str, Any]:
             table_name = model.__tablename__
             where_clause = ""
             params = {}

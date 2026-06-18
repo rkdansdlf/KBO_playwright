@@ -12,6 +12,7 @@ import asyncio
 import re
 
 from bs4 import BeautifulSoup
+from bs4.element import Tag
 from playwright.async_api import Error as PlaywrightError
 
 from src.utils.compliance import compliance
@@ -95,7 +96,7 @@ def _compute_missing(row: dict) -> dict[str, Any]:
     return row
 
 
-def _parse_table(table) -> list[dict]:
+def _parse_table(table: Tag) -> list[dict]:
     """Parse a table element into list of season records."""
     # Extract headers from thead
     headers = [_norm_header(th.get_text(strip=True)) for th in table.select("thead th, thead td")]
@@ -141,7 +142,7 @@ def _parse_table(table) -> list[dict]:
     return out
 
 
-def _pick_futures_table(soup: BeautifulSoup) -> Any | None:
+def _pick_futures_table(soup: BeautifulSoup) -> Tag | None:
     """
     Find the Futures stats table safely:
     1. Look for table near '퓨처스' label

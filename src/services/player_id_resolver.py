@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import csv
 import logging
+from collections.abc import Iterable
 from pathlib import Path
 from typing import Any
 
@@ -137,7 +138,7 @@ class PlayerIdResolver:
         player_name: str,
         team_code: str,
         season: int,
-        candidate_ids,
+        candidate_ids: Iterable[int | str | None],
     ) -> int | None:
         candidates = sorted({int(pid) for pid in candidate_ids if pid is not None})
         logger.warning(
@@ -208,7 +209,7 @@ class PlayerIdResolver:
         team_code: str,
         season: int,
         uniform_no: str | None,
-        candidate_ids,
+        candidate_ids: Iterable[int | str | None],
     ) -> int | None:
         candidates = sorted({int(pid) for pid in candidate_ids if pid is not None})
         if team_code and candidates and all(pid >= 900000 for pid in candidates):

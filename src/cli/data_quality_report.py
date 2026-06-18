@@ -11,7 +11,7 @@ from datetime import datetime
 from pathlib import Path
 
 from sqlalchemy import func
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy.orm import Session, sessionmaker
 
 from src.aggregators.season_stat_aggregator import SeasonStatAggregator
 from src.db.engine import SessionLocal, create_engine_for_url
@@ -34,13 +34,13 @@ def _empty_year_data() -> dict:
     }
 
 
-def _source_counts(session, model, year_field, year: int) -> tuple[int, dict]:
+def _source_counts(session: Session, model: type[object], year_field: object, year: int) -> tuple[int, dict]:
     rows = session.query(model.source, func.count(model.id)).filter(year_field == year).group_by(model.source).all()
     sources = {source or "UNKNOWN": count for source, count in rows}
     return sum(sources.values()), sources
 
 
-def _populate_source_summaries(session, year_data: dict, year: int) -> None:
+def _populate_source_summaries(session: Session, year_data: dict, year: int) -> None:
     specs = (
         ("batting", PlayerSeasonBatting, PlayerSeasonBatting.season),
         ("pitching", PlayerSeasonPitching, PlayerSeasonPitching.season),
@@ -53,7 +53,7 @@ def _populate_source_summaries(session, year_data: dict, year: int) -> None:
         year_data[category]["sources"] = sources
 
 
-def _audit_batting_consistency(session, year_data: dict, year: int) -> None:
+def _audit_batting_consistency(session: Session, year_data: dict, year: int) -> None:
     logger.info("   🔍 Auditing consistency for %s (sample)...", year)
     sample_players = session.query(PlayerSeasonBatting).filter(PlayerSeasonBatting.season == year).limit(50).all()
     matches = 0
@@ -71,7 +71,7 @@ def _audit_batting_consistency(session, year_data: dict, year: int) -> None:
         year_data["batting"]["consistency_rate"] = round(matches / total_checked * 100, 2)
 
 
-def _append_batting_discrepancy(session, year_data: dict, official, calc: dict) -> None:
+def _append_batting_discrepancy(session: Session, year_data: dict, official: PlayerSeasonBatting, calc: dict) -> None:
     player = session.query(PlayerBasic).filter_by(player_id=official.player_id).first()
     year_data["discrepancies"].append(
         {

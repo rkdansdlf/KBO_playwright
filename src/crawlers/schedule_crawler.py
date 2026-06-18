@@ -8,7 +8,6 @@ from __future__ import annotations
 import asyncio
 import logging
 from datetime import datetime
-from typing import Any
 
 from playwright.async_api import Error as PlaywrightError
 from playwright.async_api import Page
@@ -286,7 +285,7 @@ class ScheduleCrawler:
 
         return True, "ok"
 
-    def _normalize_schedule_status(self, status: Any) -> str:
+    def _normalize_schedule_status(self, status: object) -> str:
         normalized = normalize_game_status(str(status or "").strip())
         if normalized:
             return normalized

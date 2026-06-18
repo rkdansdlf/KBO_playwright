@@ -72,7 +72,12 @@ KBO_TO_NAVER_TEAM_CODE = {
 class RelayCrawler:
     schedule_fallback_window_days = 7
 
-    def __init__(self, request_delay: float = 1.0, policy=None, _pool: AsyncPlaywrightPool | None = None) -> None:
+    def __init__(
+        self,
+        request_delay: float = 1.0,
+        policy: RequestPolicy | None = None,
+        _pool: AsyncPlaywrightPool | None = None,
+    ) -> None:
         """
         pool is retained for backward compatibility with GameDetailCrawler but is unused.
         """
@@ -236,9 +241,9 @@ class RelayCrawler:
 
     def _resolve_dh_no(
         self,
-        game: dict,
-        games: list,
-        dh_no_val,
+        game: dict[str, Any],
+        games: list[dict[str, Any]],
+        dh_no_val: object,
         away_code: str,
         home_code: str,
         game_date_str: str,
@@ -277,7 +282,7 @@ class RelayCrawler:
         home_code: str,
         games: list[dict],
     ) -> int:
-        def is_dh_truthy(v) -> bool:
+        def is_dh_truthy(v: object) -> bool:
             if isinstance(v, bool):
                 return v
             if v is None:

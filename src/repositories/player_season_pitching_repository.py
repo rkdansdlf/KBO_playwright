@@ -31,7 +31,7 @@ def _prefer_payload_value(
     payload: dict[str, Any],
     metrics: dict[str, Any],
     key: str,
-) -> Any:
+) -> object:
     value = payload.get(key)
     if value is not None:
         return value
@@ -146,7 +146,7 @@ def _build_pitching_row(payload: dict[str, Any]) -> dict[str, Any]:
     return {key: value for key, value in data.items() if value is not None}
 
 
-def _build_pitching_upsert_stmt(data: dict[str, Any], db_type: str) -> Any:
+def _build_pitching_upsert_stmt(data: dict[str, Any], db_type: str) -> object | None:
     key_fields = ["player_id", "season", "league", "level"]
     if db_type == "sqlite":
         stmt = sqlite_insert(PlayerSeasonPitching).values(**data)

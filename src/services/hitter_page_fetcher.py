@@ -23,6 +23,7 @@ from typing import Any
 
 import httpx
 from bs4 import BeautifulSoup
+from sqlalchemy.orm import Session
 
 from src.urls import GAME_CENTER
 from src.utils.request_policy import RequestPolicy
@@ -178,7 +179,7 @@ def fetch_and_parse_hitter_sh_sf(
 
 
 def derive_sh_sf_from_hitter_page(
-    session: Any,
+    session: Session,
     game_id: str,
     game_date: str,
     client: httpx.Client | None = None,
@@ -233,7 +234,7 @@ def derive_sh_sf_from_hitter_page(
 
 
 def derive_sh_sf_hybrid(
-    session: Any,
+    session: Session,
     game_id: str,
     game_date: str,
     client: httpx.Client | None = None,

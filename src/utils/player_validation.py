@@ -26,13 +26,13 @@ INVALID_PLAYER_NAMES = {
 UNKNOWN_ID_NAME_RE = re.compile(r"^unknown\s+\d+$", re.IGNORECASE)
 
 
-def normalize_player_name(name: Any) -> str:
+def normalize_player_name(name: object) -> str:
     if name is None:
         return ""
     return str(name).strip()
 
 
-def is_invalid_player_name(name: Any) -> bool:
+def is_invalid_player_name(name: object) -> bool:
     normalized = normalize_player_name(name)
     return (
         not normalized
@@ -41,7 +41,7 @@ def is_invalid_player_name(name: Any) -> bool:
     )
 
 
-def normalize_player_id(player_id: Any) -> int | None:
+def normalize_player_id(player_id: object) -> int | None:
     if player_id is None:
         return None
     try:

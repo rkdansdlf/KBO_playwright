@@ -85,7 +85,7 @@ class PlayerBasicRepository:
                 unique_payload[player_id] = row
         return list(unique_payload.values())
 
-    def _build_upsert_stmt(self, values: dict[str, Any] | list[dict[str, Any]]) -> Any:
+    def _build_upsert_stmt(self, values: dict[str, Any] | list[dict[str, Any]]) -> object:
         keys = values[0] if isinstance(values, list) else values
         if self.dialect == "sqlite":
             stmt = sqlite_insert(PlayerBasic).values(values)
@@ -104,7 +104,7 @@ class PlayerBasicRepository:
             set_=self._build_status_preserving_update_dict(keys, stmt.excluded),
         )
 
-    def _build_status_preserving_update_dict(self, keys: dict[str, Any], excluded: Any) -> dict[str, Any]:
+    def _build_status_preserving_update_dict(self, keys: dict[str, Any], excluded: object) -> dict[str, Any]:
         status_case = case(
             (excluded.status_source.in_(["profile", "register"]), excluded.status),
             (PlayerBasic.status_source.in_(["profile", "register"]), PlayerBasic.status),

@@ -139,7 +139,8 @@ def main(argv: Sequence[str] | None = None) -> None:
     if args.schedule_fixtures:
         fixtures_dir = Path(args.schedule_fixtures)
         if not fixtures_dir.exists():
-            raise SystemExit(f"Schedule fixtures directory not found: {fixtures_dir}")
+            msg = f"Schedule fixtures directory not found: {fixtures_dir}"
+            raise SystemExit(msg)
         total = ingest_schedule_fixtures(fixtures_dir, args.schedule_season_type, args.schedule_year)
         logger.info("\n✅ Schedule ingest complete (%s rows processed)", total)
 
@@ -147,7 +148,8 @@ def main(argv: Sequence[str] | None = None) -> None:
     if args.game_fixtures:
         game_dir = Path(args.game_fixtures)
         if not game_dir.exists():
-            raise SystemExit(f"Game fixtures directory not found: {game_dir}")
+            msg = f"Game fixtures directory not found: {game_dir}"
+            raise SystemExit(msg)
         ingested = ingest_game_fixtures(game_dir)
         logger.info("\n✅ Game detail ingest complete (%s files)", ingested)
         if ingested and not game_ids:

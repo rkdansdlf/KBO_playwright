@@ -70,18 +70,28 @@ class EmbeddingService:
         if not texts:
             return []
 
-        # 1. Determine model name
-        if self.api_key and self.api_key.startswith("sk-or-v1-"):
-            model_name = os.getenv("EMBEDDING_MODEL", "openai/text-embedding-3-small")
-        else:
-            model_name = "models/text-embedding-004"
-
-        # 2. Compute hashes
+        model_name = self._model_name()
         hashes = [self._compute_hash(t) for t in texts]
+        cached_map = self._load_cached_embeddings(hashes, model_name)
+        missing_indices, missing_texts = self._missing_embedding_inputs(texts, hashes, cached_map)
 
-        # 3. Try to fetch from SQLite cache
+        if missing_texts:
+            new_embeddings = self._fetch_missing_embeddings(missing_texts)
+            self._save_cached_embeddings(hashes, missing_indices, model_name, new_embeddings)
+            self._merge_new_embeddings(cached_map, hashes, missing_indices, new_embeddings)
+
+        return [cached_map[h] for h in hashes]
+
+    def _model_name(self) -> str:
+        if self.api_key and self.api_key.startswith("sk-or-v1-"):
+            return os.getenv("EMBEDDING_MODEL", "openai/text-embedding-3-small")
+        return "models/text-embedding-004"
+
+    def _load_cached_embeddings(self, hashes: list[str], model_name: str) -> dict[str, list[float]]:
         cached_map = {}
         try:
+            import json
+
             from sqlalchemy import select
 
             from src.db.engine import SessionLocal
@@ -92,10 +102,7 @@ class EmbeddingService:
                     EmbeddingCache.text_hash.in_(hashes),
                     EmbeddingCache.model_name == model_name,
                 )
-                cache_rows = session.scalars(stmt).all()
-                for row in cache_rows:
-                    import json
-
+                for row in session.scalars(stmt).all():
                     emb = row.embedding
                     if isinstance(emb, str):
                         with contextlib.suppress(json.JSONDecodeError, TypeError):
@@ -103,51 +110,62 @@ class EmbeddingService:
                     cached_map[row.text_hash] = emb
         except EMBEDDING_DB_EXCEPTIONS:
             logger.exception("⚠️ Warning: Embedding cache lookup error (continuing without cache)")
+        return cached_map
 
-        # 4. Identify which texts need API calls
+    def _missing_embedding_inputs(
+        self,
+        texts: list[str],
+        hashes: list[str],
+        cached_map: dict[str, list[float]],
+    ) -> tuple[list[int], list[str]]:
         missing_indices = []
         missing_texts = []
-        for idx, h in enumerate(hashes):
-            if h not in cached_map:
+        for idx, text_hash in enumerate(hashes):
+            if text_hash not in cached_map:
                 missing_indices.append(idx)
                 missing_texts.append(texts[idx])
+        return missing_indices, missing_texts
 
-        # 5. Call API for missing embeddings
-        new_embeddings = []
-        if missing_texts:
-            if not self.api_key:
-                logger.error("❌ GEMINI_API_KEY missing. Returning zero-vectors as fallback.")
-                new_embeddings = [[0.0] * 256 for _ in missing_texts]
-            else:
-                if self.api_key.startswith("sk-or-v1-"):
-                    raw_embeddings = self._fetch_openrouter_embeddings(missing_texts)
-                else:
-                    raw_embeddings = self._fetch_google_embeddings(missing_texts)
-                new_embeddings = [self.adjust_embedding_dimension(emb) for emb in raw_embeddings]
+    def _fetch_missing_embeddings(self, missing_texts: list[str]) -> list[list[float]]:
+        if not self.api_key:
+            logger.error("❌ GEMINI_API_KEY missing. Returning zero-vectors as fallback.")
+            return [[0.0] * 256 for _ in missing_texts]
+        if self.api_key.startswith("sk-or-v1-"):
+            raw_embeddings = self._fetch_openrouter_embeddings(missing_texts)
+        else:
+            raw_embeddings = self._fetch_google_embeddings(missing_texts)
+        return [self.adjust_embedding_dimension(emb) for emb in raw_embeddings]
 
-            # 6. Save newly generated embeddings to cache
-            try:
-                from src.db.engine import SessionLocal
-                from src.models.embedding_cache import EmbeddingCache
+    def _save_cached_embeddings(
+        self,
+        hashes: list[str],
+        missing_indices: list[int],
+        model_name: str,
+        new_embeddings: list[list[float]],
+    ) -> None:
+        try:
+            from src.db.engine import SessionLocal
+            from src.models.embedding_cache import EmbeddingCache
 
-                with SessionLocal() as session:
-                    for idx, emb in enumerate(new_embeddings):
-                        text_hash = hashes[missing_indices[idx]]
-                        # Prevent duplicate insert if somehow triggered
-                        existing = session.get(EmbeddingCache, (text_hash, model_name))
-                        if not existing:
-                            cache_entry = EmbeddingCache(text_hash=text_hash, model_name=model_name, embedding=emb)
-                            session.add(cache_entry)
-                    session.commit()
-            except EMBEDDING_DB_EXCEPTIONS:
-                logger.exception("⚠️ Warning: Failed to save to embedding cache")
+            with SessionLocal() as session:
+                for idx, emb in enumerate(new_embeddings):
+                    text_hash = hashes[missing_indices[idx]]
+                    existing = session.get(EmbeddingCache, (text_hash, model_name))
+                    if not existing:
+                        session.add(EmbeddingCache(text_hash=text_hash, model_name=model_name, embedding=emb))
+                session.commit()
+        except EMBEDDING_DB_EXCEPTIONS:
+            logger.exception("⚠️ Warning: Failed to save to embedding cache")
 
-            # Merge new embeddings into cached map
-            for idx, emb in enumerate(new_embeddings):
-                cached_map[hashes[missing_indices[idx]]] = emb
-
-        # 7. Construct final list in original order
-        return [cached_map[h] for h in hashes]
+    def _merge_new_embeddings(
+        self,
+        cached_map: dict[str, list[float]],
+        hashes: list[str],
+        missing_indices: list[int],
+        new_embeddings: list[list[float]],
+    ) -> None:
+        for idx, emb in enumerate(new_embeddings):
+            cached_map[hashes[missing_indices[idx]]] = emb
 
     def _fetch_openrouter_embeddings(self, texts: list[str]) -> list[list[float]]:
         """

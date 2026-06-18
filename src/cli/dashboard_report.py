@@ -19,6 +19,7 @@ from datetime import datetime
 from typing import Any
 
 from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.orm import Session
 
 from src.db.engine import SessionLocal, get_oci_url
 
@@ -38,7 +39,7 @@ AVAILABLE_SECTIONS = [
 ]
 
 
-def _r2dict(obj: Any, model: type) -> dict[str, Any]:
+def _r2dict(obj: object, model: type[object]) -> dict[str, Any]:
     """Convert SQLAlchemy ORM instance to dict."""
     return {c.name: getattr(obj, c.name) for c in model.__table__.columns}
 
@@ -52,7 +53,7 @@ def _date_or_today(date_str: str | None) -> str:
 # ─── Section builders ────────────────────────────────────────────────────
 
 
-def _build_standings(session, year: int, date_str: str) -> dict[str, Any]:
+def _build_standings(session: Session, year: int, date_str: str) -> dict[str, Any]:
     from sqlalchemy import extract
 
     from src.models.standings import TeamStandingsDaily
@@ -71,7 +72,7 @@ def _build_standings(session, year: int, date_str: str) -> dict[str, Any]:
     return {"rows": [_r2dict(r, TeamStandingsDaily) for r in rows], "date": str(d)}
 
 
-def _build_park_factor(session, year: int) -> dict[str, Any]:
+def _build_park_factor(session: Session, year: int) -> dict[str, Any]:
     from src.aggregators.park_factor_calculator import ParkFactorCalculator
 
     calc = ParkFactorCalculator(session)
@@ -79,7 +80,7 @@ def _build_park_factor(session, year: int) -> dict[str, Any]:
     return {"results": results, "year": year}
 
 
-def _build_rankings(session, year: int) -> dict[str, Any]:
+def _build_rankings(session: Session, year: int) -> dict[str, Any]:
     from src.aggregators.ranking_aggregator import RankingAggregator
     from src.models.player import PlayerSeasonBatting, PlayerSeasonPitching
 
@@ -121,7 +122,7 @@ def _build_rankings(session, year: int) -> dict[str, Any]:
     return {"top5": top5, "year": year}
 
 
-def _build_team_defense(session, year: int) -> dict[str, Any]:
+def _build_team_defense(session: Session, year: int) -> dict[str, Any]:
     from src.models.team import TeamSeasonBaserunning, TeamSeasonFielding
 
     fielding = session.query(TeamSeasonFielding).filter(TeamSeasonFielding.season == year).all()
@@ -133,7 +134,7 @@ def _build_team_defense(session, year: int) -> dict[str, Any]:
     }
 
 
-def _build_quality(session, date_str: str, year: int) -> dict[str, Any]:
+def _build_quality(session: Session, date_str: str, year: int) -> dict[str, Any]:
     from src.cli.generate_quality_report import get_daily_metrics
     from src.validators.quality_gate import run_quality_gate
 
@@ -143,7 +144,7 @@ def _build_quality(session, date_str: str, year: int) -> dict[str, Any]:
     return metrics
 
 
-def _build_freshness(session, date_str: str) -> dict[str, Any]:
+def _build_freshness(session: Session, date_str: str) -> dict[str, Any]:
     from src.cli.freshness_gate import collect_freshness_issues
 
     issues = collect_freshness_issues(session, date_str)
@@ -171,7 +172,7 @@ def _build_sync() -> dict[str, Any]:
 # ─── Formatters ──────────────────────────────────────────────────────────
 
 
-def _row_value(row: Any, key: str, default: Any = None) -> Any:
+def _row_value(row: object, key: str, default: object = None) -> object:
     if hasattr(row, key):
         return getattr(row, key)
     return row.get(key, default)

@@ -94,7 +94,7 @@ class ImportRelayAdapter(RelaySourceAdapter):
             return path.read_text(encoding="utf-8")
         return locator
 
-    def _read_json(self, locator: str) -> Any:
+    def _read_json(self, locator: str) -> object:
         path = self._resolve_locator(locator)
         if path.exists():
             return json.loads(path.read_text(encoding="utf-8"))

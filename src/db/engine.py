@@ -14,6 +14,7 @@ from contextlib import contextmanager
 from dotenv import load_dotenv
 from sqlalchemy import Engine as SQLAlchemyEngine
 from sqlalchemy import create_engine, event
+from sqlalchemy.engine import Connection
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session, sessionmaker
 
@@ -52,7 +53,7 @@ def create_engine_for_url(url: str, *, disable_sqlite_wal: bool = False) -> SQLA
         )
 
         @event.listens_for(engine, "connect")
-        def _sqlite_pragmas(dbapi_con, _) -> None:
+        def _sqlite_pragmas(dbapi_con: sqlite3.Connection, _: object) -> None:
             try:
                 cursor = dbapi_con.cursor()
                 cursor.execute("PRAGMA foreign_keys = ON;")
@@ -178,7 +179,7 @@ def _ensure_game_identity_columns() -> None:
         logger.warning("Could not ensure game identity columns: %s", exc)
 
 
-def _migrate_game_table(conn) -> None:
+def _migrate_game_table(conn: Connection) -> None:
     info_rows = conn.exec_driver_sql("PRAGMA table_info(game);").fetchall()
     column_names = {row[1] for row in info_rows}
     required_cols = {
@@ -275,7 +276,7 @@ def _migrate_game_table(conn) -> None:
     conn.exec_driver_sql("PRAGMA foreign_keys=ON;")
 
 
-def _migrate_game_summary_table(conn) -> None:
+def _migrate_game_summary_table(conn: Connection) -> None:
     info_rows = conn.exec_driver_sql("PRAGMA table_info(game_summary);").fetchall()
     column_names = {row[1] for row in info_rows}
     fk_rows = conn.exec_driver_sql("PRAGMA foreign_key_list(game_summary);").fetchall()

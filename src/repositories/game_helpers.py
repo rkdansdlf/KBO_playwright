@@ -95,7 +95,7 @@ SEASON_DATE_RULES: dict[int, list[tuple[str, str, str]]] = {
 }
 
 
-def _coerce_int(value: Any) -> int | None:
+def _coerce_int(value: object) -> int | None:
     if value in (None, ""):
         return None
     try:
@@ -104,7 +104,7 @@ def _coerce_int(value: Any) -> int | None:
         return None
 
 
-def _resolve_league_type_code(season_type: Any) -> int:
+def _resolve_league_type_code(season_type: object) -> int:
     as_int = _coerce_int(season_type)
     if as_int is not None:
         return as_int
@@ -112,7 +112,7 @@ def _resolve_league_type_code(season_type: Any) -> int:
     return SEASON_TYPE_TO_LEAGUE_CODE.get(key, 0)
 
 
-def _resolve_game_date_obj(raw_date: Any) -> date | None:
+def _resolve_game_date_obj(raw_date: object) -> date | None:
     if isinstance(raw_date, date):
         return raw_date
     if isinstance(raw_date, datetime):
@@ -242,7 +242,7 @@ def _resolve_game_season_id(
     return _resolve_schedule_season_id(session, season_data, existing_season_id)
 
 
-def _canonicalize_game_id(game_id: Any) -> tuple[str | None, str | None]:
+def _canonicalize_game_id(game_id: object) -> tuple[str | None, str | None]:
     """Return (canonical legacy game_id, original game_id)."""
     if not game_id:
         return None, None
@@ -252,13 +252,13 @@ def _canonicalize_game_id(game_id: Any) -> tuple[str | None, str | None]:
 
 
 def _canonicalize_game_id_for_payload(
-    game_id: Any,
+    game_id: object,
     *,
-    game_date: Any = None,
-    away_team_code: Any = None,
-    home_team_code: Any = None,
+    game_date: object = None,
+    away_team_code: object = None,
+    home_team_code: object = None,
     season_year: int | None = None,
-    doubleheader_no: Any = None,
+    doubleheader_no: object = None,
 ) -> tuple[str | None, str | None]:
     """Return a canonical game_id, preferring explicit payload teams when available."""
     canonical, original = _canonicalize_game_id(game_id)
@@ -323,9 +323,9 @@ def _new_strict_player_resolver(session: Session) -> PlayerIdResolver:
 
 
 def _assign_field_if_changed(
-    target: Any,
+    target: object,
     attr: str,
-    value: Any,
+    value: object,
     *,
     game_id: str,
     source: GameWriteSource,
@@ -348,7 +348,7 @@ def _assign_field_if_changed(
     return True
 
 
-def _values_equal(left: Any, right: Any) -> bool:
+def _values_equal(left: object, right: object) -> bool:
     if isinstance(left, Decimal) or isinstance(right, Decimal):
         try:
             return Decimal(str(left)) == Decimal(str(right))
@@ -529,8 +529,8 @@ def _ensure_game_stub(session: Session, game_id: str) -> None:
 def _derive_game_status(
     *,
     game_date: date | None,
-    home_score: Any,
-    away_score: Any,
+    home_score: object,
+    away_score: object,
     current_status: str | None,
     has_metadata: bool,
     has_inning_scores: bool,
@@ -721,10 +721,11 @@ def _assert_no_player_team_collisions(game_id: str, dataset: str, mappings: list
         return
 
     preview = ", ".join(f"{player_id}:{team_keys}" for player_id, team_keys in list(collisions.items())[:5])
-    raise ValueError(
+    msg = (
         f"{dataset} has player_id team collisions for {game_id}: {preview}. "
-        "Refusing to save ambiguous game detail rows.",
+        "Refusing to save ambiguous game detail rows."
     )
+    raise ValueError(msg)
 
 
 def _ensure_player_basic_stubs(session: Session, mappings: Iterable[dict[str, Any]]) -> bool:
@@ -914,7 +915,7 @@ def _stat_int(stats: dict[str, Any], key: str) -> int:
         return 0
 
 
-def _stat_float(stats: dict[str, Any], key: str) -> Any:
+def _stat_float(stats: dict[str, Any], key: str) -> float | None:
     value = stats.get(key)
     if value in (None, ""):
         return None
@@ -924,7 +925,7 @@ def _stat_float(stats: dict[str, Any], key: str) -> Any:
         return None
 
 
-def _normalize_player_id(value: Any) -> Any:
+def _normalize_player_id(value: object) -> int | None:
     if value in (None, "", "null"):
         return None
     try:
@@ -933,7 +934,7 @@ def _normalize_player_id(value: Any) -> Any:
         return None
 
 
-def _outs_to_decimal(outs: Any) -> Any:
+def _outs_to_decimal(outs: object) -> Decimal | None:
     if outs in (None, "", 0):
         return Decimal("0") if outs in (0,) else None
     try:
@@ -943,7 +944,7 @@ def _outs_to_decimal(outs: Any) -> Any:
         return None
 
 
-def _safe_time(value: Any) -> time | None:
+def _safe_time(value: object) -> time | None:
     if not value:
         return None
     if isinstance(value, datetime):
@@ -971,7 +972,7 @@ def _resolve_winner(home: dict[str, Any], away: dict[str, Any]) -> tuple[str | N
     return None, home_score
 
 
-def _resolve_terminal_status(home_score: Any, away_score: Any) -> str:
+def _resolve_terminal_status(home_score: object, away_score: object) -> str:
     if home_score is not None and away_score is not None and home_score == away_score:
         return GAME_STATUS_DRAW
     return GAME_STATUS_COMPLETED
@@ -995,7 +996,7 @@ def _apply_team_identity_to_mappings(mappings: list[dict[str, Any]], season_year
         mapping["canonical_team_code"] = canonical_team_code
 
 
-def _resolve_team_identity(team_code: Any, season_year: int | None) -> tuple[int | None, str | None, str | None]:
+def _resolve_team_identity(team_code: object, season_year: int | None) -> tuple[int | None, str | None, str | None]:
     if not team_code:
         return None, None, None
     raw_code = str(team_code).strip().upper()

@@ -7,6 +7,7 @@ from typing import Any
 
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
+from sqlalchemy.sql.elements import ColumnElement
 
 from src.models.game import Game
 from src.models.season import KboSeason
@@ -117,7 +118,7 @@ def validate_standings_integrity(session: Session, target_date: date) -> dict[st
     }
 
 
-def _regular_season_filter() -> Any:
+def _regular_season_filter() -> ColumnElement[bool]:
     return or_(
         KboSeason.league_type_code == 0,
         KboSeason.league_type_name.in_(REGULAR_SEASON_NAMES),

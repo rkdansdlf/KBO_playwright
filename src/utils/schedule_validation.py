@@ -20,7 +20,7 @@ from src.utils.team_codes import KBO_GAME_ID_TEAM_CODES, normalize_kbo_game_id
 _GAME_ID_RE = re.compile(r"^(\d{8})([A-Z]+)(\d)$")
 
 
-def parse_schedule_date(value: Any) -> date | None:
+def parse_schedule_date(value: object) -> date | None:
     text = str(value or "").replace("-", "").strip()
     if len(text) != 8 or not text.isdigit():
         return None
@@ -30,7 +30,7 @@ def parse_schedule_date(value: Any) -> date | None:
         return None
 
 
-def split_schedule_game_id(game_id: Any) -> tuple[str, str, str, str] | None:
+def split_schedule_game_id(game_id: object) -> tuple[str, str, str, str] | None:
     raw = str(game_id or "").strip().upper()
     if not raw:
         return None

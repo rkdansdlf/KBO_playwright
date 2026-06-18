@@ -77,7 +77,8 @@ def crawl_monthly_unified_audit_job() -> None:
     # Phase 1: Apply PA formula fix
     fix_result = run_pa_fix(target_year, dry_run=False)
     if not fix_result["ok"]:
-        raise RuntimeError(f"PA formula fix failed for {target_year}: {fix_result.get('error')}")
+        msg = f"PA formula fix failed for {target_year}: {fix_result.get('error')}"
+        raise RuntimeError(msg)
 
     # Phase 2: Run PA formula audit (post-fix) to verify
     pa_result = run_pa_audit(target_year)
@@ -118,12 +119,13 @@ def crawl_monthly_unified_audit_job() -> None:
     )
 
     if not pa_ok or not team_bat_ok or not team_pit_ok:
-        raise RuntimeError(
+        msg = (
             f"Unified audit failed for {target_year}: "
             f"PA formula={'OK' if pa_ok else 'FAIL (' + str(pa_violations) + ' violations)'}, "
             f"Team batting={'OK' if team_bat_ok else 'FAIL (' + str(team_bat_miss) + ' mismatches)'}, "
-            f"Team pitching={'OK' if team_pit_ok else 'FAIL (' + str(team_pit_miss) + ' mismatches)'}",
+            f"Team pitching={'OK' if team_pit_ok else 'FAIL (' + str(team_pit_miss) + ' mismatches)'}"
         )
+        raise RuntimeError(msg)
 
     logger.info("Unified audit completed for %s", target_year)
 
