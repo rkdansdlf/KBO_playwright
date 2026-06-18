@@ -117,7 +117,9 @@ def test_bulk_copy_upsert_reconnect_on_each_retry(monkeypatch):
 def _build_minimal_games_mixin():
     """Build an OCISync that only has a sqlite session for games tests."""
     engine = create_engine("sqlite:///:memory:")
-    Game.__table__.create(bind=engine)
+    from src.models.base import Base
+
+    Base.metadata.create_all(bind=engine)
     local_factory = sessionmaker(bind=engine, autoflush=False, autocommit=False)
 
     syncer = OCISync.__new__(OCISync)
@@ -145,12 +147,22 @@ def test_sync_specific_game_connection_failure_aborts(monkeypatch):
 
 
 def test_sync_pregame_game_connection_failure_aborts(monkeypatch):
+    from unittest.mock import MagicMock
+
+    from sqlalchemy.exc import SQLAlchemyError
+
     syncer = _build_minimal_games_mixin()
-    monkeypatch.setattr(syncer, "test_connection", lambda: False)
+    mock_session = MagicMock()
+    mock_session.query.side_effect = SQLAlchemyError("OCI connection lost")
+    syncer.target_session = mock_session
+    syncer.oci_engine = MagicMock()
 
-    result = syncer.sync_pregame_game("20260514NCLT0")
+    monkeypatch.setattr(syncer, "_reconnect_oci", lambda: None)
+    monkeypatch.setattr(syncer, "_rollback_target_session", lambda label: None)
+    monkeypatch.setattr(syncer, "_is_transient_oci_error", lambda exc: True)
 
-    assert result == {}
+    with pytest.raises(SQLAlchemyError, match="OCI connection lost"):
+        syncer.sync_pregame_game("20260514NCLT0")
 
 
 #
