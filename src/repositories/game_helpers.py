@@ -1210,7 +1210,7 @@ def _build_pregame_lineup_rows(
             continue
         batting_order = _coerce_int(entry.get("batting_order")) or idx
         position = entry.get("position")
-        is_pitcher = position == "투수" or position == "P"
+        is_pitcher = position in ("투수", "P")
         player_id = (
             resolver.resolve_id(player_name, team_code, season_year, is_pitcher=is_pitcher) if team_code else None
         )

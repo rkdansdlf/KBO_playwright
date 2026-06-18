@@ -117,9 +117,9 @@ def parse_pitch_count(description: str) -> dict[str, int | None]:
 
     pitch_type = match.group(2)
 
-    if pitch_type == "볼" or pitch_type == "폭투":
+    if pitch_type in ("볼", "폭투"):
         return {"balls": 1, "strikes": 0}
-    if pitch_type == "스트라이크" or pitch_type == "헛스윙" or pitch_type == "파울":
+    if pitch_type in ("스트라이크", "헛스윙", "파울"):
         return {"balls": 0, "strikes": 1}
     return {"balls": None, "strikes": None}
 

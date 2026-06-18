@@ -39,7 +39,7 @@ async def run_periodic_extras(
     logger.info("\n🔮 Step 1: Crawling Futures League Batting Stats...")
     try:
         cmd = [sys.executable, "-m", "src.crawlers.futures.futures_batting", "--year", str(year), "--save"]
-        result = subprocess.run(cmd, capture_output=True, text=True)
+        result = subprocess.run(cmd, capture_output=True, text=True, check=False)
         if result.returncode == 0:
             logger.info("   ✅ Futures Hitter output:\n%s", result.stdout)
         else:
@@ -52,7 +52,7 @@ async def run_periodic_extras(
     try:
         # retired listing usually doesn't need a year, or it's for all
         cmd = [sys.executable, "-m", "src.crawlers.retire.listing", "--save"]
-        result = subprocess.run(cmd, capture_output=True, text=True)
+        result = subprocess.run(cmd, capture_output=True, text=True, check=False)
         if result.returncode == 0:
             logger.info("   ✅ Retired Listing output:\n%s", result.stdout)
         else:

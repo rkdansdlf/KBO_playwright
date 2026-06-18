@@ -183,7 +183,7 @@ def generate_report() -> str:
 
         if details:
             keys = list(details[0].keys())
-            col_widths = {k: max(len(k), max(len(str(d.get(k, ""))) for d in details)) for k in keys}
+            col_widths = {k: max(len(k), *(len(str(d.get(k, ""))) for d in details)) for k in keys}
             header = "  " + " | ".join(k.ljust(col_widths[k]) for k in keys)
             sep = "  " + "-+-".join("-" * col_widths[k] for k in keys)
             lines.append("")

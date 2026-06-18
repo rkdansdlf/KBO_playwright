@@ -266,7 +266,7 @@ class RelayCrawler:
                 if g_date == game_date_str:
                     same_team_games.append(g)
         if len(same_team_games) > 1:
-            same_team_games.sort(key=lambda g: self._game_time_mins(g))
+            same_team_games.sort(key=self._game_time_mins)
             try:
                 return str(same_team_games.index(game) + 1)
             except ValueError:
