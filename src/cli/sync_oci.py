@@ -299,8 +299,8 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--copy-batch-size",
         type=int,
-        default=10000,
-        help="고속 COPY 작업 시 배치 크기 (기본값: 10000)",
+        default=5000,
+        help="고속 COPY 작업 시 배치 크기 (기본값: 5000)",
     )
     parser.add_argument(
         "--parallel",

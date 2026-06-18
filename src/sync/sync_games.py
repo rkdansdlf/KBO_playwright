@@ -127,7 +127,7 @@ class GameSyncMixin:
         data["batting_order"] = None
         return data
 
-    def sync_games(self, limit: int = None, filters: list = None, batch_size: int = 10000) -> int:  # noqa: ARG002
+    def sync_games(self, limit: int = None, filters: list = None, batch_size: int = 5000) -> int:  # noqa: ARG002
         """Sync game detail data from SQLite to OCI using Batched UPSERT or COPY"""
 
         # Load season map for mapping SQLite season_id (year) to OCI season_id (int)
@@ -393,7 +393,7 @@ class GameSyncMixin:
         days: int = None,
         year: int = None,
         unsynced_only: bool = False,
-        batch_size: int = 10000,
+        batch_size: int = 5000,
     ) -> dict[str, int]:
         """Sync all game detail tables to OCI"""
         results = {}
@@ -409,22 +409,95 @@ class GameSyncMixin:
                 logger.info("🎉 모든 게임 데이터%s가 이미 최신 상태입니다. 동기화를 건너뜁니다.", year_msg)
                 return results
         scoped_game_ids = self._scoped_game_ids(filters, target_game_ids)
+        if not scoped_game_ids:
+            return results
 
+        # 1. If we are doing a full rebuild (not unsynced_only) for a year,
+        # we purge once at the start to avoid deleting synced chunks in subsequent iterations.
+        if year and not unsynced_only:
+            self._purge_game_detail_children_for_year(year)
+
+        # 2. Split scoped_game_ids into smaller game unit chunks (e.g. 20 games per chunk)
+        # to prevent giant transaction lock timeouts/failures on OCI.
+        game_chunk_size = 20
+        chunked_game_ids = [
+            scoped_game_ids[i : i + game_chunk_size] for i in range(0, len(scoped_game_ids), game_chunk_size)
+        ]
+
+        logger.info(
+            "📦 Splitting game detail sync into %s chunks (max %s games per chunk)",
+            len(chunked_game_ids),
+            game_chunk_size,
+        )
+
+        total_chunks = len(chunked_game_ids)
+        for idx, chunk_ids in enumerate(chunked_game_ids, start=1):
+            logger.info("🚀 Syncing game detail chunk %s/%s (%s games)...", idx, total_chunks, len(chunk_ids))
+
+            chunk_results = self._sync_game_detail_chunk(
+                chunk_ids,
+                filters=filters,
+                target_game_ids=target_game_ids,
+                year=year,
+                days=days,
+                unsynced_only=unsynced_only,
+                batch_size=batch_size,
+                skip_year_purge=True,  # We already purged if needed
+            )
+
+            # Aggregate results
+            for key, val in chunk_results.items():
+                if isinstance(val, int):
+                    results[key] = results.get(key, 0) + val
+                elif isinstance(val, dict):
+                    if key not in results:
+                        results[key] = {}
+                    for subkey, subval in val.items():
+                        results[key][subkey] = results[key].get(subkey, 0) + subval
+
+        logger.info("✅ Game Details Sync Summary: %s", results)
+        return results
+
+    def _sync_game_detail_chunk(
+        self,
+        scoped_game_ids: list[str],
+        filters: list,
+        target_game_ids: list[str] | None,  # noqa: ARG002
+        year: int | None,
+        days: int | None,
+        unsynced_only: bool,
+        batch_size: int,
+        skip_year_purge: bool = False,
+    ) -> dict[str, Any]:
+        results = {}
         eligibility = build_game_sync_eligibility(self.sqlite_session, scoped_game_ids)
         results.update(eligibility.counts())
         _log_sync_eligibility(eligibility)
 
         publishable_parent_game_ids = eligibility.parent_game_ids if unsynced_only else None
+
+        # We filter parent game sync to only the game IDs in this chunk
+        chunk_parent_filters = [Game.game_id.in_(scoped_game_ids)]
         self._sync_parent_games_for_details(
-            results, filters, target_game_ids, publishable_parent_game_ids, unsynced_only, batch_size
+            results, chunk_parent_filters, scoped_game_ids, publishable_parent_game_ids, unsynced_only, batch_size
         )
-        self._sync_game_id_aliases(results, target_game_ids if unsynced_only else None, filters, year, days, batch_size)
+
+        # Sync aliases scoped to the chunk's games
+        self._sync_game_id_aliases(results, scoped_game_ids, chunk_parent_filters, year, days, batch_size)
 
         child_filters = self._game_detail_child_filters(filters, year, days)
         if child_filters == []:
             return results
 
-        self._prepare_target_game_detail_children(year, unsynced_only, eligibility)
+        if skip_year_purge:
+            self._replace_target_child_rows_for_games(
+                _DETAIL_REPLACE_CHILD_MODELS, eligibility.detail_game_ids, label="detail"
+            )
+            self._replace_target_child_rows_for_games(
+                _RELAY_REPLACE_CHILD_MODELS, eligibility.relay_game_ids, label="relay"
+            )
+        else:
+            self._prepare_target_game_detail_children(year, unsynced_only, eligibility)
 
         def get_child_filters(model_cls: type) -> list | None:
             return self._child_filter_for_model(model_cls, child_filters, scoped_game_ids, eligibility)
@@ -508,7 +581,6 @@ class GameSyncMixin:
             batch_size=batch_size,
         )
 
-        logger.info("✅ Game Details Sync Summary: %s", results)
         return results
 
     def sync_specific_game(self, game_id: str) -> dict[str, int]:
@@ -630,10 +702,6 @@ class GameSyncMixin:
         if not game_id:
             return {}
 
-        if not self.test_connection():
-            logger.error("❌ OCI connection failed. Aborting sync_pregame_game.")
-            return {}
-
         results: dict[str, int] = {}
         results["game"] = self.sync_simple_table(
             Game,
@@ -726,7 +794,7 @@ class GameSyncMixin:
         *,
         summary_type: str | None = None,
         replace_game_ids: list[str] | None = None,
-        batch_size: int = 10000,
+        batch_size: int = 5000,
     ) -> int:
 
         query = self.sqlite_session.query(GameSummary)
