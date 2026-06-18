@@ -32,7 +32,7 @@ from src.crawlers.game_detail_crawler import GameDetailCrawler
 from src.db.engine import SessionLocal
 from src.models.game import Game
 from src.repositories.game_repository import update_game_status
-from src.services.game_collection_service import crawl_and_save_game_details
+from src.services.game_collection_service import GameCollectionItemResult, crawl_and_save_game_details
 from src.services.game_write_contract import GameWriteContract
 from src.services.player_id_resolver import PlayerIdResolver
 from src.services.recovery_manager import RecoveryManager
@@ -80,7 +80,7 @@ def _find_inconsistent_games() -> list[Game]:
         return list(session.execute(stmt).scalars().all())
 
 
-def _apply_heal_outcome(game_id: str, item) -> str:
+def _apply_heal_outcome(game_id: str, item: GameCollectionItemResult | None) -> str:
     """
     Apply status repair based on one shared collection result item.
 

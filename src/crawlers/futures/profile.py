@@ -7,6 +7,7 @@ import logging
 from typing import Any
 
 from bs4 import BeautifulSoup
+from bs4.element import Tag
 from playwright.async_api import Error as PlaywrightError
 from playwright.async_api import Page
 
@@ -169,7 +170,7 @@ class FuturesProfileCrawler:
 
         return tables
 
-    def _parse_table_with_bs4(self, table_elem) -> dict[str, Any] | None:
+    def _parse_table_with_bs4(self, table_elem: Tag) -> dict[str, Any] | None:
         """Parse a table element using BeautifulSoup for proper Korean encoding."""
         try:
             # Extract caption

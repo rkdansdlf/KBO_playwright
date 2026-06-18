@@ -8,7 +8,7 @@ from typing import Any
 from src.services.wpa_calculator import WPACalculator
 
 
-def get_event_value(event: Any, key: str) -> Any:
+def get_event_value(event: object, key: str) -> object | None:
     if isinstance(event, Mapping):
         return event.get(key)
     return getattr(event, key, None)
@@ -19,7 +19,7 @@ def format_base_string(runners: int | None) -> str:
     return f"{'1' if (value & 1) else '-'}{'2' if (value & 2) else '-'}{'3' if (value & 4) else '-'}"
 
 
-def parse_base_string(value: Any) -> int | None:
+def parse_base_string(value: object) -> int | None:
     if value is None:
         return None
     text = str(value).strip()
@@ -35,7 +35,7 @@ def parse_base_string(value: Any) -> int | None:
     return runners
 
 
-def coerce_int(value: Any) -> int | None:
+def coerce_int(value: object) -> int | None:
     if value is None or value == "":
         return None
     try:
@@ -44,7 +44,7 @@ def coerce_int(value: Any) -> int | None:
         return None
 
 
-def event_runner_state(event: Any) -> int | None:
+def event_runner_state(event: object) -> int | None:
     base_state = coerce_int(get_event_value(event, "base_state"))
     if base_state is not None:
         return base_state
@@ -55,7 +55,7 @@ def event_runner_state(event: Any) -> int | None:
     return None
 
 
-def event_has_transition_state(event: Any) -> bool:
+def event_has_transition_state(event: object) -> bool:
     inning_half = get_event_value(event, "inning_half")
     return all(
         (
@@ -70,7 +70,7 @@ def event_has_transition_state(event: Any) -> bool:
     )
 
 
-def event_has_wpa_state(event: Any) -> bool:
+def event_has_wpa_state(event: object) -> bool:
     return all(
         (
             event_has_transition_state(event),

@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import re
-from typing import Any
 
 RELAY_RESULT_KEYWORDS = (
     "안타",
@@ -97,7 +96,7 @@ _RELAY_NOISE_TOKENS = (
 )
 
 
-def compact_relay_text(description: Any) -> str:
+def compact_relay_text(description: object) -> str:
     return " ".join(str(description or "").strip().split())
 
 
@@ -146,7 +145,7 @@ def advance_pitch_count(description: str, balls: int = 0, strikes: int = 0) -> t
     return balls, strikes, True
 
 
-def is_relay_noise_text(description: Any) -> bool:
+def is_relay_noise_text(description: object) -> bool:
     text = compact_relay_text(description)
     if not text:
         return True
@@ -155,7 +154,7 @@ def is_relay_noise_text(description: Any) -> bool:
     return any(token in text for token in _RELAY_NOISE_TOKENS)
 
 
-def is_relay_result_event_text(description: Any) -> bool:
+def is_relay_result_event_text(description: object) -> bool:
     text = compact_relay_text(description)
     if is_relay_noise_text(text) or ":" not in text:
         return False
@@ -165,7 +164,7 @@ def is_relay_result_event_text(description: Any) -> bool:
     return any(keyword in result_text for keyword in RELAY_RESULT_KEYWORDS)
 
 
-def detect_relay_event_type(description: Any) -> str:
+def detect_relay_event_type(description: object) -> str:
     text = compact_relay_text(description)
     if not is_relay_result_event_text(text):
         return "unknown"

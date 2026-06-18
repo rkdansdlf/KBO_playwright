@@ -32,7 +32,11 @@ BASERUNNING_CRAWL_EXCEPTIONS = (
 BASERUNNING_SAVE_EXCEPTIONS = (sqlite3.Error, ValueError, TypeError, OSError)
 
 
-def crawl_baserunning_stats(year=None, max_retries=3, timeout=LONG_TIMEOUT) -> list[dict[str, Any]]:
+def crawl_baserunning_stats(
+    year: int | None = None,
+    max_retries: int = 3,
+    timeout: int = LONG_TIMEOUT,
+) -> list[dict[str, Any]]:
     """
     전체 선수의 주루 기록을 크롤링합니다.
 
@@ -139,7 +143,11 @@ def crawl_baserunning_stats(year=None, max_retries=3, timeout=LONG_TIMEOUT) -> l
     return baserunning_data
 
 
-def save_baserunning_stats(player_list, year=None, db_path=None) -> None:
+def save_baserunning_stats(
+    player_list: list[dict[str, Any]],
+    year: int | None = None,
+    db_path: str | None = None,
+) -> None:
     """
     주루 기록을 크롤링하여 DB에 저장합니다.
 

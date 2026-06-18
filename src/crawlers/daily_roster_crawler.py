@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from collections.abc import Awaitable, Callable
 from datetime import date, datetime
 from typing import Any
 
@@ -43,7 +44,12 @@ class DailyRosterCrawler:
         self.request_delay = request_delay
         self.pool = pool
 
-    async def crawl_date_range(self, start_date: str, end_date: str, save_callback=None) -> list[dict[str, Any]]:
+    async def crawl_date_range(
+        self,
+        start_date: str,
+        end_date: str,
+        save_callback: Callable[[list[dict[str, Any]]], Awaitable[object] | object] | None = None,
+    ) -> list[dict[str, Any]]:
         """Crawl roster for a range of dates (format: YYYY-MM-DD)."""
         s_date = datetime.strptime(start_date, "%Y-%m-%d").date()
         e_date = datetime.strptime(end_date, "%Y-%m-%d").date()

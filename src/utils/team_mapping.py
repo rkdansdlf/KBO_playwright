@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Iterable, Sequence
 
 logger = logging.getLogger(__name__)
 """
@@ -11,7 +12,7 @@ OCI team_history 테이블과 연동하여 동적 매핑 제공
 
 from sqlalchemy import create_engine, text
 from sqlalchemy.exc import SQLAlchemyError
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy.orm import Session, sessionmaker
 
 from src.utils.team_codes import resolve_team_code
 
@@ -177,7 +178,7 @@ class TeamMapper:
             logger.info("✅ OCI에서 %s개 팀 매핑 로드 완료", len(results))
             return True
 
-    def _load_team_history_rows(self, oci_url: str) -> list | None:
+    def _load_team_history_rows(self, oci_url: str) -> list[Sequence[object]] | None:
         engine = create_engine(oci_url)
         Session = sessionmaker(bind=engine)
         session = Session()
@@ -196,7 +197,7 @@ class TeamMapper:
             engine.dispose()
 
     @staticmethod
-    def _log_team_history_columns(session) -> None:
+    def _log_team_history_columns(session: Session) -> None:
         try:
             structure_query = text("""
                 SELECT column_name
@@ -210,7 +211,7 @@ class TeamMapper:
             logger.exception("⚠️ 테이블 구조 확인 실패")
 
     @staticmethod
-    def _query_team_history(session) -> list | None:
+    def _query_team_history(session: Session) -> list[Sequence[object]] | None:
         for index, query_sql in enumerate(TEAM_HISTORY_QUERIES, start=1):
             try:
                 session.rollback()
@@ -223,11 +224,11 @@ class TeamMapper:
                 return query_result
         return None
 
-    def _apply_oci_mapping_rows(self, rows) -> None:
+    def _apply_oci_mapping_rows(self, rows: Iterable[Sequence[object]]) -> None:
         for row in rows:
             self._apply_oci_mapping_row(row)
 
-    def _apply_oci_mapping_row(self, row) -> None:
+    def _apply_oci_mapping_row(self, row: Sequence[object]) -> None:
         team_name = row[0]
         team_code = row[1]
         try:

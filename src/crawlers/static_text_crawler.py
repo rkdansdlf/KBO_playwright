@@ -35,7 +35,8 @@ class StaticTextCrawler:
         """
         logger.info("📄 Parsing local PDF: %s", pdf_path)
         if not Path(pdf_path).exists():
-            raise FileNotFoundError(f"PDF file not found at: {pdf_path}")
+            msg = f"PDF file not found at: {pdf_path}"
+            raise FileNotFoundError(msg)
 
         chunks = []
         reader = PdfReader(pdf_path)
@@ -91,7 +92,8 @@ class StaticTextCrawler:
                 await pool.close()
 
         if not html_content:
-            raise ValueError(f"Failed to fetch content from Namuwiki url: {url}")
+            msg = f"Failed to fetch content from Namuwiki url: {url}"
+            raise ValueError(msg)
 
         self._raw_pages.append(
             {

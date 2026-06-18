@@ -7,6 +7,7 @@ logger = logging.getLogger(__name__)
 import argparse
 
 from sqlalchemy import func
+from sqlalchemy.orm import Session
 
 from src.aggregators.season_stat_aggregator import SeasonStatAggregator
 from src.db.engine import SessionLocal
@@ -19,7 +20,7 @@ from src.repositories.player_stats_repository import (
 from src.repositories.safe_batting_repository import save_batting_stats_safe
 
 
-def _build_player_team_map(session) -> dict:
+def _build_player_team_map(session: Session) -> dict:
     team_map = {}
     for model in (GameBattingStat, GamePitchingStat):
         team_query = (
@@ -43,7 +44,7 @@ def _assign_team(stats: list[dict], team_map: dict, *, target_key: str) -> list[
     return [stat for stat in stats if stat[target_key]]
 
 
-def _backfill_batting(session, year: int, series: str, team_map: dict) -> None:
+def _backfill_batting(session: Session, year: int, series: str, team_map: dict) -> None:
     stats = SeasonStatAggregator.aggregate_batting_season_bulk(session, year, series, source="FALLBACK_BACKFILL")
     if not stats:
         return
@@ -52,7 +53,7 @@ def _backfill_batting(session, year: int, series: str, team_map: dict) -> None:
     logger.info("   ✅ Batting: %s records saved.", len(valid_stats))
 
 
-def _backfill_pitching(session, year: int, series: str, team_map: dict) -> None:
+def _backfill_pitching(session: Session, year: int, series: str, team_map: dict) -> None:
     stats = SeasonStatAggregator.aggregate_pitching_season_bulk(session, year, series, source="FALLBACK_BACKFILL")
     if not stats:
         return
@@ -62,7 +63,7 @@ def _backfill_pitching(session, year: int, series: str, team_map: dict) -> None:
 
 
 def _backfill_baserunning(
-    session, year: int, series: str, team_map: dict, baserun_repo: PlayerSeasonBaserunningRepository
+    session: Session, year: int, series: str, team_map: dict, baserun_repo: PlayerSeasonBaserunningRepository
 ) -> None:
     stats = SeasonStatAggregator.aggregate_baserunning_season_bulk(session, year, series, source="FALLBACK_BACKFILL")
     if not stats:
@@ -72,7 +73,7 @@ def _backfill_baserunning(
 
 
 def _backfill_fielding(
-    session, year: int, series: str, team_map: dict, fielding_repo: PlayerSeasonFieldingRepository
+    session: Session, year: int, series: str, team_map: dict, fielding_repo: PlayerSeasonFieldingRepository
 ) -> None:
     stats = SeasonStatAggregator.aggregate_fielding_season_bulk(session, year, series, source="FALLBACK_BACKFILL")
     if not stats:

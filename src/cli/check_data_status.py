@@ -18,6 +18,7 @@ from typing import Any
 from dotenv import load_dotenv
 from sqlalchemy import func, select, text
 from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.orm import Session
 
 from src.db.engine import SessionLocal
 from src.models.game import Game
@@ -38,28 +39,28 @@ def _env_enabled(name: str, default: str = "1") -> bool:
     return os.getenv(name, default).strip().lower() not in FALSE_ENV_VALUES
 
 
-def _safe_scalar(session, sql: str, default: int = 0) -> int:
+def _safe_scalar(session: Session, sql: str, default: int = 0) -> int:
     try:
         return session.execute(text(sql)).scalar() or default
     except SQLAlchemyError:
         return default
 
 
-def _safe_rows(session, sql: str) -> list:
+def _safe_rows(session: Session, sql: str) -> list:
     try:
         return session.execute(text(sql)).all()
     except SQLAlchemyError:
         return []
 
 
-def _safe_first(session, sql: str) -> tuple[Any, Any]:
+def _safe_first(session: Session, sql: str) -> tuple[Any, Any]:
     try:
         return session.execute(text(sql)).first()
     except SQLAlchemyError:
         return None, None
 
 
-def _operational_game_counts(session) -> tuple[int, int]:
+def _operational_game_counts(session: Session) -> tuple[int, int]:
     operational_total = _safe_scalar(session, "SELECT COUNT(*) FROM game")
     operational_scheduled = _safe_scalar(
         session,
@@ -72,7 +73,7 @@ def _operational_game_counts(session) -> tuple[int, int]:
     return operational_total, operational_scheduled
 
 
-def _log_season_type_counts(session) -> dict[str, int]:
+def _log_season_type_counts(session: Session) -> dict[str, int]:
     type_counts = {}
     logger.info("\nBy season type:")
     for season_type, count in _safe_rows(
@@ -83,7 +84,7 @@ def _log_season_type_counts(session) -> dict[str, int]:
     return type_counts
 
 
-def _log_schedule_year_counts(session) -> None:
+def _log_schedule_year_counts(session: Session) -> None:
     logger.info("\nBy year:")
     for year, count in _safe_rows(
         session,
@@ -92,7 +93,7 @@ def _log_schedule_year_counts(session) -> None:
         logger.info("  %s: %s", year, count)
 
 
-def _log_schedule_date_ranges(session, *, use_operational_fallback: bool) -> None:
+def _log_schedule_date_ranges(session: Session, *, use_operational_fallback: bool) -> None:
     min_date, max_date = _safe_first(session, "SELECT MIN(game_date), MAX(game_date) FROM game_schedules")
     if min_date and max_date:
         logger.info("\nDate range: %s to %s", min_date, max_date)
@@ -119,7 +120,7 @@ def _validate_schedule_counts(total: int, operational_total: int, type_counts: d
     return warnings
 
 
-def check_schedules(session) -> dict[str, Any]:
+def check_schedules(session: Session) -> dict[str, Any]:
     """`game_schedules` 테이블의 데이터 현황을 점검합니다."""
     logger.info("\n=== Game Schedules ===")
 
@@ -151,7 +152,7 @@ def check_schedules(session) -> dict[str, Any]:
     }
 
 
-def check_players(session) -> dict[str, Any]:
+def check_players(session: Session) -> dict[str, Any]:
     """`players` 테이블의 데이터 현황을 점검합니다."""
     logger.info("\n=== Players ===")
 
@@ -171,7 +172,7 @@ def check_players(session) -> dict[str, Any]:
     return {"total": total}
 
 
-def check_futures_data(session) -> dict[str, Any]:
+def check_futures_data(session: Session) -> dict[str, Any]:
     """퓨처스리그 관련 데이터(타자/투수 기록) 현황을 점검합니다."""
     logger.info("\n=== Futures League Data ===")
 
@@ -202,7 +203,7 @@ def check_futures_data(session) -> dict[str, Any]:
     return {"batting": batting_count, "pitching": pitching_count}
 
 
-def check_game_data(session) -> dict[str, Any]:
+def check_game_data(session: Session) -> dict[str, Any]:
     from src.models.game import PlayerGameBatting, PlayerGamePitching
 
     logger.info("\n=== Game-Level Stats ===")
@@ -288,7 +289,7 @@ def check_game_data(session) -> dict[str, Any]:
     return {"batting": batting_count, "pitching": pitching_count}
 
 
-def check_pregame_pitcher_coverage(session, *, verbose: bool = False) -> dict[str, Any]:
+def check_pregame_pitcher_coverage(session: Session, *, verbose: bool = False) -> dict[str, Any]:
     """예정 경기 선발투수 적재율을 점검합니다."""
     logger.info("\n=== Pregame Starting Pitchers ===")
 
@@ -509,7 +510,7 @@ def check_pregame_pitcher_coverage(session, *, verbose: bool = False) -> dict[st
     }
 
 
-def _run_p0_readiness_check(args) -> None:
+def _run_p0_readiness_check(args: argparse.Namespace) -> None:
     target_date = normalize_yyyymmdd(args.date)
     with SessionLocal() as session:
         readiness = build_p0_readiness(
@@ -560,7 +561,13 @@ def _collect_full_status(
         )
 
 
-def _log_full_status_summary(schedule_stats, player_stats, futures_stats, game_stats, pregame_pitcher_stats) -> None:
+def _log_full_status_summary(
+    schedule_stats: dict[str, Any],
+    player_stats: dict[str, Any],
+    futures_stats: dict[str, Any],
+    game_stats: dict[str, Any],
+    pregame_pitcher_stats: dict[str, Any],
+) -> None:
     logger.info("\n%s", "=" * 60)
     logger.info(" Summary")
     logger.info("%s", "=" * 60)

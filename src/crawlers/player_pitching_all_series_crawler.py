@@ -22,6 +22,7 @@ import argparse
 import logging
 import os
 import re
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime
 
@@ -592,7 +593,7 @@ def parse_basic2_page(
 
         metrics = stats.extra_stats.setdefault("metrics", {})
 
-        def set_metric(header_name: str, key: str, caster) -> None:
+        def set_metric(header_name: str, key: str, caster: Callable[[str | None], int | float | None]) -> None:
             if header_name in header_index:
                 value = caster(cell_text(header_index[header_name]))
                 if value is not None:
@@ -779,7 +780,8 @@ def crawl_pitcher_series(
     by_team: bool = False,
 ) -> list[PitcherStats]:
     if series_key not in SERIES_MAPPING:
-        raise ValueError(f"지원하지 않는 시리즈 키: {series_key}")
+        msg = f"지원하지 않는 시리즈 키: {series_key}"
+        raise ValueError(msg)
 
     series_info = SERIES_MAPPING[series_key]
     league_name = series_info.get("league", "REGULAR")

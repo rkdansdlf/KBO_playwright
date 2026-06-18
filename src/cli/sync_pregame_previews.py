@@ -39,7 +39,8 @@ class PregameSyncTarget:
 def _yyyymmdd(value: str) -> str:
     normalized = value.replace("-", "")
     if len(normalized) != 8 or not normalized.isdigit():
-        raise argparse.ArgumentTypeError(f"Invalid date: {value}. Use YYYYMMDD.")
+        msg = f"Invalid date: {value}. Use YYYYMMDD."
+        raise argparse.ArgumentTypeError(msg)
     datetime.strptime(normalized, "%Y%m%d")
     return normalized
 
@@ -95,7 +96,8 @@ def run_sync(args: argparse.Namespace) -> int:
     load_dotenv()
     target_url = args.target_url or get_oci_url()
     if not target_url:
-        raise SystemExit("OCI_DB_URL or TARGET_DATABASE_URL is required")
+        msg = "OCI_DB_URL or TARGET_DATABASE_URL is required"
+        raise SystemExit(msg)
 
     start_date = args.start_date or _default_start_date()
     end_date = args.end_date or _default_end_date(args.days_ahead)

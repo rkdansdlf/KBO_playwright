@@ -85,7 +85,7 @@ class TextTransformer:
         embeddings = embedding_svc.get_embeddings_batch(sentences)
 
         # 3. Calculate cosine similarity between adjacent sentences
-        def cosine_similarity(v1, v2) -> float:
+        def cosine_similarity(v1: list[float], v2: list[float]) -> float:
             # Since our embeddings are already L2 normalized: similarity = dot product
             return sum(x * y for x, y in zip(v1, v2, strict=False))
 
@@ -201,90 +201,10 @@ class TextTransformer:
         import logging as _log
 
         _logger = _log.getLogger(__name__)
-
-        chunks = []
-
-        # 1. Extract keywords block before chunking (removes it from main text)
-        keywords: list[str] = []
-        keyword_pattern = re.compile(r"^#{1,3}\s*키워드\s*\n(.*?)(?=^#{1,3}\s|\Z)", re.MULTILINE | re.DOTALL)
-        kw_match = keyword_pattern.search(text)
-        if kw_match:
-            kw_block = kw_match.group(1)
-            # Each line may have comma-separated items or dash-prefixed items
-            for line in kw_block.splitlines():
-                line = line.strip().lstrip("-").strip()
-                if line:
-                    for kw in re.split(r"[,，]", line):
-                        kw = kw.strip()
-                        if kw:
-                            keywords.append(kw)
-            # Remove the keyword block from text to avoid it becoming its own chunk
-            text = keyword_pattern.sub("", text).strip()
-
-        # 2. Split by heading patterns (markdown + PDF-style)
-        #    Extended to cover: ## H, ### H, 제 N조, ARTICLE N, 1. 한글/Alpha
-        pattern = re.compile(
-            r"(?=(?:"
-            r"^\s*#{1,3}\s+조항\s+\d+"  # ### 조항 N
-            r"|^\s*제\s*\d+\s*조(?:\s|\.|\:)"  # 제 N조. / 제N조: / 제 N조 (보다 정확한 구분자 매치)
-            r"|^\s*#{1,3}\s+[\uac00-\ud7a3A-Za-z]"  # ## 개요, ### Glossary
-            r"|^\s*ARTICLE\s+\d+"  # ARTICLE 1 (English PDF)
-            r"|^\s*\d+\.\s+[\uac00-\ud7a3A-Z]"  # 1. 가나다 (numbered sections)
-            r"))",
-            re.MULTILINE,
-        )
-        sections = pattern.split(text)
-
-        section_idx = 1
-        for sec in sections:
-            sec_clean = sec.strip()
-            if not sec_clean:
-                continue
-
-            # Attempt to extract heading title from first line
-            lines = sec_clean.split("\n")
-            heading = lines[0].strip().replace("#", "").strip()
-            if heading.endswith(":"):
-                heading = heading[:-1].strip()
-
-            # Content is the rest of the section
-            sec_content = "\n".join(lines[1:]).strip() if len(lines) > 1 else sec_clean
-
-            if not sec_content:
-                sec_content = sec_clean
-                heading = f"{doc_title} - Section {section_idx}"
-
-            chunk_title = f"{doc_title} - {heading}" if heading not in doc_title else doc_title
-
-            chunk_meta = meta.copy()
-            chunk_meta["heading"] = heading
-            chunk_meta["chunk_index"] = section_idx
-            if keywords:
-                chunk_meta["keywords"] = keywords
-
-            # Generate a stable unique ID hash for this chunk
-            unique_str = f"{chunk_meta.get('source', '')}_{chunk_title}_{sec_content}"
-            row_id_hash = hashlib.sha256(unique_str.encode("utf-8")).hexdigest()
-            chunk_meta["source_row_id"] = row_id_hash
-
-            chunks.append(
-                {
-                    "title": chunk_title,
-                    "content": sec_clean,  # Maintain heading in contents for RAG context
-                    "meta": chunk_meta,
-                },
-            )
-            section_idx += 1
-
-        # 3. Merge stub chunks (< 30 chars) into previous chunk
-        #    30-char threshold keeps real short clauses intact while eliminating true stubs
-        merged: list[dict[str, Any]] = []
-        for chunk in chunks:
-            if merged and len(chunk["content"]) < 30:
-                # Append this stub to the previous chunk's content
-                merged[-1]["content"] += "\n" + chunk["content"]
-            else:
-                merged.append(chunk)
+        text, keywords = self._extract_heading_keywords(text)
+        sections = self._heading_sections(text)
+        chunks = self._build_heading_chunks(doc_title, sections, meta, keywords)
+        merged = self._merge_stub_chunks(chunks)
 
         _logger.debug(
             "chunk_by_headings: %s raw sections → %s chunks → %s after merge (keywords extracted: %s)",
@@ -294,6 +214,89 @@ class TextTransformer:
             len(keywords),
         )
 
+        return merged
+
+    def _extract_heading_keywords(self, text: str) -> tuple[str, list[str]]:
+        keywords: list[str] = []
+        keyword_pattern = re.compile(r"^#{1,3}\s*키워드\s*\n(.*?)(?=^#{1,3}\s|\Z)", re.MULTILINE | re.DOTALL)
+        kw_match = keyword_pattern.search(text)
+        if not kw_match:
+            return text, keywords
+
+        for line in kw_match.group(1).splitlines():
+            line = line.strip().lstrip("-").strip()
+            if not line:
+                continue
+            keywords.extend(kw.strip() for kw in re.split(r"[,，]", line) if kw.strip())
+        return keyword_pattern.sub("", text).strip(), keywords
+
+    def _heading_sections(self, text: str) -> list[str]:
+        pattern = re.compile(
+            r"(?=(?:"
+            r"^\s*#{1,3}\s+조항\s+\d+"
+            r"|^\s*제\s*\d+\s*조(?:\s|\.|\:)"
+            r"|^\s*#{1,3}\s+[\uac00-\ud7a3A-Za-z]"
+            r"|^\s*ARTICLE\s+\d+"
+            r"|^\s*\d+\.\s+[\uac00-\ud7a3A-Z]"
+            r"))",
+            re.MULTILINE,
+        )
+        return pattern.split(text)
+
+    def _build_heading_chunks(
+        self,
+        doc_title: str,
+        sections: list[str],
+        meta: dict[str, Any],
+        keywords: list[str],
+    ) -> list[dict[str, Any]]:
+        chunks = []
+        section_idx = 1
+        for sec in sections:
+            sec_clean = sec.strip()
+            if not sec_clean:
+                continue
+            chunks.append(self._create_heading_chunk(doc_title, sec_clean, meta, keywords, section_idx))
+            section_idx += 1
+        return chunks
+
+    def _create_heading_chunk(
+        self,
+        doc_title: str,
+        sec_clean: str,
+        meta: dict[str, Any],
+        keywords: list[str],
+        section_idx: int,
+    ) -> dict[str, Any]:
+        lines = sec_clean.split("\n")
+        heading = lines[0].strip().replace("#", "").strip()
+        if heading.endswith(":"):
+            heading = heading[:-1].strip()
+
+        sec_content = "\n".join(lines[1:]).strip() if len(lines) > 1 else sec_clean
+        if not sec_content:
+            sec_content = sec_clean
+            heading = f"{doc_title} - Section {section_idx}"
+
+        chunk_title = f"{doc_title} - {heading}" if heading not in doc_title else doc_title
+        chunk_meta = meta.copy()
+        chunk_meta["heading"] = heading
+        chunk_meta["chunk_index"] = section_idx
+        if keywords:
+            chunk_meta["keywords"] = keywords
+
+        unique_str = f"{chunk_meta.get('source', '')}_{chunk_title}_{sec_content}"
+        chunk_meta["source_row_id"] = hashlib.sha256(unique_str.encode("utf-8")).hexdigest()
+
+        return {"title": chunk_title, "content": sec_clean, "meta": chunk_meta}
+
+    def _merge_stub_chunks(self, chunks: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        merged: list[dict[str, Any]] = []
+        for chunk in chunks:
+            if merged and len(chunk["content"]) < 30:
+                merged[-1]["content"] += "\n" + chunk["content"]
+            else:
+                merged.append(chunk)
         return merged
 
     def chunk_with_overlap(
@@ -309,51 +312,84 @@ class TextTransformer:
         then overlaps 10%-20% of the text.
         """
         chunks = []
-
-        # Split text into paragraphs
-        paragraphs = [p.strip() for p in text.split("\n\n") if p.strip()]
-        if not paragraphs:
-            # Fallback to single line split
-            paragraphs = [p.strip() for p in text.split("\n") if p.strip()]
-
+        paragraphs = self._paragraph_blocks(text)
         current_chunk_text = ""
         chunk_idx = 1
 
         for para in paragraphs:
-            # If paragraph is huge, split it by sentences
             if len(para) > chunk_char_limit:
-                sentences = re.split(r"(?<=[.!?])\s+", para)
-                for sent in sentences:
-                    if len(current_chunk_text) + len(sent) > chunk_char_limit:
-                        if current_chunk_text:
-                            chunks.append(self._create_news_chunk(doc_title, current_chunk_text, meta, chunk_idx))
-                            chunk_idx += 1
-                            # Retain overlap from end of previous text
-                            current_chunk_text = current_chunk_text[-overlap_char_limit:] + " " + sent
-                        else:
-                            # Sentence is larger than limit, force append
-                            current_chunk_text = sent
-                    else:
-                        current_chunk_text = (current_chunk_text + " " + sent).strip()
+                current_chunk_text, chunk_idx = self._append_sentence_chunks(
+                    doc_title,
+                    para,
+                    meta,
+                    chunks,
+                    current_chunk_text,
+                    chunk_idx,
+                    chunk_char_limit,
+                    overlap_char_limit,
+                )
             else:
-                if len(current_chunk_text) + len(para) > chunk_char_limit:
-                    if current_chunk_text:
-                        chunks.append(self._create_news_chunk(doc_title, current_chunk_text, meta, chunk_idx))
-                        chunk_idx += 1
-                        # Overlap: take characters from current chunk end
-                        current_chunk_text = current_chunk_text[-overlap_char_limit:] + "\n\n" + para
-                    else:
-                        current_chunk_text = para
-                else:
-                    if current_chunk_text:
-                        current_chunk_text += "\n\n" + para
-                    else:
-                        current_chunk_text = para
+                current_chunk_text, chunk_idx = self._append_paragraph_chunk(
+                    doc_title,
+                    para,
+                    meta,
+                    chunks,
+                    current_chunk_text,
+                    chunk_idx,
+                    chunk_char_limit,
+                    overlap_char_limit,
+                )
 
         if current_chunk_text:
             chunks.append(self._create_news_chunk(doc_title, current_chunk_text, meta, chunk_idx))
 
         return chunks
+
+    def _paragraph_blocks(self, text: str) -> list[str]:
+        paragraphs = [p.strip() for p in text.split("\n\n") if p.strip()]
+        if paragraphs:
+            return paragraphs
+        return [p.strip() for p in text.split("\n") if p.strip()]
+
+    def _append_sentence_chunks(
+        self,
+        doc_title: str,
+        para: str,
+        meta: dict[str, Any],
+        chunks: list[dict[str, Any]],
+        current_chunk_text: str,
+        chunk_idx: int,
+        chunk_char_limit: int,
+        overlap_char_limit: int,
+    ) -> tuple[str, int]:
+        for sent in re.split(r"(?<=[.!?])\s+", para):
+            if len(current_chunk_text) + len(sent) <= chunk_char_limit:
+                current_chunk_text = (current_chunk_text + " " + sent).strip()
+            elif current_chunk_text:
+                chunks.append(self._create_news_chunk(doc_title, current_chunk_text, meta, chunk_idx))
+                chunk_idx += 1
+                current_chunk_text = current_chunk_text[-overlap_char_limit:] + " " + sent
+            else:
+                current_chunk_text = sent
+        return current_chunk_text, chunk_idx
+
+    def _append_paragraph_chunk(
+        self,
+        doc_title: str,
+        para: str,
+        meta: dict[str, Any],
+        chunks: list[dict[str, Any]],
+        current_chunk_text: str,
+        chunk_idx: int,
+        chunk_char_limit: int,
+        overlap_char_limit: int,
+    ) -> tuple[str, int]:
+        if len(current_chunk_text) + len(para) <= chunk_char_limit:
+            return ((current_chunk_text + "\n\n" + para) if current_chunk_text else para), chunk_idx
+        if current_chunk_text:
+            chunks.append(self._create_news_chunk(doc_title, current_chunk_text, meta, chunk_idx))
+            return current_chunk_text[-overlap_char_limit:] + "\n\n" + para, chunk_idx + 1
+        return para, chunk_idx
 
     def _create_news_chunk(self, doc_title: str, content: str, meta: dict[str, Any], index: int) -> dict[str, Any]:
         chunk_meta = meta.copy()

@@ -47,14 +47,14 @@ class PlayerProfileParsed(BaseModel):
     def education_path(self) -> list[str]:
         return self.education_or_career_path
 
-    def __getitem__(self, item: str) -> Any:
+    def __getitem__(self, item: str) -> object:
         if item == "education_path":
             return self.education_path
         if hasattr(self, item):
             return getattr(self, item)
         raise KeyError(item)
 
-    def get(self, item: str, default: Any = None) -> Any:
+    def get(self, item: str, default: object = None) -> object:
         try:
             return self[item]
         except KeyError:

@@ -18,6 +18,7 @@ import logging
 from typing import Any
 
 from sqlalchemy import text
+from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
 
@@ -29,7 +30,7 @@ _DERIVE_EVENTS_SQL = text("""
 """)
 
 
-def derive_sh_sf_for_game(session: Any, game_id: str) -> dict[int | str, dict[str, int]]:
+def derive_sh_sf_for_game(session: Session, game_id: str) -> dict[int | str, dict[str, int]]:
     """Query game_events and return {player_id_or_name: {'sh': N, 'sf': N}}."""
     result: dict[int | str, dict[str, int]] = {}
     name_to_id = _build_unique_batter_name_map(session, game_id)
@@ -57,7 +58,7 @@ def derive_sh_sf_for_game(session: Any, game_id: str) -> dict[int | str, dict[st
     return result
 
 
-def _build_unique_batter_name_map(session: Any, game_id: str) -> dict[str, int]:
+def _build_unique_batter_name_map(session: Session, game_id: str) -> dict[str, int]:
     stats_rows = session.execute(
         text("SELECT player_id, player_name FROM game_batting_stats WHERE game_id = :game_id"),
         {"game_id": game_id},
@@ -71,7 +72,7 @@ def _build_unique_batter_name_map(session: Any, game_id: str) -> dict[str, int]:
     return {name: next(iter(ids)) for name, ids in name_to_ids.items() if len(ids) == 1}
 
 
-def _resolve_derived_batter_key(row: Any, name_to_id: dict[str, int]) -> int | str | None:
+def _resolve_derived_batter_key(row: object, name_to_id: dict[str, int]) -> int | str | None:
     if row.batter_id is not None:
         return int(row.batter_id)
     if row.batter_name:
@@ -80,7 +81,7 @@ def _resolve_derived_batter_key(row: Any, name_to_id: dict[str, int]) -> int | s
     return None
 
 
-def apply_sh_sf_to_batting_stats(session: Any, game_id: str) -> int:
+def apply_sh_sf_to_batting_stats(session: Session, game_id: str) -> int:
     """Derive SH/SF from game_events and update game_batting_stats in-place.
 
     Returns the number of updated rows.

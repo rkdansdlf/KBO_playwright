@@ -39,7 +39,8 @@ class PregameBackfillDate:
 def _yyyymmdd(value: str) -> str:
     normalized = value.replace("-", "")
     if len(normalized) != 8 or not normalized.isdigit():
-        raise argparse.ArgumentTypeError(f"Invalid date: {value}. Use YYYYMMDD.")
+        msg = f"Invalid date: {value}. Use YYYYMMDD."
+        raise argparse.ArgumentTypeError(msg)
     datetime.strptime(normalized, "%Y%m%d")
     return normalized
 
@@ -151,20 +152,13 @@ def get_pregame_date_status(target_date: str) -> PregameBackfillDate | None:
     return statuses[0] if statuses else None
 
 
-async def run_backfill(args: argparse.Namespace) -> int:
+def _resolve_backfill_range(args: argparse.Namespace) -> tuple[str, str]:
     start_date = args.start_date or _default_start_date()
     end_date = args.end_date or _default_end_date(args.days_ahead)
-    targets = find_missing_pregame_dates(
-        start_date=start_date,
-        end_date=end_date,
-        include_complete=args.include_complete,
-        limit_dates=args.limit_dates,
-    )
+    return start_date, end_date
 
-    if not targets:
-        logger.info("No missing scheduled pregame dates found between %s and %s.", start_date, end_date)
-        return 0
 
+def _log_backfill_targets(start_date: str, end_date: str, targets: list[PregameBackfillDate]) -> None:
     logger.info("Pregame backfill targets (%s..%s): %s date(s)", start_date, end_date, len(targets))
     for target in targets:
         logger.info(
@@ -176,6 +170,53 @@ async def run_backfill(args: argparse.Namespace) -> int:
             target.scheduled_total,
             target.preview_missing_starters,
         )
+
+
+def _is_incomplete_after_backfill(target_date: str) -> str | None:
+    refreshed = get_pregame_date_status(target_date)
+    if not refreshed:
+        return None
+    if refreshed.starters_complete >= refreshed.scheduled_total and refreshed.preview_missing_starters == 0:
+        return None
+    return (
+        f"{target_date}: "
+        f"starters={refreshed.starters_complete}/{refreshed.scheduled_total}, "
+        f"preview={refreshed.preview_rows}/{refreshed.scheduled_total}, "
+        f"preview_missing_starters={refreshed.preview_missing_starters}"
+    )
+
+
+def _log_backfill_result(saved_total: int, failed: list[str], incomplete: list[str]) -> None:
+    logger.info(
+        "\nPregame backfill finished. saved_total=%s, failed_empty=%s, incomplete=%s",
+        saved_total,
+        len(failed),
+        len(incomplete),
+    )
+    if failed:
+        logger.info("Dates with scheduled games but no preview rows saved:")
+        for target_date in failed:
+            logger.info("  %s", target_date)
+    if incomplete:
+        logger.info("Dates still missing complete starting pitchers:")
+        for target in incomplete:
+            logger.info("  %s", target)
+
+
+async def run_backfill(args: argparse.Namespace) -> int:
+    start_date, end_date = _resolve_backfill_range(args)
+    targets = find_missing_pregame_dates(
+        start_date=start_date,
+        end_date=end_date,
+        include_complete=args.include_complete,
+        limit_dates=args.limit_dates,
+    )
+
+    if not targets:
+        logger.info("No missing scheduled pregame dates found between %s and %s.", start_date, end_date)
+        return 0
+
+    _log_backfill_targets(start_date, end_date, targets)
 
     if args.dry_run:
         return 0
@@ -192,31 +233,11 @@ async def run_backfill(args: argparse.Namespace) -> int:
         if args.fail_on_empty and target.scheduled_total and saved_count == 0:
             failed.append(target.target_date)
         if args.fail_on_incomplete:
-            refreshed = get_pregame_date_status(target.target_date)
-            if refreshed and (
-                refreshed.starters_complete < refreshed.scheduled_total or refreshed.preview_missing_starters > 0
-            ):
-                incomplete.append(
-                    f"{target.target_date}: "
-                    f"starters={refreshed.starters_complete}/{refreshed.scheduled_total}, "
-                    f"preview={refreshed.preview_rows}/{refreshed.scheduled_total}, "
-                    f"preview_missing_starters={refreshed.preview_missing_starters}",
-                )
+            incomplete_status = _is_incomplete_after_backfill(target.target_date)
+            if incomplete_status:
+                incomplete.append(incomplete_status)
 
-    logger.info(
-        "\nPregame backfill finished. saved_total=%s, failed_empty=%s, incomplete=%s",
-        saved_total,
-        len(failed),
-        len(incomplete),
-    )
-    if failed:
-        logger.info("Dates with scheduled games but no preview rows saved:")
-        for target_date in failed:
-            logger.info("  %s", target_date)
-    if incomplete:
-        logger.info("Dates still missing complete starting pitchers:")
-        for target in incomplete:
-            logger.info("  %s", target)
+    _log_backfill_result(saved_total, failed, incomplete)
     if failed or incomplete:
         return 1
     return 0

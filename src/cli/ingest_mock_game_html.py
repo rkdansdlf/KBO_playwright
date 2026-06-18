@@ -21,7 +21,8 @@ def ingest_mock_html(args: argparse.Namespace) -> None:
     """저장된 HTML fixture를 파싱하여 데이터베이스에 저장하는 로직을 수행합니다."""
     fixtures_dir = Path(args.fixtures_dir)
     if not fixtures_dir.exists():
-        raise SystemExit(f"Fixture directory not found: {fixtures_dir}")
+        msg = f"Fixture directory not found: {fixtures_dir}"
+        raise SystemExit(msg)
 
     files = sorted(fixtures_dir.glob("*.html"))
     if args.limit:

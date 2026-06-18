@@ -7,7 +7,7 @@ import csv
 import hashlib
 import logging
 import os
-from collections.abc import Iterable, Sequence
+from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass
 from datetime import date, datetime
 from pathlib import Path
@@ -15,6 +15,7 @@ from typing import Any
 
 from sqlalchemy import and_, or_
 from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.orm import Session
 
 from src.cli.daily_story_batch import (
     dump_story_json,
@@ -113,7 +114,9 @@ def _season_filters(seasons: Iterable[int]) -> list:
     return filters
 
 
-def _query_target_games(session, *, game_ids: Sequence[str], dates: Sequence[str], seasons: Sequence[int]) -> list:
+def _query_target_games(
+    session: Session, *, game_ids: Sequence[str], dates: Sequence[str], seasons: Sequence[int]
+) -> list[Game]:
     query = session.query(Game)
     filters = []
     if game_ids:
@@ -132,7 +135,7 @@ def _game_batches(games: Sequence[Game], batch_size: int = 250) -> list:
         yield games[index : index + batch_size]
 
 
-def _events_by_game(session, game_ids: Sequence[str]) -> dict[str, list[GameEvent]]:
+def _events_by_game(session: Session, game_ids: Sequence[str]) -> dict[str, list[GameEvent]]:
     if not game_ids:
         return {}
     rows = (
@@ -156,7 +159,7 @@ def _write_report(rows: Sequence[StoryRegenReportRow], path: Path) -> None:
             writer.writerow(row.as_csv_row())
 
 
-def _write_backup(session, game_ids: Sequence[str], path: Path) -> None:
+def _write_backup(session: Session, game_ids: Sequence[str], path: Path) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     rows = (
         session.query(GameSummary)
@@ -193,7 +196,9 @@ def _write_backup(session, game_ids: Sequence[str], path: Path) -> None:
             )
 
 
-def _sync_story_summaries(game_ids: Sequence[str], rows: Sequence[StoryRegenReportRow], *, oci_url: str, log) -> None:
+def _sync_story_summaries(
+    game_ids: Sequence[str], rows: Sequence[StoryRegenReportRow], *, oci_url: str, log: Callable[[str], object]
+) -> None:
     if not game_ids:
         return
     with SessionLocal() as sync_session:
@@ -223,7 +228,7 @@ def _append_missing_game_rows(
 
 
 def _load_existing_story_summaries(
-    session, games: Sequence[Game]
+    session: Session, games: Sequence[Game]
 ) -> tuple[dict[str, list[GameSummary]], dict[str, str | None]]:
     existing_summary_rows: dict[str, list[GameSummary]] = {}
     existing_summaries: dict[str, str | None] = {}
@@ -271,7 +276,9 @@ def _build_story_report_row(
     )
 
 
-def _upsert_story_summary(session, game_id: str, new_json: str, existing_rows: dict[str, list[GameSummary]]) -> None:
+def _upsert_story_summary(
+    session: Session, game_id: str, new_json: str, existing_rows: dict[str, list[GameSummary]]
+) -> None:
     summaries = existing_rows.get(game_id) or []
     if summaries:
         for summary in summaries:
@@ -281,7 +288,7 @@ def _upsert_story_summary(session, game_id: str, new_json: str, existing_rows: d
 
 
 def _process_story_game(
-    session,
+    session: Session,
     game: Game,
     events: list[GameEvent],
     builder: GameStoryBuilder,
@@ -309,7 +316,7 @@ def _process_story_game(
 
 
 def _process_story_batches(
-    session,
+    session: Session,
     games: Sequence[Game],
     builder: GameStoryBuilder,
     existing_summary_rows: dict[str, list[GameSummary]],
@@ -359,7 +366,7 @@ def regenerate_game_stories(
     oci_url: str | None = None,
     report_out: Path | None = None,
     backup_out: Path | None = None,
-    log=logger.info,
+    log: Callable[[str], object] = logger.info,
 ) -> list[StoryRegenReportRow]:
     target_game_ids = list(game_ids or [])
     target_dates = list(dates or [])
@@ -411,7 +418,7 @@ def regenerate_game_stories(
     return rows
 
 
-def _collect_game_ids(args) -> list[str]:
+def _collect_game_ids(args: argparse.Namespace) -> list[str]:
     game_ids = list(args.game_id or [])
     if args.game_ids_file:
         game_ids.extend(_load_game_ids_file(Path(args.game_ids_file)))

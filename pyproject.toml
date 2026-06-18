@@ -43,10 +43,13 @@ select = [
     "I",       # isort
     "UP",      # pyupgrade (Python 3.10+)
     "RET",     # flake8-return
+    "ANN001",  # missing-type-function-argument
     "ANN002",  # missing-type-args
     "ANN003",  # missing-type-kwargs
     "ANN202",  # missing-return-type-private-function
     "ANN205",  # missing-return-type-static-method
+    "ANN401",  # dynamically typed expressions (Any)
+    "TRY003",  # raise-vanilla-args
     "TRY004",  # type-check-without-type-error
     "TRY201",  # verbose-raise
     "TRY301",  # raise-within-try
@@ -72,7 +75,6 @@ ignore = [
     "E731",    # lambda assignment (permissive)
     "UP035",   # deprecated typing (Dict→dict etc — too many existing)
     "B023",    # function-uses-loop-variable (common closure pattern)
-    "B904",    # raise-without-from-inside-except (too many existing)
     "SIM102",  # collapsible-if (readability preference)
     "SIM105",  # suppressible-exception (explicit try/except clearer)
     "SIM108",  # simplify-if-else (ternary, not always clearer)
@@ -85,8 +87,8 @@ ignore = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
-"tests/**" = ["ANN002", "ANN003", "ANN202", "ANN205", "TRY300", "ARG", "T20"]
-"scripts/**" = ["ANN002", "ANN003", "ANN202", "ANN205", "TRY300", "ARG", "T20"]
+"tests/**" = ["ANN001", "ANN002", "ANN003", "ANN202", "ANN205", "ANN401", "TRY003", "TRY300", "ARG", "T20"]
+"scripts/**" = ["ANN001", "ANN002", "ANN003", "ANN202", "ANN205", "ANN401", "TRY003", "TRY300", "ARG", "T20"]
 
 [tool.ruff.format]
 quote-style = "double"

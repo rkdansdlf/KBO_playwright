@@ -12,6 +12,7 @@ from typing import Any
 from urllib.parse import urljoin
 
 from bs4 import BeautifulSoup
+from bs4.element import Tag
 
 logger = logging.getLogger(__name__)
 
@@ -191,7 +192,7 @@ def _is_event_title(title: str, page_url: str) -> bool:
     return any(kw in title for kw in EVENT_KEYWORDS)
 
 
-def _iter_json_rows(payload: Any) -> list[dict]:
+def _iter_json_rows(payload: object) -> list[dict]:
     if isinstance(payload, list):
         return [item for item in payload if isinstance(item, dict)]
     if not isinstance(payload, dict):
@@ -216,7 +217,7 @@ def _iter_json_rows(payload: Any) -> list[dict]:
     return []
 
 
-def _extract_source_url(tag: Any, config: dict[str, Any], page_url: str) -> str:
+def _extract_source_url(tag: Tag, config: dict[str, Any], page_url: str) -> str:
     href = str(tag.get("href", "") or "").strip()
     if not href:
         link_parent = tag.find_parent("a", href=True)
@@ -233,7 +234,7 @@ def _extract_source_url(tag: Any, config: dict[str, Any], page_url: str) -> str:
     return urljoin(config.get("link_prefix") or page_url, href)
 
 
-def _extract_onclick_href(tag: Any) -> str:
+def _extract_onclick_href(tag: Tag) -> str:
     ancestors = [tag, *tag.find_parents(["tr", "li", "div", "dl", "section", "article"])]
     for parent in ancestors[:6]:
         href = _match_onclick_href(str(parent.get("onclick", "") or ""))
@@ -251,7 +252,7 @@ def _match_onclick_href(onclick: str) -> str:
     return match.group(1).strip() if match else ""
 
 
-def _extract_published_at(tag: Any, date_sel: str, cutoff_date: datetime) -> datetime | None:
+def _extract_published_at(tag: Tag, date_sel: str, cutoff_date: datetime) -> datetime | None:
     ancestors = [tag, *tag.find_parents(["tr", "li", "div", "dl", "table", "section", "article"])]
     for row in ancestors[:10]:
         if date_sel:

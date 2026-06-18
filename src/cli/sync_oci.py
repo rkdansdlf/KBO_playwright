@@ -36,7 +36,7 @@ def run_parallel_sync(
     target_url: str,
     years: list[int],
     workers: int,
-    **kwargs: Any,
+    **kwargs: object,
 ) -> None:
     """연도별로 병렬 동기화 작업을 수행합니다."""
     logger.info("🚀 Starting parallel sync with %s workers for years: %s", workers, years)
@@ -332,16 +332,25 @@ _ALLOWED_YEAR_COLUMNS = frozenset(
 )
 
 
-def get_available_years(session: Session, model: Any, column_name: str = "season") -> list[int]:
+def get_available_years(session: Session, model: type[object], column_name: str = "season") -> list[int]:
     """대상 테이블에서 사용 가능한 연도 목록을 가져옵니다."""
     if column_name not in _ALLOWED_YEAR_COLUMNS:
-        raise ValueError(f"Disallowed column expression: {column_name}")
+        msg = f"Disallowed column expression: {column_name}"
+        raise ValueError(msg)
     query = session.query(text(f"DISTINCT {column_name}")).select_from(model)
     years = [int(row[0]) for row in query.all() if row[0]]
     return sorted(years, reverse=True)
 
 
-def _run_sync(args, sync_fn, *, parallel_support=False, header=None, years_getter=None, completion_msg=None) -> None:
+def _run_sync(
+    args: argparse.Namespace,
+    sync_fn: Callable[..., object],
+    *,
+    parallel_support: bool = False,
+    header: str | None = None,
+    years_getter: Callable[[Session], list[int]] | None = None,
+    completion_msg: str | None = None,
+) -> None:
     if header:
         logger.info(header)
 
@@ -395,7 +404,8 @@ def _validate_args(parser: argparse.ArgumentParser, args: argparse.Namespace) ->
     if (args.roster_date or args.roster_start_date or args.roster_end_date) and not args.daily_roster:
         parser.error("--roster-date/--roster-start-date/--roster-end-date can only be used with --daily-roster")
     if not args.target_url:
-        raise SystemExit("TARGET_DATABASE_URL must be provided via flag or environment variable")
+        msg = "TARGET_DATABASE_URL must be provided via flag or environment variable"
+        raise SystemExit(msg)
 
 
 def _build_sync_dispatch() -> dict[str, tuple]:
@@ -472,7 +482,7 @@ def _build_simple_flags() -> dict[str, tuple[str, str]]:
     }
 
 
-def _log_simple_result(header_str: str, result: Any) -> None:
+def _log_simple_result(header_str: str, result: object) -> None:
     header_label = header_str.replace("🚀 ", "")
     if isinstance(result, int):
         logger.info("✅ %s Finished (%d rows)", header_label, result)
@@ -604,14 +614,14 @@ def main(argv: Iterable[str] | None = None) -> None:
     _reset_sequences_if_requested(args)
 
 
-def _detect_active_flag(args, all_flags: list[str]) -> str | None:
+def _detect_active_flag(args: argparse.Namespace, all_flags: list[str]) -> str | None:
     for flag_name in all_flags:
         if getattr(args, flag_name.replace("-", "_"), False):
             return flag_name
     return None
 
 
-def _maybe_purge(syncer, year, truncate) -> None:
+def _maybe_purge(syncer: OCISync, year: int | None, truncate: object) -> None:
     if truncate and year:
         syncer.purge_season_stats(year)
 

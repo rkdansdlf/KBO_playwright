@@ -38,7 +38,7 @@ from src.utils.request_policy import RequestPolicy
 from src.utils.team_codes import resolve_team_code
 
 
-def build_fielding_crawl_summary(records) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+def build_fielding_crawl_summary(records: list[dict[str, Any]]) -> tuple[dict[str, Any], list[dict[str, Any]]]:
     valid_records, failure_counts = filter_valid_season_stat_payloads(
         records,
         stat_type="fielding",
@@ -52,7 +52,7 @@ def build_fielding_crawl_summary(records) -> tuple[dict[str, Any], list[dict[str
     return summary, valid_records
 
 
-def crawl_all_fielding_stats(year=None) -> list[dict[str, Any]]:
+def crawl_all_fielding_stats(year: int | None = None) -> list[dict[str, Any]]:
     """
     KBO 공식 홈페이지에서 팀별 수비 기록을 크롤링하여 전체 선수의 수비 기록을 수집합니다.
     팀별로 조회하여 전체 수비수(투수 포함)를 누락 없이 가져옵니다.
@@ -328,7 +328,7 @@ def crawl_all_fielding_stats(year=None) -> list[dict[str, Any]]:
     return fielding_data
 
 
-def save_fielding_stats(year=None, db_path=None) -> None:
+def save_fielding_stats(year: int | None = None, db_path: str | None = None) -> None:
     """
     수비 기록을 크롤링하여 DB에 저장합니다.
 

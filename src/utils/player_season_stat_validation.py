@@ -82,7 +82,7 @@ NUMERIC_FIELDS = {
 }
 
 
-def _is_number_like(value: Any) -> bool:
+def _is_number_like(value: object) -> bool:
     if value is None:
         return True
     if isinstance(value, (int, float)):
@@ -100,7 +100,7 @@ def _is_number_like(value: Any) -> bool:
     return False
 
 
-def _number_or_none(value: Any) -> float | None:
+def _number_or_none(value: object) -> float | None:
     if value is None:
         return None
     if isinstance(value, (int, float)):

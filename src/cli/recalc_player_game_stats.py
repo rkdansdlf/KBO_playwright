@@ -19,6 +19,7 @@ from collections.abc import Sequence
 from datetime import datetime
 
 from sqlalchemy import text
+from sqlalchemy.orm import Session
 
 from src.db.engine import SessionLocal
 from src.models.game import Game
@@ -37,7 +38,7 @@ from src.utils.game_status import COMPLETED_LIKE_GAME_STATUSES
 logger = logging.getLogger(__name__)
 
 
-def _game_ids_for_date(session, target_date: str) -> list[str]:
+def _game_ids_for_date(session: Session, target_date: str) -> list[str]:
     target = datetime.strptime(target_date, "%Y%m%d").date()
     return [
         row[0]
@@ -51,7 +52,7 @@ def _game_ids_for_date(session, target_date: str) -> list[str]:
     ]
 
 
-def _print_batting_records(records) -> None:
+def _print_batting_records(records: list[dict[str, object]]) -> None:
     for r in sorted(records, key=lambda x: x.get("plate_appearances", 0), reverse=True)[:20]:
         logger.info(
             "  PID=%-6s %-8s PA=%-3s H=%-2s AVG=%-5s OPS=%-5s",
@@ -64,7 +65,7 @@ def _print_batting_records(records) -> None:
         )
 
 
-def _print_pitching_records(records) -> None:
+def _print_pitching_records(records: list[dict[str, object]]) -> None:
     for r in sorted(records, key=lambda x: x.get("innings_outs", 0), reverse=True)[:20]:
         ip = r.get("innings_outs", 0) / 3.0
         logger.info(
@@ -77,7 +78,7 @@ def _print_pitching_records(records) -> None:
         )
 
 
-def recalc_for_game(session, game_id: str, dry_run: bool = False) -> dict[str, int]:
+def recalc_for_game(session: Session, game_id: str, dry_run: bool = False) -> dict[str, int]:
     batting = aggregate_game_batting(session, game_id)
     pitching = aggregate_game_pitching(session, game_id)
 
@@ -95,7 +96,7 @@ def recalc_for_game(session, game_id: str, dry_run: bool = False) -> dict[str, i
     return {"batting": b_saved, "pitching": p_saved}
 
 
-def recalc_for_games_batch(session, game_ids: list[str], dry_run: bool = False) -> dict[str, int]:
+def recalc_for_games_batch(session: Session, game_ids: list[str], dry_run: bool = False) -> dict[str, int]:
     """Batch recalc: single query per side, single commit for all games."""
     batting = aggregate_game_batting_batch(session, game_ids)
     pitching = aggregate_game_pitching_batch(session, game_ids)

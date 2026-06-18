@@ -92,7 +92,7 @@ class RelaySourceAdapter(ABC):
         raise NotImplementedError
 
 
-def normalize_inning_half(value: Any) -> str | None:
+def normalize_inning_half(value: object) -> str | None:
     """Normalize inning half to 'top' or 'bottom'. Returns None for unrecognized values."""
     normalized = str(value or "").strip().lower()
     if normalized in {"top", "away", "초"}:
@@ -102,7 +102,7 @@ def normalize_inning_half(value: Any) -> str | None:
     return None
 
 
-def trailing_result_from_description(description: Any) -> Any:
+def trailing_result_from_description(description: object) -> str | None:
     text = str(description or "").strip()
     if not text:
         return None
@@ -224,9 +224,11 @@ def read_manifest_entries(manifest_path: str | Path | Iterable[str | Path]) -> l
                 if not game_id or not source_type or not locator or not manifest_format:
                     continue
                 if source_type not in ALLOWED_SOURCE_TYPES:
-                    raise ValueError(f"Unsupported manifest source_type: {source_type}")
+                    msg = f"Unsupported manifest source_type: {source_type}"
+                    raise ValueError(msg)
                 if manifest_format not in ALLOWED_MANIFEST_FORMATS:
-                    raise ValueError(f"Unsupported manifest format: {manifest_format}")
+                    msg = f"Unsupported manifest format: {manifest_format}"
+                    raise ValueError(msg)
                 entry = ManifestEntry(
                     game_id=game_id,
                     source_type=source_type,

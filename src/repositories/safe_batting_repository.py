@@ -84,7 +84,7 @@ def _batting_rows(payloads: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return [_batting_row(payload) for payload in _unique_batting_payloads(payloads).values()]
 
 
-def _excluded_update_dict(stmt: Any, rows: list[dict[str, Any]]) -> dict[str, Any]:
+def _excluded_update_dict(stmt: object, rows: list[dict[str, Any]]) -> dict[str, Any]:
     return {
         key: func.coalesce(stmt.excluded[key], getattr(PlayerSeasonBatting, key))
         for key in rows[0]
@@ -92,7 +92,7 @@ def _excluded_update_dict(stmt: Any, rows: list[dict[str, Any]]) -> dict[str, An
     }
 
 
-def _inserted_update_dict(stmt: Any, rows: list[dict[str, Any]]) -> dict[str, Any]:
+def _inserted_update_dict(stmt: object, rows: list[dict[str, Any]]) -> dict[str, Any]:
     return {
         key: func.coalesce(stmt.inserted[key], getattr(PlayerSeasonBatting, key))
         for key in rows[0]
@@ -157,7 +157,7 @@ def _save_postgresql_rows(session: Session, rows: list[dict[str, Any]]) -> int:
         return saved_count
 
 
-def _execute_single_upsert(session: Session, stmt: Any, data: dict[str, Any]) -> int:
+def _execute_single_upsert(session: Session, stmt: object, data: dict[str, Any]) -> int:
     try:
         session.execute(stmt)
     except SQLAlchemyError:

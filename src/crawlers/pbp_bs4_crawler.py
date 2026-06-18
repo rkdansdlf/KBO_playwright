@@ -76,145 +76,214 @@ class PBPBS4Crawler:
     def _parse_html_to_events(self, html: str) -> list[dict[str, Any]]:
         """Extract all PBP events using BeautifulSoup and compute states."""
         soup = BeautifulSoup(html, "lxml")
-        containers = soup.select(".relay-bx")
-
-        if not containers:
+        raw_data = self._extract_raw_play_data(soup)
+        if not raw_data:
             return []
 
-        raw_data = []
-        for container in containers:
-            full_text = container.get_text(separator=" ", strip=True)
-            play_els = container.select(".txt-box, .play-txt, p")
-            plays = [el.get_text(strip=True) for el in play_els if el.get_text(strip=True)]
-
-            raw_data.append({"full_text": full_text, "plays": plays})
-
-        # State Tracking
-        current_outs = 0
-        current_runners = 0
-        home_score = 0
-        away_score = 0
+        state = {
+            "current_outs": 0,
+            "current_runners": 0,
+            "home_score": 0,
+            "away_score": 0,
+        }
         sequence = 1
-
         events = []
 
         for idx, item in enumerate(raw_data):
             info = self._parse_inning_header(item["full_text"], idx)
-            inning = info["inning"]
-            is_bottom = info["half"] == "bottom"
-
-            # Reset outs/runners on new inning half (heuristic check)
-            if idx > 0:
-                prev_info = self._parse_inning_header(raw_data[idx - 1]["full_text"], idx - 1)
-                if prev_info != info:
-                    current_outs = 0
-                    current_runners = 0
+            self._reset_inning_state_if_needed(state, raw_data, info, idx)
 
             for p_text in item["plays"]:
-                # 1. Determine State BEFORE event
-                outs_before = current_outs
-                runners_before = current_runners
-                score_diff_before = home_score - away_score
-
-                # 2. Extract explicit runners/outs stated in the text
-                parsed_outs = KBOTextParser.parse_outs(p_text)
-                parsed_runners = KBOTextParser.parse_runners(p_text)
-
-                # If the text explicitly starts with "1사 2루", it represents BEFORE state.
-                if "사" in p_text and ("루" in p_text or "무사" in p_text):
-                    if parsed_outs >= 0:
-                        outs_before = parsed_outs
-                        current_outs = outs_before
-                    if parsed_runners >= 0:
-                        runners_before = parsed_runners
-                        current_runners = runners_before
-
-                # 3. Determine Result / Update State
-                runs_scored = KBOTextParser.parse_score_change(p_text)
-
-                if is_bottom:
-                    home_score += runs_scored
-                else:
-                    away_score += runs_scored
-
-                # Update Outs (Naive simulation)
-                if "삼진" in p_text or "아웃" in p_text or "플라이" in p_text or "땅볼" in p_text or "범타" in p_text:
-                    if "병살" in p_text:
-                        current_outs += 2
-                    elif "삼중살" in p_text:
-                        current_outs += 3
-                    else:
-                        current_outs += 1
-
-                current_outs = min(current_outs, 3)
-
-                outs_after = current_outs
-                # It's hard to track runners accurately; assume they clear on 3 outs
-                if current_outs >= 3:
-                    runners_after = 0
-                else:
-                    runners_after = 0  # Default placeholder unless we have advanced parser
-
-                score_diff_after = home_score - away_score
-
-                # 4. Calculate WPA
-                wp_before = self.wpa_calc.get_win_probability(
-                    inning,
-                    is_bottom,
-                    outs_before,
-                    runners_before,
-                    score_diff_before,
-                )
-                wp_after = self.wpa_calc.get_win_probability(
-                    inning,
-                    is_bottom,
-                    outs_after,
-                    runners_after,
-                    score_diff_after,
-                )
-
-                wpa = round(wp_after - wp_before if is_bottom else wp_before - wp_after, 4)
-
-                event = {
-                    "event_seq": sequence,
-                    "inning": inning,
-                    "inning_half": info["half"],
-                    "description": p_text,
-                    "event_type": "unknown",
-                    "batter": None,
-                    "pitcher": None,
-                    "result": None,
-                    "wpa": wpa,
-                    "win_expectancy_before": wp_before,
-                    "win_expectancy_after": wp_after,
-                    "score_diff": score_diff_before,
-                    "home_score": home_score,
-                    "away_score": away_score,
-                    "base_state": runners_before,
-                    "outs": outs_before,
-                    "bases_before": self._format_base_string(runners_before),
-                    "bases_after": self._format_base_string(runners_after),
-                    "result_code": None,
-                    "rbi": runs_scored,
-                }
-
-                # Basic parsing logic
-                if "타자" in p_text and ":" in p_text:
-                    event["event_type"] = "batting"
-                    parts = p_text.split(":", 1)
-                    if len(parts) > 1:
-                        event["batter"] = parts[0].replace("타자", "").strip()
-                        event["result"] = parts[1].strip()
-                        event["result_code"] = parts[1].strip()
-                elif "투수" in p_text and "교체" in p_text:
-                    event["event_type"] = "pitching_change"
-                elif "도루" in p_text:
-                    event["event_type"] = "steal"
-
+                event = self._build_play_event(sequence, info, p_text, state)
                 events.append(event)
                 sequence += 1
 
         return events
+
+    @staticmethod
+    def _extract_raw_play_data(soup: BeautifulSoup) -> list[dict[str, Any]]:
+        raw_data = []
+        for container in soup.select(".relay-bx"):
+            full_text = container.get_text(separator=" ", strip=True)
+            play_els = container.select(".txt-box, .play-txt, p")
+            plays = [el.get_text(strip=True) for el in play_els if el.get_text(strip=True)]
+            raw_data.append({"full_text": full_text, "plays": plays})
+        return raw_data
+
+    def _reset_inning_state_if_needed(
+        self,
+        state: dict[str, int],
+        raw_data: list[dict[str, Any]],
+        info: dict[str, Any],
+        idx: int,
+    ) -> None:
+        if idx <= 0:
+            return
+        prev_info = self._parse_inning_header(raw_data[idx - 1]["full_text"], idx - 1)
+        if prev_info == info:
+            return
+        state["current_outs"] = 0
+        state["current_runners"] = 0
+
+    def _build_play_event(
+        self,
+        sequence: int,
+        info: dict[str, Any],
+        p_text: str,
+        state: dict[str, int],
+    ) -> dict[str, Any]:
+        inning = info["inning"]
+        is_bottom = info["half"] == "bottom"
+        outs_before, runners_before = self._apply_explicit_state(p_text, state)
+        score_diff_before = state["home_score"] - state["away_score"]
+        runs_scored = KBOTextParser.parse_score_change(p_text)
+        self._advance_score(state, is_bottom, runs_scored)
+        self._advance_outs(state, p_text)
+        outs_after = state["current_outs"]
+        runners_after = 0
+        score_diff_after = state["home_score"] - state["away_score"]
+        wp_before, wp_after, wpa = self._calculate_wpa(
+            inning,
+            is_bottom,
+            outs_before,
+            runners_before,
+            outs_after,
+            runners_after,
+            score_diff_before,
+            score_diff_after,
+        )
+        event = self._base_event_payload(
+            sequence,
+            info,
+            p_text,
+            runs_scored,
+            outs_before,
+            runners_before,
+            runners_after,
+            score_diff_before,
+            wp_before,
+            wp_after,
+            wpa,
+            state,
+        )
+        self._apply_basic_event_parsing(event, p_text)
+        return event
+
+    @staticmethod
+    def _apply_explicit_state(p_text: str, state: dict[str, int]) -> tuple[int, int]:
+        outs_before = state["current_outs"]
+        runners_before = state["current_runners"]
+        if "사" not in p_text or ("루" not in p_text and "무사" not in p_text):
+            return outs_before, runners_before
+        parsed_outs = KBOTextParser.parse_outs(p_text)
+        parsed_runners = KBOTextParser.parse_runners(p_text)
+        if parsed_outs >= 0:
+            outs_before = parsed_outs
+            state["current_outs"] = outs_before
+        if parsed_runners >= 0:
+            runners_before = parsed_runners
+            state["current_runners"] = runners_before
+        return outs_before, runners_before
+
+    @staticmethod
+    def _advance_score(state: dict[str, int], is_bottom: bool, runs_scored: int) -> None:
+        if is_bottom:
+            state["home_score"] += runs_scored
+        else:
+            state["away_score"] += runs_scored
+
+    @staticmethod
+    def _advance_outs(state: dict[str, int], p_text: str) -> None:
+        out_keywords = ("삼진", "아웃", "플라이", "땅볼", "범타")
+        if not any(keyword in p_text for keyword in out_keywords):
+            return
+        if "병살" in p_text:
+            state["current_outs"] += 2
+        elif "삼중살" in p_text:
+            state["current_outs"] += 3
+        else:
+            state["current_outs"] += 1
+        state["current_outs"] = min(state["current_outs"], 3)
+
+    def _calculate_wpa(
+        self,
+        inning: int,
+        is_bottom: bool,
+        outs_before: int,
+        runners_before: int,
+        outs_after: int,
+        runners_after: int,
+        score_diff_before: int,
+        score_diff_after: int,
+    ) -> tuple[float, float, float]:
+        wp_before = self.wpa_calc.get_win_probability(
+            inning,
+            is_bottom,
+            outs_before,
+            runners_before,
+            score_diff_before,
+        )
+        wp_after = self.wpa_calc.get_win_probability(
+            inning,
+            is_bottom,
+            outs_after,
+            runners_after,
+            score_diff_after,
+        )
+        wpa = round(wp_after - wp_before if is_bottom else wp_before - wp_after, 4)
+        return wp_before, wp_after, wpa
+
+    def _base_event_payload(
+        self,
+        sequence: int,
+        info: dict[str, Any],
+        p_text: str,
+        runs_scored: int,
+        outs_before: int,
+        runners_before: int,
+        runners_after: int,
+        score_diff_before: int,
+        wp_before: float,
+        wp_after: float,
+        wpa: float,
+        state: dict[str, int],
+    ) -> dict[str, Any]:
+        return {
+            "event_seq": sequence,
+            "inning": info["inning"],
+            "inning_half": info["half"],
+            "description": p_text,
+            "event_type": "unknown",
+            "batter": None,
+            "pitcher": None,
+            "result": None,
+            "wpa": wpa,
+            "win_expectancy_before": wp_before,
+            "win_expectancy_after": wp_after,
+            "score_diff": score_diff_before,
+            "home_score": state["home_score"],
+            "away_score": state["away_score"],
+            "base_state": runners_before,
+            "outs": outs_before,
+            "bases_before": self._format_base_string(runners_before),
+            "bases_after": self._format_base_string(runners_after),
+            "result_code": None,
+            "rbi": runs_scored,
+        }
+
+    @staticmethod
+    def _apply_basic_event_parsing(event: dict[str, Any], p_text: str) -> None:
+        if "타자" in p_text and ":" in p_text:
+            event["event_type"] = "batting"
+            parts = p_text.split(":", 1)
+            if len(parts) > 1:
+                event["batter"] = parts[0].replace("타자", "").strip()
+                event["result"] = parts[1].strip()
+                event["result_code"] = parts[1].strip()
+        elif "투수" in p_text and "교체" in p_text:
+            event["event_type"] = "pitching_change"
+        elif "도루" in p_text:
+            event["event_type"] = "steal"
 
     def _parse_inning_header(self, text: str, idx: int) -> dict[str, Any]:
         match = re.search(r"(\d+)회(초|말)", text)

@@ -15,6 +15,7 @@ from datetime import datetime
 from typing import Any
 
 from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.orm import Session
 
 from src.db.engine import SessionLocal
 from src.models.game import Game, GameEvent, GameSummary, GameValidationMetrics
@@ -34,7 +35,7 @@ REVIEW_SUMMARY_TYPE = "리뷰_WPA"
 TRUSTED_RELAY_STATUSES = {"verified", "recovered"}
 
 
-def _upsert_review_summary(session, game_id: str, review_json: str) -> None:
+def _upsert_review_summary(session: Session, game_id: str, review_json: str) -> None:
     existing_summaries = (
         session.query(GameSummary)
         .filter(
@@ -82,7 +83,7 @@ def _build_review_data(agg: ContextAggregator, game: Game) -> dict[str, Any]:
     return review_data
 
 
-def _trusted_relay_game_ids(session, game_ids: Sequence[str]) -> set[str]:
+def _trusted_relay_game_ids(session: Session, game_ids: Sequence[str]) -> set[str]:
     if not game_ids:
         return set()
     target_ids = {str(game_id) for game_id in game_ids}

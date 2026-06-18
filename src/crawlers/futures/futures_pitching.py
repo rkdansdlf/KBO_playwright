@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import logging
-from typing import Any
 
 """
 Futures League Pitching Stats Crawler
@@ -11,6 +10,7 @@ Fetches year-by-year Futures pitching statistics from player profile pages.
 import re
 
 from bs4 import BeautifulSoup
+from bs4.element import Tag
 from playwright.async_api import Error as PlaywrightError
 
 from src.utils.compliance import compliance
@@ -100,7 +100,7 @@ def _norm_header(txt: str) -> str:
     return HEADER_MAP.get(t, txt.strip())
 
 
-def _parse_table(table) -> list[dict]:
+def _parse_table(table: Tag) -> list[dict]:
     """Parse a table element into list of season pitching records."""
     headers = [_norm_header(th.get_text(strip=True)) for th in table.select("thead th, thead td")]
 
@@ -174,7 +174,7 @@ def _parse_table(table) -> list[dict]:
     return out
 
 
-def _pick_futures_pitching_table(soup: BeautifulSoup) -> Any | None:
+def _pick_futures_pitching_table(soup: BeautifulSoup) -> Tag | None:
     """Find the Futures pitching record table."""
     # Method 1: Find by ID
     tbl = soup.find("table", id="tblPitcherRecord")

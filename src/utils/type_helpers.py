@@ -3,12 +3,11 @@
 from __future__ import annotations
 
 import re
-from typing import Any
 
 _EMPTY_SENTINELS = frozenset({"", "-", "—", "–", "null"})
 
 
-def to_int(val: Any, default: int = 0) -> int:
+def to_int(val: object, default: int = 0) -> int:
     """Convert value to int, returning default on failure."""
     try:
         return int(str(val).strip().replace(",", ""))
@@ -16,7 +15,7 @@ def to_int(val: Any, default: int = 0) -> int:
         return default
 
 
-def safe_int(value: Any) -> int:
+def safe_int(value: object) -> int:
     """Convert cell text to int, returning 0 on failure."""
     try:
         return int(str(value).strip().replace(",", ""))
@@ -24,7 +23,7 @@ def safe_int(value: Any) -> int:
         return 0
 
 
-def safe_int_or_none(value: Any) -> int | None:
+def safe_int_or_none(value: object) -> int | None:
     """Convert cell text to int, returning None for empty/invalid values."""
     if value is None:
         return None
@@ -37,7 +36,7 @@ def safe_int_or_none(value: Any) -> int | None:
         return None
 
 
-def safe_float(value: Any) -> float:
+def safe_float(value: object) -> float:
     """Convert cell text to float, returning 0.0 on failure."""
     try:
         return float(str(value).strip().replace(",", ""))
@@ -45,7 +44,7 @@ def safe_float(value: Any) -> float:
         return 0.0
 
 
-def safe_float_or_none(value: Any) -> float | None:
+def safe_float_or_none(value: object) -> float | None:
     """Convert cell text to float, returning None for empty/invalid values."""
     if value is None:
         return None

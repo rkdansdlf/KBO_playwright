@@ -8,6 +8,7 @@ from typing import Any
 
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.orm import Session
 
 from src.db.engine import SessionLocal
 from src.repositories.source_registry_repository import DataSourceRepository
@@ -36,7 +37,7 @@ TABLE_CHECKS = [
 ]
 
 
-def _check_datasource_health(session) -> list[dict[str, Any]]:
+def _check_datasource_health(session: Session) -> list[dict[str, Any]]:
     ds_repo = DataSourceRepository(session)
     rows = []
     for ds in ds_repo.get_all_active():
@@ -61,7 +62,7 @@ def _check_datasource_health(session) -> list[dict[str, Any]]:
     return rows
 
 
-def _check_table_health(session) -> list[dict[str, Any]]:
+def _check_table_health(session: Session) -> list[dict[str, Any]]:
     rows = []
     for table, date_col in TABLE_CHECKS:
         try:

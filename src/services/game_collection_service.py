@@ -10,6 +10,7 @@ from datetime import date, datetime
 from typing import Any, Protocol
 
 from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.orm import Session
 
 from src.db.engine import SessionLocal
 from src.models.game import Game, GameBattingStat, GameEvent, GamePitchingStat, GamePlayByPlay
@@ -284,27 +285,16 @@ async def _collect_detail_phase(
     result.detail_targets = len(detail_targets)
     result.detail_skipped_existing = len(targets) - len(detail_targets)
 
-    if result.detail_skipped_existing:
-        log(f"[SKIP] Detail already exists for {result.detail_skipped_existing} game(s). Use --force to recrawl.")
-        for target in targets:
-            if exist_map.get(target.game_id, ExistingGameData()).has_detail and not force:
-                result.items[target.game_id].detail_status = "skipped_existing"
+    _mark_skipped_detail_targets(targets, exist_map, force=force, result=result, log=log)
 
     if not detail_targets:
         return detail_ready
 
     batch_size = pause_every or 20
-    for b_idx in range(0, len(detail_targets), batch_size):
+    total_batches = (len(detail_targets) + batch_size - 1) // batch_size
+    for batch_num, b_idx in enumerate(range(0, len(detail_targets), batch_size), start=1):
         batch = detail_targets[b_idx : b_idx + batch_size]
-        batch_num = (b_idx // batch_size) + 1
-        total_batches = (len(detail_targets) + batch_size - 1) // batch_size
-
-        if b_idx > 0:
-            if pause_seconds > 0:
-                log(f"   [PAUSE] Sleeping for {pause_seconds}s between batches...")
-                await asyncio.sleep(pause_seconds)
-            await detail_crawler.close()
-
+        await _pause_between_detail_batches(b_idx, pause_seconds, detail_crawler, log)
         log(f"[*] Processing detail batch {batch_num}/{total_batches} ({len(batch)} games)...")
 
         payloads = await detail_crawler.crawl_games(
@@ -316,65 +306,140 @@ async def _collect_detail_phase(
         }
 
         for index, target in enumerate(batch, start=1):
-            payload = payload_by_id.get(target.game_id)
             global_index = b_idx + index
-            log(f"[DETAIL] {global_index}/{len(detail_targets)} {target.game_id}")
-            if not payload:
-                result.detail_failed += 1
-                item = result.items[target.game_id]
-                item.detail_status = "crawl_failed"
-                item.failure_reason = _normalize_detail_failure_reason(
-                    _get_failure_reason(detail_crawler, target.game_id),
-                    default="no_detail_payload",
-                )
-                log("   [WARN] No detail payload returned")
-                continue
-
-            if not _has_required_detail_rows(payload):
-                result.detail_failed += 1
-                item = result.items[target.game_id]
-                item.detail_status = "filtered"
-                item.failure_reason = _normalize_detail_failure_reason(
-                    _get_failure_reason(detail_crawler, target.game_id),
-                    default="incomplete_detail",
-                )
-                log("   [WARN] Detail payload is missing required hitter/pitcher rows")
-                continue
-            if should_save_detail and not should_save_detail(payload):
-                result.detail_failed += 1
-                item = result.items[target.game_id]
-                item.detail_status = "filtered"
-                item.failure_reason = _normalize_detail_failure_reason(
-                    "detail_payload_filtered",
-                    default="filtered",
-                )
-                log("   [WARN] Detail payload did not pass save predicate")
-                continue
-            if save_game_detail(
-                payload,
-                write_contract=contract,
-                source_stage=detail_source.stage,
-                source_crawler=detail_source.crawler,
-                source_reason=detail_source.reason,
-            ):
-                result.detail_saved += 1
-                result.processed_game_ids.append(target.game_id)
-                detail_ready.add(target.game_id)
-                item = result.items[target.game_id]
-                item.detail_status = "saved"
-                item.detail_saved = True
-                log("   [DB] Detail saved")
-            else:
-                result.detail_failed += 1
-                item = result.items[target.game_id]
-                item.detail_status = "save_failed"
-                item.failure_reason = _normalize_detail_failure_reason(
-                    "detail_save_failed",
-                    default="save_failed",
-                )
-                log("   [ERROR] Detail save failed")
+            _process_detail_target(
+                target,
+                payload_by_id.get(target.game_id),
+                detail_crawler,
+                contract,
+                detail_source,
+                should_save_detail,
+                result,
+                detail_ready,
+                global_index=global_index,
+                total_targets=len(detail_targets),
+                log=log,
+            )
 
     return detail_ready
+
+
+def _mark_skipped_detail_targets(
+    targets: list[GameCollectionTarget],
+    exist_map: dict[str, ExistingGameData],
+    *,
+    force: bool,
+    result: GameCollectionResult,
+    log: Callable[[str], None],
+) -> None:
+    if not result.detail_skipped_existing:
+        return
+    log(f"[SKIP] Detail already exists for {result.detail_skipped_existing} game(s). Use --force to recrawl.")
+    for target in targets:
+        if exist_map.get(target.game_id, ExistingGameData()).has_detail and not force:
+            result.items[target.game_id].detail_status = "skipped_existing"
+
+
+async def _pause_between_detail_batches(
+    batch_start_index: int,
+    pause_seconds: float,
+    detail_crawler: DetailCrawler,
+    log: Callable[[str], None],
+) -> None:
+    if batch_start_index <= 0:
+        return
+    if pause_seconds > 0:
+        log(f"   [PAUSE] Sleeping for {pause_seconds}s between batches...")
+        await asyncio.sleep(pause_seconds)
+    await detail_crawler.close()
+
+
+def _process_detail_target(
+    target: GameCollectionTarget,
+    payload: dict[str, Any] | None,
+    detail_crawler: DetailCrawler,
+    contract: GameWriteContract,
+    detail_source: GameWriteSource,
+    should_save_detail: Callable[[dict[str, Any]], bool] | None,
+    result: GameCollectionResult,
+    detail_ready: set[str],
+    *,
+    global_index: int,
+    total_targets: int,
+    log: Callable[[str], None],
+) -> None:
+    log(f"[DETAIL] {global_index}/{total_targets} {target.game_id}")
+    failure_reason = _detail_payload_failure_reason(target, payload, detail_crawler, should_save_detail)
+    if failure_reason is not None:
+        _mark_detail_failed(target, failure_reason, result, log)
+        return
+    if _save_detail_payload(target, payload or {}, contract, detail_source, result, detail_ready):
+        log("   [DB] Detail saved")
+    else:
+        log("   [ERROR] Detail save failed")
+
+
+def _detail_payload_failure_reason(
+    target: GameCollectionTarget,
+    payload: dict[str, Any] | None,
+    detail_crawler: DetailCrawler,
+    should_save_detail: Callable[[dict[str, Any]], bool] | None,
+) -> tuple[str, str, str] | None:
+    if not payload:
+        return "crawl_failed", _get_failure_reason(detail_crawler, target.game_id), "no_detail_payload"
+    if not _has_required_detail_rows(payload):
+        return "filtered", _get_failure_reason(detail_crawler, target.game_id), "incomplete_detail"
+    if should_save_detail and not should_save_detail(payload):
+        return "filtered", "detail_payload_filtered", "filtered"
+    return None
+
+
+def _mark_detail_failed(
+    target: GameCollectionTarget,
+    failure: tuple[str, str | None, str],
+    result: GameCollectionResult,
+    log: Callable[[str], None],
+) -> None:
+    status, reason, default = failure
+    result.detail_failed += 1
+    item = result.items[target.game_id]
+    item.detail_status = status
+    item.failure_reason = _normalize_detail_failure_reason(reason, default=default)
+    if default == "no_detail_payload":
+        log("   [WARN] No detail payload returned")
+    elif default == "incomplete_detail":
+        log("   [WARN] Detail payload is missing required hitter/pitcher rows")
+    else:
+        log("   [WARN] Detail payload did not pass save predicate")
+
+
+def _save_detail_payload(
+    target: GameCollectionTarget,
+    payload: dict[str, Any],
+    contract: GameWriteContract,
+    detail_source: GameWriteSource,
+    result: GameCollectionResult,
+    detail_ready: set[str],
+) -> bool:
+    if not save_game_detail(
+        payload,
+        write_contract=contract,
+        source_stage=detail_source.stage,
+        source_crawler=detail_source.crawler,
+        source_reason=detail_source.reason,
+    ):
+        result.detail_failed += 1
+        item = result.items[target.game_id]
+        item.detail_status = "save_failed"
+        item.failure_reason = _normalize_detail_failure_reason("detail_save_failed", default="save_failed")
+        return False
+    result.detail_saved += 1
+    result.processed_game_ids.append(target.game_id)
+    detail_ready.add(target.game_id)
+    item = result.items[target.game_id]
+    item.detail_status = "saved"
+    item.detail_saved = True
+    return True
 
 
 async def _collect_relay_phase(
@@ -454,13 +519,13 @@ async def _collect_relay_phase(
         await _maybe_pause(index, pause_every, pause_seconds, log)
 
 
-def _get_value(obj: Any, key: str) -> Any:
+def _get_value(obj: object, key: str) -> object | None:
     if isinstance(obj, dict):
         return obj.get(key)
     return getattr(obj, key, None)
 
 
-def _format_game_date(value: Any, *, fallback_game_id: str) -> str:
+def _format_game_date(value: object, *, fallback_game_id: str) -> str:
     if isinstance(value, datetime):
         return value.strftime("%Y%m%d")
     if isinstance(value, date):
@@ -471,11 +536,11 @@ def _format_game_date(value: Any, *, fallback_game_id: str) -> str:
     return str(fallback_game_id)[:8]
 
 
-def _ids_with_rows(session, model, game_ids: list[str]) -> set[str]:
+def _ids_with_rows(session: Session, model: type[Any], game_ids: list[str]) -> set[str]:
     return {row[0] for row in session.query(model.game_id).filter(model.game_id.in_(game_ids)).distinct().all()}
 
 
-def _get_failure_reason(crawler: Any, game_id: str) -> str | None:
+def _get_failure_reason(crawler: object, game_id: str) -> str | None:
     getter = getattr(crawler, "get_last_failure_reason", None)
     if not callable(getter):
         return None

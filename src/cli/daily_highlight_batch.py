@@ -10,9 +10,10 @@ import asyncio
 import logging
 import os
 from collections.abc import Sequence
-from datetime import datetime
+from datetime import date, datetime
 
 from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.orm import Session
 
 from src.aggregators.highlight_aggregator import HighlightAggregator
 from src.db.engine import SessionLocal
@@ -26,7 +27,7 @@ logger = logging.getLogger(__name__)
 HIGHLIGHT_SYNC_EXCEPTIONS = (SQLAlchemyError, RuntimeError, ValueError, TypeError, KeyError, OSError)
 
 
-def _load_completed_games(session, target_date) -> list[Game]:
+def _load_completed_games(session: Session, target_date: date) -> list[Game]:
     return (
         session.query(Game)
         .filter(
@@ -38,7 +39,7 @@ def _load_completed_games(session, target_date) -> list[Game]:
 
 
 def _process_highlight_games(
-    session, games: list[Game], *, force: bool, dry_run: bool
+    session: Session, games: list[Game], *, force: bool, dry_run: bool
 ) -> tuple[list[str], dict[str, list[GameHighlight]], dict[str, Game]]:
     processed_game_ids: list[str] = []
     game_highlights_map: dict[str, list[GameHighlight]] = {}

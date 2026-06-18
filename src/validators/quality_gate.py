@@ -47,7 +47,7 @@ class QualityGate:
         }
 
     @staticmethod
-    def _valid_team_code_filters(model: Any) -> tuple[Any, ...]:
+    def _valid_team_code_filters(model: type) -> tuple[object, ...]:
         from sqlalchemy import or_
 
         team_expr = func.coalesce(model.canonical_team_code, model.team_code)
@@ -143,7 +143,7 @@ class QualityGate:
         )
 
     @staticmethod
-    def _resolve_pitching_cumulative_outs(cumulative_row: Any) -> int | None:
+    def _resolve_pitching_cumulative_outs(cumulative_row: object) -> int | None:
         cum_outs = cumulative_row.innings_outs
         if cum_outs is not None:
             return cum_outs
@@ -161,7 +161,7 @@ class QualityGate:
         return whole * 3
 
     @staticmethod
-    def _pitching_outs_mismatch(row: Any, cumulative_outs: int | None) -> dict[str, Any] | None:
+    def _pitching_outs_mismatch(row: object, cumulative_outs: int | None) -> dict[str, Any] | None:
         diff = (row.outs or 0) - (cumulative_outs or 0)
         if diff <= 3 or (cumulative_outs is not None and diff / (cumulative_outs or 1) <= 0.01):
             return None
@@ -173,7 +173,7 @@ class QualityGate:
         }
 
     @staticmethod
-    def _missing_pitching_cumulative_record(row: Any) -> dict[str, Any]:
+    def _missing_pitching_cumulative_record(row: object) -> dict[str, Any]:
         return {
             "player_id": row.player_id,
             "issue": "Missing cumulative record",

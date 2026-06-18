@@ -17,7 +17,7 @@ from datetime import datetime
 from typing import Any
 
 from playwright.async_api import Error as PlaywrightError
-from playwright.async_api import Page
+from playwright.async_api import Locator, Page
 
 from src.crawlers.selectors import PLAYER_SEARCH
 from src.services.player_status_confirmer import PlayerStatusConfirmer
@@ -222,7 +222,13 @@ class PlayerSearchCrawler:
             if owns_pool:
                 await active_pool.close()
 
-    async def _merge_rows(self, page: Page, all_rows, seen_ids, limit) -> None:
+    async def _merge_rows(
+        self,
+        page: Page,
+        all_rows: list[PlayerRow],
+        seen_ids: set[int],
+        limit: int | None,
+    ) -> bool:
         rows = await self._paginate_current_tab(page)
         for r in rows:
             if r.player_id not in seen_ids:
@@ -361,7 +367,7 @@ class PlayerSearchCrawler:
             logger.warning("Could not get first player name from table")
             return ""
 
-    async def _trigger_postback(self, page: Page, anchor) -> None:
+    async def _trigger_postback(self, page: Page, anchor: Locator) -> bool:
         # Check href first — javascript:__doPostBack links must use manual evaluation
         # because Playwright click() returns success but does not actually trigger
         # the ASP.NET postback mechanism.
@@ -395,7 +401,7 @@ class PlayerSearchCrawler:
         else:
             return True
 
-    async def _wait_after_nav(self, page: Page, prev_v, _first_b) -> None:
+    async def _wait_after_nav(self, page: Page, prev_v: str, _first_b: str) -> None:
         try:
             await page.wait_for_function(
                 "([s, v]) => document.querySelector(s)?.value !== v",
@@ -482,7 +488,7 @@ def player_row_to_dict(row: PlayerRow) -> dict[str, Any]:
 async def crawl_all_players(
     max_pages: int | None = None,
     headless: bool = False,
-    slow_mo=200,  # noqa: ARG001
+    slow_mo: int = 200,  # noqa: ARG001
     request_delay: float = REQUEST_DELAY_SEC,
     pool: AsyncPlaywrightPool | None = None,
 ) -> list[PlayerRow]:

@@ -27,21 +27,65 @@ logger = logging.getLogger(__name__)
 PREVIEW_CONTEXT_EXCEPTIONS = (SQLAlchemyError, RuntimeError, ValueError, TypeError, KeyError)
 
 
-async def run_preview_batch(target_date: str, *, sync_to_oci: bool | None = None) -> list[str]:
-    logger.info("🚀 Starting Preview Data Batch for %s...", target_date)
+def _write_pregame_manifest(target_date: str, game_ids: list[str]) -> str:
+    return write_refresh_manifest(
+        phase="pregame",
+        target_date=target_date,
+        game_ids=game_ids,
+        datasets=["game", "game_metadata", "game_lineups", "game_summary"],
+    )
 
-    crawler = PreviewCrawler(request_delay=1.0)
-    previews = await crawler.crawl_preview_for_date(target_date)
-    if not previews:
-        manifest_path = write_refresh_manifest(
-            phase="pregame",
-            target_date=target_date,
-            game_ids=[],
-            datasets=["game", "game_metadata", "game_lineups", "game_summary"],
+
+def _add_team_context(
+    preview: dict[str, object],
+    agg: ContextAggregator,
+    season_year: int,
+    target_dt_obj: datetime.date,
+) -> None:
+    game_id = preview.get("game_id")
+    away_code = resolve_team_code(preview.get("away_team_name"), season_year)
+    home_code = resolve_team_code(preview.get("home_team_name"), season_year)
+    if not away_code or not home_code:
+        return
+
+    try:
+        logger.info("📊 Aggregating pregame context for %s...", game_id)
+        preview["matchup_h2h"] = agg.get_head_to_head_summary(
+            away_code,
+            home_code,
+            season_year,
+            target_dt_obj,
         )
-        logger.info("ℹ️ No preview data found. manifest=%s", manifest_path)
-        return []
+        preview["away_recent_l10"] = agg.get_team_l10_summary(away_code, target_dt_obj)
+        preview["home_recent_l10"] = agg.get_team_l10_summary(home_code, target_dt_obj)
+        preview["away_metrics"] = agg.get_team_recent_metrics(away_code, target_dt_obj)
+        preview["home_metrics"] = agg.get_team_recent_metrics(home_code, target_dt_obj)
+        preview["away_movements"] = agg.get_recent_player_movements(away_code, target_dt_obj)
+        preview["home_movements"] = agg.get_recent_player_movements(home_code, target_dt_obj)
+        preview["away_roster_changes"] = agg.get_daily_roster_changes(away_code, target_dt_obj)
+        preview["home_roster_changes"] = agg.get_daily_roster_changes(home_code, target_dt_obj)
 
+        series_context = agg.get_postseason_series_summary(away_code, home_code, season_year, target_dt_obj)
+        if series_context:
+            preview["series_context"] = series_context
+    except PREVIEW_CONTEXT_EXCEPTIONS:
+        logger.exception("⚠️ Context aggregation failed for %s", game_id)
+
+
+def _add_pitcher_context(preview: dict[str, object], agg: ContextAggregator, season_year: int) -> None:
+    game_id = preview.get("game_id")
+    try:
+        away_starter_id = preview.get("away_starter_id")
+        home_starter_id = preview.get("home_starter_id")
+        if away_starter_id:
+            preview["away_starter_stats"] = agg.get_pitcher_season_stats(away_starter_id, season_year)
+        if home_starter_id:
+            preview["home_starter_stats"] = agg.get_pitcher_season_stats(home_starter_id, season_year)
+    except PREVIEW_CONTEXT_EXCEPTIONS:
+        logger.exception("⚠️ Pitcher stats aggregation failed for %s", game_id)
+
+
+def _save_preview_contexts(previews: list[dict[str, object]], target_date: str) -> list[str]:
     saved_ids: list[str] = []
     target_dt_obj = datetime.strptime(target_date, "%Y%m%d").date()
     season_year = target_dt_obj.year
@@ -52,66 +96,43 @@ async def run_preview_batch(target_date: str, *, sync_to_oci: bool | None = None
             game_id = preview.get("game_id")
             if not game_id:
                 continue
-
-            away_code = resolve_team_code(preview.get("away_team_name"), season_year)
-            home_code = resolve_team_code(preview.get("home_team_name"), season_year)
-
-            if away_code and home_code:
-                try:
-                    logger.info("📊 Aggregating pregame context for %s...", game_id)
-                    preview["matchup_h2h"] = agg.get_head_to_head_summary(
-                        away_code,
-                        home_code,
-                        season_year,
-                        target_dt_obj,
-                    )
-                    preview["away_recent_l10"] = agg.get_team_l10_summary(away_code, target_dt_obj)
-                    preview["home_recent_l10"] = agg.get_team_l10_summary(home_code, target_dt_obj)
-                    preview["away_metrics"] = agg.get_team_recent_metrics(away_code, target_dt_obj)
-                    preview["home_metrics"] = agg.get_team_recent_metrics(home_code, target_dt_obj)
-                    preview["away_movements"] = agg.get_recent_player_movements(away_code, target_dt_obj)
-                    preview["home_movements"] = agg.get_recent_player_movements(home_code, target_dt_obj)
-                    preview["away_roster_changes"] = agg.get_daily_roster_changes(away_code, target_dt_obj)
-                    preview["home_roster_changes"] = agg.get_daily_roster_changes(home_code, target_dt_obj)
-
-                    series_context = agg.get_postseason_series_summary(away_code, home_code, season_year, target_dt_obj)
-                    if series_context:
-                        preview["series_context"] = series_context
-                except PREVIEW_CONTEXT_EXCEPTIONS:
-                    logger.exception("⚠️ Context aggregation failed for %s", game_id)
-
-            away_starter_id = preview.get("away_starter_id")
-            home_starter_id = preview.get("home_starter_id")
-            try:
-                if away_starter_id:
-                    preview["away_starter_stats"] = agg.get_pitcher_season_stats(away_starter_id, season_year)
-                if home_starter_id:
-                    preview["home_starter_stats"] = agg.get_pitcher_season_stats(home_starter_id, season_year)
-            except PREVIEW_CONTEXT_EXCEPTIONS:
-                logger.exception("⚠️ Pitcher stats aggregation failed for %s", game_id)
-
+            _add_team_context(preview, agg, season_year, target_dt_obj)
+            _add_pitcher_context(preview, agg, season_year)
             if save_pregame_lineups(preview):
-                saved_ids.append(game_id)
+                saved_ids.append(str(game_id))
+    return saved_ids
 
+
+def _sync_saved_pregame_games(saved_ids: list[str]) -> None:
+    oci_url = os.getenv("OCI_DB_URL")
+    if not oci_url:
+        return
+    with SessionLocal() as sync_session:
+        syncer = OCISync(oci_url, sync_session)
+        try:
+            logger.info("🛡️ Syncing pregame games and referenced players...")
+            for game_id in sorted(set(saved_ids)):
+                syncer.sync_pregame_game(game_id)
+        finally:
+            syncer.close()
+
+
+async def run_preview_batch(target_date: str, *, sync_to_oci: bool | None = None) -> list[str]:
+    logger.info("🚀 Starting Preview Data Batch for %s...", target_date)
+
+    crawler = PreviewCrawler(request_delay=1.0)
+    previews = await crawler.crawl_preview_for_date(target_date)
+    if not previews:
+        manifest_path = _write_pregame_manifest(target_date, [])
+        logger.info("ℹ️ No preview data found. manifest=%s", manifest_path)
+        return []
+
+    saved_ids = _save_preview_contexts(previews, target_date)
     should_sync = sync_to_oci if sync_to_oci is not None else bool(os.getenv("OCI_DB_URL"))
     if should_sync and saved_ids:
-        oci_url = os.getenv("OCI_DB_URL")
-        if oci_url:
-            with SessionLocal() as sync_session:
-                syncer = OCISync(oci_url, sync_session)
-                try:
-                    logger.info("🛡️ Syncing pregame games and referenced players...")
-                    for game_id in sorted(set(saved_ids)):
-                        syncer.sync_pregame_game(game_id)
-                finally:
-                    syncer.close()
+        _sync_saved_pregame_games(saved_ids)
 
-    manifest_path = write_refresh_manifest(
-        phase="pregame",
-        target_date=target_date,
-        game_ids=saved_ids,
-        datasets=["game", "game_metadata", "game_lineups", "game_summary"],
-    )
+    manifest_path = _write_pregame_manifest(target_date, saved_ids)
     logger.info("✅ Pregame batch finished. saved=%s manifest=%s", len(saved_ids), manifest_path)
     return saved_ids
 

@@ -63,7 +63,8 @@ def _normalize_daily_roster_date(value: date | datetime | str | None) -> date | 
                 return datetime.strptime(raw, date_format).date()
             except ValueError:
                 continue
-    raise ValueError("daily roster date must be YYYY-MM-DD or YYYYMMDD")
+    msg = "daily roster date must be YYYY-MM-DD or YYYYMMDD"
+    raise ValueError(msg)
 
 
 def _format_daily_roster_scope(start_date: date | None, end_date: date | None) -> str:
@@ -446,12 +447,11 @@ class MiscSyncMixin:
         end_date: date | datetime | str | None = None,
     ) -> int:
         """Sync team_daily_roster from SQLite to OCI"""
-        from src.utils.team_history import resolve_team_code_for_season
-
         start = _normalize_daily_roster_date(start_date)
         end = _normalize_daily_roster_date(end_date)
         if start and end and start > end:
-            raise ValueError("daily roster start_date must be earlier than or equal to end_date")
+            msg = "daily roster start_date must be earlier than or equal to end_date"
+            raise ValueError(msg)
         scope = _format_daily_roster_scope(start, end)
         logger.info("INFO: Syncing daily rosters%s...", scope)
 
@@ -461,32 +461,40 @@ class MiscSyncMixin:
         if end:
             filters.append(TeamDailyRoster.roster_date <= end)
 
-        def transform(data: dict) -> dict[str, Any]:
-            try:
-                team_code = data.get("team_code", "")
-                roster_date = data.get("roster_date")
-                if team_code and roster_date:
-                    season_year = roster_date.year if hasattr(roster_date, "year") else None
-                    raw = team_code.strip().upper()
-                    if raw == "LOT":
-                        raw = "LT"
-                    elif raw == "KW":
-                        raw = "KH"
-                    if season_year:
-                        resolved = resolve_team_code_for_season(raw, season_year)
-                        if resolved:
-                            data["team_code"] = resolved
-            except (RuntimeError, ValueError, TypeError) as exc:
-                logger.warning("Failed to resolve team code for roster row: %s", exc)
-            return data
-
         return self.sync_simple_table(
             TeamDailyRoster,
             ["roster_date", "team_code", "player_id"],
             filters=filters or None,
-            transform_fn=transform,
+            transform_fn=self._transform_daily_roster_row,
             batch_size=1000,
         )
+
+    def _transform_daily_roster_row(self, data: dict[str, Any]) -> dict[str, Any]:
+        try:
+            self._resolve_daily_roster_team_code(data)
+        except (RuntimeError, ValueError, TypeError) as exc:
+            logger.warning("Failed to resolve team code for roster row: %s", exc)
+        return data
+
+    @staticmethod
+    def _resolve_daily_roster_team_code(data: dict[str, Any]) -> None:
+        from src.utils.team_history import resolve_team_code_for_season
+
+        team_code = data.get("team_code", "")
+        roster_date = data.get("roster_date")
+        if not team_code or not roster_date:
+            return
+        season_year = roster_date.year if hasattr(roster_date, "year") else None
+        if not season_year:
+            return
+        raw = team_code.strip().upper()
+        if raw == "LOT":
+            raw = "LT"
+        elif raw == "KW":
+            raw = "KH"
+        resolved = resolve_team_code_for_season(raw, season_year)
+        if resolved:
+            data["team_code"] = resolved
 
     def sync_team_history(self) -> int:
         """Sync team_history table"""

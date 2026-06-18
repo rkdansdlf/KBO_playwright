@@ -10,6 +10,7 @@ from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 
 from src.db.engine import SessionLocal
+from src.models.source_registry import DataSource
 from src.repositories.source_registry_repository import DataSourceRepository
 from src.services.p0_readiness import build_p0_readiness, format_p0_readiness_summary
 from src.utils.alerting import SlackWebhookClient
@@ -37,7 +38,7 @@ DOMAIN_TABLE_CHECKS = {
 }
 
 
-def _get_stale_threshold_hours(source) -> int:
+def _get_stale_threshold_hours(source: DataSource) -> int:
     freq = source.crawl_frequency or "daily"
     return STALE_THRESHOLD_HOURS.get(freq, 48)
 
