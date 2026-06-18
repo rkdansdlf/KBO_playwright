@@ -77,8 +77,21 @@ Agents should apply the repository's crawler-oriented skill set automatically; t
 - `python3 -m scripts.verification.verify_player_game_stats --year YYYY`: Verify player game stat consistency.
 - `pytest`: Run the test suite.
 
+### Additional CLI Inventory
+
+These modules are operational or diagnostic entrypoints that are less frequently used than the primary commands above. Prefer `python3 -m src.cli.<module> --help` before running them, and use dry-run/read-only flags when available.
+
+| Category | CLI modules |
+| --- | --- |
+| Data collection | `collect_profiles`, `collect_rosters`, `crawl_congestion`, `crawl_operation_notices`, `crawl_parking`, `crawl_retire`, `crawl_seat_sections`, `crawl_stadium_food`, `crawl_staff_register`, `crawl_transit_time` |
+| Pipeline / jobs | `run_all_crawlers`, `run_advanced_daily`, `daily_highlight_batch`, `daily_review_batch`, `daily_story_batch`, `run_pipeline_demo` |
+| Repair / backfill | `auto_healer`, `backfill_pregame_previews`, `backfill_starting_pitchers_from_stats`, `fix_player_names`, `rebuild_relay_events`, `reconcile_postgame`, `regenerate_game_stories`, `regenerate_review_summaries`, `repair_game_stats`, `retry_daily_failures` |
+| Calculations | `calculate_matchups`, `calculate_rankings`, `calculate_sabermetrics`, `calculate_standings`, `monthly_team_audit` |
+| Monitoring / reports | `check_data_status`, `dashboard_report`, `data_quality_report`, `db_healthcheck`, `health_check`, `monitor_data_freshness`, `morning_pbp_report`, `crawler_live_smoke` |
+| Analysis / sync utilities | `analyze_data`, `diagnose_coach_pitching`, `discover_historical_players`, `fetch_kbo_pbp`, `ingest_mock_game_html`, `ingest_schedule_html`, `seed_relay_validation_metrics`, `sync_pregame_previews`, `verify_chunk_quality`, `verify_sync_consistency` |
+
 ## Code Quality & Linting
-- `ruff check src/ tests/` = **0 errors** (enforced by pre-commit).
+- `ruff check src/ tests/ scripts/` = **0 errors** (enforced by pre-commit).
 - `ruff format --check` must pass.
 - `pyproject.toml` excludes `scripts/investigations/` from ruff scope (debug/investigation files).
 - `G004` (logging-f-string) is globally ignored — f-strings in logging are intentional after print→logger conversion.
@@ -161,3 +174,50 @@ All six backfill types are defined in a single `backfill.yml` using a job matrix
 - Per-category gap alert: `TELEGRAM_CHAT_ID_RELAY`, `TELEGRAM_CHAT_ID_STANDINGS`, `TELEGRAM_CHAT_ID_PROFILE`, `TELEGRAM_CHAT_ID_FRESHNESS`
 - External APIs: `YOUTUBE_API_KEY`, `NAVER_CLIENT_ID`, `NAVER_CLIENT_SECRET`
 - Optionally: `SLACK_WEBHOOK_URL` (for notify action with `channels: slack`)
+
+## Anchored Summary
+
+Last updated: 2026-06-18
+
+### Ruff Rules Expansion Status
+
+Ruff expansion phases completed across the current cleanup campaign. The work enabled stricter lint coverage while preserving existing CLI contracts, crawler interfaces, and keyword-call compatibility where tests or public helpers depended on parameter names.
+
+| Area | Rules / Scope | Result |
+| --- | --- | --- |
+| Return flow | `RET` | Fixed 59 violations (`RET503`, `RET504`) |
+| Try/raise hygiene | `TRY004`, `TRY201`, `TRY301` | Fixed 10 violations |
+| Raise message hygiene | `TRY003` | Fixed 64 `src/` violations; tests/scripts keep fixture-oriented ignores |
+| Logging in exceptions | `TRY400`, `TRY401` | Fixed 100 violations |
+| Try/else structure | `TRY300` | Fixed 59 `src/` violations across 24 files |
+| Path handling | `PTH` | Fixed 167 violations; migrated `os.path` usage to `pathlib` |
+| Annotations | `ANN002`, `ANN003`, `ANN202`, `ANN205` | Fixed 18 violations; added future annotations to 18 `__init__.py` files |
+| Function argument annotations | `ANN001` | Fixed 288 `src/` violations; annotated common DB/session and crawler helper parameters |
+| Dynamic typing | `ANN401` | Fixed 171 `src/` violations; replaced direct `Any` annotations with concrete types or `object` where appropriate |
+| Blind exceptions | `BLE001` | Removed all `src/` violations; narrowed scripts where safe |
+| Exception chaining | `B904` | Enabled exception chaining checks; fixed remaining script violation with `raise ... from ...` |
+| Unused arguments | `ARG` | Fixed 42 `src/` violations; kept keyword compatibility with targeted `noqa` where required |
+| Print statements | `T20` | Fixed 10 `src/` violations with targeted `T201` allowances for CLI stdout / parser smoke-test output |
+| CLI tests/docs | Core CLI smoke tests and inventory | Added `run_daily_update` CLI tests and documented additional CLI inventory |
+| Parser/repository tests | Edge-case coverage | Added ticket duplicate-price and source snapshot failure-message tests |
+| Pre-commit | Hook set | Upgraded pre-commit hooks and added AST, merge-conflict, private-key, and debug-statement checks |
+| Container/deps | Dockerfile / packaging | Added `.dockerignore`, non-root Docker user, DB healthcheck, and aligned dependency lower bounds |
+
+### Current Verification Baseline
+
+- `ruff check src/ tests/ scripts/` = 0 errors
+- `ruff format --check .` = 887 files already formatted
+- `python3 scripts/lint_bare_except.py` = 0 bare `except Exception` in 425 files
+- `python -m pytest -q --tb=line` = 4278 passed, 1 skipped, 2 deselected, 1 xfailed
+- `# noqa: BLE001` in `src/` = 0
+- `# noqa: BLE001` in `scripts/` = 6 intentional CLI / operational catch-all guards
+
+### Deferred Lint Candidates
+
+- No active deferred Ruff candidate remains from the current cleanup campaign.
+
+### Notes For Future Agents
+
+- Preserve CLI stdout `print()` calls that intentionally emit JSON or rendered command output; use targeted `# noqa: T201` rather than logging.
+- Do not rename unused public/helper parameters when tests or callers pass them by keyword; prefer targeted `# noqa: ARG001` or `# noqa: ARG002`.
+- `tests/**` and `scripts/**` intentionally ignore selected annotation, `TRY003`, `ARG`, and `T20` rules because fixture signatures, monkeypatch callbacks, debug scripts, and CLI utilities commonly require broad or unused arguments, inline fixture exceptions, and stdout output.
