@@ -9,6 +9,7 @@ import logging
 from typing import Any
 
 from bs4 import BeautifulSoup
+from bs4.element import Tag
 from playwright.sync_api import Error as PlaywrightError
 from playwright.sync_api import Page, sync_playwright
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
@@ -211,44 +212,60 @@ def parse_team_batting_html(
     if "team_name" not in indexes:
         return []
 
+    rows = _extract_stat_rows(table)
+    return [
+        payload
+        for row in rows
+        if (payload := _parse_team_batting_row(row, indexes, season, league, team_mapping)) is not None
+    ]
+
+
+def _extract_stat_rows(table: Tag) -> list[Tag]:
     rows = table.select("tbody tr")
-    if not rows:
-        rows = [row for row in table.select("tr") if row.find_all("td")]
+    if rows:
+        return rows
+    return [row for row in table.select("tr") if row.find_all("td")]
 
-    stats: list[dict[str, Any]] = []
-    for row in rows:
-        cells = row.find_all("td")
-        if len(cells) < len(indexes):
+
+def _parse_team_batting_row(
+    row: Tag,
+    indexes: dict[str, int],
+    season: int,
+    league: str,
+    team_mapping: dict[str, str],
+) -> dict[str, Any] | None:
+    cells = row.find_all("td")
+    if len(cells) < len(indexes):
+        return None
+    team_name = get_cell_value(cells, indexes["team_name"])
+    if not team_name:
+        return None
+    payload: dict[str, Any] = {
+        "team_id": resolve_team_id(team_name, team_mapping) or team_name,
+        "team_name": team_name,
+        "season": season,
+        "league": league,
+    }
+    extras = _add_batting_values(payload, cells, indexes)
+    if extras:
+        payload["extra_stats"] = extras
+    return payload
+
+
+def _add_batting_values(payload: dict[str, Any], cells: list[Tag], indexes: dict[str, int]) -> dict[str, Any]:
+    extras: dict[str, Any] = {}
+    for header_key, idx in indexes.items():
+        if header_key == "team_name":
             continue
-        team_name = get_cell_value(cells, indexes["team_name"])
-        if not team_name:
+        value_str = get_cell_value(cells, idx)
+        if value_str is None:
             continue
-        team_id = resolve_team_id(team_name, team_mapping)
-        payload: dict[str, Any] = {
-            "team_id": team_id or team_name,
-            "team_name": team_name,
-            "season": season,
-            "league": league,
-        }
-
-        extras: dict[str, Any] = {}
-        for header_key, idx in indexes.items():
-            if header_key == "team_name":
-                continue
-            value_str = get_cell_value(cells, idx)
-            if value_str is None:
-                continue
-            field_name = header_key
-            value = parse_numeric(value_str, header_key in FLOAT_FIELDS)
-            if field_name in BATTING_FIELDS:
-                payload[field_name] = value
-            else:
-                extras[field_name] = value
-
-        if extras:
-            payload["extra_stats"] = extras
-        stats.append(payload)
-    return stats
+        value = parse_numeric(value_str, header_key in FLOAT_FIELDS)
+        if header_key in BATTING_FIELDS:
+            payload[header_key] = value
+        else:
+            extras[header_key] = value
+    return extras
 
 
 def _build_column_map(headers: list[str]) -> dict[str, int]:

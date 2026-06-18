@@ -38,11 +38,17 @@ class RealtimeIssueCrawler:
         Fetches latest baseball news headlines from Naver Sports GW API (JSON)
         with fallback to web scraping if API is down.
         """
-        date_str = datetime.now().strftime("%Y%m%d")
-        api_url = f"https://api-gw.sports.naver.com/news/articles/kbaseball?sort=latest&date={date_str}&page=1&pageSize=20&isPhoto=N"
-        logger.info("Fetching Naver news from API: %s", api_url)
+        articles = self._fetch_naver_news_from_api()
+        if articles is None:
+            articles = self._fetch_naver_news_from_html()
+        if save and self._raw_pages:
+            with SessionLocal() as session:
+                save_raw_snapshots(session, self._raw_pages)
+        return articles
 
-        articles = []
+    def _fetch_naver_news_from_api(self) -> list[dict[str, Any]] | None:
+        api_url = self._naver_news_api_url()
+        logger.info("Fetching Naver news from API: %s", api_url)
         try:
             custom_headers = self.headers.copy()
             custom_headers["Referer"] = "https://sports.news.naver.com/kbaseball/news/index"
@@ -59,41 +65,48 @@ class RealtimeIssueCrawler:
                     },
                 )
                 if res.status_code == 200:
-                    data = res.json()
-                    result_data = data.get("result", {})
-                    news_list = result_data.get("newsList", [])
-
-                    for item in news_list:
-                        title = item.get("title", "")
-                        sub_content = item.get("subContent", "")
-                        oid = item.get("oid", "")
-                        offset_id = item.get("aid", "")
-                        office_name = item.get("officeName", "")
-                        dt_str = item.get("datetime", "")
-
-                        url = f"https://sports.news.naver.com/kbaseball/news/read?oid={oid}&aid={offset_id}"
-
-                        articles.append(
-                            {
-                                "title": title,
-                                "content": sub_content if sub_content else title,
-                                "meta": {
-                                    "source": url,
-                                    "office_name": office_name,
-                                    "published_at": dt_str,
-                                    "crawled_at": datetime.now().isoformat(),
-                                    "category": "naver_news",
-                                },
-                            },
-                        )
+                    articles = self._parse_naver_news_api_response(res.json())
                     logger.info("   Fetched %d headlines from JSON API.", len(articles))
                     return articles
                 logger.info("Naver news API returned status code %d", res.status_code)
         except httpx.HTTPError:
             logger.exception("Naver news API failed. Falling back to HTML scraping...")
+        return None
 
+    @staticmethod
+    def _naver_news_api_url() -> str:
+        date_str = datetime.now().strftime("%Y%m%d")
+        return f"https://api-gw.sports.naver.com/news/articles/kbaseball?sort=latest&date={date_str}&page=1&pageSize=20&isPhoto=N"
+
+    @staticmethod
+    def _parse_naver_news_api_response(data: dict[str, Any]) -> list[dict[str, Any]]:
+        result_data = data.get("result", {})
+        news_list = result_data.get("newsList", [])
+        return [RealtimeIssueCrawler._build_naver_api_article(item) for item in news_list]
+
+    @staticmethod
+    def _build_naver_api_article(item: dict[str, Any]) -> dict[str, Any]:
+        title = item.get("title", "")
+        sub_content = item.get("subContent", "")
+        oid = item.get("oid", "")
+        offset_id = item.get("aid", "")
+        url = f"https://sports.news.naver.com/kbaseball/news/read?oid={oid}&aid={offset_id}"
+        return {
+            "title": title,
+            "content": sub_content if sub_content else title,
+            "meta": {
+                "source": url,
+                "office_name": item.get("officeName", ""),
+                "published_at": item.get("datetime", ""),
+                "crawled_at": datetime.now().isoformat(),
+                "category": "naver_news",
+            },
+        }
+
+    def _fetch_naver_news_from_html(self) -> list[dict[str, Any]]:
         # HTML Scraping Fallback
         fallback_url = "https://sports.news.naver.com/kbaseball/news/index"
+        articles = []
         try:
             with httpx.Client(headers=self.headers, timeout=self.timeout) as client:
                 throttle.wait_sync("sports.news.naver.com")
@@ -108,38 +121,40 @@ class RealtimeIssueCrawler:
                 )
                 if res.status_code == 200:
                     soup = BeautifulSoup(res.text, "html.parser")
-                    links = []
-                    for a in soup.find_all("a"):
-                        href = a.get("href", "")
-                        title = a.get("title") or a.text.strip()
-                        if href and ("read" in href or "read.nhn" in href) and title:
-                            if href.startswith("/"):
-                                href = "https://sports.news.naver.com" + href
-                            links.append((title, href))
-
-                    seen = set()
-                    for title, href in links:
-                        if href in seen:
-                            continue
-                        seen.add(href)
-                        articles.append(
-                            {
-                                "title": title,
-                                "content": title,
-                                "meta": {
-                                    "source": href,
-                                    "crawled_at": datetime.now().isoformat(),
-                                    "category": "naver_news",
-                                },
-                            },
-                        )
+                    articles = self._parse_naver_news_html(soup)
             logger.info("   Fetched %s headlines from HTML fallback.", len(articles))
         except httpx.HTTPError:
             logger.exception("Naver News HTML fallback also failed")
+        return articles
 
-        if save and self._raw_pages:
-            with SessionLocal() as session:
-                save_raw_snapshots(session, self._raw_pages)
+    @staticmethod
+    def _parse_naver_news_html(soup: BeautifulSoup) -> list[dict[str, Any]]:
+        links = []
+        for a in soup.find_all("a"):
+            href = a.get("href", "")
+            title = a.get("title") or a.text.strip()
+            if href and ("read" in href or "read.nhn" in href) and title:
+                if href.startswith("/"):
+                    href = "https://sports.news.naver.com" + href
+                links.append((title, href))
+
+        articles = []
+        seen = set()
+        for title, href in links:
+            if href in seen:
+                continue
+            seen.add(href)
+            articles.append(
+                {
+                    "title": title,
+                    "content": title,
+                    "meta": {
+                        "source": href,
+                        "crawled_at": datetime.now().isoformat(),
+                        "category": "naver_news",
+                    },
+                },
+            )
         return articles
 
     def fetch_mlbpark_bullpen_posts(self, save: bool = False) -> list[dict[str, Any]]:

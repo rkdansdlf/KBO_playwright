@@ -16,6 +16,7 @@ from zoneinfo import ZoneInfo
 
 from sqlalchemy import MetaData, Table, func, inspect, or_, select
 from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.orm import Session
 
 from src.db.engine import SessionLocal, get_oci_url
 from src.models.game import (
@@ -42,7 +43,7 @@ _PLAYER_BASIC_NEW_PLAYER_COLUMNS = {"player_id", "name", "created_at"}
 _REGULAR_SEASON_NAMES = ("정규시즌", "Regular Season", "regular")
 
 
-def _player_basic_table_for_new_players(session) -> Table | None:
+def _player_basic_table_for_new_players(session: Session) -> Table | None:
     """Return a player_basic table object when new-player dates are queryable."""
     table = PlayerBasic.__table__
     table_name = table.name
@@ -79,7 +80,7 @@ def _player_basic_table_for_new_players(session) -> Table | None:
     return None
 
 
-def _get_new_players(session, target_dt: date) -> list[dict[str, Any]]:
+def _get_new_players(session: Session, target_dt: date) -> list[dict[str, Any]]:
     table = _player_basic_table_for_new_players(session)
     if table is None:
         return []
@@ -96,7 +97,7 @@ def _get_new_players(session, target_dt: date) -> list[dict[str, Any]]:
 
 
 def get_relay_integrity_metrics(
-    session,
+    session: Session,
     target_date: date,
     recent_days: int = 14,
 ) -> dict[str, Any]:
@@ -233,7 +234,7 @@ def _fixed_snapshot_diffs(snapshot: dict[str, Any]) -> list[str]:
     return diffs
 
 
-def _record_auto_remediation_fixed(summary: dict[str, Any], filename: str, content: Any) -> None:
+def _record_auto_remediation_fixed(summary: dict[str, Any], filename: str, content: object) -> None:
     parts = filename.replace(".json", "").split("_")
     category = parts[-1].upper() if len(parts) >= 3 else "UNKNOWN"
     _add_unique_category(summary, "categories_fixed", category)
@@ -307,7 +308,7 @@ def get_auto_remediation_summary(target_date_str: str, audit_dir: Path | None = 
     return summary
 
 
-def get_pa_formula_integrity(session, year: int) -> dict[str, Any]:
+def get_pa_formula_integrity(session: Session, year: int) -> dict[str, Any]:
     """Check PA = AB + BB + HBP + SH + SF consistency for the current season."""
     season_ids = [
         row[0]
@@ -375,7 +376,7 @@ def get_pa_formula_integrity(session, year: int) -> dict[str, Any]:
     }
 
 
-def get_pa_formula_trend(session, months: int = 6) -> dict[str, Any]:
+def get_pa_formula_trend(session: Session, months: int = 6) -> dict[str, Any]:
     """Get PA formula violation trend for the last N months."""
     start_date = datetime.now(_KST).date() - timedelta(days=months * 30)
 
@@ -469,7 +470,7 @@ def get_team_stats_integrity(gate_result: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def get_team_stats_trend(session, gate_result: dict[str, Any] | None = None) -> dict[str, Any]:
+def get_team_stats_trend(session: Session, gate_result: dict[str, Any] | None = None) -> dict[str, Any]:
     """현재 시즌 team stats 정합성 스냅샷.
 
     TeamSeason*은 시즌 단위 aggregate라 월별 추세 산출 불가.
@@ -498,7 +499,9 @@ def get_team_stats_trend(session, gate_result: dict[str, Any] | None = None) -> 
     }
 
 
-def get_daily_metrics(session, target_date_str: str, gate_result: dict[str, Any] | None = None) -> dict[str, Any]:
+def get_daily_metrics(
+    session: Session, target_date_str: str, gate_result: dict[str, Any] | None = None
+) -> dict[str, Any]:
     """Calculate core collection metrics for a specific date."""
     target_dt = datetime.strptime(target_date_str, "%Y%m%d").date()
 

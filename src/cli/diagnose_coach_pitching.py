@@ -15,6 +15,8 @@ import sys
 from collections.abc import Sequence
 from datetime import datetime
 
+from sqlalchemy.orm import Session
+
 from src.db.engine import SessionLocal
 from src.models.game import Game
 from src.services.context_aggregator import ContextAggregator
@@ -23,7 +25,7 @@ from src.utils.game_status import COMPLETED_LIKE_GAME_STATUSES
 logger = logging.getLogger(__name__)
 
 
-def _game_ids_for_date(session, target_date: str) -> list[str]:
+def _game_ids_for_date(session: Session, target_date: str) -> list[str]:
     target = datetime.strptime(target_date, "%Y%m%d").date()
     return [
         row[0]

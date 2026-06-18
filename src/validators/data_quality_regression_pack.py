@@ -9,6 +9,7 @@ from typing import Any
 
 from sqlalchemy import inspect, text
 from sqlalchemy.engine import Connection
+from sqlalchemy.engine.reflection import Inspector
 
 
 @dataclass(frozen=True)
@@ -234,7 +235,9 @@ def report_to_json(report: QualityRegressionReport) -> str:
     return json.dumps(report.to_dict(), ensure_ascii=False)
 
 
-def _run_check(conn: Connection, inspector: Any, table_names: set[str], check: _SqlCheck) -> QualityRegressionResult:
+def _run_check(
+    conn: Connection, inspector: Inspector, table_names: set[str], check: _SqlCheck
+) -> QualityRegressionResult:
     if check.table not in table_names:
         return QualityRegressionResult(
             check_id=check.check_id,

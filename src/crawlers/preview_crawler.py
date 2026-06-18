@@ -13,6 +13,7 @@ from typing import Any
 
 import httpx
 from playwright.async_api import Error as PlaywrightError
+from playwright.async_api import Page
 from playwright.async_api import TimeoutError as PlaywrightTimeoutError
 
 from src.utils.playwright_pool import AsyncPlaywrightPool
@@ -45,7 +46,7 @@ class PreviewCrawler:
         self.pool = pool
         self.policy = RequestPolicy()
 
-    def _coerce_api_payload(self, payload: Any) -> Any | None:
+    def _coerce_api_payload(self, payload: object) -> object | None:
         """Normalize API payloads from ASP.NET/JSON wrappers to a Python object."""
         if payload is None:
             return None
@@ -62,7 +63,7 @@ class PreviewCrawler:
             return self._coerce_api_payload(payload.get("d"))
         return payload
 
-    def _extract_list_payload(self, payload: Any) -> list[Any]:
+    def _extract_list_payload(self, payload: object) -> list[object]:
         """Get list-like payload from various KBO API shapes."""
         payload = self._coerce_api_payload(payload)
         if isinstance(payload, list):
@@ -77,14 +78,14 @@ class PreviewCrawler:
                     return nested
         return []
 
-    def _clean_text(self, value: Any) -> str:
+    def _clean_text(self, value: object) -> str:
         """Return a stripped string for nullable KBO API fields."""
         if value is None:
             return ""
         return str(value).strip()
 
     @staticmethod
-    def _to_flag(value: Any) -> bool:
+    def _to_flag(value: object) -> bool:
         """Interpret API flags (0/1/numeric/string) as bool."""
         try:
             return bool(int(value))
@@ -100,7 +101,7 @@ class PreviewCrawler:
                 return value
         return ""
 
-    def _first_non_empty_value(self, payload: dict[str, Any], keys: tuple[str, ...]) -> Any | None:
+    def _first_non_empty_value(self, payload: dict[str, Any], keys: tuple[str, ...]) -> object | None:
         for key in keys:
             value = payload.get(key)
             if value not in (None, ""):
@@ -133,7 +134,7 @@ class PreviewCrawler:
             ),
         )
 
-    def _extract_starter_id(self, game: dict[str, Any], side: str) -> Any | None:
+    def _extract_starter_id(self, game: dict[str, Any], side: str) -> object | None:
         """Extract announced starter ids from KBO game-list variants."""
         if side == "away":
             return self._first_non_empty_value(
@@ -159,7 +160,7 @@ class PreviewCrawler:
             ),
         )
 
-    def _extract_lineup_announced(self, lineup_rows: list[Any], fallback: bool) -> bool:
+    def _extract_lineup_announced(self, lineup_rows: list[object], fallback: bool) -> bool:
         """Read LINEUP_CK from GetLineUpAnalysis when present."""
         if not lineup_rows:
             return fallback
@@ -170,7 +171,7 @@ class PreviewCrawler:
             return self._to_flag(first.get("LINEUP_CK"))
         return fallback
 
-    def _extract_embedded_game_ids(self, payload: Any) -> set[str]:
+    def _extract_embedded_game_ids(self, payload: object) -> set[str]:
         """Collect normalized G_ID values embedded in lineup analysis payloads."""
         game_ids: set[str] = set()
         if isinstance(payload, dict):
@@ -185,7 +186,7 @@ class PreviewCrawler:
                 game_ids.update(self._extract_embedded_game_ids(item))
         return game_ids
 
-    def _lineup_rows_match_game(self, lineup_rows: list[Any], game_id: str) -> bool:
+    def _lineup_rows_match_game(self, lineup_rows: list[object], game_id: str) -> bool:
         """Return False when KBO returns stale lineup rows for a different game."""
         expected_game_id = normalize_kbo_game_id(game_id)
         if not expected_game_id:
@@ -198,8 +199,8 @@ class PreviewCrawler:
         url: str,
         form: dict[str, Any],
         referer: str,
-        page: Any | None = None,
-    ) -> Any | None:
+        page: Page | None = None,
+    ) -> dict[str, object] | list[object] | None:
         """
         Try direct HTTP first (fast/fewer dependencies), then fallback to Playwright
         request when a page is available.
@@ -269,7 +270,8 @@ class PreviewCrawler:
                     await pool.start()
                 except PLAYWRIGHT_API_EXCEPTIONS as e:
                     logger.exception("⚠️ Playwright fallback failed")
-                    raise RuntimeError("Failed to start Playwright fallback pool") from e
+                    msg = "Failed to start Playwright fallback pool"
+                    raise RuntimeError(msg) from e
                 page = await pool.acquire()
                 await page.goto(self.BASE_REFERER, wait_until="domcontentloaded", timeout=NAV_TIMEOUT)
                 await asyncio.sleep(self.request_delay)
@@ -280,7 +282,8 @@ class PreviewCrawler:
                     page=page,
                 )
             if list_data is None:
-                raise RuntimeError(f"HTTP API and Playwright fallback both failed to fetch game list for {game_date}")
+                msg = f"HTTP API and Playwright fallback both failed to fetch game list for {game_date}"
+                raise RuntimeError(msg)
 
             games = self._extract_list_payload(list_data)
             if not games:

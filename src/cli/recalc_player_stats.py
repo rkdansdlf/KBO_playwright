@@ -36,7 +36,7 @@ def _get_regular_season_ids(session: Session, year: int) -> list[int]:
     return [int(r) for r in result]
 
 
-def _get_player_teams(session: Session, season_ids: list[int], model) -> dict[int, str]:
+def _get_player_teams(session: Session, season_ids: list[int], model: type[object]) -> dict[int, str]:
     """Get the most common canonical_team_code per player_id."""
     rows = (
         session.query(
@@ -61,7 +61,7 @@ def _get_player_teams(session: Session, season_ids: list[int], model) -> dict[in
     return result
 
 
-def _compute_batting_rates(row) -> dict[str, Any]:
+def _compute_batting_rates(row: object) -> dict[str, Any]:
     ab = row.at_bats or 0
     h = row.hits or 0
     bb = row.walks or 0

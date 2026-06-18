@@ -202,27 +202,59 @@ class GameStoryBuilder:
         description = compact_relay_text(event.description)
         result_code = str(event.result_code or "").strip().upper()
 
+        tags.update(self._scoring_tags(event, description, result_code, runs_scored))
+        tags.update(self._score_diff_tags(score_diff_before, score_diff_after))
+        tags.update(self._wpa_tags(event, abs_wpa))
+        if self._is_walk_off(event, inning_half, score_diff_before, score_diff_after, runs_scored):
+            tags.add("walk_off")
+
+        return tags
+
+    def _scoring_tags(self, event: GameEvent, description: str, result_code: str, runs_scored: int) -> set[str]:
+        tags: set[str] = set()
         if runs_scored > 0 or int(event.rbi or 0) > 0 or "홈인" in description:
             tags.add("scoring_play")
         if int(event.rbi or 0) > 0:
             tags.add("rbi")
         if result_code == "HR" or "홈런" in description:
             tags.add("home_run")
-        if "실책" in description or result_code in {"E", "ROE"}:
-            if runs_scored > 0 or abs_wpa >= 0.2 or (event.inning or 0) >= 7:
-                tags.add("critical_error")
-        if score_diff_before is not None and score_diff_after is not None:
-            if score_diff_before != 0 and score_diff_after == 0:
-                tags.add("game_tying")
-            elif score_diff_before == 0 and score_diff_after != 0:
-                tags.add("go_ahead")
-            elif score_diff_before * score_diff_after < 0:
-                tags.add("lead_change")
+        if self._is_critical_error(event, description, result_code, runs_scored):
+            tags.add("critical_error")
+        return tags
+
+    def _is_critical_error(self, event: GameEvent, description: str, result_code: str, runs_scored: int) -> bool:
+        if "실책" not in description and result_code not in {"E", "ROE"}:
+            return False
+        return runs_scored > 0 or abs(float(event.wpa or 0.0)) >= 0.2 or (event.inning or 0) >= 7
+
+    def _score_diff_tags(self, score_diff_before: int | None, score_diff_after: int | None) -> set[str]:
+        if score_diff_before is None or score_diff_after is None:
+            return set()
+        if score_diff_before != 0 and score_diff_after == 0:
+            return {"game_tying"}
+        if score_diff_before == 0 and score_diff_after != 0:
+            return {"go_ahead"}
+        if score_diff_before * score_diff_after < 0:
+            return {"lead_change"}
+        return set()
+
+    def _wpa_tags(self, event: GameEvent, abs_wpa: float) -> set[str]:
+        tags = set()
         if (event.inning or 0) >= 7 and abs_wpa >= 0.15:
             tags.add("late_high_wpa")
         if abs_wpa >= 0.25:
             tags.add("high_wpa")
-        if (
+        return tags
+
+    def _is_walk_off(
+        self,
+        event: GameEvent,
+        inning_half: str | None,
+        score_diff_before: int | None,
+        score_diff_after: int | None,
+        runs_scored: int,
+    ) -> bool:
+        return (
             inning_half == "bottom"
             and (event.inning or 0) >= 9
             and score_diff_before is not None
@@ -230,10 +262,7 @@ class GameStoryBuilder:
             and score_diff_before <= 0
             and score_diff_after > 0
             and runs_scored > 0
-        ):
-            tags.add("walk_off")
-
-        return tags
+        )
 
     def _mark_decisive_score(self, game: Game, contexts: Sequence[_StoryContext]) -> None:
         final_diff = self._final_score_diff(game)
@@ -338,7 +367,7 @@ class GameStoryBuilder:
             return game.home_team
         return None
 
-    def _normalize_half(self, value: Any) -> str | None:
+    def _normalize_half(self, value: object) -> str | None:
         normalized = str(value or "").strip().lower()
         if normalized in {"top", "away", "초"}:
             return "top"

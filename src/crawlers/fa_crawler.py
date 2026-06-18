@@ -252,7 +252,7 @@ class FACrawler:
         header = [h.strip() for h in header]
 
         # Helper to find column index by matching substring
-        def find_index(candidates) -> int:
+        def find_index(candidates: list[str]) -> int:
             for candidate in candidates:
                 for idx, col in enumerate(header):
                     if candidate in col:
@@ -339,7 +339,7 @@ class FACrawler:
                 remarks_parts.append(row[remarks_idx].strip())
 
             # Additional column checks to collect details if they exist in separate columns
-            def check_and_add_col(candidates, prefix) -> None:
+            def check_and_add_col(candidates: list[str], prefix: str) -> None:
                 idx = find_index(candidates)
                 if idx != -1 and idx not in [remarks_idx, amount_idx, name_idx, year_idx]:
                     val = row[idx].strip()

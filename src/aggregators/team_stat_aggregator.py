@@ -113,7 +113,8 @@ class TeamStatAggregator:
             return self._aggregate_batting_db(season, team_id, dry_run=dry_run)
         if actual_rows is not None:
             return self._aggregate_batting_mem(actual_rows, actual_names, team_games_map)
-        raise ValueError("Either an integer season or rows iterable must be provided")
+        msg = "Either an integer season or rows iterable must be provided"
+        raise ValueError(msg)
 
     def aggregate_pitching(
         self,
@@ -139,7 +140,8 @@ class TeamStatAggregator:
             return self._aggregate_pitching_db(season, team_id, dry_run=dry_run)
         if actual_rows is not None:
             return self._aggregate_pitching_mem(actual_rows, actual_names, team_games_map)
-        raise ValueError("Either an integer season or rows iterable must be provided")
+        msg = "Either an integer season or rows iterable must be provided"
+        raise ValueError(msg)
 
     def aggregate_all(
         self,
@@ -164,7 +166,8 @@ class TeamStatAggregator:
         dry_run: bool = False,
     ) -> list[dict[str, Any]]:
         if not self.session:
-            raise ValueError("Database session is required for database aggregation")
+            msg = "Database session is required for database aggregation"
+            raise ValueError(msg)
 
         logger.info("Aggregating player batting stats via database query for season=%s, team_id=%s", season, team_id)
         team_code_expr = func.coalesce(PlayerSeasonBatting.canonical_team_code, PlayerSeasonBatting.team_code)
@@ -262,7 +265,8 @@ class TeamStatAggregator:
         dry_run: bool = False,
     ) -> list[dict[str, Any]]:
         if not self.session:
-            raise ValueError("Database session is required for database aggregation")
+            msg = "Database session is required for database aggregation"
+            raise ValueError(msg)
 
         logger.info("Aggregating player pitching stats via database query for season=%s, team_id=%s", season, team_id)
         team_code_expr = func.coalesce(PlayerSeasonPitching.canonical_team_code, PlayerSeasonPitching.team_code)

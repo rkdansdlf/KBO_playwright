@@ -91,9 +91,9 @@ def group_events_into_at_bats(
 
 def _needs_new_at_bat(
     *,
-    current_batter_key: tuple[Any, Any, str] | None,
-    inning: Any,
-    half: Any,
+    current_batter_key: tuple[int | str | None, str | None, str] | None,
+    inning: int | str | None,
+    half: str | None,
     batter_name: str,
     current_batter: str | None,
     has_seen_result_this_at_bat: bool,

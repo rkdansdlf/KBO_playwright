@@ -4,6 +4,7 @@ Parser utilities for retired/inactive player statistics tables.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import Any
 
 from src.utils.team_codes import resolve_kbo_legacy_team_code
@@ -215,7 +216,7 @@ def _apply_stat(
     row: dict[str, str],
     keys: tuple[str, ...],
     field: str,
-    converter,
+    converter: Callable[[str], int | float | None],
 ) -> None:
     consumed = record.setdefault("_consumed_keys", set())
     for key in keys:

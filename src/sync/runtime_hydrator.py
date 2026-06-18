@@ -68,6 +68,20 @@ class RuntimeHydrator:
         target_date: date | None = None,
         preserve_aliases: bool = False,
     ) -> dict[str, int]:
+        specs = self._hydration_specs(year, target_date=target_date, preserve_aliases=preserve_aliases)
+        try:
+            return self._run_hydration_specs(year, specs, preserve_aliases=preserve_aliases)
+        except (SQLAlchemyError, RuntimeError, ValueError, TypeError):
+            self.target_session.rollback()
+            raise
+
+    def _hydration_specs(
+        self,
+        year: int,
+        *,
+        target_date: date | None,
+        preserve_aliases: bool,
+    ) -> list[HydrationSpec]:
         start_of_year = date(year, 1, 1)
         end_of_year = date(year, 12, 31)
         roster_since = start_of_year
@@ -210,33 +224,44 @@ class RuntimeHydrator:
                 ),
             )
 
-        try:
-            summary: dict[str, int] = {}
-            preserved_aliases: list[dict[str, Any]] = []
-            if preserve_aliases:
-                preserved_aliases = self._snapshot_aliases(year)
-                self._delete_alias_scope(year)
-            for spec in reversed(specs):
-                if spec.replace_scope:
-                    self._delete_scope(spec)
-            all_refs: dict[int, str] = {}
-            for spec in specs:
-                count, refs = self._hydrate_spec(spec)
-                summary[spec.label] = count
-                if refs:
-                    for k, v in refs.items():
-                        all_refs.setdefault(k, v)
-                self.target_session.flush()
-            if all_refs:
-                self._resolve_player_refs(all_refs)
-            if preserve_aliases:
-                summary["game_id_aliases_preserved"] = self._restore_aliases(preserved_aliases)
-            self.target_session.commit()
-        except (SQLAlchemyError, RuntimeError, ValueError, TypeError):
-            self.target_session.rollback()
-            raise
-        else:
-            return summary
+        return specs
+
+    def _run_hydration_specs(
+        self,
+        year: int,
+        specs: list[HydrationSpec],
+        *,
+        preserve_aliases: bool,
+    ) -> dict[str, int]:
+        summary: dict[str, int] = {}
+        preserved_aliases: list[dict[str, Any]] = []
+        if preserve_aliases:
+            preserved_aliases = self._snapshot_aliases(year)
+            self._delete_alias_scope(year)
+        self._delete_replace_scopes(specs)
+
+        all_refs = self._hydrate_specs(specs, summary)
+        if all_refs:
+            self._resolve_player_refs(all_refs)
+        if preserve_aliases:
+            summary["game_id_aliases_preserved"] = self._restore_aliases(preserved_aliases)
+        self.target_session.commit()
+        return summary
+
+    def _delete_replace_scopes(self, specs: list[HydrationSpec]) -> None:
+        for spec in reversed(specs):
+            if spec.replace_scope:
+                self._delete_scope(spec)
+
+    def _hydrate_specs(self, specs: list[HydrationSpec], summary: dict[str, int]) -> dict[int, str]:
+        all_refs: dict[int, str] = {}
+        for spec in specs:
+            count, refs = self._hydrate_spec(spec)
+            summary[spec.label] = count
+            for key, value in refs.items():
+                all_refs.setdefault(key, value)
+            self.target_session.flush()
+        return all_refs
 
     def _snapshot_aliases(self, year: int) -> list[dict[str, Any]]:
         columns = [

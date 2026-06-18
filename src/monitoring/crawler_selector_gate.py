@@ -201,7 +201,8 @@ def load_selector_config(path: str | Path) -> list[SelectorTarget]:
     payload = json.loads(config_path.read_text(encoding="utf-8"))
     targets = payload.get("targets", [])
     if not isinstance(targets, list):
-        raise TypeError("selector gate config must contain a list at 'targets'")
+        msg = "selector gate config must contain a list at 'targets'"
+        raise TypeError(msg)
 
     return [_target_from_dict(target, config_path.parent) for target in targets]
 
@@ -295,7 +296,8 @@ def _evaluate_target(target: SelectorTarget, output_dir: Path | None) -> Selecto
     if target.source_type == "url":
         html = asyncio.run(_capture_url_html(target, output_dir))
         return evaluate_html_target(target, html)
-    raise ValueError(f"Unsupported selector target source_type: {target.source_type}")
+    msg = f"Unsupported selector target source_type: {target.source_type}"
+    raise ValueError(msg)
 
 
 async def _capture_url_html(target: SelectorTarget, output_dir: Path | None) -> str:

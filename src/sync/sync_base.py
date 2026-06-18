@@ -19,8 +19,9 @@ from typing import Any
 
 from psycopg2 import Error as PsycopgError
 from sqlalchemy import bindparam, create_engine, inspect, text
+from sqlalchemy.engine import Connection, Result
 from sqlalchemy.exc import DBAPIError, OperationalError, SQLAlchemyError
-from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy.orm import Query, Session, sessionmaker
 
 from src.models.game import (
     Game,
@@ -85,7 +86,7 @@ class GameSyncEligibility:
         }
 
 
-def _serialize_scalar(value: Any) -> Any:
+def _serialize_scalar(value: object) -> object:
     if value is None:
         return None
     if hasattr(value, "isoformat"):
@@ -120,7 +121,11 @@ def _dedupe_records_for_conflict_keys(
     return deduped_records
 
 
-def _row_to_record(row, columns: list[str], transform_fn: Callable | None = None) -> dict[str, Any]:
+def _row_to_record(
+    row: object,
+    columns: list[str],
+    transform_fn: Callable[[dict[str, Any]], dict[str, Any]] | None = None,
+) -> dict[str, Any]:
     now = datetime.now()
     mapping = getattr(row, "_mapping", None)
     if mapping is not None:
@@ -139,7 +144,12 @@ def _row_to_record(row, columns: list[str], transform_fn: Callable | None = None
     return data
 
 
-def _execute_signature_query(session_or_conn, sql: str, *, game_ids: list[str] | None = None) -> Any:
+def _execute_signature_query(
+    session_or_conn: Session | Connection,
+    sql: str,
+    *,
+    game_ids: list[str] | None = None,
+) -> Result[object]:
     stmt = text(sql)
     params = {}
     if game_ids is not None:
@@ -186,7 +196,11 @@ def _build_composite_signature_query(game_ids: list[str] | None) -> str:
     """
 
 
-def load_game_sync_signatures(session_or_conn, *, game_ids: list[str] | None = None) -> dict[str, dict[str, Any]]:
+def load_game_sync_signatures(
+    session_or_conn: Session | Connection,
+    *,
+    game_ids: list[str] | None = None,
+) -> dict[str, dict[str, Any]]:
     composite_sql = _build_composite_signature_query(game_ids)
     rows = _execute_signature_query(session_or_conn, composite_sql, game_ids=game_ids).mappings().all()
 
@@ -284,8 +298,8 @@ def _is_game_dirty(game_id: str, local_sig: dict, remote_sig: dict) -> bool:
 
 
 def detect_dirty_game_ids(
-    local_session_or_conn,
-    remote_session_or_conn,
+    local_session_or_conn: Session | Connection,
+    remote_session_or_conn: Session | Connection,
     *,
     game_ids: list[str] | None = None,
 ) -> list[str]:
@@ -308,7 +322,7 @@ def filter_game_ids_by_year(game_ids: list[str], year: int | None) -> list[str]:
     return [game_id for game_id in game_ids if str(game_id).startswith(prefix)]
 
 
-def _load_team_sides(session, model: type, game_ids: list[str]) -> dict[str, set[str]]:
+def _load_team_sides(session: Session, model: type, game_ids: list[str]) -> dict[str, set[str]]:
     if not game_ids:
         return {}
     rows = session.query(model.game_id, model.team_side).filter(model.game_id.in_(game_ids)).distinct().all()
@@ -320,7 +334,7 @@ def _load_team_sides(session, model: type, game_ids: list[str]) -> dict[str, set
     return result
 
 
-def _load_game_ids_with_rows(session, model: type, game_ids: list[str]) -> set[str]:
+def _load_game_ids_with_rows(session: Session, model: type, game_ids: list[str]) -> set[str]:
     if not game_ids:
         return set()
     return {str(row[0]) for row in session.query(model.game_id).filter(model.game_id.in_(game_ids)).distinct().all()}
@@ -331,7 +345,7 @@ def _has_both_team_sides(side_map: dict[str, set[str]], game_id: str) -> bool:
     return "away" in sides and "home" in sides
 
 
-def build_game_sync_eligibility(session, game_ids: list[str]) -> GameSyncEligibility:
+def build_game_sync_eligibility(session: Session, game_ids: list[str]) -> GameSyncEligibility:
     """Classify which game datasets are safe to publish to OCI."""
     target_game_ids = sorted({str(game_id) for game_id in game_ids if game_id})
     if not target_game_ids:
@@ -414,7 +428,7 @@ def build_game_sync_eligibility(session, game_ids: list[str]) -> GameSyncEligibi
     )
 
 
-def filter_publishable_game_ids(session, game_ids: list[str]) -> list[str]:
+def filter_publishable_game_ids(session: Session, game_ids: list[str]) -> list[str]:
     """Restrict parent-game sync to rows that are more than schedule-only stubs."""
     return build_game_sync_eligibility(session, game_ids).parent_game_ids
 
@@ -496,11 +510,14 @@ class OCISyncBase:
     @staticmethod
     def _quote_identifier(identifier: str) -> str:
         if not identifier:
-            raise ValueError("identifier must not be empty")
+            msg = "identifier must not be empty"
+            raise ValueError(msg)
         if not (identifier[0].isalpha() or identifier[0] == "_"):
-            raise ValueError(f"unsafe SQL identifier: {identifier!r}")
+            msg = f"unsafe SQL identifier: {identifier!r}"
+            raise ValueError(msg)
         if not all(char.isalnum() or char == "_" for char in identifier):
-            raise ValueError(f"unsafe SQL identifier: {identifier!r}")
+            msg = f"unsafe SQL identifier: {identifier!r}"
+            raise ValueError(msg)
         return f'"{identifier}"'
 
     def _reset_target_sequence_for_table(self, table_name: str, column_name: str = "id") -> bool:
@@ -614,7 +631,7 @@ class OCISyncBase:
         records: list[dict[str, Any]],
         unique_cols: list[str],
         update_timestamp: bool = True,
-        connection=None,
+        connection: object | None = None,
     ) -> None:
         if not records:
             return None
@@ -701,7 +718,7 @@ class OCISyncBase:
         label: str,
         max_retries: int = 2,
         base_delay_seconds: float = 1.0,
-    ) -> Any:
+    ) -> object:
         """Open a raw OCI connection with bounded retry for transient network loss."""
         max_attempts = max_retries + 1
 
@@ -755,7 +772,7 @@ class OCISyncBase:
         label: str,
         max_retries: int = 2,
         base_delay_seconds: float = 1.0,
-    ) -> Any:
+    ) -> object:
         """Run an OCI session operation with bounded retry for transient connection loss."""
         max_attempts = max_retries + 1
 
@@ -885,16 +902,16 @@ class OCISyncBase:
 
     def _sync_in_batches(
         self,
-        model,
-        query,
-        total_count,
-        columns,
-        conflict_keys,
-        transform_fn,
-        batch_size,
-        update_timestamp,
+        model: type,
+        query: Query,
+        total_count: int,
+        columns: list[str],
+        conflict_keys: list[str],
+        transform_fn: Callable[[dict[str, Any]], dict[str, Any]] | None,
+        batch_size: int,
+        update_timestamp: bool,
         *,
-        dedupe_keys=None,
+        dedupe_keys: list[str] | None = None,
     ) -> int:
         connection = None
         if self.oci_engine is not None:
@@ -953,7 +970,7 @@ class OCISyncBase:
         records: list[dict[str, Any]],
         unique_cols: list[str],
         update_timestamp: bool,
-        connection=None,
+        connection: object | None = None,
     ) -> None:
         close_connection = connection is None
         if connection is None:
@@ -1016,7 +1033,7 @@ class OCISyncBase:
         record: dict[str, Any],
         conflict_keys: list[str],
         update_timestamp: bool,
-        connection,
+        connection: object,
     ) -> None:
         """Perform a single direct SQL INSERT with ON CONFLICT UPDATE/DO NOTHING."""
         cursor = connection.cursor()

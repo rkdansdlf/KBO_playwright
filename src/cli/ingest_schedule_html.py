@@ -23,7 +23,8 @@ def ingest_schedule_html(args: argparse.Namespace) -> None:
     """저장된 경기 일정 HTML 파일들을 파싱하여 데이터베이스에 저장합니다."""
     fixtures_dir = Path(args.fixtures_dir)
     if not fixtures_dir.exists():
-        raise SystemExit(f"Fixture directory not found: {fixtures_dir}")
+        msg = f"Fixture directory not found: {fixtures_dir}"
+        raise SystemExit(msg)
 
     all_games: list[dict[str, Any]] = []
 

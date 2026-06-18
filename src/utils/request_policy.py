@@ -10,11 +10,13 @@ import os
 import random
 import time
 from collections.abc import Callable, Iterable
-from typing import Any
+from typing import ParamSpec, TypeVar
 
 from src.utils.throttle import throttle
 
 logger = logging.getLogger(__name__)
+P = ParamSpec("P")
+R = TypeVar("R")
 
 DEFAULT_USER_AGENTS = [
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36",
@@ -64,7 +66,7 @@ class RequestPolicy:
     def random_user_agent(self) -> str:
         return random.choice(self.user_agents)
 
-    def build_context_kwargs(self, **overrides: Any) -> dict[str, Any]:
+    def build_context_kwargs(self, **overrides: object) -> dict[str, object]:
         kwargs = {"user_agent": self.random_user_agent()}
         kwargs.update(overrides)
         return kwargs
@@ -80,7 +82,7 @@ class RequestPolicy:
         throttle.default_delay = self.min_delay
         await throttle.wait(host)
 
-    def run_with_retry(self, func: Callable, *args: Any, **kwargs: Any) -> Any:
+    def run_with_retry(self, func: Callable[P, R], *args: P.args, **kwargs: P.kwargs) -> R:
         last_exc = None
         for attempt in range(1, self.max_retries + 1):
             try:
@@ -95,7 +97,7 @@ class RequestPolicy:
             raise last_exc
         raise RuntimeError("Unreachable")
 
-    async def run_with_retry_async(self, func: Callable, *args: Any, **kwargs: Any) -> Any:
+    async def run_with_retry_async(self, func: Callable[P, R], *args: P.args, **kwargs: P.kwargs) -> R:
         last_exc = None
         for attempt in range(1, self.max_retries + 1):
             try:

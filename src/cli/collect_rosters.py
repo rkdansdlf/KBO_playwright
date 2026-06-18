@@ -8,6 +8,7 @@ import argparse
 import asyncio
 import logging
 from datetime import date, timedelta
+from typing import Any
 
 from sqlalchemy.exc import SQLAlchemyError
 
@@ -20,7 +21,7 @@ logger = logging.getLogger(__name__)
 ROSTER_SAVE_EXCEPTIONS = (SQLAlchemyError, RuntimeError, ValueError, TypeError, KeyError, OSError)
 
 
-def save_chunk(chunk) -> None:
+def save_chunk(chunk: list[dict[str, Any]]) -> None:
     session = SessionLocal()
     try:
         repo = TeamRepository(session)

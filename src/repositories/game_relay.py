@@ -8,10 +8,11 @@ import logging
 import re
 from collections.abc import Iterable
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any
 
 from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.orm import Session
 
 from src.db.engine import SessionLocal
 from src.models.game import (
@@ -56,7 +57,7 @@ _RELAY_TURN_NOISE_RE = re.compile(r"^\d+회(?:초|말)\s+\d+번타순\b")
 _RELAY_DECISION_LABELS = ("승리투수", "패전투수", "세이브", "홀드")
 
 
-def _coerce_player_id(value: Any) -> int | None:
+def _coerce_player_id(value: object) -> int | None:
     if value in (None, ""):
         return None
     try:
@@ -65,7 +66,7 @@ def _coerce_player_id(value: Any) -> int | None:
         return None
 
 
-def _relay_text_indicates_defense_side(text_value: str, play_description: Any = None) -> bool:
+def _relay_text_indicates_defense_side(text_value: str, play_description: object = None) -> bool:
     description = " ".join(str(play_description or "").strip().split())
     if not description:
         return False
@@ -82,7 +83,9 @@ def _relay_text_indicates_defense_side(text_value: str, play_description: Any = 
     return bool(_DEFENSIVE_RELAY_TARGET_RE.match(target.strip()))
 
 
-def _relay_player_resolution_context(name: Any, play_description: Any = None) -> tuple[str, str, bool | None] | None:
+def _relay_player_resolution_context(
+    name: object, play_description: object = None
+) -> tuple[str, str, bool | None] | None:
     text_value = " ".join(str(name or "").strip().split())
     if not text_value:
         return None
@@ -105,7 +108,7 @@ def _relay_player_resolution_context(name: Any, play_description: Any = None) ->
 
 
 def _upsert_validation_metrics(
-    session,
+    session: Session,
     game_id: str,
     *,
     validation_status: str,
@@ -328,21 +331,21 @@ def mark_relay_source_unavailable(
     return True
 
 
-def _has_repairable_game_children(session, game_id: str) -> bool:
+def _has_repairable_game_children(session: Session, game_id: str) -> bool:
     return any(
         _has_game_child_rows(session, model, game_id)
         for model in (GameInningScore, GameLineup, GameBattingStat, GamePitchingStat)
     )
 
 
-def _game_date_from_game_id(game_id: str) -> Any:
+def _game_date_from_game_id(game_id: str) -> date:
     try:
         return datetime.strptime(game_id[:8], "%Y%m%d").date()
     except ValueError:
         return datetime.now().date()
 
 
-def _get_or_create_game_parent(session, game_id: str, game_date) -> Game:
+def _get_or_create_game_parent(session: Session, game_id: str, game_date: date) -> Game:
     game = session.query(Game).filter(Game.game_id == game_id).one_or_none()
     if game:
         return game
@@ -352,7 +355,7 @@ def _get_or_create_game_parent(session, game_id: str, game_date) -> Game:
     return game
 
 
-def _apply_repaired_game_season(session, game: Game, game_date, season_year: int) -> None:
+def _apply_repaired_game_season(session: Session, game: Game, game_date: date, season_year: int) -> None:
     game.game_date = game_date
     season_id = _resolve_game_season_id(
         session,
@@ -364,7 +367,7 @@ def _apply_repaired_game_season(session, game: Game, game_date, season_year: int
         game.season_id = season_id
 
 
-def _apply_repaired_game_teams(session, game: Game, game_id: str, season_year: int) -> None:
+def _apply_repaired_game_teams(session: Session, game: Game, game_id: str, season_year: int) -> None:
     away_team = _infer_team_code_from_children(session, game_id, "away", season_year)
     home_team = _infer_team_code_from_children(session, game_id, "home", season_year)
     if away_team:
@@ -373,7 +376,7 @@ def _apply_repaired_game_teams(session, game: Game, game_id: str, season_year: i
         game.home_team = home_team
 
 
-def _apply_repaired_game_scores(session, game: Game, game_id: str) -> None:
+def _apply_repaired_game_scores(session: Session, game: Game, game_id: str) -> None:
     away_score = _infer_score_from_children(session, game_id, "away")
     home_score = _infer_score_from_children(session, game_id, "home")
     if away_score is not None:
@@ -382,7 +385,7 @@ def _apply_repaired_game_scores(session, game: Game, game_id: str) -> None:
         game.home_score = home_score
 
 
-def _apply_repaired_game_pitchers(session, game: Game, game_id: str) -> None:
+def _apply_repaired_game_pitchers(session: Session, game: Game, game_id: str) -> None:
     away_pitcher = _infer_pitcher_from_children(session, game_id, "away")
     home_pitcher = _infer_pitcher_from_children(session, game_id, "home")
     if away_pitcher:
@@ -402,7 +405,7 @@ def _apply_repaired_game_status(game: Game) -> None:
         game.game_status = GAME_STATUS_UNRESOLVED
 
 
-def _apply_repaired_game_fields(session, game_id: str) -> None:
+def _apply_repaired_game_fields(session: Session, game_id: str) -> None:
     game_date = _game_date_from_game_id(game_id)
     season_year = game_date.year
     game = _get_or_create_game_parent(session, game_id, game_date)
@@ -519,7 +522,7 @@ def _prepare_relay_payloads(
 
 
 def _resolve_relay_validation(
-    session,
+    session: Session,
     game_id: str,
     events: list[dict[str, Any]],
     raw_pbp_rows: list[dict[str, Any]],
@@ -567,7 +570,7 @@ def _resolve_relay_validation(
 
 
 def _upsert_relay_validation_metadata(
-    session,
+    session: Session,
     game_id: str,
     validation: _RelayValidationResult,
     *,
@@ -634,7 +637,7 @@ def _apply_relay_lifecycle_state(game_row: Game | None, game_id: str, game_lifec
         )
 
 
-def _relay_resolution_context(session, game_id: str) -> _RelayResolutionContext:
+def _relay_resolution_context(session: Session, game_id: str) -> _RelayResolutionContext:
     season_year = None
     away_team_code = None
     home_team_code = None
@@ -851,7 +854,7 @@ def _build_relay_event_rows(
 
 
 def _replace_relay_rows(
-    session,
+    session: Session,
     game_id: str,
     pbp_rows: list[GamePlayByPlay],
     event_rows: list[GameEvent],

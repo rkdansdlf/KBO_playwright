@@ -10,11 +10,13 @@ from __future__ import annotations
 import argparse
 import logging
 import sys
+from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 
 from dotenv import load_dotenv
 from sqlalchemy import inspect, text
+from sqlalchemy.engine import Connection
 from sqlalchemy.exc import SQLAlchemyError
 
 # Add project root to sys.path
@@ -43,7 +45,7 @@ TABLES_TO_VERIFY = [
 ]
 
 
-def check_table_counts(sqlite_conn, oci_conn) -> list[dict[str, Any]]:
+def check_table_counts(sqlite_conn: Connection, oci_conn: Connection) -> list[dict[str, Any]]:
     """Compares row counts for verified tables between SQLite and OCI."""
     results = []
     for table_name, pk_cols in TABLES_TO_VERIFY:
@@ -91,7 +93,7 @@ def check_table_counts(sqlite_conn, oci_conn) -> list[dict[str, Any]]:
     return results
 
 
-def get_row_count(conn, table_name: str) -> int:
+def get_row_count(conn: Connection, table_name: str) -> int:
     try:
         res = conn.execute(text(f"SELECT COUNT(*) FROM {table_name}"))
         return res.scalar() or 0
@@ -100,7 +102,9 @@ def get_row_count(conn, table_name: str) -> int:
         return 0
 
 
-def check_deep_ids(sqlite_conn, oci_conn, table_name: str, pk_cols: list[str]) -> tuple[int, list[Any]]:
+def check_deep_ids(
+    sqlite_conn: Connection, oci_conn: Connection, table_name: str, pk_cols: list[str]
+) -> tuple[int, list[object]]:
     """Performs deep ID-level matching to identify SQLite rows missing in OCI."""
     try:
         cols_str = ", ".join(pk_cols)
@@ -113,7 +117,7 @@ def check_deep_ids(sqlite_conn, oci_conn, table_name: str, pk_cols: list[str]) -
         res_oci = oci_conn.execute(text(f"SELECT {cols_str} FROM {table_name}"))
         oci_rows = res_oci.fetchall()
 
-        def stringify_row(row) -> str:
+        def stringify_row(row: Sequence[object]) -> tuple[str, ...]:
             return tuple(val.isoformat() if hasattr(val, "isoformat") else str(val) for val in row)
 
         sqlite_ids = {stringify_row(row) for row in sqlite_rows}
@@ -165,7 +169,7 @@ def _collect_count_mismatches(count_results: list[dict[str, Any]]) -> tuple[list
 
 
 def _collect_deep_mismatches(
-    sqlite_conn, oci_conn, count_results: list[dict[str, Any]]
+    sqlite_conn: Connection, oci_conn: Connection, count_results: list[dict[str, Any]]
 ) -> tuple[list[dict[str, Any]], list[str]]:
     mismatches = []
     alert_lines = []

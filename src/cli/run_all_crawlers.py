@@ -17,6 +17,7 @@ from typing import Any
 from apscheduler.schedulers.blocking import BlockingScheduler
 from dotenv import load_dotenv
 from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.orm import Session
 
 from src.cli.verify_sync_consistency import run_consistency_audit
 from src.crawlers.dynamic_data_crawler import DynamicDataCrawler
@@ -181,7 +182,7 @@ def _embed_and_save_static_chunks(
             _sync_static_chunks_to_oci(session)
 
 
-def _sync_static_chunks_to_oci(session) -> None:
+def _sync_static_chunks_to_oci(session: Session) -> None:
     logger.info("🚚 Syncing new static RAG chunks to OCI...")
     from src.sync.oci_sync import OCISync
 

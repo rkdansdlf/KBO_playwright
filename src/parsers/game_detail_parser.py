@@ -10,12 +10,18 @@ import pandas as pd
 from bs4 import BeautifulSoup
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.orm import Session
 
 from src.utils.team_codes import resolve_team_code, team_code_from_game_id_segment
 from src.utils.type_helpers import parse_innings_to_outs, safe_float_or_none, safe_int_or_none
 
 
-def parse_game_detail_html(html: str, game_id: str, game_date: str, db_session=None) -> dict[str, Any]:
+def parse_game_detail_html(
+    html: str,
+    game_id: str,
+    game_date: str,
+    db_session: Session | None = None,
+) -> dict[str, Any]:
     soup = BeautifulSoup(html, "html.parser")
     dataframes = pd.read_html(StringIO(html))
 
@@ -118,7 +124,7 @@ def _build_team_info(
 def _build_hitter_payload(
     tables: list[pd.DataFrame],
     teams: dict[str, dict[str, Any]],
-    db_session=None,
+    db_session: Session | None = None,
 ) -> dict[str, list[dict[str, Any]]]:
     results = {"away": [], "home": []}
     team_cycle = ["away", "home"]
@@ -181,7 +187,7 @@ def _build_hitter_payload(
 def _build_pitcher_payload(
     tables: list[pd.DataFrame],
     teams: dict[str, dict[str, Any]],
-    db_session=None,
+    db_session: Session | None = None,
 ) -> dict[str, list[dict[str, Any]]]:
     results = {"away": [], "home": []}
     team_cycle = ["away", "home"]
@@ -292,7 +298,7 @@ def _season_year_from_game(game_date: str) -> int | None:
     return None
 
 
-def _parse_decision(text: Any) -> str | None:
+def _parse_decision(text: object) -> str | None:
     if not text:
         return None
     text = str(text)
@@ -307,7 +313,7 @@ def _parse_decision(text: Any) -> str | None:
     return None
 
 
-def _safe_player_id(value: Any) -> int | None:
+def _safe_player_id(value: object) -> int | None:
     if value is None:
         return None
     value = str(value).strip()
@@ -333,7 +339,7 @@ def _parse_duration_minutes(duration: str | None) -> int | None:
         return None
 
 
-def _resolve_missing_player_id(db_session, player_name: str, team_code: str) -> int | None:
+def _resolve_missing_player_id(db_session: Session, player_name: str, team_code: str) -> int | None:
     """
     Fallback resolution of player_id via name and team search.
     Useful for exhibition games where IDs are missing from the HTML.

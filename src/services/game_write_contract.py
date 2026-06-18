@@ -5,7 +5,6 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import Any
 
 
 @dataclass(frozen=True)
@@ -55,7 +54,7 @@ class GameWriteContract:
             f"stage={source.stage} crawler={source.crawler} reason={source.reason or 'unspecified'}",
         )
 
-    def field_updated(self, game_id: str, source: GameWriteSource, field: str, old: Any, new: Any) -> None:
+    def field_updated(self, game_id: str, source: GameWriteSource, field: str, old: object, new: object) -> None:
         self.updated_fields += 1
         previous = self.field_claims.get((game_id, field))
         if previous and previous != source:
@@ -69,7 +68,7 @@ class GameWriteContract:
             f"crawler={source.crawler} field={field} old={_format_value(old)} new={_format_value(new)}",
         )
 
-    def field_duplicate(self, game_id: str, source: GameWriteSource, field: str, value: Any) -> None:
+    def field_duplicate(self, game_id: str, source: GameWriteSource, field: str, value: object) -> None:
         self.duplicate_fields += 1
         if self.log_duplicate_fields:
             self._emit(
@@ -103,7 +102,7 @@ class GameWriteContract:
             self.log(message)
 
 
-def _format_value(value: Any) -> str:
+def _format_value(value: object) -> str:
     text = repr(value)
     if len(text) > 80:
         return text[:77] + "..."

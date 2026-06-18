@@ -12,6 +12,7 @@ from datetime import date, datetime
 
 from sqlalchemy import extract
 from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.orm import Session
 
 from src.db.engine import SessionLocal
 from src.models.game import Game
@@ -218,7 +219,7 @@ def _build_daily_snapshots(games: list[Game]) -> list[TeamStandingsDaily]:
 
 
 class StandingsCalculator:
-    def __init__(self, session) -> None:
+    def __init__(self, session: Session) -> None:
         self.session = session
 
     def _load_completed_games(self, year: int) -> list[Game]:

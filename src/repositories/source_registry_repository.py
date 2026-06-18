@@ -150,7 +150,7 @@ class RawSourceSnapshotRepository:
                 record.error_message = error_message
 
 
-def save_raw_snapshots(session, raw_pages: list[dict]) -> int:
+def save_raw_snapshots(session: Session, raw_pages: list[dict]) -> int:
     """Save a list of raw page dicts as RawSourceSnapshot records. Returns count saved."""
     import hashlib
     from datetime import datetime

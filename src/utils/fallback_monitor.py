@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import logging
-from typing import Any
 
 from src.utils.alerting import SlackWebhookClient
 
@@ -61,7 +60,7 @@ class FallbackMonitor:
         from pathlib import Path
 
         class DateTimeEncoder(json.JSONEncoder):
-            def default(self, o) -> Any:
+            def default(self, o: object) -> object:
                 if isinstance(o, (datetime, date)):
                     return o.isoformat()
                 return super().default(o)

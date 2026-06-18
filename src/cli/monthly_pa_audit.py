@@ -29,7 +29,8 @@ def run_monthly_pa_audit(target_year: int) -> int:
         fixed_rows = fix_year_formula(target_year, dry_run=False)
     except PA_AUDIT_EXCEPTIONS as exc:
         logger.exception("PA formula audit failed for %s", target_year)
-        raise RuntimeError(f"PA formula audit failed for {target_year}: {exc}") from exc
+        msg = f"PA formula audit failed for {target_year}: {exc}"
+        raise RuntimeError(msg) from exc
 
     logger.info("PA formula audit completed for %s (fixed_rows=%s)", target_year, fixed_rows)
     return fixed_rows

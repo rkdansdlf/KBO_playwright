@@ -6,13 +6,23 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 
+from playwright.async_api import BrowserContext as AsyncBrowserContext
+from playwright.async_api import Page as AsyncPage
+from playwright.async_api import Route as AsyncRoute
+from playwright.sync_api import BrowserContext as SyncBrowserContext
+from playwright.sync_api import Page as SyncPage
+from playwright.sync_api import Route as SyncRoute
+
 DEFAULT_BLOCKED_RESOURCE_TYPES: set[str] = {"image", "media", "font"}
 
 
-async def install_async_resource_blocking(target, blocked_types: Iterable[str] | None = None) -> None:
+async def install_async_resource_blocking(
+    target: AsyncBrowserContext | AsyncPage,
+    blocked_types: Iterable[str] | None = None,
+) -> None:
     types = set(blocked_types or DEFAULT_BLOCKED_RESOURCE_TYPES)
 
-    async def handler(route) -> None:
+    async def handler(route: AsyncRoute) -> None:
         if route.request.resource_type in types:
             await route.abort()
         else:
@@ -21,10 +31,13 @@ async def install_async_resource_blocking(target, blocked_types: Iterable[str] |
     await target.route("**/*", handler)
 
 
-def install_sync_resource_blocking(target, blocked_types: Iterable[str] | None = None) -> None:
+def install_sync_resource_blocking(
+    target: SyncBrowserContext | SyncPage,
+    blocked_types: Iterable[str] | None = None,
+) -> None:
     types = set(blocked_types or DEFAULT_BLOCKED_RESOURCE_TYPES)
 
-    def handler(route) -> None:
+    def handler(route: SyncRoute) -> None:
         if route.request.resource_type in types:
             route.abort()
         else:

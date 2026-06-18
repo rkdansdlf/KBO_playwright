@@ -102,7 +102,8 @@ def main(argv: Sequence[str] | None = None) -> int:
 
 def _resolve_date_range(args: argparse.Namespace) -> tuple[str, str]:
     if args.date and (args.start_date or args.end_date):
-        raise ValueError("--date cannot be combined with --start-date/--end-date")
+        msg = "--date cannot be combined with --start-date/--end-date"
+        raise ValueError(msg)
 
     if args.date:
         _validate_date(args.date)
@@ -123,7 +124,8 @@ def _resolve_date_range(args: argparse.Namespace) -> tuple[str, str]:
         start_day = end_day - timedelta(days=max(0, args.lookback_days))
         return start_day.strftime("%Y%m%d"), args.end_date
 
-    raise ValueError("Use --date, --start-date/--end-date, or --end-date with --lookback-days")
+    msg = "Use --date, --start-date/--end-date, or --end-date with --lookback-days"
+    raise ValueError(msg)
 
 
 def _ordered_range(start_date: str, end_date: str) -> tuple[str, str]:
@@ -136,7 +138,8 @@ def _ordered_range(start_date: str, end_date: str) -> tuple[str, str]:
 
 def _validate_date(value: str) -> None:
     if len(value) != 8 or not value.isdigit():
-        raise ValueError(f"Invalid date format: {value}. Use YYYYMMDD.")
+        msg = f"Invalid date format: {value}. Use YYYYMMDD."
+        raise ValueError(msg)
     datetime.strptime(value, "%Y%m%d")
 
 

@@ -8,9 +8,8 @@ import argparse
 import logging
 from typing import Any
 
-logger = logging.getLogger(__name__)
-
 from bs4 import BeautifulSoup
+from bs4.element import Tag
 from playwright.sync_api import Error as PlaywrightError
 from playwright.sync_api import Page, sync_playwright
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
@@ -25,6 +24,8 @@ from src.utils.request_policy import RequestPolicy
 from src.utils.team_mapping import get_team_mapping_for_year
 from src.utils.team_stats_helpers import get_cell_value, parse_numeric, resolve_team_id
 from src.utils.type_helpers import parse_innings
+
+logger = logging.getLogger(__name__)
 
 TEAM_PITCHING_URLS = [
     "https://www.koreabaseball.com/Record/Team/Pitcher/Basic.aspx",
@@ -207,48 +208,66 @@ def parse_team_pitching_html(
     if "team_name" not in indexes:
         return []
 
+    rows = _extract_stat_rows(table)
+    return [
+        payload
+        for row in rows
+        if (payload := _parse_team_pitching_row(row, indexes, season, league, team_mapping)) is not None
+    ]
+
+
+def _extract_stat_rows(table: Tag) -> list[Tag]:
     rows = table.select("tbody tr")
-    if not rows:
-        rows = [row for row in table.select("tr") if row.find_all("td")]
+    if rows:
+        return rows
+    return [row for row in table.select("tr") if row.find_all("td")]
 
-    stats: list[dict[str, Any]] = []
-    for row in rows:
-        cells = row.find_all("td")
-        if len(cells) < len(indexes):
+
+def _parse_team_pitching_row(
+    row: Tag,
+    indexes: dict[str, int],
+    season: int,
+    league: str,
+    team_mapping: dict[str, str],
+) -> dict[str, Any] | None:
+    cells = row.find_all("td")
+    if len(cells) < len(indexes):
+        return None
+    team_name = get_cell_value(cells, indexes["team_name"])
+    if not team_name:
+        return None
+    payload: dict[str, Any] = {
+        "team_id": resolve_team_id(team_name, team_mapping) or team_name,
+        "team_name": team_name,
+        "season": season,
+        "league": league,
+    }
+    extras = _add_pitching_values(payload, cells, indexes)
+    if extras:
+        payload["extra_stats"] = extras
+    return payload
+
+
+def _add_pitching_values(payload: dict[str, Any], cells: list[Tag], indexes: dict[str, int]) -> dict[str, Any]:
+    extras: dict[str, Any] = {}
+    for header_key, idx in indexes.items():
+        if header_key == "team_name":
             continue
-        team_name = get_cell_value(cells, indexes["team_name"])
-        if not team_name:
+        value_str = get_cell_value(cells, idx)
+        if value_str is None:
             continue
-        team_id = resolve_team_id(team_name, team_mapping)
-        payload: dict[str, Any] = {
-            "team_id": team_id or team_name,
-            "team_name": team_name,
-            "season": season,
-            "league": league,
-        }
+        parsed_value = _parse_pitching_value(header_key, value_str)
+        if header_key in PITCHING_FIELDS:
+            payload[header_key] = parsed_value
+        else:
+            extras[header_key] = parsed_value
+    return extras
 
-        extras: dict[str, Any] = {}
-        for header_key, idx in indexes.items():
-            if header_key == "team_name":
-                continue
-            value_str = get_cell_value(cells, idx)
-            if value_str is None:
-                continue
-            parsed_value = (
-                parse_innings(value_str)
-                if header_key == "innings_pitched"
-                else parse_numeric(value_str, header_key in FLOAT_FIELDS)
-            )
-            if header_key in PITCHING_FIELDS:
-                payload[header_key] = parsed_value
-            else:
-                extras[header_key] = parsed_value
 
-        if extras:
-            payload["extra_stats"] = extras
-        stats.append(payload)
-
-    return stats
+def _parse_pitching_value(header_key: str, value_str: str) -> int | float | str | None:
+    if header_key == "innings_pitched":
+        return parse_innings(value_str)
+    return parse_numeric(value_str, header_key in FLOAT_FIELDS)
 
 
 def _build_column_map(headers: list[str]) -> dict[str, int]:

@@ -368,14 +368,14 @@ def _write_report(report_path: Path, rows: Sequence[RebuildReportRow]) -> None:
             )
 
 
-def _batter_from_description(description: Any) -> str | None:
+def _batter_from_description(description: object) -> str | None:
     text = str(description or "").strip()
     if ":" not in text:
         return None
     return text.split(":", 1)[0].strip() or None
 
 
-def _result_from_description(description: Any) -> str | None:
+def _result_from_description(description: object) -> str | None:
     text = str(description or "").strip()
     if ":" not in text:
         return None

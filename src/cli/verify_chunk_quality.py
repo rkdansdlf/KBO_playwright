@@ -30,6 +30,7 @@ from pathlib import Path
 from typing import Any
 
 from dotenv import load_dotenv
+from sqlalchemy.orm import Session
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
@@ -53,7 +54,7 @@ KEYWORD_COVERAGE_TARGET = 0.80  # 80%
 # ---------------------------------------------------------------------------
 
 
-def load_chunks(session, source_filter: str | None = None) -> list[dict[str, Any]]:
+def load_chunks(session: Session, source_filter: str | None = None) -> list[dict[str, Any]]:
     """
     Loads rag_chunks rows from the local SQLite database.
     Returns a list of dicts with keys: id, source_table, source_row_id, content, metadata.
@@ -258,7 +259,7 @@ def print_report(chunks: list[dict], source_filter: str | None) -> bool:
 # ---------------------------------------------------------------------------
 
 
-def remove_duplicate_chunks(session) -> int:
+def remove_duplicate_chunks(session: Session) -> int:
     """
     Removes duplicate rag_chunks rows keeping the one with the lowest id.
     Returns the number of rows deleted.

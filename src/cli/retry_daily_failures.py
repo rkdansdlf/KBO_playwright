@@ -30,17 +30,21 @@ def _summary_path(target_date: str, summary_dir: str | Path | None = None) -> Pa
 def load_daily_summary(path: str | Path) -> dict[str, Any]:
     summary_path = Path(path)
     if not summary_path.exists():
-        raise FileNotFoundError(f"Daily summary not found: {summary_path}")
+        msg = f"Daily summary not found: {summary_path}"
+        raise FileNotFoundError(msg)
 
     try:
         payload = json.loads(summary_path.read_text(encoding="utf-8"))
     except json.JSONDecodeError as exc:
-        raise ValueError(f"Malformed daily summary JSON: {summary_path}") from exc
+        msg = f"Malformed daily summary JSON: {summary_path}"
+        raise ValueError(msg) from exc
 
     if not isinstance(payload, dict):
-        raise TypeError(f"Daily summary must be a JSON object: {summary_path}")
+        msg = f"Daily summary must be a JSON object: {summary_path}"
+        raise TypeError(msg)
     if not isinstance(payload.get("stability"), dict):
-        raise TypeError(f"Daily summary missing stability payload: {summary_path}")
+        msg = f"Daily summary missing stability payload: {summary_path}"
+        raise TypeError(msg)
     return payload
 
 
@@ -71,11 +75,13 @@ def _detail_groups(game_ids: Sequence[str]) -> dict[tuple[int, int], list[str]]:
     groups: dict[tuple[int, int], list[str]] = defaultdict(list)
     for game_id in game_ids:
         if len(game_id) < 8 or not game_id[:8].isdigit():
-            raise ValueError(f"Invalid KBO game_id date prefix: {game_id}")
+            msg = f"Invalid KBO game_id date prefix: {game_id}"
+            raise ValueError(msg)
         year = int(game_id[:4])
         month = int(game_id[4:6])
         if not 1 <= month <= 12:
-            raise ValueError(f"Invalid KBO game_id month: {game_id}")
+            msg = f"Invalid KBO game_id month: {game_id}"
+            raise ValueError(msg)
         groups[(year, month)].append(game_id)
     return {key: sorted(set(values)) for key, values in sorted(groups.items())}
 

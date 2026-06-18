@@ -16,6 +16,7 @@ from zoneinfo import ZoneInfo
 
 from sqlalchemy import func, inspect, text
 from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.orm import Session
 
 from src.models.broadcast import GameBroadcast
 from src.models.game import (
@@ -57,7 +58,8 @@ def normalize_yyyymmdd(value: str | date | datetime | None) -> str:
         return value.strftime("%Y%m%d")
     normalized = str(value).replace("-", "").strip()
     if len(normalized) != 8 or not normalized.isdigit():
-        raise ValueError(f"Invalid date: {value!r}. Use YYYYMMDD.")
+        msg = f"Invalid date: {value!r}. Use YYYYMMDD."
+        raise ValueError(msg)
     datetime.strptime(normalized, "%Y%m%d")
     return normalized
 
@@ -66,7 +68,7 @@ def _date_from_yyyymmdd(value: str) -> date:
     return datetime.strptime(value, "%Y%m%d").date()
 
 
-def _date_key(value: Any) -> str:
+def _date_key(value: object) -> str:
     if isinstance(value, datetime):
         return value.strftime("%Y%m%d")
     if isinstance(value, date):
@@ -74,19 +76,19 @@ def _date_key(value: Any) -> str:
     return str(value or "").replace("-", "")[:8]
 
 
-def _status(value: Any) -> str:
+def _status(value: object) -> str:
     return str(value or "").upper().strip()
 
 
-def _is_cancelled_or_postponed(game: Any) -> bool:
+def _is_cancelled_or_postponed(game: object) -> bool:
     return _status(game.game_status) in {GAME_STATUS_CANCELLED, GAME_STATUS_POSTPONED}
 
 
-def _has_text(value: Any) -> bool:
+def _has_text(value: object) -> bool:
     return bool(str(value or "").strip())
 
 
-def _safe_rows(query) -> list[Any]:
+def _safe_rows(query: object) -> list[Any]:
     try:
         return list(query.all())
     except P0_READINESS_DB_EXCEPTIONS:
@@ -94,7 +96,7 @@ def _safe_rows(query) -> list[Any]:
         return []
 
 
-def _coerce_date(value: Any) -> date | None:
+def _coerce_date(value: object) -> date | None:
     if isinstance(value, datetime):
         return value.date()
     if isinstance(value, date):
@@ -110,7 +112,7 @@ def _coerce_date(value: Any) -> date | None:
     return None
 
 
-def _query_games(session, start: date, end: date) -> list[Any]:
+def _query_games(session: Session, start: date, end: date) -> list[Any]:
     required = (
         "game_id",
         "game_date",
@@ -162,7 +164,7 @@ def _query_games(session, start: date, end: date) -> list[Any]:
     return games
 
 
-def _metadata_by_game(session, game_ids: Iterable[str]) -> dict[str, GameMetadata]:
+def _metadata_by_game(session: Session, game_ids: Iterable[str]) -> dict[str, GameMetadata]:
     ids = [gid for gid in game_ids if gid]
     if not ids:
         return {}
@@ -170,7 +172,7 @@ def _metadata_by_game(session, game_ids: Iterable[str]) -> dict[str, GameMetadat
     return {row.game_id: row for row in rows}
 
 
-def _count_by_game(session, model, game_ids: Iterable[str]) -> dict[str, int]:
+def _count_by_game(session: Session, model: type[Any], game_ids: Iterable[str]) -> dict[str, int]:
     ids = [gid for gid in game_ids if gid]
     if not ids:
         return {}
@@ -178,7 +180,7 @@ def _count_by_game(session, model, game_ids: Iterable[str]) -> dict[str, int]:
     return {str(game_id): int(count or 0) for game_id, count in rows}
 
 
-def _lineup_sides_by_game(session, game_ids: Iterable[str]) -> dict[str, set[str]]:
+def _lineup_sides_by_game(session: Session, game_ids: Iterable[str]) -> dict[str, set[str]]:
     ids = [gid for gid in game_ids if gid]
     if not ids:
         return {}
@@ -194,7 +196,7 @@ def _lineup_sides_by_game(session, game_ids: Iterable[str]) -> dict[str, set[str
     return sides
 
 
-def _side_counts_by_game(session, model, game_ids: Iterable[str]) -> dict[str, set[str]]:
+def _side_counts_by_game(session: Session, model: type[Any], game_ids: Iterable[str]) -> dict[str, set[str]]:
     ids = [gid for gid in game_ids if gid]
     if not ids:
         return {}
@@ -210,7 +212,7 @@ def _side_counts_by_game(session, model, game_ids: Iterable[str]) -> dict[str, s
     return sides
 
 
-def _preview_games(session, game_ids: Iterable[str]) -> set[str]:
+def _preview_games(session: Session, game_ids: Iterable[str]) -> set[str]:
     ids = [gid for gid in game_ids if gid]
     if not ids:
         return set()
@@ -222,7 +224,7 @@ def _preview_games(session, game_ids: Iterable[str]) -> set[str]:
     return {str(row[0]) for row in rows}
 
 
-def _pitching_decision_games(session, game_ids: Iterable[str]) -> set[str]:
+def _pitching_decision_games(session: Session, game_ids: Iterable[str]) -> set[str]:
     ids = [gid for gid in game_ids if gid]
     if not ids:
         return set()
@@ -243,7 +245,7 @@ def _pitching_decision_games(session, game_ids: Iterable[str]) -> set[str]:
     return {str(row[0]) for row in rows}
 
 
-def _rows_by_date(session, _model, date_column, dates: Iterable[date]) -> dict[str, int]:
+def _rows_by_date(session: Session, _model: type[Any], date_column: object, dates: Iterable[date]) -> dict[str, int]:
     date_list = list(dates)
     if not date_list:
         return {}
@@ -275,7 +277,7 @@ def _coverage(ok: int, total: int) -> float:
     return 100.0 if total == 0 else round((ok / total) * 100, 1)
 
 
-def _score_present(game: Any) -> bool:
+def _score_present(game: object) -> bool:
     return game.home_score is not None and game.away_score is not None
 
 
@@ -283,13 +285,13 @@ def _meta_has_start_time(meta: GameMetadata | None) -> bool:
     return bool(meta and meta.start_time is not None)
 
 
-def _meta_has_stadium(game: Any, meta: GameMetadata | None) -> bool:
+def _meta_has_stadium(game: object, meta: GameMetadata | None) -> bool:
     return _has_text(getattr(game, "stadium", None)) or bool(
         meta and (_has_text(meta.stadium_name) or _has_text(meta.stadium_code)),
     )
 
 
-def _broadcast_missing_reason(game: Any, target_day: date) -> str:
+def _broadcast_missing_reason(game: object, target_day: date) -> str:
     game_day = getattr(game, "game_date", None)
     if _status(getattr(game, "game_status", None)) == GAME_STATUS_SCHEDULED or (
         isinstance(game_day, date) and game_day > target_day
@@ -358,7 +360,7 @@ def _check_schedule_completeness(
 
 
 def _check_pregame_completeness(
-    session,
+    session: Session,
     scheduled_games: list[Any],
     failures: list[dict[str, Any]],
 ) -> dict[str, Any]:
@@ -391,7 +393,7 @@ def _check_pregame_completeness(
     return {"starters_complete": starters_complete, "lineups_complete": lineups_complete, "preview_ids": preview_ids}
 
 
-def _max_innings_by_game(session, relay_games: list[str]) -> dict[str, int]:
+def _max_innings_by_game(session: Session, relay_games: list[str]) -> dict[str, int]:
     if not relay_games:
         return {}
     rows = _safe_rows(
@@ -422,7 +424,7 @@ def _check_live_completeness(
 
 
 def _check_postgame_completeness(
-    session,
+    session: Session,
     completed_games: list[Any],
     failures: list[dict[str, Any]],
 ) -> dict[str, int]:
@@ -509,7 +511,7 @@ def _check_relay_completeness(
 
 
 def _check_roster_completeness(
-    session,
+    session: Session,
     active_games: list[Any],
     target_day: date,
     failures: list[dict[str, Any]],
@@ -533,7 +535,7 @@ def _check_roster_completeness(
 
 
 def _check_broadcast_completeness(
-    session,
+    session: Session,
     active_games: list[Any],
     target_day: date,
     failures: list[dict[str, Any]],
@@ -556,7 +558,7 @@ def _check_broadcast_completeness(
 
 
 def build_p0_readiness(
-    session,
+    session: Session,
     *,
     target_date: str | date | datetime | None = None,
     lookback_days: int = 7,

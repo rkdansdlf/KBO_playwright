@@ -8,13 +8,13 @@ from sqlalchemy import text
 from src.db.engine import SessionLocal
 
 
-def _fmt(val: Any) -> str:
+def _fmt(val: object) -> str:
     if val is None:
         return "-"
     return str(val)
 
 
-def _int(val: Any) -> int:
+def _int(val: object) -> int:
     if val is None:
         return 0
     return int(val)

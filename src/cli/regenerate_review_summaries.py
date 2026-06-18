@@ -8,7 +8,7 @@ import hashlib
 import json
 import logging
 import os
-from collections.abc import Iterable, Sequence
+from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass
 from datetime import date, datetime
 from pathlib import Path
@@ -16,6 +16,7 @@ from typing import Any
 
 from sqlalchemy import and_, or_
 from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.orm import Session
 
 from src.cli.daily_review_batch import (
     REVIEW_SUMMARY_TYPE,
@@ -117,7 +118,9 @@ def _season_filters(seasons: Iterable[int]) -> list:
     return filters
 
 
-def _query_target_games(session, *, game_ids: Sequence[str], dates: Sequence[str], seasons: Sequence[int]) -> list:
+def _query_target_games(
+    session: Session, *, game_ids: Sequence[str], dates: Sequence[str], seasons: Sequence[int]
+) -> list[Game]:
     query = session.query(Game)
     filters = []
     if game_ids:
@@ -152,7 +155,7 @@ def _write_report(rows: Sequence[ReviewRegenReportRow], path: Path) -> None:
             writer.writerow(row.as_csv_row())
 
 
-def _write_backup(session, game_ids: Sequence[str], path: Path) -> None:
+def _write_backup(session: Session, game_ids: Sequence[str], path: Path) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     rows = (
         session.query(GameSummary)
@@ -189,7 +192,9 @@ def _write_backup(session, game_ids: Sequence[str], path: Path) -> None:
             )
 
 
-def _sync_review_summaries(game_ids: Sequence[str], rows: Sequence[ReviewRegenReportRow], *, oci_url: str, log) -> None:
+def _sync_review_summaries(
+    game_ids: Sequence[str], rows: Sequence[ReviewRegenReportRow], *, oci_url: str, log: Callable[[str], object]
+) -> None:
     if not game_ids:
         return
     with SessionLocal() as sync_session:
@@ -224,7 +229,7 @@ def _skipped_review_row(game: Game) -> ReviewRegenReportRow:
     )
 
 
-def _existing_review_json(session, game_id: str) -> str | None:
+def _existing_review_json(session: Session, game_id: str) -> str | None:
     existing = (
         session.query(GameSummary)
         .filter(GameSummary.game_id == game_id, GameSummary.summary_type == REVIEW_SUMMARY_TYPE)
@@ -249,7 +254,9 @@ def _build_review_report_row(
     )
 
 
-def _process_review_game(session, agg: ContextAggregator, game: Game, apply: bool) -> tuple[ReviewRegenReportRow, bool]:
+def _process_review_game(
+    session: Session, agg: ContextAggregator, game: Game, apply: bool
+) -> tuple[ReviewRegenReportRow, bool]:
     if game.game_status not in COMPLETED_LIKE_GAME_STATUSES:
         return _skipped_review_row(game), False
 
@@ -275,7 +282,7 @@ def _process_review_game(session, agg: ContextAggregator, game: Game, apply: boo
 
 
 def _process_review_games(
-    session, games: Sequence[Game], agg: ContextAggregator, apply: bool
+    session: Session, games: Sequence[Game], agg: ContextAggregator, apply: bool
 ) -> tuple[list[ReviewRegenReportRow], list[str]]:
     rows = []
     sync_game_ids = []
@@ -307,7 +314,7 @@ def regenerate_review_summaries(
     oci_url: str | None = None,
     report_out: Path | None = None,
     backup_out: Path | None = None,
-    log=logger.info,
+    log: Callable[[str], object] = logger.info,
 ) -> list[ReviewRegenReportRow]:
     target_game_ids = list(game_ids or [])
     target_dates = list(dates or [])
@@ -351,7 +358,7 @@ def regenerate_review_summaries(
     return rows
 
 
-def _collect_game_ids(args) -> list[str]:
+def _collect_game_ids(args: argparse.Namespace) -> list[str]:
     game_ids = list(args.game_id or [])
     if args.game_ids_file:
         game_ids.extend(_load_game_ids_file(Path(args.game_ids_file)))

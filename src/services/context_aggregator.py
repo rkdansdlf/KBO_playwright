@@ -11,6 +11,7 @@ from datetime import date, datetime, timedelta
 from typing import Any
 
 from sqlalchemy import and_, desc, func, or_
+from sqlalchemy.orm import Session
 
 from src.models.game import (
     Game,
@@ -27,11 +28,11 @@ from src.utils.relay_text import is_relay_noise_text
 
 
 class ContextAggregator:
-    def __init__(self, session) -> None:
+    def __init__(self, session: Session) -> None:
         self.session = session
 
     @staticmethod
-    def _pitching_outs_from_value(innings_pitched: Any) -> int | None:
+    def _pitching_outs_from_value(innings_pitched: object) -> int | None:
         if innings_pitched is None:
             return None
         try:
@@ -176,19 +177,7 @@ class ContextAggregator:
             .all()
         )
 
-        player_ids = sorted({row.player_id for row in rows if row.player_id is not None})
-        season_rows: dict[int, PlayerSeasonPitching] = {}
-        if player_ids and season_year:
-            for row in (
-                self.session.query(PlayerSeasonPitching)
-                .filter(
-                    PlayerSeasonPitching.player_id.in_(player_ids),
-                    PlayerSeasonPitching.season == season_year,
-                    PlayerSeasonPitching.league == "REGULAR",
-                )
-                .all()
-            ):
-                season_rows[int(row.player_id)] = row
+        season_rows = self._season_pitching_rows(rows, season_year)
 
         starters: dict[str, dict[str, Any] | None] = {"away": None, "home": None}
         bullpen: dict[str, dict[str, Any]] = {
@@ -212,27 +201,8 @@ class ContextAggregator:
                     },
                 )
 
-            if bool(row.is_starting):
-                if side in starters and starters[side] is None:
-                    starters[side] = payload_row
+            if self._assign_pitching_role(row, payload_row, side, starters, bullpen):
                 continue
-
-            if side not in bullpen:
-                continue
-            bullpen[side]["pitchers"].append(payload_row)
-            totals = bullpen[side]["totals"]
-            game_line = payload_row["game_line"]
-            totals["pitchers"] += 1
-            totals["innings_outs"] += int(game_line.get("innings_outs") or 0)
-            for key in (
-                "pitches",
-                "hits_allowed",
-                "runs_allowed",
-                "earned_runs",
-                "walks_allowed",
-                "strikeouts",
-            ):
-                totals[key] += int(game_line.get(key) or 0)
 
         for side_payload in bullpen.values():
             totals = side_payload["totals"]
@@ -257,6 +227,51 @@ class ContextAggregator:
             "unmatched_season_stats": unmatched_season_stats,
         }
 
+    def _season_pitching_rows(
+        self,
+        rows: list[GamePitchingStat],
+        season_year: int | None,
+    ) -> dict[int, PlayerSeasonPitching]:
+        player_ids = sorted({row.player_id for row in rows if row.player_id is not None})
+        if not player_ids or not season_year:
+            return {}
+        return {
+            int(row.player_id): row
+            for row in self.session.query(PlayerSeasonPitching)
+            .filter(
+                PlayerSeasonPitching.player_id.in_(player_ids),
+                PlayerSeasonPitching.season == season_year,
+                PlayerSeasonPitching.league == "REGULAR",
+            )
+            .all()
+        }
+
+    def _assign_pitching_role(
+        self,
+        row: GamePitchingStat,
+        payload_row: dict[str, Any],
+        side: str,
+        starters: dict[str, dict[str, Any] | None],
+        bullpen: dict[str, dict[str, Any]],
+    ) -> bool:
+        if bool(row.is_starting):
+            if side in starters and starters[side] is None:
+                starters[side] = payload_row
+            return True
+        if side not in bullpen:
+            return True
+        self._append_bullpen_pitcher(bullpen[side], payload_row)
+        return False
+
+    def _append_bullpen_pitcher(self, side_payload: dict[str, Any], payload_row: dict[str, Any]) -> None:
+        side_payload["pitchers"].append(payload_row)
+        totals = side_payload["totals"]
+        game_line = payload_row["game_line"]
+        totals["pitchers"] += 1
+        totals["innings_outs"] += int(game_line.get("innings_outs") or 0)
+        for key in ("pitches", "hits_allowed", "runs_allowed", "earned_runs", "walks_allowed", "strikeouts"):
+            totals[key] += int(game_line.get(key) or 0)
+
     def diagnose_completed_game_coach_pitching(self, game_id: str) -> dict[str, Any]:
         """Trace pitcher data from raw tables through repository output to review JSON."""
         breakdown = self.get_completed_game_pitching_breakdown(game_id)
@@ -271,33 +286,7 @@ class ContextAggregator:
             .all()
         )
 
-        final_payload_found = False
-        final_has_pitching = False
-        final_starter_rows = 0
-        final_bullpen_rows = 0
-        for summary in summaries:
-            if not summary.detail_text:
-                continue
-            try:
-                payload = json.loads(summary.detail_text)
-            except (TypeError, ValueError):
-                payload = {}
-            if isinstance(payload, dict):
-                final_payload_found = True
-                final_pitching = payload.get("pitching_breakdown") or payload.get("pitching")
-                if not isinstance(final_pitching, dict):
-                    continue
-
-                starters = final_pitching.get("starters") or {}
-                bullpen = final_pitching.get("bullpen") or {}
-                starter_rows = sum(1 for value in starters.values() if isinstance(value, dict))
-                bullpen_rows = sum(
-                    len((value or {}).get("pitchers") or []) for value in bullpen.values() if isinstance(value, dict)
-                )
-                if starter_rows or bullpen_rows:
-                    final_has_pitching = True
-                    final_starter_rows = max(final_starter_rows, starter_rows)
-                    final_bullpen_rows = max(final_bullpen_rows, bullpen_rows)
+        final_payload = self._diagnose_final_pitching_payload(summaries)
 
         repository_starter_rows = sum(1 for row in breakdown["starters"].values() if row)
         repository_bullpen_rows = sum(len(side.get("pitchers") or []) for side in breakdown["bullpen"].values())
@@ -306,20 +295,9 @@ class ContextAggregator:
         if raw["season_pitching_matches"] < expected_player_rows:
             warnings.append("season_pitching_join_incomplete")
 
-        if raw["game_pitching_rows"] == 0:
-            drop_stage = "raw_game_pitching_stats_missing"
-        elif raw["starter_rows"] == 0:
-            drop_stage = "raw_starter_flags_missing"
-        elif repository_starter_rows == 0 or (raw["bullpen_rows"] > 0 and repository_bullpen_rows == 0):
-            drop_stage = "repository_pitching_rows_missing"
-        elif not final_payload_found:
-            drop_stage = "final_review_payload_missing"
-        elif not final_has_pitching:
-            drop_stage = "final_review_payload_missing_pitching"
-        elif final_starter_rows == 0 or (raw["bullpen_rows"] > 0 and final_bullpen_rows == 0):
-            drop_stage = "final_review_payload_pitching_empty"
-        else:
-            drop_stage = "ok"
+        drop_stage = self._coach_pitching_drop_stage(
+            raw, repository_starter_rows, repository_bullpen_rows, final_payload
+        )
 
         return {
             "game_id": game_id,
@@ -333,13 +311,70 @@ class ContextAggregator:
                 "unmatched_season_stats": breakdown["unmatched_season_stats"],
             },
             "final_payload": {
-                "review_summary_found": final_payload_found,
+                "review_summary_found": final_payload["found"],
                 "review_summary_rows": len(summaries),
-                "pitching_breakdown_found": final_has_pitching,
-                "starter_rows": final_starter_rows,
-                "bullpen_rows": final_bullpen_rows,
+                "pitching_breakdown_found": final_payload["has_pitching"],
+                "starter_rows": final_payload["starter_rows"],
+                "bullpen_rows": final_payload["bullpen_rows"],
             },
         }
+
+    def _diagnose_final_pitching_payload(self, summaries: list[GameSummary]) -> dict[str, Any]:
+        result = {"found": False, "has_pitching": False, "starter_rows": 0, "bullpen_rows": 0}
+        for summary in summaries:
+            payload = self._summary_payload(summary)
+            if not isinstance(payload, dict):
+                continue
+            result["found"] = True
+            final_pitching = payload.get("pitching_breakdown") or payload.get("pitching")
+            if not isinstance(final_pitching, dict):
+                continue
+
+            starter_rows, bullpen_rows = self._count_final_pitching_rows(final_pitching)
+            if starter_rows or bullpen_rows:
+                result["has_pitching"] = True
+                result["starter_rows"] = max(result["starter_rows"], starter_rows)
+                result["bullpen_rows"] = max(result["bullpen_rows"], bullpen_rows)
+        return result
+
+    def _summary_payload(self, summary: GameSummary) -> dict[str, Any] | None:
+        if not summary.detail_text:
+            return None
+        try:
+            payload = json.loads(summary.detail_text)
+        except (TypeError, ValueError):
+            return {}
+        return payload if isinstance(payload, dict) else None
+
+    def _count_final_pitching_rows(self, final_pitching: dict[str, Any]) -> tuple[int, int]:
+        starters = final_pitching.get("starters") or {}
+        bullpen = final_pitching.get("bullpen") or {}
+        starter_rows = sum(1 for value in starters.values() if isinstance(value, dict))
+        bullpen_rows = sum(
+            len((value or {}).get("pitchers") or []) for value in bullpen.values() if isinstance(value, dict)
+        )
+        return starter_rows, bullpen_rows
+
+    def _coach_pitching_drop_stage(
+        self,
+        raw: dict[str, Any],
+        repository_starter_rows: int,
+        repository_bullpen_rows: int,
+        final_payload: dict[str, Any],
+    ) -> str:
+        if raw["game_pitching_rows"] == 0:
+            return "raw_game_pitching_stats_missing"
+        if raw["starter_rows"] == 0:
+            return "raw_starter_flags_missing"
+        if repository_starter_rows == 0 or (raw["bullpen_rows"] > 0 and repository_bullpen_rows == 0):
+            return "repository_pitching_rows_missing"
+        if not final_payload["found"]:
+            return "final_review_payload_missing"
+        if not final_payload["has_pitching"]:
+            return "final_review_payload_missing_pitching"
+        if final_payload["starter_rows"] == 0 or (raw["bullpen_rows"] > 0 and final_payload["bullpen_rows"] == 0):
+            return "final_review_payload_pitching_empty"
+        return "ok"
 
     def get_team_l10_summary(self, team_code: str, target_date: date) -> dict[str, Any]:
         """최근 10경기 승패 및 연승/연패 흐름 계산"""
@@ -662,7 +697,9 @@ class ContextAggregator:
             "summary_text": f"{stats.wins}승 {stats.losses}패 {stats.era}ERA",
         }
 
-    def get_recent_player_movements(self, team_code: str, target_date: Any, days: int = 7) -> list[dict[str, Any]]:
+    def get_recent_player_movements(
+        self, team_code: str, target_date: str | date | datetime, days: int = 7
+    ) -> list[dict[str, Any]]:
         """최근 N일간 해당 팀의 선수 이동 현황(부상, 트레이드 등) 조회"""
         if isinstance(target_date, str):
             target_date = datetime.strptime(target_date.replace("-", ""), "%Y%m%d").date()
@@ -749,7 +786,7 @@ class ContextAggregator:
             )
         return results
 
-    def get_daily_roster_changes(self, team_code: str, target_date: Any) -> dict[str, list[str]]:
+    def get_daily_roster_changes(self, team_code: str, target_date: str | date | datetime) -> dict[str, list[str]]:
         """해당 날짜의 1군 등록/말소 현황 비교 (어제와 비교)"""
         if isinstance(target_date, str):
             target_date = datetime.strptime(target_date.replace("-", ""), "%Y%m%d").date()
@@ -784,7 +821,7 @@ class ContextAggregator:
         self,
         team_code: str,
         season_year: int,
-        target_date: Any | None = None,
+        target_date: str | date | datetime | None = None,
     ) -> list[dict[str, Any]]:
         """팀이 특정 경기에서 실책을 범한 경기 목록 및 실책 상세 정보 반환"""
         if isinstance(target_date, str):
@@ -868,7 +905,7 @@ class ContextAggregator:
         self,
         team_code: str,
         season_year: int,
-        target_date: Any | None = None,
+        target_date: str | date | datetime | None = None,
     ) -> list[dict[str, Any]]:
         """상대팀별 승률을 계산하여 가장 까다로운(우리팀 승률이 낮은) 순으로 정렬하여 반환"""
         if isinstance(target_date, str):

@@ -16,6 +16,7 @@ from typing import Any
 from dotenv import load_dotenv
 from sqlalchemy import create_engine, text
 from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.orm import Session
 
 from src.db.engine import SessionLocal, get_oci_url
 
@@ -36,7 +37,7 @@ def _normalize_date(value: str | None) -> str | None:
     return compact
 
 
-def _is_blank(value: Any) -> bool:
+def _is_blank(value: object) -> bool:
     return value is None or str(value).strip() == ""
 
 
@@ -72,7 +73,7 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def load_candidates(session, args: argparse.Namespace) -> list[dict[str, Any]]:
+def load_candidates(session: Session, args: argparse.Namespace) -> list[dict[str, Any]]:
     start_date = _normalize_date(args.start_date)
     end_date = _normalize_date(args.end_date)
     overwrite_filter = (
@@ -139,7 +140,7 @@ def load_candidates(session, args: argparse.Namespace) -> list[dict[str, Any]]:
 
 
 def repair_candidates(
-    session,
+    session: Session,
     candidates: list[dict[str, Any]],
     overwrite: bool,
     dry_run: bool,
@@ -199,7 +200,8 @@ def sync_to_oci(game_ids: list[str]) -> tuple[int, int]:
 
     target_url = get_oci_url()
     if not target_url:
-        raise RuntimeError("OCI_DB_URL or TARGET_DATABASE_URL is required for OCI sync")
+        msg = "OCI_DB_URL or TARGET_DATABASE_URL is required for OCI sync"
+        raise RuntimeError(msg)
 
     with SessionLocal() as session:
         syncer = OCISync(target_url, session)
@@ -217,10 +219,11 @@ def sync_to_oci(game_ids: list[str]) -> tuple[int, int]:
     return success, failed
 
 
-def find_target_missing_ready_games(session, args: argparse.Namespace) -> list[dict[str, Any]]:
+def find_target_missing_ready_games(session: Session, args: argparse.Namespace) -> list[dict[str, Any]]:
     target_url = get_oci_url()
     if not target_url:
-        raise RuntimeError("OCI_DB_URL or TARGET_DATABASE_URL is required for --sync-target-missing")
+        msg = "OCI_DB_URL or TARGET_DATABASE_URL is required for --sync-target-missing"
+        raise RuntimeError(msg)
 
     start_date = _normalize_date(args.start_date)
     end_date = _normalize_date(args.end_date)
@@ -286,7 +289,8 @@ def update_target_pitcher_fields(rows: list[dict[str, Any]]) -> int:
 
     target_url = get_oci_url()
     if not target_url:
-        raise RuntimeError("OCI_DB_URL or TARGET_DATABASE_URL is required for OCI update")
+        msg = "OCI_DB_URL or TARGET_DATABASE_URL is required for OCI update"
+        raise RuntimeError(msg)
 
     target_engine = create_engine(target_url)
     update_query = text(

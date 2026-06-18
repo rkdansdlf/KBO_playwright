@@ -12,6 +12,7 @@ from datetime import datetime
 from typing import Any
 
 from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.orm import Session
 
 from src.db.engine import SessionLocal
 from src.models.game import Game, GameEvent, GameSummary, GameValidationMetrics
@@ -30,7 +31,7 @@ def dump_story_json(story_data: dict) -> str:
     return json.dumps(story_data, ensure_ascii=False)
 
 
-def _upsert_story_summary(session, game_id: str, story_json: str) -> None:
+def _upsert_story_summary(session: Session, game_id: str, story_json: str) -> None:
     existing_summaries = (
         session.query(GameSummary)
         .filter(
@@ -53,7 +54,7 @@ def _upsert_story_summary(session, game_id: str, story_json: str) -> None:
     )
 
 
-def _build_story_data(builder: GameStoryBuilder, session, game: Game) -> dict[str, Any]:
+def _build_story_data(builder: GameStoryBuilder, session: Session, game: Game) -> dict[str, Any]:
     events = (
         session.query(GameEvent)
         .filter(GameEvent.game_id == game.game_id)
@@ -63,7 +64,7 @@ def _build_story_data(builder: GameStoryBuilder, session, game: Game) -> dict[st
     return builder.build(game, events)
 
 
-def _trusted_relay_game_ids(session, game_ids: Sequence[str]) -> set[str]:
+def _trusted_relay_game_ids(session: Session, game_ids: Sequence[str]) -> set[str]:
     if not game_ids:
         return set()
     target_ids = {str(game_id) for game_id in game_ids}

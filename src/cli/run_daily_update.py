@@ -46,7 +46,7 @@ from src.repositories.game_repository import (
 )
 from src.repositories.player_repository import PlayerRepository
 from src.repositories.team_repository import TeamRepository
-from src.services.game_collection_service import crawl_and_save_game_details
+from src.services.game_collection_service import GameCollectionItemResult, crawl_and_save_game_details
 from src.services.game_write_contract import GameWriteContract
 from src.services.p0_readiness import build_p0_readiness, format_p0_readiness_summary
 from src.services.player_id_resolver import PlayerIdResolver
@@ -388,7 +388,8 @@ def _run_game_status_integrity_audit() -> None:
     )
     if len(violations) > 5:
         sample = f"{sample}; ... and {len(violations) - 5} more"
-    raise RuntimeError(f"{len(violations)} game status integrity violations found: {sample}")
+    msg = f"{len(violations)} game status integrity violations found: {sample}"
+    raise RuntimeError(msg)
 
 
 def _run_oci_parity_quality_gate() -> dict[str, Any]:
@@ -648,7 +649,7 @@ def _apply_detail_failure_fallback(ctx: _RunContext, game_id: str, reason: str |
             update_game_status(game_id, fallback)
 
 
-def _record_detail_result_status(ctx: _RunContext, game_id: str, item: Any) -> None:
+def _record_detail_result_status(ctx: _RunContext, game_id: str, item: GameCollectionItemResult | None) -> None:
     if item and item.detail_saved:
         logger.info("   ✅ Successfully saved %s", game_id)
         return
@@ -1159,7 +1160,8 @@ def _run_local_integrity_gate() -> None:
         logger.info("   \u2705 Local integrity audit passed")
     except RuntimeError as exc:
         logger.exception("   \u274c Local integrity audit FAILED")
-        raise RuntimeError("Aborting OCI sync due to local data integrity violations.") from exc
+        msg = "Aborting OCI sync due to local data integrity violations."
+        raise RuntimeError(msg) from exc
 
 
 def _run_statistical_quality_gate_for_sync(ctx: _RunContext) -> None:
@@ -1243,7 +1245,8 @@ def _publish_to_oci(ctx: _RunContext) -> None:
     logger.info("\n\u2601\ufe0f Step 13: Synchronizing to OCI...")
     oci_url = os.getenv("OCI_DB_URL")
     if not oci_url:
-        raise RuntimeError("OCI_DB_URL is required when --sync is enabled")
+        msg = "OCI_DB_URL is required when --sync is enabled"
+        raise RuntimeError(msg)
 
     with SessionLocal() as sync_session:
         syncer = OCISync(oci_url, sync_session)
