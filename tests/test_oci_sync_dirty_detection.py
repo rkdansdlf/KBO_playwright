@@ -508,6 +508,59 @@ def test_sync_pregame_game_syncs_player_basic_before_lineups(monkeypatch):
     ]
 
 
+def test_sync_pregame_game_retries_stale_lineup_delete(monkeypatch):
+    calls = []
+    syncer = object.__new__(OCISync)
+
+    class _DeleteQuery:
+        def filter(self, *_args):
+            return self
+
+        def delete(self, **_kwargs):
+            calls.append("delete_lineups")
+            if calls.count("delete_lineups") == 1:
+                raise OperationalError("DELETE game_lineups", {}, None)
+            return 1
+
+    class _TargetSession:
+        def query(self, model):
+            assert model is GameLineup
+            return _DeleteQuery()
+
+        def commit(self):
+            calls.append("commit")
+
+        def rollback(self):
+            calls.append("rollback")
+
+    def sync_simple_table(_self, model, _conflict_keys, **_kwargs):
+        calls.append(model.__tablename__)
+        return 1
+
+    syncer.target_session = _TargetSession()
+    monkeypatch.setattr(OCISync, "test_connection", lambda _self: True)
+    monkeypatch.setattr(OCISync, "sync_simple_table", sync_simple_table)
+    monkeypatch.setattr(OCISync, "_sync_referenced_player_basic_for_games", lambda *_args, **_kwargs: 1)
+    monkeypatch.setattr(OCISync, "_sync_game_summary_rows", lambda *_args, **_kwargs: 1)
+    monkeypatch.setattr(OCISync, "_reconnect_oci", lambda _self: calls.append("reconnect"))
+    monkeypatch.setattr(sync_base_module.time, "sleep", lambda _seconds: None)
+
+    result = syncer.sync_pregame_game("20260514NCLT0")
+
+    assert result["lineups"] == 1
+    assert calls == [
+        "game",
+        "game_id_aliases",
+        "delete_lineups",
+        "rollback",
+        "reconnect",
+        "delete_lineups",
+        "commit",
+        "game_metadata",
+        "game_lineups",
+    ]
+
+
 def test_sync_specific_game_syncs_player_basic_before_child_replacement(monkeypatch):
     calls = []
     syncer = object.__new__(OCISync)

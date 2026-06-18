@@ -206,12 +206,19 @@ class GameSyncMixin:
             "player_game_batting",
             "player_game_pitching",
         ]
-        for table_name in child_tables:
-            self.target_session.execute(
-                text(f"DELETE FROM {table_name} WHERE game_id LIKE :pattern"),
-                {"pattern": pattern},
-            )
-        self.target_session.commit()
+
+        def purge_child_rows() -> None:
+            for table_name in child_tables:
+                self.target_session.execute(
+                    text(f"DELETE FROM {table_name} WHERE game_id LIKE :pattern"),
+                    {"pattern": pattern},
+                )
+            self.target_session.commit()
+
+        self._run_target_session_with_retries(
+            purge_child_rows,
+            label=f"purge_game_detail_children_{year}",
+        )
         logger.info("🧹 Purged OCI child game-detail rows for year %s", year)
 
     def _replace_target_child_rows_for_games(
@@ -225,19 +232,24 @@ class GameSyncMixin:
         if not target_game_ids:
             return
 
-        target_session = getattr(self, "target_session", None)
-        if target_session is None:
+        if getattr(self, "target_session", None) is None:
             logger.info("ℹ️ Skipping OCI %s child row replacement: no target session", label)
             return
 
-        for child_model in child_models:
-            if not self._target_table_exists(child_model):
-                logger.info("ℹ️ Skipping delete for missing OCI table: %s", child_model.__tablename__)
-                continue
-            target_session.query(child_model).filter(child_model.game_id.in_(target_game_ids)).delete(
-                synchronize_session=False,
-            )
-        target_session.commit()
+        def replace_child_rows() -> None:
+            for child_model in child_models:
+                if not self._target_table_exists(child_model):
+                    logger.info("ℹ️ Skipping delete for missing OCI table: %s", child_model.__tablename__)
+                    continue
+                self.target_session.query(child_model).filter(child_model.game_id.in_(target_game_ids)).delete(
+                    synchronize_session=False,
+                )
+            self.target_session.commit()
+
+        self._run_target_session_with_retries(
+            replace_child_rows,
+            label=f"replace_target_child_rows_{label}",
+        )
         logger.info("🧹 Replaced OCI %s child rows for %s game(s)", label, len(target_game_ids))
 
     def get_unsynced_or_modified_game_ids(self) -> list[str]:
@@ -626,8 +638,16 @@ class GameSyncMixin:
         )
         results["player_basic"] = self._sync_referenced_player_basic_for_games([game_id])
 
-        self.target_session.query(GameLineup).filter(GameLineup.game_id == game_id).delete(synchronize_session=False)
-        self.target_session.commit()
+        def delete_existing_lineups() -> None:
+            self.target_session.query(GameLineup).filter(GameLineup.game_id == game_id).delete(
+                synchronize_session=False,
+            )
+            self.target_session.commit()
+
+        self._run_target_session_with_retries(
+            delete_existing_lineups,
+            label=f"delete_pregame_lineups_{game_id}",
+        )
 
         results["metadata"] = self.sync_simple_table(
             GameMetadata,
@@ -666,12 +686,18 @@ class GameSyncMixin:
         if not target_game_ids:
             return {"summary": 0, "games": 0}
 
-        for batch in self._chunked(target_game_ids, 500):
-            self.target_session.query(GameSummary).filter(
-                GameSummary.game_id.in_(batch),
-                GameSummary.summary_type == summary_type,
-            ).delete(synchronize_session=False)
-        self.target_session.commit()
+        def delete_existing_summaries() -> None:
+            for batch in self._chunked(target_game_ids, 500):
+                self.target_session.query(GameSummary).filter(
+                    GameSummary.game_id.in_(batch),
+                    GameSummary.summary_type == summary_type,
+                ).delete(synchronize_session=False)
+            self.target_session.commit()
+
+        self._run_target_session_with_retries(
+            delete_existing_summaries,
+            label=f"delete_review_summaries_{summary_type}",
+        )
 
         synced = self._sync_game_summary_rows(
             filters=[
@@ -705,12 +731,19 @@ class GameSyncMixin:
 
         game_ids = sorted(set(replace_game_ids or [row.game_id for row in rows if row.game_id]))
         if game_ids:
-            for batch in self._chunked(game_ids, 500):
-                delete_query = self.target_session.query(GameSummary).filter(GameSummary.game_id.in_(batch))
-                if summary_type:
-                    delete_query = delete_query.filter(GameSummary.summary_type == summary_type)
-                delete_query.delete(synchronize_session=False)
-            self.target_session.commit()
+
+            def delete_existing_game_summaries() -> None:
+                for batch in self._chunked(game_ids, 500):
+                    delete_query = self.target_session.query(GameSummary).filter(GameSummary.game_id.in_(batch))
+                    if summary_type:
+                        delete_query = delete_query.filter(GameSummary.summary_type == summary_type)
+                    delete_query.delete(synchronize_session=False)
+                self.target_session.commit()
+
+            self._run_target_session_with_retries(
+                delete_existing_game_summaries,
+                label="delete_game_summary_rows",
+            )
             self._reset_target_sequence_for_table(GameSummary.__tablename__)
 
         columns = [c.key for c in GameSummary.__table__.columns if c.key not in {"id", "created_at", "updated_at"}]
@@ -741,11 +774,17 @@ class GameSyncMixin:
 
         self._reset_target_sequence_for_table("game_play_by_play")
 
-        for batch in self._chunked(game_ids, 500):
-            self.target_session.query(GamePlayByPlay).filter(GamePlayByPlay.game_id.in_(batch)).delete(
-                synchronize_session=False,
-            )
-        self.target_session.commit()
+        def delete_existing_play_by_play() -> None:
+            for batch in self._chunked(game_ids, 500):
+                self.target_session.query(GamePlayByPlay).filter(GamePlayByPlay.game_id.in_(batch)).delete(
+                    synchronize_session=False,
+                )
+            self.target_session.commit()
+
+        self._run_target_session_with_retries(
+            delete_existing_play_by_play,
+            label="delete_game_play_by_play_rows",
+        )
 
         # Use sync_simple_table with empty conflict_keys for blind bulk insert
         return self.sync_simple_table(
