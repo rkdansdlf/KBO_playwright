@@ -26,7 +26,7 @@ Agents should apply the repository's crawler-oriented skill set automatically; t
 - `playwright install chromium`: Install Playwright browser binaries.
 - `python3 scripts/scheduler.py`: Run the automated scheduler.
 - `python3 -m src.cli.crawl_schedule --year 2025 --month 3`: Crawl schedule data.
-- `python3 -m src.cli.crawl_game_details --date 20241015` or `python3 -m src.cli.collect_games --year 2024 --month 10`: Collect game details.
+- `python3 -m src.cli.collect_games --year 2024 --month 10`: Collect game details.
 - `python3 -m src.cli.crawl_futures --season 2025 --concurrency 3`: Crawl Futures stats.
 - `python3 -m src.cli.crawl_futures --season 2025 --concurrency 3 --changed-since "2026-06-03"`: Incremental Futures crawl (skip recently updated players).
 - `python3 -m src.cli.sync_oci --truncate`: Sync local SQLite to OCI.
@@ -84,7 +84,7 @@ These modules are operational or diagnostic entrypoints that are less frequently
 | Category | CLI modules |
 | --- | --- |
 | Data collection | `collect_profiles`, `collect_rosters`, `crawl_congestion`, `crawl_operation_notices`, `crawl_parking`, `crawl_retire`, `crawl_seat_sections`, `crawl_stadium_food`, `crawl_staff_register`, `crawl_transit_time` |
-| Pipeline / jobs | `run_all_crawlers`, `run_advanced_daily`, `daily_highlight_batch`, `daily_review_batch`, `daily_story_batch`, `run_pipeline_demo` |
+| Pipeline / jobs | `run_all_crawlers`, `run_advanced_daily`, `daily_highlight_batch`, `daily_review_batch`, `daily_story_batch`, `crawl_phase1_extra`, `run_pipeline_demo` |
 | Repair / backfill | `auto_healer`, `backfill_pregame_previews`, `backfill_starting_pitchers_from_stats`, `fix_player_names`, `rebuild_relay_events`, `reconcile_postgame`, `regenerate_game_stories`, `regenerate_review_summaries`, `repair_game_stats`, `retry_daily_failures` |
 | Calculations | `calculate_matchups`, `calculate_rankings`, `calculate_sabermetrics`, `calculate_standings`, `monthly_team_audit` |
 | Monitoring / reports | `check_data_status`, `dashboard_report`, `data_quality_report`, `db_healthcheck`, `health_check`, `monitor_data_freshness`, `morning_pbp_report`, `crawler_live_smoke` |
