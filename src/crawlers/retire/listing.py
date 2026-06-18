@@ -141,7 +141,7 @@ class RetiredPlayerListingCrawler:
         team_codes = []
         for opt in team_options:
             val = await opt.get_attribute("value")
-            if val and val != "" and val != "9999":
+            if val and val not in ("", "9999"):
                 team_codes.append(val)
 
         if not team_codes:

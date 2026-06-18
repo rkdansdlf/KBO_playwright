@@ -148,8 +148,8 @@ class RosterTransactionCrawler:
                     r'<li[^>]*>(?:\s*<a[^>]*href="[^"]*playerId=(\d+)[^"]*"[^>]*>)?\s*([^<]+?)\s*(?:</a>)?\s*</li>',
                     list_html,
                 )
-                for player_id_str, player_name in player_items:
-                    player_name = player_name.strip()
+                for player_id_str, raw_name in player_items:
+                    player_name = raw_name.strip()
                     if not player_name or player_name == "":
                         continue
                     transactions.append(
@@ -177,8 +177,8 @@ class RosterTransactionCrawler:
         current_team = None
         current_action = None
 
-        for line in html.split("\n"):
-            line = line.strip()
+        for raw_line in html.split("\n"):
+            line = raw_line.strip()
             team_match = re.search(r'class="team"[^>]*>\s*([^<]+)', line)
             if team_match:
                 current_team = self._map_team_name(team_match.group(1).strip())

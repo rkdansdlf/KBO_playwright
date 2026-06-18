@@ -107,7 +107,7 @@ def main() -> int:
         "foreign": lambda: run_foreign_player(save=args.save),
         "manager": lambda: run_manager_change(save=args.save),
         "fan_culture": lambda: run_fan_culture(save=args.save),
-        "seed_stadium": lambda: seed_stadium_info(),
+        "seed_stadium": seed_stadium_info,
         "crawlers": lambda: run_all_crawlers(save=args.save),
         "all": lambda: run_all(save=args.save),
     }
