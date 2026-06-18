@@ -94,6 +94,13 @@ class TestTicketParser:
         day_types = {(r["seat_grade"], r["day_type"]) for r in result}
         assert ("테이블석", "weekend") not in day_types
 
+    def test_duplicate_weekday_price_uses_last_seen_value(self):
+        html = "<html><body><p>테이블석 : 150,000원</p><p>테이블석 : 155,000원</p></body></html>"
+        result = parse_ticket_page(html, "lg_twins_ticket", {"season": 2025})
+
+        prices = [item["price"] for item in result if item["seat_grade"] == "테이블석"]
+        assert prices == [155000]
+
 
 class TestPricePatterns:
     def test_price_pattern_basic(self):
