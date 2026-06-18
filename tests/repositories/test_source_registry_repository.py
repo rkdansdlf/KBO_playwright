@@ -278,6 +278,30 @@ class TestRawSourceSnapshotRepository:
         assert updated.parse_status == "done"
         assert updated.parser_version == "v1"
 
+    def test_update_parse_status_persists_failure_message(self, session):
+        ds_repo = DataSourceRepository(session)
+        ds = ds_repo.save({"source_key": "k", "source_type": "t", "target_domain": "d", "reliability": "h"})
+        session.flush()
+
+        snap_repo = RawSourceSnapshotRepository(session)
+        snap = snap_repo.save(
+            {
+                "data_source_id": ds.id,
+                "raw_html_or_json_path": "u",
+                "content_hash": "a",
+                "fetched_at": datetime.now(UTC).replace(tzinfo=None),
+            }
+        )
+        session.flush()
+
+        snap_repo.update_parse_status(snap.id, "failed", parser_version="v2", error_message="selector missing")
+        session.flush()
+
+        updated = session.get(RawSourceSnapshot, snap.id)
+        assert updated.parse_status == "failed"
+        assert updated.parser_version == "v2"
+        assert updated.error_message == "selector missing"
+
 
 class TestSaveRawSnapshots:
     def test_save_raw_snapshots(self, session):
