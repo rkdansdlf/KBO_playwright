@@ -47,6 +47,148 @@
           "required_text": "방어율"
         }
       ]
+    },
+    {
+      "name": "game_detail_fixture",
+      "source": "../../tests/fixtures/game_details/20251001NCLG0.html",
+      "source_type": "file",
+      "checks": [
+        {
+          "name": "status_on",
+          "selector": "li.game-cont.on p.status",
+          "min_count": 0
+        },
+        {
+          "name": "status_typo",
+          "selector": "li.game-cont.on p.staus",
+          "min_count": 1
+        },
+        {
+          "name": "cancel_on",
+          "selector": "li.game-cont.on .game-status.cancel",
+          "min_count": 0
+        },
+        {
+          "name": "cancel_generic",
+          "selector": ".game-status.cancel",
+          "min_count": 0
+        },
+        {
+          "name": "content_boxscore_area",
+          "selector": "#contents, .box-score-area",
+          "min_count": 1
+        },
+        {
+          "name": "info_area",
+          "selector": ".box-score-area, .game-info, .score-board, .record-etc",
+          "min_count": 1
+        },
+        {
+          "name": "away_hitter_primary",
+          "selector": "#tblAwayHitter1",
+          "min_count": 1
+        },
+        {
+          "name": "away_hitter_inning",
+          "selector": "#tblAwayHitter2",
+          "min_count": 1
+        },
+        {
+          "name": "away_hitter_extra",
+          "selector": "#tblAwayHitter3",
+          "min_count": 1
+        },
+        {
+          "name": "home_hitter_primary",
+          "selector": "#tblHomeHitter1",
+          "min_count": 1
+        },
+        {
+          "name": "home_hitter_inning",
+          "selector": "#tblHomeHitter2",
+          "min_count": 1
+        },
+        {
+          "name": "home_hitter_extra",
+          "selector": "#tblHomeHitter3",
+          "min_count": 1
+        },
+        {
+          "name": "away_pitcher_primary",
+          "selector": "#tblAwayPitcher",
+          "min_count": 1
+        },
+        {
+          "name": "away_pitcher_alt",
+          "selector": "#tblAwayPitcher1",
+          "min_count": 0
+        },
+        {
+          "name": "away_pitcher_alt2",
+          "selector": "#tblAwayPitcher2",
+          "min_count": 0
+        },
+        {
+          "name": "home_pitcher_primary",
+          "selector": "#tblHomePitcher",
+          "min_count": 1
+        },
+        {
+          "name": "home_pitcher_alt",
+          "selector": "#tblHomePitcher1",
+          "min_count": 0
+        },
+        {
+          "name": "home_pitcher_alt2",
+          "selector": "#tblHomePitcher2",
+          "min_count": 0
+        },
+        {
+          "name": "sms_score",
+          "selector": ".sms-score",
+          "min_count": 0
+        },
+        {
+          "name": "score_board",
+          "selector": ".score-board",
+          "min_count": 0
+        },
+        {
+          "name": "stadium",
+          "selector": "#txtStadium",
+          "min_count": 1
+        },
+        {
+          "name": "crowd",
+          "selector": "#txtCrowd",
+          "min_count": 1
+        },
+        {
+          "name": "review_tab",
+          "selector": "li[section='REVIEW']",
+          "min_count": 1
+        },
+        {
+          "name": "hitter_fallback",
+          "selector": "#tblAwayHitter1, #tblHomeHitter1, #tblAwayHitter3, #tblHomeHitter3",
+          "min_count": 1
+        },
+        {
+          "name": "pitcher_fallback",
+          "selector": "#tblAwayPitcher, #tblHomePitcher, #tblAwayPitcher1, #tblHomePitcher1",
+          "min_count": 1
+        },
+        {
+          "name": "lineup_link",
+          "selector": "a[href*=\"Player/PlayerDetail\"], a[href*=\"playerId=\"], a[href*=\"p_id=\"]",
+          "min_count": 0
+        },
+        {
+          "name": "etc_table",
+          "selector": "#tblEtc",
+          "min_count": 1
+        }
+      ]
     }
   ]
 }
