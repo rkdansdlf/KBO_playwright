@@ -71,6 +71,7 @@ class TestGameSyncMixin:
         instance._target_table_exists = MagicMock(return_value=True)
         instance._get_season_map = MagicMock(return_value={})
         instance.test_connection = MagicMock(return_value=True)
+        instance._run_target_session_with_retries = MagicMock(side_effect=lambda operation, **_kwargs: operation())
         return instance
 
     def test_sync_games_calls_sync_simple_table(self, mixin):
