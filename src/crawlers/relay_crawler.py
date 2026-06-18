@@ -536,59 +536,23 @@ class RelayCrawler:
         stadium: str | None = None,
         game_time: str | None = None,
     ) -> dict[str, Any] | None:
-        """
-        Fetch and parse ALL PBP events for a given KBO game ID by iterating innings.
-        Supports both LIVE and COMPLETED games natively through the API.
-        """
         kbo_game_id = normalize_kbo_game_id(kbo_game_id)
         self._last_failure_reason.pop(kbo_game_id, None)
         self.last_failure_reason = None
         self.last_resolved_naver_game_id = None
         direct_naver_id = self._map_to_naver_id(kbo_game_id)
 
-        # Resolve stadium and game_time from DB if not explicitly provided
-        if not stadium or not game_time:
-            try:
-                from src.db.engine import SessionLocal
-                from src.models.game import Game, GameMetadata
-
-                with SessionLocal() as session:
-                    g_row = session.query(Game).filter(Game.game_id == kbo_game_id).first()
-                    if g_row:
-                        if not game_time:
-                            game_time = getattr(g_row, "game_time", None)
-                        meta_row = session.query(GameMetadata).filter(GameMetadata.game_id == kbo_game_id).first()
-                        if meta_row:
-                            if not stadium:
-                                stadium = getattr(meta_row, "stadium_name", None)
-                            if not game_time:
-                                game_time = getattr(meta_row, "start_time", None)
-                                if hasattr(game_time, "strftime"):
-                                    game_time = game_time.strftime("%H:%M")
-            except SQLAlchemyError:
-                logger.warning("Failed to extract game metadata for relay relay")
-
-        if game_time and not isinstance(game_time, str):
-            try:
-                game_time = game_time.strftime("%H:%M")
-            except AttributeError:
-                game_time = str(game_time)
+        stadium, game_time = self._resolve_game_metadata(kbo_game_id, stadium, game_time)
 
         try:
             async with httpx.AsyncClient() as client:
-                naver_id = direct_naver_id
-                all_text_relays = await self._fetch_text_relays(client, naver_id)
-                if not all_text_relays:
-                    resolved_naver_id = await self._resolve_naver_game_id(
-                        client,
-                        kbo_game_id,
-                        stadium=stadium,
-                        game_time=game_time,
-                    )
-                    if resolved_naver_id and resolved_naver_id != direct_naver_id:
-                        self.last_resolved_naver_game_id = resolved_naver_id
-                        all_text_relays = await self._fetch_text_relays(client, resolved_naver_id)
-                        naver_id = resolved_naver_id
+                naver_id, all_text_relays = await self._fetch_with_resolution(
+                    client,
+                    kbo_game_id,
+                    direct_naver_id,
+                    stadium,
+                    game_time,
+                )
 
             if not all_text_relays:
                 reason = (
@@ -597,29 +561,102 @@ class RelayCrawler:
                 self._set_failure_reason(kbo_game_id, reason)
                 return None
 
-            parsed_payload = self._parse_naver_payload(all_text_relays)
-            events = parsed_payload["events"]
-            raw_pbp_rows = parsed_payload["raw_pbp_rows"]
-            if not events and not raw_pbp_rows:
-                self._set_failure_reason(kbo_game_id, "relay_empty")
-                return None
-            # Determine status by heuristic: if 9+ innings and 3 outs recorded, it's completed, but we can just say completed if events exist
-            # since game status is handled by GameDetailCrawler anyway.
-            return {
-                "game_id": kbo_game_id,
-                "naver_game_id": naver_id,
-                "game_date": kbo_game_id[:8],
-                "status": "completed",
-                "events": events,
-                "raw_pbp_rows": raw_pbp_rows,
-                "parser_version": parsed_payload.get("parser_version", PARSER_VERSION),
-                "source_schema_version": parsed_payload.get("source_schema_version", SOURCE_SCHEMA_VERSION),
-                "payload_hash": parsed_payload.get("payload_hash"),
-            }
+            return self._build_relay_result(kbo_game_id, naver_id, all_text_relays)
         except RELAY_CRAWL_EXCEPTIONS:
             logger.exception("Relay API crawl failed for %s", kbo_game_id)
             self._set_failure_reason(kbo_game_id, "relay_api_error")
             return None
+
+    def _resolve_game_metadata(
+        self,
+        kbo_game_id: str,
+        stadium: str | None,
+        game_time: str | None,
+    ) -> tuple[str | None, str | None]:
+        if not stadium or not game_time:
+            stadium, game_time = self._load_game_metadata_from_db(kbo_game_id, stadium, game_time)
+
+        if game_time and not isinstance(game_time, str):
+            try:
+                game_time = game_time.strftime("%H:%M")
+            except AttributeError:
+                game_time = str(game_time)
+        return stadium, game_time
+
+    def _load_game_metadata_from_db(
+        self,
+        kbo_game_id: str,
+        stadium: str | None,
+        game_time: str | None,
+    ) -> tuple[str | None, str | None]:
+        try:
+            from src.db.engine import SessionLocal
+            from src.models.game import Game, GameMetadata
+
+            with SessionLocal() as session:
+                g_row = session.query(Game).filter(Game.game_id == kbo_game_id).first()
+                if g_row and not game_time:
+                    game_time = getattr(g_row, "game_time", None)
+                meta_row = session.query(GameMetadata).filter(GameMetadata.game_id == kbo_game_id).first()
+                if meta_row:
+                    if not stadium:
+                        stadium = getattr(meta_row, "stadium_name", None)
+                    if not game_time:
+                        game_time = getattr(meta_row, "start_time", None)
+                        if hasattr(game_time, "strftime"):
+                            game_time = game_time.strftime("%H:%M")
+        except SQLAlchemyError:
+            logger.warning("Failed to extract game metadata for relay relay")
+        return stadium, game_time
+
+    async def _fetch_with_resolution(
+        self,
+        client: httpx.AsyncClient,
+        kbo_game_id: str,
+        direct_naver_id: str | None,
+        stadium: str | None,
+        game_time: str | None,
+    ) -> tuple[str | None, list[dict[str, Any]] | None]:
+        naver_id = direct_naver_id
+        all_text_relays = await self._fetch_text_relays(client, naver_id)
+
+        if not all_text_relays:
+            resolved_naver_id = await self._resolve_naver_game_id(
+                client,
+                kbo_game_id,
+                stadium=stadium,
+                game_time=game_time,
+            )
+            if resolved_naver_id and resolved_naver_id != direct_naver_id:
+                self.last_resolved_naver_game_id = resolved_naver_id
+                all_text_relays = await self._fetch_text_relays(client, resolved_naver_id)
+                naver_id = resolved_naver_id
+
+        return naver_id, all_text_relays
+
+    def _build_relay_result(
+        self,
+        kbo_game_id: str,
+        naver_id: str | None,
+        all_text_relays: list[dict[str, Any]],
+    ) -> dict[str, Any] | None:
+        parsed_payload = self._parse_naver_payload(all_text_relays)
+        events = parsed_payload["events"]
+        raw_pbp_rows = parsed_payload["raw_pbp_rows"]
+        if not events and not raw_pbp_rows:
+            self._set_failure_reason(kbo_game_id, "relay_empty")
+            return None
+        return {
+            "game_id": kbo_game_id,
+            "naver_game_id": naver_id,
+            "game_date": kbo_game_id[:8],
+            "status": "completed",
+            "events": events,
+            "raw_pbp_rows": raw_pbp_rows,
+            "parser_version": parsed_payload.get("parser_version", PARSER_VERSION),
+            "source_schema_version": parsed_payload.get("source_schema_version", SOURCE_SCHEMA_VERSION),
+            "payload_hash": parsed_payload.get("payload_hash"),
+        }
 
     def _parse_naver_data(self, text_relays: list[dict[str, Any]]) -> list[dict[str, Any]]:
         return self._parse_naver_payload(text_relays)["events"]
@@ -648,44 +685,13 @@ class RelayCrawler:
         parsed_events = []
         raw_pbp_rows = []
         sequence = 1
-        processed_segments = []
         payload_hash = self._compute_payload_hash(text_relays)
 
-        for index, segment in enumerate(text_relays):
-            inn, half = self._parse_segment_inning_half(segment)
-            if not inn or not half:
-                # Graceful degradation: if we can't parse inning/half but segment has
-                # a title-like field, still preserve it in raw_pbp_rows
-                title = str(segment.get("title", "") or "")
-                if title:
-                    raw_pbp_rows.append(
-                        {
-                            "inning": None,
-                            "inning_half": None,
-                            "pitcher_name": None,
-                            "batter_name": None,
-                            "play_description": title,
-                            "event_type": "unclassified",
-                            "result": None,
-                            "provider_log_id": self._provider_log_id(
-                                payload_hash=payload_hash,
-                                inning=None,
-                                half=None,
-                                segment_index=index,
-                                log_index=-1,
-                                text=title,
-                            ),
-                            "source_row_index": len(raw_pbp_rows),
-                            "source_name": "naver",
-                        },
-                    )
-                else:
-                    logger.debug("Skipping segment with unparseable inning/half and no title at index=%d", index)
-                continue
-            segment["_parsed_index"] = index
-            segment["_parsed_inn"] = inn
-            segment["_parsed_half"] = half
-            processed_segments.append(segment)
+        processed_segments, raw_pbp_rows = self._classify_naver_segments(
+            text_relays,
+            payload_hash,
+            raw_pbp_rows,
+        )
 
         sorted_segments = sorted(
             processed_segments,
@@ -696,154 +702,15 @@ class RelayCrawler:
             ),
         )
 
-        pbp_raw_index = 0
+        pbp_raw_index = len(raw_pbp_rows)
         for segment in sorted_segments:
-            inning, half = segment["_parsed_inn"], segment["_parsed_half"]
-            segment_index = int(segment["_parsed_index"])
-            segment_title = str(segment.get("title", "") or "")
-            header_index = pbp_raw_index
-            pbp_raw_index += 1
-            # Insert an explicit inning header marker into the raw PBP stream
-            raw_pbp_rows.append(
-                {
-                    "inning": inning,
-                    "inning_half": half,
-                    "pitcher_name": None,
-                    "batter_name": None,
-                    "play_description": segment_title or f"{inning}회{'초' if half == 'top' else '말'}",
-                    "event_type": "inning_header",
-                    "result": None,
-                    "provider_log_id": self._provider_log_id(
-                        payload_hash=payload_hash,
-                        inning=inning,
-                        half=half,
-                        segment_index=segment_index,
-                        log_index=-1,
-                        text=segment_title,
-                    ),
-                    "source_row_index": header_index,
-                    "source_name": "naver",
-                },
-            )
+            result = self._process_naver_segment(segment, payload_hash, pbp_raw_index, sequence)
+            raw_pbp_rows.extend(result["raw_rows"])
+            parsed_events.extend(result["events"])
+            sequence = result["next_sequence"]
+            pbp_raw_index = result["next_raw_index"]
 
-            logs = segment.get("textOptions") or []
-            count_key = None
-            balls = 0
-            strikes = 0
-            # Naver returns batter segments newest-first within each half-inning,
-            # while logs inside a segment are chronological.
-            for log_index, log in enumerate(logs):
-                state = log.get("currentGameState") or {}
-                batter_record = log.get("batterRecord") or {}
-
-                home_score = to_int(state.get("homeScore"))
-                away_score = to_int(state.get("awayScore"))
-                outs = to_int(state.get("out"))
-
-                base_state = 0
-                if to_int(state.get("base1")) > 0:
-                    base_state |= 1
-                if to_int(state.get("base2")) > 0:
-                    base_state |= 2
-                if to_int(state.get("base3")) > 0:
-                    base_state |= 4
-
-                # Graceful degradation: default to 0 if state fields are missing
-                if not state:
-                    home_score = 0
-                    away_score = 0
-                    outs = 0
-                    base_state = 0
-
-                description = str(log.get("text") or "")
-                if not description.strip():
-                    continue
-
-                # Graceful degradation for batter/pitcher names: try multiple sources
-                batter_name = batter_record.get("name") if isinstance(batter_record, dict) else None
-                if not batter_name:
-                    batter_name = log.get("batterName")
-                if not batter_name and isinstance(log.get("text"), str) and ":" in log["text"]:
-                    batter_name = log["text"].split(":", 1)[0].strip() or None
-                pitcher_name = log.get("pitcherName")
-
-                batter_key = (inning, half, batter_name or segment_title or segment_index)
-                if batter_key != count_key:
-                    count_key = batter_key
-                    balls = 0
-                    strikes = 0
-                balls, strikes, _matched_pitch = advance_pitch_count(description, balls, strikes)
-
-                current_pbp_index = pbp_raw_index
-                pbp_raw_index += 1
-                provider_log_id = self._provider_log_id(
-                    payload_hash=payload_hash,
-                    inning=inning,
-                    half=half,
-                    segment_index=segment_index,
-                    log_index=log_index,
-                    text=description,
-                )
-
-                raw_pbp_rows.append(
-                    {
-                        "inning": inning,
-                        "inning_half": half,
-                        "pitcher_name": pitcher_name,
-                        "batter_name": batter_name,
-                        "play_description": description,
-                        "event_type": self._detect_event_type(description),
-                        "result": description.split(":", 1)[-1].strip() if ":" in description else None,
-                        "provider_log_id": provider_log_id,
-                        "source_row_index": current_pbp_index,
-                        "source_name": "naver",
-                    },
-                )
-
-                if not is_relay_result_event_text(description):
-                    continue
-
-                event: dict[str, Any] = {
-                    "event_seq": sequence,
-                    "inning": inning,
-                    "inning_half": half,
-                    "description": description,
-                    "event_type": self._detect_event_type(description),
-                    "batter_name": batter_name,
-                    "pitcher_name": pitcher_name,
-                    "home_score": home_score,
-                    "away_score": away_score,
-                    "score_diff": home_score - away_score,
-                    "base_state": base_state,
-                    "outs": outs,
-                    "bases_before": "-",
-                    "bases_after": self._format_base_string(base_state),
-                    "wpa": 0.0,
-                    "win_expectancy_before": 0.5,
-                    "win_expectancy_after": 0.5,
-                }
-
-                event["batter"] = event["batter_name"]
-                event["pitcher"] = event["pitcher_name"]
-                event["result"] = description.split(":", 1)[-1].strip() if ":" in description else None
-                event["provider_log_id"] = provider_log_id
-                event["source_row_index"] = current_pbp_index
-                event["balls"] = balls
-                event["strikes"] = strikes
-
-                parsed_events.append(event)
-                sequence += 1
-                count_key = None
-                balls = 0
-                strikes = 0
-
-        self._apply_wpa_transitions(parsed_events)
-
-        # Phase 2: At-bat grouping + ball/strike accumulation
-        from src.utils.at_bat_grouper import compute_at_bat_pitch_count, group_events_into_at_bats
-
-        group_events_into_at_bats(parsed_events)
-        compute_at_bat_pitch_count(parsed_events)
+        self._finalize_payload(parsed_events)
 
         return {
             "events": parsed_events,
@@ -852,6 +719,301 @@ class RelayCrawler:
             "source_schema_version": SOURCE_SCHEMA_VERSION,
             "payload_hash": payload_hash,
         }
+
+    def _classify_naver_segments(
+        self,
+        text_relays: list[dict[str, Any]],
+        payload_hash: str,
+        raw_pbp_rows: list[dict[str, Any]],
+    ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+        processed_segments: list[dict[str, Any]] = []
+        for index, segment in enumerate(text_relays):
+            inn, half = self._parse_segment_inning_half(segment)
+            if not inn or not half:
+                self._handle_unparseable_segment(segment, index, payload_hash, raw_pbp_rows)
+                continue
+            segment["_parsed_index"] = index
+            segment["_parsed_inn"] = inn
+            segment["_parsed_half"] = half
+            processed_segments.append(segment)
+        return processed_segments, raw_pbp_rows
+
+    def _handle_unparseable_segment(
+        self,
+        segment: dict[str, Any],
+        index: int,
+        payload_hash: str,
+        raw_pbp_rows: list[dict[str, Any]],
+    ) -> None:
+        title = str(segment.get("title", "") or "")
+        if title:
+            raw_pbp_rows.append(
+                {
+                    "inning": None,
+                    "inning_half": None,
+                    "pitcher_name": None,
+                    "batter_name": None,
+                    "play_description": title,
+                    "event_type": "unclassified",
+                    "result": None,
+                    "provider_log_id": self._provider_log_id(
+                        payload_hash=payload_hash,
+                        inning=None,
+                        half=None,
+                        segment_index=index,
+                        log_index=-1,
+                        text=title,
+                    ),
+                    "source_row_index": len(raw_pbp_rows),
+                    "source_name": "naver",
+                }
+            )
+        else:
+            logger.debug("Skipping segment with unparseable inning/half and no title at index=%d", index)
+
+    def _process_naver_segment(
+        self,
+        segment: dict[str, Any],
+        payload_hash: str,
+        pbp_raw_index: int,
+        sequence: int,
+    ) -> dict[str, Any]:
+        inning, half = segment["_parsed_inn"], segment["_parsed_half"]
+        segment_index = int(segment["_parsed_index"])
+        segment_title = str(segment.get("title", "") or "")
+
+        raw_rows: list[dict[str, Any]] = []
+        events: list[dict[str, Any]] = []
+
+        raw_rows.append(
+            self._build_inning_header_row(
+                payload_hash,
+                inning,
+                half,
+                segment_index,
+                segment_title,
+                pbp_raw_index,
+            )
+        )
+        pbp_raw_index += 1
+
+        logs = segment.get("textOptions") or []
+        count_key: object = None
+        balls = 0
+        strikes = 0
+        for log_index, log in enumerate(logs):
+            description = str(log.get("text") or "")
+            if not description.strip():
+                continue
+
+            state = self._parse_game_state(log)
+            batter_name, pitcher_name = self._resolve_batter_pitcher(log)
+
+            batter_key = (inning, half, batter_name or segment_title or segment_index)
+            if batter_key != count_key:
+                count_key = batter_key
+                balls = 0
+                strikes = 0
+            balls, strikes, _matched_pitch = advance_pitch_count(description, balls, strikes)
+
+            pbp_result = self._build_naver_pbp_row(
+                payload_hash,
+                inning,
+                half,
+                segment_index,
+                log_index,
+                description,
+                pitcher_name,
+                batter_name,
+                pbp_raw_index,
+            )
+            current_pbp_index = pbp_raw_index
+            pbp_raw_index += 1
+            raw_rows.append(pbp_result)
+
+            if not is_relay_result_event_text(description):
+                continue
+
+            provider_log_id = self._provider_log_id(
+                payload_hash=payload_hash,
+                inning=inning,
+                half=half,
+                segment_index=segment_index,
+                log_index=log_index,
+                text=description,
+            )
+            event = self._build_naver_event(
+                sequence,
+                inning,
+                half,
+                description,
+                batter_name,
+                pitcher_name,
+                state["home_score"],
+                state["away_score"],
+                state["base_state"],
+                state["outs"],
+                provider_log_id,
+                current_pbp_index,
+                balls,
+                strikes,
+            )
+            events.append(event)
+            sequence += 1
+            count_key = None
+            balls = 0
+            strikes = 0
+
+        return {
+            "raw_rows": raw_rows,
+            "events": events,
+            "next_sequence": sequence,
+            "next_raw_index": pbp_raw_index,
+        }
+
+    def _build_inning_header_row(
+        self,
+        payload_hash: str,
+        inning: int,
+        half: str,
+        segment_index: int,
+        segment_title: str,
+        row_index: int,
+    ) -> dict[str, Any]:
+        return {
+            "inning": inning,
+            "inning_half": half,
+            "pitcher_name": None,
+            "batter_name": None,
+            "play_description": segment_title or f"{inning}회{'초' if half == 'top' else '말'}",
+            "event_type": "inning_header",
+            "result": None,
+            "provider_log_id": self._provider_log_id(
+                payload_hash=payload_hash,
+                inning=inning,
+                half=half,
+                segment_index=segment_index,
+                log_index=-1,
+                text=segment_title,
+            ),
+            "source_row_index": row_index,
+            "source_name": "naver",
+        }
+
+    def _parse_game_state(self, log: dict[str, Any]) -> dict[str, int]:
+        state = log.get("currentGameState") or {}
+        home_score = to_int(state.get("homeScore"))
+        away_score = to_int(state.get("awayScore"))
+        outs = to_int(state.get("out"))
+        base_state = 0
+        if to_int(state.get("base1")) > 0:
+            base_state |= 1
+        if to_int(state.get("base2")) > 0:
+            base_state |= 2
+        if to_int(state.get("base3")) > 0:
+            base_state |= 4
+        if not state:
+            home_score = 0
+            away_score = 0
+            outs = 0
+            base_state = 0
+        return {"home_score": home_score, "away_score": away_score, "outs": outs, "base_state": base_state}
+
+    def _resolve_batter_pitcher(
+        self,
+        log: dict[str, Any],
+    ) -> tuple[str | None, str | None]:
+        batter_record = log.get("batterRecord") or {}
+        batter_name = batter_record.get("name") if isinstance(batter_record, dict) else None
+        if not batter_name:
+            batter_name = log.get("batterName")
+        if not batter_name and isinstance(log.get("text"), str) and ":" in log["text"]:
+            batter_name = log["text"].split(":", 1)[0].strip() or None
+        return batter_name, log.get("pitcherName")
+
+    def _build_naver_pbp_row(
+        self,
+        payload_hash: str,
+        inning: int,
+        half: str,
+        segment_index: int,
+        log_index: int,
+        description: str,
+        pitcher_name: str | None,
+        batter_name: str | None,
+        row_index: int,
+    ) -> dict[str, Any]:
+        return {
+            "inning": inning,
+            "inning_half": half,
+            "pitcher_name": pitcher_name,
+            "batter_name": batter_name,
+            "play_description": description,
+            "event_type": self._detect_event_type(description),
+            "result": description.split(":", 1)[-1].strip() if ":" in description else None,
+            "provider_log_id": self._provider_log_id(
+                payload_hash=payload_hash,
+                inning=inning,
+                half=half,
+                segment_index=segment_index,
+                log_index=log_index,
+                text=description,
+            ),
+            "source_row_index": row_index,
+            "source_name": "naver",
+        }
+
+    def _build_naver_event(
+        self,
+        sequence: int,
+        inning: int,
+        half: str,
+        description: str,
+        batter_name: str | None,
+        pitcher_name: str | None,
+        home_score: int,
+        away_score: int,
+        base_state: int,
+        outs: int,
+        provider_log_id: str,
+        source_row_index: int,
+        balls: int,
+        strikes: int,
+    ) -> dict[str, Any]:
+        event: dict[str, Any] = {
+            "event_seq": sequence,
+            "inning": inning,
+            "inning_half": half,
+            "description": description,
+            "event_type": self._detect_event_type(description),
+            "batter_name": batter_name,
+            "pitcher_name": pitcher_name,
+            "home_score": home_score,
+            "away_score": away_score,
+            "score_diff": home_score - away_score,
+            "base_state": base_state,
+            "outs": outs,
+            "bases_before": "-",
+            "bases_after": self._format_base_string(base_state),
+            "wpa": 0.0,
+            "win_expectancy_before": 0.5,
+            "win_expectancy_after": 0.5,
+        }
+        event["batter"] = batter_name
+        event["pitcher"] = pitcher_name
+        event["result"] = description.split(":", 1)[-1].strip() if ":" in description else None
+        event["provider_log_id"] = provider_log_id
+        event["source_row_index"] = source_row_index
+        event["balls"] = balls
+        event["strikes"] = strikes
+        return event
+
+    def _finalize_payload(self, parsed_events: list[dict[str, Any]]) -> None:
+        self._apply_wpa_transitions(parsed_events)
+        from src.utils.at_bat_grouper import compute_at_bat_pitch_count, group_events_into_at_bats
+
+        group_events_into_at_bats(parsed_events)
+        compute_at_bat_pitch_count(parsed_events)
 
     def _parse_segment_inning_half(self, segment: dict[str, Any]) -> tuple[int, str | None]:
         title = str(segment.get("title") or "")

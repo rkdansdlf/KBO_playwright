@@ -395,45 +395,57 @@ class GameSyncMixin:
         unsynced_only: bool = False,
         batch_size: int = 5000,
     ) -> dict[str, int]:
-        """Sync all game detail tables to OCI"""
-        results = {}
-
         if not self.test_connection():
             logger.error("❌ OCI connection failed. Aborting sync_game_details.")
-            return results
+            return {}
 
         filters, target_game_ids = self._game_detail_parent_scope(days, year, unsynced_only)
-        if unsynced_only:
-            if not target_game_ids:
-                year_msg = f" ({year})" if year else ""
-                logger.info("🎉 모든 게임 데이터%s가 이미 최신 상태입니다. 동기화를 건너뜁니다.", year_msg)
-                return results
+        if unsynced_only and not target_game_ids:
+            year_msg = f" ({year})" if year else ""
+            logger.info("🎉 모든 게임 데이터%s가 이미 최신 상태입니다. 동기화를 건너뜁니다.", year_msg)
+            return {}
+
         scoped_game_ids = self._scoped_game_ids(filters, target_game_ids)
         if not scoped_game_ids:
-            return results
+            return {}
 
-        # 1. If we are doing a full rebuild (not unsynced_only) for a year,
-        # we purge once at the start to avoid deleting synced chunks in subsequent iterations.
         if year and not unsynced_only:
             self._purge_game_detail_children_for_year(year)
 
-        # 2. Split scoped_game_ids into smaller game unit chunks (e.g. 20 games per chunk)
-        # to prevent giant transaction lock timeouts/failures on OCI.
+        return self._aggregate_game_detail_chunks(
+            scoped_game_ids,
+            filters,
+            target_game_ids,
+            year,
+            days,
+            unsynced_only,
+            batch_size,
+        )
+
+    def _aggregate_game_detail_chunks(
+        self,
+        scoped_game_ids: list[str],
+        filters: list,
+        target_game_ids: list[str] | None,
+        year: int | None,
+        days: int | None,
+        unsynced_only: bool,
+        batch_size: int,
+    ) -> dict[str, int]:
         game_chunk_size = 20
         chunked_game_ids = [
             scoped_game_ids[i : i + game_chunk_size] for i in range(0, len(scoped_game_ids), game_chunk_size)
         ]
-
         logger.info(
             "📦 Splitting game detail sync into %s chunks (max %s games per chunk)",
             len(chunked_game_ids),
             game_chunk_size,
         )
 
+        results: dict[str, int] = {}
         total_chunks = len(chunked_game_ids)
         for idx, chunk_ids in enumerate(chunked_game_ids, start=1):
             logger.info("🚀 Syncing game detail chunk %s/%s (%s games)...", idx, total_chunks, len(chunk_ids))
-
             chunk_results = self._sync_game_detail_chunk(
                 chunk_ids,
                 filters=filters,
@@ -442,10 +454,8 @@ class GameSyncMixin:
                 days=days,
                 unsynced_only=unsynced_only,
                 batch_size=batch_size,
-                skip_year_purge=True,  # We already purged if needed
+                skip_year_purge=True,
             )
-
-            # Aggregate results
             for key, val in chunk_results.items():
                 if isinstance(val, int):
                     results[key] = results.get(key, 0) + val

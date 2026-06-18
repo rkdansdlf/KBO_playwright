@@ -308,6 +308,225 @@ async def _run_kbo_fallback_healing(game_id: str) -> None:
         _ACTIVE_HEALING_GAMES.discard(game_id)
 
 
+async def _fetch_naver_live_statuses(relay_crawler: NaverRelayCrawler) -> dict[tuple[str, str], str]:
+    seoul_tz = ZoneInfo("Asia/Seoul")
+    today_str = datetime.now(seoul_tz).strftime("%Y%m%d")
+    try:
+        async with httpx.AsyncClient() as client:
+            query = relay_crawler._schedule_query_context(query_date=today_str)
+            response = await client.get(
+                relay_crawler.schedule_api_base_url,
+                params=query,
+                headers=relay_crawler.headers,
+                timeout=10.0,
+            )
+            if response.status_code == 200:
+                payload = response.json()
+                naver_games = list((payload.get("result") or {}).get("games") or [])
+                return {
+                    (ng.get("awayTeamCode"), ng.get("homeTeamCode")): ng.get("status")
+                    for ng in naver_games
+                    if ng.get("status")
+                }
+    except (httpx.HTTPError, ValueError, TypeError):
+        logger.exception("[WARN] Failed to fetch Naver live statuses")
+    return {}
+
+
+def _evaluate_game_lifecycles(
+    today_games: list[dict[str, Any]],
+    relay_crawler: NaverRelayCrawler,
+    naver_status_map: dict[tuple[str, str], str],
+) -> tuple[list[tuple[dict[str, Any], str | None, str | None]], bool]:
+    active_candidates: list[tuple[dict[str, Any], str | None, str | None]] = []
+    all_finished = True
+    for game in today_games:
+        game_id = game["game_id"]
+        away_nav = relay_crawler._naver_team_code(game["away_team_code"])
+        home_nav = relay_crawler._naver_team_code(game["home_team_code"])
+        nav_status_raw = naver_status_map.get((away_nav, home_nav))
+        lifecycle_state = derive_lifecycle_from_naver_status(nav_status_raw)
+
+        if lifecycle_state == "cancelled":
+            logger.info("[SKIP] %s is CANCELLED.", game_id)
+            continue
+        if lifecycle_state == "before":
+            logger.info("[SKIP] %s has not started yet.", game_id)
+            all_finished = False
+            continue
+        if lifecycle_state == "result_pending_stabilization":
+            from src.models.game import Game
+
+            terminal_state = None
+            with SessionLocal() as session:
+                g_row = session.query(Game).filter(Game.game_id == game_id).first()
+                if g_row and g_row.game_lifecycle_state in TERMINAL_STATES:
+                    terminal_state = g_row.game_lifecycle_state
+            if terminal_state:
+                logger.info("[SKIP] %s is already final in DB (game_lifecycle_state=%s).", game_id, terminal_state)
+                continue
+            logger.info("[LIVE] Game %s transitioned to RESULT. Crawling final state to finalize...", game_id)
+
+        all_finished = False
+        active_candidates.append((game, lifecycle_state, nav_status_raw))
+    return active_candidates, all_finished
+
+
+def _apply_dynamic_delay_scaling(
+    relay_crawler: NaverRelayCrawler,
+    selected_candidates: list[tuple[dict[str, Any], str | None, str | None]],
+) -> None:
+    num_active_games = len(selected_candidates)
+    if num_active_games == 0:
+        return
+    scale_factor = 1.0 + max(0, num_active_games - 1) * 0.5
+    relay_policy = getattr(relay_crawler, "policy", None)
+    if relay_policy is not None:
+        relay_policy.min_delay *= scale_factor
+        relay_policy.max_delay *= scale_factor
+        min_delay = relay_policy.min_delay
+    else:
+        min_delay = 0.0
+    logger.info(
+        "[LIVE] Dynamic request delay scaling: factor %.2fx for %s active games (min_delay=%.2fs)",
+        scale_factor,
+        num_active_games,
+        min_delay,
+    )
+
+
+def _sync_live_touched_games(
+    sync_to_oci: bool | None,
+    touched_game_ids: set[str],
+) -> list[dict[str, str]]:
+    should_sync = sync_to_oci if sync_to_oci is not None else bool(os.getenv("OCI_DB_URL"))
+    if not should_sync:
+        return []
+    oci_url = os.getenv("OCI_DB_URL")
+    if not oci_url:
+        return []
+    failures: list[dict[str, str]] = []
+    with SessionLocal() as sync_session:
+        sync_engine = OCISync(oci_url, sync_session)
+        try:
+            for game_id in sorted(touched_game_ids):
+                try:
+                    sync_engine.sync_specific_game(game_id)
+                    logger.info("[SYNC] ✅ Synced %s to OCI.", game_id)
+                except DB_EXCEPTIONS as exc:
+                    failures.append({"game_id": game_id, "phase": "sync_specific_game", "error": str(exc)})
+                    logger.exception("[SYNC] OCI sync failed game_id=%s phase=sync_specific_game", game_id)
+        finally:
+            sync_engine.close()
+    return failures
+
+
+def _log_oci_sync_failures(oci_sync_failures: list[dict[str, str]]) -> None:
+    if not oci_sync_failures:
+        return
+    failed_ids = [failure["game_id"] for failure in oci_sync_failures]
+    logger.warning(
+        "Live cycle completed with OCI partial failures phase=sync_specific_game failed=%d game_ids=%s",
+        len(oci_sync_failures),
+        ",".join(failed_ids),
+    )
+    logger.info(
+        "[SYNC] ⚠️ Live crawl succeeded with OCI partial failures: failed=%s game_ids=%s",
+        len(oci_sync_failures),
+        ",".join(failed_ids),
+    )
+
+
+def _empty_live_result(all_finished: bool) -> dict[str, Any]:
+    return {
+        "active": False,
+        "active_playing": False,
+        "active_suspended": False,
+        "all_finished": all_finished,
+        "game_ids_playing": [],
+    }
+
+
+def _resolve_live_lifecycle(
+    lifecycle_state: str | None,
+    flat_events: list[dict[str, Any]],
+    raw_pbp_rows: list[dict[str, Any]],
+) -> str:
+    last_desc = ""
+    if flat_events:
+        last_desc = flat_events[-1].get("description", "")
+    elif raw_pbp_rows:
+        last_desc = raw_pbp_rows[-1].get("play_description", "")
+
+    detected_suspension = any(term in last_desc for term in ["중단", "지연", "우천", "서스펜디드"])
+    detected_game_end = _has_ending_header(raw_pbp_rows) or any(
+        term in last_desc for term in ["경기 종료", "게임 종료", "경기종료"]
+    )
+
+    if lifecycle_state == "result_pending_stabilization" or detected_game_end:
+        return "result_pending_stabilization"
+    if lifecycle_state == "suspended" or detected_suspension:
+        return "suspended"
+    if lifecycle_state == "delayed":
+        return "delayed"
+    return "running"
+
+
+async def _save_live_relay_and_snapshot(
+    game_id: str,
+    today_str: str,
+    flat_events: list[dict[str, Any]],
+    raw_pbp_rows: list[dict[str, Any]],
+    relay_data: dict[str, Any] | None,
+    resolved_lifecycle: str,
+    detail_crawler: GameDetailCrawler | None,
+    detail_snapshot_background: bool,
+) -> bool:
+    if not flat_events and not raw_pbp_rows:
+        return False
+
+    touched = False
+    saved_rows = save_relay_data(
+        game_id,
+        flat_events,
+        raw_pbp_rows=raw_pbp_rows,
+        source_name="naver_live",
+        parser_version=(relay_data or {}).get("parser_version"),
+        source_schema_version=(relay_data or {}).get("source_schema_version"),
+        payload_hash=(relay_data or {}).get("payload_hash"),
+        game_lifecycle_state=resolved_lifecycle,
+    )
+    if saved_rows:
+        touched = True
+        logger.info("[LIVE] 📝 Synced %s relay rows for %s", saved_rows, game_id)
+
+    if detail_snapshot_background:
+        _submit_live_detail_snapshot_background(game_id, today_str)
+    elif detail_crawler is not None:
+        detail = await detail_crawler.crawl_game(game_id, today_str, lightweight=True)
+        if detail and save_game_snapshot(detail, status=GAME_STATUS_LIVE):
+            touched = True
+            logger.info("[LIVE] 📊 Updated scoreboard snapshot for %s", game_id)
+
+    if resolved_lifecycle == "result_pending_stabilization":
+        _trigger_fallback_healing_if_unverified(game_id)
+
+    return touched
+
+
+def _trigger_fallback_healing_if_unverified(game_id: str) -> None:
+    from src.models.game import GameMetadata
+
+    with SessionLocal() as session:
+        meta = session.query(GameMetadata).filter(GameMetadata.game_id == game_id).first()
+        val_status = (
+            meta.source_payload.get("pbp_validation_status") if meta and isinstance(meta.source_payload, dict) else None
+        )
+        if val_status == "unverified" and game_id not in _ACTIVE_HEALING_GAMES:
+            _ACTIVE_HEALING_GAMES.add(game_id)
+            asyncio.create_task(_run_kbo_fallback_healing(game_id))
+
+
 async def _process_single_live_game(
     game: dict[str, Any],
     lifecycle_state: str | None,
@@ -318,10 +537,6 @@ async def _process_single_live_game(
     *,
     detail_snapshot_background: bool = False,
 ) -> tuple[str | None, str]:
-    """Process a single live game by crawling its relay, updating DB, and triggering healing if needed.
-
-    Returns (touched_game_id, resolved_lifecycle).
-    """
     game_id = game["game_id"]
 
     logger.info(
@@ -335,72 +550,18 @@ async def _process_single_live_game(
     flat_events = list((relay_data or {}).get("events") or [])
     raw_pbp_rows = list((relay_data or {}).get("raw_pbp_rows") or [])
 
-    # Determine lifecycle state from relay data + Naver status
-    last_desc = ""
-    if flat_events:
-        last_desc = flat_events[-1].get("description", "")
-    elif raw_pbp_rows:
-        last_desc = raw_pbp_rows[-1].get("play_description", "")
+    resolved_lifecycle = _resolve_live_lifecycle(lifecycle_state, flat_events, raw_pbp_rows)
 
-    # Detect suspension from relay text
-    detected_suspension = any(term in last_desc for term in ["중단", "지연", "우천", "서스펜디드"])
-
-    # Detect game ending text
-    detected_game_end = _has_ending_header(raw_pbp_rows) or any(
-        term in last_desc for term in ["경기 종료", "게임 종료", "경기종료"]
+    touched = await _save_live_relay_and_snapshot(
+        game_id,
+        today_str,
+        flat_events,
+        raw_pbp_rows,
+        relay_data,
+        resolved_lifecycle,
+        detail_crawler,
+        detail_snapshot_background,
     )
-
-    # Resolve final lifecycle state:
-    # Priority: Naver status > text detection > default
-    if lifecycle_state == "result_pending_stabilization" or detected_game_end:
-        resolved_lifecycle = "result_pending_stabilization"
-    elif lifecycle_state == "suspended" or detected_suspension:
-        resolved_lifecycle = "suspended"
-    elif lifecycle_state == "delayed":
-        resolved_lifecycle = "delayed"
-    elif lifecycle_state == "running":
-        resolved_lifecycle = "running"
-    else:
-        resolved_lifecycle = "running"
-
-    touched = False
-    if flat_events or raw_pbp_rows:
-        saved_rows = save_relay_data(
-            game_id,
-            flat_events,
-            raw_pbp_rows=raw_pbp_rows,
-            source_name="naver_live",
-            parser_version=(relay_data or {}).get("parser_version"),
-            source_schema_version=(relay_data or {}).get("source_schema_version"),
-            payload_hash=(relay_data or {}).get("payload_hash"),
-            game_lifecycle_state=resolved_lifecycle,
-        )
-        if saved_rows:
-            touched = True
-            logger.info("[LIVE] 📝 Synced %s relay rows for %s", saved_rows, game_id)
-
-        if detail_snapshot_background:
-            _submit_live_detail_snapshot_background(game_id, today_str)
-        else:
-            detail = await detail_crawler.crawl_game(game_id, today_str, lightweight=True)
-            if detail and save_game_snapshot(detail, status=GAME_STATUS_LIVE):
-                touched = True
-                logger.info("[LIVE] 📊 Updated scoreboard snapshot for %s", game_id)
-
-        # Fallback auto-healing trigger: if the game is finished but validation failed
-        if resolved_lifecycle == "result_pending_stabilization":
-            from src.models.game import GameMetadata
-
-            with SessionLocal() as session:
-                meta = session.query(GameMetadata).filter(GameMetadata.game_id == game_id).first()
-                val_status = (
-                    meta.source_payload.get("pbp_validation_status")
-                    if meta and isinstance(meta.source_payload, dict)
-                    else None
-                )
-                if val_status == "unverified" and game_id not in _ACTIVE_HEALING_GAMES:
-                    _ACTIVE_HEALING_GAMES.add(game_id)
-                    asyncio.create_task(_run_kbo_fallback_healing(game_id))
 
     return (game_id if touched else None), resolved_lifecycle
 
@@ -432,70 +593,19 @@ async def run_live_crawler_cycle(
             "game_ids_playing": [],
         }
 
-    # Optimization: Fetch latest game statuses from Naver to skip unnecessary crawls
     relay_crawler = NaverRelayCrawler()
-    try:
-        async with httpx.AsyncClient() as client:
-            query = relay_crawler._schedule_query_context(query_date=today_str)
-            response = await client.get(
-                relay_crawler.schedule_api_base_url,
-                params=query,
-                headers=relay_crawler.headers,
-                timeout=10.0,
-            )
-            if response.status_code == 200:
-                payload = response.json()
-                naver_games = list((payload.get("result") or {}).get("games") or [])
-                # Store naver status mapping for quick lookup
-                naver_status_map = {
-                    (ng.get("awayTeamCode"), ng.get("homeTeamCode")): ng.get("status")
-                    for ng in naver_games
-                    if ng.get("status")
-                }
-            else:
-                naver_status_map = {}
-    except (httpx.HTTPError, ValueError, TypeError):
-        logger.exception("[WARN] Failed to fetch Naver live statuses")
-        naver_status_map = {}
+    naver_status_map = await _fetch_naver_live_statuses(relay_crawler)
 
     detail_crawler = None if detail_snapshot_background else GameDetailCrawler(request_delay=0.1)
     touched_game_ids: set[str] = set()
     active_playing_flag = False
     active_suspended_flag = False
-    all_finished = True
-    active_candidates: list[tuple[dict[str, Any], str | None, str | None]] = []
 
-    for game in today_games:
-        game_id = game["game_id"]
-
-        # Resolve Naver schedule status to lifecycle state
-        away_nav = relay_crawler._naver_team_code(game["away_team_code"])
-        home_nav = relay_crawler._naver_team_code(game["home_team_code"])
-        nav_status_raw = naver_status_map.get((away_nav, home_nav))
-        lifecycle_state = derive_lifecycle_from_naver_status(nav_status_raw)
-
-        if lifecycle_state == "cancelled":
-            logger.info("[SKIP] %s is CANCELLED.", game_id)
-            continue
-        if lifecycle_state == "before":
-            logger.info("[SKIP] %s has not started yet.", game_id)
-            all_finished = False
-            continue
-        if lifecycle_state == "result_pending_stabilization":
-            from src.models.game import Game
-
-            terminal_state = None
-            with SessionLocal() as session:
-                g_row = session.query(Game).filter(Game.game_id == game_id).first()
-                if g_row and g_row.game_lifecycle_state in TERMINAL_STATES:
-                    terminal_state = g_row.game_lifecycle_state
-            if terminal_state:
-                logger.info("[SKIP] %s is already final in DB (game_lifecycle_state=%s).", game_id, terminal_state)
-                continue
-            logger.info("[LIVE] Game %s transitioned to RESULT. Crawling final state to finalize...", game_id)
-
-        all_finished = False
-        active_candidates.append((game, lifecycle_state, nav_status_raw))
+    active_candidates, all_finished = _evaluate_game_lifecycles(
+        today_games,
+        relay_crawler,
+        naver_status_map,
+    )
 
     selected_candidates = _select_live_shard(
         active_candidates,
@@ -512,23 +622,7 @@ async def run_live_crawler_cycle(
             ",".join(selected_ids),
         )
 
-    # Dynamic request delay scaling based on the number of active games
-    num_active_games = len(selected_candidates)
-    if num_active_games > 0:
-        scale_factor = 1.0 + max(0, num_active_games - 1) * 0.5
-        relay_policy = getattr(relay_crawler, "policy", None)
-        if relay_policy is not None:
-            relay_policy.min_delay *= scale_factor
-            relay_policy.max_delay *= scale_factor
-            min_delay = relay_policy.min_delay
-        else:
-            min_delay = 0.0
-        logger.info(
-            "[LIVE] Dynamic request delay scaling: factor %.2fx for %s active games (min_delay=%.2fs)",
-            scale_factor,
-            num_active_games,
-            min_delay,
-        )
+    _apply_dynamic_delay_scaling(relay_crawler, selected_candidates)
 
     # Process all selected games in parallel
     if selected_candidates:
@@ -567,54 +661,11 @@ async def run_live_crawler_cycle(
 
     if not touched_game_ids:
         logger.info("[INFO] No live games currently active right now. manifest=%s", manifest_path)
-        return {
-            "active": False,
-            "active_playing": False,
-            "active_suspended": False,
-            "all_finished": all_finished,
-            "game_ids_playing": [],
-        }
+        return _empty_live_result(all_finished)
 
-    should_sync = sync_to_oci if sync_to_oci is not None else bool(os.getenv("OCI_DB_URL"))
-    oci_sync_failures: list[dict[str, str]] = []
-    if should_sync:
-        oci_url = os.getenv("OCI_DB_URL")
-        if oci_url:
-            with SessionLocal() as sync_session:
-                sync_engine = OCISync(oci_url, sync_session)
-                try:
-                    for game_id in sorted(touched_game_ids):
-                        try:
-                            sync_engine.sync_specific_game(game_id)
-                            logger.info("[SYNC] ✅ Synced %s to OCI.", game_id)
-                        except DB_EXCEPTIONS as exc:
-                            oci_sync_failures.append(
-                                {
-                                    "game_id": game_id,
-                                    "phase": "sync_specific_game",
-                                    "error": str(exc),
-                                },
-                            )
-                            logger.exception(
-                                "[SYNC] OCI sync failed game_id=%s phase=sync_specific_game",
-                                game_id,
-                            )
-                finally:
-                    sync_engine.close()
+    oci_sync_failures = _sync_live_touched_games(sync_to_oci, touched_game_ids)
 
-    if oci_sync_failures:
-        failed_ids = [failure["game_id"] for failure in oci_sync_failures]
-        logger.warning(
-            "Live cycle completed with OCI partial failures phase=sync_specific_game failed=%d game_ids=%s",
-            len(oci_sync_failures),
-            ",".join(failed_ids),
-        )
-        logger.info(
-            "[SYNC] ⚠️ Live crawl succeeded with OCI partial failures: failed=%s game_ids=%s",
-            len(oci_sync_failures),
-            ",".join(failed_ids),
-        )
-
+    _log_oci_sync_failures(oci_sync_failures)
     logger.info("[INFO] Live cycle finished. updated=%s manifest=%s", len(touched_game_ids), manifest_path)
     return {
         "active": True,

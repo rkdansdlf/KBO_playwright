@@ -148,14 +148,6 @@ def save_baserunning_stats(
     year: int | None = None,
     db_path: str | None = None,
 ) -> None:
-    """
-    주루 기록을 크롤링하여 DB에 저장합니다.
-
-    Args:
-        player_list: 선수 목록 (player_id 매칭용)
-        year: 시즌 연도 (None이면 현재 연도)
-        db_path: 데이터베이스 파일 경로 (None이면 data/kbo_{year}.db)
-    """
     if year is None:
         year = datetime.now().year
     if db_path is None:
@@ -167,96 +159,97 @@ def save_baserunning_stats(
     conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
 
-    # 주루 기록 크롤링
     baserunning_data = crawl_baserunning_stats(year)
-
     if not baserunning_data:
         logger.error("❌ 주루 기록을 가져올 수 없습니다.")
         conn.close()
         return
 
-    # 선수명 -> player_id 매핑 생성
     player_map = {p["player_name"]: p["player_id"] for p in player_list}
-
     success_count = 0
     fail_count = 0
 
     for idx, stats in enumerate(baserunning_data, 1):
-        player_name = stats["player_name"]
-
-        # 1. 크롤링 시 추출한 player_id가 있으면 사용
-        player_id = stats.get("player_id")
-
-        # 2. player_id가 없으면 player_map에서 찾기
-        if not player_id:
-            player_id = player_map.get(player_name)
-
-        # 3. 여전히 없으면 DB에서 직접 찾기 (player_season_participation 테이블 사용)
-        if not player_id:
-            cursor.execute(
-                """
-                SELECT player_id FROM player_season_participation
-                WHERE player_name = ? AND year = ? AND team_id = ?
-            """,
-                (player_name, year, stats["team_id"]),
-            )
-            row = cursor.fetchone()
-            player_id = row[0] if row else None
-
-            # 팀 정보 없이 이름만으로 재시도
-            if not player_id:
-                cursor.execute(
-                    """
-                    SELECT player_id FROM player_season_participation
-                    WHERE player_name = ? AND year = ?
-                    LIMIT 1
-                """,
-                    (player_name, year),
-                )
-                row = cursor.fetchone()
-                player_id = row[0] if row else None
-
+        player_id = _resolve_baserunning_player_id(
+            stats,
+            player_map,
+            cursor,
+            year,
+        )
         if player_id:
-            try:
-                cursor.execute(
-                    """
-                    INSERT OR REPLACE INTO kbo_season_baserunning_stats
-                    (player_id, team_id, year, player_name, games, stolen_base_attempts,
-                     stolen_bases, caught_stealing, stolen_base_percentage,
-                     out_on_base, picked_off, updated_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                    (
-                        player_id,
-                        stats["team_id"],
-                        stats["year"],
-                        stats["player_name"],
-                        stats["games"],
-                        stats["stolen_base_attempts"],
-                        stats["stolen_bases"],
-                        stats["caught_stealing"],
-                        stats["stolen_base_percentage"],
-                        stats["out_on_base"],
-                        stats["picked_off"],
-                        datetime.now(),
-                    ),
-                )
-
+            if _insert_baserunning_record(cursor, stats, player_id):
                 conn.commit()
                 success_count += 1
-
                 if idx % 10 == 0:
-                    logger.info("[%s/%s] %s 저장 완료", idx, len(baserunning_data), player_name)
-
-            except BASERUNNING_SAVE_EXCEPTIONS:
+                    logger.info("[%s/%s] %s 저장 완료", idx, len(baserunning_data), stats["player_name"])
+            else:
                 fail_count += 1
-                logger.exception("   ❌ %s 저장 실패", player_name)
         else:
             fail_count += 1
-            logger.warning("   ⚠️  %s: player_id를 찾을 수 없음", player_name)
+            logger.warning("   ⚠️  %s: player_id를 찾을 수 없음", stats["player_name"])
 
     conn.close()
+    _log_baserunning_summary(success_count, fail_count)
 
+
+def _resolve_baserunning_player_id(
+    stats: dict[str, Any],
+    player_map: dict[str, object],
+    cursor: sqlite3.Cursor,
+    year: int,
+) -> object:
+    player_id = stats.get("player_id")
+    if not player_id:
+        player_id = player_map.get(stats["player_name"])
+    if not player_id:
+        cursor.execute(
+            "SELECT player_id FROM player_season_participation WHERE player_name = ? AND year = ? AND team_id = ?",
+            (stats["player_name"], year, stats["team_id"]),
+        )
+        row = cursor.fetchone()
+        player_id = row[0] if row else None
+    if not player_id:
+        cursor.execute(
+            "SELECT player_id FROM player_season_participation WHERE player_name = ? AND year = ? LIMIT 1",
+            (stats["player_name"], year),
+        )
+        row = cursor.fetchone()
+        player_id = row[0] if row else None
+    return player_id
+
+
+def _insert_baserunning_record(
+    cursor: sqlite3.Cursor,
+    stats: dict[str, Any],
+    player_id: object,
+) -> bool:
+    try:
+        cursor.execute(
+            """INSERT OR REPLACE INTO kbo_season_baserunning_stats
+(player_id, team_id, year, player_name, games, stolen_base_attempts, stolen_bases, caught_stealing, stolen_base_percentage, out_on_base, picked_off, updated_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (
+                player_id,
+                stats["team_id"],
+                stats["year"],
+                stats["player_name"],
+                stats["games"],
+                stats["stolen_base_attempts"],
+                stats["stolen_bases"],
+                stats["caught_stealing"],
+                stats["stolen_base_percentage"],
+                stats["out_on_base"],
+                stats["picked_off"],
+                datetime.now(),
+            ),
+        )
+    except BASERUNNING_SAVE_EXCEPTIONS:
+        logger.exception("   ❌ %s 저장 실패", stats["player_name"])
+        return False
+    return True
+
+
+def _log_baserunning_summary(success_count: int, fail_count: int) -> None:
     logger.info("\n%s", "=" * 60)
     logger.info("✅ 주루 기록 저장 완료!")
     logger.info("%s", "=" * 60)

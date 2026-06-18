@@ -59,7 +59,7 @@ Agents should apply the repository's crawler-oriented skill set automatically; t
 - `python3 scripts/seed_fan_culture.py`: Seed team rivalry data.
 - `python3 -m src.cli.backfill_advanced_stats --year YYYY`: Backfill advanced batting/pitching stats.
 - `python3 -m src.cli.daily_preview_batch --date YYYYMMDD`: Run pregame batch for a target date.
-- `python3 -m src.cli.freshness_gate [--max-hours N]`: Check data freshness against expected thresholds.
+- `python3 -m src.cli.freshness_gate [--days N]`: Check data freshness against expected thresholds.
 - `python3 -m src.cli.gap_report [--category ...]`: Run gap analysis for missing/aged data.
 - `python3 -m src.cli.generate_quality_report --year YYYY`: Generate data quality statistics report.
 - `python3 -m src.cli.crawler_selector_gate --config Docs/references/crawler_selector_gate.json --json`: Validate crawler selector contracts against fixture/live targets.
@@ -206,18 +206,37 @@ Ruff expansion phases completed across the current cleanup campaign. The work en
 ### Current Verification Baseline
 
 - `ruff check src/ tests/ scripts/` = 0 errors
-- `ruff format --check .` = 887 files already formatted
+- `ruff format --check .` = 893 files already formatted
 - `python3 scripts/lint_bare_except.py` = 0 bare `except Exception` in 425 files
-- `python -m pytest -q --tb=line` = 4278 passed, 1 skipped, 2 deselected, 1 xfailed
+- `python -m pytest -q --tb=line` = 4301 passed, 1 skipped, 2 deselected, 1 xfailed
 - `# noqa: BLE001` in `src/` = 0
 - `# noqa: BLE001` in `scripts/` = 6 intentional CLI / operational catch-all guards
 
+### C901 (Complexity) Progress
+
+| Phase | Functions | C901 Δ | Status |
+|-------|-----------|--------|--------|
+| 1 | 12 files (crawlers/parsers) | 103→91 | ✅ Complete |
+| 2 | 14 CLI files | 91→76 | ✅ Complete |
+| 3 | 10 files | 76→64 | ✅ Complete |
+| 4 | 8 files | 64→52 | ✅ Complete |
+| 5 | 4 funcs | 52→48 | ✅ Complete |
+| 6 | 4 funcs | 48→44 | ✅ Complete |
+| 7a/7b (redo) | 8 funcs (foreign_player, manager_change, baserunning_stats, fa, relay, futures_batting, futures_pitching, player_search main) | 41→31 | ✅ Complete |
+| 7c | PL fixable auto-fix (11 violations) | — | ✅ Complete |
+| 8a | 4 live CLI funcs (crawl_futures 2, live_crawler 2) | 41→31 | ✅ Complete |
+| 8b | 2 funcs (sync_games.sync_game_details) | 31→31 | ✅ Complete |
+| **Total non-PW** | **15 functions refactored to C901 < 10** | **103→31** | **✅** |
+| **Blocked (PW)** | **31 functions use `page: Page` directly** | **31** | **⏳** |
+
 ### Deferred Lint Candidates
 
-- No active deferred Ruff candidate remains from the current cleanup campaign.
+- **31 C901 violations remaining** — all in Playwright-dependent functions (page: Page parameter). After 2026 selector migration, batch-refactor these.
+- C901 count: 103 → 31 (72 violations eliminated, 70% reduction).
 
 ### Notes For Future Agents
 
 - Preserve CLI stdout `print()` calls that intentionally emit JSON or rendered command output; use targeted `# noqa: T201` rather than logging.
 - Do not rename unused public/helper parameters when tests or callers pass them by keyword; prefer targeted `# noqa: ARG001` or `# noqa: ARG002`.
 - `tests/**` and `scripts/**` intentionally ignore selected annotation, `TRY003`, `ARG`, and `T20` rules because fixture signatures, monkeypatch callbacks, debug scripts, and CLI utilities commonly require broad or unused arguments, inline fixture exceptions, and stdout output.
+- `from src.db.engine import SessionLocal` and model imports in relay_crawler._load_game_metadata_from_db, player_search_crawler helpers are intentionally lazily imported to avoid circular deps — do not `PLC0415`-fix them.

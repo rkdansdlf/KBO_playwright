@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+from typing import Any
 
 """
 Futures League Pitching Stats Crawler
@@ -16,7 +17,6 @@ from playwright.async_api import Error as PlaywrightError
 from src.utils.compliance import compliance
 from src.utils.playwright_pool import AsyncPlaywrightPool
 from src.utils.playwright_retry import LONG_TIMEOUT, SHORT_TIMEOUT
-from src.utils.team_codes import resolve_kbo_legacy_team_code
 from src.utils.throttle import throttle
 from src.utils.type_helpers import (
     parse_innings_to_outs,
@@ -101,9 +101,7 @@ def _norm_header(txt: str) -> str:
 
 
 def _parse_table(table: Tag) -> list[dict]:
-    """Parse a table element into list of season pitching records."""
     headers = [_norm_header(th.get_text(strip=True)) for th in table.select("thead th, thead td")]
-
     if not headers:
         first_row = table.find("tr")
         if first_row:
@@ -114,64 +112,48 @@ def _parse_table(table: Tag) -> list[dict]:
         cells = [td.get_text(strip=True) for td in tr.find_all(["td", "th"])]
         if not cells:
             continue
-
-        # Skip total/summary rows
-        if any(keyword in " ".join(cells).lower() for keyword in ["통산", "합계", "career", "total"]):
+        if any(k in " ".join(cells).lower() for k in ["통산", "합계", "career", "total"]):
             continue
-
-        row = {}
-        for h, v in zip(headers, cells, strict=False):
-            key = _norm_header(h)
-
-            if key == "season":
-                m = re.search(r"\d{4}", v)
-                if not m:
-                    row["season"] = None
-                else:
-                    row["season"] = int(m.group())
-            elif key == "team_name":
-                row["team_name"] = v
-            elif key == "era":
-                row["era"] = safe_float_or_none(v)
-            elif key == "IP":
-                row["IP"] = v
-            elif key in (
-                "games",
-                "complete_games",
-                "shutouts",
-                "wins",
-                "losses",
-                "saves",
-                "holds",
-                "tbf",
-                "hits_allowed",
-                "home_runs_allowed",
-                "walks_allowed",
-                "hit_batters",
-                "strikeouts",
-                "runs_allowed",
-                "earned_runs",
-            ):
-                row[key] = safe_int_or_none(v)
-
-        # Skip rows without valid season
-        season = row.get("season")
-        if not season:
-            continue
-
-        # Parse innings and outs
-        ip_str = row.get("IP")
-        outs = parse_innings_to_outs(ip_str)
-        row["innings_outs"] = outs
-        row["innings_pitched"] = round(outs / 3.0, 3) if outs is not None else None
-
-        # Resolve team code
-        team_name = row.get("team_name")
-        row["team_code"] = resolve_kbo_legacy_team_code(team_name, season_year=season)
-
-        out.append(row)
-
+        row = _parse_pitching_cell_row(headers, cells)
+        if row.get("season"):
+            ip_str = row.get("IP")
+            row["innings_outs"] = parse_innings_to_outs(ip_str) if ip_str else 0
+            out.append(row)
     return out
+
+
+def _parse_pitching_cell_row(headers: list[str], cells: list[str]) -> dict[str, Any]:
+    row: dict[str, Any] = {}
+    for h, v in zip(headers, cells, strict=False):
+        key = _norm_header(h)
+        if key == "season":
+            m = re.search(r"\d{4}", v)
+            row["season"] = int(m.group()) if m else None
+        elif key == "team_name":
+            row["team_name"] = v
+        elif key == "era":
+            row["era"] = safe_float_or_none(v)
+        elif key == "IP":
+            row["IP"] = v
+        elif key in (
+            "games",
+            "complete_games",
+            "shutouts",
+            "wins",
+            "losses",
+            "saves",
+            "holds",
+            "tbf",
+            "hits_allowed",
+            "home_runs_allowed",
+            "walks_allowed",
+            "hit_batters",
+            "strikeouts",
+            "runs_allowed",
+            "earned_runs",
+        ):
+            row[key] = safe_int_or_none(v)
+    return row
 
 
 def _pick_futures_pitching_table(soup: BeautifulSoup) -> Tag | None:

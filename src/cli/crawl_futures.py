@@ -138,36 +138,60 @@ async def process_player_result(
 ) -> dict[str, Any]:
     normalized_id = normalize_player_id(player_id)
     if normalized_id is None:
-        return {
-            "player_id": player_id,
-            "status": "failed",
-            "saved": 0,
-            "failure_reason": "invalid_player_id",
-        }
+        return _fail_result(player_id, "invalid_player_id", status="failed")
 
     player_id = str(normalized_id)
-
-    # Resolve player name if not provided
-    if not player_name:
-        with SessionLocal() as session:
-            basic = session.query(PlayerBasic).filter(PlayerBasic.player_id == int(player_id)).first()
-            if basic:
-                player_name = basic.name
-            else:
-                player_name = "Unknown"
+    player_name = _resolve_player_name(player_id, player_name)
 
     if not _has_player_basic(player_id):
-        return {
-            "player_id": player_id,
-            "status": "skipped",
-            "saved": 0,
-            "failure_reason": "missing_player_basic",
-        }
+        return _fail_result(player_id, "missing_player_basic", status="skipped")
 
-    batting_rows = []
-    pitching_rows = []
+    batting_rows, pitching_rows = await _crawl_futures_stats(player_id, position, pool)
 
-    # 1. Hitter stats
+    if not batting_rows and not pitching_rows:
+        return _fail_result(player_id, "futures_empty", status="skipped")
+
+    player = await asyncio.to_thread(
+        repository.upsert_player_profile,
+        player_id,
+        PlayerProfileParsed(is_active=True, player_name=player_name),
+    )
+    if not player:
+        logger.info("[WARN] Could not create player record for %s", player_id)
+        return _fail_result(player_id, "profile_upsert_failed")
+
+    saved, save_failures = await _save_futures_player_stats(
+        player_id,
+        player_name,
+        batting_rows,
+        pitching_rows,
+    )
+
+    if saved > 0:
+        return {"player_id": player_id, "status": "success", "saved": saved, "failure_reason": None}
+    return _fail_result(player_id, save_failures[0] if save_failures else "save_failed")
+
+
+def _fail_result(player_id: str, reason: str, saved: int = 0, status: str = "failed") -> dict[str, Any]:
+    return {"player_id": player_id, "status": status, "saved": saved, "failure_reason": reason}
+
+
+def _resolve_player_name(player_id: str, player_name: str) -> str:
+    if player_name:
+        return player_name
+    with SessionLocal() as session:
+        basic = session.query(PlayerBasic).filter(PlayerBasic.player_id == int(player_id)).first()
+        return basic.name if basic else "Unknown"
+
+
+async def _crawl_futures_stats(
+    player_id: str,
+    position: str,
+    pool: AsyncPlaywrightPool,
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    batting_rows: list[dict[str, Any]] = []
+    pitching_rows: list[dict[str, Any]] = []
+
     if position in ("hitter", "both"):
         hitter_url = f"https://www.koreabaseball.com/Futures/Player/HitterTotal.aspx?playerId={player_id}"
         try:
@@ -175,7 +199,6 @@ async def process_player_result(
         except FUTURES_CRAWL_EXCEPTIONS:
             logger.exception("Exception crawling batting stats for player %s", player_id)
 
-    # 2. Pitcher stats
     if position in ("pitcher", "both"):
         pitcher_url = f"https://www.koreabaseball.com/Futures/Player/PitcherTotal.aspx?playerId={player_id}"
         try:
@@ -183,34 +206,18 @@ async def process_player_result(
         except FUTURES_CRAWL_EXCEPTIONS:
             logger.exception("Exception crawling pitching stats for player %s", player_id)
 
-    if not batting_rows and not pitching_rows:
-        return {
-            "player_id": player_id,
-            "status": "skipped",
-            "saved": 0,
-            "failure_reason": "futures_empty",
-        }
+    return batting_rows, pitching_rows
 
-    # 데이터베이스에 선수 정보가 없으면 새로 생성
-    player = await asyncio.to_thread(
-        repository.upsert_player_profile,
-        player_id,
-        PlayerProfileParsed(is_active=True, player_name=player_name),
-    )
 
-    if not player:
-        logger.info("[WARN] Could not create player record for %s", player_id)
-        return {
-            "player_id": player_id,
-            "status": "failed",
-            "saved": 0,
-            "failure_reason": "profile_upsert_failed",
-        }
-
+async def _save_futures_player_stats(
+    player_id: str,
+    player_name: str,
+    batting_rows: list[dict[str, Any]],
+    pitching_rows: list[dict[str, Any]],
+) -> tuple[int, list[str]]:
     saved = 0
     save_failures: list[str] = []
 
-    # Save Hitter stats if any
     if batting_rows:
         try:
             saved_batting = await asyncio.to_thread(save_futures_batting, player_id, batting_rows)
@@ -221,65 +228,50 @@ async def process_player_result(
             logger.exception("Exception saving batting stats for player %s", player_id)
             save_failures.append("batting_save_exception")
 
-    # Save Pitcher stats if any
     if pitching_rows:
         try:
-            payloads = []
-            for row in pitching_rows:
-                payloads.append(  # noqa: PERF401
-                    {
-                        "player_id": int(player_id),
-                        "player_name": player_name,
-                        "season": row.get("season"),
-                        "league": "FUTURES",
-                        "level": "KBO2",
-                        "source": "PROFILE",
-                        "team_code": row.get("team_code"),
-                        "games": row.get("games"),
-                        "complete_games": row.get("complete_games"),
-                        "shutouts": row.get("shutouts"),
-                        "wins": row.get("wins"),
-                        "losses": row.get("losses"),
-                        "saves": row.get("saves"),
-                        "holds": row.get("holds"),
-                        "innings_pitched": row.get("innings_pitched"),
-                        "innings_outs": row.get("innings_outs"),
-                        "hits_allowed": row.get("hits_allowed"),
-                        "runs_allowed": row.get("runs_allowed"),
-                        "earned_runs": row.get("earned_runs"),
-                        "home_runs_allowed": row.get("home_runs_allowed"),
-                        "walks_allowed": row.get("walks_allowed"),
-                        "hit_batters": row.get("hit_batters"),
-                        "strikeouts": row.get("strikeouts"),
-                        "era": row.get("era"),
-                        "tbf": row.get("tbf"),
-                    },
-                )
+            payloads = [_build_pitching_payload(row, player_id, player_name) for row in pitching_rows]
             saved_pitching = await asyncio.to_thread(save_pitching_stats_to_db, payloads)
             saved += saved_pitching
             if saved_pitching == 0:
                 filter_counts = get_last_filter_counts()
-                if filter_counts:
-                    save_failures.append(_format_filter_counts("pitching_filtered", filter_counts))
-                else:
-                    save_failures.append("pitching_save_zero")
+                save_failures.append(
+                    _format_filter_counts("pitching_filtered", filter_counts) if filter_counts else "pitching_save_zero"
+                )
         except FUTURES_SAVE_EXCEPTIONS:
             logger.exception("Exception saving pitching stats for player %s", player_id)
             save_failures.append("pitching_save_exception")
 
-    if saved > 0:
-        return {
-            "player_id": player_id,
-            "status": "success",
-            "saved": saved,
-            "failure_reason": None,
-        }
+    return saved, save_failures
 
+
+def _build_pitching_payload(row: dict[str, Any], player_id: str, player_name: str) -> dict[str, Any]:
     return {
-        "player_id": player_id,
-        "status": "failed",
-        "saved": 0,
-        "failure_reason": save_failures[0] if save_failures else "save_failed",
+        "player_id": int(player_id),
+        "player_name": player_name,
+        "season": row.get("season"),
+        "league": "FUTURES",
+        "level": "KBO2",
+        "source": "PROFILE",
+        "team_code": row.get("team_code"),
+        "games": row.get("games"),
+        "complete_games": row.get("complete_games"),
+        "shutouts": row.get("shutouts"),
+        "wins": row.get("wins"),
+        "losses": row.get("losses"),
+        "saves": row.get("saves"),
+        "holds": row.get("holds"),
+        "innings_pitched": row.get("innings_pitched"),
+        "innings_outs": row.get("innings_outs"),
+        "hits_allowed": row.get("hits_allowed"),
+        "runs_allowed": row.get("runs_allowed"),
+        "earned_runs": row.get("earned_runs"),
+        "home_runs_allowed": row.get("home_runs_allowed"),
+        "walks_allowed": row.get("walks_allowed"),
+        "hit_batters": row.get("hit_batters"),
+        "strikeouts": row.get("strikeouts"),
+        "era": row.get("era"),
+        "tbf": row.get("tbf"),
     }
 
 
@@ -305,47 +297,7 @@ async def crawl_futures(args: argparse.Namespace) -> dict[str, Any]:
         player_positions = {pid: player_positions[pid] for pid in limited_pids}
         logger.info("Limited to %s players\n", len(player_positions))
 
-    if getattr(args, "changed_since", None):
-        cutoff = args.changed_since
-        if isinstance(cutoff, str):
-            try:
-                cutoff = datetime.fromisoformat(cutoff.replace("Z", "+00:00"))
-                if cutoff.tzinfo is not None:
-                    cutoff = cutoff.replace(tzinfo=None)
-            except ValueError:
-                logger.exception("[WARN] Invalid --changed-since format: %s, ignoring filter", cutoff)
-                cutoff = None
-
-        if cutoff is not None:
-            int_pids = [int(pid) for pid in player_positions if pid.isdigit()]
-            recent_pids = set()
-            with SessionLocal() as session:
-                for row in (
-                    session.query(PlayerSeasonBatting.player_id, PlayerSeasonBatting.updated_at)
-                    .filter(
-                        PlayerSeasonBatting.league == "FUTURES",
-                        PlayerSeasonBatting.player_id.in_(int_pids),
-                    )
-                    .all()
-                ):
-                    if row.updated_at and row.updated_at >= cutoff:
-                        recent_pids.add(row.player_id)
-                for row in (
-                    session.query(PlayerSeasonPitching.player_id, PlayerSeasonPitching.updated_at)
-                    .filter(
-                        PlayerSeasonPitching.league == "FUTURES",
-                        PlayerSeasonPitching.player_id.in_(int_pids),
-                    )
-                    .all()
-                ):
-                    if row.updated_at and row.updated_at >= cutoff:
-                        recent_pids.add(row.player_id)
-
-            skipped = sum(1 for pid in player_positions if int(pid) in recent_pids)
-            if skipped:
-                player_positions = {pid: meta for pid, meta in player_positions.items() if int(pid) not in recent_pids}
-                logger.info("[INFO] --changed-since filter: skipped %s recently updated players", skipped)
-            logger.info("Processing %s remaining players\n", len(player_positions))
+    player_positions = _filter_changed_since(args, player_positions)
 
     summary = {
         "ok": False,
@@ -372,9 +324,40 @@ async def crawl_futures(args: argparse.Namespace) -> dict[str, Any]:
         max_pages=args.concurrency,
         context_kwargs={"locale": "ko-KR"},
     )
-    semaphore = asyncio.Semaphore(args.concurrency)  # 동시 요청 수 제어
+    semaphore = asyncio.Semaphore(args.concurrency)
 
-    results: list[dict] = []
+    results, failure_counts = await _run_futures_players(
+        player_positions,
+        repository,
+        args,
+        pool,
+        semaphore,
+    )
+
+    _log_futures_summary(logger, results, failure_counts)
+    summary.update(
+        {
+            "ok": not any(result["status"] == "failed" for result in results),
+            "processed": len(results),
+            "success_count": sum(1 for result in results if result["status"] == "success"),
+            "total_saved": sum(result["saved"] for result in results),
+            "failure_counts": dict(failure_counts),
+            "results": results,
+        },
+    )
+    if getattr(args, "json_summary", False):
+        logger.info(json.dumps(summary, ensure_ascii=False, sort_keys=True))
+    return summary
+
+
+async def _run_futures_players(
+    player_positions: dict[str, dict[str, str]],
+    repository: PlayerRepository,
+    args: argparse.Namespace,
+    pool: AsyncPlaywrightPool,
+    semaphore: asyncio.Semaphore,
+) -> tuple[list[dict[str, Any]], Counter]:
+    results: list[dict[str, Any]] = []
     failure_counts: Counter = Counter()
 
     async def runner(pid: str, meta: dict) -> None:
@@ -385,57 +368,97 @@ async def crawl_futures(args: argparse.Namespace) -> dict[str, Any]:
                 result = await process_player_result(pid, pos, name, repository, args.delay, pool)
             except FUTURES_PROCESS_EXCEPTIONS:
                 logger.exception("Unhandled exception for player %s (%s)", pid, pos)
-                result = {
-                    "player_id": pid,
-                    "status": "failed",
-                    "saved": 0,
-                    "failure_reason": "exception",
-                }
+                result = {"player_id": pid, "status": "failed", "saved": 0, "failure_reason": "exception"}
             results.append(result)
-
-            player_id = result["player_id"]
-            saved = result["saved"]
-            failure_reason = result.get("failure_reason")
-            if result["status"] == "success":
-                logger.info("[OK] %s (%s): %s seasons", player_id, pos, saved)
-            elif failure_reason == "futures_empty":
-                failure_counts[failure_reason] += 1
-                logger.info("[SKIP] %s (%s): no Futures data", player_id, pos)
-            else:
-                failure_counts[failure_reason or "exception"] += 1
-                logger.info("[ERROR] %s (%s): %s", player_id, pos, failure_reason)
+            _log_player_result(result, pos, failure_counts)
 
     async with pool:
         await asyncio.gather(*(runner(pid, meta) for pid, meta in sorted(player_positions.items())))
+    return results, failure_counts
 
-    # 3단계: 결과 요약
+
+def _log_player_result(
+    result: dict[str, Any],
+    pos: str,
+    failure_counts: Counter,
+) -> None:
+    player_id = result["player_id"]
+    saved = result["saved"]
+    failure_reason = result.get("failure_reason")
+    if result["status"] == "success":
+        logger.info("[OK] %s (%s): %s seasons", player_id, pos, saved)
+    elif failure_reason == "futures_empty":
+        failure_counts[failure_reason] += 1
+        logger.info("[SKIP] %s (%s): no Futures data", player_id, pos)
+    else:
+        failure_counts[failure_reason or "exception"] += 1
+        logger.info("[ERROR] %s (%s): %s", player_id, pos, failure_reason)
+
+
+def _filter_changed_since(
+    args: argparse.Namespace,
+    player_positions: dict[str, dict[str, str]],
+) -> dict[str, dict[str, str]]:
+    cutoff = getattr(args, "changed_since", None)
+    if cutoff is None:
+        return player_positions
+    if isinstance(cutoff, str):
+        try:
+            cutoff = datetime.fromisoformat(cutoff.replace("Z", "+00:00"))
+            if cutoff.tzinfo is not None:
+                cutoff = cutoff.replace(tzinfo=None)
+        except ValueError:
+            logger.exception("[WARN] Invalid --changed-since format: %s, ignoring filter", cutoff)
+            return player_positions
+
+    int_pids = [int(pid) for pid in player_positions if pid.isdigit()]
+    recent_pids: set[int] = set()
+    with SessionLocal() as session:
+        for row in (
+            session.query(PlayerSeasonBatting.player_id, PlayerSeasonBatting.updated_at)
+            .filter(
+                PlayerSeasonBatting.league == "FUTURES",
+                PlayerSeasonBatting.player_id.in_(int_pids),
+            )
+            .all()
+        ):
+            if row.updated_at and row.updated_at >= cutoff:
+                recent_pids.add(row.player_id)
+        for row in (
+            session.query(PlayerSeasonPitching.player_id, PlayerSeasonPitching.updated_at)
+            .filter(
+                PlayerSeasonPitching.league == "FUTURES",
+                PlayerSeasonPitching.player_id.in_(int_pids),
+            )
+            .all()
+        ):
+            if row.updated_at and row.updated_at >= cutoff:
+                recent_pids.add(row.player_id)
+
+    skipped = sum(1 for pid in player_positions if int(pid) in recent_pids)
+    if skipped:
+        player_positions = {pid: meta for pid, meta in player_positions.items() if int(pid) not in recent_pids}
+        logger.info("[INFO] --changed-since filter: skipped %s recently updated players", skipped)
+    logger.info("Processing %s remaining players\n", len(player_positions))
+    return player_positions
+
+
+def _log_futures_summary(
+    logger: logging.Logger,
+    results: list[dict[str, Any]],
+    failure_counts: Counter,
+) -> None:
     logger.info("\n=== Summary ===")
     total_saved = sum(result["saved"] for result in results)
     success_count = sum(1 for result in results if result["status"] == "success")
-
     logger.info("Total players processed: %s", len(results))
     logger.info("Players with Futures data: %s", success_count)
     logger.info("Total seasons saved: %s", total_saved)
     logger.info("Failures/skips: %s", sum(failure_counts.values()))
-
     if failure_counts:
         logger.info("\nFailure reasons:")
         for reason, count in sorted(failure_counts.items()):
             logger.info("  %s: %s", reason, count)
-
-    summary.update(
-        {
-            "ok": not any(result["status"] == "failed" for result in results),
-            "processed": len(results),
-            "success_count": success_count,
-            "total_saved": total_saved,
-            "failure_counts": dict(failure_counts),
-            "results": results,
-        },
-    )
-    if getattr(args, "json_summary", False):
-        logger.info(json.dumps(summary, ensure_ascii=False, sort_keys=True))
-    return summary
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
