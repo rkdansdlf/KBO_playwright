@@ -393,155 +393,20 @@ class FACrawler:
             return []
 
     def save_to_db(self, data: list[dict[str, Any]], session: Session, dry_run: bool = False) -> None:
-        """
-        Saves or updates FA data in the database.
-        """
+        logger.info("💾 processing %s records for Database...", len(data))
         new_records = 0
         updates = 0
-
-        # New fa_contracts counts
         new_fa_contracts = 0
         updated_fa_contracts = 0
-
-        logger.info("💾 processing %s records for Database...", len(data))
 
         for item in data:
             if not item.get("player_name"):
                 continue
-
-            name = item["player_name"]
-            year = item["year"]
-            team_raw = item.get("team")
-            team_code = resolve_team_code(team_raw)
-
-            if not team_code:
-                if item.get("type") == "transfer" and not item.get("new_team"):
-                    logger.warning(
-                        "   ⚠️ Skipping record for %s (%s): No valid team (likely overseas split).",
-                        name,
-                        year,
-                    )
-                    continue
-
-                logger.warning("   ⚠️ Could not resolve team code for '%s' (%s, %s). Skipping.", team_raw, name, year)
-                continue
-
-            # Construct Remarks string
-            contract_info = f"FA계약: {item.get('contract_duration', item.get('duration', '?'))}, {item.get('total_amount', item.get('amount', '?'))}"
-            remarks = item.get("remarks")
-            if remarks and remarks != "-" and remarks != "비공개":
-                contract_info += f", {remarks}"
-
-            # Matching Logic for player_movements
-            start_date = date(year - 1, 11, 1)
-            end_date = date(year, 3, 31)
-
-            existing = (
-                session.query(PlayerMovement)
-                .filter(
-                    PlayerMovement.player_name == name,
-                    PlayerMovement.team_code == team_code,
-                    PlayerMovement.movement_date >= start_date,
-                    PlayerMovement.movement_date <= end_date,
-                )
-                .first()
-            )
-
-            # FAContract Upsert Logic
-            fa_type = "transferred"
-            if item.get("fa_type"):
-                fa_type = item["fa_type"]
-            elif item.get("type") == "retained" or item.get("type") == "RETAINED" or not item.get("old_team"):
-                fa_type = "retained"
-
-            old_team_val = item.get("old_team")
-            new_team_val = item.get("new_team", item.get("team"))
-            duration_val = item.get("contract_duration", item.get("duration"))
-            amount_val = item.get("total_amount", item.get("amount"))
-
-            amount_krw = parse_amount_krw(amount_val)
-            player_basic_id = resolve_player_basic_id(session, name, team_code)
-
-            existing_contract = (
-                session.query(FAContract)
-                .filter(
-                    FAContract.player_name == name,
-                    FAContract.year == year,
-                    FAContract.fa_type == fa_type,
-                    FAContract.new_team == new_team_val,
-                )
-                .first()
-            )
-
-            if dry_run:
-                logger.info(
-                    "   [DRY RUN] player_movements: %s (%s): %s -> %s",
-                    name,
-                    year,
-                    "MATCH FOUND" if existing else "NEW RECORD",
-                    contract_info,
-                )
-                logger.info(
-                    "   [DRY RUN] fa_contracts: %s (%s, %s): %s -> %s (%s만 원)",
-                    name,
-                    year,
-                    fa_type,
-                    "MATCH FOUND" if existing_contract else "NEW RECORD",
-                    amount_val,
-                    amount_krw,
-                )
-                continue
-
-            # 1. Update player_movements
-            if existing:
-                if existing.remarks:
-                    if "FA계약" not in existing.remarks:
-                        existing.remarks = f"{existing.remarks} | {contract_info}"
-                        updates += 1
-                else:
-                    existing.remarks = contract_info
-                    updates += 1
-            else:
-                # Insert new record
-                default_date = date(year, 1, 15)
-                new_move = PlayerMovement(
-                    movement_date=default_date,
-                    section="FA",
-                    team_code=team_code,
-                    player_name=name,
-                    remarks=contract_info,
-                )
-                session.add(new_move)
-                new_records += 1
-
-            # 2. Update fa_contracts
-            if existing_contract:
-                existing_contract.player_basic_id = player_basic_id
-                existing_contract.old_team = old_team_val
-                existing_contract.team_code = team_code
-                existing_contract.contract_duration = duration_val
-                existing_contract.total_amount = amount_val
-                existing_contract.total_amount_krw = amount_krw
-                existing_contract.remarks = remarks
-                existing_contract.source_url = self.url
-                updated_fa_contracts += 1
-            else:
-                new_contract = FAContract(
-                    player_name=name,
-                    player_basic_id=player_basic_id,
-                    year=year,
-                    fa_type=fa_type,
-                    old_team=old_team_val,
-                    new_team=new_team_val,
-                    team_code=team_code,
-                    contract_duration=duration_val,
-                    total_amount=amount_val,
-                    total_amount_krw=amount_krw,
-                    remarks=remarks,
-                    source_url=self.url,
-                )
-                session.add(new_contract)
-                new_fa_contracts += 1
+            dr = self._process_fa_record(session, item, dry_run)
+            new_records += dr["new_records"]
+            updates += dr["updates"]
+            new_fa_contracts += dr["new_fa_contracts"]
+            updated_fa_contracts += dr["updated_fa_contracts"]
 
         if not dry_run:
             try:
@@ -555,6 +420,173 @@ class FACrawler:
             except FA_DB_EXCEPTIONS:
                 session.rollback()
                 logger.exception("❌ DB Error")
+
+    def _build_fa_info(self, item: dict[str, Any], team_code: str) -> dict[str, Any]:
+        name = item["player_name"]
+        year = item["year"]
+        contract_duration = item.get("contract_duration", item.get("duration"))
+        amount = item.get("total_amount", item.get("amount"))
+        contract_info = f"FA계약: {contract_duration or '?'}, {amount or '?'}"
+        remarks = item.get("remarks")
+        if remarks and remarks not in ("-", "비공개"):
+            contract_info += f", {remarks}"
+        fa_type = item.get("fa_type", "transferred")
+        if fa_type == "transferred" and (item.get("type") in ("retained", "RETAINED") or not item.get("old_team")):
+            fa_type = "retained"
+        return {
+            "name": name,
+            "year": year,
+            "team_code": team_code,
+            "contract_info": contract_info,
+            "contract_duration": contract_duration,
+            "amount": amount,
+            "fa_type": fa_type,
+            "old_team": item.get("old_team"),
+            "new_team": item.get("new_team", item.get("team")),
+            "remarks": remarks,
+        }
+
+    def _process_fa_record(
+        self,
+        session: Session,
+        item: dict[str, Any],
+        dry_run: bool,
+    ) -> dict[str, int]:
+        name = item["player_name"]
+        year = item["year"]
+        team_raw = item.get("team")
+        team_code = resolve_team_code(team_raw)
+
+        if not team_code:
+            if item.get("type") == "transfer" and not item.get("new_team"):
+                logger.warning("   ⚠️ Skipping record for %s (%s): No valid team (likely overseas split).", name, year)
+            else:
+                logger.warning("   ⚠️ Could not resolve team code for '%s' (%s, %s). Skipping.", team_raw, name, year)
+            return {"new_records": 0, "updates": 0, "new_fa_contracts": 0, "updated_fa_contracts": 0}
+
+        info = self._build_fa_info(item, team_code)
+        start_date = date(year - 1, 11, 1)
+        end_date = date(year, 3, 31)
+
+        existing = (
+            session.query(PlayerMovement)
+            .filter(
+                PlayerMovement.player_name == info["name"],
+                PlayerMovement.team_code == info["team_code"],
+                PlayerMovement.movement_date >= start_date,
+                PlayerMovement.movement_date <= end_date,
+            )
+            .first()
+        )
+
+        existing_contract = (
+            session.query(FAContract)
+            .filter(
+                FAContract.player_name == info["name"],
+                FAContract.year == info["year"],
+                FAContract.fa_type == info["fa_type"],
+                FAContract.new_team == info["new_team"],
+            )
+            .first()
+        )
+
+        if dry_run:
+            self._log_fa_dry_run(info, existing, existing_contract)
+            return {"new_records": 0, "updates": 0, "new_fa_contracts": 0, "updated_fa_contracts": 0}
+
+        dr = {"new_records": 0, "updates": 0, "new_fa_contracts": 0, "updated_fa_contracts": 0}
+        self._upsert_fa_movement(session, existing, info, dr)
+        self._upsert_fa_contract(session, existing_contract, info, dr)
+        return dr
+
+    def _log_fa_dry_run(
+        self,
+        info: dict[str, Any],
+        existing: object,
+        existing_contract: object,
+    ) -> None:
+        logger.info(
+            "   [DRY RUN] player_movements: %s (%s): %s -> %s",
+            info["name"],
+            info["year"],
+            "MATCH FOUND" if existing else "NEW RECORD",
+            info["contract_info"],
+        )
+        amount_krw = parse_amount_krw(info["amount"])
+        logger.info(
+            "   [DRY RUN] fa_contracts: %s (%s, %s): %s -> %s (%s만 원)",
+            info["name"],
+            info["year"],
+            info["fa_type"],
+            "MATCH FOUND" if existing_contract else "NEW RECORD",
+            info["amount"],
+            amount_krw,
+        )
+
+    def _upsert_fa_movement(
+        self,
+        session: Session,
+        existing: object,
+        info: dict[str, Any],
+        dr: dict[str, int],
+    ) -> None:
+        if existing:
+            if getattr(existing, "remarks", None):
+                if "FA계약" not in existing.remarks:
+                    existing.remarks = f"{existing.remarks} | {info['contract_info']}"
+                    dr["updates"] += 1
+            else:
+                existing.remarks = info["contract_info"]
+                dr["updates"] += 1
+        else:
+            session.add(
+                PlayerMovement(
+                    movement_date=date(info["year"], 1, 15),
+                    section="FA",
+                    team_code=info["team_code"],
+                    player_name=info["name"],
+                    remarks=info["contract_info"],
+                )
+            )
+            dr["new_records"] += 1
+
+    def _upsert_fa_contract(
+        self,
+        session: Session,
+        existing: object,
+        info: dict[str, Any],
+        dr: dict[str, int],
+    ) -> None:
+        amount_krw = parse_amount_krw(info["amount"])
+        player_basic_id = resolve_player_basic_id(session, info["name"], info["team_code"])
+        if existing:
+            existing.player_basic_id = player_basic_id
+            existing.old_team = info["old_team"]
+            existing.team_code = info["team_code"]
+            existing.contract_duration = info["contract_duration"]
+            existing.total_amount = info["amount"]
+            existing.total_amount_krw = amount_krw
+            existing.remarks = info["remarks"]
+            existing.source_url = self.url
+            dr["updated_fa_contracts"] += 1
+        else:
+            session.add(
+                FAContract(
+                    player_name=info["name"],
+                    player_basic_id=player_basic_id,
+                    year=info["year"],
+                    fa_type=info["fa_type"],
+                    old_team=info["old_team"],
+                    new_team=info["new_team"],
+                    team_code=info["team_code"],
+                    contract_duration=info["contract_duration"],
+                    total_amount=info["amount"],
+                    total_amount_krw=amount_krw,
+                    remarks=info["remarks"],
+                    source_url=self.url,
+                )
+            )
+            dr["new_fa_contracts"] += 1
 
 
 async def main() -> None:

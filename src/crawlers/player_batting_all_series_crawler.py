@@ -939,9 +939,9 @@ def crawl_series_batting_stats(
                             total_collected += 1
                         else:
                             # 이미 존재하면 업데이트
-                            for i, p in enumerate(all_players_data):
+                            for _i, p in enumerate(all_players_data):
                                 if p["player_id"] == pid:
-                                    all_players_data[i].update(player_stat)
+                                    p.update(player_stat)
                                     break
 
                     logger.info(
