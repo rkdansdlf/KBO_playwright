@@ -12,7 +12,7 @@ on:
 
 concurrency:
   group: kbo-db-write-operations
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 env:
   PYTHONPATH: ${{ github.workspace }}
