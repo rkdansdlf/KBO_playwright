@@ -54,7 +54,7 @@ async def discover_and_save_players(start_year: int, end_year: int, active_year:
             else:
                 # Update existing if status changed
                 new_status = "active" if is_active else "retired"
-                if existing.status != new_status and existing.status != "staff":
+                if existing.status not in (new_status, "staff"):
                     existing.status = new_status
                     existing.status_source = "discovery"
                     update_count += 1

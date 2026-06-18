@@ -997,8 +997,7 @@ def main() -> None:
     else:
         # 모든 시리즈 크롤링 (타자 크롤러와 동일한 패턴)
         all_data = {}
-        for series_key in SERIES_MAPPING:
-            series_info = SERIES_MAPPING[series_key]
+        for series_key, series_info in SERIES_MAPPING.items():
             logger.info("\n🚀 %s 시작...", series_info["name"])
             series_data = crawl_pitcher_series(
                 year=args.year,

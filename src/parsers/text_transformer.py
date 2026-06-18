@@ -223,8 +223,8 @@ class TextTransformer:
         if not kw_match:
             return text, keywords
 
-        for line in kw_match.group(1).splitlines():
-            line = line.strip().lstrip("-").strip()
+        for raw_line in kw_match.group(1).splitlines():
+            line = raw_line.strip().lstrip("-").strip()
             if not line:
                 continue
             keywords.extend(kw.strip() for kw in re.split(r"[,，]", line) if kw.strip())

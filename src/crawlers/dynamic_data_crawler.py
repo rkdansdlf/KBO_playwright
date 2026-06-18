@@ -68,8 +68,6 @@ class DynamicDataCrawler:
         else:
             logger.info("   Collected %s roster movements.", len(records))
             return records
-            logger.exception("⚠️ Error crawling roster")
-            raise
 
     def crawl_and_update_ticket_times(self, lookahead_days: int = 14) -> list[TicketSchedule]:
         """

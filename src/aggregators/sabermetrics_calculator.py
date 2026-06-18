@@ -119,7 +119,6 @@ class SabermetricsCalculator:
 
         # 6. League OBP and SLG for OPS+
         total_bases = (bat_query.h or 0) + (bat_query.d2 or 0) + 2 * (bat_query.d3 or 0) + 3 * (bat_query.hr or 0)
-        lg_obp = lg_obp
         lg_slg = total_bases / (bat_query.ab or 1)
 
         return {

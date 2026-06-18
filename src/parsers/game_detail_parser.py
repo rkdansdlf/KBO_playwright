@@ -130,8 +130,8 @@ def _build_hitter_payload(
     team_cycle = ["away", "home"]
     team_index = 0
 
-    for df in tables:
-        df = df.fillna(0)
+    for raw_df in tables:
+        df = raw_df.fillna(0)
         team_side = team_cycle[team_index % 2]
         team_index += 1
 
@@ -193,8 +193,8 @@ def _build_pitcher_payload(
     team_cycle = ["away", "home"]
     team_index = 0
 
-    for df in tables:
-        df = df.fillna(0)
+    for raw_df in tables:
+        df = raw_df.fillna(0)
         team_side = team_cycle[team_index % 2]
         team_index += 1
 
