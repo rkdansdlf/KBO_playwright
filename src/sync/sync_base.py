@@ -856,7 +856,7 @@ class OCISyncBase:
         exclude_cols: list[str] = None,
         filters: list = None,
         transform_fn: Callable | None = None,
-        batch_size: int = 10000,
+        batch_size: int = 5000,
         update_timestamp: bool | None = None,
         dedupe_keys: list[str] | None = None,
     ) -> int:
@@ -913,15 +913,17 @@ class OCISyncBase:
         *,
         dedupe_keys: list[str] | None = None,
     ) -> int:
-        connection = None
-        if self.oci_engine is not None:
-            connection = self._raw_oci_connection_with_retries(label=f"{model.__tablename__}.sync")
         synced = 0
-        try:
-            for offset in range(0, total_count, batch_size):
-                rows = query.offset(offset).limit(batch_size).all()
-                records = [_row_to_record(row, columns, transform_fn) for row in rows]
-                records = _dedupe_records_for_conflict_keys(records, dedupe_keys or conflict_keys)
+        for offset in range(0, total_count, batch_size):
+            rows = query.offset(offset).limit(batch_size).all()
+            records = [_row_to_record(row, columns, transform_fn) for row in rows]
+            records = _dedupe_records_for_conflict_keys(records, dedupe_keys or conflict_keys)
+
+            connection = None
+            if self.oci_engine is not None:
+                connection = self._raw_oci_connection_with_retries(label=f"{model.__tablename__}.sync")
+
+            try:
                 try:
                     self._bulk_copy_upsert(
                         model.__tablename__,
@@ -941,6 +943,7 @@ class OCISyncBase:
                             connection.close()
                     except (PsycopgError, SQLAlchemyError, OSError, RuntimeError):
                         logger.warning("Failed to close COPY connection before fallback", exc_info=True)
+
                     connection = self._raw_oci_connection_with_retries(label=f"{model.__tablename__}.sync.fallback")
 
                     for record in records:
@@ -956,12 +959,12 @@ class OCISyncBase:
                         except (PsycopgError, SQLAlchemyError, OSError, RuntimeError, ValueError) as row_err:
                             logger.warning("Skipping bad row in %s: %s", model.__tablename__, row_err)
                     logger.info("   Synced %s/%s rows via row-by-row...", synced, total_count)
-        finally:
-            if connection is not None:
-                try:
-                    connection.close()
-                except (PsycopgError, SQLAlchemyError, OSError, RuntimeError):
-                    logger.warning("Failed to close connection, already closed or aborted", exc_info=True)
+            finally:
+                if connection is not None:
+                    try:
+                        connection.close()
+                    except (PsycopgError, SQLAlchemyError, OSError, RuntimeError):
+                        logger.warning("Failed to close connection, already closed or aborted", exc_info=True)
         return synced
 
     def _do_bulk_copy_upsert(
