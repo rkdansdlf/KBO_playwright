@@ -26,6 +26,11 @@ FOOD_CRAWL_EXCEPTIONS = (httpx.HTTPError, RuntimeError, ValueError, TypeError, K
 FOOD_DB_EXCEPTIONS = (SQLAlchemyError, RuntimeError, ValueError, TypeError, KeyError, OSError)
 
 TEAM_FOOD_SOURCES: dict[str, dict[str, Any]] = {
+    "ALL": {
+        "source_key": "gujangfood_com",
+        "stadium_id": "UNKNOWN",
+        "url": "https://www.gujangfood.com",
+    },
     "LT": {
         "source_key": "lotte_giants_fnb",
         "stadium_id": "SAJIK",
@@ -34,7 +39,7 @@ TEAM_FOOD_SOURCES: dict[str, dict[str, Any]] = {
     "NC": {
         "source_key": "nc_dinos_food_seat",
         "stadium_id": "CHANGWON",
-        "url": "https://www.ncdinos.com/stadium/food",
+        "url": "https://www.ncdinos.com/dinos/stadium.do",
     },
 }
 

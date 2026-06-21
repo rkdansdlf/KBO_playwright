@@ -243,7 +243,7 @@ class TestTeamBattingValidation:
                     INSERT INTO player_season_batting
                         (player_id, season, league, team_code, canonical_team_code,
                          games, plate_appearances, at_bats, runs, hits)
-                    VALUES (1, 2025, 'REGULAR', 'OLD', 'NEW',
+                    VALUES (1, 2025, 'REGULAR', 'SK', 'SSG',
                             1, 5, 4, 2, 2)
                 """)
             )
@@ -252,7 +252,7 @@ class TestTeamBattingValidation:
                     INSERT INTO team_season_batting
                         (team_id, season, league, games, plate_appearances, at_bats,
                          runs, hits)
-                    VALUES ('NEW', 2025, 'REGULAR', 1, 5, 4, 2, 2)
+                    VALUES ('SSG', 2025, 'REGULAR', 1, 5, 4, 2, 2)
                 """)
             )
             session.commit()
@@ -285,6 +285,38 @@ class TestTeamBattingValidation:
             assert result["ok"] is False
             assert len(result["mismatches"]) == 1
             assert result["mismatches"][0]["issue"] == "No player season batting records for this team"
+        finally:
+            session.close()
+
+    def test_ignores_special_event_team_codes(self):
+        session = _make_session()
+        try:
+            _insert_regular_season(session)
+            session.execute(
+                text("""
+                    INSERT INTO player_season_batting
+                        (player_id, season, league, team_code, canonical_team_code,
+                         games, plate_appearances, at_bats, runs, hits)
+                    VALUES (1, 2025, 'REGULAR', 'EA', 'EA', 1, 5, 4, 2, 2),
+                           (2, 2025, 'REGULAR', 'WE', 'WE', 1, 5, 4, 2, 2)
+                """)
+            )
+            session.execute(
+                text("""
+                    INSERT INTO team_season_batting
+                        (team_id, season, league, games, plate_appearances, at_bats, runs, hits)
+                    VALUES ('EA', 2025, 'REGULAR', 1, 5, 4, 2, 2),
+                           ('WE', 2025, 'REGULAR', 1, 5, 4, 2, 2)
+                """)
+            )
+            session.commit()
+
+            gate = QualityGate(session)
+            result = gate.validate_season_team_batting(2025)
+
+            assert result["ok"] is True
+            assert result["checked_players"] == 0
+            assert result["mismatches"] == []
         finally:
             session.close()
 
@@ -419,5 +451,37 @@ class TestTeamPitchingValidation:
             result = gate.validate_season_team_pitching(2025)
 
             assert result["ok"] is True
+        finally:
+            session.close()
+
+    def test_ignores_special_event_team_codes(self):
+        session = _make_session()
+        try:
+            _insert_regular_season(session)
+            session.execute(
+                text("""
+                    INSERT INTO player_season_pitching
+                        (player_id, season, league, team_code, canonical_team_code,
+                         games, wins, innings_outs, strikeouts)
+                    VALUES (1, 2025, 'REGULAR', 'EA', 'EA', 1, 1, 21, 5),
+                           (2, 2025, 'REGULAR', 'WE', 'WE', 1, 1, 21, 5)
+                """)
+            )
+            session.execute(
+                text("""
+                    INSERT INTO team_season_pitching
+                        (team_id, season, league, games, wins, innings_outs, strikeouts)
+                    VALUES ('EA', 2025, 'REGULAR', 1, 1, 21, 5),
+                           ('WE', 2025, 'REGULAR', 1, 1, 21, 5)
+                """)
+            )
+            session.commit()
+
+            gate = QualityGate(session)
+            result = gate.validate_season_team_pitching(2025)
+
+            assert result["ok"] is True
+            assert result["checked_players"] == 0
+            assert result["mismatches"] == []
         finally:
             session.close()

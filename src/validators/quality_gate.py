@@ -12,8 +12,9 @@ from src.models.game import Game, GameBattingStat, GamePitchingStat
 from src.models.player import PlayerSeasonBatting, PlayerSeasonPitching
 from src.models.team_stats import TeamSeasonBatting, TeamSeasonPitching
 from src.utils.game_status import COMPLETED_LIKE_GAME_STATUSES
+from src.utils.team_codes import STANDARD_TEAM_CODES
 
-INVALID_TEAM_CODES = ("", "합계", "TOTAL", "ALL", "-")
+INVALID_TEAM_CODES = ("", "합계", "TOTAL", "ALL", "-", "EA", "WE")
 
 
 class QualityGate:
@@ -54,7 +55,7 @@ class QualityGate:
         team_expr = func.coalesce(model.canonical_team_code, model.team_code)
         return (
             team_expr.isnot(None),
-            or_(model.team_code.is_(None), model.team_code.not_in(INVALID_TEAM_CODES)),
+            or_(team_expr.is_(None), team_expr.not_in(INVALID_TEAM_CODES)),
         )
 
     def validate_season_batting(self, season: int, league: str = "REGULAR") -> dict[str, Any]:
@@ -356,7 +357,7 @@ class QualityGate:
             TeamSeasonBatting.league == league,
         )
         team_data = self.session.execute(team_stmt).all()
-        team_map = {r.team_id: r for r in team_data}
+        team_map = {r.team_id: r for r in team_data if r.team_id in STANDARD_TEAM_CODES}
 
         if not team_map:
             return self._result(season=season, league=league)
@@ -494,7 +495,7 @@ class QualityGate:
             TeamSeasonPitching.league == league,
         )
         team_data = self.session.execute(team_stmt).all()
-        team_map = {r.team_id: r for r in team_data}
+        team_map = {r.team_id: r for r in team_data if r.team_id in STANDARD_TEAM_CODES}
 
         if not team_map:
             return self._result(season=season, league=league)
