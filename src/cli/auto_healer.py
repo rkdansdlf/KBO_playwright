@@ -56,8 +56,6 @@ def _find_stuck_games() -> list[Game]:
 
 def _find_inconsistent_games() -> list[Game]:
     """Return games where total score does not match sum of inning scores."""
-    from sqlalchemy import text
-
     # We check all games that are in terminal COMPLETED/DRAW state
     # but have score mismatches. This usually happens due to crawler bugs.
     query = text(

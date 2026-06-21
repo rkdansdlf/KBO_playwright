@@ -7,6 +7,7 @@ import logging
 from collections.abc import Sequence
 from datetime import date, datetime
 
+from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from src.aggregators.ranking_aggregator import RankingAggregator
@@ -41,8 +42,6 @@ def _dictify_rows(rows: Sequence[object], label_lookup: dict[int, str]) -> list[
 
 def _games_played_in_season(session: Session, season: int) -> int:
     """Return number of completed game-dates in the given season."""
-    from sqlalchemy import text
-
     row = session.execute(
         text("""
         SELECT COUNT(DISTINCT game_date) AS played

@@ -19,6 +19,7 @@ from datetime import datetime, timedelta
 from typing import Any
 from zoneinfo import ZoneInfo
 
+from sqlalchemy import or_, select, text
 from sqlalchemy.exc import SQLAlchemyError
 
 from src.cli.freshness_gate import collect_freshness_issues
@@ -34,8 +35,6 @@ KST = ZoneInfo("Asia/Seoul")
 
 def check_relay_gaps() -> dict[str, Any]:
     """Find COMPLETED/DRAW games missing game_play_by_play (last 14 days)."""
-    from sqlalchemy import select
-
     from src.models.game import Game
     from src.utils.game_status import COMPLETED_LIKE_GAME_STATUSES
 
@@ -57,8 +56,6 @@ def check_relay_gaps() -> dict[str, Any]:
 
 def check_profile_gaps() -> dict[str, Any]:
     """Find player IDs missing photo_url (excludes pseudo/not-found)."""
-    from sqlalchemy import or_
-
     from src.models.player import PlayerBasic
 
     with SessionLocal() as session:
@@ -81,8 +78,6 @@ def check_profile_gaps() -> dict[str, Any]:
 
 def check_id_resolution_gaps() -> dict[str, Any]:
     """Find NULL player_ids in game stats tables."""
-    from sqlalchemy import text
-
     with SessionLocal() as session:
         batting = session.execute(text("SELECT COUNT(*) FROM game_batting_stats WHERE player_id IS NULL")).scalar() or 0
         pitching = (
