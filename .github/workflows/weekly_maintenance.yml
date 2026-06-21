@@ -28,6 +28,18 @@ jobs:
           playwright: 'true'
           init-db: 'true'
 
+      - name: Refresh Source Snapshots
+        continue-on-error: true
+        env:
+          OCI_DB_URL: ${{ secrets.OCI_DB_URL }}
+        run: |
+          if [ -z "${OCI_DB_URL:-}" ]; then
+            echo "OCI_DB_URL not set; skipping source snapshot refresh"
+            exit 0
+          fi
+          DATABASE_URL="$OCI_DB_URL" python3 -m src.cli.refresh_source_snapshots \
+            --all --max-hours 168
+
       - name: Run Weekly Maintenance & Sync
         env:
           OCI_DB_URL: ${{ secrets.OCI_DB_URL }}
