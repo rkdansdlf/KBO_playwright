@@ -61,7 +61,9 @@ Agents should apply the repository's crawler-oriented skill set automatically; t
 - `python3 -m src.cli.daily_preview_batch --date YYYYMMDD`: Run pregame batch for a target date.
 - `python3 -m src.cli.freshness_gate [--days N]`: Check data freshness against expected thresholds.
 - `python3 -m src.cli.gap_report [--category ...]`: Run gap analysis for missing/aged data.
+- `python3 -m src.cli.refresh_source_snapshots --all --max-hours 24`: Refresh DataSource raw snapshots and last-success timestamps.
 - `python3 -m src.cli.generate_quality_report --year YYYY`: Generate data quality statistics report.
+- `python3 -m src.cli.crawl_kbo_official_events --save`: Refresh KBO official event/promotion source snapshots.
 - `python3 -m src.cli.crawler_selector_gate --config Docs/references/crawler_selector_gate.json --json`: Validate crawler selector contracts against fixture/live targets.
 - `python3 -m src.cli.diagnose_crawler_failure --json logs/<logfile>.log`: Classify crawler failure logs and suggest targeted recovery commands.
 - `python3 -m src.cli.data_quality_regression_pack --json`: Run compact DB invariants for PA formula, impossible stats, and NULL player IDs.

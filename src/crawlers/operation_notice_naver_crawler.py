@@ -47,6 +47,7 @@ URGENT_KEYWORDS = re.compile(r"\[긴급\]|\[필독\]|\[중요\]|긴급|즉시|�
 TEAM_SOURCE_MAP = {
     "LG": "naver_search_LG",
     "OB": "naver_search_두산",
+    "NC": "naver_search_NC",
     None: "naver_search_잠실",
 }
 
