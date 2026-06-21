@@ -324,7 +324,7 @@ SEED_DATA: list[dict] = [
         "target_domain": "seat",
         "reliability": "high",
         "crawl_frequency": "seasonal",
-        "base_url": "https://www.lgtwins.com/ticket/seatinfo",
+        "base_url": "https://www.lgtwins.com/ticket/general",
         "is_active": True,
     },
     # === P1: 주차 (보강) ===
@@ -345,7 +345,7 @@ SEED_DATA: list[dict] = [
         "target_domain": "food",
         "reliability": "high",
         "crawl_frequency": "seasonal",
-        "base_url": "https://www.ncdinos.com/stadium/food",
+        "base_url": "https://www.ncdinos.com/dinos/stadium.do",
         "is_active": True,
     },
     # === 기타: 팀 정보 ===
