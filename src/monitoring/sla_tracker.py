@@ -4,10 +4,11 @@ Tracks PBP coverage rate, game completion rate, detail capture rate.
 Generates daily/weekly/monthly SLA reports.
 """
 
-from __future__ import annotations
+
+# ruff: noqa: PLR2004from __future__ import annotations
 
 import logging
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from typing import Any
 
 try:
@@ -29,10 +30,8 @@ class SlaTracker:
         self.session = session
 
     def compute_daily_sla(self, target_date: str) -> dict[str, Any]:
-        from datetime import date as date_type
-
         if isinstance(target_date, str) and len(target_date) == 8:
-            query_date = date_type(int(target_date[:4]), int(target_date[4:6]), int(target_date[6:8]))
+            query_date = date(int(target_date[:4]), int(target_date[4:6]), int(target_date[6:8]))
         else:
             query_date = target_date
 
@@ -130,8 +129,6 @@ class SlaTracker:
         Compute the past 7-day SLA data and send a summary to Telegram/Slack.
         If end_date is None, uses today (UTC).
         """
-        from datetime import datetime
-
         if end_date is None:
             end_date = datetime.now(UTC).strftime("%Y%m%d")
 

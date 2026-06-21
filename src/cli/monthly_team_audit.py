@@ -8,8 +8,10 @@ Imported by scripts/scheduler.py as the crawl_monthly_team_audit_job target.
 Runs on the 1st of every month at 04:00 KST via APScheduler.
 """
 
-from __future__ import annotations
 
+# ruff: noqa: PLR2004from __future__ import annotations
+
+import argparse
 import json
 import logging
 import sys
@@ -91,8 +93,6 @@ def crawl_monthly_team_audit_job() -> None:
 
 def main() -> int:
     """CLI entry point for direct invocation (e.g., from GitHub Actions)."""
-    import argparse
-
     parser = argparse.ArgumentParser(description="Monthly Team Stats Consistency Audit")
     parser.add_argument("--year", type=int, help="Target year (defaults to previous year)")
     parser.add_argument("--json", action="store_true", help="Output results as JSON")

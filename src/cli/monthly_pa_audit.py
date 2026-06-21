@@ -5,8 +5,10 @@ Imported by scripts/scheduler.py as the crawl_monthly_pa_audit_job target.
 Runs on the 1st of every month at 03:00 KST via APScheduler.
 """
 
-from __future__ import annotations
 
+# ruff: noqa: PLR2004from __future__ import annotations
+
+import argparse
 import logging
 import sys
 from collections.abc import Sequence
@@ -53,8 +55,6 @@ def crawl_monthly_pa_audit_job() -> None:
 
 def main(argv: Sequence[str] | None = None) -> int:
     """CLI entry point for direct invocation (e.g., from GitHub Actions)."""
-    import argparse
-
     parser = argparse.ArgumentParser(description="Monthly PA Formula Audit")
     parser.add_argument("--year", type=int, help="Target year (defaults to previous year)")
     args = parser.parse_args(argv)
