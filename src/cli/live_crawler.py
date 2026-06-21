@@ -5,8 +5,7 @@ Polls today's schedule, captures relay events plus a lightweight scoreboard snap
 then explicitly syncs changed games to OCI.
 """
 
-
-# ruff: noqa: PLR2004from __future__ import annotations
+from __future__ import annotations
 
 import argparse
 import asyncio

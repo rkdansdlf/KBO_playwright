@@ -1,7 +1,6 @@
 """Validate daily standings snapshots against completed game results."""
 
-
-# ruff: noqa: PLR2004from __future__ import annotations
+from __future__ import annotations
 
 from datetime import date
 from typing import Any

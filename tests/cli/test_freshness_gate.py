@@ -27,3 +27,11 @@ class TestFreshnessGate:
             mock_session.query.return_value.filter.return_value.order_by.return_value.all.return_value = []
             result = main(["--json"])
             assert result == 0
+
+    def test_with_max_hours(self):
+        with patch("src.cli.freshness_gate.SessionLocal") as mock_sf:
+            mock_session = MagicMock()
+            mock_sf.return_value.__enter__.return_value = mock_session
+            mock_session.query.return_value.filter.return_value.order_by.return_value.all.return_value = []
+            result = main(["--max-hours", "48"])
+            assert result == 0

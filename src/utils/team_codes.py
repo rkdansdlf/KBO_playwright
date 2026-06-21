@@ -2,8 +2,7 @@
 Utility helpers for mapping KBO team names to canonical short codes.
 """
 
-
-# ruff: noqa: PLR2004from __future__ import annotations
+from __future__ import annotations
 
 import re
 

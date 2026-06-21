@@ -1,7 +1,6 @@
 """Validation helpers for player season stat payloads."""
 
-
-# ruff: noqa: PLR2004from __future__ import annotations
+from __future__ import annotations
 
 from collections import Counter
 from collections.abc import Iterable, Mapping

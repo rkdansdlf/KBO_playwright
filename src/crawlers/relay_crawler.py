@@ -3,8 +3,7 @@ KBO PBP (Relay) Crawler - Powered by Naver Sports API
 Fetches play-by-play data from Naver Sports API instead of KBO website due to access restrictions.
 """
 
-
-# ruff: noqa: PLR2004from __future__ import annotations
+from __future__ import annotations
 
 import hashlib
 import json

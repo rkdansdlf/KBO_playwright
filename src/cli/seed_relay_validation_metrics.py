@@ -5,8 +5,7 @@ every completed/DRAW game so relay gaps are explainable, but it does not invent
 PBP rows or events.
 """
 
-
-# ruff: noqa: PLR2004from __future__ import annotations
+from __future__ import annotations
 
 import argparse
 import logging

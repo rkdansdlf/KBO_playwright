@@ -179,7 +179,7 @@ All six backfill types are defined in a single `backfill.yml` using a job matrix
 
 ## Anchored Summary
 
-Last updated: 2026-06-18
+Last updated: 2026-06-22
 
 ### Ruff Rules Expansion Status
 
@@ -204,13 +204,15 @@ Ruff expansion phases completed across the current cleanup campaign. The work en
 | Parser/repository tests | Edge-case coverage | Added ticket duplicate-price and source snapshot failure-message tests |
 | Pre-commit | Hook set | Upgraded pre-commit hooks and added AST, merge-conflict, private-key, and debug-statement checks |
 | Container/deps | Dockerfile / packaging | Added `.dockerignore`, non-root Docker user, DB healthcheck, and aligned dependency lower bounds |
+| Magic value constants | `PLR2004` | Fixed 113 `src/` violations; created `src/constants.py` with KBO domain constants (`MAX_INNINGS`, `KBO_FOUNDING_YEAR`, `DATE_STR_LEN`, etc.); replaced HTTP 200 → `HTTPStatus.OK` across 17 files; 165 low-value violations suppressed via `pyproject.toml ignore` |
+| Lazy import hygiene | `PLC0415` | Moved 25 stdlib lazy imports (`json`, `os`, `re`, `argparse`, `datetime`) to top-level across 18 files; circular-dependent `src.` imports retained with intentional lazy pattern |
 
 ### Current Verification Baseline
 
 - `ruff check src/ tests/ scripts/` = 0 errors
-- `ruff format --check .` = 893 files already formatted
+- `ruff format --check .` = 898 files already formatted
 - `python3 scripts/lint_bare_except.py` = 0 bare `except Exception` in 425 files
-- `python -m pytest -q --tb=line` = 4301 passed, 1 skipped, 2 deselected, 1 xfailed
+- `python -m pytest -q --tb=line` = 4306 passed, 1 skipped, 2 deselected, 1 xfailed
 - `# noqa: BLE001` in `src/` = 0
 - `# noqa: BLE001` in `scripts/` = 6 intentional CLI / operational catch-all guards
 
@@ -235,6 +237,12 @@ Ruff expansion phases completed across the current cleanup campaign. The work en
 
 - **31 C901 violations remaining** — all in Playwright-dependent functions (page: Page parameter). After 2026 selector migration, batch-refactor these.
 - C901 count: 103 → 31 (72 violations eliminated, 70% reduction).
+
+### Phase 9B/9C Completed (2026-06-22)
+
+- **Phase 9B (PLR2004)**: 113 `src/` violations fixed across 48 files. Created `src/constants.py` with domain constants. 165 low-value magic values suppressed via `pyproject.toml`.
+- **Phase 9C (PLC0415)**: 25 stdlib lazy imports (`json`, `os`, `re`, `argparse`, `datetime`) moved to top-level across 18 files. `src.` lazy imports retained to avoid circular deps.
+- **Phase 9A** (Playwright C901 light refactoring): Deferred — 6 of 31 PW functions have extractable non-Page logic but need `page: Page` awareness; batch with 2026 selector migration.
 
 ### Notes For Future Agents
 

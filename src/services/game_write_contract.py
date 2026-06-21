@@ -1,7 +1,6 @@
 """Run-scoped write contract for overlapping game collection jobs."""
 
-
-# ruff: noqa: PLR2004from __future__ import annotations
+from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
