@@ -7,6 +7,7 @@ from typing import Any
 from sqlalchemy import func, select, text
 from sqlalchemy.orm import Session
 
+from src.constants import IP_FRAC_THIRD, IP_FRAC_TWO_THIRDS, MAX_OUTS
 from src.models.game import Game, GameBattingStat, GamePitchingStat
 from src.models.player import PlayerSeasonBatting, PlayerSeasonPitching
 from src.models.team_stats import TeamSeasonBatting, TeamSeasonPitching
@@ -154,16 +155,16 @@ class QualityGate:
         ip = float(cumulative_row.innings_pitched)
         whole = int(ip)
         frac = round((ip - whole) * 100)
-        if frac == 33:
+        if frac == IP_FRAC_THIRD:
             return whole * 3 + 1
-        if frac == 66:
+        if frac == IP_FRAC_TWO_THIRDS:
             return whole * 3 + 2
         return whole * 3
 
     @staticmethod
     def _pitching_outs_mismatch(row: object, cumulative_outs: int | None) -> dict[str, Any] | None:
         diff = (row.outs or 0) - (cumulative_outs or 0)
-        if diff <= 3 or (cumulative_outs is not None and diff / (cumulative_outs or 1) <= 0.01):
+        if diff <= MAX_OUTS or (cumulative_outs is not None and diff / (cumulative_outs or 1) <= 0.01):
             return None
         return {
             "player_id": row.player_id,
@@ -582,7 +583,7 @@ class QualityGate:
             team_ip = team_r.innings_pitched or 0.0
             player_outs = player_r.innings_outs or 0
             expected_outs = int(team_ip * 3 + 0.5) if team_ip else 0
-            if abs(player_outs - expected_outs) > 3:
+            if abs(player_outs - expected_outs) > MAX_OUTS:
                 diffs.append(f"innings_pitched: team_ip={team_ip} ({expected_outs} outs) player_outs={player_outs}")
 
             if diffs:

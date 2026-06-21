@@ -5,7 +5,8 @@ Polls today's schedule, captures relay events plus a lightweight scoreboard snap
 then explicitly syncs changed games to OCI.
 """
 
-from __future__ import annotations
+
+# ruff: noqa: PLR2004from __future__ import annotations
 
 import argparse
 import asyncio
@@ -14,6 +15,7 @@ import os
 import time
 from collections.abc import Sequence
 from datetime import datetime
+from http import HTTPStatus
 from threading import Lock, Thread
 from typing import Any
 from zoneinfo import ZoneInfo
@@ -320,7 +322,7 @@ async def _fetch_naver_live_statuses(relay_crawler: NaverRelayCrawler) -> dict[t
                 headers=relay_crawler.headers,
                 timeout=10.0,
             )
-            if response.status_code == 200:
+            if response.status_code == HTTPStatus.OK:
                 payload = response.json()
                 naver_games = list((payload.get("result") or {}).get("games") or [])
                 return {

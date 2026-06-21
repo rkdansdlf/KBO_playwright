@@ -12,6 +12,7 @@ from typing import Any, Protocol
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
+from src.constants import DATE_STR_LEN
 from src.db.engine import SessionLocal
 from src.models.game import Game, GameBattingStat, GameEvent, GamePitchingStat, GamePlayByPlay
 from src.repositories.game_repository import save_game_detail, save_relay_data
@@ -531,7 +532,7 @@ def _format_game_date(value: object, *, fallback_game_id: str) -> str:
     if isinstance(value, date):
         return value.strftime("%Y%m%d")
     text = str(value or "").replace("-", "").strip()
-    if len(text) == 8 and text.isdigit():
+    if len(text) == DATE_STR_LEN and text.isdigit():
         return text
     return str(fallback_game_id)[:8]
 

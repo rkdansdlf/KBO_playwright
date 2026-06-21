@@ -14,6 +14,7 @@ from __future__ import annotations
 import logging
 import re
 from datetime import datetime
+from http import HTTPStatus
 
 import httpx
 from bs4 import BeautifulSoup
@@ -100,7 +101,7 @@ class OperationNoticeLGCrawler:
                 try:
                     await throttle.wait(HOST)
                     resp = await client.get(url)
-                    if resp.status_code != 200:
+                    if resp.status_code != HTTPStatus.OK:
                         logger.warning("[LG Notice] HTTP %s on page %d", resp.status_code, page)
                         break
 

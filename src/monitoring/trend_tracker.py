@@ -4,7 +4,8 @@ Reads daily quality report JSONs to compute trends over time.
 Detects metric degradation (recent trend worsening).
 """
 
-from __future__ import annotations
+
+# ruff: noqa: PLR2004from __future__ import annotations
 
 import json
 import logging
@@ -12,6 +13,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 
+from src.constants import DATE_STR_LEN
 from src.utils.alerting import SlackWebhookClient
 
 logger = logging.getLogger(__name__)
@@ -104,7 +106,7 @@ class TrendTracker:
         raw_date = (report.get("metrics") or {}).get("date")
         if isinstance(raw_date, str):
             normalized = raw_date.replace("-", "")
-            if len(normalized) == 8 and normalized.isdigit():
+            if len(normalized) == DATE_STR_LEN and normalized.isdigit():
                 return datetime.strptime(normalized, "%Y%m%d")
         return datetime.strptime(path.stem, "%Y%m%d")
 

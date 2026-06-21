@@ -7,6 +7,7 @@ from collections.abc import Mapping
 from datetime import date, datetime
 from typing import Any
 
+from src.constants import DATE_STR_LEN
 from src.utils.game_status import (
     COMPLETED_LIKE_GAME_STATUSES,
     GAME_STATUS_CANCELLED,
@@ -22,7 +23,7 @@ _GAME_ID_RE = re.compile(r"^(\d{8})([A-Z]+)(\d)$")
 
 def parse_schedule_date(value: object) -> date | None:
     text = str(value or "").replace("-", "").strip()
-    if len(text) != 8 or not text.isdigit():
+    if len(text) != DATE_STR_LEN or not text.isdigit():
         return None
     try:
         return datetime.strptime(text, "%Y%m%d").date()

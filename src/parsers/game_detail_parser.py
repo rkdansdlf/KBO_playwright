@@ -1,6 +1,7 @@
 """Parse KBO GameCenter REVIEW HTML into structured box scores."""
 
-from __future__ import annotations
+
+# ruff: noqa: PLR2004from __future__ import annotations
 
 import re
 from io import StringIO
@@ -12,6 +13,7 @@ from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
+from src.constants import GAME_ID_FULL_LEN, GAME_ID_MIN_LEN, GAME_ID_YEAR_LEN
 from src.utils.team_codes import resolve_team_code, team_code_from_game_id_segment
 from src.utils.type_helpers import parse_innings_to_outs, safe_float_or_none, safe_int_or_none
 
@@ -81,7 +83,7 @@ def _build_team_info(
 ) -> dict[str, dict[str, Any]]:
     away_info = {
         "name": None,
-        "code": team_code_from_game_id_segment(game_id[8:10] if len(game_id) >= 10 else None, season_year),
+        "code": team_code_from_game_id_segment(game_id[8:10] if len(game_id) >= GAME_ID_MIN_LEN else None, season_year),
         "score": None,
         "hits": None,
         "errors": None,
@@ -89,7 +91,9 @@ def _build_team_info(
     }
     home_info = {
         "name": None,
-        "code": team_code_from_game_id_segment(game_id[10:12] if len(game_id) >= 12 else None, season_year),
+        "code": team_code_from_game_id_segment(
+            game_id[10:12] if len(game_id) >= GAME_ID_FULL_LEN else None, season_year
+        ),
         "score": None,
         "hits": None,
         "errors": None,
@@ -290,7 +294,7 @@ def _parse_metadata(soup: BeautifulSoup) -> dict[str, Any]:
 
 def _season_year_from_game(game_date: str) -> int | None:
     digits = "".join(ch for ch in str(game_date) if ch.isdigit())
-    if len(digits) >= 4:
+    if len(digits) >= GAME_ID_YEAR_LEN:
         try:
             return int(digits[:4])
         except ValueError:

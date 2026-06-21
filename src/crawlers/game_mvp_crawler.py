@@ -4,6 +4,7 @@ import argparse
 import logging
 import re
 from datetime import datetime, timedelta
+from http import HTTPStatus
 from typing import Any
 
 import httpx
@@ -53,7 +54,7 @@ class GameMvpCrawler:
         client = httpx.Client(headers=HEADERS, timeout=15)
         try:
             resp = client.get(url)
-            if resp.status_code != 200:
+            if resp.status_code != HTTPStatus.OK:
                 return None
             news_list = resp.json().get("result", {}).get("newsList", [])
             for article in news_list:
@@ -87,7 +88,7 @@ class GameMvpCrawler:
             url = NAVER_API_URL.format(date=date_str)
             try:
                 resp = client.get(url)
-                if resp.status_code != 200:
+                if resp.status_code != HTTPStatus.OK:
                     continue
                 news_list = resp.json().get("result", {}).get("newsList", [])
                 for article in news_list:

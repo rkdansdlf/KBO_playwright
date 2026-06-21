@@ -2,10 +2,12 @@
 Crawler for stadium seat section information from team websites.
 """
 
-from __future__ import annotations
+
+# ruff: noqa: PLR2004from __future__ import annotations
 
 import logging
 import re
+from http import HTTPStatus
 from typing import Any
 from urllib.parse import urlparse
 
@@ -76,7 +78,7 @@ class SeatCrawler:
                 host = urlparse(info["url"]).hostname or "koreabaseball.com"
                 await throttle.wait(host)
                 resp = await client.get(info["url"])
-                if resp.status_code != 200:
+                if resp.status_code != HTTPStatus.OK:
                     return []
                 html = resp.text
                 self._raw_pages.append(

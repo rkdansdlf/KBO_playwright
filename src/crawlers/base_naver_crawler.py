@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 from abc import ABC, abstractmethod
 from datetime import datetime, timedelta
+from http import HTTPStatus
 from typing import Any
 
 import httpx
@@ -45,7 +46,7 @@ class NaverNewsCrawlerBase(ABC):
                 url = NAVER_API_URL.format(date=date_str)
                 try:
                     resp = client.get(url)
-                    if resp.status_code != 200:
+                    if resp.status_code != HTTPStatus.OK:
                         continue
                     news_list = resp.json().get("result", {}).get("newsList", [])
                     for article in news_list:

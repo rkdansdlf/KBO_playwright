@@ -13,6 +13,7 @@ from __future__ import annotations
 import logging
 import re
 from datetime import datetime
+from http import HTTPStatus
 
 from bs4 import BeautifulSoup
 from playwright.async_api import Error as PlaywrightError
@@ -93,7 +94,7 @@ class OperationNoticeDoosanCrawler:
                     try:
                         await throttle.wait(HOST)
                         resp = await page.goto(url)
-                        if not resp or resp.status != 200:
+                        if not resp or resp.status != HTTPStatus.OK:
                             logger.warning(
                                 "[Doosan Notice] HTTP %s on page %d",
                                 resp.status if resp else "None",

@@ -7,6 +7,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import Any
 
+from src.constants import KBO_FOUNDING_YEAR
 from src.utils.team_codes import resolve_kbo_legacy_team_code
 from src.utils.type_helpers import parse_innings_to_outs, safe_float_or_none, safe_int_or_none
 
@@ -79,7 +80,7 @@ def parse_retired_hitter_tables(
             continue
 
         season = safe_int_or_none(season_label)
-        if season is None or season < 1982 or season > 2030:
+        if season is None or season < KBO_FOUNDING_YEAR or season > 2030:
             continue
 
         team_name = row.get("팀명") or row.get("팀")
@@ -157,7 +158,7 @@ def parse_retired_pitcher_table(
             continue
 
         season = safe_int_or_none(season_label)
-        if season is None or season < 1982 or season > 2030:
+        if season is None or season < KBO_FOUNDING_YEAR or season > 2030:
             continue
 
         team_name = row.get("팀명") or row.get("팀")
