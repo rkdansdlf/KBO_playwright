@@ -9,6 +9,7 @@ import asyncio
 import logging
 import time
 import urllib.robotparser
+from http import HTTPStatus
 from pathlib import Path
 
 import httpx
@@ -47,7 +48,7 @@ class ComplianceChecker:
                     try:
                         async with httpx.AsyncClient() as client:
                             response = await client.get(self.robots_url, timeout=10.0)
-                            if response.status_code == 200:
+                            if response.status_code == HTTPStatus.OK:
                                 content = response.text
                                 self.parser.parse(content.splitlines())
                                 self.last_fetch_time = now
@@ -101,7 +102,7 @@ class ComplianceChecker:
                 import httpx
 
                 response = httpx.get(self.robots_url, timeout=10.0)
-                if response.status_code == 200:
+                if response.status_code == HTTPStatus.OK:
                     self.parser.parse(response.text.splitlines())
                     self.last_fetch_time = now
                 else:

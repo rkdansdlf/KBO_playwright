@@ -2,7 +2,8 @@
 Repository for saving game details, box scores, and normalized relay data.
 """
 
-from __future__ import annotations
+
+# ruff: noqa: PLR2004from __future__ import annotations
 
 import logging
 import os
@@ -20,6 +21,7 @@ from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
+from src.constants import DATE_STR_LEN, GAME_ID_FULL_LEN, GAME_ID_MIN_LEN
 from src.db.engine import SessionLocal
 from src.models.game import (
     Game,
@@ -119,7 +121,7 @@ def _resolve_game_date_obj(raw_date: object) -> date | None:
         return raw_date.date()
     if isinstance(raw_date, str):
         val_clean = raw_date.replace("-", "").replace("/", "").strip()
-        if len(val_clean) == 8 and val_clean.isdigit():
+        if len(val_clean) == DATE_STR_LEN and val_clean.isdigit():
             with contextlib.suppress(ValueError):
                 return date(int(val_clean[:4]), int(val_clean[4:6]), int(val_clean[6:]))
     return None
@@ -402,8 +404,8 @@ def _infer_team_code_from_children(
         if row and row[0]:
             return row[0]
 
-    segment = game_id[8:10] if team_side == "away" and len(game_id) >= 10 else None
-    if team_side == "home" and len(game_id) >= 12:
+    segment = game_id[8:10] if team_side == "away" and len(game_id) >= GAME_ID_MIN_LEN else None
+    if team_side == "home" and len(game_id) >= GAME_ID_FULL_LEN:
         segment = game_id[10:12]
     return team_code_from_game_id_segment(segment, season_year)
 
@@ -475,7 +477,7 @@ def _ensure_game_stub(session: Session, game_id: str) -> None:
 
     away_team = None
     home_team = None
-    if len(game_id) >= 12:
+    if len(game_id) >= GAME_ID_FULL_LEN:
         away_team = game_id[8:10] or None
         home_team = game_id[10:12] or None
 

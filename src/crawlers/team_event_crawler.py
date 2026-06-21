@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import logging
 from datetime import UTC, datetime, timedelta
+from http import HTTPStatus
 from urllib.parse import urlparse
 
 import httpx
@@ -125,7 +126,7 @@ class TeamEventCrawler:
                     host = urlparse(url).hostname or "koreabaseball.com"
                     await throttle.wait(host)
                     resp = await client.get(url)
-                    if resp.status_code != 200:
+                    if resp.status_code != HTTPStatus.OK:
                         break
                     html = resp.text
                     source_key = TEAM_TO_SOURCE_KEY[team_code]

@@ -2,7 +2,8 @@
 Game-level sync: games, details, PBP, play-by-play, player game stats.
 """
 
-from __future__ import annotations
+
+# ruff: noqa: PLR2004from __future__ import annotations
 
 import json
 import logging

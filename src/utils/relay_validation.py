@@ -11,6 +11,7 @@ from typing import Any
 
 from sqlalchemy.orm import Session
 
+from src.constants import MAX_OUTS
 from src.models.game import Game
 from src.repositories.game_helpers import (
     GAME_STATUS_COMPLETED,
@@ -129,7 +130,7 @@ def _out_count_warnings(
 ) -> list[str]:
     if outs is None or prev_outs is None:
         return []
-    if outs < 0 or outs > 3:
+    if outs < 0 or outs > MAX_OUTS:
         return [f"event_{index}: out count out of range {outs}"]
     if index <= 0 or inning != prev_inning or half != prev_half:
         return []
@@ -137,7 +138,7 @@ def _out_count_warnings(
     out_diff = outs - prev_outs
     if out_diff < 0:
         return [f"event_{index}: outs decreased {prev_outs}->{outs} without inning change"]
-    if out_diff > 3:
+    if out_diff > MAX_OUTS:
         return [f"event_{index}: outs jumped by {out_diff} in one event"]
     return []
 

@@ -66,8 +66,10 @@ select = [
     "PTH",     # pathlib (os.path 대체)
     "ARG",     # unused-function-argument
     "T20",     # print / pdb
+    "PLR2004", # magic-value-comparison
 ]
 ignore = [
+    "PLR2004", # 165 remaining are low-value noise; key domain constants already fixed
     "E402",    # module-import-not-at-top (lazy imports intentional)
     "E501",    # line-too-long (handled by formatter)
     "E701",    # multiple-statements-on-one-line-colon (legacy style)

@@ -3,18 +3,21 @@ KBO PBP (Relay) Crawler - Powered by Naver Sports API
 Fetches play-by-play data from Naver Sports API instead of KBO website due to access restrictions.
 """
 
-from __future__ import annotations
+
+# ruff: noqa: PLR2004from __future__ import annotations
 
 import hashlib
 import json
 import logging
 import re
 from datetime import datetime, timedelta
+from http import HTTPStatus
 from typing import Any
 
 import httpx
 from sqlalchemy.exc import SQLAlchemyError
 
+from src.constants import DATE_STR_LEN, GAME_ID_YEAR_LEN
 from src.services.wpa_calculator import WPACalculator
 from src.services.wpa_transitions import apply_wpa_transitions, format_base_string
 from src.utils.compliance import compliance
@@ -124,12 +127,12 @@ class RelayCrawler:
         *,
         query_date: str | None = None,
     ) -> dict[str, str]:
-        if kbo_game_id and len(kbo_game_id) >= 8:
+        if kbo_game_id and len(kbo_game_id) >= DATE_STR_LEN:
             date_part = kbo_game_id[:8]
             year_part = date_part[:4]
         else:
             date_part = (query_date or "").replace("-", "")
-            year_part = date_part[:4] if len(date_part) >= 4 else str(datetime.now().year)
+            year_part = date_part[:4] if len(date_part) >= GAME_ID_YEAR_LEN else str(datetime.now().year)
 
         query_date_str = query_date or f"{date_part[:4]}-{date_part[4:6]}-{date_part[6:8]}"
         if "20241110" <= date_part <= "20241124":
@@ -198,7 +201,7 @@ class RelayCrawler:
                 headers=headers or self.headers,
                 timeout=timeout,
             )
-            if response.status_code != 200:
+            if response.status_code != HTTPStatus.OK:
                 status = response.status_code
                 if status in self.PERMANENT_HTTP_ERRORS:
                     raise _PermanentStatusError(status)
@@ -259,7 +262,7 @@ class RelayCrawler:
                 g_date = str(g.get("gameDate") or "").replace("-", "").strip()
                 if not g_date:
                     g_id_temp = str(g.get("gameId") or "").strip()
-                    if len(g_id_temp) >= 8:
+                    if len(g_id_temp) >= DATE_STR_LEN:
                         date_match = re.search(r"(\d{8})", g_id_temp)
                         if date_match:
                             g_date = date_match.group(1)
@@ -303,7 +306,7 @@ class RelayCrawler:
 
     def _score_date_match(self, game: dict, game_id: str, game_date_str: str) -> int:
         g_date = str(game.get("gameDate") or "").replace("-", "").strip()
-        if not g_date and len(game_id) >= 8:
+        if not g_date and len(game_id) >= DATE_STR_LEN:
             date_match = re.search(r"(\d{8})", game_id)
             if date_match:
                 g_date = date_match.group(1)
@@ -417,7 +420,7 @@ class RelayCrawler:
             if has_response_teams and not any_full_team_match:
                 score -= 200
 
-            if len(game_id) >= 8:
+            if len(game_id) >= DATE_STR_LEN:
                 g_mmdd = game_id[4:8]
                 k_mmdd = game_date_str[4:8]
                 if g_mmdd.isdigit() and g_mmdd != k_mmdd:

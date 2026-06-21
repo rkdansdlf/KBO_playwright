@@ -7,6 +7,7 @@ from __future__ import annotations
 import logging
 import re
 from datetime import datetime
+from http import HTTPStatus
 from typing import Any
 
 import httpx
@@ -64,7 +65,7 @@ class RealtimeIssueCrawler:
                         "status_code": res.status_code,
                     },
                 )
-                if res.status_code == 200:
+                if res.status_code == HTTPStatus.OK:
                     articles = self._parse_naver_news_api_response(res.json())
                     logger.info("   Fetched %d headlines from JSON API.", len(articles))
                     return articles
@@ -119,7 +120,7 @@ class RealtimeIssueCrawler:
                         "status_code": res.status_code,
                     },
                 )
-                if res.status_code == 200:
+                if res.status_code == HTTPStatus.OK:
                     soup = BeautifulSoup(res.text, "html.parser")
                     articles = self._parse_naver_news_html(soup)
             logger.info("   Fetched %s headlines from HTML fallback.", len(articles))
@@ -177,7 +178,7 @@ class RealtimeIssueCrawler:
                         "status_code": res.status_code,
                     },
                 )
-                if res.status_code == 200:
+                if res.status_code == HTTPStatus.OK:
                     soup = BeautifulSoup(res.text, "html.parser")
 
                     seen_urls = set()

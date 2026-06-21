@@ -2,11 +2,13 @@
 Service to fetch vector embeddings from Gemini API or OpenRouter API.
 """
 
-from __future__ import annotations
+
+# ruff: noqa: PLR2004from __future__ import annotations
 
 import contextlib
 import logging
 import os
+from http import HTTPStatus
 
 import httpx
 from sqlalchemy.exc import SQLAlchemyError
@@ -182,7 +184,7 @@ class EmbeddingService:
         try:
             with httpx.Client(headers=headers, timeout=30.0) as client:
                 res = client.post(url, json=payload)
-                if res.status_code == 200:
+                if res.status_code == HTTPStatus.OK:
                     data = res.json()
                     # OpenRouter / OpenAI format: {"data": [{"embedding": [...]}, ...]}
                     records = data.get("data", [])
@@ -219,7 +221,7 @@ class EmbeddingService:
         try:
             with httpx.Client(headers=headers, timeout=30.0) as client:
                 res = client.post(url, json=payload)
-                if res.status_code == 200:
+                if res.status_code == HTTPStatus.OK:
                     data = res.json()
                     # Google format: {"embeddings": [{"values": [...]}, ...]}
                     embeddings_data = data.get("embeddings", [])
