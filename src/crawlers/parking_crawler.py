@@ -26,6 +26,11 @@ PARKING_CRAWL_EXCEPTIONS = (httpx.HTTPError, RuntimeError, ValueError, TypeError
 PARKING_SAVE_EXCEPTIONS = (SQLAlchemyError, RuntimeError, ValueError, TypeError, OSError)
 
 TEAM_PARKING_SOURCES: dict[str, dict[str, Any]] = {
+    "LG": {
+        "source_key": "jamsil_parking_official",
+        "stadium_id": "JAMSIL",
+        "url": "https://stadium.seoul.go.kr/about/park-info",
+    },
     "SK": {
         "source_key": "ssg_landers_parking",
         "stadium_id": "MUNHAK",

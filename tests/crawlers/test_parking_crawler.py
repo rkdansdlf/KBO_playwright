@@ -1,4 +1,4 @@
-from src.crawlers.parking_crawler import ParkingCrawler
+from src.crawlers.parking_crawler import TEAM_PARKING_SOURCES, ParkingCrawler
 
 
 class TestParseParkingPage:
@@ -28,3 +28,8 @@ class TestParseParkingPage:
         result = self.crawler._parse_parking_page(html, info)
         assert result[0]["lot"]["lot_type"] == "official"
         assert result[0]["lot"]["is_event_day_available"] is True
+
+
+def test_parking_sources_cover_seeded_jamsil_source():
+    assert TEAM_PARKING_SOURCES["LG"]["source_key"] == "jamsil_parking_official"
+    assert TEAM_PARKING_SOURCES["LG"]["stadium_id"] == "JAMSIL"
