@@ -110,6 +110,14 @@ class StaticTextCrawler:
             with SessionLocal() as session:
                 save_raw_snapshots(session, self._raw_pages)
 
+        title, main_content = self._parse_namuwiki_html(html_content)
+        return {
+            "title": title,
+            "content": main_content,
+            "meta": {"source": url, "crawled_at": datetime.now().isoformat(), "category": "namuwiki"},
+        }
+
+    def _parse_namuwiki_html(self, html_content: str) -> tuple[str, str]:
         # Parse and clean with BeautifulSoup
         soup = BeautifulSoup(html_content, "html.parser")
 
@@ -159,8 +167,4 @@ class StaticTextCrawler:
         if " [편집]" in title:
             title = title.split(" [편집]")[0]
 
-        return {
-            "title": title,
-            "content": main_content,
-            "meta": {"source": url, "crawled_at": datetime.now().isoformat(), "category": "namuwiki"},
-        }
+        return title, main_content
