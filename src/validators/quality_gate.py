@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from sqlalchemy import func, select, text
+from sqlalchemy import func, or_, select, text
 from sqlalchemy.orm import Session
 
 from src.constants import IP_FRAC_THIRD, IP_FRAC_TWO_THIRDS, MAX_OUTS
@@ -50,8 +50,6 @@ class QualityGate:
 
     @staticmethod
     def _valid_team_code_filters(model: type) -> tuple[object, ...]:
-        from sqlalchemy import or_
-
         team_expr = func.coalesce(model.canonical_team_code, model.team_code)
         return (
             team_expr.isnot(None),
