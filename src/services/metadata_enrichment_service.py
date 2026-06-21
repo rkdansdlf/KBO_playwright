@@ -3,8 +3,7 @@ Service to enrich text chunk metadata using Gemini API (via Google or OpenRouter
 Extracts keywords, summaries, and expected questions to boost RAG search match rate.
 """
 
-
-# ruff: noqa: PLR2004from __future__ import annotations
+from __future__ import annotations
 
 import json
 import logging

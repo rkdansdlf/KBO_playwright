@@ -591,7 +591,7 @@ class ScheduleCrawler:
         """URL(href)에서 game_id를 안전하게 추출합니다."""
         try:
             if "gameId=" in href:
-                return href.split("gameId=")[1].split("&")[0]
+                return href.split("gameId=")[1].split("&", maxsplit=1)[0]
         except (IndexError, ValueError):
             logger.warning("Failed to parse game_id from href")
         return ""

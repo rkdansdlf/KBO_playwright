@@ -1,7 +1,6 @@
 """Build LLM-ready game story timelines from normalized game events."""
 
-
-# ruff: noqa: PLR2004from __future__ import annotations
+from __future__ import annotations
 
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass

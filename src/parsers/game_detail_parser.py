@@ -1,7 +1,6 @@
 """Parse KBO GameCenter REVIEW HTML into structured box scores."""
 
-
-# ruff: noqa: PLR2004from __future__ import annotations
+from __future__ import annotations
 
 import re
 from io import StringIO

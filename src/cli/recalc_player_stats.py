@@ -17,7 +17,7 @@ import sys
 from collections.abc import Sequence
 from typing import Any
 
-from sqlalchemy import func, text
+from sqlalchemy import case, func, text
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
@@ -203,10 +203,10 @@ def _aggregate_pitching(
             func.sum(GamePitchingStat.hit_batters).label("hit_batters"),
             func.sum(GamePitchingStat.wild_pitches).label("wild_pitches"),
             func.sum(GamePitchingStat.balks).label("balks"),
-            func.sum(GamePitchingStat.wins).label("wins"),
-            func.sum(GamePitchingStat.losses).label("losses"),
-            func.sum(GamePitchingStat.saves).label("saves"),
-            func.sum(GamePitchingStat.holds).label("holds"),
+            func.sum(case((GamePitchingStat.decision == "W", 1), else_=0)).label("wins"),
+            func.sum(case((GamePitchingStat.decision == "L", 1), else_=0)).label("losses"),
+            func.sum(case((GamePitchingStat.decision == "S", 1), else_=0)).label("saves"),
+            func.sum(case((GamePitchingStat.decision == "H", 1), else_=0)).label("holds"),
             func.sum(GamePitchingStat.batters_faced).label("batters_faced"),
             func.sum(GamePitchingStat.pitches).label("pitches"),
             func.count(func.nullif(GamePitchingStat.is_starting == 1, False)).label("games_started"),
@@ -231,7 +231,6 @@ def _aggregate_pitching(
             bb=row.walks_allowed or 0,
             er=row.earned_runs or 0,
             k=row.strikeouts or 0,
-            hr=row.home_runs_allowed or 0,
         )
         results.append(
             {

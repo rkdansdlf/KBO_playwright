@@ -2,8 +2,7 @@
 Repository for saving game details, box scores, and normalized relay data.
 """
 
-
-# ruff: noqa: PLR2004from __future__ import annotations
+from __future__ import annotations
 
 import json
 import logging

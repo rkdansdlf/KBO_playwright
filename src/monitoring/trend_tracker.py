@@ -4,8 +4,7 @@ Reads daily quality report JSONs to compute trends over time.
 Detects metric degradation (recent trend worsening).
 """
 
-
-# ruff: noqa: PLR2004from __future__ import annotations
+from __future__ import annotations
 
 import json
 import logging

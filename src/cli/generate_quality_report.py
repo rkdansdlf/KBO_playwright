@@ -3,8 +3,7 @@ KBO Daily Data Quality Report Generator.
 Analyzes daily data integrity and statistical consistency.
 """
 
-
-# ruff: noqa: PLR2004from __future__ import annotations
+from __future__ import annotations
 
 import argparse
 import json

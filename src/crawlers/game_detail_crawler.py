@@ -1,7 +1,6 @@
 """GameCenter box score crawler with structured outputs."""
 
-
-# ruff: noqa: PLR2004from __future__ import annotations
+from __future__ import annotations
 
 import argparse
 import asyncio

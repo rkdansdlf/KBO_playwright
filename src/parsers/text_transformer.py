@@ -2,8 +2,7 @@
 Data transformer for cleansing and chunking extracted raw text before embedding.
 """
 
-
-# ruff: noqa: PLR2004from __future__ import annotations
+from __future__ import annotations
 
 import hashlib
 import os

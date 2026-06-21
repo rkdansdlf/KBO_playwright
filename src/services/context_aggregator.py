@@ -4,8 +4,7 @@ Calculates derived metrics (Head-to-head, Streaks, Trends, WPA moments)
 to provide rich context for LLM analysis.
 """
 
-
-# ruff: noqa: PLR2004from __future__ import annotations
+from __future__ import annotations
 
 import json
 from datetime import date, datetime, timedelta
