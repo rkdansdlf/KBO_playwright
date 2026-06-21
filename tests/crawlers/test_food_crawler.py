@@ -1,4 +1,4 @@
-from src.crawlers.food_crawler import FoodCrawler
+from src.crawlers.food_crawler import TEAM_FOOD_SOURCES, FoodCrawler
 
 
 class TestParseFoodPage:
@@ -27,3 +27,8 @@ class TestParseFoodPage:
         result = self.crawler._parse_food_page(html, info)
         assert result[0]["vendor"]["stadium_id"] == "SAJIK"
         assert result[0]["vendor"]["order_method"] == "onsite"
+
+
+def test_food_sources_cover_seeded_refresh_sources():
+    assert TEAM_FOOD_SOURCES["ALL"]["source_key"] == "gujangfood_com"
+    assert TEAM_FOOD_SOURCES["NC"]["url"] == "https://www.ncdinos.com/dinos/stadium.do"
