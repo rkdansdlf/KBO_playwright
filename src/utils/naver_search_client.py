@@ -24,8 +24,9 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any, Literal
 
 import httpx
@@ -47,6 +48,11 @@ NOTICE_QUERIES: list[dict] = [
     {
         "query": "두산베어스 (취소 OR 공지 OR 우천 OR 게이트 OR 입장)",
         "team": "OB",
+        "notice_types": ["CANCEL", "GATE_CHANGE", "ENTRY_RULE"],
+    },
+    {
+        "query": "NC다이노스 (취소 OR 공지 OR 우천 OR 게이트 OR 입장 OR 이벤트)",
+        "team": "NC",
         "notice_types": ["CANCEL", "GATE_CHANGE", "ENTRY_RULE"],
     },
     {
@@ -90,8 +96,6 @@ def _parse_naver_date(pub_date_str: str) -> datetime | None:
 
 def _clean_html(text: str) -> str:
     """Remove Naver search result HTML tags (e.g. <b>, </b>)."""
-    import re
-
     return re.sub(r"<[^>]+>", "", text).strip()
 
 
@@ -182,7 +186,6 @@ class NaverSearchClient:
             days_back: Only return results from the last N days.
         """
         import asyncio
-        from datetime import timedelta
 
         cutoff = datetime.now() - timedelta(days=days_back)
         all_results: list[NaverSearchResult] = []

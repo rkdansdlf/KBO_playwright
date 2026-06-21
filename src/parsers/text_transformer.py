@@ -2,9 +2,11 @@
 Data transformer for cleansing and chunking extracted raw text before embedding.
 """
 
-from __future__ import annotations
+
+# ruff: noqa: PLR2004from __future__ import annotations
 
 import hashlib
+import os
 import re
 from typing import Any
 
@@ -41,8 +43,6 @@ class TextTransformer:
         Main entry point for chunking. Dispatches to the appropriate chunking strategy
         based on the document's category metadata and environment configuration.
         """
-        import os
-
         content = self.clean_text(doc.get("content", ""))
         meta = doc.get("meta", {}).copy()
         category = meta.get("category", "unknown")
@@ -159,11 +159,10 @@ class TextTransformer:
                         current_child = current_child[-child_overlap:] + "\n\n" + para
                     else:
                         current_child = para
+                elif current_child:
+                    current_child += "\n\n" + para
                 else:
-                    if current_child:
-                        current_child += "\n\n" + para
-                    else:
-                        current_child = para
+                    current_child = para
             if current_child:
                 child_texts.append(current_child)
 

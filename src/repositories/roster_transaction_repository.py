@@ -4,7 +4,7 @@ Repository for RosterTransaction operations.
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, timedelta
 
 from sqlalchemy import inspect, select
 from sqlalchemy.exc import SQLAlchemyError
@@ -80,8 +80,6 @@ class RosterTransactionRepository:
         return list(self.session.execute(stmt).scalars().all())
 
     def get_recent_by_team(self, team_id: str, days: int = 7) -> list[RosterTransaction]:
-        from datetime import timedelta
-
         since = date.today() - timedelta(days=days)
         stmt = (
             select(RosterTransaction)

@@ -5,6 +5,7 @@ Repository for saving game details, box scores, and normalized relay data.
 
 # ruff: noqa: PLR2004from __future__ import annotations
 
+import json
 import logging
 import os
 from collections.abc import Iterable
@@ -1271,8 +1272,6 @@ def _upsert_game_summary_entry(
 
 
 def _json_dumps(payload: dict[str, Any]) -> str:
-    import json
-
     return json.dumps(payload, ensure_ascii=False)
 
 

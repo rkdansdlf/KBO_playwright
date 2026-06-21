@@ -1,7 +1,9 @@
 """GameCenter box score crawler with structured outputs."""
 
-from __future__ import annotations
 
+# ruff: noqa: PLR2004from __future__ import annotations
+
+import argparse
 import asyncio
 import logging
 import os
@@ -749,7 +751,6 @@ class GameDetailCrawler:
             # Parse same-name suffix (e.g., "이승현(57)" or "김태훈(우)")
             row_uniform = row.get("cells", {}).get("등번호")
             uniform_no = row_uniform
-            import re
 
             m = re.search(r"\(([^)]+)\)", player_name)
             if m:
@@ -882,7 +883,6 @@ class GameDetailCrawler:
             # Parse same-name suffix (e.g., "이승현(57)" or "김태훈(우)")
             row_uniform = row.get("cells", {}).get("등번호")
             uniform_no = row_uniform
-            import re
 
             m = re.search(r"\(([^)]+)\)", player_name)
             if m:
@@ -1379,8 +1379,6 @@ class GameDetailCrawler:
 
 
 async def main() -> None:  # pragma: no cover
-    import argparse
-
     parser = argparse.ArgumentParser()
     parser.add_argument("--game_id", help="KBO Game ID (e.g., 20251013SKSS0)")
     parser.add_argument("--date", help="Game Date (YYYYMMDD)")

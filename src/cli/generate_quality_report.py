@@ -3,7 +3,8 @@ KBO Daily Data Quality Report Generator.
 Analyzes daily data integrity and statistical consistency.
 """
 
-from __future__ import annotations
+
+# ruff: noqa: PLR2004from __future__ import annotations
 
 import argparse
 import json
@@ -195,7 +196,7 @@ def _add_unique_category(summary: dict[str, Any], key: str, category: str) -> No
 
 
 def _audit_category_from_filename(filename: str) -> str:
-    return filename.split("_")[-1].replace(".json", "").upper()
+    return filename.rsplit("_", maxsplit=1)[-1].replace(".json", "").upper()
 
 
 def _record_auto_remediation_abort(summary: dict[str, Any], filename: str, content: dict[str, Any]) -> None:
@@ -270,8 +271,6 @@ def get_auto_remediation_summary(target_date_str: str, audit_dir: Path | None = 
     Scans logs/audit_fixes/ for files starting with target_date_str.
     Parses warning, abort, and fixed player details to return a status summary.
     """
-    import json
-
     audit_dir = audit_dir or _default_audit_fix_dir()
     summary = _empty_auto_remediation_summary()
 

@@ -6,6 +6,7 @@ Service to fetch vector embeddings from Gemini API or OpenRouter API.
 # ruff: noqa: PLR2004from __future__ import annotations
 
 import contextlib
+import json
 import logging
 import os
 from http import HTTPStatus
@@ -92,8 +93,6 @@ class EmbeddingService:
     def _load_cached_embeddings(self, hashes: list[str], model_name: str) -> dict[str, list[float]]:
         cached_map = {}
         try:
-            import json
-
             from sqlalchemy import select
 
             from src.db.engine import SessionLocal
