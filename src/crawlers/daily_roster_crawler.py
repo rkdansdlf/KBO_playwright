@@ -8,7 +8,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from collections.abc import Awaitable, Callable
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from typing import Any
 
 logger = logging.getLogger(__name__)
@@ -71,8 +71,6 @@ class DailyRosterCrawler:
                         await page.goto(self.base_url, wait_until="networkidle", timeout=NAV_TIMEOUT)
 
                 # Create a date range list
-                from datetime import timedelta
-
                 delta = e_date - s_date
                 dates = [s_date + timedelta(days=i) for i in range(delta.days + 1)]
 
@@ -244,7 +242,7 @@ class DailyRosterCrawler:
     def _clean_category(self, cat: str) -> str:
         # "투수 (14명)" -> "투수"
         if "(" in cat:
-            return cat.split("(")[0].strip()
+            return cat.split("(", maxsplit=1)[0].strip()
         return cat
 
 

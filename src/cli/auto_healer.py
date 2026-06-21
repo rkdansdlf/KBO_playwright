@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import json
 import logging
 from collections.abc import Sequence
 from datetime import datetime, timedelta
@@ -306,8 +307,6 @@ def _find_unverified_pbp_games(lookback_days: int = 3) -> list[dict]:
     with SessionLocal() as session:
         rows = session.execute(query, {"cutoff": cutoff}).fetchall()
         for row in rows:
-            import json
-
             payload = row.source_payload
             if isinstance(payload, str):
                 try:
@@ -355,7 +354,6 @@ async def run_pbp_healer_async(
             """,
         )
         results = []
-        import json
 
         with SessionLocal() as session:
             rows = session.execute(query, {"ids": tuple(target_game_ids)}).fetchall()

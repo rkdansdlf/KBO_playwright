@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import logging
+from datetime import datetime
 
 from playwright.async_api import Page, async_playwright
 from sqlalchemy.exc import SQLAlchemyError
@@ -22,8 +23,6 @@ class BroadcastCrawler:
         self.url = SCHEDULE
 
     async def run(self, year: int = None, month: int = None, save: bool = False) -> None:
-        from datetime import datetime
-
         year = year or datetime.now().year
         month = month or datetime.now().month
 

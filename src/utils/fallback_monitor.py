@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import json
 import logging
+from datetime import date, datetime
 
 from src.utils.alerting import SlackWebhookClient
 
@@ -55,8 +57,6 @@ class FallbackMonitor:
         수정 전 데이터 스냅샷을 logs/audit_fixes/ 폴더에 {date}_{player_id}_{type}.json 형태로 저장합니다.
         기존 백업 파일이 있으면 list에 append하여 덮어쓰기를 방지합니다.
         """
-        import json
-        from datetime import date, datetime
         from pathlib import Path
 
         class DateTimeEncoder(json.JSONEncoder):
@@ -108,8 +108,6 @@ class FallbackMonitor:
         """
         Saves an audit event (e.g. warning, abort) to logs/audit_fixes/{date}_{event_type}_{category}.json.
         """
-        import json
-        from datetime import datetime
         from pathlib import Path
 
         project_root = Path(__file__).resolve().parent.parent.parent

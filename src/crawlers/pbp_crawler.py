@@ -4,10 +4,12 @@ Navigaes directly to the Live Text View page to collect events.
 Computes WPA transitions based on the events.
 """
 
-from __future__ import annotations
+
+# ruff: noqa: PLR2004from __future__ import annotations
 
 import asyncio
 import logging
+import re
 from typing import Any
 
 from playwright.async_api import Error as PlaywrightError
@@ -291,8 +293,6 @@ class PBPCrawler:
         return s
 
     def _parse_inning_header(self, text: str, idx: int) -> dict[str, Any]:
-        import re
-
         match = re.search(r"(\d+)회(초|말)", text)
         if match:
             return {"inning": int(match.group(1)), "half": "top" if match.group(2) == "초" else "bottom"}
