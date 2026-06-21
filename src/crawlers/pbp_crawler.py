@@ -4,8 +4,7 @@ Navigaes directly to the Live Text View page to collect events.
 Computes WPA transitions based on the events.
 """
 
-
-# ruff: noqa: PLR2004from __future__ import annotations
+from __future__ import annotations
 
 import asyncio
 import logging

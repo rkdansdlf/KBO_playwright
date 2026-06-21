@@ -2,8 +2,7 @@
 Crawler for stadium seat section information from team websites.
 """
 
-
-# ruff: noqa: PLR2004from __future__ import annotations
+from __future__ import annotations
 
 import logging
 import re

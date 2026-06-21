@@ -2,8 +2,7 @@
 Service to fetch vector embeddings from Gemini API or OpenRouter API.
 """
 
-
-# ruff: noqa: PLR2004from __future__ import annotations
+from __future__ import annotations
 
 import contextlib
 import json

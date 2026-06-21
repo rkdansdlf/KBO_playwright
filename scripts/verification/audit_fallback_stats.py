@@ -482,6 +482,7 @@ class StatAudit:
                                 "calc_data": calc,
                                 "off_errors": off_errors,
                                 "calc_errors": calc_errors,
+                                "diffs": [f"errors {off_errors} vs {calc_errors}"],
                             }
                         )
 

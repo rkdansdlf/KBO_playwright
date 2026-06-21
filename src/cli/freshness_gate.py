@@ -64,9 +64,13 @@ def _freshness_base_query(session: Session) -> Query:
     )
 
 
-def _apply_freshness_date_filter(query: Query, target_date: str | None, days: int | None) -> Query:
+def _apply_freshness_date_filter(
+    query: Query, target_date: str | None, days: int | None, max_hours: int | None = None
+) -> Query:
     if target_date:
         return query.filter(Game.game_date == datetime.strptime(target_date, "%Y%m%d").date())
+    if max_hours:
+        return query.filter(Game.game_date >= (datetime.now() - timedelta(hours=max_hours)).date())
     if days:
         return query.filter(Game.game_date >= datetime.now().date() - timedelta(days=days))
     return query
@@ -180,8 +184,9 @@ def collect_freshness_issues(
     *,
     target_date: str | None = None,
     days: int | None = None,
+    max_hours: int | None = None,
 ) -> dict[str, list[str]]:
-    query = _apply_freshness_date_filter(_freshness_base_query(session), target_date, days)
+    query = _apply_freshness_date_filter(_freshness_base_query(session), target_date, days, max_hours)
     games = query.order_by(Game.game_date, Game.game_id).all()
     issues = _empty_issue_map()
 
@@ -220,8 +225,9 @@ def evaluate_freshness_gate(
     *,
     target_date: str | None = None,
     days: int | None = None,
+    max_hours: int | None = None,
 ) -> list[str]:
-    issues = collect_freshness_issues(session, target_date=target_date, days=days)
+    issues = collect_freshness_issues(session, target_date=target_date, days=days, max_hours=max_hours)
     failures: list[str] = []
     for key, game_ids in issues.items():
         if game_ids:
@@ -230,9 +236,11 @@ def evaluate_freshness_gate(
 
 
 def main(argv: Sequence[str] | None = None) -> int:
+    logging.basicConfig(level=logging.INFO, format="%(message)s")
     parser = argparse.ArgumentParser(description="Validate operational freshness requirements for completed games")
     parser.add_argument("--date", type=str, help="Target date in YYYYMMDD format")
     parser.add_argument("--days", type=int, help="Validate completed games from the last N days")
+    parser.add_argument("--max-hours", type=int, help="Validate completed games from the last N hours")
     parser.add_argument(
         "--source-url",
         type=str,
@@ -260,21 +268,20 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     try:
         with session_factory() as session:
-            issues = collect_freshness_issues(session, target_date=args.date, days=args.days)
-            failures = evaluate_freshness_gate(session, target_date=args.date, days=args.days)
+            issues = collect_freshness_issues(session, target_date=args.date, days=args.days, max_hours=args.max_hours)
+            failures = evaluate_freshness_gate(session, target_date=args.date, days=args.days, max_hours=args.max_hours)
     finally:
         if engine is not None:
             engine.dispose()
 
     if args.json:
         logger.info(json.dumps({"ok": not failures, "issues": issues}, ensure_ascii=False, indent=2))
+    elif failures:
+        logger.error("❌ Freshness gate failed")
+        for failure in failures:
+            logger.info("  - %s", failure)
     else:
-        if failures:
-            logger.error("❌ Freshness gate failed")
-            for failure in failures:
-                logger.info("  - %s", failure)
-        else:
-            logger.info("✅ Freshness gate passed")
+        logger.info("✅ Freshness gate passed")
 
     return 1 if failures else 0
 

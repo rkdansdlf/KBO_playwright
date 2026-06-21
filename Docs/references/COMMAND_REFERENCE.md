@@ -642,6 +642,31 @@ python3 -m src.cli.recalc_player_stats --season 2025 --save
 python3 -m src.cli.recalc_team_stats --season 2025 --save
 ```
 
+### 7. 크롤러 셀렉터 게이트 (Crawler Selector Gate)
+크롤러 셀렉터가 변경되거나 깨지는 것을 모니터링하기 위해 fixture 또는 live HTML을 대상으로 CSS 셀렉터 매칭 결과를 검증합니다.
+
+```bash
+# 기본 계약 검증 (셀렉터 설정 파일 기준)
+python3 -m src.cli.crawler_selector_gate --config Docs/references/crawler_selector_gate.json
+
+# 검증 결과를 JSON 포맷으로 출력
+python3 -m src.cli.crawler_selector_gate --config Docs/references/crawler_selector_gate.json --json
+
+# HTML 결과물 및 스크린샷 저장 폴더 설정
+python3 -m src.cli.crawler_selector_gate --config Docs/references/crawler_selector_gate.json --output-dir logs/selector_gate
+```
+
+### 8. 데이터 품질 회귀 체크 (Data Quality Regression Pack)
+데이터베이스의 정규 시즌 집계 결과와 PBP 등 transactional 데이터에 대해 PA 공식 검증, 불가능한 스탯 범위, 고아 데이터, NULL player_id 등의 무결성을 회귀 점검합니다.
+
+```bash
+# 기본 회귀 검증 실행 (기본 DB)
+python3 -m src.cli.data_quality_regression_pack
+
+# 특정 데이터베이스 URL 대상 검증 및 JSON 출력
+python3 -m src.cli.data_quality_regression_pack --database-url sqlite:///data/kbo_dev.db --json
+```
+
 ---
 
 ## 🚨 문제 해결
@@ -694,6 +719,20 @@ print(get_team_code('해태타이거즈', 1990))  # KIA 타이거즈로 매핑
 
 # OCI 팀/시즌 기준 데이터 확인
 ./venv/bin/python3 scripts/check_oci_summary.py
+```
+
+### 크롤러 장애 자동 진단 (Failure Diagnosis)
+크롤러 로그 파일을 분석하여 셀렉터 깨짐, 네트워크 타임아웃, DB 쓰기 락, 권한 오류 등을 자동으로 패턴 감지하고 해결 방향 및 가이드를 제시합니다.
+
+```bash
+# 로그 파일을 입력하여 직접 진단
+python3 -m src.cli.diagnose_crawler_failure logs/crawler_error.log
+
+# 표준 입력(stdin)으로부터 파이프라인으로 로그 전달
+cat logs/scheduler.log | python3 -m src.cli.diagnose_crawler_failure
+
+# 진단 결과를 JSON 포맷으로 출력
+python3 -m src.cli.diagnose_crawler_failure logs/crawler_error.log --json
 ```
 
 ---

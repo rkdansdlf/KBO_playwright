@@ -53,7 +53,7 @@ def parse_player_id_from_link(link_href: str) -> int | None:
     """링크에서 player_id 추출"""
     try:
         if "playerId=" in link_href:
-            player_id_str = link_href.split("playerId=")[1].split("&")[0]
+            player_id_str = link_href.split("playerId=")[1].split("&", maxsplit=1)[0]
             return int(player_id_str)
     except (ValueError, IndexError):
         pass
