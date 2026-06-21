@@ -26,7 +26,7 @@ async def run(args: argparse.Namespace) -> int:
 def build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Crawl KBO official event/promotion links")
     parser.add_argument("--save", action="store_true", help="Save raw snapshot and extracted links")
-    parser.add_argument("--url", default="https://www.koreabaseball.com", help="KBO official page URL to inspect")
+    parser.add_argument("--url", help="Single KBO official event page URL to inspect")
     return parser
 
 
