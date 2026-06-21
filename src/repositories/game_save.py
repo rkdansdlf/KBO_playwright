@@ -12,6 +12,7 @@ from typing import Any
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
+from src.constants import GAME_ID_FULL_LEN, GAME_ID_MIN_LEN
 from src.db.engine import SessionLocal
 from src.models.game import (
     Game,
@@ -763,11 +764,11 @@ def save_pregame_lineups(preview_data: dict[str, Any]) -> bool:
 
     season_year = game_date.year
     away_code = resolve_team_code(preview_data.get("away_team_name"), season_year) or team_code_from_game_id_segment(
-        provisional_game_id[8:10] if len(provisional_game_id) >= 10 else None,
+        provisional_game_id[8:10] if len(provisional_game_id) >= GAME_ID_MIN_LEN else None,
         season_year,
     )
     home_code = resolve_team_code(preview_data.get("home_team_name"), season_year) or team_code_from_game_id_segment(
-        provisional_game_id[10:12] if len(provisional_game_id) >= 12 else None,
+        provisional_game_id[10:12] if len(provisional_game_id) >= GAME_ID_FULL_LEN else None,
         season_year,
     )
     game_id, original_game_id = _canonicalize_game_id_for_payload(

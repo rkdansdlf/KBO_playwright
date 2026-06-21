@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
 
+from src.constants import SURROGATE_PLAYER_ID_BOUNDARY
 from src.models.player import Player, PlayerBasic, PlayerSeasonBatting, PlayerSeasonPitching
 
 ALIAS_CSV_PATH = Path(__file__).resolve().parent.parent.parent / "data" / "player_name_aliases.csv"
@@ -212,7 +213,7 @@ class PlayerIdResolver:
         candidate_ids: Iterable[int | str | None],
     ) -> int | None:
         candidates = sorted({int(pid) for pid in candidate_ids if pid is not None})
-        if team_code and candidates and all(pid >= 900000 for pid in candidates):
+        if team_code and candidates and all(pid >= SURROGATE_PLAYER_ID_BOUNDARY for pid in candidates):
             if self.strict_game_resolution:
                 return self._return_ambiguous(cache_key, player_name, team_code, season, candidates)
             existing_unknown_id = self._find_existing_unknown_player(player_name, team_code, uniform_no)
@@ -705,7 +706,7 @@ class PlayerIdResolver:
     def _find_existing_unknown_player(self, name: str, team_code: str, uniform_no: str | None) -> int | None:
         team_name = self._unknown_profile_team(team_code)
         stmt = select(PlayerBasic.player_id).where(
-            PlayerBasic.player_id >= 900000,
+            PlayerBasic.player_id >= SURROGATE_PLAYER_ID_BOUNDARY,
             PlayerBasic.name == name,
         )
         if team_name:
@@ -764,7 +765,9 @@ class PlayerIdResolver:
                     continue
                 candidate_ids.add(int(player_id))
 
-        official_ids = {pid for pid in self._filter_surrogate_ids(candidate_ids, player_name) if pid < 900000}
+        official_ids = {
+            pid for pid in self._filter_surrogate_ids(candidate_ids, player_name) if pid < SURROGATE_PLAYER_ID_BOUNDARY
+        }
         if len(official_ids) == 1:
             return next(iter(official_ids))
         return None
@@ -779,13 +782,13 @@ class PlayerIdResolver:
         # Generate a large fake ID (>900000)
         stmt = (
             select(PlayerBasic.player_id)
-            .where(PlayerBasic.player_id >= 900000)
+            .where(PlayerBasic.player_id >= SURROGATE_PLAYER_ID_BOUNDARY)
             .order_by(PlayerBasic.player_id.desc())
             .limit(1)
         )
         max_id = self.session.execute(stmt).scalar()
-        if max_id is None or max_id < 900000:
-            new_id = 900000
+        if max_id is None or max_id < SURROGATE_PLAYER_ID_BOUNDARY:
+            new_id = SURROGATE_PLAYER_ID_BOUNDARY
         else:
             new_id = max_id + 1
 

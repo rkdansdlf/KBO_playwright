@@ -3,11 +3,13 @@ Service to enrich text chunk metadata using Gemini API (via Google or OpenRouter
 Extracts keywords, summaries, and expected questions to boost RAG search match rate.
 """
 
-from __future__ import annotations
+
+# ruff: noqa: PLR2004from __future__ import annotations
 
 import json
 import logging
 import os
+from http import HTTPStatus
 from typing import Any
 
 import httpx
@@ -68,7 +70,7 @@ class MetadataEnrichmentService:
         try:
             with httpx.Client(headers=headers, timeout=15.0) as client:
                 res = client.post(url, json=payload)
-                if res.status_code == 200:
+                if res.status_code == HTTPStatus.OK:
                     data = res.json()
                     content_str = data.get("choices", [{}])[0].get("message", {}).get("content", "")
                     return self._parse_json_response(content_str)
@@ -89,7 +91,7 @@ class MetadataEnrichmentService:
         try:
             with httpx.Client(headers=headers, timeout=15.0) as client:
                 res = client.post(url, json=payload)
-                if res.status_code == 200:
+                if res.status_code == HTTPStatus.OK:
                     data = res.json()
                     content_str = (
                         data.get("candidates", [{}])[0].get("content", {}).get("parts", [{}])[0].get("text", "")

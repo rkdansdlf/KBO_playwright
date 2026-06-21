@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime, time
+from http import HTTPStatus
 from typing import Any
 from urllib.parse import urlparse
 
@@ -146,7 +147,7 @@ class TicketCrawler:
                 host = urlparse(self.kbo_ticket_url).hostname or "koreabaseball.com"
                 await throttle.wait(host)
                 resp = await client.get(self.kbo_ticket_url)
-                if resp.status_code != 200:
+                if resp.status_code != HTTPStatus.OK:
                     return []
                 html = resp.text
                 self._raw_pages.append(
@@ -214,7 +215,7 @@ class TicketCrawler:
                     host = urlparse(url).hostname or "koreabaseball.com"
                     await throttle.wait(host)
                     resp = await c.get(url)
-                    if resp.status_code != 200:
+                    if resp.status_code != HTTPStatus.OK:
                         continue
                     html = resp.text
                     source_key = self.TICKET_SOURCE_KEY_MAP.get(team_code, "")
@@ -245,7 +246,7 @@ class TicketCrawler:
                 host = urlparse(url).hostname or "koreabaseball.com"
                 await throttle.wait(host)
                 resp = await c.get(url)
-                if resp.status_code != 200:
+                if resp.status_code != HTTPStatus.OK:
                     return []
                 html = resp.text
                 self._raw_pages.append(

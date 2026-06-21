@@ -18,6 +18,7 @@ from sqlalchemy import func, inspect, text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
+from src.constants import DATE_STR_LEN
 from src.models.broadcast import GameBroadcast
 from src.models.game import (
     GameBattingStat,
@@ -57,7 +58,7 @@ def normalize_yyyymmdd(value: str | date | datetime | None) -> str:
     if isinstance(value, date):
         return value.strftime("%Y%m%d")
     normalized = str(value).replace("-", "").strip()
-    if len(normalized) != 8 or not normalized.isdigit():
+    if len(normalized) != DATE_STR_LEN or not normalized.isdigit():
         msg = f"Invalid date: {value!r}. Use YYYYMMDD."
         raise ValueError(msg)
     datetime.strptime(normalized, "%Y%m%d")

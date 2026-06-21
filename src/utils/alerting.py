@@ -5,6 +5,7 @@ import logging
 import os
 import urllib.error
 import urllib.request
+from http import HTTPStatus
 from typing import Any
 
 logger = logging.getLogger(__name__)
@@ -60,7 +61,7 @@ class TelegramBotClient:
 
         try:
             with urllib.request.urlopen(req, timeout=10) as response:
-                return response.status == 200
+                return response.status == HTTPStatus.OK
         except ALERTING_EXCEPTIONS:
             logger.exception("Failed to send Telegram message")
             return False

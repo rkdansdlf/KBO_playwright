@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import logging
 
+from src.constants import MAX_INNINGS, MAX_OUTS
+
 logger = logging.getLogger(__name__)
 """
 WPA (Win Probability Added) Calculator Service.
@@ -116,11 +118,11 @@ class WPACalculator:
         import math
 
         # End Game Conditions
-        if inning >= 9 and is_bottom and score_diff > 0:
+        if inning >= MAX_INNINGS and is_bottom and score_diff > 0:
             return 1.0
-        if inning >= 9 and not is_bottom and score_diff > 0 and outs == 3:
+        if inning >= MAX_INNINGS and not is_bottom and score_diff > 0 and outs == MAX_OUTS:
             return 1.0
-        if inning >= 9 and is_bottom and score_diff < 0 and outs == 3:
+        if inning >= MAX_INNINGS and is_bottom and score_diff < 0 and outs == MAX_OUTS:
             return 0.0
 
         # Run Expectancy Table (simplified)

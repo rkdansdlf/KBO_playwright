@@ -2,9 +2,12 @@
 Utility helpers for mapping KBO team names to canonical short codes.
 """
 
-from __future__ import annotations
+
+# ruff: noqa: PLR2004from __future__ import annotations
 
 import re
+
+from src.constants import DATE_STR_LEN
 
 # Canonical KBO short codes (aligned with modern franchise IDs)
 TEAM_NAME_TO_CODE = {
@@ -148,7 +151,7 @@ def build_kbo_game_id(
         return None
 
     date_part = str(game_date).replace("-", "").strip()
-    if len(date_part) != 8 or not date_part.isdigit():
+    if len(date_part) != DATE_STR_LEN or not date_part.isdigit():
         return None
 
     year = season_year

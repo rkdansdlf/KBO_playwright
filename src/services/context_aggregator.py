@@ -4,7 +4,8 @@ Calculates derived metrics (Head-to-head, Streaks, Trends, WPA moments)
 to provide rich context for LLM analysis.
 """
 
-from __future__ import annotations
+
+# ruff: noqa: PLR2004from __future__ import annotations
 
 import json
 from datetime import date, datetime, timedelta
@@ -460,13 +461,12 @@ class ContextAggregator:
                     b_wins += 1
                 else:
                     draws += 1
+            elif g.away_score > g.home_score:
+                a_wins += 1
+            elif g.away_score < g.home_score:
+                b_wins += 1
             else:
-                if g.away_score > g.home_score:
-                    a_wins += 1
-                elif g.away_score < g.home_score:
-                    b_wins += 1
-                else:
-                    draws += 1
+                draws += 1
 
         superior = team_a if a_wins > b_wins else team_b if b_wins > a_wins else "동률"
 
@@ -648,13 +648,12 @@ class ContextAggregator:
                     b_wins += 1
                 else:
                     draws += 1
+            elif g.away_score > g.home_score:
+                a_wins += 1
+            elif g.away_score < g.home_score:
+                b_wins += 1
             else:
-                if g.away_score > g.home_score:
-                    a_wins += 1
-                elif g.away_score < g.home_score:
-                    b_wins += 1
-                else:
-                    draws += 1
+                draws += 1
 
         return {
             "season_id": sample_game.season_id,

@@ -2,7 +2,8 @@
 Player sync: players, identities, basic info, movements, FA contracts.
 """
 
-from __future__ import annotations
+
+# ruff: noqa: PLR2004from __future__ import annotations
 
 import logging
 from typing import Any

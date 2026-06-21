@@ -9,6 +9,7 @@ from typing import Any
 
 from bs4 import BeautifulSoup
 
+from src.constants import GAME_ID_FULL_LEN, GAME_ID_MIN_LEN
 from src.utils.schedule_validation import split_schedule_game_id
 from src.utils.team_codes import team_code_from_game_id_segment
 
@@ -46,8 +47,8 @@ def parse_schedule_html(
             _, away_segment, home_segment, doubleheader_no = id_parts
             doubleheader_no = int(doubleheader_no)
         else:
-            away_segment = game_id[8:10] if len(game_id) >= 10 else None
-            home_segment = game_id[10:12] if len(game_id) >= 12 else None
+            away_segment = game_id[8:10] if len(game_id) >= GAME_ID_MIN_LEN else None
+            home_segment = game_id[10:12] if len(game_id) >= GAME_ID_FULL_LEN else None
             doubleheader_no = int(game_id[-1]) if game_id[-1].isdigit() else 0
 
         games[game_id] = {

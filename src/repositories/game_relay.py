@@ -14,6 +14,7 @@ from typing import Any
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
+from src.constants import GAME_ID_FULL_LEN, GAME_ID_MIN_LEN, GAME_ID_YEAR_LEN
 from src.db.engine import SessionLocal
 from src.models.game import (
     Game,
@@ -642,9 +643,13 @@ def _relay_resolution_context(session: Session, game_id: str) -> _RelayResolutio
     away_team_code = None
     home_team_code = None
     try:
-        season_year = int(game_id[:4]) if len(game_id) >= 4 else None
-        away_team_code = team_code_from_game_id_segment(game_id[8:10], season_year) if len(game_id) >= 10 else None
-        home_team_code = team_code_from_game_id_segment(game_id[10:12], season_year) if len(game_id) >= 12 else None
+        season_year = int(game_id[:4]) if len(game_id) >= GAME_ID_YEAR_LEN else None
+        away_team_code = (
+            team_code_from_game_id_segment(game_id[8:10], season_year) if len(game_id) >= GAME_ID_MIN_LEN else None
+        )
+        home_team_code = (
+            team_code_from_game_id_segment(game_id[10:12], season_year) if len(game_id) >= GAME_ID_FULL_LEN else None
+        )
     except (ValueError, IndexError):
         logger.debug("Failed to parse team codes from game_id: %s", game_id)
 
@@ -907,7 +912,7 @@ def save_relay_data(
     *,
     source_name: str | None = None,
     notes: str | None = None,
-    _allow_derived_pbp: bool = True,
+    allow_derived_pbp: bool = True,  # noqa: ARG001
     write_contract: GameWriteContract | None = None,
     source_stage: str = "relay",
     source_crawler: str = "RelayCrawler",

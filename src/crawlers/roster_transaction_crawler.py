@@ -11,6 +11,7 @@ import asyncio
 import logging
 import re
 from datetime import date, datetime
+from http import HTTPStatus
 from typing import Any
 from urllib.parse import urlparse
 
@@ -90,7 +91,7 @@ class RosterTransactionCrawler:
                 host = urlparse(url).hostname or "koreabaseball.com"
                 await throttle.wait(host)
                 resp = await client.get(url)
-                if resp.status_code != 200:
+                if resp.status_code != HTTPStatus.OK:
                     return []
                 html = resp.text
                 self._raw_pages.append(

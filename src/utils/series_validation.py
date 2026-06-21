@@ -2,10 +2,22 @@ from __future__ import annotations
 
 import logging
 
+from src.constants import (
+    KBO_90S_ERA_END,
+    KBO_2000S_ERA_END,
+    KBO_EARLY_ERA_END,
+    KBO_FOUNDING_YEAR,
+    KBO_MID_80S_ERA_END,
+    KBO_PLAYOFF_ERA_END,
+    KBO_SEMI_PLAYOFF_ERA_END,
+)
+
 logger = logging.getLogger(__name__)
 """
 KBO 연도별 시리즈 존재 여부 검증 유틸리티
 """
+
+MINIMUM_SERIES_RATIO = 0.5
 
 
 def get_available_series_by_year(year: int) -> list[str]:
@@ -22,35 +34,35 @@ def get_available_series_by_year(year: int) -> list[str]:
     base_series = ["regular"]
 
     # 연도별 추가 시리즈
-    if year >= 1982:  # KBO 창설 이후
-        if year <= 1985:
-            # 1982-1985: 정규시즌 + 한국시리즈만
+    if year >= KBO_FOUNDING_YEAR:  # KBO 창설 이후
+        if year <= KBO_EARLY_ERA_END:
+            # KBO_FOUNDING_YEAR-KBO_EARLY_ERA_END: 정규시즌 + 한국시리즈만
             return [*base_series, "korean_series"]
 
-        if year <= 1988:
-            # 1986-1988: 정규시즌 + 한국시리즈 + 시범경기
+        if year <= KBO_MID_80S_ERA_END:
+            # 1986-KBO_MID_80S_ERA_END: 정규시즌 + 한국시리즈 + 시범경기
             return [*base_series, "korean_series", "exhibition"]
 
-        if year <= 1999:
-            # 1989-1999: 현재와 유사하지만 플레이오프 체계 다름
+        if year <= KBO_90S_ERA_END:
+            # 1989-KBO_90S_ERA_END: 현재와 유사하지만 플레이오프 체계 다름
             return [*base_series, "korean_series", "exhibition"]
 
-        if year <= 2001:
-            # 2000-2001: 플레이오프 없음, 정규시즌 1위가 직접 한국시리즈
+        if year <= KBO_2000S_ERA_END:
+            # 2000-KBO_2000S_ERA_END: 플레이오프 없음, 정규시즌 1위가 직접 한국시리즈
             return [*base_series, "korean_series", "exhibition"]
 
-        if year <= 2006:
-            # 2002-2006: 플레이오프 도입
+        if year <= KBO_PLAYOFF_ERA_END:
+            # 2002-KBO_PLAYOFF_ERA_END: 플레이오프 도입
             return [*base_series, "korean_series", "playoff", "exhibition"]
 
-        if year <= 2014:
-            # 2007-2014: 플레이오프 확장
+        if year <= KBO_SEMI_PLAYOFF_ERA_END:
+            # 2007-KBO_SEMI_PLAYOFF_ERA_END: 플레이오프 확장
             return [*base_series, "korean_series", "playoff", "semi_playoff", "exhibition"]
 
         # 2015-현재: 와일드카드 도입
         return [*base_series, "korean_series", "playoff", "semi_playoff", "wildcard", "exhibition"]
 
-    # 1982년 이전은 KBO 창설 전
+    # KBO_FOUNDING_YEAR년 이전은 KBO 창설 전
     return []
 
 
@@ -96,9 +108,9 @@ def get_series_info() -> dict[str, dict]:
     시리즈별 상세 정보 반환
     """
     return {
-        "regular": {"name": "KBO 정규시즌", "description": "4월-10월 정규 경기", "since": 1982},
+        "regular": {"name": "KBO 정규시즌", "description": "4월-10월 정규 경기", "since": KBO_FOUNDING_YEAR},
         "exhibition": {"name": "KBO 시범경기", "description": "시즌 전 연습 경기", "since": 1986},
-        "korean_series": {"name": "KBO 한국시리즈", "description": "시즌 최종 우승 결정전", "since": 1982},
+        "korean_series": {"name": "KBO 한국시리즈", "description": "시즌 최종 우승 결정전", "since": KBO_FOUNDING_YEAR},
         "playoff": {"name": "KBO 플레이오프", "description": "포스트시즌 결승", "since": 2002},
         "semi_playoff": {"name": "KBO 준플레이오프", "description": "포스트시즌 준결승", "since": 2007},
         "wildcard": {"name": "KBO 와일드카드", "description": "포스트시즌 진출 결정전", "since": 2015},
@@ -116,8 +128,8 @@ def validate_year_series_combination(year: int, series_key: str) -> tuple:
     Returns:
         (is_valid: bool, message: str)
     """
-    if year < 1982:
-        return False, "KBO는 1982년에 창설되었습니다."
+    if year < KBO_FOUNDING_YEAR:
+        return False, f"KBO는 {KBO_FOUNDING_YEAR}년에 창설되었습니다."
 
     if not is_series_available(year, series_key):
         series_info = get_series_info()
@@ -155,7 +167,7 @@ def get_recommended_series_for_period(start_year: int, end_year: int) -> list[st
     # 50% 이상의 연도에 존재하는 시리즈만 권장
     recommended = []
     for series, count in sorted_series:
-        if count / total_years >= 0.5:  # 50% 이상
+        if count / total_years >= MINIMUM_SERIES_RATIO:
             recommended.append(series)
 
     return recommended
@@ -165,14 +177,14 @@ if __name__ == "__main__":
     # 테스트 코드
     logger.info("=== KBO 시리즈 연도별 검증 테스트 ===")
 
-    test_years = [1990, 2000, 2001, 2002, 2010, 2015, 2025]
+    test_years = [1990, 2000, KBO_2000S_ERA_END, 2002, 2010, 2015, 2025]
 
     for year in test_years:
         available = get_available_series_by_year(year)
         logger.info("%s년: %s", year, ", ".join(available))
 
     logger.info("\n=== 특정 조합 검증 ===")
-    test_cases = [(2001, "playoff"), (2000, "korean_series"), (1990, "wildcard"), (2015, "wildcard")]
+    test_cases = [(KBO_2000S_ERA_END, "playoff"), (2000, "korean_series"), (1990, "wildcard"), (2015, "wildcard")]
 
     for year, series in test_cases:
         valid, msg = validate_year_series_combination(year, series)

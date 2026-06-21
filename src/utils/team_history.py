@@ -2,7 +2,8 @@
 Team history helpers loaded from Docs/team_history definitions.
 """
 
-from __future__ import annotations
+
+# ruff: noqa: PLR2004from __future__ import annotations
 
 from collections.abc import Iterable
 from dataclasses import dataclass

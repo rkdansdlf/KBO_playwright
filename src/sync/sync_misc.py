@@ -3,7 +3,8 @@ Miscellaneous sync: franchises, teams, awards, stadium info, food, ticket, rag, 
 Stadium real-time data: transit times, congestion, operation notices.
 """
 
-from __future__ import annotations
+
+# ruff: noqa: PLR2004from __future__ import annotations
 
 import json
 import logging
