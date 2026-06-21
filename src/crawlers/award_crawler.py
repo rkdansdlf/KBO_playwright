@@ -32,9 +32,29 @@ class AwardCrawler:
             "series_prize": "https://www.koreabaseball.com/Player/Awards/SeriesPrize.aspx",
         }
 
-    async def run(self, award_types: list[str] = None, save: bool = False) -> None:
+    def _resolve_award_types(self, award_types: list[str] | None) -> list[str]:
         if not award_types or "all" in award_types:
-            award_types = list(self.base_url_map.keys())
+            return list(self.base_url_map.keys())
+        return award_types
+
+    async def _crawl_award_type(self, page: Page, award_type: str) -> list[dict]:
+        if award_type == "player_prize":
+            return await self.crawl_player_prize(page)
+        if award_type == "golden_glove":
+            return await self.crawl_golden_glove(page)
+        if award_type == "defense_prize":
+            return await self.crawl_defense_prize(page)
+        if award_type == "series_prize":
+            return await self.crawl_series_prize(page)
+        return []
+
+    def _log_dry_run(self, all_data: list[dict]) -> None:
+        for d in all_data[:5]:
+            logger.info(d)
+        logger.info("... and %s more.", len(all_data) - 5)
+
+    async def run(self, award_types: list[str] | None = None, save: bool = False) -> None:
+        award_types = self._resolve_award_types(award_types)
 
         async with async_playwright() as p:
             browser = await p.chromium.launch(headless=True)
@@ -53,16 +73,7 @@ class AwardCrawler:
                 await page.goto(url, wait_until="networkidle")
 
                 try:
-                    if atype == "player_prize":
-                        data = await self.crawl_player_prize(page)
-                    elif atype == "golden_glove":
-                        data = await self.crawl_golden_glove(page)
-                    elif atype == "defense_prize":
-                        data = await self.crawl_defense_prize(page)
-                    elif atype == "series_prize":
-                        data = await self.crawl_series_prize(page)
-                    else:
-                        data = []
+                    data = await self._crawl_award_type(page, atype)
                 except AWARD_CRAWL_EXCEPTIONS:
                     logger.exception("Error crawling %s", atype)
                     data = []
@@ -75,10 +86,7 @@ class AwardCrawler:
             if save:
                 self.save_to_db(all_data)
             else:
-                # Dry run print
-                for d in all_data[:5]:
-                    logger.info(d)
-                logger.info("... and %s more.", len(all_data) - 5)
+                self._log_dry_run(all_data)
 
     async def crawl_player_prize(self, page: Page) -> list[dict]:
         """
