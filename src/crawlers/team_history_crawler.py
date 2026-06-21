@@ -5,7 +5,7 @@ import contextlib
 import logging
 
 from playwright.async_api import Error as PlaywrightError
-from playwright.async_api import async_playwright
+from playwright.async_api import Locator, async_playwright
 from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
 
@@ -73,84 +73,72 @@ class TeamHistoryCrawler:
         team_slots = [{"name": None, "logo": None} for _ in range(12)]
 
         for row in rows:
-            # 1. Get Year
-            # The year is in the 'th'.
-            year_th = row.locator("th")
-            if await year_th.count() == 0:
+            year = await self._parse_history_year(row)
+            if year is None:
                 continue
-
-            year_text = await year_th.inner_text()
-            try:
-                year = int(year_text.strip())
-            except ValueError:
-                logger.warning("Skipping invalid year: %s", year_text)
-                continue
-
-            # 2. Iterate Cells
             cells = await row.locator("td").all()
-
-            # Subagent said 12 columns. Cells list should be length 12?
-            # Or colspan might interfere? KBO history table usually fixed grid.
-
             for i, cell in enumerate(cells):
                 if i >= 12:
                     break  # Safety
-
-                # Check for content
-                # Structure:
-                # <a> <span class='nums'>Rank</span> <img alt='Name'> </a>
-                # OR <a> <span class='nums'>Rank</span> <span>Name</span> </a>
-
-                # Parse Rank
-                rank_el = cell.locator("span.nums")
-                rank = None
-                if await rank_el.count() > 0:
-                    with contextlib.suppress(*TEAM_HISTORY_PARSE_EXCEPTIONS):
-                        rank = int((await rank_el.inner_text()).strip())
-
-                # Parse Name/Logo (Updates identity if present)
-                # Look for img or name span
-                img = cell.locator("img")
-                name_span = cell.locator("span:not(.nums)")
-
-                new_name = None
-                new_logo = None
-
-                if await img.count() > 0:
-                    new_name = await img.get_attribute("alt")
-                    new_logo = await img.get_attribute("src")
-                elif await name_span.count() > 0:
-                    new_name = (await name_span.inner_text()).strip()
-
-                # Update State
-                if new_name:
-                    team_slots[i]["name"] = new_name
-                if new_logo:
-                    team_slots[i]["logo"] = new_logo
-
-                if rank is not None:
-                    # Identify Team Code from Name
-                    # We need to map "Samsung Lions" -> "SS"
-                    # We can resolve this during SAVE phase or here.
-                    # Let's simple store the raw data.
-
-                    current_name = team_slots[i]["name"]
-                    current_logo = team_slots[i]["logo"]
-
-                    if current_name:
-                        history_data.append(
-                            {
-                                "season": year,
-                                "team_name": current_name,
-                                "logo_url": current_logo,
-                                "ranking": rank,
-                                "slot_index": i,  # Debug info
-                            },
-                        )
+                entry = await self._parse_history_cell(cell, i, year, team_slots)
+                if entry is not None:
+                    history_data.append(entry)
 
             logger.info("Processed %s: %s teams.", year, len([h for h in history_data if h["season"] == year]))
 
         return history_data
+
+    async def _parse_history_year(self, row: Locator) -> int | None:
+        year_th = row.locator("th")
+        if await year_th.count() == 0:
+            return None
+        year_text = await year_th.inner_text()
+        try:
+            return int(year_text.strip())
+        except ValueError:
+            logger.warning("Skipping invalid year: %s", year_text)
+            return None
+
+    async def _parse_history_cell(
+        self,
+        cell: Locator,
+        slot_index: int,
+        year: int,
+        team_slots: list[dict[str, str | None]],
+    ) -> dict | None:
+        rank = await self._parse_rank(cell)
+        new_name, new_logo = await self._parse_team_identity(cell)
+        if new_name:
+            team_slots[slot_index]["name"] = new_name
+        if new_logo:
+            team_slots[slot_index]["logo"] = new_logo
+        current_name = team_slots[slot_index]["name"]
+        if rank is None or not current_name:
+            return None
+        return {
+            "season": year,
+            "team_name": current_name,
+            "logo_url": team_slots[slot_index]["logo"],
+            "ranking": rank,
+            "slot_index": slot_index,
+        }
+
+    async def _parse_rank(self, cell: Locator) -> int | None:
+        rank_el = cell.locator("span.nums")
+        if await rank_el.count() == 0:
+            return None
+        with contextlib.suppress(*TEAM_HISTORY_PARSE_EXCEPTIONS):
+            return int((await rank_el.inner_text()).strip())
+        return None
+
+    async def _parse_team_identity(self, cell: Locator) -> tuple[str | None, str | None]:
+        img = cell.locator("img")
+        name_span = cell.locator("span:not(.nums)")
+        if await img.count() > 0:
+            return await img.get_attribute("alt"), await img.get_attribute("src")
+        if await name_span.count() > 0:
+            return (await name_span.inner_text()).strip(), None
+        return None, None
 
     async def save(self, data: list[dict]) -> None:
         logger.info("💾 Saving %s history entries...", len(data))
