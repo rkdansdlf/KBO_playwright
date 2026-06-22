@@ -10,9 +10,9 @@ import sqlite3
 from datetime import datetime
 from typing import Any
 
+from playwright.sync_api import ElementHandle, Page, sync_playwright
 from playwright.sync_api import Error as PlaywrightError
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
-from playwright.sync_api import sync_playwright
 
 from src.crawlers.selectors import FIELDING_STATS
 from src.utils.playwright_blocking import install_sync_resource_blocking
@@ -52,6 +52,240 @@ def build_fielding_crawl_summary(records: list[dict[str, Any]]) -> tuple[dict[st
     return summary, valid_records
 
 
+def _init_fielding_page(page: Page, url: str, year: int, policy: RequestPolicy) -> bool:
+    logger.info("📊 수비 기록 페이지 접속: %s", url)
+    try:
+        page.goto(url, wait_until="load", timeout=LONG_TIMEOUT)
+        page.wait_for_load_state("networkidle", timeout=SEL_TIMEOUT)
+    except CRAWLER_EXCEPTIONS:
+        logger.exception("⚠️ 페이지 초기 대기 중 경고 (무시 가능)")
+    policy.delay()
+
+    try:
+        year_select = page.query_selector(FIELDING_STATS.season_dropdown)
+        if year_select:
+            page.select_option(FIELDING_STATS.season_dropdown, str(year))
+            with contextlib.suppress(PlaywrightError, PlaywrightTimeoutError):
+                page.wait_for_load_state("networkidle", timeout=SEL_TIMEOUT)
+            policy.delay()
+            logger.info("✅ %s년 데이터 선택 완료", year)
+    except CRAWLER_EXCEPTIONS:
+        logger.exception("⚠️ 연도 선택 중 오류 발생")
+        return False
+    else:
+        return True
+
+
+def _get_team_list(page: Page) -> list[tuple[str, str]]:
+    team_select = page.query_selector(FIELDING_STATS.team_dropdown)
+    if not team_select:
+        logger.warning("⚠️ 팀 선택 드롭다운을 찾을 수 없습니다.")
+        return []
+
+    options = team_select.query_selector_all("option")
+    teams = []
+    for opt in options:
+        val = opt.get_attribute("value")
+        text = opt.inner_text().strip()
+        if val and val != "":
+            teams.append((val, text))
+    logger.info("📋 발견된 팀 목록: %s", [t[1] for t in teams])
+    return teams
+
+
+def _go_to_page(page: Page, current_page: int, policy: RequestPolicy) -> None:
+    try:
+        paging_elem = page.query_selector(FIELDING_STATS.paging)
+        if not paging_elem:
+            return
+        page_link = next(
+            (link for link in paging_elem.query_selector_all("a") if link.inner_text().strip() == str(current_page)),
+            None,
+        )
+        if page_link:
+            with page.expect_response("**/Record/Player/Defense/Basic.aspx", timeout=RESP_TIMEOUT):
+                page_link.click()
+            page.wait_for_load_state("networkidle", timeout=SEL_TIMEOUT)
+            policy.delay()
+    except CRAWLER_EXCEPTIONS:
+        logger.exception("   ⚠️ 페이지 %s 이동 중 오류", current_page)
+
+
+def _parse_fielding_row(
+    row: ElementHandle,
+    year: int,
+    position_mapping: dict[str, str],
+    fielding_data_map: dict[tuple[str, str, str], dict[str, Any]],
+) -> None:
+    cells = row.query_selector_all("td")
+    if len(cells) < 13:
+        return
+    try:
+        player_link = cells[1].query_selector("a")
+        player_id = player_link.get_attribute("href").split("playerId=")[1].split("&")[0] if player_link else None
+        if not player_id:
+            return
+
+        p_name = cells[1].inner_text().strip()
+        row_team = cells[2].inner_text().strip()
+        pos_text = cells[3].inner_text().strip()
+        pos_id = position_mapping.get(pos_text, pos_text)
+        team_id = resolve_team_code(row_team, year) or row_team
+
+        record = {
+            "player_id": player_id,
+            "player_name": p_name,
+            "team_id": team_id,
+            "year": year,
+            "position_id": pos_id,
+            "games": safe_int(cells[4].inner_text()),
+            "games_started": safe_int(cells[5].inner_text()),
+            "innings": parse_innings(cells[6].inner_text()),
+            "errors": safe_int(cells[7].inner_text()),
+            "pickoffs": safe_int(cells[8].inner_text()),
+            "putouts": safe_int(cells[9].inner_text()),
+            "assists": safe_int(cells[10].inner_text()),
+            "double_plays": safe_int(cells[11].inner_text()),
+            "fielding_pct": safe_float(cells[12].inner_text()),
+            "source": "CRAWLER",
+        }
+        fielding_data_map[(player_id, team_id, pos_id)] = record
+    except CRAWLER_EXCEPTIONS:
+        logger.exception("   ⚠️ 데이터 행 파싱 오류")
+
+
+def _crawl_team_fielding_basic(
+    page: Page,
+    team_val: str,
+    team_name: str,
+    year: int,
+    position_mapping: dict[str, str],
+    fielding_data_map: dict[tuple[str, str, str], dict[str, Any]],
+    policy: RequestPolicy,
+) -> None:
+    try:
+        logger.info("\n🏢 [%s] 수비 기록 크롤링 중...", team_name)
+        page.select_option(FIELDING_STATS.position_dropdown, value="")
+        policy.delay()
+
+        with page.expect_response("**/Record/Player/Defense/Basic.aspx", timeout=RESP_TIMEOUT):
+            page.select_option(FIELDING_STATS.team_dropdown, value=team_val)
+        page.wait_for_load_state("networkidle", timeout=SEL_TIMEOUT)
+        policy.delay()
+
+        pagination = page.query_selector(FIELDING_STATS.paging)
+        total_pages = 1
+        if pagination:
+            page_numbers = [
+                int(link.inner_text().strip())
+                for link in pagination.query_selector_all("a")
+                if link.inner_text().strip().isdigit()
+            ]
+            if page_numbers:
+                total_pages = max(page_numbers)
+
+        for current_page in range(1, total_pages + 1):
+            if current_page > 1:
+                _go_to_page(page, current_page, policy)
+
+            table = page.query_selector(FIELDING_STATS.data_table)
+            if not table or not table.query_selector("tbody"):
+                continue
+
+            for row in table.query_selector("tbody").query_selector_all("tr"):
+                _parse_fielding_row(row, year, position_mapping, fielding_data_map)
+    except CRAWLER_EXCEPTIONS:
+        logger.exception("   ⚠️ [%s] 처리 중 오류", team_name)
+
+
+def _parse_catcher_detail_row(
+    row: ElementHandle,
+    year: int,
+    fielding_data_map: dict[tuple[str, str, str], dict[str, Any]],
+) -> None:
+    cells = row.query_selector_all("td")
+    if len(cells) < 17:
+        return
+    try:
+        player_link = cells[1].query_selector("a")
+        player_id = player_link.get_attribute("href").split("playerId=")[1].split("&")[0] if player_link else None
+        if not player_id:
+            return
+
+        row_team = cells[2].inner_text().strip()
+        team_id = resolve_team_code(row_team, year) or row_team
+        key = (player_id, team_id, "C")
+
+        if key in fielding_data_map:
+            fielding_data_map[key].update(
+                {
+                    "passed_balls": safe_int(cells[13].inner_text()),
+                    "stolen_bases_allowed": safe_int(cells[14].inner_text()),
+                    "caught_stealing": safe_int(cells[15].inner_text()),
+                    "cs_pct": safe_float(cells[16].inner_text()),
+                },
+            )
+        else:
+            logger.warning(
+                "   ⚠️ 포수 상세 데이터에 없던 선수 발견 (player_id=%s, team=%s) - 추가 수집 생략",
+                player_id,
+                row_team,
+            )
+    except CRAWLER_EXCEPTIONS:
+        logger.exception("   ⚠️ 포수 상세 데이터 행 파싱 오류")
+
+
+def _crawl_catcher_fielding_details(
+    page: Page,
+    url: str,
+    year: int,
+    fielding_data_map: dict[tuple[str, str, str], dict[str, Any]],
+    policy: RequestPolicy,
+) -> None:
+    logger.info("\n🏃 [상세] 포수 전문 지표 수집 중 (전체 팀)...")
+    try:
+        page.goto(url, wait_until="load", timeout=LONG_TIMEOUT)
+        page.wait_for_load_state("networkidle", timeout=SEL_TIMEOUT)
+        policy.delay()
+
+        with page.expect_response("**/Record/Player/Defense/Basic.aspx", timeout=RESP_TIMEOUT):
+            page.select_option(FIELDING_STATS.position_dropdown, value="2")
+        page.wait_for_load_state("networkidle", timeout=SEL_TIMEOUT)
+        policy.delay()
+
+        team_val = page.evaluate(f"document.querySelector('{FIELDING_STATS.team_dropdown}').value")
+        if team_val != "":
+            with page.expect_response("**/Record/Player/Defense/Basic.aspx", timeout=RESP_TIMEOUT):
+                page.select_option(FIELDING_STATS.team_dropdown, value="")
+            page.wait_for_load_state("networkidle", timeout=SEL_TIMEOUT)
+            policy.delay()
+
+        pagination = page.query_selector(FIELDING_STATS.paging)
+        total_pages = 1
+        if pagination:
+            p_nums = [
+                int(link.inner_text().strip())
+                for link in pagination.query_selector_all("a")
+                if link.inner_text().strip().isdigit()
+            ]
+            if p_nums:
+                total_pages = max(p_nums)
+
+        for current_page in range(1, total_pages + 1):
+            logger.info("   📄 포수 상세 페이지 %s/%s 크롤링 중...", current_page, total_pages)
+            if current_page > 1:
+                _go_to_page(page, current_page, policy)
+
+            table = page.query_selector(FIELDING_STATS.data_table)
+            if not table or not table.query_selector("tbody"):
+                continue
+
+            for row in table.query_selector("tbody").query_selector_all("tr"):
+                _parse_catcher_detail_row(row, year, fielding_data_map)
+    except CRAWLER_EXCEPTIONS:
+        logger.exception("   ⚠️ 포수 상세 수집 실패")
+
+
 def crawl_all_fielding_stats(year: int | None = None) -> list[dict[str, Any]]:
     """
     KBO 공식 홈페이지에서 팀별 수비 기록을 크롤링하여 전체 선수의 수비 기록을 수집합니다.
@@ -76,252 +310,42 @@ def crawl_all_fielding_stats(year: int | None = None) -> list[dict[str, Any]]:
         page = context.new_page()
         install_sync_resource_blocking(page)
 
-        # 포지션별 수비 랭킹 페이지
         url = "https://www.koreabaseball.com/Record/Player/Defense/Basic.aspx"
-        logger.info("📊 수비 기록 페이지 접속: %s", url)
-        try:
-            page.goto(url, wait_until="load", timeout=LONG_TIMEOUT)
-            page.wait_for_load_state("networkidle", timeout=SEL_TIMEOUT)
-        except CRAWLER_EXCEPTIONS:
-            logger.exception("⚠️ 페이지 초기 대기 중 경고 (무시 가능)")
-        policy.delay()
+        if not _init_fielding_page(page, url, year, policy):
+            browser.close()
+            return []
 
-        try:
-            # 연도 선택
-            year_select = page.query_selector(FIELDING_STATS.season_dropdown)
-            if year_select:
-                page.select_option(FIELDING_STATS.season_dropdown, str(year))
-                with contextlib.suppress(PlaywrightError, PlaywrightTimeoutError):
-                    page.wait_for_load_state("networkidle", timeout=SEL_TIMEOUT)
-                policy.delay()
-                logger.info("✅ %s년 데이터 선택 완료", year)
+        # 포지션 한글 → ID 매핑
+        position_mapping = {
+            "투수": "P",
+            "포수": "C",
+            "1루수": "1B",
+            "2루수": "2B",
+            "3루수": "3B",
+            "유격수": "SS",
+            "좌익수": "LF",
+            "중견수": "CF",
+            "우익수": "RF",
+            "외야수": "OF",
+            "내야수": "IF",
+            "지명타자": "DH",
+        }
 
-            # 포지션 한글 → ID 매핑
-            position_mapping = {
-                "투수": "P",
-                "포수": "C",
-                "1루수": "1B",
-                "2루수": "2B",
-                "3루수": "3B",
-                "유격수": "SS",
-                "좌익수": "LF",
-                "중견수": "CF",
-                "우익수": "RF",
-                "외야수": "OF",
-                "내야수": "IF",
-                "지명타자": "DH",
-            }
+        teams = _get_team_list(page)
+        if not teams:
+            browser.close()
+            return []
 
-            # 1. 기본 수집: 팀별 전체 선수 (13개 기본 컬럼)
-            team_select = page.query_selector(FIELDING_STATS.team_dropdown)
-            if not team_select:
-                logger.warning("⚠️ 팀 선택 드롭다운을 찾을 수 없습니다.")
-                browser.close()
-                return []
+        # 1. 기본 수집: 팀별 전체 선수 (13개 기본 컬럼)
+        for team_val, team_name in teams:
+            _crawl_team_fielding_basic(page, team_val, team_name, year, position_mapping, fielding_data_map, policy)
 
-            options = team_select.query_selector_all("option")
-            teams = []
-            for opt in options:
-                val = opt.get_attribute("value")
-                text = opt.inner_text().strip()
-                if val and val != "":
-                    teams.append((val, text))
+        # 2. 포수 상세 수집 (전체 팀, 17개 컬럼)
+        _crawl_catcher_fielding_details(page, url, year, fielding_data_map, policy)
 
-            logger.info("📋 발견된 팀 목록: %s", [t[1] for t in teams])
-
-            for team_val, team_name in teams:
-                try:
-                    logger.info("\n🏢 [%s] 수비 기록 크롤링 중...", team_name)
-                    # 포지션 선택을 "전체"로 초기화 (중요)
-                    page.select_option(FIELDING_STATS.position_dropdown, value="")
-                    policy.delay()
-
-                    with page.expect_response("**/Record/Player/Defense/Basic.aspx", timeout=RESP_TIMEOUT):
-                        page.select_option(FIELDING_STATS.team_dropdown, value=team_val)
-                    page.wait_for_load_state("networkidle", timeout=SEL_TIMEOUT)
-                    policy.delay()
-
-                    pagination = page.query_selector(FIELDING_STATS.paging)
-                    total_pages = 1
-                    if pagination:
-                        page_numbers = [
-                            int(link.inner_text().strip())
-                            for link in pagination.query_selector_all("a")
-                            if link.inner_text().strip().isdigit()
-                        ]
-                        if page_numbers:
-                            total_pages = max(page_numbers)
-
-                    for current_page in range(1, total_pages + 1):
-                        if current_page > 1:
-                            try:
-                                page_link = next(
-                                    (
-                                        link
-                                        for link in page.query_selector(FIELDING_STATS.paging).query_selector_all("a")
-                                        if link.inner_text().strip() == str(current_page)
-                                    ),
-                                    None,
-                                )
-                                if page_link:
-                                    with page.expect_response(
-                                        "**/Record/Player/Defense/Basic.aspx", timeout=RESP_TIMEOUT
-                                    ):
-                                        page_link.click()
-                                    page.wait_for_load_state("networkidle", timeout=SEL_TIMEOUT)
-                                    policy.delay()
-                            except CRAWLER_EXCEPTIONS:
-                                logger.exception("   ⚠️ 페이지 %s 이동 중 오류", current_page)
-                                break
-
-                        table = page.query_selector(FIELDING_STATS.data_table)
-                        if not table or not table.query_selector("tbody"):
-                            continue
-
-                        for row in table.query_selector("tbody").query_selector_all("tr"):
-                            cells = row.query_selector_all("td")
-                            if len(cells) >= 13:
-                                try:
-                                    player_link = cells[1].query_selector("a")
-                                    player_id = (
-                                        player_link.get_attribute("href").split("playerId=")[1].split("&")[0]
-                                        if player_link
-                                        else None
-                                    )
-                                    if not player_id:
-                                        continue
-
-                                    p_name = cells[1].inner_text().strip()
-                                    row_team = cells[2].inner_text().strip()
-                                    pos_text = cells[3].inner_text().strip()
-                                    pos_id = position_mapping.get(pos_text, pos_text)
-                                    team_id = resolve_team_code(row_team, year) or row_team
-
-                                    record = {
-                                        "player_id": player_id,
-                                        "player_name": p_name,
-                                        "team_id": team_id,
-                                        "year": year,
-                                        "position_id": pos_id,
-                                        "games": safe_int(cells[4].inner_text()),
-                                        "games_started": safe_int(cells[5].inner_text()),
-                                        "innings": parse_innings(cells[6].inner_text()),
-                                        "errors": safe_int(cells[7].inner_text()),
-                                        "pickoffs": safe_int(cells[8].inner_text()),
-                                        "putouts": safe_int(cells[9].inner_text()),
-                                        "assists": safe_int(cells[10].inner_text()),
-                                        "double_plays": safe_int(cells[11].inner_text()),
-                                        "fielding_pct": safe_float(cells[12].inner_text()),
-                                        "source": "CRAWLER",
-                                    }
-                                    fielding_data_map[(player_id, team_id, pos_id)] = record
-                                except CRAWLER_EXCEPTIONS:
-                                    logger.exception("   ⚠️ 데이터 행 파싱 오류")
-                                    continue
-                except CRAWLER_EXCEPTIONS:
-                    logger.exception("   ⚠️ [%s] 처리 중 오류", team_name)
-                    continue
-
-            # 2. 포수 상세 수집 (전체 팀, 17개 컬럼)
-            logger.info("\n🏃 [상세] 포수 전문 지표 수집 중 (전체 팀)...")
-            try:
-                # 페이지 초기화
-                page.goto(url, wait_until="load", timeout=LONG_TIMEOUT)
-                page.wait_for_load_state("networkidle", timeout=SEL_TIMEOUT)
-                policy.delay()
-
-                # 1단계: 포지션 "포수(2)" 선택
-                with page.expect_response("**/Record/Player/Defense/Basic.aspx", timeout=RESP_TIMEOUT):
-                    page.select_option(FIELDING_STATS.position_dropdown, value="2")
-                page.wait_for_load_state("networkidle", timeout=SEL_TIMEOUT)
-                policy.delay()
-
-                # 2단계: 팀 "전체" 선택 (이미 전체일 수도 있으므로 확인 후 선택)
-                team_val = page.evaluate(
-                    f"document.querySelector('{FIELDING_STATS.team_dropdown}').value",
-                )
-                if team_val != "":
-                    with page.expect_response("**/Record/Player/Defense/Basic.aspx", timeout=RESP_TIMEOUT):
-                        page.select_option(FIELDING_STATS.team_dropdown, value="")
-                    page.wait_for_load_state("networkidle", timeout=SEL_TIMEOUT)
-                    policy.delay()
-
-                # 페이지네이션 (포수가 많을 경우 대비)
-                pagination = page.query_selector(FIELDING_STATS.paging)
-                total_pages = 1
-                if pagination:
-                    p_nums = [
-                        int(link.inner_text().strip())
-                        for link in pagination.query_selector_all("a")
-                        if link.inner_text().strip().isdigit()
-                    ]
-                    if p_nums:
-                        total_pages = max(p_nums)
-
-                for current_page in range(1, total_pages + 1):
-                    logger.info("   📄 포수 상세 페이지 %s/%s 크롤링 중...", current_page, total_pages)
-                    if current_page > 1:
-                        p_link = next(
-                            (
-                                link
-                                for link in page.query_selector(FIELDING_STATS.paging).query_selector_all("a")
-                                if link.inner_text().strip() == str(current_page)
-                            ),
-                            None,
-                        )
-                        if p_link:
-                            with page.expect_response("**/Record/Player/Defense/Basic.aspx", timeout=RESP_TIMEOUT):
-                                p_link.click()
-                            page.wait_for_load_state("networkidle", timeout=SEL_TIMEOUT)
-                            policy.delay()
-
-                    table = page.query_selector(FIELDING_STATS.data_table)
-                    if not table or not table.query_selector("tbody"):
-                        continue
-
-                    for row in table.query_selector("tbody").query_selector_all("tr"):
-                        cells = row.query_selector_all("td")
-                        if len(cells) >= 17:
-                            player_link = cells[1].query_selector("a")
-                            player_id = (
-                                player_link.get_attribute("href").split("playerId=")[1].split("&")[0]
-                                if player_link
-                                else None
-                            )
-                            if not player_id:
-                                continue
-
-                            row_team = cells[2].inner_text().strip()
-                            team_id = resolve_team_code(row_team, year) or row_team
-                            key = (player_id, team_id, "C")
-
-                            if key in fielding_data_map:
-                                fielding_data_map[key].update(
-                                    {
-                                        "passed_balls": safe_int(cells[13].inner_text()),
-                                        "stolen_bases_allowed": safe_int(cells[14].inner_text()),
-                                        "caught_stealing": safe_int(cells[15].inner_text()),
-                                        "cs_pct": safe_float(cells[16].inner_text()),
-                                    },
-                                )
-                            else:
-                                logger.warning(
-                                    "   ⚠️ 포수 상세 데이터에 없던 선수 발견 (player_id=%s, team=%s) - 추가 수집 생략",
-                                    player_id,
-                                    row_team,
-                                )
-            except CRAWLER_EXCEPTIONS:
-                logger.exception("   ⚠️ 포수 상세 수집 실패")
-
-            fielding_data = list(fielding_data_map.values())
-            summary, fielding_data = build_fielding_crawl_summary(fielding_data)
-            logger.info("\n✅ 총 %s개의 수비 기록 수집 완료!", len(fielding_data))
-
-        except CRAWLER_EXCEPTIONS:
-            logger.exception("⚠️ 수비 기록 크롤링 중 오류")
-            import traceback
-
-            traceback.print_exc()
+        fielding_data = list(fielding_data_map.values())
+        summary, fielding_data = build_fielding_crawl_summary(fielding_data)
+        logger.info("\n✅ 총 %s개의 수비 기록 수집 완료!", len(fielding_data))
 
         browser.close()
 
