@@ -103,24 +103,7 @@ def crawl_basic1_data(page: Page, year: int, series_info: dict, policy: RequestP
     logger.info("   🔍 Basic1 데이터 수집: %s", series_info["name"])
 
     try:
-        # Basic1 페이지로 이동
-        url = HITTER_BASIC1
-        page.goto(url, wait_until="load", timeout=NAV_TIMEOUT)
-        page.wait_for_load_state("networkidle", timeout=NAV_TIMEOUT)
-        if policy:
-            policy.delay()
-
-        # 연도 선택
-        season_selector = 'select[name="ctl00$ctl00$ctl00$cphContents$cphContents$cphContents$ddlSeason$ddlSeason"]'
-        page.select_option(season_selector, str(year))
-        if policy:
-            policy.delay()
-
-        # 시리즈 선택
-        series_selector = 'select[name="ctl00$ctl00$ctl00$cphContents$cphContents$cphContents$ddlSeries$ddlSeries"]'
-        page.select_option(series_selector, value=series_info["value"])
-        if policy:
-            policy.delay()
+        prepare_basic1_page(page, year, series_info, policy)
 
         # 페이지별 데이터 수집
         all_player_data = {}
@@ -130,69 +113,15 @@ def crawl_basic1_data(page: Page, year: int, series_info: dict, policy: RequestP
             logger.info("      📄 페이지 %s 처리 중...", page_num)
 
             # 테이블 찾기
-            table = page.query_selector("table")
-            if not table:
-                logger.warning("      ⚠️ 페이지 %s에서 테이블을 찾을 수 없습니다.", page_num)
-                break
-
-            # 헤더 확인
-            thead = table.query_selector("thead")
-            if thead:
-                header_cells = thead.query_selector_all("th")
-                headers = [cell.inner_text().strip() for cell in header_cells]
-                logger.info("         📋 헤더: %s", headers)
-
-            # 데이터 행 처리
-            tbody = table.query_selector("tbody")
-            if tbody:
-                rows = tbody.query_selector_all("tr")
-            else:
-                rows = table.query_selector_all("tr")[1:]  # 첫 번째 행(헤더) 제외
-
+            rows = get_basic1_rows(page, page_num)
             if not rows:
-                logger.warning("      ⚠️ 페이지 %s에 데이터가 없습니다.", page_num)
                 break
 
             for row in rows:
-                cells = row.query_selector_all("td")
-                if len(cells) < 5:  # 최소 데이터 확인
+                player_data = parse_basic1_page_row(row, year, series_info)
+                if player_data is None:
                     continue
-
-                # 선수 링크에서 player_id 추출
-                name_cell = cells[1] if len(cells) > 1 else None
-                if not name_cell:
-                    continue
-
-                player_link = name_cell.query_selector("a")
-                if not player_link:
-                    continue
-
-                player_id = parse_player_id_from_link(player_link.get_attribute("href"))
-                if not player_id:
-                    continue
-
-                player_name = player_link.inner_text().strip()
-                team_code = cells[2].inner_text().strip() if len(cells) > 2 else None
-
-                # 기본 정보
-                player_data = {
-                    "player_id": player_id,
-                    "player_name": player_name,
-                    "team_code": team_code,
-                    "year": year,
-                    "league": "KBO",
-                    "source": "profile",
-                    "series_name": series_info["name"],
-                    "series_value": series_info["value"],
-                }
-
-                # 시리즈별 컬럼 매핑
-                if series_info["value"] == "0":  # 정규시즌
-                    player_data.update(parse_regular_season_basic1_stats(cells))
-                else:  # 기타 시리즈
-                    player_data.update(parse_other_series_stats(cells))
-
-                all_player_data[player_id] = player_data
+                all_player_data[player_data["player_id"]] = player_data
 
             logger.info("         ✅ %s개 행 처리, 총 %s명", len(rows), len(all_player_data))
 
@@ -209,6 +138,75 @@ def crawl_basic1_data(page: Page, year: int, series_info: dict, policy: RequestP
         return {}
     else:
         return all_player_data
+
+
+def prepare_basic1_page(page: Page, year: int, series_info: dict, policy: RequestPolicy | None = None) -> None:
+    page.goto(HITTER_BASIC1, wait_until="load", timeout=NAV_TIMEOUT)
+    page.wait_for_load_state("networkidle", timeout=NAV_TIMEOUT)
+    if policy:
+        policy.delay()
+
+    season_selector = 'select[name="ctl00$ctl00$ctl00$cphContents$cphContents$cphContents$ddlSeason$ddlSeason"]'
+    page.select_option(season_selector, str(year))
+    if policy:
+        policy.delay()
+
+    series_selector = 'select[name="ctl00$ctl00$ctl00$cphContents$cphContents$cphContents$ddlSeries$ddlSeries"]'
+    page.select_option(series_selector, value=series_info["value"])
+    if policy:
+        policy.delay()
+
+
+def get_basic1_rows(page: Page, page_num: int) -> list:
+    table = page.query_selector("table")
+    if not table:
+        logger.warning("      ⚠️ 페이지 %s에서 테이블을 찾을 수 없습니다.", page_num)
+        return []
+
+    thead = table.query_selector("thead")
+    if thead:
+        header_cells = thead.query_selector_all("th")
+        headers = [cell.inner_text().strip() for cell in header_cells]
+        logger.info("         📋 헤더: %s", headers)
+
+    tbody = table.query_selector("tbody")
+    rows = tbody.query_selector_all("tr") if tbody else table.query_selector_all("tr")[1:]
+    if not rows:
+        logger.warning("      ⚠️ 페이지 %s에 데이터가 없습니다.", page_num)
+    return rows
+
+
+def parse_basic1_page_row(row: object, year: int, series_info: dict) -> dict[str, Any] | None:
+    cells = row.query_selector_all("td")
+    if len(cells) < 5:
+        return None
+
+    name_cell = cells[1] if len(cells) > 1 else None
+    if not name_cell:
+        return None
+    player_link = name_cell.query_selector("a")
+    if not player_link:
+        return None
+
+    player_id = parse_player_id_from_link(player_link.get_attribute("href"))
+    if not player_id:
+        return None
+
+    player_data = {
+        "player_id": player_id,
+        "player_name": player_link.inner_text().strip(),
+        "team_code": cells[2].inner_text().strip() if len(cells) > 2 else None,
+        "year": year,
+        "league": "KBO",
+        "source": "profile",
+        "series_name": series_info["name"],
+        "series_value": series_info["value"],
+    }
+    if series_info["value"] == "0":
+        player_data.update(parse_regular_season_basic1_stats(cells))
+    else:
+        player_data.update(parse_other_series_stats(cells))
+    return player_data
 
 
 def parse_regular_season_basic1_stats(cells: list) -> dict[str, Any]:
@@ -299,54 +297,18 @@ def crawl_basic2_with_headers(
     all_player_data = {}
 
     try:
-        # Basic1에서 시작하여 Basic2로 이동
-        url = HITTER_BASIC1
-        page.goto(url, wait_until="load", timeout=NAV_TIMEOUT)
-        page.wait_for_load_state("networkidle", timeout=NAV_TIMEOUT)
-        if policy:
-            policy.delay()
-
-        # 연도 및 시리즈 선택
-        season_selector = 'select[name="ctl00$ctl00$ctl00$cphContents$cphContents$cphContents$ddlSeason$ddlSeason"]'
-        page.select_option(season_selector, str(year))
-        if policy:
-            policy.delay()
-
-        series_selector = 'select[name="ctl00$ctl00$ctl00$cphContents$cphContents$cphContents$ddlSeries$ddlSeries"]'
-        page.select_option(series_selector, value=series_info["value"])
-        if policy:
-            policy.delay()
-
-        # "다음" 링크로 Basic2 접근
-        next_link = page.query_selector('a.next[href*="Basic2.aspx"]')
-        if not next_link:
+        if not prepare_basic2_page(page, year, series_info, policy):
             logger.warning("      ⚠️ Basic2 '다음' 링크를 찾을 수 없습니다.")
             return {}
-
-        next_link.click()
-        page.wait_for_load_state("networkidle", timeout=NAV_TIMEOUT)
-        if policy:
-            policy.delay()
 
         # 각 헤더별 데이터 수집
         for i, (header_name, sort_code, description) in enumerate(headers_to_click):
             logger.info("      📊 %s(%s) 헤더 클릭... (%s/11)", description, header_name, i + 1)
 
             try:
-                # 헤더 클릭
-                header_link = page.query_selector(f"a[href*=\"sort('{sort_code}')\"]")
-                if not header_link:
-                    logger.warning("         ⚠️ %s 헤더를 찾을 수 없습니다.", header_name)
+                page_data = collect_basic2_header_data(page, header_name, sort_code, policy)
+                if not page_data:
                     continue
-
-                header_link.click()
-                page.wait_for_load_state("networkidle", timeout=NAV_TIMEOUT)
-                if policy:
-                    policy.delay()
-
-                # 현재 정렬 기준으로 데이터 수집
-                page_data = collect_current_page_data(page, header_name, policy=policy)
-
                 # 데이터 병합
                 for player_id, data in page_data.items():
                     if player_id not in all_player_data:
@@ -368,6 +330,51 @@ def crawl_basic2_with_headers(
         return all_player_data
 
 
+def prepare_basic2_page(page: Page, year: int, series_info: dict, policy: RequestPolicy | None = None) -> bool:
+    # Basic1에서 시작하여 Basic2로 이동
+    page.goto(HITTER_BASIC1, wait_until="load", timeout=NAV_TIMEOUT)
+    page.wait_for_load_state("networkidle", timeout=NAV_TIMEOUT)
+    if policy:
+        policy.delay()
+
+    season_selector = 'select[name="ctl00$ctl00$ctl00$cphContents$cphContents$cphContents$ddlSeason$ddlSeason"]'
+    page.select_option(season_selector, str(year))
+    if policy:
+        policy.delay()
+
+    series_selector = 'select[name="ctl00$ctl00$ctl00$cphContents$cphContents$cphContents$ddlSeries$ddlSeries"]'
+    page.select_option(series_selector, value=series_info["value"])
+    if policy:
+        policy.delay()
+
+    next_link = page.query_selector('a.next[href*="Basic2.aspx"]')
+    if not next_link:
+        return False
+    next_link.click()
+    page.wait_for_load_state("networkidle", timeout=NAV_TIMEOUT)
+    if policy:
+        policy.delay()
+    return True
+
+
+def collect_basic2_header_data(
+    page: Page,
+    header_name: str,
+    sort_code: str,
+    policy: RequestPolicy | None = None,
+) -> dict[int, dict]:
+    header_link = page.query_selector(f"a[href*=\"sort('{sort_code}')\"]")
+    if not header_link:
+        logger.warning("         ⚠️ %s 헤더를 찾을 수 없습니다.", header_name)
+        return {}
+
+    header_link.click()
+    page.wait_for_load_state("networkidle", timeout=NAV_TIMEOUT)
+    if policy:
+        policy.delay()
+    return collect_current_page_data(page, header_name, policy=policy)
+
+
 def collect_current_page_data(page: Page, sort_field: str, policy: RequestPolicy | None = None) -> dict[int, dict]:
     """현재 페이지의 모든 선수 데이터 수집"""
     page_data = {}
@@ -377,45 +384,15 @@ def collect_current_page_data(page: Page, sort_field: str, policy: RequestPolicy
         page_num = 1
         while True:
             # 테이블 데이터 파싱
-            table = page.query_selector("table")
-            if not table:
-                break
-
-            tbody = table.query_selector("tbody")
-            if tbody:
-                rows = tbody.query_selector_all("tr")
-            else:
-                rows = table.query_selector_all("tr")[1:]
-
+            rows = get_current_table_rows(page)
             if not rows:
                 break
 
             for row in rows:
-                cells = row.query_selector_all("td")
-                if len(cells) < 5:
+                parsed = parse_basic2_page_row(row, sort_field)
+                if parsed is None:
                     continue
-
-                # player_id 추출
-                name_cell = cells[1]
-                player_link = name_cell.query_selector("a")
-                if not player_link:
-                    continue
-
-                player_id = parse_player_id_from_link(player_link.get_attribute("href"))
-                if not player_id:
-                    continue
-
-                # 기본 정보
-                player_data = {
-                    "player_id": player_id,
-                    "player_name": player_link.inner_text().strip(),
-                    "team_code": cells[2].inner_text().strip(),
-                }
-
-                # sort_field에 따른 데이터 추출
-                player_data.update(extract_basic2_stats(cells, sort_field))
-
-                page_data[player_id] = player_data
+                page_data[parsed["player_id"]] = parsed
 
             # 다음 페이지로 이동
             if not goto_next_page(page, policy=policy):
@@ -429,6 +406,39 @@ def collect_current_page_data(page: Page, sort_field: str, policy: RequestPolicy
         logger.exception("         ⚠️ 페이지 데이터 수집 중 오류")
 
     return page_data
+
+
+def get_current_table_rows(page: Page) -> list:
+    table = page.query_selector("table")
+    if not table:
+        return []
+    tbody = table.query_selector("tbody")
+    if tbody:
+        return tbody.query_selector_all("tr")
+    return table.query_selector_all("tr")[1:]
+
+
+def parse_basic2_page_row(row: object, sort_field: str) -> dict[str, Any] | None:
+    cells = row.query_selector_all("td")
+    if len(cells) < 5:
+        return None
+
+    name_cell = cells[1]
+    player_link = name_cell.query_selector("a")
+    if not player_link:
+        return None
+
+    player_id = parse_player_id_from_link(player_link.get_attribute("href"))
+    if not player_id:
+        return None
+
+    player_data = {
+        "player_id": player_id,
+        "player_name": player_link.inner_text().strip(),
+        "team_code": cells[2].inner_text().strip(),
+    }
+    player_data.update(extract_basic2_stats(cells, sort_field))
+    return player_data
 
 
 def extract_basic2_stats(cells: list, sort_field: str) -> dict[str, Any]:
