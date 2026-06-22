@@ -212,7 +212,7 @@ Ruff expansion phases completed across the current cleanup campaign. The work en
 - `ruff check src/ tests/ scripts/` = 0 errors
 - `ruff format --check .` = 898 files already formatted
 - `python3 scripts/lint_bare_except.py` = 0 bare `except Exception` in 425 files
-- `python -m pytest -q --tb=line` = 4317 passed, 1 skipped, 2 deselected, 1 xfailed
+- `python -m pytest -q --tb=line` = 4320 passed, 1 skipped, 2 deselected, 1 xfailed
 - `# noqa: BLE001` in `src/` = 0
 - `# noqa: BLE001` in `scripts/` = 6 intentional CLI / operational catch-all guards
 
@@ -222,6 +222,8 @@ Ruff expansion phases completed across the current cleanup campaign. The work en
 - `refresh_source_snapshots --source-key doosan_bears_events` and `--source-key doosan_bears_ticket` save successfully through Playwright fallback after httpx TLS verification failure.
 - Local `data_sources` registry has 38 active sources and 0 `last_success_at IS NULL` entries after the source refresh campaign.
 - Weekly maintenance runs `DATABASE_URL="$OCI_DB_URL" python3 -m src.cli.refresh_source_snapshots --all --max-hours 168` as a non-blocking step before the main weekly sync.
+- `quality_gate_check --year 2020..2025` succeeds after splitting aggregate placeholders (`TOTAL`, `합계`, etc.) from all-star raw team codes (`EA`/`WE`) when canonical team codes are present.
+- `PlayerMovementCrawler.crawl_years(..., save_snapshots=True)` now records `kbo_player_movement` raw snapshots during daily roster/player movement updates.
 
 ### C901 (Complexity) Progress
 
@@ -237,19 +239,19 @@ Ruff expansion phases completed across the current cleanup campaign. The work en
 | 7c | PL fixable auto-fix (11 violations) | — | ✅ Complete |
 | 8a | 4 live CLI funcs (crawl_futures 2, live_crawler 2) | 41→31 | ✅ Complete |
 | 8b | 2 funcs (sync_games.sync_game_details) | 31→31 | ✅ Complete |
-| **Total non-PW** | **15 functions refactored to C901 < 10** | **103→31** | **✅** |
-| **Blocked (PW)** | **31 functions use `page: Page` directly** | **31** | **⏳** |
+| **Total non-PW/PW-light** | **17 functions refactored to C901 < 10** | **103→25** | **✅** |
+| **Blocked (PW)** | **25 functions still need deeper Playwright-aware refactors** | **25** | **⏳** |
 
 ### Deferred Lint Candidates
 
-- **31 C901 violations remaining** — all in Playwright-dependent functions (page: Page parameter). After 2026 selector migration, batch-refactor these.
-- C901 count: 103 → 31 (72 violations eliminated, 70% reduction).
+- **25 C901 violations remaining** — mostly Playwright-dependent functions (page: Page parameter). After 2026 selector migration, batch-refactor these.
+- C901 count: 103 → 25 (78 violations eliminated, 76% reduction).
 
 ### Phase 9B/9C Completed (2026-06-22)
 
 - **Phase 9B (PLR2004)**: 113 `src/` violations fixed across 48 files. Created `src/constants.py` with domain constants. 165 low-value magic values suppressed via `pyproject.toml`.
 - **Phase 9C (PLC0415)**: 25 stdlib lazy imports (`json`, `os`, `re`, `argparse`, `datetime`) moved to top-level across 18 files. `src.` lazy imports retained to avoid circular deps.
-- **Phase 9A** (Playwright C901 light refactoring): Deferred — 6 of 31 PW functions have extractable non-Page logic but need `page: Page` awareness; batch with 2026 selector migration.
+- **Phase 9A** (Playwright C901 light refactoring): Reduced 27→25 by extracting baserunning page/row parsing and player profile payload assembly. Remaining 25 need deeper `page: Page` aware selector refactors.
 
 ### Notes For Future Agents
 
