@@ -106,6 +106,29 @@ def test_collect_page_rows_filters_invalid_player_payloads():
     }
 
 
+def test_collect_page_rows_keeps_players_with_unparseable_height_weight():
+    rows = [
+        {"cells": ["1", "홍길동", "LG", "투수", "2000.01.01", "미상", "고교"], "linkHref": "x?playerId=1004"},
+    ]
+    crawler = PlayerSearchCrawler(request_delay=0)
+
+    parsed = asyncio.run(crawler._collect_page_rows(_FakePage(rows)))
+
+    assert parsed == [
+        PlayerRow(
+            player_id=1004,
+            uniform_no="1",
+            name="홍길동",
+            team="LG",
+            position="투수",
+            birth_date="2000.01.01",
+            height_cm=None,
+            weight_kg=None,
+            career="고교",
+        )
+    ]
+
+
 def test_merge_rows_tracks_duplicate_player_ids(monkeypatch):
     crawler = PlayerSearchCrawler(request_delay=0)
     row = PlayerRow(1001, None, "홍길동", "LG", "투수", None, None, None, None)

@@ -664,7 +664,7 @@ def save_game_snapshot(game_data: dict[str, Any], *, status: str | None = None) 
             if inning_rows:
                 _replace_records(session, GameInningScore, game_id, inning_rows)
 
-            _apply_snapshot_status_and_winner(game, game_date, status, bool(inning_rows))
+            _apply_snapshot_status_and_winner(game, game_date, status, has_inning_rows=bool(inning_rows))
 
             session.commit()
         except GAME_SAVE_EXCEPTIONS:
@@ -728,7 +728,9 @@ def _apply_snapshot_starting_pitchers(game: Game, pitchers: dict[str, Any]) -> N
         game.away_pitcher = away_pitcher_data.get("player_name")
 
 
-def _apply_snapshot_status_and_winner(game: Game, game_date: date, status: str | None, has_inning_rows: bool) -> None:
+def _apply_snapshot_status_and_winner(
+    game: Game, game_date: date, status: str | None, *, has_inning_rows: bool
+) -> None:
     has_progress = has_inning_rows or game.home_score is not None or game.away_score is not None
     stable_status = derive_stable_game_status(
         game_date=game_date,

@@ -119,17 +119,17 @@ def apply_wpa_transitions(
 
         we_before = calculator.get_win_probability(
             inning,
-            is_bottom,
-            outs_before,
-            runners_before,
-            score_diff_before,
+            is_bottom=is_bottom,
+            outs=outs_before,
+            runners=runners_before,
+            score_diff=score_diff_before,
         )
         we_after = calculator.get_win_probability(
             inning,
-            is_bottom,
-            outs_after,
-            runners_after,
-            score_diff_after,
+            is_bottom=is_bottom,
+            outs=outs_after,
+            runners=runners_after,
+            score_diff=score_diff_after,
         )
 
         event["bases_before"] = format_base_string(runners_before)

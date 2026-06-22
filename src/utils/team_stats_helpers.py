@@ -19,7 +19,7 @@ def resolve_team_id(team_name: str, team_mapping: dict[str, str]) -> str | None:
     return None
 
 
-def parse_numeric(value: str, as_float: bool) -> float | int | None:
+def parse_numeric(value: str, *, as_float: bool) -> float | int | None:
     cleaned = value.replace(",", "").replace("%", "")
     if cleaned in ("", "-", "N/A"):
         return None

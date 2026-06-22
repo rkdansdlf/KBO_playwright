@@ -258,7 +258,7 @@ class GameSyncMixin:
         return detect_dirty_game_ids(self.sqlite_session, self.target_session)
 
     def _game_detail_parent_scope(
-        self, days: int | None, year: int | None, unsynced_only: bool
+        self, days: int | None, year: int | None, *, unsynced_only: bool
     ) -> tuple[list, list[str] | None]:
         filters = []
         target_game_ids = None
@@ -292,6 +292,7 @@ class GameSyncMixin:
         filters: list,
         target_game_ids: list[str] | None,
         publishable_parent_game_ids: list[str] | None,
+        *,
         unsynced_only: bool,
         batch_size: int,
     ) -> None:
@@ -349,6 +350,7 @@ class GameSyncMixin:
     def _prepare_target_game_detail_children(
         self,
         year: int | None,
+        *,
         unsynced_only: bool,
         eligibility: GameSyncEligibility,
     ) -> None:
@@ -392,6 +394,7 @@ class GameSyncMixin:
         self,
         days: int = None,
         year: int = None,
+        *,
         unsynced_only: bool = False,
         batch_size: int = 5000,
     ) -> dict[str, int]:
@@ -399,7 +402,7 @@ class GameSyncMixin:
             logger.error("❌ OCI connection failed. Aborting sync_game_details.")
             return {}
 
-        filters, target_game_ids = self._game_detail_parent_scope(days, year, unsynced_only)
+        filters, target_game_ids = self._game_detail_parent_scope(days, year, unsynced_only=unsynced_only)
         if unsynced_only and not target_game_ids:
             year_msg = f" ({year})" if year else ""
             logger.info("🎉 모든 게임 데이터%s가 이미 최신 상태입니다. 동기화를 건너뜁니다.", year_msg)
@@ -418,8 +421,28 @@ class GameSyncMixin:
             target_game_ids,
             year,
             days,
-            unsynced_only,
-            batch_size,
+            unsynced_only=unsynced_only,
+            batch_size=batch_size,
+        )
+
+    def sync_game_details_for_ids(self, game_ids: list[str], batch_size: int = 5000) -> dict[str, int]:
+        """Sync completed game details for an explicit list of game IDs."""
+        scoped_game_ids = list(dict.fromkeys(game_id for game_id in game_ids if game_id))
+        if not scoped_game_ids:
+            return {}
+        if not self.test_connection():
+            logger.error("❌ OCI connection failed. Aborting sync_game_details_for_ids.")
+            return {}
+
+        filters = [Game.game_id.in_(scoped_game_ids)]
+        return self._aggregate_game_detail_chunks(
+            scoped_game_ids,
+            filters,
+            scoped_game_ids,
+            None,
+            None,
+            unsynced_only=False,
+            batch_size=batch_size,
         )
 
     def _aggregate_game_detail_chunks(
@@ -429,6 +452,7 @@ class GameSyncMixin:
         target_game_ids: list[str] | None,
         year: int | None,
         days: int | None,
+        *,
         unsynced_only: bool,
         batch_size: int,
     ) -> dict[str, int]:
@@ -475,6 +499,7 @@ class GameSyncMixin:
         target_game_ids: list[str] | None,  # noqa: ARG002
         year: int | None,
         days: int | None,
+        *,
         unsynced_only: bool,
         batch_size: int,
         skip_year_purge: bool = False,
@@ -489,7 +514,12 @@ class GameSyncMixin:
         # We filter parent game sync to only the game IDs in this chunk
         chunk_parent_filters = [Game.game_id.in_(scoped_game_ids)]
         self._sync_parent_games_for_details(
-            results, chunk_parent_filters, scoped_game_ids, publishable_parent_game_ids, unsynced_only, batch_size
+            results,
+            chunk_parent_filters,
+            scoped_game_ids,
+            publishable_parent_game_ids,
+            unsynced_only=unsynced_only,
+            batch_size=batch_size,
         )
 
         # Sync aliases scoped to the chunk's games
@@ -507,7 +537,7 @@ class GameSyncMixin:
                 _RELAY_REPLACE_CHILD_MODELS, eligibility.relay_game_ids, label="relay"
             )
         else:
-            self._prepare_target_game_detail_children(year, unsynced_only, eligibility)
+            self._prepare_target_game_detail_children(year, unsynced_only=unsynced_only, eligibility=eligibility)
 
         def get_child_filters(model_cls: type) -> list | None:
             return self._child_filter_for_model(model_cls, child_filters, scoped_game_ids, eligibility)

@@ -142,6 +142,7 @@ def load_candidates(session: Session, args: argparse.Namespace) -> list[dict[str
 def repair_candidates(
     session: Session,
     candidates: list[dict[str, Any]],
+    *,
     overwrite: bool,
     dry_run: bool,
 ) -> tuple[list[str], int, int]:

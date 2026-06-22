@@ -526,6 +526,7 @@ def parse_basic1_page(
 def _extract_basic2_row_info(
     row: ElementHandle | dict,
     header_index: dict[str, int],
+    *,
     use_fast: bool,
 ) -> tuple[int | None, Callable[[int], str | None]] | None:
     if use_fast:
@@ -629,7 +630,7 @@ def parse_basic2_page(
     processed = 0
 
     for row in rows:
-        res = _extract_basic2_row_info(row, header_index, rows_data is not None)
+        res = _extract_basic2_row_info(row, header_index, use_fast=rows_data is not None)
         if not res:
             continue
 
@@ -787,6 +788,7 @@ def _handle_pitching_fallback(
     year: int,
     series_key: str,
     reason: str,
+    *,
     save_to_db: bool,
 ) -> list[PitcherStats]:
     stats_list = fallback_pitching_from_db(year, series_key, reason=reason)
@@ -806,7 +808,7 @@ def _handle_pitching_fallback(
     return stats_list
 
 
-def _get_pitcher_team_options(page: Page, by_team: bool) -> list[dict]:
+def _get_pitcher_team_options(page: Page, *, by_team: bool) -> list[dict]:
     if not by_team:
         return [{"value": "", "text": "전체"}]
     try:
@@ -828,7 +830,7 @@ def _get_pitcher_team_options(page: Page, by_team: bool) -> list[dict]:
         return team_options
 
 
-def _select_pitcher_team_if_needed(page: Page, tm: dict, by_team: bool, policy: RequestPolicy) -> bool:
+def _select_pitcher_team_if_needed(page: Page, tm: dict, *, by_team: bool, policy: RequestPolicy) -> bool:
     if by_team and tm["value"]:
         logger.info("🔍 팀 선택: %s (%s)", tm["text"], tm["value"])
         try:
@@ -851,6 +853,7 @@ def _collect_pitcher_basic1_loop(
     year: int,
     league_name: str,
     iteration_targets: list[dict],
+    *,
     by_team: bool,
     limit: int | None,
     policy: RequestPolicy,
@@ -858,7 +861,7 @@ def _collect_pitcher_basic1_loop(
 ) -> None:
     for tm in iteration_targets:
         policy.delay()
-        if not _select_pitcher_team_if_needed(page, tm, by_team, policy):
+        if not _select_pitcher_team_if_needed(page, tm, by_team=by_team, policy=policy):
             continue
 
         wait_for_table(page)
@@ -926,6 +929,7 @@ def crawl_pitcher_series(
     year: int,
     series_key: str,
     limit: int | None = None,
+    *,
     headless: bool = True,
     save_to_db: bool = False,
     by_team: bool = False,
@@ -953,10 +957,10 @@ def crawl_pitcher_series(
             reason = "Basic1 page setup failed (possible KBO site error)"
             logger.error("❌ Basic1 페이지 설정 실패. %s. DB에서 직접 집계하여 폴백(Fallback)을 시도합니다.", reason)
             browser.close()
-            return _handle_pitching_fallback(year, series_key, reason, save_to_db)
+            return _handle_pitching_fallback(year, series_key, reason, save_to_db=save_to_db)
 
         # 순회 대상 설정 (팀 옵션이 있으면 팀별, 없으면 전체 1회)
-        team_options = _get_pitcher_team_options(page, by_team)
+        team_options = _get_pitcher_team_options(page, by_team=by_team)
         _collect_pitcher_basic1_loop(
             page=page,
             year=year,

@@ -182,7 +182,9 @@ class StatsSyncMixin:
 
         return {"local": local_sig, "remote": remote_sig, "match": match}
 
-    def sync_player_season_batting(self, year: int | None = None, batch_size: int = 5000, force: bool = False) -> int:
+    def sync_player_season_batting(
+        self, year: int | None = None, batch_size: int = 5000, *, force: bool = False
+    ) -> int:
         """Sync player_season_batting data from SQLite to OCI using fast bulk COPY"""
         from src.models.player import PlayerSeasonBatting
 
@@ -205,7 +207,9 @@ class StatsSyncMixin:
             batch_size=batch_size,
         )
 
-    def sync_player_season_pitching(self, year: int | None = None, batch_size: int = 5000, force: bool = False) -> int:
+    def sync_player_season_pitching(
+        self, year: int | None = None, batch_size: int = 5000, *, force: bool = False
+    ) -> int:
         """Sync player_season_pitching data from SQLite to OCI using fast bulk COPY"""
         from src.models.player import PlayerSeasonPitching
 
@@ -239,7 +243,7 @@ class StatsSyncMixin:
             "team_season_pitching": self.sync_team_season_pitching(),
         }
 
-    def sync_team_season_batting(self, year: int | None = None, batch_size: int = 5000, force: bool = False) -> int:
+    def sync_team_season_batting(self, year: int | None = None, batch_size: int = 5000, *, force: bool = False) -> int:
         """Sync team_season_batting data from SQLite to OCI"""
 
         if year and not force:
@@ -260,7 +264,7 @@ class StatsSyncMixin:
             batch_size=batch_size,
         )
 
-    def sync_team_season_pitching(self, year: int | None = None, batch_size: int = 5000, force: bool = False) -> int:
+    def sync_team_season_pitching(self, year: int | None = None, batch_size: int = 5000, *, force: bool = False) -> int:
         """Sync team_season_pitching data from SQLite to OCI"""
 
         if year and not force:
@@ -319,7 +323,7 @@ class StatsSyncMixin:
             batch_size=batch_size,
         )
 
-    def sync_fielding_stats(self, year: int | None = None, batch_size: int = 10000, force: bool = False) -> int:
+    def sync_fielding_stats(self, year: int | None = None, batch_size: int = 10000, *, force: bool = False) -> int:
         """Sync player fielding stats to OCI."""
         if year and not force:
             sig = self._get_table_signature(PlayerSeasonFielding, year, year_col="year")
@@ -337,7 +341,7 @@ class StatsSyncMixin:
             batch_size=batch_size,
         )
 
-    def sync_baserunning_stats(self, year: int | None = None, batch_size: int = 10000, force: bool = False) -> int:
+    def sync_baserunning_stats(self, year: int | None = None, batch_size: int = 10000, *, force: bool = False) -> int:
         """Sync player baserunning stats to OCI."""
         if year and not force:
             sig = self._get_table_signature(PlayerSeasonBaserunning, year, year_col="year")
@@ -355,7 +359,7 @@ class StatsSyncMixin:
             batch_size=batch_size,
         )
 
-    def sync_team_season_fielding(self, year: int | None = None, batch_size: int = 5000, force: bool = False) -> int:
+    def sync_team_season_fielding(self, year: int | None = None, batch_size: int = 5000, *, force: bool = False) -> int:
         """Sync team_season_fielding aggregates from SQLite to OCI."""
         from src.models.team import TeamSeasonFielding
 
@@ -374,7 +378,9 @@ class StatsSyncMixin:
             batch_size=batch_size,
         )
 
-    def sync_team_season_baserunning(self, year: int | None = None, batch_size: int = 5000, force: bool = False) -> int:
+    def sync_team_season_baserunning(
+        self, year: int | None = None, batch_size: int = 5000, *, force: bool = False
+    ) -> int:
         """Sync team_season_baserunning aggregates from SQLite to OCI."""
         from src.models.team import TeamSeasonBaserunning
 

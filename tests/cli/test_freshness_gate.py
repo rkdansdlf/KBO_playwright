@@ -1,8 +1,9 @@
 import json
 import logging
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
-from src.cli.freshness_gate import main
+from src.cli.freshness_gate import _check_past_scheduled_games, _check_scores, main
 
 
 class TestFreshnessGate:
@@ -68,3 +69,29 @@ class TestFreshnessGate:
             assert result == 1
             payload = json.loads(caplog.records[-1].message)
             assert payload == {"ok": False, "issues": {"missing_events": ["20250101LGKT"]}}
+
+    def test_past_scheduled_games_are_reported(self):
+        mock_session = MagicMock()
+        mock_query = MagicMock()
+        mock_query.filter.return_value = mock_query
+        mock_query.order_by.return_value = mock_query
+        mock_query.all.return_value = [SimpleNamespace(game_id="20250101LGKT0")]
+        mock_session.query.return_value = mock_query
+        issues = {"past_scheduled_games": []}
+
+        _check_past_scheduled_games(
+            mock_session,
+            target_date="20250101",
+            days=None,
+            max_hours=None,
+            issues=issues,
+        )
+
+        assert issues["past_scheduled_games"] == ["20250101LGKT0"]
+
+    def test_completed_games_with_missing_scores_are_reported(self):
+        issues = {"missing_scores": []}
+
+        _check_scores(SimpleNamespace(game_id="20250101LGKT0", away_score=None, home_score=3), issues)
+
+        assert issues["missing_scores"] == ["20250101LGKT0"]

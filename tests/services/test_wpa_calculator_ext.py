@@ -31,31 +31,31 @@ class TestGetWinProbability:
     def test_direct_lookup(self):
         calc = WPACalculator()
         calc._matrix = {(1, "top", 0, 0, 0): 0.5000}
-        prob = calc.get_win_probability(1, False, 0, 0, 0)
+        prob = calc.get_win_probability(1, is_bottom=False, outs=0, runners=0, score_diff=0)
         assert prob == 0.5000
 
     def test_clamps_score_diff(self):
         calc = WPACalculator()
         calc._matrix = {(1, "top", 0, 0, 5): 0.9000}
-        prob = calc.get_win_probability(1, False, 0, 0, 10)
+        prob = calc.get_win_probability(1, is_bottom=False, outs=0, runners=0, score_diff=10)
         assert prob == 0.9000
 
     def test_clamps_inning(self):
         calc = WPACalculator()
         calc._matrix = {(9, "top", 0, 0, 0): 0.5000}
-        prob = calc.get_win_probability(12, False, 0, 0, 0)
+        prob = calc.get_win_probability(12, is_bottom=False, outs=0, runners=0, score_diff=0)
         assert prob == 0.5000
 
     def test_fallback_with_runners(self):
         calc = WPACalculator()
         calc._matrix = {(1, "top", 0, 0, 0): 0.5000}
-        prob = calc.get_win_probability(1, False, 0, 1, 0)
+        prob = calc.get_win_probability(1, is_bottom=False, outs=0, runners=1, score_diff=0)
         assert prob < 0.5000
 
     def test_fallback_to_formula(self):
         calc = WPACalculator()
         calc._matrix = {}
-        prob = calc.get_win_probability(1, True, 0, 0, 0)
+        prob = calc.get_win_probability(1, is_bottom=True, outs=0, runners=0, score_diff=0)
         assert 0.0 < prob < 1.0
 
 
@@ -64,46 +64,73 @@ class TestCalculateWpa:
         calc = WPACalculator()
         with patch.object(calc, "get_win_probability") as mock_wp:
             mock_wp.side_effect = [0.5, 0.7]
-            wpa = calc.calculate_wpa(1, False, 0, 0, 0, 1, 1, 1)
+            wpa = calc.calculate_wpa(
+                1,
+                is_bottom=False,
+                outs_before=0,
+                runners_before=0,
+                score_diff_before=0,
+                outs_after=1,
+                runners_after=1,
+                score_diff_after=1,
+            )
             assert wpa == pytest.approx(-0.2, abs=1e-4)
 
     def test_home_team_batting(self):
         calc = WPACalculator()
         with patch.object(calc, "get_win_probability") as mock_wp:
             mock_wp.side_effect = [0.3, 0.6]
-            wpa = calc.calculate_wpa(1, True, 0, 0, 0, 1, 3, 2)
+            wpa = calc.calculate_wpa(
+                1,
+                is_bottom=True,
+                outs_before=0,
+                runners_before=0,
+                score_diff_before=0,
+                outs_after=1,
+                runners_after=3,
+                score_diff_after=2,
+            )
             assert wpa == pytest.approx(0.3, abs=1e-4)
 
     def test_no_change(self):
         calc = WPACalculator()
         with patch.object(calc, "get_win_probability") as mock_wp:
             mock_wp.side_effect = [0.5, 0.5]
-            wpa = calc.calculate_wpa(1, False, 0, 0, 0, 0, 0, 0)
+            wpa = calc.calculate_wpa(
+                1,
+                is_bottom=False,
+                outs_before=0,
+                runners_before=0,
+                score_diff_before=0,
+                outs_after=0,
+                runners_after=0,
+                score_diff_after=0,
+            )
             assert wpa == 0.0
 
 
 class TestFallbackFormula:
     def test_home_win_in_bottom_9th(self):
         calc = WPACalculator()
-        prob = calc._fallback_formula(9, True, 0, 0, 1)
+        prob = calc._fallback_formula(9, is_bottom=True, outs=0, runners=0, score_diff=1)
         assert prob == 1.0
 
     def test_away_win_top_9th_3_outs(self):
         calc = WPACalculator()
-        prob = calc._fallback_formula(9, False, 3, 0, 1)
+        prob = calc._fallback_formula(9, is_bottom=False, outs=3, runners=0, score_diff=1)
         assert prob == 1.0
 
     def test_home_loses_bottom_9th_3_outs(self):
         calc = WPACalculator()
-        prob = calc._fallback_formula(9, True, 3, 0, -1)
+        prob = calc._fallback_formula(9, is_bottom=True, outs=3, runners=0, score_diff=-1)
         assert prob == 0.0
 
     def test_early_game_formula(self):
         calc = WPACalculator()
-        prob = calc._fallback_formula(1, False, 0, 0, 0)
+        prob = calc._fallback_formula(1, is_bottom=False, outs=0, runners=0, score_diff=0)
         assert 0.0 < prob < 1.0
 
     def test_overflow_handling(self):
         calc = WPACalculator()
-        prob = calc._fallback_formula(1, False, 0, 0, 100)
+        prob = calc._fallback_formula(1, is_bottom=False, outs=0, runners=0, score_diff=100)
         assert prob >= 0.0

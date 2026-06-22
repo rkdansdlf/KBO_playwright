@@ -74,6 +74,7 @@ class TeamState:
 
     def add_game(
         self,
+        *,
         is_win: bool,
         is_loss: bool,
         is_draw: bool,
@@ -86,9 +87,9 @@ class TeamState:
         self.runs_allowed += runs_against
 
         if is_win:
-            self._add_win(is_home)
+            self._add_win(is_home=is_home)
         elif is_loss:
-            self._add_loss(is_home)
+            self._add_loss(is_home=is_home)
         elif is_draw:
             self.draws += 1
             self.recent_games.append("D")
@@ -99,7 +100,7 @@ class TeamState:
         elif is_loss:
             self.weekly_losses[week_key] += 1
 
-    def _add_win(self, is_home: bool) -> None:
+    def _add_win(self, *, is_home: bool) -> None:
         self.wins += 1
         self.current_streak = self.current_streak + 1 if self.current_streak > 0 else 1
         self.recent_games.append("W")
@@ -108,7 +109,7 @@ class TeamState:
         else:
             self.away_wins += 1
 
-    def _add_loss(self, is_home: bool) -> None:
+    def _add_loss(self, *, is_home: bool) -> None:
         self.losses += 1
         self.current_streak = self.current_streak - 1 if self.current_streak < 0 else -1
         self.recent_games.append("L")
@@ -141,14 +142,62 @@ def _apply_game_to_standings(game: Game, teams: dict[str, TeamState], game_date:
     away_state = _team_state_for(teams, away)
 
     if home_score > away_score:
-        home_state.add_game(True, False, False, home_score, away_score, True, game_date)
-        away_state.add_game(False, True, False, away_score, home_score, False, game_date)
+        home_state.add_game(
+            is_win=True,
+            is_loss=False,
+            is_draw=False,
+            runs_for=home_score,
+            runs_against=away_score,
+            is_home=True,
+            game_date=game_date,
+        )
+        away_state.add_game(
+            is_win=False,
+            is_loss=True,
+            is_draw=False,
+            runs_for=away_score,
+            runs_against=home_score,
+            is_home=False,
+            game_date=game_date,
+        )
     elif away_score > home_score:
-        home_state.add_game(False, True, False, home_score, away_score, True, game_date)
-        away_state.add_game(True, False, False, away_score, home_score, False, game_date)
+        home_state.add_game(
+            is_win=False,
+            is_loss=True,
+            is_draw=False,
+            runs_for=home_score,
+            runs_against=away_score,
+            is_home=True,
+            game_date=game_date,
+        )
+        away_state.add_game(
+            is_win=True,
+            is_loss=False,
+            is_draw=False,
+            runs_for=away_score,
+            runs_against=home_score,
+            is_home=False,
+            game_date=game_date,
+        )
     else:
-        home_state.add_game(False, False, True, home_score, away_score, True, game_date)
-        away_state.add_game(False, False, True, away_score, home_score, False, game_date)
+        home_state.add_game(
+            is_win=False,
+            is_loss=False,
+            is_draw=True,
+            runs_for=home_score,
+            runs_against=away_score,
+            is_home=True,
+            game_date=game_date,
+        )
+        away_state.add_game(
+            is_win=False,
+            is_loss=False,
+            is_draw=True,
+            runs_for=away_score,
+            runs_against=home_score,
+            is_home=False,
+            game_date=game_date,
+        )
 
 
 def _weekly_win_pcts(team: TeamState) -> dict[str, float | None] | None:

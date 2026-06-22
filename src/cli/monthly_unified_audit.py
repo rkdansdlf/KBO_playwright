@@ -31,7 +31,7 @@ logger = logging.getLogger(__name__)
 PA_AUDIT_EXCEPTIONS = (SQLAlchemyError, RuntimeError, ValueError, TypeError, OSError)
 
 
-def run_pa_fix(year: int, dry_run: bool = False) -> dict[str, Any]:
+def run_pa_fix(year: int, *, dry_run: bool = False) -> dict[str, Any]:
     """Apply PA formula fix for a given year, returning result dict."""
     try:
         fixed_rows = fix_year_formula(year, dry_run=dry_run)
@@ -136,7 +136,7 @@ def _target_year_from_args(year: int | None) -> int:
     return year if year else datetime.now(kst).year - 1
 
 
-def _run_team_only(target_year: int, json_output: bool) -> None:
+def _run_team_only(target_year: int, *, json_output: bool) -> None:
     team_result = run_monthly_team_audit(target_year)
     if json_output:
         logger.info(json.dumps(team_result, indent=2, ensure_ascii=False))
@@ -153,7 +153,7 @@ def _run_team_only(target_year: int, json_output: bool) -> None:
         sys.exit(1)
 
 
-def _run_pa_audit_for_cli(target_year: int, dry_run: bool) -> dict[str, Any]:
+def _run_pa_audit_for_cli(target_year: int, *, dry_run: bool) -> dict[str, Any]:
     fix_result = run_pa_fix(target_year, dry_run=dry_run)
     return run_pa_audit(target_year) if not dry_run else {"ok": fix_result["ok"], "violation_count": 0}
 
@@ -212,10 +212,10 @@ def main() -> int:
     logger.info("Running unified audit for year %s...", target_year)
 
     if args.team_only:
-        _run_team_only(target_year, args.json)
+        _run_team_only(target_year, json_output=args.json)
         return
 
-    pa_result = _run_pa_audit_for_cli(target_year, args.dry_run)
+    pa_result = _run_pa_audit_for_cli(target_year, dry_run=args.dry_run)
     team_result = None if args.pa_only else run_monthly_team_audit(target_year)
     _emit_unified_cli_output(pa_result, team_result, pa_only=args.pa_only, json_output=args.json)
 

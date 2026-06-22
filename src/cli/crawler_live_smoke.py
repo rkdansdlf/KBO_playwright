@@ -24,7 +24,7 @@ logger = logging.getLogger(__name__)
 SCOPES = ("schedule", "detail", "relay", "all")
 
 
-def _network_allowed(allow_network: bool) -> bool:
+def _network_allowed(*, allow_network: bool) -> bool:
     return allow_network or os.getenv("KBO_LIVE_SMOKE", "").strip() == "1"
 
 
@@ -222,7 +222,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.limit < 1:
         parser.error("--limit must be at least 1")
 
-    if not _network_allowed(args.allow_network):
+    if not _network_allowed(allow_network=args.allow_network):
         result = _base_result(args.date, args.scope)
         result["failure_reasons"] = {"network": ["network_not_allowed"]}
         if args.json:

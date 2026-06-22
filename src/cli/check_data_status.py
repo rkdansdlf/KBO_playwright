@@ -549,6 +549,7 @@ def _log_p0_readiness(target_date: str, readiness: dict[str, Any]) -> None:
 
 
 def _collect_full_status(
+    *,
     verbose: bool,
 ) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any], dict[str, Any], dict[str, Any]]:
     with SessionLocal() as session:
@@ -622,12 +623,14 @@ def _log_warnings(warnings: list[str]) -> None:
         logger.info("  - %s", warning)
 
 
-def _run_full_status_check(verbose: bool) -> None:
+def _run_full_status_check(*, verbose: bool) -> None:
     logger.info("\n%s", "=" * 60)
     logger.info(" KBO Data Status Check")
     logger.info(" Timestamp: %s", datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
     logger.info("%s", "=" * 60)
-    schedule_stats, player_stats, futures_stats, game_stats, pregame_pitcher_stats = _collect_full_status(verbose)
+    schedule_stats, player_stats, futures_stats, game_stats, pregame_pitcher_stats = _collect_full_status(
+        verbose=verbose
+    )
     _log_full_status_summary(schedule_stats, player_stats, futures_stats, game_stats, pregame_pitcher_stats)
     _log_warnings(_collect_status_warnings(schedule_stats, futures_stats, pregame_pitcher_stats))
     logger.info("")
@@ -650,7 +653,7 @@ def main(argv: Sequence[str] | None = None) -> None:
         _run_p0_readiness_check(args)
         return
 
-    _run_full_status_check(args.verbose)
+    _run_full_status_check(verbose=args.verbose)
 
 
 if __name__ == "__main__":

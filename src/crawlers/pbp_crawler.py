@@ -49,6 +49,128 @@ class PBPCrawler:
         self.wpa_calc = WPACalculator()
         self.last_failure_reason: str | None = None
 
+    @staticmethod
+    def _is_auth_redirect(page: Page) -> bool:
+        return "Error.html" in page.url or "Login.aspx" in page.url
+
+    async def _prepare_live_text_page(self, page: Page, game_date: str, url: str) -> bool:
+        logger.info("[FETCH] PBP Data: %s", url)
+        if not await compliance.is_allowed(url):
+            logger.info("[COMPLIANCE] Navigation to %s aborted.", url)
+            return False
+
+        await self.policy.delay_async(host="www.koreabaseball.com")
+        parent_url = f"https://www.koreabaseball.com/Schedule/ScoreBoard.aspx?gameDate={game_date}"
+        logger.info("[AUTH] Warming up session on Scoreboard: %s", parent_url)
+        await page.goto(parent_url, wait_until="networkidle", timeout=NAV_TIMEOUT)
+        await asyncio.sleep(2)
+
+        logger.info("[FETCH] Navigating to Relay page with Referer: %s", url)
+        await page.goto(url, wait_until="domcontentloaded", timeout=LONG_TIMEOUT, referer=parent_url)
+        return True
+
+    async def _wait_for_pbp_container(self, page: Page, game_id: str) -> bool:
+        try:
+            await page.wait_for_selector('div[id^="numCont"]', timeout=SEL_TIMEOUT)
+        except (PlaywrightError, TimeoutError):
+            logger.warning("No PBP containers found for %s", game_id)
+            body = await page.content()
+            if "데이터가 없습니다" in body or "취소" in body:
+                self.last_failure_reason = "empty"
+                return False
+        return True
+
+    @staticmethod
+    def _initial_legacy_state() -> dict[str, Any]:
+        return {
+            "current_inning": 0,
+            "current_half": "unknown",
+            "home_score": 0,
+            "away_score": 0,
+            "current_outs": 0,
+            "current_runners": 0,
+        }
+
+    @staticmethod
+    def _apply_inning_header(state: dict[str, Any], text: str, cls: str) -> bool:
+        if "blue" not in cls or "회" not in text:
+            return False
+        match = re.search(r"(\d+)회(초|말)", text)
+        if match:
+            state["current_inning"] = int(match.group(1))
+            state["current_half"] = "top" if match.group(2) == "초" else "bottom"
+            state["current_outs"] = 0
+            state["current_runners"] = 0
+        return True
+
+    @staticmethod
+    def _is_legacy_event_text(text: str, cls: str) -> bool:
+        if "normaiflTxt" not in cls and "red" not in cls:
+            return False
+        return "경기 준비중" not in text and "경기 시작" not in text
+
+    @staticmethod
+    def _update_out_base_state(state: dict[str, Any], text: str) -> tuple[int, int]:
+        outs_before = state["current_outs"]
+        runners_before = state["current_runners"]
+        parsed_outs = KBOTextParser.parse_outs(text)
+        parsed_runners = KBOTextParser.parse_runners(text)
+        if "사" in text and ("루" in text or "무사" in text):
+            if parsed_outs >= 0:
+                outs_before = parsed_outs
+                state["current_outs"] = outs_before
+            if parsed_runners >= 0:
+                runners_before = parsed_runners
+                state["current_runners"] = runners_before
+        if any(keyword in text for keyword in ["삼진", "아웃", "플라이", "땅볼", "범타"]):
+            state["current_outs"] += 2 if "병살" in text else 3 if "삼중살" in text else 1
+        state["current_outs"] = min(state["current_outs"], 3)
+        return outs_before, runners_before
+
+    def _build_legacy_event(
+        self, state: dict[str, Any], text: str, sequence: int, outs_before: int, runners_before: int
+    ) -> dict[str, Any]:
+        is_bottom = state["current_half"] == "bottom"
+        score_diff_before = state["home_score"] - state["away_score"]
+        runs_scored = KBOTextParser.parse_score_change(text)
+        state["home_score" if is_bottom else "away_score"] += runs_scored
+        runners_after = 0
+
+        wp_before = self.wpa_calc.get_win_probability(
+            state["current_inning"],
+            is_bottom=is_bottom,
+            outs=outs_before,
+            runners=runners_before,
+            score_diff=score_diff_before,
+        )
+        wp_after = self.wpa_calc.get_win_probability(
+            state["current_inning"],
+            is_bottom=is_bottom,
+            outs=state["current_outs"],
+            runners=runners_after,
+            score_diff=state["home_score"] - state["away_score"],
+        )
+        wpa = round(wp_after - wp_before if is_bottom else wp_before - wp_after, 4)
+        return {
+            "event_seq": sequence,
+            "inning": state["current_inning"],
+            "inning_half": state["current_half"],
+            "description": text,
+            "event_type": "batting" if "타자" in text or "전환" in text else "unknown",
+            "batter": text.split(":")[0].replace("타자", "").strip() if ":" in text else None,
+            "result": text.split(":")[1].strip() if ":" in text else None,
+            "wpa": wpa,
+            "win_expectancy_before": wp_before,
+            "win_expectancy_after": wp_after,
+            "home_score": state["home_score"],
+            "away_score": state["away_score"],
+            "score_diff": score_diff_before,
+            "base_state": runners_before,
+            "outs": outs_before,
+            "bases_before": self._format_base_string(runners_before),
+            "bases_after": self._format_base_string(runners_after),
+        }
+
     async def crawl_game_events(self, game_id: str) -> dict[str, Any] | None:
         """
         Loads the LiveText page for a specific game and extracts PBP data.
@@ -65,72 +187,73 @@ class PBPCrawler:
             await pool.start()
 
         try:
-
-            async def do_crawl(retry_count: int = 0) -> dict[str, Any] | None:
-                try:
-                    page = await pool.acquire()
-                    try:
-                        logger.info("[FETCH] PBP Data: %s", url)
-                        if not await compliance.is_allowed(url):
-                            logger.info("[COMPLIANCE] Navigation to %s aborted.", url)
-                            return None
-
-                        await self.policy.delay_async(host="www.koreabaseball.com")
-
-                        # Step 1: Warm up the session by visiting the Scoreboard page
-                        parent_url = f"https://www.koreabaseball.com/Schedule/ScoreBoard.aspx?gameDate={game_date}"
-                        logger.info("[AUTH] Warming up session on Scoreboard: %s", parent_url)
-                        await page.goto(parent_url, wait_until="networkidle", timeout=NAV_TIMEOUT)
-                        await asyncio.sleep(2)
-
-                        # Step 2: Navigate to the actual relay page with explicit Referer
-                        logger.info("[FETCH] Navigating to Relay page with Referer: %s", url)
-                        # Use 'domcontentloaded' as KBO pages often have persistent tracking scripts/images that block 'load' or 'networkidle'
-                        await page.goto(url, wait_until="domcontentloaded", timeout=LONG_TIMEOUT, referer=parent_url)
-
-                        # Check for redirects
-                        if "Error.html" in page.url or "Login.aspx" in page.url:
-                            logger.info("[ERROR] Redirected to %s.", page.url)
-                            self.last_failure_reason = "auth_required"
-                            if retry_count == 0:
-                                await pool.close()
-                                await pool.start()
-                                return await do_crawl(retry_count=1)
-                            return None
-
-                        # Wait for any PBP container on LiveText.aspx
-                        try:
-                            # Try to wait for any of the containers (1-12)
-                            await page.wait_for_selector('div[id^="numCont"]', timeout=SEL_TIMEOUT)
-                        except (PlaywrightError, TimeoutError):
-                            logger.warning("No PBP containers found for %s", game_id)
-                            body = await page.content()
-                            if "데이터가 없습니다" in body or "취소" in body:
-                                self.last_failure_reason = "empty"
-                                return None
-
-                        logger.info("[INFO] Extracting Relay Data...")
-                        events = await self._extract_flat_events_legacy(page)
-                    except PBP_CRAWLER_EXCEPTIONS:
-                        logger.exception("PBP crawl failed for %s", game_id)
-                        self.last_failure_reason = "error"
-                        return None
-                    else:
-                        if not events:
-                            self.last_failure_reason = "empty"
-                            return None
-                        return {"game_id": game_id, "game_date": game_date, "events": events}
-                    finally:
-                        await pool.release(page)
-                except PBP_CRAWLER_EXCEPTIONS:
-                    logger.exception("Pool error for %s", game_id)
-                    self.last_failure_reason = "error"
-                    return None
-
-            return await do_crawl()
+            return await self._crawl_game_events_with_pool(pool, game_id, game_date, url)
         finally:
             if owns_pool:
                 await pool.close()
+
+    async def _crawl_game_events_with_pool(
+        self,
+        pool: AsyncPlaywrightPool,
+        game_id: str,
+        game_date: str,
+        url: str,
+        retry_count: int = 0,
+    ) -> dict[str, Any] | None:
+        try:
+            page = await pool.acquire()
+            try:
+                return await self._crawl_game_events_page(pool, page, game_id, game_date, url, retry_count)
+            finally:
+                await pool.release(page)
+        except PBP_CRAWLER_EXCEPTIONS:
+            logger.exception("Pool error for %s", game_id)
+            self.last_failure_reason = "error"
+            return None
+
+    async def _crawl_game_events_page(
+        self,
+        pool: AsyncPlaywrightPool,
+        page: Page,
+        game_id: str,
+        game_date: str,
+        url: str,
+        retry_count: int,
+    ) -> dict[str, Any] | None:
+        try:
+            if not await self._prepare_live_text_page(page, game_date, url):
+                return None
+            if self._is_auth_redirect(page):
+                return await self._retry_after_auth_redirect(pool, page, game_id, game_date, url, retry_count)
+            if not await self._wait_for_pbp_container(page, game_id):
+                return None
+            logger.info("[INFO] Extracting Relay Data...")
+            events = await self._extract_flat_events_legacy(page)
+        except PBP_CRAWLER_EXCEPTIONS:
+            logger.exception("PBP crawl failed for %s", game_id)
+            self.last_failure_reason = "error"
+            return None
+        if not events:
+            self.last_failure_reason = "empty"
+            return None
+        return {"game_id": game_id, "game_date": game_date, "events": events}
+
+    async def _retry_after_auth_redirect(
+        self,
+        pool: AsyncPlaywrightPool,
+        page: Page,
+        game_id: str,
+        game_date: str,
+        url: str,
+        retry_count: int,
+    ) -> dict[str, Any] | None:
+        logger.info("[ERROR] Redirected to %s.", page.url)
+        self.last_failure_reason = "auth_required"
+        if retry_count > 0:
+            return None
+        await pool.close()
+        await pool.start()
+        return await self._crawl_game_events_with_pool(pool, game_id, game_date, url, retry_count=1)
 
     async def _extract_flat_events_legacy(self, page: Page) -> list[dict[str, Any]]:
         """Extract events from LiveText.aspx which are in reverse chronological order."""
@@ -168,13 +291,7 @@ class PBPCrawler:
             # Since the page is reverse chronological, we REVERSE the list to process it forward.
             raw_spans.reverse()
 
-            # State for parsing
-            current_inning = 0
-            current_half = "unknown"
-            home_score = 0
-            away_score = 0
-            current_outs = 0
-            current_runners = 0
+            state = self._initial_legacy_state()
             sequence = 1
             events = []
 
@@ -182,102 +299,19 @@ class PBPCrawler:
                 text = item["text"]
                 cls = item["class"]
 
-                # Inning Header Detection (span.blue)
-                # Example: "9회초 한화 공격"
-                if "blue" in cls and "회" in text:
-                    import re
-
-                    match = re.search(r"(\d+)회(초|말)", text)
-                    if match:
-                        current_inning = int(match.group(1))
-                        current_half = "top" if match.group(2) == "초" else "bottom"
-                        current_outs = 0
-                        current_runners = 0
+                if self._apply_inning_header(state, text, cls):
                     continue
 
-                # Metadata line (often just "------")
                 if "---" in text and len(text) > 10:
                     continue
 
-                # Actual Event (span.normaiflTxt or span.red)
-                if "normaiflTxt" in cls or "red" in cls:
-                    # Skip administrative messages
-                    if "경기 준비중" in text or "경기 시작" in text:
-                        continue
+                if not self._is_legacy_event_text(text, cls):
+                    continue
 
-                    is_bottom = current_half == "bottom"
-                    outs_before = current_outs
-                    runners_before = current_runners
-                    score_diff_before = home_score - away_score
-
-                    # Basic parser logic
-                    parsed_outs = KBOTextParser.parse_outs(text)
-                    parsed_runners = KBOTextParser.parse_runners(text)
-                    if "사" in text and ("루" in text or "무사" in text):
-                        if parsed_outs >= 0:
-                            outs_before = parsed_outs
-                            current_outs = outs_before
-                        if parsed_runners >= 0:
-                            runners_before = parsed_runners
-                            current_runners = runners_before
-
-                    runs_scored = KBOTextParser.parse_score_change(text)
-                    if is_bottom:
-                        home_score += runs_scored
-                    else:
-                        away_score += runs_scored
-
-                    # Out tracking
-                    if any(kw in text for kw in ["삼진", "아웃", "플라이", "땅볼", "범타"]):
-                        if "병살" in text:
-                            current_outs += 2
-                        elif "삼중살" in text:
-                            current_outs += 3
-                        else:
-                            current_outs += 1
-
-                    current_outs = min(current_outs, 3)
-                    outs_after = current_outs
-                    runners_after = 0 if current_outs >= 3 else 0  # Placeholder
-
-                    # WPA
-                    wp_before = self.wpa_calc.get_win_probability(
-                        current_inning,
-                        is_bottom,
-                        outs_before,
-                        runners_before,
-                        score_diff_before,
-                    )
-                    wp_after = self.wpa_calc.get_win_probability(
-                        current_inning,
-                        is_bottom,
-                        outs_after,
-                        runners_after,
-                        home_score - away_score,
-                    )
-                    wpa = round(wp_after - wp_before if is_bottom else wp_before - wp_after, 4)
-
-                    event = {
-                        "event_seq": sequence,
-                        "inning": current_inning,
-                        "inning_half": current_half,
-                        "description": text,
-                        "event_type": "batting" if "타자" in text or "전환" in text else "unknown",
-                        "batter": text.split(":")[0].replace("타자", "").strip() if ":" in text else None,
-                        "result": text.split(":")[1].strip() if ":" in text else None,
-                        "wpa": wpa,
-                        "win_expectancy_before": wp_before,
-                        "win_expectancy_after": wp_after,
-                        "home_score": home_score,
-                        "away_score": away_score,
-                        "score_diff": score_diff_before,
-                        "base_state": runners_before,
-                        "outs": outs_before,
-                        "bases_before": self._format_base_string(runners_before),
-                        "bases_after": self._format_base_string(runners_after),
-                    }
-                    events.append(event)
-                    sequence += 1
+                outs_before, runners_before = self._update_out_base_state(state, text)
+                event = self._build_legacy_event(state, text, sequence, outs_before, runners_before)
+                events.append(event)
+                sequence += 1
         except PBP_CRAWLER_EXCEPTIONS:
             logger.exception("Error extracting PBP legacy (JS)")
             return []

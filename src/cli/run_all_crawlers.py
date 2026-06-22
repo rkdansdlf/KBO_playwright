@@ -324,7 +324,7 @@ async def run_realtime_pipeline() -> None:
                         syncer.close()
 
 
-def run_consistency_check(deep: bool = False) -> None:
+def run_consistency_check(*, deep: bool = False) -> None:
     """
     Runs a post-sync consistency audit between local SQLite and OCI.
     Sends an alert if mismatches are found. Skips silently if OCI is not configured.

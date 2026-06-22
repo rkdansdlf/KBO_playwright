@@ -255,7 +255,7 @@ def _build_review_report_row(
 
 
 def _process_review_game(
-    session: Session, agg: ContextAggregator, game: Game, apply: bool
+    session: Session, agg: ContextAggregator, game: Game, *, apply: bool
 ) -> tuple[ReviewRegenReportRow, bool]:
     if game.game_status not in COMPLETED_LIKE_GAME_STATUSES:
         return _skipped_review_row(game), False
@@ -282,12 +282,12 @@ def _process_review_game(
 
 
 def _process_review_games(
-    session: Session, games: Sequence[Game], agg: ContextAggregator, apply: bool
+    session: Session, games: Sequence[Game], agg: ContextAggregator, *, apply: bool
 ) -> tuple[list[ReviewRegenReportRow], list[str]]:
     rows = []
     sync_game_ids = []
     for game in games:
-        row, should_sync = _process_review_game(session, agg, game, apply)
+        row, should_sync = _process_review_game(session, agg, game, apply=apply)
         rows.append(row)
         if should_sync:
             sync_game_ids.append(game.game_id)
@@ -338,7 +338,7 @@ def regenerate_review_summaries(
             log(f"Backed up existing review summaries: {backup_path}")
 
         _append_missing_review_rows(rows, target_game_ids, games_by_id)
-        processed_rows, sync_game_ids = _process_review_games(session, games, agg, apply)
+        processed_rows, sync_game_ids = _process_review_games(session, games, agg, apply=apply)
         rows.extend(processed_rows)
 
         if apply:

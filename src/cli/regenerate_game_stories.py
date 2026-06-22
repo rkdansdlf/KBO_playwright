@@ -294,6 +294,7 @@ def _process_story_game(
     builder: GameStoryBuilder,
     existing_summary_rows: dict[str, list[GameSummary]],
     existing_summaries: dict[str, str | None],
+    *,
     apply: bool,
 ) -> tuple[StoryRegenReportRow, bool]:
     if game.game_status not in COMPLETED_LIKE_GAME_STATUSES:
@@ -321,6 +322,7 @@ def _process_story_batches(
     builder: GameStoryBuilder,
     existing_summary_rows: dict[str, list[GameSummary]],
     existing_summaries: dict[str, str | None],
+    *,
     apply: bool,
 ) -> tuple[list[StoryRegenReportRow], list[str]]:
     rows: list[StoryRegenReportRow] = []
@@ -338,7 +340,7 @@ def _process_story_batches(
                 builder,
                 existing_summary_rows,
                 existing_summaries,
-                apply,
+                apply=apply,
             )
             rows.append(row)
             if should_sync:
@@ -397,7 +399,7 @@ def regenerate_game_stories(
             builder,
             existing_summary_rows,
             existing_summaries,
-            apply,
+            apply=apply,
         )
         rows.extend(processed_rows)
 
