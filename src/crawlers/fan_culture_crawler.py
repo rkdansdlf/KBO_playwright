@@ -107,6 +107,7 @@ class FanCultureCrawler:
 
     async def run(
         self,
+        *,
         save: bool = False,
         team_filter: str | None = None,
         dry_run: bool = False,

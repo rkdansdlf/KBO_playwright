@@ -36,8 +36,8 @@ class PlayerIdResolver:
     def __init__(
         self,
         session: Session,
-        allow_unknown_registration: bool | None = None,
         *,
+        allow_unknown_registration: bool | None = None,
         strict_game_resolution: bool = False,
         allow_auto_register: bool | None = None,
     ) -> None:
@@ -226,8 +226,8 @@ class PlayerIdResolver:
         logger.info("🔄 Preloading player index for season %s...", season)
         season_index: dict[str, dict[str, object]] = {}
 
-        def add_index_entry(name: str, team: str, pid: int, is_pitcher: bool | None) -> None:
-            cache_key = self._cache_key(name, team, season, None, is_pitcher)
+        def add_index_entry(name: str, team: str, pid: int, *, is_pitcher: bool | None) -> None:
+            cache_key = self._cache_key(name, team, season, None, is_pitcher=is_pitcher)
             entry = season_index.setdefault(cache_key, {"name": name, "ids": set()})
             entry_ids = entry["ids"]
             if isinstance(entry_ids, set):
@@ -241,8 +241,8 @@ class PlayerIdResolver:
         )
         for name, team, pid in self.session.execute(stmt).fetchall():
             if pid is not None:
-                add_index_entry(name, team, int(pid), False)
-                add_index_entry(name, team, int(pid), None)
+                add_index_entry(name, team, int(pid), is_pitcher=False)
+                add_index_entry(name, team, int(pid), is_pitcher=None)
 
         # Pitchers
         stmt = (
@@ -252,8 +252,8 @@ class PlayerIdResolver:
         )
         for name, team, pid in self.session.execute(stmt).fetchall():
             if pid is not None:
-                add_index_entry(name, team, int(pid), True)
-                add_index_entry(name, team, int(pid), None)
+                add_index_entry(name, team, int(pid), is_pitcher=True)
+                add_index_entry(name, team, int(pid), is_pitcher=None)
 
         for cache_key, entry in season_index.items():
             candidate_ids = entry["ids"]
@@ -275,6 +275,7 @@ class PlayerIdResolver:
         team_code: str | None,
         season: int,
         uniform_no: str | None,
+        *,
         is_pitcher: bool | None,
     ) -> str:
         if is_pitcher is True:
@@ -293,6 +294,7 @@ class PlayerIdResolver:
         player_name: str,
         team_code: str,
         season: int,
+        *,
         is_pitcher: bool | None,
     ) -> int | None:
         overrides = {
@@ -420,6 +422,7 @@ class PlayerIdResolver:
         team_code: str,
         season: int,
         uniform_no: str | None,
+        *,
         is_pitcher: bool | None,
     ) -> int | None:
         if not (
@@ -443,6 +446,7 @@ class PlayerIdResolver:
         team_code: str,
         season: int,
         uniform_no: str | None,
+        *,
         is_pitcher: bool | None,
     ) -> int | None:
         if not (player_name == "박준영" and team_code == "HH" and season == 2026 and is_pitcher is True):
@@ -453,7 +457,7 @@ class PlayerIdResolver:
             return 52731  # 96번 박준영 (2003년생)
         return None
 
-    def _candidate_models(self, is_pitcher: bool | None) -> list[Any]:
+    def _candidate_models(self, *, is_pitcher: bool | None) -> list[Any]:
         if is_pitcher is True:
             return [PlayerSeasonPitching]
         if is_pitcher is False:
@@ -491,12 +495,13 @@ class PlayerIdResolver:
         team_code: str,
         season: int,
         uniform_no: str | None,
+        *,
         is_pitcher: bool | None,
         cache_key: str,
     ) -> int | None:
         is_allstar = team_code in self.ALL_STAR_TEAMS
         candidate_ids = set()
-        for model in self._candidate_models(is_pitcher):
+        for model in self._candidate_models(is_pitcher=is_pitcher):
             stmt = (
                 select(PlayerBasic.player_id)
                 .select_from(model)
@@ -553,6 +558,7 @@ class PlayerIdResolver:
         team_code: str,
         season: int,
         uniform_no: str | None,
+        *,
         is_pitcher: bool | None,
         cache_key: str,
     ) -> int | None:
@@ -657,6 +663,7 @@ class PlayerIdResolver:
         team_code: str,
         season: int,
         uniform_no: str | None = None,
+        *,
         is_pitcher: bool | None = None,
     ) -> int | None:
         if not player_name:
@@ -664,27 +671,33 @@ class PlayerIdResolver:
 
         team_code = self._canonical_team_code(team_code)
 
-        override_id = self._resolve_static_override(player_name, team_code, season, is_pitcher)
+        override_id = self._resolve_static_override(player_name, team_code, season, is_pitcher=is_pitcher)
         if override_id:
             return override_id
 
-        samsung_id = self._resolve_samsung_lee_seunghyun(player_name, team_code, season, uniform_no, is_pitcher)
+        samsung_id = self._resolve_samsung_lee_seunghyun(
+            player_name, team_code, season, uniform_no, is_pitcher=is_pitcher
+        )
         if samsung_id:
             return samsung_id
 
-        hanwha_id = self._resolve_hanwha_park_junyoung(player_name, team_code, season, uniform_no, is_pitcher)
+        hanwha_id = self._resolve_hanwha_park_junyoung(
+            player_name, team_code, season, uniform_no, is_pitcher=is_pitcher
+        )
         if hanwha_id:
             return hanwha_id
 
         if player_name in self.NAME_ALIASES:
             player_name = self.NAME_ALIASES[player_name]
 
-        cache_key = self._cache_key(player_name, team_code, season, uniform_no, is_pitcher)
+        cache_key = self._cache_key(player_name, team_code, season, uniform_no, is_pitcher=is_pitcher)
         if cache_key in self._cache:
             return self._cache[cache_key]
 
         resolver_steps = (
-            lambda: self._resolve_from_season_stats(player_name, team_code, season, uniform_no, is_pitcher, cache_key),
+            lambda: self._resolve_from_season_stats(
+                player_name, team_code, season, uniform_no, is_pitcher=is_pitcher, cache_key=cache_key
+            ),
             lambda: self._resolve_from_player_basic_context(player_name, team_code, season, uniform_no, cache_key),
             lambda: self._resolve_by_uniform_no(player_name, team_code, season, uniform_no, cache_key),
         )
@@ -695,7 +708,12 @@ class PlayerIdResolver:
 
         if self.strict_game_resolution:
             return self._resolve_strict_game_facts_or_none(
-                player_name, team_code, season, uniform_no, is_pitcher, cache_key
+                player_name,
+                team_code,
+                season,
+                uniform_no,
+                is_pitcher=is_pitcher,
+                cache_key=cache_key,
             )
 
         return self._resolve_non_strict_fallbacks(player_name, team_code, season, uniform_no, cache_key)

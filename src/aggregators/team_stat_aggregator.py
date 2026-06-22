@@ -96,6 +96,7 @@ class TeamStatAggregator:
         team_games_map: dict[tuple[int, str], int] | None = None,
         rows: Iterable[PlayerSeasonBatting] | None = None,
         team_names: dict[str, str] | None = None,
+        *,
         dry_run: bool = False,
     ) -> list[dict[str, Any]]:
         """
@@ -123,6 +124,7 @@ class TeamStatAggregator:
         team_games_map: dict[tuple[int, str], int] | None = None,
         rows: Iterable[PlayerSeasonPitching] | None = None,
         team_names: dict[str, str] | None = None,
+        *,
         dry_run: bool = False,
     ) -> list[dict[str, Any]]:
         """
@@ -147,6 +149,7 @@ class TeamStatAggregator:
         self,
         season: int,
         team_id: str | None = None,
+        *,
         dry_run: bool = False,
     ) -> dict[str, list[dict[str, Any]]]:
         """
@@ -163,6 +166,7 @@ class TeamStatAggregator:
         self,
         season: int,
         team_id: str | None = None,
+        *,
         dry_run: bool = False,
     ) -> list[dict[str, Any]]:
         if not self.session:
@@ -262,6 +266,7 @@ class TeamStatAggregator:
         self,
         season: int,
         team_id: str | None = None,
+        *,
         dry_run: bool = False,
     ) -> list[dict[str, Any]]:
         if not self.session:

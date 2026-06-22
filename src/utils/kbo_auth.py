@@ -29,7 +29,7 @@ class KboAuthenticator:
         self.user_id = user_id or os.getenv("KBO_USER_ID")
         self.user_pwd = user_pwd or os.getenv("KBO_USER_PWD")
 
-    async def login(self, headless: bool = True) -> bool:
+    async def login(self, *, headless: bool = True) -> bool:
         """Perform login and save state to file."""
         if not self.user_id or not self.user_pwd:
             logger.info("[AUTH] Error: KBO_USER_ID or KBO_USER_PWD not set.")

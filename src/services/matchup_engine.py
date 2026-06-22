@@ -680,6 +680,7 @@ class MatchupEngine:
         double: int | float | None,
         triple: int | float | None,
         hr: int | float | None,
+        *,
         is_full: bool = True,
     ) -> tuple[float, float, float, float]:
         """Helper to calculate composite rates safely."""

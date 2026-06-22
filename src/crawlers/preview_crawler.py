@@ -255,35 +255,7 @@ class PreviewCrawler:
         results: list[dict[str, Any]] = []
 
         try:
-            # 1. Fetch Game List and Starting Pitchers
-            list_payload = {"leId": "1", "srId": "0,1,3,4,5,7,9", "date": game_date}
-            list_data = await self._fetch_api_json(self.GAME_LIST_URL, list_payload, self.BASE_REFERER)
-
-            # If direct API fails, use Playwright fallback only when a pool is explicitly injected.
-            if list_data is None:
-                if self.pool is not None:
-                    pool = self.pool
-                else:
-                    pool = AsyncPlaywrightPool(max_pages=1)
-                    owns_pool = True
-                try:
-                    await pool.start()
-                except PLAYWRIGHT_API_EXCEPTIONS as e:
-                    logger.exception("⚠️ Playwright fallback failed")
-                    msg = "Failed to start Playwright fallback pool"
-                    raise RuntimeError(msg) from e
-                page = await pool.acquire()
-                await page.goto(self.BASE_REFERER, wait_until="domcontentloaded", timeout=NAV_TIMEOUT)
-                await asyncio.sleep(self.request_delay)
-                list_data = await self._fetch_api_json(
-                    self.GAME_LIST_URL,
-                    list_payload,
-                    self.BASE_REFERER,
-                    page=page,
-                )
-            if list_data is None:
-                msg = f"HTTP API and Playwright fallback both failed to fetch game list for {game_date}"
-                raise RuntimeError(msg)
+            pool, page, owns_pool, list_data = await self._fetch_preview_game_list(game_date, pool, page, owns_pool)
 
             games = self._extract_list_payload(list_data)
             if not games:
@@ -291,87 +263,13 @@ class PreviewCrawler:
                 return []
 
             for g in games:
-                game_id = normalize_kbo_game_id(g.get("G_ID"))
-                if not game_id:
+                preview_data = self._build_preview_payload(g, game_date)
+                if not preview_data:
                     continue
-
-                season_year = str(g.get("SEASON_ID", game_date[:4]))
-                le_id = str(g.get("LE_ID", 1))
-                sr_id = str(g.get("SR_ID", 0))
-
-                away_team_name = self._clean_text(g.get("AWAY_NM"))
-                home_team_name = self._clean_text(g.get("HOME_NM"))
-                away_starter = self._extract_starter_name(g, "away")
-                home_starter = self._extract_starter_name(g, "home")
-                away_starter_id = self._extract_starter_id(g, "away")
-                home_starter_id = self._extract_starter_id(g, "home")
-                stadium = self._clean_text(g.get("S_NM")) or None
-                start_time = self._clean_text(g.get("G_TM")) or None
-                start_pitcher_announced = self._to_flag(g.get("START_PIT_CK")) or bool(away_starter and home_starter)
-                lineup_announced = self._to_flag(g.get("LINEUP_CK"))
-
-                preview_data = {
-                    "game_id": game_id,
-                    "game_date": game_date,
-                    "stadium": stadium,
-                    "start_time": start_time,
-                    "away_team_name": away_team_name,
-                    "home_team_name": home_team_name,
-                    "away_starter": away_starter,
-                    "away_starter_id": away_starter_id,
-                    "home_starter": home_starter,
-                    "home_starter_id": home_starter_id,
-                    "start_pitcher_announced": start_pitcher_announced,
-                    "lineup_announced": lineup_announced,
-                    "away_lineup": [],
-                    "home_lineup": [],
-                }
-
-                # 2. Fetch Lineups for this specific game
-                # Lineups might not be announced until ~1 hour before the game.
-                await asyncio.sleep(self.request_delay)
-                lineup_payload = {
-                    "leId": le_id,
-                    "srId": sr_id,
-                    "seasonId": season_year,
-                    "gameId": game_id,
-                }
-                lineup_data = await self._fetch_api_json(
-                    self.LINEUP_URL,
-                    lineup_payload,
-                    "https://www.koreabaseball.com/Schedule/GameCenter/Preview/LineUp.aspx",
-                    page=page,
-                )
-
-                if lineup_data:
-                    try:
-                        lineup_rows = self._extract_list_payload(lineup_data)
-                        preview_data["lineup_announced"] = self._extract_lineup_announced(
-                            lineup_rows,
-                            bool(preview_data["lineup_announced"]),
-                        )
-                        lineup_rows_match = self._lineup_rows_match_game(lineup_rows, game_id)
-                        if preview_data["lineup_announced"] and lineup_rows_match:
-                            # Parse Home Lineup (Index 3 is Home)
-                            if len(lineup_rows) > 3:
-                                preview_data["home_lineup"] = self._parse_lineup_grid(lineup_rows[3])
-                            # Parse Away Lineup (Index 4 is Away)
-                            if len(lineup_rows) > 4:
-                                preview_data["away_lineup"] = self._parse_lineup_grid(lineup_rows[4])
-                        elif not lineup_rows_match:
-                            logger.warning("⚠️ Ignoring stale lineup payload for %s", game_id)
-                    except LINEUP_PARSE_EXCEPTIONS:
-                        logger.exception("⚠️ Error parsing lineup for %s", game_id)
+                await self._enrich_preview_lineups(g, preview_data, page)
 
                 results.append(preview_data)
-                logger.info(
-                    "✅ Preview Extracted: %s (Starter: %s vs %s) [Lineups: %d vs %d]",
-                    game_id,
-                    away_starter,
-                    home_starter,
-                    len(preview_data["away_lineup"]),
-                    len(preview_data["home_lineup"]),
-                )
+                self._log_preview_result(preview_data)
 
         except PREVIEW_CRAWL_EXCEPTIONS:
             logger.exception("❌ PreviewCrawler error")
@@ -389,6 +287,117 @@ class PreviewCrawler:
                     await pool.close()
                 except PLAYWRIGHT_API_EXCEPTIONS:
                     logger.exception("Pool close failed")
+
+    async def _fetch_preview_game_list(
+        self,
+        game_date: str,
+        pool: AsyncPlaywrightPool | None,
+        page: Page | None,
+        owns_pool: bool,
+    ) -> tuple[AsyncPlaywrightPool | None, Page | None, bool, dict[str, Any] | list[Any]]:
+        list_payload = {"leId": "1", "srId": "0,1,3,4,5,7,9", "date": game_date}
+        list_data = await self._fetch_api_json(self.GAME_LIST_URL, list_payload, self.BASE_REFERER)
+        if list_data is None:
+            pool, page, owns_pool, list_data = await self._fetch_game_list_with_playwright(
+                list_payload, pool, owns_pool
+            )
+        if list_data is None:
+            msg = f"HTTP API and Playwright fallback both failed to fetch game list for {game_date}"
+            raise RuntimeError(msg)
+        return pool, page, owns_pool, list_data
+
+    async def _fetch_game_list_with_playwright(
+        self,
+        list_payload: dict[str, str],
+        pool: AsyncPlaywrightPool | None,
+        owns_pool: bool,
+    ) -> tuple[AsyncPlaywrightPool, Page, bool, dict[str, Any] | list[Any] | None]:
+        active_pool = pool or AsyncPlaywrightPool(max_pages=1)
+        owns_pool = owns_pool or pool is None
+        try:
+            await active_pool.start()
+        except PLAYWRIGHT_API_EXCEPTIONS as e:
+            logger.exception("⚠️ Playwright fallback failed")
+            msg = "Failed to start Playwright fallback pool"
+            raise RuntimeError(msg) from e
+        page = await active_pool.acquire()
+        await page.goto(self.BASE_REFERER, wait_until="domcontentloaded", timeout=NAV_TIMEOUT)
+        await asyncio.sleep(self.request_delay)
+        list_data = await self._fetch_api_json(self.GAME_LIST_URL, list_payload, self.BASE_REFERER, page=page)
+        return active_pool, page, owns_pool, list_data
+
+    def _build_preview_payload(self, game_row: dict[str, Any], game_date: str) -> dict[str, Any] | None:
+        game_id = normalize_kbo_game_id(game_row.get("G_ID"))
+        if not game_id:
+            return None
+        away_starter = self._extract_starter_name(game_row, "away")
+        home_starter = self._extract_starter_name(game_row, "home")
+        return {
+            "game_id": game_id,
+            "game_date": game_date,
+            "stadium": self._clean_text(game_row.get("S_NM")) or None,
+            "start_time": self._clean_text(game_row.get("G_TM")) or None,
+            "away_team_name": self._clean_text(game_row.get("AWAY_NM")),
+            "home_team_name": self._clean_text(game_row.get("HOME_NM")),
+            "away_starter": away_starter,
+            "away_starter_id": self._extract_starter_id(game_row, "away"),
+            "home_starter": home_starter,
+            "home_starter_id": self._extract_starter_id(game_row, "home"),
+            "start_pitcher_announced": self._to_flag(game_row.get("START_PIT_CK"))
+            or bool(away_starter and home_starter),
+            "lineup_announced": self._to_flag(game_row.get("LINEUP_CK")),
+            "away_lineup": [],
+            "home_lineup": [],
+        }
+
+    async def _enrich_preview_lineups(
+        self, game_row: dict[str, Any], preview_data: dict[str, Any], page: Page | None
+    ) -> None:
+        await asyncio.sleep(self.request_delay)
+        lineup_payload = {
+            "leId": str(game_row.get("LE_ID", 1)),
+            "srId": str(game_row.get("SR_ID", 0)),
+            "seasonId": str(game_row.get("SEASON_ID", str(preview_data["game_date"])[:4])),
+            "gameId": preview_data["game_id"],
+        }
+        lineup_data = await self._fetch_api_json(
+            self.LINEUP_URL,
+            lineup_payload,
+            "https://www.koreabaseball.com/Schedule/GameCenter/Preview/LineUp.aspx",
+            page=page,
+        )
+        if not lineup_data:
+            return
+        try:
+            self._apply_lineup_payload(preview_data, self._extract_list_payload(lineup_data))
+        except LINEUP_PARSE_EXCEPTIONS:
+            logger.exception("⚠️ Error parsing lineup for %s", preview_data["game_id"])
+
+    def _apply_lineup_payload(self, preview_data: dict[str, Any], lineup_rows: list[dict[str, Any]]) -> None:
+        preview_data["lineup_announced"] = self._extract_lineup_announced(
+            lineup_rows,
+            bool(preview_data["lineup_announced"]),
+        )
+        if not self._lineup_rows_match_game(lineup_rows, preview_data["game_id"]):
+            logger.warning("⚠️ Ignoring stale lineup payload for %s", preview_data["game_id"])
+            return
+        if not preview_data["lineup_announced"]:
+            return
+        if len(lineup_rows) > 3:
+            preview_data["home_lineup"] = self._parse_lineup_grid(lineup_rows[3])
+        if len(lineup_rows) > 4:
+            preview_data["away_lineup"] = self._parse_lineup_grid(lineup_rows[4])
+
+    @staticmethod
+    def _log_preview_result(preview_data: dict[str, Any]) -> None:
+        logger.info(
+            "✅ Preview Extracted: %s (Starter: %s vs %s) [Lineups: %d vs %d]",
+            preview_data["game_id"],
+            preview_data["away_starter"],
+            preview_data["home_starter"],
+            len(preview_data["away_lineup"]),
+            len(preview_data["home_lineup"]),
+        )
 
     def _parse_lineup_grid(self, grid_str_list: list[str]) -> list[dict[str, str]]:
         """Parses the nested KBO Lineup grid JSON string into a structured list."""

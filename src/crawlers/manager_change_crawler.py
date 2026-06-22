@@ -111,26 +111,20 @@ class ManagerChangeCrawler(NaverNewsCrawlerBase):
         repo = ManagerChangeRepository(session)
         count = 0
         seen = set()
-        try:
-            for item in data:
-                key = (item["team_id"], item["season"], item["new_manager"])
-                if key in seen:
-                    continue
-                seen.add(key)
-                try:
-                    repo.save_change(item)
-                    session.flush()
-                    count += 1
-                except SQLAlchemyError as e:
-                    logger.warning("Manager change save failed: %s", e)
-                    session.rollback()
-            session.commit()
-            logger.info("Saved %s manager change records.", count)
-        except SQLAlchemyError:
-            session.rollback()
-            logger.exception("Database error saving manager changes")
-        finally:
-            session.close()
+        for item in data:
+            key = (item["team_id"], item["season"], item["new_manager"])
+            if key in seen:
+                continue
+            seen.add(key)
+            try:
+                repo.save_change(item)
+                session.commit()
+                count += 1
+            except SQLAlchemyError as e:
+                logger.warning("Manager change save failed: %s", e)
+                session.rollback()
+        logger.info("Saved %s manager change records.", count)
+        session.close()
 
 
 if __name__ == "__main__":

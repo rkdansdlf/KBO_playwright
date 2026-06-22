@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 SABERMETRICS_CALC_EXCEPTIONS = (SQLAlchemyError, RuntimeError, ValueError, TypeError, KeyError, ZeroDivisionError)
 
 
-def batch_calculate_sabermetrics(years: list[int], sync_oci: bool = False) -> None:
+def batch_calculate_sabermetrics(years: list[int], *, sync_oci: bool = False) -> None:
     """
     Batches through years and updates all players with advanced Sabermetrics.
     """

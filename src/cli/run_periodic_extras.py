@@ -28,6 +28,7 @@ PERIODIC_SYNC_EXCEPTIONS = (SQLAlchemyError, RuntimeError, ValueError, TypeError
 
 async def run_periodic_extras(
     year: int,
+    *,
     sync: bool = False,
 ) -> None:
     logger.info("\n%s", "=" * 60)

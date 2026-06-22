@@ -397,6 +397,7 @@ def _apply_dynamic_delay_scaling(
 
 
 def _sync_live_touched_games(
+    *,
     sync_to_oci: bool | None,
     touched_game_ids: set[str],
 ) -> list[dict[str, str]]:
@@ -438,7 +439,7 @@ def _log_oci_sync_failures(oci_sync_failures: list[dict[str, str]]) -> None:
     )
 
 
-def _empty_live_result(all_finished: bool) -> dict[str, Any]:
+def _empty_live_result(*, all_finished: bool) -> dict[str, Any]:
     return {
         "active": False,
         "active_playing": False,
@@ -481,6 +482,7 @@ async def _save_live_relay_and_snapshot(
     relay_data: dict[str, Any] | None,
     resolved_lifecycle: str,
     detail_crawler: GameDetailCrawler | None,
+    *,
     detail_snapshot_background: bool,
 ) -> bool:
     if not flat_events and not raw_pbp_rows:
@@ -561,7 +563,7 @@ async def _process_single_live_game(
         relay_data,
         resolved_lifecycle,
         detail_crawler,
-        detail_snapshot_background,
+        detail_snapshot_background=detail_snapshot_background,
     )
 
     return (game_id if touched else None), resolved_lifecycle
@@ -662,9 +664,9 @@ async def run_live_crawler_cycle(
 
     if not touched_game_ids:
         logger.info("[INFO] No live games currently active right now. manifest=%s", manifest_path)
-        return _empty_live_result(all_finished)
+        return _empty_live_result(all_finished=all_finished)
 
-    oci_sync_failures = _sync_live_touched_games(sync_to_oci, touched_game_ids)
+    oci_sync_failures = _sync_live_touched_games(sync_to_oci=sync_to_oci, touched_game_ids=touched_game_ids)
 
     _log_oci_sync_failures(oci_sync_failures)
     logger.info("[INFO] Live cycle finished. updated=%s manifest=%s", len(touched_game_ids), manifest_path)
@@ -704,12 +706,12 @@ async def main_loop(base_interval_minutes: int, *, sync_to_oci: bool | None = No
                 extra_note = ""
             else:
                 base_interval, mode_str = _compute_base_dynamic_interval(
-                    active,
-                    active_playing,
-                    active_suspended,
-                    last_active_time,
-                    now,
-                    base_interval_minutes,
+                    active=active,
+                    active_playing=active_playing,
+                    active_suspended=active_suspended,
+                    last_active_time=last_active_time,
+                    now=now,
+                    base_interval_minutes=base_interval_minutes,
                 )
 
                 # Phase 4: Enriched interval using at-bat/pitch/inning state
@@ -739,6 +741,7 @@ async def main_loop(base_interval_minutes: int, *, sync_to_oci: bool | None = No
 
 
 def _compute_base_dynamic_interval(
+    *,
     active: bool,
     active_playing: bool,
     active_suspended: bool,

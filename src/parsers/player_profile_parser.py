@@ -296,6 +296,7 @@ def parse_entry_year_team(s: str) -> dict[str, Any | None]:
 
 def parse_profile(
     raw_text: str,
+    *,
     is_active: bool | None = None,
     is_foreign: bool | None = None,
 ) -> dict[str, Any]:

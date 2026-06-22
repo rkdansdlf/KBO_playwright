@@ -37,6 +37,7 @@ class ProcessLock:
         self,
         name: str,
         lock_dir: Path | str | None = None,
+        *,
         blocking: bool = True,
     ) -> None:
         self.name = name
@@ -60,7 +61,7 @@ class ProcessLock:
         self.thread_lock_acquired = False
         self.acquire_count = 0
 
-    def acquire(self, blocking: bool | None = None) -> bool:
+    def acquire(self, *, blocking: bool | None = None) -> bool:
         """Acquire the lock.
 
         Args:

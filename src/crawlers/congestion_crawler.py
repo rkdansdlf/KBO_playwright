@@ -76,6 +76,7 @@ class CongestionCrawler:
     async def run(
         self,
         game_date: date | None = None,
+        *,
         save: bool = False,
     ) -> list[dict]:
         game_date = game_date or date.today()

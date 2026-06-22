@@ -255,7 +255,7 @@ def _record_auto_remediation_fixed(summary: dict[str, Any], filename: str, conte
         )
 
 
-def _auto_remediation_status(has_abort: bool, has_warning: bool, has_fixed: bool) -> str:
+def _auto_remediation_status(*, has_abort: bool, has_warning: bool, has_fixed: bool) -> str:
     if has_abort:
         return "aborted"
     if has_warning:
@@ -302,7 +302,11 @@ def get_auto_remediation_summary(target_date_str: str, audit_dir: Path | None = 
             has_fixed = True
             _record_auto_remediation_fixed(summary, filename, content)
 
-    summary["status"] = _auto_remediation_status(has_abort, has_warning, has_fixed)
+    summary["status"] = _auto_remediation_status(
+        has_abort=has_abort,
+        has_warning=has_warning,
+        has_fixed=has_fixed,
+    )
     return summary
 
 
@@ -589,7 +593,7 @@ def get_daily_metrics(
     pa_formula_trend = get_pa_formula_trend(session, months=6)
 
     # 9. Team Stats Trend (snapshot)
-    team_stats_trend = get_team_stats_trend(session, months=6, gate_result=gate_result)
+    team_stats_trend = get_team_stats_trend(session, gate_result=gate_result)
 
     return {
         "date": target_date_str,

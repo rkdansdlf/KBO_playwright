@@ -399,7 +399,7 @@ SEED_DATA: list[dict] = [
 ]
 
 
-def run_seed(dry_run: bool = False) -> None:
+def run_seed(*, dry_run: bool = False) -> None:
     with SessionLocal() as session:
         repo = DataSourceRepository(session)
         created = 0

@@ -100,7 +100,7 @@ def resolve_player_basic_id(session: Session, name: str, team_code: str) -> int 
 
 
 class FACrawler:
-    def __init__(self, headless: bool = False) -> None:
+    def __init__(self, *, headless: bool = False) -> None:
         self.url = "https://namu.wiki/w/KBO%20%EB%A6%AC%EA%B7%B8/%EC%97%AD%EB%8C%80%20FA"
         self.headless = headless
 
@@ -165,6 +165,127 @@ class FACrawler:
                 await browser.close()
 
         return results
+
+    @staticmethod
+    def _fa_column_index(header: list[str], candidates: list[str]) -> int:
+        for candidate in candidates:
+            for idx, col in enumerate(header):
+                if candidate in col:
+                    return idx
+        return -1
+
+    def _fa_header_mapping(self, header: list[str], section_type: str) -> dict[str, int]:
+        mapping = {
+            "year": self._fa_column_index(header, ["년도", "연도"]),
+            "name": self._fa_column_index(header, ["이름", "선수"]),
+            "duration": self._fa_column_index(header, ["계약기간", "기간"]),
+            "amount": self._fa_column_index(header, ["총액", "금액"]),
+            "remarks": self._fa_column_index(header, ["비고", "기타", "상세", "옵션"]),
+            "old_team": -1,
+            "new_team": -1,
+            "team": -1,
+        }
+        if mapping["amount"] == -1:
+            mapping["amount"] = self._fa_column_index(header, ["계약조건", "조건"])
+        if section_type == "RETAINED":
+            mapping["team"] = self._fa_column_index(header, ["소속팀", "팀"])
+        else:
+            mapping["old_team"] = self._fa_column_index(header, ["원 소속팀", "원소속", "이전 소속팀", "이전팀"])
+            mapping["new_team"] = self._fa_column_index(header, ["이적팀", "이적한 팀", "새 소속팀", "이적 구단"])
+            if mapping["old_team"] == -1:
+                mapping["old_team"] = self._fa_column_index(header, ["소속팀", "팀"])
+            if mapping["new_team"] == -1:
+                mapping["new_team"] = self._fa_column_index(header, ["소속팀", "팀"])
+            mapping["team"] = mapping["new_team"]
+        return mapping
+
+    @staticmethod
+    def _log_fa_header_mapping(header: list[str], mapping: dict[str, int], section_type: str, pos_type: str) -> None:
+        logger.info("   [Header Mapping] Section: %s (%s)", section_type, pos_type)
+        logger.info("   => Header: %s", header)
+        logger.info(
+            "   => Indices - year: %s, name: %s, team: %s, old_team: %s, new_team: %s, duration: %s, amount: %s, remarks: %s",
+            mapping["year"],
+            mapping["name"],
+            mapping["team"],
+            mapping["old_team"],
+            mapping["new_team"],
+            mapping["duration"],
+            mapping["amount"],
+            mapping["remarks"],
+        )
+
+    @staticmethod
+    def _parse_fa_year(row: list[str], year_idx: int) -> int | None:
+        if year_idx == -1:
+            return None
+        digits = re.sub(r"\D", "", row[year_idx])
+        if len(digits) != 4:
+            return None
+        with contextlib.suppress(ValueError):
+            return int(digits)
+        return None
+
+    def _fa_remarks(self, row: list[str], header: list[str], mapping: dict[str, int]) -> str:
+        remarks_parts = []
+        if mapping["remarks"] != -1:
+            remarks_parts.append(row[mapping["remarks"]].strip())
+
+        for candidates, prefix in [(["옵션", "인센티브"], "옵션"), (["연봉"], "연봉"), (["계약금"], "계약금")]:
+            idx = self._fa_column_index(header, candidates)
+            if idx == -1 or idx in [mapping["remarks"], mapping["amount"], mapping["name"], mapping["year"]]:
+                continue
+            val = row[idx].strip()
+            if val and val not in ["-", "0", "비공개"]:
+                remarks_parts.append(f"{prefix}: {val}")
+        return " | ".join([part for part in remarks_parts if part])
+
+    @staticmethod
+    def _apply_fa_team_fields(item: dict[str, Any], row: list[str], mapping: dict[str, int], section_type: str) -> None:
+        if section_type == "RETAINED":
+            item["team"] = row[mapping["team"]].strip() if mapping["team"] != -1 else ""
+            return
+        item["old_team"] = row[mapping["old_team"]].strip() if mapping["old_team"] != -1 else ""
+        item["new_team"] = row[mapping["new_team"]].strip() if mapping["new_team"] != -1 else ""
+        item["team"] = item["new_team"]
+
+    @staticmethod
+    def _clean_fa_item(item: dict[str, Any]) -> None:
+        for key, value in item.items():
+            if isinstance(value, str):
+                item[key] = re.sub(r"\[[^\]]+\]", "", value).strip()
+
+    def _parse_fa_row(
+        self, row: list[str], header: list[str], mapping: dict[str, int], section_type: str
+    ) -> dict[str, Any] | None:
+        if len(row) < len(header) or "이름" in row or "총액" in row:
+            return None
+        year_val = self._parse_fa_year(row, mapping["year"])
+        if not year_val:
+            return None
+        name_val = row[mapping["name"]].strip()
+        if not name_val or name_val in ["이름", "선수명", "선수"]:
+            return None
+        item = {
+            "year": year_val,
+            "player_name": name_val,
+            "fa_type": section_type.lower(),
+            "duration": row[mapping["duration"]].strip() if mapping["duration"] != -1 else "",
+            "amount": row[mapping["amount"]].strip(),
+            "remarks": self._fa_remarks(row, header, mapping),
+        }
+        self._apply_fa_team_fields(item, row, mapping, section_type)
+        self._clean_fa_item(item)
+        return item
+
+    def _parse_fa_rows(self, raw_rows: list[list[str]], section_type: str, pos_type: str) -> list[dict[str, Any]]:
+        header = [cell.strip() for cell in raw_rows[0]]
+        mapping = self._fa_header_mapping(header, section_type)
+        self._log_fa_header_mapping(header, mapping, section_type, pos_type)
+        if mapping["name"] == -1 or mapping["amount"] == -1:
+            logger.warning("   ⚠️ Critical columns (이름, 총액) not found in header. Skipping table.")
+            return []
+        return [item for row in raw_rows[1:] if (item := self._parse_fa_row(row, header, mapping, section_type))]
 
     async def _extract_section_table(self, page: Page, section_type: str, pos_type: str) -> list[dict[str, Any]]:
         """
@@ -247,135 +368,7 @@ class FACrawler:
         if not raw_rows or len(raw_rows) < 2:
             logger.warning("   ⚠️ No table found matching section %s (%s)", section_type, pos_type)
             return []
-
-        header = raw_rows[0]
-        header = [h.strip() for h in header]
-
-        # Helper to find column index by matching substring
-        def find_index(candidates: list[str]) -> int:
-            for candidate in candidates:
-                for idx, col in enumerate(header):
-                    if candidate in col:
-                        return idx
-            return -1
-
-        year_idx = find_index(["년도", "연도"])
-        name_idx = find_index(["이름", "선수"])
-
-        if section_type == "RETAINED":
-            team_idx = find_index(["소속팀", "팀"])
-            old_team_idx = -1
-            new_team_idx = -1
-        else:
-            old_team_idx = find_index(["원 소속팀", "원소속", "이전 소속팀", "이전팀"])
-            new_team_idx = find_index(["이적팀", "이적한 팀", "새 소속팀", "이적 구단"])
-            if old_team_idx == -1:
-                old_team_idx = find_index(["소속팀", "팀"])
-            if new_team_idx == -1:
-                new_team_idx = find_index(["소속팀", "팀"])
-            team_idx = new_team_idx
-
-        duration_idx = find_index(["계약기간", "기간"])
-        amount_idx = find_index(["총액", "금액"])
-        if amount_idx == -1:
-            amount_idx = find_index(["계약조건", "조건"])
-
-        remarks_idx = find_index(["비고", "기타", "상세", "옵션"])
-
-        logger.info("   [Header Mapping] Section: %s (%s)", section_type, pos_type)
-        logger.info("   => Header: %s", header)
-        logger.info(
-            "   => Indices - year: %s, name: %s, team: %s, old_team: %s, new_team: %s, duration: %s, amount: %s, remarks: %s",
-            year_idx,
-            name_idx,
-            team_idx,
-            old_team_idx,
-            new_team_idx,
-            duration_idx,
-            amount_idx,
-            remarks_idx,
-        )
-
-        if name_idx == -1 or amount_idx == -1:
-            logger.warning("   ⚠️ Critical columns (이름, 총액) not found in header. Skipping table.")
-            return []
-
-        parsed_data = []
-        for row in raw_rows[1:]:
-            if len(row) < len(header):
-                continue
-
-            # Skip any duplicated header rows nested in table
-            if "이름" in row or "총액" in row:
-                continue
-
-            # Parse Year
-            year_val = None
-            if year_idx != -1:
-                year_str = row[year_idx]
-                digits = re.sub(r"\D", "", year_str)
-                if len(digits) == 4:
-                    with contextlib.suppress(ValueError):
-                        year_val = int(digits)
-
-            if not year_val:
-                continue
-
-            name_val = row[name_idx].strip()
-            if not name_val or name_val in ["이름", "선수명", "선수"]:
-                continue
-
-            item = {"year": year_val, "player_name": name_val, "fa_type": section_type.lower()}
-
-            if duration_idx != -1:
-                item["duration"] = row[duration_idx].strip()
-            else:
-                item["duration"] = ""
-
-            item["amount"] = row[amount_idx].strip()
-
-            remarks_parts = []
-            if remarks_idx != -1:
-                remarks_parts.append(row[remarks_idx].strip())
-
-            # Additional column checks to collect details if they exist in separate columns
-            def check_and_add_col(candidates: list[str], prefix: str) -> None:
-                idx = find_index(candidates)
-                if idx != -1 and idx not in [remarks_idx, amount_idx, name_idx, year_idx]:
-                    val = row[idx].strip()
-                    if val and val not in ["-", "0", "비공개"]:
-                        remarks_parts.append(f"{prefix}: {val}")
-
-            check_and_add_col(["옵션", "인센티브"], "옵션")
-            check_and_add_col(["연봉"], "연봉")
-            check_and_add_col(["계약금"], "계약금")
-
-            item["remarks"] = " | ".join([p for p in remarks_parts if p])
-
-            if section_type == "RETAINED":
-                if team_idx != -1:
-                    item["team"] = row[team_idx].strip()
-                else:
-                    item["team"] = ""
-            else:  # TRANSFERRED
-                if old_team_idx != -1:
-                    item["old_team"] = row[old_team_idx].strip()
-                else:
-                    item["old_team"] = ""
-                if new_team_idx != -1:
-                    item["new_team"] = row[new_team_idx].strip()
-                    item["team"] = row[new_team_idx].strip()
-                else:
-                    item["new_team"] = ""
-                    item["team"] = ""
-
-            for k, v in item.items():
-                if isinstance(v, str):
-                    item[k] = re.sub(r"\[[^\]]+\]", "", v).strip()
-
-            parsed_data.append(item)
-
-        return parsed_data
+        return self._parse_fa_rows(raw_rows, section_type, pos_type)
 
     def load_from_json(self, filepath: str) -> list[dict[str, Any]]:
         """Loads FA data from a JSON file."""
@@ -392,7 +385,7 @@ class FACrawler:
             logger.exception("❌ Error loading JSON")
             return []
 
-    def save_to_db(self, data: list[dict[str, Any]], session: Session, dry_run: bool = False) -> None:
+    def save_to_db(self, data: list[dict[str, Any]], session: Session, *, dry_run: bool = False) -> None:
         logger.info("💾 processing %s records for Database...", len(data))
         new_records = 0
         updates = 0
@@ -402,7 +395,7 @@ class FACrawler:
         for item in data:
             if not item.get("player_name"):
                 continue
-            dr = self._process_fa_record(session, item, dry_run)
+            dr = self._process_fa_record(session, item, dry_run=dry_run)
             new_records += dr["new_records"]
             updates += dr["updates"]
             new_fa_contracts += dr["new_fa_contracts"]
@@ -450,6 +443,7 @@ class FACrawler:
         self,
         session: Session,
         item: dict[str, Any],
+        *,
         dry_run: bool,
     ) -> dict[str, int]:
         name = item["player_name"]

@@ -23,7 +23,7 @@ from src.models.game import (
     GamePitchingStat,
     GameSummary,
 )
-from src.utils.game_status import COMPLETED_LIKE_GAME_STATUSES
+from src.utils.game_status import COMPLETED_LIKE_GAME_STATUSES, GAME_STATUS_SCHEDULED, GAME_STATUS_UNRESOLVED
 from src.utils.relay_text import is_relay_noise_text
 
 logger = logging.getLogger(__name__)
@@ -79,6 +79,7 @@ def _apply_freshness_date_filter(
 def _empty_issue_map() -> dict[str, list[str]]:
     return {
         "missing_start_time": [],
+        "missing_scores": [],
         "missing_lineups": [],
         "missing_inning_scores": [],
         "missing_events": [],
@@ -90,13 +91,42 @@ def _empty_issue_map() -> dict[str, list[str]]:
         "missing_review_moments": [],
         "review_moment_noise": [],
         "inning_score_mismatch": [],
+        "past_scheduled_games": [],
     }
+
+
+def _scheduled_base_query(session: Session) -> Query:
+    return session.query(Game.game_id, Game.game_date).filter(
+        Game.game_status.in_((GAME_STATUS_SCHEDULED, GAME_STATUS_UNRESOLVED)),
+        Game.away_team.in_(KBO_FRESHNESS_TEAM_CODES),
+        Game.home_team.in_(KBO_FRESHNESS_TEAM_CODES),
+        ~session.query(GameIdAlias.alias_game_id).filter(GameIdAlias.alias_game_id == Game.game_id).exists(),
+    )
+
+
+def _check_past_scheduled_games(
+    session: Session,
+    *,
+    target_date: str | None,
+    days: int | None,
+    max_hours: int | None,
+    issues: dict[str, list[str]],
+) -> None:
+    query = _apply_freshness_date_filter(_scheduled_base_query(session), target_date, days, max_hours)
+    yesterday = datetime.now().date() - timedelta(days=1)
+    rows = query.filter(Game.game_date <= yesterday).order_by(Game.game_date, Game.game_id).all()
+    issues["past_scheduled_games"].extend(row.game_id for row in rows)
 
 
 def _check_metadata_start_time(session: Session, game: object, issues: dict[str, list[str]]) -> None:
     metadata = session.query(GameMetadata.start_time).filter(GameMetadata.game_id == game.game_id).one_or_none()
     if metadata is None or metadata.start_time is None:
         issues["missing_start_time"].append(game.game_id)
+
+
+def _check_scores(game: object, issues: dict[str, list[str]]) -> None:
+    if game.away_score is None or game.home_score is None:
+        issues["missing_scores"].append(game.game_id)
 
 
 def _check_lineups(session: Session, game: object, issues: dict[str, list[str]]) -> None:
@@ -171,6 +201,7 @@ def _check_review_summary(session: Session, game: object, issues: dict[str, list
 
 def _check_freshness_game(session: Session, game: object, issues: dict[str, list[str]]) -> None:
     _check_metadata_start_time(session, game, issues)
+    _check_scores(game, issues)
     _check_lineups(session, game, issues)
     _check_inning_scores(session, game, issues)
     _check_events_wpa(session, game, issues)
@@ -192,6 +223,14 @@ def collect_freshness_issues(
 
     for game in games:
         _check_freshness_game(session, game, issues)
+
+    _check_past_scheduled_games(
+        session,
+        target_date=target_date,
+        days=days,
+        max_hours=max_hours,
+        issues=issues,
+    )
 
     return issues
 

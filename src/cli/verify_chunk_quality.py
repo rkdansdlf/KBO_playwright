@@ -165,7 +165,7 @@ def chunks_per_source(chunks: list[dict]) -> dict[str, int]:
 # ---------------------------------------------------------------------------
 
 
-def _status(ok: bool) -> str:
+def _status(*, ok: bool) -> str:
     return "✅" if ok else "❌"
 
 
@@ -205,16 +205,16 @@ def print_report(chunks: list[dict], source_filter: str | None) -> bool:
     # Print table
     rows = [
         ("Total Chunks", str(total), "-", "✅"),
-        ("Avg Length (chars)", str(stats["avg"]), f"≥ {MIN_AVG_LENGTH}", _status(avg_ok)),
-        ("Min Length (chars)", str(stats["min"]), f"≥ {MIN_CHUNK_LENGTH}", _status(min_ok)),
+        ("Avg Length (chars)", str(stats["avg"]), f"≥ {MIN_AVG_LENGTH}", _status(ok=avg_ok)),
+        ("Min Length (chars)", str(stats["min"]), f"≥ {MIN_CHUNK_LENGTH}", _status(ok=min_ok)),
         ("Max Length (chars)", str(stats["max"]), "-", "✅"),
         ("p50 Length (chars)", str(stats["p50"]), "-", "✅"),
         ("p95 Length (chars)", str(stats["p95"]), "-", "✅"),
-        ("Empty Chunks", str(empty), "= 0", _status(empty == 0)),
-        ("Stub Chunks (<50ch)", str(stubs), "= 0", _status(stubs == 0)),
-        ("Duplicate Chunks", str(dup_cnt), "= 0", _status(dup_cnt == 0)),
-        ("Keyword Coverage", f"{kw_cov * 100:.1f}%", f"≥ {KEYWORD_COVERAGE_TARGET * 100:.0f}%", _status(kw_ok)),
-        ("Under-chunked Docs", str(len(under_chunked)), "= 0", _status(len(under_chunked) == 0)),
+        ("Empty Chunks", str(empty), "= 0", _status(ok=empty == 0)),
+        ("Stub Chunks (<50ch)", str(stubs), "= 0", _status(ok=stubs == 0)),
+        ("Duplicate Chunks", str(dup_cnt), "= 0", _status(ok=dup_cnt == 0)),
+        ("Keyword Coverage", f"{kw_cov * 100:.1f}%", f"≥ {KEYWORD_COVERAGE_TARGET * 100:.0f}%", _status(ok=kw_ok)),
+        ("Under-chunked Docs", str(len(under_chunked)), "= 0", _status(ok=len(under_chunked) == 0)),
     ]
 
     header = f"│ {'Metric':<24}│ {'Value':>10} │ {'Threshold':>12} │ {'Status':>6} │"

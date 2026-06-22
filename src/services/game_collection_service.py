@@ -44,6 +44,7 @@ class DetailCrawler(Protocol):
         self,
         games: list[dict[str, str]],
         concurrency: int | None = None,
+        *,
         lightweight: bool = False,
     ) -> list[dict[str, Any]]: ...
 

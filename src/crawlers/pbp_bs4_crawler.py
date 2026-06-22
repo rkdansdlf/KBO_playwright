@@ -218,17 +218,17 @@ class PBPBS4Crawler:
     ) -> tuple[float, float, float]:
         wp_before = self.wpa_calc.get_win_probability(
             inning,
-            is_bottom,
-            outs_before,
-            runners_before,
-            score_diff_before,
+            is_bottom=is_bottom,
+            outs=outs_before,
+            runners=runners_before,
+            score_diff=score_diff_before,
         )
         wp_after = self.wpa_calc.get_win_probability(
             inning,
-            is_bottom,
-            outs_after,
-            runners_after,
-            score_diff_after,
+            is_bottom=is_bottom,
+            outs=outs_after,
+            runners=runners_after,
+            score_diff=score_diff_after,
         )
         wpa = round(wp_after - wp_before if is_bottom else wp_before - wp_after, 4)
         return wp_before, wp_after, wpa

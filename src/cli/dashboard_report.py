@@ -460,13 +460,21 @@ def _append_quality_notify_lines(msg_lines: list[str], quality: dict[str, Any]) 
     if pa_ok and team_bat_ok and team_pit_ok:
         msg_lines.append("통합 감사: ✅ 전체 통과")
         return
-    _append_quality_violation_lines(msg_lines, quality, gate, pa_ok, team_bat_ok, team_pit_ok)
+    _append_quality_violation_lines(
+        msg_lines,
+        quality,
+        gate,
+        pa_ok=pa_ok,
+        team_bat_ok=team_bat_ok,
+        team_pit_ok=team_pit_ok,
+    )
 
 
 def _append_quality_violation_lines(
     msg_lines: list[str],
     quality: dict[str, Any],
     gate: dict[str, Any],
+    *,
     pa_ok: bool,
     team_bat_ok: bool,
     team_pit_ok: bool,
@@ -482,8 +490,8 @@ def _append_quality_violation_lines(
         pit_mismatches = gate.get("team_pitching", {}).get("mismatches", [])
         violations.append(f"팀투수 {len(pit_mismatches)}건")
     msg_lines.append(f"통합 감사: ❌ ({', '.join(violations)})")
-    _append_first_mismatch_line(msg_lines, gate, "team_batting", "팀타격", team_bat_ok)
-    _append_first_mismatch_line(msg_lines, gate, "team_pitching", "팀투수", team_pit_ok)
+    _append_first_mismatch_line(msg_lines, gate, "team_batting", "팀타격", is_ok=team_bat_ok)
+    _append_first_mismatch_line(msg_lines, gate, "team_pitching", "팀투수", is_ok=team_pit_ok)
 
 
 def _append_first_mismatch_line(
@@ -491,6 +499,7 @@ def _append_first_mismatch_line(
     gate: dict[str, Any],
     gate_key: str,
     label: str,
+    *,
     is_ok: bool,
 ) -> None:
     if is_ok:

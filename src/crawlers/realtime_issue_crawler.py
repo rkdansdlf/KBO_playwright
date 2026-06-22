@@ -34,7 +34,7 @@ class RealtimeIssueCrawler:
             "Accept-Language": "ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7",
         }
 
-    def fetch_naver_news_headlines(self, save: bool = False) -> list[dict[str, Any]]:
+    def fetch_naver_news_headlines(self, *, save: bool = False) -> list[dict[str, Any]]:
         """
         Fetches latest baseball news headlines from Naver Sports GW API (JSON)
         with fallback to web scraping if API is down.
@@ -158,7 +158,7 @@ class RealtimeIssueCrawler:
             )
         return articles
 
-    def fetch_mlbpark_bullpen_posts(self, save: bool = False) -> list[dict[str, Any]]:
+    def fetch_mlbpark_bullpen_posts(self, *, save: bool = False) -> list[dict[str, Any]]:
         """
         Crawls popular titles and post details from MLBPark Bullpen forum.
         """

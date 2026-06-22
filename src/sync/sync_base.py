@@ -630,6 +630,7 @@ class OCISyncBase:
         table_name: str,
         records: list[dict[str, Any]],
         unique_cols: list[str],
+        *,
         update_timestamp: bool = True,
         connection: object | None = None,
     ) -> None:
@@ -658,7 +659,7 @@ class OCISyncBase:
                     table_name,
                     records,
                     unique_cols,
-                    update_timestamp,
+                    update_timestamp=update_timestamp,
                     connection=connection,
                 )
             except (PsycopgError, SQLAlchemyError, OSError, RuntimeError) as e:
@@ -857,6 +858,7 @@ class OCISyncBase:
         filters: list = None,
         transform_fn: Callable | None = None,
         batch_size: int = 5000,
+        *,
         update_timestamp: bool | None = None,
         dedupe_keys: list[str] | None = None,
     ) -> int:
@@ -896,7 +898,7 @@ class OCISyncBase:
             conflict_keys,
             transform_fn,
             batch_size,
-            update_timestamp,
+            update_timestamp=update_timestamp,
             dedupe_keys=dedupe_keys,
         )
 
@@ -909,8 +911,8 @@ class OCISyncBase:
         conflict_keys: list[str],
         transform_fn: Callable[[dict[str, Any]], dict[str, Any]] | None,
         batch_size: int,
-        update_timestamp: bool,
         *,
+        update_timestamp: bool,
         dedupe_keys: list[str] | None = None,
     ) -> int:
         synced = 0
@@ -972,6 +974,7 @@ class OCISyncBase:
         table_name: str,
         records: list[dict[str, Any]],
         unique_cols: list[str],
+        *,
         update_timestamp: bool,
         connection: object | None = None,
     ) -> None:
@@ -1035,6 +1038,7 @@ class OCISyncBase:
         table_name: str,
         record: dict[str, Any],
         conflict_keys: list[str],
+        *,
         update_timestamp: bool,
         connection: object,
     ) -> None:

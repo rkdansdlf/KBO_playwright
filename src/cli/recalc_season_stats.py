@@ -17,7 +17,7 @@ def _series_list(series: str) -> list[str]:
     return [series]
 
 
-def _process_batting(year: int, series: str, save: bool) -> None:
+def _process_batting(year: int, series: str, *, save: bool) -> None:
     logger.info("\n[BATTING] Processing %s %s...", year, series)
     batting_data = fallback_batting_from_db(year, series, reason="Manual CLI Trigger")
     for stat in batting_data:
@@ -29,7 +29,7 @@ def _process_batting(year: int, series: str, save: bool) -> None:
         logger.info("   ℹ️ No batting transactional data found for %s %s.", year, series)
 
 
-def _process_pitching(year: int, series: str, save: bool) -> None:
+def _process_pitching(year: int, series: str, *, save: bool) -> None:
     logger.info("\n[PITCHING] Processing %s %s...", year, series)
     pitching_data = fallback_pitching_from_db(year, series, reason="Manual CLI Trigger")
     for stat in pitching_data:
@@ -60,10 +60,10 @@ def main() -> int:
 
     for series in _series_list(args.series):
         if args.type in ["batting", "all"]:
-            _process_batting(args.year, series, args.save)
+            _process_batting(args.year, series, save=args.save)
 
         if args.type in ["pitching", "all"]:
-            _process_pitching(args.year, series, args.save)
+            _process_pitching(args.year, series, save=args.save)
 
     logger.info("\n✅ Recalculation task finished.")
 
