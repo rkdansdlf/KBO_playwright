@@ -7,15 +7,16 @@ Source: KBO HitterDetail/PitcherDetail Basic.aspx
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
 import re
+from datetime import datetime
 from typing import Any
 
 from playwright.async_api import Error as PlaywrightError
 from playwright.async_api import Page
 
 logger = logging.getLogger(__name__)
-import contextlib
 
 from src.urls import HITTER_DETAIL, PITCHER_DETAIL
 from src.utils.compliance import compliance
@@ -282,59 +283,8 @@ class PlayerProfileCrawler:
                 # Success found data
                 from src.parsers.player_profile_parser import parse_profile
 
-                raw_text = raw.get("raw_text") or ""
-                # Ensure we add fields from individual elements if they are not in the raw_text
-                # to support both direct scraping and unit tests using mock payloads.
-                if "선수명" not in raw_text and raw.get("name"):
-                    raw_text += f" 선수명: {raw['name']}"
-                if "연봉" not in raw_text and raw.get("salary"):
-                    raw_text += f" 연봉: {raw['salary']}"
-                if "입단 계약금" not in raw_text and raw.get("signing"):
-                    raw_text += f" 입단 계약금: {raw['signing']}"
-                if "지명순위" not in raw_text and raw.get("draft"):
-                    raw_text += f" 지명순위: {raw['draft']}"
-                if "입단년도" not in raw_text and raw.get("debut"):
-                    raw_text += f" 입단년도: {raw['debut']}"
-                if "신장/체중" not in raw_text and raw.get("height_weight"):
-                    raw_text += f" 신장/체중: {raw['height_weight']}"
-
-                parsed = parse_profile(raw_text)
-
-                photo_url = raw.get("photo_url") or raw.get("photo_attr")
-                # Heuristic: try current year CDN if still no photo or placeholder detected
-                if not photo_url or "no-Image.png" in photo_url:
-                    from datetime import datetime
-
-                    curr_year = datetime.now().year
-                    # Fallback to current year's directory which often contains the latest photos
-                    photo_url = (
-                        f"https://6ptotvmi5753.edge.naverncp.com/KBO_IMAGE/person/middle/{curr_year}/{player_id}.jpg"
-                    )
-
-                result = {
-                    "player_id": player_id,
-                    "name": raw.get("name") or parsed.get("player_name"),
-                    "photo_url": _clean_photo_url(photo_url),
-                    "bats": parsed.get("batting_hand") or _parse_hands(raw.get("raw_text") or "")["bats"],
-                    "throws": parsed.get("throwing_hand") or _parse_hands(raw.get("raw_text") or "")["throws"],
-                    "height_cm": parsed.get("height_cm") or _parse_height_weight(raw.get("height_weight"))["height_cm"],
-                    "weight_kg": parsed.get("weight_kg") or _parse_height_weight(raw.get("height_weight"))["weight_kg"],
-                    "debut_year": parsed.get("entry_year") or _parse_debut_year(raw.get("debut")),
-                    "salary_original": parsed.get("salary_original") or (raw.get("salary") or "").strip() or None,
-                    "signing_bonus_original": parsed.get("signing_bonus_original")
-                    or (raw.get("signing") or "").strip()
-                    or None,
-                    "draft_info": parsed.get("draft_info") or (raw.get("draft") or "").strip() or None,
-                    "salary_amount": parsed.get("salary_amount"),
-                    "salary_currency": parsed.get("salary_currency"),
-                    "signing_bonus_amount": parsed.get("signing_bonus_amount"),
-                    "signing_bonus_currency": parsed.get("signing_bonus_currency"),
-                    "draft_year": parsed.get("draft_year"),
-                    "draft_round": parsed.get("draft_round"),
-                    "draft_pick_overall": parsed.get("draft_pick_overall"),
-                    "draft_type": parsed.get("draft_type"),
-                    "education_path": parsed.get("education_path"),
-                }
+                parsed = parse_profile(_profile_raw_text(raw))
+                result = _build_profile_result(player_id, raw, parsed)
                 self._last_failure_reason.pop(str(player_id), None)
                 return result  # noqa: TRY300
             except PROFILE_CRAWL_EXCEPTIONS:
@@ -368,6 +318,57 @@ class PlayerProfileCrawler:
             logger.info("No real image found for player (expected for some players)")
 
         return await page.evaluate(_EXTRACT_JS)
+
+
+def _profile_raw_text(raw: dict[str, Any]) -> str:
+    raw_text = raw.get("raw_text") or ""
+    field_labels = {
+        "name": "선수명",
+        "salary": "연봉",
+        "signing": "입단 계약금",
+        "draft": "지명순위",
+        "debut": "입단년도",
+        "height_weight": "신장/체중",
+    }
+    for key, label in field_labels.items():
+        if label not in raw_text and raw.get(key):
+            raw_text += f" {label}: {raw[key]}"
+    return raw_text
+
+
+def _profile_photo_url(raw: dict[str, Any], player_id: str) -> str | None:
+    photo_url = raw.get("photo_url") or raw.get("photo_attr")
+    if photo_url and "no-Image.png" not in photo_url:
+        return str(photo_url)
+    curr_year = datetime.now().year
+    return f"https://6ptotvmi5753.edge.naverncp.com/KBO_IMAGE/person/middle/{curr_year}/{player_id}.jpg"
+
+
+def _build_profile_result(player_id: str, raw: dict[str, Any], parsed: dict[str, Any]) -> dict[str, Any]:
+    hands = _parse_hands(raw.get("raw_text") or "")
+    height_weight = _parse_height_weight(raw.get("height_weight"))
+    return {
+        "player_id": player_id,
+        "name": raw.get("name") or parsed.get("player_name"),
+        "photo_url": _clean_photo_url(_profile_photo_url(raw, player_id)),
+        "bats": parsed.get("batting_hand") or hands["bats"],
+        "throws": parsed.get("throwing_hand") or hands["throws"],
+        "height_cm": parsed.get("height_cm") or height_weight["height_cm"],
+        "weight_kg": parsed.get("weight_kg") or height_weight["weight_kg"],
+        "debut_year": parsed.get("entry_year") or _parse_debut_year(raw.get("debut")),
+        "salary_original": parsed.get("salary_original") or (raw.get("salary") or "").strip() or None,
+        "signing_bonus_original": parsed.get("signing_bonus_original") or (raw.get("signing") or "").strip() or None,
+        "draft_info": parsed.get("draft_info") or (raw.get("draft") or "").strip() or None,
+        "salary_amount": parsed.get("salary_amount"),
+        "salary_currency": parsed.get("salary_currency"),
+        "signing_bonus_amount": parsed.get("signing_bonus_amount"),
+        "signing_bonus_currency": parsed.get("signing_bonus_currency"),
+        "draft_year": parsed.get("draft_year"),
+        "draft_round": parsed.get("draft_round"),
+        "draft_pick_overall": parsed.get("draft_pick_overall"),
+        "draft_type": parsed.get("draft_type"),
+        "education_path": parsed.get("education_path"),
+    }
 
 
 async def main() -> None:
