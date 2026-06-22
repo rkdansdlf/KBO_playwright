@@ -179,7 +179,7 @@ All six backfill types are defined in a single `backfill.yml` using a job matrix
 
 ## Anchored Summary
 
-Last updated: 2026-06-22
+Last updated: 2026-06-23
 
 ### Ruff Rules Expansion Status
 
@@ -212,7 +212,7 @@ Ruff expansion phases completed across the current cleanup campaign. The work en
 - `ruff check src/ tests/ scripts/` = 0 errors
 - `ruff format --check .` = 898 files already formatted
 - `python3 scripts/lint_bare_except.py` = 0 bare `except Exception` in 425 files
-- `python -m pytest -q --tb=line` = 4320 passed, 1 skipped, 2 deselected, 1 xfailed
+- `python -m pytest -q --tb=line` = 4323 passed, 1 skipped, 2 deselected, 1 xfailed
 - `# noqa: BLE001` in `src/` = 0
 - `# noqa: BLE001` in `scripts/` = 6 intentional CLI / operational catch-all guards
 
@@ -239,19 +239,35 @@ Ruff expansion phases completed across the current cleanup campaign. The work en
 | 7c | PL fixable auto-fix (11 violations) | — | ✅ Complete |
 | 8a | 4 live CLI funcs (crawl_futures 2, live_crawler 2) | 41→31 | ✅ Complete |
 | 8b | 2 funcs (sync_games.sync_game_details) | 31→31 | ✅ Complete |
-| **Total non-PW/PW-light** | **17 functions refactored to C901 < 10** | **103→25** | **✅** |
-| **Blocked (PW)** | **25 functions still need deeper Playwright-aware refactors** | **25** | **⏳** |
+| 9A | Playwright C901 light refactoring (baserunning + profile) | 27→25 | ✅ Complete |
+| 9B | PLR2004 magic-value-comparison | — | ✅ Complete |
+| 9C | PLC0415 lazy import hygiene | — | ✅ Complete |
+| 10 | Deep PW-aware refactors (game_detail 5, player_search 1, basic2 2, pbp 2, preview 1, fa 1) | 25→0 | ✅ Complete |
 
-### Deferred Lint Candidates
+### Ruff Check Status
 
-- **25 C901 violations remaining** — mostly Playwright-dependent functions (page: Page parameter). After 2026 selector migration, batch-refactor these.
-- C901 count: 103 → 25 (78 violations eliminated, 76% reduction).
+- `ruff check src/ tests/ scripts/` = 0 errors (default select, C901 not enforced).
+- `ruff check --select C901 src/` = 0 violations (103→0, 100% eliminated).
+- `ruff check --select PLR0915 src/` = 3 violations (too-many-statements, threshold 50).
 
-### Phase 9B/9C Completed (2026-06-22)
+### Phase 10 Completed (2026-06-23) — Deep Playwright-aware C901 refactoring
 
-- **Phase 9B (PLR2004)**: 113 `src/` violations fixed across 48 files. Created `src/constants.py` with domain constants. 165 low-value magic values suppressed via `pyproject.toml`.
-- **Phase 9C (PLC0415)**: 25 stdlib lazy imports (`json`, `os`, `re`, `argparse`, `datetime`) moved to top-level across 18 files. `src.` lazy imports retained to avoid circular deps.
-- **Phase 9A** (Playwright C901 light refactoring): Reduced 27→25 by extracting baserunning page/row parsing and player profile payload assembly. Remaining 25 need deeper `page: Page` aware selector refactors.
+- **game_detail_crawler.py** 5→0: Extracted metadata/timeout/hitter/pitcher/payload-building helpers from `_crawl_game_detail_and_stats`.
+- **player_search_crawler.py** 1→0: Split `_paginate_current_tab` into `_add_current_page_rows`, `_visit_remaining_numeric_pages`, `_visit_next_pager_block`, `_click_pager_target`.
+- **simple_basic2_crawler.py** 2→0: Extracted `_prepare_basic2_bb_page`, `_parse_bb_row`, `_bb_stat_payload`, `_bb_extra_stats` from `crawl_basic2_with_headers` and `_parse_basic2_header_data_legacy`.
+- **pbp_crawler.py** 2→0: Extracted `_prepare_live_text_page`, `_wait_for_pbp_container`, `_initial_legacy_state`, `_build_legacy_event` from `crawl_live_game_pbp` and `_build_fallback_pbp_data`.
+- **preview_crawler.py** 1→0: Extracted `_fetch_preview_game_list`, `_build_preview_payload`, `_enrich_preview_lineups` from `crawl_preview_list`.
+- **fa_crawler.py** 1→0: Extracted `_fa_header_mapping`, `_parse_fa_row`, `_parse_fa_rows` from `crawl_fa_data`.
+- Key insight: `page.evaluate()`/`page.locator()` calls remain in the original method, while data-assembly, ID-resolution, and payload-building logic is extracted into helper functions.
+- All refactors verified: ruff 0 errors, pytest 4323 passed, freshness gate PASS.
+
+### Quick Fixes (2026-06-23)
+
+- **`generate_quality_report.py`**: Removed spurious `months=6` kwarg from `get_team_stats_trend()` call (TeamSeason is season-level aggregate, function doesn't accept it). CLI no longer crashes. Added regression test.
+- **Freshness gate `missing_review_wpa`**: Diagnosed 13 missing games on 2026-06-16~18. Applied `regenerate_review_summaries --backup-out --apply` for 3 dates → freshness gate now passes.
+- **Foreign player parser fix**: Added `외국인 (투수/타자/선수) ... 계약/영입` name extraction pattern to `_extract_foreign_player_name`. Fixes existing test regression.
+- **Quality gate aggregate filter**: Split `INVALID_TEAM_CODES` into `AGGREGATE_TEAM_CODES` (TOTAL/합계/-/empty) and raw all-star codes (EA/WE). All 2020-2025 seasons pass.
+- **Player ID overrides**: Added 2 SSG Haechi entries to `data/player_id_overrides.csv`.
 
 ### Notes For Future Agents
 
@@ -259,3 +275,5 @@ Ruff expansion phases completed across the current cleanup campaign. The work en
 - Do not rename unused public/helper parameters when tests or callers pass them by keyword; prefer targeted `# noqa: ARG001` or `# noqa: ARG002`.
 - `tests/**` and `scripts/**` intentionally ignore selected annotation, `TRY003`, `ARG`, and `T20` rules because fixture signatures, monkeypatch callbacks, debug scripts, and CLI utilities commonly require broad or unused arguments, inline fixture exceptions, and stdout output.
 - `from src.db.engine import SessionLocal` and model imports in relay_crawler._load_game_metadata_from_db, player_search_crawler helpers are intentionally lazily imported to avoid circular deps — do not `PLC0415`-fix them.
+- For `regenerate_review_summaries`, always use `--backup-out` before `--apply` to enable rollback.
+- C901 refactoring of Playwright-dependent functions is feasible: keep `page.evaluate()`/`page.locator()` in the original method, extract only data-assembly/ID-resolution/payload-building logic into helpers.

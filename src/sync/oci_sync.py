@@ -22,9 +22,46 @@ class OCISync(OCISyncBase, GameSyncMixin, PlayerSyncMixin, StatsSyncMixin, MiscS
     """Composite sync engine combining all domain mixins."""
 
 
+def _report_no_data() -> None:
+    logger.warning("⚠️ 동기화할 데이터가 없습니다.")
+    logger.info("📌 먼저 크롤러를 실행하세요:")
+    logger.info(
+        "   ./venv/bin/python3 -m src.crawlers.player_batting_all_series_crawler --year 2025 --series regular --save"
+    )
+    logger.info(
+        "   ./venv/bin/python3 -m src.crawlers.player_pitching_all_series_crawler --year 2025 --series regular --save"
+    )
+
+
+def _sync_batting_and_pitching(sync: OCISync, batting_count: int, pitching_count: int) -> int:
+    total_synced = 0
+    if batting_count > 0:
+        logger.info("\n🏏 타자 데이터 동기화 중...")
+        batting_synced = sync.sync_batting_data()
+        sync.verify_batting_sync(batting_synced)
+        total_synced += batting_synced
+    if pitching_count > 0:
+        logger.info("\n⚾ 투수 데이터 동기화 중...")
+        pitching_synced = sync.sync_pitcher_data()
+        sync.verify_pitcher_sync(pitching_synced)
+        total_synced += pitching_synced
+    return total_synced
+
+
+def _log_sync_completion(total_synced: int, batting_count: int, pitching_count: int) -> None:
+    logger.info("\n" + "=" * 50)  # noqa: G003
+    logger.info("📈 동기화 완료")
+    logger.info("=" * 50)
+    logger.info("총 동기화된 데이터: %s건", total_synced)
+    if batting_count > 0:
+        logger.info("  - 타자 데이터: %s건", batting_count)
+    if pitching_count > 0:
+        logger.info("  - 투수 데이터: %s건", pitching_count)
+    logger.info("\n🎉 OCI에서 데이터를 확인할 수 있습니다!")
+
+
 def main() -> None:
     """타자 및 투수 데이터 OCI 동기화"""
-    # Get OCI URL from environment
     oci_url = os.getenv("OCI_DB_URL")
     if not oci_url:
         logger.error("❌ OCI_DB_URL environment variable not set")
@@ -43,59 +80,22 @@ def main() -> None:
     with SessionLocal() as sqlite_session:
         try:
             sync = OCISync(oci_url, sqlite_session)
-
-            # Test connection
             if not sync.test_connection():
                 return
 
-            # SQLite 데이터 현황 확인
             batting_count = sqlite_session.query(PlayerSeasonBatting).count()
             pitching_count = sqlite_session.query(PlayerSeasonPitching).count()
-
             logger.info("📊 SQLite 데이터 현황:")
             logger.info("   타자 데이터: %s건", batting_count)
             logger.info("   투수 데이터: %s건", pitching_count)
 
             if batting_count == 0 and pitching_count == 0:
-                logger.warning("⚠️ 동기화할 데이터가 없습니다.")
-                logger.info("📌 먼저 크롤러를 실행하세요:")
-                logger.info(
-                    "   ./venv/bin/python3 -m src.crawlers.player_batting_all_series_crawler --year 2025 --series regular --save",
-                )
-                logger.info(
-                    "   ./venv/bin/python3 -m src.crawlers.player_pitching_all_series_crawler --year 2025 --series regular --save",
-                )
+                _report_no_data()
                 return
 
-            total_synced = 0
-
-            # 타자 데이터 동기화
-            if batting_count > 0:
-                logger.info("\n🏏 타자 데이터 동기화 중...")
-                batting_synced = sync.sync_batting_data()
-                sync.verify_batting_sync(batting_synced)
-                total_synced += batting_synced
-
-            # 투수 데이터 동기화
-            if pitching_count > 0:
-                logger.info("\n⚾ 투수 데이터 동기화 중...")
-                pitching_synced = sync.sync_pitcher_data()
-                sync.verify_pitcher_sync(pitching_synced)
-                total_synced += pitching_synced
-
-            # OCI 데이터 샘플 표시
+            total_synced = _sync_batting_and_pitching(sync, batting_count, pitching_count)
             sync.show_oci_data_sample()
-
-            logger.info("\n" + "=" * 50)  # noqa: G003
-            logger.info("📈 동기화 완료")
-            logger.info("=" * 50)
-            logger.info("총 동기화된 데이터: %s건", total_synced)
-            if batting_count > 0:
-                logger.info("  - 타자 데이터: %s건", batting_count)
-            if pitching_count > 0:
-                logger.info("  - 투수 데이터: %s건", pitching_count)
-            logger.info("\n🎉 OCI에서 데이터를 확인할 수 있습니다!")
-
+            _log_sync_completion(total_synced, batting_count, pitching_count)
             sync.close()
 
         except (SQLAlchemyError, RuntimeError, ValueError, TypeError, OSError):
