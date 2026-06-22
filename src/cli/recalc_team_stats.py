@@ -55,7 +55,13 @@ def _log_dry_run_pitching(results: list[dict]) -> None:
         )
 
 
-def _run_batting_recalc(aggregator: TeamStatAggregator, season: int, team_id: str | None, dry_run: bool) -> int:
+def _run_batting_recalc(
+    aggregator: TeamStatAggregator,
+    season: int,
+    team_id: str | None,
+    *,
+    dry_run: bool,
+) -> int:
     logger.info("🔄 Recalculating Team Batting Stats for season=%s...", season)
     try:
         results = aggregator.aggregate_batting(season, team_id, dry_run=dry_run)
@@ -73,7 +79,13 @@ def _run_batting_recalc(aggregator: TeamStatAggregator, season: int, team_id: st
         return 0
 
 
-def _run_pitching_recalc(aggregator: TeamStatAggregator, season: int, team_id: str | None, dry_run: bool) -> int:
+def _run_pitching_recalc(
+    aggregator: TeamStatAggregator,
+    season: int,
+    team_id: str | None,
+    *,
+    dry_run: bool,
+) -> int:
     logger.info("🔄 Recalculating Team Pitching Stats for season=%s...", season)
     try:
         results = aggregator.aggregate_pitching(season, team_id, dry_run=dry_run)
@@ -94,6 +106,7 @@ def _run_pitching_recalc(aggregator: TeamStatAggregator, season: int, team_id: s
 def run_recalc(
     season: int,
     team_id: str | None = None,
+    *,
     dry_run: bool = False,
     batting_only: bool = False,
     pitching_only: bool = False,
@@ -113,11 +126,11 @@ def run_recalc(
         aggregator = TeamStatAggregator(session)
 
         if batting_recalc:
-            if _run_batting_recalc(aggregator, season, team_id, dry_run):
+            if _run_batting_recalc(aggregator, season, team_id, dry_run=dry_run):
                 return 1
 
         if pitching_recalc:
-            if _run_pitching_recalc(aggregator, season, team_id, dry_run):
+            if _run_pitching_recalc(aggregator, season, team_id, dry_run=dry_run):
                 return 1
 
     logger.info("✨ Team statistics recalculation completed.")

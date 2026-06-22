@@ -43,7 +43,7 @@ def _get_stale_threshold_hours(source: DataSource) -> int:
     return STALE_THRESHOLD_HOURS.get(freq, 48)
 
 
-def check_freshness(dry_run: bool = False) -> list[str]:
+def check_freshness(*, dry_run: bool = False) -> list[str]:
     alerts = []
     with SessionLocal() as session:
         ds_repo = DataSourceRepository(session)
@@ -73,7 +73,7 @@ def check_freshness(dry_run: bool = False) -> list[str]:
     return alerts
 
 
-def check_table_completeness(dry_run: bool = False) -> list[str]:
+def check_table_completeness(*, dry_run: bool = False) -> list[str]:
     alerts = []
     with SessionLocal() as session:
         for domain, (table, date_col) in DOMAIN_TABLE_CHECKS.items():
@@ -96,7 +96,7 @@ def check_table_completeness(dry_run: bool = False) -> list[str]:
     return alerts
 
 
-def check_p0_readiness(dry_run: bool = False) -> list[str]:
+def check_p0_readiness(*, dry_run: bool = False) -> list[str]:
     alerts = []
     target_date = (datetime.now(KST).date() - timedelta(days=1)).strftime("%Y%m%d")
     with SessionLocal() as session:
@@ -119,7 +119,7 @@ def check_p0_readiness(dry_run: bool = False) -> list[str]:
     return alerts
 
 
-def run_monitor(alert: bool = True, dry_run: bool = False) -> dict[str, list[str]]:
+def run_monitor(*, alert: bool = True, dry_run: bool = False) -> dict[str, list[str]]:
     stale = check_freshness(dry_run=dry_run)
     empty = check_table_completeness(dry_run=dry_run)
     p0_issues = check_p0_readiness(dry_run=dry_run)
