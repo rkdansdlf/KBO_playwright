@@ -10,6 +10,7 @@ from pathlib import Path
 # Ensure project root is on sys.path when run as a script
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 
+from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
@@ -561,8 +562,8 @@ def drop_raw_table(engine, table_name: str):
     """Drop a table if it exists."""
     logger.info(f"\n🗑️ Attempting to drop raw table: {table_name}...")
     try:
-        with engine.connect() as connection:
-            connection.execute(f"DROP TABLE IF EXISTS {table_name}")
+        with engine.begin() as connection:
+            connection.execute(text(f"DROP TABLE IF EXISTS {table_name}"))
             logger.info(f"✅ Table {table_name} dropped successfully (if it existed).")
     except SQLAlchemyError:
         logger.exception(f"⚠️ Could not drop table {table_name}. It might not exist.")
