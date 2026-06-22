@@ -61,9 +61,7 @@ def _parse_game_ids(value: str | None) -> list[str]:
     return list(dict.fromkeys(token.strip() for token in value.split(",") if token.strip()))
 
 
-def build_arg_parser() -> argparse.ArgumentParser:
-    """CLI 인자 파서를 생성합니다."""
-    parser = argparse.ArgumentParser(description="Sync local SQLite data to OCI/Postgres")
+def _add_basic_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--source-url",
         type=str,
@@ -82,10 +80,28 @@ def build_arg_parser() -> argparse.ArgumentParser:
         help="데이터 삽입 전 대상 테이블의 모든 데이터를 삭제합니다.",
     )
     parser.add_argument(
-        "--teams",
-        action="store_true",
-        help="프랜차이즈 및 팀 정보를 동기화합니다.",
+        "--year",
+        type=int,
+        help="특정 연도의 데이터를 동기화합니다. (e.g., 2018)",
     )
+    parser.add_argument(
+        "--days",
+        type=int,
+        help="최근 N일간의 경기 데이터만 동기화합니다.",
+    )
+    parser.add_argument(
+        "--limit",
+        type=int,
+        help="동기화할 최대 행 수를 지정합니다.",
+    )
+    parser.add_argument(
+        "--unsynced-only",
+        action="store_true",
+        help="OCI에 없거나 로컬 업데이트가 더 최근인 미동기화/수정된 데이터만 선별하여 동기화합니다.",
+    )
+
+
+def _add_game_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--game-details",
         action="store_true",
@@ -101,15 +117,13 @@ def build_arg_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="game 테이블만 경량 동기화합니다. --year와 함께 사용 가능합니다.",
     )
+
+
+def _add_entity_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
-        "--days",
-        type=int,
-        help="최근 N일간의 경기 데이터만 동기화합니다.",
-    )
-    parser.add_argument(
-        "--unsynced-only",
+        "--teams",
         action="store_true",
-        help="OCI에 없거나 로컬 업데이트가 더 최근인 미동기화/수정된 데이터만 선별하여 동기화합니다. schedule-only 부모 game 행은 자동 제외됩니다.",
+        help="프랜차이즈 및 팀 정보를 동기화합니다.",
     )
     parser.add_argument(
         "--player-basic",
@@ -156,6 +170,37 @@ def build_arg_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="수상 내역(Awards)을 동기화합니다.",
     )
+
+
+def _add_stat_args(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--season-stats",
+        action="store_true",
+        help="선수 시즌 누적 스탯(타자, 투수)을 고속 동기화합니다.",
+    )
+    parser.add_argument(
+        "--player-game-stats",
+        action="store_true",
+        help="선수-경기 스탯(타자, 투수)을 동기화합니다.",
+    )
+    parser.add_argument(
+        "--standings",
+        action="store_true",
+        help="일별 팀 순위(Standings) 스냅샷 테이블을 고속 동기화합니다.",
+    )
+    parser.add_argument(
+        "--matchups",
+        action="store_true",
+        help="계산된 상대 전적(Matchup Splits) 테이블을 동기화합니다.",
+    )
+    parser.add_argument(
+        "--rankings",
+        action="store_true",
+        help="계산된 stat_rankings 테이블을 동기화합니다.",
+    )
+
+
+def _add_misc_table_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--crawl-runs",
         action="store_true",
@@ -177,46 +222,13 @@ def build_arg_parser() -> argparse.ArgumentParser:
         help="구장별 먹거리 추천 데이터(stadium_foods)를 동기화합니다.",
     )
     parser.add_argument(
-        "--season-stats",
-        action="store_true",
-        help="선수 시즌 누적 스탯(타자, 투수)을 고속 동기화합니다.",
-    )
-    parser.add_argument(
-        "--player-game-stats",
-        action="store_true",
-        help="선수-경기 스탯(타자, 투수)을 동기화합니다.",
-    )
-    parser.add_argument(
         "--kbo-season",
         action="store_true",
         help="KBO 시즌 기준 정보(kbo_seasons)를 동기화합니다.",
     )
-    parser.add_argument(
-        "--year",
-        type=int,
-        help="특정 연도의 데이터를 동기화합니다. (e.g., 2018)",
-    )
-    parser.add_argument(
-        "--limit",
-        type=int,
-        help="동기화할 최대 행 수를 지정합니다.",
-    )
-    parser.add_argument(
-        "--standings",
-        action="store_true",
-        help="일별 팀 순위(Standings) 스냅샷 테이블을 고속 동기화합니다.",
-    )
-    parser.add_argument(
-        "--matchups",
-        action="store_true",
-        help="계산된 상대 전적(Matchup Splits) 테이블을 동기화합니다.",
-    )
-    parser.add_argument(
-        "--rankings",
-        action="store_true",
-        help="계산된 stat_rankings 테이블을 동기화합니다.",
-    )
-    # ─── Phase 1 sync flags ────────────────────────────────────────────────
+
+
+def _add_phase1_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--broadcasts",
         action="store_true",
@@ -262,7 +274,9 @@ def build_arg_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="모든 Phase 1 테이블을 한 번에 동기화합니다.",
     )
-    # ─── Stadium Real-Time Data sync flags ──────────────────────────────────
+
+
+def _add_stadium_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--transit-times",
         action="store_true",
@@ -290,6 +304,9 @@ def build_arg_parser() -> argparse.ArgumentParser:
         metavar="YYYYMMDD",
         help="--transit-times/--congestion/--operation-notices 동기화 시 게임일 필터 (선택)",
     )
+
+
+def _add_perf_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--batch-size",
         type=int,
@@ -319,6 +336,19 @@ def build_arg_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="동기화 후 OCI 시퀀스 식별자를 재설정합니다. (기본값: 해제 — per-table reset이 이미 sync_games에서 처리됨)",
     )
+
+
+def build_arg_parser() -> argparse.ArgumentParser:
+    """CLI 인자 파서를 생성합니다."""
+    parser = argparse.ArgumentParser(description="Sync local SQLite data to OCI/Postgres")
+    _add_basic_args(parser)
+    _add_game_args(parser)
+    _add_entity_args(parser)
+    _add_stat_args(parser)
+    _add_misc_table_args(parser)
+    _add_phase1_args(parser)
+    _add_stadium_args(parser)
+    _add_perf_args(parser)
     return parser
 
 
