@@ -609,9 +609,7 @@ def _upsert_metadata(
     if metadata:
         existing_payload = meta.source_payload if isinstance(meta.source_payload, dict) else {}
         merged_payload = dict(existing_payload)
-        for key, value in metadata.items():
-            if value not in (None, ""):
-                merged_payload[key] = value
+        merged_payload.update({key: value for key, value in metadata.items() if value not in (None, "")})
         changed |= _assign_field_if_changed(
             meta,
             "source_payload",
