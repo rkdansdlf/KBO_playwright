@@ -212,9 +212,16 @@ Ruff expansion phases completed across the current cleanup campaign. The work en
 - `ruff check src/ tests/ scripts/` = 0 errors
 - `ruff format --check .` = 898 files already formatted
 - `python3 scripts/lint_bare_except.py` = 0 bare `except Exception` in 425 files
-- `python -m pytest -q --tb=line` = 4306 passed, 1 skipped, 2 deselected, 1 xfailed
+- `python -m pytest -q --tb=line` = 4317 passed, 1 skipped, 2 deselected, 1 xfailed
 - `# noqa: BLE001` in `src/` = 0
 - `# noqa: BLE001` in `scripts/` = 6 intentional CLI / operational catch-all guards
+
+### Source Snapshot / Event Status
+
+- `kbo_official_events` now crawls official KBO `BusinessAndEvent` pages instead of the main page; dry-run returns 11 candidates and `--save` wrote 11 `team_events` plus 7 raw snapshots.
+- `refresh_source_snapshots --source-key doosan_bears_events` and `--source-key doosan_bears_ticket` save successfully through Playwright fallback after httpx TLS verification failure.
+- Local `data_sources` registry has 38 active sources and 0 `last_success_at IS NULL` entries after the source refresh campaign.
+- Weekly maintenance runs `DATABASE_URL="$OCI_DB_URL" python3 -m src.cli.refresh_source_snapshots --all --max-hours 168` as a non-blocking step before the main weekly sync.
 
 ### C901 (Complexity) Progress
 
