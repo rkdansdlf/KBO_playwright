@@ -11,7 +11,7 @@ from datetime import datetime
 logger = logging.getLogger(__name__)
 
 
-async def run_events(save: bool = False, *, days: int = 30, team: str | None = None) -> int:
+async def run_events(*, save: bool = False, days: int = 30, team: str | None = None) -> int:
     from src.crawlers.team_event_crawler import TeamEventCrawler
 
     crawler = TeamEventCrawler(days_back=days)
@@ -19,7 +19,7 @@ async def run_events(save: bool = False, *, days: int = 30, team: str | None = N
     return len(events)
 
 
-async def run_roster(save: bool = False, *, target_date: str | None = None) -> int:
+async def run_roster(*, save: bool = False, target_date: str | None = None) -> int:
     from src.crawlers.roster_transaction_crawler import RosterTransactionCrawler
 
     crawler = RosterTransactionCrawler()
@@ -27,7 +27,7 @@ async def run_roster(save: bool = False, *, target_date: str | None = None) -> i
     return len(transactions)
 
 
-async def run_ticket(save: bool = False, *, season: int | None = None) -> int:
+async def run_ticket(*, save: bool = False, season: int | None = None) -> int:
     from src.crawlers.ticket_crawler import TicketCrawler
 
     crawler = TicketCrawler()
@@ -36,8 +36,8 @@ async def run_ticket(save: bool = False, *, season: int | None = None) -> int:
 
 
 async def run_all(
-    save: bool = False,
     *,
+    save: bool = False,
     days: int = 30,
     team: str | None = None,
     season: int | None = None,
