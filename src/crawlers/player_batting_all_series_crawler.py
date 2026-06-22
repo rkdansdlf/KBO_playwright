@@ -1098,7 +1098,7 @@ def crawl_series_batting_stats(
             browser.close()
 
     all_players_data = _finalize_batting_summary(all_players_data, series_info)
-    _save_batting_if_needed(all_players_data, save_to_db)
+    _save_batting_if_needed(all_players_data, save_to_db=save_to_db)
     return all_players_data
 
 
@@ -1114,7 +1114,7 @@ def _finalize_batting_summary(
     return valid_players_data
 
 
-def _save_batting_if_needed(all_players_data: list[dict], save_to_db: bool) -> None:
+def _save_batting_if_needed(all_players_data: list[dict], *, save_to_db: bool) -> None:
     if save_to_db and all_players_data:
         logger.info("\n💾 타자 데이터 DB 저장 시작 (외래키 제약조건 임시 비활성화)...")
         try:

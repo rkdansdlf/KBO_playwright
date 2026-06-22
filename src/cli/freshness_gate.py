@@ -23,6 +23,7 @@ from src.models.game import (
     GamePitchingStat,
     GameSummary,
 )
+from src.utils.alerting import SlackWebhookClient
 from src.utils.game_status import COMPLETED_LIKE_GAME_STATUSES, GAME_STATUS_SCHEDULED, GAME_STATUS_UNRESOLVED
 from src.utils.relay_text import is_relay_noise_text
 
@@ -274,6 +275,15 @@ def evaluate_freshness_gate(
     return failures
 
 
+def _send_freshness_alert(failures: list[str]) -> None:
+    header = "<b>\u2757 KBO Freshness Gate Failed</b>"
+    body = "\n".join(f"\u2022 {f}" for f in failures[:20])
+    if len(failures) > 20:
+        body += f"\n... and {len(failures) - 20} more failures"
+    message = f"{header}\n\n{body}"
+    SlackWebhookClient.send_alert(message)
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     logging.basicConfig(level=logging.INFO, format="%(message)s")
     parser = argparse.ArgumentParser(description="Validate operational freshness requirements for completed games")
@@ -291,6 +301,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         help="Environment variable containing the database URL to validate instead of local DATABASE_URL",
     )
     parser.add_argument("--json", action="store_true", help="Print issues as JSON")
+    parser.add_argument("--alert", action="store_true", help="Send alert (Telegram/Slack) on failures")
     args = parser.parse_args(argv)
 
     engine = None
@@ -319,6 +330,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         logger.error("❌ Freshness gate failed")
         for failure in failures:
             logger.info("  - %s", failure)
+        if args.alert:
+            _send_freshness_alert(failures)
     else:
         logger.info("✅ Freshness gate passed")
 
