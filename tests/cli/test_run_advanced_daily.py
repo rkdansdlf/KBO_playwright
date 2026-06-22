@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from src.cli.run_advanced_daily import main
 
@@ -13,6 +13,8 @@ class TestRunAdvancedDailyCLI:
             patch("src.cli.run_advanced_daily.crawl_baserunning_stats") as mock_b,
             patch("src.cli.run_advanced_daily.TeamBattingStatsCrawler") as MockTB,
             patch("src.cli.run_advanced_daily.TeamPitchingStatsCrawler") as MockTP,
+            patch("src.cli.run_advanced_daily._aggregate_team_defense_step", new_callable=AsyncMock),
+            patch("src.cli.run_advanced_daily._rebuild_rankings_step", new_callable=AsyncMock),
             patch("src.cli.run_advanced_daily.datetime") as mock_dt,
         ):
             mock_dt.now.return_value.year = 2025
@@ -37,6 +39,8 @@ class TestRunAdvancedDailyCLI:
             patch("src.cli.run_advanced_daily.SessionLocal") as mock_sesh,
             patch("src.cli.run_advanced_daily.PlayerSeasonFieldingRepository"),
             patch("src.cli.run_advanced_daily.PlayerSeasonBaserunningRepository"),
+            patch("src.cli.run_advanced_daily._aggregate_team_defense_step", new_callable=AsyncMock),
+            patch("src.cli.run_advanced_daily._rebuild_rankings_step", new_callable=AsyncMock),
         ):
             mock_f.return_value = []
             mock_b.return_value = []
