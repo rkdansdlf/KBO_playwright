@@ -7,19 +7,19 @@ from __future__ import annotations
 import logging
 import sqlite3
 from datetime import datetime
-from typing import Any
+from typing import Any, Protocol
 
 from playwright.sync_api import Error as PlaywrightError
+from playwright.sync_api import Page, sync_playwright
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
-from playwright.sync_api import sync_playwright
 
 from src.utils.playwright_blocking import install_sync_resource_blocking
-
-logger = logging.getLogger(__name__)
 from src.utils.playwright_retry import LONG_TIMEOUT
 from src.utils.request_policy import RequestPolicy
 from src.utils.team_codes import resolve_team_code
 from src.utils.type_helpers import safe_float, safe_int
+
+logger = logging.getLogger(__name__)
 
 BASERUNNING_CRAWL_EXCEPTIONS = (
     PlaywrightError,
@@ -30,6 +30,18 @@ BASERUNNING_CRAWL_EXCEPTIONS = (
     OSError,
 )
 BASERUNNING_SAVE_EXCEPTIONS = (sqlite3.Error, ValueError, TypeError, OSError)
+
+
+class _BaserunningCell(Protocol):
+    def query_selector(self, selector: str) -> _BaserunningCell | None: ...
+
+    def inner_text(self) -> str: ...
+
+    def get_attribute(self, name: str) -> str | None: ...
+
+
+class _BaserunningRow(Protocol):
+    def query_selector_all(self, selector: str) -> list[_BaserunningCell]: ...
 
 
 def crawl_baserunning_stats(
@@ -60,80 +72,12 @@ def crawl_baserunning_stats(
         page.set_default_timeout(timeout)
         install_sync_resource_blocking(page)
 
-        url = "https://www.koreabaseball.com/Record/Player/Runner/Basic.aspx"
-
-        # 재시도 로직
-        for attempt in range(max_retries):
-            try:
-                page.goto(url, wait_until="load", timeout=timeout)
-                page.wait_for_load_state("networkidle", timeout=timeout)
-                policy.delay()
-                break
-            except BASERUNNING_CRAWL_EXCEPTIONS:
-                if attempt < max_retries - 1:
-                    wait_time = (attempt + 1) * 2
-                    logger.exception("   ⚠️  재시도 %s/%s (%s초 후 재시도)", attempt + 1, max_retries, wait_time)
-                    policy.delay()
-                else:
-                    logger.exception("   ❌ 최대 재시도 횟수 초과")
-                    browser.close()
-                    return baserunning_data
+        if not _load_baserunning_page(page, policy, max_retries, timeout):
+            browser.close()
+            return baserunning_data
 
         try:
-            # 주루 기록 테이블 찾기
-            tables = page.query_selector_all("table")
-
-            if len(tables) > 0:
-                tbody = tables[0].query_selector("tbody")
-                rows = tbody.query_selector_all("tr") if tbody else []
-
-                logger.info("   ✓ %s명의 주루 기록 발견", len(rows))
-
-                for row in rows:
-                    cells = row.query_selector_all("td")
-
-                    # [순위(0), 선수명(1), 팀명(2), G(3), SBA(4), SB(5), CS(6), SB%(7), OOB(8), PKO(9)]
-                    if len(cells) >= 10:
-                        try:
-                            # 선수명 셀에서 링크가 있는지 확인하여 player_id 추출 시도
-                            player_id = None
-                            player_link = cells[1].query_selector("a")
-                            if player_link:
-                                player_name = player_link.inner_text().strip()
-                                href = player_link.get_attribute("href")
-                                # href에서 playerId 추출
-                                if href and "playerId=" in href:
-                                    player_id = href.split("playerId=")[1].split("&")[0]
-                            else:
-                                # 링크가 없으면 텍스트만 가져오기
-                                player_name = cells[1].inner_text().strip()
-
-                            team_name = cells[2].inner_text().strip()
-                            team_id = resolve_team_code(team_name, year) or team_name
-
-                            stats = {
-                                "player_id": player_id,  # 링크가 있으면 player_id 포함
-                                "player_name": player_name,
-                                "team_id": team_id,
-                                "year": year,
-                                "games": safe_int(cells[3].inner_text()),
-                                "stolen_base_attempts": safe_int(cells[4].inner_text()),
-                                "stolen_bases": safe_int(cells[5].inner_text()),
-                                "caught_stealing": safe_int(cells[6].inner_text()),
-                                "stolen_base_percentage": safe_float(cells[7].inner_text()),
-                                "out_on_base": safe_int(cells[8].inner_text()),
-                                "picked_off": safe_int(cells[9].inner_text()),
-                            }
-
-                            baserunning_data.append(stats)
-
-                        except (ValueError, AttributeError, IndexError) as e:
-                            logger.warning(
-                                "   ⚠️  선수 데이터 파싱 오류 (%s): %s",
-                                player_name if "player_name" in locals() else "알 수 없음",
-                                e,
-                            )
-                            continue
+            baserunning_data.extend(_parse_baserunning_page(page, year))
 
         except BASERUNNING_CRAWL_EXCEPTIONS:
             logger.exception("⚠️ 주루 기록 크롤링 중 오류")
@@ -141,6 +85,71 @@ def crawl_baserunning_stats(
         browser.close()
 
     return baserunning_data
+
+
+def _load_baserunning_page(page: Page, policy: RequestPolicy, max_retries: int, timeout: int) -> bool:
+    url = "https://www.koreabaseball.com/Record/Player/Runner/Basic.aspx"
+    for attempt in range(max_retries):
+        try:
+            page.goto(url, wait_until="load", timeout=timeout)
+            page.wait_for_load_state("networkidle", timeout=timeout)
+        except BASERUNNING_CRAWL_EXCEPTIONS:
+            if attempt < max_retries - 1:
+                wait_time = (attempt + 1) * 2
+                logger.exception("   ⚠️  재시도 %s/%s (%s초 후 재시도)", attempt + 1, max_retries, wait_time)
+                policy.delay()
+            else:
+                logger.exception("   ❌ 최대 재시도 횟수 초과")
+        else:
+            policy.delay()
+            return True
+    return False
+
+
+def _parse_baserunning_page(page: Page, year: int) -> list[dict[str, Any]]:
+    tables = page.query_selector_all("table")
+    if not tables:
+        return []
+    tbody = tables[0].query_selector("tbody")
+    rows = tbody.query_selector_all("tr") if tbody else []
+    logger.info("   ✓ %s명의 주루 기록 발견", len(rows))
+    return [stats for row in rows if (stats := _parse_baserunning_row(row, year))]
+
+
+def _extract_baserunning_player(cells: list[_BaserunningCell]) -> tuple[str | None, str]:
+    player_link = cells[1].query_selector("a")
+    if not player_link:
+        return None, cells[1].inner_text().strip()
+    player_name = player_link.inner_text().strip()
+    href = player_link.get_attribute("href")
+    player_id = href.split("playerId=")[1].split("&")[0] if href and "playerId=" in href else None
+    return player_id, player_name
+
+
+def _parse_baserunning_row(row: _BaserunningRow, year: int) -> dict[str, Any] | None:
+    cells = row.query_selector_all("td")
+    if len(cells) < 10:
+        return None
+    player_name = "알 수 없음"
+    try:
+        player_id, player_name = _extract_baserunning_player(cells)
+        team_name = cells[2].inner_text().strip()
+        return {
+            "player_id": player_id,
+            "player_name": player_name,
+            "team_id": resolve_team_code(team_name, year) or team_name,
+            "year": year,
+            "games": safe_int(cells[3].inner_text()),
+            "stolen_base_attempts": safe_int(cells[4].inner_text()),
+            "stolen_bases": safe_int(cells[5].inner_text()),
+            "caught_stealing": safe_int(cells[6].inner_text()),
+            "stolen_base_percentage": safe_float(cells[7].inner_text()),
+            "out_on_base": safe_int(cells[8].inner_text()),
+            "picked_off": safe_int(cells[9].inner_text()),
+        }
+    except (ValueError, AttributeError, IndexError) as e:
+        logger.warning("   ⚠️  선수 데이터 파싱 오류 (%s): %s", player_name, e)
+        return None
 
 
 def save_baserunning_stats(
