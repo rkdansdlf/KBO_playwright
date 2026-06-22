@@ -125,7 +125,7 @@ def save_kbo_batting_batch(players_data: dict[int, dict[str, Any]], series_name:
 
     logger.info("💾 %s 데이터 저장 중... (총 %s명)", series_name, total_count)
 
-    for _player_id, player_data in players_data.items():
+    for player_data in players_data.values():
         try:
             if save_kbo_player_season_batting(player_data):
                 saved_count += 1

@@ -177,14 +177,13 @@ def _read_pbp_report_csv(target_date: str) -> list[dict[str, str]]:
     csv_path = DAILY_SUMMARY_DIR / f"pbp_report_daily_{target_date}.csv"
     if not csv_path.exists():
         return []
-    rows: list[dict[str, str]] = []
     try:
         with csv_path.open(encoding="utf-8") as f:
             reader = csv.DictReader(f)
-            for row in reader:
-                rows.append(row)
+            rows = list(reader)
     except (csv.Error, OSError):
         logger.exception("Failed to read PBP CSV: %s", csv_path)
+        return []
     return rows
 
 
