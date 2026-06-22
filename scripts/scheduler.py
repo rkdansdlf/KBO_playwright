@@ -8,20 +8,36 @@ via .github/workflows/daily_kbo_sync.yml and backfill.yml (consolidated).
 
 APScheduler focuses on real-time and local-only jobs:
 
-Jobs:
-  1. crawl_phase1_extra: Daily at 06:00 KST (broadcast, MVP, injury, etc.)
-  2. crawl_p0_non_game: Daily at 06:20 KST (P0 events/roster/tickets)
-  3. crawl_p1p2_data: Daily at 06:30 KST (seat + parking + food crawlers)
-  4. crawl_pregame_refresh: Every 15m, 10:00-23:45 KST
-  5. crawl_live_refresh: Every 2m, 12:00-23:30 KST
-  6. compute_park_factor: Weekly Sunday at 05:30 KST
-  7. crawl_retired_players: Monthly 1st at 02:00 KST (crawl_retire)
-  8. weekly_sla_report: Weekly Monday at 06:00 KST
-  9. crawl_transit_time: Every 15m, 10:00-00:00 KST on game days (LIVE_LOCK)
-  10. crawl_congestion: Every 5m, 10:00-00:00 KST on game days (LIVE_LOCK)
-  11. crawl_operation_notices: Daily at 09:00 KST (DAILY_LOCK)
-  12. crawl_operation_notices_naver: Daily at 09:30 + 13:00 KST
-  13. crawl_fan_culture: Weekly Saturday at 04:00 KST
+=== Live / Game-Day Jobs ===
+  - crawl_pregame_refresh: Every 15m, 10:00-23:45 KST (LIVE_LOCK)
+  - crawl_live_refresh: Every 10s, 12:00-23:30 KST (LIVE_LOCK — 2 windows)
+
+=== Stadium Real-Time Data ===
+  - crawl_transit_time: Every 15m, 10:00-23:45 KST (LIVE_LOCK)
+  - crawl_congestion: Every 5m, 10:00-23:55 KST (LIVE_LOCK)
+  - crawl_operation_notices: 09:00 + 11:30 KST daily (DAILY_LOCK)
+  - crawl_operation_notices_naver: 09:30 + 13:00 KST daily
+
+=== Daily Jobs ===
+  - crawl_phase1_extra: Daily at 06:00 KST (DAILY_LOCK)
+  - crawl_p0_non_game: Daily at 06:20 KST (DAILY_LOCK)
+  - crawl_p1p2_data: Daily at 06:30 KST (DAILY_LOCK)
+  - startup backfill (run_daily_update) on first scheduler start
+
+=== Weekly Jobs ===
+  - weekly_sla_report: Monday 06:00 KST (MAINTENANCE_LOCK)
+  - compute_park_factor: Sunday 05:30 KST (MAINTENANCE_LOCK)
+  - crawl_fan_culture: Saturday 04:00 KST (MAINTENANCE_LOCK)
+
+=== Monthly Jobs ===
+  - crawl_retired_players: 1st at 02:00 KST (MAINTENANCE_LOCK)
+  - crawl_monthly_unified_audit: 1st at 03:00 KST (MAINTENANCE_LOCK)
+
+=== Locks ===
+  - LIVE_LOCK: pregame, live_refresh, transit_time, congestion
+  - DAILY_LOCK: phase1_extra, p0_non_game, p1p2_data, operation_notices
+  - MAINTENANCE_LOCK: sla_report, park_factor, fan_culture, retire, audit
+  - REALTIME_OCI_SYNC_LOCK: background OCI sync thread (separate from scheduler)
 """
 
 from __future__ import annotations
