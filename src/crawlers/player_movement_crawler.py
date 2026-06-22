@@ -9,15 +9,20 @@ import asyncio
 import logging
 from typing import Any
 
-logger = logging.getLogger(__name__)
-
 from playwright.async_api import Error as PlaywrightError
 from playwright.async_api import Page
 from playwright.async_api import TimeoutError as PlaywrightTimeoutError
+from sqlalchemy.exc import SQLAlchemyError
 from tenacity import AsyncRetrying, retry_if_exception_type, stop_after_attempt, wait_exponential
 
+from src.db.engine import SessionLocal
+from src.repositories.source_registry_repository import save_raw_snapshots
 from src.utils.playwright_pool import AsyncPlaywrightPool
 from src.utils.playwright_retry import NAV_TIMEOUT
+
+logger = logging.getLogger(__name__)
+
+PLAYER_MOVEMENT_SOURCE_KEY = "kbo_player_movement"
 
 PLAYER_MOVEMENT_CRAWL_EXCEPTIONS = (
     PlaywrightError,
@@ -30,6 +35,7 @@ PLAYER_MOVEMENT_CRAWL_EXCEPTIONS = (
     IndexError,
     OSError,
 )
+PLAYER_MOVEMENT_SAVE_EXCEPTIONS = (SQLAlchemyError, RuntimeError, ValueError, TypeError, OSError)
 
 
 class PlayerMovementCrawler:
@@ -39,8 +45,11 @@ class PlayerMovementCrawler:
         self.base_url = "https://www.koreabaseball.com/Player/Trade.aspx"
         self.request_delay = request_delay
         self.pool = pool
+        self._raw_pages: list[dict[str, object]] = []
 
-    async def crawl_years(self, start_year: int, end_year: int) -> list[dict[str, Any]]:
+    async def crawl_years(
+        self, start_year: int, end_year: int, *, save_snapshots: bool = False
+    ) -> list[dict[str, Any]]:
         """Crawl data for a range of years."""
         results = []
         pool = self.pool or AsyncPlaywrightPool(max_pages=1)
@@ -57,6 +66,7 @@ class PlayerMovementCrawler:
                 ):
                     with attempt:
                         await page.goto(self.base_url, wait_until="networkidle", timeout=NAV_TIMEOUT)
+                await self._capture_snapshot(page, self.base_url)
 
                 for year in range(start_year, end_year + 1):
                     year_data = await self._crawl_year(page, year)
@@ -66,6 +76,8 @@ class PlayerMovementCrawler:
         finally:
             if owns_pool:
                 await pool.close()
+        if save_snapshots:
+            self._save_snapshots()
         return results
 
     async def _crawl_year(self, page: Page, year: int) -> list[dict[str, Any]]:
@@ -87,6 +99,7 @@ class PlayerMovementCrawler:
 
             await page.wait_for_load_state("networkidle")
             await page.wait_for_timeout(1000)
+            await self._capture_snapshot(page, f"{self.base_url}?year={year}")
 
             # 4. Iterate Pagination
             page_num = 1
@@ -152,6 +165,31 @@ class PlayerMovementCrawler:
 
         logger.info("✅ Year %s: Collected %s records.", year, len(results))
         return results
+
+    async def _capture_snapshot(self, page: Page, url: str) -> None:
+        self._raw_pages.append(
+            {
+                "source_key": PLAYER_MOVEMENT_SOURCE_KEY,
+                "url": url,
+                "html": await page.content(),
+                "status_code": 200,
+            },
+        )
+
+    def _save_snapshots(self) -> None:
+        if not self._raw_pages:
+            return
+        with SessionLocal() as session:
+            try:
+                saved = save_raw_snapshots(session, list(self._raw_pages))
+                session.commit()
+                logger.info("[PLAYER_MOVEMENT] Saved %s raw snapshots.", saved)
+            except PLAYER_MOVEMENT_SAVE_EXCEPTIONS:
+                session.rollback()
+                logger.exception("[PLAYER_MOVEMENT] Failed to save raw snapshots")
+                raise
+            finally:
+                self._raw_pages.clear()
 
     async def _extract_table(self, page: Page) -> list[dict[str, Any]]:
         script = """
