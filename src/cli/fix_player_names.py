@@ -51,7 +51,7 @@ def _log_player_sample(valid_dicts: list[dict]) -> None:
         )
 
 
-def _save_players_if_requested(valid_dicts: list[dict], save: bool) -> None:
+def _save_players_if_requested(valid_dicts: list[dict], *, save: bool) -> None:
     if not save:
         logger.info("Skipping save (use --save flag)")
         return
@@ -60,7 +60,7 @@ def _save_players_if_requested(valid_dicts: list[dict], save: bool) -> None:
     logger.info("Saved %d players", saved)
 
 
-def _should_sync_to_oci(sync_oci: bool) -> bool:
+def _should_sync_to_oci(*, sync_oci: bool) -> bool:
     return sync_oci
 
 
@@ -87,6 +87,7 @@ def _sync_player_basic_to_oci() -> None:
 
 async def fix_player_names(
     max_pages: int | None = None,
+    *,
     save: bool = False,
     sync_oci: bool = False,
 ) -> None:
@@ -107,8 +108,8 @@ async def fix_player_names(
         return
 
     _log_player_sample(valid_dicts)
-    _save_players_if_requested(valid_dicts, save)
-    if _should_sync_to_oci(sync_oci):
+    _save_players_if_requested(valid_dicts, save=save)
+    if _should_sync_to_oci(sync_oci=sync_oci):
         _sync_player_basic_to_oci()
 
     logger.info("=" * 60)
