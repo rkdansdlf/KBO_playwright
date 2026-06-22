@@ -65,7 +65,7 @@ class StaticTextCrawler:
 
         return chunks
 
-    async def crawl_namuwiki(self, url: str, save: bool = False) -> dict[str, Any]:
+    async def crawl_namuwiki(self, url: str, *, save: bool = False) -> dict[str, Any]:
         """
         Crawls a Namuwiki page using Playwright to bypass Cloudflare protection
         and extracts cleaned main content with BeautifulSoup.

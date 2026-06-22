@@ -186,7 +186,7 @@ class StaffRegisterCrawler:
     }
     """
 
-    def __init__(self, headless: bool = True, request_delay: float = 1.5) -> None:
+    def __init__(self, *, headless: bool = True, request_delay: float = 1.5) -> None:
         self.headless = headless
         self.policy = RequestPolicy(min_delay=request_delay, max_delay=request_delay)
 

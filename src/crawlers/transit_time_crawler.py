@@ -89,6 +89,7 @@ class TransitTimeCrawler:
     async def run(
         self,
         game_date: date | None = None,
+        *,
         save: bool = False,
     ) -> list[dict]:
         """

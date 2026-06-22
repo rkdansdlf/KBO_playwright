@@ -88,7 +88,7 @@ class OperationNoticeLGCrawler:
         self.max_pages = max_pages
         self._raw_pages: list[dict] = []
 
-    async def run(self, save: bool = False, stop_at_external_id: str | None = None) -> list[dict]:
+    async def run(self, *, save: bool = False, stop_at_external_id: str | None = None) -> list[dict]:
         """
         Crawl notices. If stop_at_external_id is provided, stops when
         a previously seen article is encountered (incremental mode).

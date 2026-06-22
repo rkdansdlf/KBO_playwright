@@ -160,7 +160,7 @@ class PreviewCrawler:
             ),
         )
 
-    def _extract_lineup_announced(self, lineup_rows: list[object], fallback: bool) -> bool:
+    def _extract_lineup_announced(self, lineup_rows: list[object], *, fallback: bool) -> bool:
         """Read LINEUP_CK from GetLineUpAnalysis when present."""
         if not lineup_rows:
             return fallback
@@ -255,7 +255,12 @@ class PreviewCrawler:
         results: list[dict[str, Any]] = []
 
         try:
-            pool, page, owns_pool, list_data = await self._fetch_preview_game_list(game_date, pool, page, owns_pool)
+            pool, page, owns_pool, list_data = await self._fetch_preview_game_list(
+                game_date,
+                pool,
+                page,
+                owns_pool=owns_pool,
+            )
 
             games = self._extract_list_payload(list_data)
             if not games:
@@ -293,13 +298,16 @@ class PreviewCrawler:
         game_date: str,
         pool: AsyncPlaywrightPool | None,
         page: Page | None,
+        *,
         owns_pool: bool,
     ) -> tuple[AsyncPlaywrightPool | None, Page | None, bool, dict[str, Any] | list[Any]]:
         list_payload = {"leId": "1", "srId": "0,1,3,4,5,7,9", "date": game_date}
         list_data = await self._fetch_api_json(self.GAME_LIST_URL, list_payload, self.BASE_REFERER)
         if list_data is None:
             pool, page, owns_pool, list_data = await self._fetch_game_list_with_playwright(
-                list_payload, pool, owns_pool
+                list_payload,
+                pool,
+                owns_pool=owns_pool,
             )
         if list_data is None:
             msg = f"HTTP API and Playwright fallback both failed to fetch game list for {game_date}"
@@ -310,6 +318,7 @@ class PreviewCrawler:
         self,
         list_payload: dict[str, str],
         pool: AsyncPlaywrightPool | None,
+        *,
         owns_pool: bool,
     ) -> tuple[AsyncPlaywrightPool, Page, bool, dict[str, Any] | list[Any] | None]:
         active_pool = pool or AsyncPlaywrightPool(max_pages=1)
@@ -376,7 +385,7 @@ class PreviewCrawler:
     def _apply_lineup_payload(self, preview_data: dict[str, Any], lineup_rows: list[dict[str, Any]]) -> None:
         preview_data["lineup_announced"] = self._extract_lineup_announced(
             lineup_rows,
-            bool(preview_data["lineup_announced"]),
+            fallback=bool(preview_data["lineup_announced"]),
         )
         if not self._lineup_rows_match_game(lineup_rows, preview_data["game_id"]):
             logger.warning("⚠️ Ignoring stale lineup payload for %s", preview_data["game_id"])
