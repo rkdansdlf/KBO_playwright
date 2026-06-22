@@ -27,7 +27,7 @@ class NaverNewsCrawlerBase(ABC):
     KEYWORDS: list[str] = []
     LABEL: str = "news"
 
-    async def run(self, save: bool = False) -> None:
+    async def run(self, *, save: bool = False) -> None:
         data = await self._fetch_news()
         logger.info("Found %d %s entries.", len(data), self.LABEL)
         if save:

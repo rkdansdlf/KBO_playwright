@@ -192,7 +192,7 @@ def _collect_deep_mismatches(
     return mismatches, alert_lines
 
 
-def _send_consistency_mismatch_alert(alert_lines: list[str], trigger_alert: bool) -> None:
+def _send_consistency_mismatch_alert(alert_lines: list[str], *, trigger_alert: bool) -> None:
     if not trigger_alert:
         return
     alert_msg = "<b>⚠️ KBO DB Consistency Mismatch Alert</b>\n\n" + "\n".join(alert_lines)
@@ -200,7 +200,7 @@ def _send_consistency_mismatch_alert(alert_lines: list[str], trigger_alert: bool
     SlackWebhookClient.send_alert(alert_msg)
 
 
-def run_consistency_audit(deep: bool = False, trigger_alert: bool = True) -> bool:
+def run_consistency_audit(*, deep: bool = False, trigger_alert: bool = True) -> bool:
     source_url = get_source_db_url()
     target_url = get_oci_url()
 
@@ -231,7 +231,7 @@ def run_consistency_audit(deep: bool = False, trigger_alert: bool = True) -> boo
 
     if mismatches:
         logger.info("\n🚨 Discovered %s database mismatch alerts!", len(mismatches))
-        _send_consistency_mismatch_alert(alert_lines, trigger_alert)
+        _send_consistency_mismatch_alert(alert_lines, trigger_alert=trigger_alert)
         return False
     logger.info("\n✅ All databases are fully synchronized and consistent!")
     return True

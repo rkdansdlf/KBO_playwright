@@ -267,7 +267,7 @@ def _add_pitching_values(payload: dict[str, Any], cells: list[Tag], indexes: dic
 def _parse_pitching_value(header_key: str, value_str: str) -> int | float | str | None:
     if header_key == "innings_pitched":
         return parse_innings(value_str)
-    return parse_numeric(value_str, header_key in FLOAT_FIELDS)
+    return parse_numeric(value_str, as_float=header_key in FLOAT_FIELDS)
 
 
 def _build_column_map(headers: list[str]) -> dict[str, int]:

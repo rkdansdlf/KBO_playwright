@@ -53,6 +53,7 @@ class WPACalculator:
     def calculate_wpa(
         self,
         inning: int,
+        *,
         is_bottom: bool,
         outs_before: int,
         runners_before: int,
@@ -66,10 +67,22 @@ class WPACalculator:
         Returns WPA from the perspective of the Batting Team.
         """
         # 1. Get WE Before (Home Perspective)
-        we_before = self.get_win_probability(inning, is_bottom, outs_before, runners_before, score_diff_before)
+        we_before = self.get_win_probability(
+            inning,
+            is_bottom=is_bottom,
+            outs=outs_before,
+            runners=runners_before,
+            score_diff=score_diff_before,
+        )
 
         # 2. Get WE After (Home Perspective)
-        we_after = self.get_win_probability(inning, is_bottom, outs_after, runners_after, score_diff_after)
+        we_after = self.get_win_probability(
+            inning,
+            is_bottom=is_bottom,
+            outs=outs_after,
+            runners=runners_after,
+            score_diff=score_diff_after,
+        )
 
         # 3. Calculate WPA (Batting Team Perspective)
         if is_bottom:  # Home Team batting
@@ -79,7 +92,7 @@ class WPACalculator:
 
         return round(wpa, 4)
 
-    def get_win_probability(self, inning: int, is_bottom: bool, outs: int, runners: int, score_diff: int) -> float:
+    def get_win_probability(self, inning: int, *, is_bottom: bool, outs: int, runners: int, score_diff: int) -> float:
         """
         Returns probability (0.0 to 1.0) that HOME team wins.
         Uses Matrix lookup with fallback interpolation for missing keys.
@@ -109,9 +122,15 @@ class WPACalculator:
             return max(0.0, base_prob - runner_bonus)
 
         # Ultimate Fallback: Use logistic formula (legacy)
-        return self._fallback_formula(clamped_inning, is_bottom, outs, runners, score_diff)
+        return self._fallback_formula(
+            clamped_inning,
+            is_bottom=is_bottom,
+            outs=outs,
+            runners=runners,
+            score_diff=score_diff,
+        )
 
-    def _fallback_formula(self, inning: int, is_bottom: bool, outs: int, runners: int, score_diff: int) -> float:
+    def _fallback_formula(self, inning: int, *, is_bottom: bool, outs: int, runners: int, score_diff: int) -> float:
         """
         Legacy logistic formula for edge cases not covered by matrix.
         """

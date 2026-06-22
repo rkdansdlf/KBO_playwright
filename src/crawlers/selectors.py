@@ -44,7 +44,7 @@ class GameDetailSelectors:
     cancel_on: str = "li.game-cont.on .game-status.cancel"
     cancel_generic: str = ".game-status.cancel"
 
-    content_boxscore_area: str = "#contents, .box-score-area"
+    content_boxscore_area: str = ".box-score-area"
     info_area: str = ".box-score-area, .game-info, .score-board, .record-etc"
 
     away_hitter_primary: str = "#tblAwayHitter1"

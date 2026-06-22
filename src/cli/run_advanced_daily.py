@@ -78,7 +78,7 @@ async def _crawl_baserunning_step(year: int) -> None:
         logger.info("   ✅ Saved %s baserunning records", PlayerSeasonBaserunningRepository().upsert_many(processed))
 
 
-async def _crawl_team_batting_step(year: int, headless: bool) -> None:
+async def _crawl_team_batting_step(year: int, *, headless: bool) -> None:
     stats = await asyncio.wait_for(
         asyncio.to_thread(TeamBattingStatsCrawler().crawl, year, persist=True, headless=headless),
         timeout=CRAWL_TIMEOUT,
@@ -86,7 +86,7 @@ async def _crawl_team_batting_step(year: int, headless: bool) -> None:
     logger.info("   ✅ Saved %s team batting records", len(stats))
 
 
-async def _crawl_team_pitching_step(year: int, headless: bool) -> None:
+async def _crawl_team_pitching_step(year: int, *, headless: bool) -> None:
     stats = await asyncio.wait_for(
         asyncio.to_thread(TeamPitchingStatsCrawler().crawl, year, persist=True, headless=headless),
         timeout=CRAWL_TIMEOUT,
@@ -139,6 +139,7 @@ def _sync_advanced_to_oci(year: int) -> bool:
 
 async def run_advanced_update(
     year: int,
+    *,
     sync: bool = False,
     headless: bool = True,
 ) -> None:
@@ -159,12 +160,12 @@ async def run_advanced_update(
     any_error |= await _run_step(
         "🏏 Step 3: Crawling Team Batting Stats...",
         "Error crawling team batting stats",
-        lambda: _crawl_team_batting_step(year, headless),
+        lambda: _crawl_team_batting_step(year, headless=headless),
     )
     any_error |= await _run_step(
         "⚾ Step 4: Crawling Team Pitching Stats...",
         "Error crawling team pitching stats",
-        lambda: _crawl_team_pitching_step(year, headless),
+        lambda: _crawl_team_pitching_step(year, headless=headless),
     )
     any_error |= await _run_step(
         "🏰 Step 5: Aggregating Team Fielding & Baserunning...",

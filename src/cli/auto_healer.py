@@ -178,6 +178,7 @@ async def _run_recovery(
     recovery_candidates: list[Game],
     anomaly_dates: list[Any],
     recovery_mgr: RecoveryManager,
+    *,
     dry_run: bool,
 ) -> dict[str, int]:
     with SessionLocal() as db_session:
@@ -216,7 +217,7 @@ async def _run_recovery(
         return results
 
 
-def _log_healer_summary(results: dict[str, int], dry_run: bool) -> None:
+def _log_healer_summary(results: dict[str, int], *, dry_run: bool) -> None:
     logger.info("\n📊 Auto-Healer Summary:")
     for outcome, count in results.items():
         if count > 0:
@@ -234,6 +235,7 @@ def _log_healer_summary(results: dict[str, int], dry_run: bool) -> None:
 
 
 async def run_healer_async(
+    *,
     dry_run: bool = False,
     reset_checkpoint: bool = False,
     target_game_ids: list[str] | None = None,
@@ -266,8 +268,8 @@ async def run_healer_async(
         _send_healer_start_alert(total, stuck_games, inconsistent_games, anomaly_dates)
 
     logger.info("\n🚀 Initiating self-recovery for %s game(s)...", total)
-    results = await _run_recovery(recovery_candidates, anomaly_dates, recovery_mgr, dry_run)
-    _log_healer_summary(results, dry_run)
+    results = await _run_recovery(recovery_candidates, anomaly_dates, recovery_mgr, dry_run=dry_run)
+    _log_healer_summary(results, dry_run=dry_run)
     return results["unresolved"]
 
 
@@ -325,6 +327,7 @@ def _find_unverified_pbp_games(lookback_days: int = 3) -> list[dict]:
 
 
 async def run_pbp_healer_async(
+    *,
     dry_run: bool = False,
     lookback_days: int = 3,
     target_game_ids: list[str] | None = None,

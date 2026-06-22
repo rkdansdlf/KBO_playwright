@@ -1568,10 +1568,10 @@ def _finalize_run_update(ctx: _RunContext) -> dict[str, Any]:
 
 async def run_update(
     target_date: str,
+    *,
     sync: bool = False,
     headless: bool = True,
     limit: int | None = None,
-    *,
     step_runner: Callable[[Sequence[str]], None] | None = None,
     summary_dir: str | Path | None = None,
     seed_tomorrow_preview: bool = False,

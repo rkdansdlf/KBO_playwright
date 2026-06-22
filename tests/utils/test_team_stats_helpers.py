@@ -49,22 +49,22 @@ class TestResolveTeamId:
 
 class TestParseNumeric:
     def test_int_value(self):
-        assert parse_numeric("5", False) == 5
+        assert parse_numeric("5", as_float=False) == 5
 
     def test_float_value(self):
-        assert parse_numeric("3.14", True) == pytest.approx(3.14)
+        assert parse_numeric("3.14", as_float=True) == pytest.approx(3.14)
 
     def test_comma_separated(self):
-        assert parse_numeric("1,234", False) == 1234
+        assert parse_numeric("1,234", as_float=False) == 1234
 
     def test_percentage(self):
-        assert parse_numeric("85.5%", True) == pytest.approx(85.5)
+        assert parse_numeric("85.5%", as_float=True) == pytest.approx(85.5)
 
     def test_empty_string(self):
-        assert parse_numeric("", False) is None
+        assert parse_numeric("", as_float=False) is None
 
     def test_dash_value(self):
-        assert parse_numeric("-", False) is None
+        assert parse_numeric("-", as_float=False) is None
 
     def test_na_value(self):
-        assert parse_numeric("N/A", False) is None
+        assert parse_numeric("N/A", as_float=False) is None

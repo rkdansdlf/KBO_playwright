@@ -102,6 +102,7 @@ class PlayerSearchCrawler:
         self,
         pool: AsyncPlaywrightPool | None = None,
         request_delay: float = REQUEST_DELAY_SEC,
+        *,
         headless: bool = True,
     ) -> None:
         self.pool = pool
@@ -245,15 +246,7 @@ class PlayerSearchCrawler:
         collected: list[PlayerRow] = []
         seen: set[int] = set()
 
-        async def add_current() -> None:
-            for r in await self._collect_page_rows(page):
-                if r.player_id not in seen:
-                    seen.add(r.player_id)
-                    collected.append(r)
-                else:
-                    self._record_failure("duplicate_player_id")
-
-        await add_current()
+        await self._add_current_page_rows(page, collected, seen)
         while True:
             pager = page.locator(PAGER_CONTAINER).last
             if await pager.count() == 0:
@@ -263,44 +256,72 @@ class PlayerSearchCrawler:
             if count == 0:
                 break
 
-            curr_idx = 0
-            for i in range(count):
-                if "on" in (await nums.nth(i).get_attribute("class") or "").lower():
-                    curr_idx = i
-                    break
-
-            moved = False
-            for i in range(curr_idx + 1, count):
-                target = (
-                    page.locator(PAGER_CONTAINER)
-                    .last.locator(":is(a, span)")
-                    .filter(has_text=re.compile(r"^\d+$"))
-                    .nth(i)
-                )
-                if (await target.evaluate("el => el.tagName")).lower() != "a":
-                    continue
-                prev_v = await self._get_hfpage_value(page)
-                first_b = await self._get_first_player_name(page)
-                if await self._trigger_postback(page, target):
-                    await self._wait_after_nav(page, prev_v, first_b)
-                    await add_current()
-                    moved = True
-
-            # Next block
-            next_btn = page.locator(PAGER_CONTAINER).last.locator(PAGER_NEXT_BTNS).first
-            if await next_btn.count() > 0 and (await next_btn.evaluate("el => el.tagName")).lower() == "a":
-                prev_v = await self._get_hfpage_value(page)
-                first_b = await self._get_first_player_name(page)
-                if await self._trigger_postback(page, next_btn):
-                    await self._wait_after_nav(page, prev_v, first_b)
-                    await add_current()
-                    moved = True
-                else:
-                    self._record_failure("pagination_failed")
-                    break
+            curr_idx = await self._current_pager_index(nums, count)
+            moved = await self._visit_remaining_numeric_pages(page, curr_idx, count, collected, seen)
+            next_moved, next_failed = await self._visit_next_pager_block(page, collected, seen)
+            moved = moved or next_moved
+            if next_failed:
+                break
             if not moved:
                 break
         return collected
+
+    async def _add_current_page_rows(self, page: Page, collected: list[PlayerRow], seen: set[int]) -> None:
+        for row in await self._collect_page_rows(page):
+            if row.player_id not in seen:
+                seen.add(row.player_id)
+                collected.append(row)
+            else:
+                self._record_failure("duplicate_player_id")
+
+    @staticmethod
+    async def _current_pager_index(nums: object, count: int) -> int:
+        for idx in range(count):
+            if "on" in (await nums.nth(idx).get_attribute("class") or "").lower():
+                return idx
+        return 0
+
+    async def _visit_remaining_numeric_pages(
+        self,
+        page: Page,
+        curr_idx: int,
+        count: int,
+        collected: list[PlayerRow],
+        seen: set[int],
+    ) -> bool:
+        moved = False
+        for idx in range(curr_idx + 1, count):
+            target = (
+                page.locator(PAGER_CONTAINER)
+                .last.locator(":is(a, span)")
+                .filter(has_text=re.compile(r"^\d+$"))
+                .nth(idx)
+            )
+            if (await target.evaluate("el => el.tagName")).lower() != "a":
+                continue
+            if await self._click_pager_target(page, target, collected, seen):
+                moved = True
+        return moved
+
+    async def _click_pager_target(self, page: Page, target: object, collected: list[PlayerRow], seen: set[int]) -> bool:
+        prev_v = await self._get_hfpage_value(page)
+        first_b = await self._get_first_player_name(page)
+        if not await self._trigger_postback(page, target):
+            return False
+        await self._wait_after_nav(page, prev_v, first_b)
+        await self._add_current_page_rows(page, collected, seen)
+        return True
+
+    async def _visit_next_pager_block(
+        self, page: Page, collected: list[PlayerRow], seen: set[int]
+    ) -> tuple[bool, bool]:
+        next_btn = page.locator(PAGER_CONTAINER).last.locator(PAGER_NEXT_BTNS).first
+        if await next_btn.count() == 0 or (await next_btn.evaluate("el => el.tagName")).lower() != "a":
+            return False, False
+        if await self._click_pager_target(page, next_btn, collected, seen):
+            return True, False
+        self._record_failure("pagination_failed")
+        return False, True
 
     async def _collect_page_rows(self, page: Page) -> list[PlayerRow]:
         # Retry on "Execution context was destroyed" which happens when
@@ -332,7 +353,7 @@ class PlayerSearchCrawler:
             if not ok:
                 self._record_failure(reason or "invalid_player_payload")
                 continue
-            h, w = self._parse_hw(cells[5])
+            h, w = self._parse_hw(cells[5]) or (None, None)
             res.append(
                 PlayerRow(
                     player_id=pid,
@@ -488,6 +509,7 @@ def player_row_to_dict(row: PlayerRow) -> dict[str, Any]:
 
 async def crawl_all_players(
     max_pages: int | None = None,
+    *,
     headless: bool = False,
     slow_mo: int = 200,  # noqa: ARG001
     request_delay: float = REQUEST_DELAY_SEC,

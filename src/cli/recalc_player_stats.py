@@ -370,6 +370,7 @@ def _print_pitching_results(records: list[dict[str, Any]]) -> None:
 
 def run_recalc(
     season: int,
+    *,
     dry_run: bool = False,
     batting_only: bool = False,
     pitching_only: bool = False,

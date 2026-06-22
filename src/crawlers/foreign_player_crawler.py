@@ -57,18 +57,59 @@ class ForeignPlayerCrawler(NaverNewsCrawlerBase):
 
     @staticmethod
     def _extract_foreign_player_name(text: str) -> str | None:
-        fp_match = re.search(
-            r"([가-힣]{2,5}|[A-Z][a-z]+(?:\s[A-Z][a-z]+)*)\s*(?:교체|대체|방출|영입|재계약|웨이버)",
+        INVALID_NAMES = {
+            "부상",
+            "대체",
+            "교체",
+            "영입",
+            "방출",
+            "퇴출",
+            "투수",
+            "타자",
+            "선수",
+            "외인",
+            "외국인",
+            "구단",
+            "시즌",
+            "리그",
+            "올해",
+            "최근",
+            "경기",
+            "감독",
+            "코치",
+            "대표",
+            "단장",
+            "구단주",
+            "야구",
+            "한국",
+            "미국",
+            "웨이버",
+        }
+        role_name = re.search(
+            r"(?:새\s*)?외국인\s*(?:투수|타자|선수)\s+([가-힣]{2,5}|[A-Z][a-z]+(?:\s[A-Z][a-z]+)*)(?:와|과)?\s*(?:계약|영입|합류|입단)",
             text,
         )
-        if fp_match:
-            return fp_match.group(1)
+        if role_name:
+            name = role_name.group(1).strip()
+            if name not in INVALID_NAMES:
+                return name
+        for m in re.finditer(
+            r"([가-힣]{2,5}|[A-Z][a-z]+(?:\s[A-Z][a-z]+)*)\s*(?:교체|대체|방출|영입|재계약|웨이버)",
+            text,
+        ):
+            name = m.group(1).strip()
+            if name not in INVALID_NAMES:
+                return name
         names = re.findall(r"[A-Z][a-z]+(?:\s[A-Z][a-z]+)*", text)
         for name in names:
-            if len(name) > 3 and name.lower() not in ("Kbo", "Naver", "Sports", "Http", "Https", "Mlb"):
+            if len(name) > 3 and name.lower() not in ("kbo", "naver", "sports", "http", "https", "mlb"):
                 return name
         korean_name = re.search(r"([가-힣]{2,4})(?:선수|투수|타자)", text)
-        return korean_name.group(1) if korean_name else None
+        if korean_name:
+            name = korean_name.group(1).strip()
+            if name not in INVALID_NAMES:
+                return name
+        return None
 
     def _extract_team_id(self, text: str) -> str | None:
         for kr, code in self.TEAM_MAP.items():
@@ -112,20 +153,16 @@ class ForeignPlayerCrawler(NaverNewsCrawlerBase):
         session = SessionLocal()
         repo = ForeignPlayerRepository(session)
         count = 0
-        try:
-            for item in data:
-                try:
-                    repo.save_change(item)
-                    count += 1
-                except SQLAlchemyError as e:
-                    logger.warning("Foreign player save failed: %s", e)
-            session.commit()
-            logger.info("Saved %s foreign player change records.", count)
-        except SQLAlchemyError:
-            session.rollback()
-            logger.exception("Database error saving foreign players")
-        finally:
-            session.close()
+        for item in data:
+            try:
+                repo.save_change(item)
+                session.commit()
+                count += 1
+            except SQLAlchemyError as e:
+                session.rollback()
+                logger.warning("Foreign player save failed: %s", e)
+        logger.info("Saved %s foreign player change records.", count)
+        session.close()
 
 
 if __name__ == "__main__":

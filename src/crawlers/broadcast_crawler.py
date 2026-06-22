@@ -22,7 +22,7 @@ class BroadcastCrawler:
     def __init__(self) -> None:
         self.url = SCHEDULE
 
-    async def run(self, year: int = None, month: int = None, save: bool = False) -> None:
+    async def run(self, year: int = None, month: int = None, *, save: bool = False) -> None:
         year = year or datetime.now().year
         month = month or datetime.now().month
 

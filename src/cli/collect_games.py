@@ -32,6 +32,7 @@ async def collect_games(
     year: int,
     month: int | None = None,
     game_ids: list[str] | None = None,
+    *,
     force: bool = False,
     concurrency: int | None = None,
 ) -> None:

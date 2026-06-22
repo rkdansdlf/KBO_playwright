@@ -78,7 +78,7 @@ def _print_pitching_records(records: list[dict[str, object]]) -> None:
         )
 
 
-def recalc_for_game(session: Session, game_id: str, dry_run: bool = False) -> dict[str, int]:
+def recalc_for_game(session: Session, game_id: str, *, dry_run: bool = False) -> dict[str, int]:
     batting = aggregate_game_batting(session, game_id)
     pitching = aggregate_game_pitching(session, game_id)
 
@@ -96,7 +96,7 @@ def recalc_for_game(session: Session, game_id: str, dry_run: bool = False) -> di
     return {"batting": b_saved, "pitching": p_saved}
 
 
-def recalc_for_games_batch(session: Session, game_ids: list[str], dry_run: bool = False) -> dict[str, int]:
+def recalc_for_games_batch(session: Session, game_ids: list[str], *, dry_run: bool = False) -> dict[str, int]:
     """Batch recalc: single query per side, single commit for all games."""
     batting = aggregate_game_batting_batch(session, game_ids)
     pitching = aggregate_game_pitching_batch(session, game_ids)
@@ -116,6 +116,7 @@ def run_recalc(
     game_id: str | None = None,
     date: str | None = None,
     season: int | None = None,
+    *,
     dry_run: bool = False,
     include_futures: bool = False,
 ) -> int:

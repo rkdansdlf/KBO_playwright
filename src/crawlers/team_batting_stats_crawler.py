@@ -260,7 +260,7 @@ def _add_batting_values(payload: dict[str, Any], cells: list[Tag], indexes: dict
         value_str = get_cell_value(cells, idx)
         if value_str is None:
             continue
-        value = parse_numeric(value_str, header_key in FLOAT_FIELDS)
+        value = parse_numeric(value_str, as_float=header_key in FLOAT_FIELDS)
         if header_key in BATTING_FIELDS:
             payload[header_key] = value
         else:

@@ -123,6 +123,7 @@ def _sync_weekly_to_oci(oci_url: str | None) -> None:
 
 async def run_weekly_maintenance(
     profile_limit: int = 100,
+    *,
     sync: bool = False,
 ) -> None:
     logger.info("\n%s", "=" * 60)

@@ -53,7 +53,7 @@ class AwardCrawler:
             logger.info(d)
         logger.info("... and %s more.", len(all_data) - 5)
 
-    async def run(self, award_types: list[str] | None = None, save: bool = False) -> None:
+    async def run(self, award_types: list[str] | None = None, *, save: bool = False) -> None:
         award_types = self._resolve_award_types(award_types)
 
         async with async_playwright() as p:

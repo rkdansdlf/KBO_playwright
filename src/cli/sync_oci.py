@@ -412,7 +412,7 @@ def _build_sync_dispatch() -> dict[str, tuple]:
     # fmt: off
     return {
         "game_details":   (lambda s, y, **kw: s.sync_game_details(year=y, days=kw.get("days"), unsynced_only=kw.get("unsynced_only"), batch_size=kw.get("copy_batch_size")) if not kw.get("requested_game_ids")
-                           else [logger.info("   [%s] %s", gid, s.sync_specific_game(gid)) for gid in kw["requested_game_ids"]],
+                           else logger.info("   Explicit game sync result: %s", s.sync_game_details_for_ids(kw["requested_game_ids"], batch_size=kw.get("copy_batch_size"))),
                            "🚀 Syncing Game Details using specialized OCISync...", True,
                            lambda sess: get_available_years(sess, Game, "strftime('%Y', game_date)"),
                            "✅ Game Details Sync Finished"),
@@ -580,6 +580,7 @@ def _reset_sequences_if_requested(args: argparse.Namespace) -> None:
 
 def main(argv: Iterable[str] | None = None) -> None:
     """스크립트의 메인 실행 함수."""
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
     load_dotenv()
     parser = build_arg_parser()
     args = parser.parse_args(argv)

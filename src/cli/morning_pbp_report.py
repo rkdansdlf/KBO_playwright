@@ -149,6 +149,7 @@ def _build_telegram_message(
     target_date: str,
     summary: dict[str, Any],
     validation_counts: dict[str, int],
+    *,
     dry_run: bool,
 ) -> str:
     """Format a Telegram HTML message from the daily summary and validation data."""
@@ -215,7 +216,7 @@ def run_morning_report(
 
     validation_counts = _query_pbp_validation_summary()
 
-    message = _build_telegram_message(target_date, summary, validation_counts, dry_run)
+    message = _build_telegram_message(target_date, summary, validation_counts, dry_run=dry_run)
 
     if dry_run:
         logger.info(message)

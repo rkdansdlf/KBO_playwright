@@ -333,7 +333,7 @@ def format_report_summary(report: dict[str, Any]) -> str:
     return " | ".join(parts)
 
 
-def run_gap_report(alert: bool = True, dry_run: bool = False) -> dict[str, Any]:
+def run_gap_report(*, alert: bool = True, dry_run: bool = False) -> dict[str, Any]:
     """Build and optionally alert the unified gap report."""
     if dry_run:
         logger.info("[GAP-REPORT] DRY RUN — no alerts will be sent")

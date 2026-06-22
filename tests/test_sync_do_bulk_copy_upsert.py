@@ -41,7 +41,7 @@ class TestDoBulkCopyUpsert:
     def test_creates_temp_table(self):
         syncer = _build_syncer()
         cursor, _ = _mock_cursor(syncer)
-        syncer._do_bulk_copy_upsert("test_tbl", [{"id": 1}], ["id"], True)
+        syncer._do_bulk_copy_upsert("test_tbl", [{"id": 1}], ["id"], update_timestamp=True)
         create_calls = [c[0][0] for c in cursor.execute.call_args_list if "CREATE TEMP TABLE" in c[0][0]]
         assert len(create_calls) == 1
         assert "CREATE TEMP TABLE" in create_calls[0]
@@ -50,7 +50,7 @@ class TestDoBulkCopyUpsert:
     def test_insert_with_conflict_update(self):
         syncer = _build_syncer()
         cursor, _ = _mock_cursor(syncer)
-        syncer._do_bulk_copy_upsert("t", [{"id": 1, "name": "a"}], ["id"], True)
+        syncer._do_bulk_copy_upsert("t", [{"id": 1, "name": "a"}], ["id"], update_timestamp=True)
         sqls = _capture_sql_calls(cursor)
         insert_sql = [s for s in sqls if "INSERT INTO t" in s][0]
         assert "ON CONFLICT" in insert_sql
@@ -60,7 +60,7 @@ class TestDoBulkCopyUpsert:
     def test_insert_without_conflict(self):
         syncer = _build_syncer()
         cursor, _ = _mock_cursor(syncer)
-        syncer._do_bulk_copy_upsert("t", [{"id": 1}], [], True)
+        syncer._do_bulk_copy_upsert("t", [{"id": 1}], [], update_timestamp=True)
         sqls = _capture_sql_calls(cursor)
         insert_sql = [s for s in sqls if "INSERT INTO t" in s][0]
         assert "ON CONFLICT" not in insert_sql
@@ -68,7 +68,7 @@ class TestDoBulkCopyUpsert:
     def test_do_nothing_when_no_update_cols(self):
         syncer = _build_syncer()
         cursor, _ = _mock_cursor(syncer)
-        syncer._do_bulk_copy_upsert("t", [{"id": 1}], ["id"], True)
+        syncer._do_bulk_copy_upsert("t", [{"id": 1}], ["id"], update_timestamp=True)
         sqls = _capture_sql_calls(cursor)
         insert_sql = [s for s in sqls if "INSERT INTO t" in s][0]
         assert "DO NOTHING" in insert_sql
@@ -115,7 +115,7 @@ class TestDoBulkCopyUpsert:
     def test_columns_double_quoted(self):
         syncer = _build_syncer()
         cursor, _ = _mock_cursor(syncer)
-        syncer._do_bulk_copy_upsert("t", [{"my-col": 1, "another col": "x"}], ["my-col"], True)
+        syncer._do_bulk_copy_upsert("t", [{"my-col": 1, "another col": "x"}], ["my-col"], update_timestamp=True)
         sqls = _capture_sql_calls(cursor)
         insert_sql = [s for s in sqls if "INSERT INTO t" in s][0]
         assert '"my-col"' in insert_sql
@@ -124,21 +124,21 @@ class TestDoBulkCopyUpsert:
     def test_temp_table_naming(self):
         syncer = _build_syncer()
         cursor, _ = _mock_cursor(syncer)
-        syncer._do_bulk_copy_upsert("my_table", [{"id": 1}], ["id"], True)
+        syncer._do_bulk_copy_upsert("my_table", [{"id": 1}], ["id"], update_timestamp=True)
         create_calls = [c[0][0] for c in cursor.execute.call_args_list if "CREATE TEMP TABLE" in c[0][0]]
         assert "temp_my_table_" in create_calls[0]
 
     def test_drops_temp_table(self):
         syncer = _build_syncer()
         cursor, _ = _mock_cursor(syncer)
-        syncer._do_bulk_copy_upsert("t", [{"id": 1}], ["id"], True)
+        syncer._do_bulk_copy_upsert("t", [{"id": 1}], ["id"], update_timestamp=True)
         drop_calls = [c[0][0] for c in cursor.execute.call_args_list if "DROP TABLE" in c[0][0]]
         assert len(drop_calls) == 1
 
     def test_copy_command(self):
         syncer = _build_syncer()
         cursor, _ = _mock_cursor(syncer)
-        syncer._do_bulk_copy_upsert("t", [{"id": 1, "name": "a"}], ["id"], True)
+        syncer._do_bulk_copy_upsert("t", [{"id": 1, "name": "a"}], ["id"], update_timestamp=True)
         assert cursor.copy_expert.call_count == 1
         copy_sql = cursor.copy_expert.call_args[0][0]
         assert "COPY temp_" in copy_sql
@@ -150,7 +150,7 @@ class TestDoBulkCopyUpsert:
     def test_commits_on_success(self):
         syncer = _build_syncer()
         _, conn = _mock_cursor(syncer)
-        syncer._do_bulk_copy_upsert("t", [{"id": 1}], ["id"], True)
+        syncer._do_bulk_copy_upsert("t", [{"id": 1}], ["id"], update_timestamp=True)
         conn.commit.assert_called_once()
 
     def test_rollback_on_error(self):
@@ -158,20 +158,20 @@ class TestDoBulkCopyUpsert:
         cursor, conn = _mock_cursor(syncer)
         cursor.execute.side_effect = RuntimeError("db error")
         with pytest.raises(RuntimeError, match="db error"):
-            syncer._do_bulk_copy_upsert("t", [{"id": 1}], ["id"], True)
+            syncer._do_bulk_copy_upsert("t", [{"id": 1}], ["id"], update_timestamp=True)
         conn.rollback.assert_called_once()
 
     def test_closes_cursor_and_connection(self):
         syncer = _build_syncer()
         cursor, conn = _mock_cursor(syncer)
-        syncer._do_bulk_copy_upsert("t", [{"id": 1}], ["id"], True)
+        syncer._do_bulk_copy_upsert("t", [{"id": 1}], ["id"], update_timestamp=True)
         cursor.close.assert_called_once()
         conn.close.assert_called_once()
 
     def test_csv_tab_delimited(self):
         syncer = _build_syncer()
         cursor, _ = _mock_cursor(syncer)
-        syncer._do_bulk_copy_upsert("t", [{"id": 1, "val": "hello"}], ["id"], True)
+        syncer._do_bulk_copy_upsert("t", [{"id": 1, "val": "hello"}], ["id"], update_timestamp=True)
         copy_sql = cursor.copy_expert.call_args[0][0]
         assert "FORMAT CSV" in copy_sql
         assert "DELIMITER" in copy_sql
@@ -181,6 +181,6 @@ class TestDoBulkCopyUpsert:
         cursor, conn = _mock_cursor(syncer)
         cursor.execute.side_effect = RuntimeError("fail")
         with pytest.raises(RuntimeError):
-            syncer._do_bulk_copy_upsert("t", [{"id": 1}], ["id"], True)
+            syncer._do_bulk_copy_upsert("t", [{"id": 1}], ["id"], update_timestamp=True)
         cursor.close.assert_called_once()
         conn.close.assert_called_once()
