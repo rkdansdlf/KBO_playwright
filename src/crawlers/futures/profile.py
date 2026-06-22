@@ -111,13 +111,26 @@ class FuturesProfileCrawler:
         return None
 
     async def _extract_futures_tables(self, page: Page) -> list[dict[str, Any]]:
+        futures_clicked = await self._click_futures_tab(page)
+        if not futures_clicked:
+            existing = await page.query_selector("table#tblHitterRecord, table#tblPitcherRecord")
+            if not existing:
+                return []
+
+        await self._wait()
+        html_content = await page.content()
+        soup = BeautifulSoup(html_content, "lxml")
+        tables = self._extract_known_futures_tables(soup)
+        if tables:
+            return tables
+        return self._extract_fallback_futures_tables(soup)
+
+    async def _click_futures_tab(self, page: Page) -> bool:
         tab_selectors = [
             'a:has-text("퓨처스")',
             "#cphContents_cphContents_cphContents_ucPlayerYearTabs a[href*='Futures']",
             "#cphContents_cphContents_cphContents_ucPlayerRecord_tabList a[href*='Futures']",
         ]
-
-        futures_clicked = False
         for selector in tab_selectors:
             try:
                 tab = await page.wait_for_selector(selector, timeout=SHORT_TIMEOUT)
@@ -126,25 +139,14 @@ class FuturesProfileCrawler:
             if tab:
                 try:
                     await tab.click()
-                    futures_clicked = True
-                    break
                 except PlaywrightError:
                     continue
+                else:
+                    return True
+        return False
 
-        if not futures_clicked:
-            existing = await page.query_selector("table#tblHitterRecord, table#tblPitcherRecord")
-            if not existing:
-                return []
-
-        await self._wait()
-
-        # Get HTML content and parse with BeautifulSoup for proper encoding
-        html_content = await page.content()
-        soup = BeautifulSoup(html_content, "lxml")
-
+    def _extract_known_futures_tables(self, soup: BeautifulSoup) -> list[dict[str, Any]]:
         tables = []
-
-        # Look for specific Futures tables by ID and mark their type
         hitter_table = soup.find("table", id="tblHitterRecord")
         if hitter_table:
             table_data = self._parse_table_with_bs4(hitter_table)
@@ -158,16 +160,16 @@ class FuturesProfileCrawler:
             if table_data:
                 table_data["_table_type"] = "PITCHER"  # Add explicit type marker
                 tables.append(table_data)
+        return tables
 
-        # If no tables found by ID, try other methods
-        if not tables:
-            futures_divs = soup.find_all("div", id=lambda x: x and "Futures" in x if x else False)
-            for div in futures_divs:
-                for table_elem in div.find_all("table"):
-                    table_data = self._parse_table_with_bs4(table_elem)
-                    if table_data:
-                        tables.append(table_data)
-
+    def _extract_fallback_futures_tables(self, soup: BeautifulSoup) -> list[dict[str, Any]]:
+        tables = []
+        futures_divs = soup.find_all("div", id=lambda x: x and "Futures" in x if x else False)
+        for div in futures_divs:
+            for table_elem in div.find_all("table"):
+                table_data = self._parse_table_with_bs4(table_elem)
+                if table_data:
+                    tables.append(table_data)
         return tables
 
     def _parse_table_with_bs4(self, table_elem: Tag) -> dict[str, Any] | None:
