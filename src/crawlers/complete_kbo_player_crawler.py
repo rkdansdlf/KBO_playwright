@@ -515,7 +515,7 @@ def save_to_database(player_data: dict[int, dict], series_name: str) -> int:
         logger.info("💾 %s 데이터 저장 중...", series_name)
 
         saved_count = 0
-        for _player_id, data in player_data.items():
+        for data in player_data.values():
             try:
                 # 저장용 데이터 형식 변환
                 save_data = {
