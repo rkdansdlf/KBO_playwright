@@ -83,7 +83,7 @@ class OperationNoticeDoosanCrawler:
         self.max_pages = max_pages
         self._raw_pages: list[dict] = []
 
-    async def run(self, save: bool = False, stop_at_external_id: str | None = None) -> list[dict]:
+    async def run(self, *, save: bool = False, stop_at_external_id: str | None = None) -> list[dict]:
         all_notices: list[dict] = []
         from src.utils.playwright_pool import AsyncPlaywrightPool
 

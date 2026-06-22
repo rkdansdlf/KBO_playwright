@@ -123,7 +123,7 @@ class TicketCrawler:
         "WO": "kiwoom_heroes_ticket",
     }
 
-    async def run(self, save: bool = False, season: int | None = None) -> list[dict[str, Any]]:
+    async def run(self, *, save: bool = False, season: int | None = None) -> list[dict[str, Any]]:
         if season:
             self.current_season = season
 
