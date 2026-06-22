@@ -103,7 +103,7 @@ class OperationNoticeNaverCrawler:
         self.days_back = days_back
         self.client = NaverSearchClient()
 
-    async def run(self, save: bool = False) -> list[dict]:
+    async def run(self, *, save: bool = False) -> list[dict]:
         logger.info("[NaverNotice] Searching for notices (last %s days)...", self.days_back)
 
         if not self.client._is_configured():

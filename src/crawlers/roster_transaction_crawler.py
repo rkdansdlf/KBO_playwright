@@ -66,7 +66,7 @@ class RosterTransactionCrawler:
         self.pool = pool
         self._raw_pages: list[dict] = []
 
-    async def run(self, save: bool = False, target_date: str | None = None) -> list[dict[str, Any]]:
+    async def run(self, *, save: bool = False, target_date: str | None = None) -> list[dict[str, Any]]:
         crawl_date = datetime.strptime(target_date, "%Y-%m-%d").date() if target_date else date.today()
 
         # Try mobile page first (simpler, structured)

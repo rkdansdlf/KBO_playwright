@@ -1097,14 +1097,24 @@ def crawl_series_batting_stats(
         finally:
             browser.close()
 
+    all_players_data = _finalize_batting_summary(all_players_data, series_info)
+    _save_batting_if_needed(all_players_data, save_to_db)
+    return all_players_data
+
+
+def _finalize_batting_summary(
+    all_players_data: list[dict],
+    series_info: dict,
+) -> list[dict]:
     logger.info("-" * 60)
     logger.info("✅ %s 크롤링 완료! 총 %s명 수집", series_info["name"], len(all_players_data))
     summary, valid_players_data = build_batting_crawl_summary(all_players_data)
     if summary["filtered_rows"]:
         logger.warning("⚠️ 타자 시즌 row 필터링: %s건 (%s)", summary["filtered_rows"], summary["failure_counts"])
-    all_players_data = valid_players_data
+    return valid_players_data
 
-    # DB 저장 (안전한 외래키 제약조건 우회)
+
+def _save_batting_if_needed(all_players_data: list[dict], save_to_db: bool) -> None:
     if save_to_db and all_players_data:
         logger.info("\n💾 타자 데이터 DB 저장 시작 (외래키 제약조건 임시 비활성화)...")
         try:
@@ -1112,8 +1122,6 @@ def crawl_series_batting_stats(
             logger.info("✅ 타자 데이터 저장 완료: %s명", saved_count)
         except DB_SAVE_EXCEPTIONS:
             logger.exception("❌ 타자 데이터 저장 실패")
-
-    return all_players_data
 
 
 def crawl_all_series(

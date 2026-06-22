@@ -61,9 +61,9 @@ def test_extract_starter_fields_from_game_list_variants():
 def test_extract_lineup_announced_from_lineup_analysis_header():
     crawler = PreviewCrawler()
 
-    assert crawler._extract_lineup_announced([[{"LINEUP_CK": False}]], True) is False
-    assert crawler._extract_lineup_announced([[{"LINEUP_CK": "1"}]], False) is True
-    assert crawler._extract_lineup_announced([], True) is True
+    assert crawler._extract_lineup_announced([[{"LINEUP_CK": False}]], fallback=True) is False
+    assert crawler._extract_lineup_announced([[{"LINEUP_CK": "1"}]], fallback=False) is True
+    assert crawler._extract_lineup_announced([], fallback=True) is True
 
 
 def test_crawl_preview_recovers_starters_and_lineup_flag_from_current_payloads():

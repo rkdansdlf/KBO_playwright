@@ -47,7 +47,7 @@ class TeamInfoCrawler:
         if self.playwright:
             await self.playwright.stop()
 
-    async def crawl(self, save: bool = False) -> list[dict]:
+    async def crawl(self, *, save: bool = False) -> list[dict]:
         logger.info("Crawling Team Info from %s", self.BASE_URL)
         if not self.page:
             await self.start()

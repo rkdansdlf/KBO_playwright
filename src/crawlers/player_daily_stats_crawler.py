@@ -30,11 +30,11 @@ PLAYER_DAILY_PARSE_EXCEPTIONS = (ValueError, TypeError, IndexError)
 
 
 class PlayerDailyStatsCrawler:
-    def __init__(self, headless: bool = True) -> None:
+    def __init__(self, *, headless: bool = True) -> None:
         self.headless = headless
         self.base_url = "https://www.koreabaseball.com/Record/Player/{type}Detail/Daily.aspx?playerId={pid}"
 
-    async def crawl_player_season(self, player_id: int, is_pitcher: bool, season: int) -> list[dict[str, Any]]:
+    async def crawl_player_season(self, player_id: int, *, is_pitcher: bool, season: int) -> list[dict[str, Any]]:
         p_type = "Pitcher" if is_pitcher else "Hitter"
         url = self.base_url.format(type=p_type, pid=player_id)
 
@@ -172,13 +172,13 @@ if __name__ == "__main__":
     async def test() -> None:
         crawler = PlayerDailyStatsCrawler()
         # Jose Fernandez 2020
-        data = await crawler.crawl_player_season(69209, False, 2020)
+        data = await crawler.crawl_player_season(69209, is_pitcher=False, season=2020)
         logger.info("Collected %s games for hitter.", len(data))
         if data:
             logger.info(data[0])
 
         # Pinto 2020
-        data_p = await crawler.crawl_player_season(50815, True, 2020)
+        data_p = await crawler.crawl_player_season(50815, is_pitcher=True, season=2020)
         logger.info("Collected %s games for pitcher.", len(data_p))
         if data_p:
             logger.info(data_p[0])

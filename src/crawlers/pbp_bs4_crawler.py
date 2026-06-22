@@ -137,20 +137,20 @@ class PBPBS4Crawler:
         outs_before, runners_before = self._apply_explicit_state(p_text, state)
         score_diff_before = state["home_score"] - state["away_score"]
         runs_scored = KBOTextParser.parse_score_change(p_text)
-        self._advance_score(state, is_bottom, runs_scored)
+        self._advance_score(state, is_bottom=is_bottom, runs_scored=runs_scored)
         self._advance_outs(state, p_text)
         outs_after = state["current_outs"]
         runners_after = 0
         score_diff_after = state["home_score"] - state["away_score"]
         wp_before, wp_after, wpa = self._calculate_wpa(
             inning,
-            is_bottom,
-            outs_before,
-            runners_before,
-            outs_after,
-            runners_after,
-            score_diff_before,
-            score_diff_after,
+            is_bottom=is_bottom,
+            outs_before=outs_before,
+            runners_before=runners_before,
+            outs_after=outs_after,
+            runners_after=runners_after,
+            score_diff_before=score_diff_before,
+            score_diff_after=score_diff_after,
         )
         event = self._base_event_payload(
             sequence,
@@ -186,7 +186,7 @@ class PBPBS4Crawler:
         return outs_before, runners_before
 
     @staticmethod
-    def _advance_score(state: dict[str, int], is_bottom: bool, runs_scored: int) -> None:
+    def _advance_score(state: dict[str, int], *, is_bottom: bool, runs_scored: int) -> None:
         if is_bottom:
             state["home_score"] += runs_scored
         else:
@@ -208,6 +208,7 @@ class PBPBS4Crawler:
     def _calculate_wpa(
         self,
         inning: int,
+        *,
         is_bottom: bool,
         outs_before: int,
         runners_before: int,

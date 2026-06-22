@@ -52,7 +52,7 @@ class ParkingCrawler:
     def __init__(self) -> None:
         self._raw_pages: list[dict] = []
 
-    async def run(self, save: bool = False, team_filter: str | None = None) -> list[dict[str, Any]]:
+    async def run(self, *, save: bool = False, team_filter: str | None = None) -> list[dict[str, Any]]:
         all_lots = []
         for team_code, info in TEAM_PARKING_SOURCES.items():
             if team_filter and team_code != team_filter:
