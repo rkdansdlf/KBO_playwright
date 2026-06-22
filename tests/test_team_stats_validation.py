@@ -320,6 +320,37 @@ class TestTeamBattingValidation:
         finally:
             session.close()
 
+    def test_includes_rows_with_special_raw_code_when_canonical_team_is_standard(self):
+        session = _make_session()
+        try:
+            _insert_regular_season(session)
+            session.execute(
+                text("""
+                    INSERT INTO player_season_batting
+                        (player_id, season, league, team_code, canonical_team_code,
+                         games, plate_appearances, at_bats, runs, hits)
+                    VALUES (1, 2025, 'REGULAR', 'LG', 'LG', 1, 5, 4, 2, 2),
+                           (2, 2025, 'REGULAR', 'WE', 'LG', 1, 7, 6, 1, 3)
+                """)
+            )
+            session.execute(
+                text("""
+                    INSERT INTO team_season_batting
+                        (team_id, season, league, games, plate_appearances, at_bats, runs, hits)
+                    VALUES ('LG', 2025, 'REGULAR', 2, 12, 10, 3, 5)
+                """)
+            )
+            session.commit()
+
+            gate = QualityGate(session)
+            result = gate.validate_season_team_batting(2025)
+
+            assert result["ok"] is True
+            assert result["checked_players"] == 1
+            assert result["mismatches"] == []
+        finally:
+            session.close()
+
 
 class TestTeamPitchingValidation:
     def test_matches_when_player_sum_equals_team_record(self):
@@ -482,6 +513,37 @@ class TestTeamPitchingValidation:
 
             assert result["ok"] is True
             assert result["checked_players"] == 0
+            assert result["mismatches"] == []
+        finally:
+            session.close()
+
+    def test_includes_pitching_rows_with_special_raw_code_when_canonical_team_is_standard(self):
+        session = _make_session()
+        try:
+            _insert_regular_season(session)
+            session.execute(
+                text("""
+                    INSERT INTO player_season_pitching
+                        (player_id, season, league, team_code, canonical_team_code,
+                         games, wins, losses, innings_outs, strikeouts)
+                    VALUES (1, 2025, 'REGULAR', 'HH', 'HH', 1, 1, 0, 12, 4),
+                           (2, 2025, 'REGULAR', 'EA', 'HH', 1, 0, 1, 9, 3)
+                """)
+            )
+            session.execute(
+                text("""
+                    INSERT INTO team_season_pitching
+                        (team_id, season, league, games, wins, losses, innings_pitched, innings_outs, strikeouts)
+                    VALUES ('HH', 2025, 'REGULAR', 2, 1, 1, 7.0, 21, 7)
+                """)
+            )
+            session.commit()
+
+            gate = QualityGate(session)
+            result = gate.validate_season_team_pitching(2025)
+
+            assert result["ok"] is True
+            assert result["checked_players"] == 1
             assert result["mismatches"] == []
         finally:
             session.close()

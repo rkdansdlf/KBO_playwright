@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from sqlalchemy import func, or_, select, text
+from sqlalchemy import func, select, text
 from sqlalchemy.orm import Session
 
 from src.constants import IP_FRAC_THIRD, IP_FRAC_TWO_THIRDS, MAX_OUTS
@@ -54,7 +54,6 @@ class QualityGate:
         return (
             team_expr.isnot(None),
             team_expr.not_in(INVALID_TEAM_CODES),
-            or_(model.team_code.is_(None), model.team_code.not_in(INVALID_TEAM_CODES)),
         )
 
     def validate_season_batting(self, season: int, league: str = "REGULAR") -> dict[str, Any]:
