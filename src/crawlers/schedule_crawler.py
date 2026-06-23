@@ -506,7 +506,7 @@ class ScheduleCrawler:
 
                     # KBO Website uses LEGACY codes in Game IDs.
                     # We must map our canonical codes (KH, DB, SSG, KIA) to KBO legacy (WO, OB, SK, HT).
-                    KBO_LEGACY_CODES = {
+                    kbo_legacy_codes = {
                         "KH": "WO",  # Kiwoom -> Woori
                         "DB": "OB",  # Doosan -> OB
                         "SSG": "SK",  # SSG -> SK (Wyverns)
@@ -519,8 +519,8 @@ class ScheduleCrawler:
                         "SS": "SS",
                     }
 
-                    kbo_away_code = KBO_LEGACY_CODES.get(away_code, away_code)
-                    kbo_home_code = KBO_LEGACY_CODES.get(home_code, home_code)
+                    kbo_away_code = kbo_legacy_codes.get(away_code, away_code)
+                    kbo_home_code = kbo_legacy_codes.get(home_code, home_code)
 
                     if g.get("game_date") and kbo_away_code and kbo_home_code:
                         # Construct ID: YYYYMMDD + AWAY + HOME + DH
