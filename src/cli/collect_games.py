@@ -41,7 +41,9 @@ async def collect_games(
 ) -> None:
     targets = load_game_targets_by_ids(game_ids) if game_ids else load_game_targets_from_db(year, month)
     logger.info(
-        f"Target: {len(targets)} games" + (f" for {year}" + (f"-{month}" if month else "") if not game_ids else ""),
+        "Target: %s games%s",
+        len(targets),
+        f" for {year}" + (f"-{month}" if month else "") if not game_ids else "",
     )
 
     session = SessionLocal()

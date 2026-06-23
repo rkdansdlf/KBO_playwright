@@ -42,28 +42,25 @@ def get_player_defensive_stats(player_name: str, year: int) -> list[dict[str, An
             and_(PlayerSeasonFielding.player_id.in_(player_ids), PlayerSeasonFielding.year == year),
         )
 
-        results = []
-        for row in session.execute(fielding_stmt).scalars().all():
-            results.append(
-                {
-                    "player_id": row.player_id,
-                    "team_id": row.team_id,
-                    "year": row.year,
-                    "position_id": row.position_id,
-                    "games": row.games,
-                    "games_started": row.games_started,
-                    "innings": row.innings,
-                    "putouts": row.putouts,
-                    "assists": row.assists,
-                    "errors": row.errors,
-                    "double_plays": row.double_plays,
-                    "fielding_pct": row.fielding_pct,
-                    "pickoffs": row.pickoffs,
-                    "source": row.source,
-                },
-            )
-
-        return results
+        return [
+            {
+                "player_id": row.player_id,
+                "team_id": row.team_id,
+                "year": row.year,
+                "position_id": row.position_id,
+                "games": row.games,
+                "games_started": row.games_started,
+                "innings": row.innings,
+                "putouts": row.putouts,
+                "assists": row.assists,
+                "errors": row.errors,
+                "double_plays": row.double_plays,
+                "fielding_pct": row.fielding_pct,
+                "pickoffs": row.pickoffs,
+                "source": row.source,
+            }
+            for row in session.execute(fielding_stmt).scalars().all()
+        ]
 
 
 if __name__ == "__main__":

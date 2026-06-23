@@ -304,7 +304,9 @@ class StaffRegisterCrawler:
 
         if skipped:
             logger.warning(
-                f"  ⚠️  {len(skipped)} record(s) skipped (no player_id): " + ", ".join(r["name"] for r in skipped),
+                "  ⚠️  %s record(s) skipped (no player_id): %s",
+                len(skipped),
+                ", ".join(r["name"] for r in skipped),
             )
 
         if dry_run:

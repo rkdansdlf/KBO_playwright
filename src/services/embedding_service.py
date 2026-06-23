@@ -204,15 +204,14 @@ class EmbeddingService:
         url = f"https://generativelanguage.googleapis.com/v1beta/models/text-embedding-004:batchEmbedContents?key={self.api_key}"
         headers = {"Content-Type": "application/json"}
 
-        requests_payload = []
-        for text in texts:
-            requests_payload.append(
-                {
-                    "model": "models/text-embedding-004",
-                    "content": {"parts": [{"text": text}]},
-                    "outputDimensionality": 256,
-                },
-            )
+        requests_payload = [
+            {
+                "model": "models/text-embedding-004",
+                "content": {"parts": [{"text": text}]},
+                "outputDimensionality": 256,
+            }
+            for text in texts
+        ]
 
         payload = {"requests": requests_payload}
 

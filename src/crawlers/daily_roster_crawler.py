@@ -225,19 +225,17 @@ class DailyRosterCrawler:
             return []
 
         # Post-process
-        cleaned = []
-        for item in data:
-            cleaned.append(
-                {
-                    "roster_date": roster_date,
-                    "team_code": self._normalize_team(team_code, roster_date.year),
-                    "player_id": int(item["player_id"]),
-                    "player_name": item["player_name"],
-                    "position": self._clean_category(item["category"]),
-                    "back_number": item["back_number"],
-                },
-            )
-        return cleaned
+        return [
+            {
+                "roster_date": roster_date,
+                "team_code": self._normalize_team(team_code, roster_date.year),
+                "player_id": int(item["player_id"]),
+                "player_name": item["player_name"],
+                "position": self._clean_category(item["category"]),
+                "back_number": item["back_number"],
+            }
+            for item in data
+        ]
 
     def _normalize_team(self, code: str, season_year: int | None = None) -> str:
         resolved = resolve_team_code(code, season_year)

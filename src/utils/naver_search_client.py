@@ -193,10 +193,7 @@ class NaverSearchClient:
         all_results: list[NaverSearchResult] = []
         seen_links: set[str] = set()
 
-        tasks = []
-        for q_config in NOTICE_QUERIES:
-            for stype in ("news",):
-                tasks.append((q_config, stype))
+        tasks = [(q_config, stype) for q_config in NOTICE_QUERIES for stype in ("news",)]
 
         for q_config, stype in tasks:
             results = await self.search(

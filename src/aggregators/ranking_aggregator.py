@@ -117,70 +117,84 @@ class RankingAggregator:
             rankings.extend(self._build_rankings(season, baserunning_stats, BASERUNNING_METRICS))
 
         if batting_stats:
-            # Generate both qualified (standard) and '_all' configs for ratio stats
-            batting_configs = []
-            for cfg in BATTING_METRICS:
-                if cfg.min_pa is not None and min_pa is not None:
-                    # 1. Standard Qualified Leaderboard
-                    batting_configs.append(
-                        MetricConfig(
-                            name=cfg.name,
-                            source=cfg.source,
-                            value_key=cfg.value_key,
-                            descending=cfg.descending,
-                            entity_type=cfg.entity_type,
-                            min_pa=min_pa,
-                        ),
-                    )
-                    # 2. Complete Leaderboard (including unqualified)
-                    batting_configs.append(
-                        MetricConfig(
-                            name=cfg.name + "_all",
-                            source=cfg.source,
-                            value_key=cfg.value_key,
-                            descending=cfg.descending,
-                            entity_type=cfg.entity_type,
-                            min_pa=1,  # Require at least 1 PA to filter out 0 PA records
-                        ),
-                    )
-                else:
-                    batting_configs.append(cfg)
+            batting_configs = self._build_batting_configs(batting_stats, min_pa)
             rankings.extend(self._build_rankings(season, batting_stats, batting_configs, kbo_min_pa=min_pa))
 
         if pitching_stats:
-            # Generate both qualified (standard) and '_all' configs for ratio stats
-            pitching_configs = []
-            for cfg in PITCHING_METRICS:
-                if cfg.min_ip_outs is not None and min_ip_outs is not None:
-                    # 1. Standard Qualified Leaderboard
-                    pitching_configs.append(
-                        MetricConfig(
-                            name=cfg.name,
-                            source=cfg.source,
-                            value_key=cfg.value_key,
-                            descending=cfg.descending,
-                            entity_type=cfg.entity_type,
-                            min_ip_outs=min_ip_outs,
-                        ),
-                    )
-                    # 2. Complete Leaderboard (including unqualified)
-                    pitching_configs.append(
-                        MetricConfig(
-                            name=cfg.name + "_all",
-                            source=cfg.source,
-                            value_key=cfg.value_key,
-                            descending=cfg.descending,
-                            entity_type=cfg.entity_type,
-                            min_ip_outs=1,  # Require at least 1 out to filter out 0 IP records
-                        ),
-                    )
-                else:
-                    pitching_configs.append(cfg)
+            pitching_configs = self._build_pitching_configs(pitching_stats, min_ip_outs)
             rankings.extend(self._build_rankings(season, pitching_stats, pitching_configs, kbo_min_ip_outs=min_ip_outs))
 
         if persist and rankings:
             self.repository.save_rankings(rankings)
         return rankings
+
+    def _build_batting_configs(
+        self,
+        batting_stats: Iterable[dict[str, Any]] | None,
+        min_pa: int | None,
+    ) -> list[MetricConfig]:
+        batting_configs: list[MetricConfig] = []
+        if not batting_stats:
+            return batting_configs
+        for cfg in BATTING_METRICS:
+            if cfg.min_pa is not None and min_pa is not None:
+                batting_configs.append(
+                    MetricConfig(
+                        name=cfg.name,
+                        source=cfg.source,
+                        value_key=cfg.value_key,
+                        descending=cfg.descending,
+                        entity_type=cfg.entity_type,
+                        min_pa=min_pa,
+                    ),
+                )
+                batting_configs.append(
+                    MetricConfig(
+                        name=cfg.name + "_all",
+                        source=cfg.source,
+                        value_key=cfg.value_key,
+                        descending=cfg.descending,
+                        entity_type=cfg.entity_type,
+                        min_pa=1,
+                    ),
+                )
+            else:
+                batting_configs.append(cfg)
+        return batting_configs
+
+    def _build_pitching_configs(
+        self,
+        pitching_stats: Iterable[dict[str, Any]] | None,
+        min_ip_outs: int | None,
+    ) -> list[MetricConfig]:
+        pitching_configs: list[MetricConfig] = []
+        if not pitching_stats:
+            return pitching_configs
+        for cfg in PITCHING_METRICS:
+            if cfg.min_ip_outs is not None and min_ip_outs is not None:
+                pitching_configs.append(
+                    MetricConfig(
+                        name=cfg.name,
+                        source=cfg.source,
+                        value_key=cfg.value_key,
+                        descending=cfg.descending,
+                        entity_type=cfg.entity_type,
+                        min_ip_outs=min_ip_outs,
+                    ),
+                )
+                pitching_configs.append(
+                    MetricConfig(
+                        name=cfg.name + "_all",
+                        source=cfg.source,
+                        value_key=cfg.value_key,
+                        descending=cfg.descending,
+                        entity_type=cfg.entity_type,
+                        min_ip_outs=1,
+                    ),
+                )
+            else:
+                pitching_configs.append(cfg)
+        return pitching_configs
 
     def _build_rankings(
         self,
