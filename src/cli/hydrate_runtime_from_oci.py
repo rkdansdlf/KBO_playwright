@@ -39,9 +39,9 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     target_date = datetime.strptime(args.date, "%Y%m%d").date() if args.date else None
     source_engine = create_engine_for_url(args.source_url, disable_sqlite_wal=True)
-    SourceSession = sessionmaker(bind=source_engine, autoflush=False, autocommit=False, expire_on_commit=False)
+    source_session_factory = sessionmaker(bind=source_engine, autoflush=False, autocommit=False, expire_on_commit=False)
 
-    with SourceSession() as source_session, SessionLocal() as target_session:
+    with source_session_factory() as source_session, SessionLocal() as target_session:
         hydrator = RuntimeHydrator(source_session, target_session)
         summary = hydrator.hydrate_year(
             args.year,

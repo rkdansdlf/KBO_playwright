@@ -44,8 +44,8 @@ def crawl_monthly_pa_audit_job() -> None:
     """
     Audit PA formula for the previous year and apply ratio-based fix.
     """
-    KST = ZoneInfo("Asia/Seoul")
-    current_year = datetime.now(KST).year
+    kst = ZoneInfo("Asia/Seoul")
+    current_year = datetime.now(kst).year
     target_year = current_year - 1
 
     if target_year < 2020:
@@ -61,8 +61,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--year", type=int, help="Target year (defaults to previous year)")
     args = parser.parse_args(argv)
 
-    KST = ZoneInfo("Asia/Seoul")
-    current_year = datetime.now(KST).year
+    kst = ZoneInfo("Asia/Seoul")
+    current_year = datetime.now(kst).year
     target_year = args.year if args.year else current_year - 1
 
     if target_year < 2020:
